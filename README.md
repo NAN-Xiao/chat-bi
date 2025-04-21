@@ -5,7 +5,6 @@
   <a href="https://github.com/1Panel-dev/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/1Panel-dev/SQLBot" alt="Latest release"></a>
   <a href="https://github.com/1Panel-dev/SQLBot"><img src="https://img.shields.io/github/stars/1Panel-dev/SQLBot?color=%231890FF&style=flat-square" alt="Stars"></a>    
   <a href="https://hub.docker.com/r/1panel/SQLbot"><img src="https://img.shields.io/docker/pulls/1panel/SQLBot?label=downloads" alt="Download"></a><br/>
- [<a href="/README_CN.md">中文(简体)</a>] | [<a href="/README.md">English</a>] 
 </p>
 <hr/>
 
