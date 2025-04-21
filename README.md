@@ -9,7 +9,7 @@
 </p>
 <hr/>
 
-SQLChat allows you to interact with your SQL database through advanced Text-to-SQL technology. This capability is powered by Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG).
+SQLBot allows you to interact with your SQL database through advanced Text-to-SQL technology. This capability is powered by Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG).
 
 - **Easy to use**: TBD.
 - **Accurate text-to-sql generation**: TBD.
