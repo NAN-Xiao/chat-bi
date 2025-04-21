@@ -24,7 +24,7 @@ Execute the script below to start a SQLBot container using Docker:
 docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/postgresql/data 1panel/sqlbot
 ```
 
-Access SQLbot web interface at `http://your_server_ip:8080` with default admin credentials:
+Access SQLBot web interface at `http://your_server_ip:8080` with default admin credentials:
 
 - username: admin
 - password: SQLBot@123..
