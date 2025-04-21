@@ -29,6 +29,10 @@ Access SQLBot web interface at `http://your_server_ip:8080` with default admin c
 - username: admin
 - password: SQLBot@123..
 
+## How SQLBot works
+
+TBD
+
 ## Screenshots
 
 <table style="border-collapse: collapse; border: 1px solid black;">
