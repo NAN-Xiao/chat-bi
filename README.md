@@ -14,6 +14,7 @@ SQLChat allows you to interact with your SQL database through advanced Text-to-S
 - **Easy to use**: TBD.
 - **Accurate Text-to-SQL Generation**: TBD.
 - **Embeddable**: TBD.
+- **Supported Databases**: MySQL, PostgreSQL, Oracle, Microsoft SQL Server, PrestoDB, Apache Hive, Apache Doris, ClickHouse,etc.
 
 ## Quick Start
 
