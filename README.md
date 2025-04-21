@@ -11,12 +11,11 @@
 
 SQLChat allows you to interact with your SQL database through advanced Text-to-SQL technology. This capability is powered by Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG).
 
-- **TBD**: TBD.
-- **TBD**: TBD.
-- **TBD**: TBD.
-- **TBD**: TBD.
+- **Easy to use**: TBD.
+- **Accurate Text-to-SQL Generation**: TBD.
+- **Embeddable**: TBD.
 
-## Quick start
+## Quick Start
 
 Execute the script below to start a SQLBot container using Docker:
 
@@ -42,7 +41,7 @@ Access SQLBot web interface at `http://your_server_ip:8080` with default admin c
   </tr>
 </table>
 
-## Technical stack
+## Technical Stack
 
 - Frontend：[Vue.js](https://vuejs.org/)
 - Backend：[Python / Django](https://www.djangoproject.com/)
