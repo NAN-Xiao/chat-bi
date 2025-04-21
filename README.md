@@ -16,6 +16,10 @@ SQLChat allows you to interact with your SQL database through advanced Text-to-S
 - **Easy to integrate**: TBD.
 - **Supported databases**: MySQL, PostgreSQL, Oracle, Microsoft SQL Server, PrestoDB, Apache Hive, Apache Doris, ClickHouse,etc.
 
+## How SQLBot works
+
+TBD
+
 ## Quick Start
 
 Execute the script below to start a SQLBot container using Docker:
@@ -28,10 +32,6 @@ Access SQLBot web interface at `http://your_server_ip:8080` with default admin c
 
 - username: admin
 - password: SQLBot@123..
-
-## How SQLBot works
-
-TBD
 
 ## Screenshots
 
