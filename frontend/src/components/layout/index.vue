@@ -45,19 +45,22 @@
           <h1>{{ currentPageTitle }}</h1>
           <div class="header-actions">
             <el-tooltip content="System manage" placement="bottom">
-              <el-button class="header-icon-btn">
-                <el-icon><setting /></el-icon>
-              </el-button>
+              <div class="header-icon-btn">
+                <el-icon><iconsystem /></el-icon>
+                <span>System manage</span>
+              </div>
             </el-tooltip>
             <el-tooltip content="Help" placement="bottom">
-              <el-button class="header-icon-btn">
+              <div class="header-icon-btn">
                 <el-icon><question-filled /></el-icon>
-              </el-button>
+                <span>Help</span>
+              </div>
             </el-tooltip>
             <el-tooltip content="Notice" placement="bottom">
-              <el-button class="header-icon-btn">
-                <el-icon><bell /></el-icon>
-              </el-button>
+              <div class="header-icon-btn">
+                <el-icon><BellFilled /></el-icon>
+                <span>Notice</span>
+              </div>
             </el-tooltip>
             <el-dropdown trigger="click">
               <div class="user-info">
@@ -90,16 +93,17 @@ import folder from '@/assets/svg/folder.svg'
 import ds from '@/assets/svg/ds.svg'
 import dashboard from '@/assets/svg/dashboard.svg'
 import chat from '@/assets/svg/chat.svg'
+import iconsetting from '@/assets/svg/setting.svg'
+import iconsystem from '@/assets/svg/system.svg'
 import {
-  Setting,
   QuestionFilled,
-  Bell
+  BellFilled
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
-const name = ref('')
+const name = ref('admin')
 const activeMenu = computed(() => route.path)
 
 const routerList = computed(() => {
@@ -118,7 +122,8 @@ const resolveIcon = (iconName: any) => {
   const icons: Record<string, any> = {
     'ds': ds,
     'dashboard': dashboard,
-    'chat': chat
+    'chat': chat,
+    'setting': iconsetting
   }
   return typeof icons[iconName] === 'function' ? icons[iconName]() : icons[iconName]
 }
@@ -212,6 +217,41 @@ const logout = () => {
         justify-content: space-between;
         align-items: center;
         margin-bottom: 24px;
+        .header-actions {
+          display: flex;
+          height: 36px;
+          align-items: center;
+          .header-icon-btn {
+            display: flex;
+            column-gap: 12px;
+            align-items: center;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: none;
+            font-weight: 500;
+            transition: all 0.3s;
+            font-size: 14px;
+            color: #5f6368;
+            &:hover {
+              background-color: rgba(0, 0, 0, 0.05);
+            }
+          }
+          :deep(.user-info) {
+            display: flex;
+            column-gap: 4px;
+            align-items: center;
+            .el-avatar {
+              background-color: #4285f4;
+              color: #fff;
+            }
+            .user-name {
+              font-size: 14px;
+              font-weight: 500;
+              color: #202124;
+            }
+          }
+        }
       }
     }
     

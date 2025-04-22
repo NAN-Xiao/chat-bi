@@ -5,6 +5,7 @@ import login from '@/views/login/index.vue'
 import chat from '@/views/chat/index.vue'
 import ds from '@/views/ds/index.vue'
 import dashboard from '@/views/dashboard/index.vue'
+import setting from '@/views/setting/index.vue'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -49,6 +50,19 @@ const router = createRouter({
           name: 'dashboard',
           component: dashboard,
           meta: { title: 'Dashboard', icon: 'dashboard' }
+        }
+      ]
+    },
+    {
+      path: '/setting',
+      component: Layout,
+      redirect: '/setting/index',
+      children: [
+        {
+          path: 'index',
+          name: 'setting',
+          component: setting,
+          meta: { title: 'Setting', icon: 'setting' }
         }
       ]
     }
