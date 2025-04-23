@@ -3,8 +3,8 @@ from typing import Any
 
 import jwt
 from passlib.context import CryptContext
-
-from app.core.config import settings
+import hashlib
+from common.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -14,7 +14,7 @@ ALGORITHM = "HS256"
 
 def create_access_token(subject: str | Any, expires_delta: timedelta) -> str:
     expire = datetime.now(timezone.utc) + expires_delta
-    to_encode = {"exp": expire, "sub": str(subject)}
+    to_encode = {"exp": expire, "account": str(subject)}
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -25,3 +25,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+def md5pwd(password: str) -> str:
+    m = hashlib.md5()
+    m.update(password.encode("utf-8"))
+    return m.hexdigest()
+
+def verify_md5pwd(plain_password: str, md5_password: str) -> bool:
+    return md5pwd(plain_password) == md5_password
