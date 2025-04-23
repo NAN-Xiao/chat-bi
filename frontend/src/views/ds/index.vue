@@ -3,7 +3,7 @@
     <div class="header">
       <div class="mt-4">
         <el-input
-          v-model="input3"
+          v-model="search"
           style="max-width: 300px"
           placeholder="Search Datasource..."
           class="input-with-select"
@@ -14,7 +14,7 @@
         </el-input>
       </div>
 
-      <el-button type="primary" :icon="IconOpeAdd">Add Datasource</el-button>
+      <el-button type="primary" :icon="IconOpeAdd" @click="addDs">Add Datasource</el-button>
     </div>
 
     <div class="connections-container">
@@ -43,12 +43,19 @@
       </div>
     </div>
   </div>
+  <DsForm ref="dsForm"/>
 </template>
 <script lang="ts" setup>
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { Search } from '@element-plus/icons-vue'
+import { ref } from 'vue'
+import DsForm from './form.vue'
+
+const search = ref<string>('')
+const dsForm = ref()
+
 const mockData = [
   {
     name:'1',
@@ -133,7 +140,7 @@ const mockData = [
   }
 ]
 
-const getStatus = function(status: string) {
+const getStatus = (status: string) => {
   if (status === 'On') {
     return 'connected'
   }
@@ -143,6 +150,10 @@ const getStatus = function(status: string) {
   if (status === 'Check') {
     return 'needs-verification'
   }
+}
+
+const addDs = () => {
+  dsForm.value.open()
 }
 </script>
 <style lang="less" scoped>
