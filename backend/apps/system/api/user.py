@@ -5,7 +5,5 @@ router = APIRouter(tags=["user"], prefix="/user")
 
 
 @router.get("/info")
-async def user_info():
-    return {
-        "name": "admin"
-    }
+async def user_info(current_user: CurrentUser):
+    return current_user.to_dict()

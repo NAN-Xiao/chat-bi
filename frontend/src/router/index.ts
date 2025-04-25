@@ -6,6 +6,7 @@ import chat from '@/views/chat/index.vue'
 import ds from '@/views/ds/index.vue'
 import dashboard from '@/views/dashboard/index.vue'
 import setting from '@/views/setting/index.vue'
+import { watchRouter } from './watch'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -68,5 +69,5 @@ const router = createRouter({
     }
   ]
 })
-
+watchRouter(router)
 export default router

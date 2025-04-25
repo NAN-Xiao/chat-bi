@@ -2,11 +2,9 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from apps.api import api_router
 from common.core.config import settings
 
-from apps.system.middleware.token import verify_token
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     return f"{route.tags[0]}-{route.name}"
@@ -32,7 +30,6 @@ if settings.all_cors_origins:
     )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
-# app.add_middleware(BaseHTTPMiddleware, dispatch=verify_token)
     
 if __name__ == "__main__":
     import uvicorn
