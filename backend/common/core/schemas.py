@@ -1,4 +1,3 @@
-from typing import Optional
 from fastapi import HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
@@ -6,6 +5,7 @@ from sqlmodel import SQLModel
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_401_UNAUTHORIZED
 from common.core.config import settings
 from fastapi.security.utils import get_authorization_scheme_param
+from typing import Generic, TypeVar, Optional
 class TokenPayload(BaseModel):
     account: str | None = None
     id: int | None = None
@@ -29,3 +29,21 @@ class XOAuth2PasswordBearer(OAuth2PasswordBearer):
             else:
                 return None
         return param
+    
+
+
+
+T = TypeVar('T')
+
+class PaginationParams(BaseModel):
+    page: int = 1
+    size: int = 20
+    order_by: Optional[str] = None
+    desc: bool = False
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    page: int
+    size: int
+    total_pages: int
