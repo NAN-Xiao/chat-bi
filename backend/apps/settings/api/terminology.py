@@ -1,7 +1,5 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, Request    
+from fastapi import APIRouter    
 from apps.settings.models.setting_models import term_model
-# from common.core.db import get_session
 from common.core.deps import SessionDep
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams

@@ -34,12 +34,13 @@ class Paginator:
             if value is not None:
                 count_stmt = count_stmt.where(getattr(model, field) == value)
         
-        total = (await self.session.execute(count_stmt)).scalar_one()
+        result = self.session.exec(count_stmt)
+        total = result.first()
         
         stmt = stmt.offset(offset).limit(size)
         
-        result = await self.session.execute(stmt)
-        items = result.scalars().all()
+        result = self.session.exec(stmt)
+        items = result.all()  # 移除 scalars() 调用，直接使用 all()
         
         return items, total
 
