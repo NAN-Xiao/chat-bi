@@ -91,11 +91,10 @@ class HttpService {
         }
 
         // Handle business logic
-        if (response.data?.success !== true) {
+        /* if (response.data?.success !== true) {
           return Promise.reject(response.data)
-        }
-
-        return response.data.data
+        } */
+        return response.data
       },
       async (error: AxiosError) => {
         const config = error.config as FullRequestConfig & { __retryCount?: number }

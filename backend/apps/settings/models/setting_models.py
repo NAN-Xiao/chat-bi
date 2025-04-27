@@ -1,10 +1,10 @@
 from sqlmodel import Field, SQLModel
 
+from common.core.models import SnowflakeBase
 
-class term_model(SQLModel, table=True):
+
+class term_model(SnowflakeBase, table=True):
     __tablename__ = "terms"
-
-    id: int = Field(primary_key=True, index=True)
     term: str = Field(max_length=255)
     definition: str = Field(max_length=255)
     domain: str = Field(max_length=255)

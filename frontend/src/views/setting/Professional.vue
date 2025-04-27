@@ -23,7 +23,7 @@
           <el-icon><IconOpeDownload /></el-icon>
           <span>Export Terminology</span>
         </div>
-        <div class="tool-btn primary-btn">
+        <div class="tool-btn primary-btn" @click="openDialog">
           <el-icon><IconOpeAdd /></el-icon>
           <span>Add Terminology</span>
         </div>
@@ -49,48 +49,154 @@
       </el-table>
     </div>
   </div>
+
+  <el-dialog v-model="dialogFormVisible" title="Add Terminology" destroy-on-close width="500" @close="onFormClose" class="sqlbot-dialog">
+    <el-form :model="state.form" 
+      label-width="180px"
+      label-position="top" 
+      class="sqlbot-form"
+      size="large"
+      ref="termFormRef"
+    >
+      <el-form-item label="Term name" >
+        <el-input v-model="state.form.term" autocomplete="off" />
+      </el-form-item>
+      <el-form-item label="Definition" >
+        <el-input type="textarea" v-model="state.form.definition" />
+      </el-form-item>
+      <el-form-item label="Domain">
+        <el-select v-model="state.form.domain" placeholder="Please select a domain">
+          <el-option label="domain1" value="domain1" />
+          <el-option label="domain2" value="domain2" />
+          <el-option label="domain3" value="domain3" />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button @click="closeForm">Cancel</el-button>
+        <el-button type="primary" @click="saveHandler">
+          save
+        </el-button>
+      </div>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import IconOpeUpload from '@/assets/svg/operate/ope-upload.svg';
 import IconOpeDownload from '@/assets/svg/operate/ope-download.svg';
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg';
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg';
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg';
 import { Search } from '@element-plus/icons-vue'
+import { termApi } from '@/api/setting'
 const keyword = ref('')
+const dialogFormVisible = ref(false)
+const termFormRef = ref()
 const state = reactive({
   tableData: [
-    {  
-      term: 'Term 1',
-      definition: 'Definition 1',
-      domain: 'Domain 1',
-      id: '1'
-    },
-    {
-      term: 'Term 2',
-      definition: 'Definition 2',
-      domain: 'Domain 2',
-      id: '2'
-    },
-    {
-      term: 'Term 3',
-      definition: 'Definition 3',
-      domain: 'Domain 3',
-      id: '3'
-    }
-  ]
+  ],
+  form: {
+    id: '',
+    term: '',
+    definition: '',
+    domain: ''
+  },
 })
 const handleSearch = (e: any) => {
   console.log('search', e);
 }
 const editHandler = (id: any) => {
-  console.log(id)
+  termApi.query(id).then((res: any) => {
+    console.log('term detail', res)
+    state.form = res
+    dialogFormVisible.value = true
+  })
 }
 const deleteHandler = (id: any) => {
-  console.log(id)
+  ElMessageBox.confirm(
+    'Are you sure to delete?',
+    'Warning',
+    {
+      confirmButtonText: 'OK',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    }
+  )
+    .then(() => {
+      termApi.delete(id).then(() => {
+        ElMessage({
+          type: 'success',
+          message: 'Delete completed',
+        })
+        search()
+      })
+      
+    })
+    .catch(() => {
+      ElMessage({
+        type: 'info',
+        message: 'Delete canceled',
+      })
+    })
 }
+
+const openDialog = () => {
+  dialogFormVisible.value = true
+}
+const resetForm = () => {
+  if (!termFormRef) return
+  Object.keys(state.form).forEach((key) => {
+    state.form[key as keyof typeof state.form] = ''
+  })
+}
+
+const closeForm = () => {
+  dialogFormVisible.value = false
+}
+const onFormClose = () => {
+  resetForm()
+  dialogFormVisible.value = false
+}
+
+const search = () => {
+  termApi.pager(1, 20).then((res: any) => {
+    state.tableData = res.items
+  })
+}
+const addTerm = () => {
+  termApi.add(state.form).then((res: any) => {
+    dialogFormVisible.value = false
+    search()
+    ElMessage({
+      type: 'success',
+      message: 'Add completed',
+    })
+  })
+}
+const editTerm = () => {
+  termApi.edit(state.form).then((res: any) => {
+    console.log('edit term', res)
+    dialogFormVisible.value = false
+    search()
+    ElMessage({
+      type: 'success',
+      message: 'Edit completed',
+    })
+  })
+}
+const saveHandler = () => {
+  if (state.form.id) {
+    editTerm()
+  } else {
+    addTerm()
+  }
+}
+onMounted(() => {
+  search()
+})
 </script>
 
 <style lang="less" scoped>
@@ -193,6 +299,40 @@ const deleteHandler = (id: any) => {
         }
       }
     }
+  }
+}
+.sqlbot-form {
+  width: 100%;
+  .el-form-item {
+    margin-bottom: 16px;
+    text-align: left;
+    label {
+      font-size: 14px;
+      color: #606266;
+    }
+    /* .el-input {
+      --el-input-border-color: #e5e8ed;
+      --el-input-border-radius: 4px;
+      --el-input-inner-height: 40px !important;
+    }
+    .el-select {
+      --el-select-bg-color: #f5f7fa;
+      --el-select-border-color: #e5e8ed;
+      --el-select-border-radius: 4px;
+      --el-select-inner-height: 40px !important;
+    } */
+  }
+}
+.sqlbot-dialog {
+  width: 500px;
+
+  :deep(.el-dialog__header) {
+    text-align: left !important;
+    font-size: 16px;
+    background-color: #f5f7fa;
+    border-bottom: 1px solid #ebeef5;
+    color: #606266;
+    font-size: 16px;
   }
 }
 </style>
