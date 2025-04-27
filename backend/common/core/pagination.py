@@ -40,7 +40,7 @@ class Paginator:
         stmt = stmt.offset(offset).limit(size)
         
         result = self.session.exec(stmt)
-        items = result.all()  # 移除 scalars() 调用，直接使用 all()
+        items = result.all()
         
         return items, total
 
