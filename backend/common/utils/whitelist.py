@@ -6,7 +6,20 @@ wlist = [
     "/docs",
     "/login/*",
     "*.json",
-    "*.ico"
+    "*.ico",
+    "*.html",
+    "*.js",
+    "*.css",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.svg",
+    "*.woff",
+    "*.woff2",
+    "*.ttf",
+    "*.eot",
+    "*.otf"
 ]
 
 class WhitelistChecker:

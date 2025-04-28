@@ -1,3 +1,4 @@
+from fastapi.staticfiles import StaticFiles
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
@@ -28,9 +29,10 @@ if settings.all_cors_origins:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
 app.add_middleware(TokenMiddleware)
 app.include_router(api_router, prefix=settings.API_V1_STR)
-    
+app.mount("/", StaticFiles(directory='../frontend/dist'), name="static")
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -167,7 +167,7 @@ const search = () => {
   })
 }
 const addTerm = () => {
-  termApi.add(state.form).then((res: any) => {
+  termApi.add(state.form).then(() => {
     dialogFormVisible.value = false
     search()
     ElMessage({
