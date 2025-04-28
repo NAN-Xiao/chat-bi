@@ -67,7 +67,7 @@ class HttpService {
         // Add auth token
         const token = wsCache.get('user.token')
         if (token && config.headers) {
-          config.headers['X-SQLBOT_TOKEN'] = `Bearer ${token}`
+          config.headers['X-SQLBOT-TOKEN'] = `Bearer ${token}`
         }
 
         // Request logging

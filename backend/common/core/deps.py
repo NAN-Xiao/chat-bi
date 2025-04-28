@@ -21,7 +21,7 @@ reusable_oauth2 = XOAuth2PasswordBearer(
 SessionDep = Annotated[Session, Depends(get_session)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
-def get_current_user(session: SessionDep, token: TokenDep) -> sys_user:
+async def get_current_user(session: SessionDep, token: TokenDep) -> sys_user:
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
