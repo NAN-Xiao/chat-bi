@@ -45,11 +45,12 @@ if not os.path.exists(frontend_dist):
     logging.warning("Please make sure you have built the front-end project")
     
 else:
-    app.mount("/static", StaticFiles(directory=frontend_dist), name="static")
 
     @app.get("/", include_in_schema=False)
     async def read_index():
         return FileResponse(path=os.path.join(frontend_dist, "index.html"))
+    
+    app.mount("/", StaticFiles(directory=frontend_dist), name="static")
 
 if __name__ == "__main__":
     import uvicorn

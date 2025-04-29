@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
   console.log(mode)
   console.log(env)
   return {
+    base: './',
     plugins: [
       vue(),
       AutoImport({
