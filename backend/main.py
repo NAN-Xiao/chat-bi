@@ -1,5 +1,7 @@
+import logging
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import os
 import sentry_sdk
 from fastapi import FastAPI, Path
 from fastapi.routing import APIRoute
@@ -34,11 +36,21 @@ if settings.all_cors_origins:
 
 app.add_middleware(TokenMiddleware)
 app.include_router(api_router, prefix=settings.API_V1_STR)
-app.mount("/static", StaticFiles(directory='../frontend/dist'), name="static")
 
-@app.get("/", include_in_schema=False)
-async def read_index():
-    return FileResponse(path="../frontend/dist/index.html")
+
+
+frontend_dist = os.path.abspath("../frontend/dist")
+if not os.path.exists(frontend_dist):
+    logging.warning(f"The front-end build directory does not exist: {frontend_dist}")
+    logging.warning("Please make sure you have built the front-end project")
+    
+else:
+    app.mount("/static", StaticFiles(directory=frontend_dist), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def read_index():
+        return FileResponse(path=os.path.join(frontend_dist, "index.html"))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
