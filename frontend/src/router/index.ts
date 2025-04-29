@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 
 import Layout from '@/components/layout/index.vue'
 import login from '@/views/login/index.vue'
@@ -8,7 +8,7 @@ import dashboard from '@/views/dashboard/index.vue'
 import setting from '@/views/setting/index.vue'
 import { watchRouter } from './watch'
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes: [
     {
       path: '/login',

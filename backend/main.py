@@ -1,6 +1,7 @@
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import FastAPI, Path
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
 from apps.api import api_router
@@ -8,7 +9,8 @@ from apps.system.middleware.auth import TokenMiddleware
 from common.core.config import settings
 
 def custom_generate_unique_id(route: APIRoute) -> str:
-    return f"{route.tags[0]}-{route.name}"
+    tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
+    return f"{tag}-{route.name}"
 
 
 if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
@@ -32,7 +34,11 @@ if settings.all_cors_origins:
 
 app.add_middleware(TokenMiddleware)
 app.include_router(api_router, prefix=settings.API_V1_STR)
-app.mount("/", StaticFiles(directory='../frontend/dist'), name="static")
+app.mount("/static", StaticFiles(directory='../frontend/dist'), name="static")
+
+@app.get("/", include_in_schema=False)
+async def read_index():
+    return FileResponse(path="../frontend/dist/index.html")
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

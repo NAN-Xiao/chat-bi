@@ -3,6 +3,7 @@ import re
 from typing import List, Pattern
 from common.core.config import settings
 wlist = [
+    "/",
     "/docs",
     "/login/*",
     "*.json",
