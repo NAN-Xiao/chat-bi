@@ -32,15 +32,32 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
     - name: Install and build
+      working-directory: ./frontend
       run: |
-        cd ./frontend
         npm install
         npm run build
-        cp -r ./dist ../backend/
-        cd ../backend
-    - name: Build Image
-      run: docker build -t registry.cn-shanghai.aliyuncs.com/dataease-v2/sqlbot:${{ inputs.image_version }} .
-    - name: Login registry
-      run: docker login registry.cn-shanghai.aliyuncs.com --username=划船不用桨_小白 --password=1qaz@WSX
-    - name: Push Image
-      run: docker push registry.cn-shanghai.aliyuncs.com/dataease-v2/sqlbot:${{ inputs.image_version }}
+    - name: Copy dist to backend
+      run: |
+        cp -r frontend/dist backend/
+    - name: Login to Docker
+      uses: docker/login-action@v2
+      with:
+        username: 划船不用桨_小白
+        password: 1qaz@WSX
+        #username: ${{ secrets.DOCKERHUB_USERNAME }}
+        #password: ${{ secrets.DOCKERHUB_TOKEN }}
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./backend
+        push: true
+        tags: |
+          registry.cn-shanghai.aliyuncs.com/dataease-v2/sqlbot:${{ inputs.image_version }}
+          #${{ secrets.DOCKERHUB_REGISTRY }}/sqlbot:latest
+          #${{ secrets.DOCKERHUB_REGISTRY }}/sqlbot:${{ github.sha }}
+    #- name: Build Image
+    #  run: docker build -t registry.cn-shanghai.aliyuncs.com/dataease-v2/sqlbot:${{ inputs.image_version }} .
+    #- name: Login registry
+    #  run: docker login registry.cn-shanghai.aliyuncs.com --username=划船不用桨_小白 --password=1qaz@WSX
+    #- name: Push Image
+    #  run: docker push registry.cn-shanghai.aliyuncs.com/dataease-v2/sqlbot:${{ inputs.image_version }}
