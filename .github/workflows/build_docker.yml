@@ -42,8 +42,10 @@ jobs:
     - name: Login to Docker
       uses: docker/login-action@v2
       with:
+        registry: registry.cn-shanghai.aliyuncs.com
         username: 划船不用桨_小白
         password: 1qaz@WSX
+        #registry: ${{ secrets.DOCKERHUB_REGISTRY }}
         #username: ${{ secrets.DOCKERHUB_USERNAME }}
         #password: ${{ secrets.DOCKERHUB_TOKEN }}
     - name: Build and push Docker image
@@ -52,7 +54,7 @@ jobs:
         context: ./backend
         push: true
         tags: |
-          registry.cn-shanghai.aliyuncs.com/dataease-v2/sqlbot:${{ inputs.image_version }}
+          dataease-v2/sqlbot:${{ inputs.image_version }}
           #${{ secrets.DOCKERHUB_REGISTRY }}/sqlbot:latest
           #${{ secrets.DOCKERHUB_REGISTRY }}/sqlbot:${{ github.sha }}
     #- name: Build Image
