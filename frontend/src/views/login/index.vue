@@ -11,7 +11,7 @@
       <div class="login-form">
         <el-card class="login-card">
           <h2 class="login-title">Login</h2>
-          <el-form :model="loginForm" :rules="rules" ref="loginFormRef">
+          <el-form :model="loginForm" :rules="rules" ref="loginFormRef" @keyup.enter="submitForm">
             <el-form-item prop="username">
               <el-input v-model="loginForm.username" placeholder="username" prefix-icon="user"></el-input>
             </el-form-item>

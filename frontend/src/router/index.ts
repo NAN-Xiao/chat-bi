@@ -66,6 +66,25 @@ const router = createRouter({
           meta: { title: 'Setting', icon: 'setting' }
         }
       ]
+    },
+    {
+      path: '/system',
+      component: Layout,
+      redirect: '/system/user',
+      children: [
+        {
+          path: 'user',
+          name: 'user',
+          component: () => import('@/views/system/user/index.vue'),
+          meta: { title: 'User Management', icon: 'setting' }
+        },
+        {
+          path: 'model',
+          name: 'model',
+          component: () => import('@/views/system/model/index.vue'),
+          meta: { title: 'AI Model Configuration', icon: 'setting' }
+        }
+      ]
     }
   ]
 })

@@ -45,7 +45,7 @@
           <h1>{{ currentPageTitle }}</h1>
           <div class="header-actions">
             <el-tooltip content="System manage" placement="bottom">
-              <div class="header-icon-btn">
+              <div class="header-icon-btn" @click="toSystem">
                 <el-icon><iconsystem /></el-icon>
                 <span>System manage</span>
               </div>
@@ -77,8 +77,27 @@
         </div>
       </div>
       
+      <div v-if="sysRouterList.length && showHead" class="sys-setting-container">
+        <el-menu
+          :default-active="activeMenu"
+          class="el-menu-demo"
+          mode="horizontal"
+        >
+          <el-menu-item v-for="item in sysRouterList" :key="item.path" :index="item.path" @click="menuSelect">
+            <el-icon v-if="item.meta.icon">
+              <component :is="resolveIcon(item.meta.icon)" />
+            </el-icon>
+            <span>{{ item.meta.title }}</span>
+          </el-menu-item>
+        </el-menu>
+      </div>
       
-      <div class="page-content">
+      <div v-if="sysRouterList.length && showHead" class="sys-page-content">
+        <div class="sys-inner-container">
+          <router-view />
+        </div>
+      </div>
+      <div v-else class="page-content">
         <router-view />
       </div>
     </div>
@@ -105,11 +124,18 @@ const route = useRoute()
 const userStore = useUserStore()
 const name = ref('admin')
 const activeMenu = computed(() => route.path)
-
 const routerList = computed(() => {
   return router.getRoutes().filter(route => {
-    return route.path !== '/login' && !route.redirect && route.path !== '/:pathMatch(.*)*'
+    return route.path !== '/login' && !route.path.includes('/system') && !route.redirect && route.path !== '/:pathMatch(.*)*'
   })
+})
+
+const sysRouterList = computed(() => {
+  return router.getRoutes().filter(route => route.path.includes('/system'))
+})
+
+const showHead = computed(() => {
+  return route.path.includes('/system')
 })
 const workspace = ref('1')
 const options = [
@@ -117,7 +143,12 @@ const options = [
   { value: '2', label: 'Workspace 2' },
   { value: '3', label: 'Workspace 3' }
 ]
-const currentPageTitle = computed(() => route.meta.title || 'Dashboard')
+const currentPageTitle = computed(() => {
+  if (route.path.includes('/system')) {
+    return 'System Settings'
+  }
+  return route.meta.title || 'Dashboard'
+})
 const resolveIcon = (iconName: any) => {
   const icons: Record<string, any> = {
     'ds': ds,
@@ -129,12 +160,14 @@ const resolveIcon = (iconName: any) => {
 }
 
 const menuSelect = (e: any) => {
-  console.log(routerList.value)
   router.push(e.index)
 }
 const logout = () => {
   userStore.logout()
   router.push('/login')
+}
+const toSystem = () => {
+  router.push('/system')
 }
 </script>
 
@@ -259,6 +292,23 @@ const logout = () => {
     .page-content {
       flex: 1;
       overflow-y: auto;
+    }
+    .sys-page-content {
+      background-color: var(--white);
+      border-radius: var(--border-radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-top: 24px;
+      .sys-inner-container {
+        background: #fff;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+    }
+    .sys-setting-container {
+      overflow: hidden;
+      border-radius: 8px;
     }
   }
 }

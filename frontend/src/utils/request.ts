@@ -71,7 +71,7 @@ class HttpService {
         }
 
         // Request logging
-        console.log(`[Request] ${config.method?.toUpperCase()} ${config.url}`)
+        // console.log(`[Request] ${config.method?.toUpperCase()} ${config.url}`)
         
         return config
       },
