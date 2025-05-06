@@ -27,6 +27,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: To frontend
+      run: cd ./frontend
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
@@ -34,7 +36,6 @@ jobs:
         cache: 'npm'
     - name: Install and build
       run: |
-        cd ./frontend
         npm install
         npm run build
         cp -r ./dist ../backend/
