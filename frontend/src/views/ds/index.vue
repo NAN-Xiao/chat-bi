@@ -20,7 +20,7 @@
     <div class="connections-container">
       <div 
         class="connection-card"
-        v-for="ds in mockData"
+        v-for="ds in dsList"
       >
         <div class="connection-icon">
           <i class="mdi mdi-database"></i>
@@ -29,7 +29,7 @@
           <div class="connection-name">{{ ds.name }}</div>
           <div class="connection-type">{{ ds.type }}</div>
           <div class="connection-host">{{ ds.host }}</div>
-          <div class="connection-last">{{ ds.create_time }}</div>
+          <div class="connection-last">{{ datetimeFormat(ds.create_time) }}</div>
         </div>
         <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
         <div class="connection-actions">
@@ -50,104 +50,23 @@ import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { Search } from '@element-plus/icons-vue'
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'
+import { datasourceApi } from '@/api/datasource'
+import { datetimeFormat } from '@/utils/utils'
 
 const search = ref<string>('')
 const dsForm = ref()
-
-const mockData = [
-  {
-    name:'1',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'On'
-  },
-  {
-    name:'2',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'Off'
-  },
-  {
-    name:'3',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'Check'
-  },
-  {
-    name:'1',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'On'
-  },
-  {
-    name:'2',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'Off'
-  },
-  {
-    name:'3',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'Check'
-  },
-  {
-    name:'1',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'On'
-  },
-  {
-    name:'2',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'Off'
-  },
-  {
-    name:'3',
-    type:'mysql',
-    host: '1.1.1.1',
-    description:'description',
-    create:'admin',
-    create_time:'2025-04-22',
-    status:'Check'
-  }
-]
+const dsList = ref<any>([])
 
 const getStatus = (status: string) => {
-  if (status === 'On') {
+  if (status === 'Success') {
     return 'connected'
   }
-  if (status === 'Off') {
+  if (status === 'Fail') {
     return 'failed'
   }
-  if (status === 'Check') {
+  if (status === 'Checking') {
     return 'needs-verification'
   }
 }
@@ -155,6 +74,17 @@ const getStatus = (status: string) => {
 const addDs = () => {
   dsForm.value.open()
 }
+
+const list = () => {
+  datasourceApi.list().then((res) => {
+    dsList.value = res
+  })
+}
+
+onMounted(() => {
+  list()
+})
+
 </script>
 <style lang="less" scoped>
 .header{
