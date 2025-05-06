@@ -54,7 +54,7 @@ jobs:
         context: ./backend
         push: true
         tags: |
-          dataease-v2/sqlbot:${{ inputs.image_version }}
+          registry.cn-shanghai.aliyuncs.com/dataease-v2/sqlbot:${{ inputs.image_version }}
           #${{ secrets.DOCKERHUB_REGISTRY }}/sqlbot:latest
           #${{ secrets.DOCKERHUB_REGISTRY }}/sqlbot:${{ github.sha }}
     #- name: Build Image
