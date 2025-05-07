@@ -83,7 +83,7 @@ class HttpService {
     // Response interceptor
     this.instance.interceptors.response.use(
       (response: AxiosResponse) => {
-        console.log(`[Response] ${response.config.url}`, response.data)
+        // console.log(`[Response] ${response.config.url}`, response.data)
         
         // Return raw response if configured
         if ((response.config as FullRequestConfig).requestOptions?.rawResponse) {
@@ -164,8 +164,7 @@ class HttpService {
     // ElMessage.error(errorMessage)
     ElMessage({
       message: errorMessage,
-      type: 'error',
-      duration: 0
+      type: 'error'
     })
   }
 

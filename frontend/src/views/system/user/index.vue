@@ -63,6 +63,19 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="state.pageInfo.currentPage"
+          v-model:page-size="state.pageInfo.pageSize"
+          :page-sizes="[10, 20, 30]"
+          :background="true"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="state.pageInfo.total"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
+      </div>
     </div>
   </div>
 
@@ -124,6 +137,11 @@ const state = reactive({
     definition: '',
     domain: ''
   },
+  pageInfo: {
+    currentPage: 1,
+    pageSize: 20,
+    total: 0
+  }
 })
 const handleSearch = (e: any) => {
   console.log('search', e);
@@ -182,8 +200,9 @@ const onFormClose = () => {
 }
 
 const search = () => {
-  userApi.pager(1, 20).then((res: any) => {
+  userApi.pager(state.pageInfo.currentPage, state.pageInfo.pageSize).then((res: any) => {
     state.tableData = res.items
+    state.pageInfo.total = res.total
   })
 }
 const addTerm = () => {
@@ -214,6 +233,14 @@ const saveHandler = () => {
     addTerm()
   }
 }
+const handleSizeChange = (val: number) => {
+  state.pageInfo.pageSize = val
+  search()
+}
+const handleCurrentChange = (val: number) => {
+  state.pageInfo.currentPage = val
+  search()
+}
 onMounted(() => {
   search()
 })
@@ -228,7 +255,11 @@ onMounted(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    background-color: var(--white);
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
     .tool-left {
       display: flex;
       align-items: center;
@@ -295,11 +326,14 @@ onMounted(() => {
       td {
         height: 52px;
       }
+      border-left: 1px solid var(--el-table-border-color);
+      border-right: 1px solid var(--el-table-border-color);
     }
     .table-operate {
       display: flex;
       justify-content: flex-end;
       gap: 8px;
+
       .opt-btn {
         width: 36px;
         height: 36px;
@@ -318,6 +352,16 @@ onMounted(() => {
           color: #4285f4;
         }
       }
+    }
+    .pagination-container {
+      display: flex;
+      justify-content: end;
+      align-items: center;
+      margin-top: 20px;
+      background-color: var(--white);
+      padding: 16px 20px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     }
   }
 }
