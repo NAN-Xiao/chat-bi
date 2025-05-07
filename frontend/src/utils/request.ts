@@ -164,7 +164,8 @@ class HttpService {
     // ElMessage.error(errorMessage)
     ElMessage({
       message: errorMessage,
-      type: 'error'
+      type: 'error',
+      showClose: true
     })
   }
 

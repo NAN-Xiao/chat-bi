@@ -15,9 +15,9 @@ class CoreDatasource(SQLModel, table=True):
     status: str = Field(max_length=64, nullable=True)
 
 class DatasourceConf(BaseModel):
-    host: str
-    port: int
-    username: str
-    password: str
-    database: str
-    driver: str
+    host: str = ''
+    port: int = 0
+    username: str = ''
+    password: str = ''
+    database: str = ''
+    driver: str = ''

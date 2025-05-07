@@ -9,7 +9,7 @@
         <el-input v-model="form.name" />
       </el-form-item>
       <el-form-item label="Description">
-        <el-input v-model="form.desc" :rows="2" type="textarea" />
+        <el-input v-model="form.description" :rows="2" type="textarea" />
       </el-form-item>
       <el-form-item label="Type">
         <el-select v-model="form.type" placeholder="Select Type">
@@ -37,26 +37,29 @@
         <el-input v-model="form.database" />
       </el-form-item>
 
-      <el-form-item>
+      <div style="display: flex;justify-content: flex-end;">
+        <el-button @click="close">Cancel</el-button>
         <el-button @click="check">Test Connect</el-button>
         <el-button type="primary" @click="save">Save</el-button>
-      </el-form-item>
+      </div>
     </el-form>
   </el-dialog>
 </template>
 <script lang="ts" setup>
-import { reactive } from 'vue'
 import { ref } from 'vue'
 import { datasourceApi } from '@/api/datasource'
+
+const emit = defineEmits(['refresh'])
 
 const dialogVisible = ref<boolean>(false)
 const dsType = [
   {label:"MySQL", value:"mysql"}
 ]
-const form = reactive({
+const form = ref<any>({
   name:'',
-  desc:'',
+  description:'',
   type:'mysql',
+  driver:'',
   host:'',
   port:0,
   username:'',
@@ -65,19 +68,51 @@ const form = reactive({
   configuration: ''
 })
 
-const open = () => {
+const close = () => {
+  dialogVisible.value = false
+}
+
+const open = (item: any) => {
+  if (item) {
+    form.value.id = item.id
+    form.value.name = item.name
+    form.value.description = item.description
+    form.value.type = item.type
+    const configuration = JSON.parse(item.configuration)
+    form.value.host = configuration.host
+    form.value.port = configuration.port
+    form.value.username = configuration.username
+    form.value.password = configuration.password
+    form.value.database = configuration.database
+  }
   dialogVisible.value = true
 }
 
 const save = () => {
-  form.configuration = JSON.stringify({host:form.host,port:form.port,username:form.username,password:form.password,database:form.database})
-  datasourceApi.add(form).then((res: any) => {
-    console.log(res)
+  form.value.configuration = JSON.stringify({
+    host:form.value.host,
+    port:form.value.port,
+    username:form.value.username,
+    password:form.value.password,
+    database:form.value.database
   })
+  if (form.value.id) {
+    datasourceApi.update(form.value).then((res) => {
+      console.log(res)
+      close()
+      emit('refresh')
+    })
+  } else {
+    datasourceApi.add(form.value).then((res: any) => {
+      console.log(res)
+      close()
+      emit('refresh')
+    })
+  }
 }
 
 const check = () => {
-  datasourceApi.check(form).then((res: any) => {
+  datasourceApi.check(form.value).then((res: any) => {
     console.log(res)
   })
 }

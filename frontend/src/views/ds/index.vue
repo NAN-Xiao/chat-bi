@@ -14,7 +14,7 @@
         </el-input>
       </div>
 
-      <el-button type="primary" :icon="IconOpeAdd" @click="addDs">Add Datasource</el-button>
+      <el-button type="primary" :icon="IconOpeAdd" @click="editDs()">Add Datasource</el-button>
     </div>
 
     <div class="connections-container">
@@ -33,17 +33,17 @@
         </div>
         <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
         <div class="connection-actions">
-          <button class="action-btn">
+          <button class="action-btn" @click="editDs(ds)">
             <el-icon><IconOpeEdit /></el-icon>
           </button>
-          <button class="action-btn">
+          <button class="action-btn" @click="deleteDs(ds)">
             <el-icon><IconOpeDelete /></el-icon>
           </button>
         </div>
       </div>
     </div>
   </div>
-  <DsForm ref="dsForm"/>
+  <DsForm ref="dsForm" @refresh="refresh"/>
 </template>
 <script lang="ts" setup>
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
@@ -54,6 +54,7 @@ import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'
 import { datasourceApi } from '@/api/datasource'
 import { datetimeFormat } from '@/utils/utils'
+import { ElMessageBox } from 'element-plus'
 
 const search = ref<string>('')
 const dsForm = ref()
@@ -71,13 +72,37 @@ const getStatus = (status: string) => {
   }
 }
 
-const addDs = () => {
-  dsForm.value.open()
+const refresh = () => {
+  list()
 }
 
 const list = () => {
   datasourceApi.list().then((res) => {
     dsList.value = res
+  })
+}
+
+const editDs = (item: any = {}) => {
+  dsForm.value.open(item)
+}
+
+const deleteDs = (item: any) => {
+  ElMessageBox.confirm(
+    'Delete this datasource?',
+    'Delete',
+    {
+      confirmButtonText: 'Confirm',
+      cancelButtonText: 'Cancel',
+      type: 'warning',
+    }
+  )
+  .then(() => {
+    datasourceApi.delete(item.id).then(() => {
+      console.log('success')
+      list()
+    })
+  })
+  .catch(() => {
   })
 }
 
