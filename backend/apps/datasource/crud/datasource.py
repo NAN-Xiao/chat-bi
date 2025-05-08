@@ -3,13 +3,17 @@ from ..models.datasource import CoreDatasource, DatasourceConf
 import pyodbc
 import datetime
 from common.core.deps import SessionDep
+import json
+from ..utils.utils import aes_decrypt
+
 
 def get_datasource_list(session: SessionDep) -> CoreDatasource:
     statement = select(CoreDatasource).order_by(CoreDatasource.create_time.desc())
     datasource_list = session.exec(statement).fetchall()
     return datasource_list
 
-def check_status(session: SessionDep, conf: DatasourceConf):
+def check_status(session: SessionDep, ds: CoreDatasource):
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
     conn_str = (
         "DRIVER={MySQL ODBC 9.3 Unicode Driver};" # todo driver config
         f"SERVER={conf.host};"
@@ -32,20 +36,20 @@ def check_status(session: SessionDep, conf: DatasourceConf):
             conn.close()
 
 def create_ds(session: SessionDep, ds: CoreDatasource):
+    ds.create_time = datetime.datetime.now()
+    ds.status = "Success"  # todo check status
     record = CoreDatasource(**ds.model_dump())
-    record.create_time = datetime.datetime.now()
-    record.status = "Success" # todo check status
     session.add(record)
     session.commit()
-    return record
+    return ds
 
 def update_ds(session: SessionDep, ds: CoreDatasource):
     ds.id = int(ds.id)
-    term = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()
+    record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()
     update_data = ds.model_dump(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(term, field, value)
-    session.add(term)
+        setattr(record, field, value)
+    session.add(record)
     session.commit()
     return ds
 

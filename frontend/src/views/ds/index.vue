@@ -14,7 +14,7 @@
         </el-input>
       </div>
 
-      <el-button type="primary" :icon="IconOpeAdd" @click="editDs()">Add Datasource</el-button>
+      <el-button type="primary" :icon="IconOpeAdd" @click="editDs(undefined)">Add Datasource</el-button>
     </div>
 
     <div class="connections-container">
@@ -28,7 +28,7 @@
         <div class="connection-details">
           <div class="connection-name">{{ ds.name }}</div>
           <div class="connection-type">{{ ds.type }}</div>
-          <div class="connection-host">{{ ds.host }}</div>
+          <div class="connection-host">{{ ds.description }}</div>
           <div class="connection-last">{{ datetimeFormat(ds.create_time) }}</div>
         </div>
         <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
@@ -82,7 +82,7 @@ const list = () => {
   })
 }
 
-const editDs = (item: any = {}) => {
+const editDs = (item: any) => {
   dsForm.value.open(item)
 }
 

@@ -19,6 +19,7 @@ dependencies = [
     "sentry-sdk[fastapi]<2.0.0,>=1.40.6",
     "pyjwt<3.0.0,>=2.8.0",
     "pyodbc (>=5.2.0,<5.2.1)",
+    "pycryptodome (>=3.22.0,<4.0.0)",
 ]
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

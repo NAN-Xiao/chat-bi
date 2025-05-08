@@ -22,19 +22,19 @@
         </el-select>
       </el-form-item>
       <el-form-item label="Host/Ip">
-        <el-input v-model="form.host" />
+        <el-input v-model="config.host" />
       </el-form-item>
       <el-form-item label="Port">
-        <el-input v-model="form.port" />
+        <el-input v-model="config.port" />
       </el-form-item>
       <el-form-item label="Username">
-        <el-input v-model="form.username" />
+        <el-input v-model="config.username" />
       </el-form-item>
       <el-form-item label="Password">
-        <el-input v-model="form.password" />
+        <el-input v-model="config.password" />
       </el-form-item>
       <el-form-item label="Database">
-        <el-input v-model="form.database" />
+        <el-input v-model="config.database" />
       </el-form-item>
 
       <div style="display: flex;justify-content: flex-end;">
@@ -48,6 +48,7 @@
 <script lang="ts" setup>
 import { ref } from 'vue'
 import { datasourceApi } from '@/api/datasource'
+import { encrypted, decrypted } from './js/aes'
 
 const emit = defineEmits(['refresh'])
 
@@ -59,13 +60,15 @@ const form = ref<any>({
   name:'',
   description:'',
   type:'mysql',
+  configuration: ''
+})
+const config = ref<any>({
   driver:'',
   host:'',
   port:0,
   username:'',
   password:'',
   database:'',
-  configuration: ''
 })
 
 const close = () => {
@@ -78,24 +81,43 @@ const open = (item: any) => {
     form.value.name = item.name
     form.value.description = item.description
     form.value.type = item.type
-    const configuration = JSON.parse(item.configuration)
-    form.value.host = configuration.host
-    form.value.port = configuration.port
-    form.value.username = configuration.username
-    form.value.password = configuration.password
-    form.value.database = configuration.database
+    if(item.configuration) {
+      const configuration = JSON.parse(decrypted(item.configuration))
+      config.value.host = configuration.host
+      config.value.port = configuration.port
+      config.value.username = configuration.username
+      config.value.password = configuration.password
+      config.value.database = configuration.database
+    }
+  } else {
+    form.value = {
+      driver:'',
+      host:'',
+      port:0,
+      username:'',
+      password:'',
+      database:'',
+    }
+    config.value = {
+      driver:'',
+      host:'',
+      port:0,
+      username:'',
+      password:'',
+      database:'',
+    }
   }
   dialogVisible.value = true
 }
 
 const save = () => {
-  form.value.configuration = JSON.stringify({
-    host:form.value.host,
-    port:form.value.port,
-    username:form.value.username,
-    password:form.value.password,
-    database:form.value.database
-  })
+  form.value.configuration = encrypted(JSON.stringify({
+    host:config.value.host,
+    port:config.value.port,
+    username:config.value.username,
+    password:config.value.password,
+    database:config.value.database
+  }))
   if (form.value.id) {
     datasourceApi.update(form.value).then((res) => {
       console.log(res)
@@ -112,6 +134,13 @@ const save = () => {
 }
 
 const check = () => {
+  form.value.configuration = encrypted(JSON.stringify({
+    host:config.value.host,
+    port:config.value.port,
+    username:config.value.username,
+    password:config.value.password,
+    database:config.value.database
+  }))
   datasourceApi.check(form.value).then((res: any) => {
     console.log(res)
   })
@@ -120,4 +149,4 @@ const check = () => {
 defineExpose({ open })
 </script>
 <style lang="less" scoped>
-</style>
+</style>./js/aes

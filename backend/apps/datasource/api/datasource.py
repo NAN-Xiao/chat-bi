@@ -10,8 +10,8 @@ def datasource_list(session: SessionDep):
     return get_datasource_list(session=session)
 
 @router.post("/check")
-def check(session: SessionDep, conf: DatasourceConf):
-    return check_status(session, conf)
+def check(session: SessionDep, ds: CoreDatasource):
+    return check_status(session, ds)
 
 @router.post("/add", response_model=CoreDatasource)
 def add(session: SessionDep, ds: CoreDatasource):
