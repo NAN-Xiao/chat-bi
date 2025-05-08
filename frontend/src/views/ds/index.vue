@@ -3,10 +3,12 @@
     <div class="header">
       <div class="mt-4">
         <el-input
-          v-model="search"
+          v-model="searchValue"
           style="max-width: 300px"
           placeholder="Search Datasource..."
           class="input-with-select"
+          clearable
+          @change="searchHandle"
         >
           <template #prepend>
             <el-icon><Search /></el-icon>
@@ -52,9 +54,10 @@ import { datasourceApi } from '@/api/datasource'
 import { datetimeFormat } from '@/utils/utils'
 import { ElMessageBox } from 'element-plus'
 
-const search = ref<string>('')
+const searchValue = ref<string>('')
 const dsForm = ref()
-const dsList = ref<any>([])
+const dsList = ref<any>([])// show ds list
+const allDsList = ref<any>([])// all ds list
 
 const getStatus = (status: string) => {
   if (status === 'Success') {
@@ -68,13 +71,22 @@ const getStatus = (status: string) => {
   }
 }
 
+function searchHandle() {
+  if(searchValue.value) {
+    dsList.value = JSON.parse(JSON.stringify(allDsList.value)).filter((item: any) => {return item.name.toLowerCase().includes(searchValue.value.toLowerCase())})
+  } else {
+    dsList.value = JSON.parse(JSON.stringify(allDsList.value))
+  }
+}
+
 const refresh = () => {
   list()
 }
 
 const list = () => {
   datasourceApi.list().then((res) => {
-    dsList.value = res
+    allDsList.value = res
+    dsList.value = JSON.parse(JSON.stringify(allDsList.value))
   })
 }
 

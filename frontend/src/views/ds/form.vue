@@ -49,6 +49,7 @@
 import { ref } from 'vue'
 import { datasourceApi } from '@/api/datasource'
 import { encrypted, decrypted } from './js/aes'
+import { ElMessage } from 'element-plus'
 
 const emit = defineEmits(['refresh'])
 
@@ -141,6 +142,13 @@ const check = () => {
   }))
   datasourceApi.check(form.value).then((res: any) => {
     console.log(res)
+    if(res) {
+      ElMessage({
+        message: 'Connect success',
+        type: 'success',
+        showClose: true
+      })
+    }
   })
 }
 
