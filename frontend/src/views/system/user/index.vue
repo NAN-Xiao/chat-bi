@@ -147,6 +147,7 @@ const handleSearch = (e: any) => {
   console.log('search', e);
 }
 const editHandler = (id: any) => {
+  console.log('editHandler', id)
   /* userApi.query(id).then((res: any) => {
     console.log('term detail', res)
     state.form = res
@@ -154,6 +155,7 @@ const editHandler = (id: any) => {
   }) */
 }
 const deleteHandler = (id: any) => {
+  console.log('deleteHandler', id)
   ElMessageBox.confirm(
     'Are you sure to delete?',
     'Warning',
@@ -181,9 +183,9 @@ const deleteHandler = (id: any) => {
     })
 }
 
-const openDialog = () => {
+/* const openDialog = () => {
   dialogFormVisible.value = true
-}
+} */
 const resetForm = () => {
   if (!termFormRef) return
   Object.keys(state.form).forEach((key) => {

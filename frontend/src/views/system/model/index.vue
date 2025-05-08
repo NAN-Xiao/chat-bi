@@ -222,9 +222,17 @@ const openDialog = () => {
 }
 const resetForm = () => {
   if (!termFormRef) return
-  Object.keys(state.form).forEach((key) => {
-    state.form[key as keyof typeof state.form] = null
-  })
+  state.form = {
+    id: '',
+    name: '',
+    type: 0,
+    api_key: '',
+    endpoint: '',
+    max_context_window: 0,
+    temperature: 0,
+    status: false,
+    description: ''
+  }
 }
 
 const closeForm = () => {
