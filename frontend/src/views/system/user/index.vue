@@ -328,8 +328,8 @@ onMounted(() => {
       td {
         height: 52px;
       }
-      border-left: 1px solid var(--el-table-border-color);
-      border-right: 1px solid var(--el-table-border-color);
+      /* border-left: 1px solid var(--el-table-border-color);
+      border-right: 1px solid var(--el-table-border-color); */
     }
     .table-operate {
       display: flex;
