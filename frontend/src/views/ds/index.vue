@@ -33,12 +33,8 @@
         </div>
         <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
         <div class="connection-actions">
-          <button class="action-btn" @click="editDs(ds)">
-            <el-icon><IconOpeEdit /></el-icon>
-          </button>
-          <button class="action-btn" @click="deleteDs(ds)">
-            <el-icon><IconOpeDelete /></el-icon>
-          </button>
+          <el-button type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
+          <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
         </div>
       </div>
     </div>
@@ -217,20 +213,7 @@ onMounted(() => {
     bottom: 20px;
     right: 20px;
     display: flex;
-    transition: opacity 0.2s ease;
-    gap: 8px;
     .action-btn {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      color: #5f6368;
-      cursor: pointer;
-      transition: all 0.2s;
-      background-color: #f1f3f4;
-      border: none;
     }
   }
   :hover .action-btn{

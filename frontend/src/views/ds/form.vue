@@ -31,7 +31,7 @@
         <el-input v-model="config.username" />
       </el-form-item>
       <el-form-item label="Password">
-        <el-input v-model="config.password" />
+        <el-input v-model="config.password" type="password" show-password />
       </el-form-item>
       <el-form-item label="Database">
         <el-input v-model="config.database" />
@@ -91,12 +91,10 @@ const open = (item: any) => {
     }
   } else {
     form.value = {
-      driver:'',
-      host:'',
-      port:0,
-      username:'',
-      password:'',
-      database:'',
+      name:'',
+      description:'',
+      type:'mysql',
+      configuration: ''
     }
     config.value = {
       driver:'',
