@@ -50,7 +50,7 @@
                 <span>System manage</span>
               </div>
             </el-tooltip>
-            <el-tooltip content="Help" placement="bottom">
+            <!-- <el-tooltip content="Help" placement="bottom">
               <div class="header-icon-btn">
                 <el-icon><question-filled /></el-icon>
                 <span>Help</span>
@@ -61,7 +61,7 @@
                 <el-icon><BellFilled /></el-icon>
                 <span>Notice</span>
               </div>
-            </el-tooltip>
+            </el-tooltip> -->
             <el-dropdown trigger="click">
               <div class="user-info">
                 <el-avatar size="small">{{ name?.charAt(0) }}</el-avatar>
@@ -114,10 +114,10 @@ import dashboard from '@/assets/svg/dashboard.svg'
 import chat from '@/assets/svg/chat.svg'
 import iconsetting from '@/assets/svg/setting.svg'
 import iconsystem from '@/assets/svg/system.svg'
-import {
+/* import {
   QuestionFilled,
   BellFilled
-} from '@element-plus/icons-vue'
+} from '@element-plus/icons-vue' */
 
 const router = useRouter()
 const route = useRoute()
@@ -212,7 +212,7 @@ const toSystem = () => {
       line-height: 68px;
       font-size: 24px;
       font-weight: bold;
-      color: #4285f4;
+      color: var(--el-color-primary);
       text-align: left;
       margin-left: 24px;
     }
@@ -275,7 +275,7 @@ const toSystem = () => {
             column-gap: 4px;
             align-items: center;
             .el-avatar {
-              background-color: #4285f4;
+              background-color: var(--el-color-primary);
               color: #fff;
             }
             .user-name {

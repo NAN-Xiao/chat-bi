@@ -284,7 +284,7 @@ onMounted(() => {
         border: 1px solid #ddd;
       }
       .primary-btn {
-        background: #1890ff;
+        background: var(--el-color-primary);
         color: white;
       }
       .tool-btn {
@@ -351,7 +351,7 @@ onMounted(() => {
         font-size: 18px;
         &:hover {
           background-color: #e8f0fe;
-          color: #4285f4;
+          color: var(--el-color-primary);
         }
       }
     }
