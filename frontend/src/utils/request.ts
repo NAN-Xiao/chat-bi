@@ -94,6 +94,11 @@ class HttpService {
         /* if (response.data?.success !== true) {
           return Promise.reject(response.data)
         } */
+        if (response.data?.code === 0) {
+          return response.data.data
+        } else if (response.data?.code) {
+          return Promise.reject(response.data)
+        }
         return response.data
       },
       async (error: AxiosError) => {

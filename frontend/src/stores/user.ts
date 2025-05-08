@@ -9,8 +9,8 @@ export const useUserStore = defineStore('user', () => {
 
   const login = async (formData: { username: string; password: string }) => {
     username.value = formData.username
-    const res = await AuthApi.login(formData)
-    token.value = res.data.access_token
+    const res: any = await AuthApi.login(formData)
+    token.value = res.access_token
     wsCache.set('user.token', token.value)
     username.value = formData.username
   }

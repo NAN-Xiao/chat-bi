@@ -6,9 +6,6 @@ export const AuthApi = {
 }>('/login/access-token', credentials, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    requestOptions: {
-      rawResponse: true,
     }
   }),
   logout: () => request.post('/auth/logout')
