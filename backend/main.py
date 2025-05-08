@@ -9,6 +9,7 @@ from starlette.middleware.cors import CORSMiddleware
 from apps.api import api_router
 from apps.system.middleware.auth import TokenMiddleware
 from common.core.config import settings
+from common.core.response_middleware import ResponseMiddleware
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
@@ -35,8 +36,8 @@ if settings.all_cors_origins:
     )
 
 app.add_middleware(TokenMiddleware)
+app.add_middleware(ResponseMiddleware)
 app.include_router(api_router, prefix=settings.API_V1_STR)
-
 
 
 frontend_dist = os.path.abspath("../frontend/dist")
