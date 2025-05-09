@@ -51,7 +51,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="create_time" label="Create time">
+        <el-table-column prop="create_time" label="Create time" min-width="180">
           <template #default="scope">
             <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
           </template>
