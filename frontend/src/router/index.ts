@@ -76,13 +76,13 @@ const router = createRouter({
           path: 'user',
           name: 'user',
           component: () => import('@/views/system/user/index.vue'),
-          meta: { title: 'User Management', icon: 'setting' }
+          meta: { title: 'User Management', icon: 'icon_user' }
         },
         {
           path: 'model',
           name: 'model',
           component: () => import('@/views/system/model/index.vue'),
-          meta: { title: 'AI Model Configuration', icon: 'setting' }
+          meta: { title: 'AI Model Configuration', icon: 'icon_ai' }
         }
       ]
     }
