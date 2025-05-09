@@ -1,11 +1,10 @@
 from sqlmodel import select
 from ..models.datasource import CoreDatasource, DatasourceConf
-import pyodbc
 import datetime
 from common.core.deps import SessionDep
 import json
 from ..utils.utils import aes_decrypt
-
+from apps.db.db import get_connection
 
 def get_datasource_list(session: SessionDep) -> CoreDatasource:
     statement = select(CoreDatasource).order_by(CoreDatasource.create_time.desc())
@@ -14,26 +13,11 @@ def get_datasource_list(session: SessionDep) -> CoreDatasource:
 
 def check_status(session: SessionDep, ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
-    conn_str = (
-        "DRIVER={MySQL ODBC 9.3 Unicode Driver};" # todo driver config
-        f"SERVER={conf.host};"
-        f"DATABASE={conf.database};"
-        f"UID={conf.username};"
-        f"PWD={conf.password};"
-        f"PORT={conf.port};"
-    )
-
-    conn = None
-    try:
-        conn = pyodbc.connect(conn_str)
-        print("Connect Success")
+    conn = get_connection(conf)
+    if conn is not None:
         return True
-    except pyodbc.Error as e:
-        print(f"Connect Fail：{e}")
+    else:
         return False
-    finally:
-        if conn is not None:
-            conn.close()
 
 def create_ds(session: SessionDep, ds: CoreDatasource):
     ds.create_time = datetime.datetime.now()

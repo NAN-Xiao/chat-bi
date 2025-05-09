@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds
 from common.core.deps import SessionDep
-from ..models.datasource import DatasourceConf, CoreDatasource
+from ..models.datasource import CoreDatasource
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 
