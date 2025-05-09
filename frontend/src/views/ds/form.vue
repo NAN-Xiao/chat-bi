@@ -4,8 +4,8 @@
     title="Add Datasource"
     width="500"
   >
-    <el-form :model="form" label-width="auto">
-      <el-form-item label="Name">
+    <el-form :model="form" label-width="auto" ref="dsFormRef" :rules="rules">
+      <el-form-item label="Name" prop="name">
         <el-input v-model="form.name" />
       </el-form-item>
       <el-form-item label="Description">
@@ -40,18 +40,27 @@
       <div style="display: flex;justify-content: flex-end;">
         <el-button @click="close">Cancel</el-button>
         <el-button @click="check">Test Connect</el-button>
-        <el-button type="primary" @click="save">Save</el-button>
+        <el-button type="primary" @click="save(dsFormRef)">Save</el-button>
       </div>
     </el-form>
   </el-dialog>
 </template>
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { datasourceApi } from '@/api/datasource'
 import { encrypted, decrypted } from './js/aes'
 import { ElMessage } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 
+const dsFormRef = ref<FormInstance>()
 const emit = defineEmits(['refresh'])
+
+const rules = reactive<FormRules>({
+  name: [
+    { required: true, message: 'Please input name', trigger: 'blur' },
+    { min: 1, max: 50, message: 'Length should be 1 to 50', trigger: 'blur' },
+  ],
+})
 
 const dialogVisible = ref<boolean>(false)
 const dsType = [
@@ -109,27 +118,32 @@ const open = (item: any) => {
   dialogVisible.value = true
 }
 
-const save = () => {
-  form.value.configuration = encrypted(JSON.stringify({
-    host:config.value.host,
-    port:config.value.port,
-    username:config.value.username,
-    password:config.value.password,
-    database:config.value.database
-  }))
-  if (form.value.id) {
-    datasourceApi.update(form.value).then((res) => {
-      console.log(res)
-      close()
-      emit('refresh')
-    })
-  } else {
-    datasourceApi.add(form.value).then((res: any) => {
-      console.log(res)
-      close()
-      emit('refresh')
-    })
-  }
+const save = async(formEl: FormInstance | undefined) => {
+  if(!formEl) return
+  await formEl.validate((valid) => {
+    if (valid) {
+      form.value.configuration = encrypted(JSON.stringify({
+        host:config.value.host,
+        port:config.value.port,
+        username:config.value.username,
+        password:config.value.password,
+        database:config.value.database
+      }))
+      if (form.value.id) {
+        datasourceApi.update(form.value).then((res) => {
+          console.log(res)
+          close()
+          emit('refresh')
+        })
+      } else {
+        datasourceApi.add(form.value).then((res: any) => {
+          console.log(res)
+          close()
+          emit('refresh')
+        })
+      }
+    }
+  })
 }
 
 const check = () => {
