@@ -24,7 +24,7 @@ const router = createRouter({
           path: 'index',
           name: 'chat',
           component: chat,
-          meta: { title: 'ChatBI', icon: 'chat'}
+          meta: { title: 'Data Q&A', icon: 'chat'}
         }
       ]
     },
@@ -37,7 +37,7 @@ const router = createRouter({
           path: 'index',
           name: 'ds',
           component: ds,
-          meta: { title: 'Datasource', icon: 'ds' }
+          meta: { title: 'Data Connections', icon: 'ds' }
         }
       ]
     },
@@ -63,7 +63,7 @@ const router = createRouter({
           path: 'index',
           name: 'setting',
           component: setting,
-          meta: { title: 'Setting', icon: 'setting' }
+          meta: { title: 'Settings', icon: 'setting' }
         }
       ]
     },
