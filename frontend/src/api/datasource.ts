@@ -5,5 +5,6 @@ export const datasourceApi = {
   add: (data: any) => request.post('/datasource/add', data),
   list: () => request.get('/datasource/list'),
   update: (data: any) => request.post('/datasource/update', data),
-  delete: (id: Number) => request.post(`/datasource/delete/${id}`)
+  delete: (id: Number) => request.post(`/datasource/delete/${id}`),
+  getTables: (id: Number) => request.post(`/datasource/getTables/${id}`),
 }

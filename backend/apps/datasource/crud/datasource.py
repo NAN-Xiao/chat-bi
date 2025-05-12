@@ -4,20 +4,29 @@ import datetime
 from common.core.deps import SessionDep
 import json
 from ..utils.utils import aes_decrypt
-from apps.db.db import get_connection
+from apps.db.db import get_session, get_tables
+from sqlalchemy import text
+
 
 def get_datasource_list(session: SessionDep) -> CoreDatasource:
     statement = select(CoreDatasource).order_by(CoreDatasource.create_time.desc())
     datasource_list = session.exec(statement).fetchall()
     return datasource_list
 
+
 def check_status(session: SessionDep, ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
-    conn = get_connection(conf)
-    if conn is not None:
+    conn = get_session(conf, ds)
+    try:
+        conn.execute(text("SELECT 1")).scalar()
+        print("success")
         return True
-    else:
-        return False
+    except Exception as e:
+        print("Fail:", e)
+        raise e
+    finally:
+        conn.close()
+
 
 def create_ds(session: SessionDep, ds: CoreDatasource):
     ds.create_time = datetime.datetime.now()
@@ -26,6 +35,7 @@ def create_ds(session: SessionDep, ds: CoreDatasource):
     session.add(record)
     session.commit()
     return ds
+
 
 def update_ds(session: SessionDep, ds: CoreDatasource):
     ds.id = int(ds.id)
@@ -37,6 +47,7 @@ def update_ds(session: SessionDep, ds: CoreDatasource):
     session.commit()
     return ds
 
+
 def delete_ds(session: SessionDep, id: int):
     term = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
     session.delete(term)
@@ -44,3 +55,10 @@ def delete_ds(session: SessionDep, id: int):
     return {
         "message": f"Datasource with ID {id} deleted successfully."
     }
+
+
+def getTables(session: SessionDep, id: int):
+    ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    tables = get_tables(conf, ds)
+    return tables

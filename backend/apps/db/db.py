@@ -1,23 +1,41 @@
-import pyodbc
-from apps.datasource.models.datasource import DatasourceConf
+from sqlalchemy import create_engine, text, Result
+from sqlalchemy.orm import sessionmaker
+from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema
+import urllib.parse
+from typing import Any
 
-def get_connection(conf: DatasourceConf):
-    conn_str = (
-        "DRIVER={MySQL ODBC 9.3 Unicode Driver};"  # todo driver config
-        f"SERVER={conf.host};"
-        f"DATABASE={conf.database};"
-        f"UID={conf.username};"
-        f"PWD={conf.password};"
-        f"PORT={conf.port};"
-    )
-    conn = None
-    try:
-        conn = pyodbc.connect(conn_str)
-        print("Connect Success")
-        return conn
-    except pyodbc.Error as e:
-        print(f"Connect Fail：{e}")
-        raise e
-    finally:
-        if conn is not None:
-            conn.close()
+
+def get_session(conf: DatasourceConf, ds: CoreDatasource):
+    db_url: str
+    if ds.type == "mysql":
+        db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
+    else:
+        raise 'The datasource type not support.'
+    engine = create_engine(db_url)
+    session_maker = sessionmaker(bind=engine)
+    session = session_maker()
+    return session
+
+
+def get_tables(conf: DatasourceConf, ds: CoreDatasource):
+    session = get_session(conf, ds)
+    result: Result[Any]
+    if ds.type == "mysql":
+        sql = f"""SELECT 
+                        TABLE_NAME AS `Table Name`, 
+                        TABLE_COMMENT AS `Table Comment`
+                    FROM 
+                        information_schema.TABLES
+                    WHERE 
+                        TABLE_SCHEMA = '{conf.database}';"""
+        result = session.execute(text(sql))
+
+    res = result.fetchall()
+    res_list = [TableSchema(*item) for item in res]
+    return res_list
+
+
+def get_fields(conf: DatasourceConf, ds: CoreDatasource):
+    session = get_session(conf, ds)
+    result: Result[Any]
+    pass

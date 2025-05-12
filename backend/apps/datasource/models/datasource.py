@@ -3,6 +3,7 @@ from sqlalchemy import Column, Text, BigInteger, DateTime, Integer, Identity
 from datetime import datetime
 from pydantic import BaseModel
 
+
 class CoreDatasource(SQLModel, table=True):
     __tablename__ = "core_datasource"
     id: int = Field(sa_column=Column(Integer, Identity(always=True), nullable=False, primary_key=True))
@@ -14,6 +15,7 @@ class CoreDatasource(SQLModel, table=True):
     create_by: int = Field(sa_column=Column(BigInteger()))
     status: str = Field(max_length=64, nullable=True)
 
+
 class DatasourceConf(BaseModel):
     host: str = ''
     port: int = 0
@@ -21,3 +23,12 @@ class DatasourceConf(BaseModel):
     password: str = ''
     database: str = ''
     driver: str = ''
+
+
+class TableSchema:
+    def __init__(self, attr1, attr2):
+        self.tableName = attr1
+        self.tableRemark = attr2
+
+    tableName: str
+    tableRemark: str
