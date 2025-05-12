@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables
+from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields
 from common.core.deps import SessionDep
 from ..models.datasource import CoreDatasource
 
@@ -34,3 +34,8 @@ async def delete(session: SessionDep, id: int):
 @router.post("/getTables/{id}")
 async def get_tables(session: SessionDep, id: int):
     return getTables(session, id)
+
+
+@router.post("/getFields/{id}/{table_name}")
+async def get_tables(session: SessionDep, id: int, table_name: str):
+    return getFields(session, id, table_name)

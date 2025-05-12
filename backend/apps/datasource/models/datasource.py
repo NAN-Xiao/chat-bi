@@ -32,3 +32,14 @@ class TableSchema:
 
     tableName: str
     tableRemark: str
+
+
+class ColumnSchema:
+    def __init__(self, attr1, attr2, attr3):
+        self.fieldName = attr1
+        self.fieldType = attr2
+        self.fieldRemark = attr3
+
+    fieldName: str
+    fieldType: str
+    fieldRemark: str

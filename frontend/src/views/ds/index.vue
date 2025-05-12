@@ -35,7 +35,7 @@
         </div>
         <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
         <div class="connection-actions">
-          <el-button class="action-btn" circle @click="getTables(ds.id)"/>
+          <el-button class="action-btn" @click="getTables(ds.id)">Info</el-button>
           <el-button type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
           <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
         </div>
@@ -116,7 +116,11 @@ const deleteDs = (item: any) => {
 }
 
 const getTables = (id: Number) => {
-  datasourceApi.getTables(id).then((res) => {
+  // datasourceApi.getTables(id).then((res) => {
+  //   console.log(res)
+  // })
+
+  datasourceApi.getFields(id,'core_dataset_table').then((res) => {
     console.log(res)
   })
 }
@@ -233,6 +237,7 @@ onMounted(() => {
     right: 20px;
     display: flex;
     .action-btn {
+      display: none;
     }
   }
   :hover .action-btn{

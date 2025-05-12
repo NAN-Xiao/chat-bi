@@ -7,4 +7,5 @@ export const datasourceApi = {
   update: (data: any) => request.post('/datasource/update', data),
   delete: (id: Number) => request.post(`/datasource/delete/${id}`),
   getTables: (id: Number) => request.post(`/datasource/getTables/${id}`),
+  getFields: (id: Number, table_name: string) => request.post(`/datasource/getFields/${id}/${table_name}`),
 }

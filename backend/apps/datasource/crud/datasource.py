@@ -4,7 +4,7 @@ import datetime
 from common.core.deps import SessionDep
 import json
 from ..utils.utils import aes_decrypt
-from apps.db.db import get_session, get_tables
+from apps.db.db import get_session, get_tables, get_fields
 from sqlalchemy import text
 
 
@@ -62,3 +62,10 @@ def getTables(session: SessionDep, id: int):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
     tables = get_tables(conf, ds)
     return tables
+
+
+def getFields(session: SessionDep, id: int, table_name: str):
+    ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    fields = get_fields(conf, ds, table_name)
+    return fields
