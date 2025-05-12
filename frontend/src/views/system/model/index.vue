@@ -32,7 +32,11 @@
       <el-table :data="state.tableData" style="width: 100%" row-key="id" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" />
         <el-table-column prop="name" label="Model Name" width="280" />
-        <el-table-column prop="type" label="Model Type"  width="280" />
+        <el-table-column prop="type" label="Model Type"  width="280">
+          <template #default="scope">
+            <span>{{ getModelTypeName(scope.row.type) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="api_key" label="API KEY" width="280">
           <template #default="scope">
             <div class="user-status-container" :class="[ scope.row.api_key ? 'active' : 'disabled' ]">
@@ -100,9 +104,10 @@
       
       <el-form-item label="Model Type">
         <el-select v-model="state.form.type" placeholder="Please select a type">
-          <el-option label="domain1" value="0" />
+          <el-option v-for="item in modelTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <!-- <el-option label="domain1" value="0" />
           <el-option label="domain2" value="1" />
-          <el-option label="domain3" value="2" />
+          <el-option label="domain3" value="2" /> -->
         </el-select>
       </el-form-item>
 
@@ -152,7 +157,7 @@ import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg';
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg';
 import { modelApi } from '@/api/system'
 import { formatTimestamp } from '@/utils/date'
-
+import { modelTypeOptions, getModelTypeName } from '@/entity/CommonEntity.ts'
 const keyword = ref('')
 const dialogFormVisible = ref(false)
 const termFormRef = ref()

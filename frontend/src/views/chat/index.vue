@@ -50,7 +50,8 @@
             class="message"
             :class="msg.role"
           >
-            <div class="message-content">{{ msg.content }}</div>
+            <!-- <div class="message-content">{{ msg.content }}</div> -->
+            <div class="message-content" v-html="formatMessage(msg.content)"></div>
           </div>
         </template>
         <div v-else class="empty-state">
@@ -87,8 +88,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { Plus, Search, More, Position } from '@element-plus/icons-vue'
+import { questionApi } from '@/api/chat'
+
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -105,6 +108,7 @@ const chatHistory = ref<Chat[]>([])
 const currentChatId = ref('')
 const searchKeyword = ref('')
 const inputMessage = ref('')
+const messagesRef = ref<HTMLDivElement>()
 
 const filteredHistory = computed(() => {
   return chatHistory.value.filter(chat => 
@@ -130,19 +134,72 @@ const switchChat = (chatId: string) => {
   currentChatId.value = chatId
 }
 
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (messagesRef.value) {
+      const scrollHeight = messagesRef.value.scrollHeight
+      const animateScroll = () => {
+        const currentScroll = messagesRef.value!.scrollTop
+        const distance = scrollHeight - currentScroll
+        if (distance > 0) {
+          window.requestAnimationFrame(animateScroll)
+          messagesRef.value!.scrollTop = currentScroll + distance / 8
+        }
+      }
+      animateScroll()
+    }
+  })
+}
+
 const sendMessage = () => {
   if (!inputMessage.value.trim()) return
   
-  const chat = currentChat.value
-  if (!chat) return
+  let chat = currentChat.value
+  // if (!chat) return
+  if (!chat) {
+    chat = {
+      id: null,
+      title: 'test',
+      messages: []
+    } as unknown as Chat
+  }
 
   chat.messages.push({
     role: 'user',
     content: inputMessage.value
   })
   
-  
+  const param = {
+    question: inputMessage.value
+  }
   inputMessage.value = ''
+  chatHistory.value.unshift(chat)
+  currentChatId.value = chat.id
+  
+  
+  // const index = chat.messages.length - 1
+  questionApi.add(param).then((result: string) => {
+    // chat.messages[index]['content'] += result
+    chat.messages.push({
+      role: 'assistant',
+      content: result
+    })
+    scrollToBottom()
+  })
+}
+
+watch(() => currentChat.value?.messages, () => {
+  scrollToBottom()
+}, { deep: true })
+
+const formatMessage = (content: string) => {
+  if (!content) return ''
+  return content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+    .replace(/ {2}/g, '&nbsp;&nbsp;')
 }
 
 const handleCommand = (command: string, chatId: string) => {
@@ -253,6 +310,28 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
       flex: 1;
       overflow-y: auto;
       padding: 24px;
+      
+      &::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      
+      &::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 3px;
+        
+        &:hover {
+          background: #999;
+        }
+      }
+      
+      &::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      
+      &:not(:hover)::-webkit-scrollbar-thumb {
+        background: transparent;
+      }
 
       .message {
         margin-bottom: 24px;
@@ -266,6 +345,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
         &.assistant .message-content {
           background-color: #f5f5f5;
+          text-align: left;
         }
 
         .message-content {

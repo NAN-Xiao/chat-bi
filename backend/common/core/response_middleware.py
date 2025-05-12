@@ -49,7 +49,14 @@ class ResponseMiddleware(BaseHTTPMiddleware):
                 )
             except Exception as e:
                 logging.error(f"Response processing error: {str(e)}", exc_info=True)
-                return response
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "code": 500,
+                        "data": None,
+                        "msg": str(e)
+                    }
+                )
                 
         return response
 

@@ -3,13 +3,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
 import sentry_sdk
-from fastapi import FastAPI, Path
+from fastapi import FastAPI, Path, HTTPException
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from apps.api import api_router
 from apps.system.middleware.auth import TokenMiddleware
 from common.core.config import settings
-from common.core.response_middleware import ResponseMiddleware
+from common.core.response_middleware import ResponseMiddleware, exception_handler
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
@@ -39,6 +40,9 @@ app.add_middleware(TokenMiddleware)
 app.add_middleware(ResponseMiddleware)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Register exception handlers
+app.add_exception_handler(StarletteHTTPException, exception_handler.http_exception_handler)
+app.add_exception_handler(Exception, exception_handler.global_exception_handler)
 
 frontend_dist = os.path.abspath("../frontend/dist")
 if not os.path.exists(frontend_dist):

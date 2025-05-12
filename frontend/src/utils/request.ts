@@ -49,7 +49,7 @@ class HttpService {
     this.cancelTokenSource = axios.CancelToken.source()
     this.instance = axios.create({
       baseURL: import.meta.env.VITE_API_BASE_URL,
-      timeout: 15000,
+      timeout: 50000,
       headers: {
         'Content-Type': 'application/json',
         ...config?.headers
@@ -154,6 +154,10 @@ class HttpService {
           break
         default:
           errorMessage = `Server responded with error: ${error.response.status}`
+      }
+      if (error?.response?.data) {
+        const msgData: any = error.response.data
+        msgData.msg && (errorMessage = msgData.msg)
       }
     } else if (error.request) {
       errorMessage = 'No response from server'
