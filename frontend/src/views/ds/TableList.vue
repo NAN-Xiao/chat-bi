@@ -63,7 +63,7 @@ const tableColumns = ref<any>([
   {
     key: 'operations',
     title: 'Operations',
-    cellRenderer: ({ rowData }) => {
+    cellRenderer: ({ rowData }: { rowData: any }) => {
       return h(ElButton,{
         onClick: () => showFields(rowData.tableName)
       },"Show Fields")
