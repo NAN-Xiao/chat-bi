@@ -120,7 +120,11 @@ const getTables = (id: Number) => {
   //   console.log(res)
   // })
 
-  datasourceApi.getFields(id,'core_dataset_table').then((res) => {
+  // datasourceApi.getFields(id,'core_dataset_table').then((res) => {
+  //   console.log(res)
+  // })
+
+  datasourceApi.execSql(id,'select id,name,table_name from core_dataset_table limit 10').then((res) => {
     console.log(res)
   })
 }

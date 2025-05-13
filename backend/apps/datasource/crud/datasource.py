@@ -2,9 +2,7 @@ from sqlmodel import select
 from ..models.datasource import CoreDatasource, DatasourceConf
 import datetime
 from common.core.deps import SessionDep
-import json
-from ..utils.utils import aes_decrypt
-from apps.db.db import get_session, get_tables, get_fields
+from apps.db.db import get_session, get_tables, get_fields, exec_sql
 from sqlalchemy import text
 
 
@@ -15,8 +13,7 @@ def get_datasource_list(session: SessionDep) -> CoreDatasource:
 
 
 def check_status(session: SessionDep, ds: CoreDatasource):
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
-    conn = get_session(conf, ds)
+    conn = get_session(ds)
     try:
         conn.execute(text("SELECT 1")).scalar()
         print("success")
@@ -59,13 +56,16 @@ def delete_ds(session: SessionDep, id: int):
 
 def getTables(session: SessionDep, id: int):
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
-    tables = get_tables(conf, ds)
+    tables = get_tables(ds)
     return tables
 
 
 def getFields(session: SessionDep, id: int, table_name: str):
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
-    fields = get_fields(conf, ds, table_name)
+    fields = get_fields(ds, table_name)
     return fields
+
+
+def execSql(session: SessionDep, id: int, sql: str):
+    ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
+    return exec_sql(ds, sql)
