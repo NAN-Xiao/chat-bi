@@ -35,7 +35,7 @@
         </div>
         <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
         <div class="connection-actions">
-          <el-button class="action-btn" @click="getTables(ds.id)">Info</el-button>
+          <el-button class="action-btn" circle @click="getTables(ds.id)" :icon="List" />
           <el-button type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
           <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
         </div>
@@ -43,20 +43,23 @@
     </div>
   </div>
   <DsForm ref="dsForm" @refresh="refresh"/>
+  <TableList ref="tableList" />
 </template>
 <script lang="ts" setup>
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
-import { Search } from '@element-plus/icons-vue'
+import { Search, List } from '@element-plus/icons-vue'
 import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'
 import { datasourceApi } from '@/api/datasource'
 import { datetimeFormat } from '@/utils/utils'
 import { ElMessageBox } from 'element-plus'
+import TableList from './TableList.vue'
 
 const searchValue = ref<string>('')
 const dsForm = ref()
+const tableList = ref()
 const dsList = ref<any>([])// show ds list
 const allDsList = ref<any>([])// all ds list
 
@@ -124,9 +127,10 @@ const getTables = (id: Number) => {
   //   console.log(res)
   // })
 
-  datasourceApi.execSql(id,'select id,name,table_name from core_dataset_table limit 10').then((res) => {
-    console.log(res)
-  })
+  // datasourceApi.execSql(id,'select id,name,table_name from core_dataset_table limit 10').then((res) => {
+  //   console.log(res)
+  // })
+  tableList.value.open(id)
 }
 
 onMounted(() => {

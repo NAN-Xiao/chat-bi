@@ -3,6 +3,7 @@
     v-model="dialogVisible"
     title="Add Datasource"
     width="500"
+    :destroy-on-close="true"
   >
     <el-form :model="form" label-width="auto" ref="dsFormRef" :rules="rules">
       <el-form-item label="Name" prop="name">
@@ -169,4 +170,4 @@ const check = () => {
 defineExpose({ open })
 </script>
 <style lang="less" scoped>
-</style>./js/aes
+</style>

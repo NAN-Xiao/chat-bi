@@ -43,5 +43,9 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    esbuild: {
+      jsxFactory: 'h',
+      jsxFragment: 'Fragment',
+    },
   }
 })
