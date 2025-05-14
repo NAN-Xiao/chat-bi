@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "lodash": "^4.17.21",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0",
     "web-storage-cache": "^1.1.1"
@@ -16,11 +17,11 @@
   "devDependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "@types/crypto-js": "^4.2.2",
-    "crypto-js": "^4.2.0",
     "@types/node": "^22.14.1",
     "@vitejs/plugin-vue": "^5.2.2",
     "@vue/tsconfig": "^0.7.0",
     "axios": "^1.8.4",
+    "crypto-js": "^4.2.0",
     "element-plus": "^2.9.7",
     "less": "^4.3.0",
     "pinia": "^3.0.2",
