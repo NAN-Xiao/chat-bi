@@ -17,7 +17,7 @@ class CoreDatasource(SQLModel, table=True):
     status: str = Field(max_length=64, nullable=True)
 
 
-class TableSchema(BaseModel):
+class CoreTable(BaseModel):
     checked: str = True
     table_name: str = ''
     table_comment: str = ''
@@ -25,7 +25,7 @@ class TableSchema(BaseModel):
     table_fields: List = []
 
 
-class FieldSchema(BaseModel):
+class CoreField(BaseModel):
     checked: str = True
     field_name: str = ''
     field_type: str = ''
