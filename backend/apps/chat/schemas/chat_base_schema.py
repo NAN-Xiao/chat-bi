@@ -36,6 +36,7 @@ class OpenAILLM(BaseLLM):
         return ChatOpenAI(
             model=self.config.model_name,
             api_key=self.config.api_key,
+            base_url=self.config.api_base_url,
             **self.config.additional_params
         )
     

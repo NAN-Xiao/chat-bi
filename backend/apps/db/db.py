@@ -5,7 +5,17 @@ import urllib.parse
 from typing import Any
 import json
 from apps.datasource.utils.utils import aes_decrypt
+from common.core.deps import SessionDep
 
+
+def get_uri(ds: CoreDatasource):
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    db_url: str
+    if ds.type == "mysql":
+        db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
+    else:
+        raise 'The datasource type not support.'
+    return db_url
 
 def get_session(ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
@@ -73,6 +83,24 @@ def get_fields(ds: CoreDatasource, table_name: str):
 
 
 def exec_sql(ds: CoreDatasource, sql: str):
+    session = get_session(ds)
+    result = session.execute(text(sql))
+    try:
+        columns = result.keys()._keys
+        res = result.fetchall()
+        result_list = [
+            {columns[i]: value for i, value in enumerate(tuple_item)}
+            for tuple_item in res
+        ]
+        return {"fields": columns, "data": result_list}
+    finally:
+        if result is not None:
+            result.close()
+        if session is not None:
+            session.close()
+
+def exec_sql(ds: CoreDatasource, sql: str):
+    ds = session.get(CoreDatasource, id)
     session = get_session(ds)
     result = session.execute(text(sql))
     try:

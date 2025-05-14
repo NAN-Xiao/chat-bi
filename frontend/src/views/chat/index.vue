@@ -48,10 +48,17 @@
             v-for="(msg, index) in currentChat.messages" 
             :key="index"
             class="message"
-            :class="msg.role"
+            :class="[msg.role, { 'is-typing': msg.isTyping }]"
           >
-            <!-- <div class="message-content">{{ msg.content }}</div> -->
-            <div class="message-content" v-html="formatMessage(msg.content)"></div>
+            <div
+              v-if="msg.role === 'assistant'"
+              class="message-content"
+              :class="{ 'typing': msg.isTyping }"
+              v-html="formatMessage(msg.content)"
+            ></div>
+            <div v-else class="message-content">
+              {{ msg.content }}
+            </div>
           </div>
         </template>
         <div v-else class="empty-state">
@@ -92,10 +99,10 @@ import { ref, computed, nextTick, watch } from 'vue'
 import { Plus, Search, More, Position } from '@element-plus/icons-vue'
 import { questionApi } from '@/api/chat'
 
-
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  isTyping?: boolean 
 }
 
 interface Chat {
@@ -135,7 +142,7 @@ const switchChat = (chatId: string) => {
 }
 
 const scrollToBottom = () => {
-  nextTick(() => {
+  /* nextTick(() => {
     if (messagesRef.value) {
       const scrollHeight = messagesRef.value.scrollHeight
       const animateScroll = () => {
@@ -148,20 +155,30 @@ const scrollToBottom = () => {
       }
       animateScroll()
     }
-  })
+  }) */
 }
 
-const sendMessage = () => {
+const updateMessageContent = (index: number, content: string) => {
+  if (currentChat.value) {
+    currentChat.value.messages[index] = {
+      ...currentChat.value.messages[index],
+      content
+    }
+  }
+}
+
+const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
   
   let chat = currentChat.value
-  // if (!chat) return
   if (!chat) {
     chat = {
-      id: null,
-      title: 'test',
+      id: Date.now().toString(),
+      title: 'New Chat',
       messages: []
-    } as unknown as Chat
+    }
+    chatHistory.value.unshift(chat)
+    currentChatId.value = chat.id
   }
 
   chat.messages.push({
@@ -169,23 +186,67 @@ const sendMessage = () => {
     content: inputMessage.value
   })
   
-  const param = {
-    question: inputMessage.value
-  }
-  inputMessage.value = ''
-  chatHistory.value.unshift(chat)
-  currentChatId.value = chat.id
-  
-  
-  // const index = chat.messages.length - 1
-  questionApi.add(param).then((result: string) => {
-    // chat.messages[index]['content'] += result
-    chat.messages.push({
-      role: 'assistant',
-      content: result
-    })
-    scrollToBottom()
+  const defaultMsg = 'Thinking...'
+  chat.messages.push({
+    role: 'assistant',
+    content: defaultMsg,
+    isTyping: true
   })
+  
+  const userInput = inputMessage.value
+  inputMessage.value = ''
+  
+  const index = chat.messages.length - 1
+  
+  try {
+    const response = await questionApi.add({ question: userInput })
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        chat.messages[index].isTyping = false
+        break
+      }
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n\n')
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.replace('data:', '').trim())
+          let realContent = data.content
+          
+          switch (data.type) {
+            case 'html':
+              realContent = '\n' + data.content
+              break
+            
+            case 'error':
+              realContent = '\nError: ' + data.content
+              break
+            
+            default:
+              if (data.content) {
+                const currentContent = chat.messages[index].content
+                const newContent = currentContent.startsWith(defaultMsg) 
+                  ? realContent 
+                  : currentContent + realContent
+                
+                updateMessageContent(index, newContent)
+                await nextTick()
+                scrollToBottom()
+              }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error:', error)
+    updateMessageContent(index, chat.messages[index].content + '\nError: Failed to get response')
+    chat.messages[index].isTyping = false
+  }
 }
 
 watch(() => currentChat.value?.messages, () => {
@@ -231,7 +292,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
 <style lang="less" scoped>
 .chat-container {
-  height: 100%;
+  height: calc(100vh - 61px); 
   display: flex;
   background-color: var(--white);
   border-radius: var(--border-radius);
@@ -305,11 +366,16 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     flex: 1;
     display: flex;
     flex-direction: column;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
     
     .chat-messages {
-      flex: 1;
+      // flex: 1;
+      height: calc(100% - 188px);
       overflow-y: auto;
       padding: 24px;
+      scroll-behavior: smooth;
       
       &::-webkit-scrollbar {
         width: 6px;
@@ -317,11 +383,11 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
       }
       
       &::-webkit-scrollbar-thumb {
-        background: #ccc;
+        background: rgba(0, 0, 0, 0.2);
         border-radius: 3px;
         
         &:hover {
-          background: #999;
+          background: rgba(0, 0, 0, 0.3);
         }
       }
       
@@ -335,6 +401,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
       .message {
         margin-bottom: 24px;
+        transition: all 0.3s ease;
 
         &.user {
           text-align: right;
@@ -343,9 +410,11 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
           }
         }
 
-        &.assistant .message-content {
-          background-color: #f5f5f5;
-          text-align: left;
+        &.assistant {
+          .message-content {
+            background-color: #f5f5f5;
+            text-align: left;
+          }
         }
 
         .message-content {
@@ -353,6 +422,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
           padding: 12px 16px;
           border-radius: 8px;
           max-width: 80%;
+          transition: all 0.3s ease;
         }
       }
 
@@ -383,9 +453,14 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     }
 
     .chat-input {
-      padding: 16px 24px;
-      border-top: 1px solid var(--el-border-color-lighter);
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
       background: #fff;
+      border-top: 1px solid var(--el-border-color-lighter);
+      padding: 16px 24px;
+      z-index: 10;
 
       .input-wrapper {
         position: relative;
@@ -402,8 +477,6 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
         :deep(.el-textarea__inner) {
           padding: 16px;
           font-size: 14px;
-          // line-height: 1.6;
-          // min-height: 80px;
           resize: none;
           border: none;
           background: transparent;
@@ -427,8 +500,6 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
           padding: 8px;
         }
       }
-
-    
     }
   }
 }

@@ -49,7 +49,7 @@ class HttpService {
     this.cancelTokenSource = axios.CancelToken.source()
     this.instance = axios.create({
       baseURL: import.meta.env.VITE_API_BASE_URL,
-      timeout: 50000,
+      timeout: 100000,
       headers: {
         'Content-Type': 'application/json',
         ...config?.headers
@@ -79,7 +79,6 @@ class HttpService {
         return Promise.reject(error)
       }
     )
-
     // Response interceptor
     this.instance.interceptors.response.use(
       (response: AxiosResponse) => {
@@ -205,6 +204,22 @@ class HttpService {
     config?: FullRequestConfig
   ): Promise<T> {
     return this.request({ ...config, method: 'POST', url, data })
+  }
+
+  public fetchStream(url: string ,data?: any): Promise<any> {
+    const token = wsCache.get('user.token')
+    const heads: any = {
+      'Content-Type': 'application/json',
+    }
+    if (token) {
+      heads['X-SQLBOT-TOKEN'] = `Bearer ${token}`
+    }
+    const real_url = import.meta.env.VITE_API_BASE_URL
+    return fetch(real_url + url, {
+      method: 'POST',
+      headers: heads,
+      body: JSON.stringify(data),
+    })
   }
 
   // PUT request
