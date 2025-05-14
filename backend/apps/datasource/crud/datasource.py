@@ -20,15 +20,20 @@ def check_status(session: SessionDep, ds: CoreDatasource):
         return True
     except Exception as e:
         print("Fail:", e)
-        raise e
+        return False
     finally:
         conn.close()
+    return False
 
 
 def create_ds(session: SessionDep, ds: CoreDatasource):
     ds.create_time = datetime.datetime.now()
-    ds.status = "Success"  # todo check status
+    status = check_status(session, ds)
+    ds.status = "Success" if status is True else "Fail"
     record = CoreDatasource(**ds.model_dump())
+    # get tables and fields
+    if status:
+        pass
     session.add(record)
     session.commit()
     return ds

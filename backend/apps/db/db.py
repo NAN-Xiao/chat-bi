@@ -17,6 +17,7 @@ def get_uri(ds: CoreDatasource):
         raise 'The datasource type not support.'
     return db_url
 
+
 def get_session(ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
     db_url: str
@@ -55,21 +56,22 @@ def get_tables(ds: CoreDatasource):
             session.close()
 
 
-def get_fields(ds: CoreDatasource, table_name: str):
+def get_fields(ds: CoreDatasource, table_name: str = None):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
     session = get_session(ds)
     result: Result[Any]
     try:
         if ds.type == "mysql":
-            sql = f"""SELECT 
+            sql1 = f"""SELECT 
                             COLUMN_NAME,
                             DATA_TYPE,
                             COLUMN_COMMENT
                         FROM 
                             INFORMATION_SCHEMA.COLUMNS
                         WHERE 
-                            TABLE_SCHEMA = '{conf.database}' AND
-                            TABLE_NAME = '{table_name}';"""
+                            TABLE_SCHEMA = '{conf.database}'"""
+            sql2 = f""" AND TABLE_NAME = '{table_name}';""" if table_name is not None and table_name != "" else ";"
+            sql = sql1 + sql2
             result = session.execute(text(sql))
 
         res = result.fetchall()
@@ -99,20 +101,3 @@ def exec_sql(ds: CoreDatasource, sql: str):
         if session is not None:
             session.close()
 
-def exec_sql(ds: CoreDatasource, sql: str):
-    ds = session.get(CoreDatasource, id)
-    session = get_session(ds)
-    result = session.execute(text(sql))
-    try:
-        columns = result.keys()._keys
-        res = result.fetchall()
-        result_list = [
-            {columns[i]: value for i, value in enumerate(tuple_item)}
-            for tuple_item in res
-        ]
-        return {"fields": columns, "data": result_list}
-    finally:
-        if result is not None:
-            result.close()
-        if session is not None:
-            session.close()

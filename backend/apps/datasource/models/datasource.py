@@ -2,6 +2,7 @@ from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, Text, BigInteger, DateTime, Integer, Identity
 from datetime import datetime
 from pydantic import BaseModel
+from typing import List
 
 
 class CoreDatasource(SQLModel, table=True):
@@ -16,6 +17,22 @@ class CoreDatasource(SQLModel, table=True):
     status: str = Field(max_length=64, nullable=True)
 
 
+class TableSchema(BaseModel):
+    checked: str = True
+    table_name: str = ''
+    table_comment: str = ''
+    custom_comment: str = ''
+    table_fields: List = []
+
+
+class FieldSchema(BaseModel):
+    checked: str = True
+    field_name: str = ''
+    field_type: str = ''
+    field_comment: str = ''
+    custom_comment: str = ''
+
+
 class DatasourceConf(BaseModel):
     host: str = ''
     port: int = 0
@@ -28,18 +45,18 @@ class DatasourceConf(BaseModel):
 class TableSchema:
     def __init__(self, attr1, attr2):
         self.tableName = attr1
-        self.tableRemark = attr2
+        self.tableComment = attr2
 
     tableName: str
-    tableRemark: str
+    tableComment: str
 
 
 class ColumnSchema:
     def __init__(self, attr1, attr2, attr3):
         self.fieldName = attr1
         self.fieldType = attr2
-        self.fieldRemark = attr3
+        self.fieldComment = attr3
 
     fieldName: str
     fieldType: str
-    fieldRemark: str
+    fieldComment: str

@@ -1,5 +1,24 @@
 <template>
-  <el-drawer 
+  <div class="layout">
+    <el-row class="header">
+      <div class="title">
+        <el-button text :icon="ArrowLeft" @click="back()" />
+        {{ props.dsName }}
+      </div>
+      <el-button type="primary" @click="save()">
+        Save
+      </el-button>
+    </el-row>
+    <el-row class="data">
+      <el-table-v2
+        :columns="tableColumns"
+        :data="tableData"
+        :width="1000"
+        :height="800"
+        fixed
+      />
+    </el-row>
+    <el-drawer 
     v-model="drawer" 
     direction="btt" 
     :destroy-on-close="true"
@@ -11,33 +30,23 @@
     </template>
     <template #default>
       <el-row :gutter="20">
-        <el-col :span="12">
-          <el-table-v2
-            :columns="tableColumns"
-            :data="tableData"
-            :width="700"
-            :height="400"
-            fixed
-          />
-        </el-col>
-        <el-col :span="12">
-          <el-table-v2
-            :columns="fieldColumns"
-            :data="fieldData"
-            :width="700"
-            :height="400"
-            fixed
-          />
-        </el-col>
+        <el-table-v2
+          :columns="fieldColumns"
+          :data="fieldData"
+          :width="1000"
+          :height="800"
+          fixed
+        />
       </el-row>
     </template>
     <template #footer>
       <div style="flex: auto">
-        <el-button @click="cancelClick">cancel</el-button>
-        <el-button type="primary" @click="confirmClick">confirm</el-button>
+        <el-button @click="cancelClick">Cancel</el-button>
+        <el-button type="primary" @click="confirmClick">Confirm</el-button>
       </div>
     </template>
   </el-drawer>
+  </div>
 </template>
 
 <script lang="tsx" setup>
@@ -45,6 +54,13 @@ import { ref } from 'vue'
 import { datasourceApi } from '@/api/datasource'
 import { ElButton } from 'element-plus'
 import { h } from 'vue'
+import { onMounted } from 'vue'
+import { ArrowLeft } from '@element-plus/icons-vue'
+
+const props = defineProps({
+  dsId: { type: [Number], required: true },
+  dsName: { type: [String], required: true }
+})
 
 const drawer = ref<boolean>(false)
 const tableColumns = ref<any>([
@@ -55,9 +71,9 @@ const tableColumns = ref<any>([
     width: 150,
   },
   {
-    key:"tableRemark",
-    dataKey:"tableRemark",
-    title: 'Table Remark',
+    key:"tableComment",
+    dataKey:"tableComment",
+    title: 'Table Comment',
     width: 300,
   },
   {
@@ -87,24 +103,25 @@ const fieldColumns = ref<any>([
     width: 150,
   },
   {
-    key:"fieldRemark",
-    dataKey:"fieldRemark",
-    title: 'Field Remark',
+    key:"fieldComment",
+    dataKey:"fieldComment",
+    title: 'Field Comment',
     width: 300,
   }
 ])
 const fieldData = ref<any>([])
 const dsId = ref<Number>(0)
 
-const open = (id: Number) => {
-  drawer.value = true
-  dsId.value = id
-  datasourceApi.getTables(id).then((res) => {
-    tableData.value = res
-  })
+const back = () => {
+  history.back()
+}
+
+const save = () => {
+
 }
 
 const showFields = (tableName: string) =>{
+  drawer.value = true
   datasourceApi.getFields(dsId.value, tableName).then((res) => {
     fieldData.value = res
   })
@@ -119,9 +136,27 @@ const confirmClick = () => {
   cancelClick()
 }
 
+onMounted(() => {
+  dsId.value = props.dsId
+  datasourceApi.getTables(props.dsId).then((res) => {
+    tableData.value = res
+  })
+})
+
 defineExpose({ open })
 </script>
 
 <style lang="less" scoped>
-
+.layout{
+  padding: 20px 40px;
+  .header{
+    padding: 20px 0;
+    display: flex;
+    justify-content: space-between;
+  }
+  .title{
+    display: flex;
+    align-items: center;
+  }
+}
 </style>

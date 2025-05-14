@@ -35,7 +35,7 @@
         </div>
         <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
         <div class="connection-actions">
-          <el-button class="action-btn" circle @click="getTables(ds.id)" :icon="List" />
+          <el-button class="action-btn" circle @click="getTables(ds.id, ds.name)" :icon="List" />
           <el-button type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
           <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
         </div>
@@ -43,7 +43,6 @@
     </div>
   </div>
   <DsForm ref="dsForm" @refresh="refresh"/>
-  <TableList ref="tableList" />
 </template>
 <script lang="ts" setup>
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
@@ -55,13 +54,13 @@ import DsForm from './form.vue'
 import { datasourceApi } from '@/api/datasource'
 import { datetimeFormat } from '@/utils/utils'
 import { ElMessageBox } from 'element-plus'
-import TableList from './TableList.vue'
+import { useRouter } from 'vue-router'
 
 const searchValue = ref<string>('')
 const dsForm = ref()
-const tableList = ref()
 const dsList = ref<any>([])// show ds list
 const allDsList = ref<any>([])// all ds list
+const router = useRouter()
 
 const getStatus = (status: string) => {
   if (status === 'Success') {
@@ -118,7 +117,7 @@ const deleteDs = (item: any) => {
   })
 }
 
-const getTables = (id: Number) => {
+const getTables = (id: number, name: string) => {
   // datasourceApi.getTables(id).then((res) => {
   //   console.log(res)
   // })
@@ -130,7 +129,7 @@ const getTables = (id: Number) => {
   // datasourceApi.execSql(id,'select id,name,table_name from core_dataset_table limit 10').then((res) => {
   //   console.log(res)
   // })
-  tableList.value.open(id)
+  router.push(`/ds/dsTable/${id}/${name}`)
 }
 
 onMounted(() => {

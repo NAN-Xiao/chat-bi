@@ -38,6 +38,13 @@ const router = createRouter({
           name: 'ds',
           component: ds,
           meta: { title: 'Data Connections', icon: 'ds' }
+        },
+        {
+          path: 'dsTable/:dsId/:dsName',
+          name: 'dsTable',
+          component: () => import('@/views/ds/TableList.vue'),
+          meta: { title: 'Data Connections', icon: 'ds' },
+          props: true
         }
       ]
     },
