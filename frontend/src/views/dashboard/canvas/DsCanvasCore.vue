@@ -69,6 +69,16 @@ const props = defineProps({
   }
 })
 
+const {
+  canvasComponentData,
+  baseWidth,
+  baseHeight,
+  baseMarginLeft,
+  baseMarginTop,
+  draggable,
+  resizable
+} = toRefs(props)
+
 type Coord = {
   x1: number
   y1: number
@@ -94,17 +104,6 @@ type Item = {
   sizeY: number
   [key: string]: any
 }
-
-const {
-  canvasComponentData,
-  baseWidth,
-  baseHeight,
-  baseMarginLeft,
-  baseMarginTop,
-  draggable,
-  resizable
-} = toRefs(props)
-
 // DOM ref
 const containerRef = ref<HTMLElement | null>(null)
 const renderOk = ref(false)
@@ -115,6 +114,17 @@ const maxCell = ref(0)
 const positionBox = ref<Array<Array<{ el: boolean }>>>([])
 const coordinates = ref<Coord[]>([])
 const infoBox = ref()
+const pointList = ['lt', 't', 'rt', 'r', 'rb', 'b', 'lb', 'l']
+const cursors = {
+  lt: 'nw',
+  t: 'n',
+  rt: 'ne',
+  r: 'e',
+  rb: 'se',
+  b: 's',
+  lb: 'sw',
+  l: 'w'
+}
 
 // Position data (non-reactive)
 
@@ -452,9 +462,9 @@ function findClosetCoords(item: { _dragId: string | number }, tCoord: Coord) {
 }
 /**
  * Generate coordinates
- * @param {Item} item: The item object to generate coordinates for
+ * @param {any} item: The item object to generate coordinates for
  */
-function makeCoordinate(item: Item) {
+function makeCoordinate(item: any) {
   let width = cellWidth.value * item.sizeX - baseMarginLeft.value
   let height = cellHeight.value * item.sizeY - baseMarginTop.value
   let left = cellWidth.value * (item.x - 1) + baseMarginLeft.value
@@ -645,8 +655,8 @@ function findBelowItems(item: Item) {
 
   return _.sortBy(Object.values(belowItems), 'y')
 }
-
-function startResize(e: MouseEvent, item: Item, index: number) {
+// @ts-ignore
+function startResize(e: MouseEvent, point: string, item: Item, index: number) {
   if (!resizable.value) return
   props.resizeStart(e, item, index)
 
@@ -707,7 +717,6 @@ function startMove(e: MouseEvent, item: Item, index: number) {
     infoBox.value.nowItemNode = target.closest('.item')
     infoBox.value.cloneItem = infoBox.value.nowItemNode.cloneNode(true)
   }
-
   infoBox.value.cloneItem.classList.add('cloneNode')
   if( containerRef.value ){
       containerRef.value.append(infoBox.value.cloneItem)
@@ -882,6 +891,46 @@ function moving() {
   // do moving
 }
 
+function getPointStyle(point: string, item: Item) {
+  const { sizeX, sizeY } = item
+  const width = sizeX * (baseWidth.value + baseMarginLeft.value) - baseMarginLeft.value
+  const height = sizeY * (baseHeight.value + baseMarginTop.value) - baseMarginTop.value
+
+  const hasT = /t/.test(point)
+  const hasB = /b/.test(point)
+  const hasL = /l/.test(point)
+  const hasR = /r/.test(point)
+  let newLeft = 0
+  let newTop = 0
+
+  // 四个角的点
+  if (point.length === 2) {
+    newLeft = hasL ? 0 : width
+    newTop = hasT ? 0 : height
+  } else {
+    // 上下两点的点，宽度居中
+    if (hasT || hasB) {
+      newLeft = width / 2
+      newTop = hasT ? 0 : height
+    }
+
+    // 左右两边的点，高度居中
+    if (hasL || hasR) {
+      newLeft = hasL ? 0 : width
+      newTop = Math.floor(height / 2)
+    }
+  }
+
+  return {
+    marginLeft: '-4px',
+    marginTop: '-4px',
+    left: `${newLeft}px`,
+    top: `${newTop}px`,
+    // @ts-ignore
+    cursor: `${cursors[point]}-resize`
+  }
+}
+
 defineExpose({
   getRenderState,
   init,
@@ -922,12 +971,15 @@ defineExpose({
         :key="'item' + index"
         :style="nowItemStyle(item)"
       >
-        <slot :name="'slot' + index">{{ item }}</slot>
-        <span
+        <slot :name="'slot' + index">{{ item }} -- {{ baseWidth }}</slot>
+
+        <div
+          v-for="point in pointList"
+          :key="point"
           class="resizeHandle"
-          v-show="resizable"
-          @mousedown="startResize($event, item, index)"
-        ></span>
+          :style="getPointStyle(point, item)"
+          @mousedown="startResize($event, point, item, index)"
+        ></div>
       </div>
     </div>
   </div>
