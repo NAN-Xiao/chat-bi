@@ -6,32 +6,32 @@ const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
-const componentData = [
+const componentData = ref([
   {
     id: 4,
     x: 1,
     y: 1,
-    sizex: 2,
-    sizey: 2,
-    _dragId:0
+    sizeX: 2,
+    sizeY: 2,
+    _dragId: 0
   },
   {
     id: 10,
     x: 2,
     y: 1,
-    sizex: 2,
-    sizey: 2,
-    _dragId:1
+    sizeX: 2,
+    sizeY: 2,
+    _dragId: 1
   },
   {
     id: 7,
     x: 1,
     y: 2,
-    sizex: 2,
-    sizey: 3,
-    _dragId:2
+    sizeX: 2,
+    sizeY: 3,
+    _dragId: 2
   }
-]
+])
 
 onMounted(() => {
   const screenWidth = window.innerWidth
@@ -40,7 +40,6 @@ onMounted(() => {
   baseHeight.value = 100 * (screenHeight / 638)
   baseMarginLeft.value = 20 * (screenWidth / 1366)
   baseMarginTop.value = 20 * (screenHeight / 638)
-
   nextTick(() => {
     if (cyGridster.value) {
       // @ts-ignore
