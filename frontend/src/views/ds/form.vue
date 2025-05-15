@@ -47,9 +47,18 @@
       </el-form>
     </div>
     <div v-show="active === 2" class="container">
-      222
+      <el-scrollbar height="480px">
+        <el-checkbox-group v-model="checkList">
+          <el-row :gutter="10">
+            <el-col v-for="item in tableList" :key="item.value" :span="12">
+              <el-checkbox :label="item.tableName">{{ item.tableName }}</el-checkbox>
+            </el-col>
+          </el-row>
+        </el-checkbox-group>
+      </el-scrollbar>
+      <span>Selected: {{ checkList.length }}/{{ tableList.length }}</span>
     </div>
-    <div style="display: flex;justify-content: flex-end;">
+    <div style="display: flex;justify-content: flex-end;margin-top: 20px;">
       <el-button @click="close">Cancel</el-button>
       <el-button v-show="!isCreate && !isEditTable" @click="check">Test Connect</el-button>
       <el-button v-show="active === 1 && isCreate" type="primary" @click="next">Next</el-button>
@@ -70,6 +79,8 @@ const emit = defineEmits(['refresh'])
 const active = ref(1)
 const isCreate = ref(true)
 const isEditTable = ref(false)
+const checkList = ref<any>([])
+const tableList = ref<any>([])
 
 const rules = reactive<FormRules>({
   name: [
@@ -109,6 +120,7 @@ const open = (item: any, editTable: boolean = false) => {
     active.value = 2
     isEditTable.value = true
     isCreate.value = false
+    // request tables
   } else {
     isEditTable.value = false
     if (item) {
@@ -193,7 +205,6 @@ const buildConf = () => {
 const check = () => {
   buildConf()
   datasourceApi.check(form.value).then((res: any) => {
-    console.log(res)
     if(res) {
       ElMessage({
         message: 'Connect success',
@@ -207,13 +218,12 @@ const check = () => {
 const next = () => {
   // check status if success do next
   buildConf()
-  datasourceApi.check(form.value).then((res: any) => {
-    console.log(res)
+  datasourceApi.check(form.value).then((res: boolean) => {
     if(res) {
       active.value++
       // request tables
       datasourceApi.getTablesByConf(form.value).then((res) => {
-        console.log(res)
+        tableList.value = res
       })
     }
   })
