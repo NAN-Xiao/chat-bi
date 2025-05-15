@@ -6,29 +6,33 @@ const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
+const baseMatrixCount = {
+  x: 72,
+  y: 36
+}
 const componentData = ref([
   {
     id: 4,
     x: 1,
     y: 1,
-    sizeX: 2,
-    sizeY: 2,
+    sizeX: 20,
+    sizeY: 10,
     _dragId: 0
   },
   {
     id: 10,
     x: 2,
     y: 1,
-    sizeX: 2,
-    sizeY: 2,
+    sizeX: 20,
+    sizeY: 10,
     _dragId: 1
   },
   {
     id: 7,
     x: 1,
     y: 2,
-    sizeX: 2,
-    sizeY: 3,
+    sizeX: 20,
+    sizeY: 10,
     _dragId: 2
   }
 ])
@@ -36,10 +40,12 @@ const componentData = ref([
 onMounted(() => {
   const screenWidth = window.innerWidth
   const screenHeight = window.innerHeight
-  baseWidth.value = 90.8333 * (screenWidth / 1366)
-  baseHeight.value = 100 * (screenHeight / 638)
-  baseMarginLeft.value = 20 * (screenWidth / 1366)
-  baseMarginTop.value = 20 * (screenHeight / 638)
+  baseMarginLeft.value = 10
+  baseMarginTop.value = 10
+
+  baseWidth.value = (screenWidth - baseMarginLeft.value) / baseMatrixCount.x - baseMarginLeft.value
+  baseHeight.value = (screenHeight - baseMarginTop.value) / baseMatrixCount.y - baseMarginTop.value
+
   nextTick(() => {
     if (cyGridster.value) {
       // @ts-ignore
@@ -50,7 +56,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <DsCanvasCore ref="cyGridster" :canvas-component-data="componentData"></DsCanvasCore>
+  <DsCanvasCore
+    ref="cyGridster"
+    :base-width="baseWidth"
+    :base-height="baseHeight"
+    :base-margin-left="baseMarginLeft"
+    :base-margin-top="baseMarginTop"
+    :canvas-component-data="componentData"
+  ></DsCanvasCore>
 </template>
 
 <style scoped lang="less"></style>
