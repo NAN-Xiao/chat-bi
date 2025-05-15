@@ -137,6 +137,7 @@ const save = async(formEl: FormInstance | undefined) => {
           emit('refresh')
         })
       } else {
+        form.value.tables = [{"table_name":"core_dataset_table"},{"table_name":"pre_user"}]
         datasourceApi.add(form.value).then((res: any) => {
           console.log(res)
           close()

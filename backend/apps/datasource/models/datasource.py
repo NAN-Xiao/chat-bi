@@ -2,7 +2,7 @@ from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, Text, BigInteger, DateTime, Integer, Identity
 from datetime import datetime
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 
 class CoreDatasource(SQLModel, table=True):
@@ -17,20 +17,39 @@ class CoreDatasource(SQLModel, table=True):
     status: str = Field(max_length=64, nullable=True)
 
 
-class CoreTable(BaseModel):
-    checked: str = True
-    table_name: str = ''
-    table_comment: str = ''
-    custom_comment: str = ''
-    table_fields: List = []
+class CoreTable(SQLModel, table=True):
+    __tablename__ = "core_table"
+    id: int = Field(sa_column=Column(Integer, Identity(always=True), nullable=False, primary_key=True))
+    ds_id:int = Field(sa_column=Column(BigInteger()))
+    checked: bool = Field(default=True)
+    table_name: str = Field(sa_column=Column(Text))
+    table_comment: str = Field(sa_column=Column(Text))
+    custom_comment: str = Field(sa_column=Column(Text))
 
 
-class CoreField(BaseModel):
-    checked: str = True
-    field_name: str = ''
-    field_type: str = ''
-    field_comment: str = ''
-    custom_comment: str = ''
+class CoreField(SQLModel, table=True):
+    __tablename__ = "core_field"
+    id: int = Field(sa_column=Column(Integer, Identity(always=True), nullable=False, primary_key=True))
+    ds_id: int = Field(sa_column=Column(BigInteger()))
+    table_id: int = Field(sa_column=Column(BigInteger()))
+    checked: bool = Field(default=True)
+    field_name: str = Field(sa_column=Column(Text))
+    field_type: str = Field(max_length=128, nullable=True)
+    field_comment: str = Field(sa_column=Column(Text))
+    custom_comment: str = Field(sa_column=Column(Text))
+
+
+# datasource create obj
+class CreateDatasource(BaseModel):
+    id: int = None
+    name: str = ''
+    description: str = ''
+    type: str = ''
+    configuration: str = ''
+    create_time: Optional[datetime] = None
+    create_by: int = 0
+    status: str = ''
+    tables: List[CoreTable] = []
 
 
 class DatasourceConf(BaseModel):

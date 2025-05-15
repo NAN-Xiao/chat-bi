@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, execSql
 from common.core.deps import SessionDep
-from ..models.datasource import CoreDatasource
+from ..models.datasource import CoreDatasource, CreateDatasource
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 
@@ -17,7 +17,7 @@ async def check(session: SessionDep, ds: CoreDatasource):
 
 
 @router.post("/add", response_model=CoreDatasource)
-async def add(session: SessionDep, ds: CoreDatasource):
+async def add(session: SessionDep, ds: CreateDatasource):
     return create_ds(session, ds)
 
 
