@@ -2,6 +2,7 @@ from langchain_community.utilities import SQLDatabase
 from langgraph.prebuilt import create_react_agent
 from langchain_core.prompts import ChatPromptTemplate
 from apps.chat.schemas.chat_base_schema import LLMConfig, LLMFactory
+from apps.chat.schemas.schema_engine import SchemaEngine
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_uri
 from common.core.config import settings
@@ -103,9 +104,13 @@ class AgentService:
     async def async_generate(self, question: str) -> AsyncGenerator[str, None]:
        
         chain = self.prompt | self.agent_executor
-        schema = self.db.get_table_info()
+        # schema = self.db.get_table_info()
         
-        async for chunk in chain.astream({"schema": schema, "question": question}):
+        schema_engine = SchemaEngine(engine=self.db._engine)
+        mschema = schema_engine.mschema
+        mschema_str = mschema.to_mschema()
+        
+        async for chunk in chain.astream({"schema": mschema_str, "question": question}):
             if not isinstance(chunk, dict):
                 continue
                 
