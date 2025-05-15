@@ -37,3 +37,13 @@ def verify_password_reset_token(token: str) -> str | None:
         return str(decoded_token["sub"])
     except InvalidTokenError:
         return None
+
+
+def deepcopy_ignore_extra(src, dest):
+    import copy
+    for attr in vars(src):
+        if hasattr(dest, attr):
+            src_value = getattr(src, attr)
+            dest_value = copy.deepcopy(src_value)  # deep copy
+            setattr(dest, attr, dest_value)
+    return dest
