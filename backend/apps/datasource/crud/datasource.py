@@ -1,13 +1,13 @@
 from sqlmodel import select
-from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema
+from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, EditObj
 import datetime
 from common.core.deps import SessionDep
 from apps.db.db import get_session, get_tables, get_fields, exec_sql
 from sqlalchemy import text, and_
 from common.utils.utils import deepcopy_ignore_extra
 from typing import List
-from ..crud.table import delete_table_by_ds_id
-from ..crud.field import delete_field_by_ds_id
+from ..crud.table import delete_table_by_ds_id, update_table
+from ..crud.field import delete_field_by_ds_id, update_field
 
 
 def get_datasource_list(session: SessionDep) -> CoreDatasource:
@@ -76,6 +76,11 @@ def delete_ds(session: SessionDep, id: int):
 
 def getTables(session: SessionDep, id: int):
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
+    tables = get_tables(ds)
+    return tables
+
+
+def getTablesByDs(session: SessionDep, ds: CoreDatasource):
     tables = get_tables(ds)
     return tables
 
@@ -151,3 +156,9 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
     if len(id_list) > 0:
         session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.id.not_in(id_list))).delete(
             synchronize_session=False)
+
+
+def update_table_and_fields(session: SessionDep, data: EditObj):
+    update_table(session, data.table)
+    for field in data.fields:
+        update_field(session, field)
