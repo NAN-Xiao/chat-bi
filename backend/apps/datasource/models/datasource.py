@@ -20,7 +20,7 @@ class CoreDatasource(SQLModel, table=True):
 class CoreTable(SQLModel, table=True):
     __tablename__ = "core_table"
     id: int = Field(sa_column=Column(Integer, Identity(always=True), nullable=False, primary_key=True))
-    ds_id:int = Field(sa_column=Column(BigInteger()))
+    ds_id: int = Field(sa_column=Column(BigInteger()))
     checked: bool = Field(default=True)
     table_name: str = Field(sa_column=Column(Text))
     table_comment: str = Field(sa_column=Column(Text))
@@ -52,6 +52,13 @@ class CreateDatasource(BaseModel):
     tables: List[CoreTable] = []
 
 
+# edit local saved table and fields
+class EditObj(BaseModel):
+    table: CoreTable = None
+    fields: List[CoreField] = []
+
+
+# datasource config info
 class DatasourceConf(BaseModel):
     host: str = ''
     port: int = 0
