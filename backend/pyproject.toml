@@ -26,9 +26,9 @@ dependencies = [
     "langgraph>=0.3,<0.4",
     "vllm>=0.8.5",
     "dashscope>=1.14.0,<2.0.0",
-    "sse-starlette>=1.8.0,<2.0.0",
     "pymysql (>=1.1.1,<2.0.0)",
     "cryptography (>=44.0.3,<45.0.0)",
+    "llama_index>=0.12.35"
 ]
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
