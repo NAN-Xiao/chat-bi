@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, nextTick, toRefs } from 'vue'
+import { ref, nextTick, toRefs, type PropType } from 'vue'
 import _ from 'lodash'
 // Props
 const props = defineProps({
   canvasComponentData: {
-    type: Array,
+    type: Array as PropType<Item[]>,
     required: true
   },
   baseWidth: {
@@ -80,22 +80,48 @@ const {
 } = toRefs(props)
 
 // DOM ref
-const containerRef = ref(null)
+const containerRef = ref<HTMLElement | null>(null)
 const renderOk = ref(false)
 const moveAnimate = ref(false)
 const cellWidth = ref(0)
 const cellHeight = ref(0)
 const maxCell = ref(0)
-const positionBox = ref([])
-const coordinates = ref([])
+const positionBox = ref<Array<Array<{ el: boolean }>>>([])
+const coordinates = ref<Coord[]>([])
 const infoBox = ref()
 
 // Position data (non-reactive)
 
-let lastTask = undefined
+let lastTask: (() => void) | undefined = undefined
 let isOverlay = false
 let itemMaxX = 0
 let itemMaxY = 0
+
+type Coord = {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  c1: number
+  c2: number
+  el: {
+    x: number
+    y: number
+    sizex: number
+    sizey: number
+    _dragId: string | number
+    [key: string]: any
+  }
+}
+
+type Item = {
+  _dragId: string | number
+  x: number
+  y: number
+  sizex: number
+  sizey: number
+  [key: string]: any
+}
 
 const moveTime = 80
 function debounce(func: () => void, time: number) {
@@ -183,7 +209,7 @@ function fillPositionBox(maxY: number) {
 
 /**
  * Remove item from positionBox
- * @param {any} item: The item to be removed
+ * @param item
  */
 function removeItemFromPositionBox(item: any) {
   const pb = positionBox.value
@@ -238,9 +264,9 @@ function init() {
   renderOk.value = true
 }
 
-function resizePlayer(item: any, newSize: any) {
+function resizePlayer(item: Item, newSize: any) {
   removeItemFromPositionBox(item)
-  const belowItems = findBelowItems(item)
+  const belowItems = findBelowItems(item) as Item[]
   _.forEach(belowItems, upItem => {
     const canGoUpRows = canItemGoUp(upItem)
     if (canGoUpRows > 0) {
@@ -275,7 +301,7 @@ function resizePlayer(item: any, newSize: any) {
  * @param {any} item
  * @param {any} position
  */
-function checkItemPosition(item: any, position = {}) {
+function checkItemPosition(item: any, position: Partial<{ x: number; y: number }> = {}) {
   position.x = position.x || item.x
   position.y = position.y || item.y
 
@@ -312,7 +338,7 @@ function movePlayer(item: any, position: any) {
   // Remove item location
   removeItemFromPositionBox(item)
   // Find the item below
-  let belowItems = findBelowItems(item)
+  let belowItems = findBelowItems(item) as Item[]
   // Traverse the items below and move them
   belowItems.forEach(upItem => {
     const canGoUpRows = canItemGoUp(upItem)
@@ -340,19 +366,20 @@ function movePlayer(item: any, position: any) {
 }
 
 function removeItem(index: number) {
-  const item = canvasComponentData.value[index]
+  const item = canvasComponentData.value[index] as Item
   removeItemFromPositionBox(item)
-  const belowItems = findBelowItems(item)
+  const belowItems = findBelowItems(item) as Item[]
   belowItems.forEach(upItem => {
     const canGoUpRows = canItemGoUp(upItem)
     if (canGoUpRows > 0) {
       moveItemUp(upItem, canGoUpRows)
     }
   })
+  // @ts-ignore
   canvasComponentData.value.splice(index, 1, {})
 }
 
-function addItem(item, index) {
+function addItem(item: any, index: any) {
   if (index < 0) {
     index = canvasComponentData.value.length
   }
@@ -367,7 +394,7 @@ function addItem(item, index) {
   // makeCoordinate(item) // If coordinate points need to be generated, untangle the annotations
 }
 
-function changeToCoord(left, top, width, height) {
+function changeToCoord(left: number, top: number, width: number, height: number) {
   return {
     x1: left,
     x2: left + width,
@@ -384,9 +411,9 @@ function changeToCoord(left, top, width, height) {
  * @param {any} item comparison object
  * @param {any} tCord compares the coordinates of the object
  */
-function findClosetCoords(item, tCoord) {
+function findClosetCoords(item: { _dragId: string | number }, tCoord: Coord) {
   if (isOverlay) return
-  let collisionsItem = []
+  let collisionsItem: { centerDistance: number; coord: Coord }[] = []
   coordinates.value.forEach(nowCoord => {
     // Avoid comparing yourself to others
     if (item._dragId === nowCoord.el._dragId) {
@@ -427,7 +454,7 @@ function findClosetCoords(item, tCoord) {
  * Generate coordinates
  * @param {any} item: The item object to generate coordinates for
  */
-function makeCoordinate(item) {
+function makeCoordinate(item: any) {
   let width = cellWidth.value * item.sizex - baseMarginLeft.value
   let height = cellHeight.value * item.sizey - baseMarginTop.value
   let left = cellWidth.value * (item.x - 1) + baseMarginLeft.value
@@ -450,7 +477,7 @@ function makeCoordinate(item) {
  * Change the coordinates of the item
  * @param {any} item: The item object whose coordinates need to be changed
  */
-function changeItemCoord(item) {
+function changeItemCoord(item: any) {
   let width = cellWidth.value * item.sizex - baseMarginLeft.value
   let height = cellHeight.value * item.sizey - baseMarginTop.value
   let left = cellWidth.value * (item.x - 1) + baseMarginLeft.value
@@ -477,7 +504,7 @@ function changeItemCoord(item) {
  * @param {any} item Target item
  */
 function emptyTargetCell(item: any) {
-  let belowItems = findBelowItems(item)
+  let belowItems = findBelowItems(item) as Item[]
 
   belowItems.forEach(downItem => {
     if (downItem._dragId === item._dragId) return
@@ -490,9 +517,9 @@ function emptyTargetCell(item: any) {
 
 /**
  * Can the item at the current location float up
- * @param {any} item Current item
+ * @param {Item} item Current item
  */
-function canItemGoUp(item) {
+function canItemGoUp(item: Item) {
   let upperRows = 0
   for (let row = item.y - 2; row >= 0; row--) {
     for (let cell = item.x - 1; cell < item.x - 1 + item.sizex; cell++) {
@@ -516,10 +543,10 @@ function canItemGoUp(item) {
  * @param {any} items
  * @param {any} size
  */
-function moveItemDown(item, size) {
+function moveItemDown(item: Item, size: number) {
   removeItemFromPositionBox(item)
 
-  const belowItems = findBelowItems(item)
+  const belowItems = findBelowItems(item) as Item[]
 
   for (const downItem of belowItems) {
     if (downItem._dragId === item._dragId) continue
@@ -541,7 +568,7 @@ function moveItemDown(item, size) {
   changeItemCoord(item)
 }
 
-function setPlayerPosition(item, position = {}) {
+function setPlayerPosition(item: Item, position: { x?: number; y?: number } = {}) {
   const targetX = position.x || item.x
   const targetY = position.y || item.y
 
@@ -560,7 +587,7 @@ function setPlayerPosition(item, position = {}) {
  * @param {any} son
  * @param {any} size
  */
-function calcDiff(parent, son, size) {
+function calcDiff(parent: Item, son: Item, size: number) {
   const diffs = []
 
   for (let i = son.x - 1; i < son.x - 1 + son.sizex; i++) {
@@ -581,10 +608,10 @@ function calcDiff(parent, son, size) {
   return size > 0 ? size : 0
 }
 
-function moveItemUp(item, size) {
+function moveItemUp(item: Item, size: number) {
   removeItemFromPositionBox(item)
 
-  const belowItems = findBelowItems(item)
+  const belowItems = findBelowItems(item) as Item[]
 
   setPlayerPosition(item, {
     y: item.y - size
@@ -602,13 +629,14 @@ function moveItemUp(item, size) {
   }
 }
 
-function findBelowItems(item) {
+function findBelowItems(item: Item) {
   const belowItems = {}
 
   for (let cell = item.x - 1; cell < item.x - 1 + item.sizex; cell++) {
     for (let row = item.y - 1; row < positionBox.value.length; row++) {
       const target = positionBox.value[row][cell]
       if (target && target.el) {
+        // @ts-ignore
         belowItems[target.el._dragId] = target.el
         break
       }
@@ -618,22 +646,20 @@ function findBelowItems(item) {
   return _.sortBy(Object.values(belowItems), 'y')
 }
 
-function startResize(e, item, index) {
+function startResize(e: MouseEvent, item: Item, index: number) {
   if (!resizable.value) return
   props.resizeStart(e, item, index)
 
   // Obtain the target element
-  let target = e.target
   if (!infoBox.value) {
     infoBox.value = {} // Reinitialize
   }
   // Get the parent element of. tem
-  let itemNode = target.closest('.item')
   infoBox.value.resizeItem = item
   infoBox.value.resizeItemIndex = index
 }
 
-function containerMouseDown(e) {
+function containerMouseDown(e: MouseEvent) {
   // e.preventDefault();
   if (!infoBox.value) {
     infoBox.value = {} // Reinitialize
@@ -642,7 +668,7 @@ function containerMouseDown(e) {
   infoBox.value.startY = e.pageY
 }
 
-function startMove(e, item, index) {
+function startMove(e: MouseEvent, item: Item, index: number) {
   if (!draggable.value) return
 
   if (!infoBox.value) {
@@ -650,6 +676,7 @@ function startMove(e, item, index) {
   }
 
   const target = e.target
+  // @ts-ignore
   let className = target.className || ''
 
   if (
@@ -670,11 +697,13 @@ function startMove(e, item, index) {
 
   infoBox.value.cloneItem = null
   infoBox.value.nowItemNode = null
-
+  // @ts-ignore
   if (target.className.includes('item')) {
     infoBox.value.nowItemNode = target
+    // @ts-ignore
     infoBox.value.cloneItem = target.cloneNode(true)
   } else {
+    // @ts-ignore
     infoBox.value.nowItemNode = target.closest('.item')
     infoBox.value.cloneItem = infoBox.value.nowItemNode.cloneNode(true)
   }
@@ -690,6 +719,7 @@ function startMove(e, item, index) {
   infoBox.value.oldSizeY = item.sizey
   infoBox.value.originWidth = infoBox.value.cloneItem.offsetWidth
   infoBox.value.originHeight = infoBox.value.cloneItem.offsetHeight
+  // @ts-ignore
   const itemMouseMove = e => {
     const moveItem = _.get(infoBox.value, 'moveItem')
     const resizeItem = _.get(infoBox.value, 'resizeItem')
@@ -703,13 +733,17 @@ function startMove(e, item, index) {
 
       const addSizex =
         moveXSize % cellWidth.value > (cellWidth.value / 4) * 1
-          ? parseInt(moveXSize / cellWidth.value + 1)
-          : parseInt(moveXSize / cellWidth.value)
+          ? // @ts-ignore
+            parseInt(moveXSize / cellWidth.value + 1)
+          : // @ts-ignore
+            parseInt(moveXSize / cellWidth.value)
 
       const addSizey =
         moveYSize % cellHeight.value > (cellHeight.value / 4) * 1
-          ? parseInt(moveYSize / cellHeight.value + 1)
-          : parseInt(moveYSize / cellHeight.value)
+          ? // @ts-ignore
+            parseInt(moveYSize / cellHeight.value + 1)
+          : // @ts-ignore
+            parseInt(moveYSize / cellHeight.value)
 
       const nowX = Math.max(infoBox.value.oldSizeX + addSizex, 1)
       const nowY = Math.max(infoBox.value.oldSizeY + addSizey, 1)
@@ -793,7 +827,7 @@ function startMove(e, item, index) {
   window.addEventListener('mouseup', itemMouseUp)
 }
 
-function nowItemStyle(item, index) {
+function nowItemStyle(item: Item) {
   return {
     width: cellWidth.value * item.sizex - baseMarginLeft.value + 'px',
     height: cellHeight.value * item.sizey - baseMarginTop.value + 'px',
@@ -804,13 +838,18 @@ function nowItemStyle(item, index) {
 
 function getList() {
   let returnList = _.sortBy(_.cloneDeep(canvasComponentData.value), 'y')
+  // @ts-ignore
   let finalList = []
+  // @ts-ignore
   _.forEach(returnList, function (item, index) {
     if (_.isEmpty(item)) return
+    // @ts-ignore
     delete item['_dragId']
+    // @ts-ignore
     delete item['show']
     finalList.push(item)
   })
+  // @ts-ignore
   return finalList
 }
 
@@ -821,7 +860,7 @@ function getMaxCell() {
 function getRenderState() {
   return moveAnimate.value
 }
-
+// @ts-ignore
 function afterInitOk(func) {
   let timeId = setInterval(() => {
     if (moveAnimate.value) {
@@ -831,17 +870,17 @@ function afterInitOk(func) {
   }, 100)
 }
 
-function addItemBox(item) {
+function addItemBox(item: Item) {
   canvasComponentData.value.push(item)
   nextTick(() => {
     addItem(item, canvasComponentData.value.length - 1)
   })
 }
-
+// @ts-ignore
 function endMove(e) {
   // do endMove
 }
-
+// @ts-ignore
 function moving(e) {
   // do moving
 }
@@ -856,7 +895,10 @@ defineExpose({
   nowItemStyle,
   startMove,
   containerMouseDown,
-  changeToCoord
+  changeToCoord,
+  removeItem,
+  findClosetCoords,
+  makeCoordinate
 })
 </script>
 
@@ -874,13 +916,14 @@ defineExpose({
         :class="{
           item: true,
           moveAnimation: moveAnimate,
+          // @ts-ignore
           movingItem: item.isPlayer,
           canNotDrag: !draggable
         }"
         @mousedown="startMove($event, item, index)"
         :ref="'item' + index"
         :key="'item' + index"
-        :style="nowItemStyle(item, index)"
+        :style="nowItemStyle(item)"
       >
         <slot :name="'slot' + index">{{ item }}</slot>
         <span

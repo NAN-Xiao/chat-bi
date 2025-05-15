@@ -12,21 +12,24 @@ const componentData = [
     x: 1,
     y: 1,
     sizex: 2,
-    sizey: 2
+    sizey: 2,
+    _dragId:0
   },
   {
     id: 10,
     x: 2,
     y: 1,
     sizex: 2,
-    sizey: 2
+    sizey: 2,
+    _dragId:1
   },
   {
     id: 7,
     x: 1,
     y: 2,
     sizex: 2,
-    sizey: 3
+    sizey: 3,
+    _dragId:2
   }
 ]
 
@@ -40,6 +43,7 @@ onMounted(() => {
 
   nextTick(() => {
     if (cyGridster.value) {
+      // @ts-ignore
       cyGridster.value.init()
     }
   })
