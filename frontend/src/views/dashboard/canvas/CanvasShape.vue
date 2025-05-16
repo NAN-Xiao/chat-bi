@@ -20,22 +20,6 @@ const props = defineProps({
         type: Boolean,
         required: true
     },
-    baseWidth: {
-        type: Number,
-        default: 100
-    },
-    baseHeight: {
-        type: Number,
-        default: 50
-    },
-    baseMarginLeft: {
-        type: Number,
-        default: 20
-    },
-    baseMarginTop: {
-        type: Number,
-        default: 20
-    },
     startMove: {
         type: Function,
         default: () => {
@@ -51,11 +35,7 @@ const props = defineProps({
 })
 
 const {
-  baseWidth,
-  baseHeight,
-  baseMarginLeft,
-  baseMarginTop,
-  draggable,
+  draggable
 } = toRefs(props)
 
 const cursors = {
@@ -116,7 +96,7 @@ const pointList = ['lt', 't', 'rt', 'r', 'rb', 'b', 'lb', 'l']
         canNotDrag: !draggable
     }" @mousedown="startMove($event, configItem, itemIndex)" ref="shapeRef">
         <slot></slot>
-        <div v-for="point in pointList" :key="point" class="resizeHandle" :style="getPointStyle(point, configItem)"
+        <div v-for="point in pointList" :key="point" class="resizeHandle" :style="getPointStyle(point)"
             @mousedown="startResize($event, point, configItem, itemIndex)"></div>
     </div>
 </template>

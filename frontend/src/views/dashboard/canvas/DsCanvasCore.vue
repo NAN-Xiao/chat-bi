@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, nextTick, toRefs, type PropType } from 'vue'
+import {ref, nextTick, toRefs, type PropType} from 'vue'
 import _ from 'lodash'
-import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
-import { type CanvasCoord, type CanvasItem } from '../utils/CanvasUtils'
+import {dashboardStoreWithOut} from '@/stores/dashboard/dashboard'
+import {type CanvasCoord, type CanvasItem} from '../utils/CanvasUtils'
 import CanvasShape from './CanvasShape.vue'
+
 const dashboardStore = dashboardStoreWithOut()
 
 
@@ -105,6 +106,7 @@ let itemMaxX = 0
 let itemMaxY = 0
 
 const moveTime = 80
+
 function debounce(func: () => void, time: number) {
   if (!isOverlay) {
     isOverlay = true
@@ -145,7 +147,7 @@ function resetPositionBox() {
   for (let i = 0; i < rows; i++) {
     const row = []
     for (let j = 0; j < maxCell.value; j++) {
-      row.push({ el: false })
+      row.push({el: false})
     }
     positionBox.value.push(row)
   }
@@ -170,6 +172,7 @@ function addItemToPositionBox(item: CanvasItem) {
     }
   }
 }
+
 function fillPositionBox(maxY: number) {
   const pb = positionBox.value
   maxY += 2
@@ -177,7 +180,7 @@ function fillPositionBox(maxY: number) {
     if (pb[j] === undefined) {
       const row = []
       for (let i = 0; i < itemMaxX; i++) {
-        row.push({ el: false })
+        row.push({el: false})
       }
       pb.push(row)
     }
@@ -366,7 +369,7 @@ function addItem(item: CanvasItem, index: any) {
     index = canvasComponentData.value.length
   }
   item._dragId = index
-  checkItemPosition(item, { x: item.x, y: item.y })
+  checkItemPosition(item, {x: item.x, y: item.y})
   emptyTargetCell(item)
   addItemToPositionBox(item)
   const canGoUpRows = canItemGoUp(item)
@@ -403,16 +406,16 @@ function findClosetCoords(item: CanvasItem, tCoord: CanvasCoord) {
     }
     // Determine whether a collision has occurred
     if (
-      tCoord.x2 < nowCoord.x1 ||
-      tCoord.x1 > nowCoord.x2 ||
-      tCoord.y2 < nowCoord.y1 ||
-      tCoord.y1 > nowCoord.y2
+        tCoord.x2 < nowCoord.x1 ||
+        tCoord.x1 > nowCoord.x2 ||
+        tCoord.y2 < nowCoord.y1 ||
+        tCoord.y1 > nowCoord.y2
     ) {
       return
     } else {
       collisionsItem.push({
         centerDistance: Math.sqrt(
-          Math.pow(tCoord.c1 - nowCoord.c1, 2) + Math.pow(tCoord.c2 - nowCoord.c2, 2)
+            Math.pow(tCoord.c1 - nowCoord.c1, 2) + Math.pow(tCoord.c2 - nowCoord.c2, 2)
         ),
         coord: nowCoord
       })
@@ -432,6 +435,7 @@ function findClosetCoords(item: CanvasItem, tCoord: CanvasCoord) {
     isOverlay = false
   }, 200)
 }
+
 /**
  * Generate coordinates
  * @param {CanvasItem} item: The item object to generate coordinates for
@@ -481,6 +485,7 @@ function changeItemCoord(item: CanvasItem) {
     coordinates.value.splice(index, 1, coord)
   }
 }
+
 /**
  * Clear the elements at the target location
  * @param {any} item Target item
@@ -506,9 +511,9 @@ function canItemGoUp(item: CanvasItem) {
   for (let row = item.y - 2; row >= 0; row--) {
     for (let cell = item.x - 1; cell < item.x - 1 + item.sizeX; cell++) {
       if (
-        positionBox.value[row] &&
-        positionBox.value[row][cell] &&
-        positionBox.value[row][cell].el
+          positionBox.value[row] &&
+          positionBox.value[row][cell] &&
+          positionBox.value[row][cell].el
       ) {
         return upperRows
       }
@@ -627,6 +632,7 @@ function findBelowItems(item: CanvasItem) {
 
   return _.sortBy(Object.values(belowItems), 'y')
 }
+
 // @ts-ignore
 function startResize(e: MouseEvent, point: string, item: CanvasItem, index: number) {
   if (!resizable.value) return
@@ -640,6 +646,8 @@ function startResize(e: MouseEvent, point: string, item: CanvasItem, index: numb
   // Get the parent element of. tem
   infoBox.value.resizeItem = item
   infoBox.value.resizeItemIndex = index
+  // Drag and drop coordinate points
+  infoBox.value.point = point
 }
 
 function containerMouseDown(e: MouseEvent) {
@@ -663,9 +671,9 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   let className = target.className || ''
 
   if (
-    !className.includes('dragHandle') &&
-    !className.includes('item') &&
-    !className.includes('resizeHandle')
+      !className.includes('dragHandle') &&
+      !className.includes('item') &&
+      !className.includes('resizeHandle')
   ) {
     return
   }
@@ -716,9 +724,9 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       const moveYSize = e.pageY - infoBox.value.startY
 
       const addSizeX =
-        moveXSize % cellWidth.value > cellWidth.value / 4
-          ? parseInt(String(moveXSize / cellWidth.value + 1))
-          : parseInt(String(moveXSize / cellWidth.value))
+          moveXSize % cellWidth.value > cellWidth.value / 4
+              ? parseInt(String(moveXSize / cellWidth.value + 1))
+              : parseInt(String(moveXSize / cellWidth.value))
 
       const addSizeY =
         moveYSize % cellHeight.value > cellHeight.value / 4
@@ -729,7 +737,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       const nowY = Math.max(infoBox.value.oldSizeY + addSizeY, 1)
 
       debounce(() => {
-        resizePlayer(resizeItem, { sizeX: nowX, sizeY: nowY })
+        resizePlayer(resizeItem, {sizeX: nowX, sizeY: nowY})
       }, 10)
 
       const nowWidth = Math.max(infoBox.value.originWidth + moveXSize, baseWidth.value)
@@ -751,26 +759,26 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       // Adjust the accuracy of moving coordinate changes
       const newX = Math.max(
-        Math.floor(
-          (nowCloneItemX + infoBox.value.cloneItem.offsetWidth / 24 - baseMarginLeft.value) /
-          cellWidth.value +
+          Math.floor(
+              (nowCloneItemX + infoBox.value.cloneItem.offsetWidth / 24 - baseMarginLeft.value) /
+              cellWidth.value +
+              1
+          ),
           1
-        ),
-        1
       )
       // Adjust the accuracy of moving coordinate changes
       const newY = Math.max(
-        Math.floor(
-          (nowCloneItemY + infoBox.value.cloneItem.offsetHeight / 24 - baseMarginTop.value) /
-          cellHeight.value +
+          Math.floor(
+              (nowCloneItemY + infoBox.value.cloneItem.offsetHeight / 24 - baseMarginTop.value) /
+              cellHeight.value +
+              1
+          ),
           1
-        ),
-        1
       )
 
       debounce(() => {
         if (newX !== infoBox.value.oldX || newY !== infoBox.value.oldY) {
-          movePlayer(moveItem, { x: newX, y: newY })
+          movePlayer(moveItem, {x: newX, y: newY})
           infoBox.value.oldX = newX
           infoBox.value.oldY = newY
         }
@@ -840,6 +848,7 @@ function getMaxCell() {
 function getRenderState() {
   return moveAnimate.value
 }
+
 // @ts-ignore
 function afterInitOk(func) {
   let timeId = setInterval(() => {
@@ -884,13 +893,13 @@ defineExpose({
 
 <template>
   <div class="dragAndResize" ref="containerRef" @mousedown="containerMouseDown($event)" @mouseup="endMove()"
-    @mousemove="moving()">
+       @mousemove="moving()">
     <div v-if="renderOk">
-      <CanvasShape v-for="(item, index) in canvasComponentData" :config-item="item" :draggable="draggable" :item-index="index"
-        :move-animate="moveAnimate" :start-move="startMove" :start-resize="startResize" :key="'item' + index"
-        :base-height="baseHeight" :base-width="baseWidth" :base-margin-left="baseMarginLeft" :base-margin-top="baseMarginTop"
-        :style="nowItemStyle(item)">
-<!--        {{ item }}-->
+      <CanvasShape v-for="(item, index) in canvasComponentData" :config-item="item" :draggable="draggable"
+                   :item-index="index"
+                   :move-animate="moveAnimate" :start-move="startMove" :start-resize="startResize" :key="'item' + index"
+                   :style="nowItemStyle(item)">
+        <!--        {{ item }}-->
       </CanvasShape>
     </div>
   </div>
