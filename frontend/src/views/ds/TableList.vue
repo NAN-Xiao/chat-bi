@@ -6,21 +6,21 @@
         {{ props.dsName }}
       </div>
     </el-row>
-    <el-row class="container">
+    <el-row class="container" :gutter="20">
       <el-col :span="4">
         Tables
-        <el-input v-model="searchValue" />
+        <el-input v-model="searchValue" placeholder="Search" />
         <div>
           <div v-for="item in tableList" class="table-item" @click="clickTable(item)">{{ item.table_name }}</div>
         </div>
       </el-col>
       <el-col :span="20">
-        <div v-if="fieldList.length === 0">No data</div>
+        <div v-if="fieldList.length === 0">No data, select a table from left</div>
         <div v-else>
           <div style="display: flex;justify-content: space-between;align-items: center;">
             <div style="display: flex;justify-content: start;align-items: center;">
               <span>{{ currentTable.table_name }}</span>
-              <span>&nbsp;|&nbsp;</span>
+              <span>&nbsp;|&nbsp;Comment:&nbsp;</span>
               <span>
                 <el-input v-model="currentTable.custom_comment" />
               </span>
@@ -148,7 +148,7 @@ onMounted(() => {
   .container{
     height: 100%;
     .table-item{
-      margin: 10px;
+      margin: 10px 0;
     }
   }
 }
