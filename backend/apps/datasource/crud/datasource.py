@@ -50,6 +50,11 @@ def create_ds(session: SessionDep, create_ds: CreateDatasource):
     return ds
 
 
+def chooseTables(session: SessionDep, id: int, tables: List[CoreTable]):
+    ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+    sync_table(session, ds, tables)
+
+
 def update_ds(session: SessionDep, ds: CoreDatasource):
     ds.id = int(ds.id)
     status = check_status(session, ds)

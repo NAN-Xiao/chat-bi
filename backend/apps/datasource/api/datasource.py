@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
-    execSql, update_table_and_fields, getTablesByDs
+    execSql, update_table_and_fields, getTablesByDs, chooseTables
 from common.core.deps import SessionDep
-from ..models.datasource import CoreDatasource, CreateDatasource, EditObj
+from ..models.datasource import CoreDatasource, CreateDatasource, EditObj, CoreTable
 from ..crud.table import get_tables_by_ds_id
 from ..crud.field import get_fields_by_table_id
+from typing import List
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 
@@ -22,6 +23,11 @@ async def check(session: SessionDep, ds: CoreDatasource):
 @router.post("/add", response_model=CoreDatasource)
 async def add(session: SessionDep, ds: CreateDatasource):
     return create_ds(session, ds)
+
+
+@router.post("/chooseTables/{id}")
+async def choose_tables(session: SessionDep, id: int, tables: List[CoreTable]):
+    chooseTables(session, id, tables)
 
 
 @router.post("/update", response_model=CoreDatasource)
@@ -54,12 +60,12 @@ async def exec_sql(session: SessionDep, id: int, sql: str):
     return execSql(session, id, sql)
 
 
-@router.get("/tableList/{id}")
+@router.post("/tableList/{id}")
 async def table_list(session: SessionDep, id: int):
     return get_tables_by_ds_id(session, id)
 
 
-@router.get("/fieldList/{id}")
+@router.post("/fieldList/{id}")
 async def field_list(session: SessionDep, id: int):
     return get_fields_by_table_id(session, id)
 

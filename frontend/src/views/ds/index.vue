@@ -36,6 +36,7 @@
         <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
         <div class="connection-actions">
           <el-button class="action-btn" circle @click="getTables(ds.id, ds.name)" :icon="List" />
+          <el-button class="action-btn" circle @click="editTables(ds)" :icon="CreditCard" />
           <el-button type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
           <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
         </div>
@@ -48,7 +49,7 @@
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
-import { Search, List } from '@element-plus/icons-vue'
+import { Search, List, CreditCard } from '@element-plus/icons-vue'
 import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'
 import { datasourceApi } from '@/api/datasource'
@@ -95,6 +96,10 @@ const list = () => {
 
 const editDs = (item: any) => {
   dsForm.value.open(item)
+}
+
+const editTables = (item: any) => {
+  dsForm.value.open(item, true)
 }
 
 const deleteDs = (item: any) => {

@@ -61,7 +61,7 @@
     <div style="display: flex;justify-content: flex-end;margin-top: 20px;">
       <el-button @click="close">Cancel</el-button>
       <el-button v-show="!isCreate && !isEditTable" @click="check">Test Connect</el-button>
-      <el-button v-show="active === 1 && isCreate" type="primary" @click="next">Next</el-button>
+      <el-button v-show="active === 1 && isCreate" type="primary" @click="next(dsFormRef)">Next</el-button>
       <el-button v-show="active === 2 && isCreate" @click="preview">Preview</el-button>
       <el-button v-show="active === 2 || !isCreate" type="primary" @click="save(dsFormRef)">Save</el-button>
     </div>
@@ -113,46 +113,58 @@ const close = () => {
   isCreate.value = true
   active.value = 1
   isEditTable.value = false
+  checkList.value = []
+  tableList.value = []
 }
 
 const open = (item: any, editTable: boolean = false) => {
-  if (editTable) {
-    active.value = 2
-    isEditTable.value = true
+  isEditTable.value = false
+  if (item) {
     isCreate.value = false
-    // request tables
-  } else {
-    isEditTable.value = false
-    if (item) {
+    form.value.id = item.id
+    form.value.name = item.name
+    form.value.description = item.description
+    form.value.type = item.type
+    form.value.configuration = item.configuration
+    if(item.configuration) {
+      const configuration = JSON.parse(decrypted(item.configuration))
+      config.value.host = configuration.host
+      config.value.port = configuration.port
+      config.value.username = configuration.username
+      config.value.password = configuration.password
+      config.value.database = configuration.database
+    }
+
+    if (editTable) {
+      active.value = 2
+      isEditTable.value = true
       isCreate.value = false
-      form.value.id = item.id
-      form.value.name = item.name
-      form.value.description = item.description
-      form.value.type = item.type
-      if(item.configuration) {
-        const configuration = JSON.parse(decrypted(item.configuration))
-        config.value.host = configuration.host
-        config.value.port = configuration.port
-        config.value.username = configuration.username
-        config.value.password = configuration.password
-        config.value.database = configuration.database
-      }
-    } else {
-      isCreate.value = true
-      form.value = {
-        name:'',
-        description:'',
-        type:'mysql',
-        configuration: ''
-      }
-      config.value = {
-        driver:'',
-        host:'',
-        port:0,
-        username:'',
-        password:'',
-        database:'',
-      }
+      // request tables and check tables
+      datasourceApi.tableList(item.id).then((res) => {
+        checkList.value = res.map((ele:any) => {return ele.table_name})
+        datasourceApi.getTablesByConf(form.value).then((res) => {
+          tableList.value = res
+        })
+      })
+    }
+  } else {
+    isCreate.value = true
+    isEditTable.value = false
+    checkList.value = []
+    tableList.value = []
+    form.value = {
+      name:'',
+      description:'',
+      type:'mysql',
+      configuration: ''
+    }
+    config.value = {
+      driver:'',
+      host:'',
+      port:0,
+      username:'',
+      password:'',
+      database:'',
     }
   }
   dialogVisible.value = true
@@ -162,6 +174,10 @@ const save = async(formEl: FormInstance | undefined) => {
   if(!formEl) return
   await formEl.validate((valid) => {
     if (valid) {
+      const list = tableList.value
+          .filter((ele: any) => {return checkList.value.includes(ele.tableName)})
+          .map((ele: any) => {return {"table_name": ele.tableName, "table_comment": ele.tableComment}})
+
       form.value.configuration = encrypted(JSON.stringify({
         host:config.value.host,
         port:config.value.port,
@@ -179,9 +195,12 @@ const save = async(formEl: FormInstance | undefined) => {
           })
         } else {
           // save table and field
+          datasourceApi.chooseTables(form.value.id, list).then(() => {
+            close()
+          })
         }
       } else {
-        form.value.tables = [{"table_name":"core_dataset_table"},{"table_name":"pre_user"}]// todo test
+        form.value.tables = list
         datasourceApi.add(form.value).then((res: any) => {
           console.log(res)
           close()
@@ -215,15 +234,20 @@ const check = () => {
   })
 }
 
-const next = () => {
-  // check status if success do next
-  buildConf()
-  datasourceApi.check(form.value).then((res: boolean) => {
-    if(res) {
-      active.value++
-      // request tables
-      datasourceApi.getTablesByConf(form.value).then((res) => {
-        tableList.value = res
+const next = async(formEl: FormInstance | undefined) => {
+  if(!formEl) return
+  await formEl.validate((valid) => {
+    if (valid) {
+      // check status if success do next
+      buildConf()
+      datasourceApi.check(form.value).then((res: boolean) => {
+        if(res) {
+          active.value++
+          // request tables
+          datasourceApi.getTablesByConf(form.value).then((res) => {
+            tableList.value = res
+          })
+        }
       })
     }
   })
