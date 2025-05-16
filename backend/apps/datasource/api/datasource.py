@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
-    execSql, update_table_and_fields, getTablesByDs, chooseTables
+    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview
 from common.core.deps import SessionDep
 from ..models.datasource import CoreDatasource, CreateDatasource, EditObj, CoreTable
 from ..crud.table import get_tables_by_ds_id
@@ -73,3 +73,8 @@ async def field_list(session: SessionDep, id: int):
 @router.post("/editLocalComment")
 async def edit_local(session: SessionDep, data: EditObj):
     update_table_and_fields(session, data)
+
+
+@router.post("/previewData/{id}")
+async def edit_local(session: SessionDep, id: int, data: EditObj):
+    return preview(session, id, data)

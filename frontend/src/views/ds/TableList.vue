@@ -5,145 +5,132 @@
         <el-button text :icon="ArrowLeft" @click="back()" />
         {{ props.dsName }}
       </div>
-      <el-button type="primary" @click="save()">
-        Save
-      </el-button>
     </el-row>
-    <el-row class="data">
-      <el-table-v2
-        :columns="tableColumns"
-        :data="tableData"
-        :width="1000"
-        :height="800"
-        fixed
-      />
+    <el-row class="container">
+      <el-col :span="4">
+        Tables
+        <el-input v-model="searchValue" />
+        <div>
+          <div v-for="item in tableList" class="table-item" @click="clickTable(item)">{{ item.table_name }}</div>
+        </div>
+      </el-col>
+      <el-col :span="20">
+        <div v-if="fieldList.length === 0">No data</div>
+        <div v-else>
+          <div style="display: flex;justify-content: space-between;align-items: center;">
+            <div style="display: flex;justify-content: start;align-items: center;">
+              <span>{{ currentTable.table_name }}</span>
+              <span>&nbsp;|&nbsp;</span>
+              <span>
+                <el-input v-model="currentTable.custom_comment" />
+              </span>
+            </div>
+            <el-button type="primary" @click="save()">
+              Save
+            </el-button>
+          </div>
+          <el-tabs v-model="activeName" class="demo-tabs" @tab-click="handleClick">
+            <el-tab-pane label="Table Schema" name="schema">
+              <el-table :data="fieldList" style="width: 100%">
+                <el-table-column prop="field_name" label="Name" width="180" />
+                <el-table-column prop="field_type" label="Type" width="180" />
+                <el-table-column prop="field_comment" label="Comment" />
+                <el-table-column label="Custom Comment">
+                  <template #default="scope">
+                    <div style="display: flex; align-items: center">
+                      <el-input v-model="scope.row.custom_comment" />
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="Status" width="180">
+                  <template #default="scope">
+                    <div style="display: flex; align-items: center">
+                      <el-switch
+                        v-model="scope.row.checked"
+                        size="small"
+                      />
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="Preview" name="preview">
+              <div>Preview 100 items</div>
+              <el-table :data="previewData.data" style="width: 100%;height: 600px;">
+                <el-table-column v-for="c in previewData.fields" :prop="c" :label="c"/>
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+      </el-col>
     </el-row>
-    <el-drawer 
-    v-model="drawer" 
-    direction="btt" 
-    :destroy-on-close="true"
-    :close-on-click-modal="false"
-    size="80%"
-  >
-    <template #header>
-      <div>Detail</div>
-    </template>
-    <template #default>
-      <el-row :gutter="20">
-        <el-table-v2
-          :columns="fieldColumns"
-          :data="fieldData"
-          :width="1000"
-          :height="800"
-          fixed
-        />
-      </el-row>
-    </template>
-    <template #footer>
-      <div style="flex: auto">
-        <el-button @click="cancelClick">Cancel</el-button>
-        <el-button type="primary" @click="confirmClick">Confirm</el-button>
-      </div>
-    </template>
-  </el-drawer>
   </div>
 </template>
 
 <script lang="tsx" setup>
 import { ref } from 'vue'
 import { datasourceApi } from '@/api/datasource'
-import { ElButton } from 'element-plus'
-import { h } from 'vue'
 import { onMounted } from 'vue'
 import { ArrowLeft } from '@element-plus/icons-vue'
+import type { TabsPaneContext } from 'element-plus'
 
 const props = defineProps({
   dsId: { type: [Number], required: true },
   dsName: { type: [String], required: true }
 })
 
-const drawer = ref<boolean>(false)
-const tableColumns = ref<any>([
-  {
-    key:"tableName",
-    dataKey:"tableName",
-    title: 'Table Name',
-    width: 150,
-  },
-  {
-    key:"tableComment",
-    dataKey:"tableComment",
-    title: 'Table Comment',
-    width: 300,
-  },
-  {
-    key: 'operations',
-    title: 'Operations',
-    cellRenderer: ({ rowData }: { rowData: any }) => {
-      return h(ElButton,{
-        onClick: () => showFields(rowData.tableName)
-      },"Show Fields")
-    },
-    width: 150,
-    align: 'center',
-  }
-])
-const tableData = ref<any>([])
-const fieldColumns = ref<any>([
-  {
-    key:"fieldName",
-    dataKey:"fieldName",
-    title: 'Field Name',
-    width: 150,
-  },
-  {
-    key:"fieldType",
-    dataKey:"fieldType",
-    title: 'Field Type',
-    width: 150,
-  },
-  {
-    key:"fieldComment",
-    dataKey:"fieldComment",
-    title: 'Field Comment',
-    width: 300,
-  }
-])
-const fieldData = ref<any>([])
 const dsId = ref<Number>(0)
+const searchValue = ref('')
+const tableList = ref<any>([])
+const currentTable = ref<any>({})
+const fieldList = ref<any>([])
+const previewData = ref<any>({})
+
+const activeName = ref('schema')
+
+const buildData = () => {
+  return {"table": currentTable.value, "fields": fieldList.value}
+}
 
 const back = () => {
   history.back()
 }
 
 const save = () => {
-
-}
-
-const showFields = (tableName: string) =>{
-  drawer.value = true
-  datasourceApi.getFields(dsId.value, tableName).then((res) => {
-    fieldData.value = res
+  datasourceApi.edit(buildData()).then(() => {
+    ElMessage({
+      message: 'Save success',
+      type: 'success',
+      showClose: true
+    })
   })
 }
 
-const cancelClick = () => {
-  drawer.value = false
+const clickTable = (table: any) => {
+  currentTable.value = table
+  datasourceApi.fieldList(table.id).then((res) => {
+    fieldList.value = res
+    datasourceApi.previewData(dsId.value, buildData()).then((res) => {
+      previewData.value = res
+    })
+  })
 }
 
-const confirmClick = () => {
-  // save something
-  cancelClick()
+const handleClick = (tab: TabsPaneContext) => {
+  if(tab.paneName === 'preview') {
+    datasourceApi.previewData(dsId.value, buildData()).then((res) => {
+      previewData.value = res
+    })
+  }
 }
 
 onMounted(() => {
   dsId.value = props.dsId
-  datasourceApi.getTables(props.dsId).then((res) => {
-    tableData.value = res
+  fieldList.value = []
+  datasourceApi.tableList(props.dsId).then((res) => {
+    tableList.value = res
   })
 })
-
-defineExpose({ open })
 </script>
 
 <style lang="less" scoped>
@@ -157,6 +144,12 @@ defineExpose({ open })
   .title{
     display: flex;
     align-items: center;
+  }
+  .container{
+    height: 100%;
+    .table-item{
+      margin: 10px;
+    }
   }
 }
 </style>
