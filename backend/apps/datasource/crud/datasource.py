@@ -167,3 +167,11 @@ def update_table_and_fields(session: SessionDep, data: EditObj):
     update_table(session, data.table)
     for field in data.fields:
         update_field(session, field)
+
+
+def preview(session: SessionDep, id: int, data: EditObj):
+    ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+    sql: str = ""
+    if ds.type == "mysql":
+        sql = f"""SELECT {", ".join([f.field_name for f in data.fields if f.checked])} FROM {data.table.table_name} LIMIT 100"""
+    return exec_sql(ds, sql)

@@ -14,5 +14,8 @@ def get_tables_by_ds_id(session: SessionDep, id: int):
 
 
 def update_table(session: SessionDep, item: CoreTable):
-    session.add(item)
+    record = session.query(CoreTable).filter(CoreTable.id == item.id).first()
+    record.checked = item.checked
+    record.custom_comment = item.custom_comment
+    session.add(record)
     session.commit()
