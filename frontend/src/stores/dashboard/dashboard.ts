@@ -1,19 +1,25 @@
-import { defineStore } from 'pinia'
+import {defineStore} from 'pinia'
+import {store} from "@/stores";
 
-export const useDashboardStore = defineStore('dashboardStore', {
-  state: () => {
-    return {
-      curComponent: null
+export const dashboardStore = defineStore('dashboard', {
+    state: () => {
+        return {
+            curComponent: null
+        }
+    },
+    getters: {
+        getCurComponent(): any {
+            return this.curComponent
+        }
+    },
+    actions: {
+        setCurComponent(value: any) {
+            this.curComponent = value
+        }
     }
-  },
-  getters: {
-    getCurComponent(): any {
-      return this.curComponent
-    }
-  },
-  actions: {
-    setCurComponent(value: any) {
-      this.curComponent = value
-    }
-  }
 })
+
+
+export const dashboardStoreWithOut = () => {
+    return dashboardStore(store)
+}

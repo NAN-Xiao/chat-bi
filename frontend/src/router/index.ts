@@ -5,6 +5,7 @@ import login from '@/views/login/index.vue'
 import chat from '@/views/chat/index.vue'
 import ds from '@/views/ds/index.vue'
 import dashboard from '@/views/dashboard/index.vue'
+import DashboardEditor from '@/views/dashboard/DashboardEditor.vue'
 import setting from '@/views/setting/index.vue'
 import { watchRouter } from './watch'
 const router = createRouter({
@@ -24,7 +25,7 @@ const router = createRouter({
           path: 'index',
           name: 'chat',
           component: chat,
-          meta: { title: 'Data Q&A', icon: 'chat'}
+          meta: { title: 'Data Q&A', icon: 'chat' }
         }
       ]
     },
@@ -55,7 +56,7 @@ const router = createRouter({
         {
           path: 'index',
           name: 'dashboard',
-          component: dashboard,
+          component: DashboardEditor,
           meta: { title: 'Dashboard', icon: 'dashboard' }
         }
       ]
