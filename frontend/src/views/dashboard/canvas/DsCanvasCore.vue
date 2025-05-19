@@ -270,6 +270,10 @@ function resizePlayer(item: CanvasItem, newSize: any) {
     fillPositionBox(item.y + item.sizeY)
   }
 
+  // Move the current item
+  item.x = newSize.x
+  item.y = newSize.y
+
   emptyTargetCell(item)
   addItemToPositionBox(item)
   changeItemCoord(item)
@@ -659,6 +663,68 @@ function containerMouseDown(e: MouseEvent) {
   infoBox.value.startY = e.pageY
 }
 
+function getNowPosition(addSizeX: number, addSizeY: number) {
+  const point = infoBox.value.point
+  const hasT = /t/.test(point)
+  const hasB = /b/.test(point)
+  const hasL = /l/.test(point)
+  const hasR = /r/.test(point)
+  // Determine the resizing direction based on the coordinate points
+  let nowSizeX = infoBox.value.oldSizeX
+  let nowSizeY = infoBox.value.oldSizeY
+  let nowX = infoBox.value.oldX
+  let nowY = infoBox.value.oldY
+  if (hasR) {
+    nowSizeX = Math.max(nowSizeX + addSizeX, 1)
+  }
+  if (hasB) {
+    nowSizeY = Math.max(nowSizeY + addSizeY, 1)
+  }
+
+  if (hasL) {
+    nowSizeX = Math.max(nowSizeX - addSizeX, 1)
+    nowX = Math.max(nowX + addSizeX, 1)
+  }
+
+  if (hasT) {
+    nowSizeY = Math.max(nowSizeY - addSizeY, 1)
+    nowY = Math.max(nowY + addSizeY, 1)
+  }
+  return {nowSizeX, nowSizeY, nowX, nowY}
+}
+
+
+function getNowClonePosition(moveXSize: number, moveYSize: number) {
+  const point = infoBox.value.point
+  const hasT = /t/.test(point)
+  const hasB = /b/.test(point)
+  const hasL = /l/.test(point)
+  const hasR = /r/.test(point)
+  // Determine the resizing direction based on the coordinate points
+  let nowOriginWidth = infoBox.value.originWidth
+  let nowOriginHeight = infoBox.value.originHeight
+  let nowOriginX = infoBox.value.originX
+  let nowOriginY = infoBox.value.originY
+  if (hasR) {
+    nowOriginWidth = Math.max(nowOriginWidth + moveXSize, baseWidth.value)
+  }
+  if (hasB) {
+    nowOriginHeight = Math.max(nowOriginHeight + moveYSize, baseHeight.value)
+  }
+
+  if (hasL) {
+    nowOriginWidth = Math.max(nowOriginWidth - moveXSize, baseWidth.value)
+    nowOriginX = Math.max(nowOriginX + moveXSize, 1)
+  }
+
+  if (hasT) {
+    nowOriginHeight = Math.max(nowOriginHeight - moveYSize, baseHeight.value)
+    nowOriginY = Math.max(nowOriginY + moveYSize, 1)
+  }
+  return {nowOriginWidth, nowOriginHeight, nowOriginX, nowOriginY}
+}
+
+
 function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   if (!draggable.value) return
   dashboardStore.setCurComponent(item)
@@ -729,22 +795,21 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
               : parseInt(String(moveXSize / cellWidth.value))
 
       const addSizeY =
-        moveYSize % cellHeight.value > cellHeight.value / 4
-          ? parseInt(String(moveYSize / cellHeight.value + 1))
-          : parseInt(String(moveYSize / cellHeight.value))
-
-      const nowX = Math.max(infoBox.value.oldSizeX + addSizeX, 1)
-      const nowY = Math.max(infoBox.value.oldSizeY + addSizeY, 1)
+          moveYSize % cellHeight.value > cellHeight.value / 4
+              ? parseInt(String(moveYSize / cellHeight.value + 1))
+              : parseInt(String(moveYSize / cellHeight.value))
+      // 根据坐标点 判断resize方向
+      const {nowSizeX, nowSizeY, nowX, nowY} = getNowPosition(addSizeX, addSizeY)
 
       debounce(() => {
-        resizePlayer(resizeItem, {sizeX: nowX, sizeY: nowY})
+        resizePlayer(resizeItem, {sizeX: nowSizeX, sizeY: nowSizeY, x: nowX, y: nowY})
       }, 10)
 
-      const nowWidth = Math.max(infoBox.value.originWidth + moveXSize, baseWidth.value)
-      const nowHeight = Math.max(infoBox.value.originHeight + moveYSize, baseHeight.value)
-
-      infoBox.value.cloneItem.style.width = `${nowWidth}px`
-      infoBox.value.cloneItem.style.height = `${nowHeight}px`
+      const {nowOriginWidth, nowOriginHeight, nowOriginX, nowOriginY} = getNowClonePosition(moveXSize, moveYSize)
+      infoBox.value.cloneItem.style.width = `${nowOriginWidth}px`
+      infoBox.value.cloneItem.style.height = `${nowOriginHeight}px`
+      infoBox.value.cloneItem.style.left = `${nowOriginX}px`
+      infoBox.value.cloneItem.style.top = `${nowOriginY}px`
     } else if (moveItem) {
       scrollScreen(e)
       if (!draggable.value) return
