@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, UploadFile, HTTPException
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     execSql, update_table_and_fields, getTablesByDs, chooseTables, preview
 from common.core.deps import SessionDep
@@ -6,6 +6,9 @@ from ..models.datasource import CoreDatasource, CreateDatasource, EditObj, CoreT
 from ..crud.table import get_tables_by_ds_id
 from ..crud.field import get_fields_by_table_id
 from typing import List
+import uuid
+import pandas as pd
+import hashlib
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 
@@ -80,7 +83,27 @@ async def edit_local(session: SessionDep, id: int, data: EditObj):
     return preview(session, id, data)
 
 
-@router.post("/uploadExcel/")
+@router.post("/uploadExcel")
 async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
+    ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
+    if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
+        raise HTTPException(400, "Only support .xlsx/.xls/.csv")
+
+    contents = await file.read()
+    df_sheets = pd.read_excel(contents, sheet_name=None)
+    # build columns and data to insert db
     # todo
-    pass
+    sheets = []
+    for sheet_name, df in df_sheets.items():
+        print("--------------------")
+        print(f"Sheet: {sheet_name}, {hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}")
+        sheets.append({"name": f"{sheet_name}",
+                       "uniqueName": f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"})
+        column_len = len(df.dtypes)
+        for i in range(column_len):
+            print(f"{df.columns[i]} , {df.dtypes[i]}")
+
+        for row in df.values:
+            print(row)
+
+    return {"filename": file.filename, "sheets": sheets}

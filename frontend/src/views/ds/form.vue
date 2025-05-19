@@ -29,28 +29,47 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="Host/Ip">
-          <el-input v-model="config.host" />
-        </el-form-item>
-        <el-form-item label="Port">
-          <el-input v-model="config.port" />
-        </el-form-item>
-        <el-form-item label="Username">
-          <el-input v-model="config.username" />
-        </el-form-item>
-        <el-form-item label="Password">
-          <el-input v-model="config.password" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="Database">
-          <el-input v-model="config.database" />
-        </el-form-item>
-        <el-form-item label="Extra JDBC String">
-          <el-input v-model="config.extraJdbc" />
-        </el-form-item>
-        <el-form-item label="Schema" v-if="form.type === 'sqlServer'">
-          <el-input v-model="config.dbSchema" />
-          <el-button link type="primary" :icon="Plus" v-if="false">Get Schema</el-button>
-        </el-form-item>
+        <div v-if="form.type === 'excel'">
+          <el-form-item label="File">
+            <el-upload
+              accept=".xls, .xlsx, .csv"
+              :headers="headers"
+              action="http://localhost:8000/api/v1/datasource/uploadExcel"
+              :before-upload="beforeUpload"
+            >
+              <el-button>Upload</el-button>
+              <template #tip>
+                <div class="el-upload__tip">
+                  Only support .xls, .xlsx, .csv, size less than 50MB.
+                </div>
+              </template>
+            </el-upload>
+          </el-form-item>
+        </div>
+        <div v-else>
+          <el-form-item label="Host/Ip">
+            <el-input v-model="config.host" />
+          </el-form-item>
+          <el-form-item label="Port">
+            <el-input v-model="config.port" />
+          </el-form-item>
+          <el-form-item label="Username">
+            <el-input v-model="config.username" />
+          </el-form-item>
+          <el-form-item label="Password">
+            <el-input v-model="config.password" type="password" show-password />
+          </el-form-item>
+          <el-form-item label="Database">
+            <el-input v-model="config.database" />
+          </el-form-item>
+          <el-form-item label="Extra JDBC String">
+            <el-input v-model="config.extraJdbc" />
+          </el-form-item>
+          <el-form-item label="Schema" v-if="form.type === 'sqlServer'">
+            <el-input v-model="config.dbSchema" />
+            <el-button link type="primary" :icon="Plus" v-if="false">Get Schema</el-button>
+          </el-form-item>
+        </div>
       </el-form>
     </div>
     <div v-show="active === 2" class="container">
@@ -67,7 +86,7 @@
     </div>
     <div style="display: flex;justify-content: flex-end;margin-top: 20px;">
       <el-button @click="close">Cancel</el-button>
-      <el-button v-show="!isCreate && !isEditTable" @click="check">Test Connect</el-button>
+      <el-button v-show="!isCreate && !isEditTable && form.type !== 'excel'" @click="check">Test Connect</el-button>
       <el-button v-show="active === 1 && isCreate" type="primary" @click="next(dsFormRef)">Next</el-button>
       <el-button v-show="active === 2 && isCreate" @click="preview">Preview</el-button>
       <el-button v-show="active === 2 || !isCreate" type="primary" @click="save(dsFormRef)">Save</el-button>
@@ -81,7 +100,9 @@ import { encrypted, decrypted } from './js/aes'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import { useCache } from '@/utils/useCache'
 
+const { wsCache } = useCache()
 const dsFormRef = ref<FormInstance>()
 const emit = defineEmits(['refresh'])
 const active = ref(1)
@@ -89,6 +110,10 @@ const isCreate = ref(true)
 const isEditTable = ref(false)
 const checkList = ref<any>([])
 const tableList = ref<any>([])
+
+const token = wsCache.get('user.token')
+const headers = ref<any>({'X-SQLBOT-TOKEN': `Bearer ${token}`})
+
 
 const rules = reactive<FormRules>({
   name: [
@@ -99,6 +124,7 @@ const rules = reactive<FormRules>({
 
 const dialogVisible = ref<boolean>(false)
 const dsType = [
+  {label:"Excel/CSV", value:"excel"},
   {label:"MySQL", value:"mysql"},
   {label:"SQL Server", value:"sqlServer"}
 ]
@@ -246,26 +272,38 @@ const check = () => {
 }
 
 const next = async(formEl: FormInstance | undefined) => {
-  if(!formEl) return
-  await formEl.validate((valid) => {
-    if (valid) {
-      // check status if success do next
-      buildConf()
-      datasourceApi.check(form.value).then((res: boolean) => {
-        if(res) {
-          active.value++
-          // request tables
-          datasourceApi.getTablesByConf(form.value).then((res) => {
-            tableList.value = res
-          })
-        }
-      })
-    }
-  })
+  if (form.value.type === "excel") {
+    // next, show tables 
+  } else {
+    if(!formEl) return
+    await formEl.validate((valid) => {
+      if (valid) {
+        // check status if success do next
+        buildConf()
+        datasourceApi.check(form.value).then((res: boolean) => {
+          if(res) {
+            active.value++
+            // request tables
+            datasourceApi.getTablesByConf(form.value).then((res) => {
+              tableList.value = res
+            })
+          }
+        })
+      }
+    })
+  }
 }
 
 const preview = () => {
   active.value--
+}
+
+const beforeUpload = (rawFile: any) => {
+  if (rawFile.size / 1024 / 1024 > 50) {
+    ElMessage.error('File size can not exceed 50MB!')
+    return false
+  }
+  return true
 }
 
 defineExpose({ open })
