@@ -66,6 +66,7 @@ class DatasourceConf(BaseModel):
     password: str = ''
     database: str = ''
     driver: str = ''
+    extraJdbc: str = ''
 
 
 class TableSchema:

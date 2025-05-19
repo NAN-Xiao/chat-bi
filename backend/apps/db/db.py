@@ -1,31 +1,29 @@
-from sqlalchemy import create_engine, text, Result
-from sqlalchemy.orm import sessionmaker
-from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
+import json
 import urllib.parse
 from typing import Any
-import json
+
+from sqlalchemy import create_engine, text, Result
+from sqlalchemy.orm import sessionmaker
+
+from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
 from apps.datasource.utils.utils import aes_decrypt
-from common.core.deps import SessionDep
 
 
 def get_uri(ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
     db_url: str
     if ds.type == "mysql":
-        db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
+        if conf.extraJdbc is not None and conf.extraJdbc != '':
+            db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{urllib.parse.quote(conf.extraJdbc)}"
+        else:
+            db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
     else:
         raise 'The datasource type not support.'
     return db_url
 
 
 def get_session(ds: CoreDatasource):
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
-    db_url: str
-    if ds.type == "mysql":
-        db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
-    else:
-        raise 'The datasource type not support.'
-    engine = create_engine(db_url)
+    engine = create_engine(get_uri(ds))
     session_maker = sessionmaker(bind=engine)
     session = session_maker()
     return session
@@ -100,4 +98,3 @@ def exec_sql(ds: CoreDatasource, sql: str):
             result.close()
         if session is not None:
             session.close()
-

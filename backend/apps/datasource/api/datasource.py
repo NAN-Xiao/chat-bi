@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     execSql, update_table_and_fields, getTablesByDs, chooseTables, preview
 from common.core.deps import SessionDep
@@ -78,3 +78,9 @@ async def edit_local(session: SessionDep, data: EditObj):
 @router.post("/previewData/{id}")
 async def edit_local(session: SessionDep, id: int, data: EditObj):
     return preview(session, id, data)
+
+
+@router.post("/uploadExcel/")
+async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
+    # todo
+    pass

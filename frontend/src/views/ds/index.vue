@@ -25,7 +25,9 @@
         v-for="ds in dsList"
       >
         <div class="connection-icon">
-          <i class="mdi mdi-database"></i>
+          <Icon>
+            <MysqlDs v-if="ds.type === 'mysql'"/>
+          </Icon>
         </div>
         <div class="connection-details">
           <div class="connection-name">{{ ds.name }}</div>
@@ -49,6 +51,7 @@
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
+import MysqlDs from '@/assets/svg/ds/mysql-ds.svg'
 import { Search, List, CreditCard } from '@element-plus/icons-vue'
 import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'

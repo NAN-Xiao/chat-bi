@@ -44,6 +44,9 @@
         <el-form-item label="Database">
           <el-input v-model="config.database" />
         </el-form-item>
+        <el-form-item label="Extra JDBC String">
+          <el-input v-model="config.extraJdbc" />
+        </el-form-item>
       </el-form>
     </div>
     <div v-show="active === 2" class="container">
@@ -106,6 +109,7 @@ const config = ref<any>({
   username:'',
   password:'',
   database:'',
+  extraJdbc:''
 })
 
 const close = () => {
@@ -133,6 +137,7 @@ const open = (item: any, editTable: boolean = false) => {
       config.value.username = configuration.username
       config.value.password = configuration.password
       config.value.database = configuration.database
+      config.value.extraJdbc = configuration.extraJdbc
     }
 
     if (editTable) {
@@ -165,6 +170,7 @@ const open = (item: any, editTable: boolean = false) => {
       username:'',
       password:'',
       database:'',
+      extraJdbc:'',
     }
   }
   dialogVisible.value = true
@@ -178,13 +184,7 @@ const save = async(formEl: FormInstance | undefined) => {
           .filter((ele: any) => {return checkList.value.includes(ele.tableName)})
           .map((ele: any) => {return {"table_name": ele.tableName, "table_comment": ele.tableComment}})
 
-      form.value.configuration = encrypted(JSON.stringify({
-        host:config.value.host,
-        port:config.value.port,
-        username:config.value.username,
-        password:config.value.password,
-        database:config.value.database
-      }))
+      buildConf()
       if (form.value.id) {
         if (!isEditTable.value) {
           // only update datasource config info
@@ -217,7 +217,8 @@ const buildConf = () => {
     port:config.value.port,
     username:config.value.username,
     password:config.value.password,
-    database:config.value.database
+    database:config.value.database,
+    extraJdbc:config.value.extraJdbc
   }))
 }
 
