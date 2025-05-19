@@ -674,6 +674,8 @@ function getNowPosition(addSizeX: number, addSizeY: number) {
   let nowSizeY = infoBox.value.oldSizeY
   let nowX = infoBox.value.oldX
   let nowY = infoBox.value.oldY
+  // Move the lowest position from point L
+  const nowBottomX = nowX + nowSizeX - 1
   if (hasR) {
     nowSizeX = Math.max(nowSizeX + addSizeX, 1)
   }
@@ -683,7 +685,8 @@ function getNowPosition(addSizeX: number, addSizeY: number) {
 
   if (hasL) {
     nowSizeX = Math.max(nowSizeX - addSizeX, 1)
-    nowX = Math.max(nowX + addSizeX, 1)
+    // Move the lowest position from point L
+    nowX = Math.min(Math.max(nowX + addSizeX, 1), nowBottomX)
   }
 
   if (hasT) {
@@ -705,6 +708,10 @@ function getNowClonePosition(moveXSize: number, moveYSize: number) {
   let nowOriginHeight = infoBox.value.originHeight
   let nowOriginX = infoBox.value.originX
   let nowOriginY = infoBox.value.originY
+  // Move the lowest position from point T
+  const nowBottomOriginY = nowOriginY + nowOriginHeight - baseHeight.value
+  // Move the lowest position from point L
+  const nowBottomOriginX = nowOriginX + nowOriginWidth - baseWidth.value
   if (hasR) {
     nowOriginWidth = Math.max(nowOriginWidth + moveXSize, baseWidth.value)
   }
@@ -714,12 +721,14 @@ function getNowClonePosition(moveXSize: number, moveYSize: number) {
 
   if (hasL) {
     nowOriginWidth = Math.max(nowOriginWidth - moveXSize, baseWidth.value)
-    nowOriginX = Math.max(nowOriginX + moveXSize, 1)
+    // Move the lowest position from point L
+    nowOriginX = Math.min(Math.max(nowOriginX + moveXSize, 1), nowBottomOriginX)
   }
 
   if (hasT) {
     nowOriginHeight = Math.max(nowOriginHeight - moveYSize, baseHeight.value)
-    nowOriginY = Math.max(nowOriginY + moveYSize, 1)
+    // Move the lowest position from point L
+    nowOriginY = Math.min(Math.max(nowOriginY + moveYSize, 1), nowBottomOriginY)
   }
   return {nowOriginWidth, nowOriginHeight, nowOriginX, nowOriginY}
 }
