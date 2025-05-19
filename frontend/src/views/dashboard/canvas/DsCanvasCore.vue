@@ -663,7 +663,7 @@ function containerMouseDown(e: MouseEvent) {
   infoBox.value.startY = e.pageY
 }
 
-function getNowPosition(addSizeX: number, addSizeY: number) {
+function getNowPosition(addSizeX: number, addSizeY: number, moveXSize: number, moveYSize: number) {
   const point = infoBox.value.point
   const hasT = /t/.test(point)
   const hasB = /b/.test(point)
@@ -674,65 +674,48 @@ function getNowPosition(addSizeX: number, addSizeY: number) {
   let nowSizeY = infoBox.value.oldSizeY
   let nowX = infoBox.value.oldX
   let nowY = infoBox.value.oldY
+
+  let nowOriginWidth = infoBox.value.originWidth
+  let nowOriginHeight = infoBox.value.originHeight
+  let nowOriginX = infoBox.value.originX
+  let nowOriginY = infoBox.value.originY
+
+  // Move the lowest position from point T
+  const nowBottomOriginY = nowOriginY + nowOriginHeight - baseHeight.value
   // Move the lowest position from point L
+  const nowLeftOrigin = nowOriginX + nowOriginWidth - baseWidth.value
   const nowBottomX = nowX + nowSizeX - 1
   if (hasR) {
     nowSizeX = Math.max(nowSizeX + addSizeX, 1)
+    nowOriginWidth = Math.max(nowOriginWidth + moveXSize, baseWidth.value)
+
   }
   if (hasB) {
     nowSizeY = Math.max(nowSizeY + addSizeY, 1)
+    nowOriginHeight = Math.max(nowOriginHeight + moveYSize, baseHeight.value)
+
   }
 
   if (hasL) {
-    nowSizeX = Math.max(nowSizeX - addSizeX, 1)
+    // Do not exceed the left boundary
+    nowSizeX = Math.min(Math.max(nowSizeX - addSizeX, 1), nowBottomX)
     // Move the lowest position from point L
     nowX = Math.min(Math.max(nowX + addSizeX, 1), nowBottomX)
+
+    nowOriginWidth = Math.min(Math.max(nowOriginWidth - moveXSize, baseWidth.value), nowLeftOrigin)
+    // Move the lowest position from point L
+    nowOriginX = Math.min(Math.max(nowOriginX + moveXSize, 1), nowLeftOrigin)
   }
 
   if (hasT) {
     nowSizeY = Math.max(nowSizeY - addSizeY, 1)
     nowY = Math.max(nowY + addSizeY, 1)
-  }
-  return {nowSizeX, nowSizeY, nowX, nowY}
-}
-
-
-function getNowClonePosition(moveXSize: number, moveYSize: number) {
-  const point = infoBox.value.point
-  const hasT = /t/.test(point)
-  const hasB = /b/.test(point)
-  const hasL = /l/.test(point)
-  const hasR = /r/.test(point)
-  // Determine the resizing direction based on the coordinate points
-  let nowOriginWidth = infoBox.value.originWidth
-  let nowOriginHeight = infoBox.value.originHeight
-  let nowOriginX = infoBox.value.originX
-  let nowOriginY = infoBox.value.originY
-  // Move the lowest position from point T
-  const nowBottomOriginY = nowOriginY + nowOriginHeight - baseHeight.value
-  // Move the lowest position from point L
-  const nowBottomOriginX = nowOriginX + nowOriginWidth - baseWidth.value
-  if (hasR) {
-    nowOriginWidth = Math.max(nowOriginWidth + moveXSize, baseWidth.value)
-  }
-  if (hasB) {
-    nowOriginHeight = Math.max(nowOriginHeight + moveYSize, baseHeight.value)
-  }
-
-  if (hasL) {
-    nowOriginWidth = Math.max(nowOriginWidth - moveXSize, baseWidth.value)
-    // Move the lowest position from point L
-    nowOriginX = Math.min(Math.max(nowOriginX + moveXSize, 1), nowBottomOriginX)
-  }
-
-  if (hasT) {
     nowOriginHeight = Math.max(nowOriginHeight - moveYSize, baseHeight.value)
     // Move the lowest position from point L
     nowOriginY = Math.min(Math.max(nowOriginY + moveYSize, 1), nowBottomOriginY)
   }
-  return {nowOriginWidth, nowOriginHeight, nowOriginX, nowOriginY}
+  return {nowSizeX, nowSizeY, nowX, nowY, nowOriginWidth, nowOriginHeight, nowOriginX, nowOriginY}
 }
-
 
 function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   if (!draggable.value) return
@@ -808,13 +791,21 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
               ? parseInt(String(moveYSize / cellHeight.value + 1))
               : parseInt(String(moveYSize / cellHeight.value))
       // 根据坐标点 判断resize方向
-      const {nowSizeX, nowSizeY, nowX, nowY} = getNowPosition(addSizeX, addSizeY)
+      const {
+        nowSizeX,
+        nowSizeY,
+        nowX,
+        nowY,
+        nowOriginWidth,
+        nowOriginHeight,
+        nowOriginX,
+        nowOriginY
+      } = getNowPosition(addSizeX, addSizeY, moveXSize, moveYSize)
 
       debounce(() => {
         resizePlayer(resizeItem, {sizeX: nowSizeX, sizeY: nowSizeY, x: nowX, y: nowY})
       }, 10)
 
-      const {nowOriginWidth, nowOriginHeight, nowOriginX, nowOriginY} = getNowClonePosition(moveXSize, moveYSize)
       infoBox.value.cloneItem.style.width = `${nowOriginWidth}px`
       infoBox.value.cloneItem.style.height = `${nowOriginHeight}px`
       infoBox.value.cloneItem.style.left = `${nowOriginX}px`
