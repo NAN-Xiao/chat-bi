@@ -20,7 +20,7 @@
           <el-input v-model="form.description" :rows="2" type="textarea" />
         </el-form-item>
         <el-form-item label="Type">
-          <el-select v-model="form.type" placeholder="Select Type">
+          <el-select v-model="form.type" placeholder="Select Type" :disabled="!isCreate">
             <el-option
               v-for="item in dsType"
               :key="item.value"
@@ -47,10 +47,14 @@
         <el-form-item label="Extra JDBC String">
           <el-input v-model="config.extraJdbc" />
         </el-form-item>
+        <el-form-item label="Schema" v-if="form.type === 'sqlServer'">
+          <el-input v-model="config.dbSchema" />
+          <el-button link type="primary" :icon="Plus" v-if="false">Get Schema</el-button>
+        </el-form-item>
       </el-form>
     </div>
     <div v-show="active === 2" class="container">
-      <el-scrollbar height="480px">
+      <el-scrollbar>
         <el-checkbox-group v-model="checkList">
           <el-row :gutter="10">
             <el-col v-for="item in tableList" :key="item.value" :span="12">
@@ -76,6 +80,7 @@ import { datasourceApi } from '@/api/datasource'
 import { encrypted, decrypted } from './js/aes'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 
 const dsFormRef = ref<FormInstance>()
 const emit = defineEmits(['refresh'])
@@ -94,7 +99,8 @@ const rules = reactive<FormRules>({
 
 const dialogVisible = ref<boolean>(false)
 const dsType = [
-  {label:"MySQL", value:"mysql"}
+  {label:"MySQL", value:"mysql"},
+  {label:"SQL Server", value:"sqlServer"}
 ]
 const form = ref<any>({
   name:'',
@@ -109,7 +115,8 @@ const config = ref<any>({
   username:'',
   password:'',
   database:'',
-  extraJdbc:''
+  extraJdbc:'',
+  dbSchema:''
 })
 
 const close = () => {
@@ -138,6 +145,7 @@ const open = (item: any, editTable: boolean = false) => {
       config.value.password = configuration.password
       config.value.database = configuration.database
       config.value.extraJdbc = configuration.extraJdbc
+      config.value.dbSchema = configuration.dbSchema
     }
 
     if (editTable) {
@@ -171,6 +179,7 @@ const open = (item: any, editTable: boolean = false) => {
       password:'',
       database:'',
       extraJdbc:'',
+      dbSchema:''
     }
   }
   dialogVisible.value = true
@@ -218,7 +227,8 @@ const buildConf = () => {
     username:config.value.username,
     password:config.value.password,
     database:config.value.database,
-    extraJdbc:config.value.extraJdbc
+    extraJdbc:config.value.extraJdbc,
+    dbSchema:config.value.dbSchema
   }))
 }
 
@@ -262,7 +272,7 @@ defineExpose({ open })
 </script>
 <style lang="less" scoped>
 .container{
-  height: 500px;
+  height: 600px;
   margin-top: 20px;
 }
 </style>

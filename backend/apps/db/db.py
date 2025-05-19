@@ -17,6 +17,11 @@ def get_uri(ds: CoreDatasource):
             db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{urllib.parse.quote(conf.extraJdbc)}"
         else:
             db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
+    elif ds.type == "sqlServer":
+        if conf.extraJdbc is not None and conf.extraJdbc != '':
+            db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{urllib.parse.quote(conf.extraJdbc)}"
+        else:
+            db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
     else:
         raise 'The datasource type not support.'
     return db_url
@@ -33,17 +38,36 @@ def get_tables(ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
     session = get_session(ds)
     result: Result[Any]
+    sql: str = ''
     try:
         if ds.type == "mysql":
-            sql = f"""SELECT 
-                            TABLE_NAME, 
-                            TABLE_COMMENT
-                        FROM 
-                            information_schema.TABLES
-                        WHERE 
-                            TABLE_SCHEMA = '{conf.database}';"""
-            result = session.execute(text(sql))
+            sql = f"""
+                    SELECT 
+                        TABLE_NAME, 
+                        TABLE_COMMENT
+                    FROM 
+                        information_schema.TABLES
+                    WHERE 
+                        TABLE_SCHEMA = '{conf.database}';
+                    """
+        elif ds.type == "sqlServer":
+            sql = f"""
+                    SELECT 
+                        TABLE_NAME AS [TABLE_NAME],
+                        ISNULL(ep.value, '') AS [TABLE_COMMENT]
+                    FROM 
+                        INFORMATION_SCHEMA.TABLES t
+                    LEFT JOIN 
+                        sys.extended_properties ep 
+                        ON ep.major_id = OBJECT_ID(t.TABLE_SCHEMA + '.' + t.TABLE_NAME)
+                        AND ep.minor_id = 0 
+                        AND ep.name = 'MS_Description' 
+                    WHERE 
+                        t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
+                        AND t.TABLE_SCHEMA = '{conf.dbSchema}';
+                    """
 
+        result = session.execute(text(sql))
         res = result.fetchall()
         res_list = [TableSchema(*item) for item in res]
         return res_list
@@ -58,20 +82,41 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
     session = get_session(ds)
     result: Result[Any]
+    sql: str = ''
     try:
         if ds.type == "mysql":
-            sql1 = f"""SELECT 
-                            COLUMN_NAME,
-                            DATA_TYPE,
-                            COLUMN_COMMENT
-                        FROM 
-                            INFORMATION_SCHEMA.COLUMNS
-                        WHERE 
-                            TABLE_SCHEMA = '{conf.database}'"""
-            sql2 = f""" AND TABLE_NAME = '{table_name}';""" if table_name is not None and table_name != "" else ";"
+            sql1 = f"""
+                    SELECT 
+                        COLUMN_NAME,
+                        DATA_TYPE,
+                        COLUMN_COMMENT
+                    FROM 
+                        INFORMATION_SCHEMA.COLUMNS
+                    WHERE 
+                        TABLE_SCHEMA = '{conf.database}'
+                    """
+            sql2 = f" AND TABLE_NAME = '{table_name}';" if table_name is not None and table_name != "" else ";"
             sql = sql1 + sql2
-            result = session.execute(text(sql))
+        elif ds.type == "sqlServer":
+            sql1 = f"""
+                    SELECT 
+                        COLUMN_NAME AS [COLUMN_NAME],
+                        DATA_TYPE AS [DATA_TYPE],
+                        ISNULL(EP.value, '') AS [COLUMN_COMMENT]
+                    FROM 
+                        INFORMATION_SCHEMA.COLUMNS C
+                    LEFT JOIN 
+                        sys.extended_properties EP 
+                        ON EP.major_id = OBJECT_ID(C.TABLE_SCHEMA + '.' + C.TABLE_NAME)
+                        AND EP.minor_id = C.ORDINAL_POSITION
+                        AND EP.name = 'MS_Description'
+                    WHERE 
+                        C.TABLE_SCHEMA = '{conf.dbSchema}'
+                    """
+            sql2 = f"AND C.TABLE_NAME = '{table_name}';" if table_name is not None and table_name != "" else ";"
+            sql = sql1 + sql2
 
+        result = session.execute(text(sql))
         res = result.fetchall()
         res_list = [ColumnSchema(*item) for item in res]
         return res_list

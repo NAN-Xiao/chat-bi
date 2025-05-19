@@ -132,6 +132,9 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
     if len(id_list) > 0:
         session.query(CoreTable).filter(and_(CoreTable.ds_id == ds.id, CoreTable.id.not_in(id_list))).delete(
             synchronize_session=False)
+        session.query(CoreField).filter(and_(CoreField.ds_id == ds.id, CoreField.table_id.not_in(id_list))).delete(
+            synchronize_session=False)
+        session.commit()
 
 
 def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, fields: List[ColumnSchema]):
@@ -161,6 +164,7 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
     if len(id_list) > 0:
         session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.id.not_in(id_list))).delete(
             synchronize_session=False)
+        session.commit()
 
 
 def update_table_and_fields(session: SessionDep, data: EditObj):
@@ -174,4 +178,10 @@ def preview(session: SessionDep, id: int, data: EditObj):
     sql: str = ""
     if ds.type == "mysql":
         sql = f"""SELECT {", ".join([f.field_name for f in data.fields if f.checked])} FROM {data.table.table_name} LIMIT 100"""
+    elif ds.type == "sqlServer":
+        sql = f"""
+            SELECT {", ".join([f.field_name for f in data.fields if f.checked])} FROM {data.table.table_name} 
+            ORDER BY {data.fields[0].field_name}
+            OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY
+        """
     return exec_sql(ds, sql)

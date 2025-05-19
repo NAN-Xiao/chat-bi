@@ -28,7 +28,8 @@ dependencies = [
     "dashscope>=1.14.0,<2.0.0",
     "pymysql (>=1.1.1,<2.0.0)",
     "cryptography (>=44.0.3,<45.0.0)",
-    "llama_index>=0.12.35"
+    "llama_index>=0.12.35",
+    "pymssql (>=2.3.4,<3.0.0)"
 ]
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

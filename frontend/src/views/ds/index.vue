@@ -27,6 +27,7 @@
         <div class="connection-icon">
           <Icon>
             <MysqlDs v-if="ds.type === 'mysql'"/>
+            <SQLServerDs v-else-if="ds.type === 'sqlServer'"/>
           </Icon>
         </div>
         <div class="connection-details">
@@ -52,6 +53,7 @@ import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import MysqlDs from '@/assets/svg/ds/mysql-ds.svg'
+import SQLServerDs from '@/assets/svg/ds/sqlServer-ds.svg'
 import { Search, List, CreditCard } from '@element-plus/icons-vue'
 import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'
