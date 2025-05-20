@@ -1,13 +1,18 @@
-from sqlmodel import select
-from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, EditObj
 import datetime
-from common.core.deps import SessionDep
-from apps.db.db import get_session, get_tables, get_fields, exec_sql
-from sqlalchemy import text, and_
-from common.utils.utils import deepcopy_ignore_extra
+import json
 from typing import List
-from ..crud.table import delete_table_by_ds_id, update_table
+
+from sqlalchemy import text, and_
+from sqlmodel import select
+
+from apps.datasource.utils.utils import aes_decrypt
+from apps.db.db import get_engine, get_tables, get_fields, exec_sql
+from common.core.deps import SessionDep
+from common.utils.utils import deepcopy_ignore_extra
 from ..crud.field import delete_field_by_ds_id, update_field
+from ..crud.table import delete_table_by_ds_id, update_table
+from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, EditObj, \
+    DatasourceConf
 
 
 def get_datasource_list(session: SessionDep) -> CoreDatasource:
@@ -17,17 +22,14 @@ def get_datasource_list(session: SessionDep) -> CoreDatasource:
 
 
 def check_status(session: SessionDep, ds: CoreDatasource):
-    conn = get_session(ds)
+    conn = get_engine(ds)
     try:
-        conn.execute(text("SELECT 1")).scalar()
-        print("success")
-        return True
+        with conn.connect() as connection:
+            print("success")
+            return True
     except Exception as e:
         print("Fail:", e)
         return False
-    finally:
-        conn.close()
-    return False
 
 
 def create_ds(session: SessionDep, create_ds: CreateDatasource):
@@ -175,13 +177,14 @@ def update_table_and_fields(session: SessionDep, data: EditObj):
 
 def preview(session: SessionDep, id: int, data: EditObj):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
     sql: str = ""
     if ds.type == "mysql":
-        sql = f"""SELECT {", ".join([f.field_name for f in data.fields if f.checked])} FROM {data.table.table_name} LIMIT 100"""
+        sql = f"""SELECT `{"`, `".join([f.field_name for f in data.fields if f.checked])}` FROM `{data.table.table_name}` LIMIT 100"""
     elif ds.type == "sqlServer":
-        sql = f"""
-            SELECT {", ".join([f.field_name for f in data.fields if f.checked])} FROM {data.table.table_name} 
-            ORDER BY {data.fields[0].field_name}
-            OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY
-        """
+        sql = f"""SELECT [{"], [".join([f.field_name for f in data.fields if f.checked])}] FROM [{conf.dbSchema}].[{data.table.table_name}]
+            ORDER BY [{data.fields[0].field_name}]
+            OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
+    elif ds.type == "pg":
+        sql = f"""SELECT "{'", "'.join([f.field_name for f in data.fields if f.checked])}" FROM "{conf.dbSchema}"."{data.table.table_name}" LIMIT 100"""
     return exec_sql(ds, sql)

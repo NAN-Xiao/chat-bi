@@ -28,11 +28,12 @@
           <Icon>
             <MysqlDs v-if="ds.type === 'mysql'"/>
             <SQLServerDs v-else-if="ds.type === 'sqlServer'"/>
+            <PgDs v-else-if="ds.type === 'pg'"/>
           </Icon>
         </div>
         <div class="connection-details">
           <div class="connection-name">{{ ds.name }}</div>
-          <div class="connection-type">{{ ds.type }}</div>
+          <div class="connection-type">{{ dsRelation[ds.type] }}</div>
           <div class="connection-host">{{ ds.description }}</div>
           <div class="connection-last">{{ datetimeFormat(ds.create_time) }}</div>
         </div>
@@ -54,6 +55,7 @@ import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import MysqlDs from '@/assets/svg/ds/mysql-ds.svg'
 import SQLServerDs from '@/assets/svg/ds/sqlServer-ds.svg'
+import PgDs from '@/assets/svg/ds/pg-ds.svg'
 import { Search, List, CreditCard } from '@element-plus/icons-vue'
 import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'
@@ -61,6 +63,7 @@ import { datasourceApi } from '@/api/datasource'
 import { datetimeFormat } from '@/utils/utils'
 import { ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { dsRelation } from '@/views/ds/js/ds-type'
 
 const searchValue = ref<string>('')
 const dsForm = ref()

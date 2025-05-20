@@ -65,7 +65,7 @@
           <el-form-item label="Extra JDBC String">
             <el-input v-model="config.extraJdbc" />
           </el-form-item>
-          <el-form-item label="Schema" v-if="form.type === 'sqlServer'">
+          <el-form-item label="Schema" v-if="haveSchema.includes(form.type)">
             <el-input v-model="config.dbSchema" />
             <el-button link type="primary" :icon="Plus" v-if="false">Get Schema</el-button>
           </el-form-item>
@@ -101,6 +101,7 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
+import { dsType, haveSchema} from '@/views/ds/js/ds-type'
 
 const { wsCache } = useCache()
 const dsFormRef = ref<FormInstance>()
@@ -123,11 +124,6 @@ const rules = reactive<FormRules>({
 })
 
 const dialogVisible = ref<boolean>(false)
-const dsType = [
-  {label:"Excel/CSV", value:"excel"},
-  {label:"MySQL", value:"mysql"},
-  {label:"SQL Server", value:"sqlServer"}
-]
 const form = ref<any>({
   name:'',
   description:'',
