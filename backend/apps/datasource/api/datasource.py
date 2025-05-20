@@ -1,14 +1,18 @@
+import hashlib
+import uuid
+from typing import List
+
+import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException
+from numba.core.cgutils import if_zero
+
+from apps.db.engine import create_table, get_data_engine, insert_data
+from common.core.deps import SessionDep
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     execSql, update_table_and_fields, getTablesByDs, chooseTables, preview
-from common.core.deps import SessionDep
-from ..models.datasource import CoreDatasource, CreateDatasource, EditObj, CoreTable
-from ..crud.table import get_tables_by_ds_id
 from ..crud.field import get_fields_by_table_id
-from typing import List
-import uuid
-import pandas as pd
-import hashlib
+from ..crud.table import get_tables_by_ds_id
+from ..models.datasource import CoreDatasource, CreateDatasource, EditObj, CoreTable
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 
@@ -92,18 +96,24 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
     contents = await file.read()
     df_sheets = pd.read_excel(contents, sheet_name=None)
     # build columns and data to insert db
-    # todo
     sheets = []
+    conn = get_data_engine()
     for sheet_name, df in df_sheets.items():
-        print("--------------------")
-        print(f"Sheet: {sheet_name}, {hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}")
-        sheets.append({"name": f"{sheet_name}",
-                       "uniqueName": f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"})
+        tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+        sheets.append({"tableName": tableName, "tableComment": ""})
         column_len = len(df.dtypes)
+        fields = []
         for i in range(column_len):
-            print(f"{df.columns[i]} , {df.dtypes[i]}")
+            # build fields
+            fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
+        # create table
+        create_table(conn, tableName, fields)
 
-        for row in df.values:
-            print(row)
-
+        data = [
+            {df.columns[i]: int(row[i]) if "int" in str(df.dtypes[i]) else row[i] for i in range(len(row))}
+            for row in df.values
+        ]
+        # insert data
+        insert_data(conn, tableName, fields, data)
+    conn.close()
     return {"filename": file.filename, "sheets": sheets}

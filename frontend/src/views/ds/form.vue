@@ -32,10 +32,12 @@
         <div v-if="form.type === 'excel'">
           <el-form-item label="File">
             <el-upload
+              :disabled="!isCreate"
               accept=".xls, .xlsx, .csv"
               :headers="headers"
               action="http://localhost:8000/api/v1/datasource/uploadExcel"
               :before-upload="beforeUpload"
+              :on-success="onSuccess"
             >
               <el-button>Upload</el-button>
               <template #tip>
@@ -111,6 +113,7 @@ const isCreate = ref(true)
 const isEditTable = ref(false)
 const checkList = ref<any>([])
 const tableList = ref<any>([])
+const excelUploadSuccess = ref(false)
 
 const token = wsCache.get('user.token')
 const headers = ref<any>({'X-SQLBOT-TOKEN': `Bearer ${token}`})
@@ -138,7 +141,9 @@ const config = ref<any>({
   password:'',
   database:'',
   extraJdbc:'',
-  dbSchema:''
+  dbSchema:'',
+  filename:'',
+  sheets: []
 })
 
 const close = () => {
@@ -148,6 +153,7 @@ const close = () => {
   isEditTable.value = false
   checkList.value = []
   tableList.value = []
+  excelUploadSuccess.value = false
 }
 
 const open = (item: any, editTable: boolean = false) => {
@@ -168,6 +174,8 @@ const open = (item: any, editTable: boolean = false) => {
       config.value.database = configuration.database
       config.value.extraJdbc = configuration.extraJdbc
       config.value.dbSchema = configuration.dbSchema
+      config.value.filename = configuration.filename
+      config.value.sheets = configuration.sheets
     }
 
     if (editTable) {
@@ -175,11 +183,16 @@ const open = (item: any, editTable: boolean = false) => {
       isEditTable.value = true
       isCreate.value = false
       // request tables and check tables
+      
       datasourceApi.tableList(item.id).then((res) => {
         checkList.value = res.map((ele:any) => {return ele.table_name})
-        datasourceApi.getTablesByConf(form.value).then((res) => {
-          tableList.value = res
-        })
+        if(item.type === 'excel') {
+          tableList.value = config.value.sheets
+        } else {
+          datasourceApi.getTablesByConf(form.value).then((res) => {
+            tableList.value = res
+          })
+        }
       })
     }
   } else {
@@ -201,7 +214,9 @@ const open = (item: any, editTable: boolean = false) => {
       password:'',
       database:'',
       extraJdbc:'',
-      dbSchema:''
+      dbSchema:'',
+      filename:'',
+      sheets: []
     }
   }
   dialogVisible.value = true
@@ -250,7 +265,9 @@ const buildConf = () => {
     password:config.value.password,
     database:config.value.database,
     extraJdbc:config.value.extraJdbc,
-    dbSchema:config.value.dbSchema
+    dbSchema:config.value.dbSchema,
+    filename:config.value.filename,
+    sheets:config.value.sheets
   }))
 }
 
@@ -270,6 +287,9 @@ const check = () => {
 const next = async(formEl: FormInstance | undefined) => {
   if (form.value.type === "excel") {
     // next, show tables 
+    if (excelUploadSuccess.value) {
+      active.value++
+    }
   } else {
     if(!formEl) return
     await formEl.validate((valid) => {
@@ -300,6 +320,14 @@ const beforeUpload = (rawFile: any) => {
     return false
   }
   return true
+}
+
+const onSuccess = (response: any) => {
+  console.log(response)
+  config.value.filename = response.data.filename
+  config.value.sheets = response.data.sheets
+  tableList.value = response.data.sheets
+  excelUploadSuccess.value = true
 }
 
 defineExpose({ open })

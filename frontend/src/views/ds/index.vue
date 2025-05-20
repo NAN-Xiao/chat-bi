@@ -29,6 +29,7 @@
             <MysqlDs v-if="ds.type === 'mysql'"/>
             <SQLServerDs v-else-if="ds.type === 'sqlServer'"/>
             <PgDs v-else-if="ds.type === 'pg'"/>
+            <ExcelDs v-else-if="ds.type === 'excel'"/>
           </Icon>
         </div>
         <div class="connection-details">
@@ -41,7 +42,7 @@
         <div class="connection-actions">
           <el-button class="action-btn" circle @click="getTables(ds.id, ds.name)" :icon="List" />
           <el-button class="action-btn" circle @click="editTables(ds)" :icon="CreditCard" />
-          <el-button type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
+          <el-button v-if="ds.type !== 'excel'" type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
           <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
         </div>
       </div>
@@ -56,6 +57,7 @@ import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import MysqlDs from '@/assets/svg/ds/mysql-ds.svg'
 import SQLServerDs from '@/assets/svg/ds/sqlServer-ds.svg'
 import PgDs from '@/assets/svg/ds/pg-ds.svg'
+import ExcelDs from '@/assets/svg/ds/Excel-ds.svg'
 import { Search, List, CreditCard } from '@element-plus/icons-vue'
 import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'

@@ -1,8 +1,9 @@
-from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, Text, BigInteger, DateTime, Integer, Identity
 from datetime import datetime
-from pydantic import BaseModel
 from typing import List, Optional
+
+from pydantic import BaseModel
+from sqlalchemy import Column, Text, BigInteger, DateTime, Integer, Identity
+from sqlmodel import SQLModel, Field
 
 
 class CoreDatasource(SQLModel, table=True):
@@ -68,6 +69,22 @@ class DatasourceConf(BaseModel):
     driver: str = ''
     extraJdbc: str = ''
     dbSchema: str = ''
+    filename: str = ''
+    sheets: List = ''
+
+    def to_dict(self):
+        return {
+            "host": self.host,
+            "port": self.port,
+            "username": self.username,
+            "password": self.password,
+            "database": self.database,
+            "driver": self.driver,
+            "extraJdbc": self.extraJdbc,
+            "dbSchema": self.dbSchema,
+            "filename": self.filename,
+            "sheets": self.sheets
+        }
 
 
 class TableSchema:

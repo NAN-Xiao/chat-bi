@@ -2,11 +2,13 @@ import datetime
 import json
 from typing import List
 
-from sqlalchemy import text, and_
+from sqlalchemy import and_, text
 from sqlmodel import select
 
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.db import get_engine, get_tables, get_fields, exec_sql
+from apps.db.engine import get_engine_config
+from apps.db.engine import get_engine_conn
 from common.core.deps import SessionDep
 from common.utils.utils import deepcopy_ignore_extra
 from ..crud.field import delete_field_by_ds_id, update_field
@@ -36,8 +38,8 @@ def create_ds(session: SessionDep, create_ds: CreateDatasource):
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
     ds.create_time = datetime.datetime.now()
-    status = check_status(session, ds)
-    ds.status = "Success" if status is True else "Fail"
+    # status = check_status(session, ds)
+    ds.status = "Success"
     record = CoreDatasource(**ds.model_dump())
     session.add(record)
     session.flush()
@@ -46,9 +48,7 @@ def create_ds(session: SessionDep, create_ds: CreateDatasource):
     session.commit()
 
     # save tables and fields
-    if status:
-        sync_table(session, ds, create_ds.tables)
-
+    sync_table(session, ds, create_ds.tables)
     return ds
 
 
@@ -72,6 +72,16 @@ def update_ds(session: SessionDep, ds: CoreDatasource):
 
 def delete_ds(session: SessionDep, id: int):
     term = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
+    if term.type == "excel":
+        # drop all tables for current datasource
+        engine = get_engine_conn()
+        conf = DatasourceConf(**json.loads(aes_decrypt(term.configuration)))
+        with engine.connect() as conn:
+            for sheet in conf.sheets:
+                conn.execute(text(f'DROP TABLE IF EXISTS "{sheet["tableName"]}"'))
+            conn.commit()
+            conn.close()
+
     session.delete(term)
     session.commit()
     delete_table_by_ds_id(session, id)
@@ -94,6 +104,11 @@ def getTablesByDs(session: SessionDep, ds: CoreDatasource):
 
 def getFields(session: SessionDep, id: int, table_name: str):
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
+    fields = get_fields(ds, table_name)
+    return fields
+
+
+def getFieldsByDs(session: SessionDep, ds: CoreDatasource, table_name: str):
     fields = get_fields(ds, table_name)
     return fields
 
@@ -128,7 +143,7 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
             session.commit()
 
         # sync field
-        fields = getFields(session, ds.id, item.table_name)
+        fields = getFieldsByDs(session, ds, item.table_name)
         sync_fields(session, ds, item, fields)
 
     if len(id_list) > 0:
@@ -177,7 +192,7 @@ def update_table_and_fields(session: SessionDep, data: EditObj):
 
 def preview(session: SessionDep, id: int, data: EditObj):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
     if ds.type == "mysql":
         sql = f"""SELECT `{"`, `".join([f.field_name for f in data.fields if f.checked])}` FROM `{data.table.table_name}` LIMIT 100"""
@@ -185,6 +200,6 @@ def preview(session: SessionDep, id: int, data: EditObj):
         sql = f"""SELECT [{"], [".join([f.field_name for f in data.fields if f.checked])}] FROM [{conf.dbSchema}].[{data.table.table_name}]
             ORDER BY [{data.fields[0].field_name}]
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
-    elif ds.type == "pg":
+    elif ds.type == "pg" or ds.type == "excel":
         sql = f"""SELECT "{'", "'.join([f.field_name for f in data.fields if f.checked])}" FROM "{conf.dbSchema}"."{data.table.table_name}" LIMIT 100"""
     return exec_sql(ds, sql)

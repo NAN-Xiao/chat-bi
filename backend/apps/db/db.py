@@ -8,10 +8,11 @@ from sqlalchemy.orm import sessionmaker
 
 from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
 from apps.datasource.utils.utils import aes_decrypt
+from apps.db.engine import get_engine_config
 
 
 def get_uri(ds: CoreDatasource):
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     db_url: str
     if ds.type == "mysql":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
@@ -23,7 +24,7 @@ def get_uri(ds: CoreDatasource):
             db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{urllib.parse.quote(conf.extraJdbc)}"
         else:
             db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
-    elif ds.type == "pg":
+    elif ds.type == "pg" or ds.type == "excel":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
             db_url = f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{urllib.parse.quote(conf.extraJdbc)}"
         else:
@@ -34,7 +35,7 @@ def get_uri(ds: CoreDatasource):
 
 
 def get_engine(ds: CoreDatasource) -> Engine:
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     if ds.type == "pg" and (conf.dbSchema is not None and conf.dbSchema != ""):
         engine = create_engine(get_uri(ds), connect_args={"options": f"-c search_path={conf.dbSchema}"},
                                pool_timeout=30, pool_size=20, max_overflow=10)
@@ -51,7 +52,7 @@ def get_session(ds: CoreDatasource):
 
 
 def get_tables(ds: CoreDatasource):
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     session = get_session(ds)
     result: Result[Any]
     sql: str = ''
@@ -82,7 +83,7 @@ def get_tables(ds: CoreDatasource):
                         t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
                         AND t.TABLE_SCHEMA = '{conf.dbSchema}';
                     """
-        elif ds.type == "pg":
+        elif ds.type == "pg" or ds.type == "excel":
             sql = """
                     SELECT 
                         c.relname AS TABLE_NAME,
@@ -113,7 +114,7 @@ def get_tables(ds: CoreDatasource):
 
 
 def get_fields(ds: CoreDatasource, table_name: str = None):
-    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     session = get_session(ds)
     result: Result[Any]
     sql: str = ''
@@ -149,7 +150,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                     """
             sql2 = f" AND C.TABLE_NAME = '{table_name}';" if table_name is not None and table_name != "" else ";"
             sql = sql1 + sql2
-        elif ds.type == "pg":
+        elif ds.type == "pg" or ds.type == "excel":
             sql1 = """
                     SELECT 
                         a.attname AS COLUMN_NAME,
