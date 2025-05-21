@@ -17,7 +17,7 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
     DatasourceConf
 
 
-def get_datasource_list(session: SessionDep) -> CoreDatasource:
+def get_datasource_list(session: SessionDep):
     statement = select(CoreDatasource).order_by(CoreDatasource.create_time.desc())
     datasource_list = session.exec(statement).fetchall()
     return datasource_list

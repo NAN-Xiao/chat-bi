@@ -281,6 +281,12 @@ const check = () => {
         type: 'success',
         showClose: true
       })
+    } else {
+      ElMessage({
+        message: 'Connect failed',
+        type: 'error',
+        showClose: true
+      })
     }
   })
 }
@@ -303,6 +309,12 @@ const next = async(formEl: FormInstance | undefined) => {
             // request tables
             datasourceApi.getTablesByConf(form.value).then((res) => {
               tableList.value = res
+            })
+          } else {
+            ElMessage({
+              message: 'Connect failed',
+              type: 'error',
+              showClose: true
             })
           }
         })
