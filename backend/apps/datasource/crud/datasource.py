@@ -9,7 +9,7 @@ from apps.datasource.utils.utils import aes_decrypt
 from apps.db.db import get_engine, get_tables, get_fields, exec_sql
 from apps.db.engine import get_engine_config
 from apps.db.engine import get_engine_conn
-from common.core.deps import SessionDep
+from common.core.deps import SessionDep, CurrentUser
 from common.utils.utils import deepcopy_ignore_extra
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
@@ -17,7 +17,7 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
     DatasourceConf
 
 
-def get_datasource_list(session: SessionDep) -> CoreDatasource:
+def get_datasource_list(session: SessionDep):
     statement = select(CoreDatasource).order_by(CoreDatasource.create_time.desc())
     datasource_list = session.exec(statement).fetchall()
     return datasource_list
@@ -34,11 +34,12 @@ def check_status(session: SessionDep, ds: CoreDatasource):
         return False
 
 
-def create_ds(session: SessionDep, create_ds: CreateDatasource):
+def create_ds(session: SessionDep, user: CurrentUser, create_ds: CreateDatasource):
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
     ds.create_time = datetime.datetime.now()
     # status = check_status(session, ds)
+    ds.create_by = user.id
     ds.status = "Success"
     record = CoreDatasource(**ds.model_dump())
     session.add(record)
@@ -80,7 +81,6 @@ def delete_ds(session: SessionDep, id: int):
             for sheet in conf.sheets:
                 conn.execute(text(f'DROP TABLE IF EXISTS "{sheet["tableName"]}"'))
             conn.commit()
-            conn.close()
 
     session.delete(term)
     session.commit()

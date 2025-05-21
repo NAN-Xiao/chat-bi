@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-loading="loading">
     <div class="header">
       <div class="mt-4">
         <el-input
@@ -72,6 +72,7 @@ const dsForm = ref()
 const dsList = ref<any>([])// show ds list
 const allDsList = ref<any>([])// all ds list
 const router = useRouter()
+const loading = ref(false)
 
 const getStatus = (status: string) => {
   if (status === 'Success') {
@@ -98,9 +99,11 @@ const refresh = () => {
 }
 
 const list = () => {
+  loading.value = true
   datasourceApi.list().then((res) => {
     allDsList.value = res
     dsList.value = JSON.parse(JSON.stringify(allDsList.value))
+    loading.value = false
   })
 }
 

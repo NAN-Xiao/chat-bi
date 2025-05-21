@@ -189,8 +189,9 @@ const open = (item: any, editTable: boolean = false) => {
         if(item.type === 'excel') {
           tableList.value = config.value.sheets
         } else {
-          datasourceApi.getTablesByConf(form.value).then((res) => {
-            tableList.value = res
+          datasourceApi.getTablesByConf(form.value).then((table) => {
+            tableList.value = table
+            checkList.value = checkList.value.filter((ele:string) => {return table.map((ele:any) => {return ele.tableName}).includes(ele)})
           })
         }
       })
@@ -280,20 +281,26 @@ const check = () => {
         type: 'success',
         showClose: true
       })
+    } else {
+      ElMessage({
+        message: 'Connect failed',
+        type: 'error',
+        showClose: true
+      })
     }
   })
 }
 
 const next = async(formEl: FormInstance | undefined) => {
-  if (form.value.type === "excel") {
-    // next, show tables 
-    if (excelUploadSuccess.value) {
-      active.value++
-    }
-  } else {
-    if(!formEl) return
-    await formEl.validate((valid) => {
-      if (valid) {
+  if(!formEl) return
+  await formEl.validate((valid) => {
+    if (valid) {
+      if (form.value.type === "excel") {
+        // next, show tables 
+        if (excelUploadSuccess.value) {
+          active.value++
+        }
+      } else {
         // check status if success do next
         buildConf()
         datasourceApi.check(form.value).then((res: boolean) => {
@@ -303,11 +310,17 @@ const next = async(formEl: FormInstance | undefined) => {
             datasourceApi.getTablesByConf(form.value).then((res) => {
               tableList.value = res
             })
+          } else {
+            ElMessage({
+              message: 'Connect failed',
+              type: 'error',
+              showClose: true
+            })
           }
         })
       }
-    })
-  }
+    }
+  })
 }
 
 const preview = () => {
@@ -323,7 +336,6 @@ const beforeUpload = (rawFile: any) => {
 }
 
 const onSuccess = (response: any) => {
-  console.log(response)
   config.value.filename = response.data.filename
   config.value.sheets = response.data.sheets
   tableList.value = response.data.sheets
