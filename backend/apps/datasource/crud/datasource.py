@@ -80,7 +80,6 @@ def delete_ds(session: SessionDep, id: int):
             for sheet in conf.sheets:
                 conn.execute(text(f'DROP TABLE IF EXISTS "{sheet["tableName"]}"'))
             conn.commit()
-            conn.close()
 
     session.delete(term)
     session.commit()

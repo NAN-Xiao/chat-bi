@@ -1,10 +1,10 @@
 import hashlib
+import os
 import uuid
 from typing import List
 
 import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException
-from numba.core.cgutils import if_zero
 
 from apps.db.engine import create_table, get_data_engine, insert_data
 from common.core.deps import SessionDep
@@ -15,6 +15,7 @@ from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, EditObj, CoreTable
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
+path = "/opt/sqlbot/data/excel"
 
 
 @router.get("/list")
@@ -93,13 +94,17 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
         raise HTTPException(400, "Only support .xlsx/.xls/.csv")
 
-    contents = await file.read()
-    df_sheets = pd.read_excel(contents, sheet_name=None)
-    # build columns and data to insert db
-    sheets = []
+    os.makedirs(path, exist_ok=True)
+    filename = f"{file.filename.split('.')[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.{file.filename.split('.')[1]}"
+    save_path = os.path.join(path, filename)
+    with open(save_path, "wb") as f:
+        f.write(await file.read())
+
     conn = get_data_engine()
-    for sheet_name, df in df_sheets.items():
-        tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+    sheets = []
+    if filename.endswith(".csv"):
+        df = pd.read_csv(save_path)
+        tableName = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
         sheets.append({"tableName": tableName, "tableComment": ""})
         column_len = len(df.dtypes)
         fields = []
@@ -115,5 +120,27 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
         ]
         # insert data
         insert_data(conn, tableName, fields, data)
+    else:
+        df_sheets = pd.read_excel(save_path, sheet_name=None)
+        # build columns and data to insert db
+        for sheet_name, df in df_sheets.items():
+            tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+            sheets.append({"tableName": tableName, "tableComment": ""})
+            column_len = len(df.dtypes)
+            fields = []
+            for i in range(column_len):
+                # build fields
+                fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
+            # create table
+            create_table(conn, tableName, fields)
+
+            data = [
+                {df.columns[i]: int(row[i]) if "int" in str(df.dtypes[i]) else row[i] for i in range(len(row))}
+                for row in df.values
+            ]
+            # insert data
+            insert_data(conn, tableName, fields, data)
     conn.close()
-    return {"filename": file.filename, "sheets": sheets}
+
+    os.remove(save_path)
+    return {"filename": filename, "sheets": sheets}
