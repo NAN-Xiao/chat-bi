@@ -2,8 +2,9 @@
 import {ref, nextTick, toRefs, type PropType} from 'vue'
 import _ from 'lodash'
 import {dashboardStoreWithOut} from '@/stores/dashboard/dashboard'
-import {type CanvasCoord, type CanvasItem} from '../utils/CanvasUtils'
+import {type CanvasCoord, type CanvasItem} from '@/utils/canvas.ts'
 import CanvasShape from './CanvasShape.vue'
+import {findComponent} from "@/views/dashboard/components/component-list.ts";
 
 const dashboardStore = dashboardStoreWithOut()
 
@@ -218,9 +219,19 @@ function recomputeCellWidth() {
   maxCell.value = Math.round(containerRef.value.offsetWidth / cellWidth.value)
 }
 
-function init() {
+function sizeInit() {
+  cellsInit()
+  recomputeCellWidth()
+  itemMaxX = maxCell.value
+}
+
+function cellsInit() {
   cellWidth.value = baseWidth.value + baseMarginLeft.value
   cellHeight.value = baseHeight.value + baseMarginTop.value
+}
+
+function init() {
+  cellsInit()
 
   positionBox.value = []
   coordinates.value = []
@@ -790,7 +801,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
           moveYSize % cellHeight.value > cellHeight.value / 4
               ? parseInt(String(moveYSize / cellHeight.value + 1))
               : parseInt(String(moveYSize / cellHeight.value))
-      // 根据坐标点 判断resize方向
+      // Determine the resizing direction based on the coordinate points
       const {
         nowSizeX,
         nowSizeY,
@@ -943,6 +954,7 @@ function moving() {
 defineExpose({
   getRenderState,
   init,
+  sizeInit,
   afterInitOk,
   addItemBox,
   getMaxCell,
@@ -959,14 +971,19 @@ defineExpose({
 <template>
   <div class="dragAndResize" ref="containerRef" @mousedown="containerMouseDown($event)" @mouseup="endMove()"
        @mousemove="moving()">
-    <div v-if="renderOk">
-      <CanvasShape v-for="(item, index) in canvasComponentData" :config-item="item" :draggable="draggable"
+    <template v-if="renderOk">
+      <CanvasShape v-for="(item, index) in canvasComponentData"
+                   :config-item="item"
+                   :draggable="draggable"
                    :item-index="index"
-                   :move-animate="moveAnimate" :start-move="startMove" :start-resize="startResize" :key="'item' + index"
+                   :move-animate="moveAnimate"
+                   :start-move="startMove"
+                   :start-resize="startResize"
+                   :key="'item' + index"
                    :style="nowItemStyle(item)">
-        <!--        {{ item }}-->
+        <component class="slot-component" :is="findComponent(item.component)" :config-item="item"></component>
       </CanvasShape>
-    </div>
+    </template>
   </div>
 </template>
 

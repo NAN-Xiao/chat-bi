@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import DsCanvasCore from '@/views/dashboard/canvas/DsCanvasCore.vue'
+import CanvasCore from '@/views/dashboard/canvas/CanvasCore.vue'
 import { nextTick, onMounted, ref } from 'vue'
 const cyGridster = ref(null)
 const baseWidth = ref(0)
@@ -56,14 +56,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <DsCanvasCore
+  <CanvasCore
     ref="cyGridster"
     :base-width="baseWidth"
     :base-height="baseHeight"
     :base-margin-left="baseMarginLeft"
     :base-margin-top="baseMarginTop"
     :canvas-component-data="componentData"
-  ></DsCanvasCore>
+  ></CanvasCore>
 </template>
 
 <style scoped lang="less"></style>

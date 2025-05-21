@@ -4,7 +4,8 @@ import Layout from '@/components/layout/index.vue'
 import login from '@/views/login/index.vue'
 import chat from '@/views/chat/index.vue'
 import ds from '@/views/ds/index.vue'
-import DashboardEditor from '@/views/dashboard/DashboardEditor.vue'
+import DashboardEditor from '@/views/dashboard/editor/index.vue'
+import Dashboard from '@/views/dashboard/index.vue'
 import setting from '@/views/setting/index.vue'
 import { watchRouter } from './watch'
 const router = createRouter({
@@ -55,8 +56,21 @@ const router = createRouter({
         {
           path: 'index',
           name: 'dashboard',
-          component: DashboardEditor,
+          component: Dashboard,
           meta: { title: 'Dashboard', icon: 'dashboard' }
+        }
+      ]
+    },
+    {
+      path: '/dashboard-edit',
+      redirect: '/dashboard-edit/index',
+      component: Layout,
+      children: [
+        {
+          path: 'index',
+          name: 'dashboard-edit',
+          component: DashboardEditor,
+          meta: { title: 'dashboard-edit', icon: 'dashboard' }
         }
       ]
     },
