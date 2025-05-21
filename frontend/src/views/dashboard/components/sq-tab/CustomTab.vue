@@ -5,19 +5,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import {computed} from 'vue'
+
 const props = defineProps({
   hideTitle: Boolean,
-  /* 颜色可以单词，如red；也可以是颜色值 */
-  // 字体颜色
+  /*Color can be a word, such as red; It can also be a color value*/
+  //Font color
   fontColor: String,
-  // 激活字体颜色
+  // Activate font color
   activeColor: String,
-  // 边框颜色 如果是none就无边框 如果是none Card类型激活的下滑线也消失
+  //If the border color is none, there will be no border.
+  // If it is none, the activated slide line of the Card type will also disappear
   borderColor: String,
-  // 激活边框颜色 目前只针对card类型
+  //Activate border color currently only for card types
   borderActiveColor: String,
-  // 样式类型  radioGroup只在Card类型有效, 同时必须给borderColor borderActiveColor
+  //The style type radioGroup is only valid for Card type,
+  // and it must be given as borderColor borderActiveColor
   styleType: {
     type: String,
     default: '',
@@ -26,21 +29,21 @@ const props = defineProps({
 })
 
 const tabStyle = computed(() => [
-  { '--de-font-color': props.fontColor },
-  { '--de-active-color': props.activeColor },
-  { '--de-border-color': props.borderColor },
-  { '--de-border-active-color': props.borderActiveColor }
+  {'--de-font-color': props.fontColor},
+  {'--de-active-color': props.activeColor},
+  {'--de-border-color': props.borderColor},
+  {'--de-border-active-color': props.borderActiveColor}
 ])
 const tabClassName = computed(() =>
-  props.styleType
-    ? [props.styleType, props.fontColor && 'fontColor', props.activeColor && 'activeColor']
-    : [
-        props.fontColor && 'fontColor',
-        props.activeColor && 'activeColor',
-        noBorder.value ? 'noBorder' : props.borderColor && 'borderColor',
-        props.borderActiveColor && 'borderActiveColor',
-        props.hideTitle && 'no-header'
-      ]
+    props.styleType
+        ? [props.styleType, props.fontColor && 'fontColor', props.activeColor && 'activeColor']
+        : [
+          props.fontColor && 'fontColor',
+          props.activeColor && 'activeColor',
+          noBorder.value ? 'noBorder' : props.borderColor && 'borderColor',
+          props.borderActiveColor && 'borderActiveColor',
+          props.hideTitle && 'no-header'
+        ]
 )
 
 const noBorder = computed(() => props.borderColor === 'none')
@@ -49,16 +52,19 @@ const noBorder = computed(() => props.borderColor === 'none')
 <style lang="less">
 .de-tabs {
   height: 100%;
+
   &.no-header {
     .ed-tabs__header {
       display: none;
     }
   }
+
   &.ed-tabs--card {
     > .ed-tabs__header {
       height: auto !important;
     }
   }
+
   &.fontColor {
     .ed-tabs__item {
       color: var(--de-font-color);
@@ -90,7 +96,7 @@ const noBorder = computed(() => props.borderColor === 'none')
     }
   }
 
-  // card样式的边框
+  // Card style border
   &.noBorder.ed-tabs--card {
     > .ed-tabs__header {
       border-bottom: none;
@@ -144,7 +150,7 @@ const noBorder = computed(() => props.borderColor === 'none')
     }
   }
 
-  // 简洁样式的边框
+  // A simple style border
   &.noBorder {
     .ed-tabs__nav-wrap::after {
       background: none;
@@ -157,7 +163,7 @@ const noBorder = computed(() => props.borderColor === 'none')
     }
   }
 
-  // radioGroup 类型
+  // radioGroup type
   &.radioGroup.ed-tabs--card {
     > .ed-tabs__header {
       border-bottom: none;
