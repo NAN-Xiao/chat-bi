@@ -64,6 +64,12 @@
           <el-form-item label="Database">
             <el-input v-model="config.database" />
           </el-form-item>
+          <el-form-item label="Connect Mode" v-if="form.type === 'oracle'">
+            <el-radio-group v-model="config.mode">
+              <el-radio value="service_name">Service Name</el-radio>
+              <el-radio value="sid">SID</el-radio>
+            </el-radio-group>
+          </el-form-item>
           <el-form-item label="Extra JDBC String">
             <el-input v-model="config.extraJdbc" />
           </el-form-item>
@@ -71,6 +77,8 @@
             <el-input v-model="config.dbSchema" />
             <el-button link type="primary" :icon="Plus" v-if="false">Get Schema</el-button>
           </el-form-item>
+          <span v-if="form.type === 'sqlServer'">Supported version: 2012+</span>
+          <span v-else-if="form.type === 'oracle'">Supported version: 12+</span>
         </div>
       </el-form>
     </div>
@@ -143,7 +151,8 @@ const config = ref<any>({
   extraJdbc:'',
   dbSchema:'',
   filename:'',
-  sheets: []
+  sheets: [],
+  mode:'service_name'
 })
 
 const close = () => {
@@ -176,6 +185,7 @@ const open = (item: any, editTable: boolean = false) => {
       config.value.dbSchema = configuration.dbSchema
       config.value.filename = configuration.filename
       config.value.sheets = configuration.sheets
+      config.value.mode = configuration.mode
     }
 
     if (editTable) {
@@ -217,7 +227,8 @@ const open = (item: any, editTable: boolean = false) => {
       extraJdbc:'',
       dbSchema:'',
       filename:'',
-      sheets: []
+      sheets: [],
+      mode:'service_name'
     }
   }
   dialogVisible.value = true
@@ -268,7 +279,8 @@ const buildConf = () => {
     extraJdbc:config.value.extraJdbc,
     dbSchema:config.value.dbSchema,
     filename:config.value.filename,
-    sheets:config.value.sheets
+    sheets:config.value.sheets,
+    mode:config.value.mode
   }))
 }
 

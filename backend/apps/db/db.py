@@ -16,19 +16,30 @@ def get_uri(ds: CoreDatasource):
     db_url: str
     if ds.type == "mysql":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
-            db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{urllib.parse.quote(conf.extraJdbc)}"
+            db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{conf.extraJdbc}"
         else:
             db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
     elif ds.type == "sqlServer":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
-            db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{urllib.parse.quote(conf.extraJdbc)}"
+            db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{conf.extraJdbc}"
         else:
             db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
     elif ds.type == "pg" or ds.type == "excel":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
-            db_url = f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{urllib.parse.quote(conf.extraJdbc)}"
+            db_url = f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{conf.extraJdbc}"
         else:
             db_url = f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
+    elif ds.type == "oracle":
+        if conf.mode == "service_name":
+            if conf.extraJdbc is not None and conf.extraJdbc != '':
+                db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}?service_name={urllib.parse.quote(conf.database)}&{conf.extraJdbc}"
+            else:
+                db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}?service_name={urllib.parse.quote(conf.database)}"
+        else:
+            if conf.extraJdbc is not None and conf.extraJdbc != '':
+                db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{conf.extraJdbc}"
+            else:
+                db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
     else:
         raise 'The datasource type not support.'
     return db_url
@@ -65,7 +76,7 @@ def get_tables(ds: CoreDatasource):
                     FROM 
                         information_schema.TABLES
                     WHERE 
-                        TABLE_SCHEMA = '{conf.database}';
+                        TABLE_SCHEMA = '{conf.database}'
                     """
         elif ds.type == "sqlServer":
             sql = f"""
@@ -81,7 +92,7 @@ def get_tables(ds: CoreDatasource):
                         AND ep.name = 'MS_Description' 
                     WHERE 
                         t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
-                        AND t.TABLE_SCHEMA = '{conf.dbSchema}';
+                        AND t.TABLE_SCHEMA = '{conf.dbSchema}'
                     """
         elif ds.type == "pg" or ds.type == "excel":
             sql = """
@@ -99,7 +110,27 @@ def get_tables(ds: CoreDatasource):
                         AND c.relkind IN ('r', 'v')  
                         AND c.relname NOT LIKE 'pg_%'
                         AND c.relname NOT LIKE 'sql_%'
-                    ORDER BY c.relname;
+                    ORDER BY c.relname
+                    """
+        elif ds.type == "oracle":
+            sql = f"""
+                    SELECT 
+                        t.TABLE_NAME AS "TABLE_NAME",
+                        NVL(c.COMMENTS, '') AS "TABLE_COMMENT"
+                    FROM (
+                        SELECT TABLE_NAME, 'TABLE' AS OBJECT_TYPE
+                        FROM DBA_TABLES
+                        WHERE OWNER = '{conf.dbSchema}'  
+                        UNION ALL
+                        SELECT VIEW_NAME AS TABLE_NAME, 'VIEW' AS OBJECT_TYPE
+                        FROM DBA_VIEWS
+                        WHERE OWNER = '{conf.dbSchema}'  
+                    ) t
+                    LEFT JOIN DBA_TAB_COMMENTS c 
+                        ON t.TABLE_NAME = c.TABLE_NAME 
+                        AND c.TABLE_TYPE = t.OBJECT_TYPE
+                        AND c.OWNER = '{conf.dbSchema}'   
+                    ORDER BY t.TABLE_NAME
                     """
 
         result = session.execute(text(sql))
@@ -130,7 +161,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                     WHERE 
                         TABLE_SCHEMA = '{conf.database}'
                     """
-            sql2 = f" AND TABLE_NAME = '{table_name}';" if table_name is not None and table_name != "" else ";"
+            sql2 = f" AND TABLE_NAME = '{table_name}'" if table_name is not None and table_name != "" else ""
             sql = sql1 + sql2
         elif ds.type == "sqlServer":
             sql1 = f"""
@@ -148,7 +179,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                     WHERE 
                         C.TABLE_SCHEMA = '{conf.dbSchema}'
                     """
-            sql2 = f" AND C.TABLE_NAME = '{table_name}';" if table_name is not None and table_name != "" else ";"
+            sql2 = f" AND C.TABLE_NAME = '{table_name}'" if table_name is not None and table_name != "" else ""
             sql = sql1 + sql2
         elif ds.type == "pg" or ds.type == "excel":
             sql1 = """
@@ -167,7 +198,32 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                         AND a.attnum > 0              
                         AND NOT a.attisdropped
                     """
-            sql2 = f" AND c.relname = '{table_name}';" if table_name is not None and table_name != "" else ";"
+            sql2 = f" AND c.relname = '{table_name}'" if table_name is not None and table_name != "" else ""
+            sql = sql1 + sql2
+        elif ds.type == "oracle":
+            sql1 = f"""
+                    SELECT 
+                        col.COLUMN_NAME AS "COLUMN_NAME",
+                        (CASE 
+                            WHEN col.DATA_TYPE IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') 
+                                THEN col.DATA_TYPE || '(' || col.DATA_LENGTH || ')' 
+                            WHEN col.DATA_TYPE = 'NUMBER' AND col.DATA_PRECISION IS NOT NULL 
+                                THEN col.DATA_TYPE || '(' || col.DATA_PRECISION || 
+                                     CASE WHEN col.DATA_SCALE > 0 THEN ',' || col.DATA_SCALE END || ')' 
+                            ELSE col.DATA_TYPE 
+                        END) AS "DATA_TYPE",
+                        NVL(com.COMMENTS, '') AS "COLUMN_COMMENT"
+                    FROM 
+                        DBA_TAB_COLUMNS col
+                    LEFT JOIN 
+                        DBA_COL_COMMENTS com 
+                        ON col.OWNER = com.OWNER 
+                        AND col.TABLE_NAME = com.TABLE_NAME 
+                        AND col.COLUMN_NAME = com.COLUMN_NAME
+                    WHERE 
+                        col.OWNER = '{conf.dbSchema}'
+                    """
+            sql2 = f" AND col.TABLE_NAME = '{table_name}'" if table_name is not None and table_name != "" else ""
             sql = sql1 + sql2
 
         result = session.execute(text(sql))

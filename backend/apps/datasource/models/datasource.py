@@ -12,6 +12,7 @@ class CoreDatasource(SQLModel, table=True):
     name: str = Field(max_length=128, nullable=False)
     description: str = Field(max_length=512, nullable=True)
     type: str = Field(max_length=64)
+    type_name: str = Field(max_length=64, nullable=True)
     configuration: str = Field(sa_column=Column(Text))
     create_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger()))
@@ -71,6 +72,7 @@ class DatasourceConf(BaseModel):
     dbSchema: str = ''
     filename: str = ''
     sheets: List = ''
+    mode: str = ''
 
     def to_dict(self):
         return {
@@ -83,7 +85,8 @@ class DatasourceConf(BaseModel):
             "extraJdbc": self.extraJdbc,
             "dbSchema": self.dbSchema,
             "filename": self.filename,
-            "sheets": self.sheets
+            "sheets": self.sheets,
+            "mode": self.mode
         }
 
 

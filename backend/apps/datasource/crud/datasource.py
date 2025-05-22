@@ -15,6 +15,7 @@ from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
 from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, EditObj, \
     DatasourceConf
+from apps.db.type import db_type_relation
 
 
 def get_datasource_list(session: SessionDep):
@@ -41,6 +42,7 @@ def create_ds(session: SessionDep, user: CurrentUser, create_ds: CreateDatasourc
     # status = check_status(session, ds)
     ds.create_by = user.id
     ds.status = "Success"
+    ds.type_name = db_type_relation()[ds.type]
     record = CoreDatasource(**ds.model_dump())
     session.add(record)
     session.flush()
@@ -202,4 +204,8 @@ def preview(session: SessionDep, id: int, data: EditObj):
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     elif ds.type == "pg" or ds.type == "excel":
         sql = f"""SELECT "{'", "'.join([f.field_name for f in data.fields if f.checked])}" FROM "{conf.dbSchema}"."{data.table.table_name}" LIMIT 100"""
+    elif ds.type == "oracle":
+        sql = f"""SELECT "{'", "'.join([f.field_name for f in data.fields if f.checked])}" FROM "{conf.dbSchema}"."{data.table.table_name}"
+            ORDER BY "{data.fields[0].field_name}"
+            OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     return exec_sql(ds, sql)

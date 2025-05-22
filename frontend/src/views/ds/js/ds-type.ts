@@ -1,18 +1,13 @@
 export const dsType = [
   {label:"MySQL", value:"mysql"},
-  {label:"Microsoft SQL Server", value:"sqlServer"},
   {label:"PostgreSQL", value:"pg"},
+  {label:"Microsoft SQL Server", value:"sqlServer"},
+  {label:"Oracle", value:"oracle"},
   {label:"Excel/CSV", value:"excel"},
 ]
 
 export const haveSchema = [
   'sqlServer', 
-  'pg'
+  'pg',
+  'oracle'
 ]
-
-export const  dsRelation: any = {
-  "mysql": "MySQL",
-  "sqlServer": "Microsoft SQL Server",
-  "pg": "PostgreSQL",
-  "excel": "Excel/CSV",
-}
