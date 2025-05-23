@@ -9,13 +9,13 @@ from apps.datasource.utils.utils import aes_decrypt
 from apps.db.db import get_engine, get_tables, get_fields, exec_sql
 from apps.db.engine import get_engine_config
 from apps.db.engine import get_engine_conn
+from apps.db.type import db_type_relation
 from common.core.deps import SessionDep, CurrentUser
 from common.utils.utils import deepcopy_ignore_extra
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
-from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, EditObj, \
-    DatasourceConf
-from apps.db.type import db_type_relation
+from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj, \
+    DatasourceConf, TableAndFields
 
 
 def get_datasource_list(session: SessionDep):
@@ -186,13 +186,13 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
         session.commit()
 
 
-def update_table_and_fields(session: SessionDep, data: EditObj):
+def update_table_and_fields(session: SessionDep, data: TableObj):
     update_table(session, data.table)
     for field in data.fields:
         update_field(session, field)
 
 
-def preview(session: SessionDep, id: int, data: EditObj):
+def preview(session: SessionDep, id: int, data: TableObj):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
@@ -209,3 +209,12 @@ def preview(session: SessionDep, id: int, data: EditObj):
             ORDER BY "{data.fields[0].field_name}"
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     return exec_sql(ds, sql)
+
+
+def get_tableobj_by_ds(session: SessionDep, id: int) -> List[TableAndFields]:
+    list: List = []
+    tables = session.query(CoreTable).filter(CoreTable.ds_id == id).all()
+    for table in tables:
+        fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
+        list.append(TableAndFields(table=table, fields=fields))
+    return list

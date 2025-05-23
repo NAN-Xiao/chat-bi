@@ -12,7 +12,7 @@ from ..crud.datasource import get_datasource_list, check_status, create_ds, upda
     execSql, update_table_and_fields, getTablesByDs, chooseTables, preview
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
-from ..models.datasource import CoreDatasource, CreateDatasource, EditObj, CoreTable
+from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 path = "/opt/sqlbot/data/excel"
@@ -79,12 +79,12 @@ async def field_list(session: SessionDep, id: int):
 
 
 @router.post("/editLocalComment")
-async def edit_local(session: SessionDep, data: EditObj):
+async def edit_local(session: SessionDep, data: TableObj):
     update_table_and_fields(session, data)
 
 
 @router.post("/previewData/{id}")
-async def edit_local(session: SessionDep, id: int, data: EditObj):
+async def edit_local(session: SessionDep, id: int, data: TableObj):
     return preview(session, id, data)
 
 
