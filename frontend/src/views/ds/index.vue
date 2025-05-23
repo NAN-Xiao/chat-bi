@@ -180,7 +180,6 @@ onMounted(() => {
     position: relative;
     border: 1px solid #dadce0;
     transition: all 0.2s ease;
-    height: 110px;
     align-items: center;
   }
   .connection-icon {
