@@ -11,29 +11,26 @@
           </el-button>
         </el-header>
         <el-main class="chat-list">
-          <el-scrollbar>
-            <div v-for="chat in chatList" @click="onClickHistory(chat)"
-                 :style="chat.id === currentChatId ? {border: 'solid 1px red'} : {}">
-              {{ chat.create_time }}<br/>
-              {{ chat.brief }}
-            </div>
-          </el-scrollbar>
+          <ChatList :current-chat-id="currentChatId" v-model:loading="loading" :chat-list="chatList"
+                    @chat-selected="onClickHistory" @chat-deleted="onChatDeleted" @chat-renamed="onChatRenamed"/>
         </el-main>
       </el-container>
     </el-aside>
     <el-container :loading="loading">
-      <el-main>
-        <div v-for="message in computedMessages">
-          {{ message.role }}: {{ message.content }}
-          <div v-if="message.isWelcome">
-            <el-select v-model="currentChat.datasource" :disabled="currentChat.id!==undefined">
-              <el-option v-for="item in dsList"
-                         :value="item.id"
-                         :key="item.id"
-                         :label="item.name"/>
-            </el-select>
+      <el-main class="chat-record-list">
+        <el-scrollbar>
+          <div v-for="message in computedMessages">
+            {{ message.role }}: {{ message.content }}
+            <div v-if="message.isWelcome">
+              <el-select v-model="currentChat.datasource" :disabled="currentChat.id!==undefined">
+                <el-option v-for="item in dsList"
+                           :value="item.id"
+                           :key="item.id"
+                           :label="item.name"/>
+              </el-select>
+            </div>
           </div>
-        </div>
+        </el-scrollbar>
       </el-main>
       <el-footer>
         <div class="chat-input">
@@ -66,7 +63,8 @@
 import {ref, computed, nextTick, watch, onMounted} from 'vue'
 import {Plus, Position} from '@element-plus/icons-vue'
 import {Chat, chatApi, ChatInfo, ChatRecord, questionApi} from '@/api/chat'
-import {datasourceApi} from "@/api/datasource.ts";
+import {datasourceApi} from "@/api/datasource.ts"
+import ChatList from './ChatList.vue'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -132,6 +130,7 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
 const createNewChat = () => {
   currentChat.value = new ChatInfo()
   currentChatId.value = undefined
+  inputMessage.value = ''
   listDs()
 }
 
@@ -164,9 +163,28 @@ function onClickHistory(chat: Chat) {
   }
 }
 
+function onChatDeleted(id: number) {
+  for (let i = 0; i < chatList.value.length; i++) {
+    if (chatList.value[i].id === id) {
+      chatList.value.splice(i, 1)
+      return
+    }
+  }
+}
+
+function onChatRenamed(chat: Chat) {
+  chatList.value.forEach((c: Chat) => {
+    if (c.id === chat.id) {
+      c.brief = chat.brief
+    }
+  })
+  if (currentChat.value.id === chat.id) {
+    currentChat.value.brief = chat.brief
+  }
+}
+
 function listDs() {
   datasourceApi.list().then((res) => {
-    console.log(res)
     dsList.value = res
   })
 }
@@ -197,6 +215,7 @@ const sendMessage = async () => {
   currentRecord.answer = ''
 
   currentChat.value.records.push(currentRecord)
+  inputMessage.value = ''
 
   let error = false
   if (currentChatId.value === undefined) {
@@ -221,7 +240,6 @@ const sendMessage = async () => {
           loading.value = false
         })
   }
-
   if (error) return
 
   try {
@@ -310,6 +328,8 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
     border-right: solid 1px rgba(0, 0, 0, 0.3);
 
+    background: var(--ed-fill-color-blank);
+
     .chat-container-right-container {
       height: 100%;
 
@@ -320,10 +340,14 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
       }
 
       .chat-list {
-        padding-top: unset;
+        padding: 0 0 20px 0;
       }
 
     }
+  }
+
+  .chat-record-list {
+    padding: 20px 0 0 0;
   }
 
 

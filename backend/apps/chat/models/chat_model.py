@@ -36,6 +36,11 @@ class CreateChat(BaseModel):
     datasource: int = None
 
 
+class RenameChat(BaseModel):
+    id: int = None
+    brief: str = ''
+
+
 class ChatInfo(BaseModel):
     id: Optional[int] = None
     create_time: datetime = None

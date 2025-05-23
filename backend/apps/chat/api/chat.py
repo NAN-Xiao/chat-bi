@@ -2,8 +2,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlmodel import select
 
-from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, save_question, save_answer
-from apps.chat.models.chat_model import CreateChat, ChatRecord
+from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, save_question, save_answer, rename_chat, \
+    delete_chat
+from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat
 from apps.chat.schemas.chat_base_schema import LLMConfig
 from apps.chat.schemas.chat_schema import ChatQuestion
 from apps.chat.schemas.llm import AgentService
@@ -25,6 +26,28 @@ async def chats(session: SessionDep, current_user: CurrentUser):
 async def list_chat(session: SessionDep, current_user: CurrentUser, chart_id: int):
     try:
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@router.post("/rename")
+async def rename(session: SessionDep, chat: RenameChat):
+    try:
+        return rename_chat(session=session, rename_object=chat)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@router.get("/delete/{chart_id}")
+async def delete(session: SessionDep, chart_id: int):
+    try:
+        return delete_chat(session=session, chart_id=chart_id)
     except Exception as e:
         raise HTTPException(
             status_code=500,
