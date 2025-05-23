@@ -46,16 +46,6 @@ export default defineConfig(({ mode }) => {
     esbuild: {
       jsxFactory: 'h',
       jsxFragment: 'Fragment',
-    },
-    server: {
-      proxy: {
-        '/api': {
-          target: 'http://192.168.11.65:8000',
-          changeOrigin: true,
-          rewrite: path => path.replace(/^\/api/, '/api')
-        }
-      },
-      port: 8080
     }
   }
 })
