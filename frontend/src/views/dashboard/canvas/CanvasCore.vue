@@ -981,7 +981,7 @@ function getItemStylePosition(item: CanvasItem) {
     tb: cellHeight.value * tb + baseMarginLeft.value
   }
 }
-
+// @ts-ignore
 function tabMoveInCheck(cloneRefItem) {
   //1. If the current cloneItem type is not a tab,
   // check if there are any tab components with overlapping boundaries (about to overlap) in the top left and right directions of the current Item

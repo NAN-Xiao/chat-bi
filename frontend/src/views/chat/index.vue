@@ -275,6 +275,7 @@ watch(() => currentChat.value?.records[currentChat.value.records.length - 1]?.an
   //scrollToBottom()
 }, {deep: true})
 
+//@ts-ignore
 const formatMessage = (content: string) => {
   if (!content) return ''
   return content
