@@ -4,6 +4,8 @@ import {store} from "@/stores";
 export const dashboardStore = defineStore('dashboard', {
     state: () => {
         return {
+            tabCollisionActiveId: null,
+            tabMoveInActiveId: null,
             curComponent: null,
             canvasStyle: {},
             componentData: [],
@@ -33,7 +35,13 @@ export const dashboardStore = defineStore('dashboard', {
         },
         setCanvasStyle(value: any) {
             this.canvasStyle = value
-        }
+        },
+        setTabCollisionActiveId(tabId: any) {
+            this.tabCollisionActiveId = tabId
+        },
+        setTabMoveInActiveId(tabId: any) {
+            this.tabMoveInActiveId = tabId
+        },
 
     }
 })

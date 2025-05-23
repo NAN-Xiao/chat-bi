@@ -5,9 +5,13 @@ import {dashboardStoreWithOut} from '@/stores/dashboard/dashboard'
 import {type CanvasCoord, type CanvasItem} from '@/utils/canvas.ts'
 import CanvasShape from './CanvasShape.vue'
 import {findComponent} from "@/views/dashboard/components/component-list.ts";
+import {storeToRefs} from 'pinia'
 
 const dashboardStore = dashboardStoreWithOut()
-
+const {
+  tabCollisionActiveId,
+  tabMoveInActiveId
+} = storeToRefs(dashboardStore)
 
 // Props
 const props = defineProps({
@@ -105,8 +109,11 @@ let lastTask: (() => void) | undefined = undefined
 let isOverlay = false
 let itemMaxX = 0
 let itemMaxY = 0
-
 const moveTime = 80
+
+const tabMoveInYOffset = 70
+// Effective area of collision depth
+const collisionGap = 10
 
 function debounce(func: () => void, time: number) {
   if (!isOverlay) {
@@ -832,11 +839,10 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       let nowCloneItemX = infoBox.value.originX + moveXSize
       let nowCloneItemY = infoBox.value.originY + moveYSize
-
       // Adjust the accuracy of moving coordinate changes
       const newX = Math.max(
           Math.floor(
-              (nowCloneItemX + infoBox.value.cloneItem.offsetWidth / 24 - baseMarginLeft.value) /
+              (nowCloneItemX + infoBox.value.cloneItem.offsetWidth / 96 - baseMarginLeft.value) /
               cellWidth.value +
               1
           ),
@@ -845,7 +851,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       // Adjust the accuracy of moving coordinate changes
       const newY = Math.max(
           Math.floor(
-              (nowCloneItemY + infoBox.value.cloneItem.offsetHeight / 24 - baseMarginTop.value) /
+              (nowCloneItemY + infoBox.value.cloneItem.offsetHeight / 96 - baseMarginTop.value) /
               cellHeight.value +
               1
           ),
@@ -862,6 +868,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       infoBox.value.cloneItem.style.left = `${nowCloneItemX}px`
       infoBox.value.cloneItem.style.top = `${nowCloneItemY}px`
+      tabMoveInCheckSQ()
     }
   }
 
@@ -948,6 +955,104 @@ function endMove() {
 
 function moving() {
   // do moving
+}
+
+// Obtain matrix position
+function getItemMatrixPosition(item: CanvasItem) {
+  return {
+    tw: cellWidth.value * item.sizeX - baseMarginLeft.value,
+    th: cellHeight.value * item.sizeY - baseMarginTop.value,
+    tl: cellWidth.value * (item.x - 1) + baseMarginLeft.value,
+    tr: cellWidth.value * (item.sizeX + item.x - 1) + baseMarginLeft.value,
+    tt: cellHeight.value * (item.y - 1) + baseMarginTop.value,
+    tb: cellHeight.value * (item.sizeY + item.y - 1) + baseMarginLeft.value
+  }
+}
+
+// Get style location
+function getItemStylePosition(item: CanvasItem) {
+  const {tw, th, tl, tr, tt, tb} = getItemMatrixPosition(item)
+  return {
+    tw: tw * (cellWidth.value + baseMarginLeft.value) - baseMarginLeft.value,
+    th: th * (cellHeight.value + baseMarginTop.value) - baseMarginTop.value,
+    tl: cellWidth.value * tl + baseMarginLeft.value,
+    tr: cellWidth.value * tr + baseMarginLeft.value,
+    tt: cellHeight.value * tt + baseMarginTop.value,
+    tb: cellHeight.value * tb + baseMarginLeft.value
+  }
+}
+
+function tabMoveInCheck(cloneRefItem) {
+  //1. If the current cloneItem type is not a tab,
+  // check if there are any tab components with overlapping boundaries (about to overlap) in the top left and right directions of the current Item
+  //2.If there is, the original item of the current cloneItem is not moving (the entire dashboard will not be rearranged)
+  //3. Activate this tab item. At this time, the tab item displays the activation status
+  //4. Release this cloneItem from the main canvas and remove the canvas with the added item
+  const moveItem = infoBox.value.moveItem
+  if (moveItem && moveItem !== 'SQTab') {
+    canvasComponentData.value.forEach(item => {
+      // Determine the position of SQTab components around moveItem
+      if (item.id !== moveItem.id && item.component === 'SQTab') {
+      }
+    })
+  }
+}
+
+function tabMoveInCheckSQ() {
+  const {cloneItem,moveItem} = infoBox.value.cloneItem
+  if (cloneItem && moveItem && moveItem !== 'SQTab') {
+    const width = cloneItem.offsetWidth
+    const height = cloneItem.offsetHeight
+    const left = cloneItem.offsetLeft
+    const top = cloneItem.offsetTop
+    canvasComponentData.value.forEach(item => {
+      if (item.id !== moveItem.id && item.component === 'SQTab') {
+        const {tw, th, tl, tt} = getItemStylePosition(item)
+        // Collision effective area inspection
+        const collisionT = tt + tabMoveInYOffset
+        const collisionL = tl + collisionGap - width
+        const collisionW = tw + 2 * width - collisionGap
+        const collisionH = th + height - tabMoveInYOffset
+        // Near the upper left corner area
+        const tfAndTf = collisionT <= top && collisionL <= left
+        // Near the lower left corner area
+        const bfAndBf = collisionT + collisionH >= top + height && collisionL <= left
+        // Near the upper right corner area
+        const trAndTr = collisionT <= top && collisionL + collisionW >= left + width
+        // Near the lower right corner area
+        const brAndBr =
+            collisionT + collisionH >= top + height && collisionL + collisionW >= left + width
+        if (tfAndTf && bfAndBf && trAndTr && brAndBr) {
+          dashboardStore.setTabCollisionActiveId(item.id)
+        } else if (tabCollisionActiveId.value === item.id) {
+          dashboardStore.setTabCollisionActiveId(null)
+        }
+
+
+        //Move into effective area for inspection
+        //Collision effective area inspection
+        const activeT = tt + tabMoveInYOffset
+        const activeL = tl + collisionGap * 10 - width
+        const activeW = tw + 2 * width - collisionGap * 20
+        const activeH = th + height - 2 * tabMoveInYOffset
+
+        // Near the upper left corner area
+        const activeTfAndTf = activeT <= top && activeL <= left
+        // Near the lower left corner area
+        const activeBfAndBf = activeT + activeH >= top + height && activeL <= left
+        // Near the upper right corner area
+        const activeTrAndTr = activeT <= top && activeL + activeW >= left + width
+        // Near the lower right corner area
+        const activeBrAndBr = activeT + activeH >= top + height && activeL + activeW >= left + width
+        if (activeTfAndTf && activeBfAndBf && activeTrAndTr && activeBrAndBr) {
+          dashboardStore.setTabMoveInActiveId(item.id)
+        } else if (tabMoveInActiveId.value === item.id) {
+          dashboardStore.setTabMoveInActiveId(null)
+        }
+      }
+    })
+  }
+
 }
 
 
