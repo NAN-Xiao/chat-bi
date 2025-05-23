@@ -262,7 +262,7 @@ onMounted(() => {
   }
   .sqlbot-table {
     border-radius: 6px;
-    :deep(.el-table) {
+    :deep(.ed-table) {
       --el-table-header-bg-color: #f5f7fa;
       --el-table-border-color: #ebeef5;
       --el-table-header-text-color: #606266;
@@ -303,19 +303,19 @@ onMounted(() => {
 }
 .sqlbot-form {
   width: 100%;
-  .el-form-item {
+  .ed-form-item {
     margin-bottom: 16px;
     text-align: left;
     label {
       font-size: 14px;
       color: #606266;
     }
-    /* .el-input {
+    /* .ed-input {
       --el-input-border-color: #e5e8ed;
       --el-input-border-radius: 4px;
       --el-input-inner-height: 40px !important;
     }
-    .el-select {
+    .ed-select {
       --el-select-bg-color: #f5f7fa;
       --el-select-border-color: #e5e8ed;
       --el-select-border-radius: 4px;
@@ -326,7 +326,7 @@ onMounted(() => {
 .sqlbot-dialog {
   width: 500px;
 
-  :deep(.el-dialog__header) {
+  :deep(.ed-dialog__header) {
     text-align: left !important;
     font-size: 16px;
     background-color: #f5f7fa;

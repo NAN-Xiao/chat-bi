@@ -8,17 +8,30 @@
     @closed="close"
     modal-class="add-datasource_dialog"
   >
-    <el-steps
-      v-show="isCreate"
-      style="max-width: 600px"
-      :active="active"
-      align-center
-    >
-      <el-step title="Base Info" />
-      <el-step title="Choose Tables" />
-    </el-steps>
-    <div v-show="active === 1" class="container">
-      <el-form :model="form" label-width="auto" ref="dsFormRef" :rules="rules">
+    <template #header="{ close, titleId, titleClass }">
+      <div style="display: flex">
+        <div style="margin-right: 24px">Add Datasource</div>
+        <el-steps
+          v-show="isCreate"
+          :active="active"
+          align-center
+          custom
+          style="max-width: 400px; flex: 1"
+        >
+          <el-step title="Base Info" />
+          <el-step title="Choose Tables" />
+        </el-steps>
+      </div>
+    </template>
+
+    <div v-show="active === 0" class="container">
+      <el-form
+        :model="form"
+        label-position="top"
+        label-width="auto"
+        ref="dsFormRef"
+        :rules="rules"
+      >
         <el-form-item label="Name" prop="name">
           <el-input v-model="form.name" />
         </el-form-item>
@@ -96,7 +109,7 @@
         </div>
       </el-form>
     </div>
-    <div v-show="active === 2" class="container" v-loading="tableListLoading">
+    <div v-show="active === 1" class="container" v-loading="tableListLoading">
       <el-checkbox-group v-model="checkList" style="position: relative">
         <FixedSizeList
           :itemSize="40"
@@ -127,16 +140,16 @@
         >Test Connect</el-button
       >
       <el-button
-        v-show="active === 1 && isCreate"
+        v-show="active === 0 && isCreate"
         type="primary"
         @click="next(dsFormRef)"
         >Next</el-button
       >
-      <el-button v-show="active === 2 && isCreate" @click="preview"
+      <el-button v-show="active === 1 && isCreate" @click="preview"
         >Preview</el-button
       >
       <el-button
-        v-show="active === 2 || !isCreate"
+        v-show="active === 1 || !isCreate"
         type="primary"
         @click="save(dsFormRef)"
         >Save</el-button
@@ -148,9 +161,9 @@
 import { ref, reactive } from "vue";
 import { datasourceApi } from "@/api/datasource";
 import { encrypted, decrypted } from "./js/aes";
-import { ElMessage } from "element-plus";
-import type { FormInstance, FormRules } from "element-plus";
-import FixedSizeList from "element-plus/es/components/virtual-list/src/components/fixed-size-list.mjs";
+import { ElMessage } from "element-plus-secondary";
+import type { FormInstance, FormRules } from "element-plus-secondary";
+import FixedSizeList from "element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs";
 import { Plus } from "@element-plus/icons-vue";
 import { useCache } from "@/utils/useCache";
 import { dsType, haveSchema } from "@/views/ds/js/ds-type";
@@ -158,7 +171,7 @@ import { dsType, haveSchema } from "@/views/ds/js/ds-type";
 const { wsCache } = useCache();
 const dsFormRef = ref<FormInstance>();
 const emit = defineEmits(["refresh"]);
-const active = ref(1);
+const active = ref(0);
 const isCreate = ref(true);
 const isEditTable = ref(false);
 const checkList = ref<any>([]);
@@ -199,7 +212,7 @@ const config = ref<any>({
 const close = () => {
   dialogVisible.value = false;
   isCreate.value = true;
-  active.value = 1;
+  active.value = 0;
   isEditTable.value = false;
   checkList.value = [];
   tableList.value = [];
@@ -230,7 +243,7 @@ const open = (item: any, editTable: boolean = false) => {
     }
 
     if (editTable) {
-      active.value = 2;
+      active.value = 1;
       isEditTable.value = true;
       isCreate.value = false;
       // request tables and check tables
@@ -421,8 +434,8 @@ defineExpose({ open });
 .add-datasource_dialog {
   .container {
     max-height: 600px;
-    margin-top: 20px;
-    .el-vl__window.el-select-dropdown__list::-webkit-scrollbar {
+    overflow-y: auto;
+    .ed-vl__window.ed-select-dropdown__list::-webkit-scrollbar {
       width: 0;
       height: 0;
     }

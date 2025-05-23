@@ -160,7 +160,7 @@ const isEditMode = computed(() => true)
 </template>
 
 <style scoped lang="less">
-.el-dropdown-link{
+.ed-dropdown-link{
   margin-top: 3px !important;
 }
 

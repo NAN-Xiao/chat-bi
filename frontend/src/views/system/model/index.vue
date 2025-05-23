@@ -433,7 +433,7 @@ const batchEnableHandler = () => {
   }
   .sqlbot-table {
     border-radius: 6px;
-    :deep(.el-table) {
+    :deep(.ed-table) {
       --el-table-header-bg-color: #f5f7fa;
       --el-table-border-color: #ebeef5;
       --el-table-header-text-color: #606266;
@@ -487,7 +487,7 @@ const batchEnableHandler = () => {
 }
 .sqlbot-form {
   width: 100%;
-  .el-form-item {
+  .ed-form-item {
     margin-bottom: 16px;
     text-align: left;
     label {
@@ -499,7 +499,7 @@ const batchEnableHandler = () => {
 .sqlbot-dialog {
   width: 500px;
 
-  :deep(.el-dialog__header) {
+  :deep(.ed-dialog__header) {
     text-align: left !important;
     font-size: 16px;
     background-color: #f5f7fa;

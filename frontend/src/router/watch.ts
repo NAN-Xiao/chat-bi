@@ -1,4 +1,4 @@
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus-secondary'
 import { useCache } from '@/utils/useCache'
 const { wsCache } = useCache()
 const whiteList = ['/login']

@@ -140,7 +140,7 @@ const submitForm = () => {
   }
 }
 
-:deep(.el-input__wrapper) {
+:deep(.ed-input__wrapper) {
   background-color: #f5f7fa;
 }
 </style>
