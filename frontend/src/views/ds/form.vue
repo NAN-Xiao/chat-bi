@@ -91,6 +91,8 @@
           </el-form-item>
           <span v-if="form.type === 'sqlServer'">Supported version: 2012+</span>
           <span v-else-if="form.type === 'oracle'">Supported version: 12+</span>
+          <span v-else-if="form.type === 'mysql'">Supported version: 5.6+</span>
+          <span v-else-if="form.type === 'pg'">Supported version: 9.6+</span>
         </div>
       </el-form>
     </div>
