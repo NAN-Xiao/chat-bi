@@ -1,0 +1,132 @@
+import datetime
+import json
+from typing import List
+
+from sqlalchemy import text, and_
+from sqlmodel import select
+
+from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo
+from apps.chat.schemas.chat_schema import ChatQuestion
+from apps.datasource.models.datasource import CoreDatasource
+from common.core.deps import SessionDep, CurrentUser
+
+
+def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
+    chart_list = session.query(Chat).filter(Chat.create_by == current_user.id).order_by(
+        Chat.create_time.desc()).all()
+    return chart_list
+
+
+def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> ChatInfo:
+    chat = session.query(Chat).filter(Chat.id == chart_id).first()
+    if not chat:
+        raise Exception(f"Chat with id {chart_id} not found")
+
+    chat_info = ChatInfo(**chat.model_dump())
+
+    ds = session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
+    if not ds:
+        chat_info.datasource_exists = False
+        chat_info.datasource_name = 'Datasource not exist'
+    else:
+        chat_info.datasource_exists = True
+        chat_info.datasource_name = ds.name
+
+    record_list = session.query(ChatRecord).filter(
+        and_(Chat.create_by == current_user.id, ChatRecord.id == chart_id)).order_by(ChatRecord.create_time).all()
+
+    chat_info.records = record_list
+
+    return chat_info
+
+
+def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat) -> ChatInfo:
+    if not create_chat_obj.datasource:
+        raise Exception("Datasource cannot be None")
+
+    if not create_chat_obj.question or create_chat_obj.question.strip() == '':
+        raise Exception("Question cannot be Empty")
+
+    chat = Chat(create_time=datetime.datetime.now(),
+                create_by=current_user.id,
+                brief=create_chat_obj.question.strip()[:20],
+                datasource=create_chat_obj.datasource)
+
+    ds = session.query(CoreDatasource).filter(CoreDatasource.id == create_chat_obj.datasource).first()
+
+    if not ds:
+        raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
+
+    chat.engine_type = ds.type_name
+
+    chat_info = ChatInfo(**chat.model_dump())
+
+    session.add(chat)
+    session.flush()
+    session.refresh(chat)
+    chat_info.id = chat.id
+    session.commit()
+
+    return chat_info
+
+
+def save_question(session: SessionDep, current_user: CurrentUser, question: ChatQuestion) -> ChatRecord:
+    if not question.chat_id:
+        raise Exception("ChatId cannot be None")
+    if not question.question or question.question.strip() == '':
+        raise Exception("Question cannot be Empty")
+
+    chat = session.query(Chat).filter(Chat.id == question.chat_id).first()
+    if not chat:
+        raise Exception(f"Chat with id {question.chat_id} not found")
+
+    record = ChatRecord()
+    record.question = question.question
+    record.chat_id = chat.id
+    record.create_time = datetime.datetime.now()
+    record.create_by = current_user.id
+    record.datasource = chat.datasource
+    record.engine_type = chat.engine_type
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+    result.id = record.id
+    session.commit()
+
+    return result
+
+def save_full_question(session: SessionDep, id: int, full_question: str) -> ChatRecord:
+    if not id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(Chat.id == id).first()
+    record.full_question = full_question
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+
+def save_answer(session: SessionDep, id: int, answer: str) -> ChatRecord:
+    if not id:
+        raise Exception("Record id cannot be None")
+
+    record = session.query(ChatRecord).filter(Chat.id == id).first()
+    record.answer = answer
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result

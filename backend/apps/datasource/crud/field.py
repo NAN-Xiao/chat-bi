@@ -9,7 +9,8 @@ def delete_field_by_ds_id(session: SessionDep, id: int):
 
 
 def get_fields_by_table_id(session: SessionDep, id: int):
-    return session.query(CoreField).filter(CoreField.table_id == id).all()
+    return session.query(CoreField).filter(CoreField.table_id == id).order_by(
+        CoreField.field_name.asc()).all()
 
 
 def update_field(session: SessionDep, item: CoreField):

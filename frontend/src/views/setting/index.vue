@@ -43,9 +43,9 @@ const handleClick = (tab: any, event: MouseEvent) => {
   box-shadow: var(--shadow);
   overflow: hidden;
   padding: 24px;
-  :deep(.el-tabs) {
+  :deep(.ed-tabs) {
     --el-tabs-header-height: 55px;
-    .el-tabs__header {
+    .ed-tabs__header {
       margin: 0 0 24px !important;
     }
   }
@@ -63,7 +63,7 @@ const handleClick = (tab: any, event: MouseEvent) => {
         height: 28px;
       }
     }
-    :deep(.el-tabs__item) {
+    :deep(.ed-tabs__item) {
       padding: 0 16px !important;
       &:hover {
         // color: var(--primary-color);

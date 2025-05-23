@@ -1,279 +1,288 @@
 <template>
-  <div class="chat-container">
-    <!-- Sidebar for chat history -->
-    <div class="chat-sidebar">
-      <div class="sidebar-header">
-        <el-button type="primary" class="new-chat" @click="createNewChat">
-          <el-icon><Plus /></el-icon>
-          New Conversation
-        </el-button>
-        <div class="search-box">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="Search conversation history"
-            :prefix-icon="Search"
-          />
+  <el-container class="chat-container">
+    <el-aside class="chat-container-left">
+      <el-container class="chat-container-right-container">
+        <el-header class="chat-list-header">
+          <el-button type="primary" @click="createNewChat">
+            <el-icon>
+              <Plus/>
+            </el-icon>
+            New Conversation
+          </el-button>
+        </el-header>
+        <el-main class="chat-list">
+          <el-scrollbar>
+            <div v-for="chat in chatList" @click="onClickHistory(chat)"
+                 :style="chat.id === currentChatId ? {border: 'solid 1px red'} : {}">
+              {{ chat.create_time }}<br/>
+              {{ chat.brief }}
+            </div>
+          </el-scrollbar>
+        </el-main>
+      </el-container>
+    </el-aside>
+    <el-container :loading="loading">
+      <el-main>
+        <div v-for="message in computedMessages">
+          {{ message.role }}: {{ message.content }}
+          <div v-if="message.isWelcome">
+            <el-select v-model="currentChat.datasource" :disabled="currentChat.id!==undefined">
+              <el-option v-for="item in dsList"
+                         :value="item.id"
+                         :key="item.id"
+                         :label="item.name"/>
+            </el-select>
+          </div>
         </div>
-      </div>
-      
-      <div class="history-list">
-        <div 
-          v-for="chat in filteredHistory" 
-          :key="chat.id"
-          class="history-item"
-          :class="{ active: currentChatId === chat.id }"
-          @click="switchChat(chat.id)"
-        >
-          <span class="chat-title">{{ chat.title }}</span>
-          <el-dropdown trigger="hover" @command="handleCommand($event, chat.id)">
-            <span class="more-actions">
-              <el-icon><More /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="rename">Rename</el-dropdown-item>
-                <el-dropdown-item command="delete" divided>Delete</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </div>
-    </div>
-
-    <!-- Main chat area -->
-    <div class="chat-main">
-      <div class="chat-messages" ref="messagesRef">
-        <template v-if="currentChat?.messages?.length">
-          <div 
-            v-for="(msg, index) in currentChat.messages" 
-            :key="index"
-            class="message"
-            :class="[msg.role, { 'is-typing': msg.isTyping }]"
-          >
-            <div
-              v-if="msg.role === 'assistant'"
-              class="message-content"
-              :class="{ 'typing': msg.isTyping }"
-              v-html="formatMessage(msg.content)"
-            ></div>
-            <div v-else class="message-content">
-              {{ msg.content }}
+      </el-main>
+      <el-footer>
+        <div class="chat-input">
+          <div class="input-wrapper">
+            <el-input
+                v-model="inputMessage"
+                type="textarea"
+                :rows="1"
+                :autosize="{ minRows: 1, maxRows: 8 }"
+                placeholder="Press Enter to send, Ctrl + Enter for new line"
+                @keydown.enter.exact.prevent="sendMessage"
+                @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
+            />
+            <div class="input-actions">
+              <el-button circle type="primary" class="send-btn" @click="sendMessage">
+                <el-icon>
+                  <Position/>
+                </el-icon>
+              </el-button>
             </div>
           </div>
-        </template>
-        <div v-else class="empty-state">
-          <p>Welcome to SQLBot</p>
-          <p class="sub-text">You can ask questions in natural language, for example:</p>
-          <div class="examples">
-            <div class="example-item">View this month's sales growth compared to last month</div>
-            <div class="example-item">Analyze sales staff performance by region</div>
-            <div class="example-item">Calculate the relationship between customer purchase frequency and average order value</div>
-          </div>
         </div>
-      </div>
-      
-      <div class="chat-input">
-        <div class="input-wrapper">
-          <el-input
-            v-model="inputMessage"
-            type="textarea"
-            :rows="1"
-            :autosize="{ minRows: 1, maxRows: 8 }"
-            placeholder="Press Enter to send, Ctrl + Enter for new line"
-            @keydown.enter.exact.prevent="sendMessage"
-            @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
-          />
-          <div class="input-actions">  
-            <el-button circle type="primary" class="send-btn" @click="sendMessage">
-              <el-icon><Position /></el-icon>
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+      </el-footer>
+    </el-container>
+
+  </el-container>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue'
-import { Plus, Search, More, Position } from '@element-plus/icons-vue'
-import { questionApi } from '@/api/chat'
+import {ref, computed, nextTick, watch, onMounted} from 'vue'
+import {Plus, Position} from '@element-plus/icons-vue'
+import {Chat, chatApi, ChatInfo, ChatRecord, questionApi} from '@/api/chat'
+import {datasourceApi} from "@/api/datasource.ts";
 
 interface ChatMessage {
   role: 'user' | 'assistant'
-  content: string
-  isTyping?: boolean 
+  create_time?: Date | string
+  content?: string | number
+  isTyping?: boolean
+  isWelcome?: boolean
 }
 
-interface Chat {
-  id: string
-  title: string
-  messages: ChatMessage[]
-}
-
-const chatHistory = ref<Chat[]>([])
-const currentChatId = ref('')
-const searchKeyword = ref('')
 const inputMessage = ref('')
-const messagesRef = ref<HTMLDivElement>()
 
-const filteredHistory = computed(() => {
-  return chatHistory.value.filter(chat => 
-    chat.title.toLowerCase().includes(searchKeyword.value.toLowerCase())
-  )
-})
+const loading = ref<boolean>(false);
+const chatList = ref<Array<ChatInfo>>([])
+const dsList = ref<any>([])
 
-const currentChat = computed(() => {
-  return chatHistory.value.find(chat => chat.id === currentChatId.value)
+const currentChatId = ref<number | undefined>()
+const currentChat = ref<ChatInfo>(new ChatInfo())
+const isTyping = ref<boolean>(false)
+
+const computedMessages = computed<Array<ChatMessage>>(() => {
+  const welcome: ChatMessage = {
+    role: 'assistant',
+    create_time: currentChat.value?.create_time,
+    content: currentChat.value?.datasource,
+    isTyping: false,
+    isWelcome: true,
+  }
+  const messages: Array<ChatMessage> = [welcome]
+  if (currentChatId.value === undefined) {
+    return messages
+  }
+  let appendThinking = false
+  for (let i = 0; i < currentChat.value.records.length; i++) {
+    const record = currentChat.value.records[i]
+    if (record.question !== undefined) {
+      messages.push({
+        role: 'user',
+        create_time: record.create_time,
+        content: record.question,
+      })
+    }
+    if (record.answer !== undefined && record.answer !== '') {
+      messages.push({
+        role: 'assistant',
+        create_time: record.create_time,
+        content: record.answer,
+        isTyping: i === currentChat.value.records.length - 1 && isTyping.value
+      })
+    } else {
+      appendThinking = true
+    }
+  }
+  if (isTyping.value && appendThinking) {
+    messages.push({
+      role: 'assistant',
+      content: 'Thinking...',
+      isTyping: true
+    })
+  }
+  return messages
 })
 
 const createNewChat = () => {
-  const newChat: Chat = {
-    id: Date.now().toString(),
-    title: `New Chat ${chatHistory.value.length + 1}`,
-    messages: []
+  currentChat.value = new ChatInfo()
+  currentChatId.value = undefined
+  listDs()
+}
+
+function getChatList() {
+  loading.value = true
+  chatApi.list()
+      .then((res) => {
+        chatList.value = chatApi.toChatInfoList(res)
+      })
+      .finally(() => {
+        loading.value = false
+      })
+}
+
+function onClickHistory(chat: Chat) {
+  currentChat.value = new ChatInfo(chat)
+  if (chat !== undefined && chat.id !== undefined && !loading.value) {
+    currentChatId.value = chat.id
+    loading.value = true
+    chatApi.get(chat.id)
+        .then((res) => {
+          const info = chatApi.toChatInfo(res)
+          if (info) {
+            currentChat.value = info
+          }
+        })
+        .finally(() => {
+          loading.value = false
+        })
   }
-  chatHistory.value.unshift(newChat)
-  currentChatId.value = newChat.id
 }
 
-const switchChat = (chatId: string) => {
-  currentChatId.value = chatId
+function listDs() {
+  datasourceApi.list().then((res) => {
+    console.log(res)
+    dsList.value = res
+  })
 }
 
-const scrollToBottom = () => {
-  /* nextTick(() => {
-    if (messagesRef.value) {
-      const scrollHeight = messagesRef.value.scrollHeight
-      const animateScroll = () => {
-        const currentScroll = messagesRef.value!.scrollTop
-        const distance = scrollHeight - currentScroll
-        if (distance > 0) {
-          window.requestAnimationFrame(animateScroll)
-          messagesRef.value!.scrollTop = currentScroll + distance / 8
-        }
-      }
-      animateScroll()
-    }
-  }) */
-}
+onMounted(() => {
+  getChatList()
+  listDs()
+})
 
-const updateMessageContent = (index: number, content: string) => {
+
+const updateMessageContent = (content: string) => {
   if (currentChat.value) {
-    currentChat.value.messages[index] = {
-      ...currentChat.value.messages[index],
-      content
-    }
+    currentChat.value.records[currentChat.value.records.length - 1].answer = content
   }
 }
 
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
-  
-  let chat = currentChat.value
-  if (!chat) {
-    chat = {
-      id: Date.now().toString(),
-      title: 'New Chat',
-      messages: []
-    }
-    chatHistory.value.unshift(chat)
-    currentChatId.value = chat.id
+  if (computedMessages.value[0].content === undefined) return
+
+  loading.value = true
+  isTyping.value = true
+
+  const currentRecord = new ChatRecord()
+  currentRecord.create_time = new Date()
+  currentRecord.chat_id = currentChatId.value
+  currentRecord.question = inputMessage.value
+  currentRecord.answer = ''
+
+  currentChat.value.records.push(currentRecord)
+
+  let error = false
+  if (currentChatId.value === undefined) {
+    chatApi.startChat({question: currentRecord.question.trim(), datasource: currentChat.value.datasource})
+        .then((res) => {
+          const chat = chatApi.toChatInfo(res)
+          if (chat !== undefined) {
+            chatList.value.unshift(chat)
+            currentChatId.value = chat.id
+            chat.records.push(currentRecord)
+            currentChat.value = chat
+          } else {
+            error = true
+          }
+        })
+        .catch(e => {
+          isTyping.value = false
+          error = true
+          console.error(e)
+        })
+        .finally(() => {
+          loading.value = false
+        })
   }
 
-  chat.messages.push({
-    role: 'user',
-    content: inputMessage.value
-  })
-  
-  const defaultMsg = 'Thinking...'
-  chat.messages.push({
-    role: 'assistant',
-    content: defaultMsg,
-    isTyping: true
-  })
-  
-  const userInput = inputMessage.value
-  inputMessage.value = ''
-  
-  const index = chat.messages.length - 1
-  
+  if (error) return
+
   try {
-    const response = await questionApi.add({ question: userInput })
+    const response = await questionApi.add({question: currentRecord.question, chat_id: currentChatId.value})
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
 
     while (true) {
-      const { done, value } = await reader.read()
+      const {done, value} = await reader.read()
       if (done) {
-        chat.messages[index].isTyping = false
+        isTyping.value = false
         break
       }
 
       const chunk = decoder.decode(value)
       const lines = chunk.split('\n\n')
-      
+
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = JSON.parse(line.replace('data:', '').trim())
           let realContent = data.content
-          
+
           switch (data.type) {
             case 'html':
               realContent = '\n' + data.content
               break
-            
+
             case 'error':
               realContent = '\nError: ' + data.content
               break
-            
+
             default:
               if (data.content) {
-                const currentContent = chat.messages[index].content
-                const newContent = currentContent.startsWith(defaultMsg) 
-                  ? realContent 
-                  : currentContent + realContent
-                
-                updateMessageContent(index, newContent)
+                const newContent = currentRecord.answer + realContent
+
+                updateMessageContent(newContent)
                 await nextTick()
-                scrollToBottom()
               }
           }
         }
       }
     }
   } catch (error) {
+    updateMessageContent(currentRecord.answer + '\nError: Failed to get response')
     console.error('Error:', error)
-    updateMessageContent(index, chat.messages[index].content + '\nError: Failed to get response')
-    chat.messages[index].isTyping = false
+    isTyping.value = false
   }
 }
 
-watch(() => currentChat.value?.messages, () => {
-  scrollToBottom()
-}, { deep: true })
+watch(() => currentChat.value?.records[currentChat.value.records.length - 1]?.answer, () => {
+  //scrollToBottom()
+}, {deep: true})
 
 const formatMessage = (content: string) => {
   if (!content) return ''
   return content
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>')
-    .replace(/ {2}/g, '&nbsp;&nbsp;')
-}
-
-const handleCommand = (command: string, chatId: string) => {
-  switch (command) {
-    case 'rename':
-      break
-    case 'delete':
-      chatHistory.value = chatHistory.value.filter(chat => chat.id !== chatId)
-      if (currentChatId.value === chatId) {
-        currentChatId.value = chatHistory.value[0]?.id || ''
-      }
-      break
-  }
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>')
+      .replace(/ {2}/g, '&nbsp;&nbsp;')
 }
 
 const handleCtrlEnter = (e: KeyboardEvent) => {
@@ -281,9 +290,9 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   const start = textarea.selectionStart
   const end = textarea.selectionEnd
   const value = textarea.value
-  
+
   inputMessage.value = value.substring(0, start) + '\n' + value.substring(end)
-  
+
   nextTick(() => {
     textarea.selectionStart = textarea.selectionEnd = start + 1
   })
@@ -292,215 +301,30 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
 <style lang="less" scoped>
 .chat-container {
-  height: calc(100vh - 61px); 
-  display: flex;
-  background-color: var(--white);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
-  overflow: hidden;
+  height: 100%;
 
-  .chat-sidebar {
-    width: 260px;
-    border-right: 1px solid #e6e6e6;
-    display: flex;
-    flex-direction: column;
-    
-    .sidebar-header {
-      padding: 16px;
-      border-bottom: 1px solid #e6e6e6;
+  .chat-container-left {
 
-      .new-chat {
-        width: 100%;
-        margin-bottom: 12px;
-      }
+    --el-aside-width: 260px;
 
-      .search-box {
-        :deep(.el-input__wrapper) {
-          background-color: #f5f5f5;
-        }
-      }
-    }
+    border-right: solid 1px rgba(0, 0, 0, 0.3);
 
-    .history-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px;
+    .chat-container-right-container {
+      height: 100%;
 
-      .history-item {
+      .chat-list-header {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        padding: 8px 12px;
-        margin-bottom: 4px;
-        border-radius: 6px;
-        cursor: pointer;
-
-        &:hover {
-          background-color: #f5f5f5;
-        }
-
-        &.active {
-          background-color: #e6f4ff;
-        }
-
-        .chat-title {
-          flex: 1;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .more-actions {
-          opacity: 0;
-          padding: 4px;
-        }
-
-        &:hover .more-actions {
-          opacity: 1;
-        }
+        justify-content: center;
       }
+
+      .chat-list {
+        padding-top: unset;
+      }
+
     }
   }
 
-  .chat-main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-    
-    .chat-messages {
-      // flex: 1;
-      height: calc(100% - 188px);
-      overflow-y: auto;
-      padding: 24px;
-      scroll-behavior: smooth;
-      
-      &::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      
-      &::-webkit-scrollbar-thumb {
-        background: rgba(0, 0, 0, 0.2);
-        border-radius: 3px;
-        
-        &:hover {
-          background: rgba(0, 0, 0, 0.3);
-        }
-      }
-      
-      &::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      
-      &:not(:hover)::-webkit-scrollbar-thumb {
-        background: transparent;
-      }
 
-      .message {
-        margin-bottom: 24px;
-        transition: all 0.3s ease;
-
-        &.user {
-          text-align: right;
-          .message-content {
-            background-color: #e6f4ff;
-          }
-        }
-
-        &.assistant {
-          .message-content {
-            background-color: #f5f5f5;
-            text-align: left;
-          }
-        }
-
-        .message-content {
-          display: inline-block;
-          padding: 12px 16px;
-          border-radius: 8px;
-          max-width: 80%;
-          transition: all 0.3s ease;
-        }
-      }
-
-      .empty-state {
-        text-align: center;
-        color: #666;
-        padding: 40px 0;
-
-        .sub-text {
-          margin: 16px 0;
-        }
-
-        .examples {
-          .example-item {
-            background-color: #f5f5f5;
-            padding: 12px;
-            margin: 8px auto;
-            max-width: 400px;
-            border-radius: 8px;
-            cursor: pointer;
-
-            &:hover {
-              background-color: #e6f4ff;
-            }
-          }
-        }
-      }
-    }
-
-    .chat-input {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: #fff;
-      border-top: 1px solid var(--el-border-color-lighter);
-      padding: 16px 24px;
-      z-index: 10;
-
-      .input-wrapper {
-        position: relative;
-        border-radius: 12px;
-        border: 1px solid var(--el-border-color);
-        background: #f5f5f5;
-        transition: all 0.3s;
-        
-        &:hover, &:focus-within {
-          border-color: var(--el-border-color-darker);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-
-        :deep(.el-textarea__inner) {
-          padding: 16px;
-          font-size: 14px;
-          resize: none;
-          border: none;
-          background: transparent;
-          box-shadow: none !important;
-          
-          &:focus {
-            box-shadow: none !important;
-          }
-        }
-
-        :deep(.el-textarea__wrapper) {
-          box-shadow: none !important; 
-          padding: 0;
-          background: transparent;
-        }
-        .input-actions {
-          display: flex;
-          align-items: center;
-          justify-content: end;
-          height: 36px;
-          padding: 8px;
-        }
-      }
-    }
-  }
 }
 </style>

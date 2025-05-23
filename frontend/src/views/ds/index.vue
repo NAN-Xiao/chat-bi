@@ -65,7 +65,7 @@ import { ref, onMounted } from 'vue'
 import DsForm from './form.vue'
 import { datasourceApi } from '@/api/datasource'
 import { datetimeFormat } from '@/utils/utils'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus-secondary'
 import { useRouter } from 'vue-router'
 
 const searchValue = ref<string>('')
@@ -148,7 +148,7 @@ const getTables = (id: number, name: string) => {
   // datasourceApi.execSql(id,'select id,name,table_name from core_dataset_table limit 10').then((res) => {
   //   console.log(res)
   // })
-  router.push(`/ds/dsTable/${id}/${name}`)
+  router.push(`/dsTable/${id}/${name}`)
 }
 
 onMounted(() => {
@@ -180,7 +180,6 @@ onMounted(() => {
     position: relative;
     border: 1px solid #dadce0;
     transition: all 0.2s ease;
-    height: 110px;
     align-items: center;
   }
   .connection-icon {
@@ -264,6 +263,7 @@ onMounted(() => {
     display: flex;
     .action-btn {
       display: none;
+      min-width: 0;
     }
   }
   :hover .action-btn{

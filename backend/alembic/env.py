@@ -25,7 +25,8 @@ fileConfig(config.config_file_name)
 # target_metadata = None
 
 # from apps.system.models.user import SQLModel  # noqa
-from apps.settings.models.setting_models import SQLModel 
+# from apps.settings.models.setting_models import SQLModel
+from apps.chat.models.chat_model import SQLModel
 from common.core.config import settings # noqa
 
 target_metadata = SQLModel.metadata

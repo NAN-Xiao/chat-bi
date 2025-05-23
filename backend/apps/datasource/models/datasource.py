@@ -55,7 +55,7 @@ class CreateDatasource(BaseModel):
 
 
 # edit local saved table and fields
-class EditObj(BaseModel):
+class TableObj(BaseModel):
     table: CoreTable = None
     fields: List[CoreField] = []
 
@@ -108,3 +108,12 @@ class ColumnSchema:
     fieldName: str
     fieldType: str
     fieldComment: str
+
+
+class TableAndFields:
+    def __init__(self, table, fields):
+        self.table = table
+        self.fields = fields
+
+    table: CoreTable
+    fields: List[CoreField]
