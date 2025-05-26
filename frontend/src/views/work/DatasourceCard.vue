@@ -1,7 +1,6 @@
 <script lang="ts" setup>
-import { ref } from "vue";
 import { Document } from "@element-plus/icons-vue";
-const props = withDefaults(
+withDefaults(
   defineProps<{
     name: string;
     description: string;

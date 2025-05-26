@@ -1,10 +1,15 @@
 <script lang="ts" setup>
 import { ref, computed } from "vue";
 import DatasourceCard from "./DatasourceCard.vue";
-
+interface Datasource {
+  id?: string;
+  name: string;
+  description: string;
+  creator: string;
+}
 const props = withDefaults(
   defineProps<{
-    datasourceList: Array<any>;
+    datasourceList: Array<Datasource>;
   }>(),
   {
     datasourceList: () => [],
@@ -14,7 +19,7 @@ const props = withDefaults(
 const datasourceName = ref("");
 const datasourceListComputed = computed(() =>
   props.datasourceList.filter((val) =>
-    val.name.toLowerCase.includes(datasourceName.value.toLowerCase())
+    val.name.toLowerCase().includes(datasourceName.value.toLowerCase())
   )
 );
 
@@ -34,7 +39,9 @@ const dialogVisible = ref(false);
     </div>
     <div class="datasource-content">
       <DatasourceCard
-        name="1"
+        :name="ele.name"
+        :description="ele.description"
+        :creator="ele.creator"
         v-for="ele in datasourceList"
         :key="ele.id"
       ></DatasourceCard>
@@ -56,7 +63,9 @@ const dialogVisible = ref(false);
     </div>
     <div class="datasource-content">
       <DatasourceCard
-        name="1"
+        :name="ele.name"
+        :description="ele.description"
+        :creator="ele.creator"
         v-for="ele in datasourceListComputed"
         :key="ele.id"
       ></DatasourceCard>
