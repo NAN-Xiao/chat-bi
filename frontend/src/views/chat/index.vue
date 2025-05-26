@@ -19,39 +19,33 @@
     <el-container :loading="loading">
       <el-main class="chat-record-list">
         <el-scrollbar>
-          <div v-for="message in computedMessages">
-            {{ message.role }}: {{ message.content }}
-            <div v-if="message.isWelcome">
-              <el-select v-model="currentChat.datasource" :disabled="currentChat.id!==undefined">
-                <el-option v-for="item in dsList"
-                           :value="item.id"
-                           :key="item.id"
-                           :label="item.name"/>
-              </el-select>
-            </div>
-          </div>
+          <template v-for="(message, _index) in computedMessages" :key="_index">
+            <ChatRow :current-chat="currentChat" v-model:datasource="currentChat.datasource" :msg="message"/>
+          </template>
         </el-scrollbar>
       </el-main>
-      <el-footer>
-        <div class="chat-input">
-          <div class="input-wrapper">
-            <el-input
-                v-model="inputMessage"
-                type="textarea"
-                :rows="1"
-                :autosize="{ minRows: 1, maxRows: 8 }"
-                placeholder="Press Enter to send, Ctrl + Enter for new line"
-                @keydown.enter.exact.prevent="sendMessage"
-                @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
-            />
-            <div class="input-actions">
-              <el-button circle type="primary" class="send-btn" @click="sendMessage">
-                <el-icon>
-                  <Position/>
-                </el-icon>
-              </el-button>
-            </div>
-          </div>
+      <el-footer class="chat-footer">
+        <div style="height: 24px;">
+          <template v-if="currentChat.datasource">
+            使用数据源：{{ currentChat.datasource_name }}
+          </template>
+        </div>
+        <div class="input-wrapper">
+          <el-input
+              class="input-area"
+              v-model="inputMessage"
+              type="textarea"
+              :rows="1"
+              :autosize="{ minRows: 1, maxRows: 8 }"
+              placeholder="Press Enter to send, Ctrl + Enter for new line"
+              @keydown.enter.exact.prevent="sendMessage"
+              @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
+          />
+          <el-button link type="primary" class="input-icon" @click="sendMessage">
+            <el-icon size="20">
+              <Position/>
+            </el-icon>
+          </el-button>
         </div>
       </el-footer>
     </el-container>
@@ -62,23 +56,14 @@
 <script setup lang="ts">
 import {ref, computed, nextTick, watch, onMounted} from 'vue'
 import {Plus, Position} from '@element-plus/icons-vue'
-import {Chat, chatApi, ChatInfo, ChatRecord, questionApi} from '@/api/chat'
-import {datasourceApi} from "@/api/datasource.ts"
+import {Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi} from '@/api/chat'
 import ChatList from './ChatList.vue'
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  create_time?: Date | string
-  content?: string | number
-  isTyping?: boolean
-  isWelcome?: boolean
-}
+import ChatRow from './ChatRow.vue'
 
 const inputMessage = ref('')
 
 const loading = ref<boolean>(false);
 const chatList = ref<Array<ChatInfo>>([])
-const dsList = ref<any>([])
 
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
@@ -131,7 +116,6 @@ const createNewChat = () => {
   currentChat.value = new ChatInfo()
   currentChatId.value = undefined
   inputMessage.value = ''
-  listDs()
 }
 
 function getChatList() {
@@ -183,15 +167,9 @@ function onChatRenamed(chat: Chat) {
   }
 }
 
-function listDs() {
-  datasourceApi.list().then((res) => {
-    dsList.value = res
-  })
-}
 
 onMounted(() => {
   getChatList()
-  listDs()
 })
 
 
@@ -347,7 +325,39 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   }
 
   .chat-record-list {
-    padding: 20px 0 0 0;
+    padding: 0 0 20px 0;
+  }
+
+  .chat-footer {
+    --ed-footer-height: 120px;
+
+    display: flex;
+    flex-direction: column;
+
+    .input-wrapper {
+      flex: 1;
+
+      position: relative;
+
+      .input-area {
+        height: 100%;
+        padding-bottom: 8px;
+
+        :deep(.ed-textarea__inner) {
+          height: 100% !important;
+        }
+      }
+
+      .input-icon {
+        min-width: unset;
+        position: absolute;
+        bottom: 14px;
+        right: 8px;
+      }
+
+    }
+
+
   }
 
 

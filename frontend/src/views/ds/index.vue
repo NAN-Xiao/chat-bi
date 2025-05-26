@@ -3,15 +3,17 @@
     <div class="header">
       <div class="mt-4">
         <el-input
-          v-model="searchValue"
-          style="max-width: 300px"
-          placeholder="Search Datasource..."
-          class="input-with-select"
-          clearable
-          @change="searchHandle"
+            v-model="searchValue"
+            style="max-width: 300px"
+            placeholder="Search Datasource..."
+            class="input-with-select"
+            clearable
+            @change="searchHandle"
         >
           <template #prepend>
-            <el-icon><Search /></el-icon>
+            <el-icon>
+              <Search/>
+            </el-icon>
           </template>
         </el-input>
       </div>
@@ -20,33 +22,17 @@
     </div>
 
     <div class="connections-container">
-      <div 
-        class="connection-card"
-        v-for="ds in dsList"
-      >
-        <div class="connection-icon">
-          <Icon>
-            <MysqlDs v-if="ds.type === 'mysql'"/>
-            <SQLServerDs v-else-if="ds.type === 'sqlServer'"/>
-            <PgDs v-else-if="ds.type === 'pg'"/>
-            <ExcelDs v-else-if="ds.type === 'excel'"/>
-            <OracleDs v-else-if="ds.type === 'oracle'"/>
-          </Icon>
-        </div>
-        <div class="connection-details">
-          <div class="connection-name">{{ ds.name }}</div>
-          <div class="connection-type">{{ ds.type_name }}</div>
-          <div class="connection-host">{{ ds.description }}</div>
-          <div class="connection-last">{{ datetimeFormat(ds.create_time) }}</div>
-        </div>
-        <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
-        <div class="connection-actions">
-          <el-button class="action-btn" circle @click="getTables(ds.id, ds.name)" :icon="List" />
-          <el-button class="action-btn" circle @click="editTables(ds)" :icon="CreditCard" />
-          <el-button v-if="ds.type !== 'excel'" type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
-          <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
-        </div>
-      </div>
+      <template v-for="ds in dsList">
+        <DatasourceItemCard :ds="ds">
+          <div class="connection-actions">
+            <el-button class="action-btn" circle @click="getTables(ds.id, ds.name)" :icon="List"/>
+            <el-button class="action-btn" circle @click="editTables(ds)" :icon="CreditCard"/>
+            <el-button v-if="ds.type !== 'excel'" type="primary" class="action-btn" circle @click="editDs(ds)"
+                       :icon="IconOpeEdit"/>
+            <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
+          </div>
+        </DatasourceItemCard>
+      </template>
     </div>
   </div>
   <DsForm ref="dsForm" @refresh="refresh"/>
@@ -55,18 +41,13 @@
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
-import MysqlDs from '@/assets/svg/ds/mysql-ds.svg'
-import SQLServerDs from '@/assets/svg/ds/sqlServer-ds.svg'
-import PgDs from '@/assets/svg/ds/pg-ds.svg'
-import ExcelDs from '@/assets/svg/ds/Excel-ds.svg'
-import OracleDs from '@/assets/svg/ds/oracle-ds.svg'
-import { Search, List, CreditCard } from '@element-plus/icons-vue'
-import { ref, onMounted } from 'vue'
+import {Search, List, CreditCard} from '@element-plus/icons-vue'
+import {ref, onMounted} from 'vue'
 import DsForm from './form.vue'
-import { datasourceApi } from '@/api/datasource'
-import { datetimeFormat } from '@/utils/utils'
-import { ElMessageBox } from 'element-plus-secondary'
-import { useRouter } from 'vue-router'
+import {datasourceApi} from '@/api/datasource'
+import {ElMessageBox} from 'element-plus-secondary'
+import {useRouter} from 'vue-router'
+import DatasourceItemCard from "@/views/ds/DatasourceItemCard.vue";
 
 const searchValue = ref<string>('')
 const dsForm = ref()
@@ -75,21 +56,12 @@ const allDsList = ref<any>([])// all ds list
 const router = useRouter()
 const loading = ref(false)
 
-const getStatus = (status: string) => {
-  if (status === 'Success') {
-    return 'connected'
-  }
-  if (status === 'Fail') {
-    return 'failed'
-  }
-  if (status === 'Checking') {
-    return 'needs-verification'
-  }
-}
 
 function searchHandle() {
-  if(searchValue.value) {
-    dsList.value = JSON.parse(JSON.stringify(allDsList.value)).filter((item: any) => {return item.name.toLowerCase().includes(searchValue.value.toLowerCase())})
+  if (searchValue.value) {
+    dsList.value = JSON.parse(JSON.stringify(allDsList.value)).filter((item: any) => {
+      return item.name.toLowerCase().includes(searchValue.value.toLowerCase())
+    })
   } else {
     dsList.value = JSON.parse(JSON.stringify(allDsList.value))
   }
@@ -118,22 +90,22 @@ const editTables = (item: any) => {
 
 const deleteDs = (item: any) => {
   ElMessageBox.confirm(
-    'Delete this datasource?',
-    'Delete',
-    {
-      confirmButtonText: 'Confirm',
-      cancelButtonText: 'Cancel',
-      type: 'warning',
-    }
+      'Delete this datasource?',
+      'Delete',
+      {
+        confirmButtonText: 'Confirm',
+        cancelButtonText: 'Cancel',
+        type: 'warning',
+      }
   )
-  .then(() => {
-    datasourceApi.delete(item.id).then(() => {
-      console.log('success')
-      list()
-    })
-  })
-  .catch(() => {
-  })
+      .then(() => {
+        datasourceApi.delete(item.id).then(() => {
+          console.log('success')
+          list()
+        })
+      })
+      .catch(() => {
+      })
 }
 
 const getTables = (id: number, name: string) => {
@@ -157,7 +129,7 @@ onMounted(() => {
 
 </script>
 <style lang="less" scoped>
-.header{
+.header {
   background-color: white;
   padding: 16px 20px;
   border-radius: 8px;
@@ -171,102 +143,20 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 24px;
-  .connection-card {
-    background-color: white;
-    border-radius: 16px;
-    padding: 24px 20px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    display: flex;
-    position: relative;
-    border: 1px solid #dadce0;
-    transition: all 0.2s ease;
-    align-items: center;
-  }
-  .connection-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    background-color: #e8f0fe;
-    color: var(--primary-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 16px;
-    flex-shrink: 0;
-  }
-  .connection-details {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    .connection-name {
-      font-weight: 600;
-      font-size: 18px;
-      color: #202124;
-      margin-bottom: 8px;
-      line-height: 1.3;
-      display: flex;
-    }
-    .connection-type {
-      color: #5f6368;
-      margin-bottom: 8px;
-      font-size: 14px;
-      display: flex;
-    }
-    .connection-host {
-      color: #5f6368;
-      margin-bottom: 8px;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-    }
-    .connection-last {
-      color: #5f6368;
-      font-size: 14px;
-      margin-bottom: 0;
-      display: flex;
-      align-items: center;
-    }
-  }
-  .connection-status {
-    position: absolute;
-    right: 20px;
-    top: 18px;
-    padding: 3px 8px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    max-width: 50px;
-    text-align: center;
-    justify-content: center;
-    opacity: 0.9;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  }
-  .connection-status.connected {
-    background-color: #e6f4ea;
-    color: #34a853;
-  }
-  .connection-status.failed {
-    background-color: #fce8e6;
-    color: #ea4335;
-  }
-  .connection-status.needs-verification {
-    background-color: #fef7e0;
-    color: #fbbc05;
-  }
+
   .connection-actions {
     position: absolute;
     bottom: 20px;
     right: 20px;
     display: flex;
+
     .action-btn {
       display: none;
       min-width: 0;
     }
   }
-  :hover .action-btn{
+
+  :hover .action-btn {
     display: flex;
   }
 }

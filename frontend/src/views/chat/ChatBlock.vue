@@ -1,0 +1,26 @@
+<script setup lang="ts">
+
+import type {ChatMessage} from "@/api/chat.ts";
+
+defineProps<{
+  msg?: ChatMessage
+}>()
+
+</script>
+
+<template>
+  <div class="chat-block">
+    <slot>
+      {{ msg?.content }}
+    </slot>
+  </div>
+</template>
+
+<style scoped lang="less">
+.chat-block {
+  border-radius: 2px;
+  background-color: white;
+  padding: 12px;
+  word-wrap: break-word;
+}
+</style>
