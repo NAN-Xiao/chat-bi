@@ -59,7 +59,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         chat_info.datasource_name = ds.name
 
     record_list = session.query(ChatRecord).filter(
-        and_(Chat.create_by == current_user.id, ChatRecord.id == chart_id)).order_by(ChatRecord.create_time).all()
+        and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
 
     chat_info.records = record_list
 
@@ -128,7 +128,7 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
 def save_full_question(session: SessionDep, id: int, full_question: str) -> ChatRecord:
     if not id:
         raise Exception("Record id cannot be None")
-    record = session.query(ChatRecord).filter(Chat.id == id).first()
+    record = session.query(ChatRecord).filter(ChatRecord.id == id).first()
     record.full_question = full_question
 
     result = ChatRecord(**record.model_dump())
@@ -146,7 +146,7 @@ def save_answer(session: SessionDep, id: int, answer: str) -> ChatRecord:
     if not id:
         raise Exception("Record id cannot be None")
 
-    record = session.query(ChatRecord).filter(Chat.id == id).first()
+    record = session.query(ChatRecord).filter(ChatRecord.id == id).first()
     record.answer = answer
 
     result = ChatRecord(**record.model_dump())

@@ -32,6 +32,7 @@
         </div>
         <div class="input-wrapper">
           <el-input
+              :disabled="isTyping"
               class="input-area"
               v-model="inputMessage"
               type="textarea"
@@ -41,7 +42,7 @@
               @keydown.enter.exact.prevent="sendMessage"
               @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
-          <el-button link type="primary" class="input-icon" @click="sendMessage">
+          <el-button link type="primary" class="input-icon" @click="sendMessage" :disabled="isTyping">
             <el-icon size="20">
               <Position/>
             </el-icon>

@@ -11,7 +11,7 @@ defineProps<{
 <template>
   <div class="chat-block">
     <slot>
-      {{ msg?.content }}
+      <div v-html="msg?.content"></div>
     </slot>
   </div>
 </template>
@@ -22,5 +22,6 @@ defineProps<{
   background-color: white;
   padding: 12px;
   word-wrap: break-word;
+  white-space: pre-wrap;
 }
 </style>
