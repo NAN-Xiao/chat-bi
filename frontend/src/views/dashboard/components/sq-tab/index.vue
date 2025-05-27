@@ -1,12 +1,22 @@
 <script setup lang="ts">
-import {computed, type PropType, reactive, ref, toRefs, nextTick} from 'vue'
+import {computed, type PropType, reactive, ref, toRefs, nextTick, getCurrentInstance, onMounted} from 'vue'
 import CustomTab from "@/views/dashboard/components/sq-tab/CustomTab.vue";
 import {guid, type CanvasItem,} from "@/utils/canvas.ts";
 import DragHandle from "@/views/dashboard/canvas/DragHandle.vue";
 import {ArrowDown} from "@element-plus/icons-vue";
+import DashboardEditor from "@/views/dashboard/editor/DashboardEditor.vue";
 
 const editableTabsValue = ref(null)
 const showTabTitleFlag = ref(true)
+// @ts-ignore
+let currentInstance
+import _ from 'lodash'
+
+const tabBaseMatrixCount = {
+  x: 36,
+  y: 12
+}
+
 const props = defineProps({
   configItem: {
     type: Object as PropType<CanvasItem>,
@@ -30,19 +40,19 @@ const state = reactive({
 })
 
 function addTab() {
-  const newName = guid()
-
   const newTab = {
-    name: newName,
+    name: guid('tab'),
     title: 'New Tab',
     componentData: [],
     closable: true
   }
   configItem.value.propValue.push(newTab)
+  configItem.value.activeSubTabIndex = configItem.value.propValue.length - 1
+  // @ts-ignore
   editableTabsValue.value = newTab.name
 }
 
-function deleteCur(param:any) {
+function deleteCur(param: any) {
   state.curItem = param
   let len = configItem.value.propValue.length
   while (len--) {
@@ -51,6 +61,7 @@ function deleteCur(param:any) {
       const activeIndex =
           (len - 1 + configItem.value.propValue.length) % configItem.value.propValue.length
       editableTabsValue.value = configItem.value.propValue[activeIndex].name
+      configItem.value.activeSubTabIndex = configItem.value.propValue.length - 1
       state.tabShow = false
       nextTick(() => {
         state.tabShow = true
@@ -59,14 +70,14 @@ function deleteCur(param:any) {
   }
 }
 
-function editCurTitle(param:any) {
+function editCurTitle(param: any) {
   state.activeTabName = param.name
   state.curItem = param
   state.textarea = param.title
   state.dialogVisible = true
 }
 
-function handleCommand(command:any) {
+function handleCommand(command: any) {
   switch (command.command) {
     case 'editTitle':
       editCurTitle(command.param)
@@ -77,7 +88,7 @@ function handleCommand(command:any) {
   }
 }
 
-const beforeHandleCommand = (item : any, param : any) => {
+const beforeHandleCommand = (item: any, param: any) => {
   return {
     command: item,
     param: param
@@ -93,6 +104,29 @@ const titleStyle = (itemName: string) => {
 }
 
 const isEditMode = computed(() => true)
+
+
+const addTabItem = (item: CanvasItem) => {
+  // do addTabItem
+  // @ts-ignore
+  const index = configItem.value.propValue.findIndex(tabItem => configItem.value.activeTabName === tabItem.name);
+  // @ts-ignore
+  const refInstance = currentInstance.refs['tabEditorRef_' + index][0]
+  const newTabItem = _.cloneDeep(item)
+  newTabItem.sizeX = 10
+  newTabItem.sizeY = 10
+  newTabItem.x = 1
+  newTabItem.y = 1
+  refInstance.addItemToBox(newTabItem)
+}
+
+onMounted(() => {
+  currentInstance = getCurrentInstance()
+})
+
+defineExpose({
+  addTabItem
+})
 </script>
 
 <template>
@@ -108,6 +142,7 @@ const isEditMode = computed(() => true)
         :border-active-color="state.headBorderActiveColor"
         :hide-title="!showTabTitleFlag"
     >
+      -------{{ configItem.collisionActive }} -- -- {{ configItem.moveInActive }}-- -- {{ configItem.moveOutActive }}
       <template :key="tabItem.name" v-for="tabItem in configItem.propValue">
         <el-tab-pane
             class="el-tab-pane-custom"
@@ -151,8 +186,21 @@ const isEditMode = computed(() => true)
           </template>
         </el-tab-pane>
       </template>
-      <div>
-        this is a tab
+      <div
+          class="tab-content-custom"
+          :key="tabItem.name + '-content'"
+          v-for="(tabItem, index) in configItem.propValue"
+          :class="{ 'switch-hidden': editableTabsValue !== tabItem.name }"
+      >
+        <DashboardEditor
+            :ref="'tabEditorRef_'+index"
+            :canvas-component-data="tabItem.componentData"
+            :move-in-active="configItem.moveInActive"
+            :base-matrix-count="tabBaseMatrixCount"
+            :canvas-id="tabItem.name"
+            :parent-config-item="configItem"
+        >
+        </DashboardEditor>
       </div>
     </custom-tab>
   </div>
@@ -160,8 +208,14 @@ const isEditMode = computed(() => true)
 </template>
 
 <style scoped lang="less">
-.ed-dropdown-link{
+.ed-dropdown-link {
   margin-top: 3px !important;
+}
+
+.tab-content-custom {
+  position: absolute;
+  width: 100%;
+  height: 100%;
 }
 
 </style>

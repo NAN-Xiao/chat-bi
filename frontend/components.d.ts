@@ -41,6 +41,7 @@ declare module '@vue/runtime-core' {
     ElTable: typeof import('element-plus-secondary/es')['ElTable']
     ElTableColumn: typeof import('element-plus-secondary/es')['ElTableColumn']
     ElTabPane: typeof import('element-plus-secondary/es')['ElTabPane']
+    ElTabPanel: typeof import('element-plus-secondary/es')['ElTabPanel']
     ElTabs: typeof import('element-plus-secondary/es')['ElTabs']
     ElTooltip: typeof import('element-plus-secondary/es')['ElTooltip']
     ElUpload: typeof import('element-plus-secondary/es')['ElUpload']

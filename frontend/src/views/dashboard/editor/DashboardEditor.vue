@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import CanvasCore from '@/views/dashboard/canvas/CanvasCore.vue'
-import {nextTick, onMounted, ref} from 'vue'
+import {nextTick, onMounted, type PropType, ref} from 'vue'
 import type {CanvasItem} from "@/utils/canvas.ts";
 
 const canvasCoreRef = ref(null)
@@ -9,41 +9,38 @@ const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
-const baseMatrixCount = {
-  x: 72,
-  y: 36
-}
-const componentData = ref([
-  {
-    id: 4,
-    x: 1,
-    y: 1,
-    sizeX: 20,
-    sizeY: 10,
-    _dragId: 0
+
+// Props
+const props = defineProps({
+  canvasId: {
+    type: String,
+    default: 'canvas-main'
   },
-  {
-    id: 10,
-    x: 2,
-    y: 1,
-    sizeX: 20,
-    sizeY: 10,
-    _dragId: 1
+  parentConfigItem: {
+    type: Object as PropType<CanvasItem>,
+    required: false
   },
-  {
-    id: 7,
-    x: 1,
-    y: 2,
-    sizeX: 20,
-    sizeY: 10,
-    _dragId: 2
+  canvasComponentData: {
+    type: Array as PropType<CanvasItem[]>,
+    required: true
+  },
+  baseMatrixCount: {
+    type: Object,
+    default: {
+      x: 72,
+      y: 36
+    }
+  },
+  moveInActive: {
+    type: Boolean,
+    default: false
   }
-])
+})
 
 const canvasSizeInit = () => {
   sizeInit()
   if (canvasCoreRef.value) {
-     //@ts-ignore
+    //@ts-ignore
     canvasCoreRef.value.sizeInit()
   }
 }
@@ -56,14 +53,12 @@ const sizeInit = () => {
     const screenHeight = dashboardEditorRef.value.offsetHeight
     baseMarginLeft.value = 10
     baseMarginTop.value = 10
-    baseWidth.value = (screenWidth - baseMarginLeft.value) / baseMatrixCount.x - baseMarginLeft.value
-    baseHeight.value = (screenHeight - baseMarginTop.value) / baseMatrixCount.y - baseMarginTop.value
+    baseWidth.value = (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
+    baseHeight.value = (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
   }
 }
 
 const addItemToBox = (item: CanvasItem) => {
-  // @ts-ignore
-  console.log(componentData.value.length + '===' + JSON.stringify(componentData.value))
   // @ts-ignore
   canvasCoreRef.value.addItemBox(item)
 }
@@ -91,14 +86,19 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class='dashboard-editor-main' ref="dashboardEditorRef">
+  <div
+      class='dashboard-editor-main'
+      :class="{'move-in-active': moveInActive}"
+      ref="dashboardEditorRef">
     <CanvasCore
         ref="canvasCoreRef"
         :base-width="baseWidth"
         :base-height="baseHeight"
         :base-margin-left="baseMarginLeft"
         :base-margin-top="baseMarginTop"
-        :canvas-component-data="componentData"
+        :canvas-component-data="canvasComponentData"
+        :parent-config-item="parentConfigItem"
+        :canvas-id="canvasId"
     ></CanvasCore>
   </div>
 
@@ -109,5 +109,10 @@ onMounted(() => {
   width: 100%;
   height: calc(100% - 56px);
   overflow-y: auto;
+}
+
+.move-in-active {
+  border: 2px dotted transparent;
+  border-color: blueviolet;
 }
 </style>

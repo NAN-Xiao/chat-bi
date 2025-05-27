@@ -11,6 +11,7 @@ const COMPONENT_LIST = [
         propValue: '&nbsp;',
         icon: 'icon_graphical',
         innerType: 'bar',
+        locked: false,
         x: 1,
         y: 1,
         sizeX: 36,
@@ -21,6 +22,11 @@ const COMPONENT_LIST = [
         id: 1002,
         component: 'SQTab',
         name: 'new-tabs',
+        locked: false,
+        collisionActive: false,
+        moveInActive: false,
+        moveOutActive: false,
+        activeTabName: 'tab',
         propValue: [
             {
                 name: 'tab',
@@ -40,6 +46,7 @@ const COMPONENT_LIST = [
         id: 1003,
         component: 'SQText',
         name: 'new text',
+        locked: false,
         propValue: '&nbsp;',
         x: 1,
         y: 1,

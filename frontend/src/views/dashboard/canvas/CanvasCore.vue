@@ -1,20 +1,25 @@
 <script setup lang="ts">
-import {ref, nextTick, toRefs, type PropType} from 'vue'
+import {ref, nextTick, toRefs, type PropType, onMounted, getCurrentInstance} from 'vue'
 import _ from 'lodash'
 import {dashboardStoreWithOut} from '@/stores/dashboard/dashboard'
 import {type CanvasCoord, type CanvasItem} from '@/utils/canvas.ts'
 import CanvasShape from './CanvasShape.vue'
 import {findComponent} from "@/views/dashboard/components/component-list.ts";
-import {storeToRefs} from 'pinia'
 
 const dashboardStore = dashboardStoreWithOut()
-const {
-  tabCollisionActiveId,
-  tabMoveInActiveId
-} = storeToRefs(dashboardStore)
-
+const canvasLocked = ref(false) // Is the canvas movement locked， Default false
+// @ts-ignore
+let currentInstance
 // Props
 const props = defineProps({
+  canvasId: {
+    type: String,
+    default: 'canvas-main'
+  },
+  parentConfigItem: {
+    type: Object as PropType<CanvasItem>,
+    required: false
+  },
   canvasComponentData: {
     type: Array as PropType<CanvasItem[]>,
     required: true
@@ -111,7 +116,9 @@ let itemMaxX = 0
 let itemMaxY = 0
 const moveTime = 80
 
-const tabMoveInYOffset = 70
+const tabMoveInYOffset = 30
+const tabMoveOutXOffset = 30
+const tabMoveOutYOffset = 30
 // Effective area of collision depth
 const collisionGap = 10
 
@@ -372,6 +379,13 @@ function movePlayer(item: CanvasItem, position: any) {
   }
 }
 
+function removeItemById(id: number) {
+  const index = canvasComponentData.value.findIndex(item => item.id === id);
+  if (index >= 0) {
+    removeItem(index)
+  }
+}
+
 function removeItem(index: number) {
   const item = canvasComponentData.value[index] as CanvasItem
   removeItemFromPositionBox(item)
@@ -383,7 +397,7 @@ function removeItem(index: number) {
     }
   })
   // @ts-ignore
-  canvasComponentData.value.splice(index, 1, {})
+  canvasComponentData.value.splice(index, 1)
 }
 
 function addItem(item: CanvasItem, index: any) {
@@ -679,6 +693,8 @@ function containerMouseDown(e: MouseEvent) {
   }
   infoBox.value.startX = e.pageX
   infoBox.value.startY = e.pageY
+  e.preventDefault()
+  e.stopPropagation()
 }
 
 function getNowPosition(addSizeX: number, addSizeY: number, moveXSize: number, moveYSize: number) {
@@ -736,6 +752,7 @@ function getNowPosition(addSizeX: number, addSizeY: number, moveXSize: number, m
 }
 
 function startMove(e: MouseEvent, item: CanvasItem, index: number) {
+  canvasLocked.value = false // Reset canvas lock status
   if (!draggable.value) return
   dashboardStore.setCurComponent(item)
   if (!infoBox.value) {
@@ -787,7 +804,6 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   infoBox.value.oldSizeY = item.sizeY
   infoBox.value.originWidth = infoBox.value.cloneItem.offsetWidth
   infoBox.value.originHeight = infoBox.value.cloneItem.offsetHeight
-
   const itemMouseMove = (e: MouseEvent) => {
     const moveItem = _.get(infoBox.value, 'moveItem')
     const resizeItem = _.get(infoBox.value, 'resizeItem')
@@ -839,10 +855,17 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       let nowCloneItemX = infoBox.value.originX + moveXSize
       let nowCloneItemY = infoBox.value.originY + moveYSize
+      infoBox.value.cloneItem.style.left = `${nowCloneItemX}px`
+      infoBox.value.cloneItem.style.top = `${nowCloneItemY}px`
+      tabMoveInCheckSQ()
+      tabMoveOutCheckSQ()
+
+      //If the current canvas is locked, no component movement will be performed
+      if (canvasLocked.value) return
       // Adjust the accuracy of moving coordinate changes
       const newX = Math.max(
           Math.floor(
-              (nowCloneItemX + infoBox.value.cloneItem.offsetWidth / 96 - baseMarginLeft.value) /
+              (nowCloneItemX - 20 + infoBox.value.cloneItem.offsetWidth / 96 - baseMarginLeft.value) /
               cellWidth.value +
               1
           ),
@@ -857,7 +880,6 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
           ),
           1
       )
-
       debounce(() => {
         if (newX !== infoBox.value.oldX || newY !== infoBox.value.oldY) {
           movePlayer(moveItem, {x: newX, y: newY})
@@ -865,18 +887,33 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
           infoBox.value.oldY = newY
         }
       }, 10)
-
-      infoBox.value.cloneItem.style.left = `${nowCloneItemX}px`
-      infoBox.value.cloneItem.style.top = `${nowCloneItemY}px`
-      tabMoveInCheckSQ()
     }
   }
 
   window.addEventListener('mousemove', itemMouseMove)
 
+
+  // Need to execute before mouseup
+  const itemCanvasChange = () => {
+    // The current canvas movement is in a locked state, indicating that there are components that require canvas switching
+    if (canvasLocked.value) {
+      const moveItem = infoBox.value.moveItem
+      // Get the SQTab currently being moved in
+      const curActiveSQTab = canvasComponentData?.value.find(item => item.component === 'SQTab' && item.moveInActive === true);
+      if (curActiveSQTab) {
+        // @ts-ignore
+        const refTabInstance = currentInstance.refs['shape_component_' + curActiveSQTab.id][0]
+        refTabInstance.addTabItem(moveItem)
+        removeItemById(moveItem.id)
+        curActiveSQTab.collisionActive = false
+        curActiveSQTab.moveInActive = false
+      }
+    }
+    canvasLocked.value = false
+  }
+
   const itemMouseUp = () => {
     if (_.isEmpty(infoBox.value)) return
-
     if (infoBox.value.cloneItem) {
       infoBox.value.cloneItem.remove()
     }
@@ -889,6 +926,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       infoBox.value.moveItem.show = true
       delete infoBox.value.moveItem.isPlayer
     }
+    itemCanvasChange()
     infoBox.value = {}
 
     window.removeEventListener('mousemove', itemMouseMove)
@@ -960,12 +998,12 @@ function moving() {
 // Obtain matrix position
 function getItemMatrixPosition(item: CanvasItem) {
   return {
-    tw: cellWidth.value * item.sizeX - baseMarginLeft.value,
-    th: cellHeight.value * item.sizeY - baseMarginTop.value,
-    tl: cellWidth.value * (item.x - 1) + baseMarginLeft.value,
-    tr: cellWidth.value * (item.sizeX + item.x - 1) + baseMarginLeft.value,
-    tt: cellHeight.value * (item.y - 1) + baseMarginTop.value,
-    tb: cellHeight.value * (item.sizeY + item.y - 1) + baseMarginLeft.value
+    tw: item.sizeX,
+    th: item.sizeY,
+    tl: item.x - 1,
+    tr: item.sizeX + item.x - 1,
+    tt: item.y - 1,
+    tb: item.sizeY + item.y - 1
   }
 }
 
@@ -973,14 +1011,15 @@ function getItemMatrixPosition(item: CanvasItem) {
 function getItemStylePosition(item: CanvasItem) {
   const {tw, th, tl, tr, tt, tb} = getItemMatrixPosition(item)
   return {
-    tw: tw * (cellWidth.value + baseMarginLeft.value) - baseMarginLeft.value,
-    th: th * (cellHeight.value + baseMarginTop.value) - baseMarginTop.value,
+    tw: tw * cellWidth.value - baseMarginLeft.value,
     tl: cellWidth.value * tl + baseMarginLeft.value,
     tr: cellWidth.value * tr + baseMarginLeft.value,
+    th: th * cellHeight.value - baseMarginTop.value,
     tt: cellHeight.value * tt + baseMarginTop.value,
-    tb: cellHeight.value * tb + baseMarginLeft.value
+    tb: cellHeight.value * tb + baseMarginTop.value
   }
 }
+
 // @ts-ignore
 function tabMoveInCheck(cloneRefItem) {
   //1. If the current cloneItem type is not a tab,
@@ -998,8 +1037,19 @@ function tabMoveInCheck(cloneRefItem) {
   }
 }
 
+function tabMoveOutCheckSQ() {
+  const {cloneItem, moveItem} = infoBox.value
+  if (cloneItem && moveItem && props.canvasId.includes('tab') && props.parentConfigItem) {
+    const left = cloneItem.offsetLeft
+    const width = cloneItem.offsetWidth
+    const top = cloneItem.offsetTop
+    const {tw} = getItemStylePosition(props.parentConfigItem)
+    props.parentConfigItem.moveOutActive = left < -tabMoveOutXOffset || top < -tabMoveOutYOffset || (left + width - tw) > tabMoveOutXOffset;
+  }
+}
+
 function tabMoveInCheckSQ() {
-  const {cloneItem,moveItem} = infoBox.value.cloneItem
+  const {cloneItem, moveItem} = infoBox.value
   if (cloneItem && moveItem && moveItem !== 'SQTab') {
     const width = cloneItem.offsetWidth
     const height = cloneItem.offsetHeight
@@ -1022,12 +1072,8 @@ function tabMoveInCheckSQ() {
         // Near the lower right corner area
         const brAndBr =
             collisionT + collisionH >= top + height && collisionL + collisionW >= left + width
-        if (tfAndTf && bfAndBf && trAndTr && brAndBr) {
-          dashboardStore.setTabCollisionActiveId(item.id)
-        } else if (tabCollisionActiveId.value === item.id) {
-          dashboardStore.setTabCollisionActiveId(null)
-        }
-
+        item.collisionActive = tfAndTf && bfAndBf && trAndTr && brAndBr;
+        canvasLocked.value = item.collisionActive // Contains collision move in operation, locking canvas
 
         //Move into effective area for inspection
         //Collision effective area inspection
@@ -1044,16 +1090,16 @@ function tabMoveInCheckSQ() {
         const activeTrAndTr = activeT <= top && activeL + activeW >= left + width
         // Near the lower right corner area
         const activeBrAndBr = activeT + activeH >= top + height && activeL + activeW >= left + width
-        if (activeTfAndTf && activeBfAndBf && activeTrAndTr && activeBrAndBr) {
-          dashboardStore.setTabMoveInActiveId(item.id)
-        } else if (tabMoveInActiveId.value === item.id) {
-          dashboardStore.setTabMoveInActiveId(null)
-        }
+
+        item.moveInActive = activeTfAndTf && activeBfAndBf && activeTrAndTr && activeBrAndBr
       }
     })
   }
-
 }
+
+onMounted(() => {
+  currentInstance = getCurrentInstance()
+})
 
 
 defineExpose({
@@ -1086,7 +1132,11 @@ defineExpose({
                    :start-resize="startResize"
                    :key="'item' + index"
                    :style="nowItemStyle(item)">
-        <component class="slot-component" :is="findComponent(item.component)" :config-item="item"></component>
+        <component :ref="'shape_component_'+item.id"
+                   class="sql-component slot-component dragHandle"
+                   :is="findComponent(item.component)"
+                   :config-item="item">
+        </component>
       </CanvasShape>
     </template>
   </div>
