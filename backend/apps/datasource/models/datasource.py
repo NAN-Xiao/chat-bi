@@ -111,9 +111,11 @@ class ColumnSchema:
 
 
 class TableAndFields:
-    def __init__(self, table, fields):
+    def __init__(self, schema, table, fields):
+        self.schema = schema
         self.table = table
         self.fields = fields
 
+    schema: str
     table: CoreTable
     fields: List[CoreField]

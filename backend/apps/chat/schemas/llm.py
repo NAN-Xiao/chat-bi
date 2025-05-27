@@ -101,16 +101,17 @@ class AgentService:
         schema = self.db.get_table_info()
         return chain.invoke({"schema": schema, "question": question})
     
-    async def async_generate(self, question: str) -> AsyncGenerator[str, None]:
+    async def async_generate(self, question: str, schema: str) -> AsyncGenerator[str, None]:
        
         chain = self.prompt | self.agent_executor
         # schema = self.db.get_table_info()
         
-        schema_engine = SchemaEngine(engine=self.db._engine)
-        mschema = schema_engine.mschema
-        mschema_str = mschema.to_mschema()
+        # schema_engine = SchemaEngine(engine=self.db._engine)
+        # mschema = schema_engine.mschema
+        # mschema_str = mschema.to_mschema()
         
-        async for chunk in chain.astream({"schema": mschema_str, "question": question}):
+        # async for chunk in chain.astream({"schema": mschema_str, "question": question}):
+        async for chunk in chain.astream({"schema": schema, "question": question}):
             if not isinstance(chunk, dict):
                 continue
                 

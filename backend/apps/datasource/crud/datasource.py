@@ -211,10 +211,12 @@ def preview(session: SessionDep, id: int, data: TableObj):
     return exec_sql(ds, sql)
 
 
-def get_tableobj_by_ds(session: SessionDep, id: int) -> List[TableAndFields]:
-    list: List = []
-    tables = session.query(CoreTable).filter(CoreTable.ds_id == id).all()
+def get_table_obj_by_ds(session: SessionDep, ds: CoreDatasource) -> List[TableAndFields]:
+    _list: List = []
+    tables = session.query(CoreTable).filter(CoreTable.ds_id == ds.id).all()
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+    schema = conf.dbSchema if conf.dbSchema is not None and conf.dbSchema != "" else conf.database
     for table in tables:
         fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
-        list.append(TableAndFields(table=table, fields=fields))
-    return list
+        _list.append(TableAndFields(schema=schema, table=table, fields=fields))
+    return _list
