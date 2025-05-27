@@ -5,7 +5,7 @@ from typing import List
 from sqlalchemy import text, and_
 from sqlmodel import select
 
-from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo
+from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat
 from apps.chat.schemas.chat_schema import ChatQuestion
 from apps.datasource.models.datasource import CoreDatasource
 from common.core.deps import SessionDep, CurrentUser
@@ -15,6 +15,32 @@ def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
     chart_list = session.query(Chat).filter(Chat.create_by == current_user.id).order_by(
         Chat.create_time.desc()).all()
     return chart_list
+
+
+def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
+    chat = session.query(Chat).filter(Chat.id == rename_object.id).first()
+    if not chat:
+        raise Exception(f"Chat with id {rename_object.id} not found")
+
+    chat.brief = rename_object.brief.strip()[:20]
+    session.add(chat)
+    session.flush()
+    session.refresh(chat)
+
+    brief = chat.brief
+    session.commit()
+    return brief
+
+
+def delete_chat(session, chart_id) -> str:
+    chat = session.query(Chat).filter(Chat.id == chart_id).first()
+    if not chat:
+        return f'Chat with id {chart_id} has been deleted'
+
+    session.delete(chat)
+    session.commit()
+
+    return f'Chat with id {chart_id} has been deleted'
 
 
 def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> ChatInfo:
@@ -33,7 +59,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         chat_info.datasource_name = ds.name
 
     record_list = session.query(ChatRecord).filter(
-        and_(Chat.create_by == current_user.id, ChatRecord.id == chart_id)).order_by(ChatRecord.create_time).all()
+        and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
 
     chat_info.records = record_list
 
@@ -98,10 +124,11 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
 
     return result
 
+
 def save_full_question(session: SessionDep, id: int, full_question: str) -> ChatRecord:
     if not id:
         raise Exception("Record id cannot be None")
-    record = session.query(ChatRecord).filter(Chat.id == id).first()
+    record = session.query(ChatRecord).filter(ChatRecord.id == id).first()
     record.full_question = full_question
 
     result = ChatRecord(**record.model_dump())
@@ -114,11 +141,12 @@ def save_full_question(session: SessionDep, id: int, full_question: str) -> Chat
 
     return result
 
+
 def save_answer(session: SessionDep, id: int, answer: str) -> ChatRecord:
     if not id:
         raise Exception("Record id cannot be None")
 
-    record = session.query(ChatRecord).filter(Chat.id == id).first()
+    record = session.query(ChatRecord).filter(ChatRecord.id == id).first()
     record.answer = answer
 
     result = ChatRecord(**record.model_dump())

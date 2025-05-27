@@ -16,6 +16,14 @@ export const questionApi = {
     query: (id: number) => request.get(`/chat/question/${id}`)
 }
 
+export interface ChatMessage {
+    role: 'user' | 'assistant'
+    create_time?: Date | string
+    content?: string | number
+    isTyping?: boolean
+    isWelcome?: boolean
+}
+
 export class ChatRecord {
     id?: number
     chat_id?: number
@@ -147,6 +155,14 @@ function startChat(data: any): Promise<ChatInfo> {
     return request.post('/chat/start', data)
 }
 
+function renameChat(chat_id: number | undefined, brief: string): Promise<string> {
+    return request.post('/chat/rename', {id: chat_id, brief: brief})
+}
+
+function deleteChat(id: number | undefined): Promise<string> {
+    return request.get(`/chat/delete/${id}`)
+}
+
 export const chatApi = {
     toChatRecord,
     toChatRecordList,
@@ -154,5 +170,7 @@ export const chatApi = {
     toChatInfoList,
     list,
     get,
-    startChat
+    startChat,
+    renameChat,
+    deleteChat
 }

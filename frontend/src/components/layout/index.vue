@@ -3,59 +3,67 @@
     <div class="main-menu" :class="{ 'main-menu-sidebar': !topLayout, 'main-menu-topbar': topLayout }">
       <div class="logo">SQLBot</div>
 
-      <div v-if="!topLayout || !showSubmenu" :class="{ 'workspace-area': !topLayout, 'topbar-workspace-area': topLayout }">
+      <div v-if="!topLayout || !showSubmenu"
+           :class="{ 'workspace-area': !topLayout, 'topbar-workspace-area': topLayout }">
         <el-select
-          v-model="workspace"
-          placeholder="Select"
-          class="workspace-select"
-          size="large"
-          style="width: 240px"
+            v-model="workspace"
+            placeholder="Select"
+            class="workspace-select"
+            size="large"
+            style="width: 240px"
         >
           <template #label="{ label }">
             <div class="workspace-label">
-              <el-icon><folder /></el-icon>
+              <el-icon>
+                <folder/>
+              </el-icon>
               <span>{{ label }}</span>
             </div>
           </template>
           <el-option
-            v-for="item in options"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
+              v-for="item in options"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
           />
         </el-select>
       </div>
       <el-menu
-        v-if="!topLayout || !showSubmenu"
-        :default-active="activeMenu"
-        class="menu-container"
-        :mode="topLayout ? 'horizontal' : 'vertical'"
+          v-if="!topLayout || !showSubmenu"
+          :default-active="activeMenu"
+          class="menu-container"
+          :mode="topLayout ? 'horizontal' : 'vertical'"
       >
         <el-menu-item v-for="item in routerList" :key="item.path" :index="item.path" @click="menuSelect">
           <el-icon v-if="item.meta.icon">
-            <component :is="resolveIcon(item.meta.icon)" />
+            <component :is="resolveIcon(item.meta.icon)"/>
           </el-icon>
           <span>{{ item.meta.title }}</span>
         </el-menu-item>
       </el-menu>
 
       <div v-else class="top-bar-title">
-        <span class="split" />
+        <span class="split"/>
         <span>System manage</span>
       </div>
-      
+
 
       <div class="main-topbar-right" v-if="topLayout">
-        
+
         <div class="top-back-area" v-if="showSubmenu">
           <el-button type="primary" text="primary" @click="backMain">
-            <el-icon class="el-icon--right"><ArrowLeftBold /></el-icon>Back
+            <el-icon class="el-icon--right">
+              <ArrowLeftBold/>
+            </el-icon>
+            Back
           </el-button>
         </div>
 
         <el-tooltip content="System manage" placement="bottom" v-else>
           <div class="header-icon-btn" @click="toSystem">
-            <el-icon><iconsystem /></el-icon>
+            <el-icon>
+              <iconsystem/>
+            </el-icon>
             <!-- <span>System manage</span> -->
           </div>
         </el-tooltip>
@@ -82,11 +90,13 @@
           <div class="header-actions">
             <el-tooltip content="System manage" placement="bottom">
               <div class="header-icon-btn" @click="toSystem">
-                <el-icon><iconsystem /></el-icon>
+                <el-icon>
+                  <iconsystem/>
+                </el-icon>
                 <span>System manage</span>
               </div>
             </el-tooltip>
-            
+
             <el-dropdown trigger="click">
               <div class="user-info">
                 <el-avatar size="small">{{ name?.charAt(0) }}</el-avatar>
@@ -102,38 +112,38 @@
           </div>
         </div>
       </div>
-      
+
       <div v-if="sysRouterList.length && showSubmenu" class="sub-menu-container">
         <el-menu
-          :default-active="activeMenu"
-          class="el-menu-demo"
-          :mode="!topLayout ? 'horizontal' : 'vertical'"
+            :default-active="activeMenu"
+            class="el-menu-demo"
+            :mode="!topLayout ? 'horizontal' : 'vertical'"
         >
           <el-menu-item v-for="item in sysRouterList" :key="item.path" :index="item.path" @click="menuSelect">
             <el-icon v-if="item.meta.icon">
-              <component :is="resolveIcon(item.meta.icon)" />
+              <component :is="resolveIcon(item.meta.icon)"/>
             </el-icon>
             <span>{{ item.meta.title }}</span>
           </el-menu-item>
         </el-menu>
       </div>
-      
+
       <div v-if="sysRouterList.length && showSubmenu" class="sys-page-content">
         <div class="sys-inner-container">
-          <router-view />
+          <router-view/>
         </div>
       </div>
       <div v-else class="page-content">
-        <router-view />
+        <router-view/>
       </div>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useUserStore } from '@/stores/user'
+import {ref, computed, onMounted} from 'vue'
+import {useRouter, useRoute} from 'vue-router'
+import {useUserStore} from '@/stores/user'
 import folder from '@/assets/svg/folder.svg'
 import ds from '@/assets/svg/ds.svg'
 import dashboard from '@/assets/svg/dashboard.svg'
@@ -142,9 +152,10 @@ import iconsetting from '@/assets/svg/setting.svg'
 import iconsystem from '@/assets/svg/system.svg'
 import icon_user from '@/assets/svg/icon_user.svg'
 import icon_ai from '@/assets/svg/icon_ai.svg'
-import { ArrowLeftBold } from '@element-plus/icons-vue'
-import { useCache } from '@/utils/useCache'
-const { wsCache } = useCache()
+import {ArrowLeftBold} from '@element-plus/icons-vue'
+import {useCache} from '@/utils/useCache'
+
+const {wsCache} = useCache()
 const topLayout = ref(false)
 const router = useRouter()
 const route = useRoute()
@@ -166,9 +177,9 @@ const showSubmenu = computed(() => {
 })
 const workspace = ref('1')
 const options = [
-  { value: '1', label: 'Default workspace' },
-  { value: '2', label: 'Workspace 2' },
-  { value: '3', label: 'Workspace 3' }
+  {value: '1', label: 'Default workspace'},
+  {value: '2', label: 'Workspace 2'},
+  {value: '3', label: 'Workspace 3'}
 ]
 const currentPageTitle = computed(() => {
   if (route.path.includes('/system')) {
@@ -214,26 +225,33 @@ onMounted(() => {
 .app-topbar-container {
   flex-direction: column;
 }
+
 .app-container {
   display: flex;
   height: 100vh;
+
   .main-menu {
     display: flex;
+
     .workspace-area {
       margin: 8px 16px;
       width: 208px;
       overflow: hidden;
+
       .workspace-select {
         width: 100% !important;
+
         :deep(.ed-select__wrapper) {
           border-radius: 10px;
           box-shadow: none !important;
           background-color: #f1f3f4;
           line-height: 32px;
           min-height: 48px;
+
           .ed-select__selected-item {
             height: 32px;
           }
+
           .workspace-label {
             color: #2d2e31;
             font-weight: 600;
@@ -245,6 +263,7 @@ onMounted(() => {
         }
       }
     }
+
     .logo {
       height: 68px;
       line-height: 68px;
@@ -261,6 +280,7 @@ onMounted(() => {
       border-bottom: none;
     }
   }
+
   .main-menu-sidebar {
     width: 240px;
     background: #fff;
@@ -268,6 +288,7 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
   }
+
   .main-menu-topbar {
     height: 60px;
     line-height: 60px;
@@ -278,6 +299,7 @@ onMounted(() => {
     justify-content: space-between;
     border-bottom: 1px solid var(--el-menu-border-color);
     text-align: center;
+
     .logo {
       height: 60px;
       line-height: 60px;
@@ -288,6 +310,7 @@ onMounted(() => {
       height: 60px;
       align-items: center;
       padding-right: 24px;
+
       .header-icon-btn {
         display: flex;
         column-gap: 12px;
@@ -300,42 +323,51 @@ onMounted(() => {
         transition: all 0.3s;
         font-size: 14px;
         color: #5f6368;
+
         &:hover {
           background-color: rgba(0, 0, 0, 0.05);
         }
       }
+
       :deep(.user-info) {
         display: flex;
         column-gap: 4px;
         align-items: center;
+
         .ed-avatar {
           background-color: var(--el-color-primary);
           color: #fff;
         }
+
         .user-name {
           font-size: 14px;
           font-weight: 500;
           color: #202124;
         }
       }
+
       .top-back-area {
         align-items: center;
         display: flex;
       }
     }
+
     .topbar-workspace-area {
       margin: 0 32px;
       height: auto;
       width: 208px;
       line-height: 54px;
+
       .workspace-select {
         width: 100% !important;
+
         :deep(.ed-select__wrapper) {
           border-radius: 10px;
           box-shadow: none !important;
           background-color: #f1f3f4;
           line-height: 24px;
-          min-height: 32px;          
+          min-height: 32px;
+
           .workspace-label {
             color: #2d2e31;
             font-weight: 600;
@@ -347,6 +379,7 @@ onMounted(() => {
         }
       }
     }
+
     .top-bar-title {
       font-size: 14px;
       color: var(--el-color-info);
@@ -355,6 +388,7 @@ onMounted(() => {
       left: 132px;
       width: 200px;
       position: fixed;
+
       .split {
         color: #bbbbbb;
         border: 0.5px solid;
@@ -366,36 +400,42 @@ onMounted(() => {
 
   .main-content {
     width: calc(100% - 288px);
+    height: 100vh;
     flex: 1;
     display: flex;
     flex-direction: column;
     background-color: #f5f7fa;
-    padding: 24px;
     box-sizing: border-box;
+
     .header-container {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
       height: 60px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+
       .header {
         height: 36px;
         line-height: 36px;
         color: #202124;
+
         h1 {
           font-size: 24px;
           font-weight: 500;
           height: 36px;
           line-height: 36px;
         }
+
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 24px;
+
         .header-actions {
           display: flex;
           height: 36px;
           align-items: center;
+
           .header-icon-btn {
             display: flex;
             column-gap: 12px;
@@ -408,18 +448,22 @@ onMounted(() => {
             transition: all 0.3s;
             font-size: 14px;
             color: #5f6368;
+
             &:hover {
               background-color: rgba(0, 0, 0, 0.05);
             }
           }
+
           :deep(.user-info) {
             display: flex;
             column-gap: 4px;
             align-items: center;
+
             .ed-avatar {
               background-color: var(--el-color-primary);
               color: #fff;
             }
+
             .user-name {
               font-size: 14px;
               font-weight: 500;
@@ -429,12 +473,13 @@ onMounted(() => {
         }
       }
     }
-    
+
 
     .page-content {
       flex: 1;
       overflow-y: auto;
     }
+
     .sys-page-content {
       background-color: var(--white);
       border-radius: var(--border-radius);
@@ -442,6 +487,7 @@ onMounted(() => {
       box-shadow: var(--shadow);
       margin-top: 24px;
       flex: 1;
+
       .sys-inner-container {
         background: #fff;
         border-radius: 8px;
@@ -449,16 +495,20 @@ onMounted(() => {
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       }
     }
+
     .sub-menu-container {
       overflow: hidden;
       border-radius: 8px;
     }
   }
+
   .main-conntent-withbar {
-    padding: 0;
+    height: 0;
+    flex: 1;
     width: 100%;
     display: flex;
     flex-direction: row;
+
     .sub-menu-container {
       flex: 0 0 auto;
       background-color: lightblue;
@@ -467,10 +517,12 @@ onMounted(() => {
       border-right: 1px solid var(--el-menu-border-color);
       border-radius: 0;
       background-color: var(--white);
+
       :deep(.ed-menu) {
         border: none;
       }
     }
+
     .sys-page-content {
       margin: 0;
       border-radius: 0;
