@@ -1,20 +1,23 @@
 # Author: Junjun
 # Date: 2025/5/19
+import urllib.parse
 from typing import List
 
 from sqlalchemy import create_engine, text, MetaData, Table
 from sqlalchemy.orm import sessionmaker
 
 from apps.datasource.models.datasource import DatasourceConf
+from common.core.config import settings
 
 
 def get_engine_config():
-    return DatasourceConf(username="root", password="123456", host="127.0.0.1", port=5432, database="sqlbot",
+    return DatasourceConf(username=settings.POSTGRES_USER, password=settings.POSTGRES_PASSWORD,
+                          host="127.0.0.1", port=settings.POSTGRES_PORT, database=settings.POSTGRES_DB,
                           dbSchema="public")
 
 
 def get_engine_uri(conf: DatasourceConf):
-    return f"postgresql+psycopg2://{conf.username}:{conf.password}@{conf.host}:{conf.port}/{conf.database}"
+    return f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
 
 
 def get_engine_conn():

@@ -1,16 +1,16 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="title"
+    :title="dialogTitle"
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
     @closed="close"
     modal-class="add-datasource_dialog"
   >
-    <template #header="{ title }">
+    <template #header="">
       <div style="display: flex">
-        <div style="margin-right: 24px">{{ title }}</div>
+        <div style="margin-right: 24px">{{ dialogTitle }}</div>
         <el-steps
           v-show="isCreate"
           :active="active"
@@ -58,7 +58,7 @@
               :disabled="!isCreate"
               accept=".xls, .xlsx, .csv"
               :headers="headers"
-              action="http://localhost:8000/api/v1/datasource/uploadExcel"
+              :action="getUploadURL"
               :before-upload="beforeUpload"
               :on-success="onSuccess"
             >
@@ -118,7 +118,7 @@
           :width="560"
           :height="400"
           :scrollbarAlwaysOn="true"
-          class-name="el-select-dropdown__list"
+          class-name="ed-select-dropdown__list"
           layout="vertical"
         >
           <template #default="{ index, style }">
@@ -177,10 +177,12 @@ const isEditTable = ref(false);
 const checkList = ref<any>([]);
 const tableList = ref<any>([]);
 const excelUploadSuccess = ref(false);
-const tableListLoading = ref(true);
+const tableListLoading = ref(false);
 const token = wsCache.get("user.token");
 const headers = ref<any>({ "X-SQLBOT-TOKEN": `Bearer ${token}` });
-const title = ref("");
+const dialogTitle = ref("");
+const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
+
 
 const rules = reactive<FormRules>({
   name: [
@@ -223,7 +225,7 @@ const close = () => {
 const open = (item: any, editTable: boolean = false) => {
   isEditTable.value = false;
   if (item) {
-    title.value = "Edit Datasource";
+    dialogTitle.value = "Edit Datasource";
     isCreate.value = false;
     form.value.id = item.id;
     form.value.name = item.name;
@@ -245,7 +247,7 @@ const open = (item: any, editTable: boolean = false) => {
     }
 
     if (editTable) {
-      title.value = "Choose Tables";
+      dialogTitle.value = "Choose Tables";
       active.value = 1;
       isEditTable.value = true;
       isCreate.value = false;
@@ -278,7 +280,7 @@ const open = (item: any, editTable: boolean = false) => {
       });
     }
   } else {
-    title.value = "Add Datasource";
+    dialogTitle.value = "Add Datasource";
     isCreate.value = true;
     isEditTable.value = false;
     checkList.value = [];

@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, Type
 from abc import ABC, abstractmethod
 from langchain_core.language_models import BaseLLM as LangchainBaseLLM
 from langchain_openai import ChatOpenAI
-from langchain_community.llms import Tongyi, VLLM
+# from langchain_community.llms import Tongyi, VLLM
 
 class LLMConfig(BaseModel):
     """Base configuration class for large language models"""
@@ -43,7 +43,7 @@ class OpenAILLM(BaseLLM):
     def generate(self, prompt: str) -> str:
         return self.llm.invoke(prompt)
 
-class TongyiLLM(BaseLLM):
+""" class TongyiLLM(BaseLLM):
     def _init_llm(self) -> LangchainBaseLLM:
         return Tongyi(
             model_name=self.config.model_name,
@@ -62,7 +62,7 @@ class VLLMLLM(BaseLLM):
         )
     
     def generate(self, prompt: str) -> str:
-        return self.llm.invoke(prompt)
+        return self.llm.invoke(prompt) """
 
 
 class LLMFactory:
@@ -70,8 +70,8 @@ class LLMFactory:
     
     _llm_types: Dict[str, Type[BaseLLM]] = {
         "openai": OpenAILLM,
-        "tongyi": TongyiLLM,
-        "vllm": VLLMLLM
+        "tongyi": OpenAILLM,
+        "vllm": OpenAILLM
     }
     
     @classmethod
