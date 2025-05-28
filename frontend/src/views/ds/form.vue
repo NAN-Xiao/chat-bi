@@ -62,7 +62,7 @@
               :before-upload="beforeUpload"
               :on-success="onSuccess"
             >
-              <el-button>Upload</el-button>
+              <el-button :disabled="!isCreate">Upload</el-button>
               <template #tip>
                 <div class="el-upload__tip">
                   Only support .xls, .xlsx, .csv, size less than 50MB.

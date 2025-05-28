@@ -27,8 +27,7 @@
           <div class="connection-actions">
             <el-button class="action-btn" circle @click="getTables(ds.id, ds.name)" :icon="List"/>
             <el-button class="action-btn" circle @click="editTables(ds)" :icon="CreditCard"/>
-            <el-button v-if="ds.type !== 'excel'" type="primary" class="action-btn" circle @click="editDs(ds)"
-                       :icon="IconOpeEdit"/>
+            <el-button type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
             <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
           </div>
         </DatasourceItemCard>

@@ -115,7 +115,8 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
         create_table(conn, tableName, fields)
 
         data = [
-            {df.columns[i]: int(row[i]) if "int" in str(df.dtypes[i]) else row[i] for i in range(len(row))}
+            {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
+             for i in range(len(row))}
             for row in df.values
         ]
         # insert data
@@ -135,7 +136,8 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
             create_table(conn, tableName, fields)
 
             data = [
-                {df.columns[i]: int(row[i]) if "int" in str(df.dtypes[i]) else row[i] for i in range(len(row))}
+                {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
+                 for i in range(len(row))}
                 for row in df.values
             ]
             # insert data
