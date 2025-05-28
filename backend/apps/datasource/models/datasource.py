@@ -14,7 +14,7 @@ class CoreDatasource(SQLModel, table=True):
     type: str = Field(max_length=64)
     type_name: str = Field(max_length=64, nullable=True)
     configuration: str = Field(sa_column=Column(Text))
-    create_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=True))
+    create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger()))
     status: str = Field(max_length=64, nullable=True)
 

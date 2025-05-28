@@ -58,7 +58,7 @@
               :disabled="!isCreate"
               accept=".xls, .xlsx, .csv"
               :headers="headers"
-              action="http://localhost:8000/api/v1/datasource/uploadExcel"
+              :action="getUploadURL"
               :before-upload="beforeUpload"
               :on-success="onSuccess"
             >
@@ -181,6 +181,8 @@ const tableListLoading = ref(false);
 const token = wsCache.get("user.token");
 const headers = ref<any>({ "X-SQLBOT-TOKEN": `Bearer ${token}` });
 const dialogTitle = ref("");
+const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
+
 
 const rules = reactive<FormRules>({
   name: [
