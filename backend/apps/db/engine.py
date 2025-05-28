@@ -6,10 +6,12 @@ from sqlalchemy import create_engine, text, MetaData, Table
 from sqlalchemy.orm import sessionmaker
 
 from apps.datasource.models.datasource import DatasourceConf
+from common.core.config import settings
 
 
 def get_engine_config():
-    return DatasourceConf(username="root", password="123456", host="127.0.0.1", port=5432, database="sqlbot",
+    return DatasourceConf(username=settings.POSTGRES_USER, password=settings.POSTGRES_PASSWORD,
+                          host="127.0.0.1", port=settings.POSTGRES_PORT, database=settings.POSTGRES_DB,
                           dbSchema="public")
 
 
