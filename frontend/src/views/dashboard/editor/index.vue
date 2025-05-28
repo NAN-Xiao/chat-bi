@@ -3,7 +3,7 @@ import {ref} from 'vue'
 import Toolbar from "@/views/dashboard/editor/Toolbar.vue";
 import DashboardEditor from "@/views/dashboard/editor/DashboardEditor.vue";
 import {findNewComponentFromList} from "@/views/dashboard/components/component-list.ts";
-import {type CanvasItem, guid} from "@/utils/canvas.ts";
+import {guid} from "@/utils/canvas.ts";
 import cloneDeep from 'lodash/cloneDeep';
 
 
