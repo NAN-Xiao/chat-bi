@@ -1,16 +1,16 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="title"
+    :title="dialogTitle"
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
     @closed="close"
     modal-class="add-datasource_dialog"
   >
-    <template #header="{ title }">
+    <template #header="">
       <div style="display: flex">
-        <div style="margin-right: 24px">{{ title }}</div>
+        <div style="margin-right: 24px">{{ dialogTitle }}</div>
         <el-steps
           v-show="isCreate"
           :active="active"
@@ -180,7 +180,7 @@ const excelUploadSuccess = ref(false);
 const tableListLoading = ref(true);
 const token = wsCache.get("user.token");
 const headers = ref<any>({ "X-SQLBOT-TOKEN": `Bearer ${token}` });
-const title = ref("");
+const dialogTitle = ref("");
 
 const rules = reactive<FormRules>({
   name: [
@@ -223,7 +223,7 @@ const close = () => {
 const open = (item: any, editTable: boolean = false) => {
   isEditTable.value = false;
   if (item) {
-    title.value = "Edit Datasource";
+    dialogTitle.value = "Edit Datasource";
     isCreate.value = false;
     form.value.id = item.id;
     form.value.name = item.name;
@@ -245,7 +245,7 @@ const open = (item: any, editTable: boolean = false) => {
     }
 
     if (editTable) {
-      title.value = "Choose Tables";
+      dialogTitle.value = "Choose Tables";
       active.value = 1;
       isEditTable.value = true;
       isCreate.value = false;
@@ -278,7 +278,7 @@ const open = (item: any, editTable: boolean = false) => {
       });
     }
   } else {
-    title.value = "Add Datasource";
+    dialogTitle.value = "Add Datasource";
     isCreate.value = true;
     isEditTable.value = false;
     checkList.value = [];
