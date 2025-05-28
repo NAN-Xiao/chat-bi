@@ -42,6 +42,7 @@ const { draggable } = toRefs(props)
 <template>
   <div :class="{
         item: true,
+        itemCursorDefault: configItem.component === 'SQTab',
         moveAnimation: moveAnimate,
         movingItem: configItem.isPlayer,
         canNotDrag: !draggable

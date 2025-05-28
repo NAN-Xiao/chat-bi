@@ -83,6 +83,7 @@ onMounted(() => {
     }
   })
 })
+const emits = defineEmits(["parentAddItemBox"]);
 </script>
 
 <template>
@@ -99,6 +100,7 @@ onMounted(() => {
         :canvas-component-data="canvasComponentData"
         :parent-config-item="parentConfigItem"
         :canvas-id="canvasId"
+        @parentAddItemBox=" item => emits('parentAddItemBox',item)"
     ></CanvasCore>
   </div>
 

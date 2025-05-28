@@ -3,7 +3,7 @@ import {ref} from 'vue'
 import Toolbar from "@/views/dashboard/editor/Toolbar.vue";
 import DashboardEditor from "@/views/dashboard/editor/DashboardEditor.vue";
 import {findNewComponentFromList} from "@/views/dashboard/components/component-list.ts";
-import {guid} from "@/utils/canvas.ts";
+import {type CanvasItem, guid} from "@/utils/canvas.ts";
 import cloneDeep from 'lodash/cloneDeep';
 
 
@@ -56,7 +56,10 @@ const componentData = ref([
 <template>
   <div class="editor-main">
     <Toolbar @add-component="addComponent"></Toolbar>
-    <DashboardEditor ref="dashboardEditorRef" :canvas-component-data="componentData"></DashboardEditor>
+    <DashboardEditor
+        ref="dashboardEditorRef"
+        :canvas-component-data="componentData">
+    </DashboardEditor>
   </div>
 </template>
 

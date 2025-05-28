@@ -8,6 +8,7 @@ import {findComponent} from "@/views/dashboard/components/component-list.ts";
 
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
+const emits = defineEmits(["parentAddItemBox"]);
 // @ts-ignore
 let currentInstance
 // Props
@@ -400,11 +401,26 @@ function removeItem(index: number) {
   canvasComponentData.value.splice(index, 1)
 }
 
+function getNextDragId() {
+  if (!canvasComponentData.value || canvasComponentData.value.length === 0) {
+    return 0;
+  }
+  //@ts-ignore
+  const validIds = canvasComponentData.value.map(item => item._dragId).filter(id => id != null && id !== ''); // 过滤 null、undefined 和空字符串
+
+  if (validIds.length === 0) {
+    return 0;
+  }
+ //@ts-ignore
+  const maxDragId = Math.max(...validIds);
+  return maxDragId + 1;
+}
+
 function addItem(item: CanvasItem, index: any) {
   if (index < 0) {
     index = canvasComponentData.value.length
   }
-  item._dragId = index
+  item._dragId = getNextDragId()
   checkItemPosition(item, {x: item.x, y: item.y})
   emptyTargetCell(item)
   addItemToPositionBox(item)
@@ -899,15 +915,25 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
     if (canvasLocked.value) {
       const moveItem = infoBox.value.moveItem
       // Get the SQTab currently being moved in
-      const curActiveSQTab = canvasComponentData?.value.find(item => item.component === 'SQTab' && item.moveInActive === true);
-      if (curActiveSQTab) {
-        // @ts-ignore
-        const refTabInstance = currentInstance.refs['shape_component_' + curActiveSQTab.id][0]
-        refTabInstance.addTabItem(moveItem)
-        removeItemById(moveItem.id)
-        curActiveSQTab.collisionActive = false
-        curActiveSQTab.moveInActive = false
+      const curActiveMoveInSQTab = canvasComponentData?.value.find(item => item.component === 'SQTab' && item.collisionActive === true);
+      if (curActiveMoveInSQTab) {
+        if (curActiveMoveInSQTab.moveInActive) {
+          // @ts-ignore
+          const refTabInstance = currentInstance.refs['shape_component_' + curActiveMoveInSQTab.id][0]
+          refTabInstance.addTabItem(moveItem)
+          removeItemById(moveItem.id)
+        }
+        curActiveMoveInSQTab.collisionActive = false
+        curActiveMoveInSQTab.moveInActive = false
       }
+
+      // move out
+      if (props.parentConfigItem && props.parentConfigItem.moveOutActive) {
+        emits('parentAddItemBox', _.cloneDeep(moveItem))
+        removeItemById(moveItem.id)
+        props.parentConfigItem.moveOutActive = false
+      }
+
     }
     canvasLocked.value = false
   }
@@ -1045,6 +1071,7 @@ function tabMoveOutCheckSQ() {
     const top = cloneItem.offsetTop
     const {tw} = getItemStylePosition(props.parentConfigItem)
     props.parentConfigItem.moveOutActive = left < -tabMoveOutXOffset || top < -tabMoveOutYOffset || (left + width - tw) > tabMoveOutXOffset;
+    canvasLocked.value = props.parentConfigItem.moveOutActive
   }
 }
 
@@ -1135,7 +1162,8 @@ defineExpose({
         <component :ref="'shape_component_'+item.id"
                    class="sql-component slot-component dragHandle"
                    :is="findComponent(item.component)"
-                   :config-item="item">
+                   :config-item="item"
+                   @parentAddItemBox=" (subItem:any) => addItemBox(subItem)">
         </component>
       </CanvasShape>
     </template>

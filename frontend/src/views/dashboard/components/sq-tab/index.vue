@@ -12,6 +12,8 @@ const showTabTitleFlag = ref(true)
 let currentInstance
 import _ from 'lodash'
 
+const emits = defineEmits(["parentAddItemBox"]);
+
 const tabBaseMatrixCount = {
   x: 36,
   y: 12
@@ -130,7 +132,7 @@ defineExpose({
 </script>
 
 <template>
-  <div>
+  <div :class="{'tab-moveout':configItem.moveOutActive}">
     <drag-handle></drag-handle>
     <custom-tab
         v-model="editableTabsValue"
@@ -142,7 +144,7 @@ defineExpose({
         :border-active-color="state.headBorderActiveColor"
         :hide-title="!showTabTitleFlag"
     >
-      -------{{ configItem.collisionActive }} -- -- {{ configItem.moveInActive }}-- -- {{ configItem.moveOutActive }}
+      <!-- {{ configItem.collisionActive }} & {{ configItem.moveInActive }}${{ configItem.moveOutActive }}-->
       <template :key="tabItem.name" v-for="tabItem in configItem.propValue">
         <el-tab-pane
             class="el-tab-pane-custom"
@@ -193,12 +195,14 @@ defineExpose({
           :class="{ 'switch-hidden': editableTabsValue !== tabItem.name }"
       >
         <DashboardEditor
+            class="tab-dashboard-editor-main"
             :ref="'tabEditorRef_'+index"
             :canvas-component-data="tabItem.componentData"
             :move-in-active="configItem.moveInActive"
             :base-matrix-count="tabBaseMatrixCount"
             :canvas-id="tabItem.name"
             :parent-config-item="configItem"
+            @parentAddItemBox=" item => emits('parentAddItemBox',item)"
         >
         </DashboardEditor>
       </div>
@@ -216,6 +220,20 @@ defineExpose({
   position: absolute;
   width: 100%;
   height: 100%;
+}
+
+.tab-dashboard-editor-main{
+ height: 100%!important;
+}
+
+.tab-moveout {
+  ::v-deep(.ed-tabs__content) {
+    overflow: visible !important;
+  }
+
+  ::v-deep(.dashboard-editor-main) {
+    overflow: visible !important;
+  }
 }
 
 </style>
