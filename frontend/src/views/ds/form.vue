@@ -118,7 +118,7 @@
           :width="560"
           :height="400"
           :scrollbarAlwaysOn="true"
-          class-name="el-select-dropdown__list"
+          class-name="ed-select-dropdown__list"
           layout="vertical"
         >
           <template #default="{ index, style }">
