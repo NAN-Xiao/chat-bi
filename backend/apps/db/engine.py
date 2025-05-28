@@ -1,5 +1,6 @@
 # Author: Junjun
 # Date: 2025/5/19
+import urllib.parse
 from typing import List
 
 from sqlalchemy import create_engine, text, MetaData, Table
@@ -16,7 +17,7 @@ def get_engine_config():
 
 
 def get_engine_uri(conf: DatasourceConf):
-    return f"postgresql+psycopg2://{conf.username}:{conf.password}@{conf.host}:{conf.port}/{conf.database}"
+    return f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
 
 
 def get_engine_conn():
