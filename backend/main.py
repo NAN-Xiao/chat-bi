@@ -1,4 +1,5 @@
 import logging
+from fastapi.concurrency import asynccontextmanager
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import os
@@ -11,6 +12,16 @@ from apps.api import api_router
 from apps.system.middleware.auth import TokenMiddleware
 from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
+from alembic.config import Config
+from alembic import command
+
+def run_migrations():
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    run_migrations()
+    yield
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
@@ -24,6 +35,7 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     generate_unique_id_function=custom_generate_unique_id,
+    lifespan=lifespan
 )
 
 # Set all CORS enabled origins
