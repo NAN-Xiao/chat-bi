@@ -28,7 +28,7 @@ RUN test -f "./uv.lock" && \
     --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=backend/uv.lock,target=uv.lock \
     --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project
+    uv sync --frozen --no-install-project || echo "uv.lock file not found, skipping intermediate-layers"
 
 COPY ./backend ${APP_HOME}
 
