@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11-slim-bookworm AS builder
+FROM registry.cn-qingdao.aliyuncs.com/dataease/python:3.11-slim-bookworm AS builder
 
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
    uv sync
 
 # Runtime stage
-FROM python:3.11-slim-bookworm
+FROM registry.cn-qingdao.aliyuncs.com/dataease/python:3.11-slim-bookworm
 
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
