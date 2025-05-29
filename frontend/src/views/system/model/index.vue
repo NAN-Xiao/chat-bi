@@ -191,6 +191,7 @@ const handleSearch = (e: any) => {
 const editHandler = (id: any) => {
   modelApi.query(id).then((res: any) => {
     state.form = res
+    state.form.temperature = state.form.temperature * 100
     dialogFormVisible.value = true
   })
 }
@@ -259,6 +260,7 @@ const addTerm = () => {
     ...state.form,
   }
   delete param.id
+  param.temperature = param.temperature / 100
   modelApi.add(param).then(() => {
     dialogFormVisible.value = false
     search()
@@ -269,6 +271,8 @@ const addTerm = () => {
   })
 }
 const editTerm = () => {
+  const param = state.form
+  param.temperature = param.temperature / 100
   modelApi.edit(state.form).then((res: any) => {
     console.log('edit term', res)
     dialogFormVisible.value = false

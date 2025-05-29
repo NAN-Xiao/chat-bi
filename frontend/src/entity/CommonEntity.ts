@@ -6,13 +6,13 @@ export interface SelectOption {
 
 export const modelTypeOptions: SelectOption[] = [
   { label: 'OpenAI', value: 0 },
-  { label: 'Anthropic', value: 1 },
+  /* { label: 'Anthropic', value: 1 },
   { label: 'Baidu', value: 2 },
   { label: 'iFLYTEK', value: 3 },
   { label: 'Zhipu AI', value: 4 },
   { label: 'MiniMax', value: 5 },
   { label: 'Tencent', value: 6 },
-  { label: 'Other', value: 7 },
+  { label: 'Other', value: 7 }, */
 ]
 
 export const getModelTypeName = (value: any) => {
