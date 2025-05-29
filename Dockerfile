@@ -24,7 +24,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
 COPY frontend/dist ${UI_HOME}/dist
 
 # Install dependencies
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN test -f "./uv.lock" && \
+    --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=backend/uv.lock,target=uv.lock \
     --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-install-project
