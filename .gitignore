@@ -186,4 +186,4 @@ cython_debug/
 .DS_Store
 test.py
 
-components.d.ts
+
