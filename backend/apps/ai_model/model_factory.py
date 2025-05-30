@@ -3,6 +3,10 @@ from typing import Optional, Dict, Any, Type
 from abc import ABC, abstractmethod
 from langchain_core.language_models import BaseLLM as LangchainBaseLLM
 from langchain_openai import ChatOpenAI
+
+from apps.system.models.system_model import AiModelDetail
+
+
 # from langchain_community.llms import Tongyi, VLLM
 
 class LLMConfig(BaseModel):
@@ -85,3 +89,15 @@ class LLMFactory:
     def register_llm(cls, model_type: str, llm_class: Type[BaseLLM]):
         """Register new model type"""
         cls._llm_types[model_type] = llm_class
+
+
+#  todo
+def get_llm_config(aimodel: AiModelDetail) -> LLMConfig:
+    config = LLMConfig(
+        model_type="openai",
+        model_name=aimodel.name,
+        api_key=aimodel.api_key,
+        api_base_url=aimodel.endpoint,
+        additional_params={"temperature": aimodel.temperature}
+    )
+    return config

@@ -119,13 +119,13 @@
         <el-input v-model="state.form.endpoint" placeholder="Please input endpoint" />
       </el-form-item>
 
-      <el-form-item label="Maximum Context Window" >
+<!--      <el-form-item label="Maximum Context Window" >
         <el-input v-model="state.form.max_context_window" type="number" placeholder="Please input max_context_window" />
       </el-form-item>
 
       <el-form-item label="Temperature" >
         <el-slider v-model="state.form.temperature" :format-tooltip="formatTooltip" />
-      </el-form-item>
+      </el-form-item>-->
 
       <el-form-item label="Model Status" >
         <el-checkbox v-model="state.form.status" label="" size="large" />

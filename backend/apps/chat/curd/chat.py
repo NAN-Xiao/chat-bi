@@ -1,12 +1,9 @@
 import datetime
-import json
 from typing import List
 
-from sqlalchemy import text, and_
-from sqlmodel import select
+from sqlalchemy import and_
 
-from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat
-from apps.chat.schemas.chat_schema import ChatQuestion
+from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion
 from apps.datasource.models.datasource import CoreDatasource
 from common.core.deps import SessionDep, CurrentUser
 
@@ -64,6 +61,12 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     chat_info.records = record_list
 
     return chat_info
+
+
+def list_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> List[ChatRecord]:
+    record_list = session.query(ChatRecord).filter(
+        and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
+    return record_list
 
 
 def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat) -> ChatInfo:
@@ -125,11 +128,33 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     return result
 
 
-def save_full_question(session: SessionDep, id: int, full_question: str) -> ChatRecord:
+def save_full_sql_message(session: SessionDep, record_id: int, full_message: str) -> ChatRecord:
+    return save_full_sql_message_and_answer(session=session, record_id=record_id, full_message=full_message, answer='')
+
+
+def save_full_sql_message_and_answer(session: SessionDep, record_id: int, answer: str, full_message: str) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.full_sql_message = full_message
+    record.sql_answer = answer
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+
+
+def save_full_chart_message(session: SessionDep, id: int, full_message: str) -> ChatRecord:
     if not id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == id).first()
-    record.full_question = full_question
+    record.full_chart_message = full_message
 
     result = ChatRecord(**record.model_dump())
 
