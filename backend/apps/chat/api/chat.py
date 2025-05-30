@@ -1,19 +1,19 @@
+import asyncio
+import json
+from typing import List
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlmodel import select
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, save_question, save_answer, rename_chat, \
-    delete_chat
-from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat
-from apps.chat.schemas.chat_base_schema import LLMConfig
-from apps.chat.schemas.chat_schema import ChatQuestion
-from apps.chat.schemas.llm import AgentService
-from apps.datasource.crud.datasource import get_table_obj_by_ds
+    delete_chat, list_records
+from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat, ChatQuestion
+from apps.chat.task.llm import LLMService
+from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.models.system_model import AiModelDetail
 from common.core.deps import SessionDep, CurrentUser
-import json
-import asyncio
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
@@ -96,14 +96,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             detail="No available datasource configuration found"
         )
 
-    record: ChatRecord
-    try:
-        record = save_question(session=session, current_user=current_user, question=request_question)
-    except Exception as e1:
-        raise HTTPException(
-            status_code=400,
-            detail=str(e1)
-        )
+    request_question.engine = ds.type_name
 
     # Get available AI model
     aimodel = session.exec(select(AiModelDetail).where(
@@ -112,93 +105,54 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     )).first()
     if not aimodel:
         raise HTTPException(
-            status_code=400,
+            status_code=500,
             detail="No available AI model configuration found"
         )
 
-    # Use Tongyi Qianwen
-    tongyi_config = LLMConfig(
-        model_type="openai",
-        model_name=aimodel.name,
-        api_key=aimodel.api_key,
-        api_base_url=aimodel.endpoint,
-        additional_params={"temperature": aimodel.temperature}
-    )
-    # llm_service = LLMService(tongyi_config)
-    llm_service = AgentService(tongyi_config, ds)
-
-    # Use Custom VLLM model
-    """ vllm_config = LLMConfig(
-        model_type="vllm",
-        model_name="your-model-path",
-        additional_params={
-            "max_new_tokens": 200,
-            "temperature": 0.3
-        }
-    )
-    vllm_service = LLMService(vllm_config) """
-    """ result = llm_service.generate_sql(question)
-    return result """
-
+    history_records: List[ChatRecord] = list_records(session=session, current_user=current_user,
+                                                     chart_id=request_question.chat_id)
     # get schema
-    schema_str = ""
-    table_objs = get_table_obj_by_ds(session=session, ds=ds)
-    db_name = table_objs[0].schema
-    schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
-    for obj in table_objs:
-        schema_str += f"# Table: {db_name}.{obj.table.table_name}"
-        table_comment = ''
-        if obj.table.custom_comment:
-            table_comment = obj.table.custom_comment.strip()
-        if table_comment == '':
-            schema_str += '\n[\n'
-        else:
-            schema_str += f", {table_comment}\n[\n"
+    request_question.db_schema = get_table_schema(session=session, ds=ds)
+    llm_service = LLMService(request_question, history_records, ds, aimodel)
 
-        field_list = []
-        for field in obj.fields:
-            field_comment = ''
-            if field.custom_comment:
-                field_comment = field.custom_comment.strip()
-            if field_comment == '':
-                field_list.append(f"({field.field_name}:{field.field_type})")
-            else:
-                field_list.append(f"({field.field_name}:{field.field_type}, {field_comment})")
-        schema_str += ",\n".join(field_list)
-        schema_str += '\n]\n'
+    llm_service.init_record(session=session, current_user=current_user)
 
-    print(schema_str)
+    def run_task():
+        sql_res = llm_service.generate_sql(session=session)
+        for chunk in sql_res:
+            yield json.dumps({'content': chunk, 'type': 'sql'}) + '\n\n'
+        yield json.dumps({'type': 'info', 'msg': 'sql generated'}) + '\n\n'
 
-    async def event_generator():
-        all_text = ''
-        try:
-            async for chunk in llm_service.async_generate(question, schema_str):
-                data = json.loads(chunk.replace('data: ', ''))
-
-                if data['type'] in ['final', 'tool_result']:
-                    content = data['content']
-                    print('--  ' + content)
-                    all_text += content
-                    for char in content:
-                        yield f"data: {json.dumps({'type': 'char', 'content': char})}\n\n"
-                        await asyncio.sleep(0.05)
-
-                    if 'html' in data:
-                        yield f"data: {json.dumps({'type': 'html', 'content': data['html']})}\n\n"
-                else:
-                    yield chunk
-
-        except Exception as e:
-            all_text = 'Exception:' + str(e)
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
-
-        try:
-            save_answer(session=session, id=record.id, answer=all_text)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=str(e)
-            )
+    # async def event_generator():
+    #     all_text = ''
+    #     try:
+    #         async for chunk in llm_service.async_generate(question, request_question.db_schema):
+    #             data = json.loads(chunk.replace('data: ', ''))
+    #
+    #             if data['type'] in ['final', 'tool_result']:
+    #                 content = data['content']
+    #                 print('--  ' + content)
+    #                 all_text += content
+    #                 for char in content:
+    #                     yield f"data: {json.dumps({'type': 'char', 'content': char})}\n\n"
+    #                     await asyncio.sleep(0.05)
+    #
+    #                 if 'html' in data:
+    #                     yield f"data: {json.dumps({'type': 'html', 'content': data['html']})}\n\n"
+    #             else:
+    #                 yield chunk
+    #
+    #     except Exception as e:
+    #         all_text = 'Exception:' + str(e)
+    #         yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+    #
+    #     try:
+    #         save_answer(session=session, id=record.id, answer=all_text)
+    #     except Exception as e:
+    #         raise HTTPException(
+    #             status_code=500,
+    #             detail=str(e)
+    #         )
 
     # return EventSourceResponse(event_generator(), headers={"Content-Type": "text/event-stream"})
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(run_task(), media_type="text/event-stream")

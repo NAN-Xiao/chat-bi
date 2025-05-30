@@ -119,13 +119,13 @@
         <el-input v-model="state.form.endpoint" placeholder="Please input endpoint" />
       </el-form-item>
 
-      <el-form-item label="Maximum Context Window" >
+<!--      <el-form-item label="Maximum Context Window" >
         <el-input v-model="state.form.max_context_window" type="number" placeholder="Please input max_context_window" />
       </el-form-item>
 
       <el-form-item label="Temperature" >
         <el-slider v-model="state.form.temperature" :format-tooltip="formatTooltip" />
-      </el-form-item>
+      </el-form-item>-->
 
       <el-form-item label="Model Status" >
         <el-checkbox v-model="state.form.status" label="" size="large" />
@@ -191,6 +191,7 @@ const handleSearch = (e: any) => {
 const editHandler = (id: any) => {
   modelApi.query(id).then((res: any) => {
     state.form = res
+    state.form.temperature = state.form.temperature * 100
     dialogFormVisible.value = true
   })
 }
@@ -259,6 +260,7 @@ const addTerm = () => {
     ...state.form,
   }
   delete param.id
+  param.temperature = param.temperature / 100
   modelApi.add(param).then(() => {
     dialogFormVisible.value = false
     search()
@@ -269,6 +271,8 @@ const addTerm = () => {
   })
 }
 const editTerm = () => {
+  const param = state.form
+  param.temperature = param.temperature / 100
   modelApi.edit(state.form).then((res: any) => {
     console.log('edit term', res)
     dialogFormVisible.value = false

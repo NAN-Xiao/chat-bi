@@ -38,7 +38,7 @@
         <el-form-item label="Description">
           <el-input v-model="form.description" :rows="2" type="textarea" />
         </el-form-item>
-        <el-form-item label="Type">
+        <el-form-item label="Type" prop="type">
           <el-select
             v-model="form.type"
             placeholder="Select Type"
@@ -72,32 +72,32 @@
           </el-form-item>
         </div>
         <div v-else>
-          <el-form-item label="Host/Ip">
-            <el-input v-model="config.host" />
+          <el-form-item label="Host/Ip" prop="host">
+            <el-input v-model="form.host" />
           </el-form-item>
-          <el-form-item label="Port">
-            <el-input v-model="config.port" />
+          <el-form-item label="Port" prop="port">
+            <el-input v-model="form.port" />
           </el-form-item>
           <el-form-item label="Username">
-            <el-input v-model="config.username" />
+            <el-input v-model="form.username" />
           </el-form-item>
           <el-form-item label="Password">
-            <el-input v-model="config.password" type="password" show-password />
+            <el-input v-model="form.password" type="password" show-password />
           </el-form-item>
-          <el-form-item label="Database">
-            <el-input v-model="config.database" />
+          <el-form-item label="Database" prop="database">
+            <el-input v-model="form.database" />
           </el-form-item>
-          <el-form-item label="Connect Mode" v-if="form.type === 'oracle'">
-            <el-radio-group v-model="config.mode">
+          <el-form-item label="Connect Mode" v-if="form.type === 'oracle'" prop="mode">
+            <el-radio-group v-model="form.mode">
               <el-radio value="service_name">Service Name</el-radio>
               <el-radio value="sid">SID</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="Extra JDBC String">
-            <el-input v-model="config.extraJdbc" />
+            <el-input v-model="form.extraJdbc" />
           </el-form-item>
-          <el-form-item label="Schema" v-if="haveSchema.includes(form.type)">
-            <el-input v-model="config.dbSchema" />
+          <el-form-item label="Schema" v-if="haveSchema.includes(form.type)" prop="dbSchema">
+            <el-input v-model="form.dbSchema" />
             <el-button link type="primary" :icon="Plus" v-if="false"
               >Get Schema</el-button
             >
@@ -189,6 +189,24 @@ const rules = reactive<FormRules>({
     { required: true, message: "Please input name", trigger: "blur" },
     { min: 1, max: 50, message: "Length should be 1 to 50", trigger: "blur" },
   ],
+  type: [
+    { required: true, message: "Please choose database type" ,trigger: "change"}
+  ],
+  host: [
+    { required: true, message: "Please input host" ,trigger: "blur"}
+  ],
+  port: [
+    { required: true, message: "Please input port" ,trigger: "blur"}
+  ],
+  database: [
+    { required: true, message: "Please input database" ,trigger: "blur"}
+  ],
+  mode: [
+    { required: true, message: "Please choose mode" ,trigger: "change"}
+  ],
+  dbSchema: [
+    { required: true, message: "Please input schema" ,trigger: "blur"}
+  ]
 });
 
 const dialogVisible = ref<boolean>(false);
@@ -197,8 +215,6 @@ const form = ref<any>({
   description: "",
   type: "mysql",
   configuration: "",
-});
-const config = ref<any>({
   driver: "",
   host: "",
   port: 0,
@@ -234,16 +250,16 @@ const open = (item: any, editTable: boolean = false) => {
     form.value.configuration = item.configuration;
     if (item.configuration) {
       const configuration = JSON.parse(decrypted(item.configuration));
-      config.value.host = configuration.host;
-      config.value.port = configuration.port;
-      config.value.username = configuration.username;
-      config.value.password = configuration.password;
-      config.value.database = configuration.database;
-      config.value.extraJdbc = configuration.extraJdbc;
-      config.value.dbSchema = configuration.dbSchema;
-      config.value.filename = configuration.filename;
-      config.value.sheets = configuration.sheets;
-      config.value.mode = configuration.mode;
+      form.value.host = configuration.host;
+      form.value.port = configuration.port;
+      form.value.username = configuration.username;
+      form.value.password = configuration.password;
+      form.value.database = configuration.database;
+      form.value.extraJdbc = configuration.extraJdbc;
+      form.value.dbSchema = configuration.dbSchema;
+      form.value.filename = configuration.filename;
+      form.value.sheets = configuration.sheets;
+      form.value.mode = configuration.mode;
     }
 
     if (editTable) {
@@ -258,11 +274,12 @@ const open = (item: any, editTable: boolean = false) => {
           return ele.table_name;
         });
         if (item.type === "excel") {
-          tableList.value = config.value.sheets;
+          tableList.value = form.value.sheets;
         } else {
           tableListLoading.value = true;
+          const requestObj = buildConf()
           datasourceApi
-            .getTablesByConf(form.value)
+            .getTablesByConf(requestObj)
             .then((table) => {
               tableList.value = table;
               checkList.value = checkList.value.filter((ele: string) => {
@@ -290,8 +307,6 @@ const open = (item: any, editTable: boolean = false) => {
       description: "",
       type: "mysql",
       configuration: "",
-    };
-    config.value = {
       driver: "",
       host: "",
       port: 0,
@@ -303,7 +318,7 @@ const open = (item: any, editTable: boolean = false) => {
       filename: "",
       sheets: [],
       mode: "service_name",
-    };
+    }
   }
   dialogVisible.value = true;
 };
@@ -320,11 +335,11 @@ const save = async (formEl: FormInstance | undefined) => {
           return { table_name: ele.tableName, table_comment: ele.tableComment };
         });
 
-      buildConf();
+      const requestObj = buildConf();
       if (form.value.id) {
         if (!isEditTable.value) {
           // only update datasource config info
-          datasourceApi.update(form.value).then((res) => {
+          datasourceApi.update(requestObj).then((res) => {
             console.log(res);
             close();
             emit("refresh");
@@ -336,8 +351,8 @@ const save = async (formEl: FormInstance | undefined) => {
           });
         }
       } else {
-        form.value.tables = list;
-        datasourceApi.add(form.value).then((res: any) => {
+        requestObj.tables = list;
+        datasourceApi.add(requestObj).then((res: any) => {
           console.log(res);
           close();
           emit("refresh");
@@ -350,23 +365,36 @@ const save = async (formEl: FormInstance | undefined) => {
 const buildConf = () => {
   form.value.configuration = encrypted(
     JSON.stringify({
-      host: config.value.host,
-      port: config.value.port,
-      username: config.value.username,
-      password: config.value.password,
-      database: config.value.database,
-      extraJdbc: config.value.extraJdbc,
-      dbSchema: config.value.dbSchema,
-      filename: config.value.filename,
-      sheets: config.value.sheets,
-      mode: config.value.mode,
+      host: form.value.host,
+      port: form.value.port,
+      username: form.value.username,
+      password: form.value.password,
+      database: form.value.database,
+      extraJdbc: form.value.extraJdbc,
+      dbSchema: form.value.dbSchema,
+      filename: form.value.filename,
+      sheets: form.value.sheets,
+      mode: form.value.mode,
     })
-  );
+  )
+  const obj = JSON.parse(JSON.stringify(form.value))
+  delete obj.driver
+  delete obj.host
+  delete obj.port
+  delete obj.username
+  delete obj.password
+  delete obj.database
+  delete obj.extraJdbc
+  delete obj.dbSchema
+  delete obj.filename
+  delete obj.sheets
+  delete obj.mode
+  return obj
 };
 
 const check = () => {
-  buildConf();
-  datasourceApi.check(form.value).then((res: any) => {
+  const requestObj = buildConf();
+  datasourceApi.check(requestObj).then((res: any) => {
     if (res) {
       ElMessage({
         message: "Connect success",
@@ -394,12 +422,12 @@ const next = async (formEl: FormInstance | undefined) => {
         }
       } else {
         // check status if success do next
-        buildConf();
-        datasourceApi.check(form.value).then((res: boolean) => {
+        const requestObj = buildConf();
+        datasourceApi.check(requestObj).then((res: boolean) => {
           if (res) {
             active.value++;
             // request tables
-            datasourceApi.getTablesByConf(form.value).then((res) => {
+            datasourceApi.getTablesByConf(requestObj).then((res) => {
               tableList.value = res;
             });
           } else {
@@ -428,8 +456,8 @@ const beforeUpload = (rawFile: any) => {
 };
 
 const onSuccess = (response: any) => {
-  config.value.filename = response.data.filename;
-  config.value.sheets = response.data.sheets;
+  form.value.filename = response.data.filename;
+  form.value.sheets = response.data.sheets;
   tableList.value = response.data.sheets;
   excelUploadSuccess.value = true;
 };

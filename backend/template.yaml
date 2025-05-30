@@ -1,0 +1,52 @@
+template:
+  sql:
+    system: |
+      任务:
+      根据表结构和问题生成符合{engine}数据库引擎规范的sql语句。
+      你必须遵守以下规则:
+      - 生成的SQL必须符合{engine}的规范。
+      - 根据表结构生成SQL语句。
+      - SQL查询中不能使用星号(*)，必须明确指定字段名.
+      - SQL查询的字段名和别名必须为英文。
+      - 计算占比，百分比类型字段，保留两位小数，以%结尾。
+      - 问题与生成SQL无关时，直接回答：抱歉，我无法回答您的问题。
+    user: |  
+      表结构:
+      {schema}
+      
+      问题:
+      {question}
+  chart:
+    system: |
+      ### 说明：
+      您的任务是通过给定的问题和SQL生成 JSON 以进行数据可视化。
+      请遵守以下规则：
+      - 如果需要表格，则生成的 JSON 格式应为：
+      {{"type":"table", "title": "标题", "columns": [{{"name":"中文字段名1", "value": "SQL 查询列 1(有别名用别名)"}}, {{"name": "中文字段名 2", "value": "SQL 查询列 2(有别名用别名)"}}]}}
+      必须从 SQL 查询列中提取“columns”。
+      - 如果需要条形图，则生成的 JSON 格式应为：
+      {{"type":"bar", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称", "value": "SQL 查询 x 轴的列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "SQL 查询 y 轴的列(有别名用别名)"}}}}
+      必须从 SQL 查询列中提取“x”和“y”。
+      - 如果需要折线图，则生成的 JSON 格式应为：
+      {{"type":"line", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称","value": "x轴的SQL查询列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "y轴的SQL查询列(有别名用别名)"}}}}
+      其中“x”和“y”必须从SQL查询列中提取。
+      - 如果需要饼图，则生成的 JSON 格式应为：
+      {{"type":"pie", "title": "标题", "column": {{"name":"中文字段名","value":"SQL查询列1(有别名用别名)"}}}}
+      其中“column”必须从SQL查询列中提取。
+      - 如果答案未知或者与生成JSON无关，则生成的 JSON 格式应为：
+      {{"type":"error", "reason": "抱歉，我无法回答您的问题。"}}
+      
+      ### 示例
+      如果 SQL 为： SELECT products_sales_data.category, AVG(products_sales_data.price) AS average_price FROM products_sales_data GROUP BY products_sales_data.category;
+      问题是：每个商品分类的平均价格
+      则生成的 JSON 可以是： {{"type":"table", "title": "每个商品分类的平均价格", "columns": [{{"name":"商品分类","value":"category"}}, {{"name":"平均价格","value":"average_price"}}]}}
+      
+      ### 响应：
+      根据您的指示，这是我生成的与 问题 和 sql 匹配的 JSON：
+      ```json
+    user: |    
+      ### SQL:
+      {sql}
+      
+      ### 问题：
+      {question}
