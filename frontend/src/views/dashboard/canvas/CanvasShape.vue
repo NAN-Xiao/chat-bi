@@ -10,6 +10,10 @@ const props = defineProps({
     type: Object as PropType<CanvasItem>,
     required: true
   },
+  active: {
+    type: Boolean,
+    default: false
+  },
   itemIndex: {
     type: Number,
     required: true
@@ -37,18 +41,23 @@ const props = defineProps({
 })
 
 const { draggable } = toRefs(props)
+const shapeClick = (e: MouseEvent) => {
+  e.stopPropagation()
+  e.preventDefault()
+}
 </script>
 
 <template>
   <div :class="{
         item: true,
+        itemActive: active,
         itemCursorDefault: configItem.component === 'SQTab',
         moveAnimation: moveAnimate,
         movingItem: configItem.isPlayer,
         canNotDrag: !draggable
-    }" @mousedown="startMove($event, configItem, itemIndex)" ref="shapeRef">
+    }" @click="shapeClick" @mousedown="startMove($event, configItem, itemIndex)" ref="shapeRef">
     <slot></slot>
-    <resize-handle
+    <resize-handle v-if="active"
         :start-resize="(event : MouseEvent, point: string) => startResize(event, point, configItem, itemIndex)">
     </resize-handle>
   </div>

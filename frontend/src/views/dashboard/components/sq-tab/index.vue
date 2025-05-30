@@ -220,6 +220,7 @@ defineExpose({
   position: absolute;
   width: 100%;
   height: 100%;
+  margin: 2px!important;// border size
 }
 
 .tab-dashboard-editor-main{

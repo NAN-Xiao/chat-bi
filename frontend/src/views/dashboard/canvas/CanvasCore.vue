@@ -5,10 +5,12 @@ import {dashboardStoreWithOut} from '@/stores/dashboard/dashboard'
 import {type CanvasCoord, type CanvasItem} from '@/utils/canvas.ts'
 import CanvasShape from './CanvasShape.vue'
 import {findComponent} from "@/views/dashboard/components/component-list.ts";
+import {storeToRefs} from "pinia";
 
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
 const emits = defineEmits(["parentAddItemBox"]);
+const {curComponentId, curComponent} = storeToRefs(dashboardStore)
 // @ts-ignore
 let currentInstance
 // Props
@@ -411,7 +413,7 @@ function getNextDragId() {
   if (validIds.length === 0) {
     return 0;
   }
- //@ts-ignore
+  //@ts-ignore
   const maxDragId = Math.max(...validIds);
   return maxDragId + 1;
 }
@@ -420,7 +422,7 @@ function addItem(item: CanvasItem, index: any) {
   if (index < 0) {
     index = canvasComponentData.value.length
   }
-  item._dragId = getNextDragId()
+  item._dragId = item.id || getNextDragId()
   checkItemPosition(item, {x: item.x, y: item.y})
   emptyTargetCell(item)
   addItemToPositionBox(item)
@@ -702,15 +704,23 @@ function startResize(e: MouseEvent, point: string, item: CanvasItem, index: numb
   infoBox.value.point = point
 }
 
+function containerClick() {
+  // remove current component info
+  dashboardStore.setCurComponent(null)
+}
+
 function containerMouseDown(e: MouseEvent) {
-  // e.preventDefault();
   if (!infoBox.value) {
     infoBox.value = {} // Reinitialize
   }
   infoBox.value.startX = e.pageX
   infoBox.value.startY = e.pageY
-  e.preventDefault()
-  e.stopPropagation()
+  // @ts-ignore
+  if (curComponent.value?.component !== 'SQText') {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
 }
 
 function getNowPosition(addSizeX: number, addSizeY: number, moveXSize: number, moveYSize: number) {
@@ -959,6 +969,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
     window.removeEventListener('mouseup', itemMouseUp)
   }
 
+  // This will prevent click events from being passed to the parent level
   window.addEventListener('mouseup', itemMouseUp)
 }
 
@@ -1147,10 +1158,12 @@ defineExpose({
 </script>
 
 <template>
-  <div class="dragAndResize" ref="containerRef" @mousedown="containerMouseDown($event)" @mouseup="endMove()"
+  <div class="dragAndResize" ref="containerRef" @click="containerClick" @mousedown="containerMouseDown($event)"
+       @mouseup="endMove()"
        @mousemove="moving()">
     <template v-if="renderOk">
       <CanvasShape v-for="(item, index) in canvasComponentData"
+                   :active="curComponentId === item.id"
                    :config-item="item"
                    :draggable="draggable"
                    :item-index="index"

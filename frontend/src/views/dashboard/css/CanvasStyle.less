@@ -10,19 +10,23 @@
   }
 
   .itemCursorDefault {
-    cursor: default!important;
+    cursor: default !important;
   }
+
+  .itemActive {
+    outline: 1px solid #59c7f9;
+  }
+
   .item {
     position: absolute;
     width: 100px;
     height: 100px;
-    border: 1px solid #59c7f9;
     background-color: #fff;
     cursor: move;
     .resizeHandle {
       position: absolute;
       background: #fff;
-      border: 1px solid #59c7f9;
+      outline: 1px solid #59c7f9;
       width: 8px;
       height: 8px;
       border-radius: 50%;

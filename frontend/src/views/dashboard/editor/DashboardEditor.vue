@@ -114,7 +114,7 @@ const emits = defineEmits(["parentAddItemBox"]);
 }
 
 .move-in-active {
-  border: 2px dotted transparent;
-  border-color: blueviolet;
+  border: 2px dotted blueviolet;
+  margin: -2px;
 }
 </style>

@@ -7,6 +7,7 @@ export const dashboardStore = defineStore('dashboard', {
             tabCollisionActiveId: null,
             tabMoveInActiveId: null,
             curComponent: null,
+            curComponentId: null,
             canvasStyle: {},
             componentData: [],
             dashboardInfo: {
@@ -29,6 +30,7 @@ export const dashboardStore = defineStore('dashboard', {
     actions: {
         setCurComponent(value: any) {
             this.curComponent = value
+            this.curComponentId = value && value.id ? value.id : null
         },
         setComponentData(value: any) {
             this.componentData = value
