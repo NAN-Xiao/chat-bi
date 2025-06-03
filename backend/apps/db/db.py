@@ -247,7 +247,7 @@ def exec_sql(ds: CoreDatasource, sql: str):
             {columns[i]: value for i, value in enumerate(tuple_item)}
             for tuple_item in res
         ]
-        return {"fields": columns, "data": result_list, "sql": base64.b64encode(bytes(sql, 'utf-8'))}
+        return {"fields": columns, "data": result_list, "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
     finally:
         if result is not None:
             result.close()
