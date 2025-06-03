@@ -1,0 +1,8 @@
+import { request } from '@/utils/request'
+
+export const dashboardApi = {
+  list: () => request.get('/dashboard/list'),
+  getDashboardInfo: (params:any) => request.post(`/dashboard/get_dashboard/${params.id}`,params),
+  sqNameCheck: (data: any) => request.post('/dashboard/name_check',data),
+  moveResource: (data: any) => request.post('/dashboard/move',data),
+}

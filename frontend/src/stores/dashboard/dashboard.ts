@@ -10,15 +10,19 @@ export const dashboardStore = defineStore('dashboard', {
             curComponentId: null,
             canvasStyle: {},
             componentData: [],
+            fullscreenFlag: false,
             dashboardInfo: {
                 id: null,
-                name: 'New Dashboard',
+                name: null,
                 pid: null,
-                dataState: null,
-                optType: null,
+                workspaceId: null,
                 status: null,
                 type: null,
-                mobileLayout: false
+                creatorName: null,
+                updateName: null,
+                createTime: null,
+                updateTime: null,
+                contentId: null
             }
         }
     },
@@ -32,6 +36,9 @@ export const dashboardStore = defineStore('dashboard', {
             this.curComponent = value
             this.curComponentId = value && value.id ? value.id : null
         },
+        setDashboardInfo(value: any) {
+            this.dashboardInfo = value
+        },
         setComponentData(value: any) {
             this.componentData = value
         },
@@ -44,6 +51,9 @@ export const dashboardStore = defineStore('dashboard', {
         setTabMoveInActiveId(tabId: any) {
             this.tabMoveInActiveId = tabId
         },
+        canvasDataInit(){
+
+        }
 
     }
 })
