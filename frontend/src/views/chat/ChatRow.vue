@@ -27,7 +27,7 @@ const _datasource = computed({
 
 <template>
   <div class="chat-row" :class="{'right-to-left': msg.role === 'user'}">
-    <el-avatar shape="square" v-if="msg.role === 'assistant'">SQBot</el-avatar>
+    <el-avatar shape="square" v-if="msg.role === 'assistant'">SQLBot</el-avatar>
     <el-avatar shape="square" v-if="msg.role === 'user'"/>
     <ChatBlock v-if="!msg.isWelcome" :msg="msg" :class="{'row-full': msg.role === 'assistant'}">
       <slot></slot>

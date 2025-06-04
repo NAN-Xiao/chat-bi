@@ -150,11 +150,35 @@ def save_full_sql_message_and_answer(session: SessionDep, record_id: int, answer
     return result
 
 
-def save_full_chart_message(session: SessionDep, id: int, full_message: str) -> ChatRecord:
-    if not id:
+def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:
+    if not record_id:
         raise Exception("Record id cannot be None")
-    record = session.query(ChatRecord).filter(ChatRecord.id == id).first()
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.sql = sql
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+
+
+def save_full_chart_message(session: SessionDep, record_id: int, full_message: str) -> ChatRecord:
+    return save_full_chart_message_and_answer(session=session, record_id=record_id, full_message=full_message,
+                                              answer='')
+
+
+def save_full_chart_message_and_answer(session: SessionDep, record_id: int, answer: str,
+                                       full_message: str) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
     record.full_chart_message = full_message
+    record.chart_answer = answer
 
     result = ChatRecord(**record.model_dump())
 
@@ -167,12 +191,11 @@ def save_full_chart_message(session: SessionDep, id: int, full_message: str) -> 
     return result
 
 
-def save_answer(session: SessionDep, id: int, answer: str) -> ChatRecord:
-    if not id:
+def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:
+    if not record_id:
         raise Exception("Record id cannot be None")
-
-    record = session.query(ChatRecord).filter(ChatRecord.id == id).first()
-    record.answer = answer
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.chart = chart
 
     result = ChatRecord(**record.model_dump())
 
@@ -183,3 +206,55 @@ def save_answer(session: SessionDep, id: int, answer: str) -> ChatRecord:
     session.commit()
 
     return result
+
+
+def save_error_message(session: SessionDep, record_id: int, message: str) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.error = message
+    record.finish = True
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+
+
+def save_sql_exec_data(session: SessionDep, record_id: int, data: str) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.data = data
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+
+def finish_record(session: SessionDep, record_id: int) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.finish = True
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+

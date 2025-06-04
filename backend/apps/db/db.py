@@ -96,22 +96,19 @@ def get_tables(ds: CoreDatasource):
                     """
         elif ds.type == "pg" or ds.type == "excel":
             sql = """
-                    SELECT 
-                        c.relname AS TABLE_NAME,
-                        COALESCE(d.description, obj_description(c.oid)) AS TABLE_COMMENT
-                    FROM 
-                        pg_class c
-                    LEFT JOIN 
-                        pg_namespace n ON n.oid = c.relnamespace
-                    LEFT JOIN 
-                        pg_description d ON d.objoid = c.oid AND d.objsubid = 0
-                    WHERE 
-                        n.nspname = current_schema() 
-                        AND c.relkind IN ('r', 'v')  
-                        AND c.relname NOT LIKE 'pg_%'
-                        AND c.relname NOT LIKE 'sql_%'
-                    ORDER BY c.relname
-                    """
+                  SELECT c.relname                                       AS TABLE_NAME,
+                         COALESCE(d.description, obj_description(c.oid)) AS TABLE_COMMENT
+                  FROM pg_class c
+                           LEFT JOIN
+                       pg_namespace n ON n.oid = c.relnamespace
+                           LEFT JOIN
+                       pg_description d ON d.objoid = c.oid AND d.objsubid = 0
+                  WHERE n.nspname = current_schema()
+                    AND c.relkind IN ('r', 'v')
+                    AND c.relname NOT LIKE 'pg_%'
+                    AND c.relname NOT LIKE 'sql_%'
+                  ORDER BY c.relname \
+                  """
         elif ds.type == "oracle":
             sql = f"""
                     SELECT 
@@ -183,21 +180,18 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             sql = sql1 + sql2
         elif ds.type == "pg" or ds.type == "excel":
             sql1 = """
-                    SELECT 
-                        a.attname AS COLUMN_NAME,
-                        pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE,
-                        col_description(c.oid, a.attnum) AS COLUMN_COMMENT
-                    FROM 
-                        pg_catalog.pg_attribute a
-                    JOIN 
+                   SELECT a.attname                                       AS COLUMN_NAME,
+                          pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE,
+                          col_description(c.oid, a.attnum)                AS COLUMN_COMMENT
+                   FROM pg_catalog.pg_attribute a
+                            JOIN
                         pg_catalog.pg_class c ON a.attrelid = c.oid
-                    JOIN 
-                        pg_catalog.pg_namespace n ON n.oid = c.relnamespace  
-                    WHERE 
-                        n.nspname = current_schema()  
-                        AND a.attnum > 0              
-                        AND NOT a.attisdropped
-                    """
+                            JOIN
+                        pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = current_schema()
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped \
+                   """
             sql2 = f" AND c.relname = '{table_name}'" if table_name is not None and table_name != "" else ""
             sql = sql1 + sql2
         elif ds.type == "oracle":
@@ -248,6 +242,8 @@ def exec_sql(ds: CoreDatasource, sql: str):
             for tuple_item in res
         ]
         return {"fields": columns, "data": result_list, "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+    except Exception as ex:
+        raise ex
     finally:
         if result is not None:
             result.close()

@@ -1,15 +1,18 @@
 import asyncio
 import json
 import logging
+import re
 import warnings
-from typing import Any, List, Union, AsyncGenerator
+from typing import Any, List, Union, AsyncGenerator, Dict
 
 from langchain_community.utilities import SQLDatabase
 from langchain_core.language_models import BaseLLM
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, AIMessageChunk
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_llm_config
-from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer
+from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer, save_sql, \
+    save_error_message, save_sql_exec_data, save_full_chart_message, save_full_chart_message_and_answer, save_chart, \
+    finish_record
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
@@ -92,96 +95,151 @@ class LLMService:
                                             full_message=json.dumps(
                                                 [{'type': msg.type, 'content': msg.content} for msg in
                                                  self.sql_message], ensure_ascii=False))
-        full_text = ''
+        full_sql_text = ''
         res = self.llm.stream(self.sql_message)
         for chunk in res:
             if isinstance(chunk, dict):
-                full_text += chunk['content']
+                full_sql_text += chunk['content']
                 yield chunk['content']
                 continue
             if isinstance(chunk, AIMessageChunk):
-                full_text += chunk.content
+                full_sql_text += chunk.content
                 yield chunk.content
                 continue
 
-        print(full_text)
-        self.sql_message.append(AIMessage(full_text))
+        self.sql_message.append(AIMessage(full_sql_text))
         self.record = save_full_sql_message_and_answer(session=session, record_id=self.record.id,
-                                                       answer=full_text,
+                                                       answer=full_sql_text,
                                                        full_message=json.dumps(
                                                            [{'type': msg.type, 'content': msg.content} for msg in
                                                             self.sql_message], ensure_ascii=False))
 
-    async def async_generate(self, question: str, schema: str) -> AsyncGenerator[str, None]:
-
-        chain = self.prompt | self.agent_executor
-        # schema = self.db.get_table_info()
-
-        # schema_engine = SchemaEngine(engine=self.db._engine)
-        # mschema = schema_engine.mschema
-        # mschema_str = mschema.to_mschema()
-
-        # async for chunk in chain.astream({"schema": mschema_str, "question": question}):
-        for chunk in chain.stream({"schema": schema, "question": question}):
-            if not isinstance(chunk, dict):
+    def generate_chart(self, session: SessionDep):
+        # append current question
+        self.chart_message.append(HumanMessage(self.chat_question.chart_user_question()))
+        self.record = save_full_chart_message(session=session, record_id=self.record.id,
+                                              full_message=json.dumps(
+                                                  [{'type': msg.type, 'content': msg.content} for msg in
+                                                   self.chart_message], ensure_ascii=False))
+        full_chart_text = ''
+        res = self.llm.stream(self.chart_message)
+        for chunk in res:
+            if isinstance(chunk, dict):
+                full_chart_text += chunk['content']
+                yield chunk['content']
+                continue
+            if isinstance(chunk, AIMessageChunk):
+                full_chart_text += chunk.content
+                yield chunk.content
                 continue
 
-            if "agent" in chunk:
-                messages = chunk["agent"].get("messages", [])
-                for msg in messages:
-                    if tool_calls := msg.additional_kwargs.get("tool_calls"):
-                        for tool_call in tool_calls:
-                            response = {
-                                "type": "tool_call",
-                                "tool": tool_call["function"]["name"],
-                                "args": tool_call["function"]["arguments"]
-                            }
-                            yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
+        self.chart_message.append(AIMessage(full_chart_text))
+        self.record = save_full_chart_message_and_answer(session=session, record_id=self.record.id,
+                                                         answer=full_chart_text,
+                                                         full_message=json.dumps(
+                                                             [{'type': msg.type, 'content': msg.content} for msg in
+                                                              self.chart_message], ensure_ascii=False))
 
-                    if content := msg.content:
-                        html_start = content.find("```html")
-                        html_end = content.find("```", html_start + 6)
-                        if html_start != -1 and html_end != -1:
-                            html_content = content[html_start + 7:html_end].strip()
-                            response = {
-                                "type": "final",
-                                "content": content.split("```html")[0].strip(),
-                                "html": html_content
-                            }
-                        else:
-                            response = {
-                                "type": "final",
-                                "content": content
-                            }
-                        yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
+    def check_save_sql(self, session: SessionDep, res: str) -> str:
 
-            if "tools" in chunk:
-                messages = chunk["tools"].get("messages", [])
-                for msg in messages:
-                    response = {
-                        "type": "tool_result",
-                        "tool": msg.name,
-                        "content": msg.content
-                    }
-                    yield f"data: {json.dumps(response, ensure_ascii=False)}\n\n"
+        json_str = extract_nested_json(res)
+        data = json.loads(json_str)
 
-            await asyncio.sleep(0.1)
+        sql = ''
+        message = ''
+        error = False
 
-        yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+        if data['success']:
+            sql = data['sql']
+        else:
+            message = data['message']
+            error = True
+
+        if error:
+            raise Exception(message)
+        if sql.strip() == '':
+            raise Exception("SQL query is empty")
+
+        save_sql(session=session, sql=sql, record_id=self.record.id)
+
+        self.chat_question.sql = sql
+
+        return sql
+
+    def check_save_chart(self, session: SessionDep, res: str) -> Dict[str, Any]:
+
+        json_str = extract_nested_json(res)
+        data = json.loads(json_str)
+
+        chart: Dict[str, Any] = {}
+        message = ''
+        error = False
+
+        if data['type'] and data['type'] != 'error':
+            # todo type check
+            chart = data
+        elif data['type'] == 'error':
+            message = data['reason']
+            error = True
+        else:
+            message = 'Chart is empty'
+            error = True
+
+        if error:
+            raise Exception(message)
+
+        save_chart(session=session, chart=json.dumps(chart, ensure_ascii=False), record_id=self.record.id)
+
+        return chart
+
+    def save_error(self, session: SessionDep, message: str):
+        return save_error_message(session=session, record_id=self.record.id, message=message)
+
+    def save_sql_data(self, session: SessionDep, data_obj: Dict[str, Any]):
+        return save_sql_exec_data(session=session, record_id=self.record.id, data=json.dumps(data_obj, ensure_ascii=False))
+
+    def finish(self,session: SessionDep):
+        return finish_record(session=session, record_id=self.record.id)
+
+    def execute_sql(self, sql: str):
+        """Execute SQL query
+
+        Args:
+            ds: Data source instance
+            sql: SQL query statement
+
+        Returns:
+            Query results
+        """
+        print(f"Executing SQL on ds_id {self.ds.id}: {sql}")
+        return exec_sql(self.ds, sql)
 
 
-def execute_sql(ds: CoreDatasource, sql: str) -> str:
-    """Execute SQL query
+def extract_nested_json(text):
+    stack = []
+    start_index = -1
+    results = []
 
-    Args:
-        ds: Data source instance
-        sql: SQL query statement
-
-    Returns:
-        Query results
-    """
-    print(f"Executing SQL on ds_id {ds.id}: {sql}")
-    return exec_sql(ds, sql)
+    for i, char in enumerate(text):
+        if char in '{[':
+            if not stack:  # 记录起始位置
+                start_index = i
+            stack.append(char)
+        elif char in '}]':
+            if stack and ((char == '}' and stack[-1] == '{') or (char == ']' and stack[-1] == '[')):
+                stack.pop()
+                if not stack:  # 栈空时截取完整JSON
+                    json_str = text[start_index:i + 1]
+                    try:
+                        json.loads(json_str)  # 验证有效性
+                        results.append(json_str)
+                    except:
+                        pass
+            else:
+                stack = []  # 括号不匹配则重置
+    if results[0]:
+        return results[0]
+    return None
 
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
