@@ -9,7 +9,6 @@
             v-model="workspace"
             placeholder="Select"
             class="workspace-select"
-            size="large"
             style="width: 240px"
         >
           <template #label="{ label }">
@@ -242,7 +241,7 @@ onMounted(() => {
         width: 100% !important;
 
         :deep(.ed-select__wrapper) {
-          border-radius: 10px;
+          border-radius: 8px;
           box-shadow: none !important;
           background-color: #f1f3f4;
           line-height: 32px;
@@ -287,6 +286,9 @@ onMounted(() => {
     border-right: 1px solid #e6e6e6;
     display: flex;
     flex-direction: column;
+    .ed-menu--vertical {
+      padding: 0 16px;
+    }
   }
 
   .main-menu-topbar {
@@ -362,7 +364,7 @@ onMounted(() => {
         width: 100% !important;
 
         :deep(.ed-select__wrapper) {
-          border-radius: 10px;
+          border-radius: 8px;
           box-shadow: none !important;
           background-color: #f1f3f4;
           line-height: 24px;
@@ -406,6 +408,10 @@ onMounted(() => {
     flex-direction: column;
     background-color: #f5f7fa;
     box-sizing: border-box;
+
+    &:not(.main-conntent-withba) {
+      padding: 16px 24px;
+    }
 
     .header-container {
       box-sizing: border-box;

@@ -57,7 +57,6 @@ const getStatus = (status: string) => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   display: flex;
   position: relative;
-  border: 1px solid #dadce0;
   transition: all 0.2s ease;
   align-items: center;
 }
@@ -65,7 +64,7 @@ const getStatus = (status: string) => {
 .connection-icon {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: 8px;
   background-color: #e8f0fe;
   color: var(--primary-color);
   display: flex;
@@ -119,7 +118,7 @@ const getStatus = (status: string) => {
   right: 20px;
   top: 18px;
   padding: 3px 8px;
-  border-radius: 12px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
   display: flex;

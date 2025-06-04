@@ -18,7 +18,7 @@
         </el-input>
       </div>
 
-      <el-button type="primary" :icon="IconOpeAdd" @click="editDs(undefined)">Add Datasource</el-button>
+      <el-button class="border-radius_8" type="primary" :icon="IconOpeAdd" @click="editDs(undefined)">Add Datasource</el-button>
     </div>
 
     <div class="connections-container">
@@ -131,11 +131,15 @@ onMounted(() => {
 .header {
   background-color: white;
   padding: 16px 20px;
-  border-radius: 8px;
+  border-radius: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
+  .input-with-select {
+    --ed-input-border-radius: 8px;
+    --ed-border-radius-base: 8px;
+  }
 }
 
 .connections-container {
