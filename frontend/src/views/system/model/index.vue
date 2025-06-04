@@ -299,9 +299,6 @@ const handleCurrentChange = (val: number) => {
   state.pageInfo.currentPage = val
   search()
 }
-const formatTooltip = (val: number) => {
-  return val / 100
-}
 const handleSelectionChange = (rows: any) => {
   state.selectedIds = rows.map((item: any) => item.id)
 }
