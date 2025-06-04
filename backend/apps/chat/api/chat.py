@@ -24,7 +24,7 @@ async def chats(session: SessionDep, current_user: CurrentUser):
 
 
 @router.get("/get/{chart_id}")
-async def list_chat(session: SessionDep, current_user: CurrentUser, chart_id: int):
+async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int):
     try:
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user)
     except Exception as e:

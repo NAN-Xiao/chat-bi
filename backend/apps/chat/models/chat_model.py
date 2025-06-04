@@ -2,7 +2,7 @@ from sqlmodel import SQLModel, Field
 from sqlalchemy import Column, Text, BigInteger, DateTime, Integer, Identity, Boolean
 from datetime import datetime
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 
 from apps.template.generate_chart.generator import get_chart_template
 from apps.template.generate_sql.generator import get_sql_template

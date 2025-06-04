@@ -225,6 +225,8 @@ def get_table_obj_by_ds(session: SessionDep, ds: CoreDatasource) -> List[TableAn
 def get_table_schema(session: SessionDep, ds: CoreDatasource) -> str:
     schema_str = ""
     table_objs = get_table_obj_by_ds(session=session, ds=ds)
+    if len(table_objs) == 0:
+        return schema_str
     db_name = table_objs[0].schema
     schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
     for obj in table_objs:

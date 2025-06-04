@@ -20,13 +20,31 @@
       <el-main class="chat-record-list">
         <el-scrollbar>
           <template v-for="(message, _index) in computedMessages" :key="_index">
-            <ChatRow :current-chat="currentChat" v-model:datasource="currentChat.datasource" :msg="message"/>
+            <ChatRow :current-chat="currentChat" v-model:datasource="currentChat.datasource" :msg="message">
+              <template v-if="message.role === 'assistant'">
+                <div v-if="message.isTyping">Thinking ...</div>
+                <template v-if="message.record">
+                  <div>
+                    <div v-if="message.record.sql_answer">{{ message.record.sql_answer }}</div>
+                    <div v-if="message.record.sql">{{ message.record.sql }}</div>
+                  </div>
+                  <div>
+                    <div v-if="message.record.data">{{ message.record.data }}</div>
+                  </div>
+                  <div>
+                    <div v-if="message.record.chart_answer">{{ message.record.chart_answer }}</div>
+                    <div v-if="message.record.chart">{{ message.record.chart }}</div>
+                  </div>
+                  <div v-if="message.record.error" style="color: red">{{ message.record.error }}</div>
+                </template>
+              </template>
+            </ChatRow>
           </template>
         </el-scrollbar>
       </el-main>
       <el-footer class="chat-footer">
         <div style="height: 24px;">
-          <template v-if="currentChat.datasource">
+          <template v-if="currentChat.datasource && currentChat.datasource_name">
             使用数据源：{{ currentChat.datasource_name }}
           </template>
         </div>
@@ -55,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, nextTick, watch, onMounted} from 'vue'
+import {computed, nextTick, onMounted, ref} from 'vue'
 import {Plus, Position} from '@element-plus/icons-vue'
 import {Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi} from '@/api/chat'
 import ChatList from './ChatList.vue'
@@ -82,7 +100,6 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
   if (currentChatId.value === undefined) {
     return messages
   }
-  let appendThinking = false
   for (let i = 0; i < currentChat.value.records.length; i++) {
     const record = currentChat.value.records[i]
     if (record.question !== undefined) {
@@ -92,24 +109,16 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
         content: record.question,
       })
     }
-    if (record.answer !== undefined && record.answer !== '') {
-      messages.push({
-        role: 'assistant',
-        create_time: record.create_time,
-        content: record.answer,
-        isTyping: i === currentChat.value.records.length - 1 && isTyping.value
-      })
-    } else {
-      appendThinking = true
-    }
-  }
-  if (isTyping.value && appendThinking) {
     messages.push({
       role: 'assistant',
-      content: 'Thinking...',
-      isTyping: true
+      create_time: record.create_time,
+      record: record,
+      isTyping: i === currentChat.value.records.length - 1 && isTyping.value
     })
   }
+
+  console.log(messages)
+
   return messages
 })
 
@@ -138,6 +147,7 @@ function onClickHistory(chat: Chat) {
     chatApi.get(chat.id)
         .then((res) => {
           const info = chatApi.toChatInfo(res)
+          console.log(info)
           if (info) {
             currentChat.value = info
           }
@@ -174,12 +184,6 @@ onMounted(() => {
 })
 
 
-const updateMessageContent = (content: string) => {
-  if (currentChat.value) {
-    currentChat.value.records[currentChat.value.records.length - 1].answer = content
-  }
-}
-
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
   if (computedMessages.value[0].content === undefined) return
@@ -191,14 +195,17 @@ const sendMessage = async () => {
   currentRecord.create_time = new Date()
   currentRecord.chat_id = currentChatId.value
   currentRecord.question = inputMessage.value
-  currentRecord.answer = ''
+  currentRecord.sql_answer = ''
+  currentRecord.sql = ''
+  currentRecord.chart_answer = ''
+  currentRecord.chart = ''
 
   currentChat.value.records.push(currentRecord)
   inputMessage.value = ''
 
   let error = false
   if (currentChatId.value === undefined) {
-    chatApi.startChat({question: currentRecord.question.trim(), datasource: currentChat.value.datasource})
+    await chatApi.startChat({question: currentRecord.question.trim(), datasource: currentChat.value.datasource})
         .then((res) => {
           const chat = chatApi.toChatInfo(res)
           if (chat !== undefined) {
@@ -228,49 +235,59 @@ const sendMessage = async () => {
 
     while (true) {
       const {done, value} = await reader.read()
+      console.log(done)
       if (done) {
         isTyping.value = false
         break
       }
 
       const chunk = decoder.decode(value)
-      const lines = chunk.split('\n\n')
+      console.log(chunk)
+      const data = JSON.parse(chunk)
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = JSON.parse(line.replace('data:', '').trim())
-          let realContent = data.content
-
-          switch (data.type) {
-            case 'html':
-              realContent = '\n' + data.content
-              break
-
-            case 'error':
-              realContent = '\nError: ' + data.content
-              break
-
-            default:
-              if (data.content) {
-                const newContent = currentRecord.answer + realContent
-
-                updateMessageContent(newContent)
-                await nextTick()
-              }
-          }
+      await nextTick(() => {
+        switch (data.type) {
+          case 'info':
+            console.log(data.msg)
+            break
+          case 'error':
+            currentRecord.error = data.content
+            isTyping.value = false
+            break
+          case 'sql-result':
+            currentRecord.sql_answer = currentRecord.sql_answer + data.content
+            break
+          case 'sql':
+            currentRecord.sql = data.content
+            break
+          case 'sql-data':
+            currentRecord.data = data.content
+            break
+          case 'chart-result':
+            currentRecord.chart_answer = currentRecord.chart_answer + data.content
+            break
+          case 'chart':
+            currentRecord.chart = data.content
+            break
+          case 'finish':
+            isTyping.value = false
+            break
         }
-      }
+      })
+
     }
   } catch (error) {
-    updateMessageContent(currentRecord.answer + '\nError: Failed to get response')
+    if (!currentRecord.error) {
+      currentRecord.error = ''
+    }
+    if (currentRecord.error.trim().length !== 0) {
+      currentRecord.error = currentRecord.error + '\n'
+    }
+    currentRecord.error = currentRecord.error + 'Error:' + error
     console.error('Error:', error)
     isTyping.value = false
   }
 }
-
-watch(() => currentChat.value?.records[currentChat.value.records.length - 1]?.answer, () => {
-  //scrollToBottom()
-}, {deep: true})
 
 //@ts-ignore
 const formatMessage = (content: string) => {
