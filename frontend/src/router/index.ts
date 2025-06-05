@@ -7,7 +7,7 @@ import chat from "@/views/chat/index.vue";
 import ds from "@/views/ds/index.vue";
 import DashboardEditor from "@/views/dashboard/editor/index.vue";
 import Dashboard from "@/views/dashboard/index.vue";
-import setting from "@/views/setting/index.vue";
+// import setting from "@/views/setting/index.vue";
 import { watchRouter } from "./watch";
 const router = createRouter({
   history: createWebHashHistory(),
@@ -81,7 +81,7 @@ const router = createRouter({
         },
       ],
     },
-    {
+    /* {
       path: "/setting",
       component: Layout,
       redirect: "/setting/index",
@@ -93,7 +93,7 @@ const router = createRouter({
           meta: { title: "Settings", icon: "setting" },
         },
       ],
-    },
+    }, */
     {
       path: "/system",
       component: Layout,

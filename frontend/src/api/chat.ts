@@ -20,6 +20,7 @@ export interface ChatMessage {
     role: 'user' | 'assistant'
     create_time?: Date | string
     content?: string | number
+    record?: ChatRecord
     isTyping?: boolean
     isWelcome?: boolean
 }
@@ -28,24 +29,32 @@ export class ChatRecord {
     id?: number
     chat_id?: number
     create_time?: Date | string
-    create_by?: number
-    datasource?: number
-    engine_type?: string
+    finish_time?: Date | string
     question?: string
-    answer?: string
+    sql_answer?: string
+    sql?: string
+    data?: string
+    chart_answer?: string
+    chart?: string
+    finish?: boolean = false
+    error?: string
     run_time: number = 0
 
     constructor()
-    constructor(id: number, chat_id: number, create_time: Date | string, create_by: number, datasource: number, engine_type: string, question: string, answer: string, run_time: number)
-    constructor(id?: number, chat_id?: number, create_time?: Date | string, create_by?: number, datasource?: number, engine_type?: string, question?: string, answer?: string, run_time?: number) {
+    constructor(id: number, chat_id: number, create_time: Date | string, finish_time: Date | string | undefined, question: string, sql_answer: string | undefined, sql: string | undefined, data: string | undefined, chart_answer: string | undefined, chart: string | undefined, finish: boolean, error: string | undefined, run_time: number)
+    constructor(id?: number, chat_id?: number, create_time?: Date | string, finish_time?: Date | string, question?: string, sql_answer?: string, sql?: string, data?: string, chart_answer?: string, chart?: string, finish?: boolean, error?: string, run_time?: number) {
         this.id = id
         this.chat_id = chat_id
         this.create_time = getDate(create_time)
-        this.create_by = create_by
-        this.datasource = datasource
-        this.engine_type = engine_type
+        this.finish_time = getDate(finish_time)
         this.question = question
-        this.answer = answer
+        this.sql_answer = sql_answer
+        this.sql = sql
+        this.data = data
+        this.chart_answer = chart_answer
+        this.chart = chart
+        this.finish = finish
+        this.error = error
         this.run_time = run_time ?? 0
     }
 }
@@ -111,7 +120,7 @@ function toChatRecord(data?: any): ChatRecord | undefined {
     if (!data) {
         return undefined
     }
-    return new ChatRecord(data.id, data.number, data.create_time, data.create_by, data.datasource, data.engine_type, data.question, data.answer, data.run_time)
+    return new ChatRecord(data.id, data.chat_id, data.create_time, data.finish_time, data.question, data.sql_answer, data.sql, data.data, data.chart_answer, data.chart, data.finish, data.error, data.run_time)
 }
 
 function toChatRecordList(list: any = []): ChatRecord[] {

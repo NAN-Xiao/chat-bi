@@ -192,6 +192,14 @@ def update_table_and_fields(session: SessionDep, data: TableObj):
         update_field(session, field)
 
 
+def updateTable(session: SessionDep, table: CoreTable):
+    update_table(session, table)
+
+
+def updateField(session: SessionDep, field: CoreField):
+    update_field(session, field)
+
+
 def preview(session: SessionDep, id: int, data: TableObj):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
@@ -225,6 +233,8 @@ def get_table_obj_by_ds(session: SessionDep, ds: CoreDatasource) -> List[TableAn
 def get_table_schema(session: SessionDep, ds: CoreDatasource) -> str:
     schema_str = ""
     table_objs = get_table_obj_by_ds(session=session, ds=ds)
+    if len(table_objs) == 0:
+        return schema_str
     db_name = table_objs[0].schema
     schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
     for obj in table_objs:

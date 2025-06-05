@@ -15,4 +15,6 @@ export const datasourceApi = {
   fieldList: (id: Number) => request.post(`/datasource/fieldList/${id}`),
   edit: (data: any) => request.post('/datasource/editLocalComment', data),
   previewData: (id: Number, data: any) => request.post(`/datasource/previewData/${id}`, data),
+  saveTable: (data: any) => request.post('/datasource/editTable', data),
+  saveField: (data: any) => request.post('/datasource/editField', data)
 }
