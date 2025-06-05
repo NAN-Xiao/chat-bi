@@ -1,5 +1,7 @@
 from sqlmodel import SQLModel, Field
-from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer
+from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer,DateTime
+from pydantic import BaseModel
+from datetime import datetime
 
 
 class CoreDashboard(SQLModel, table=True):
@@ -121,3 +123,18 @@ class CoreDashboard(SQLModel, table=True):
         max_length=50,
         sa_column=Column(String(50), nullable=True)
     )
+
+# dashboard create obj
+class CreateDashboard(BaseModel):
+    id: str = ''
+    name: str = ''
+    pid: str = ''
+    workspace_id: str = ''
+    org_id: str = ''
+    description: str = ''
+    type: str = ''
+    node_type: str = ''
+    canvas_style_data: str =''
+    component_data: str = ''
+    configuration: str = ''
+    create_by: int = 0

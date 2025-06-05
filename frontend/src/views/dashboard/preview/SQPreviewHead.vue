@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import dvInfoSvg from '@/assets/svg/dv-info.svg'
+import dashboardInfoSvg from '@/assets/svg/dashboard-info.svg'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import DashboardDetailInfo from "@/views/dashboard/common/DashboardDetailInfo.vue";
@@ -22,9 +22,7 @@ const edit = () =>{}
       >
       <el-popover show-arrow :offset="8" placement="bottom" width="400" trigger="hover">
         <template #reference>
-          <el-icon class="info-tips"
-            ><Icon name="dv-info"><dvInfoSvg class="svg-icon" /></Icon
-          ></el-icon>
+          <el-icon class="info-tips"><dashboardInfoSvg class="svg-icon" /></el-icon>
         </template>
         <DashboardDetailInfo></DashboardDetailInfo>
       </el-popover>

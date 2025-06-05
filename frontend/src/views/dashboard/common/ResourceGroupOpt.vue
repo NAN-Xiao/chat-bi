@@ -1,0 +1,248 @@
+<script lang="ts" setup>
+import folder from '@/assets/svg/folder.svg'
+import {type SQTreeNode} from '@/views/dashboard/utils/treeNode'
+import {ref, reactive, computed} from 'vue'
+import {dashboardApi} from "@/api/dashboard.ts";
+
+const state = reactive({
+  placeholder:'',
+  showParentSelected: false,
+  resourceFormNameLabel: 'Name',
+  dialogTitle: '',
+  tData: [],
+  nameList: [],
+  targetInfo: null,
+  attachParams: null
+})
+
+let tData: any = []
+
+const getTitle = (cmd: string) => {
+  switch (cmd) {
+    case 'newLeaf':
+      return 'New Dashboard'
+    case 'newFolder':
+      return 'New Folder'
+    default:
+      return
+  }
+}
+
+const getResourceNewName = (cmd: string) => {
+  switch (cmd) {
+    case 'newLeaf':
+      return 'New Dashboard'
+    case 'newFolder':
+      return 'New Folder'
+    default:
+      return
+  }
+}
+
+const optInit = (params: any) => {
+  state.dialogTitle = getTitle(params.cmd)
+  state.showParentSelected = params.parentSelect
+  state.targetInfo = params.data
+  resourceDialogShow.value = true
+  resourceForm.name = getResourceNewName(params.cmd)
+}
+
+const resourceDialogShow = ref(false)
+const loading = ref(false)
+const pid = ref()
+const id = ref()
+const cmd = ref('')
+const treeRef = ref()
+const filterText = ref('')
+const resourceForm = reactive({
+  pid: '',
+  pName: '',
+  name: 'New Dashboard'
+})
+
+const resourceFormRules = ref({
+      name: [
+        {
+          required: true,
+          message: state.placeholder,
+          trigger: 'change'
+        },
+        {
+          required: true,
+          message: state.placeholder,
+          trigger: 'blur'
+        },
+        {
+          min: 1,
+          max: 64,
+          message: 'Chart limit 1-64',
+          trigger: 'change'
+        },
+        {required: true, trigger: 'blur'}
+      ],
+      pid: [
+        {
+          required: true,
+          message: 'Please select',
+          trigger: 'blur'
+        }
+      ]
+    }
+)
+
+const resetForm = () => {
+  state.dialogTitle = ''
+  resourceForm.name = ''
+  resourceForm.pid = ''
+  resourceDialogShow.value = false
+}
+
+const editeInit = (param: SQTreeNode) => {
+  pid.value = param['pid']
+  id.value = param.id
+}
+
+const propsTree = {
+  label: 'name',
+  children: 'children',
+  isLeaf: node => !node.children?.length
+}
+
+const showPid = computed(() => {
+  return ['newLeaf', 'copy', 'newLeafAfter'].includes(cmd.value) && state.showParentSelected
+})
+
+const saveResource = () => {
+        const params = {
+        nodeType: 'folder',
+        name: resourceForm.name,
+        type: 'dashboard'
+      }
+    dashboardApi.addResource(params).then(res => {
+      ElMessage({
+        type: 'success',
+        message: 'Save Success',
+      })
+
+      resetForm()
+    })
+}
+
+const nodeClick = (data: SQTreeNode) => {
+  resourceForm.pid = data.id as string
+  resourceForm.pName = data.name as string
+}
+
+const filterMethod = value => {
+  state.tData = [...tData].filter(item => item.name.includes(value))
+}
+
+defineExpose({
+  optInit,
+  editeInit
+})
+
+const emits = defineEmits(['finish'])
+</script>
+
+<template>
+  <el-dialog
+      class="create-dialog"
+      :title="state.dialogTitle"
+      v-model="resourceDialogShow"
+      width="420px"
+      :before-close="resetForm"
+      @submit.prevent
+  >
+    <el-form
+        v-loading="loading"
+        label-position="top"
+        require-asterisk-position="right"
+        ref="resource"
+        :model="resourceForm"
+        :rules="resourceFormRules"
+    >
+      <el-form-item :label="state.resourceFormNameLabel" prop="name">
+        <el-input
+            @keydown.stop
+            @keyup.stop
+            :placeholder="state.placeholder"
+            v-model="resourceForm.name"
+        />
+      </el-form-item>
+      <el-form-item v-if="showPid" :label="'Folder'" prop="pid">
+        <el-tree-select
+            style="width: 100%"
+            @keydown.stop
+            @keyup.stop
+            v-model="resourceForm.pid"
+            :data="state.tData"
+            :props="propsTree"
+            @node-click="nodeClick"
+            :filter-method="filterMethod"
+            :render-after-expand="false"
+            filterable
+        >
+          <template #default="{ data: { name } }">
+            <span class="custom-tree-node">
+              <el-icon>
+                <Icon name="dv-folder"><folder class="svg-icon"/></Icon>
+              </el-icon>
+              <span :title="name">{{ name }}</span>
+            </span>
+          </template>
+        </el-tree-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button secondary @click="resetForm()">Cancel</el-button>
+      <el-button type="primary" @click="saveResource()">Confirm</el-button>
+    </template>
+  </el-dialog>
+</template>
+
+<style lang="less" scoped>
+.tree-content {
+  width: 552px;
+  height: 380px;
+  border: 1px solid #dee0e3;
+  border-radius: 4px;
+  padding: 8px;
+  overflow-y: auto;
+
+  .empty-search {
+    width: 100%;
+    margin-top: 57px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    img {
+      width: 100px;
+      height: 100px;
+      margin-bottom: 8px;
+    }
+
+    span {
+      font-family: var(--de-custom_font, 'PingFang');
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 22px;
+      color: #646a73;
+    }
+  }
+}
+
+.custom-tree-node {
+  display: flex;
+  align-items: center;
+
+  span {
+    margin-left: 8.75px;
+    width: 120px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+}
+</style>
