@@ -1,9 +1,9 @@
-from select import select
+from sqlalchemy import select
 from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard
 from common.core.deps import SessionDep, CurrentUser
 import uuid
 def get_dashboard_list(session: SessionDep):
-    statement = select(CoreDashboard).order_by(CoreDashboard.create_time.desc())
+    statement = select(CoreDashboard)
     dashboard_list = session.exec(statement).fetchall()
     return dashboard_list
 

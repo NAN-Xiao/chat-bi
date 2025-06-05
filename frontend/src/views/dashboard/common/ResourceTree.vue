@@ -16,6 +16,7 @@ import router from '@/router'
 import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
 import HandleMore from "@/views/dashboard/common/HandleMore.vue";
 import ResourceGroupOpt from "@/views/dashboard/common/ResourceGroupOpt.vue";
+import {dashboardApi} from "@/api/dashboard.ts";
 
 const dashboardStore = dashboardStoreWithOut()
 const resourceGroupOptRef = ref(null)
@@ -115,7 +116,11 @@ const nodeClick = (data: SQTreeNode, node: any) => {
 
 const getTree = async () => {
   state.originResourceTree = []
-  afterTreeInit()
+  const params = {}
+  dashboardApi.list(params).then((res: SQTreeNode[]) => {
+    state.originResourceTree = res?.data || []
+    afterTreeInit()
+  })
 }
 // @ts-ignore
 const flattedTree = computed<SQTreeNode[]>(() => {

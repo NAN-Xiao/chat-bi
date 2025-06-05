@@ -2,12 +2,13 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from apps.dashboard.crud.dashboard_service import get_dashboard_list, preview_with_id,create_dashboard
-from apps.dashboard.models.dashboard_model import CreateDashboard
+from apps.dashboard.models.dashboard_model import CreateDashboard, DashboardResponse
 from common.core.deps import SessionDep, CurrentUser
+from typing import List
 
 router = APIRouter(tags=["dashboard"], prefix="/dashboard")
 
-@router.get("/list")
+@router.post("/list", response_model=List[DashboardResponse])
 async def datasource_list(session: SessionDep):
     return get_dashboard_list(session=session)
 

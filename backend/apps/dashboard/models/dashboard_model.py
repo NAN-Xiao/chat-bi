@@ -1,12 +1,10 @@
 from sqlmodel import SQLModel, Field
 from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer,DateTime
+from typing import Optional
 from pydantic import BaseModel
-from datetime import datetime
-
 
 class CoreDashboard(SQLModel, table=True):
     __tablename__ = "core_dashboard"
-
     id: str = Field(
         sa_column=Column(String(50), nullable=False, primary_key=True)
     )
@@ -123,6 +121,37 @@ class CoreDashboard(SQLModel, table=True):
         max_length=50,
         sa_column=Column(String(50), nullable=True)
     )
+
+class DashboardResponse(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    pid: Optional[str] = None
+    workspace_id: Optional[str] = None
+    org_id: Optional[str] = None
+    level: Optional[int] = None
+    node_type: Optional[str] = None
+    type: Optional[str] = None
+    canvas_style_data: Optional[str] = None
+    component_data: Optional[str] = None
+    mobile_layout: Optional[int] = None
+    status: Optional[int] = None
+    self_watermark_status: Optional[int] = None
+    sort: Optional[int] = None
+    create_time: Optional[int] = None  # 或者用 datetime 类型
+    create_by: Optional[str] = None
+    update_time: Optional[int] = None  # 或者用 datetime 类型
+    update_by: Optional[str] = None
+    remark: Optional[str] = None
+    source: Optional[str] = None
+    delete_flag: Optional[int] = None
+    delete_time: Optional[int] = None
+    delete_by: Optional[str] = None
+    version: Optional[int] = None
+    content_id: Optional[str] = None
+    check_version: Optional[str] = None
+
+    class Config:
+        orm_mode = True  # 允许从 ORM 对象加载
 
 # dashboard create obj
 class CreateDashboard(BaseModel):
