@@ -192,6 +192,14 @@ def update_table_and_fields(session: SessionDep, data: TableObj):
         update_field(session, field)
 
 
+def updateTable(session: SessionDep, table: CoreTable):
+    update_table(session, table)
+
+
+def updateField(session: SessionDep, field: CoreField):
+    update_field(session, field)
+
+
 def preview(session: SessionDep, id: int, data: TableObj):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()

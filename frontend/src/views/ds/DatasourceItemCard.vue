@@ -11,17 +11,17 @@ defineProps<{
   ds: any
 }>()
 
-const getStatus = (status: string) => {
-  if (status === 'Success') {
-    return 'connected'
-  }
-  if (status === 'Fail') {
-    return 'failed'
-  }
-  if (status === 'Checking') {
-    return 'needs-verification'
-  }
-}
+// const getStatus = (status: string) => {
+//   if (status === 'Success') {
+//     return 'connected'
+//   }
+//   if (status === 'Fail') {
+//     return 'failed'
+//   }
+//   if (status === 'Checking') {
+//     return 'needs-verification'
+//   }
+// }
 
 </script>
 
@@ -44,7 +44,7 @@ const getStatus = (status: string) => {
       <div class="connection-host">{{ ds.description }}</div>
       <div class="connection-last">{{ datetimeFormat(ds.create_time) }}</div>
     </div>
-    <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div>
+    <!-- <div class="connection-status" :class="`${getStatus(ds.status)}`">{{ ds.status }}</div> -->
     <slot></slot>
   </div>
 </template>

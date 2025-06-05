@@ -9,10 +9,10 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 from apps.db.engine import create_table, get_data_engine, insert_data
 from common.core.deps import SessionDep, CurrentUser
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
-    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview
+    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
-from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable
+from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 path = "/opt/sqlbot/data/excel"
@@ -81,6 +81,16 @@ async def field_list(session: SessionDep, id: int):
 @router.post("/editLocalComment")
 async def edit_local(session: SessionDep, data: TableObj):
     update_table_and_fields(session, data)
+
+
+@router.post("/editTable")
+async def edit_table(session: SessionDep, table: CoreTable):
+    updateTable(session, table)
+
+
+@router.post("/editField")
+async def edit_field(session: SessionDep, field: CoreField):
+    updateField(session, field)
 
 
 @router.post("/previewData/{id}")
