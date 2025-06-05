@@ -137,9 +137,9 @@ class DashboardResponse(BaseModel):
     status: Optional[int] = None
     self_watermark_status: Optional[int] = None
     sort: Optional[int] = None
-    create_time: Optional[int] = None  # 或者用 datetime 类型
+    create_time: Optional[int] = None
     create_by: Optional[str] = None
-    update_time: Optional[int] = None  # 或者用 datetime 类型
+    update_time: Optional[int] = None
     update_by: Optional[str] = None
     remark: Optional[str] = None
     source: Optional[str] = None
@@ -151,7 +151,7 @@ class DashboardResponse(BaseModel):
     check_version: Optional[str] = None
 
     class Config:
-        orm_mode = True  # 允许从 ORM 对象加载
+        orm_mode = True
 
 # dashboard create obj
 class CreateDashboard(BaseModel):

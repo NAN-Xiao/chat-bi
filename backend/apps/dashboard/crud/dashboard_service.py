@@ -4,7 +4,7 @@ from common.core.deps import SessionDep, CurrentUser
 import uuid
 def get_dashboard_list(session: SessionDep):
     statement = select(CoreDashboard)
-    dashboard_list = session.exec(statement).fetchall()
+    dashboard_list = session.exec(statement).scalars().all()
     return dashboard_list
 
 def preview_with_id(session: SessionDep, dashboard_id: str):

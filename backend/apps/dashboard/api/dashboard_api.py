@@ -5,10 +5,11 @@ from apps.dashboard.crud.dashboard_service import get_dashboard_list, preview_wi
 from apps.dashboard.models.dashboard_model import CreateDashboard, DashboardResponse
 from common.core.deps import SessionDep, CurrentUser
 from typing import List
+from fastapi.encoders import jsonable_encoder
 
 router = APIRouter(tags=["dashboard"], prefix="/dashboard")
 
-@router.post("/list", response_model=List[DashboardResponse])
+@router.post("/list")
 async def datasource_list(session: SessionDep):
     return get_dashboard_list(session=session)
 
