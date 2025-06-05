@@ -5,7 +5,7 @@
         <el-button text style="color: #fff" :icon="ArrowLeft" @click="back()" />
         {{ props.dsName }}
       </div>
-      <el-button type="primary" @click="save()"> Save </el-button>
+      <!-- <el-button type="primary" @click="save()"> Save </el-button> -->
     </div>
     <div class="container">
       <div class="left-side">
@@ -43,7 +43,8 @@
               <span>{{ currentTable.table_name }}</span>
               <el-divider direction="vertical" />
               <span>Comment:</span>
-              <el-input style="margin-left: 12px;" v-model="currentTable.custom_comment" />
+              <span>{{ currentTable.custom_comment }}</span>
+              <el-button style="margin-left: 10px;" text class="action-btn" :icon="IconOpeEdit" @click="editTable"/>
             </div>
           </div>
           <el-tabs
@@ -58,15 +59,16 @@
                 <el-table-column prop="field_comment" label="Comment" />
                 <el-table-column label="Custom Comment">
                   <template #default="scope">
-                    <div style="display: flex; align-items: center">
-                      <el-input v-model="scope.row.custom_comment" />
+                    <div class="field-comment">
+                      <span>{{ scope.row.custom_comment }}</span>
+                      <el-button text class="action-btn" :icon="IconOpeEdit" @click="editField(scope.row)"/>
                     </div>
                   </template>
                 </el-table-column>
                 <el-table-column label="Status" width="180">
                   <template #default="scope">
                     <div style="display: flex; align-items: center">
-                      <el-switch v-model="scope.row.checked" size="small" />
+                      <el-switch v-model="scope.row.checked" size="small" @change="changeStatus(scope.row)"/>
                     </div>
                   </template>
                 </el-table-column>
@@ -89,6 +91,48 @@
         </div>
       </div>
     </div>
+
+    <el-dialog
+      v-model="tableDialog"
+      title="Edit Table Comment"
+      width="600"
+      :destroy-on-close="true"
+      :close-on-click-modal="false"
+      @closed="closeTable"
+    >
+      <div>Table Comment</div>
+      <el-input v-model="currentTable.custom_comment" />
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 20px">
+        <el-button @click="closeTable">Cancel</el-button>
+        <el-button
+          type="primary"
+          @click="saveTable"
+          >Confirm</el-button
+        >
+      </div>
+    </el-dialog>
+
+    <el-dialog
+      v-model="fieldDialog"
+      title="Edit Field Comment"
+      width="600"
+      :destroy-on-close="true"
+      :close-on-click-modal="false"
+      @closed="closeField"
+    >
+      <div>Field Comment</div>
+      <el-input v-model="currentField.custom_comment" />
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 20px">
+        <el-button @click="closeField">Cancel</el-button>
+        <el-button
+          type="primary"
+          @click="saveField"
+          >Confirm</el-button
+        >
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -98,6 +142,7 @@ import { datasourceApi } from "@/api/datasource";
 import { onMounted } from "vue";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import type { TabsPaneContext } from "element-plus-secondary";
+import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 
 const props = defineProps({
   dsId: { type: [Number], required: true },
@@ -108,10 +153,13 @@ const dsId = ref<Number>(0);
 const searchValue = ref("");
 const tableList = ref<any>([]);
 const currentTable = ref<any>({});
+const currentField = ref<any>({});
 const fieldList = ref<any>([]);
 const previewData = ref<any>({});
 
 const activeName = ref("schema");
+const tableDialog = ref<boolean>(false)
+const fieldDialog = ref<boolean>(false)
 
 const buildData = () => {
   return { table: currentTable.value, fields: fieldList.value };
@@ -121,15 +169,59 @@ const back = () => {
   history.back();
 };
 
-const save = () => {
-  datasourceApi.edit(buildData()).then(() => {
+// const save = () => {
+//   datasourceApi.edit(buildData()).then(() => {
+//     ElMessage({
+//       message: "Save success",
+//       type: "success",
+//       showClose: true,
+//     });
+//   });
+// };
+
+const editTable = () => {
+  tableDialog.value = true
+}
+
+const closeTable = () => {
+  tableDialog.value = false
+}
+
+const saveTable = () => {
+  datasourceApi.saveTable(currentTable.value).then(() => {
+    closeTable()
     ElMessage({
-      message: "Save success",
+      message: "Edit Success",
       type: "success",
       showClose: true,
-    });
-  });
-};
+    })
+  })
+}
+
+const editField = (row: any) => {
+  currentField.value = row
+  fieldDialog.value = true
+}
+
+const changeStatus = (row: any) => {
+  currentField.value = row
+  saveField()
+}
+
+const closeField = () => {
+  fieldDialog.value = false
+}
+
+const saveField = () => {
+  datasourceApi.saveField(currentField.value).then(() => {
+    closeField()
+    ElMessage({
+      message: "Edit Success",
+      type: "success",
+      showClose: true,
+    })
+  })
+}
 
 const clickTable = (table: any) => {
   currentTable.value = table;
@@ -198,6 +290,15 @@ onMounted(() => {
       float: right;
       padding: 24px;
     }
+  }
+}
+
+.field-comment{
+  display: flex; 
+  align-items: center;
+
+  .action-btn{
+    margin-left: 10px;
   }
 }
 </style>
