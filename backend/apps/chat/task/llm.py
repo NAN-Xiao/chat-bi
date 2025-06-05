@@ -1,9 +1,7 @@
-import asyncio
 import json
 import logging
-import re
 import warnings
-from typing import Any, List, Union, AsyncGenerator, Dict
+from typing import Any, List, Union, Dict
 
 from langchain_community.utilities import SQLDatabase
 from langchain_core.language_models import BaseLLM
@@ -20,6 +18,8 @@ from apps.system.models.system_model import AiModelDetail
 from common.core.deps import SessionDep, CurrentUser
 
 warnings.filterwarnings("ignore")
+
+base_message_count_limit = 5
 
 
 class LLMService:
@@ -55,34 +55,51 @@ class LLMService:
             last_chart_messages[-1].full_chart_message
 
         last_sql_messages: List[dict[str, Any]] = json.loads(last_sql_message_str)
+
+        # todo maybe can configure
+        count_limit = 0 - base_message_count_limit
+
+        self.sql_message = []
         if last_sql_messages is None or len(last_sql_messages) == 0:
             # add sys prompt
             self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
         else:
+            # limit count
             for last_sql_message in last_sql_messages:
+                if last_sql_message['type'] == 'system':
+                    _msg = SystemMessage(content=last_sql_message['content'])
+                    self.sql_message.append(_msg)
+                    break
+            for last_sql_message in last_sql_messages[count_limit:]:
                 _msg: BaseMessage
                 if last_sql_message['type'] == 'human':
                     _msg = HumanMessage(content=last_sql_message['content'])
+                    self.sql_message.append(_msg)
                 elif last_sql_message['type'] == 'ai':
                     _msg = AIMessage(content=last_sql_message['content'])
-                else:
-                    _msg = SystemMessage(content=last_sql_message['content'])
-                self.sql_message.append(_msg)
+                    self.sql_message.append(_msg)
 
         last_chart_messages: List[dict[str, Any]] = json.loads(last_chart_message_str)
+
+        self.chart_message = []
         if last_chart_messages is None or len(last_chart_messages) == 0:
             # add sys prompt
             self.chart_message.append(SystemMessage(content=self.chat_question.chart_sys_question()))
         else:
+            # limit count
+            for last_chart_message in last_chart_messages:
+                if last_chart_message['type'] == 'system':
+                    _msg = SystemMessage(content=last_chart_message['content'])
+                    self.chart_message.append(_msg)
+                    break
             for last_chart_message in last_chart_messages:
                 _msg: BaseMessage
                 if last_chart_message['type'] == 'human':
                     _msg = HumanMessage(content=last_chart_message['content'])
+                    self.chart_message.append(_msg)
                 elif last_chart_message['type'] == 'ai':
                     _msg = AIMessage(content=last_chart_message['content'])
-                else:
-                    _msg = SystemMessage(content=last_chart_message['content'])
-                self.chart_message.append(_msg)
+                    self.chart_message.append(_msg)
 
     def init_record(self, session: SessionDep, current_user: CurrentUser) -> ChatRecord:
         self.record = save_question(session=session, current_user=current_user, question=self.chat_question)
@@ -98,6 +115,7 @@ class LLMService:
         full_sql_text = ''
         res = self.llm.stream(self.sql_message)
         for chunk in res:
+            print(chunk)
             if isinstance(chunk, dict):
                 full_sql_text += chunk['content']
                 yield chunk['content']
@@ -196,9 +214,10 @@ class LLMService:
         return save_error_message(session=session, record_id=self.record.id, message=message)
 
     def save_sql_data(self, session: SessionDep, data_obj: Dict[str, Any]):
-        return save_sql_exec_data(session=session, record_id=self.record.id, data=json.dumps(data_obj, ensure_ascii=False))
+        return save_sql_exec_data(session=session, record_id=self.record.id,
+                                  data=json.dumps(data_obj, ensure_ascii=False))
 
-    def finish(self,session: SessionDep):
+    def finish(self, session: SessionDep):
         return finish_record(session=session, record_id=self.record.id)
 
     def execute_sql(self, sql: str):
@@ -237,7 +256,7 @@ def extract_nested_json(text):
                         pass
             else:
                 stack = []  # 括号不匹配则重置
-    if results[0]:
+    if len(results) > 0 and results[0]:
         return results[0]
     return None
 

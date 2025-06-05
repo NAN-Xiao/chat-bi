@@ -31,6 +31,9 @@ const _datasource = computed({
     <el-avatar shape="square" v-if="msg.role === 'user'"/>
     <ChatBlock v-if="!msg.isWelcome" :msg="msg" :class="{'row-full': msg.role === 'assistant'}">
       <slot></slot>
+      <template #footer>
+        <slot name="footer"></slot>
+      </template>
     </ChatBlock>
     <WelcomeBlock v-else v-model="_datasource" :current-chat="currentChat" class="row-full"/>
   </div>
@@ -51,6 +54,7 @@ const _datasource = computed({
 
   .row-full {
     flex: 1;
+    width: 0;
   }
 }
 
