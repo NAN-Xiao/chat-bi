@@ -11,17 +11,17 @@ defineProps<{
   ds: any
 }>()
 
-const getStatus = (status: string) => {
-  if (status === 'Success') {
-    return 'connected'
-  }
-  if (status === 'Fail') {
-    return 'failed'
-  }
-  if (status === 'Checking') {
-    return 'needs-verification'
-  }
-}
+// const getStatus = (status: string) => {
+//   if (status === 'Success') {
+//     return 'connected'
+//   }
+//   if (status === 'Fail') {
+//     return 'failed'
+//   }
+//   if (status === 'Checking') {
+//     return 'needs-verification'
+//   }
+// }
 
 </script>
 
