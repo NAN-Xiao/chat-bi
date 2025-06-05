@@ -40,10 +40,12 @@ const getResourceNewName = (cmd: string) => {
 }
 
 const optInit = (params: any) => {
+  // @ts-ignore
   state.dialogTitle = getTitle(params.cmd)
   state.showParentSelected = params.parentSelect
   state.targetInfo = params.data
   resourceDialogShow.value = true
+    // @ts-ignore
   resourceForm.name = getResourceNewName(params.cmd)
 }
 
@@ -52,8 +54,6 @@ const loading = ref(false)
 const pid = ref()
 const id = ref()
 const cmd = ref('')
-const treeRef = ref()
-const filterText = ref('')
 const resourceForm = reactive({
   pid: '',
   pName: '',
@@ -105,6 +105,7 @@ const editeInit = (param: SQTreeNode) => {
 const propsTree = {
   label: 'name',
   children: 'children',
+    // @ts-ignore
   isLeaf: node => !node.children?.length
 }
 
@@ -118,6 +119,7 @@ const saveResource = () => {
         name: resourceForm.name,
         type: 'dashboard'
       }
+        // @ts-ignore
     dashboardApi.addResource(params).then(res => {
       ElMessage({
         type: 'success',
@@ -133,7 +135,8 @@ const nodeClick = (data: SQTreeNode) => {
   resourceForm.pName = data.name as string
 }
 
-const filterMethod = value => {
+const filterMethod = (value:any) => {
+    // @ts-ignore
   state.tData = [...tData].filter(item => item.name.includes(value))
 }
 

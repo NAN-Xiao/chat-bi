@@ -208,6 +208,7 @@ const addOperation = (params: any) => {
     const newCanvasUrl = '#/canvas?opt=create' + params.data?.id ? `&pid=${params.data?.id}` : ''
     window.open(newCanvasUrl, '_blank')
   } else {
+    // @ts-ignore
     resourceGroupOptRef.value?.optInit(params)
   }
 }
@@ -309,8 +310,7 @@ defineExpose({
                 <Icon><icon_edit_outlined class="svg-icon"/></Icon>
               </el-icon>
               <HandleMore
-                  @handle-command="
-                  cmd => addOperation(cmd, data, cmd === 'newFolder' ? 'folder' : 'leaf')
+                  @handle-command=" (cmd:string) => addOperation({cmd})
                 "
                   :menu-list="resourceTypeList"
                   :icon-name="icon_add_outlined"
