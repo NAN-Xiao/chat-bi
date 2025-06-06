@@ -1,11 +1,12 @@
 from sqlalchemy import select
 from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard
 from common.core.deps import SessionDep, CurrentUser
+from sqlmodel import text
 import uuid
 def get_dashboard_list(session: SessionDep):
-    statement = select(CoreDashboard)
-    dashboard_list = session.exec(statement).scalars().all()
-    return dashboard_list
+    sql = text("SELECT id, name, type,node_type, pid, create_time FROM core_dashboard")
+    for row in session.exec(sql).mappings():
+        yield CoreDashboard(**row)
 
 def preview_with_id(session: SessionDep, dashboard_id: str):
     return  session.query(CoreDashboard).filter(CoreDashboard.id == id).first()

@@ -3,9 +3,9 @@ import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import {treeDraggableChart} from '@/views/dashboard/utils/treeDraggableChart'
 import newFolder from '@/assets/svg/new-folder.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-import Folder from '@/assets/svg/folder.svg'
+import icon_folder from '@/assets/svg/icon_folder.svg'
 import icon_fileAdd_outlined from '@/assets/svg/icon_file-add_outlined.svg'
-import icon_operationAnalysis_outlined from '@/assets/svg/icon_operation-analysis_outlined.svg'
+import icon_dashboard from '@/assets/svg/icon_dashboard.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import {onMounted, reactive, ref, watch, nextTick, computed} from 'vue'
 import {ElIcon, ElScrollbar} from 'element-plus-secondary'
@@ -14,7 +14,6 @@ import {type SQTreeNode} from '@/views/dashboard/utils/treeNode'
 import _ from 'lodash'
 import router from '@/router'
 import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
-import HandleMore from "@/views/dashboard/common/HandleMore.vue";
 import ResourceGroupOpt from "@/views/dashboard/common/ResourceGroupOpt.vue";
 import {dashboardApi} from "@/api/dashboard.ts";
 
@@ -57,10 +56,6 @@ const state = reactive({
   templateCreatePid: 0
 })
 
-
-const resourceTypeList = computed(() => {
-  return []
-})
 
 // @ts-ignore
 const {handleDrop, allowDrop, handleDragStart} = treeDraggableChart(
@@ -118,7 +113,8 @@ const getTree = async () => {
   state.originResourceTree = []
   const params = {}
   dashboardApi.list(params).then((res: SQTreeNode[]) => {
-    state.originResourceTree = res?.data || []
+    state.originResourceTree = res || []
+    state.resourceTree = _.cloneDeep(state.originResourceTree)
     afterTreeInit()
   })
 }
@@ -210,7 +206,7 @@ onMounted(() => {
 // @ts-ignore
 const addOperation = (params: any) => {
   if (params.cmd === 'newLeaf') {
-    const newCanvasUrl = '#/canvas?opt=create' + params.data?.id ? `&pid=${params.data?.id}` : ''
+    const newCanvasUrl = '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '')
     window.open(newCanvasUrl, '_blank')
   } else {
     // @ts-ignore
@@ -247,6 +243,7 @@ defineExpose({
             <el-icon
                 class="custom-icon btn"
                 style="margin-right: 10px"
+                @click="addOperation({cmd:'newLeaf',type:'dashboard'} )"
             >
               <Icon name="dv-new-folder">
                 <icon_fileAdd_outlined class="svg-icon"/>
@@ -290,22 +287,26 @@ defineExpose({
           @node-drop="handleDrop"
           draggable
       >
-        <template #default="{ data }">
-          <span class="custom-tree-node" :class="{ 'node-disabled-custom': data.extraFlag1 === 0 }">
+        <template #default="{ node, data }">
+          <span class="custom-tree-node">
             <el-icon style="font-size: 18px" v-if="!data.leaf">
-              <Icon name="dv-folder"><Folder class="svg-icon"/></Icon>
+              <Icon name="icon_folder"><icon_folder class="svg-icon"/></Icon>
             </el-icon>
-            <el-icon
-                class="icon-screen-new color-dataV"
-                :class="{ 'color-dataV': data.extraFlag1, 'color-dataV-disabled': !data.extraFlag1 }"
-                style="font-size: 18px"
-                v-else
-            >
-              <Icon name="icon_operation-analysis_outlined"
-              ><icon_operationAnalysis_outlined class="svg-icon"
-              /></Icon>
+            <el-icon style="font-size: 18px" v-else>
+              <Icon name="icon_dashboard"><icon_dashboard class="svg-icon"/></Icon>
             </el-icon>
+            <span :title="node.label" class="label-tooltip">
+              {{ node.label }}
+            </span>
             <div class="icon-more">
+              <el-icon
+                  v-on:click.stop
+                  v-if="!data.leaf"
+                  class="hover-icon"
+                  @click="addOperation({cmd:'newLeaf',type:'dashboard',id:data.id} )"
+              >
+                <Icon><icon_add_outlined class="svg-icon"/></Icon>
+              </el-icon>
               <el-icon
                   v-on:click.stop
                   v-if="data.leaf"
@@ -314,14 +315,14 @@ defineExpose({
               >
                 <Icon><icon_edit_outlined class="svg-icon"/></Icon>
               </el-icon>
-              <HandleMore
-                  @handle-command=" (cmd:string) => addOperation({cmd})
-                "
-                  :menu-list="resourceTypeList"
-                  :icon-name="icon_add_outlined"
-                  placement="bottom-start"
-                  v-if="!data.leaf"
-              ></HandleMore>
+<!--              <HandleMore-->
+<!--                  @handle-command=" (cmd:string) => addOperation({cmd})-->
+<!--                "-->
+<!--                  :menu-list="resourceTypeList"-->
+<!--                  :icon-name="icon_add_outlined"-->
+<!--                  placement="bottom-start"-->
+<!--                  v-if="!data.leaf"-->
+<!--              ></HandleMore>-->
             </div>
           </span>
         </template>
@@ -446,7 +447,7 @@ defineExpose({
   display: flex;
   align-items: center;
   box-sizing: content-box;
-  padding-right: 4px;
+  padding-right: 12px;
 
   .label-tooltip {
     width: 100%;
@@ -459,6 +460,7 @@ defineExpose({
   .icon-more {
     margin-left: auto;
     display: none;
+    color: #bbbfc4;
   }
 
   &:hover {

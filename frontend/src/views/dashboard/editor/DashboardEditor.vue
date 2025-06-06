@@ -109,7 +109,7 @@ const emits = defineEmits(["parentAddItemBox"]);
 <style scoped lang="less">
 .dashboard-editor-main {
   width: 100%;
-  height: calc(100% - 56px);
+  height: 100%;
   overflow-y: auto;
 }
 

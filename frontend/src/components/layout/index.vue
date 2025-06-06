@@ -163,7 +163,7 @@ const name = ref('admin')
 const activeMenu = computed(() => route.path)
 const routerList = computed(() => {
   return router.getRoutes().filter(route => {
-    return route.path !== '/login' && !route.path.includes('/system') && !route.redirect && route.path !== '/:pathMatch(.*)*' && !route.path.includes('dsTable')
+    return !route.path.includes('canvas') && route.path !== '/login' && !route.path.includes('/system') && !route.redirect && route.path !== '/:pathMatch(.*)*' && !route.path.includes('dsTable')
   })
 })
 

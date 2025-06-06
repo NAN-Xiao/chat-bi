@@ -67,6 +67,7 @@ const componentData = ref([
 .editor-main {
   position: relative;
   width: 100vw;
-  height: calc(100vh - 61px);
+  height: 100vh;
+  background: #f5f6f7;
 }
 </style>

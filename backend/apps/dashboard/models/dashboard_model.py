@@ -122,36 +122,14 @@ class CoreDashboard(SQLModel, table=True):
         sa_column=Column(String(50), nullable=True)
     )
 
-class DashboardResponse(BaseModel):
+class DashboardBaseResponse(BaseModel):
     id: Optional[str] = None
     name: Optional[str] = None
     pid: Optional[str] = None
-    workspace_id: Optional[str] = None
-    org_id: Optional[str] = None
-    level: Optional[int] = None
     node_type: Optional[str] = None
     type: Optional[str] = None
-    canvas_style_data: Optional[str] = None
-    component_data: Optional[str] = None
-    mobile_layout: Optional[int] = None
-    status: Optional[int] = None
-    self_watermark_status: Optional[int] = None
-    sort: Optional[int] = None
     create_time: Optional[int] = None
-    create_by: Optional[str] = None
     update_time: Optional[int] = None
-    update_by: Optional[str] = None
-    remark: Optional[str] = None
-    source: Optional[str] = None
-    delete_flag: Optional[int] = None
-    delete_time: Optional[int] = None
-    delete_by: Optional[str] = None
-    version: Optional[int] = None
-    content_id: Optional[str] = None
-    check_version: Optional[str] = None
-
-    class Config:
-        orm_mode = True
 
 # dashboard create obj
 class CreateDashboard(BaseModel):

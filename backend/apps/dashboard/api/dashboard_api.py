@@ -2,10 +2,8 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from apps.dashboard.crud.dashboard_service import get_dashboard_list, preview_with_id,create_dashboard
-from apps.dashboard.models.dashboard_model import CreateDashboard, DashboardResponse
+from apps.dashboard.models.dashboard_model import CreateDashboard
 from common.core.deps import SessionDep, CurrentUser
-from typing import List
-from fastapi.encoders import jsonable_encoder
 
 router = APIRouter(tags=["dashboard"], prefix="/dashboard")
 

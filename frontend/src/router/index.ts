@@ -69,17 +69,10 @@ const router = createRouter({
       ],
     },
     {
-      path: "/dashboard-edit",
-      redirect: "/dashboard-edit/index",
-      component: Layout,
-      children: [
-        {
-          path: "index",
-          name: "dashboard-edit",
-          component: DashboardEditor,
-          meta: { title: "dashboard-edit", icon: "dashboard" },
-        },
-      ],
+      path: "/canvas",
+      name: "canvas",
+      component: DashboardEditor,
+      meta: { title: "canvas", icon: "dashboard" },
     },
     /* {
       path: "/setting",
