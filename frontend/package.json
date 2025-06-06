@@ -12,6 +12,7 @@
     "@npkg/tinymce-plugins": "^0.0.7",
     "@tinymce/tinymce-vue": "^5.1.0",
     "dayjs": "^1.11.13",
+    "element-plus": "^2.9.11",
     "lodash": "^4.17.21",
     "snowflake-id": "^1.1.0",
     "tinymce": "^5.8.2",

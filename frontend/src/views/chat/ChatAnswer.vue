@@ -10,7 +10,7 @@ const props = defineProps<{
 }>()
 
 const settings = ref<{
-  type: "chart" | "sql" | "data"
+  type: "chart" | "sql"
   showAnswer: boolean
 }>({
   type: "chart",
@@ -74,11 +74,11 @@ const chartType = computed<"table" | "bar" | "line" | "pie">({
   <div v-if="message">
     <div>
       <div v-if="message.isTyping">Thinking ...</div>
-      <div v-if="chartObject.title">{{ chartObject.title }}</div>
+      <div v-if="chartObject.title && !message.isTyping">{{ chartObject.title }}</div>
       <el-tabs v-model="settings.type" class="demo-tabs" @tab-click="handleClick" tab-position="top">
         <el-tab-pane label="Chart" name="chart">
           <template #label>
-            <el-select v-model="chartType" style="width: 80px">
+            <el-select v-model="chartType" style="width: 80px" :disabled="settings.type!== 'chart'">
               <el-option value="table">table</el-option>
               <el-option value="bar">bar</el-option>
               <el-option value="line">line</el-option>
@@ -87,7 +87,6 @@ const chartType = computed<"table" | "bar" | "line" | "pie">({
           </template>
         </el-tab-pane>
         <el-tab-pane label="SQL" name="sql"></el-tab-pane>
-        <el-tab-pane label="Data" name="data"></el-tab-pane>
       </el-tabs>
     </div>
     <template v-if="message.record">
@@ -95,7 +94,7 @@ const chartType = computed<"table" | "bar" | "line" | "pie">({
         <el-collapse-item name="1">
           <template #title>
             Inference process
-            <el-icon v-if="props.message.isTyping">
+            <el-icon v-if="props.message?.isTyping">
               <Loading/>
             </el-icon>
           </template>
@@ -112,7 +111,7 @@ const chartType = computed<"table" | "bar" | "line" | "pie">({
           </div>
         </el-collapse-item>
       </el-collapse>
-      <div>
+      <div class="answer-content">
         <template v-if="settings.type === 'sql'">
           <div>
             <div v-if="message.record.sql">
@@ -148,5 +147,9 @@ const chartType = computed<"table" | "bar" | "line" | "pie">({
 :deep(.ed-tabs__nav-scroll) {
   display: flex;
   justify-content: flex-end;
+}
+
+.answer-content {
+  padding: 12px;
 }
 </style>

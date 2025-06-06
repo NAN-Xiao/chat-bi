@@ -18,6 +18,14 @@ template:
       - 如果问题是图表展示相关且与生成SQL查询无关时，请参考上一次回答的SQL来生成SQL
       - 如果问题是图表展示相关，可参考的图表类型为表格(table)、条形图(bar)、折线图(line)或饼图(pie)，返回的JSON：
        {{"success":true,"sql":"生成的SQL语句","chart-type":"选择的图表类型(table/bar/line/pie)"}}
+      
+      ### 请遵守以下输出要求:      
+      请逐步推理后给出答案
+      推理过程中不需要输出JSON，仅在最终结果内输出符合要求的JSON
+      步骤1: [思考内容]
+      步骤2: [思考内容]
+      ……
+      最终答案: [结果]
     user: |
       ### 表结构:
       {schema}
@@ -26,6 +34,7 @@ template:
       {question}
       
       ### 其他规则:
+      请使用英语(English)回答
       {rule}
   chart:
     system: |
@@ -55,7 +64,15 @@ template:
       ### 响应:
       根据您的指示，这是我生成的与 问题 和 sql 匹配的 JSON：
       ```json
-    user: |    
+      
+      ### 请遵守以下输出要求:
+      请逐步推理后给出答案
+      推理过程中不需要输出JSON，仅在最终结果内输出符合要求的JSON
+      步骤1: [思考内容]
+      步骤2: [思考内容]
+      ……
+      最终答案: [结果]
+    user: |
       ### SQL:
       {sql}
       
@@ -63,4 +80,5 @@ template:
       {question}
       
       ### 其他规则:
+      请使用英语(English)回答
       {rule}

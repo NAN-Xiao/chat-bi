@@ -135,7 +135,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             # execute sql
             result = llm_service.execute_sql(sql=sql)
             llm_service.save_sql_data(session=session, data_obj=result)
-            yield json.dumps({'content': result, 'type': 'sql-data'}, ensure_ascii=False) + '\n\n'
+            yield json.dumps({'content': json.dumps(result, ensure_ascii=False), 'type': 'sql-data'}) + '\n\n'
 
             # generate chart
             chart_res = llm_service.generate_chart(session=session)
@@ -149,7 +149,8 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             print(full_chart_text)
             chart = llm_service.check_save_chart(session=session, res=full_chart_text)
             print(chart)
-            yield json.dumps({'content': chart, 'type': 'chart'}, ensure_ascii=False) + '\n\n'
+            yield json.dumps({'content': json.dumps(chart, ensure_ascii=False), 'type': 'chart'},
+                             ensure_ascii=False) + '\n\n'
 
             llm_service.finish(session=session)
             yield json.dumps({'type': 'finish'})

@@ -12,7 +12,9 @@ defineProps<{
   <div class="chat-block-outer">
     <div class="chat-block">
       <slot>
-        <div v-html="msg?.content"></div>
+        <div class="chat-block-content">
+          <div v-html="msg?.content"></div>
+        </div>
       </slot>
     </div>
     <div class="chat-block-footer">
@@ -26,9 +28,13 @@ defineProps<{
   .chat-block {
     border-radius: 2px;
     background-color: white;
-    padding: 12px;
     word-wrap: break-word;
     white-space: pre-wrap;
+
+    .chat-block-content {
+      padding: 12px;
+    }
+
   }
 
   .chat-block-footer {

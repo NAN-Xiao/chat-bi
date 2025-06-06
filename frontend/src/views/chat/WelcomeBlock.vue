@@ -63,37 +63,43 @@ onMounted(() => {
 
 <template>
   <ChatBlock>
-    <div>你好，我是SQLBot，很高兴为你服务</div>
-    <div class="sub">我可以帮忙查询数据、生成图表、检测数据异常、预测数据等，请选择一个数据源，开启智能问数吧～</div>
-    <template v-if="editable">
-      <template v-if="dsList.length>0">
-        <div class="ds-select-row">
-          <div>选择数据源</div>
-          <el-button @click="showDs" link type="primary">查看更多</el-button>
-        </div>
-        <div class="ds-row-container">
-          <template v-for="(item, _index) in dsList" :key="_index">
-            <DatasourceItemCard :ds="item" @click="selectDs(item)" v-if="_index<3 || item?.id===modelValue"
-                                class="ds-card" :class="[item?.id===modelValue? 'ds-card-selected': '']"/>
-          </template>
+    <div class="welcome-content">
+      <div>你好，我是SQLBot，很高兴为你服务</div>
+      <div class="sub">我可以帮忙查询数据、生成图表、检测数据异常、预测数据等，请选择一个数据源，开启智能问数吧～</div>
+      <template v-if="editable">
+        <template v-if="dsList.length>0">
+          <div class="ds-select-row">
+            <div>选择数据源</div>
+            <el-button @click="showDs" link type="primary">查看更多</el-button>
+          </div>
+          <div class="ds-row-container">
+            <template v-for="(item, _index) in dsList" :key="_index">
+              <DatasourceItemCard :ds="item" @click="selectDs(item)" v-if="_index<3 || item?.id===modelValue"
+                                  class="ds-card" :class="[item?.id===modelValue? 'ds-card-selected': '']"/>
+            </template>
+          </div>
+        </template>
+        <div v-else>
+          数据源为空，请新建后再开启智能问数！
         </div>
       </template>
-      <div v-else>
-        数据源为空，请新建后再开启智能问数！
-      </div>
-    </template>
-    <template v-else>
-      <div class="ds-select-row">
-        <div>已选择数据源</div>
-      </div>
-      <div class="ds-row-container">
-        <DatasourceItemCard :ds="ds"/>
-      </div>
-    </template>
+      <template v-else>
+        <div class="ds-select-row">
+          <div>已选择数据源</div>
+        </div>
+        <div class="ds-row-container">
+          <DatasourceItemCard :ds="ds"/>
+        </div>
+      </template>
+    </div>
   </ChatBlock>
 </template>
 
 <style scoped lang="less">
+.welcome-content {
+  padding: 12px;
+}
+
 .sub {
   color: grey;
   font-size: 0.8em;
@@ -118,7 +124,7 @@ onMounted(() => {
 }
 
 .ds-card-selected {
-  border-color: var(--ed-color-primary-light-5);
+  box-shadow: 0 1px 3px var(--ed-color-primary-light-5);
 }
 
 

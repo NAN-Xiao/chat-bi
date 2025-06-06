@@ -3,6 +3,7 @@ import ChatBlock from './ChatBlock.vue'
 import WelcomeBlock from './WelcomeBlock.vue'
 import {ChatInfo, type ChatMessage} from "@/api/chat.ts";
 import {computed} from "vue";
+import {UserFilled} from "@element-plus/icons-vue"
 
 const props = withDefaults(defineProps<{
       msg: ChatMessage
@@ -27,8 +28,12 @@ const _datasource = computed({
 
 <template>
   <div class="chat-row" :class="{'right-to-left': msg.role === 'user'}">
-    <el-avatar shape="square" v-if="msg.role === 'assistant'">SQLBot</el-avatar>
-    <el-avatar shape="square" v-if="msg.role === 'user'"/>
+    <el-avatar class="ai-avatar" shape="square" v-if="msg.role === 'assistant'">SQLBot</el-avatar>
+    <el-avatar class="user-avatar" shape="square" v-if="msg.role === 'user'">
+      <el-icon>
+        <UserFilled/>
+      </el-icon>
+    </el-avatar>
     <ChatBlock v-if="!msg.isWelcome" :msg="msg" :class="{'row-full': msg.role === 'assistant'}">
       <slot></slot>
       <template #footer>
@@ -56,6 +61,14 @@ const _datasource = computed({
     flex: 1;
     width: 0;
   }
+}
+
+.ai-avatar {
+  background: var(--el-color-primary);
+}
+
+.user-avatar {
+  background: var(--ed-color-primary)
 }
 
 

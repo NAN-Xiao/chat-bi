@@ -24,7 +24,7 @@
     </el-aside>
     <el-container :loading="loading">
       <el-main class="chat-record-list">
-        <el-scrollbar>
+        <el-scrollbar ref="chatListRef">
           <template v-for="(message, _index) in computedMessages" :key="_index">
             <ChatRow
                 :current-chat="currentChat"
@@ -46,7 +46,7 @@
           <template
               v-if="currentChat.datasource && currentChat.datasource_name"
           >
-            使用数据源：{{ currentChat.datasource_name }}
+            Datasource：{{ currentChat.datasource_name }}
           </template>
         </div>
         <div class="input-wrapper">
@@ -81,19 +81,23 @@
 <script setup lang="ts">
 import {computed, nextTick, onMounted, ref} from "vue";
 import {Plus, Position} from "@element-plus/icons-vue";
-import {
-  Chat,
-  chatApi,
-  ChatInfo,
-  type ChatMessage,
-  ChatRecord,
-  questionApi,
-} from "@/api/chat";
+import {Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi,} from "@/api/chat";
 import ChatList from "./ChatList.vue";
 import ChatRow from "./ChatRow.vue";
 import ChatAnswer from "./ChatAnswer.vue";
 
 const inputMessage = ref("");
+
+const chatListRef = ref()
+
+function scrollToBottom() {
+  nextTick(() => {
+    chatListRef.value?.scrollTo({
+      top: chatListRef.value.wrapRef.scrollHeight,
+      behavior: 'smooth'
+    })
+  })
+}
 
 const loading = ref<boolean>(false);
 const chatList = ref<Array<ChatInfo>>([]);
@@ -163,6 +167,8 @@ function onClickHistory(chat: Chat) {
           const info = chatApi.toChatInfo(res);
           if (info) {
             currentChat.value = info;
+
+            scrollToBottom()
           }
         })
         .finally(() => {
@@ -264,39 +270,61 @@ const sendMessage = async () => {
       }
 
       const chunk = decoder.decode(value);
-      console.log(chunk);
-      const data = JSON.parse(chunk);
 
-      switch (data.type) {
-        case "info":
-          console.log(data.msg);
-          break;
-        case "error":
-          currentRecord.error = data.content;
-          isTyping.value = false;
-          break;
-        case "sql-result":
-          sql_answer += data.content;
-          currentChat.value.records[currentChat.value.records.length - 1].sql_answer = sql_answer;
-          break;
-        case "sql":
-          currentChat.value.records[currentChat.value.records.length - 1].sql = data.content;
-          break;
-        case "sql-data":
-          currentChat.value.records[currentChat.value.records.length - 1].data = data.content;
-          break;
-        case "chart-result":
-          chart_answer += data.content;
-          currentChat.value.records[currentChat.value.records.length - 1].chart_answer = chart_answer;
-          break;
-        case "chart":
-          currentChat.value.records[currentChat.value.records.length - 1].chart = data.content;
-          break;
-        case "finish":
-          isTyping.value = false;
-          break;
+      let _list = [chunk]
+
+      const lines = chunk.trim().split('}\n\n{')
+      if (lines.length > 1) {
+        _list = []
+        for (let line of lines) {
+          if (!line.trim().startsWith('{')) {
+            line = '{' + line.trim()
+          }
+          if (!line.trim().endsWith('}')) {
+            line = line.trim() + '}'
+          }
+          _list.push(line)
+        }
       }
-      await nextTick()
+
+      console.log(_list);
+
+      for (const str of _list) {
+
+        const data = JSON.parse(str);
+
+        switch (data.type) {
+          case "info":
+            console.log(data.msg);
+            break;
+          case "error":
+            currentRecord.error = data.content;
+            isTyping.value = false;
+            break;
+          case "sql-result":
+            sql_answer += data.content;
+            currentChat.value.records[currentChat.value.records.length - 1].sql_answer = sql_answer;
+            break;
+          case "sql":
+            currentChat.value.records[currentChat.value.records.length - 1].sql = data.content;
+            break;
+          case "sql-data":
+            currentChat.value.records[currentChat.value.records.length - 1].data = data.content;
+            break;
+          case "chart-result":
+            chart_answer += data.content;
+            currentChat.value.records[currentChat.value.records.length - 1].chart_answer = chart_answer;
+            break;
+          case "chart":
+            currentChat.value.records[currentChat.value.records.length - 1].chart = data.content;
+            break;
+          case "finish":
+            isTyping.value = false;
+            break;
+        }
+        await nextTick()
+      }
+
     }
   } catch (error) {
     if (!currentRecord.error) {

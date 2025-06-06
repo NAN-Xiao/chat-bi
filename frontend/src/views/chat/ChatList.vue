@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {MoreFilled, EditPen, Delete} from '@element-plus/icons-vue'
+import {Delete, EditPen, MoreFilled} from '@element-plus/icons-vue'
 import {type Chat, chatApi} from "@/api/chat.ts";
 import {computed} from "vue";
 
@@ -105,10 +105,11 @@ function handleCommand(command: string | number | object, chat: Chat) {
   }
 }
 
+
 </script>
 
 <template>
-  <el-scrollbar>
+  <el-scrollbar ref="chatListRef">
     <div class="chat-list-inner">
       <template v-for="chat in chatList" :key="chat.id">
         <div class="chat-list-item" :class="{'active': currentChatId === chat.id}" @click="onClickHistory(chat)">
