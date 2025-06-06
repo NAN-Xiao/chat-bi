@@ -70,18 +70,25 @@ class AiModelQuestion(BaseModel):
     engine: str = ""
     db_schema: str = ""
     sql: str = ""
+    rule: str = """
+    请逐步推理后给出答案：
+    推理过程中不需要输出JSON，仅在最终结果内输出符合要求的JSON
+    步骤1: [思考内容]
+    步骤2: [思考内容]
+    最终答案: [结果]
+    """
 
     def sql_sys_question(self):
         return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question)
 
     def sql_user_question(self):
-        return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question)
+        return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question, rule=self.rule)
 
     def chart_sys_question(self):
         return get_chart_template()['system'].format(sql=self.sql, question=self.question)
 
     def chart_user_question(self):
-        return get_chart_template()['user'].format(sql=self.sql, question=self.question)
+        return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule)
 
 
 class ChatQuestion(AiModelQuestion):

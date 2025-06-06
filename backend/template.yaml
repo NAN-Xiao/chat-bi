@@ -15,17 +15,23 @@ template:
       {{"success":false,"message":"抱歉，我无法回答您的问题。"}}
       - 如果根据提供的表结构不能生成符合问题与条件的SQL，回答：
       {{"success":false,"message":"无法生成SQL的原因"}}
-    user: |  
-      表结构:
+      - 如果问题是图表展示相关且与生成SQL查询无关时，请参考上一次回答的SQL来生成SQL
+      - 如果问题是图表展示相关，可参考的图表类型为表格(table)、条形图(bar)、折线图(line)或饼图(pie)，返回的JSON：
+       {{"success":true,"sql":"生成的SQL语句","chart-type":"选择的图表类型(table/bar/line/pie)"}}
+    user: |
+      ### 表结构:
       {schema}
       
-      问题:
+      ### 问题:
       {question}
+      
+      ### 其他规则:
+      {rule}
   chart:
     system: |
       ### 说明：
       您的任务是通过给定的问题和SQL生成 JSON 以进行数据可视化。
-      请遵守以下规则：
+      请遵守以下规则:
       - 如果需要表格，则生成的 JSON 格式应为：
       {{"type":"table", "title": "标题", "columns": [{{"name":"中文字段名1", "value": "SQL 查询列 1(有别名用别名)"}}, {{"name": "中文字段名 2", "value": "SQL 查询列 2(有别名用别名)"}}]}}
       必须从 SQL 查询列中提取“columns”。
@@ -36,22 +42,25 @@ template:
       {{"type":"line", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称","value": "x轴的SQL查询列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "y轴的SQL查询列(有别名用别名)"}}}}
       其中“x”和“y”必须从SQL查询列中提取。
       - 如果需要饼图，则生成的 JSON 格式应为：
-      {{"type":"pie", "title": "标题", "column": {{"name":"中文字段名","value":"SQL查询列1(有别名用别名)"}}}}
+      {{"type":"pie", "title": "标题", "column": [{{"name":"中文字段名1","value":"SQL查询列1(有别名用别名)"}},{{"name":"中文字段名2","value":"SQL查询列2(有别名用别名)"}}]}}
       其中“column”必须从SQL查询列中提取。
       - 如果答案未知或者与生成JSON无关，则生成的 JSON 格式应为：
       {{"type":"error", "reason": "抱歉，我无法回答您的问题。"}}
       
-      ### 示例
+      ### 示例:
       如果 SQL 为： SELECT products_sales_data.category, AVG(products_sales_data.price) AS average_price FROM products_sales_data GROUP BY products_sales_data.category;
       问题是：每个商品分类的平均价格
       则生成的 JSON 可以是： {{"type":"table", "title": "每个商品分类的平均价格", "columns": [{{"name":"商品分类","value":"category"}}, {{"name":"平均价格","value":"average_price"}}]}}
       
-      ### 响应：
+      ### 响应:
       根据您的指示，这是我生成的与 问题 和 sql 匹配的 JSON：
       ```json
     user: |    
       ### SQL:
       {sql}
       
-      ### 问题：
+      ### 问题:
       {question}
+      
+      ### 其他规则:
+      {rule}
