@@ -14,6 +14,7 @@ from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
 from alembic.config import Config
 from alembic import command
+from fastapi_mcp import FastApiMCP
 
 def run_migrations():
     alembic_cfg = Config("alembic.ini")
@@ -37,6 +38,14 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan
 )
+
+mcp = FastApiMCP(
+    app,
+    name="My API MCP",
+    description="My API description",
+)
+
+mcp.mount()
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:
