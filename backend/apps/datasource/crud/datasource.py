@@ -24,6 +24,12 @@ def get_datasource_list(session: SessionDep):
     return datasource_list
 
 
+def get_ds(session: SessionDep, id: int):
+    statement = select(CoreDatasource).where(CoreDatasource.id == id)
+    datasource = session.exec(statement).first()
+    return datasource
+
+
 def check_status(session: SessionDep, ds: CoreDatasource):
     conn = get_engine(ds)
     try:

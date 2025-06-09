@@ -26,7 +26,7 @@
         <DatasourceItemCard :ds="ds">
           <div class="connection-actions">
             <el-button class="action-btn" circle @click="getTables(ds.id, ds.name)" :icon="List"/>
-            <el-button class="action-btn" circle @click="editTables(ds)" :icon="CreditCard"/>
+            <!-- <el-button class="action-btn" circle @click="editTables(ds)" :icon="CreditCard"/> -->
             <el-button type="primary" class="action-btn" circle @click="editDs(ds)" :icon="IconOpeEdit"/>
             <el-button type="danger" class="action-btn" circle @click="deleteDs(ds)" :icon="IconOpeDelete"/>
           </div>
@@ -40,7 +40,7 @@
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
-import {Search, List, CreditCard} from '@element-plus/icons-vue'
+import {Search, List} from '@element-plus/icons-vue'
 import {ref, onMounted} from 'vue'
 import DsForm from './form.vue'
 import {datasourceApi} from '@/api/datasource'
@@ -83,9 +83,9 @@ const editDs = (item: any) => {
   dsForm.value.open(item)
 }
 
-const editTables = (item: any) => {
-  dsForm.value.open(item, true)
-}
+// const editTables = (item: any) => {
+//   dsForm.value.open(item, true)
+// }
 
 const deleteDs = (item: any) => {
   ElMessageBox.confirm(
@@ -108,17 +108,6 @@ const deleteDs = (item: any) => {
 }
 
 const getTables = (id: number, name: string) => {
-  // datasourceApi.getTables(id).then((res) => {
-  //   console.log(res)
-  // })
-
-  // datasourceApi.getFields(id,'core_dataset_table').then((res) => {
-  //   console.log(res)
-  // })
-
-  // datasourceApi.execSql(id,'select id,name,table_name from core_dataset_table limit 10').then((res) => {
-  //   console.log(res)
-  // })
   router.push(`/dsTable/${id}/${name}`)
 }
 

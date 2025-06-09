@@ -9,7 +9,10 @@
     </div>
     <div class="container">
       <div class="left-side">
-        Tables
+        <div style="display: flex;justify-content: space-between;align-items: center;">
+          <span>Tables</span>
+          <el-button style="padding: 12px;" text @click="editTables(ds)" :icon="CreditCard"/>
+        </div>
         <el-input
           style="margin: 16px 0"
           v-model="searchValue"
@@ -134,6 +137,7 @@
       </div>
     </el-dialog>
   </div>
+  <DsForm ref="dsForm" @refresh="refresh"/>
 </template>
 
 <script lang="tsx" setup>
@@ -143,6 +147,8 @@ import { onMounted } from "vue";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import type { TabsPaneContext } from "element-plus-secondary";
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
+import {CreditCard} from '@element-plus/icons-vue'
+import DsForm from './form.vue'
 
 const props = defineProps({
   dsId: { type: [Number], required: true },
@@ -160,6 +166,8 @@ const previewData = ref<any>({});
 const activeName = ref("schema");
 const tableDialog = ref<boolean>(false)
 const fieldDialog = ref<boolean>(false)
+const dsForm = ref()
+const ds = ref<any>({})
 
 const buildData = () => {
   return { table: currentTable.value, fields: fieldList.value };
@@ -241,12 +249,27 @@ const handleClick = (tab: TabsPaneContext) => {
   }
 };
 
-onMounted(() => {
+const editTables = (item: any) => {
+  dsForm.value.open(item, true)
+}
+
+const refresh = () => {
+  init()
+}
+
+const init = () => {
   dsId.value = props.dsId;
-  fieldList.value = [];
-  datasourceApi.tableList(props.dsId).then((res) => {
-    tableList.value = res;
-  });
+  datasourceApi.getDs(dsId.value).then((res) => {
+    ds.value = res
+    fieldList.value = [];
+    datasourceApi.tableList(props.dsId).then((res) => {
+      tableList.value = res;
+    });
+  })
+}
+
+onMounted(() => {
+  init()
 });
 </script>
 
