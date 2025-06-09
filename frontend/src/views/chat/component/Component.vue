@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref} from "vue";
+import {computed, onMounted, onUnmounted} from "vue";
 import {getChartInstance} from "@/views/chat/component/index.ts";
 import type {BaseChart} from "@/views/chat/component/BaseChart.ts";
 
@@ -35,21 +35,21 @@ const axis = computed(() => {
   return _list
 })
 
-const chartInstance = ref<BaseChart>()
+let chartInstance: BaseChart | undefined
 
 function renderChart() {
-  chartInstance.value = getChartInstance(params.type, chartId.value)
-  console.log(chartInstance.value)
-  if (chartInstance.value) {
-    chartInstance.value.init(axis.value, params.data)
-    chartInstance.value.render()
+  chartInstance = getChartInstance(params.type, chartId.value)
+  console.log(chartInstance)
+  if (chartInstance) {
+    chartInstance.init(axis.value, params.data)
+    chartInstance.render()
   }
 }
 
 function destroyChart() {
-  if (chartInstance.value) {
-    chartInstance.value.destroy()
-    chartInstance.value = undefined
+  if (chartInstance) {
+    chartInstance.destroy()
+    chartInstance = undefined
   }
 }
 

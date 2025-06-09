@@ -85,7 +85,7 @@ const chartRef = ref()
 
 function onTypeChange(type: string) {
   console.log(type)
-  nextTick(()=>{
+  nextTick(() => {
     chartRef.value?.destroyChart()
     chartRef.value?.renderChart()
   })
@@ -102,9 +102,10 @@ function onTypeChange(type: string) {
       <el-tabs v-model="settings.type" class="type-tabs" @tab-click="handleClick" tab-position="top">
         <el-tab-pane label="Chart" name="chart">
           <template #label>
-            <el-select v-model="chartType" style="width: 80px" :disabled="settings.type!== 'chart'" @change="onTypeChange">
+            <el-select v-model="chartType" style="width: 80px" :disabled="settings.type!== 'chart'"
+                       @change="onTypeChange">
               <el-option value="table">table</el-option>
-              <el-option value="cloumn">cloumn</el-option>
+              <el-option value="column">column</el-option>
               <el-option value="bar">bar</el-option>
               <el-option value="line">line</el-option>
               <el-option value="pie">pie</el-option>
