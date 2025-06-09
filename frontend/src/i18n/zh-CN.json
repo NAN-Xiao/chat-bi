@@ -1,0 +1,14 @@
+{
+  "menu": {
+    "dashboard": "仪表盘",
+    "chat": "聊天",
+    "datasource": "数据源",
+    "system": "系统"
+  },
+  "common": {
+    "back": "返回",
+    "confirm": "确认",
+    "cancel": "取消",
+    "system_manage": "系统管理"
+  }
+}
