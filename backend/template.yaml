@@ -34,7 +34,7 @@ template:
       {question}
       
       ### 其他规则:
-      请使用英语(English)回答
+      请使用英语(English)输出
       {rule}
   chart:
     system: |
@@ -51,7 +51,7 @@ template:
       {{"type":"line", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称","value": "x轴的SQL查询列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "y轴的SQL查询列(有别名用别名)"}}}}
       其中“x”和“y”必须从SQL查询列中提取。
       - 如果需要饼图，则生成的 JSON 格式应为：
-      {{"type":"pie", "title": "标题", "column": [{{"name":"中文字段名1","value":"SQL查询列1(有别名用别名)"}},{{"name":"中文字段名2","value":"SQL查询列2(有别名用别名)"}}]}}
+      {{"type":"pie", "title": "标题", "columns": [{{"name":"中文字段名1","value":"SQL查询列1(有别名用别名)"}},{{"name":"中文字段名2","value":"SQL查询列2(有别名用别名)"}}]}}
       其中“column”必须从SQL查询列中提取。
       - 如果答案未知或者与生成JSON无关，则生成的 JSON 格式应为：
       {{"type":"error", "reason": "抱歉，我无法回答您的问题。"}}
@@ -80,5 +80,5 @@ template:
       {question}
       
       ### 其他规则:
-      请使用英语(English)回答
+      请使用英语(English)输出
       {rule}

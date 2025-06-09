@@ -1,9 +1,10 @@
 <script setup lang="ts">
 
 import type {ChatMessage} from "@/api/chat.ts";
-import {computed, ref} from "vue";
+import {computed, nextTick, ref} from "vue";
 import type {TabsPaneContext} from 'element-plus'
 import {Loading} from "@element-plus/icons-vue";
+import Component from "./component/Component.vue"
 
 const props = defineProps<{
   message?: ChatMessage
@@ -53,9 +54,22 @@ const chartObject = computed<{
   return {}
 })
 
-const currentChartType = ref<"table" | "bar" | "line" | "pie" | undefined>(undefined)
+const xAxis = computed(() => {
+  if (chartObject.value?.axis?.x) {
+    return [chartObject.value.axis.x]
+  }
+  return []
+})
+const yAxis = computed(() => {
+  if (chartObject.value?.axis?.y) {
+    return [chartObject.value.axis.y]
+  }
+  return []
+})
 
-const chartType = computed<"table" | "bar" | "line" | "pie">({
+const currentChartType = ref<"table" | "bar" | 'column' | "line" | "pie" | undefined>(undefined)
+
+const chartType = computed<"table" | "bar" | 'column' | "line" | "pie">({
   get() {
     if (currentChartType.value) {
       return currentChartType.value
@@ -67,19 +81,30 @@ const chartType = computed<"table" | "bar" | "line" | "pie">({
   }
 })
 
+const chartRef = ref()
+
+function onTypeChange(type: string) {
+  console.log(type)
+  nextTick(()=>{
+    chartRef.value?.destroyChart()
+    chartRef.value?.renderChart()
+  })
+}
+
 
 </script>
 
 <template>
-  <div v-if="message">
-    <div>
-      <div v-if="message.isTyping">Thinking ...</div>
-      <div v-if="chartObject.title && !message.isTyping">{{ chartObject.title }}</div>
-      <el-tabs v-model="settings.type" class="demo-tabs" @tab-click="handleClick" tab-position="top">
+  <el-container v-if="message">
+    <el-header style="display: flex; align-items: center; flex-direction: row;">
+      <div style="flex:1" v-if="message.isTyping">Thinking ...</div>
+      <div style="flex:1" v-if="chartObject.title && !message.isTyping">{{ chartObject.title }}</div>
+      <el-tabs v-model="settings.type" class="type-tabs" @tab-click="handleClick" tab-position="top">
         <el-tab-pane label="Chart" name="chart">
           <template #label>
-            <el-select v-model="chartType" style="width: 80px" :disabled="settings.type!== 'chart'">
+            <el-select v-model="chartType" style="width: 80px" :disabled="settings.type!== 'chart'" @change="onTypeChange">
               <el-option value="table">table</el-option>
+              <el-option value="cloumn">cloumn</el-option>
               <el-option value="bar">bar</el-option>
               <el-option value="line">line</el-option>
               <el-option value="pie">pie</el-option>
@@ -88,59 +113,61 @@ const chartType = computed<"table" | "bar" | "line" | "pie">({
         </el-tab-pane>
         <el-tab-pane label="SQL" name="sql"></el-tab-pane>
       </el-tabs>
-    </div>
-    <template v-if="message.record">
-      <el-collapse expand-icon-position="left">
-        <el-collapse-item name="1">
-          <template #title>
-            Inference process
-            <el-icon v-if="props.message?.isTyping">
-              <Loading/>
-            </el-icon>
+    </el-header>
+    <el-container direction="vertical">
+      <template v-if="message.record">
+        <el-collapse expand-icon-position="left">
+          <el-collapse-item name="1">
+            <template #title>
+              Inference process
+              <el-icon v-if="props.message?.isTyping">
+                <Loading/>
+              </el-icon>
+            </template>
+            <div>
+              <template v-if="message.record.sql_answer">
+                <div>SQL Generation:</div>
+                <div v-if="message.record.sql_answer" v-html="renderSqlThinking"></div>
+              </template>
+              <template v-if="message.record.chart_answer">
+                <el-divider></el-divider>
+                <div>Chart Generation:</div>
+                <div v-html="renderChartThinking"></div>
+              </template>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+        <div class="answer-content">
+          <template v-if="settings.type === 'sql'">
+            <div>
+              <div v-if="message.record.sql">
+                {{ message.record.sql }}
+              </div>
+            </div>
           </template>
-          <div>
-            <template v-if="message.record.sql_answer">
-              <div>SQL Generation:</div>
-              <div v-if="message.record.sql_answer" v-html="renderSqlThinking"></div>
-            </template>
-            <template v-if="message.record.chart_answer">
-              <el-divider></el-divider>
-              <div>Chart Generation:</div>
-              <div v-html="renderChartThinking"></div>
-            </template>
-          </div>
-        </el-collapse-item>
-      </el-collapse>
-      <div class="answer-content">
-        <template v-if="settings.type === 'sql'">
-          <div>
-            <div v-if="message.record.sql">
-              {{ message.record.sql }}
+          <template v-else-if="settings.type === 'chart'">
+            <div>
+              <div v-if="message.record.chart">
+                <Component
+                    ref="chartRef"
+                    v-if="message.record.id"
+                    :id="message.record.id"
+                    :type="chartType"
+                    :columns="chartObject?.columns"
+                    :x="xAxis"
+                    :y="yAxis"
+                    :data="dataObject.data"/>
+              </div>
             </div>
-          </div>
-        </template>
-        <template v-else-if="settings.type === 'chart'">
-          <div>
-
-            <div v-if="message.record.chart">
-              {{ chartObject }}
+            <div v-if="message.record.error" style="color: red">
+              {{ message.record.error }}
             </div>
-          </div>
-          <div v-if="message.record.error" style="color: red">
-            {{ message.record.error }}
-          </div>
-        </template>
-        <template v-else>
-          <div>
-            <div v-if="dataObject.fields">
-              {{ dataObject.fields }}
-              {{ dataObject.data }}
-            </div>
-          </div>
-        </template>
-      </div>
-    </template>
-  </div>
+          </template>
+        </div>
+      </template>
+    </el-container>
+    <!--<el-footer></el-footer>-->
+  </el-container>
 </template>
 
 <style scoped lang="less">
@@ -151,5 +178,9 @@ const chartType = computed<"table" | "bar" | "line" | "pie">({
 
 .answer-content {
   padding: 12px;
+}
+
+.type-tabs {
+  margin-right: 24px;
 }
 </style>

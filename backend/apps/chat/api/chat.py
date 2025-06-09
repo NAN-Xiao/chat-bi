@@ -118,6 +118,9 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
 
     def run_task():
         try:
+            # return id
+            yield json.dumps({'type': 'id', 'id': llm_service.get_record().id}) + '\n\n'
+
             # generate sql
             sql_res = llm_service.generate_sql(session=session)
             full_sql_text = ''

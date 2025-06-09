@@ -294,6 +294,9 @@ const sendMessage = async () => {
         const data = JSON.parse(str);
 
         switch (data.type) {
+          case "id":
+            currentChat.value.records[currentChat.value.records.length - 1].id = data.id;
+            break;
           case "info":
             console.log(data.msg);
             break;

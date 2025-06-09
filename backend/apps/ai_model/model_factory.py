@@ -41,6 +41,7 @@ class OpenAILLM(BaseLLM):
             model=self.config.model_name,
             api_key=self.config.api_key,
             base_url=self.config.api_base_url,
+            stream_usage=True,
             **self.config.additional_params
         )
     

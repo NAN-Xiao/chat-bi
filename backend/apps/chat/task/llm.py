@@ -105,6 +105,9 @@ class LLMService:
         self.record = save_question(session=session, current_user=current_user, question=self.chat_question)
         return self.record
 
+    def get_record(self):
+        return self.record
+
     def generate_sql(self, session: SessionDep):
         # append current question
         self.sql_message.append(HumanMessage(self.chat_question.sql_user_question()))
