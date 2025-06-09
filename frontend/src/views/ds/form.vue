@@ -149,6 +149,7 @@
         >Preview</el-button
       >
       <el-button
+      :loading="saveLoading"
         v-show="active === 1 || !isCreate"
         type="primary"
         @click="save(dsFormRef)"
@@ -182,6 +183,7 @@ const token = wsCache.get("user.token");
 const headers = ref<any>({ "X-SQLBOT-TOKEN": `Bearer ${token}` });
 const dialogTitle = ref("");
 const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
+const saveLoading = ref<boolean>(false)
 
 
 const rules = reactive<FormRules>({
@@ -236,6 +238,7 @@ const close = () => {
   checkList.value = [];
   tableList.value = [];
   excelUploadSuccess.value = false;
+  saveLoading.value = false
 };
 
 const open = (item: any, editTable: boolean = false) => {
@@ -327,6 +330,7 @@ const save = async (formEl: FormInstance | undefined) => {
   if (!formEl) return;
   await formEl.validate((valid) => {
     if (valid) {
+      saveLoading.value = true
       const list = tableList.value
         .filter((ele: any) => {
           return checkList.value.includes(ele.tableName);
@@ -348,6 +352,7 @@ const save = async (formEl: FormInstance | undefined) => {
           // save table and field
           datasourceApi.chooseTables(form.value.id, list).then(() => {
             close();
+            emit("refresh");
           });
         }
       } else {
