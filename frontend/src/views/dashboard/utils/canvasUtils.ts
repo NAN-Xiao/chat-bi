@@ -29,12 +29,12 @@ export const initCanvasData = (params: any, callBack: Function) => {
 
 export const saveDashboardResource = (params: any, callBack: Function) => {
     if(params.opt === 'newLeaf'){// create canvas
-        const reqeustParams = {
+        const requestParams = {
             ...params,
             component_data:JSON.stringify(componentData.value),
             canvas_style_data:JSON.stringify(canvasStyle.value)
         }
-        dashboardApi.saveCanvas(reqeustParams).then((res: any) => {
+        dashboardApi.saveCanvas(requestParams).then((res: any) => {
             dashboardStore.updateDashboardInfo({id:res.id,dataState:'ready'})
             callBack(res)
         })
