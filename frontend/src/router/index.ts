@@ -7,7 +7,8 @@ import chat from "@/views/chat/index.vue";
 import ds from "@/views/ds/index.vue";
 import DashboardEditor from "@/views/dashboard/editor/index.vue";
 import Dashboard from "@/views/dashboard/index.vue";
-// import setting from "@/views/setting/index.vue";
+import Model from "@/views/system/model/index.vue";
+import User from "@/views/system/user/index.vue";
 import { watchRouter } from "./watch";
 const router = createRouter({
   history: createWebHashHistory(),
@@ -95,17 +96,17 @@ const router = createRouter({
         {
           path: "user",
           name: "user",
-          component: () => import("@/views/system/user/index.vue"),
+          component: User,
           meta: { title: "User Management", icon: "icon_user" },
         },
         {
           path: "model",
           name: "model",
-          component: () => import("@/views/system/model/index.vue"),
+          component: Model,
           meta: { title: "AI Model Configuration", icon: "icon_ai" },
         },
       ],
-    },
+    }
   ],
 });
 watchRouter(router);

@@ -1,0 +1,14 @@
+{
+  "menu": {
+    "dashboard": "Dashboard",
+    "chat": "Chat",
+    "datasource": "Data Source",
+    "system": "System"
+  },
+  "common": {
+    "back": "Back",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "system_manage": "System Management"
+  }
+}

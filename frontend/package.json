@@ -9,14 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@antv/g2": "^5.3.3",
     "@npkg/tinymce-plugins": "^0.0.7",
     "@tinymce/tinymce-vue": "^5.1.0",
     "dayjs": "^1.11.13",
-    "element-plus": "^2.9.11",
+    "element-plus-secondary": "^1.0.0",
     "lodash": "^4.17.21",
     "snowflake-id": "^1.1.0",
     "tinymce": "^5.8.2",
     "vue": "^3.5.13",
+    "vue-i18n": "^9.14.4",
     "vue-router": "^4.5.0",
     "web-storage-cache": "^1.1.1"
   },
@@ -28,7 +30,6 @@
     "@vue/tsconfig": "^0.7.0",
     "axios": "^1.8.4",
     "crypto-js": "^4.2.0",
-    "element-plus-secondary": "^1.0.0",
     "less": "^4.3.0",
     "pinia": "^3.0.2",
     "typescript": "~5.7.2",
