@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ElConfigProvider } from 'element-plus'
+import { ElConfigProvider } from 'element-plus-secondary'
 import { getElementLocale } from '@/i18n'
 const elLanguage = computed(() => {
   return getElementLocale()

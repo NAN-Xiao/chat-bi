@@ -2,7 +2,7 @@
 
 import type {ChatMessage} from "@/api/chat.ts";
 import {computed, nextTick, ref} from "vue";
-import type {TabsPaneContext} from 'element-plus'
+import type {TabsPaneContext} from 'element-plus-secondary'
 import {Loading} from "@element-plus/icons-vue";
 import Component from "./component/Component.vue"
 
