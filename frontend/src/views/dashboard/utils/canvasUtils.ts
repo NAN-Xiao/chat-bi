@@ -1,9 +1,11 @@
 import {dashboardApi} from "@/api/dashboard.ts";
 import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
 import {storeToRefs} from "pinia";
-const dashboardStore = dashboardStoreWithOut()
-const {componentData,canvasStyle} = storeToRefs(dashboardStore)
 
+const dashboardStore = dashboardStoreWithOut()
+const {componentData, canvasStyle} = storeToRefs(dashboardStore)
+
+const workspace_id = 'default' // temp
 export const initCanvasData = (params: any, callBack: Function) => {
     dashboardApi.getDashboardInfo(params).then((res: any) => {
         const canvasInfo = res.data;
@@ -28,20 +30,24 @@ export const initCanvasData = (params: any, callBack: Function) => {
 }
 
 export const saveDashboardResource = (params: any, callBack: Function) => {
-    if(params.opt === 'newLeaf'){// create canvas
-        const reqeustParams = {
-            ...params,
-            component_data:JSON.stringify(componentData.value),
-            canvas_style_data:JSON.stringify(canvasStyle.value)
+    params['workspace_id'] = workspace_id
+    dashboardApi.check_name(params).then((res: any) => {
+        if (!res) {
+            if (params.opt === 'newLeaf') {// create canvas
+                const reqeustParams = {
+                    ...params,
+                    component_data: JSON.stringify(componentData.value),
+                    canvas_style_data: JSON.stringify(canvasStyle.value)
+                }
+                dashboardApi.saveCanvas(reqeustParams).then((res: any) => {
+                    dashboardStore.updateDashboardInfo({id: res.id, dataState: 'ready'})
+                    callBack(res)
+                })
+            } else if (params.opt === 'newFolder') {
+                dashboardApi.addResource(params).then((res: any) => {
+                    callBack(res)
+                })
+            }
         }
-        dashboardApi.saveCanvas(reqeustParams).then((res: any) => {
-            dashboardStore.updateDashboardInfo({id:res.id,dataState:'ready'})
-            callBack(res)
-        })
-    }else if(params.opt === 'newFolder'){
-        dashboardApi.addResource(params).then((res: any) => {
-            callBack(res)
-        })
-    }
-
+    })
 }

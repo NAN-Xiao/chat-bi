@@ -205,7 +205,7 @@ onMounted(() => {
 
 // @ts-ignore
 const addOperation = (params: any) => {
-  if (params.cmd === 'newLeaf') {
+  if (params.opt === 'newLeaf') {
     const newCanvasUrl = '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '')
     window.open(newCanvasUrl, '_blank')
   } else {
@@ -232,7 +232,7 @@ defineExpose({
             <el-icon
                 class="custom-icon btn"
                 style="margin-right: 10px"
-                @click="addOperation({cmd:'newFolder',type:'folder'} )"
+                @click="addOperation({opt:'newFolder',type:'folder',pid:'root'} )"
             >
               <Icon name="dv-new-folder">
                 <newFolder class="svg-icon"/>
@@ -243,7 +243,7 @@ defineExpose({
             <el-icon
                 class="custom-icon btn"
                 style="margin-right: 10px"
-                @click="addOperation({cmd:'newLeaf',type:'dashboard'} )"
+                @click="addOperation({opt:'newLeaf',type:'dashboard'} )"
             >
               <Icon name="dv-new-folder">
                 <icon_fileAdd_outlined class="svg-icon"/>
@@ -303,7 +303,7 @@ defineExpose({
                   v-on:click.stop
                   v-if="!data.leaf"
                   class="hover-icon"
-                  @click="addOperation({cmd:'newLeaf',type:'dashboard',id:data.id} )"
+                  @click="addOperation({opt:'newLeaf',type:'dashboard',id:data.id} )"
               >
                 <Icon><icon_add_outlined class="svg-icon"/></Icon>
               </el-icon>
@@ -315,14 +315,14 @@ defineExpose({
               >
                 <Icon><icon_edit_outlined class="svg-icon"/></Icon>
               </el-icon>
-<!--              <HandleMore-->
-<!--                  @handle-command=" (cmd:string) => addOperation({cmd})-->
-<!--                "-->
-<!--                  :menu-list="resourceTypeList"-->
-<!--                  :icon-name="icon_add_outlined"-->
-<!--                  placement="bottom-start"-->
-<!--                  v-if="!data.leaf"-->
-<!--              ></HandleMore>-->
+              <!--              <HandleMore-->
+              <!--                  @handle-command=" (opt:string) => addOperation({opt})-->
+              <!--                "-->
+              <!--                  :menu-list="resourceTypeList"-->
+              <!--                  :icon-name="icon_add_outlined"-->
+              <!--                  placement="bottom-start"-->
+              <!--                  v-if="!data.leaf"-->
+              <!--              ></HandleMore>-->
             </div>
           </span>
         </template>

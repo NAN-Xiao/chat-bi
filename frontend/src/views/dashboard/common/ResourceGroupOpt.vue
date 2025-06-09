@@ -51,13 +51,11 @@ const optInit = (params: any) => {
   resourceDialogShow.value = true
   // @ts-ignore
   resourceForm.name = params.name || getResourceNewName(params.opt)
+  resourceForm.pid = params.pid || 'root'
 }
 
 const resourceDialogShow = ref(false)
 const loading = ref(false)
-const pid = ref()
-const id = ref()
-const opt = ref('')
 const resourceForm = reactive({
   pid: '',
   pName: '',
@@ -101,11 +99,6 @@ const resetForm = () => {
   resourceDialogShow.value = false
 }
 
-const editeInit = (param: SQTreeNode) => {
-  pid.value = param['pid']
-  id.value = param.id
-}
-
 const propsTree = {
   label: 'name',
   children: 'children',
@@ -114,7 +107,7 @@ const propsTree = {
 }
 
 const showPid = computed(() => {
-  return ['newLeaf'].includes(opt.value) && state.parentSelect
+  return state.opt && ['newLeaf'].includes(state.opt) && state.parentSelect
 })
 
 const saveResource = () => {
@@ -122,6 +115,7 @@ const saveResource = () => {
     nodeType: state.nodeType,
     name: resourceForm.name,
     opt: state.opt,
+    pid: resourceForm.pid,
     type: 'dashboard'
   }
   saveDashboardResource(params, function (rsp:any) {
@@ -147,8 +141,7 @@ const filterMethod = (value: any) => {
 }
 
 defineExpose({
-  optInit,
-  editeInit
+  optInit
 })
 
 </script>

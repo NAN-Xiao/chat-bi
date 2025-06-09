@@ -141,9 +141,12 @@ class BaseDashboard(BaseModel):
     node_type: str = ''
     create_by: int = 0
 
+class QueryDashboard(BaseDashboard):
+    opt: str = ''
+
 
 # dashboard create obj
-class CreateDashboard(BaseDashboard):
+class CreateDashboard(QueryDashboard):
     canvas_style_data: str =''
     component_data: str = ''
     description: str = ''

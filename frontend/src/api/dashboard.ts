@@ -8,5 +8,6 @@ export const dashboardApi = {
   addResource: (data: any) => request.post('/dashboard/add',data),
   updateResource: (data: any) => request.post('/dashboard/update',data),
   saveCanvas: (data: any) => request.post('/dashboard/add_canvas',data),
-  updateCanvas: (data: any) => request.post('/dashboard/update_',data)
+  updateCanvas: (data: any) => request.post('/dashboard/update_',data),
+  check_name: (data: any) => request.post('/dashboard/check_name',data)
 }
