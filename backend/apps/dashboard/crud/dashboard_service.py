@@ -27,8 +27,6 @@ def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDas
     session.commit()
     return record
 
-
-
 def update_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     record = session.query(CoreDashboard).filter(CoreDashboard.id == dashboard.id).first()
     record.name = dashboard.name
@@ -44,6 +42,7 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     record.canvas_style_data = dashboard.canvas_style_data
     session.add(record)
     session.flush()
+    return record
 
 def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     record = session.query(CoreDashboard).filter(CoreDashboard.id == dashboard.id).first()

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref} from 'vue'
+import {onMounted, ref, computed, reactive} from 'vue'
 import Toolbar from "@/views/dashboard/editor/Toolbar.vue";
 import DashboardEditor from "@/views/dashboard/editor/DashboardEditor.vue";
 import {findNewComponentFromList} from "@/views/dashboard/components/component-list.ts";
@@ -7,10 +7,17 @@ import {guid} from "@/utils/canvas.ts";
 import cloneDeep from 'lodash/cloneDeep';
 import {storeToRefs} from "pinia";
 import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
+import router from '@/router'
 
 const dashboardStore = dashboardStoreWithOut()
 const {componentData} = storeToRefs(dashboardStore)
 
+
+const state = reactive({
+  routerPid: null,
+  resourceId: null,
+  opt: null
+})
 
 const dashboardEditorRef = ref(null);
 const addComponent = (componentType: string) => {
@@ -29,11 +36,32 @@ const addComponent = (componentType: string) => {
   }
 }
 
+onMounted(() => {
+  //@ts-ignore
+  state.opt = router.currentRoute.value.query.opt
+  //@ts-ignore
+  state.resourceId = router.currentRoute.value.query.resourceId
+  //@ts-ignore
+  state.routerPid = router.currentRoute.value.query.pid
+  if (state.opt === 'create') {
+    dashboardStore.updateDashboardInfo({dataState: 'prepare', name: 'New Dashboard', pid: state.routerPid})
+  }
+})
+
+const baseParams = computed(() => {
+  return {
+    opt: state.opt,
+    resourceId: state.resourceId,
+    routerPid: state.routerPid
+  }
+})
+
+
 </script>
 
 <template>
   <div class="editor-main">
-    <Toolbar @add-component="addComponent"></Toolbar>
+    <Toolbar :base-params="baseParams" @add-component="addComponent"></Toolbar>
     <DashboardEditor
         ref="dashboardEditorRef"
         :canvas-component-data="componentData">

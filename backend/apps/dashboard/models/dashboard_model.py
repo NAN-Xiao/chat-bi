@@ -131,17 +131,19 @@ class DashboardBaseResponse(BaseModel):
     create_time: Optional[int] = None
     update_time: Optional[int] = None
 
-# dashboard create obj
-class CreateDashboard(BaseModel):
+class BaseDashboard(BaseModel):
     id: str = ''
     name: str = ''
     pid: str = ''
     workspace_id: str = ''
     org_id: str = ''
-    description: str = ''
     type: str = ''
     node_type: str = ''
+    create_by: int = 0
+
+
+# dashboard create obj
+class CreateDashboard(BaseDashboard):
     canvas_style_data: str =''
     component_data: str = ''
-    configuration: str = ''
-    create_by: int = 0
+    description: str = ''

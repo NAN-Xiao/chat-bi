@@ -20,6 +20,14 @@ const props = defineProps({
     type: Object as PropType<CanvasItem>,
     required: false
   },
+  dashboardInfo: {
+    type: Object,
+    required: false
+  },
+  canvasStyleData: {
+    type: Object,
+    required: false
+  },
   canvasComponentData: {
     type: Array as PropType<CanvasItem[]>,
     required: true
@@ -98,6 +106,8 @@ const emits = defineEmits(["parentAddItemBox"]);
         :base-margin-left="baseMarginLeft"
         :base-margin-top="baseMarginTop"
         :canvas-component-data="canvasComponentData"
+        :canvas-style-data="canvasStyleData"
+        :dashboard-info="dashboardInfo"
         :parent-config-item="parentConfigItem"
         :canvas-id="canvasId"
         @parentAddItemBox=" item => emits('parentAddItemBox',item)"

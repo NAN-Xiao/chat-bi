@@ -2,11 +2,13 @@
 import folder from '@/assets/svg/folder.svg'
 import {type SQTreeNode} from '@/views/dashboard/utils/treeNode'
 import {ref, reactive, computed} from 'vue'
-import {dashboardApi} from "@/api/dashboard.ts";
-
+import {saveDashboardResource} from "@/views/dashboard/utils/canvasUtils.ts";
+const emits = defineEmits(['finish'])
 const state = reactive({
-  placeholder:'',
-  showParentSelected: false,
+  opt: null,
+  placeholder: '',
+  nodeType: 'folder',
+  parentSelect: false,
   resourceFormNameLabel: 'Name',
   dialogTitle: '',
   tData: [],
@@ -17,8 +19,8 @@ const state = reactive({
 
 let tData: any = []
 
-const getTitle = (cmd: string) => {
-  switch (cmd) {
+const getTitle = (opt: string) => {
+  switch (opt) {
     case 'newLeaf':
       return 'New Dashboard'
     case 'newFolder':
@@ -28,8 +30,8 @@ const getTitle = (cmd: string) => {
   }
 }
 
-const getResourceNewName = (cmd: string) => {
-  switch (cmd) {
+const getResourceNewName = (opt: string) => {
+  switch (opt) {
     case 'newLeaf':
       return 'New Dashboard'
     case 'newFolder':
@@ -41,19 +43,21 @@ const getResourceNewName = (cmd: string) => {
 
 const optInit = (params: any) => {
   // @ts-ignore
-  state.dialogTitle = getTitle(params.cmd)
-  state.showParentSelected = params.parentSelect
+  state.dialogTitle = getTitle(params.opt)
+  state.opt = params.opt
+  state.parentSelect = params.parentSelect
   state.targetInfo = params.data
+  state.nodeType = params.nodeType || 'folder'
   resourceDialogShow.value = true
-    // @ts-ignore
-  resourceForm.name = getResourceNewName(params.cmd)
+  // @ts-ignore
+  resourceForm.name = params.name || getResourceNewName(params.opt)
 }
 
 const resourceDialogShow = ref(false)
 const loading = ref(false)
 const pid = ref()
 const id = ref()
-const cmd = ref('')
+const opt = ref('')
 const resourceForm = reactive({
   pid: '',
   pName: '',
@@ -105,29 +109,31 @@ const editeInit = (param: SQTreeNode) => {
 const propsTree = {
   label: 'name',
   children: 'children',
-    // @ts-ignore
+  // @ts-ignore
   isLeaf: node => !node.children?.length
 }
 
 const showPid = computed(() => {
-  return ['newLeaf', 'copy', 'newLeafAfter'].includes(cmd.value) && state.showParentSelected
+  return ['newLeaf'].includes(opt.value) && state.parentSelect
 })
 
 const saveResource = () => {
-        const params = {
-        nodeType: 'folder',
-        name: resourceForm.name,
-        type: 'dashboard'
-      }
-        // @ts-ignore
-    dashboardApi.addResource(params).then(res => {
-      ElMessage({
-        type: 'success',
-        message: 'Save Success',
-      })
-
-      resetForm()
+  const params = {
+    nodeType: state.nodeType,
+    name: resourceForm.name,
+    opt: state.opt,
+    type: 'dashboard'
+  }
+  saveDashboardResource(params, function (rsp:any) {
+    ElMessage({
+      type: 'success',
+      message: 'Save Success',
     })
+    if (state.opt === 'newLeaf') {
+      emits('finish', {opt: state.opt, resourceId: rsp.id})
+    }
+    resetForm()
+  })
 }
 
 const nodeClick = (data: SQTreeNode) => {
@@ -135,8 +141,8 @@ const nodeClick = (data: SQTreeNode) => {
   resourceForm.pName = data.name as string
 }
 
-const filterMethod = (value:any) => {
-    // @ts-ignore
+const filterMethod = (value: any) => {
+  // @ts-ignore
   state.tData = [...tData].filter(item => item.name.includes(value))
 }
 
@@ -145,7 +151,6 @@ defineExpose({
   editeInit
 })
 
-const emits = defineEmits(['finish'])
 </script>
 
 <template>

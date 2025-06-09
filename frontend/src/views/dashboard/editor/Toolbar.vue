@@ -8,6 +8,7 @@ import dvText from '@/assets/svg/dv-text.svg'
 import dvView from '@/assets/svg/dv-view.svg'
 import ResourceGroupOpt from "@/views/dashboard/common/ResourceGroupOpt.vue";
 import {ref} from 'vue'
+
 const dashboardStore = dashboardStoreWithOut()
 const {dashboardInfo} = storeToRefs(dashboardStore)
 const emits = defineEmits(['addComponent'])
@@ -16,8 +17,31 @@ const openViewDialog = () => {
   // do addComponent
 }
 
-const saveCanvasWithCheck = () =>{
+const saveCanvasWithCheck = () => {
+  if (dashboardInfo.value.dataState === 'prepare') {
+    const createParams = {
+      name: dashboardInfo.value.name,
+      pid: props.baseParams?.pid,
+      opt: 'newLeaf',
+      nodeType: 'leaf',
+      parentSelect: true
+    }
+    // @ts-ignore
+    resourceGroupOptRef.value?.optInit(createParams)
+  }
+}
 
+const props = defineProps({
+  baseParams: {
+    type: Object,
+    required: false,
+  }
+})
+
+const groupOptFinish = (result: any) => {
+  let url = window.location.href
+  url = url.replace(/(#\/[^?]*)(?:\?[^#]*)?/, `$1?dvId=${result.id}`)
+  window.history.replaceState( { path: url }, '', url )
 }
 </script>
 
@@ -52,14 +76,14 @@ const saveCanvasWithCheck = () =>{
       </component-button-label>
     </div>
     <div class="right-toolbar">
-      <el-button  @click="saveCanvasWithCheck()"
-          style="float: right; margin-right: 12px"
-          type="primary"
+      <el-button @click="saveCanvasWithCheck()"
+                 style="float: right; margin-right: 12px"
+                 type="primary"
       >
         Save
       </el-button>
     </div>
-    <ResourceGroupOpt ref="resourceGroupOptRef"></ResourceGroupOpt>
+    <ResourceGroupOpt @finish="groupOptFinish " ref="resourceGroupOptRef"></ResourceGroupOpt>
   </div>
 </template>
 
@@ -78,6 +102,7 @@ const saveCanvasWithCheck = () =>{
     left: 50%;
     transform: translateX(-50%);
   }
+
   .right-toolbar {
     display: flex;
     position: absolute;

@@ -23,6 +23,14 @@ const props = defineProps({
     type: Object as PropType<CanvasItem>,
     required: false
   },
+  dashboardInfo: {
+    type: Object,
+    required: false
+  },
+  canvasStyleData: {
+    type: Object,
+    required: false
+  },
   canvasComponentData: {
     type: Array as PropType<CanvasItem[]>,
     required: true

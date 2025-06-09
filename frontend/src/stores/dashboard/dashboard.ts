@@ -17,6 +17,7 @@ export const dashboardStore = defineStore('dashboard', {
                 pid: null,
                 workspaceId: null,
                 status: null,
+                dataState: null,
                 type: null,
                 creatorName: null,
                 updateName: null,
@@ -51,7 +52,13 @@ export const dashboardStore = defineStore('dashboard', {
         setTabMoveInActiveId(tabId: any) {
             this.tabMoveInActiveId = tabId
         },
-        canvasDataInit(){
+        updateDashboardInfo(params: any) {
+            Object.keys(params).forEach((key: string) => {
+                // @ts-ignore
+                this.dashboardInfo[key] = params[key]
+            })
+        },
+        canvasDataInit() {
 
         }
 
