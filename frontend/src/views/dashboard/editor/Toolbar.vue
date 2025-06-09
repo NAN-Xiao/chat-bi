@@ -6,13 +6,18 @@ import ComponentButtonLabel from "@/views/dashboard/components/button-label/Comp
 import dvTab from '@/assets/svg/dv-tab.svg'
 import dvText from '@/assets/svg/dv-text.svg'
 import dvView from '@/assets/svg/dv-view.svg'
-
+import ResourceGroupOpt from "@/views/dashboard/common/ResourceGroupOpt.vue";
+import {ref} from 'vue'
 const dashboardStore = dashboardStoreWithOut()
 const {dashboardInfo} = storeToRefs(dashboardStore)
 const emits = defineEmits(['addComponent'])
-
+const resourceGroupOptRef = ref(null)
 const openViewDialog = () => {
   // do addComponent
+}
+
+const saveCanvasWithCheck = () =>{
+
 }
 </script>
 
@@ -46,6 +51,15 @@ const openViewDialog = () => {
       >
       </component-button-label>
     </div>
+    <div class="right-toolbar">
+      <el-button  @click="saveCanvasWithCheck()"
+          style="float: right; margin-right: 12px"
+          type="primary"
+      >
+        Save
+      </el-button>
+    </div>
+    <ResourceGroupOpt ref="resourceGroupOptRef"></ResourceGroupOpt>
   </div>
 </template>
 
@@ -57,11 +71,17 @@ const openViewDialog = () => {
   align-items: center;
   background: #050e21;
   padding-left: 8px;
+
   .core-toolbar {
     display: flex;
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
+  }
+  .right-toolbar {
+    display: flex;
+    position: absolute;
+    right: 12px;
   }
 }
 

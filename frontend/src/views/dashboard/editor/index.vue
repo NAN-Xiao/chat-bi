@@ -5,6 +5,11 @@ import DashboardEditor from "@/views/dashboard/editor/DashboardEditor.vue";
 import {findNewComponentFromList} from "@/views/dashboard/components/component-list.ts";
 import {guid} from "@/utils/canvas.ts";
 import cloneDeep from 'lodash/cloneDeep';
+import {storeToRefs} from "pinia";
+import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
+
+const dashboardStore = dashboardStoreWithOut()
+const {componentData} = storeToRefs(dashboardStore)
 
 
 const dashboardEditorRef = ref(null);
@@ -23,33 +28,6 @@ const addComponent = (componentType: string) => {
     dashboardEditorRef.value.addItemToBox(component)
   }
 }
-
-const componentData = ref([
-  {
-    id: 4,
-    x: 1,
-    y: 1,
-    sizeX: 20,
-    sizeY: 10,
-    _dragId: 0
-  },
-  {
-    id: 10,
-    x: 2,
-    y: 1,
-    sizeX: 20,
-    sizeY: 10,
-    _dragId: 1
-  },
-  {
-    id: 7,
-    x: 1,
-    y: 2,
-    sizeX: 20,
-    sizeY: 10,
-    _dragId: 2
-  }
-])
 
 </script>
 
