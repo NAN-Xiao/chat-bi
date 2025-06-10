@@ -7,8 +7,12 @@ template:
       - 生成的SQL必须符合{engine}的规范。
       - 根据表结构生成SQL语句。
       - SQL查询中不能使用星号(*)，必须明确指定字段名.
-      - SQL查询的字段名和别名必须为英文。
+      - SQL查询的字段名不要自动翻译，别名必须为英文。
       - 计算占比，百分比类型字段，保留两位小数，以%结尾。
+      - 生成SQL时，必须避免关键字冲突:
+      - 如{engine}是 PostgreSQL、Oracle，则在schema、表名、字段名、别名外层加双引号；
+      - 如{engine}是 MySQL，则在表名、字段名、别名外层加反引号；
+      - 如{engine}是 Microsoft SQL Server，则在schema、表名、字段名、别名外层加方括号。
       - 生成的SQL使用JSON格式返回：
       {{"success":true,"sql":"生成的SQL语句"}}
       - 问题与生成SQL无关时，直接回答：
