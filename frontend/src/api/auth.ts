@@ -5,5 +5,6 @@ export const userApi = {
   add: (data: any) => request.post('/settings/terminology', data),
   edit: (data: any) => request.put('/settings/terminology', data),
   delete: (id: number) => request.delete(`/settings/terminology/${id}`),
-  query: (id: number) => request.get(`/settings/terminology/${id}`)
+  query: (id: number) => request.get(`/settings/terminology/${id}`),
+  language: (data: any) => request.put('/user/language', data),
 }

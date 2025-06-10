@@ -3,11 +3,12 @@ import en from './en.json'
 import zhCN from './zh-CN.json'
 import elementEnLocale from 'element-plus-secondary/es/locale/lang/en'
 import elementZhLocale from 'element-plus-secondary/es/locale/lang/zh-cn'
+import { useCache } from '@/utils/useCache'
+const { wsCache } = useCache()
 
 const getDefaultLocale = () => {
-  /* const savedLang = localStorage.getItem('lang')
-  return savedLang || 'zh-CN' */
-  return 'zh-CN'
+  const language = wsCache.get('user.language')
+  return language || 'zh-CN'
 }
 
 const messages = {

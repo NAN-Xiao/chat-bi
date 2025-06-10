@@ -21,4 +21,5 @@ class user_grid(sys_user, table=True):
     email: str
     status: int
     create_time: int
+    language: str = Field(max_length=255, default="zh-CN")
 

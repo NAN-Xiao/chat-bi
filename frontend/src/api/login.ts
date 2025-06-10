@@ -8,5 +8,6 @@ export const AuthApi = {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
   }),
-  logout: () => request.post('/auth/logout')
+  logout: () => request.post('/auth/logout'),
+  info: () => request.get('/user/info')
 }

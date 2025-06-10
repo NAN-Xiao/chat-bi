@@ -10,6 +10,12 @@ def get_user_by_account(*, session: Session, account: str) -> sys_user | None:
     result_user = sys_user.model_validate(session_user)
     return result_user
 
+def get_user_info(*, session: Session, user_id: int) -> sys_user | None:
+    db_user = session.get(user_grid, user_id)
+    if not db_user:
+        return None
+    return db_user
+
 def authenticate(*, session: Session, account: str, password: str) -> sys_user | None:
     db_user = get_user_by_account(session=session, account=account)
     if not db_user:

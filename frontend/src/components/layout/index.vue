@@ -77,21 +77,7 @@
             <el-dropdown-menu>
               <el-dropdown-item @click="switchLayout">Switch Layout</el-dropdown-item>
               <el-dropdown-item @click="logout">Logout</el-dropdown-item>
-
-              <el-dropdown @command="changeLanguage">
-                <div class="lang-switch">
-                  Language
-                  <el-icon>
-                    <i class="el-icon-arrow-down"/>
-                  </el-icon>
-                </div>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="en">English</el-dropdown-item>
-                    <el-dropdown-item command="zh-CN">中文</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <el-dropdown-item><language-selector /></el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -121,6 +107,8 @@
                 <el-dropdown-menu>
                   <el-dropdown-item @click="switchLayout">Switch Layout</el-dropdown-item>
                   <el-dropdown-item @click="logout">Logout</el-dropdown-item>
+                  <el-dropdown-item><language-selector /></el-dropdown-item>
+                  
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -170,8 +158,9 @@ import icon_ai from '@/assets/svg/icon_ai.svg'
 import {ArrowLeftBold} from '@element-plus/icons-vue'
 import {useCache} from '@/utils/useCache'
 import { useI18n } from 'vue-i18n'
+import LanguageSelector from '@/components/Language-selector/index.vue'
 
-const { locale, t } = useI18n()
+const { t } = useI18n()
 const {wsCache} = useCache()
 const topLayout = ref(false)
 const router = useRouter()
@@ -234,9 +223,6 @@ const switchLayout = () => {
   wsCache.set('sqlbot-topbar-layout', topLayout.value)
 }
 
-const changeLanguage = (lang: string) => {
-  locale.value = lang
-}
 onMounted(() => {
   topLayout.value = wsCache.get('sqlbot-topbar-layout') || true
 })
@@ -556,14 +542,6 @@ onMounted(() => {
       border-radius: 0;
       width: calc(100% - 288px);
     }
-  }
-}
-.lang-switch {
-  cursor: pointer;
-  padding: 0 12px;
-  
-  &:hover {
-    color: var(--el-color-primary);
   }
 }
 </style>
