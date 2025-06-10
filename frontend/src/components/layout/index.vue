@@ -3,7 +3,7 @@
     <div class="main-menu" :class="{ 'main-menu-sidebar': !topLayout, 'main-menu-topbar': topLayout }">
       <div class="logo">SQLBot</div>
 
-      <div v-if="!topLayout || !showSubmenu"
+      <!-- <div v-if="!topLayout || !showSubmenu"
            :class="{ 'workspace-area': !topLayout, 'topbar-workspace-area': topLayout }">
         <el-select
             v-model="workspace"
@@ -26,7 +26,7 @@
               :value="item.value"
           />
         </el-select>
-      </div>
+      </div> -->
       <el-menu
           v-if="!topLayout || !showSubmenu"
           :default-active="activeMenu"
@@ -285,6 +285,9 @@ onMounted(() => {
       flex: 1;
       border-right: none;
       border-bottom: none;
+      &:not(.ed-menu--vertical) {
+        margin-left: 32px
+      }
     }
   }
 
