@@ -6,7 +6,7 @@ export class Bar extends BaseG2Chart {
         super(id, "bar");
     }
 
-    init(axis: Array<{ name: string; value: string; type: "x" | "y" }>, data: Array<{ name: string; value: string }>) {
+    init(axis: Array<{ name: string; value: string; type: "x" | "y" }>, data: Array<{ [key: string]: any }>) {
         super.init(axis, data);
         const x = this.axis.filter(item => item.type === "x");
         const y = this.axis.filter(item => item.type === "y");

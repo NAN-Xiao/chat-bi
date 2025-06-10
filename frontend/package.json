@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@antv/g2": "^5.3.3",
+    "@antv/s2": "^2.4.3",
     "@npkg/tinymce-plugins": "^0.0.7",
     "@tinymce/tinymce-vue": "^5.1.0",
     "dayjs": "^1.11.13",

@@ -2,11 +2,14 @@ import {BaseChart} from "@/views/chat/component/BaseChart.ts";
 import {Bar} from "@/views/chat/component/charts/Bar.ts";
 import {Column} from "@/views/chat/component/charts/Column.ts";
 import {Line} from "@/views/chat/component/charts/Line.ts";
+import {Table} from "@/views/chat/component/charts/Table.ts";
 
 const CHART_TYPE_MAP: { [key: string]: any } = {
+    "table": Table,
     "column": Column,
     "bar": Bar,
     "line": Line,
+    "pie": undefined
 }
 
 const isParent = (type: any, parentType: any) => {

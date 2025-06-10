@@ -6,7 +6,7 @@ export class Line extends BaseG2Chart {
         super(id, "line");
     }
 
-    init(axis: Array<{ name: string; value: string; type: "x" | "y" }>, data: Array<{ name: string; value: string }>) {
+    init(axis: Array<{ name: string; value: string; type: "x" | "y" }>, data: Array<{ [key: string]: any }>) {
         super.init(axis, data);
 
         const x = this.axis.filter(item => item.type === "x");
