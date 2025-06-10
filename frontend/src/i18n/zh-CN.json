@@ -10,5 +10,35 @@
     "confirm": "确认",
     "cancel": "取消",
     "system_manage": "系统管理"
+  },
+  "qa": {
+    "New Conversation": "开启新问数",
+    "title": "智能问数",
+    "placeholder": "请输入您的问题",
+    "ask": "提问",
+    "loading": "加载中...",
+    "no_data": "暂无数据",
+    "error": "发生错误，请稍后再试",
+    "question_placeholder": "按下 Enter 提交问题, 或使用 Ctrl + Enter 换行",
+    "greeting": "你好，我是SQLBot，很高兴为你服务",
+    "description": "我可以帮忙查询数据、生成图表、检测数据异常、预测数据等，请选择一个数据源，开启智能问数吧～",
+    "select_datasource": "选择数据源",
+    "view_more": "查看更多",
+    "selected_datasource": "已选择数据源",
+    "empty_datasource": "数据源为空，请新建后再开启智能问数！",
+    "datasource_not_exist": "数据源不存在"
+  },
+  "ds": {
+    "title": "数据源",
+    "add": "添加数据源",
+    "edit": "编辑数据源",
+    "delete": "删除数据源",
+    "name": "数据源名称",
+    "type": "数据源类型",
+    "status": "状态",
+    "actions": "操作",
+    "test_connection": "测试连接",
+    "connection_success": "连接成功",
+    "connection_failed": "连接失败，请检查配置"
   }
 }

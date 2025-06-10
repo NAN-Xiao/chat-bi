@@ -4,7 +4,8 @@ import {ChatInfo} from "@/api/chat.ts";
 import {computed, onMounted, ref} from "vue";
 import {datasourceApi} from "@/api/datasource.ts";
 import DatasourceItemCard from '../ds/DatasourceItemCard.vue'
-
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 const props = withDefaults(defineProps<{
       modelValue?: number
       currentChat: ChatInfo
@@ -64,13 +65,13 @@ onMounted(() => {
 <template>
   <ChatBlock>
     <div class="welcome-content">
-      <div>你好，我是SQLBot，很高兴为你服务</div>
-      <div class="sub">我可以帮忙查询数据、生成图表、检测数据异常、预测数据等，请选择一个数据源，开启智能问数吧～</div>
+      <div>{{ t('qa.greeting') }}</div>
+      <div class="sub">{{ t('qa.description') }}</div>
       <template v-if="editable">
         <template v-if="dsList.length>0">
           <div class="ds-select-row">
-            <div>选择数据源</div>
-            <el-button @click="showDs" link type="primary">查看更多</el-button>
+            <div>{{ t('qa.select_datasource') }}</div>
+            <el-button @click="showDs" link type="primary">{{ t('qa.view_more') }}</el-button>
           </div>
           <div class="ds-row-container">
             <template v-for="(item, _index) in dsList" :key="_index">
@@ -80,12 +81,12 @@ onMounted(() => {
           </div>
         </template>
         <div v-else>
-          数据源为空，请新建后再开启智能问数！
+          {{ t('qa.empty_datasource') }}
         </div>
       </template>
       <template v-else>
         <div class="ds-select-row">
-          <div>已选择数据源</div>
+          <div>{{ t('qa.selected_datasource') }}</div>
         </div>
         <div class="ds-row-container">
           <DatasourceItemCard :ds="ds"/>

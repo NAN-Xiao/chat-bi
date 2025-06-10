@@ -10,5 +10,35 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "system_manage": "System Management"
+  },
+  "qa": {
+    "New Conversation": "New Conversation",
+    "title": "Smart Query",
+    "placeholder": "Enter your question",
+    "ask": "Ask",
+    "loading": "Loading...",
+    "no_data": "No Data",
+    "error": "An error occurred, please try again later",
+    "question_placeholder": "Press Enter to submit, or use Ctrl + Enter for new line",
+    "greeting": "Hi, I'm SQLBot, nice to serve you",
+    "description": "I can help query data, generate charts, detect data anomalies, predict data, etc. Please select a data source to start smart querying~",
+    "select_datasource": "Select Data Source",
+    "view_more": "View More",
+    "selected_datasource": "Selected Data Source",
+    "empty_datasource": "No data source available, please create one first!",
+    "datasource_not_exist": "Data source does not exist"
+  },
+  "ds": {
+    "title": "Data Source",
+    "add": "Add Data Source",
+    "edit": "Edit Data Source",
+    "delete": "Delete Data Source",
+    "name": "Data Source Name",
+    "type": "Data Source Type",
+    "status": "Status",
+    "actions": "Actions",
+    "test_connection": "Test Connection",
+    "connection_success": "Connection Successful",
+    "connection_failed": "Connection Failed, Please Check Configuration"
   }
 }
