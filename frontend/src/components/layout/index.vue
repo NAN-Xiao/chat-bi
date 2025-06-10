@@ -37,14 +37,13 @@
           <el-icon v-if="item.meta.icon">
             <component :is="resolveIcon(item.meta.icon)"/>
           </el-icon>
-          <span>{{ item.meta.title }}</span>
+          <span>{{ t(`menu.${item.meta.title}`) }}</span>
         </el-menu-item>
       </el-menu>
 
       <div v-else class="top-bar-title">
         <span class="split"/>
-        <!-- <span>System manage</span> -->
-         <span>{{ t('common.system_manage') }}</span>
+        <span>{{ t('common.system_manage') }}</span>
       </div>
 
 
@@ -59,12 +58,11 @@
           </el-button>
         </div>
 
-        <el-tooltip content="System manage" placement="bottom" v-else>
+        <el-tooltip :content="t('common.system_manage')" placement="bottom" v-else>
           <div class="header-icon-btn" @click="toSystem">
             <el-icon>
               <iconsystem/>
             </el-icon>
-            <!-- <span>System manage</span> -->
           </div>
         </el-tooltip>
 
@@ -94,7 +92,7 @@
                 <el-icon>
                   <iconsystem/>
                 </el-icon>
-                <span>System manage</span>
+                 <span>{{ t('common.system_manage') }}</span>
               </div>
             </el-tooltip>
 
@@ -126,7 +124,7 @@
             <el-icon v-if="item.meta.icon">
               <component :is="resolveIcon(item.meta.icon)"/>
             </el-icon>
-            <span>{{ item.meta.title }}</span>
+            <span>{{ t(`menu.${item.meta.title}`) }}</span>
           </el-menu-item>
         </el-menu>
       </div>
@@ -175,7 +173,8 @@ const routerList = computed(() => {
 })
 
 const sysRouterList = computed(() => {
-  return router.getRoutes().filter(route => route.path.includes('/system'))
+  const result = router.getRoutes().filter(route => route.path.includes('/system') && !route.redirect)
+  return result
 })
 
 const showSubmenu = computed(() => {

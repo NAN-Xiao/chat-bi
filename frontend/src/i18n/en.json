@@ -1,9 +1,9 @@
 {
   "menu": {
-    "dashboard": "Dashboard",
-    "chat": "Chat",
-    "datasource": "Data Source",
-    "system": "System"
+    "Data Q&A": "Data Q&A",
+    "Data Connections": "Data Connections",
+    "Dashboard": "Dashboard",
+    "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
     "back": "Back",
