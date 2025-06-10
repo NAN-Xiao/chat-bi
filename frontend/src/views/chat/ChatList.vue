@@ -165,6 +165,10 @@ function handleCommand(command: string | number | object, chat: Chat) {
 
     .title {
       flex: 1;
+      width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .icon-more {
