@@ -114,7 +114,7 @@ function handleCommand(command: string | number | object, chat: Chat) {
       <template v-for="chat in chatList" :key="chat.id">
         <div class="chat-list-item" :class="{'active': currentChatId === chat.id}" @click="onClickHistory(chat)">
           <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
-          <el-button class="icon-more" link>
+          <el-button class="icon-more" link type="primary" @click.stop>
             <el-dropdown trigger="click" @command="(cmd: any)=> handleCommand(cmd, chat)">
               <el-icon>
                 <MoreFilled/>
