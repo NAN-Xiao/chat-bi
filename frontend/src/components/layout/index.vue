@@ -75,14 +75,16 @@
             <el-dropdown-menu>
               <el-dropdown-item @click="switchLayout">Switch Layout</el-dropdown-item>
               <el-dropdown-item @click="logout">Logout</el-dropdown-item>
-              <el-dropdown-item><language-selector /></el-dropdown-item>
+              <el-dropdown-item>
+                <language-selector/>
+              </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
       </div>
     </div>
 
-    <div class="main-content" :class="{'main-conntent-withbar': topLayout}">
+    <div class="main-content" :class="{'main-content-with-bar': topLayout}">
       <div class="header-container" v-if="!topLayout">
         <div class="header">
           <h1>{{ currentPageTitle }}</h1>
@@ -92,7 +94,7 @@
                 <el-icon>
                   <iconsystem/>
                 </el-icon>
-                 <span>{{ t('common.system_manage') }}</span>
+                <span>{{ t('common.system_manage') }}</span>
               </div>
             </el-tooltip>
 
@@ -105,8 +107,10 @@
                 <el-dropdown-menu>
                   <el-dropdown-item @click="switchLayout">Switch Layout</el-dropdown-item>
                   <el-dropdown-item @click="logout">Logout</el-dropdown-item>
-                  <el-dropdown-item><language-selector /></el-dropdown-item>
-                  
+                  <el-dropdown-item>
+                    <language-selector/>
+                  </el-dropdown-item>
+
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -155,10 +159,10 @@ import icon_user from '@/assets/svg/icon_user.svg'
 import icon_ai from '@/assets/svg/icon_ai.svg'
 import {ArrowLeftBold} from '@element-plus/icons-vue'
 import {useCache} from '@/utils/useCache'
-import { useI18n } from 'vue-i18n'
+import {useI18n} from 'vue-i18n'
 import LanguageSelector from '@/components/Language-selector/index.vue'
 
-const { t } = useI18n()
+const {t} = useI18n()
 const {wsCache} = useCache()
 const topLayout = ref(false)
 const router = useRouter()
@@ -284,6 +288,7 @@ onMounted(() => {
       flex: 1;
       border-right: none;
       border-bottom: none;
+
       &:not(.ed-menu--vertical) {
         margin-left: 32px
       }
@@ -293,9 +298,11 @@ onMounted(() => {
   .main-menu-sidebar {
     width: 240px;
     background: #fff;
-    border-right: 1px solid #e6e6e6;
+    box-shadow: 0 1px 3px var(--ed-menu-border-color);
     display: flex;
     flex-direction: column;
+    z-index: 2;
+
     .ed-menu--vertical {
       padding: 0 16px;
     }
@@ -307,9 +314,9 @@ onMounted(() => {
     font-size: 24px;
     font-weight: bold;
     color: var(--el-color-primary);
-    text-align: left;
     justify-content: space-between;
-    border-bottom: 1px solid var(--el-menu-border-color);
+    box-shadow: 0 1px 3px var(--ed-menu-border-color);
+    z-index: 2;
     text-align: center;
 
     .logo {
@@ -419,7 +426,7 @@ onMounted(() => {
     background-color: #f5f7fa;
     box-sizing: border-box;
 
-    &:not(.main-conntent-withba) {
+    &:not(.main-content-with-bar) {
       padding: 16px 24px;
     }
 
@@ -518,7 +525,7 @@ onMounted(() => {
     }
   }
 
-  .main-conntent-withbar {
+  .main-content-with-bar {
     height: 0;
     flex: 1;
     width: 100%;

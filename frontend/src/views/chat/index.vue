@@ -85,8 +85,9 @@ import {Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi,} fro
 import ChatList from "./ChatList.vue";
 import ChatRow from "./ChatRow.vue";
 import ChatAnswer from "./ChatAnswer.vue";
-import { useI18n } from 'vue-i18n'
-const { t } = useI18n()
+import {useI18n} from 'vue-i18n'
+
+const {t} = useI18n()
 
 const inputMessage = ref("");
 
@@ -374,9 +375,10 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   height: 100%;
 
   .chat-container-left {
-    --el-aside-width: 260px;
+    --ed-aside-width: 260px;
 
-    border-right: solid 1px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 3px #d7d7d7;
+    z-index: 1;
 
     background: var(--ed-fill-color-blank);
 

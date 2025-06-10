@@ -118,7 +118,6 @@ defineExpose({
         class="resource-area"
         :class="{ 'close-side': !slideShow, retract: !sideTreeStatus }"
         ref="node"
-        style="width: 280px"
     >
       <resource-tree
           ref="resourceTreeRef"
@@ -134,7 +133,7 @@ defineExpose({
         v-loading="!dataInitState"
     >
       <template v-if="previewShowFlag">
-        <SQPreviewHead  @reload="reload"  />
+        <SQPreviewHead @reload="reload"/>
         <div
             ref="previewCanvasContainer"
             class="content"
@@ -182,11 +181,15 @@ defineExpose({
   position: relative;
 
   .resource-area {
+    --ed-aside-width: 260px;
+
     position: relative;
     height: 100%;
-    width: 279px;
     padding: 0;
-    border-right: 1px solid #d7d7d7;
+
+    box-shadow: 0 0 3px #d7d7d7;
+    z-index: 1;
+
     overflow: visible;
 
     &.retract {

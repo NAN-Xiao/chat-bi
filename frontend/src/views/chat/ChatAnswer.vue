@@ -108,8 +108,10 @@ function onTypeChange(type: string) {
 <template>
   <el-container v-if="message">
     <el-header style="display: flex; align-items: center; flex-direction: row;">
-      <div style="flex:1" v-if="message.isTyping">Thinking ...</div>
-      <div style="flex:1" v-if="chartObject.title && !message.isTyping">{{ chartObject.title }}</div>
+      <div style="flex:1">
+        <div v-if="message.isTyping">Thinking ...</div>
+        <div v-if="chartObject.title && !message.isTyping">{{ chartObject.title }}</div>
+      </div>
       <el-tabs v-model="settings.type" class="type-tabs" @tab-click="handleClick" tab-position="top">
         <el-tab-pane label="Chart" name="chart">
           <template #label>
