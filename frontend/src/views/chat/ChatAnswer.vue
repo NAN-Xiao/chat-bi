@@ -148,16 +148,18 @@ function onTypeChange(type: string) {
           </template>
           <template v-else-if="settings.type === 'chart'">
             <div>
-              <div v-if="message.record.chart">
-                <Component
-                    ref="chartRef"
-                    v-if="message.record.id"
-                    :id="message.record.id"
-                    :type="chartType"
-                    :columns="chartObject?.columns"
-                    :x="xAxis"
-                    :y="yAxis"
-                    :data="dataObject.data"/>
+              <div v-if="message.record.chart" class="chart-base-container">
+                <div>
+                  <Component
+                      ref="chartRef"
+                      v-if="message.record.id"
+                      :id="message.record.id"
+                      :type="chartType"
+                      :columns="chartObject?.columns"
+                      :x="xAxis"
+                      :y="yAxis"
+                      :data="dataObject.data"/>
+                </div>
               </div>
             </div>
             <div v-if="message.record.error" style="color: red">
@@ -183,5 +185,10 @@ function onTypeChange(type: string) {
 
 .type-tabs {
   margin-right: 24px;
+}
+
+.chart-base-container {
+  padding: 20px;
+  background: rgba(224,224,226,0.29);
 }
 </style>

@@ -1,5 +1,6 @@
 import {BaseChart} from "@/views/chat/component/BaseChart.ts";
 import {TableSheet, type S2Options, type S2DataConfig, type S2MountContainer} from "@antv/s2";
+import {debounce} from "lodash-es";
 
 export class Table extends BaseChart {
 
@@ -7,9 +8,29 @@ export class Table extends BaseChart {
 
     container: S2MountContainer | null = null
 
+    debounceRender: any
+
+    resizeObserver: ResizeObserver
+
     constructor(id: string) {
         super(id, "table");
         this.container = document.getElementById(id);
+
+        this.debounceRender = debounce(async (width?: number, height?: number) => {
+            if (this.table) {
+                this.table.changeSheetSize(width, height);
+                await this.table.render(false);
+            }
+        }, 200);
+
+        this.resizeObserver = new ResizeObserver(([entry] = []) => {
+            const [size] = entry.borderBoxSize || [];
+            this.debounceRender(size.inlineSize, size.blockSize);
+        });
+
+        if (this.container?.parentElement) {
+            this.resizeObserver.observe(this.container.parentElement);
+        }
     }
 
     init(axis: Array<{ name: string; value: string; type: "x" | "y" }>, data: Array<{ [key: string]: any }>) {
@@ -30,7 +51,7 @@ export class Table extends BaseChart {
 
         const s2Options: S2Options = {
             width: 600,
-            height: 480,
+            height: 360,
             placeholder: {
                 cell: '-',
                 empty: {
@@ -52,6 +73,7 @@ export class Table extends BaseChart {
 
     destroy() {
         this.table?.destroy()
+        this.resizeObserver?.disconnect()
     }
 
 }
