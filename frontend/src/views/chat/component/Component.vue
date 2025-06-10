@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted} from "vue";
 import {getChartInstance} from "@/views/chat/component/index.ts";
-import type {BaseChart} from "@/views/chat/component/BaseChart.ts";
+import type {BaseChart, ChartAxis, ChartData} from "@/views/chat/component/BaseChart.ts";
 
 const params = withDefaults(defineProps<{
   id: string | number
   type: string
-  data?: Array<{ [key: string]: any }>
-  columns?: Array<{ name: string, value: string }>
-  x?: Array<{ name: string, value: string }>
-  y?: Array<{ name: string, value: string }>
+  data?: Array<ChartData>
+  columns?: Array<ChartAxis>
+  x?: Array<ChartAxis>
+  y?: Array<ChartAxis>
+  series?: Array<ChartAxis>
 }>(), {
   data: () => [],
   columns: () => [],
   x: () => [],
   y: () => [],
+  series: () => [],
 })
 
 const chartId = computed(() => {
@@ -22,7 +24,7 @@ const chartId = computed(() => {
 })
 
 const axis = computed(() => {
-  const _list: Array<{ name: string, value: string, type?: 'x' | 'y' }> = []
+  const _list: Array<ChartAxis> = []
   params.columns.forEach(column => {
     _list.push({name: column.name, value: column.value})
   })
@@ -31,6 +33,9 @@ const axis = computed(() => {
   })
   params.y.forEach(column => {
     _list.push({name: column.name, value: column.value, type: 'y'})
+  })
+  params.series.forEach(column => {
+    _list.push({name: column.name, value: column.value, type: 'series'})
   })
   return _list
 })

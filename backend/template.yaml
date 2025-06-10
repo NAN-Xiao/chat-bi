@@ -55,10 +55,10 @@ template:
       {{"type":"bar", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称", "value": "SQL 查询 x 轴的列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "SQL 查询 y 轴的列(有别名用别名)"}}}}
       必须从 SQL 查询列中提取“x”和“y”。
       - 如果需要折线图，则生成的 JSON 格式应为：
-      {{"type":"line", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称","value": "x轴的SQL查询列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "y轴的SQL查询列(有别名用别名)"}}}}
+      {{"type":"line", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称","value": "SQL 查询 x 轴的列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "SQL 查询 y 轴的列(有别名用别名)"}}}}
       其中“x”和“y”必须从SQL查询列中提取。
       - 如果需要饼图，则生成的 JSON 格式应为：
-      {{"type":"pie", "title": "标题", "columns": [{{"name":"中文字段名1","value":"SQL查询列1(有别名用别名)"}},{{"name":"中文字段名2","value":"SQL查询列2(有别名用别名)"}}]}}
+      {{"type":"pie", "title": "标题", "axis": {{"y": {{"值轴的中文名称","value":"SQL 查询数值的列(有别名用别名)"}}, "series": {{"name":"分类的中文名称","value":"SQL 查询分类的列(有别名用别名)"}}}}
       其中“column”必须从SQL查询列中提取。
       - 如果答案未知或者与生成JSON无关，则生成的 JSON 格式应为：
       {{"type":"error", "reason": "抱歉，我无法回答您的问题。"}}

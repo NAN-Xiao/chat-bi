@@ -1,4 +1,5 @@
 import {BaseG2Chart} from "@/views/chat/component/BaseG2Chart.ts";
+import type {ChartAxis, ChartData} from "@/views/chat/component/BaseChart.ts";
 
 export class Bar extends BaseG2Chart {
 
@@ -6,7 +7,7 @@ export class Bar extends BaseG2Chart {
         super(id, "bar");
     }
 
-    init(axis: Array<{ name: string; value: string; type: "x" | "y" }>, data: Array<{ [key: string]: any }>) {
+    init(axis: Array<ChartAxis>, data: Array<ChartData>) {
         super.init(axis, data);
         const x = this.axis.filter(item => item.type === "x");
         const y = this.axis.filter(item => item.type === "y");
@@ -26,7 +27,7 @@ export class Bar extends BaseG2Chart {
             .scale('y', {
                 nice: true,
             })
-            .interaction('elementHighlight', { background: true });
+            .interaction('elementHighlight', {background: true});
 
     }
 

@@ -1,4 +1,4 @@
-import {BaseChart} from "@/views/chat/component/BaseChart.ts";
+import {BaseChart, type ChartAxis, type ChartData} from "@/views/chat/component/BaseChart.ts";
 import {TableSheet, type S2Options, type S2DataConfig, type S2MountContainer} from "@antv/s2";
 import {debounce} from "lodash-es";
 
@@ -33,7 +33,7 @@ export class Table extends BaseChart {
         }
     }
 
-    init(axis: Array<{ name: string; value: string; type: "x" | "y" }>, data: Array<{ [key: string]: any }>) {
+    init(axis: Array<ChartAxis>, data: Array<ChartData>) {
         super.init(axis, data);
 
         const s2DataConfig: S2DataConfig = {
