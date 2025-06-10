@@ -1,4 +1,5 @@
 import json
+import orjson
 import traceback
 from typing import List
 
@@ -138,7 +139,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             # execute sql
             result = llm_service.execute_sql(sql=sql)
             llm_service.save_sql_data(session=session, data_obj=result)
-            yield json.dumps({'content': json.dumps(result, ensure_ascii=False), 'type': 'sql-data'}) + '\n\n'
+            yield json.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}) + '\n\n'
 
             # generate chart
             chart_res = llm_service.generate_chart(session=session)

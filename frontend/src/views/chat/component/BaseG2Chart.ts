@@ -11,6 +11,12 @@ export abstract class BaseG2Chart extends BaseChart {
             container: id,
             autoFit: true,
         })
+
+        this.chart.theme({
+            view: {
+                viewFill: '#FFFFFF',
+            },
+        })
     }
 
     render() {

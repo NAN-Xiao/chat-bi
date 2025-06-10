@@ -14,14 +14,19 @@ from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
 from alembic.config import Config
 from alembic import command
+from fastapi_mcp import FastApiMCP
+
 
 def run_migrations():
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
     yield
+
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
@@ -37,6 +42,17 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan
 )
+
+mcp_app = FastAPI()
+
+mcp = FastApiMCP(
+    app,
+    name="SQLBot MCP Server",
+    description="SQLBot MCP Server",
+    include_operations=["get_datasource_list"]
+)
+
+mcp.mount(mcp_app)
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:
@@ -66,9 +82,13 @@ else:
     @app.get("/", include_in_schema=False)
     async def read_index():
         return FileResponse(path=os.path.join(frontend_dist, "index.html"))
-    
+
+
     app.mount("/", StaticFiles(directory=frontend_dist), name="static")
+
+mcp.setup_server()
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

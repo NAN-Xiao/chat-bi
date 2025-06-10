@@ -91,14 +91,14 @@ const router = createRouter({
     {
       path: "/system",
       component: Layout,
-      redirect: "/system/user",
+      redirect: "/system/model",
       children: [
-        {
+       /*  {
           path: "user",
           name: "user",
           component: User,
           meta: { title: "User Management", icon: "icon_user" },
-        },
+        }, */
         {
           path: "model",
           name: "model",

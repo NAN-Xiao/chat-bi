@@ -5,6 +5,7 @@ import {computed, nextTick, ref} from "vue";
 import type {TabsPaneContext} from 'element-plus-secondary'
 import {Loading} from "@element-plus/icons-vue";
 import Component from "./component/Component.vue"
+import type {ChartTypes} from "@/views/chat/component/BaseChart.ts";
 
 const props = defineProps<{
   message?: ChatMessage
@@ -43,9 +44,13 @@ const dataObject = computed<{
 })
 
 const chartObject = computed<{
-  type: "table" | "bar" | "line" | "pie"
+  type: ChartTypes
   title: string
-  axis: { x: { name: string, value: string }, y: { name: string, value: string } }
+  axis: {
+    x: { name: string, value: string },
+    y: { name: string, value: string },
+    series: { name: string, value: string }
+  }
   columns: Array<{ name: string, value: string }>
 }>(() => {
   if (props.message?.record?.chart) {
@@ -66,10 +71,16 @@ const yAxis = computed(() => {
   }
   return []
 })
+const series = computed(() => {
+  if (chartObject.value?.axis?.series) {
+    return [chartObject.value.axis.series]
+  }
+  return []
+})
 
-const currentChartType = ref<"table" | "bar" | 'column' | "line" | "pie" | undefined>(undefined)
+const currentChartType = ref<ChartTypes | undefined>(undefined)
 
-const chartType = computed<"table" | "bar" | 'column' | "line" | "pie">({
+const chartType = computed<ChartTypes>({
   get() {
     if (currentChartType.value) {
       return currentChartType.value
@@ -148,16 +159,19 @@ function onTypeChange(type: string) {
           </template>
           <template v-else-if="settings.type === 'chart'">
             <div>
-              <div v-if="message.record.chart">
-                <Component
-                    ref="chartRef"
-                    v-if="message.record.id"
-                    :id="message.record.id"
-                    :type="chartType"
-                    :columns="chartObject?.columns"
-                    :x="xAxis"
-                    :y="yAxis"
-                    :data="dataObject.data"/>
+              <div v-if="message.record.chart" class="chart-base-container">
+                <div>
+                  <Component
+                      ref="chartRef"
+                      v-if="message.record.id"
+                      :id="message.record.id"
+                      :type="chartType"
+                      :columns="chartObject?.columns"
+                      :x="xAxis"
+                      :y="yAxis"
+                      :series="series"
+                      :data="dataObject.data"/>
+                </div>
               </div>
             </div>
             <div v-if="message.record.error" style="color: red">
@@ -183,5 +197,10 @@ function onTypeChange(type: string) {
 
 .type-tabs {
   margin-right: 24px;
+}
+
+.chart-base-container {
+  padding: 20px;
+  background: rgba(224, 224, 226, 0.29);
 }
 </style>

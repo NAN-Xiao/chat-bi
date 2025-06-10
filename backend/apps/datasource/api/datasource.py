@@ -18,7 +18,7 @@ router = APIRouter(tags=["datasource"], prefix="/datasource")
 path = "/opt/sqlbot/data/excel"
 
 
-@router.get("/list")
+@router.get("/list", operation_id="get_datasource_list")
 async def datasource_list(session: SessionDep):
     return get_datasource_list(session=session)
 

@@ -7,7 +7,7 @@
             <el-icon>
               <Plus/>
             </el-icon>
-            New Conversation
+            {{ t('qa.New Conversation') }}
           </el-button>
         </el-header>
         <el-main class="chat-list">
@@ -46,7 +46,7 @@
           <template
               v-if="currentChat.datasource && currentChat.datasource_name"
           >
-            Datasource：{{ currentChat.datasource_name }}
+            {{ t('ds.title') }}：{{ currentChat.datasource_name }}
           </template>
         </div>
         <div class="input-wrapper">
@@ -57,7 +57,7 @@
               type="textarea"
               :rows="1"
               :autosize="{ minRows: 1, maxRows: 8 }"
-              placeholder="Press Enter to send, Ctrl + Enter for new line"
+              :placeholder="t('qa.question_placeholder')"
               @keydown.enter.exact.prevent="sendMessage"
               @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
@@ -85,6 +85,8 @@ import {Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi,} fro
 import ChatList from "./ChatList.vue";
 import ChatRow from "./ChatRow.vue";
 import ChatAnswer from "./ChatAnswer.vue";
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const inputMessage = ref("");
 

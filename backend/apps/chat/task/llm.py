@@ -1,4 +1,5 @@
 import json
+import orjson
 import logging
 import warnings
 from typing import Any, List, Union, Dict
@@ -218,7 +219,7 @@ class LLMService:
 
     def save_sql_data(self, session: SessionDep, data_obj: Dict[str, Any]):
         return save_sql_exec_data(session=session, record_id=self.record.id,
-                                  data=json.dumps(data_obj, ensure_ascii=False))
+                                  data=orjson.dumps(data_obj).decode())
 
     def finish(self, session: SessionDep):
         return finish_record(session=session, record_id=self.record.id)

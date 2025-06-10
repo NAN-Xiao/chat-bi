@@ -20,7 +20,9 @@ wlist = [
     "*.woff2",
     "*.ttf",
     "*.eot",
-    "*.otf"
+    "*.otf",
+    "/mcp",
+    "/mcp/message"
 ]
 
 class WhitelistChecker:

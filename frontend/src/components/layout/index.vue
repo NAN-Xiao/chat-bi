@@ -3,7 +3,7 @@
     <div class="main-menu" :class="{ 'main-menu-sidebar': !topLayout, 'main-menu-topbar': topLayout }">
       <div class="logo">SQLBot</div>
 
-      <div v-if="!topLayout || !showSubmenu"
+      <!-- <div v-if="!topLayout || !showSubmenu"
            :class="{ 'workspace-area': !topLayout, 'topbar-workspace-area': topLayout }">
         <el-select
             v-model="workspace"
@@ -26,7 +26,7 @@
               :value="item.value"
           />
         </el-select>
-      </div>
+      </div> -->
       <el-menu
           v-if="!topLayout || !showSubmenu"
           :default-active="activeMenu"
@@ -37,14 +37,13 @@
           <el-icon v-if="item.meta.icon">
             <component :is="resolveIcon(item.meta.icon)"/>
           </el-icon>
-          <span>{{ item.meta.title }}</span>
+          <span>{{ t(`menu.${item.meta.title}`) }}</span>
         </el-menu-item>
       </el-menu>
 
       <div v-else class="top-bar-title">
         <span class="split"/>
-        <!-- <span>System manage</span> -->
-         <span>{{ t('common.system_manage') }}</span>
+        <span>{{ t('common.system_manage') }}</span>
       </div>
 
 
@@ -59,12 +58,11 @@
           </el-button>
         </div>
 
-        <el-tooltip content="System manage" placement="bottom" v-else>
+        <el-tooltip :content="t('common.system_manage')" placement="bottom" v-else>
           <div class="header-icon-btn" @click="toSystem">
             <el-icon>
               <iconsystem/>
             </el-icon>
-            <!-- <span>System manage</span> -->
           </div>
         </el-tooltip>
 
@@ -77,21 +75,7 @@
             <el-dropdown-menu>
               <el-dropdown-item @click="switchLayout">Switch Layout</el-dropdown-item>
               <el-dropdown-item @click="logout">Logout</el-dropdown-item>
-
-              <el-dropdown @command="changeLanguage">
-                <div class="lang-switch">
-                  Language
-                  <el-icon>
-                    <i class="el-icon-arrow-down"/>
-                  </el-icon>
-                </div>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="en">English</el-dropdown-item>
-                    <el-dropdown-item command="zh-CN">中文</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <el-dropdown-item><language-selector /></el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -108,7 +92,7 @@
                 <el-icon>
                   <iconsystem/>
                 </el-icon>
-                <span>System manage</span>
+                 <span>{{ t('common.system_manage') }}</span>
               </div>
             </el-tooltip>
 
@@ -121,6 +105,8 @@
                 <el-dropdown-menu>
                   <el-dropdown-item @click="switchLayout">Switch Layout</el-dropdown-item>
                   <el-dropdown-item @click="logout">Logout</el-dropdown-item>
+                  <el-dropdown-item><language-selector /></el-dropdown-item>
+                  
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -138,7 +124,7 @@
             <el-icon v-if="item.meta.icon">
               <component :is="resolveIcon(item.meta.icon)"/>
             </el-icon>
-            <span>{{ item.meta.title }}</span>
+            <span>{{ t(`menu.${item.meta.title}`) }}</span>
           </el-menu-item>
         </el-menu>
       </div>
@@ -170,8 +156,9 @@ import icon_ai from '@/assets/svg/icon_ai.svg'
 import {ArrowLeftBold} from '@element-plus/icons-vue'
 import {useCache} from '@/utils/useCache'
 import { useI18n } from 'vue-i18n'
+import LanguageSelector from '@/components/Language-selector/index.vue'
 
-const { locale, t } = useI18n()
+const { t } = useI18n()
 const {wsCache} = useCache()
 const topLayout = ref(false)
 const router = useRouter()
@@ -186,7 +173,8 @@ const routerList = computed(() => {
 })
 
 const sysRouterList = computed(() => {
-  return router.getRoutes().filter(route => route.path.includes('/system'))
+  const result = router.getRoutes().filter(route => route.path.includes('/system') && !route.redirect)
+  return result
 })
 
 const showSubmenu = computed(() => {
@@ -234,9 +222,6 @@ const switchLayout = () => {
   wsCache.set('sqlbot-topbar-layout', topLayout.value)
 }
 
-const changeLanguage = (lang: string) => {
-  locale.value = lang
-}
 onMounted(() => {
   topLayout.value = wsCache.get('sqlbot-topbar-layout') || true
 })
@@ -299,6 +284,9 @@ onMounted(() => {
       flex: 1;
       border-right: none;
       border-bottom: none;
+      &:not(.ed-menu--vertical) {
+        margin-left: 32px
+      }
     }
   }
 
@@ -556,14 +544,6 @@ onMounted(() => {
       border-radius: 0;
       width: calc(100% - 288px);
     }
-  }
-}
-.lang-switch {
-  cursor: pointer;
-  padding: 0 12px;
-  
-  &:hover {
-    color: var(--el-color-primary);
   }
 }
 </style>

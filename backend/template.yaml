@@ -7,8 +7,12 @@ template:
       - 生成的SQL必须符合{engine}的规范。
       - 根据表结构生成SQL语句。
       - SQL查询中不能使用星号(*)，必须明确指定字段名.
-      - SQL查询的字段名和别名必须为英文。
+      - SQL查询的字段名不要自动翻译，别名必须为英文。
       - 计算占比，百分比类型字段，保留两位小数，以%结尾。
+      - 生成SQL时，必须避免关键字冲突:
+      - 如{engine}是 PostgreSQL、Oracle，则在schema、表名、字段名、别名外层加双引号；
+      - 如{engine}是 MySQL，则在表名、字段名、别名外层加反引号；
+      - 如{engine}是 Microsoft SQL Server，则在schema、表名、字段名、别名外层加方括号。
       - 生成的SQL使用JSON格式返回：
       {{"success":true,"sql":"生成的SQL语句"}}
       - 问题与生成SQL无关时，直接回答：
@@ -16,8 +20,8 @@ template:
       - 如果根据提供的表结构不能生成符合问题与条件的SQL，回答：
       {{"success":false,"message":"无法生成SQL的原因"}}
       - 如果问题是图表展示相关且与生成SQL查询无关时，请参考上一次回答的SQL来生成SQL
-      - 如果问题是图表展示相关，可参考的图表类型为表格(table)、条形图(bar)、折线图(line)或饼图(pie)，返回的JSON：
-       {{"success":true,"sql":"生成的SQL语句","chart-type":"选择的图表类型(table/bar/line/pie)"}}
+      - 如果问题是图表展示相关，可参考的图表类型为表格(table)、柱状图(column)、条形图(bar)、折线图(line)或饼图(pie)，返回的JSON：
+       {{"success":true,"sql":"生成的SQL语句","chart-type":"选择的图表类型(table/column/bar/line/pie)"}}
       
       ### 请遵守以下输出要求:      
       请逐步推理后给出答案
@@ -44,14 +48,17 @@ template:
       - 如果需要表格，则生成的 JSON 格式应为：
       {{"type":"table", "title": "标题", "columns": [{{"name":"中文字段名1", "value": "SQL 查询列 1(有别名用别名)"}}, {{"name": "中文字段名 2", "value": "SQL 查询列 2(有别名用别名)"}}]}}
       必须从 SQL 查询列中提取“columns”。
+      - 如果需要柱状图，则生成的 JSON 格式应为：
+      {{"type":"column", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称", "value": "SQL 查询 x 轴的列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "SQL 查询 y 轴的列(有别名用别名)"}}}}
+      必须从 SQL 查询列中提取“x”和“y”。
       - 如果需要条形图，则生成的 JSON 格式应为：
       {{"type":"bar", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称", "value": "SQL 查询 x 轴的列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "SQL 查询 y 轴的列(有别名用别名)"}}}}
       必须从 SQL 查询列中提取“x”和“y”。
       - 如果需要折线图，则生成的 JSON 格式应为：
-      {{"type":"line", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称","value": "x轴的SQL查询列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "y轴的SQL查询列(有别名用别名)"}}}}
+      {{"type":"line", "title": "标题", "axis": {{"x": {{"name":"x轴的中文名称","value": "SQL 查询 x 轴的列(有别名用别名)"}}, "y": {{"name":"y轴的中文名称","value": "SQL 查询 y 轴的列(有别名用别名)"}}}}
       其中“x”和“y”必须从SQL查询列中提取。
       - 如果需要饼图，则生成的 JSON 格式应为：
-      {{"type":"pie", "title": "标题", "columns": [{{"name":"中文字段名1","value":"SQL查询列1(有别名用别名)"}},{{"name":"中文字段名2","value":"SQL查询列2(有别名用别名)"}}]}}
+      {{"type":"pie", "title": "标题", "axis": {{"y": {{"值轴的中文名称","value":"SQL 查询数值的列(有别名用别名)"}}, "series": {{"name":"分类的中文名称","value":"SQL 查询分类的列(有别名用别名)"}}}}
       其中“column”必须从SQL查询列中提取。
       - 如果答案未知或者与生成JSON无关，则生成的 JSON 格式应为：
       {{"type":"error", "reason": "抱歉，我无法回答您的问题。"}}
