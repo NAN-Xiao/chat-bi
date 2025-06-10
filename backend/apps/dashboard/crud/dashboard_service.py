@@ -1,22 +1,41 @@
 from sqlalchemy import select, and_, text
-from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard, QueryDashboard
+from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard, QueryDashboard,DashboardBaseResponse
 from common.core.deps import SessionDep, CurrentUser
 import uuid
-import datetime
-def get_dashboard_list(session: SessionDep,dashboard: QueryDashboard):
-    sql = text("SELECT id, name, type,node_type, pid, create_time FROM core_dashboard")
-    for row in session.exec(sql).mappings():
-        yield CoreDashboard(**row)
+import time
 
-def preview_with_id(session: SessionDep, dashboard_id: str):
-    return  session.query(CoreDashboard).filter(CoreDashboard.id == id).first()
+from common.utils.tree_utils import build_tree_generic
+
+
+def list_resource(session: SessionDep, dashboard: QueryDashboard):
+    sql = "SELECT id, name, type, node_type, pid, create_time FROM core_dashboard"
+    filters = []
+    params = {}
+    if dashboard.node_type is not None and dashboard.node_type != "":
+        filters.append("node_type = :node_type")
+        params["node_type"] = dashboard.node_type
+
+    if filters:
+        sql += " WHERE " + " AND ".join(filters)
+
+    result = session.execute(text(sql), params)
+    nodes = [DashboardBaseResponse(**row) for row in result.mappings()]
+    tree = build_tree_generic(nodes, root_pid="root")
+    return tree
+
+
+def load_resource(session: SessionDep,dashboard: QueryDashboard):
+    return session.query(CoreDashboard).filter(CoreDashboard.id == dashboard.id).first()
+
 
 def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
     new_id = uuid.uuid4().hex
     record = CoreDashboard(**dashboard.model_dump())
     record.id = new_id
     record.create_by = user.id
+    record.create_time = int(time.time())
     return record
+
 
 def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     record = get_create_base_info(user, dashboard)
@@ -26,13 +45,15 @@ def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDas
     session.commit()
     return record
 
-def update_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
+
+def update_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
     record = session.query(CoreDashboard).filter(CoreDashboard.id == dashboard.id).first()
     record.name = dashboard.name
     record.update_by = user.id
-    record.update_time = datetime.datetime.now()
+    record.update_time = int(time.time())
     session.add(record)
     session.commit()
+    return record
 
 def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     record = get_create_base_info(user, dashboard)
@@ -41,13 +62,16 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     record.canvas_style_data = dashboard.canvas_style_data
     session.add(record)
     session.flush()
+    session.refresh(record)
+    session.commit()
     return record
+
 
 def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     record = session.query(CoreDashboard).filter(CoreDashboard.id == dashboard.id).first()
 
 
-def validate_name( session: SessionDep, dashboard: QueryDashboard) -> bool:
+def validate_name(session: SessionDep, dashboard: QueryDashboard) -> bool:
     if not dashboard.workspace_id:
         raise ValueError("workspace_id is required")
     if not dashboard.pid:
@@ -63,7 +87,7 @@ def validate_name( session: SessionDep, dashboard: QueryDashboard) -> bool:
                 CoreDashboard.name == dashboard.name
             )
         )
-    elif dashboard.opt in ('updateLeaf', 'updateFolder'):
+    elif dashboard.opt in ('updateLeaf', 'updateFolder', 'rename'):
         if not dashboard.id:
             raise ValueError("id is required for update operation")
         query = session.query(CoreDashboard).filter(
@@ -77,3 +101,10 @@ def validate_name( session: SessionDep, dashboard: QueryDashboard) -> bool:
     else:
         raise ValueError(f"Invalid opt value: {dashboard.opt}")
     return not session.query(query.exists()).scalar()
+
+
+def delete_resource(session: SessionDep, resource_id: str):
+    sql = text("DELETE FROM core_dashboard WHERE id = :resource_id")
+    result = session.execute(sql, {"resource_id": resource_id})
+    session.commit()
+    return result.rowcount > 0

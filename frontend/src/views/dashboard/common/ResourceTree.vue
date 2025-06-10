@@ -7,6 +7,9 @@ import icon_folder from '@/assets/svg/icon_folder.svg'
 import icon_fileAdd_outlined from '@/assets/svg/icon_file-add_outlined.svg'
 import icon_dashboard from '@/assets/svg/icon_dashboard.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
+import icon_rename from '@/assets/svg/icon_rename.svg'
+import icon_delete from '@/assets/svg/icon_delete.svg'
+import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import {onMounted, reactive, ref, watch, nextTick, computed} from 'vue'
 import {ElIcon, ElScrollbar} from 'element-plus-secondary'
 import {Icon} from '@/components/icon-custom'
@@ -16,7 +19,10 @@ import router from '@/router'
 import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
 import ResourceGroupOpt from "@/views/dashboard/common/ResourceGroupOpt.vue";
 import {dashboardApi} from "@/api/dashboard.ts";
+import HandleMore from "@/views/dashboard/common/HandleMore.vue";
+import {useI18n} from "vue-i18n";
 
+const {t} = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const resourceGroupOptRef = ref(null)
 
@@ -38,8 +44,7 @@ defineProps({
 })
 const defaultProps = {
   children: 'children',
-  label: 'name',
-  disabled: (data: any) => data.extraFlag1 === 0
+  label: 'name'
 }
 const mounted = ref(false)
 const selectedNodeKey: any = ref(null)
@@ -51,9 +56,21 @@ const state = reactive({
   curSortType: 'time_desc',
   resourceTree: [] as SQTreeNode[],
   originResourceTree: [] as SQTreeNode[],
-  folderMenuList: [],
   sortType: [],
-  templateCreatePid: 0
+  templateCreatePid: 0,
+  folderMenuList: [
+    {
+      label: t('dashboard.rename'),
+      command: 'rename',
+      svgName: icon_rename
+    },
+    {
+      label: t('dashboard.delete'),
+      command: 'delete',
+      svgName: icon_delete,
+      divided: true
+    }
+  ],
 })
 
 
@@ -101,7 +118,7 @@ const nodeClick = (data: SQTreeNode, node: any) => {
     })
   } else {
     selectedNodeKey.value = data.id
-    if (data.leaf) {
+    if (data.node_type === 'leaf') {
       emit('nodeClick', data)
     } else {
       resourceListTree.value.setCurrentKey(null)
@@ -112,7 +129,7 @@ const nodeClick = (data: SQTreeNode, node: any) => {
 const getTree = async () => {
   state.originResourceTree = []
   const params = {}
-  dashboardApi.list(params).then((res: SQTreeNode[]) => {
+  dashboardApi.list_resource(params).then((res: SQTreeNode[]) => {
     state.originResourceTree = res || []
     state.resourceTree = _.cloneDeep(state.originResourceTree)
     afterTreeInit()
@@ -214,6 +231,32 @@ const addOperation = (params: any) => {
   }
 }
 
+const operation = (opt: string, data: SQTreeNode) => {
+  if (opt === 'delete') {
+    const msg = data.node_type === 'leaf' ? '' : t('dashboard.delete_tips')
+    const tips_label = data.node_type === 'leaf' ? 'Dashboard' : t('dashboard.folder')
+    ElMessageBox.confirm(t('dashboard.delete_warn', [tips_label]), {
+      confirmButtonType: 'danger',
+      type: 'warning',
+      tip: msg,
+      autofocus: false,
+      showClose: false
+    }).then(() => {
+      dashboardApi.delete_resource({id: data.id}).then(() => {
+        ElMessage.success(t('dashboard.delete_success'))
+        getTree()
+      })
+    })
+  } else if (opt === 'rename') {
+    //@ts-ignore
+    resourceGroupOptRef.value?.optInit({opt: 'rename',id: data.id,name:data.name})
+  }
+}
+
+const baseInfoChangeFinish = () => {
+  getTree()
+}
+
 
 defineExpose({
   hasData,
@@ -289,7 +332,7 @@ defineExpose({
       >
         <template #default="{ node, data }">
           <span class="custom-tree-node">
-            <el-icon style="font-size: 18px" v-if="!data.leaf">
+            <el-icon style="font-size: 18px" v-if="data.node_type !== 'leaf'">
               <Icon name="icon_folder"><icon_folder class="svg-icon"/></Icon>
             </el-icon>
             <el-icon style="font-size: 18px" v-else>
@@ -301,7 +344,7 @@ defineExpose({
             <div class="icon-more">
               <el-icon
                   v-on:click.stop
-                  v-if="!data.leaf"
+                  v-if="data.node_type !== 'leaf'"
                   class="hover-icon"
                   @click="addOperation({opt:'newLeaf',type:'dashboard',id:data.id} )"
               >
@@ -309,26 +352,25 @@ defineExpose({
               </el-icon>
               <el-icon
                   v-on:click.stop
-                  v-if="data.leaf"
+                  v-if="data.node_type === 'leaf'"
                   class="hover-icon"
                   @click="resourceEdit(data.id)"
               >
                 <Icon><icon_edit_outlined class="svg-icon"/></Icon>
               </el-icon>
-              <!--              <HandleMore-->
-              <!--                  @handle-command=" (opt:string) => addOperation({opt})-->
-              <!--                "-->
-              <!--                  :menu-list="resourceTypeList"-->
-              <!--                  :icon-name="icon_add_outlined"-->
-              <!--                  placement="bottom-start"-->
-              <!--                  v-if="!data.leaf"-->
-              <!--              ></HandleMore>-->
+              <HandleMore
+                  @handle-command=" (opt:string) => operation(opt,data)"
+                  :menu-list="state.folderMenuList"
+                  :icon-name="icon_more_outlined"
+                  placement="bottom-start"
+                  v-if="data.node_type !== 'leaf'"
+              ></HandleMore>
             </div>
           </span>
         </template>
       </el-tree>
     </el-scrollbar>
-    <ResourceGroupOpt ref="resourceGroupOptRef"></ResourceGroupOpt>
+    <ResourceGroupOpt ref="resourceGroupOptRef" @finish="baseInfoChangeFinish"></ResourceGroupOpt>
   </div>
 </template>
 <style lang="less" scoped>

@@ -3,8 +3,12 @@ import folder from '@/assets/svg/folder.svg'
 import {type SQTreeNode} from '@/views/dashboard/utils/treeNode'
 import {ref, reactive, computed} from 'vue'
 import {saveDashboardResource} from "@/views/dashboard/utils/canvasUtils.ts";
+import {dashboardApi} from "@/api/dashboard.ts";
+import _ from "lodash";
+
 const emits = defineEmits(['finish'])
 const state = reactive({
+  id: null,
   opt: null,
   placeholder: '',
   nodeType: 'folder',
@@ -12,12 +16,11 @@ const state = reactive({
   resourceFormNameLabel: 'Name',
   dialogTitle: '',
   tData: [],
+  tDataSource: [],
   nameList: [],
   targetInfo: null,
   attachParams: null
 })
-
-let tData: any = []
 
 const getTitle = (opt: string) => {
   switch (opt) {
@@ -25,6 +28,8 @@ const getTitle = (opt: string) => {
       return 'New Dashboard'
     case 'newFolder':
       return 'New Folder'
+    case 'rename':
+      return 'Rename'
     default:
       return
   }
@@ -41,10 +46,19 @@ const getResourceNewName = (opt: string) => {
   }
 }
 
+const getTree = async () => {
+  const params = {node_type: 'folder'}
+  dashboardApi.list_resource(params).then((res) => {
+    state.tData = res || []
+    state.tDataSource = [...state.tData]
+  })
+}
+
 const optInit = (params: any) => {
   // @ts-ignore
   state.dialogTitle = getTitle(params.opt)
   state.opt = params.opt
+  state.id = params.id
   state.parentSelect = params.parentSelect
   state.targetInfo = params.data
   state.nodeType = params.nodeType || 'folder'
@@ -52,11 +66,15 @@ const optInit = (params: any) => {
   // @ts-ignore
   resourceForm.name = params.name || getResourceNewName(params.opt)
   resourceForm.pid = params.pid || 'root'
+  if (params.parentSelect) {
+    getTree()
+  }
 }
 
 const resourceDialogShow = ref(false)
 const loading = ref(false)
 const resourceForm = reactive({
+  id: null,
   pid: '',
   pName: '',
   name: 'New Dashboard'
@@ -100,6 +118,7 @@ const resetForm = () => {
 }
 
 const propsTree = {
+  value: 'id',
   label: 'name',
   children: 'children',
   // @ts-ignore
@@ -112,20 +131,21 @@ const showPid = computed(() => {
 
 const saveResource = () => {
   const params = {
-    nodeType: state.nodeType,
+    id: state.id,
+    node_type: state.nodeType,
     name: resourceForm.name,
     opt: state.opt,
     pid: resourceForm.pid,
-    type: 'dashboard'
+    type: 'dashboard',
+    level: state.nodeType === 'folder' ? 0 : 1,
   }
-  saveDashboardResource(params, function (rsp:any) {
+  saveDashboardResource(params, function (rsp: any) {
+    const messageTips = state.opt === 'rename' ? 'Update Success' : 'Save Success'
     ElMessage({
       type: 'success',
-      message: 'Save Success',
+      message: messageTips,
     })
-    if (state.opt === 'newLeaf') {
-      emits('finish', {opt: state.opt, resourceId: rsp.id})
-    }
+    emits('finish', {opt: state.opt, resourceId: rsp.id})
     resetForm()
   })
 }
@@ -137,7 +157,7 @@ const nodeClick = (data: SQTreeNode) => {
 
 const filterMethod = (value: any) => {
   // @ts-ignore
-  state.tData = [...tData].filter(item => item.name.includes(value))
+  state.tData = state.tDataSource.filter(item => item.name.includes(value))
 }
 
 defineExpose({
@@ -187,7 +207,7 @@ defineExpose({
           <template #default="{ data: { name } }">
             <span class="custom-tree-node">
               <el-icon>
-                <Icon name="dv-folder"><folder class="svg-icon"/></Icon>
+                <Icon name="dv-folder"><folder class="svg-icon custom-tree-folder"/></Icon>
               </el-icon>
               <span :title="name">{{ name }}</span>
             </span>
@@ -245,5 +265,9 @@ defineExpose({
     text-overflow: ellipsis;
     overflow: hidden;
   }
+}
+
+.custom-tree-folder {
+  color: rgb(255, 198, 10)
 }
 </style>

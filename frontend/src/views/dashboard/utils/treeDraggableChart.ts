@@ -102,7 +102,7 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
     }
 
     try {
-      await dashboardApi.sqNameCheck(params)
+      await dashboardApi.check_name(params)
     } catch (error) {
       console.error(error)
     }
@@ -115,7 +115,7 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
       dfsTreeNodeBack(state[key], '0', params)
     }
 
-    dashboardApi.moveResource(params)
+    dashboardApi.move_resource(params)
       .then(() => {
         state.originResourceTree = cloneDeep(state[key])
       })

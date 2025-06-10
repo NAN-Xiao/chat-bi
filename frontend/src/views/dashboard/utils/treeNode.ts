@@ -4,9 +4,8 @@ export interface SQTreeNode {
   name: string
   leaf?: boolean
   weight: number
-  ext?: number
-  extraFlag: number
-  extraFlag1: number
+  type: string
+  node_type: string
   children?: SQTreeNode[]
 }
 

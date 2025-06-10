@@ -10,5 +10,17 @@
     "confirm": "确认",
     "cancel": "取消",
     "system_manage": "系统管理"
+  },
+  "dashboard": {
+    "length_1_64_characters": "名称字段长度1-64个字符",
+    "rename": "重命名",
+    "delete": "删除",
+    "delete_tips": "删除后，此目录的所有资源都会被删除，请谨慎操作。",
+    "undo": "撤销",
+    "reduction": "恢复",
+    "folder": "目录",
+    "dashboard": "仪表板",
+    "delete_warning": "确定要删除吗?",
+    "delete_success": "删除成功"
   }
 }

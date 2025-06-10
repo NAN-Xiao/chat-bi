@@ -8,9 +8,11 @@ export const dashboardStore = defineStore('dashboard', {
             tabMoveInActiveId: null,
             curComponent: null,
             curComponentId: null,
-            canvasStyle: {},
+            canvasStyleData: {},
             componentData: [],
+            canvasViewInfo: {},
             fullscreenFlag: false,
+            dataPrepareState: false,
             dashboardInfo: {
                 id: null,
                 name: null,
@@ -43,8 +45,8 @@ export const dashboardStore = defineStore('dashboard', {
         setComponentData(value: any) {
             this.componentData = value
         },
-        setCanvasStyle(value: any) {
-            this.canvasStyle = value
+        setCanvasStyleData(value: any) {
+            this.canvasStyleData = value
         },
         setTabCollisionActiveId(tabId: any) {
             this.tabCollisionActiveId = tabId
@@ -57,6 +59,9 @@ export const dashboardStore = defineStore('dashboard', {
                 // @ts-ignore
                 this.dashboardInfo[key] = params[key]
             })
+        },
+        setCanvasViewInfo(params: any) {
+            this.canvasViewInfo = params
         },
         canvasDataInit() {
 

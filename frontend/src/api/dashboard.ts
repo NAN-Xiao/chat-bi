@@ -1,13 +1,13 @@
 import { request } from '@/utils/request'
 
 export const dashboardApi = {
-  list: (params: any) => request.post('/dashboard/list',params),
-  getDashboardInfo: (params:any) => request.post(`/dashboard/get_dashboard/${params.id}`,params),
-  sqNameCheck: (data: any) => request.post('/dashboard/name_check',data),
-  moveResource: (data: any) => request.post('/dashboard/move',data),
-  addResource: (data: any) => request.post('/dashboard/add',data),
-  updateResource: (data: any) => request.post('/dashboard/update',data),
-  saveCanvas: (data: any) => request.post('/dashboard/add_canvas',data),
-  updateCanvas: (data: any) => request.post('/dashboard/update_',data),
-  check_name: (data: any) => request.post('/dashboard/check_name',data)
+  list_resource: (params: any) => request.post('/dashboard/list_resource',params),
+  load_resource: (params:any) => request.post('/dashboard/load_resource',params),
+  create_resource: (params: any) => request.post('/dashboard/create_resource',params),
+  update_resource: (params: any) => request.post('/dashboard/update_resource',params),
+  create_canvas: (params: any) => request.post('/dashboard/create_canvas',params),
+  update_canvas: (params: any) => request.post('/dashboard/update_canvas',params),
+  check_name: (params: any) => request.post('/dashboard/check_name',params),
+  delete_resource: (params: any) => request.delete(`/dashboard/delete_resource/${params.id}`,params),
+  move_resource: (params: any) => request.delete(`/dashboard/move_resource/${params.id}`,params),
 }

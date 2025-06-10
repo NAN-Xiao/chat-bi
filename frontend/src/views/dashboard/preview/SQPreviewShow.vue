@@ -59,10 +59,10 @@ function createNew() {
   resourceTreeRef.value?.createNewObject()
 }
 
-const loadCanvasData = (dashboardId: string) => {
+const loadCanvasData = (params: any) => {
   dataInitState.value = false
   //@ts-ignore
-  initCanvasData({dashboardId},function ({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview }) {
+  initCanvasData({id:params.id}, function ({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview}) {
         state.canvasDataPreview = canvasDataResult
         state.canvasStylePreview = canvasStyleResult
         state.canvasViewInfoPreview = canvasViewInfoPreview
@@ -81,12 +81,12 @@ const getPreviewStateInfo = () => {
   return state
 }
 
-const reload = (dashboardId:string) => {
-  loadCanvasData(dashboardId)
+const reload = (params: any) => {
+  loadCanvasData(params)
 }
 
-const resourceNodeClick = (data:any) => {
-  loadCanvasData(data.id)
+const resourceNodeClick = (prams: any) => {
+  loadCanvasData(prams)
 }
 
 const previewShowFlag = computed(() => !!dashboardStore.dashboardInfo?.name)
@@ -134,10 +134,7 @@ defineExpose({
         v-loading="!dataInitState"
     >
       <template v-if="previewShowFlag">
-        <SQPreviewHead
-            v-if="showPosition === 'preview'"
-            @reload="reload"
-        />
+        <SQPreviewHead  @reload="reload"  />
         <div
             ref="previewCanvasContainer"
             class="content"

@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, Field
 from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer,DateTime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 
 class CoreDashboard(SQLModel, table=True):
@@ -127,9 +127,11 @@ class DashboardBaseResponse(BaseModel):
     name: Optional[str] = None
     pid: Optional[str] = None
     node_type: Optional[str] = None
+    leaf: Optional[bool] = False
     type: Optional[str] = None
     create_time: Optional[int] = None
     update_time: Optional[int] = None
+    children: List['DashboardBaseResponse'] = []
 
 class BaseDashboard(BaseModel):
     id: str = ''
@@ -139,6 +141,7 @@ class BaseDashboard(BaseModel):
     org_id: str = ''
     type: str = ''
     node_type: str = ''
+    level: int = 0
     create_by: int = 0
 
 class QueryDashboard(BaseDashboard):

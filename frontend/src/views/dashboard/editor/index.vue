@@ -52,7 +52,7 @@ const baseParams = computed(() => {
   return {
     opt: state.opt,
     resourceId: state.resourceId,
-    routerPid: state.routerPid
+    pid: state.routerPid
   }
 })
 

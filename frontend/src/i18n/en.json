@@ -10,5 +10,17 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "system_manage": "System Management"
+  },
+  "dashboard": {
+    "length_1_64_characters": "Name field length must be 1-64 characters",
+    "rename": "Rename",
+    "delete": "Delete",
+    "delete_tips": "All resources in this folder will be deleted after deletion. Please proceed with caution.",
+    "undo": "Undo",
+    "reduction": "Restore",
+    "folder": "Folder",
+    "dashboard": "Dashboard",
+    "delete_warning": "Are you sure you want to delete?",
+    "delete_success": "Successfully deleted"
   }
 }

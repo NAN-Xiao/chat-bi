@@ -3,12 +3,11 @@ import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
 import {storeToRefs} from "pinia";
 
 const dashboardStore = dashboardStoreWithOut()
-const {componentData, canvasStyle} = storeToRefs(dashboardStore)
+const {componentData, canvasStyleData} = storeToRefs(dashboardStore)
 
 const workspace_id = 'default' // temp
 export const initCanvasData = (params: any, callBack: Function) => {
-    dashboardApi.getDashboardInfo(params).then((res: any) => {
-        const canvasInfo = res.data;
+    dashboardApi.load_resource(params).then((canvasInfo: any) => {
         const dashboardInfo = {
             id: canvasInfo.id,
             name: canvasInfo.name,
@@ -22,8 +21,8 @@ export const initCanvasData = (params: any, callBack: Function) => {
             updateTime: canvasInfo.updateTime,
             contentId: canvasInfo.contentId
         }
-        const canvasDataResult = JSON.parse(canvasInfo.componentData)
-        const canvasStyleResult = JSON.parse(canvasInfo.canvasStyleData)
+        const canvasDataResult = JSON.parse(canvasInfo.component_data)
+        const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)
         const canvasViewInfoPreview = canvasInfo.canvasViewInfo
         callBack({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview})
     })
@@ -31,23 +30,32 @@ export const initCanvasData = (params: any, callBack: Function) => {
 
 export const saveDashboardResource = (params: any, callBack: Function) => {
     params['workspace_id'] = workspace_id
-    dashboardApi.check_name(params).then((res: any) => {
-        if (!res) {
+    dashboardApi.check_name(params).then((resCheck: any) => {
+        if (resCheck) {
             if (params.opt === 'newLeaf') {// create canvas
                 const reqeustParams = {
                     ...params,
                     component_data: JSON.stringify(componentData.value),
-                    canvas_style_data: JSON.stringify(canvasStyle.value)
+                    canvas_style_data: JSON.stringify(canvasStyleData.value)
                 }
-                dashboardApi.saveCanvas(reqeustParams).then((res: any) => {
+                dashboardApi.create_canvas(reqeustParams).then((res: any) => {
                     dashboardStore.updateDashboardInfo({id: res.id, dataState: 'ready'})
                     callBack(res)
                 })
             } else if (params.opt === 'newFolder') {
-                dashboardApi.addResource(params).then((res: any) => {
+                dashboardApi.create_resource(params).then((res: any) => {
+                    callBack(res)
+                })
+            } else if (params.opt === 'rename') {
+                dashboardApi.update_resource(params).then((res: any) => {
                     callBack(res)
                 })
             }
+        } else {
+            ElMessage({
+                type: 'warning',
+                message: 'Name Already In Use',
+            })
         }
     })
 }

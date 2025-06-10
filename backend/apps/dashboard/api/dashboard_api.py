@@ -1,39 +1,40 @@
-from xmlrpc.client import Boolean
-
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
-from apps.dashboard.crud.dashboard_service import get_dashboard_list, preview_with_id, \
-    create_resource, create_canvas, validate_name
+from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
+    create_resource, create_canvas, validate_name,delete_resource,update_resource
 from apps.dashboard.models.dashboard_model import CreateDashboard, BaseDashboard, QueryDashboard
 from common.core.deps import SessionDep, CurrentUser
 
 router = APIRouter(tags=["dashboard"], prefix="/dashboard")
 
-@router.post("/list")
-async def datasource_list(session: SessionDep,dashboard: QueryDashboard):
-    return get_dashboard_list(session=session,dashboard=dashboard)
+@router.post("/list_resource")
+async def list_resource_api(session: SessionDep,dashboard: QueryDashboard):
+    return list_resource(session=session,dashboard=dashboard)
 
-@router.get("/preview_dashboard/{id}")
-async def preview_dashboard(session: SessionDep,id:str):
-    return preview_with_id(session=session,dashboard_id=id)
+@router.post("/load_resource")
+async def load_resource_api(session: SessionDep,dashboard: QueryDashboard):
+    return load_resource(session=session,dashboard=dashboard)
 
-@router.post("/add", response_model=BaseDashboard)
-async def add(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
+@router.post("/create_resource", response_model=BaseDashboard)
+async def create_resource_api(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     return create_resource(session, user, dashboard)
 
-@router.post("/update", response_model=BaseDashboard)
-async def update(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
-    return create_resource(session, user, dashboard)
-
-@router.post("/add_canvas", response_model=BaseDashboard)
-async def add_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
+@router.post("/update_resource", response_model=BaseDashboard)
+async def update_resource_api(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
+    return update_resource(session=session, user=user, dashboard=dashboard)
+@router.delete("/delete_resource/{resource_id}")
+async def delete_resource_api(session: SessionDep,resource_id:str):
+    return delete_resource(session,resource_id)
+@router.post("/create_canvas", response_model=BaseDashboard)
+async def create_canvas_api(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     return create_canvas(session, user, dashboard)
 
 @router.post("/update_canvas", response_model=BaseDashboard)
-async def update(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
+async def update_canvas_api(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     return
 
 @router.post("/check_name")
-async def check_name(session: SessionDep, dashboard: QueryDashboard):
+async def check_name_api(session: SessionDep, dashboard: QueryDashboard):
     return validate_name(session,dashboard)
+
 
