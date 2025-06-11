@@ -9,7 +9,8 @@
     "back": "Back",
     "confirm": "Confirm",
     "cancel": "Cancel",
-    "system_manage": "System Management"
+    "system_manage": "System Management",
+    "next": "Next"
   },
   "dashboard": {
     "length_1_64_characters": "Name field length must be 1-64 characters",
@@ -43,7 +44,6 @@
   "ds": {
     "title": "Data Source",
     "add": "Add Data Source",
-    "edit": "Edit Data Source",
     "delete": "Delete Data Source",
     "name": "Data Source Name",
     "type": "Data Source Type",
@@ -51,6 +51,67 @@
     "actions": "Actions",
     "test_connection": "Test Connection",
     "connection_success": "Connection Successful",
-    "connection_failed": "Connection Failed, Please Check Configuration"
+    "connection_failed": "Connection Failed, Please Check Configuration",
+    "Search Datasource": "Search Datasource",
+    "tables": "Tables",
+    "no_data_tip": "No data, select a table from left",
+    "comment": "Comment",
+    "table_schema": "Table Schema",
+    "preview": "Preview",
+    "preview_tip": "Preview 100 items",
+    "field": {
+      "name": "Name",
+      "type": "Type",
+      "comment": "Comment",
+      "custom_comment": "Custom Comment",
+      "status": "Status"
+    },
+    "edit": {
+      "table_comment": "Edit Table Comment",
+      "field_comment": "Edit Field Comment",
+      "table_comment_label": "Table Comment",
+      "field_comment_label": "Field Comment"
+    },
+    "form": {
+      "title": {
+        "add": "Add Datasource",
+        "edit": "Edit Datasource",
+        "choose_tables": "Choose Tables"
+      },
+      "base_info": "Base Info",
+      "choose_tables": "Choose Tables",
+      "name": "Name",
+      "description": "Description",
+      "host": "Host/Ip",
+      "port": "Port",
+      "username": "Username",
+      "password": "Password",
+      "database": "Database",
+      "connect_mode": "Connect Mode",
+      "service_name": "Service Name",
+      "extra_jdbc": "Extra JDBC String",
+      "schema": "Schema",
+      "get_schema": "Get Schema",
+      "file": "File",
+      "upload": "Upload",
+      "upload_tip": "Only support .xls, .xlsx, .csv, size less than 50MB.",
+      "version_tip": {
+        "sqlServer": "Supported version: 2012+",
+        "oracle": "Supported version: 12+",
+        "mysql": "Supported version: 5.6+",
+        "pg": "Supported version: 9.6+"
+      },
+      "selected": "Selected: {0}/{1}",
+      "validate": {
+        "name_required": "Please input name",
+        "name_length": "Length should be 1 to 50",
+        "type_required": "Please choose database type",
+        "host_required": "Please input host",
+        "port_required": "Please input port",
+        "database_required": "Please input database",
+        "mode_required": "Please choose mode",
+        "schema_required": "Please input schema"
+      }
+    }
   }
 }

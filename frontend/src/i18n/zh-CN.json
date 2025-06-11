@@ -11,7 +11,8 @@
     "cancel": "取消",
     "system_manage": "系统管理",
     "update_success": "更新",
-    "save_success": "保存成功"
+    "save_success": "保存成功",
+    "next": "下一步"
   },
   "dashboard": {
     "length_1_64_characters": "名称字段长度1-64个字符",
@@ -45,7 +46,6 @@
   "ds": {
     "title": "数据源",
     "add": "添加数据源",
-    "edit": "编辑数据源",
     "delete": "删除数据源",
     "name": "数据源名称",
     "type": "数据源类型",
@@ -53,6 +53,67 @@
     "actions": "操作",
     "test_connection": "测试连接",
     "connection_success": "连接成功",
-    "connection_failed": "连接失败，请检查配置"
+    "connection_failed": "连接失败，请检查配置",
+    "Search Datasource": "搜索数据源",
+    "tables": "数据表",
+    "no_data_tip": "暂无数据，请从左侧选择数据表",
+    "comment": "注释",
+    "table_schema": "表结构",
+    "preview": "预览",
+    "preview_tip": "预览100条数据",
+    "field": {
+      "name": "字段名",
+      "type": "类型",
+      "comment": "注释",
+      "custom_comment": "自定义注释",
+      "status": "状态"
+    },
+    "edit": {
+      "table_comment": "编辑表注释",
+      "field_comment": "编辑字段注释",
+      "table_comment_label": "表注释",
+      "field_comment_label": "字段注释"
+    },
+    "form": {
+      "title": {
+        "add": "添加数据源",
+        "edit": "编辑数据源",
+        "choose_tables": "选择数据表"
+      },
+      "base_info": "基本信息",
+      "choose_tables": "选择数据表",
+      "name": "名称",
+      "description": "描述",
+      "host": "主机/IP",
+      "port": "端口",
+      "username": "用户名",
+      "password": "密码",
+      "database": "数据库",
+      "connect_mode": "连接方式",
+      "service_name": "服务名",
+      "extra_jdbc": "额外 JDBC 参数",
+      "schema": "模式",
+      "get_schema": "获取模式",
+      "file": "文件",
+      "upload": "上传",
+      "upload_tip": "仅支持 .xls, .xlsx, .csv 格式，大小不超过50MB",
+      "version_tip": {
+        "sqlServer": "支持版本: 2012+",
+        "oracle": "支持版本: 12+",
+        "mysql": "支持版本: 5.6+",
+        "pg": "支持版本: 9.6+"
+      },
+      "selected": "已选择: {0}/{1}",
+      "validate": {
+        "name_required": "请输入名称",
+        "name_length": "长度应在1到50个字符之间",
+        "type_required": "请选择数据库类型",
+        "host_required": "请输入主机地址",
+        "port_required": "请输入端口号",
+        "database_required": "请输入数据库名",
+        "mode_required": "请选择连接方式",
+        "schema_required": "请输入模式名"
+      }
+    }
   }
 }
