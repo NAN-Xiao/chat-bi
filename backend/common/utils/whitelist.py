@@ -22,7 +22,10 @@ wlist = [
     "*.eot",
     "*.otf",
     "/mcp",
-    "/mcp/message"
+    "/mcp/message",
+    "/datasource/list",
+    "/system/aimodel/list",
+    "/chat/question"
 ]
 
 class WhitelistChecker:
