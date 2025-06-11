@@ -75,14 +75,12 @@ export const UserStore = defineStore('user', {
       keys.forEach(key => {
         const dkey = key === 'uid' ? 'id' : key
         const value = res_data[dkey]
-       
         if (key === 'exp' || key === 'time') {
           this[key] = Number(value)
-          wsCache.set('user.' + key, value)
         } else {
           this[key] = String(value)
-          wsCache.set('user.' + key, value)
         }
+        wsCache.set('user.' + key, value)
       })
 
       this.setLanguage(this.language)
