@@ -70,17 +70,15 @@ export const UserStore = defineStore('user', {
       const res: any = await AuthApi.info()
       const res_data = res || {}
 
-      // 指定 keys 类型为 UserState 的键
       const keys = ['uid', 'name', 'oid', 'language', 'exp', 'time'] as const
       
       keys.forEach(key => {
         const dkey = key === 'uid' ? 'id' : key
         const value = res_data[dkey]
        
-        // 使用类型守卫区分数字和字符串类型
         if (key === 'exp' || key === 'time') {
           this[key] = Number(value)
-          wsCache.set('user.' + key, value.toString())
+          wsCache.set('user.' + key, value)
         } else {
           this[key] = String(value)
           wsCache.set('user.' + key, value)
