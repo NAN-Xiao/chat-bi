@@ -149,7 +149,6 @@
 import {ref, computed, onMounted} from 'vue'
 import {useRouter, useRoute} from 'vue-router'
 import {useUserStore} from '@/stores/user'
-import folder from '@/assets/svg/folder.svg'
 import ds from '@/assets/svg/ds.svg'
 import dashboard from '@/assets/svg/dashboard.svg'
 import chat from '@/assets/svg/chat.svg'
@@ -184,12 +183,12 @@ const sysRouterList = computed(() => {
 const showSubmenu = computed(() => {
   return route.path.includes('/system')
 })
-const workspace = ref('1')
-const options = [
+// const workspace = ref('1')
+/* const options = [
   {value: '1', label: 'Default workspace'},
   {value: '2', label: 'Workspace 2'},
   {value: '3', label: 'Workspace 3'}
-]
+] */
 const currentPageTitle = computed(() => {
   if (route.path.includes('/system')) {
     return 'System Settings'

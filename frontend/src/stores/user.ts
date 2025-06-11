@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+// import { ref } from 'vue'
 import { AuthApi } from '@/api/login'
 import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
@@ -17,18 +17,19 @@ interface UserState {
   language: string
   exp: number
   time: number
+  [key: string]: string | number 
 }
 
 export const UserStore = defineStore('user', {
   state: (): UserState => {
     return {
-      token: null,
-      uid: null,
-      name: null,
-      oid: null,
+      token: '',
+      uid: '',
+      name: '',
+      oid: '',
       language: 'zh-CN',
-      exp: null,
-      time: null
+      exp: 0,
+      time: 0
     }
   },
   getters: {
@@ -69,13 +70,23 @@ export const UserStore = defineStore('user', {
       const res: any = await AuthApi.info()
       const res_data = res || {}
 
-      const keys: string[] = ['uid', 'name', 'oid', 'language', 'exp', 'time']
-
+      // 指定 keys 类型为 UserState 的键
+      const keys = ['uid', 'name', 'oid', 'language', 'exp', 'time'] as const
+      
       keys.forEach(key => {
         const dkey = key === 'uid' ? 'id' : key
-        this[key] = res_data[dkey]
-        wsCache.set('user.' + key, this[key])
+        const value = res_data[dkey]
+       
+        // 使用类型守卫区分数字和字符串类型
+        if (key === 'exp' || key === 'time') {
+          this[key] = Number(value)
+          wsCache.set('user.' + key, value.toString())
+        } else {
+          this[key] = String(value)
+          wsCache.set('user.' + key, value)
+        }
       })
+
       this.setLanguage(this.language)
     },
     setToken(token: string) {

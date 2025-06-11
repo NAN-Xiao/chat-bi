@@ -8,7 +8,7 @@ import ds from "@/views/ds/index.vue";
 import DashboardEditor from "@/views/dashboard/editor/index.vue";
 import Dashboard from "@/views/dashboard/index.vue";
 import Model from "@/views/system/model/index.vue";
-import User from "@/views/system/user/index.vue";
+// import User from "@/views/system/user/index.vue";
 import { watchRouter } from "./watch";
 const router = createRouter({
   history: createWebHashHistory(),

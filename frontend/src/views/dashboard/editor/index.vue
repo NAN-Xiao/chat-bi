@@ -8,7 +8,6 @@ import cloneDeep from 'lodash/cloneDeep';
 import {storeToRefs} from "pinia";
 import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
 import router from '@/router'
-import {dashboardApi} from "@/api/dashboard.ts";
 import {initCanvasData} from "@/views/dashboard/utils/canvasUtils.ts";
 
 const dashboardStore = dashboardStoreWithOut()
