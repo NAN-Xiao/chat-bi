@@ -4,8 +4,9 @@ import {ChatInfo} from "@/api/chat.ts";
 import {computed, onMounted, ref} from "vue";
 import {datasourceApi} from "@/api/datasource.ts";
 import DatasourceItemCard from '../ds/DatasourceItemCard.vue'
-import { useI18n } from 'vue-i18n'
-const { t } = useI18n()
+import {useI18n} from 'vue-i18n'
+
+const {t} = useI18n()
 const props = withDefaults(defineProps<{
       modelValue?: number
       currentChat: ChatInfo
@@ -50,9 +51,27 @@ function listDs() {
   })
 }
 
-function showDs() {
-  listDs()
+const dialogVisible = ref(false)
 
+const DatasourceListRef = ref()
+
+const innerDs = ref()
+
+function showDs() {
+  innerDs.value = props.modelValue
+  listDs()
+  dialogVisible.value = true
+}
+
+function selectDsInDialog(ds: any) {
+  innerDs.value = ds.id
+}
+
+function comfirmSelectDs() {
+  if (innerDs.value) {
+    emits("update:modelValue", innerDs.value)
+    dialogVisible.value = false
+  }
 }
 
 
@@ -75,7 +94,7 @@ onMounted(() => {
           </div>
           <div class="ds-row-container">
             <template v-for="(item, _index) in dsList" :key="_index">
-              <DatasourceItemCard :ds="item" @click="selectDs(item)"
+              <DatasourceItemCard :ds="item" @click="selectDs(item)" v-if="_index<3 || item?.id===modelValue"
                                   class="ds-card" :class="[item?.id===modelValue? 'ds-card-selected': '']"/>
             </template>
           </div>
@@ -93,6 +112,28 @@ onMounted(() => {
         </div>
       </template>
     </div>
+
+
+    <el-drawer v-model="dialogVisible" title="Choose Datasource" width="800" ref="DatasourceListRef" direction="btt"
+               size="100%">
+      <el-scrollbar>
+        <div class="ds-row-container">
+          <template v-for="(item, _index) in dsList" :key="_index">
+            <DatasourceItemCard :ds="item" @click="selectDsInDialog(item)"
+                                class="ds-card" :class="[item?.id===innerDs? 'ds-card-selected': '']"/>
+          </template>
+        </div>
+      </el-scrollbar>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="dialogVisible = false">Cancel</el-button>
+          <el-button type="primary" @click="comfirmSelectDs">
+            Confirm
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
+
   </ChatBlock>
 </template>
 
@@ -126,6 +167,7 @@ onMounted(() => {
 
 .ds-card-selected {
   box-shadow: 0 1px 3px var(--ed-color-primary-light-5);
+  border: 1px solid var(--ed-color-primary-light-5);
 }
 
 
