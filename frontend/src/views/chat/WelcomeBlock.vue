@@ -8,10 +8,10 @@ import {useI18n} from 'vue-i18n'
 
 const {t} = useI18n()
 const props = withDefaults(defineProps<{
-      modelValue?: number
-      currentChat: ChatInfo
-    }>(),
-    {}
+    modelValue?: number
+    currentChat: ChatInfo
+  }>(),
+  {}
 )
 
 const dsList = ref<Array<any>>([])
@@ -67,7 +67,7 @@ function selectDsInDialog(ds: any) {
   innerDs.value = ds.id
 }
 
-function comfirmSelectDs() {
+function confirmSelectDs() {
   if (innerDs.value) {
     emits("update:modelValue", innerDs.value)
     dialogVisible.value = false
@@ -114,7 +114,7 @@ onMounted(() => {
     </div>
 
 
-    <el-drawer v-model="dialogVisible" title="Choose Datasource" width="800" ref="DatasourceListRef" direction="btt"
+    <el-drawer v-model="dialogVisible" title="Choose Datasource" ref="DatasourceListRef" direction="btt"
                size="100%">
       <el-scrollbar>
         <div class="ds-row-container">
@@ -127,7 +127,7 @@ onMounted(() => {
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">Cancel</el-button>
-          <el-button type="primary" @click="comfirmSelectDs">
+          <el-button type="primary" @click="confirmSelectDs">
             Confirm
           </el-button>
         </div>
