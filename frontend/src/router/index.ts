@@ -6,6 +6,7 @@ import login from "@/views/login/index.vue";
 import chat from "@/views/chat/index.vue";
 import ds from "@/views/ds/index.vue";
 import DashboardEditor from "@/views/dashboard/editor/index.vue";
+import DashboardPreview from "@//views/dashboard/preview/SQPreviewSingle.vue";
 import Dashboard from "@/views/dashboard/index.vue";
 import Model from "@/views/system/model/index.vue";
 // import User from "@/views/system/user/index.vue";
@@ -74,6 +75,12 @@ const router = createRouter({
       name: "canvas",
       component: DashboardEditor,
       meta: { title: "canvas", icon: "dashboard" },
+    },
+    {
+      path: "/dashboard-preview",
+      name: "preview",
+      component: DashboardPreview,
+      meta: { title: "DashboardPreview", icon: "dashboard" },
     },
     /* {
       path: "/setting",

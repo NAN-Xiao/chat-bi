@@ -14,16 +14,11 @@ const previewCanvasContainer = ref(null)
 const dashboardPreview = ref(null)
 const slideShow = ref(true)
 const dataInitState = ref(true)
-const downloadStatus = ref(false)
 const state = reactive({
   canvasDataPreview: [],
   canvasStylePreview: {},
   canvasViewInfoPreview: {},
-  dashboardInfo: {},
-  showOffset: {
-    top: 110,
-    left: 280
-  }
+  dashboardInfo: {}
 })
 
 const props = defineProps({
@@ -53,12 +48,9 @@ const rootManage = computed(() => {
 const mounted = computed(() => {
   return resourceTreeRef.value?.mounted
 })
-
-
 function createNew() {
   resourceTreeRef.value?.createNewObject()
 }
-
 const loadCanvasData = (params: any) => {
   dataInitState.value = false
   load_resource_prepare({id: params.id},
@@ -128,8 +120,6 @@ defineExpose({
               :canvas-style-data="state.canvasStylePreview"
               :canvas-view-info="state.canvasViewInfoPreview"
               :show-position="showPosition"
-              :download-status="downloadStatus"
-              :show-linkage-button="false"
           ></SQPreview>
         </div>
       </template>

@@ -46,12 +46,10 @@ const props = defineProps({
   }
 })
 
-const { canvasStyleData, componentData, showPosition,
-  canvasId
-} = toRefs(props)
+const { canvasStyleData, componentData, showPosition, canvasId} = toRefs(props)
 const domId = 'preview-' + canvasId.value
 const previewCanvas = ref(null)
-const renderReady = ref(false)
+const renderReady = ref(true)
 const state = reactive({
   initState: true,
   scrollMain: 0
@@ -64,7 +62,7 @@ const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
 const canvasStyle = computed(() => {
-  return {}
+  return {background: '#f5f6f7'}
 })
 
 const restore = () => {
@@ -83,9 +81,9 @@ function nowItemStyle(item: CanvasItem) {
 const sizeInit = () => {
   if (previewCanvas.value) {
     //@ts-ignore
-    const screenWidth = dashboardEditorRef.value.offsetWidth
+    const screenWidth = previewCanvas.value.offsetWidth
     //@ts-ignore
-    const screenHeight = dashboardEditorRef.value.offsetHeight
+    const screenHeight = previewCanvas.value.offsetHeight
     baseMarginLeft.value = 10
     baseMarginTop.value = 10
     baseWidth.value = (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
@@ -97,12 +95,9 @@ const sizeInit = () => {
 
 
 onMounted(() => {
-  window.addEventListener('resize', sizeInit)
-  const erd = elementResizeDetectorMaker()
+  sizeInit()
   //@ts-ignore
-  erd.listenTo(document.getElementById(domId), () => {
-    restore()
-  })
+  elementResizeDetectorMaker().listenTo(document.getElementById(domId), sizeInit)
 })
 
 defineExpose({
@@ -111,13 +106,7 @@ defineExpose({
 </script>
 
 <template>
-  <div
-      :id="domId"
-      class="canvas-container"
-      :style="canvasStyle"
-      ref="previewCanvas"
-      v-if="state.initState"
-  >
+  <div :id="domId" class="canvas-container" :style="canvasStyle" ref="previewCanvas" v-if="state.initState">
     <template v-if="renderReady">
       <SQComponentWrapper
           v-for="(item, index) in componentData"
