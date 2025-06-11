@@ -178,7 +178,7 @@ function createNewObject() {
 
 // @ts-ignore
 const resourceEdit = resourceId => {
-
+  window.open(`#/canvas?resourceId=${resourceId}`, '_blank')
 }
 
 // @ts-ignore
@@ -249,7 +249,7 @@ const operation = (opt: string, data: SQTreeNode) => {
     })
   } else if (opt === 'rename') {
     //@ts-ignore
-    resourceGroupOptRef.value?.optInit({opt: 'rename',id: data.id,name:data.name})
+    resourceGroupOptRef.value?.optInit({opt: 'rename', id: data.id, name: data.name})
   }
 }
 

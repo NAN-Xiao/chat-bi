@@ -8,11 +8,13 @@ import cloneDeep from 'lodash/cloneDeep';
 import {storeToRefs} from "pinia";
 import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
 import router from '@/router'
+import {dashboardApi} from "@/api/dashboard.ts";
+import {initCanvasData} from "@/views/dashboard/utils/canvasUtils.ts";
 
 const dashboardStore = dashboardStoreWithOut()
 const {componentData} = storeToRefs(dashboardStore)
 
-
+const dataInitState = ref(false)
 const state = reactive({
   routerPid: null,
   resourceId: null,
@@ -45,6 +47,11 @@ onMounted(() => {
   state.routerPid = router.currentRoute.value.query.pid
   if (state.opt === 'create') {
     dashboardStore.updateDashboardInfo({dataState: 'prepare', name: 'New Dashboard', pid: state.routerPid})
+  } else if (state.resourceId) {
+    dataInitState.value = false
+    initCanvasData({id: state.resourceId}, function () {
+      dataInitState.value = true
+    })
   }
 })
 

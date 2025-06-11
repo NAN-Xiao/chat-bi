@@ -69,6 +69,14 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
 
 def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     record = session.query(CoreDashboard).filter(CoreDashboard.id == dashboard.id).first()
+    record.name = dashboard.name
+    record.update_by = user.id
+    record.update_time = int(time.time())
+    record.component_data = dashboard.component_data
+    record.canvas_style_data = dashboard.canvas_style_data
+    session.add(record)
+    session.commit()
+    return record
 
 
 def validate_name(session: SessionDep, dashboard: QueryDashboard) -> bool:

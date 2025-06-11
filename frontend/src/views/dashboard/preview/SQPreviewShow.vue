@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import {reactive, ref, toRefs, onBeforeMount, computed} from 'vue'
-import {initCanvasData} from '@/views/dashboard/utils/canvasUtils'
+import {initCanvasData, load_resource_prepare} from '@/views/dashboard/utils/canvasUtils'
 import {Icon} from '@/components/icon-custom'
 import ResourceTree from "@/views/dashboard/common/ResourceTree.vue";
 import SQPreview from "@/views/dashboard/preview/SQPreview.vue";
@@ -62,7 +62,7 @@ function createNew() {
 const loadCanvasData = (params: any) => {
   dataInitState.value = false
   //@ts-ignore
-  initCanvasData({id:params.id}, function ({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview}) {
+  load_resource_prepare({id:params.id}, function ({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview}) {
         state.canvasDataPreview = canvasDataResult
         state.canvasStylePreview = canvasStyleResult
         state.canvasViewInfoPreview = canvasViewInfoPreview

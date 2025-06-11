@@ -11,6 +11,8 @@ import {useI18n} from 'vue-i18n'
 import {snapshotStoreWithOut} from "@/stores/dashboard/snapshot.ts";
 import icon_undo_outlined from '@/assets/svg/icon_undo_outlined.svg'
 import icon_redo_outlined from '@/assets/svg/icon_redo_outlined.svg'
+import icon_left_outlined from '@/assets/svg/icon_left_outlined.svg'
+import {saveDashboardResource} from "@/views/dashboard/utils/canvasUtils.ts";
 
 const {t} = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -43,6 +45,19 @@ const saveCanvasWithCheck = () => {
     }
     // @ts-ignore
     resourceGroupOptRef.value?.optInit(createParams)
+  } else if (dashboardInfo.value.id) {
+    const updateParams = {
+      opt: 'updateLeaf',
+      id: dashboardInfo.value.id,
+      name: dashboardInfo.value.name,
+      pid: dashboardInfo.value.pid
+    }
+    saveDashboardResource(updateParams, function () {
+      ElMessage({
+        type: 'success',
+        message: t('common.save_success'),
+      })
+    })
   }
 }
 
@@ -100,10 +115,28 @@ const redo = () => {
   }
 }
 
+
+const backToMain = () => {
+  let url = '#/dashboard/index'
+  if (dashboardInfo.value.id) {
+    url = url + '?resourceId=' + dashboardInfo.value.id
+  }
+  if (!!history.state.back) {
+    history.back()
+  } else {
+    window.open(url, '_self')
+  }
+}
+
 </script>
 
 <template>
   <div class="toolbar-main">
+    <el-icon class="custom-el-icon back-icon" @click="backToMain()">
+      <Icon name="icon_left_outlined">
+        <icon_left_outlined class="toolbar-hover-icon toolbar-icon"/>
+      </Icon>
+    </el-icon>
     <div class="left-area">
           <span id="canvas-name" class="name-area" @dblclick="editCanvasName">
             {{ dashboardInfo.name }}
@@ -169,12 +202,12 @@ const redo = () => {
         Save
       </el-button>
     </div>
-        <Teleport v-if="nameEdit" :to="'#canvas-name'">
+    <Teleport v-if="nameEdit" :to="'#canvas-name'">
       <input
-        @change="onDvNameChange"
-        ref="nameInput"
-        v-model="inputName"
-        @blur="closeEditCanvasName"
+          @change="onDvNameChange"
+          ref="nameInput"
+          v-model="inputName"
+          @blur="closeEditCanvasName"
       />
     </Teleport>
     <ResourceGroupOpt @finish="groupOptFinish " ref="resourceGroupOptRef"></ResourceGroupOpt>
@@ -205,6 +238,7 @@ const redo = () => {
       width: 300px;
       overflow: hidden;
       cursor: pointer;
+      color: #fff;
 
       input {
         position: absolute;
@@ -242,6 +276,30 @@ const redo = () => {
     display: flex;
     position: absolute;
     right: 12px;
+  }
+}
+
+.toolbar-icon {
+  width: 20px;
+  height: 20px;
+  color: #fff;
+}
+
+
+.toolbar-hover-icon {
+  cursor: pointer;
+  font-size: 18px !important;
+  width: 26px !important;
+  height: 26px !important;
+  color: rgba(255, 255, 255, 1);
+  border-radius: 4px;
+
+  &:hover {
+    background: rgba(235, 235, 235, 0.1);
+  }
+
+  &:active {
+    background: transparent;
   }
 }
 

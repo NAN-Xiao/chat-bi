@@ -9,7 +9,9 @@
     "back": "返回",
     "confirm": "确认",
     "cancel": "取消",
-    "system_manage": "系统管理"
+    "system_manage": "系统管理",
+    "update_success": "更新",
+    "save_success": "保存成功"
   },
   "dashboard": {
     "length_1_64_characters": "名称字段长度1-64个字符",

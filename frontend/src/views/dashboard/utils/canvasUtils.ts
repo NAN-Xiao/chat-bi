@@ -6,7 +6,7 @@ const dashboardStore = dashboardStoreWithOut()
 const {componentData, canvasStyleData} = storeToRefs(dashboardStore)
 
 const workspace_id = 'default' // temp
-export const initCanvasData = (params: any, callBack: Function) => {
+export const load_resource_prepare = (params: any, callBack: Function) => {
     dashboardApi.load_resource(params).then((canvasInfo: any) => {
         const dashboardInfo = {
             id: canvasInfo.id,
@@ -25,6 +25,16 @@ export const initCanvasData = (params: any, callBack: Function) => {
         const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)
         const canvasViewInfoPreview = canvasInfo.canvasViewInfo
         callBack({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview})
+    })
+}
+
+export const initCanvasData = (params: any, callBack: Function) => {
+    load_resource_prepare(params, function (result: any) {
+        dashboardStore.setDashboardInfo(result.dashboardInfo)
+        dashboardStore.setCanvasStyleData(result.canvasStyleResult)
+        dashboardStore.setComponentData(result.canvasDataResult)
+        dashboardStore.setCanvasViewInfo(result.canvasViewInfoPreview)
+        callBack()
     })
 }
 
@@ -49,6 +59,15 @@ export const saveDashboardResource = (params: any, callBack: Function) => {
             } else if (params.opt === 'rename') {
                 dashboardApi.update_resource(params).then((res: any) => {
                     callBack(res)
+                })
+            }else if (params.opt === 'updateLeaf') {
+                const reqeustParams = {
+                    ...params,
+                    component_data: JSON.stringify(componentData.value),
+                    canvas_style_data: JSON.stringify(canvasStyleData.value)
+                }
+                dashboardApi.update_canvas(reqeustParams).then(() => {
+                    callBack()
                 })
             }
         } else {
