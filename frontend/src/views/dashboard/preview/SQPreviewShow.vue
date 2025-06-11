@@ -76,6 +76,7 @@ const resourceNodeClick = (prams: any) => {
   loadCanvasData(prams)
 }
 
+//@ts-ignore
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
 
 onBeforeMount(() => {
