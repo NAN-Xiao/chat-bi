@@ -8,7 +8,7 @@
     @closed="close"
     modal-class="add-datasource_dialog"
   >
-    <template #header="">
+    <template #header>
       <div style="display: flex">
         <div style="margin-right: 24px">{{ dialogTitle }}</div>
         <el-steps
@@ -18,32 +18,22 @@
           custom
           style="max-width: 400px; flex: 1"
         >
-          <el-step title="Base Info" />
-          <el-step title="Choose Tables" />
+          <el-step :title="t('ds.form.base_info')" />
+          <el-step :title="t('ds.form.choose_tables')" />
         </el-steps>
       </div>
     </template>
 
     <div v-show="active === 0" class="container">
-      <el-form
-        :model="form"
-        label-position="top"
-        label-width="auto"
-        ref="dsFormRef"
-        :rules="rules"
-      >
-        <el-form-item label="Name" prop="name">
+      <el-form :model="form" label-position="top" label-width="auto" ref="dsFormRef" :rules="rules">
+        <el-form-item :label="t('ds.form.name')" prop="name">
           <el-input v-model="form.name" />
         </el-form-item>
-        <el-form-item label="Description">
+        <el-form-item :label="t('ds.form.description')">
           <el-input v-model="form.description" :rows="2" type="textarea" />
         </el-form-item>
-        <el-form-item label="Type" prop="type">
-          <el-select
-            v-model="form.type"
-            placeholder="Select Type"
-            :disabled="!isCreate"
-          >
+        <el-form-item :label="t('ds.type')" prop="type">
+          <el-select v-model="form.type" placeholder="Select Type" :disabled="!isCreate">
             <el-option
               v-for="item in dsType"
               :key="item.value"
@@ -62,49 +52,53 @@
               :before-upload="beforeUpload"
               :on-success="onSuccess"
             >
-              <el-button :disabled="!isCreate">Upload</el-button>
+              <el-button :disabled="!isCreate">{{ t('ds.form.upload.button') }}</el-button>
               <template #tip>
-                <div class="el-upload__tip">
-                  Only support .xls, .xlsx, .csv, size less than 50MB.
-                </div>
+                <div class="el-upload__tip">{{ t('ds.form.upload.tip') }}</div>
               </template>
             </el-upload>
           </el-form-item>
         </div>
         <div v-else>
-          <el-form-item label="Host/Ip" prop="host">
+          <el-form-item :label="t('ds.form.host')" prop="host">
             <el-input v-model="form.host" />
           </el-form-item>
-          <el-form-item label="Port" prop="port">
+          <el-form-item :label="t('ds.form.port')" prop="port">
             <el-input v-model="form.port" />
           </el-form-item>
-          <el-form-item label="Username">
+          <el-form-item :label="t('ds.form.username')">
             <el-input v-model="form.username" />
           </el-form-item>
-          <el-form-item label="Password">
+          <el-form-item :label="t('ds.form.password')">
             <el-input v-model="form.password" type="password" show-password />
           </el-form-item>
-          <el-form-item label="Database" prop="database">
+          <el-form-item :label="t('ds.form.database')" prop="database">
             <el-input v-model="form.database" />
           </el-form-item>
-          <el-form-item label="Connect Mode" v-if="form.type === 'oracle'" prop="mode">
+          <el-form-item
+            :label="t('ds.form.connect_mode')"
+            v-if="form.type === 'oracle'"
+            prop="mode"
+          >
             <el-radio-group v-model="form.mode">
-              <el-radio value="service_name">Service Name</el-radio>
-              <el-radio value="sid">SID</el-radio>
+              <el-radio value="service_name">{{ t('ds.form.mode.service_name') }}</el-radio>
+              <el-radio value="sid">{{ t('ds.form.mode.sid') }}</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="Extra JDBC String">
+          <el-form-item :label="t('ds.form.extra_jdbc')">
             <el-input v-model="form.extraJdbc" />
           </el-form-item>
-          <el-form-item label="Schema" v-if="haveSchema.includes(form.type)" prop="dbSchema">
+          <el-form-item
+            :label="t('ds.form.schema')"
+            v-if="haveSchema.includes(form.type)"
+            prop="dbSchema"
+          >
             <el-input v-model="form.dbSchema" />
-            <el-button link type="primary" :icon="Plus" v-if="false"
-              >Get Schema</el-button
-            >
+            <el-button link type="primary" :icon="Plus" v-if="false">Get Schema</el-button>
           </el-form-item>
-          <span v-if="form.type === 'sqlServer'">Supported version: 2012+</span>
-          <span v-else-if="form.type === 'oracle'">Supported version: 12+</span>
-          <span v-else-if="form.type === 'mysql'">Supported version: 5.6+</span>
+          <span v-if="form.type === 'sqlServer'"> Supported version: 2012+ </span>
+          <span v-else-if="form.type === 'oracle'"> Supported version: 12+ </span>
+          <span v-else-if="form.type === 'mysql'"> Supported version: 5.6+ </span>
           <span v-else-if="form.type === 'pg'">Supported version: 9.6+</span>
         </div>
       </el-form>
@@ -130,242 +124,228 @@
           </template>
         </FixedSizeList>
       </el-checkbox-group>
-      <span>Selected: {{ checkList.length }}/{{ tableList.length }}</span>
+      <span>{{ t('ds.form.selected', [checkList.length, tableList.length]) }}</span>
     </div>
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
-      <el-button @click="close">Cancel</el-button>
+      <el-button @click="close">{{ t('common.cancel') }}</el-button>
+      <el-button v-show="!isCreate && !isEditTable && form.type !== 'excel'" @click="check">
+        {{ t('ds.test_connection') }}
+      </el-button>
+      <el-button v-show="active === 0 && isCreate" type="primary" @click="next(dsFormRef)">
+        {{ t('common.next') }}
+      </el-button>
+      <el-button v-show="active === 1 && isCreate" @click="preview">
+        {{ t('ds.preview') }}
+      </el-button>
       <el-button
-        v-show="!isCreate && !isEditTable && form.type !== 'excel'"
-        @click="check"
-        >Test Connect</el-button
-      >
-      <el-button
-        v-show="active === 0 && isCreate"
-        type="primary"
-        @click="next(dsFormRef)"
-        >Next</el-button
-      >
-      <el-button v-show="active === 1 && isCreate" @click="preview"
-        >Preview</el-button
-      >
-      <el-button
-      :loading="saveLoading"
+        :loading="saveLoading"
         v-show="active === 1 || !isCreate"
         type="primary"
         @click="save(dsFormRef)"
-        >Save</el-button
       >
+        {{ t('common.save') }}
+      </el-button>
     </div>
   </el-dialog>
 </template>
 <script lang="ts" setup>
-import { ref, reactive } from "vue";
-import { datasourceApi } from "@/api/datasource";
-import { encrypted, decrypted } from "./js/aes";
-import { ElMessage } from "element-plus-secondary";
-import type { FormInstance, FormRules } from "element-plus-secondary";
-import FixedSizeList from "element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs";
-import { Plus } from "@element-plus/icons-vue";
-import { useCache } from "@/utils/useCache";
-import { dsType, haveSchema } from "@/views/ds/js/ds-type";
+import { ref, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { datasourceApi } from '@/api/datasource'
+import { encrypted, decrypted } from './js/aes'
+import { ElMessage } from 'element-plus-secondary'
+import type { FormInstance, FormRules } from 'element-plus-secondary'
+import FixedSizeList from 'element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs'
+import { Plus } from '@element-plus/icons-vue'
+import { useCache } from '@/utils/useCache'
+import { dsType, haveSchema } from '@/views/ds/js/ds-type'
 
-const { wsCache } = useCache();
-const dsFormRef = ref<FormInstance>();
-const emit = defineEmits(["refresh"]);
-const active = ref(0);
-const isCreate = ref(true);
-const isEditTable = ref(false);
-const checkList = ref<any>([]);
-const tableList = ref<any>([]);
-const excelUploadSuccess = ref(false);
-const tableListLoading = ref(false);
-const token = wsCache.get("user.token");
-const headers = ref<any>({ "X-SQLBOT-TOKEN": `Bearer ${token}` });
-const dialogTitle = ref("");
+const { wsCache } = useCache()
+const dsFormRef = ref<FormInstance>()
+const emit = defineEmits(['refresh'])
+const active = ref(0)
+const isCreate = ref(true)
+const isEditTable = ref(false)
+const checkList = ref<any>([])
+const tableList = ref<any>([])
+const excelUploadSuccess = ref(false)
+const tableListLoading = ref(false)
+const token = wsCache.get('user.token')
+const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}` })
+const dialogTitle = ref('')
 const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
 const saveLoading = ref<boolean>(false)
 
+const { t } = useI18n()
 
 const rules = reactive<FormRules>({
   name: [
-    { required: true, message: "Please input name", trigger: "blur" },
-    { min: 1, max: 50, message: "Length should be 1 to 50", trigger: "blur" },
+    { required: true, message: t('ds.form.validate.name_required'), trigger: 'blur' },
+    { min: 1, max: 50, message: t('ds.form.validate.name_length'), trigger: 'blur' },
   ],
-  type: [
-    { required: true, message: "Please choose database type" ,trigger: "change"}
-  ],
-  host: [
-    { required: true, message: "Please input host" ,trigger: "blur"}
-  ],
-  port: [
-    { required: true, message: "Please input port" ,trigger: "blur"}
-  ],
-  database: [
-    { required: true, message: "Please input database" ,trigger: "blur"}
-  ],
-  mode: [
-    { required: true, message: "Please choose mode" ,trigger: "change"}
-  ],
-  dbSchema: [
-    { required: true, message: "Please input schema" ,trigger: "blur"}
-  ]
-});
+  type: [{ required: true, message: t('ds.form.validate.type_required'), trigger: 'change' }],
+  host: [{ required: true, message: 'Please input host', trigger: 'blur' }],
+  port: [{ required: true, message: 'Please input port', trigger: 'blur' }],
+  database: [{ required: true, message: 'Please input database', trigger: 'blur' }],
+  mode: [{ required: true, message: 'Please choose mode', trigger: 'change' }],
+  dbSchema: [{ required: true, message: 'Please input schema', trigger: 'blur' }],
+})
 
-const dialogVisible = ref<boolean>(false);
+const dialogVisible = ref<boolean>(false)
 const form = ref<any>({
-  name: "",
-  description: "",
-  type: "mysql",
-  configuration: "",
-  driver: "",
-  host: "",
+  name: '',
+  description: '',
+  type: 'mysql',
+  configuration: '',
+  driver: '',
+  host: '',
   port: 0,
-  username: "",
-  password: "",
-  database: "",
-  extraJdbc: "",
-  dbSchema: "",
-  filename: "",
+  username: '',
+  password: '',
+  database: '',
+  extraJdbc: '',
+  dbSchema: '',
+  filename: '',
   sheets: [],
-  mode: "service_name",
-});
+  mode: 'service_name',
+})
 
 const close = () => {
-  dialogVisible.value = false;
-  isCreate.value = true;
-  active.value = 0;
-  isEditTable.value = false;
-  checkList.value = [];
-  tableList.value = [];
-  excelUploadSuccess.value = false;
+  dialogVisible.value = false
+  isCreate.value = true
+  active.value = 0
+  isEditTable.value = false
+  checkList.value = []
+  tableList.value = []
+  excelUploadSuccess.value = false
   saveLoading.value = false
-};
+}
 
 const open = (item: any, editTable: boolean = false) => {
-  isEditTable.value = false;
+  isEditTable.value = false
   if (item) {
-    dialogTitle.value = "Edit Datasource";
-    isCreate.value = false;
-    form.value.id = item.id;
-    form.value.name = item.name;
-    form.value.description = item.description;
-    form.value.type = item.type;
-    form.value.configuration = item.configuration;
+    dialogTitle.value = editTable ? t('ds.form.title.choose_tables') : t('ds.form.title.edit')
+    isCreate.value = false
+    form.value.id = item.id
+    form.value.name = item.name
+    form.value.description = item.description
+    form.value.type = item.type
+    form.value.configuration = item.configuration
     if (item.configuration) {
-      const configuration = JSON.parse(decrypted(item.configuration));
-      form.value.host = configuration.host;
-      form.value.port = configuration.port;
-      form.value.username = configuration.username;
-      form.value.password = configuration.password;
-      form.value.database = configuration.database;
-      form.value.extraJdbc = configuration.extraJdbc;
-      form.value.dbSchema = configuration.dbSchema;
-      form.value.filename = configuration.filename;
-      form.value.sheets = configuration.sheets;
-      form.value.mode = configuration.mode;
+      const configuration = JSON.parse(decrypted(item.configuration))
+      form.value.host = configuration.host
+      form.value.port = configuration.port
+      form.value.username = configuration.username
+      form.value.password = configuration.password
+      form.value.database = configuration.database
+      form.value.extraJdbc = configuration.extraJdbc
+      form.value.dbSchema = configuration.dbSchema
+      form.value.filename = configuration.filename
+      form.value.sheets = configuration.sheets
+      form.value.mode = configuration.mode
     }
 
     if (editTable) {
-      dialogTitle.value = "Choose Tables";
-      active.value = 1;
-      isEditTable.value = true;
-      isCreate.value = false;
+      dialogTitle.value = 'Choose Tables'
+      active.value = 1
+      isEditTable.value = true
+      isCreate.value = false
       // request tables and check tables
 
       datasourceApi.tableList(item.id).then((res) => {
         checkList.value = res.map((ele: any) => {
-          return ele.table_name;
-        });
-        if (item.type === "excel") {
-          tableList.value = form.value.sheets;
+          return ele.table_name
+        })
+        if (item.type === 'excel') {
+          tableList.value = form.value.sheets
         } else {
-          tableListLoading.value = true;
+          tableListLoading.value = true
           const requestObj = buildConf()
           datasourceApi
             .getTablesByConf(requestObj)
             .then((table) => {
-              tableList.value = table;
+              tableList.value = table
               checkList.value = checkList.value.filter((ele: string) => {
                 return table
                   .map((ele: any) => {
-                    return ele.tableName;
+                    return ele.tableName
                   })
-                  .includes(ele);
-              });
+                  .includes(ele)
+              })
             })
             .finally(() => {
-              tableListLoading.value = false;
-            });
+              tableListLoading.value = false
+            })
         }
-      });
+      })
     }
   } else {
-    dialogTitle.value = "Add Datasource";
-    isCreate.value = true;
-    isEditTable.value = false;
-    checkList.value = [];
-    tableList.value = [];
+    dialogTitle.value = t('ds.form.title.add')
+    isCreate.value = true
+    isEditTable.value = false
+    checkList.value = []
+    tableList.value = []
     form.value = {
-      name: "",
-      description: "",
-      type: "mysql",
-      configuration: "",
-      driver: "",
-      host: "",
+      name: '',
+      description: '',
+      type: 'mysql',
+      configuration: '',
+      driver: '',
+      host: '',
       port: 0,
-      username: "",
-      password: "",
-      database: "",
-      extraJdbc: "",
-      dbSchema: "",
-      filename: "",
+      username: '',
+      password: '',
+      database: '',
+      extraJdbc: '',
+      dbSchema: '',
+      filename: '',
       sheets: [],
-      mode: "service_name",
+      mode: 'service_name',
     }
   }
-  dialogVisible.value = true;
-};
+  dialogVisible.value = true
+}
 
 const save = async (formEl: FormInstance | undefined) => {
-  if (!formEl) return;
+  if (!formEl) return
   await formEl.validate((valid) => {
     if (valid) {
       saveLoading.value = true
       const list = tableList.value
         .filter((ele: any) => {
-          return checkList.value.includes(ele.tableName);
+          return checkList.value.includes(ele.tableName)
         })
         .map((ele: any) => {
-          return { table_name: ele.tableName, table_comment: ele.tableComment };
-        });
+          return { table_name: ele.tableName, table_comment: ele.tableComment }
+        })
 
-      const requestObj = buildConf();
+      const requestObj = buildConf()
       if (form.value.id) {
         if (!isEditTable.value) {
           // only update datasource config info
           datasourceApi.update(requestObj).then((res) => {
-            console.log(res);
-            close();
-            emit("refresh");
-          });
+            console.log(res)
+            close()
+            emit('refresh')
+          })
         } else {
           // save table and field
           datasourceApi.chooseTables(form.value.id, list).then(() => {
-            close();
-            emit("refresh");
-          });
+            close()
+            emit('refresh')
+          })
         }
       } else {
-        requestObj.tables = list;
+        requestObj.tables = list
         datasourceApi.add(requestObj).then((res: any) => {
-          console.log(res);
-          close();
-          emit("refresh");
-        });
+          console.log(res)
+          close()
+          emit('refresh')
+        })
       }
     }
-  });
-};
+  })
+}
 
 const buildConf = () => {
   form.value.configuration = encrypted(
@@ -395,79 +375,79 @@ const buildConf = () => {
   delete obj.sheets
   delete obj.mode
   return obj
-};
+}
 
 const check = () => {
-  const requestObj = buildConf();
+  const requestObj = buildConf()
   datasourceApi.check(requestObj).then((res: any) => {
     if (res) {
       ElMessage({
-        message: "Connect success",
-        type: "success",
+        message: t('ds.form.connect.success'),
+        type: 'success',
         showClose: true,
-      });
+      })
     } else {
       ElMessage({
-        message: "Connect failed",
-        type: "error",
+        message: t('ds.form.connect.failed'),
+        type: 'error',
         showClose: true,
-      });
+      })
     }
-  });
-};
+  })
+}
 
 const next = async (formEl: FormInstance | undefined) => {
-  if (!formEl) return;
+  if (!formEl) return
   await formEl.validate((valid) => {
     if (valid) {
-      if (form.value.type === "excel") {
+      if (form.value.type === 'excel') {
         // next, show tables
         if (excelUploadSuccess.value) {
-          active.value++;
+          active.value++
         }
       } else {
         // check status if success do next
-        const requestObj = buildConf();
+        const requestObj = buildConf()
         datasourceApi.check(requestObj).then((res: boolean) => {
           if (res) {
-            active.value++;
+            active.value++
             // request tables
             datasourceApi.getTablesByConf(requestObj).then((res) => {
-              tableList.value = res;
-            });
+              tableList.value = res
+            })
           } else {
             ElMessage({
-              message: "Connect failed",
-              type: "error",
+              message: 'Connect failed',
+              type: 'error',
               showClose: true,
-            });
+            })
           }
-        });
+        })
       }
     }
-  });
-};
+  })
+}
 
 const preview = () => {
-  active.value--;
-};
+  active.value--
+}
 
 const beforeUpload = (rawFile: any) => {
   if (rawFile.size / 1024 / 1024 > 50) {
-    ElMessage.error("File size can not exceed 50MB!");
-    return false;
+    ElMessage.error('File size can not exceed 50MB!')
+    return false
   }
-  return true;
-};
+  return true
+}
 
 const onSuccess = (response: any) => {
-  form.value.filename = response.data.filename;
-  form.value.sheets = response.data.sheets;
-  tableList.value = response.data.sheets;
-  excelUploadSuccess.value = true;
-};
+  form.value.filename = response.data.filename
+  form.value.sheets = response.data.sheets
+  tableList.value = response.data.sheets
+  excelUploadSuccess.value = true
+}
 
-defineExpose({ open });
+defineExpose({ open })
 </script>
 <style lang="less">
 .add-datasource_dialog {

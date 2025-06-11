@@ -7,8 +7,6 @@ import { store } from './index'
 
 const { wsCache } = useCache()
 
-
-
 interface UserState {
   token: string
   uid: string
@@ -17,7 +15,7 @@ interface UserState {
   language: string
   exp: number
   time: number
-  [key: string]: string | number 
+  [key: string]: string | number
 }
 
 export const UserStore = defineStore('user', {
@@ -29,7 +27,7 @@ export const UserStore = defineStore('user', {
       oid: '',
       language: 'zh-CN',
       exp: 0,
-      time: 0
+      time: 0,
     }
   },
   getters: {
@@ -53,10 +51,9 @@ export const UserStore = defineStore('user', {
     },
     getTime(): number {
       return this.time
-    }
+    },
   },
   actions: {
-
     async login(formData: { username: string; password: string }) {
       const res: any = await AuthApi.login(formData)
       this.setToken(res.access_token)
@@ -66,13 +63,13 @@ export const UserStore = defineStore('user', {
       this.clear()
     },
 
-    async info () {
+    async info() {
       const res: any = await AuthApi.info()
       const res_data = res || {}
 
       const keys = ['uid', 'name', 'oid', 'language', 'exp', 'time'] as const
-      
-      keys.forEach(key => {
+
+      keys.forEach((key) => {
         const dkey = key === 'uid' ? 'id' : key
         const value = res_data[dkey]
         if (key === 'exp' || key === 'time') {
@@ -122,9 +119,9 @@ export const UserStore = defineStore('user', {
     },
     clear() {
       const keys: string[] = ['token', 'uid', 'name', 'oid', 'language', 'exp', 'time']
-      keys.forEach(key => wsCache.delete('user.' + key))
-    }
-  }
+      keys.forEach((key) => wsCache.delete('user.' + key))
+    },
+  },
 })
 
 export const useUserStore = () => {

@@ -2,10 +2,16 @@
 
 import type {ChatMessage} from "@/api/chat.ts";
 import {computed, nextTick, ref} from "vue";
-import type {TabsPaneContext} from 'element-plus-secondary'
 import {Loading} from "@element-plus/icons-vue";
-import Component from "./component/Component.vue"
+import ChartComponent from "./component/ChartComponent.vue"
 import type {ChartTypes} from "@/views/chat/component/BaseChart.ts";
+import {ArrowDown} from "@element-plus/icons-vue";
+import ICON_BAR from "@/assets/svg/chart/bar.svg"
+import ICON_COLUMN from "@/assets/svg/chart/column.svg"
+import ICON_LINE from "@/assets/svg/chart/line.svg"
+import ICON_PIE from "@/assets/svg/chart/pie.svg"
+import ICON_TABLE from "@/assets/svg/chart/table.svg"
+import {find} from "lodash-es";
 
 const props = defineProps<{
   message?: ChatMessage
@@ -28,10 +34,6 @@ const renderChartThinking = computed(() => {
   //todo md render?
   return props.message?.record?.chart_answer
 })
-
-const handleClick = (tab: TabsPaneContext, event: Event) => {
-  console.log(tab, event)
-}
 
 const dataObject = computed<{
   fields: Array<string>,
@@ -92,10 +94,59 @@ const chartType = computed<ChartTypes>({
   }
 })
 
+function clickTab(type: "chart" | "sql") {
+  settings.value.type = type
+}
+
+const chartSelectRef = ref()
+
+function openChartSelect() {
+  chartSelectRef.value.toggleMenu()
+}
+
+const chartTypeList = computed(() => {
+  const _list = [{
+    value: "table",
+    icon: ICON_TABLE
+  }]
+  if (chartObject.value) {
+    switch (chartObject.value.type) {
+      case "table":
+        break
+      case "column":
+      case "bar":
+      case "line":
+        _list.push({
+          value: "column",
+          icon: ICON_COLUMN
+        })
+        _list.push({
+          value: "bar",
+          icon: ICON_BAR
+        })
+        _list.push({
+          value: "line",
+          icon: ICON_LINE
+        })
+        break
+      case "pie":
+        _list.push({
+          value: "pie",
+          icon: ICON_PIE
+        })
+    }
+  }
+
+  return _list;
+})
+
+const currentChartTypeIcon = computed(() => {
+  return find(chartTypeList.value, c => c.value === chartType.value)?.icon ?? ICON_TABLE
+})
+
 const chartRef = ref()
 
-function onTypeChange(type: string) {
-  console.log(type)
+function onTypeChange() {
   nextTick(() => {
     chartRef.value?.destroyChart()
     chartRef.value?.renderChart()
@@ -112,21 +163,36 @@ function onTypeChange(type: string) {
         <div v-if="message.isTyping">Thinking ...</div>
         <div v-if="chartObject.title && !message.isTyping">{{ chartObject.title }}</div>
       </div>
-      <el-tabs v-model="settings.type" class="type-tabs" @tab-click="handleClick" tab-position="top">
-        <el-tab-pane label="Chart" name="chart">
-          <template #label>
-            <el-select v-model="chartType" style="width: 80px" :disabled="settings.type!== 'chart'"
-                       @change="onTypeChange">
-              <el-option value="table">table</el-option>
-              <el-option value="column">column</el-option>
-              <el-option value="bar">bar</el-option>
-              <el-option value="line">line</el-option>
-              <el-option value="pie">pie</el-option>
-            </el-select>
-          </template>
-        </el-tab-pane>
-        <el-tab-pane label="SQL" name="sql"></el-tab-pane>
-      </el-tabs>
+      <div class="tab-container">
+        <div class="base-chart-choose-btn" @click="clickTab('chart')">
+          <div class="chart-choose-btn"
+               :class="{'active': settings.type === 'chart', 'no-click': settings.type !== 'chart'}"
+               @click="openChartSelect">
+            <el-icon size="34">
+              <component :is="currentChartTypeIcon"/>
+            </el-icon>
+            <el-icon>
+              <ArrowDown/>
+            </el-icon>
+          </div>
+          <el-select v-model="chartType" class="inner-select" :disabled="settings.type!== 'chart'"
+                     ref="chartSelectRef"
+                     @change="onTypeChange">
+            <el-option v-for="t in chartTypeList " :key="t.value" :value="t.value">
+              <div class="inner-chart-option">
+                <el-icon size="34">
+                  <component :is="t.icon"/>
+                </el-icon>
+                {{ t.value }}
+              </div>
+            </el-option>
+          </el-select>
+
+        </div>
+        <div class="chart-choose-btn" :class="{'active': settings.type !== 'chart'}" @click="clickTab('sql')">
+          SQL
+        </div>
+      </div>
     </el-header>
     <el-container direction="vertical">
       <template v-if="message.record">
@@ -163,7 +229,7 @@ function onTypeChange(type: string) {
             <div>
               <div v-if="message.record.chart" class="chart-base-container">
                 <div>
-                  <Component
+                  <ChartComponent
                       ref="chartRef"
                       v-if="message.record.id"
                       :id="message.record.id"
@@ -204,5 +270,89 @@ function onTypeChange(type: string) {
 .chart-base-container {
   padding: 20px;
   background: rgba(224, 224, 226, 0.29);
+}
+
+.tab-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.base-chart-choose-btn {
+  cursor: pointer;
+  color: var(--ed-color-primary);
+  font-size: 16px;
+  font-weight: 500;
+  height: 34px;
+
+  border-radius: 4px;
+
+  position: relative;
+
+  &:hover {
+    background: var(--ed-color-primary-light-5);
+    color: var(--ed-color-primary-light-9);
+  }
+
+  .inner-select {
+
+    position: absolute;
+
+    :deep(.ed-select__wrapper) {
+      height: 0;
+      padding: unset;
+      min-height: unset;
+      line-height: unset;
+    }
+
+    :deep(.ed-select__suffix) {
+      display: none;
+    }
+
+    :deep(.ed-select__selected-item) {
+      display: none;
+    }
+
+  }
+
+}
+
+.inner-chart-option {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  padding-right: 4px;
+}
+
+.chart-choose-btn {
+
+  cursor: pointer;
+  color: var(--ed-color-primary);
+  font-size: 16px;
+  font-weight: 500;
+  height: 34px;
+
+  border-radius: 4px;
+
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+
+  &.no-click {
+    pointer-events: none;
+  }
+
+  &.active {
+    background: var(--ed-color-primary-light-7);
+    color: var(--ed-color-primary);
+  }
+
+  &:hover {
+    background: var(--ed-color-primary-light-5);
+    color: var(--ed-color-primary-light-9);
+  }
 }
 </style>

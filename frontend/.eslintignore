@@ -1,0 +1,8 @@
+/node_modules/
+/dist/
+/public/
+*.md
+*.woff
+*.ttf
+.vscode/
+.DS_Store
