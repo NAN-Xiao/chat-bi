@@ -244,7 +244,7 @@ def get_table_schema(session: SessionDep, ds: CoreDatasource) -> str:
     db_name = table_objs[0].schema
     schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
     for obj in table_objs:
-        schema_str += f"# Table: {db_name}.{obj.table.table_name}"
+        schema_str += f"# Table: {db_name}.{obj.table.table_name}" if ds.type != "mysql" else f"# Table: {obj.table.table_name}"
         table_comment = ''
         if obj.table.custom_comment:
             table_comment = obj.table.custom_comment.strip()
