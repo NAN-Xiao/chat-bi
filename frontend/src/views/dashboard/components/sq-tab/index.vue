@@ -23,6 +23,19 @@ const props = defineProps({
   configItem: {
     type: Object as PropType<CanvasItem>,
     required: true
+  },
+  canvasViewInfo: {
+    type: Object,
+    required: true
+  },
+  showPosition: {
+    required: false,
+    type: String,
+    default: 'preview'
+  },
+  canvasId: {
+    type: String,
+    default: 'canvas-main'
   }
 })
 
@@ -220,11 +233,11 @@ defineExpose({
   position: absolute;
   width: 100%;
   height: 100%;
-  margin: 2px!important;// border size
+  margin: 2px !important; // border size
 }
 
-.tab-dashboard-editor-main{
- height: 100%!important;
+.tab-dashboard-editor-main {
+  height: 100% !important;
 }
 
 .tab-moveout {

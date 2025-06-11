@@ -20,12 +20,12 @@ export const dashboardStore = defineStore('dashboard', {
                 workspaceId: null,
                 status: null,
                 dataState: null,
-                type: null,
-                creatorName: null,
+                createName: null,
                 updateName: null,
                 createTime: null,
                 updateTime: null,
-                contentId: null
+                contentId: null,
+                type: null
             }
         }
     },

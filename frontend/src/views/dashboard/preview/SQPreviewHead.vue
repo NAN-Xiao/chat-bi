@@ -3,28 +3,31 @@ import dashboardInfoSvg from '@/assets/svg/dashboard-info.svg'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import DashboardDetailInfo from "@/views/dashboard/common/DashboardDetailInfo.vue";
-import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
-import {storeToRefs} from "pinia";
 const emit = defineEmits(['reload', 'download', 'downloadAsAppTemplate'])
-const dashboardStore = dashboardStoreWithOut()
-const {dashboardInfo} = storeToRefs(dashboardStore)
 const preview = () => {}
 const edit = () =>{}
+
+
+defineProps({
+  dashboardInfo: {
+    type: Object,
+    required: true
+  }
+})
+
 </script>
 
 <template>
   <div class="preview-head flex-align-center">
     <div class="canvas-name ellipsis">{{ dashboardInfo.name }}</div>
-    <el-divider style="margin: 0 16px 0 7px" direction="vertical" />
-    <div class="create-area flex-align-center">
-      <span style="line-height: 22px"
-        >Creator:{{ dashboardInfo.creatorName }}</span
-      >
+    <el-divider style="margin: 5px 10px 0 17px" direction="vertical" />
+    <span class="create-area" style="line-height: 22px">Creator:{{ dashboardInfo.createName }}</span>
+    <div style="padding-top: 4px" class="create-area flex-align-center">
       <el-popover show-arrow :offset="8" placement="bottom" width="400" trigger="hover">
         <template #reference>
           <el-icon class="info-tips"><dashboardInfoSvg class="svg-icon" /></el-icon>
         </template>
-        <DashboardDetailInfo></DashboardDetailInfo>
+        <DashboardDetailInfo :dashboard-info="dashboardInfo"></DashboardDetailInfo>
       </el-popover>
     </div>
     <div class="canvas-opt-button">
@@ -36,7 +39,7 @@ const edit = () =>{}
       </el-button>
       <el-button class="custom-button" type="primary" @click="edit">
         <template #icon>
-          <icon name="icon_edit_outlined"><icon_edit_outlined class="svg-icon" /></icon>
+          <Icon name="icon_edit_outlined"><icon_edit_outlined class="svg-icon" /></Icon>
         </template>
         Edit</el-button
       >
@@ -64,6 +67,7 @@ const edit = () =>{}
   }
 }
 .preview-head {
+  display: flex;
   width: 100%;
   min-width: 300px;
   height: 56px;
@@ -128,5 +132,11 @@ const edit = () =>{}
 
 .custom-button {
   margin-left: 12px;
+}
+
+.flex-align-center {
+  & + & {
+    margin-left: 4px;
+  }
 }
 </style>

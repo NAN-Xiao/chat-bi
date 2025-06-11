@@ -1,11 +1,168 @@
 <script setup lang="ts">
+import elementResizeDetectorMaker from 'element-resize-detector'
 
+const dashboardStore = dashboardStoreWithOut()
+const {curComponent} = storeToRefs(dashboardStore)
+
+import {onMounted, toRefs, ref, computed, reactive} from 'vue'
+import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
+import {storeToRefs} from "pinia";
+import SQComponentWrapper from "@/views/dashboard/preview/SQComponentWrapper.vue";
+import type {CanvasItem} from "@/utils/canvas.ts";
+
+const props = defineProps({
+  canvasStyleData: {
+    type: Object,
+    required: true
+  },
+  componentData: {
+    type: Object,
+    required: true
+  },
+  canvasViewInfo: {
+    type: Object,
+    required: true
+  },
+  dashboardInfo: {
+    type: Object,
+    required: true
+  },
+  baseMatrixCount: {
+    type: Object,
+    default: {
+      x: 72,
+      y: 36
+    }
+  },
+  canvasId: {
+    type: String,
+    required: false,
+    default: 'canvas-main'
+  },
+  showPosition: {
+    required: false,
+    type: String,
+    default: 'preview'
+  }
+})
+
+const { canvasStyleData, componentData, showPosition,
+  canvasId
+} = toRefs(props)
+const domId = 'preview-' + canvasId.value
+const previewCanvas = ref(null)
+const renderReady = ref(false)
+const state = reactive({
+  initState: true,
+  scrollMain: 0
+})
+
+const cellWidth = ref(0)
+const cellHeight = ref(0)
+const baseWidth = ref(0)
+const baseHeight = ref(0)
+const baseMarginLeft = ref(0)
+const baseMarginTop = ref(0)
+const canvasStyle = computed(() => {
+  return {}
+})
+
+const restore = () => {
+
+}
+
+function nowItemStyle(item: CanvasItem) {
+  return {
+    width: cellWidth.value * item.sizeX - baseMarginLeft.value + 'px',
+    height: cellHeight.value * item.sizeY - baseMarginTop.value + 'px',
+    left: cellWidth.value * (item.x - 1) + baseMarginLeft.value + 'px',
+    top: cellHeight.value * (item.y - 1) + baseMarginTop.value + 'px'
+  }
+}
+
+const sizeInit = () => {
+  if (previewCanvas.value) {
+    //@ts-ignore
+    const screenWidth = dashboardEditorRef.value.offsetWidth
+    //@ts-ignore
+    const screenHeight = dashboardEditorRef.value.offsetHeight
+    baseMarginLeft.value = 10
+    baseMarginTop.value = 10
+    baseWidth.value = (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
+    baseHeight.value = (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
+    cellWidth.value = baseWidth.value + baseMarginLeft.value
+    cellHeight.value = baseHeight.value + baseMarginTop.value
+  }
+}
+
+
+onMounted(() => {
+  window.addEventListener('resize', sizeInit)
+  const erd = elementResizeDetectorMaker()
+  //@ts-ignore
+  erd.listenTo(document.getElementById(domId), () => {
+    restore()
+  })
+})
+
+defineExpose({
+  restore
+})
 </script>
 
 <template>
-
+  <div
+      :id="domId"
+      class="canvas-container"
+      :style="canvasStyle"
+      ref="previewCanvas"
+      v-if="state.initState"
+  >
+    <template v-if="renderReady">
+      <SQComponentWrapper
+          v-for="(item, index) in componentData"
+          :active="!!curComponent && (item.id === curComponent['id'])"
+          :config-item="item"
+          :canvas-view-info="canvasStyleData"
+          :show-position="showPosition"
+          :canvas-id="canvasId"
+          :key="index"
+          :style="nowItemStyle(item)"
+          :index="index"
+      />
+    </template>
+  </div>
 </template>
 
-<style scoped lang="less">
+<style lang="less" scoped>
+.canvas-container {
+  background-size: 100% 100% !important;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  position: relative;
 
+  div::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  div {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+}
+
+.fix-button {
+  position: fixed !important;
+}
+
+.datav-preview {
+  overflow-y: hidden !important;
+}
+
+.datav-preview-unpublish {
+  background-color: inherit !important;
+}
 </style>

@@ -12,18 +12,18 @@ export const load_resource_prepare = (params: any, callBack: Function) => {
             id: canvasInfo.id,
             name: canvasInfo.name,
             pid: canvasInfo.pid,
-            workspaceId: canvasInfo.workspaceId,
+            workspaceId: canvasInfo.workspace_id,
             status: canvasInfo.status,
             type: canvasInfo.type,
-            creatorName: canvasInfo.creatorName,
-            updateName: canvasInfo.updateName,
-            createTime: canvasInfo.createTime,
-            updateTime: canvasInfo.updateTime,
-            contentId: canvasInfo.contentId
+            createName: canvasInfo.create_name,
+            updateName: canvasInfo.update_name,
+            createTime: canvasInfo.create_time,
+            updateTime: canvasInfo.update_time,
+            contentId: canvasInfo.content_id
         }
         const canvasDataResult = JSON.parse(canvasInfo.component_data)
         const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)
-        const canvasViewInfoPreview = canvasInfo.canvasViewInfo
+        const canvasViewInfoPreview = canvasInfo.canvas_view_Info
         callBack({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview})
     })
 }

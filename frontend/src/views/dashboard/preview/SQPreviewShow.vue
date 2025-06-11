@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import {reactive, ref, toRefs, onBeforeMount, computed} from 'vue'
-import {initCanvasData, load_resource_prepare} from '@/views/dashboard/utils/canvasUtils'
+import {load_resource_prepare} from '@/views/dashboard/utils/canvasUtils'
 import {Icon} from '@/components/icon-custom'
 import ResourceTree from "@/views/dashboard/common/ResourceTree.vue";
 import SQPreview from "@/views/dashboard/preview/SQPreview.vue";
@@ -16,10 +16,10 @@ const slideShow = ref(true)
 const dataInitState = ref(true)
 const downloadStatus = ref(false)
 const state = reactive({
-  canvasDataPreview: null,
-  canvasStylePreview: null,
-  canvasViewInfoPreview: null,
-  dashboardInfo: null,
+  canvasDataPreview: [],
+  canvasStylePreview: {},
+  canvasViewInfoPreview: {},
+  dashboardInfo: {},
   showOffset: {
     top: 110,
     left: 280
@@ -61,8 +61,9 @@ function createNew() {
 
 const loadCanvasData = (params: any) => {
   dataInitState.value = false
-  //@ts-ignore
-  load_resource_prepare({id:params.id}, function ({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview}) {
+  load_resource_prepare({id: params.id},
+              //@ts-ignore
+      function ({dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview}) {
         state.canvasDataPreview = canvasDataResult
         state.canvasStylePreview = canvasStyleResult
         state.canvasViewInfoPreview = canvasViewInfoPreview
@@ -71,12 +72,6 @@ const loadCanvasData = (params: any) => {
       }
   )
 }
-
-// @ts-ignore
-const slideOpenChange = () => {
-  slideShow.value = !slideShow.value
-}
-
 const getPreviewStateInfo = () => {
   return state
 }
@@ -89,7 +84,7 @@ const resourceNodeClick = (prams: any) => {
   loadCanvasData(prams)
 }
 
-const previewShowFlag = computed(() => !!dashboardStore.dashboardInfo?.name)
+const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
 
 onBeforeMount(() => {
   if (showPosition.value === 'preview') {
@@ -97,23 +92,13 @@ onBeforeMount(() => {
   }
 })
 const sideTreeStatus = ref(true)
-// @ts-ignore
-const changeSideTreeStatus = val => {
-  sideTreeStatus.value = val
-}
-
-const freezeStyle = computed(() => [
-  {'--top-show-offset': state.showOffset.top},
-  {'--left-show-offset': state.showOffset.left}
-])
-
 defineExpose({
   getPreviewStateInfo
 })
 </script>
 
 <template>
-  <div class="dv-preview dv-teleport-query" :style="freezeStyle">
+  <div class="dv-preview dv-teleport-query">
     <el-aside
         class="resource-area"
         :class="{ 'close-side': !slideShow, retract: !sideTreeStatus }"
@@ -133,16 +118,12 @@ defineExpose({
         v-loading="!dataInitState"
     >
       <template v-if="previewShowFlag">
-        <SQPreviewHead @reload="reload"/>
-        <div
-            ref="previewCanvasContainer"
-            class="content"
-            id="sq-preview-content"
-        >
+        <SQPreviewHead :dashboard-info="state.dashboardInfo" @reload="reload"/>
+        <div ref="previewCanvasContainer" class="content" id="sq-preview-content">
           <SQPreview
               ref="dashboardPreview"
               v-if="state.canvasStylePreview && dataInitState"
-              :dv-info="state.dashboardInfo"
+              :dashboard-info="state.dashboardInfo"
               :component-data="state.canvasDataPreview"
               :canvas-style-data="state.canvasStylePreview"
               :canvas-view-info="state.canvasViewInfoPreview"

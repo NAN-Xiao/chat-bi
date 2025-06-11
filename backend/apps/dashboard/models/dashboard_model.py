@@ -133,6 +133,10 @@ class DashboardBaseResponse(BaseModel):
     update_time: Optional[int] = None
     children: List['DashboardBaseResponse'] = []
 
+class DashboardResponse(CoreDashboard):
+    update_name: Optional[str] = None
+    create_name: Optional[str] = None
+
 class BaseDashboard(BaseModel):
     id: str = ''
     name: str = ''

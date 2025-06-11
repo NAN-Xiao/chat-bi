@@ -16,6 +16,7 @@
     "dayjs": "^1.11.13",
     "element-plus": "^2.10.1",
     "element-plus-secondary": "^1.0.0",
+    "element-resize-detector": "^1.2.4",
     "lodash": "^4.17.21",
     "lodash-es": "^4.17.21",
     "snowflake-id": "^1.1.0",
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "@types/crypto-js": "^4.2.2",
+    "@types/element-resize-detector": "^1.1.6",
     "@types/node": "^22.14.1",
     "@vitejs/plugin-vue": "^5.2.2",
     "@vue/tsconfig": "^0.7.0",
