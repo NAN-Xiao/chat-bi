@@ -49,7 +49,7 @@ mcp = FastApiMCP(
     app,
     name="SQLBot MCP Server",
     description="SQLBot MCP Server",
-    include_operations=["get_datasource_list"]
+    include_operations=["get_datasource_list", "get_model_list", "question"]
 )
 
 mcp.mount(mcp_app)
@@ -76,7 +76,7 @@ frontend_dist = os.path.abspath("../frontend/dist")
 if not os.path.exists(frontend_dist):
     logging.warning(f"The front-end build directory does not exist: {frontend_dist}")
     logging.warning("Please make sure you have built the front-end project")
-    
+
 else:
 
     @app.get("/", include_in_schema=False)
@@ -92,3 +92,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # uvicorn.run("main:mcp_app", host="0.0.0.0", port=8001) # mcp server

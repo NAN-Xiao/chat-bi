@@ -75,7 +75,7 @@ onMounted(() => {
           </div>
           <div class="ds-row-container">
             <template v-for="(item, _index) in dsList" :key="_index">
-              <DatasourceItemCard :ds="item" @click="selectDs(item)" v-if="_index<3 || item?.id===modelValue"
+              <DatasourceItemCard :ds="item" @click="selectDs(item)"
                                   class="ds-card" :class="[item?.id===modelValue? 'ds-card-selected': '']"/>
             </template>
           </div>

@@ -68,7 +68,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
         )
 
 
-@router.post("/question")
+@router.post("/question", operation_id="question")
 async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion):
     """Stream SQL analysis results
     
