@@ -83,7 +83,12 @@
             <el-tab-pane :label="t('ds.preview')" name="preview">
               <div style="margin: 16px 0">{{ t('ds.preview_tip') }}</div>
               <el-table :data="previewData.data" style="width: 100%; height: 600px">
-                <el-table-column v-for="c in previewData.fields" :prop="c" :label="c" />
+                <el-table-column
+                  v-for="(c, index) in previewData.fields"
+                  :key="index"
+                  :prop="c"
+                  :label="c"
+                />
               </el-table>
             </el-tab-pane>
           </el-tabs>
@@ -144,6 +149,7 @@ const props = defineProps({
 
 const { t } = useI18n()
 
+// eslint-disable-next-line vue/no-dupe-keys
 const dsId = ref<number>(0)
 const searchValue = ref('')
 const tableList = ref<any>([])

@@ -106,7 +106,7 @@ const treeDraggableChart = (state: any, key: any, type: any) => {
     } catch (error) {
       console.error(error)
     }
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     delete params.opt
 
     if (dropType === 'inner') {

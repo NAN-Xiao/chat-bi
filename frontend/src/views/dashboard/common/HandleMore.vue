@@ -15,6 +15,7 @@ withDefaults(
   defineProps<{
     menuList: Menu[]
     placement?: Placement
+    // eslint-disable-next-line vue/require-default-prop
     iconName?: any
     iconSize?: string
     inTable?: boolean
@@ -48,7 +49,7 @@ const emit = defineEmits(['handleCommand'])
     </el-icon>
     <template #dropdown>
       <el-dropdown-menu :persistent="false">
-        <template v-for="ele in menuList">
+        <template v-for="ele in menuList" :key="ele">
           <el-dropdown-item :divided="ele.divided" :command="ele.command" :disabled="ele.disabled">
             <el-icon v-if="ele.svgName" class="handle-icon" :style="{ fontSize: iconSize }">
               <Icon>

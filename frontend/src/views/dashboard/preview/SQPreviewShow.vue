@@ -55,7 +55,7 @@ const loadCanvasData = (params: any) => {
   dataInitState.value = false
   load_resource_prepare(
     { id: params.id },
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     function ({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview }) {
       state.canvasDataPreview = canvasDataResult
       state.canvasStylePreview = canvasStyleResult
@@ -77,7 +77,7 @@ const resourceNodeClick = (prams: any) => {
   loadCanvasData(prams)
 }
 
-//@ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
 
 onBeforeMount(() => {

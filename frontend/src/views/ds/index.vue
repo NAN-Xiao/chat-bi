@@ -28,7 +28,7 @@
     </div>
 
     <div class="connections-container">
-      <template v-for="ds in dsList">
+      <template v-for="ds in dsList" :key="ds">
         <DatasourceItemCard :ds="ds">
           <div class="connection-actions">
             <el-button class="action-btn" circle :icon="List" @click="getTables(ds.id, ds.name)" />

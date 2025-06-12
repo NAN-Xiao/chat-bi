@@ -17,7 +17,7 @@ import DashboardEditor from '@/views/dashboard/editor/DashboardEditor.vue'
 
 const editableTabsValue = ref(null)
 const showTabTitleFlag = ref(true)
-// @ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 let currentInstance
 import _ from 'lodash'
 
@@ -72,7 +72,7 @@ function addTab() {
   }
   configItem.value.propValue.push(newTab)
   configItem.value.activeSubTabIndex = configItem.value.propValue.length - 1
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   editableTabsValue.value = newTab.name
 }
 
@@ -132,10 +132,10 @@ const isEditMode = computed(() => true)
 const addTabItem = (item: CanvasItem) => {
   // do addTabItem
   const index = configItem.value.propValue.findIndex(
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     (tabItem) => configItem.value.activeTabName === tabItem.name
   )
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   const refInstance = currentInstance.refs['tabEditorRef_' + index][0]
   const newTabItem = _.cloneDeep(item)
   newTabItem.sizeX = 10

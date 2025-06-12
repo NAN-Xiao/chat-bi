@@ -5,6 +5,7 @@ defineProps({
   sizeList: {
     type: Array as PropType<number[]>,
     required: false,
+    // eslint-disable-next-line vue/require-valid-default-prop
     default: [12, 12, 12, 12],
   },
 })
@@ -45,6 +46,7 @@ const shadowStyle = (size: number, index: number) => {
 <template>
   <div
     v-for="(size, index) in sizeList"
+    :key="index"
     class="dragHandle dragArea"
     :style="shadowStyle(size, index)"
   ></div>

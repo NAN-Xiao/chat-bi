@@ -2,9 +2,9 @@
 import { toRefs } from 'vue'
 
 const props = defineProps({
-  title: { type: String, required: false },
-  tips: { type: String, required: false },
-  iconName: { type: String, required: false },
+  title: { type: String, required: false, default: '' },
+  tips: { type: String, required: false, default: '' },
+  iconName: { type: String, required: false, default: '' },
   showSplitLine: { type: Boolean, required: false, default: false },
   active: { type: Boolean, required: false, default: false },
 })

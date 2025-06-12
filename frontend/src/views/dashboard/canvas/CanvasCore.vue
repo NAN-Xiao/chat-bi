@@ -11,7 +11,7 @@ const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
 const emits = defineEmits(['parentAddItemBox'])
 const { curComponentId, curComponent } = storeToRefs(dashboardStore)
-// @ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 let currentInstance
 // Props
 const props = defineProps({
@@ -19,14 +19,17 @@ const props = defineProps({
     type: String,
     default: 'canvas-main',
   },
+  // eslint-disable-next-line vue/require-default-prop
   parentConfigItem: {
     type: Object as PropType<CanvasItem>,
     required: false,
   },
+  // eslint-disable-next-line vue/require-default-prop
   dashboardInfo: {
     type: Object,
     required: false,
   },
+  // eslint-disable-next-line vue/require-default-prop
   canvasStyleData: {
     type: Object,
     required: false,
@@ -191,7 +194,7 @@ function addItemToPositionBox(item: CanvasItem) {
     for (let j = item.y - 1; j < item.y - 1 + item.sizeY; j++) {
       if (pb[j] && pb[j][i]) {
         // Ensure the target location is valid
-        // @ts-ignore
+        // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
         pb[j][i].el = item // Place the item in the corresponding position
       }
     }
@@ -406,7 +409,6 @@ function removeItem(index: number) {
       moveItemUp(upItem, canGoUpRows)
     }
   })
-  // @ts-ignore
   canvasComponentData.value.splice(index, 1)
 }
 
@@ -414,7 +416,6 @@ function getNextDragId() {
   if (!canvasComponentData.value || canvasComponentData.value.length === 0) {
     return 0
   }
-  //@ts-ignore
   const validIds = canvasComponentData.value
     .map((item) => item._dragId)
     .filter((id) => id != null && id !== '') // 过滤 null、undefined 和空字符串
@@ -422,7 +423,7 @@ function getNextDragId() {
   if (validIds.length === 0) {
     return 0
   }
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   const maxDragId = Math.max(...validIds)
   return maxDragId + 1
 }
@@ -457,7 +458,7 @@ function changeToCoord(left: number, top: number, width: number, height: number)
  * Detect for collisions and take appropriate measures
  *
  * @param {CanvasItem} item comparison object
- * @param {CanvasCoord} tCord compares the coordinates of the object
+ * @param {CanvasCoord} tCoord compares the coordinates of the object
  */
 function findClosetCoords(item: CanvasItem, tCoord: CanvasCoord) {
   if (isOverlay) return
@@ -501,7 +502,7 @@ function findClosetCoords(item: CanvasItem, tCoord: CanvasCoord) {
 
 /**
  * Generate coordinates
- * @param {CanvasItem} item: The item object to generate coordinates for
+ * @param item
  */
 function makeCoordinate(item: CanvasItem) {
   let width = cellWidth.value * item.sizeX - baseMarginLeft.value
@@ -524,7 +525,7 @@ function makeCoordinate(item: CanvasItem) {
 
 /**
  * Change the coordinates of the item
- * @param {CanvasItem} item: The item object whose coordinates need to be changed
+ * @param item
  */
 function changeItemCoord(item: CanvasItem) {
   let width = cellWidth.value * item.sizeX - baseMarginLeft.value
@@ -686,7 +687,7 @@ function findBelowItems(item: CanvasItem) {
     for (let row = item.y - 1; row < positionBox.value.length; row++) {
       const target = positionBox.value[row][cell]
       if (target && target.el) {
-        // @ts-ignore
+        // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
         belowItems[target.el._dragId] = target.el
         break
       }
@@ -696,7 +697,6 @@ function findBelowItems(item: CanvasItem) {
   return _.sortBy(Object.values(belowItems), 'y')
 }
 
-// @ts-ignore
 function startResize(e: MouseEvent, point: string, item: CanvasItem, index: number) {
   if (!resizable.value) return
   dashboardStore.setCurComponent(item)
@@ -706,7 +706,6 @@ function startResize(e: MouseEvent, point: string, item: CanvasItem, index: numb
   if (!infoBox.value) {
     infoBox.value = {} // Reinitialize
   }
-  // Get the parent element of. tem
   infoBox.value.resizeItem = item
   infoBox.value.resizeItemIndex = index
   // Drag and drop coordinate points
@@ -724,7 +723,7 @@ function containerMouseDown(e: MouseEvent) {
   }
   infoBox.value.startX = e.pageX
   infoBox.value.startY = e.pageY
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   if (curComponent.value?.component !== 'SQText') {
     e.preventDefault()
     e.stopPropagation()
@@ -792,7 +791,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   }
 
   const target = e.target
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   let className = target.className || ''
 
   if (
@@ -813,13 +812,13 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
   infoBox.value.cloneItem = null
   infoBox.value.nowItemNode = null
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   if (target.className.includes('item')) {
     infoBox.value.nowItemNode = target
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     infoBox.value.cloneItem = target.cloneNode(true)
   } else {
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     infoBox.value.nowItemNode = target.closest('.item')
     infoBox.value.cloneItem = infoBox.value.nowItemNode.cloneNode(true)
   }
@@ -936,7 +935,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       if (curActiveMoveInSQTab) {
         if (curActiveMoveInSQTab.moveInActive) {
           const refTabInstance =
-            // @ts-ignore
+            // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
             currentInstance.refs['shape_component_' + curActiveMoveInSQTab.id][0]
           refTabInstance.addTabItem(moveItem)
           removeItemById(moveItem.id)
@@ -949,6 +948,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       if (props.parentConfigItem && props.parentConfigItem.moveOutActive) {
         emits('parentAddItemBox', _.cloneDeep(moveItem))
         removeItemById(moveItem.id)
+        // eslint-disable-next-line vue/no-mutating-props
         props.parentConfigItem.moveOutActive = false
       }
     }
@@ -991,18 +991,16 @@ function nowItemStyle(item: CanvasItem) {
 
 function getList() {
   let returnList = _.sortBy(_.cloneDeep(canvasComponentData.value), 'y')
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   let finalList = []
-  // @ts-ignore
-  _.forEach(returnList, function (item, index) {
+  _.forEach(returnList, function (item) {
     if (_.isEmpty(item)) return
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     delete item['_dragId']
-    // @ts-ignore
     delete item['show']
     finalList.push(item)
   })
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   return finalList
 }
 
@@ -1014,7 +1012,7 @@ function getRenderState() {
   return moveAnimate.value
 }
 
-// @ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 function afterInitOk(func) {
   let timeId = setInterval(() => {
     if (moveAnimate.value) {
@@ -1064,23 +1062,6 @@ function getItemStylePosition(item: CanvasItem) {
   }
 }
 
-// @ts-ignore
-function tabMoveInCheck(cloneRefItem) {
-  //1. If the current cloneItem type is not a tab,
-  // check if there are any tab components with overlapping boundaries (about to overlap) in the top left and right directions of the current Item
-  //2.If there is, the original item of the current cloneItem is not moving (the entire dashboard will not be rearranged)
-  //3. Activate this tab item. At this time, the tab item displays the activation status
-  //4. Release this cloneItem from the main canvas and remove the canvas with the added item
-  const moveItem = infoBox.value.moveItem
-  if (moveItem && moveItem !== 'SQTab') {
-    canvasComponentData.value.forEach((item) => {
-      // Determine the position of SQTab components around moveItem
-      if (item.id !== moveItem.id && item.component === 'SQTab') {
-      }
-    })
-  }
-}
-
 function tabMoveOutCheckSQ() {
   const { cloneItem, moveItem } = infoBox.value
   if (cloneItem && moveItem && props.canvasId.includes('tab') && props.parentConfigItem) {
@@ -1088,6 +1069,7 @@ function tabMoveOutCheckSQ() {
     const width = cloneItem.offsetWidth
     const top = cloneItem.offsetTop
     const { tw } = getItemStylePosition(props.parentConfigItem)
+    // eslint-disable-next-line vue/no-mutating-props
     props.parentConfigItem.moveOutActive =
       left < -tabMoveOutXOffset || top < -tabMoveOutYOffset || left + width - tw > tabMoveOutXOffset
     canvasLocked.value = props.parentConfigItem.moveOutActive

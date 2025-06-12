@@ -38,6 +38,7 @@ export const initCanvasData = (params: any, callBack: () => void) => {
   })
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 export const saveDashboardResource = (params: any, callBack: Function) => {
   params['workspace_id'] = workspace_id
   dashboardApi.check_name(params).then((resCheck: any) => {

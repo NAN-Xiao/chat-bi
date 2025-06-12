@@ -4,7 +4,6 @@ import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import DashboardDetailInfo from '@/views/dashboard/common/DashboardDetailInfo.vue'
 
-const emit = defineEmits(['reload', 'download', 'downloadAsAppTemplate'])
 const preview = () => {
   window.open(`#/dashboard-preview?resourceId=${props.dashboardInfo.id}`, '_blank')
 }

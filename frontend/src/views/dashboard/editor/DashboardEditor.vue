@@ -19,14 +19,17 @@ const props = defineProps({
   parentConfigItem: {
     type: Object as PropType<CanvasItem>,
     required: false,
+    default: null,
   },
   dashboardInfo: {
     type: Object,
     required: false,
+    default: null,
   },
   canvasStyleData: {
     type: Object,
     required: false,
+    default: null,
   },
   canvasComponentData: {
     type: Array as PropType<CanvasItem[]>,
@@ -50,16 +53,16 @@ const props = defineProps({
 const canvasSizeInit = () => {
   sizeInit()
   if (canvasCoreRef.value) {
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     canvasCoreRef.value.sizeInit()
   }
 }
 
 const sizeInit = () => {
   if (dashboardEditorRef.value) {
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenWidth = dashboardEditorRef.value.offsetWidth
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenHeight = dashboardEditorRef.value.offsetHeight
     baseMarginLeft.value = 10
     baseMarginTop.value = 10
@@ -71,7 +74,7 @@ const sizeInit = () => {
 }
 
 const addItemToBox = (item: CanvasItem) => {
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   canvasCoreRef.value.addItemBox(item)
 }
 
@@ -85,10 +88,10 @@ onMounted(() => {
   nextTick(() => {
     if (dashboardEditorRef.value) {
       sizeInit()
-      // @ts-ignore
+      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       nextTick(() => {
         if (canvasCoreRef.value) {
-          // @ts-ignore
+          // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
           canvasCoreRef.value.init()
         }
       })

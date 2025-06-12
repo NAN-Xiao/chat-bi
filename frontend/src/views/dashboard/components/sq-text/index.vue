@@ -86,7 +86,7 @@ const isDisabled = computed(() => props.disabled || !configItem.value.editing)
 
 const setEdit = () => {
   configItem.value.editing = true
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   const ed = tinymce.editors[tinymceId]
   ed.setContent(configItem.value.propValue)
   nextTick(() => {

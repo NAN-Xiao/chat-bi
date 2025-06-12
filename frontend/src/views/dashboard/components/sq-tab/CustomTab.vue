@@ -11,14 +11,14 @@ const props = defineProps({
   hideTitle: Boolean,
   /*Color can be a word, such as red; It can also be a color value*/
   //Font color
-  fontColor: String,
+  fontColor: { type: String, default: '' },
   // Activate font color
-  activeColor: String,
+  activeColor: { type: String, default: '' },
   //If the border color is none, there will be no border.
   // If it is none, the activated slide line of the Card type will also disappear
-  borderColor: String,
+  borderColor: { type: String, default: '' },
   //Activate border color currently only for card types
-  borderActiveColor: String,
+  borderActiveColor: { type: String, default: '' },
   //The style type radioGroup is only valid for Card type,
   // and it must be given as borderColor borderActiveColor
   styleType: {

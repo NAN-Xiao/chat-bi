@@ -70,7 +70,7 @@ export const componentsMap = {
 }
 
 export function findComponent(key = 'SQEmpty') {
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   return componentsMap[key] ? componentsMap[key] : SQEmpty
 }
 

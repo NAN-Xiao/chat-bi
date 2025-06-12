@@ -24,25 +24,25 @@ const dashboardEditorRef = ref(null)
 const addComponent = (componentType: string) => {
   const component = cloneDeep(findNewComponentFromList(componentType))
   if (component && dashboardEditorRef.value) {
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     component.id = guid()
     if (component.component === 'SQTab') {
       const subTabName = guid('tab')
-      // @ts-ignore
+      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       component.propValue[0].name = subTabName
       component.activeTabName = subTabName
     }
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     dashboardEditorRef.value.addItemToBox(component)
   }
 }
 
 onMounted(() => {
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.opt = router.currentRoute.value.query.opt
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.resourceId = router.currentRoute.value.query.resourceId
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.routerPid = router.currentRoute.value.query.pid
   if (state.opt === 'create') {
     dashboardStore.updateDashboardInfo({

@@ -73,12 +73,7 @@ const state = reactive({
   ],
 })
 
-// @ts-ignore
-const { handleDrop, allowDrop, handleDragStart } = treeDraggableChart(
-  state,
-  'resourceTree',
-  'dashboard'
-)
+const { handleDrop, handleDragStart } = treeDraggableChart(state, 'resourceTree', 'dashboard')
 
 const routerDashboardId = router.currentRoute.value.query.dashboardId
 if (routerDashboardId) {
@@ -87,14 +82,14 @@ if (routerDashboardId) {
 }
 const nodeExpand = (data: any) => {
   if (data.id) {
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     expandedArray.value.push(data.id)
   }
 }
 
 const nodeCollapse = (data: any) => {
   if (data.id) {
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     expandedArray.value.splice(expandedArray.value.indexOf(data.id), 1)
   }
 }
@@ -133,7 +128,7 @@ const getTree = async () => {
     afterTreeInit()
   })
 }
-// @ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const flattedTree = computed<SQTreeNode[]>(() => {
   return _.filter(flatTree(state.resourceTree), (node) => node.leaf)
 })
@@ -153,7 +148,7 @@ function flatTree(tree: SQTreeNode[]) {
 const afterTreeInit = () => {
   mounted.value = true
   if (selectedNodeKey.value && returnMounted.value) {
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     expandedArray.value = getDefaultExpandedKeys()
     returnMounted.value = false
   }
@@ -161,7 +156,7 @@ const afterTreeInit = () => {
     resourceListTree.value.setCurrentKey(selectedNodeKey.value)
     resourceListTree.value.filter(filterText.value)
     nextTick(() => {
-      // @ts-ignore
+      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       document.querySelector('.is-current')?.firstChild?.click()
     })
   })
@@ -172,12 +167,12 @@ const emit = defineEmits(['nodeClick'])
 
 function createNewObject() {}
 
-// @ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const resourceEdit = (resourceId) => {
   window.open(`#/canvas?resourceId=${resourceId}`, '_blank')
 }
 
-// @ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const getParentKeys = (tree: any, targetKey: any, parentKeys = []) => {
   for (const node of tree) {
     if (node.id === targetKey) {
@@ -185,7 +180,7 @@ const getParentKeys = (tree: any, targetKey: any, parentKeys = []) => {
     }
     if (node.children) {
       const newParentKeys = [...parentKeys, node.id]
-      // @ts-ignore
+      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       const result = getParentKeys(node.children, targetKey, newParentKeys)
       if (result) {
         return result
@@ -214,13 +209,13 @@ onMounted(() => {
   getTree()
 })
 
-// @ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const addOperation = (params: any) => {
   if (params.opt === 'newLeaf') {
     const newCanvasUrl = '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '')
     window.open(newCanvasUrl, '_self')
   } else {
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit(params)
   }
 }
@@ -243,7 +238,7 @@ const operation = (opt: string, data: SQTreeNode) => {
       })
     })
   } else if (opt === 'rename') {
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit({ opt: 'rename', id: data.id, name: data.name })
   }
 }

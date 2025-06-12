@@ -80,9 +80,9 @@ function nowItemStyle(item: CanvasItem) {
 
 const sizeInit = () => {
   if (previewCanvas.value) {
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenWidth = previewCanvas.value.offsetWidth
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenHeight = previewCanvas.value.offsetHeight
     baseMarginLeft.value = 10
     baseMarginTop.value = 10
@@ -97,7 +97,7 @@ const sizeInit = () => {
 
 onMounted(() => {
   sizeInit()
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   elementResizeDetectorMaker().listenTo(document.getElementById(domId), sizeInit)
 })
 

@@ -1,4 +1,4 @@
-// @ts-ignore
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 import SnowflakeID from 'snowflake-id'
 
 const snowflake = new SnowflakeID({

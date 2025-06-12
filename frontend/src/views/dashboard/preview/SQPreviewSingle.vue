@@ -17,7 +17,7 @@ const state = reactive({
 })
 
 onMounted(() => {
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.resourceId = router.currentRoute.value.query.resourceId
   if (state.resourceId) {
     loadCanvasData({ id: state.resourceId })
@@ -28,7 +28,7 @@ const loadCanvasData = (params: any) => {
   dataInitState.value = false
   load_resource_prepare(
     { id: params.id },
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     function ({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview }) {
       state.canvasDataPreview = canvasDataResult
       state.canvasStylePreview = canvasStyleResult

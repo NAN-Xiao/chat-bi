@@ -41,7 +41,7 @@ const saveCanvasWithCheck = () => {
       nodeType: 'leaf',
       parentSelect: true,
     }
-    // @ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit(createParams)
   } else if (dashboardInfo.value.id) {
     const updateParams = {
@@ -63,6 +63,7 @@ const props = defineProps({
   baseParams: {
     type: Object,
     required: false,
+    default: null,
   },
 })
 
@@ -74,10 +75,10 @@ const groupOptFinish = (result: any) => {
 
 const editCanvasName = () => {
   nameEdit.value = true
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   inputName.value = dashboardInfo.value.name
   nextTick(() => {
-    //@ts-ignore
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     nameInput.value?.focus()
   })
 }
@@ -94,7 +95,7 @@ const closeEditCanvasName = () => {
     editCanvasName()
     return
   }
-  //@ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   dashboardInfo.value.name = inputName.value
   inputName.value = ''
 }

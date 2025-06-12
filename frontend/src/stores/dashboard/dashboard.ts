@@ -56,7 +56,8 @@ export const dashboardStore = defineStore('dashboard', {
     },
     updateDashboardInfo(params: any) {
       Object.keys(params).forEach((key: string) => {
-        // @ts-ignore
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
         this.dashboardInfo[key] = params[key]
       })
     },

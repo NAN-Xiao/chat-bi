@@ -54,7 +54,7 @@ const getTree = async () => {
 }
 
 const optInit = (params: any) => {
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.dialogTitle = getTitle(params.opt)
   state.opt = params.opt
   state.id = params.id
@@ -62,7 +62,7 @@ const optInit = (params: any) => {
   state.targetInfo = params.data
   state.nodeType = params.nodeType || 'folder'
   resourceDialogShow.value = true
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   resourceForm.name = params.name || getResourceNewName(params.opt)
   resourceForm.pid = params.pid || 'root'
   if (params.parentSelect) {
@@ -119,7 +119,7 @@ const propsTree = {
   value: 'id',
   label: 'name',
   children: 'children',
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   isLeaf: (node) => !node.children?.length,
 }
 
@@ -154,7 +154,7 @@ const nodeClick = (data: SQTreeNode) => {
 }
 
 const filterMethod = (value: any) => {
-  // @ts-ignore
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.tData = state.tDataSource.filter((item) => item.name.includes(value))
 }
 
