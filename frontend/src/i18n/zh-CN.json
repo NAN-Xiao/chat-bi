@@ -29,7 +29,9 @@
     "delete_resource_warn": "确定删除该{0}吗？",
     "delete_success": "删除成功",
     "new_folder": "新建目录",
-    "new_dashboard": "新建仪表板"
+    "new_dashboard": "新建仪表板",
+    "add_chart": "添加图表",
+    "chart_selected": "已选{0}"
   },
   "qa": {
     "New Conversation": "开启新问数",
