@@ -7,7 +7,7 @@
           class="sqlbot-search"
           placeholder="Search"
           prefix-icon="el-icon-search"
-          @keyup.enter.native="handleSearch"
+          @keyup.enter="handleSearch"
         >
           <template #prefix>
             <el-icon class="el-input__icon"><search /></el-icon>
@@ -127,7 +127,6 @@ import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'; */
 import { SuccessFilled, CircleCloseFilled } from '@element-plus/icons-vue'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
-import { Search } from '@element-plus/icons-vue'
 import { userApi } from '@/api/auth'
 import { formatTimestamp } from '@/utils/date'
 

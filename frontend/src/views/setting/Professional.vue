@@ -7,7 +7,7 @@
           class="sqlbot-search"
           placeholder="Search"
           prefix-icon="el-icon-search"
-          @keyup.enter.native="handleSearch"
+          @keyup.enter="handleSearch"
         >
           <template #prefix>
             <el-icon class="el-input__icon"><search /></el-icon>
@@ -96,7 +96,6 @@ import IconOpeDownload from '@/assets/svg/operate/ope-download.svg'
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
-import { Search } from '@element-plus/icons-vue'
 import { termApi } from '@/api/setting'
 const keyword = ref('')
 const dialogFormVisible = ref(false)

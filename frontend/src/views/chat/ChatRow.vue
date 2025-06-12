@@ -11,7 +11,9 @@ const props = withDefaults(
     currentChat: ChatInfo
     datasource?: number
   }>(),
-  {}
+  {
+    datasource: undefined,
+  }
 )
 
 const emits = defineEmits(['update:datasource'])

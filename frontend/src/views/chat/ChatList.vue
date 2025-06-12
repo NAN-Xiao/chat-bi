@@ -10,6 +10,7 @@ const props = withDefaults(
     loading?: boolean
   }>(),
   {
+    currentChatId: undefined,
     chatList: () => [],
     loading: false,
   }

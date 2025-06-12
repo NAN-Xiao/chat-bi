@@ -12,7 +12,9 @@ const props = withDefaults(
     modelValue?: number
     currentChat: ChatInfo
   }>(),
-  {}
+  {
+    modelValue: undefined,
+  }
 )
 
 const dsList = ref<Array<any>>([])

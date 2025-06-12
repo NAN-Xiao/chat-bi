@@ -6,7 +6,7 @@
           v-model="keyword"
           class="sqlbot-search"
           placeholder="Search"
-          @keyup.enter.native="handleSearch"
+          @keyup.enter="handleSearch"
         >
           <template #prefix>
             <el-icon class="el-input__icon"><IconSearch /></el-icon>
