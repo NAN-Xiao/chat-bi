@@ -55,7 +55,6 @@ const loadCanvasData = (params: any) => {
   dataInitState.value = false
   load_resource_prepare(
     { id: params.id },
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     function ({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview }) {
       state.canvasDataPreview = canvasDataResult
       state.canvasStylePreview = canvasStyleResult
@@ -196,8 +195,8 @@ defineExpose({
 }
 
 .close-side {
-  width: 0px !important;
-  padding: 0px !important;
+  width: 0 !important;
+  padding: 0 !important;
 }
 
 .flexible-button-area {

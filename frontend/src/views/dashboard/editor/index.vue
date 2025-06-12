@@ -24,7 +24,6 @@ const dashboardEditorRef = ref(null)
 const addComponent = (componentType: string) => {
   const component = cloneDeep(findNewComponentFromList(componentType))
   if (component && dashboardEditorRef.value) {
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     component.id = guid()
     if (component.component === 'SQTab') {
       const subTabName = guid('tab')

@@ -88,7 +88,6 @@ onMounted(() => {
   nextTick(() => {
     if (dashboardEditorRef.value) {
       sizeInit()
-      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       nextTick(() => {
         if (canvasCoreRef.value) {
           // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment

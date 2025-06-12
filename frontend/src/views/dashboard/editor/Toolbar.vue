@@ -13,6 +13,7 @@ import icon_undo_outlined from '@/assets/svg/icon_undo_outlined.svg'
 import icon_redo_outlined from '@/assets/svg/icon_redo_outlined.svg'
 import icon_left_outlined from '@/assets/svg/icon_left_outlined.svg'
 import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
+import ChatChartSelection from '@/views/dashboard/editor/ChatChartSelection.vue'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -72,6 +73,8 @@ const groupOptFinish = (result: any) => {
   url = url.replace(/(#\/[^?]*)(?:\?[^#]*)?/, `$1?resourceId=${result.resourceId}`)
   window.history.replaceState({ path: url }, '', url)
 }
+
+const chartSelectionFinish = () => {}
 
 const editCanvasName = () => {
   nameEdit.value = true
@@ -207,6 +210,10 @@ const backToMain = () => {
       />
     </Teleport>
     <ResourceGroupOpt ref="resourceGroupOptRef" @finish="groupOptFinish"></ResourceGroupOpt>
+    <ChatChartSelection
+      ref="chatChartSelectionRef"
+      @finish="chartSelectionFinish"
+    ></ChatChartSelection>
   </div>
 </template>
 

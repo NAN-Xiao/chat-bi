@@ -209,7 +209,6 @@ onMounted(() => {
   getTree()
 })
 
-// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const addOperation = (params: any) => {
   if (params.opt === 'newLeaf') {
     const newCanvasUrl = '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '')

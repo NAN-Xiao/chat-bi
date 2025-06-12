@@ -11,28 +11,26 @@ const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
 const emits = defineEmits(['parentAddItemBox'])
 const { curComponentId, curComponent } = storeToRefs(dashboardStore)
-// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-let currentInstance
-// Props
+let currentInstance: any
 const props = defineProps({
   canvasId: {
     type: String,
     default: 'canvas-main',
   },
-  // eslint-disable-next-line vue/require-default-prop
   parentConfigItem: {
     type: Object as PropType<CanvasItem>,
     required: false,
+    default: null,
   },
-  // eslint-disable-next-line vue/require-default-prop
   dashboardInfo: {
     type: Object,
     required: false,
+    default: null,
   },
-  // eslint-disable-next-line vue/require-default-prop
   canvasStyleData: {
     type: Object,
     required: false,
+    default: null,
   },
   canvasComponentData: {
     type: Array as PropType<CanvasItem[]>,
@@ -122,7 +120,6 @@ const coordinates = ref<CanvasCoord[]>([])
 const infoBox = ref()
 
 // Position data (non-reactive)
-
 let lastTask: (() => void) | undefined = undefined
 let isOverlay = false
 let itemMaxX = 0
@@ -193,9 +190,9 @@ function addItemToPositionBox(item: CanvasItem) {
   for (let i = item.x - 1; i < item.x - 1 + item.sizeX; i++) {
     for (let j = item.y - 1; j < item.y - 1 + item.sizeY; j++) {
       if (pb[j] && pb[j][i]) {
-        // Ensure the target location is valid
+        // Ensure the target location is valid & Place the item in the corresponding position
         // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        pb[j][i].el = item // Place the item in the corresponding position
+        pb[j][i].el = item
       }
     }
   }
@@ -935,7 +932,6 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       if (curActiveMoveInSQTab) {
         if (curActiveMoveInSQTab.moveInActive) {
           const refTabInstance =
-            // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
             currentInstance.refs['shape_component_' + curActiveMoveInSQTab.id][0]
           refTabInstance.addTabItem(moveItem)
           removeItemById(moveItem.id)

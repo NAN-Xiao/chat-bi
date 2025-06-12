@@ -72,7 +72,6 @@ function addTab() {
   }
   configItem.value.propValue.push(newTab)
   configItem.value.activeSubTabIndex = configItem.value.propValue.length - 1
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   editableTabsValue.value = newTab.name
 }
 

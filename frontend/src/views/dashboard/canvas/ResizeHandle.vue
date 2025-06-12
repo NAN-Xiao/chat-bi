@@ -49,7 +49,7 @@ function getPointStyle(point: string) {
     marginTop: '-4px',
     left: `${newLeft}`,
     top: `${newTop}`,
-    // @ts-expect-error
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     cursor: `${cursors[point]}-resize`,
   }
 }

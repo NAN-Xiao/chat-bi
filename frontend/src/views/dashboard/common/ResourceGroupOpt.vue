@@ -62,7 +62,6 @@ const optInit = (params: any) => {
   state.targetInfo = params.data
   state.nodeType = params.nodeType || 'folder'
   resourceDialogShow.value = true
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   resourceForm.name = params.name || getResourceNewName(params.opt)
   resourceForm.pid = params.pid || 'root'
   if (params.parentSelect) {
