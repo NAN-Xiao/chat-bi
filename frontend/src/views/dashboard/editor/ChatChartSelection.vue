@@ -34,14 +34,12 @@
 import { computed, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 const dialogShow = ref(false)
-const curDvType = ref('dashboard')
 const { t } = useI18n()
 const selectComponentCount = computed(() => Object.keys(state.curMultiplexingComponents).length)
 const state = reactive({
   curMultiplexingComponents: {},
 })
-const dialogInit = (dvType = 'dashboard') => {
-  curDvType.value = dvType
+const dialogInit = () => {
   dialogShow.value = true
   state.curMultiplexingComponents = {}
 }

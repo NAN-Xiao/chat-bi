@@ -23,8 +23,10 @@ const snapshotStore = snapshotStoreWithOut()
 const { snapshotIndex } = storeToRefs(snapshotStore)
 const emits = defineEmits(['addComponent'])
 const resourceGroupOptRef = ref(null)
+const chatChartSelectionRef = ref(null)
 const openViewDialog = () => {
-  // do addComponent
+  // @ts-expect-error  @typescript-eslint/ban-ts-comment
+  chatChartSelectionRef.value?.dialogInit()
 }
 
 let nameEdit = ref(false)
