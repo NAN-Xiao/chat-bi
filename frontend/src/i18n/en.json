@@ -10,7 +10,8 @@
     "confirm": "Confirm",
     "cancel": "Cancel",
     "system_manage": "System Management",
-    "next": "Next"
+    "next": "Next",
+    "save": "Save"
   },
   "dashboard": {
     "length_1_64_characters": "Name field length must be 1-64 characters",
@@ -119,6 +120,10 @@
       "upload": {
         "button": "Upload",
         "tip": "Only support .xls, .xlsx, .csv, size less than 50MB."
+      },
+      "connect": {
+        "success": "Connect success",
+        "failed": "Connect failed"
       }
     }
   }
