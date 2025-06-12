@@ -9,7 +9,7 @@ const preview = () => {
   window.open(`#/dashboard-preview?resourceId=${props.dashboardInfo.id}`, '_blank')
 }
 const edit = () => {
-  window.open(`#/canvas?resourceId=${props.dashboardInfo.id}`, '_blank')
+  window.open(`#/canvas?resourceId=${props.dashboardInfo.id}`, '_self')
 }
 const props = defineProps({
   dashboardInfo: {

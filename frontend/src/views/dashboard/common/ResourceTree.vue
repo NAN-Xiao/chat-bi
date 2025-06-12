@@ -76,9 +76,9 @@ const state = reactive({
 
 // @ts-ignore
 const {handleDrop, allowDrop, handleDragStart} = treeDraggableChart(
-    state,
-    'resourceTree',
-    'dashboard'
+  state,
+  'resourceTree',
+  'dashboard'
 )
 
 
@@ -224,7 +224,7 @@ onMounted(() => {
 const addOperation = (params: any) => {
   if (params.opt === 'newLeaf') {
     const newCanvasUrl = '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '')
-    window.open(newCanvasUrl, '_blank')
+    window.open(newCanvasUrl, '_self')
   } else {
     // @ts-ignore
     resourceGroupOptRef.value?.optInit(params)
@@ -234,8 +234,8 @@ const addOperation = (params: any) => {
 const operation = (opt: string, data: SQTreeNode) => {
   if (opt === 'delete') {
     const msg = data.node_type === 'leaf' ? '' : t('dashboard.delete_tips')
-    const tips_label = data.node_type === 'leaf' ? 'Dashboard' : t('dashboard.folder')
-    ElMessageBox.confirm(t('dashboard.delete_warn', [tips_label]), {
+    const tips_label = data.node_type === 'leaf' ? t('dashboard.dashboard') : t('dashboard.folder')
+    ElMessageBox.confirm(t('dashboard.delete_resource_warn', [tips_label]), {
       confirmButtonType: 'danger',
       type: 'warning',
       tip: msg,
@@ -245,6 +245,7 @@ const operation = (opt: string, data: SQTreeNode) => {
       dashboardApi.delete_resource({id: data.id}).then(() => {
         ElMessage.success(t('dashboard.delete_success'))
         getTree()
+        dashboardStore.setCurComponent(null)
       })
     })
   } else if (opt === 'rename') {
@@ -269,24 +270,24 @@ defineExpose({
   <div class="resource-tree">
     <div class="tree-header">
       <div class="icon-methods">
-        <span class="title"> Dashboard </span>
+        <span class="title">{{ t('dashboard.dashboard') }}  </span>
         <div class="flex-align-center">
-          <el-tooltip :content="'New Folder'" placement="top" effect="dark">
+          <el-tooltip :content="t('dashboard.new_folder')" placement="top" effect="dark">
             <el-icon
-                class="custom-icon btn"
-                style="margin-right: 10px"
-                @click="addOperation({opt:'newFolder',type:'folder',pid:'root'} )"
+              class="custom-icon btn"
+              style="margin-right: 10px"
+              @click="addOperation({opt:'newFolder',type:'folder',pid:'root'} )"
             >
               <Icon name="dv-new-folder">
                 <newFolder class="svg-icon"/>
               </Icon>
             </el-icon>
           </el-tooltip>
-          <el-tooltip :content="'Add Dashboard'" placement="top" effect="dark">
+          <el-tooltip :content="t('dashboard.new_dashboard')" placement="top" effect="dark">
             <el-icon
-                class="custom-icon btn"
-                style="margin-right: 10px"
-                @click="addOperation({opt:'newLeaf',type:'dashboard'} )"
+              class="custom-icon btn"
+              style="margin-right: 10px"
+              @click="addOperation({opt:'newLeaf',type:'dashboard'} )"
             >
               <Icon name="dv-new-folder">
                 <icon_fileAdd_outlined class="svg-icon"/>
@@ -296,10 +297,10 @@ defineExpose({
         </div>
       </div>
       <el-input
-          :placeholder="'Search'"
-          v-model="filterText"
-          clearable
-          class="search-bar"
+        :placeholder="t('common.search')"
+        v-model="filterText"
+        clearable
+        class="search-bar"
       >
         <template #prefix>
           <el-icon>
@@ -314,21 +315,21 @@ defineExpose({
     </div>
     <el-scrollbar class="custom-tree" v-loading="copyLoading">
       <el-tree
-          menu
-          ref="resourceListTree"
-          :default-expanded-keys="expandedArray"
-          :data="state.resourceTree"
-          :props="defaultProps"
-          node-key="id"
-          highlight-current
-          :expand-on-click-node="true"
-          :filter-node-method="filterNode"
-          @node-expand="nodeExpand"
-          @node-collapse="nodeCollapse"
-          @node-click="nodeClick"
-          @node-drag-start="handleDragStart"
-          @node-drop="handleDrop"
-          draggable
+        menu
+        ref="resourceListTree"
+        :default-expanded-keys="expandedArray"
+        :data="state.resourceTree"
+        :props="defaultProps"
+        node-key="id"
+        highlight-current
+        :expand-on-click-node="true"
+        :filter-node-method="filterNode"
+        @node-expand="nodeExpand"
+        @node-collapse="nodeCollapse"
+        @node-click="nodeClick"
+        @node-drag-start="handleDragStart"
+        @node-drop="handleDrop"
+        draggable
       >
         <template #default="{ node, data }">
           <span class="custom-tree-node">
@@ -343,27 +344,26 @@ defineExpose({
             </span>
             <div class="icon-more">
               <el-icon
-                  v-on:click.stop
-                  v-if="data.node_type !== 'leaf'"
-                  class="hover-icon"
-                  @click="addOperation({opt:'newLeaf',type:'dashboard',id:data.id} )"
+                v-on:click.stop
+                v-if="data.node_type !== 'leaf'"
+                class="hover-icon"
+                @click="addOperation({opt:'newLeaf',type:'dashboard',id:data.id} )"
               >
                 <Icon><icon_add_outlined class="svg-icon"/></Icon>
               </el-icon>
               <el-icon
-                  v-on:click.stop
-                  v-if="data.node_type === 'leaf'"
-                  class="hover-icon"
-                  @click="resourceEdit(data.id)"
+                v-on:click.stop
+                v-if="data.node_type === 'leaf'"
+                class="hover-icon"
+                @click="resourceEdit(data.id)"
               >
                 <Icon><icon_edit_outlined class="svg-icon"/></Icon>
               </el-icon>
               <HandleMore
-                  @handle-command=" (opt:string) => operation(opt,data)"
-                  :menu-list="state.folderMenuList"
-                  :icon-name="icon_more_outlined"
-                  placement="bottom-start"
-                  v-if="data.node_type !== 'leaf'"
+                @handle-command=" (opt:string) => operation(opt,data)"
+                :menu-list="state.folderMenuList"
+                :icon-name="icon_more_outlined"
+                placement="bottom-start"
               ></HandleMore>
             </div>
           </span>
