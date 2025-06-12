@@ -935,8 +935,8 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       )
       if (curActiveMoveInSQTab) {
         if (curActiveMoveInSQTab.moveInActive) {
-          // @ts-ignore
           const refTabInstance =
+            // @ts-ignore
             currentInstance.refs['shape_component_' + curActiveMoveInSQTab.id][0]
           refTabInstance.addTabItem(moveItem)
           removeItemById(moveItem.id)

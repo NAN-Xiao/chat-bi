@@ -10,9 +10,9 @@ import {
   onMounted,
 } from 'vue'
 import CustomTab from '@/views/dashboard/components/sq-tab/CustomTab.vue'
-import { guid, type CanvasItem } from '@/utils/canvas.ts'
+import {guid, type CanvasItem} from '@/utils/canvas.ts'
 import DragHandle from '@/views/dashboard/canvas/DragHandle.vue'
-import { ArrowDown } from '@element-plus/icons-vue'
+import {ArrowDown} from '@element-plus/icons-vue'
 import DashboardEditor from '@/views/dashboard/editor/DashboardEditor.vue'
 
 const editableTabsValue = ref(null)
@@ -48,7 +48,7 @@ const props = defineProps({
   },
 })
 
-const { configItem } = toRefs(props)
+const {configItem} = toRefs(props)
 
 const state = reactive({
   activeTabName: '',
@@ -131,8 +131,8 @@ const isEditMode = computed(() => true)
 
 const addTabItem = (item: CanvasItem) => {
   // do addTabItem
-  // @ts-ignore
   const index = configItem.value.propValue.findIndex(
+     // @ts-ignore
     (tabItem) => configItem.value.activeTabName === tabItem.name
   )
   // @ts-ignore
@@ -178,7 +178,7 @@ defineExpose({
           <template #label>
             <div class="custom-tab-title" @mousedown.stop>
               <span class="title-inner" :style="titleStyle(tabItem.name)"
-                >{{ tabItem.title }}
+              >{{ tabItem.title }}
                 <span v-if="isEditMode">
                   <el-dropdown
                     popper-class="custom-de-tab-dropdown"
@@ -186,7 +186,7 @@ defineExpose({
                     @command="handleCommand"
                   >
                     <span class="el-dropdown-link">
-                      <el-icon v-if="isEditMode"><ArrowDown /></el-icon>
+                      <el-icon v-if="isEditMode"><ArrowDown/></el-icon>
                     </span>
                     <template #dropdown>
                       <el-dropdown-menu>
