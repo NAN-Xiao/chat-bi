@@ -1,11 +1,9 @@
 <script setup lang="ts">
-
-import type {ChatMessage} from "@/api/chat.ts";
+import type { ChatMessage } from '@/api/chat.ts'
 
 defineProps<{
   msg?: ChatMessage
 }>()
-
 </script>
 
 <template>
@@ -34,11 +32,9 @@ defineProps<{
     .chat-block-content {
       padding: 12px;
     }
-
   }
 
   .chat-block-footer {
-
   }
 }
 </style>

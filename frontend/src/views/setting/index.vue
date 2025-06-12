@@ -24,15 +24,15 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from 'vue';
-import IconProfessional from '@/assets/svg/professional.svg';
-import IconTrain from '@/assets/svg/train.svg';
-import Professional from './Professional.vue';
-const activeName = ref('0');
+import { ref } from 'vue'
+import IconProfessional from '@/assets/svg/professional.svg'
+import IconTrain from '@/assets/svg/train.svg'
+import Professional from './Professional.vue'
+const activeName = ref('0')
 
 const handleClick = (tab: any, event: MouseEvent) => {
-  console.log(tab, event);
-};
+  console.log(tab, event)
+}
 </script>
 
 <style lang="less" scoped>

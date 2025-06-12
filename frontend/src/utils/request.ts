@@ -5,7 +5,7 @@ import axios, {
   type AxiosRequestConfig,
   type AxiosResponse,
   type InternalAxiosRequestConfig,
-  type CancelTokenSource
+  type CancelTokenSource,
 } from 'axios'
 
 import { useCache } from '@/utils/useCache'
@@ -52,9 +52,9 @@ class HttpService {
       timeout: 100000,
       headers: {
         'Content-Type': 'application/json',
-        ...config?.headers
+        ...config?.headers,
       },
-      ...config
+      ...config,
     })
 
     this.setupInterceptors()
@@ -72,7 +72,7 @@ class HttpService {
 
         // Request logging
         // console.log(`[Request] ${config.method?.toUpperCase()} ${config.url}`)
-        
+
         return config
       },
       (error) => {
@@ -83,7 +83,7 @@ class HttpService {
     this.instance.interceptors.response.use(
       (response: AxiosResponse) => {
         // console.log(`[Response] ${response.config.url}`, response.data)
-        
+
         // Return raw response if configured
         if ((response.config as FullRequestConfig).requestOptions?.rawResponse) {
           return response
@@ -103,20 +103,18 @@ class HttpService {
       async (error: AxiosError) => {
         const config = error.config as FullRequestConfig & { __retryCount?: number }
         const requestOptions = config?.requestOptions || {}
-        
+
         // Retry logic for specific status codes
-        const shouldRetry = 
-          error.response?.status === 502 && 
+        const shouldRetry =
+          error.response?.status === 502 &&
           (config.__retryCount || 0) < (requestOptions.retryCount || 3)
-        
+
         if (shouldRetry) {
           config.__retryCount = (config.__retryCount || 0) + 1
-          
+
           // Exponential backoff
-          await new Promise(resolve => 
-            setTimeout(resolve, 1000 * (config.__retryCount || 1))
-          )
-          
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (config.__retryCount || 1)))
+
           return this.instance.request(config)
         }
 
@@ -132,7 +130,7 @@ class HttpService {
 
   private handleError(error: AxiosError) {
     let errorMessage = 'Request error'
-    
+
     if (error.response) {
       switch (error.response.status) {
         case 400:
@@ -173,7 +171,7 @@ class HttpService {
     ElMessage({
       message: errorMessage,
       type: 'error',
-      showClose: true
+      showClose: true,
     })
   }
 
@@ -188,7 +186,7 @@ class HttpService {
   public request<T = any>(config: FullRequestConfig): Promise<T> {
     return this.instance.request({
       cancelToken: this.cancelTokenSource.token,
-      ...config
+      ...config,
     })
   }
 
@@ -198,15 +196,11 @@ class HttpService {
   }
 
   // POST request
-  public post<T = any>(
-    url: string, 
-    data?: any, 
-    config?: FullRequestConfig
-  ): Promise<T> {
+  public post<T = any>(url: string, data?: any, config?: FullRequestConfig): Promise<T> {
     return this.request({ ...config, method: 'POST', url, data })
   }
 
-  public fetchStream(url: string ,data?: any): Promise<any> {
+  public fetchStream(url: string, data?: any): Promise<any> {
     const token = wsCache.get('user.token')
     const heads: any = {
       'Content-Type': 'application/json',
@@ -223,11 +217,7 @@ class HttpService {
   }
 
   // PUT request
-  public put<T = any>(
-    url: string,
-    data?: any,
-    config?: FullRequestConfig
-  ): Promise<T> {
+  public put<T = any>(url: string, data?: any, config?: FullRequestConfig): Promise<T> {
     return this.request({ ...config, method: 'PUT', url, data })
   }
 
@@ -237,11 +227,7 @@ class HttpService {
   }
 
   // PATCH request
-  public patch<T = any>(
-    url: string,
-    data?: any,
-    config?: FullRequestConfig
-  ): Promise<T> {
+  public patch<T = any>(url: string, data?: any, config?: FullRequestConfig): Promise<T> {
     return this.request({ ...config, method: 'PATCH', url, data })
   }
 
@@ -257,27 +243,24 @@ class HttpService {
 
     return this.post(url, formData, {
       headers: {
-        'Content-Type': 'multipart/form-data'
+        'Content-Type': 'multipart/form-data',
       },
-      ...config
+      ...config,
     })
   }
 
   // Download file
-  public download(
-    url: string,
-    config?: FullRequestConfig
-  ): Promise<Blob> {
+  public download(url: string, config?: FullRequestConfig): Promise<Blob> {
     return this.request<Blob>({
       ...config,
       method: 'GET',
       url,
-      responseType: 'blob'
+      responseType: 'blob',
     })
   }
 }
 
 // Create singleton instance
 export const request = new HttpService({
-  baseURL: import.meta.env.VITE_API_BASE_URL
+  baseURL: import.meta.env.VITE_API_BASE_URL,
 })

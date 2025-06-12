@@ -2,8 +2,10 @@
   <div class="welcome-container">
     <el-card class="welcome-card">
       <h1 class="welcome-title">Welcome</h1>
-      <p class="welcome-message">You have successfully logged into the system and can now start using various functions.</p>
-      <el-button type="primary" @click="logout" class="logout-btn">Logout</el-button>
+      <p class="welcome-message">
+        You have successfully logged into the system and can now start using various functions.
+      </p>
+      <el-button type="primary" class="logout-btn" @click="logout">Logout</el-button>
     </el-card>
   </div>
 </template>

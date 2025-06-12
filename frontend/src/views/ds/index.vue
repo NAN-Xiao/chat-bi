@@ -31,20 +31,20 @@
       <template v-for="ds in dsList">
         <DatasourceItemCard :ds="ds">
           <div class="connection-actions">
-            <el-button class="action-btn" circle @click="getTables(ds.id, ds.name)" :icon="List" />
+            <el-button class="action-btn" circle :icon="List" @click="getTables(ds.id, ds.name)" />
             <el-button
               type="primary"
               class="action-btn"
               circle
-              @click="editDs(ds)"
               :icon="IconOpeEdit"
+              @click="editDs(ds)"
             />
             <el-button
               type="danger"
               class="action-btn"
               circle
-              @click="deleteDs(ds)"
               :icon="IconOpeDelete"
+              @click="deleteDs(ds)"
             />
           </div>
         </DatasourceItemCard>

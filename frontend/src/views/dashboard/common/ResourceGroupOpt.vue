@@ -1,10 +1,9 @@
 <script lang="ts" setup>
 import folder from '@/assets/svg/folder.svg'
-import {type SQTreeNode} from '@/views/dashboard/utils/treeNode'
-import {ref, reactive, computed} from 'vue'
-import {saveDashboardResource} from "@/views/dashboard/utils/canvasUtils.ts";
-import {dashboardApi} from "@/api/dashboard.ts";
-import _ from "lodash";
+import { type SQTreeNode } from '@/views/dashboard/utils/treeNode'
+import { computed, reactive, ref } from 'vue'
+import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
+import { dashboardApi } from '@/api/dashboard.ts'
 
 const emits = defineEmits(['finish'])
 const state = reactive({
@@ -19,7 +18,7 @@ const state = reactive({
   tDataSource: [],
   nameList: [],
   targetInfo: null,
-  attachParams: null
+  attachParams: null,
 })
 
 const getTitle = (opt: string) => {
@@ -47,7 +46,7 @@ const getResourceNewName = (opt: string) => {
 }
 
 const getTree = async () => {
-  const params = {node_type: 'folder'}
+  const params = { node_type: 'folder' }
   dashboardApi.list_resource(params).then((res) => {
     state.tData = res || []
     state.tDataSource = [...state.tData]
@@ -77,38 +76,37 @@ const resourceForm = reactive({
   id: null,
   pid: '',
   pName: '',
-  name: 'New Dashboard'
+  name: 'New Dashboard',
 })
 
 const resourceFormRules = ref({
-      name: [
-        {
-          required: true,
-          message: state.placeholder,
-          trigger: 'change'
-        },
-        {
-          required: true,
-          message: state.placeholder,
-          trigger: 'blur'
-        },
-        {
-          min: 1,
-          max: 64,
-          message: 'Chart limit 1-64',
-          trigger: 'change'
-        },
-        {required: true, trigger: 'blur'}
-      ],
-      pid: [
-        {
-          required: true,
-          message: 'Please select',
-          trigger: 'blur'
-        }
-      ]
-    }
-)
+  name: [
+    {
+      required: true,
+      message: state.placeholder,
+      trigger: 'change',
+    },
+    {
+      required: true,
+      message: state.placeholder,
+      trigger: 'blur',
+    },
+    {
+      min: 1,
+      max: 64,
+      message: 'Chart limit 1-64',
+      trigger: 'change',
+    },
+    { required: true, trigger: 'blur' },
+  ],
+  pid: [
+    {
+      required: true,
+      message: 'Please select',
+      trigger: 'blur',
+    },
+  ],
+})
 
 const resetForm = () => {
   state.dialogTitle = ''
@@ -122,7 +120,7 @@ const propsTree = {
   label: 'name',
   children: 'children',
   // @ts-ignore
-  isLeaf: node => !node.children?.length
+  isLeaf: (node) => !node.children?.length,
 }
 
 const showPid = computed(() => {
@@ -145,7 +143,7 @@ const saveResource = () => {
       type: 'success',
       message: messageTips,
     })
-    emits('finish', {opt: state.opt, resourceId: rsp.id})
+    emits('finish', { opt: state.opt, resourceId: rsp.id })
     resetForm()
   })
 }
@@ -157,57 +155,56 @@ const nodeClick = (data: SQTreeNode) => {
 
 const filterMethod = (value: any) => {
   // @ts-ignore
-  state.tData = state.tDataSource.filter(item => item.name.includes(value))
+  state.tData = state.tDataSource.filter((item) => item.name.includes(value))
 }
 
 defineExpose({
-  optInit
+  optInit,
 })
-
 </script>
 
 <template>
   <el-dialog
-      class="create-dialog"
-      :title="state.dialogTitle"
-      v-model="resourceDialogShow"
-      width="420px"
-      :before-close="resetForm"
-      @submit.prevent
+    v-model="resourceDialogShow"
+    class="create-dialog"
+    :title="state.dialogTitle"
+    width="420px"
+    :before-close="resetForm"
+    @submit.prevent
   >
     <el-form
-        v-loading="loading"
-        label-position="top"
-        require-asterisk-position="right"
-        ref="resource"
-        :model="resourceForm"
-        :rules="resourceFormRules"
+      ref="resource"
+      v-loading="loading"
+      label-position="top"
+      require-asterisk-position="right"
+      :model="resourceForm"
+      :rules="resourceFormRules"
     >
       <el-form-item :label="state.resourceFormNameLabel" prop="name">
         <el-input
-            @keydown.stop
-            @keyup.stop
-            :placeholder="state.placeholder"
-            v-model="resourceForm.name"
+          v-model="resourceForm.name"
+          :placeholder="state.placeholder"
+          @keydown.stop
+          @keyup.stop
         />
       </el-form-item>
       <el-form-item v-if="showPid" :label="'Folder'" prop="pid">
         <el-tree-select
-            style="width: 100%"
-            @keydown.stop
-            @keyup.stop
-            v-model="resourceForm.pid"
-            :data="state.tData"
-            :props="propsTree"
-            @node-click="nodeClick"
-            :filter-method="filterMethod"
-            :render-after-expand="false"
-            filterable
+          v-model="resourceForm.pid"
+          style="width: 100%"
+          :data="state.tData"
+          :props="propsTree"
+          :filter-method="filterMethod"
+          :render-after-expand="false"
+          filterable
+          @keydown.stop
+          @keyup.stop
+          @node-click="nodeClick"
         >
           <template #default="{ data: { name } }">
             <span class="custom-tree-node">
               <el-icon>
-                <Icon name="dv-folder"><folder class="svg-icon custom-tree-folder"/></Icon>
+                <Icon name="dv-folder"><folder class="svg-icon custom-tree-folder" /></Icon>
               </el-icon>
               <span :title="name">{{ name }}</span>
             </span>
@@ -268,6 +265,6 @@ defineExpose({
 }
 
 .custom-tree-folder {
-  color: rgb(255, 198, 10)
+  color: rgb(255, 198, 10);
 }
 </style>

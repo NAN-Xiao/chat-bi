@@ -1,27 +1,26 @@
 <script setup lang="ts">
-
-import type {ChatMessage} from "@/api/chat.ts";
-import {computed, nextTick, ref} from "vue";
-import {Loading} from "@element-plus/icons-vue";
-import ChartComponent from "./component/ChartComponent.vue"
-import type {ChartTypes} from "@/views/chat/component/BaseChart.ts";
-import {ArrowDown} from "@element-plus/icons-vue";
-import ICON_BAR from "@/assets/svg/chart/bar.svg"
-import ICON_COLUMN from "@/assets/svg/chart/column.svg"
-import ICON_LINE from "@/assets/svg/chart/line.svg"
-import ICON_PIE from "@/assets/svg/chart/pie.svg"
-import ICON_TABLE from "@/assets/svg/chart/table.svg"
-import {find} from "lodash-es";
+import type { ChatMessage } from '@/api/chat.ts'
+import { computed, nextTick, ref } from 'vue'
+import { Loading } from '@element-plus/icons-vue'
+import ChartComponent from './component/ChartComponent.vue'
+import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import { ArrowDown } from '@element-plus/icons-vue'
+import ICON_BAR from '@/assets/svg/chart/bar.svg'
+import ICON_COLUMN from '@/assets/svg/chart/column.svg'
+import ICON_LINE from '@/assets/svg/chart/line.svg'
+import ICON_PIE from '@/assets/svg/chart/pie.svg'
+import ICON_TABLE from '@/assets/svg/chart/table.svg'
+import { find } from 'lodash-es'
 
 const props = defineProps<{
   message?: ChatMessage
 }>()
 
 const settings = ref<{
-  type: "chart" | "sql"
+  type: 'chart' | 'sql'
   showAnswer: boolean
 }>({
-  type: "chart",
+  type: 'chart',
   showAnswer: false,
 })
 
@@ -36,8 +35,8 @@ const renderChartThinking = computed(() => {
 })
 
 const dataObject = computed<{
-  fields: Array<string>,
-  data: Array<{ [key: string]: any }>,
+  fields: Array<string>
+  data: Array<{ [key: string]: any }>
 }>(() => {
   if (props.message?.record?.data) {
     return JSON.parse(props.message.record.data)
@@ -49,11 +48,11 @@ const chartObject = computed<{
   type: ChartTypes
   title: string
   axis: {
-    x: { name: string, value: string },
-    y: { name: string, value: string },
-    series: { name: string, value: string }
+    x: { name: string; value: string }
+    y: { name: string; value: string }
+    series: { name: string; value: string }
   }
-  columns: Array<{ name: string, value: string }>
+  columns: Array<{ name: string; value: string }>
 }>(() => {
   if (props.message?.record?.chart) {
     return JSON.parse(props.message.record.chart)
@@ -87,14 +86,14 @@ const chartType = computed<ChartTypes>({
     if (currentChartType.value) {
       return currentChartType.value
     }
-    return chartObject.value.type ?? "table"
+    return chartObject.value.type ?? 'table'
   },
   set(v) {
     currentChartType.value = v
-  }
+  },
 })
 
-function clickTab(type: "chart" | "sql") {
+function clickTab(type: 'chart' | 'sql') {
   settings.value.type = type
 }
 
@@ -105,43 +104,45 @@ function openChartSelect() {
 }
 
 const chartTypeList = computed(() => {
-  const _list = [{
-    value: "table",
-    icon: ICON_TABLE
-  }]
+  const _list = [
+    {
+      value: 'table',
+      icon: ICON_TABLE,
+    },
+  ]
   if (chartObject.value) {
     switch (chartObject.value.type) {
-      case "table":
+      case 'table':
         break
-      case "column":
-      case "bar":
-      case "line":
+      case 'column':
+      case 'bar':
+      case 'line':
         _list.push({
-          value: "column",
-          icon: ICON_COLUMN
+          value: 'column',
+          icon: ICON_COLUMN,
         })
         _list.push({
-          value: "bar",
-          icon: ICON_BAR
+          value: 'bar',
+          icon: ICON_BAR,
         })
         _list.push({
-          value: "line",
-          icon: ICON_LINE
+          value: 'line',
+          icon: ICON_LINE,
         })
         break
-      case "pie":
+      case 'pie':
         _list.push({
-          value: "pie",
-          icon: ICON_PIE
+          value: 'pie',
+          icon: ICON_PIE,
         })
     }
   }
 
-  return _list;
+  return _list
 })
 
 const currentChartTypeIcon = computed(() => {
-  return find(chartTypeList.value, c => c.value === chartType.value)?.icon ?? ICON_TABLE
+  return find(chartTypeList.value, (c) => c.value === chartType.value)?.icon ?? ICON_TABLE
 })
 
 const chartRef = ref()
@@ -152,44 +153,51 @@ function onTypeChange() {
     chartRef.value?.renderChart()
   })
 }
-
-
 </script>
 
 <template>
   <el-container v-if="message">
-    <el-header style="display: flex; align-items: center; flex-direction: row;">
-      <div style="flex:1">
+    <el-header style="display: flex; align-items: center; flex-direction: row">
+      <div style="flex: 1">
         <div v-if="message.isTyping">Thinking ...</div>
         <div v-if="chartObject.title && !message.isTyping">{{ chartObject.title }}</div>
       </div>
       <div class="tab-container">
         <div class="base-chart-choose-btn" @click="clickTab('chart')">
-          <div class="chart-choose-btn"
-               :class="{'active': settings.type === 'chart', 'no-click': settings.type !== 'chart'}"
-               @click="openChartSelect">
+          <div
+            class="chart-choose-btn"
+            :class="{ active: settings.type === 'chart', 'no-click': settings.type !== 'chart' }"
+            @click="openChartSelect"
+          >
             <el-icon size="34">
-              <component :is="currentChartTypeIcon"/>
+              <component :is="currentChartTypeIcon" />
             </el-icon>
             <el-icon>
-              <ArrowDown/>
+              <ArrowDown />
             </el-icon>
           </div>
-          <el-select v-model="chartType" class="inner-select" :disabled="settings.type!== 'chart'"
-                     ref="chartSelectRef"
-                     @change="onTypeChange">
-            <el-option v-for="t in chartTypeList " :key="t.value" :value="t.value">
+          <el-select
+            ref="chartSelectRef"
+            v-model="chartType"
+            class="inner-select"
+            :disabled="settings.type !== 'chart'"
+            @change="onTypeChange"
+          >
+            <el-option v-for="t in chartTypeList" :key="t.value" :value="t.value">
               <div class="inner-chart-option">
                 <el-icon size="34">
-                  <component :is="t.icon"/>
+                  <component :is="t.icon" />
                 </el-icon>
                 {{ t.value }}
               </div>
             </el-option>
           </el-select>
-
         </div>
-        <div class="chart-choose-btn" :class="{'active': settings.type !== 'chart'}" @click="clickTab('sql')">
+        <div
+          class="chart-choose-btn"
+          :class="{ active: settings.type !== 'chart' }"
+          @click="clickTab('sql')"
+        >
           SQL
         </div>
       </div>
@@ -201,7 +209,7 @@ function onTypeChange() {
             <template #title>
               Inference process
               <el-icon v-if="props.message?.isTyping">
-                <Loading/>
+                <Loading />
               </el-icon>
             </template>
             <div>
@@ -230,15 +238,16 @@ function onTypeChange() {
               <div v-if="message.record.chart" class="chart-base-container">
                 <div>
                   <ChartComponent
-                      ref="chartRef"
-                      v-if="message.record.id"
-                      :id="message.record.id"
-                      :type="chartType"
-                      :columns="chartObject?.columns"
-                      :x="xAxis"
-                      :y="yAxis"
-                      :series="series"
-                      :data="dataObject.data"/>
+                    v-if="message.record.id"
+                    :id="message.record.id"
+                    ref="chartRef"
+                    :type="chartType"
+                    :columns="chartObject?.columns"
+                    :x="xAxis"
+                    :y="yAxis"
+                    :series="series"
+                    :data="dataObject.data"
+                  />
                 </div>
               </div>
             </div>
@@ -296,7 +305,6 @@ function onTypeChange() {
   }
 
   .inner-select {
-
     position: absolute;
 
     :deep(.ed-select__wrapper) {
@@ -313,9 +321,7 @@ function onTypeChange() {
     :deep(.ed-select__selected-item) {
       display: none;
     }
-
   }
-
 }
 
 .inner-chart-option {
@@ -326,7 +332,6 @@ function onTypeChange() {
 }
 
 .chart-choose-btn {
-
   cursor: pointer;
   color: var(--ed-color-primary);
   font-size: 16px;

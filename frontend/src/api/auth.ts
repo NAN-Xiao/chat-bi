@@ -1,7 +1,8 @@
 import { request } from '@/utils/request'
 
 export const userApi = {
-  pager: (pageNumber: number, pageSize: number) => request.get(`/user/pager/${pageNumber}/${pageSize}`),
+  pager: (pageNumber: number, pageSize: number) =>
+    request.get(`/user/pager/${pageNumber}/${pageSize}`),
   add: (data: any) => request.post('/settings/terminology', data),
   edit: (data: any) => request.put('/settings/terminology', data),
   delete: (id: number) => request.delete(`/settings/terminology/${id}`),

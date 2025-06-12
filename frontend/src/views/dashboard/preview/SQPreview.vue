@@ -2,57 +2,59 @@
 import elementResizeDetectorMaker from 'element-resize-detector'
 
 const dashboardStore = dashboardStoreWithOut()
-const {curComponent} = storeToRefs(dashboardStore)
+const { curComponent } = storeToRefs(dashboardStore)
 
-import {onMounted, toRefs, ref, computed, reactive} from 'vue'
-import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
-import {storeToRefs} from "pinia";
-import SQComponentWrapper from "@/views/dashboard/preview/SQComponentWrapper.vue";
-import type {CanvasItem} from "@/utils/canvas.ts";
+import { onMounted, toRefs, ref, computed, reactive } from 'vue'
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
+import { storeToRefs } from 'pinia'
+import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue'
+import type { CanvasItem } from '@/utils/canvas.ts'
 
 const props = defineProps({
   canvasStyleData: {
     type: Object,
-    required: true
+    required: true,
   },
   componentData: {
     type: Object,
-    required: true
+    required: true,
   },
   canvasViewInfo: {
     type: Object,
-    required: true
+    required: true,
   },
   dashboardInfo: {
     type: Object,
-    required: true
+    required: true,
   },
   baseMatrixCount: {
     type: Object,
-    default: {
-      x: 72,
-      y: 36
-    }
+    default: () => {
+      return {
+        x: 72,
+        y: 36,
+      }
+    },
   },
   canvasId: {
     type: String,
     required: false,
-    default: 'canvas-main'
+    default: 'canvas-main',
   },
   showPosition: {
     required: false,
     type: String,
-    default: 'preview'
-  }
+    default: 'preview',
+  },
 })
 
-const { canvasStyleData, componentData, showPosition, canvasId} = toRefs(props)
+const { canvasStyleData, componentData, showPosition, canvasId } = toRefs(props)
 const domId = 'preview-' + canvasId.value
 const previewCanvas = ref(null)
 const renderReady = ref(true)
 const state = reactive({
   initState: true,
-  scrollMain: 0
+  scrollMain: 0,
 })
 
 const cellWidth = ref(0)
@@ -62,19 +64,17 @@ const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
 const canvasStyle = computed(() => {
-  return {background: '#f5f6f7'}
+  return { background: '#f5f6f7' }
 })
 
-const restore = () => {
-
-}
+const restore = () => {}
 
 function nowItemStyle(item: CanvasItem) {
   return {
     width: cellWidth.value * item.sizeX - baseMarginLeft.value + 'px',
     height: cellHeight.value * item.sizeY - baseMarginTop.value + 'px',
     left: cellWidth.value * (item.x - 1) + baseMarginLeft.value + 'px',
-    top: cellHeight.value * (item.y - 1) + baseMarginTop.value + 'px'
+    top: cellHeight.value * (item.y - 1) + baseMarginTop.value + 'px',
   }
 }
 
@@ -86,13 +86,14 @@ const sizeInit = () => {
     const screenHeight = previewCanvas.value.offsetHeight
     baseMarginLeft.value = 10
     baseMarginTop.value = 10
-    baseWidth.value = (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
-    baseHeight.value = (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
+    baseWidth.value =
+      (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
+    baseHeight.value =
+      (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
     cellWidth.value = baseWidth.value + baseMarginLeft.value
     cellHeight.value = baseHeight.value + baseMarginTop.value
   }
 }
-
 
 onMounted(() => {
   sizeInit()
@@ -101,23 +102,29 @@ onMounted(() => {
 })
 
 defineExpose({
-  restore
+  restore,
 })
 </script>
 
 <template>
-  <div :id="domId" class="canvas-container" :style="canvasStyle" ref="previewCanvas" v-if="state.initState">
+  <div
+    v-if="state.initState"
+    :id="domId"
+    ref="previewCanvas"
+    class="canvas-container"
+    :style="canvasStyle"
+  >
     <template v-if="renderReady">
       <SQComponentWrapper
-          v-for="(item, index) in componentData"
-          :active="!!curComponent && (item.id === curComponent['id'])"
-          :config-item="item"
-          :canvas-view-info="canvasStyleData"
-          :show-position="showPosition"
-          :canvas-id="canvasId"
-          :key="index"
-          :style="nowItemStyle(item)"
-          :index="index"
+        v-for="(item, index) in componentData"
+        :key="index"
+        :active="!!curComponent && item.id === curComponent['id']"
+        :config-item="item"
+        :canvas-view-info="canvasStyleData"
+        :show-position="showPosition"
+        :canvas-id="canvasId"
+        :style="nowItemStyle(item)"
+        :index="index"
       />
     </template>
   </div>

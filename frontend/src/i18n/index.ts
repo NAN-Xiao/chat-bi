@@ -14,12 +14,12 @@ const getDefaultLocale = () => {
 const messages = {
   en: {
     ...en,
-    el: elementEnLocale 
+    el: elementEnLocale,
   },
   'zh-CN': {
     ...zhCN,
-    el: elementZhLocale
-  }
+    el: elementZhLocale,
+  },
 }
 
 export const i18n = createI18n({
@@ -27,7 +27,7 @@ export const i18n = createI18n({
   locale: getDefaultLocale(),
   fallbackLocale: 'en',
   globalInjection: true,
-  messages
+  messages,
 })
 
 export const getElementLocale = () => {

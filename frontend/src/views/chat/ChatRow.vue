@@ -1,46 +1,46 @@
 <script setup lang="ts">
 import ChatBlock from './ChatBlock.vue'
 import WelcomeBlock from './WelcomeBlock.vue'
-import {ChatInfo, type ChatMessage} from "@/api/chat.ts";
-import {computed} from "vue";
-import {UserFilled} from "@element-plus/icons-vue"
+import { ChatInfo, type ChatMessage } from '@/api/chat.ts'
+import { computed } from 'vue'
+import { UserFilled } from '@element-plus/icons-vue'
 
-const props = withDefaults(defineProps<{
-      msg: ChatMessage
-      currentChat: ChatInfo
-      datasource?: number
-    }>(),
-    {}
+const props = withDefaults(
+  defineProps<{
+    msg: ChatMessage
+    currentChat: ChatInfo
+    datasource?: number
+  }>(),
+  {}
 )
 
-const emits = defineEmits(["update:datasource"])
+const emits = defineEmits(['update:datasource'])
 
 const _datasource = computed({
   get() {
     return props.datasource
   },
   set(v) {
-    emits("update:datasource", v)
-  }
+    emits('update:datasource', v)
+  },
 })
-
 </script>
 
 <template>
-  <div class="chat-row" :class="{'right-to-left': msg.role === 'user'}">
-    <el-avatar class="ai-avatar" shape="square" v-if="msg.role === 'assistant'">SQLBot</el-avatar>
-    <el-avatar class="user-avatar" shape="square" v-if="msg.role === 'user'">
+  <div class="chat-row" :class="{ 'right-to-left': msg.role === 'user' }">
+    <el-avatar v-if="msg.role === 'assistant'" class="ai-avatar" shape="square">SQLBot</el-avatar>
+    <el-avatar v-if="msg.role === 'user'" class="user-avatar" shape="square">
       <el-icon>
-        <UserFilled/>
+        <UserFilled />
       </el-icon>
     </el-avatar>
-    <ChatBlock v-if="!msg.isWelcome" :msg="msg" :class="{'row-full': msg.role === 'assistant'}">
+    <ChatBlock v-if="!msg.isWelcome" :msg="msg" :class="{ 'row-full': msg.role === 'assistant' }">
       <slot></slot>
       <template #footer>
         <slot name="footer"></slot>
       </template>
     </ChatBlock>
-    <WelcomeBlock v-else v-model="_datasource" :current-chat="currentChat" class="row-full"/>
+    <WelcomeBlock v-else v-model="_datasource" :current-chat="currentChat" class="row-full" />
   </div>
 </template>
 
@@ -68,8 +68,6 @@ const _datasource = computed({
 }
 
 .user-avatar {
-  background: var(--ed-color-primary)
+  background: var(--ed-color-primary);
 }
-
-
 </style>

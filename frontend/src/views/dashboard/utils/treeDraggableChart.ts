@@ -1,14 +1,14 @@
 import { cloneDeep } from 'lodash-es'
-import {dashboardApi} from "@/api/dashboard.ts";
-const treeDraggableChart = (state:any, key:any, type:any) => {
+import { dashboardApi } from '@/api/dashboard.ts'
+const treeDraggableChart = (state: any, key: any, type: any) => {
   let dragNodeParentId = ''
   let dragNodeId = ''
   let dragNodeIndex = 0
 
-  let rawData:any[] = []
+  let rawData: any[] = []
 
-  const dfsTreeNode = (arr:any, parentId:any) => {
-    arr.forEach((element:any, index:any) => {
+  const dfsTreeNode = (arr: any, parentId: any) => {
+    arr.forEach((element: any, index: any) => {
       if (element.id === dragNodeId) {
         dragNodeIndex = index
         dragNodeParentId = parentId
@@ -19,9 +19,9 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
     })
   }
 
-  const dfsTreeNodeSaveLevel = (arr:any[], idArr:any) => {
-    arr.forEach((element:any) => {
-      const index = idArr.findIndex((ele:any) => {
+  const dfsTreeNodeSaveLevel = (arr: any[], idArr: any) => {
+    arr.forEach((element: any) => {
+      const index = idArr.findIndex((ele: any) => {
         return ele === element.id
       })
       if (index !== -1) {
@@ -33,8 +33,8 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
     })
   }
 
-  const dfsTreeNodeBack = (arr:any, parentId:any, params:any) => {
-    arr.forEach((element:any) => {
+  const dfsTreeNodeBack = (arr: any, parentId: any, params: any) => {
+    arr.forEach((element: any) => {
       if (element.id === params.id) {
         params.pid = parentId
       }
@@ -44,8 +44,8 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
     })
   }
 
-  const dfsTreeNodeReset = (arr:any, node:any) => {
-    arr.forEach((element:any) => {
+  const dfsTreeNodeReset = (arr: any, node: any) => {
+    arr.forEach((element: any) => {
       if (element.id === dragNodeParentId) {
         element.children.splice(dragNodeIndex, 0, node)
       }
@@ -55,8 +55,8 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
     })
   }
 
-  const dfsTreeNodeDel = (arr:any, node:any) => {
-    arr.forEach((element:any, index:any) => {
+  const dfsTreeNodeDel = (arr: any, node: any) => {
+    arr.forEach((element: any, index: any) => {
       if (element.id === node.id) {
         arr.splice(index, 1)
       }
@@ -66,24 +66,24 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
     })
   }
 
-  const handleDragStart = (node:any) => {
+  const handleDragStart = (node: any) => {
     dragNodeId = node.data.id
     rawData = cloneDeep(state[key])
     dfsTreeNode(state[key], '0')
   }
 
-  const allowDrop = (dropNode:any) => {
+  const allowDrop = (dropNode: any) => {
     return !dropNode.data?.leaf
   }
 
-  const handleDrop = async (draggingNode:any, dropNode:any, dropType:any) => {
+  const handleDrop = async (draggingNode: any, dropNode: any, dropType: any) => {
     const params = {
       id: draggingNode.data?.id,
       name: draggingNode.data?.name,
       nodeType: draggingNode.data?.leaf ? 'leaf' : 'folder',
       pid: '0',
       opt: 'move',
-      type
+      type,
     }
     if (dropType !== 'inner') {
       const idArr = [params.id, dropNode.data?.id]
@@ -115,7 +115,8 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
       dfsTreeNodeBack(state[key], '0', params)
     }
 
-    dashboardApi.move_resource(params)
+    dashboardApi
+      .move_resource(params)
       .then(() => {
         state.originResourceTree = cloneDeep(state[key])
       })
@@ -132,7 +133,7 @@ const treeDraggableChart = (state:any, key:any, type:any) => {
   return {
     handleDrop,
     allowDrop,
-    handleDragStart
+    handleDragStart,
   }
 }
 

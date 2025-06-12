@@ -32,7 +32,7 @@
     <div class="sqlbot-table">
       <el-table :data="state.tableData" style="width: 100%">
         <el-table-column prop="term" label="Term" width="280" />
-        <el-table-column prop="definition" label="Definition"  />
+        <el-table-column prop="definition" label="Definition" />
         <el-table-column prop="domain" label="Domain" width="180" />
         <el-table-column prop="id" label="Actions" width="120" fixed="right">
           <template #default="scope">
@@ -50,19 +50,27 @@
     </div>
   </div>
 
-  <el-dialog v-model="dialogFormVisible" title="Add Terminology" destroy-on-close width="500" @close="onFormClose" class="sqlbot-dialog">
-    <el-form :model="state.form" 
+  <el-dialog
+    v-model="dialogFormVisible"
+    title="Add Terminology"
+    destroy-on-close
+    width="500"
+    class="sqlbot-dialog"
+    @close="onFormClose"
+  >
+    <el-form
+      ref="termFormRef"
+      :model="state.form"
       label-width="180px"
-      label-position="top" 
+      label-position="top"
       class="sqlbot-form"
       size="large"
-      ref="termFormRef"
     >
-      <el-form-item label="Term name" >
+      <el-form-item label="Term name">
         <el-input v-model="state.form.term" autocomplete="off" />
       </el-form-item>
-      <el-form-item label="Definition" >
-        <el-input type="textarea" v-model="state.form.definition" />
+      <el-form-item label="Definition">
+        <el-input v-model="state.form.definition" type="textarea" />
       </el-form-item>
       <el-form-item label="Domain">
         <el-select v-model="state.form.domain" placeholder="Please select a domain">
@@ -75,38 +83,35 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="closeForm">Cancel</el-button>
-        <el-button type="primary" @click="saveHandler">
-          save
-        </el-button>
+        <el-button type="primary" @click="saveHandler"> save </el-button>
       </div>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import IconOpeUpload from '@/assets/svg/operate/ope-upload.svg';
-import IconOpeDownload from '@/assets/svg/operate/ope-download.svg';
-import IconOpeAdd from '@/assets/svg/operate/ope-add.svg';
-import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg';
-import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg';
+import { ref, reactive, onMounted } from 'vue'
+import IconOpeUpload from '@/assets/svg/operate/ope-upload.svg'
+import IconOpeDownload from '@/assets/svg/operate/ope-download.svg'
+import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
+import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
+import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { Search } from '@element-plus/icons-vue'
 import { termApi } from '@/api/setting'
 const keyword = ref('')
 const dialogFormVisible = ref(false)
 const termFormRef = ref()
 const state = reactive({
-  tableData: [
-  ],
+  tableData: [],
   form: {
     id: '',
     term: '',
     definition: '',
-    domain: ''
+    domain: '',
   },
 })
 const handleSearch = (e: any) => {
-  console.log('search', e);
+  console.log('search', e)
 }
 const editHandler = (id: any) => {
   termApi.query(id).then((res: any) => {
@@ -116,15 +121,11 @@ const editHandler = (id: any) => {
   })
 }
 const deleteHandler = (id: any) => {
-  ElMessageBox.confirm(
-    'Are you sure to delete?',
-    'Warning',
-    {
-      confirmButtonText: 'OK',
-      cancelButtonText: 'Cancel',
-      type: 'warning',
-    }
-  )
+  ElMessageBox.confirm('Are you sure to delete?', 'Warning', {
+    confirmButtonText: 'OK',
+    cancelButtonText: 'Cancel',
+    type: 'warning',
+  })
     .then(() => {
       termApi.delete(id).then(() => {
         ElMessage({
@@ -133,7 +134,6 @@ const deleteHandler = (id: any) => {
         })
         search()
       })
-      
     })
     .catch(() => {
       ElMessage({
@@ -147,7 +147,7 @@ const openDialog = () => {
   dialogFormVisible.value = true
 }
 const resetForm = () => {
-  if (!termFormRef) return
+  if (!termFormRef.value) return
   Object.keys(state.form).forEach((key) => {
     state.form[key as keyof typeof state.form] = ''
   })
@@ -217,7 +217,7 @@ onMounted(() => {
         --el-input-inner-height: 40px !important;
         --el-input-border-radius: 24px;
         --el-input-bg-color: #f5f7fa;
-        --el-input-border-color: #e5e8ed;        
+        --el-input-border-color: #e5e8ed;
       }
     }
     .tool-right {

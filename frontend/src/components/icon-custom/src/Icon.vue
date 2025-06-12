@@ -3,20 +3,20 @@ import { computed } from 'vue'
 const props = defineProps({
   prefix: {
     type: String,
-    default: 'icon'
+    default: 'icon',
   },
   name: {
     type: String,
-    default: ''
+    default: '',
   },
   className: {
     type: String,
-    default: ''
+    default: '',
   },
   staticContent: {
     type: String,
-    default: ''
-  }
+    default: '',
+  },
 })
 const svgClass = computed(() => {
   if (props.className) {
@@ -28,11 +28,11 @@ const svgClass = computed(() => {
 
 <template>
   <div
-    class="svg-container"
     v-if="staticContent"
-    v-html="staticContent"
+    class="svg-container"
     :class="svgClass"
     aria-hidden="true"
+    v-html="staticContent"
   ></div>
   <slot v-else />
 </template>
@@ -48,7 +48,7 @@ const svgClass = computed(() => {
 .svg-container {
   width: 100%;
   height: 100%;
-  
+
   svg {
     width: 100%;
     height: 100%;

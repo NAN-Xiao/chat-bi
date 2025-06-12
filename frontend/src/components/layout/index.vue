@@ -1,6 +1,9 @@
 <template>
   <div class="app-container" :class="{ 'app-topbar-container': topLayout }">
-    <div class="main-menu" :class="{ 'main-menu-sidebar': !topLayout, 'main-menu-topbar': topLayout }">
+    <div
+      class="main-menu"
+      :class="{ 'main-menu-sidebar': !topLayout, 'main-menu-topbar': topLayout }"
+    >
       <div class="logo">SQLBot</div>
 
       <!-- <div v-if="!topLayout || !showSubmenu"
@@ -28,40 +31,43 @@
         </el-select>
       </div> -->
       <el-menu
-          v-if="!topLayout || !showSubmenu"
-          :default-active="activeMenu"
-          class="menu-container"
-          :mode="topLayout ? 'horizontal' : 'vertical'"
+        v-if="!topLayout || !showSubmenu"
+        :default-active="activeMenu"
+        class="menu-container"
+        :mode="topLayout ? 'horizontal' : 'vertical'"
       >
-        <el-menu-item v-for="item in routerList" :key="item.path" :index="item.path" @click="menuSelect">
+        <el-menu-item
+          v-for="item in routerList"
+          :key="item.path"
+          :index="item.path"
+          @click="menuSelect"
+        >
           <el-icon v-if="item.meta.icon">
-            <component :is="resolveIcon(item.meta.icon)"/>
+            <component :is="resolveIcon(item.meta.icon)" />
           </el-icon>
           <span>{{ t(`menu.${item.meta.title}`) }}</span>
         </el-menu-item>
       </el-menu>
 
       <div v-else class="top-bar-title">
-        <span class="split"/>
+        <span class="split" />
         <span>{{ t('common.system_manage') }}</span>
       </div>
 
-
-      <div class="main-topbar-right" v-if="topLayout">
-
-        <div class="top-back-area" v-if="showSubmenu">
+      <div v-if="topLayout" class="main-topbar-right">
+        <div v-if="showSubmenu" class="top-back-area">
           <el-button type="primary" text="primary" @click="backMain">
             <el-icon class="el-icon--right">
-              <ArrowLeftBold/>
+              <ArrowLeftBold />
             </el-icon>
             Back
           </el-button>
         </div>
 
-        <el-tooltip :content="t('common.system_manage')" placement="bottom" v-else>
+        <el-tooltip v-else :content="t('common.system_manage')" placement="bottom">
           <div class="header-icon-btn" @click="toSystem">
             <el-icon>
-              <iconsystem/>
+              <iconsystem />
             </el-icon>
           </div>
         </el-tooltip>
@@ -76,7 +82,7 @@
               <el-dropdown-item @click="switchLayout">Switch Layout</el-dropdown-item>
               <el-dropdown-item @click="logout">Logout</el-dropdown-item>
               <el-dropdown-item>
-                <language-selector/>
+                <language-selector />
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -84,15 +90,15 @@
       </div>
     </div>
 
-    <div class="main-content" :class="{'main-content-with-bar': topLayout}">
-      <div class="header-container" v-if="!topLayout">
+    <div class="main-content" :class="{ 'main-content-with-bar': topLayout }">
+      <div v-if="!topLayout" class="header-container">
         <div class="header">
           <h1>{{ currentPageTitle }}</h1>
           <div class="header-actions">
             <el-tooltip content="System manage" placement="bottom">
               <div class="header-icon-btn" @click="toSystem">
                 <el-icon>
-                  <iconsystem/>
+                  <iconsystem />
                 </el-icon>
                 <span>{{ t('common.system_manage') }}</span>
               </div>
@@ -108,9 +114,8 @@
                   <el-dropdown-item @click="switchLayout">Switch Layout</el-dropdown-item>
                   <el-dropdown-item @click="logout">Logout</el-dropdown-item>
                   <el-dropdown-item>
-                    <language-selector/>
+                    <language-selector />
                   </el-dropdown-item>
-
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -120,13 +125,18 @@
 
       <div v-if="sysRouterList.length && showSubmenu" class="sub-menu-container">
         <el-menu
-            :default-active="activeMenu"
-            class="el-menu-demo"
-            :mode="!topLayout ? 'horizontal' : 'vertical'"
+          :default-active="activeMenu"
+          class="el-menu-demo"
+          :mode="!topLayout ? 'horizontal' : 'vertical'"
         >
-          <el-menu-item v-for="item in sysRouterList" :key="item.path" :index="item.path" @click="menuSelect">
+          <el-menu-item
+            v-for="item in sysRouterList"
+            :key="item.path"
+            :index="item.path"
+            @click="menuSelect"
+          >
             <el-icon v-if="item.meta.icon">
-              <component :is="resolveIcon(item.meta.icon)"/>
+              <component :is="resolveIcon(item.meta.icon)" />
             </el-icon>
             <span>{{ t(`menu.${item.meta.title}`) }}</span>
           </el-menu-item>
@@ -135,20 +145,20 @@
 
       <div v-if="sysRouterList.length && showSubmenu" class="sys-page-content">
         <div class="sys-inner-container">
-          <router-view/>
+          <router-view />
         </div>
       </div>
       <div v-else class="page-content">
-        <router-view/>
+        <router-view />
       </div>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import {ref, computed, onMounted} from 'vue'
-import {useRouter, useRoute} from 'vue-router'
-import {useUserStore} from '@/stores/user'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import ds from '@/assets/svg/ds.svg'
 import dashboard from '@/assets/svg/dashboard.svg'
 import chat from '@/assets/svg/chat.svg'
@@ -156,13 +166,13 @@ import iconsetting from '@/assets/svg/setting.svg'
 import iconsystem from '@/assets/svg/system.svg'
 import icon_user from '@/assets/svg/icon_user.svg'
 import icon_ai from '@/assets/svg/icon_ai.svg'
-import {ArrowLeftBold} from '@element-plus/icons-vue'
-import {useCache} from '@/utils/useCache'
-import {useI18n} from 'vue-i18n'
+import { ArrowLeftBold } from '@element-plus/icons-vue'
+import { useCache } from '@/utils/useCache'
+import { useI18n } from 'vue-i18n'
 import LanguageSelector from '@/components/Language-selector/index.vue'
 
-const {t} = useI18n()
-const {wsCache} = useCache()
+const { t } = useI18n()
+const { wsCache } = useCache()
 const topLayout = ref(false)
 const router = useRouter()
 const route = useRoute()
@@ -170,13 +180,23 @@ const userStore = useUserStore()
 const name = ref('admin')
 const activeMenu = computed(() => route.path)
 const routerList = computed(() => {
-  return router.getRoutes().filter(route => {
-    return !route.path.includes('canvas') &&!route.path.includes('preview') && route.path !== '/login' && !route.path.includes('/system') && !route.redirect && route.path !== '/:pathMatch(.*)*' && !route.path.includes('dsTable')
+  return router.getRoutes().filter((route) => {
+    return (
+      !route.path.includes('canvas') &&
+      !route.path.includes('preview') &&
+      route.path !== '/login' &&
+      !route.path.includes('/system') &&
+      !route.redirect &&
+      route.path !== '/:pathMatch(.*)*' &&
+      !route.path.includes('dsTable')
+    )
   })
 })
 
 const sysRouterList = computed(() => {
-  const result = router.getRoutes().filter(route => route.path.includes('/system') && !route.redirect)
+  const result = router
+    .getRoutes()
+    .filter((route) => route.path.includes('/system') && !route.redirect)
   return result
 })
 
@@ -197,12 +217,12 @@ const currentPageTitle = computed(() => {
 })
 const resolveIcon = (iconName: any) => {
   const icons: Record<string, any> = {
-    'ds': ds,
-    'dashboard': dashboard,
-    'chat': chat,
-    'setting': iconsetting,
-    'icon_user': icon_user,
-    'icon_ai': icon_ai,
+    ds: ds,
+    dashboard: dashboard,
+    chat: chat,
+    setting: iconsetting,
+    icon_user: icon_user,
+    icon_ai: icon_ai,
   }
   return typeof icons[iconName] === 'function' ? icons[iconName]() : icons[iconName]
 }
@@ -289,7 +309,7 @@ onMounted(() => {
       border-bottom: none;
 
       &:not(.ed-menu--vertical) {
-        margin-left: 32px
+        margin-left: 32px;
       }
     }
   }
@@ -434,7 +454,9 @@ onMounted(() => {
       margin: 0;
       padding: 0;
       height: 60px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      font-family:
+        -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+        'Open Sans', 'Helvetica Neue', sans-serif;
 
       .header {
         height: 36px;
@@ -495,7 +517,6 @@ onMounted(() => {
         }
       }
     }
-
 
     .page-content {
       flex: 1;

@@ -93,7 +93,6 @@
       "schema": "Schema",
       "get_schema": "Get Schema",
       "file": "File",
-      "upload": "Upload",
       "upload_tip": "Only support .xls, .xlsx, .csv, size less than 50MB.",
       "version_tip": {
         "sqlServer": "Supported version: 2012+",
@@ -111,6 +110,15 @@
         "database_required": "Please input database",
         "mode_required": "Please choose mode",
         "schema_required": "Please input schema"
+      },
+      "mode": {
+        "sid": "SID",
+        "service_name": "Service Name"
+      },
+      "support_version": "Supported version",
+      "upload": {
+        "button": "Upload",
+        "tip": "Only support .xls, .xlsx, .csv, size less than 50MB."
       }
     }
   }

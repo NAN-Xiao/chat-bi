@@ -1,52 +1,51 @@
 <script setup lang="ts">
-import {ref, toRefs, computed} from 'vue'
-import {findComponent} from "@/views/dashboard/components/component-list.ts";
+import { ref, toRefs, computed } from 'vue'
+import { findComponent } from '@/views/dashboard/components/component-list.ts'
 
 const componentWrapperInnerRef = ref(null)
 
 const props = defineProps({
   active: {
     type: Boolean,
-    default: false
+    default: false,
   },
   configItem: {
     type: Object,
-    required: true
+    required: true,
   },
   canvasViewInfo: {
     type: Object,
-    required: true
+    required: true,
   },
   showPosition: {
     required: false,
     type: String,
-    default: 'preview'
+    default: 'preview',
   },
   canvasId: {
     type: String,
-    default: 'canvas-main'
-  }
+    default: 'canvas-main',
+  },
 })
-const {configItem, showPosition} = toRefs(props)
+const { configItem, showPosition } = toRefs(props)
 const component = ref(null)
 const wrapperId = 'wrapper-outer-id-' + configItem.value.id
 const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.value.id)
-
 </script>
 
 <template>
-  <div class="wrapper-outer" :id="wrapperId">
-    <div class="wrapper-inner" ref="componentWrapperInnerRef" :id="viewDemoInnerId">
+  <div :id="wrapperId" class="wrapper-outer">
+    <div :id="viewDemoInnerId" ref="componentWrapperInnerRef" class="wrapper-inner">
       <div class="wrapper-inner-adaptor">
         <component
-            ref="component"
-            class="component"
-            :is="findComponent(configItem['component'])"
-            :canvas-view-info="canvasViewInfo"
-            :view="canvasViewInfo[configItem.id]"
-            :config-item="configItem"
-            :show-position="showPosition"
-            :active="active"
+          :is="findComponent(configItem['component'])"
+          ref="component"
+          class="component"
+          :canvas-view-info="canvasViewInfo"
+          :view="canvasViewInfo[configItem.id]"
+          :config-item="configItem"
+          :show-position="showPosition"
+          :active="active"
         />
       </div>
     </div>

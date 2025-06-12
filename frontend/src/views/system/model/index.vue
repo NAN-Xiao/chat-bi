@@ -29,26 +29,31 @@
       </div>
     </div>
     <div class="sqlbot-table">
-      <el-table :data="state.tableData" style="width: 100%" row-key="id" @selection-change="handleSelectionChange">
+      <el-table
+        :data="state.tableData"
+        style="width: 100%"
+        row-key="id"
+        @selection-change="handleSelectionChange"
+      >
         <el-table-column type="selection" width="55" />
         <el-table-column prop="name" label="Model Name" width="280" />
-        <el-table-column prop="type" label="Model Type"  width="280">
+        <el-table-column prop="type" label="Model Type" width="280">
           <template #default="scope">
             <span>{{ getModelTypeName(scope.row.type) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="api_key" label="API KEY" width="280">
           <template #default="scope">
-            <div class="user-status-container" :class="[ scope.row.api_key ? 'active' : 'disabled' ]">
+            <div class="user-status-container" :class="[scope.row.api_key ? 'active' : 'disabled']">
               <span>{{ scope.row.api_key ? 'Configured' : 'Not Configured' }}</span>
             </div>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="Status" width="180">
           <template #default="scope">
-            <div class="user-status-container" :class="[ scope.row.status ? 'active' : 'disabled' ]">
+            <div class="user-status-container" :class="[scope.row.status ? 'active' : 'disabled']">
               <el-icon>
-                <SuccessFilled v-if="scope.row.status"/>
+                <SuccessFilled v-if="scope.row.status" />
                 <CircleCloseFilled v-else />
               </el-icon>
               <span>{{ scope.row.status ? 'Enabled' : 'Disabled' }}</span>
@@ -87,40 +92,57 @@
           @current-change="handleCurrentChange"
         />
       </div>
-      
     </div>
   </div>
 
-  <el-dialog v-model="dialogFormVisible" title="Add Ai Model" destroy-on-close width="500" @close="onFormClose" class="sqlbot-dialog">
-    <el-form :model="state.form" 
+  <el-dialog
+    v-model="dialogFormVisible"
+    title="Add Ai Model"
+    destroy-on-close
+    width="500"
+    class="sqlbot-dialog"
+    @close="onFormClose"
+  >
+    <el-form
+      ref="termFormRef"
+      :model="state.form"
       label-width="180px"
-      label-position="top" 
+      label-position="top"
       class="sqlbot-form"
       size="large"
-      ref="termFormRef"
     >
-      <el-form-item label="Model Name" >
+      <el-form-item label="Model Name">
         <el-input v-model="state.form.name" autocomplete="off" />
       </el-form-item>
-      
+
       <el-form-item label="Model Type">
         <el-select v-model="state.form.type" placeholder="Please select a type">
-          <el-option v-for="item in modelTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-option
+            v-for="item in modelTypeOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
           <!-- <el-option label="domain1" value="0" />
           <el-option label="domain2" value="1" />
           <el-option label="domain3" value="2" /> -->
         </el-select>
       </el-form-item>
 
-      <el-form-item label="API KEY" >
-        <el-input type="password" v-model="state.form.api_key" show-password placeholder="Please input password" />
+      <el-form-item label="API KEY">
+        <el-input
+          v-model="state.form.api_key"
+          type="password"
+          show-password
+          placeholder="Please input password"
+        />
       </el-form-item>
 
-      <el-form-item label="API Endpoint URL" >
+      <el-form-item label="API Endpoint URL">
         <el-input v-model="state.form.endpoint" placeholder="Please input endpoint" />
       </el-form-item>
 
-<!--      <el-form-item label="Maximum Context Window" >
+      <!--      <el-form-item label="Maximum Context Window" >
         <el-input v-model="state.form.max_context_window" type="number" placeholder="Please input max_context_window" />
       </el-form-item>
 
@@ -128,34 +150,32 @@
         <el-slider v-model="state.form.temperature" :format-tooltip="formatTooltip" />
       </el-form-item>-->
 
-      <el-form-item label="Model Status" >
+      <el-form-item label="Model Status">
         <el-checkbox v-model="state.form.status" label="" size="large" />
       </el-form-item>
 
-      <el-form-item label="Description" >
-        <el-input type="textarea" v-model="state.form.description" />
+      <el-form-item label="Description">
+        <el-input v-model="state.form.description" type="textarea" />
       </el-form-item>
     </el-form>
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="closeForm">Cancel</el-button>
-        <el-button type="primary" @click="saveHandler">
-          save
-        </el-button>
+        <el-button type="primary" @click="saveHandler"> save </el-button>
       </div>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import IconEnable from '@/assets/svg/operate/ope-enable.svg';
-import IconDisable from '@/assets/svg/operate/ope-disable.svg';
-import IconOpeAdd from '@/assets/svg/operate/ope-add.svg';
+import { ref, reactive, onMounted } from 'vue'
+import IconEnable from '@/assets/svg/operate/ope-enable.svg'
+import IconDisable from '@/assets/svg/operate/ope-disable.svg'
+import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 
 import { SuccessFilled, CircleCloseFilled, Search as IconSearch } from '@element-plus/icons-vue'
-import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg';
-import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg';
+import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
+import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { modelApi } from '@/api/system'
 import { formatTimestamp } from '@/utils/date'
 import { modelTypeOptions, getModelTypeName } from '@/entity/CommonEntity.ts'
@@ -163,8 +183,7 @@ const keyword = ref('')
 const dialogFormVisible = ref(false)
 const termFormRef = ref()
 const state = reactive({
-  tableData: [
-  ],
+  tableData: [],
   form: {
     id: '',
     name: '',
@@ -174,20 +193,20 @@ const state = reactive({
     max_context_window: 0,
     temperature: 0,
     status: false,
-    description: ''
+    description: '',
   },
   pageInfo: {
     currentPage: 1,
     pageSize: 20,
-    total: 0
+    total: 0,
   },
-  selectedIds: []
+  selectedIds: [],
 })
 onMounted(() => {
   search()
 })
 const handleSearch = (e: any) => {
-  console.log('search', e);
+  console.log('search', e)
 }
 const editHandler = (id: any) => {
   modelApi.query(id).then((res: any) => {
@@ -197,15 +216,11 @@ const editHandler = (id: any) => {
   })
 }
 const deleteHandler = (id: any) => {
-  ElMessageBox.confirm(
-    'Are you sure to delete?',
-    'Warning',
-    {
-      confirmButtonText: 'OK',
-      cancelButtonText: 'Cancel',
-      type: 'warning',
-    }
-  )
+  ElMessageBox.confirm('Are you sure to delete?', 'Warning', {
+    confirmButtonText: 'OK',
+    cancelButtonText: 'Cancel',
+    type: 'warning',
+  })
     .then(() => {
       modelApi.delete(id).then(() => {
         ElMessage({
@@ -214,7 +229,6 @@ const deleteHandler = (id: any) => {
         })
         search()
       })
-      
     })
     .catch(() => {
       ElMessage({
@@ -228,7 +242,7 @@ const openDialog = () => {
   dialogFormVisible.value = true
 }
 const resetForm = () => {
-  if (!termFormRef) return
+  if (!termFormRef.value) return
   state.form = {
     id: '',
     name: '',
@@ -238,7 +252,7 @@ const resetForm = () => {
     max_context_window: 0,
     temperature: 0,
     status: false,
-    description: ''
+    description: '',
   }
 }
 
@@ -314,18 +328,14 @@ const batchDisableHandler = () => {
   }
   const param = {
     ids: state.selectedIds,
-    status: false
+    status: false,
   }
 
-  ElMessageBox.confirm(
-    'Are you sure to execute this operation?',
-    'Warning',
-    {
-      confirmButtonText: 'OK',
-      cancelButtonText: 'Cancel',
-      type: 'warning',
-    }
-  )
+  ElMessageBox.confirm('Are you sure to execute this operation?', 'Warning', {
+    confirmButtonText: 'OK',
+    cancelButtonText: 'Cancel',
+    type: 'warning',
+  })
     .then(() => {
       modelApi.status(param).then(() => {
         search()
@@ -341,9 +351,6 @@ const batchDisableHandler = () => {
         message: 'Execute canceled',
       })
     })
-
-
-  
 }
 const batchEnableHandler = () => {
   if (state.selectedIds.length === 0) {
@@ -355,7 +362,7 @@ const batchEnableHandler = () => {
   }
   const param = {
     ids: state.selectedIds,
-    status: true
+    status: true,
   }
   modelApi.status(param).then(() => {
     search()
@@ -365,7 +372,6 @@ const batchEnableHandler = () => {
     })
   })
 }
-
 </script>
 
 <style lang="less" scoped>
@@ -390,7 +396,7 @@ const batchEnableHandler = () => {
         --el-input-inner-height: 40px !important;
         --el-input-border-radius: 24px;
         --el-input-bg-color: #f5f7fa;
-        --el-input-border-color: #e5e8ed;        
+        --el-input-border-color: #e5e8ed;
       }
     }
     .tool-right {

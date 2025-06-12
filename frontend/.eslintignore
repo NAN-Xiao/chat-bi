@@ -6,3 +6,5 @@
 *.ttf
 .vscode/
 .DS_Store
+eslint.config.cjs
+.eslintrc.js

@@ -1,43 +1,43 @@
 <script setup lang="ts">
-import {type CanvasItem} from '@/utils/canvas.ts'
-import {ref, toRefs, type PropType} from 'vue'
-import ResizeHandle from "@/views/dashboard/canvas/ResizeHandle.vue";
+import { type CanvasItem } from '@/utils/canvas.ts'
+import { ref, toRefs, type PropType } from 'vue'
+import ResizeHandle from '@/views/dashboard/canvas/ResizeHandle.vue'
 
 const shapeRef = ref(null)
 // Props
 const props = defineProps({
   configItem: {
     type: Object as PropType<CanvasItem>,
-    required: true
+    required: true,
   },
   active: {
     type: Boolean,
-    default: false
+    default: false,
   },
   itemIndex: {
     type: Number,
-    required: true
+    required: true,
   },
   moveAnimate: {
     type: Boolean,
-    required: true
+    required: true,
   },
   draggable: {
     type: Boolean,
-    required: true
+    required: true,
   },
   startMove: {
     type: Function,
     default: () => {
       return {}
-    }
+    },
   },
   startResize: {
     type: Function,
     default: () => {
       return {}
-    }
-  }
+    },
+  },
 })
 
 const { draggable } = toRefs(props)
@@ -48,17 +48,26 @@ const shapeClick = (e: MouseEvent) => {
 </script>
 
 <template>
-  <div :class="{
-        item: true,
-        itemActive: active,
-        itemCursorDefault: configItem.component === 'SQTab',
-        moveAnimation: moveAnimate,
-        movingItem: configItem.isPlayer,
-        canNotDrag: !draggable
-    }" @click="shapeClick" @mousedown="startMove($event, configItem, itemIndex)" ref="shapeRef">
+  <div
+    ref="shapeRef"
+    :class="{
+      item: true,
+      itemActive: active,
+      itemCursorDefault: configItem.component === 'SQTab',
+      moveAnimation: moveAnimate,
+      movingItem: configItem.isPlayer,
+      canNotDrag: !draggable,
+    }"
+    @click="shapeClick"
+    @mousedown="startMove($event, configItem, itemIndex)"
+  >
     <slot></slot>
-    <resize-handle v-if="active"
-        :start-resize="(event : MouseEvent, point: string) => startResize(event, point, configItem, itemIndex)">
+    <resize-handle
+      v-if="active"
+      :start-resize="
+        (event: MouseEvent, point: string) => startResize(event, point, configItem, itemIndex)
+      "
+    >
     </resize-handle>
   </div>
 </template>

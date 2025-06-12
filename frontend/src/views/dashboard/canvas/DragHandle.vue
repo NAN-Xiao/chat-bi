@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type {PropType} from "vue";
+import type { PropType } from 'vue'
 
 defineProps({
   sizeList: {
     type: Array as PropType<number[]>,
     required: false,
-    default: [12, 12, 12, 12]
-  }
+    default: [12, 12, 12, 12],
+  },
 })
 
 const shadowStyle = (size: number, index: number) => {
@@ -15,40 +15,42 @@ const shadowStyle = (size: number, index: number) => {
       top: 0,
       left: 0,
       width: '100%',
-      height: `${size}px`
+      height: `${size}px`,
     }
   } else if (index === 1) {
     return {
       top: 0,
       right: 0,
       width: `${size}px`,
-      height: '100%'
+      height: '100%',
     }
   } else if (index === 2) {
     return {
       bottom: 0,
       left: 0,
       width: '100%',
-      height: `${size}px`
+      height: `${size}px`,
     }
   } else if (index === 3) {
     return {
       top: 0,
       left: 0,
       width: `${size}px`,
-      height: '100%'
+      height: '100%',
     }
   }
-
 }
 </script>
 
 <template>
-  <div class="dragHandle dragArea" v-for="(size,index) in sizeList" :style="shadowStyle(size,index)"></div>
+  <div
+    v-for="(size, index) in sizeList"
+    class="dragHandle dragArea"
+    :style="shadowStyle(size, index)"
+  ></div>
 </template>
 
 <style scoped lang="less">
-
 .dragArea {
   opacity: 0.05;
 }
