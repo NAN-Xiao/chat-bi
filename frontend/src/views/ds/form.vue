@@ -96,10 +96,13 @@
             <el-input v-model="form.dbSchema" />
             <el-button link type="primary" :icon="Plus" v-if="false">Get Schema</el-button>
           </el-form-item>
-          <span v-if="form.type === 'sqlServer'"> Supported version: 2012+ </span>
-          <span v-else-if="form.type === 'oracle'"> Supported version: 12+ </span>
-          <span v-else-if="form.type === 'mysql'"> Supported version: 5.6+ </span>
-          <span v-else-if="form.type === 'pg'">Supported version: 9.6+</span>
+          <span>
+            <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
+            <span v-if="form.type === 'sqlServer'">2012+</span>
+            <span v-else-if="form.type === 'oracle'">12+</span>
+            <span v-else-if="form.type === 'mysql'">5.6+</span>
+            <span v-else-if="form.type === 'pg'">9.6+</span>
+          </span>
         </div>
       </el-form>
     </div>

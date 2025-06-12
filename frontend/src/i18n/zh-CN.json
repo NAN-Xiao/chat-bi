@@ -95,7 +95,6 @@
       "schema": "模式",
       "get_schema": "获取模式",
       "file": "文件",
-      "upload": "上传",
       "upload_tip": "仅支持 .xls, .xlsx, .csv 格式，大小不超过50MB",
       "version_tip": {
         "sqlServer": "支持版本: 2012+",
@@ -113,6 +112,15 @@
         "database_required": "请输入数据库名",
         "mode_required": "请选择连接方式",
         "schema_required": "请输入模式名"
+      },
+      "mode": {
+        "sid": "SID",
+        "service_name": "服务名"
+      },
+      "support_version": "支持版本",
+      "upload": {
+        "button": "上传",
+        "tip": "仅支持 .xls, .xlsx, .csv 格式，文件小于 50MB."
       }
     }
   }
