@@ -12,16 +12,16 @@ defineProps({
     type: String as PropType<
       'input' | 'select' | 'table' | 'none' | 'noneWhite' | 'tree' | 'error'
     >,
-    default: 'table'
+    default: 'table',
   },
   imageSize: {
     type: Number,
-    default: 125
+    default: 125,
   },
   description: {
     type: String,
-    default: ''
-  }
+    default: '',
+  },
 })
 const getAssetsFile = {
   input: nothingInput,
@@ -30,14 +30,14 @@ const getAssetsFile = {
   noneWhite: nothingNone,
   tree: nothingTree,
   error,
-  none
+  none,
 }
 </script>
 
 <template>
   <el-empty
     class="empty-info"
-    :imageSize="imageSize"
+    :image-size="imageSize"
     :description="description"
     :image="getAssetsFile[imgType]"
   >

@@ -1,8 +1,6 @@
 <template>
   <div class="info-card">
-    <div class="info-title">
-      Dashboard ID
-    </div>
+    <div class="info-title">Dashboard ID</div>
     <div class="info-content">{{ dashboardInfo.id }}</div>
     <div v-if="dashboardInfo.createName" class="info-title">Creator</div>
     <div v-if="dashboardInfo.createName" class="info-content">{{ dashboardInfo.createName }}</div>
@@ -19,12 +17,11 @@
 </template>
 
 <script lang="ts" setup>
-
 defineProps({
   dashboardInfo: {
     type: Object,
-    required: true
-  }
+    required: true,
+  },
 })
 
 const timestampFormatDate = (value: any) => {

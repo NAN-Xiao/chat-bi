@@ -5,8 +5,8 @@
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
-    @closed="close"
     modal-class="add-datasource_dialog"
+    @closed="close"
   >
     <template #header>
       <div style="display: flex">
@@ -25,7 +25,7 @@
     </template>
 
     <div v-show="active === 0" class="container">
-      <el-form :model="form" label-position="top" label-width="auto" ref="dsFormRef" :rules="rules">
+      <el-form ref="dsFormRef" :model="form" label-position="top" label-width="auto" :rules="rules">
         <el-form-item :label="t('ds.form.name')" prop="name">
           <el-input v-model="form.name" />
         </el-form-item>
@@ -76,8 +76,8 @@
             <el-input v-model="form.database" />
           </el-form-item>
           <el-form-item
-            :label="t('ds.form.connect_mode')"
             v-if="form.type === 'oracle'"
+            :label="t('ds.form.connect_mode')"
             prop="mode"
           >
             <el-radio-group v-model="form.mode">
@@ -89,12 +89,12 @@
             <el-input v-model="form.extraJdbc" />
           </el-form-item>
           <el-form-item
-            :label="t('ds.form.schema')"
             v-if="haveSchema.includes(form.type)"
+            :label="t('ds.form.schema')"
             prop="dbSchema"
           >
             <el-input v-model="form.dbSchema" />
-            <el-button link type="primary" :icon="Plus" v-if="false">Get Schema</el-button>
+            <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
           </el-form-item>
           <span>
             <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
@@ -106,15 +106,15 @@
         </div>
       </el-form>
     </div>
-    <div v-show="active === 1" class="container" v-loading="tableListLoading">
+    <div v-show="active === 1" v-loading="tableListLoading" class="container">
       <el-checkbox-group v-model="checkList" style="position: relative">
         <FixedSizeList
-          :itemSize="40"
+          :item-size="40"
           :data="tableList"
           :total="tableList.length"
           :width="560"
           :height="400"
-          :scrollbarAlwaysOn="true"
+          :scrollbar-always-on="true"
           class-name="ed-select-dropdown__list"
           layout="vertical"
         >
@@ -141,8 +141,8 @@
         {{ t('ds.preview') }}
       </el-button>
       <el-button
-        :loading="saveLoading"
         v-show="active === 1 || !isCreate"
+        :loading="saveLoading"
         type="primary"
         @click="save(dsFormRef)"
       >

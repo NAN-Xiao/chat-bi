@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import {computed, type PropType, reactive, ref, toRefs, nextTick, getCurrentInstance, onMounted} from 'vue'
-import CustomTab from "@/views/dashboard/components/sq-tab/CustomTab.vue";
-import {guid, type CanvasItem,} from "@/utils/canvas.ts";
-import DragHandle from "@/views/dashboard/canvas/DragHandle.vue";
-import {ArrowDown} from "@element-plus/icons-vue";
-import DashboardEditor from "@/views/dashboard/editor/DashboardEditor.vue";
+import {
+  computed,
+  type PropType,
+  reactive,
+  ref,
+  toRefs,
+  nextTick,
+  getCurrentInstance,
+  onMounted,
+} from 'vue'
+import CustomTab from '@/views/dashboard/components/sq-tab/CustomTab.vue'
+import { guid, type CanvasItem } from '@/utils/canvas.ts'
+import DragHandle from '@/views/dashboard/canvas/DragHandle.vue'
+import { ArrowDown } from '@element-plus/icons-vue'
+import DashboardEditor from '@/views/dashboard/editor/DashboardEditor.vue'
 
 const editableTabsValue = ref(null)
 const showTabTitleFlag = ref(true)
@@ -12,34 +21,34 @@ const showTabTitleFlag = ref(true)
 let currentInstance
 import _ from 'lodash'
 
-const emits = defineEmits(["parentAddItemBox"]);
+const emits = defineEmits(['parentAddItemBox'])
 
 const tabBaseMatrixCount = {
   x: 36,
-  y: 12
+  y: 12,
 }
 
 const props = defineProps({
   configItem: {
     type: Object as PropType<CanvasItem>,
-    required: true
+    required: true,
   },
   canvasViewInfo: {
     type: Object,
-    required: true
+    required: true,
   },
   showPosition: {
     required: false,
     type: String,
-    default: 'preview'
+    default: 'preview',
   },
   canvasId: {
     type: String,
-    default: 'canvas-main'
-  }
+    default: 'canvas-main',
+  },
 })
 
-const {configItem} = toRefs(props)
+const { configItem } = toRefs(props)
 
 const state = reactive({
   activeTabName: '',
@@ -51,7 +60,7 @@ const state = reactive({
   headFontColor: '#OOOOOO',
   headFontActiveColor: '#OOOOOO',
   headBorderColor: '#OOOOOO',
-  headBorderActiveColor: '#OOOOOO'
+  headBorderActiveColor: '#OOOOOO',
 })
 
 function addTab() {
@@ -59,7 +68,7 @@ function addTab() {
     name: guid('tab'),
     title: 'New Tab',
     componentData: [],
-    closable: true
+    closable: true,
   }
   configItem.value.propValue.push(newTab)
   configItem.value.activeSubTabIndex = configItem.value.propValue.length - 1
@@ -74,7 +83,7 @@ function deleteCur(param: any) {
     if (configItem.value.propValue[len].name === param.name) {
       configItem.value.propValue.splice(len, 1)
       const activeIndex =
-          (len - 1 + configItem.value.propValue.length) % configItem.value.propValue.length
+        (len - 1 + configItem.value.propValue.length) % configItem.value.propValue.length
       editableTabsValue.value = configItem.value.propValue[activeIndex].name
       configItem.value.activeSubTabIndex = configItem.value.propValue.length - 1
       state.tabShow = false
@@ -106,7 +115,7 @@ function handleCommand(command: any) {
 const beforeHandleCommand = (item: any, param: any) => {
   return {
     command: item,
-    param: param
+    param: param,
   }
 }
 
@@ -120,11 +129,12 @@ const titleStyle = (itemName: string) => {
 
 const isEditMode = computed(() => true)
 
-
 const addTabItem = (item: CanvasItem) => {
   // do addTabItem
   // @ts-ignore
-  const index = configItem.value.propValue.findIndex(tabItem => configItem.value.activeTabName === tabItem.name);
+  const index = configItem.value.propValue.findIndex(
+    (tabItem) => configItem.value.activeTabName === tabItem.name
+  )
   // @ts-ignore
   const refInstance = currentInstance.refs['tabEditorRef_' + index][0]
   const newTabItem = _.cloneDeep(item)
@@ -140,43 +150,43 @@ onMounted(() => {
 })
 
 defineExpose({
-  addTabItem
+  addTabItem,
 })
 </script>
 
 <template>
-  <div :class="{'tab-moveout':configItem.moveOutActive}">
+  <div :class="{ 'tab-moveout': configItem.moveOutActive }">
     <drag-handle></drag-handle>
     <custom-tab
-        v-model="editableTabsValue"
-        @tab-add="addTab"
-        :addable="isEditMode"
-        :font-color="state.headFontColor"
-        :active-color="state.headFontActiveColor"
-        :border-color="state.headBorderColor"
-        :border-active-color="state.headBorderActiveColor"
-        :hide-title="!showTabTitleFlag"
+      v-model="editableTabsValue"
+      :addable="isEditMode"
+      :font-color="state.headFontColor"
+      :active-color="state.headFontActiveColor"
+      :border-color="state.headBorderColor"
+      :border-active-color="state.headBorderActiveColor"
+      :hide-title="!showTabTitleFlag"
+      @tab-add="addTab"
     >
       <!-- {{ configItem.collisionActive }} & {{ configItem.moveInActive }}${{ configItem.moveOutActive }}-->
-      <template :key="tabItem.name" v-for="tabItem in configItem.propValue">
+      <template v-for="tabItem in configItem.propValue" :key="tabItem.name">
         <el-tab-pane
-            class="el-tab-pane-custom"
-            :lazy="isEditMode"
-            :label="tabItem.title"
-            :name="tabItem.name"
+          class="el-tab-pane-custom"
+          :lazy="isEditMode"
+          :label="tabItem.title"
+          :name="tabItem.name"
         >
           <template #label>
             <div class="custom-tab-title" @mousedown.stop>
               <span class="title-inner" :style="titleStyle(tabItem.name)"
-              >{{ tabItem.title }}
+                >{{ tabItem.title }}
                 <span v-if="isEditMode">
                   <el-dropdown
-                      popper-class="custom-de-tab-dropdown"
-                      trigger="click"
-                      @command="handleCommand"
+                    popper-class="custom-de-tab-dropdown"
+                    trigger="click"
+                    @command="handleCommand"
                   >
                     <span class="el-dropdown-link">
-                      <el-icon v-if="isEditMode"><ArrowDown/></el-icon>
+                      <el-icon v-if="isEditMode"><ArrowDown /></el-icon>
                     </span>
                     <template #dropdown>
                       <el-dropdown-menu>
@@ -187,8 +197,8 @@ defineExpose({
                           copy
                         </el-dropdown-item>
                         <el-dropdown-item
-                            v-if="configItem.propValue.length > 1"
-                            :command="beforeHandleCommand('deleteCur', tabItem)"
+                          v-if="configItem.propValue.length > 1"
+                          :command="beforeHandleCommand('deleteCur', tabItem)"
                         >
                           delete
                         </el-dropdown-item>
@@ -202,26 +212,25 @@ defineExpose({
         </el-tab-pane>
       </template>
       <div
-          class="tab-content-custom"
-          :key="tabItem.name + '-content'"
-          v-for="(tabItem, index) in configItem.propValue"
-          :class="{ 'switch-hidden': editableTabsValue !== tabItem.name }"
+        v-for="(tabItem, index) in configItem.propValue"
+        :key="tabItem.name + '-content'"
+        class="tab-content-custom"
+        :class="{ 'switch-hidden': editableTabsValue !== tabItem.name }"
       >
         <DashboardEditor
-            class="tab-dashboard-editor-main"
-            :ref="'tabEditorRef_'+index"
-            :canvas-component-data="tabItem.componentData"
-            :move-in-active="configItem.moveInActive"
-            :base-matrix-count="tabBaseMatrixCount"
-            :canvas-id="tabItem.name"
-            :parent-config-item="configItem"
-            @parentAddItemBox=" item => emits('parentAddItemBox',item)"
+          :ref="'tabEditorRef_' + index"
+          class="tab-dashboard-editor-main"
+          :canvas-component-data="tabItem.componentData"
+          :move-in-active="configItem.moveInActive"
+          :base-matrix-count="tabBaseMatrixCount"
+          :canvas-id="tabItem.name"
+          :parent-config-item="configItem"
+          @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
         >
         </DashboardEditor>
       </div>
     </custom-tab>
   </div>
-
 </template>
 
 <style scoped lang="less">
@@ -249,5 +258,4 @@ defineExpose({
     overflow: visible !important;
   }
 }
-
 </style>

@@ -5,7 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue'
+import { computed } from 'vue'
 
 const props = defineProps({
   hideTitle: Boolean,
@@ -24,26 +24,26 @@ const props = defineProps({
   styleType: {
     type: String,
     default: '',
-    validator: (val: string) => ['', 'radioGroup'].includes(val)
-  }
+    validator: (val: string) => ['', 'radioGroup'].includes(val),
+  },
 })
 
 const tabStyle = computed(() => [
-  {'--de-font-color': props.fontColor},
-  {'--de-active-color': props.activeColor},
-  {'--de-border-color': props.borderColor},
-  {'--de-border-active-color': props.borderActiveColor}
+  { '--de-font-color': props.fontColor },
+  { '--de-active-color': props.activeColor },
+  { '--de-border-color': props.borderColor },
+  { '--de-border-active-color': props.borderActiveColor },
 ])
 const tabClassName = computed(() =>
-    props.styleType
-        ? [props.styleType, props.fontColor && 'fontColor', props.activeColor && 'activeColor']
-        : [
-          props.fontColor && 'fontColor',
-          props.activeColor && 'activeColor',
-          noBorder.value ? 'noBorder' : props.borderColor && 'borderColor',
-          props.borderActiveColor && 'borderActiveColor',
-          props.hideTitle && 'no-header'
-        ]
+  props.styleType
+    ? [props.styleType, props.fontColor && 'fontColor', props.activeColor && 'activeColor']
+    : [
+        props.fontColor && 'fontColor',
+        props.activeColor && 'activeColor',
+        noBorder.value ? 'noBorder' : props.borderColor && 'borderColor',
+        props.borderActiveColor && 'borderActiveColor',
+        props.hideTitle && 'no-header',
+      ]
 )
 
 const noBorder = computed(() => props.borderColor === 'none')

@@ -1,7 +1,7 @@
 <script lang="ts" setup>
-import {Icon} from '@/components/icon-custom'
+import { Icon } from '@/components/icon-custom'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
-import type {Placement} from 'element-plus-secondary'
+import type { Placement } from 'element-plus-secondary'
 
 export interface Menu {
   svgName?: string
@@ -12,18 +12,18 @@ export interface Menu {
 }
 
 withDefaults(
-    defineProps<{
-      menuList: Menu[]
-      placement?: Placement
-      iconName?: any
-      iconSize?: string
-      inTable?: boolean
-    }>(),
-    {
-      placement: 'bottom-end',
-      iconSize: '16px',
-      inTable: false
-    }
+  defineProps<{
+    menuList: Menu[]
+    placement?: Placement
+    iconName?: any
+    iconSize?: string
+    inTable?: boolean
+  }>(),
+  {
+    placement: 'bottom-end',
+    iconSize: '16px',
+    inTable: false,
+  }
 )
 
 const handleCommand = (command: string | number | object) => {
@@ -35,35 +35,29 @@ const emit = defineEmits(['handleCommand'])
 
 <template>
   <el-dropdown
-      popper-class="menu-more_popper"
-      :placement="placement"
-      :persistent="false"
-      trigger="click"
-      @command="handleCommand"
+    popper-class="menu-more_popper"
+    :placement="placement"
+    :persistent="false"
+    trigger="click"
+    @command="handleCommand"
   >
     <el-icon class="hover-icon" :class="inTable && 'hover-icon-in-table'" @click.stop>
       <Icon>
-        <component class="svg-icon" :is="iconName || icon_more_outlined"></component>
+        <component :is="iconName || icon_more_outlined" class="svg-icon"></component>
       </Icon>
     </el-icon>
     <template #dropdown>
       <el-dropdown-menu :persistent="false">
-        <template v-for="ele in menuList"
-        >
-          <el-dropdown-item
-              :divided="ele.divided"
-              :command="ele.command"
-              :disabled="ele.disabled"
-          >
-            <el-icon class="handle-icon" :style="{ fontSize: iconSize }" v-if="ele.svgName">
+        <template v-for="ele in menuList">
+          <el-dropdown-item :divided="ele.divided" :command="ele.command" :disabled="ele.disabled">
+            <el-icon v-if="ele.svgName" class="handle-icon" :style="{ fontSize: iconSize }">
               <Icon>
-                <component class="svg-icon" :is="ele.svgName"></component>
+                <component :is="ele.svgName" class="svg-icon"></component>
               </Icon>
             </el-icon>
             {{ ele.label }}
           </el-dropdown-item>
         </template>
-
       </el-dropdown-menu>
     </template>
   </el-dropdown>

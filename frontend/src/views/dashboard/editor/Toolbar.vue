@@ -1,25 +1,25 @@
 <script setup lang="ts">
-import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
-import {storeToRefs} from 'pinia'
-import ComponentButtonLabel from "@/views/dashboard/components/button-label/ComponentButtonLabel.vue";
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
+import { storeToRefs } from 'pinia'
+import ComponentButtonLabel from '@/views/dashboard/components/button-label/ComponentButtonLabel.vue'
 import dvTab from '@/assets/svg/dv-tab.svg'
 import dvText from '@/assets/svg/dv-text.svg'
 import dvView from '@/assets/svg/dv-view.svg'
-import ResourceGroupOpt from "@/views/dashboard/common/ResourceGroupOpt.vue";
-import {ref, nextTick} from 'vue'
-import {useI18n} from 'vue-i18n'
-import {snapshotStoreWithOut} from "@/stores/dashboard/snapshot.ts";
+import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
+import { ref, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { snapshotStoreWithOut } from '@/stores/dashboard/snapshot.ts'
 import icon_undo_outlined from '@/assets/svg/icon_undo_outlined.svg'
 import icon_redo_outlined from '@/assets/svg/icon_redo_outlined.svg'
 import icon_left_outlined from '@/assets/svg/icon_left_outlined.svg'
-import {saveDashboardResource} from "@/views/dashboard/utils/canvasUtils.ts";
+import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 
-const {t} = useI18n()
+const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
-const {dashboardInfo} = storeToRefs(dashboardStore)
+const { dashboardInfo } = storeToRefs(dashboardStore)
 
 const snapshotStore = snapshotStoreWithOut()
-const {snapshotIndex} = storeToRefs(snapshotStore)
+const { snapshotIndex } = storeToRefs(snapshotStore)
 const emits = defineEmits(['addComponent'])
 const resourceGroupOptRef = ref(null)
 const openViewDialog = () => {
@@ -30,9 +30,7 @@ let nameEdit = ref(false)
 let inputName = ref('')
 let nameInput = ref(null)
 
-const onDvNameChange = () => {
-
-}
+const onDvNameChange = () => {}
 
 const saveCanvasWithCheck = () => {
   if (dashboardInfo.value.dataState === 'prepare') {
@@ -41,7 +39,7 @@ const saveCanvasWithCheck = () => {
       pid: props.baseParams?.pid,
       opt: 'newLeaf',
       nodeType: 'leaf',
-      parentSelect: true
+      parentSelect: true,
     }
     // @ts-ignore
     resourceGroupOptRef.value?.optInit(createParams)
@@ -50,7 +48,7 @@ const saveCanvasWithCheck = () => {
       opt: 'updateLeaf',
       id: dashboardInfo.value.id,
       name: dashboardInfo.value.name,
-      pid: dashboardInfo.value.pid
+      pid: dashboardInfo.value.pid,
     }
     saveDashboardResource(updateParams, function () {
       ElMessage({
@@ -65,15 +63,14 @@ const props = defineProps({
   baseParams: {
     type: Object,
     required: false,
-  }
+  },
 })
 
 const groupOptFinish = (result: any) => {
   let url = window.location.href
   url = url.replace(/(#\/[^?]*)(?:\?[^#]*)?/, `$1?resourceId=${result.resourceId}`)
-  window.history.replaceState({path: url}, '', url)
+  window.history.replaceState({ path: url }, '', url)
 }
-
 
 const editCanvasName = () => {
   nameEdit.value = true
@@ -102,7 +99,6 @@ const closeEditCanvasName = () => {
   inputName.value = ''
 }
 
-
 const undo = () => {
   if (snapshotIndex.value > 0) {
     snapshotStore.undo()
@@ -115,56 +111,54 @@ const redo = () => {
   }
 }
 
-
 const backToMain = () => {
   let url = '#/dashboard/index'
   if (dashboardInfo.value.id) {
     url = url + '?resourceId=' + dashboardInfo.value.id
   }
-  if (!!history.state.back) {
+  if (history.state.back) {
     history.back()
   } else {
     window.open(url, '_self')
   }
 }
-
 </script>
 
 <template>
   <div class="toolbar-main">
     <el-icon class="custom-el-icon back-icon" @click="backToMain()">
       <Icon name="icon_left_outlined">
-        <icon_left_outlined class="toolbar-hover-icon toolbar-icon"/>
+        <icon_left_outlined class="toolbar-hover-icon toolbar-icon" />
       </Icon>
     </el-icon>
     <div class="left-area">
-          <span id="canvas-name" class="name-area" @dblclick="editCanvasName">
-            {{ dashboardInfo.name }}
-          </span>
+      <span id="canvas-name" class="name-area" @dblclick="editCanvasName">
+        {{ dashboardInfo.name }}
+      </span>
       <div class="opt-area">
         <el-tooltip effect="dark" :content="t('dashboard.undo')" placement="bottom">
           <el-icon
-              class="toolbar-hover-icon"
-              :class="{ 'toolbar-icon-disabled': snapshotIndex < 1 }"
-              :disabled="snapshotIndex < 1"
-              @click="undo()"
+            class="toolbar-hover-icon"
+            :class="{ 'toolbar-icon-disabled': snapshotIndex < 1 }"
+            :disabled="snapshotIndex < 1"
+            @click="undo()"
           >
             <Icon name="icon_undo_outlined">
-              <icon_undo_outlined class="svg-icon"/>
+              <icon_undo_outlined class="svg-icon" />
             </Icon>
           </el-icon>
         </el-tooltip>
 
         <el-tooltip effect="dark" :content="t('dashboard.reduction')" placement="bottom">
           <el-icon
-              class="toolbar-hover-icon opt-icon-redo"
-              :class="{
-                  'toolbar-icon-disabled': snapshotIndex === snapshotStore.snapshotData.length - 1
-                }"
-              @click="redo()"
+            class="toolbar-hover-icon opt-icon-redo"
+            :class="{
+              'toolbar-icon-disabled': snapshotIndex === snapshotStore.snapshotData.length - 1,
+            }"
+            @click="redo()"
           >
             <Icon name="icon_redo_outlined">
-              <icon_redo_outlined class="svg-icon"/>
+              <icon_redo_outlined class="svg-icon" />
             </Icon>
           </el-icon>
         </el-tooltip>
@@ -172,45 +166,46 @@ const backToMain = () => {
     </div>
     <div class="core-toolbar">
       <component-button-label
-          :icon-name="dvView"
-          title="Add View"
-          themes="light"
-          is-label
-          @customClick="openViewDialog"
+        :icon-name="dvView"
+        title="Add View"
+        themes="light"
+        is-label
+        @custom-click="openViewDialog"
       ></component-button-label>
       <component-button-label
-          :icon-name="dvText"
-          title="Text"
-          themes="light"
-          is-label
-          @customClick="() =>emits('addComponent', 'SQText')"
+        :icon-name="dvText"
+        title="Text"
+        themes="light"
+        is-label
+        @custom-click="() => emits('addComponent', 'SQText')"
       ></component-button-label>
       <component-button-label
-          :icon-name="dvTab"
-          title="Tab Item"
-          themes="light"
-          is-label
-          @customClick="() =>emits('addComponent', 'SQTab')"
+        :icon-name="dvTab"
+        title="Tab Item"
+        themes="light"
+        is-label
+        @custom-click="() => emits('addComponent', 'SQTab')"
       >
       </component-button-label>
     </div>
     <div class="right-toolbar">
-      <el-button @click="saveCanvasWithCheck()"
-                 style="float: right; margin-right: 12px"
-                 type="primary"
+      <el-button
+        style="float: right; margin-right: 12px"
+        type="primary"
+        @click="saveCanvasWithCheck()"
       >
         Save
       </el-button>
     </div>
     <Teleport v-if="nameEdit" :to="'#canvas-name'">
       <input
-          @change="onDvNameChange"
-          ref="nameInput"
-          v-model="inputName"
-          @blur="closeEditCanvasName"
+        ref="nameInput"
+        v-model="inputName"
+        @change="onDvNameChange"
+        @blur="closeEditCanvasName"
       />
     </Teleport>
-    <ResourceGroupOpt @finish="groupOptFinish " ref="resourceGroupOptRef"></ResourceGroupOpt>
+    <ResourceGroupOpt ref="resourceGroupOptRef" @finish="groupOptFinish"></ResourceGroupOpt>
   </div>
 </template>
 
@@ -285,7 +280,6 @@ const backToMain = () => {
   color: #fff;
 }
 
-
 .toolbar-hover-icon {
   cursor: pointer;
   font-size: 18px !important;
@@ -302,5 +296,4 @@ const backToMain = () => {
     background: transparent;
   }
 }
-
 </style>

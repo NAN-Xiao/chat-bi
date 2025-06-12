@@ -1,14 +1,14 @@
 import _ from 'lodash'
-import type {SQTreeNode} from "@/views/dashboard/utils/treeNode";
+import type { SQTreeNode } from '@/views/dashboard/utils/treeNode'
 
-export function treeParentWeight(tree: SQTreeNode[], pWeight:any) {
+export function treeParentWeight(tree: SQTreeNode[], pWeight: any) {
   const pWeightResult = {}
   weightCheckCircle(tree, pWeightResult, pWeight)
   return pWeightResult
 }
 
-export function weightCheckCircle(tree: SQTreeNode[], pWeightResult:any, pWeight:any) {
-  _.forEach(tree, node => {
+export function weightCheckCircle(tree: SQTreeNode[], pWeightResult: any, pWeight: any) {
+  _.forEach(tree, (node) => {
     pWeightResult[node.id] = pWeight
     if (node.children && node.children.length > 0) {
       weightCheckCircle(node.children, pWeightResult, node.weight)
@@ -24,7 +24,7 @@ export default function treeSort(tree: SQTreeNode[], sortType: string) {
 
 export function sortCircle(tree: SQTreeNode[], sortType: string) {
   sortPer(tree, sortType)
-  _.forEach(tree, node => {
+  _.forEach(tree, (node) => {
     if (node.children && node.children.length > 0) {
       sortCircle(node.children, sortType)
     }

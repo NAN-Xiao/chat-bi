@@ -1,11 +1,10 @@
 <script setup lang="ts">
-
-import {datetimeFormat} from "@/utils/utils.ts";
-import SQLServerDs from "@/assets/svg/ds/sqlServer-ds.svg";
-import ExcelDs from "@/assets/svg/ds/Excel-ds.svg";
-import PgDs from "@/assets/svg/ds/pg-ds.svg";
-import MysqlDs from "@/assets/svg/ds/mysql-ds.svg";
-import OracleDs from "@/assets/svg/ds/oracle-ds.svg";
+import { datetimeFormat } from '@/utils/utils.ts'
+import SQLServerDs from '@/assets/svg/ds/sqlServer-ds.svg'
+import ExcelDs from '@/assets/svg/ds/Excel-ds.svg'
+import PgDs from '@/assets/svg/ds/pg-ds.svg'
+import MysqlDs from '@/assets/svg/ds/mysql-ds.svg'
+import OracleDs from '@/assets/svg/ds/oracle-ds.svg'
 
 defineProps<{
   ds: any
@@ -22,20 +21,17 @@ defineProps<{
 //     return 'needs-verification'
 //   }
 // }
-
 </script>
 
 <template>
-  <div
-      class="connection-card"
-  >
+  <div class="connection-card">
     <div class="connection-icon">
       <Icon>
-        <MysqlDs v-if="ds.type === 'mysql'"/>
-        <SQLServerDs v-else-if="ds.type === 'sqlServer'"/>
-        <PgDs v-else-if="ds.type === 'pg'"/>
-        <ExcelDs v-else-if="ds.type === 'excel'"/>
-        <OracleDs v-else-if="ds.type === 'oracle'"/>
+        <MysqlDs v-if="ds.type === 'mysql'" />
+        <SQLServerDs v-else-if="ds.type === 'sqlServer'" />
+        <PgDs v-else-if="ds.type === 'pg'" />
+        <ExcelDs v-else-if="ds.type === 'excel'" />
+        <OracleDs v-else-if="ds.type === 'oracle'" />
       </Icon>
     </div>
     <div class="connection-details">

@@ -32,13 +32,13 @@
     <div class="sqlbot-table">
       <el-table :data="state.tableData" style="width: 100%">
         <el-table-column prop="account" label="Account" width="280" />
-        <el-table-column prop="name" label="Name"  width="280" />
+        <el-table-column prop="name" label="Name" width="280" />
         <el-table-column prop="email" label="Email" width="280" />
         <el-table-column prop="status" label="Status" width="180">
           <template #default="scope">
-            <div class="user-status-container" :class="[ scope.row.status ? 'active' : 'disabled' ]">
+            <div class="user-status-container" :class="[scope.row.status ? 'active' : 'disabled']">
               <el-icon>
-                <SuccessFilled v-if="scope.row.status"/>
+                <SuccessFilled v-if="scope.row.status" />
                 <CircleCloseFilled v-else />
               </el-icon>
               <span>{{ scope.row.status ? 'Activated' : 'Disabled' }}</span>
@@ -79,19 +79,27 @@
     </div>
   </div>
 
-  <el-dialog v-model="dialogFormVisible" title="Add Terminology" destroy-on-close width="500" @close="onFormClose" class="sqlbot-dialog">
-    <el-form :model="state.form" 
+  <el-dialog
+    v-model="dialogFormVisible"
+    title="Add Terminology"
+    destroy-on-close
+    width="500"
+    class="sqlbot-dialog"
+    @close="onFormClose"
+  >
+    <el-form
+      ref="termFormRef"
+      :model="state.form"
       label-width="180px"
-      label-position="top" 
+      label-position="top"
       class="sqlbot-form"
       size="large"
-      ref="termFormRef"
     >
-      <el-form-item label="Account" >
+      <el-form-item label="Account">
         <el-input v-model="state.form.term" autocomplete="off" />
       </el-form-item>
-      <el-form-item label="Definition" >
-        <el-input type="textarea" v-model="state.form.definition" />
+      <el-form-item label="Definition">
+        <el-input v-model="state.form.definition" type="textarea" />
       </el-form-item>
       <el-form-item label="Domain">
         <el-select v-model="state.form.domain" placeholder="Please select a domain">
@@ -104,23 +112,21 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="closeForm">Cancel</el-button>
-        <el-button type="primary" @click="saveHandler">
-          save
-        </el-button>
+        <el-button type="primary" @click="saveHandler"> save </el-button>
       </div>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue'
 /* import IconOpeUpload from '@/assets/svg/operate/ope-upload.svg';
 import IconOpeDownload from '@/assets/svg/operate/ope-download.svg';
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'; */
 
 import { SuccessFilled, CircleCloseFilled } from '@element-plus/icons-vue'
-import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg';
-import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg';
+import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
+import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { Search } from '@element-plus/icons-vue'
 import { userApi } from '@/api/auth'
 import { formatTimestamp } from '@/utils/date'
@@ -129,22 +135,21 @@ const keyword = ref('')
 const dialogFormVisible = ref(false)
 const termFormRef = ref()
 const state = reactive({
-  tableData: [
-  ],
+  tableData: [],
   form: {
     id: '',
     term: '',
     definition: '',
-    domain: ''
+    domain: '',
   },
   pageInfo: {
     currentPage: 1,
     pageSize: 20,
-    total: 0
-  }
+    total: 0,
+  },
 })
 const handleSearch = (e: any) => {
-  console.log('search', e);
+  console.log('search', e)
 }
 const editHandler = (id: any) => {
   console.log('editHandler', id)
@@ -156,15 +161,11 @@ const editHandler = (id: any) => {
 }
 const deleteHandler = (id: any) => {
   console.log('deleteHandler', id)
-  ElMessageBox.confirm(
-    'Are you sure to delete?',
-    'Warning',
-    {
-      confirmButtonText: 'OK',
-      cancelButtonText: 'Cancel',
-      type: 'warning',
-    }
-  )
+  ElMessageBox.confirm('Are you sure to delete?', 'Warning', {
+    confirmButtonText: 'OK',
+    cancelButtonText: 'Cancel',
+    type: 'warning',
+  })
     .then(() => {
       /* userApi.delete(id).then(() => {
         ElMessage({
@@ -173,7 +174,6 @@ const deleteHandler = (id: any) => {
         })
         search()
       }) */
-      
     })
     .catch(() => {
       ElMessage({
@@ -187,7 +187,7 @@ const deleteHandler = (id: any) => {
   dialogFormVisible.value = true
 } */
 const resetForm = () => {
-  if (!termFormRef) return
+  if (!termFormRef.value) return
   Object.keys(state.form).forEach((key) => {
     state.form[key as keyof typeof state.form] = ''
   })
@@ -270,7 +270,7 @@ onMounted(() => {
         --el-input-inner-height: 40px !important;
         --el-input-border-radius: 24px;
         --el-input-bg-color: #f5f7fa;
-        --el-input-border-color: #e5e8ed;        
+        --el-input-border-color: #e5e8ed;
       }
     }
     .tool-right {

@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import {toRefs} from 'vue'
+import { toRefs } from 'vue'
 
 const props = defineProps({
-  title: {type: String, required: false},
-  tips: {type: String, required: false},
-  iconName: {type: String, required: false},
-  showSplitLine: {type: Boolean, required: false, default: false},
-  active: {type: Boolean, required: false, default: false},
+  title: { type: String, required: false },
+  tips: { type: String, required: false },
+  iconName: { type: String, required: false },
+  showSplitLine: { type: Boolean, required: false, default: false },
+  active: { type: Boolean, required: false, default: false },
 })
 
-const {title, tips, iconName, showSplitLine} = toRefs(props)
+const { title, tips, iconName, showSplitLine } = toRefs(props)
 const emits = defineEmits(['customClick'])
 </script>
 
@@ -17,11 +17,11 @@ const emits = defineEmits(['customClick'])
   <div class="flex-align-center">
     <el-row class="group_icon" :title="tips" @click="emits('customClick')">
       <el-col :span="24" class="group_inner" :class="{ 'inner-active': active }">
-        <component class="svg-icon toolbar-icon" :is="iconName"></component>
+        <component :is="iconName" class="svg-icon toolbar-icon"></component>
         <span>{{ title }}</span>
       </el-col>
     </el-row>
-    <el-divider class="group-right-border" v-if="showSplitLine" direction="vertical"/>
+    <el-divider v-if="showSplitLine" class="group-right-border" direction="vertical" />
   </div>
 </template>
 <style lang="less" scoped>

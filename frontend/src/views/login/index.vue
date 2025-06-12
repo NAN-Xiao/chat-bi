@@ -2,32 +2,31 @@
   <div class="login-container">
     <div class="login-content">
       <div class="login-left">
-        <div class="illustration">
-        </div>
+        <div class="illustration"></div>
       </div>
       <div class="login-right">
         <div class="login-form">
           <h2 class="title">Login</h2>
-          <el-form :model="loginForm" :rules="rules" ref="loginFormRef" @keyup.enter="submitForm">
+          <el-form ref="loginFormRef" :model="loginForm" :rules="rules" @keyup.enter="submitForm">
             <el-form-item prop="username">
-              <el-input 
-                v-model="loginForm.username" 
-                placeholder="Account" 
+              <el-input
+                v-model="loginForm.username"
+                placeholder="Account"
                 :prefix-icon="User"
                 size="large"
               ></el-input>
             </el-form-item>
             <el-form-item prop="password">
-              <el-input 
-                v-model="loginForm.password" 
-                placeholder="Password" 
-                type="password" 
+              <el-input
+                v-model="loginForm.password"
+                placeholder="Password"
+                type="password"
                 :prefix-icon="Lock"
                 size="large"
               ></el-input>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="submitForm" class="login-btn">Login</el-button>
+              <el-button type="primary" class="login-btn" @click="submitForm">Login</el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -47,12 +46,12 @@ const userStore = useUserStore()
 
 const loginForm = ref({
   username: '',
-  password: ''
+  password: '',
 })
 
 const rules = {
   username: [{ required: true, message: 'Please input account', trigger: 'blur' }],
-  password: [{ required: true, message: 'Please input password', trigger: 'blur' }]
+  password: [{ required: true, message: 'Please input password', trigger: 'blur' }],
 }
 
 const loginFormRef = ref()
@@ -72,7 +71,7 @@ const submitForm = () => {
 .login-container {
   height: 100vh;
   width: 100vw;
-  background-color: #F0F6F7;
+  background-color: #f0f6f7;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -93,7 +92,6 @@ const submitForm = () => {
       display: flex;
       flex-direction: column;
       align-items: center;
-
 
       .illustration {
         flex: 1;

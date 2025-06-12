@@ -4,8 +4,8 @@ defineProps({
     type: Function,
     default: () => {
       return {}
-    }
-  }
+    },
+  },
 })
 const cursors = {
   lt: 'nw',
@@ -15,7 +15,7 @@ const cursors = {
   rb: 'se',
   b: 's',
   lb: 'sw',
-  l: 'w'
+  l: 'w',
 }
 
 function getPointStyle(point: string) {
@@ -40,7 +40,7 @@ function getPointStyle(point: string) {
     // The points on both sides are centered in height
     if (hasL || hasR) {
       newLeft = hasL ? '0px' : '100%'
-      newTop ='50%'
+      newTop = '50%'
     }
   }
 
@@ -50,7 +50,7 @@ function getPointStyle(point: string) {
     left: `${newLeft}`,
     top: `${newTop}`,
     // @ts-expect-error
-    cursor: `${cursors[point]}-resize`
+    cursor: `${cursors[point]}-resize`,
   }
 }
 
@@ -58,10 +58,13 @@ const pointList = ['lt', 't', 'rt', 'r', 'rb', 'b', 'lb', 'l']
 </script>
 
 <template>
-<div v-for="point in pointList"
-     :key="point" class="resizeHandle"
-     :style="getPointStyle(point)"
-     @mousedown="startResize($event, point)"></div>
+  <div
+    v-for="point in pointList"
+    :key="point"
+    class="resizeHandle"
+    :style="getPointStyle(point)"
+    @mousedown="startResize($event, point)"
+  ></div>
 </template>
 
 <style scoped lang="less">

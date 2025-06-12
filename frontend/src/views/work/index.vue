@@ -1,49 +1,49 @@
 <script lang="ts" setup>
-import { ref, computed } from "vue";
-import DatasourceCard from "./DatasourceCard.vue";
+import { ref, computed } from 'vue'
+import DatasourceCard from './DatasourceCard.vue'
 interface Datasource {
-  id?: string;
-  name: string;
-  description: string;
-  creator: string;
+  id?: string
+  name: string
+  description: string
+  creator: string
 }
 const props = withDefaults(
   defineProps<{
-    datasourceList: Array<Datasource>;
+    datasourceList: Array<Datasource>
   }>(),
   {
     datasourceList: () => [],
   }
-);
+)
 
-const datasourceName = ref("");
+const datasourceName = ref('')
 const datasourceListComputed = computed(() =>
   props.datasourceList.filter((val) =>
     val.name.toLowerCase().includes(datasourceName.value.toLowerCase())
   )
-);
+)
 
-const dialogVisible = ref(false);
+const dialogVisible = ref(false)
 </script>
 
 <template>
   <div class="chat-init_tip">
     <div class="hello-sqlbot">Hello, I'm SQLBot, happy to serve you!</div>
     <div class="function-sqlbot">
-      I can help you query data, generate charts, detect data anomalies, predict
-      data, etc. Please select a data source and start intelligent data query~
+      I can help you query data, generate charts, detect data anomalies, predict data, etc. Please
+      select a data source and start intelligent data query~
     </div>
     <div class="select-datasource">
       <span class="title">Select data source</span>
-      <el-button @click="dialogVisible = true" text>View more</el-button>
+      <el-button text @click="dialogVisible = true">View more</el-button>
     </div>
     <div class="datasource-content">
       <DatasourceCard
+        v-for="ele in datasourceList"
+        :key="ele.id"
         :name="ele.name"
         :description="ele.description"
         :creator="ele.creator"
-        v-for="ele in datasourceList"
-        :key="ele.id"
       ></DatasourceCard>
     </div>
     <el-button type="primary">Create a new data source</el-button>
@@ -55,27 +55,21 @@ const dialogVisible = ref(false);
     modal-class="select-datasource_dialog"
   >
     <div class="search-datasource">
-      <el-input
-        v-model="datasourceName"
-        style="width: 240px"
-        placeholder="Please input"
-      />
+      <el-input v-model="datasourceName" style="width: 240px" placeholder="Please input" />
     </div>
     <div class="datasource-content">
       <DatasourceCard
+        v-for="ele in datasourceListComputed"
+        :key="ele.id"
         :name="ele.name"
         :description="ele.description"
         :creator="ele.creator"
-        v-for="ele in datasourceListComputed"
-        :key="ele.id"
       ></DatasourceCard>
     </div>
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="dialogVisible = false">Cancel</el-button>
-        <el-button type="primary" @click="dialogVisible = false">
-          Confirm
-        </el-button>
+        <el-button type="primary" @click="dialogVisible = false"> Confirm </el-button>
       </div>
     </template>
   </el-dialog>

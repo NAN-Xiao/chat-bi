@@ -19,12 +19,12 @@ export default defineConfig(({ mode }) => {
       Components({
         resolvers: [ElementPlusResolver()],
       }),
-      svgLoader()
+      svgLoader(),
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src')
-      }
+        '@': path.resolve(__dirname, './src'),
+      },
     },
     css: {
       preprocessorOptions: {
@@ -46,6 +46,6 @@ export default defineConfig(({ mode }) => {
     esbuild: {
       jsxFactory: 'h',
       jsxFragment: 'Fragment',
-    }
+    },
   }
 })

@@ -1,34 +1,32 @@
 export interface ChartAxis {
-    name: string,
-    value: string,
-    type?: 'x' | 'y' | 'series'
+  name: string
+  value: string
+  type?: 'x' | 'y' | 'series'
 }
 
 export interface ChartData {
-    [key: string]: any
+  [key: string]: any
 }
 
-export type ChartTypes = "table" | "bar" | 'column' | "line" | "pie"
+export type ChartTypes = 'table' | 'bar' | 'column' | 'line' | 'pie'
 
 export abstract class BaseChart {
-    id: string;
-    _name: string = 'base-chart';
-    axis: Array<ChartAxis> = [];
-    data: Array<ChartData> = [];
+  id: string
+  _name: string = 'base-chart'
+  axis: Array<ChartAxis> = []
+  data: Array<ChartData> = []
 
-    constructor(id: string, name: string) {
-        this.id = id;
-        this._name = name;
-    }
+  constructor(id: string, name: string) {
+    this.id = id
+    this._name = name
+  }
 
-    init(axis: Array<ChartAxis>, data: Array<ChartData>): void {
-        this.axis = axis;
-        this.data = data;
-    }
+  init(axis: Array<ChartAxis>, data: Array<ChartData>): void {
+    this.axis = axis
+    this.data = data
+  }
 
-    abstract render(): void
+  abstract render(): void
 
-    abstract destroy(): void
-
-
+  abstract destroy(): void
 }

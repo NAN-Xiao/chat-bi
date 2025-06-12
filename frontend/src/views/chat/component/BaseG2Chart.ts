@@ -1,31 +1,28 @@
-import {BaseChart} from "@/views/chat/component/BaseChart.ts";
-import {Chart} from '@antv/g2';
+import { BaseChart } from '@/views/chat/component/BaseChart.ts'
+import { Chart } from '@antv/g2'
 
 export abstract class BaseG2Chart extends BaseChart {
+  chart: Chart
 
-    chart: Chart;
+  constructor(id: string, name: string) {
+    super(id, name)
+    this.chart = new Chart({
+      container: id,
+      autoFit: true,
+    })
 
-    constructor(id: string, name: string) {
-        super(id, name)
-        this.chart = new Chart({
-            container: id,
-            autoFit: true,
-        })
+    this.chart.theme({
+      view: {
+        viewFill: '#FFFFFF',
+      },
+    })
+  }
 
-        this.chart.theme({
-            view: {
-                viewFill: '#FFFFFF',
-            },
-        })
-    }
+  render() {
+    this.chart?.render()
+  }
 
-    render() {
-        this.chart?.render()
-    }
-
-    destroy() {
-        this.chart?.destroy()
-    }
-
-
+  destroy() {
+    this.chart?.destroy()
+  }
 }

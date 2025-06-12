@@ -1,17 +1,17 @@
 <script lang="ts" setup>
-import { Document } from "@element-plus/icons-vue";
+import { Document } from '@element-plus/icons-vue'
 withDefaults(
   defineProps<{
-    name: string;
-    description: string;
-    creator: string;
+    name: string
+    description: string
+    creator: string
   }>(),
   {
-    name: "",
-    description: "",
-    creator: "",
+    name: '',
+    description: '',
+    creator: '',
   }
-);
+)
 </script>
 
 <template>

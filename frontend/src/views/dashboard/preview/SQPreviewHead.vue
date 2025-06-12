@@ -2,7 +2,7 @@
 import dashboardInfoSvg from '@/assets/svg/dashboard-info.svg'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
-import DashboardDetailInfo from "@/views/dashboard/common/DashboardDetailInfo.vue";
+import DashboardDetailInfo from '@/views/dashboard/common/DashboardDetailInfo.vue'
 
 const emit = defineEmits(['reload', 'download', 'downloadAsAppTemplate'])
 const preview = () => {
@@ -14,22 +14,23 @@ const edit = () => {
 const props = defineProps({
   dashboardInfo: {
     type: Object,
-    required: true
-  }
+    required: true,
+  },
 })
-
 </script>
 
 <template>
   <div class="preview-head flex-align-center">
     <div class="canvas-name ellipsis">{{ dashboardInfo.name }}</div>
-    <el-divider style="margin: 5px 10px 0 17px" direction="vertical"/>
-    <span class="create-area" style="line-height: 22px">Creator:{{ dashboardInfo.createName }}</span>
+    <el-divider style="margin: 5px 10px 0 17px" direction="vertical" />
+    <span class="create-area" style="line-height: 22px"
+      >Creator:{{ dashboardInfo.createName }}</span
+    >
     <div style="padding-top: 4px" class="create-area flex-align-center">
       <el-popover show-arrow :offset="8" placement="bottom" width="400" trigger="hover">
         <template #reference>
           <el-icon class="info-tips">
-            <dashboardInfoSvg class="svg-icon"/>
+            <dashboardInfoSvg class="svg-icon" />
           </el-icon>
         </template>
         <DashboardDetailInfo :dashboard-info="dashboardInfo"></DashboardDetailInfo>
@@ -39,7 +40,7 @@ const props = defineProps({
       <el-button secondary @click="preview">
         <template #icon>
           <icon name="icon_pc_outlined">
-            <icon_pc_outlined class="svg-icon"/>
+            <icon_pc_outlined class="svg-icon" />
           </icon>
         </template>
         Preview
@@ -47,12 +48,11 @@ const props = defineProps({
       <el-button class="custom-button" type="primary" @click="edit">
         <template #icon>
           <Icon name="icon_edit_outlined">
-            <icon_edit_outlined class="svg-icon"/>
+            <icon_edit_outlined class="svg-icon" />
           </Icon>
         </template>
         Edit
-      </el-button
-      >
+      </el-button>
     </div>
   </div>
 </template>

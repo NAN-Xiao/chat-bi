@@ -1,5 +1,5 @@
 <template>
-  <el-dropdown @command="changeLanguage" trigger="hover">
+  <el-dropdown trigger="hover" @command="changeLanguage">
     <div class="lang-switch">
       <span>{{ selectedLanguage === 'zh-CN' ? '中文' : 'English' }}</span>
       <el-icon class="el-icon--right">
@@ -11,7 +11,10 @@
         <el-dropdown-item command="en" :class="{ 'selected-lang': selectedLanguage === 'en' }">
           English
         </el-dropdown-item>
-        <el-dropdown-item command="zh-CN" :class="{ 'selected-lang': selectedLanguage === 'zh-CN' }">
+        <el-dropdown-item
+          command="zh-CN"
+          :class="{ 'selected-lang': selectedLanguage === 'zh-CN' }"
+        >
           中文
         </el-dropdown-item>
       </el-dropdown-menu>
@@ -38,7 +41,7 @@ const changeLanguage = (lang: string) => {
   userStore.setLanguage(lang)
 
   const param = {
-    language: lang
+    language: lang,
   }
   userApi.language(param)
 }
@@ -50,7 +53,7 @@ const changeLanguage = (lang: string) => {
   align-items: center;
   cursor: pointer;
   color: var(--el-text-color-primary);
-  
+
   .el-icon--right {
     margin-left: 8px;
     font-size: 12px;

@@ -1,4 +1,3 @@
-
 export interface SelectOption {
   label: string
   value: string | number
@@ -17,6 +16,6 @@ export const modelTypeOptions: SelectOption[] = [
 
 export const getModelTypeName = (value: any) => {
   const tv = parseInt(value)
-  const item = modelTypeOptions.find(item => item.value === tv)
+  const item = modelTypeOptions.find((item) => item.value === tv)
   return item?.label || ''
 }

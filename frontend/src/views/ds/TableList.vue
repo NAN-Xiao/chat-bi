@@ -10,15 +10,20 @@
       <div class="left-side">
         <div style="display: flex; justify-content: space-between; align-items: center">
           <span>{{ t('ds.tables') }}</span>
-          <el-button style="padding: 12px" text @click="editTables(ds)" :icon="CreditCard" />
+          <el-button style="padding: 12px" text :icon="CreditCard" @click="editTables(ds)" />
         </div>
         <el-input
-          style="margin: 16px 0"
           v-model="searchValue"
+          style="margin: 16px 0"
           :placeholder="t('ds.Search Datasource')"
         />
         <div>
-          <div v-for="item in tableList" class="list-item_primary" @click="clickTable(item)">
+          <div
+            v-for="(item, _index) in tableList"
+            :key="_index"
+            class="list-item_primary"
+            @click="clickTable(item)"
+          >
             {{ item.table_name }}
           </div>
         </div>
@@ -139,7 +144,7 @@ const props = defineProps({
 
 const { t } = useI18n()
 
-const dsId = ref<Number>(0)
+const dsId = ref<number>(0)
 const searchValue = ref('')
 const tableList = ref<any>([])
 const currentTable = ref<any>({})

@@ -1,41 +1,44 @@
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted} from "vue";
-import {getChartInstance} from "@/views/chat/component/index.ts";
-import type {BaseChart, ChartAxis, ChartData} from "@/views/chat/component/BaseChart.ts";
+import { computed, onMounted, onUnmounted } from 'vue'
+import { getChartInstance } from '@/views/chat/component/index.ts'
+import type { BaseChart, ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 
-const params = withDefaults(defineProps<{
-  id: string | number
-  type: string
-  data?: Array<ChartData>
-  columns?: Array<ChartAxis>
-  x?: Array<ChartAxis>
-  y?: Array<ChartAxis>
-  series?: Array<ChartAxis>
-}>(), {
-  data: () => [],
-  columns: () => [],
-  x: () => [],
-  y: () => [],
-  series: () => [],
-})
+const params = withDefaults(
+  defineProps<{
+    id: string | number
+    type: string
+    data?: Array<ChartData>
+    columns?: Array<ChartAxis>
+    x?: Array<ChartAxis>
+    y?: Array<ChartAxis>
+    series?: Array<ChartAxis>
+  }>(),
+  {
+    data: () => [],
+    columns: () => [],
+    x: () => [],
+    y: () => [],
+    series: () => [],
+  }
+)
 
 const chartId = computed(() => {
-  return "chart-component-" + params.id
+  return 'chart-component-' + params.id
 })
 
 const axis = computed(() => {
   const _list: Array<ChartAxis> = []
-  params.columns.forEach(column => {
-    _list.push({name: column.name, value: column.value})
+  params.columns.forEach((column) => {
+    _list.push({ name: column.name, value: column.value })
   })
-  params.x.forEach(column => {
-    _list.push({name: column.name, value: column.value, type: 'x'})
+  params.x.forEach((column) => {
+    _list.push({ name: column.name, value: column.value, type: 'x' })
   })
-  params.y.forEach(column => {
-    _list.push({name: column.name, value: column.value, type: 'y'})
+  params.y.forEach((column) => {
+    _list.push({ name: column.name, value: column.value, type: 'y' })
   })
-  params.series.forEach(column => {
-    _list.push({name: column.name, value: column.value, type: 'series'})
+  params.series.forEach((column) => {
+    _list.push({ name: column.name, value: column.value, type: 'series' })
   })
   return _list
 })
@@ -70,11 +73,10 @@ onMounted(() => {
 onUnmounted(() => {
   destroyChart()
 })
-
 </script>
 
 <template>
-  <div class="chart-container" :id="chartId"></div>
+  <div :id="chartId" class="chart-container"></div>
 </template>
 
 <style scoped lang="less">
