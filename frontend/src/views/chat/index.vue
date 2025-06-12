@@ -341,17 +341,6 @@ const sendMessage = async () => {
   }
 }
 
-//@ts-ignore
-const formatMessage = (content: string) => {
-  if (!content) return ''
-  return content
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>')
-    .replace(/ {2}/g, '&nbsp;&nbsp;')
-}
-
 const handleCtrlEnter = (e: KeyboardEvent) => {
   const textarea = e.target as HTMLTextAreaElement
   const start = textarea.selectionStart

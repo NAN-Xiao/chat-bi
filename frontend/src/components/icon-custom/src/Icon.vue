@@ -29,10 +29,10 @@ const svgClass = computed(() => {
 <template>
   <div
     v-if="staticContent"
+    v-dompurify-html="staticContent"
     class="svg-container"
     :class="svgClass"
     aria-hidden="true"
-    v-html="staticContent"
   ></div>
   <slot v-else />
 </template>

@@ -5,11 +5,13 @@ const eslintPluginPrettierRecommended = require('eslint-plugin-prettier/recommen
 const eslintPluginVue = require('eslint-plugin-vue')
 const globals = require('globals')
 const typescriptEslint = require('typescript-eslint')
+const eslintrcImport = require('./.eslintrc-auto-import.json')
+
 
 module.exports = typescriptEslint.config(
   {
     languageOptions: {
-      globals: globals.browser,
+      globals: { ...globals.browser, ...globals.node, ...eslintrcImport.globals },
       ecmaVersion: 'latest',
       parserOptions: {
         parser: typescriptEslint.parser,
@@ -47,7 +49,6 @@ module.exports = typescriptEslint.config(
     'dist/',
     'public/',
     'eslint.config.cjs',
-    '.eslintrc.js',
     '**/*.md',
     '**/*.woff',
     '**/*.ttf',
@@ -55,5 +56,5 @@ module.exports = typescriptEslint.config(
     '**/.DS_Store',
   ]),
   eslintConfigPrettier,
-  eslintPluginPrettierRecommended
+  eslintPluginPrettierRecommended,
 )

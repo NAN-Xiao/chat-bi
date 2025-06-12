@@ -15,6 +15,9 @@ export default defineConfig(({ mode }) => {
       vue(),
       AutoImport({
         resolvers: [ElementPlusResolver()],
+        eslintrc: {
+          enabled: false,
+        },
       }),
       Components({
         resolvers: [ElementPlusResolver()],

@@ -11,7 +11,7 @@ defineProps<{
     <div class="chat-block">
       <slot>
         <div class="chat-block-content">
-          <div v-html="msg?.content"></div>
+          <div v-dompurify-html="msg?.content"></div>
         </div>
       </slot>
     </div>

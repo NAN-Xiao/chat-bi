@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
-import {treeDraggableChart} from '@/views/dashboard/utils/treeDraggableChart'
+import { treeDraggableChart } from '@/views/dashboard/utils/treeDraggableChart'
 import newFolder from '@/assets/svg/new-folder.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_folder from '@/assets/svg/icon_folder.svg'
@@ -10,41 +10,41 @@ import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
-import {onMounted, reactive, ref, watch, nextTick, computed} from 'vue'
-import {ElIcon, ElScrollbar} from 'element-plus-secondary'
-import {Icon} from '@/components/icon-custom'
-import {type SQTreeNode} from '@/views/dashboard/utils/treeNode'
+import { onMounted, reactive, ref, watch, nextTick, computed } from 'vue'
+import { ElIcon, ElScrollbar } from 'element-plus-secondary'
+import { Icon } from '@/components/icon-custom'
+import { type SQTreeNode } from '@/views/dashboard/utils/treeNode'
 import _ from 'lodash'
 import router from '@/router'
-import {dashboardStoreWithOut} from "@/stores/dashboard/dashboard.ts";
-import ResourceGroupOpt from "@/views/dashboard/common/ResourceGroupOpt.vue";
-import {dashboardApi} from "@/api/dashboard.ts";
-import HandleMore from "@/views/dashboard/common/HandleMore.vue";
-import {useI18n} from "vue-i18n";
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
+import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
+import { dashboardApi } from '@/api/dashboard.ts'
+import HandleMore from '@/views/dashboard/common/HandleMore.vue'
+import { useI18n } from 'vue-i18n'
 
-const {t} = useI18n()
+const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const resourceGroupOptRef = ref(null)
 
 defineProps({
   curCanvasType: {
     type: String,
-    required: true
+    required: true,
   },
   showPosition: {
     required: false,
     type: String,
-    default: 'preview'
+    default: 'preview',
   },
   resourceTable: {
     required: false,
     type: String,
-    default: 'core'
-  }
+    default: 'core',
+  },
 })
 const defaultProps = {
   children: 'children',
-  label: 'name'
+  label: 'name',
 }
 const mounted = ref(false)
 const selectedNodeKey: any = ref(null)
@@ -62,25 +62,23 @@ const state = reactive({
     {
       label: t('dashboard.rename'),
       command: 'rename',
-      svgName: icon_rename
+      svgName: icon_rename,
     },
     {
       label: t('dashboard.delete'),
       command: 'delete',
       svgName: icon_delete,
-      divided: true
-    }
+      divided: true,
+    },
   ],
 })
 
-
 // @ts-ignore
-const {handleDrop, allowDrop, handleDragStart} = treeDraggableChart(
+const { handleDrop, allowDrop, handleDragStart } = treeDraggableChart(
   state,
   'resourceTree',
   'dashboard'
 )
-
 
 const routerDashboardId = router.currentRoute.value.query.dashboardId
 if (routerDashboardId) {
@@ -107,7 +105,7 @@ const filterNode = (value: string, data: SQTreeNode) => {
 }
 
 const nodeClick = (data: SQTreeNode, node: any) => {
-  dashboardStore.setCurComponent({component: null, index: null})
+  dashboardStore.setCurComponent({ component: null, index: null })
   if (node.disabled) {
     nextTick(() => {
       const currentNode = resourceListTree.value.$el.querySelector('.is-current')
@@ -137,14 +135,14 @@ const getTree = async () => {
 }
 // @ts-ignore
 const flattedTree = computed<SQTreeNode[]>(() => {
-  return _.filter(flatTree(state.resourceTree), node => node.leaf)
+  return _.filter(flatTree(state.resourceTree), (node) => node.leaf)
 })
 
 const hasData = computed<boolean>(() => flattedTree.value.length > 0)
 
 function flatTree(tree: SQTreeNode[]) {
   let result = _.cloneDeep(tree)
-  _.forEach(tree, node => {
+  _.forEach(tree, (node) => {
     if (node.children && node.children.length > 0) {
       result = _.union(result, flatTree(node.children))
     }
@@ -172,12 +170,10 @@ const afterTreeInit = () => {
 const copyLoading = ref(false)
 const emit = defineEmits(['nodeClick'])
 
-
-function createNewObject() {
-}
+function createNewObject() {}
 
 // @ts-ignore
-const resourceEdit = resourceId => {
+const resourceEdit = (resourceId) => {
   window.open(`#/canvas?resourceId=${resourceId}`, '_blank')
 }
 
@@ -208,13 +204,11 @@ const getDefaultExpandedKeys = () => {
   }
 }
 
-watch(filterText, val => {
+watch(filterText, (val) => {
   resourceListTree.value.filter(val)
 })
 
-
-const loadInit = () => {
-}
+const loadInit = () => {}
 onMounted(() => {
   loadInit()
   getTree()
@@ -240,9 +234,9 @@ const operation = (opt: string, data: SQTreeNode) => {
       type: 'warning',
       tip: msg,
       autofocus: false,
-      showClose: false
+      showClose: false,
     }).then(() => {
-      dashboardApi.delete_resource({id: data.id}).then(() => {
+      dashboardApi.delete_resource({ id: data.id }).then(() => {
         ElMessage.success(t('dashboard.delete_success'))
         getTree()
         dashboardStore.setCurComponent(null)
@@ -250,7 +244,7 @@ const operation = (opt: string, data: SQTreeNode) => {
     })
   } else if (opt === 'rename') {
     //@ts-ignore
-    resourceGroupOptRef.value?.optInit({opt: 'rename', id: data.id, name: data.name})
+    resourceGroupOptRef.value?.optInit({ opt: 'rename', id: data.id, name: data.name })
   }
 }
 
@@ -258,11 +252,10 @@ const baseInfoChangeFinish = () => {
   getTree()
 }
 
-
 defineExpose({
   hasData,
   createNewObject,
-  mounted
+  mounted,
 })
 </script>
 
@@ -270,16 +263,16 @@ defineExpose({
   <div class="resource-tree">
     <div class="tree-header">
       <div class="icon-methods">
-        <span class="title">{{ t('dashboard.dashboard') }}  </span>
+        <span class="title">{{ t('dashboard.dashboard') }} </span>
         <div class="flex-align-center">
           <el-tooltip :content="t('dashboard.new_folder')" placement="top" effect="dark">
             <el-icon
               class="custom-icon btn"
               style="margin-right: 10px"
-              @click="addOperation({opt:'newFolder',type:'folder',pid:'root'} )"
+              @click="addOperation({ opt: 'newFolder', type: 'folder', pid: 'root' })"
             >
               <Icon name="dv-new-folder">
-                <newFolder class="svg-icon"/>
+                <newFolder class="svg-icon" />
               </Icon>
             </el-icon>
           </el-tooltip>
@@ -287,36 +280,29 @@ defineExpose({
             <el-icon
               class="custom-icon btn"
               style="margin-right: 10px"
-              @click="addOperation({opt:'newLeaf',type:'dashboard'} )"
+              @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
             >
               <Icon name="dv-new-folder">
-                <icon_fileAdd_outlined class="svg-icon"/>
+                <icon_fileAdd_outlined class="svg-icon" />
               </Icon>
             </el-icon>
           </el-tooltip>
         </div>
       </div>
-      <el-input
-        :placeholder="t('common.search')"
-        v-model="filterText"
-        clearable
-        class="search-bar"
-      >
+      <el-input v-model="filterText" :placeholder="t('common.search')" clearable class="search-bar">
         <template #prefix>
           <el-icon>
-            <Icon name="icon_search-outline_outlined"
-            >
-              <icon_searchOutline_outlined class="svg-icon"
-              />
+            <Icon name="icon_search-outline_outlined">
+              <icon_searchOutline_outlined class="svg-icon" />
             </Icon>
           </el-icon>
         </template>
       </el-input>
     </div>
-    <el-scrollbar class="custom-tree" v-loading="copyLoading">
+    <el-scrollbar v-loading="copyLoading" class="custom-tree">
       <el-tree
-        menu
         ref="resourceListTree"
+        menu
         :default-expanded-keys="expandedArray"
         :data="state.resourceTree"
         :props="defaultProps"
@@ -324,46 +310,46 @@ defineExpose({
         highlight-current
         :expand-on-click-node="true"
         :filter-node-method="filterNode"
+        draggable
         @node-expand="nodeExpand"
         @node-collapse="nodeCollapse"
         @node-click="nodeClick"
         @node-drag-start="handleDragStart"
         @node-drop="handleDrop"
-        draggable
       >
         <template #default="{ node, data }">
           <span class="custom-tree-node">
-            <el-icon style="font-size: 18px" v-if="data.node_type !== 'leaf'">
-              <Icon name="icon_folder"><icon_folder class="svg-icon"/></Icon>
+            <el-icon v-if="data.node_type !== 'leaf'" style="font-size: 18px">
+              <Icon name="icon_folder"><icon_folder class="svg-icon" /></Icon>
             </el-icon>
-            <el-icon style="font-size: 18px" v-else>
-              <Icon name="icon_dashboard"><icon_dashboard class="svg-icon"/></Icon>
+            <el-icon v-else style="font-size: 18px">
+              <Icon name="icon_dashboard"><icon_dashboard class="svg-icon" /></Icon>
             </el-icon>
             <span :title="node.label" class="label-tooltip">
               {{ node.label }}
             </span>
             <div class="icon-more">
               <el-icon
-                v-on:click.stop
                 v-if="data.node_type !== 'leaf'"
                 class="hover-icon"
-                @click="addOperation({opt:'newLeaf',type:'dashboard',id:data.id} )"
+                @click.stop
+                @click="addOperation({ opt: 'newLeaf', type: 'dashboard', id: data.id })"
               >
-                <Icon><icon_add_outlined class="svg-icon"/></Icon>
+                <Icon><icon_add_outlined class="svg-icon" /></Icon>
               </el-icon>
               <el-icon
-                v-on:click.stop
                 v-if="data.node_type === 'leaf'"
                 class="hover-icon"
+                @click.stop
                 @click="resourceEdit(data.id)"
               >
-                <Icon><icon_edit_outlined class="svg-icon"/></Icon>
+                <Icon><icon_edit_outlined class="svg-icon" /></Icon>
               </el-icon>
               <HandleMore
-                @handle-command=" (opt:string) => operation(opt,data)"
                 :menu-list="state.folderMenuList"
                 :icon-name="icon_more_outlined"
                 placement="bottom-start"
+                @handle-command="(opt: string) => operation(opt, data)"
               ></HandleMore>
             </div>
           </span>

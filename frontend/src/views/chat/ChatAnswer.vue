@@ -215,12 +215,12 @@ function onTypeChange() {
             <div>
               <template v-if="message.record.sql_answer">
                 <div>SQL Generation:</div>
-                <div v-if="message.record.sql_answer" v-html="renderSqlThinking"></div>
+                <div v-if="message.record.sql_answer" v-dompurify-html="renderSqlThinking"></div>
               </template>
               <template v-if="message.record.chart_answer">
                 <el-divider></el-divider>
                 <div>Chart Generation:</div>
-                <div v-html="renderChartThinking"></div>
+                <div v-dompurify-html="renderChartThinking"></div>
               </template>
             </div>
           </el-collapse-item>
