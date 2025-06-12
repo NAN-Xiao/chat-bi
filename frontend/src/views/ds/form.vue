@@ -249,7 +249,7 @@ const open = (item: any, editTable: boolean = false) => {
     }
 
     if (editTable) {
-      dialogTitle.value = 'Choose Tables'
+      dialogTitle.value = t('ds.form.choose_tables')
       active.value = 1
       isEditTable.value = true
       isCreate.value = false
@@ -420,7 +420,7 @@ const next = async (formEl: FormInstance | undefined) => {
             })
           } else {
             ElMessage({
-              message: 'Connect failed',
+              message: t('ds.form.connect.failed'),
               type: 'error',
               showClose: true,
             })
