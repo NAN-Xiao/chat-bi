@@ -45,12 +45,12 @@ export const saveDashboardResource = (params: any, callBack: Function) => {
     if (resCheck) {
       if (params.opt === 'newLeaf') {
         // create canvas
-        const reqeustParams = {
+        const requestParams = {
           ...params,
           component_data: JSON.stringify(componentData.value),
           canvas_style_data: JSON.stringify(canvasStyleData.value),
         }
-        dashboardApi.create_canvas(reqeustParams).then((res: any) => {
+        dashboardApi.create_canvas(requestParams).then((res: any) => {
           dashboardStore.updateDashboardInfo({ id: res.id, dataState: 'ready' })
           callBack(res)
         })
@@ -63,12 +63,12 @@ export const saveDashboardResource = (params: any, callBack: Function) => {
           callBack(res)
         })
       } else if (params.opt === 'updateLeaf') {
-        const reqeustParams = {
+        const requestParams = {
           ...params,
           component_data: JSON.stringify(componentData.value),
           canvas_style_data: JSON.stringify(canvasStyleData.value),
         }
-        dashboardApi.update_canvas(reqeustParams).then(() => {
+        dashboardApi.update_canvas(requestParams).then(() => {
           callBack()
         })
       }
