@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.engine import get_engine_config
+from decimal import Decimal
 
 
 def get_uri(ds: CoreDatasource):
@@ -238,7 +239,7 @@ def exec_sql(ds: CoreDatasource, sql: str):
         columns = result.keys()._keys
         res = result.fetchall()
         result_list = [
-            {columns[i]: value for i, value in enumerate(tuple_item)}
+            {columns[i]: float(value) if isinstance(value, Decimal) else value for i, value in enumerate(tuple_item)}
             for tuple_item in res
         ]
         return {"fields": columns, "data": result_list, "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
