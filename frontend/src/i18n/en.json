@@ -9,9 +9,13 @@
     "back": "Back",
     "confirm": "Confirm",
     "cancel": "Cancel",
+    "search": "Search",
     "system_manage": "System Management",
+    "update_success": "Update",
+    "save_success": "Save Successful",
     "next": "Next",
-    "save": "Save"
+    "save": "Save",
+    "logout": "Logout"
   },
   "dashboard": {
     "length_1_64_characters": "Name field length must be 1-64 characters",
@@ -23,7 +27,12 @@
     "folder": "Folder",
     "dashboard": "Dashboard",
     "delete_warning": "Are you sure you want to delete?",
-    "delete_success": "Successfully deleted"
+    "delete_success": "Successfully deleted",
+    "delete_resource_warn": "Are you sure you want to delete {0}?",
+    "new_folder": "New Folder",
+    "new_dashboard": "New Dashboard",
+    "add_chart": "Add Chart",
+    "chart_selected": "Selected {0}"
   },
   "qa": {
     "New Conversation": "New Conversation",

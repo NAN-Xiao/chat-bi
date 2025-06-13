@@ -60,7 +60,7 @@
             <el-icon class="el-icon--right">
               <ArrowLeftBold />
             </el-icon>
-            Back
+            {{ t('common.back') }}
           </el-button>
         </div>
 
