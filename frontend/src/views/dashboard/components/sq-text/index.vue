@@ -50,18 +50,12 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  showPosition: {
-    type: String,
-    required: false,
-    default: 'preview',
-  },
 })
 
-const { configItem, showPosition } = toRefs(props)
-const tinymceId = 'tinymce-view-' + configItem.value.id + '-' + showPosition.value
+const { configItem } = toRefs(props)
+const tinymceId = 'vue-tinymce-' + +new Date() + ((Math.random() * 1000).toFixed(0) + '')
 const init = reactive({
   selector: tinymceId,
-  toolbar_items_size: 'small',
   language_url: '/tinymce-sqlbot-private/langs/zh_CN.js',
   language: 'zh_CN',
   skin_url: '/tinymce-sqlbot-private/skins/ui/oxide',
@@ -92,6 +86,12 @@ const isDisabled = computed(() => props.disabled || !configItem.value.editing)
 
 const setEdit = () => {
   configItem.value.editing = true
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  const ed = tinymce.editors[tinymceId]
+  ed.setContent(configItem.value.propValue)
+  nextTick(() => {
+    editCursor()
+  })
 }
 
 const editCursor = () => {
