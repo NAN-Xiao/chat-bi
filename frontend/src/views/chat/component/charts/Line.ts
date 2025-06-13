@@ -28,7 +28,7 @@ export class Line extends BaseG2Chart {
       })
 
     this.chart?.line().label({
-      text: 'value',
+      text: y[0].value,
       style: {
         dx: -10,
         dy: -12,
