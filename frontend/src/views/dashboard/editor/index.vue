@@ -69,7 +69,11 @@ const baseParams = computed(() => {
 <template>
   <div class="editor-main">
     <Toolbar :base-params="baseParams" @add-component="addComponent"></Toolbar>
-    <DashboardEditor ref="dashboardEditorRef" :canvas-component-data="componentData">
+    <DashboardEditor
+      v-if="dataInitState"
+      ref="dashboardEditorRef"
+      :canvas-component-data="componentData"
+    >
     </DashboardEditor>
   </div>
 </template>
