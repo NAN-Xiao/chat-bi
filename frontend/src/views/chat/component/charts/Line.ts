@@ -42,6 +42,7 @@ export class Line extends BaseG2Chart {
         dx: -10,
         dy: -12,
       },
+      transform: [{ type: 'overlapDodgeY' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
     })
 
     this.chart?.point().style('fill', 'white').tooltip(false)
