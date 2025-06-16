@@ -23,6 +23,10 @@ export class Bar extends BaseG2Chart {
       .data(data)
       .encode('x', x[0].value)
       .encode('y', y[0].value)
+      .axis({
+        x: { title: x[0].name },
+        y: { title: y[0].name },
+      })
       .scale('x', {
         nice: true,
       })
