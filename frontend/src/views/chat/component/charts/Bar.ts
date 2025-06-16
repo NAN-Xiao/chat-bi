@@ -8,8 +8,10 @@ export class Bar extends BaseG2Chart {
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {
     super.init(axis, data)
+
     const x = this.axis.filter((item) => item.type === 'x')
     const y = this.axis.filter((item) => item.type === 'y')
+    const series = this.axis.filter((item) => item.type === 'series')
 
     if (x.length == 0 || y.length == 0) {
       return
@@ -28,5 +30,9 @@ export class Bar extends BaseG2Chart {
         nice: true,
       })
       .interaction('elementHighlight', { background: true })
+
+    if (series.length > 0) {
+      this.chart?.encode('color', series[0].value).transform({ type: 'stackY' })
+    }
   }
 }

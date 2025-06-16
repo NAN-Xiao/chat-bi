@@ -11,6 +11,7 @@ export class Line extends BaseG2Chart {
 
     const x = this.axis.filter((item) => item.type === 'x')
     const y = this.axis.filter((item) => item.type === 'y')
+    const series = this.axis.filter((item) => item.type === 'series')
 
     if (x.length == 0 || y.length == 0) {
       return
@@ -26,6 +27,10 @@ export class Line extends BaseG2Chart {
       .scale('y', {
         nice: true,
       })
+
+    if (series.length > 0) {
+      this.chart?.encode('color', series[0].value)
+    }
 
     this.chart?.line().label({
       text: y[0].value,
