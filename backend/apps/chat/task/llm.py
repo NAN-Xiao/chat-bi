@@ -109,7 +109,8 @@ class LLMService:
     def get_record(self):
         return self.record
 
-    def generate_sql(self, session: SessionDep):
+    def generate_sql(self, session: SessionDep, lang: str = 'zh-CN'):
+        self.chat_question.lang = lang
         # append current question
         self.sql_message.append(HumanMessage(self.chat_question.sql_user_question()))
         self.record = save_full_sql_message(session=session, record_id=self.record.id,
@@ -136,7 +137,8 @@ class LLMService:
                                                            [{'type': msg.type, 'content': msg.content} for msg in
                                                             self.sql_message], ensure_ascii=False))
 
-    def generate_chart(self, session: SessionDep):
+    def generate_chart(self, session: SessionDep, lang: str = 'zh-CN'):
+        self.chat_question.lang = lang
         # append current question
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question()))
         self.record = save_full_chart_message(session=session, record_id=self.record.id,

@@ -72,19 +72,20 @@ class AiModelQuestion(BaseModel):
     db_schema: str = ""
     sql: str = ""
     rule: str = ""
+    lang: str = "zh-CN"
 
     def sql_sys_question(self):
         return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question)
 
     def sql_user_question(self):
         return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                                 rule=self.rule)
+                                                 rule=self.rule, lang=self.lang)
 
     def chart_sys_question(self):
         return get_chart_template()['system'].format(sql=self.sql, question=self.question)
 
     def chart_user_question(self):
-        return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule)
+        return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule, lang=self.lang)
 
 
 class ChatQuestion(AiModelQuestion):

@@ -13,6 +13,7 @@ from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat
 from apps.chat.task.llm import LLMService
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
+from apps.system.crud.user import get_user_info
 from apps.system.models.system_model import AiModelDetail
 from common.core.deps import SessionDep, CurrentUser
 
@@ -117,13 +118,15 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
 
     llm_service.init_record(session=session, current_user=current_user)
 
+    db_user = get_user_info(session=session, user_id=current_user.id)
+
     def run_task():
         try:
             # return id
             yield json.dumps({'type': 'id', 'id': llm_service.get_record().id}) + '\n\n'
 
             # generate sql
-            sql_res = llm_service.generate_sql(session=session)
+            sql_res = llm_service.generate_sql(session=session, lang=db_user.language)
             full_sql_text = ''
             for chunk in sql_res:
                 full_sql_text += chunk
@@ -142,7 +145,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             yield json.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}) + '\n\n'
 
             # generate chart
-            chart_res = llm_service.generate_chart(session=session)
+            chart_res = llm_service.generate_chart(session=session, lang=db_user.language)
             full_chart_text = ''
             for chunk in chart_res:
                 full_chart_text += chunk
