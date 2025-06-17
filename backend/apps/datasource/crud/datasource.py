@@ -41,9 +41,22 @@ def check_status(session: SessionDep, ds: CoreDatasource):
         return False
 
 
+def check_name(session: SessionDep, ds: CoreDatasource):
+    if ds.id is not None:
+        ds_list = session.query(CoreDatasource).filter(
+            and_(CoreDatasource.name == ds.name, CoreDatasource.id != ds.id)).all()
+        if ds_list is not None and len(ds_list) > 0:
+            raise 'Name exist'
+    else:
+        ds_list = session.query(CoreDatasource).filter(CoreDatasource.name == ds.name).all()
+        if ds_list is not None and len(ds_list) > 0:
+            raise 'Name exist'
+
+
 def create_ds(session: SessionDep, user: CurrentUser, create_ds: CreateDatasource):
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
+    check_name(session, ds)
     ds.create_time = datetime.datetime.now()
     # status = check_status(session, ds)
     ds.create_by = user.id
@@ -68,6 +81,7 @@ def chooseTables(session: SessionDep, id: int, tables: List[CoreTable]):
 
 def update_ds(session: SessionDep, ds: CoreDatasource):
     ds.id = int(ds.id)
+    check_name(session, ds)
     status = check_status(session, ds)
     ds.status = "Success" if status is True else "Fail"
     record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()
