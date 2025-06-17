@@ -123,48 +123,47 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     def run_task():
         try:
             # return id
-            yield json.dumps({'type': 'id', 'id': llm_service.get_record().id}) + '\n\n'
+            yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
 
             # generate sql
             sql_res = llm_service.generate_sql(session=session, lang=db_user.language)
             full_sql_text = ''
             for chunk in sql_res:
                 full_sql_text += chunk
-                yield json.dumps({'content': chunk, 'type': 'sql-result'}, ensure_ascii=False) + '\n\n'
-            yield json.dumps({'type': 'info', 'msg': 'sql generated'}) + '\n\n'
+                yield orjson.dumps({'content': chunk, 'type': 'sql-result'}).decode() + '\n\n'
+            yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
 
             # filter sql
             print(full_sql_text)
             sql = llm_service.check_save_sql(session=session, res=full_sql_text)
             print(sql)
-            yield json.dumps({'content': sql, 'type': 'sql'}) + '\n\n'
+            yield orjson.dumps({'content': sql, 'type': 'sql'}).decode() + '\n\n'
 
             # execute sql
             result = llm_service.execute_sql(sql=sql)
             llm_service.save_sql_data(session=session, data_obj=result)
-            yield json.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}) + '\n\n'
+            yield orjson.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}).decode() + '\n\n'
 
             # generate chart
             chart_res = llm_service.generate_chart(session=session, lang=db_user.language)
             full_chart_text = ''
             for chunk in chart_res:
                 full_chart_text += chunk
-                yield json.dumps({'content': chunk, 'type': 'chart-result'}, ensure_ascii=False) + '\n\n'
-            yield json.dumps({'type': 'info', 'msg': 'chart generated'}) + '\n\n'
+                yield orjson.dumps({'content': chunk, 'type': 'chart-result'}).decode() + '\n\n'
+            yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
             # filter chart
             print(full_chart_text)
             chart = llm_service.check_save_chart(session=session, res=full_chart_text)
             print(chart)
-            yield json.dumps({'content': json.dumps(chart, ensure_ascii=False), 'type': 'chart'},
-                             ensure_ascii=False) + '\n\n'
+            yield orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
 
             llm_service.finish(session=session)
-            yield json.dumps({'type': 'finish'})
+            yield orjson.dumps({'type': 'finish'}).decode() + '\n\n'
 
         except Exception as e:
             traceback.print_exc()
             llm_service.save_error(session=session, message=str(e))
-            yield json.dumps({'content': str(e), 'type': 'error'}, ensure_ascii=False) + '\n\n'
+            yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
 
     return StreamingResponse(run_task(), media_type="text/event-stream")

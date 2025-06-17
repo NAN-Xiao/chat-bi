@@ -136,5 +136,18 @@
         "failed": "连接失败"
       }
     }
+  },
+  "chat": {
+    "chart_type": {
+      "table": "明细表",
+      "bar": "条形图",
+      "column": "柱状图",
+      "line": "折线图",
+      "pie": "饼图"
+    },
+    "sql_generation": "生成SQL",
+    "chart_generation": "生成图表",
+    "inference_process": "思考过程",
+    "thinking": "思考中"
   }
 }

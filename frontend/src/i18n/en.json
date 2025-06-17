@@ -136,5 +136,18 @@
         "failed": "Connect failed"
       }
     }
+  },
+  "chat": {
+    "chart_type": {
+      "table": "Table",
+      "bar": "Bar",
+      "column": "Column",
+      "line": "Line",
+      "pie": "Pie"
+    },
+    "sql_generation": "SQL Generation",
+    "chart_generation": "Chart Generation",
+    "inference_process" : "Inference process",
+    "thinking": "Thinking"
   }
 }

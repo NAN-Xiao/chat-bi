@@ -11,7 +11,9 @@ import ICON_LINE from '@/assets/svg/chart/line.svg'
 import ICON_PIE from '@/assets/svg/chart/pie.svg'
 import ICON_TABLE from '@/assets/svg/chart/table.svg'
 import { find } from 'lodash-es'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const props = defineProps<{
   message?: ChatMessage
 }>()
@@ -107,6 +109,7 @@ const chartTypeList = computed(() => {
   const _list = [
     {
       value: 'table',
+      name: t('chat.chart_type.table'),
       icon: ICON_TABLE,
     },
   ]
@@ -119,20 +122,24 @@ const chartTypeList = computed(() => {
       case 'line':
         _list.push({
           value: 'column',
+          name: t('chat.chart_type.column'),
           icon: ICON_COLUMN,
         })
         _list.push({
           value: 'bar',
+          name: t('chat.chart_type.bar'),
           icon: ICON_BAR,
         })
         _list.push({
           value: 'line',
+          name: t('chat.chart_type.line'),
           icon: ICON_LINE,
         })
         break
       case 'pie':
         _list.push({
           value: 'pie',
+          name: t('chat.chart_type.pie'),
           icon: ICON_PIE,
         })
     }
@@ -159,7 +166,7 @@ function onTypeChange() {
   <el-container v-if="message">
     <el-header style="display: flex; align-items: center; flex-direction: row">
       <div style="flex: 1">
-        <div v-if="message.isTyping">Thinking ...</div>
+        <div v-if="message.isTyping">{{ t('chat.thinking') }} ...</div>
         <div v-if="chartObject.title && !message.isTyping">{{ chartObject.title }}</div>
       </div>
       <div class="tab-container">
@@ -188,7 +195,7 @@ function onTypeChange() {
                 <el-icon size="34">
                   <component :is="t.icon" />
                 </el-icon>
-                {{ t.value }}
+                {{ t.name }}
               </div>
             </el-option>
           </el-select>
@@ -207,19 +214,19 @@ function onTypeChange() {
         <el-collapse expand-icon-position="left">
           <el-collapse-item name="1">
             <template #title>
-              Inference process
+              {{ t('chat.inference_process') }}
               <el-icon v-if="props.message?.isTyping">
                 <Loading />
               </el-icon>
             </template>
             <div>
               <template v-if="message.record.sql_answer">
-                <div>SQL Generation:</div>
+                <div style="font-weight: 500">{{ t('chat.sql_generation') }}:</div>
                 <div v-if="message.record.sql_answer" v-dompurify-html="renderSqlThinking"></div>
               </template>
               <template v-if="message.record.chart_answer">
                 <el-divider></el-divider>
-                <div>Chart Generation:</div>
+                <div style="font-weight: 500">{{ t('chat.chart_generation') }}:</div>
                 <div v-dompurify-html="renderChartThinking"></div>
               </template>
             </div>
