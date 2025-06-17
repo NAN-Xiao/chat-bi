@@ -138,7 +138,7 @@
         {{ t('common.next') }}
       </el-button>
       <el-button v-show="active === 1 && isCreate" @click="preview">
-        {{ t('ds.preview') }}
+        {{ t('ds.previous') }}
       </el-button>
       <el-button
         v-show="active === 1 || !isCreate"

@@ -67,7 +67,7 @@
     "no_data_tip": "No data, select a table from left",
     "comment": "Comment",
     "table_schema": "Table Schema",
-    "preview": "Preview",
+    "previous": "Previous",
     "preview_tip": "Preview 100 items",
     "field": {
       "name": "Name",
