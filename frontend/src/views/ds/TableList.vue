@@ -105,7 +105,7 @@
       @closed="closeTable"
     >
       <div>{{ t('ds.edit.table_comment_label') }}</div>
-      <el-input v-model="currentTable.custom_comment" />
+      <el-input v-model="tableComment" />
       <div style="display: flex; justify-content: flex-end; margin-top: 20px">
         <el-button @click="closeTable">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="saveTable">{{ t('common.confirm') }}</el-button>
@@ -121,7 +121,7 @@
       @closed="closeField"
     >
       <div>{{ t('ds.edit.field_comment_label') }}</div>
-      <el-input v-model="currentField.custom_comment" />
+      <el-input v-model="fieldComment" />
       <div style="display: flex; justify-content: flex-end; margin-top: 20px">
         <el-button @click="closeField">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="saveField">{{ t('common.confirm') }}</el-button>
@@ -163,6 +163,8 @@ const tableDialog = ref<boolean>(false)
 const fieldDialog = ref<boolean>(false)
 const dsForm = ref()
 const ds = ref<any>({})
+const tableComment = ref('')
+const fieldComment = ref('')
 
 const buildData = () => {
   return { table: currentTable.value, fields: fieldList.value }
@@ -183,6 +185,7 @@ const back = () => {
 // };
 
 const editTable = () => {
+  tableComment.value = currentTable.value.custom_comment
   tableDialog.value = true
 }
 
@@ -191,10 +194,11 @@ const closeTable = () => {
 }
 
 const saveTable = () => {
+  currentTable.value.custom_comment = tableComment.value
   datasourceApi.saveTable(currentTable.value).then(() => {
     closeTable()
     ElMessage({
-      message: 'Edit Success',
+      message: t('common.save_success'),
       type: 'success',
       showClose: true,
     })
@@ -203,6 +207,7 @@ const saveTable = () => {
 
 const editField = (row: any) => {
   currentField.value = row
+  fieldComment.value = currentField.value.custom_comment
   fieldDialog.value = true
 }
 
@@ -216,10 +221,11 @@ const closeField = () => {
 }
 
 const saveField = () => {
+  currentField.value.custom_comment = fieldComment.value
   datasourceApi.saveField(currentField.value).then(() => {
     closeField()
     ElMessage({
-      message: 'Edit Success',
+      message: t('common.save_success'),
       type: 'success',
       showClose: true,
     })
