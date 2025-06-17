@@ -36,14 +36,23 @@ export class Line extends BaseG2Chart {
       this.chart?.encode('color', series[0].value)
     }
 
-    this.chart?.line().label({
-      text: y[0].value,
-      style: {
-        dx: -10,
-        dy: -12,
-      },
-      transform: [{ type: 'overlapDodgeY' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
-    })
+    this.chart
+      ?.line()
+      .label({
+        text: y[0].value,
+        style: {
+          dx: -10,
+          dy: -12,
+        },
+        transform: [{ type: 'overlapDodgeY' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
+      })
+      .tooltip((data) => {
+        if (series.length > 0) {
+          return { name: data[series[0].value], value: data[y[0].value] }
+        } else {
+          return { name: y[0].name, value: data[y[0].value] }
+        }
+      })
 
     this.chart?.point().style('fill', 'white').tooltip(false)
   }

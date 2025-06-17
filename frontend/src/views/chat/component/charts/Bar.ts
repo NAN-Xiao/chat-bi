@@ -34,6 +34,18 @@ export class Bar extends BaseG2Chart {
         nice: true,
       })
       .interaction('elementHighlight', { background: true })
+      .tooltip((data) => {
+        if (series.length > 0) {
+          return { name: data[series[0].value], value: data[y[0].value] }
+        } else {
+          return { name: y[0].name, value: data[y[0].value] }
+        }
+      })
+      .label({
+        text: y[0].value,
+        position: 'inside',
+        transform: [{ type: 'overlapDodgeY' }],
+      })
 
     if (series.length > 0) {
       this.chart?.encode('color', series[0].value).transform({ type: 'stackY' })
