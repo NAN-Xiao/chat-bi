@@ -68,6 +68,7 @@
     "comment": "Comment",
     "table_schema": "Table Schema",
     "previous": "Previous",
+    "preview": "Data Preview",
     "preview_tip": "Preview 100 items",
     "field": {
       "name": "Name",

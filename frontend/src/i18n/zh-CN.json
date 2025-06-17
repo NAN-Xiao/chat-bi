@@ -68,6 +68,7 @@
     "comment": "注释",
     "table_schema": "表结构",
     "previous": "上一步",
+    "preview": "数据预览",
     "preview_tip": "预览100条数据",
     "field": {
       "name": "字段名",
