@@ -11,7 +11,7 @@ import router from '@/router'
 import { initCanvasData } from '@/views/dashboard/utils/canvasUtils.ts'
 
 const dashboardStore = dashboardStoreWithOut()
-const { componentData } = storeToRefs(dashboardStore)
+const { componentData, canvasViewInfo } = storeToRefs(dashboardStore)
 
 const dataInitState = ref(false)
 const state = reactive({
@@ -21,10 +21,16 @@ const state = reactive({
 })
 
 const dashboardEditorRef = ref(null)
-const addComponent = (componentType: string) => {
+const addComponent = (componentType: string, viewInfo?: any) => {
   const component = cloneDeep(findNewComponentFromList(componentType))
   if (component && dashboardEditorRef.value) {
     component.id = guid()
+    // add view
+    if (component?.component === 'SQView' && !!viewInfo) {
+      viewInfo['sourceId'] = viewInfo['id']
+      viewInfo['id'] = component.id
+      dashboardStore.addCanvasViewInfo(viewInfo)
+    }
     if (component.component === 'SQTab') {
       const subTabName = guid('tab')
       // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -73,6 +79,7 @@ const baseParams = computed(() => {
       v-if="dataInitState"
       ref="dashboardEditorRef"
       :canvas-component-data="componentData"
+      :canvas-view-info="canvasViewInfo"
     >
     </DashboardEditor>
   </div>

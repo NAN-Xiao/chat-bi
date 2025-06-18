@@ -23,7 +23,7 @@ export const load_resource_prepare = (params: any, callBack: (obj: any) => void)
     }
     const canvasDataResult = JSON.parse(canvasInfo.component_data)
     const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)
-    const canvasViewInfoPreview = canvasInfo.canvas_view_Info
+    const canvasViewInfoPreview = JSON.parse(canvasInfo.canvas_view_Info || '{}')
     callBack({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview })
   })
 }

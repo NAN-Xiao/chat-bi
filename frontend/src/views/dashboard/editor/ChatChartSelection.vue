@@ -6,6 +6,7 @@
     trigger="click"
     :title="t('dashboard.add_chart')"
     modal-class="custom-drawer"
+    :destroy-on-close="true"
     @closed="handleClose()"
   >
     <el-container class="chat-container">
@@ -22,8 +23,17 @@
         </el-container>
       </el-aside>
       <el-container :loading="loading">
-        <el-main class="chat-record-list">
-          <el-scrollbar ref="chatListRef"> </el-scrollbar>
+        <el-main v-if="!loading" class="chat-record-list">
+          <el-scrollbar ref="chatListRef">
+            <chart-selection
+              v-for="(viewInfo, index) in chartInfoList"
+              :key="index"
+              :view-info="viewInfo"
+              :select-change="(value: boolean) => selectChange(value, viewInfo)"
+              style="width: 33%"
+            >
+            </chart-selection>
+          </el-scrollbar>
         </el-main>
       </el-container>
     </el-container>
@@ -33,16 +43,16 @@
         <el-col class="adapt-count">
           <span>{{ t('dashboard.chart_selected', [selectComponentCount]) }} </span>
         </el-col>
-        <el-button class="close-button" @click="dialogShow = false">{{
-          t('common.cancel')
-        }}</el-button>
+        <el-button class="close-button" @click="dialogShow = false"
+          >{{ t('common.cancel') }}
+        </el-button>
         <el-button
           type="primary"
           :disabled="!selectComponentCount"
           class="confirm-button"
           @click="saveMultiplexing"
-          >{{ t('common.save') }}</el-button
-        >
+          >{{ t('common.save') }}
+        </el-button>
       </el-row>
     </template>
   </el-drawer>
@@ -53,11 +63,13 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chat, chatApi, ChatInfo } from '@/api/chat.ts'
 import DashboardChatList from '@/views/dashboard/editor/DashboardChatList.vue'
+import ChartSelection from '@/views/dashboard/editor/ChartSelection.vue'
+
 const dialogShow = ref(false)
 const { t } = useI18n()
-const selectComponentCount = computed(() => Object.keys(state.curMultiplexingComponents).length)
+const selectComponentCount = computed(() => state.curMultiplexingComponents.length)
 const state = reactive({
-  curMultiplexingComponents: {},
+  curMultiplexingComponents: [],
 })
 
 const loading = ref<boolean>(false)
@@ -65,10 +77,48 @@ const chatList = ref<Array<ChatInfo>>([])
 
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
+const chartInfoList = ref<Array<any>>([])
+const emits = defineEmits(['addChatChart'])
 
 onMounted(() => {
   getChatList()
 })
+
+function selectChange(value: boolean, viewInfo: any) {
+  if (value) {
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    state.curMultiplexingComponents.push(viewInfo)
+  } else {
+    state.curMultiplexingComponents = state.curMultiplexingComponents.filter(
+      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      (component) => component.id !== viewInfo.id
+    )
+  }
+}
+
+function adaptorChartInfoList(chatInfo: ChatInfo) {
+  chartInfoList.value = []
+  if (chatInfo && chatInfo.records) {
+    chatInfo.records.forEach((record: any) => {
+      const recordeInfo = { id: chatInfo.id + '_' + record.id, data: null, chart: {} }
+      if (record?.data) {
+        recordeInfo['data'] = JSON.parse(record.data)
+      }
+      if (record?.chart) {
+        const chartBaseInfo = JSON.parse(record.chart)
+        recordeInfo['chart'] = {
+          type: chartBaseInfo.type,
+          title: chartBaseInfo.title,
+          columns: chartBaseInfo.columns,
+          xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
+          yAxis: chartBaseInfo.axis?.y ? [chartBaseInfo.axis.y] : [],
+          series: chartBaseInfo.axis?.series ? [chartBaseInfo.axis.series] : [],
+        }
+      }
+      chartInfoList.value.push(recordeInfo)
+    })
+  }
+}
 
 function onClickHistory(chat: Chat) {
   currentChat.value = new ChatInfo(chat)
@@ -81,6 +131,8 @@ function onClickHistory(chat: Chat) {
         const info = chatApi.toChatInfo(res)
         if (info) {
           currentChat.value = info
+          adaptorChartInfoList(info)
+          state.curMultiplexingComponents = []
         }
       })
       .finally(() => {
@@ -103,11 +155,14 @@ function getChatList() {
 
 const dialogInit = () => {
   dialogShow.value = true
-  state.curMultiplexingComponents = {}
+  state.curMultiplexingComponents = []
 }
 
 const saveMultiplexing = () => {
   dialogShow.value = false
+  if (state.curMultiplexingComponents.length > 0) {
+    emits('addChatChart', state.curMultiplexingComponents)
+  }
 }
 const handleClose = () => {}
 defineExpose({
@@ -121,15 +176,18 @@ defineExpose({
   top: 18px;
   right: 120px;
 }
+
 .confirm-button {
   position: absolute;
   top: 18px;
   right: 20px;
 }
+
 .multiplexing-area {
   width: 100%;
   height: 100%;
 }
+
 .multiplexing-footer {
   position: relative;
 }
@@ -149,6 +207,7 @@ defineExpose({
   top: 18px;
   right: 220px;
 }
+
 .adapt-text {
   font-size: 14px;
   font-weight: 400;
@@ -199,6 +258,7 @@ defineExpose({
 
   .chat-record-list {
     padding: 0 0 20px 0;
+    background: rgba(224, 224, 226, 0.29);
   }
 
   .chat-footer {

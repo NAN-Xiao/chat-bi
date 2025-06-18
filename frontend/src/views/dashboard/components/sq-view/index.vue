@@ -1,34 +1,39 @@
 <script setup lang="ts">
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
-import { reactive } from 'vue'
-import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
-
-const state = reactive({
-  chartInfo: {
-    id: null as string | null,
-    type: '' as string,
-    columns: [] as ChartAxis[],
-    xAxis: [] as ChartAxis[],
-    yAxis: [] as ChartAxis[],
-    series: [] as ChartAxis[],
-    data: [] as ChartData[],
+defineProps({
+  viewInfo: {
+    type: Object,
+    required: true,
   },
+})
+
+import { ref } from 'vue'
+
+const chartRef = ref(null)
+const renderChart = () => {
+  //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  chartRef.value?.renderChart
+}
+
+defineExpose({
+  renderChart,
 })
 </script>
 
 <template>
   <div class="chart-base-container">
-    <div>
+    <div style="height: 100%; width: 100%">
       <ChartComponent
-        v-if="state.chartInfo.id"
-        :id="state.chartInfo.id"
+        v-if="viewInfo.id"
+        :id="viewInfo.id"
         ref="chartRef"
-        :type="state.chartInfo.type"
-        :columns="state.chartInfo.columns"
-        :x="state.chartInfo.xAxis"
-        :y="state.chartInfo.yAxis"
-        :series="state.chartInfo.series"
-        :data="state.chartInfo.data"
+        :type="viewInfo.chart.type"
+        :columns="viewInfo.chart.columns"
+        :x="viewInfo.chart?.xAxis"
+        :y="viewInfo.chart?.yAxis"
+        :series="viewInfo.chart?.series"
+        :data="viewInfo.data?.data"
       />
     </div>
   </div>
@@ -36,7 +41,5 @@ const state = reactive({
 
 <style scoped lang="less">
 .chart-base-container {
-  padding: 20px;
-  background: rgba(224, 224, 226, 0.29);
 }
 </style>

@@ -1,0 +1,45 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import SQView from '@/views/dashboard/components/sq-view/index.vue'
+
+const isSelected = ref(false)
+
+const props = defineProps({
+  viewInfo: {
+    type: Object,
+    required: true,
+  },
+  selectChange: {
+    type: Function,
+    default: () => {
+      return {}
+    },
+  },
+})
+
+const curSelectChange = (value: boolean) => {
+  props.selectChange(value)
+}
+</script>
+
+<template>
+  <div class="chart-selection-container">
+    <el-checkbox class="select-area" :value="isSelected" @change="curSelectChange"></el-checkbox>
+    <SQView :view-info="viewInfo"></SQView>
+  </div>
+</template>
+
+<style scoped lang="less">
+.chart-selection-container {
+  width: 33%;
+  height: 250px;
+  position: relative;
+  padding: 15px;
+  float: left;
+  .select-area {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+  }
+}
+</style>

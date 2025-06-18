@@ -6,6 +6,7 @@ import { type CanvasCoord, type CanvasItem } from '@/utils/canvas.ts'
 import CanvasShape from './CanvasShape.vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import { storeToRefs } from 'pinia'
+import { useEmittLazy } from '@/utils/useEmitt.ts'
 
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
@@ -25,12 +26,17 @@ const props = defineProps({
   dashboardInfo: {
     type: Object,
     required: false,
-    default: null,
+    default: () => {},
   },
   canvasStyleData: {
     type: Object,
     required: false,
-    default: null,
+    default: () => {},
+  },
+  canvasViewInfo: {
+    type: Object,
+    required: false,
+    default: () => {},
   },
   canvasComponentData: {
     type: Array as PropType<CanvasItem[]>,
@@ -316,6 +322,9 @@ function resizePlayer(item: CanvasItem, newSize: any) {
   const canGoUpRows = canItemGoUp(item)
   if (canGoUpRows > 0) {
     moveItemUp(item, canGoUpRows)
+  }
+  if (item.component === 'SQView') {
+    useEmittLazy(`view-render-${item.id}`)
   }
 }
 
@@ -1167,8 +1176,9 @@ defineExpose({
         <component
           :is="findComponent(item.component)"
           :ref="'shape_component_' + item.id"
-          class="sql-component slot-component dragHandle"
+          class="sql-component dragHandle"
           :config-item="item"
+          :view-info="canvasViewInfo[item.id]"
           @parent-add-item-box="(subItem: any) => addItemBox(subItem)"
         >
         </component>

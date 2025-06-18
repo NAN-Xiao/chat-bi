@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import { getChartInstance } from '@/views/chat/component/index.ts'
 import type { BaseChart, ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import { useEmitt } from '@/utils/useEmitt.ts'
 
 const params = withDefaults(
   defineProps<{
@@ -61,6 +62,16 @@ function destroyChart() {
   }
 }
 
+useEmitt({
+  name: 'view-render-all',
+  callback: renderChart,
+})
+
+useEmitt({
+  name: `view-render-${params.id}`,
+  callback: renderChart,
+})
+
 defineExpose({
   renderChart,
   destroyChart,
@@ -83,7 +94,5 @@ onUnmounted(() => {
 .chart-container {
   height: 100%;
   width: 100%;
-  min-height: 360px;
-  min-width: 360px;
 }
 </style>

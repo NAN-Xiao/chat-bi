@@ -29,6 +29,8 @@ const openViewDialog = () => {
   chatChartSelectionRef.value?.dialogInit()
 }
 
+import cloneDeep from 'lodash/cloneDeep'
+
 let nameEdit = ref(false)
 let inputName = ref('')
 let nameInput = ref(null)
@@ -128,6 +130,12 @@ const backToMain = () => {
     window.open(url, '_self')
   }
 }
+
+const addChatChart = (views: any) => {
+  views.forEach((view: any) => {
+    emits('addComponent', 'SQView', cloneDeep(view))
+  })
+}
 </script>
 
 <template>
@@ -214,6 +222,7 @@ const backToMain = () => {
     <ResourceGroupOpt ref="resourceGroupOptRef" @finish="groupOptFinish"></ResourceGroupOpt>
     <ChatChartSelection
       ref="chatChartSelectionRef"
+      @add-chat-chart="addChatChart"
       @finish="chartSelectionFinish"
     ></ChatChartSelection>
   </div>

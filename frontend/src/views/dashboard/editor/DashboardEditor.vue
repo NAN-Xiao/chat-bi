@@ -2,6 +2,7 @@
 import CanvasCore from '@/views/dashboard/canvas/CanvasCore.vue'
 import { nextTick, onMounted, type PropType, ref } from 'vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
+import { useEmittLazy } from '@/utils/useEmitt.ts'
 
 const canvasCoreRef = ref(null)
 const dashboardEditorRef = ref(null)
@@ -25,6 +26,11 @@ const props = defineProps({
     type: Object,
     required: false,
     default: null,
+  },
+  canvasViewInfo: {
+    type: Object,
+    required: false,
+    default: () => {},
   },
   canvasStyleData: {
     type: Object,
@@ -70,6 +76,7 @@ const sizeInit = () => {
       (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
     baseHeight.value =
       (screenHeight - baseMarginTop.value) / props.baseMatrixCount.y - baseMarginTop.value
+    useEmittLazy('view-render-all')
   }
 }
 
@@ -114,6 +121,7 @@ const emits = defineEmits(['parentAddItemBox'])
       :base-margin-top="baseMarginTop"
       :canvas-component-data="canvasComponentData"
       :canvas-style-data="canvasStyleData"
+      :canvas-view-info="canvasViewInfo"
       :dashboard-info="dashboardInfo"
       :parent-config-item="parentConfigItem"
       :canvas-id="canvasId"
