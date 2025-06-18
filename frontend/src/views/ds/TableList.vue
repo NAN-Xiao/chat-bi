@@ -213,7 +213,14 @@ const editField = (row: any) => {
 
 const changeStatus = (row: any) => {
   currentField.value = row
-  saveField()
+  datasourceApi.saveField(currentField.value).then(() => {
+    closeField()
+    ElMessage({
+      message: t('common.save_success'),
+      type: 'success',
+      showClose: true,
+    })
+  })
 }
 
 const closeField = () => {
