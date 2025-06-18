@@ -1,8 +1,8 @@
-import json
 import orjson
 import traceback
 from typing import List
 
+import orjson
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlmodel import select
@@ -97,7 +97,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             detail="No available datasource configuration found"
         )
 
-    request_question.engine = ds.type_name
+    request_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
 
     # Get available AI model
     aimodel = session.exec(select(AiModelDetail).where(
