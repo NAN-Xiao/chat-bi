@@ -32,7 +32,14 @@
               :msg="message"
             >
               <template v-if="message.role === 'assistant'">
-                <ChatAnswer :message="message" />
+                <ChatAnswer :message="message">
+                  <template #footer>
+                    <el-button text type="primary" @click="clickAnalysis(message.record?.id)">{{
+                      t('chat.data_analysis')
+                    }}</el-button>
+                    {{ message.record?.analysis }}
+                  </template>
+                </ChatAnswer>
               </template>
               <template v-if="message.role === 'assistant'" #footer>
                 <!--<div>Suggestion</div>-->
@@ -84,6 +91,7 @@ import ChatList from './ChatList.vue'
 import ChatRow from './ChatRow.vue'
 import ChatAnswer from './ChatAnswer.vue'
 import { useI18n } from 'vue-i18n'
+import { find } from 'lodash-es'
 
 const { t } = useI18n()
 
@@ -106,6 +114,7 @@ const chatList = ref<Array<ChatInfo>>([])
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
 const isTyping = ref<boolean>(false)
+const isAnalysisTyping = ref<boolean>(false)
 
 const computedMessages = computed<Array<ChatMessage>>(() => {
   const welcome: ChatMessage = {
@@ -263,7 +272,6 @@ const sendMessage = async () => {
 
     while (true) {
       const { done, value } = await reader.read()
-      console.log(done)
       if (done) {
         isTyping.value = false
         break
@@ -290,7 +298,13 @@ const sendMessage = async () => {
       console.log(_list)
 
       for (const str of _list) {
-        const data = JSON.parse(str)
+        let data
+        try {
+          data = JSON.parse(str)
+        } catch (err) {
+          console.error('JSON string:', str)
+          throw err
+        }
 
         switch (data.type) {
           case 'id':
@@ -338,6 +352,95 @@ const sendMessage = async () => {
     currentRecord.error = currentRecord.error + 'Error:' + error
     console.error('Error:', error)
     isTyping.value = false
+  }
+}
+
+async function clickAnalysis(id?: number) {
+  let _index = -1
+  const currentRecord = find(currentChat.value.records, (value, index) => {
+    if (id === value.id) {
+      _index = index
+      return true
+    }
+    return false
+  })
+  if (currentRecord == undefined) {
+    return
+  }
+  currentChat.value.records[_index].analysis = ''
+
+  try {
+    const response = await chatApi.analysis(id)
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    let analysis_answer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        isAnalysisTyping.value = false
+        break
+      }
+
+      const chunk = decoder.decode(value)
+
+      let _list = [chunk]
+
+      const lines = chunk.trim().split('}\n\n{')
+      if (lines.length > 1) {
+        _list = []
+        for (let line of lines) {
+          if (!line.trim().startsWith('{')) {
+            line = '{' + line.trim()
+          }
+          if (!line.trim().endsWith('}')) {
+            line = line.trim() + '}'
+          }
+          _list.push(line)
+        }
+      }
+
+      console.log(_list)
+
+      for (const str of _list) {
+        let data
+        try {
+          data = JSON.parse(str)
+        } catch (err) {
+          console.error('JSON string:', str)
+          throw err
+        }
+
+        switch (data.type) {
+          case 'info':
+            console.log(data.msg)
+            break
+          case 'error':
+            currentRecord.error = data.content
+            isAnalysisTyping.value = false
+            break
+          case 'analysis-result':
+            analysis_answer += data.content
+            currentChat.value.records[_index].analysis = analysis_answer
+            break
+          case 'analysis_finish':
+            isAnalysisTyping.value = false
+            break
+        }
+        await nextTick()
+      }
+    }
+  } catch (error) {
+    if (!currentRecord.error) {
+      currentRecord.error = ''
+    }
+    if (currentRecord.error.trim().length !== 0) {
+      currentRecord.error = currentRecord.error + '\n'
+    }
+    currentRecord.error = currentRecord.error + 'Error:' + error
+    console.error('Error:', error)
+    isAnalysisTyping.value = false
   }
 }
 

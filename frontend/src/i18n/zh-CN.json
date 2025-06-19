@@ -148,7 +148,9 @@
     "sql_generation": "生成SQL",
     "chart_generation": "生成图表",
     "inference_process": "思考过程",
-    "thinking": "思考中"
+    "thinking": "思考中",
+    "data_analysis": "数据分析",
+    "data_predict": "数据预测"
   },
   "about": {
     "title": "关于",

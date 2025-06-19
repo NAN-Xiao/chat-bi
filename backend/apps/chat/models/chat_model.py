@@ -5,7 +5,9 @@ from pydantic import BaseModel
 from sqlalchemy import Column, Text, BigInteger, DateTime, Integer, Identity, Boolean
 from sqlmodel import SQLModel, Field
 
+from apps.template.generate_analysis.generator import get_analysis_template
 from apps.template.generate_chart.generator import get_chart_template
+from apps.template.generate_predict.generator import get_predict_template
 from apps.template.generate_sql.generator import get_sql_template
 
 
@@ -36,8 +38,12 @@ class ChatRecord(SQLModel, table=True):
     data: str = Field(sa_column=Column(Text, nullable=True))
     chart_answer: str = Field(sa_column=Column(Text, nullable=True))
     chart: str = Field(sa_column=Column(Text, nullable=True))
+    analysis: str = Field(sa_column=Column(Text, nullable=True))
+    predict: str = Field(sa_column=Column(Text, nullable=True))
     full_sql_message: str = Field(sa_column=Column(Text, nullable=True))
     full_chart_message: str = Field(sa_column=Column(Text, nullable=True))
+    full_analysis_message: str = Field(sa_column=Column(Text, nullable=True))
+    full_predict_message: str = Field(sa_column=Column(Text, nullable=True))
     finish: bool = Field(sa_column=Column(Boolean, nullable=True, default=False))
     error: str = Field(sa_column=Column(Text, nullable=True))
     run_time: float = Field(default=0)
@@ -72,6 +78,8 @@ class AiModelQuestion(BaseModel):
     db_schema: str = ""
     sql: str = ""
     rule: str = ""
+    fields: str = ""
+    data: str = ""
     lang: str = "zh-CN"
 
     def sql_sys_question(self):
@@ -86,6 +94,18 @@ class AiModelQuestion(BaseModel):
 
     def chart_user_question(self):
         return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule, lang=self.lang)
+
+    def analysis_sys_question(self):
+        return get_analysis_template()['system']
+
+    def analysis_user_question(self):
+        return get_analysis_template()['user'].format(fields=self.fields, data=self.data, lang=self.lang)
+
+    def predict_sys_question(self):
+        return get_predict_template()['system']
+
+    def predict_user_question(self):
+        return get_predict_template()['user'].format(fields=self.fields, data=self.data, lang=self.lang)
 
 
 class ChatQuestion(AiModelQuestion):

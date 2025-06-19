@@ -265,7 +265,7 @@ function onTypeChange() {
         </div>
       </template>
     </el-container>
-    <!--<el-footer></el-footer>-->
+    <slot name="footer"></slot>
   </el-container>
 </template>
 

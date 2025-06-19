@@ -113,11 +113,12 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
                                                      chart_id=request_question.chat_id)
     # get schema
     request_question.db_schema = get_table_schema(session=session, ds=ds)
-    llm_service = LLMService(request_question, history_records, CoreDatasource(**ds.model_dump()), aimodel)
+    db_user = get_user_info(session=session, user_id=current_user.id)
+    request_question.lang = db_user.language
+
+    llm_service = LLMService(request_question, aimodel, history_records, CoreDatasource(**ds.model_dump()))
 
     llm_service.init_record(session=session, current_user=current_user)
-
-    db_user = get_user_info(session=session, user_id=current_user.id)
 
     def run_task():
         try:
@@ -125,7 +126,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
 
             # generate sql
-            sql_res = llm_service.generate_sql(session=session, lang=db_user.language)
+            sql_res = llm_service.generate_sql(session=session)
             full_sql_text = ''
             for chunk in sql_res:
                 full_sql_text += chunk
@@ -144,7 +145,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             yield orjson.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}).decode() + '\n\n'
 
             # generate chart
-            chart_res = llm_service.generate_chart(session=session, lang=db_user.language)
+            chart_res = llm_service.generate_chart(session=session)
             full_chart_text = ''
             for chunk in chart_res:
                 full_chart_text += chunk
@@ -163,6 +164,70 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
         except Exception as e:
             traceback.print_exc()
             llm_service.save_error(session=session, message=str(e))
+            yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
+
+    return StreamingResponse(run_task(), media_type="text/event-stream")
+
+
+@router.post("/record/{chart_record_id}/analysis")
+async def analysis(session: SessionDep, current_user: CurrentUser, chart_record_id: int):
+    record = session.query(ChatRecord).get(chart_record_id)
+    if not record:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chat record with id {chart_record_id} not found"
+        )
+
+    if not record.chart:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chat record with id {chart_record_id} has not generated chart, do not support to analyze it"
+        )
+
+    chat = session.query(Chat).filter(Chat.id == record.chat_id).first()
+    if not chat:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chat with id {record.chart_id} not found"
+        )
+
+    if chat.create_by != current_user.id:
+        raise HTTPException(
+            status_code=401,
+            detail=f"You cannot use the chat with id {record.chart_id}"
+        )
+
+    # Get available AI model
+    aimodel = session.exec(select(AiModelDetail).where(
+        AiModelDetail.status == True,
+        AiModelDetail.api_key.is_not(None)
+    )).first()
+    if not aimodel:
+        raise HTTPException(
+            status_code=500,
+            detail="No available AI model configuration found"
+        )
+
+    request_question = ChatQuestion(chat_id=chat.id, question='')
+    db_user = get_user_info(session=session, user_id=current_user.id)
+    request_question.lang = db_user.language
+
+    llm_service = LLMService(request_question, aimodel)
+    llm_service.set_record(record)
+
+    def run_task():
+        try:
+            # generate analysis
+            analysis_res = llm_service.generate_analysis(session=session)
+            for chunk in analysis_res:
+                yield orjson.dumps({'content': chunk, 'type': 'analysis-result'}).decode() + '\n\n'
+            yield orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
+
+            yield orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
+
+        except Exception as e:
+            traceback.print_exc()
+            # llm_service.save_error(session=session, message=str(e))
             yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
 
     return StreamingResponse(run_task(), media_type="text/event-stream")

@@ -148,7 +148,9 @@
     "sql_generation": "SQL Generation",
     "chart_generation": "Chart Generation",
     "inference_process": "Inference process",
-    "thinking": "Thinking"
+    "thinking": "Thinking",
+    "data_analysis": "Data Analysis",
+    "data_predict": "Data Predict"
   },
   "about": {
     "title": "About",

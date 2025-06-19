@@ -36,6 +36,8 @@ export class ChatRecord {
   data?: string
   chart_answer?: string
   chart?: string
+  analysis?: string
+  predict?: string
   finish?: boolean = false
   error?: string
   run_time: number = 0
@@ -52,6 +54,8 @@ export class ChatRecord {
     data: string | undefined,
     chart_answer: string | undefined,
     chart: string | undefined,
+    analysis: string | undefined,
+    predict: string | undefined,
     finish: boolean,
     error: string | undefined,
     run_time: number
@@ -67,6 +71,8 @@ export class ChatRecord {
     data?: string,
     chart_answer?: string,
     chart?: string,
+    analysis?: string,
+    predict?: string,
     finish?: boolean,
     error?: string,
     run_time?: number
@@ -81,6 +87,8 @@ export class ChatRecord {
     this.data = data
     this.chart_answer = chart_answer
     this.chart = chart
+    this.analysis = analysis
+    this.predict = predict
     this.finish = finish
     this.error = error
     this.run_time = run_time ?? 0
@@ -197,6 +205,8 @@ function toChatRecord(data?: any): ChatRecord | undefined {
     data.data,
     data.chart_answer,
     data.chart,
+    data.analysis,
+    data.predict,
     data.finish,
     data.error,
     data.run_time
@@ -263,6 +273,10 @@ function deleteChat(id: number | undefined): Promise<string> {
   return request.get(`/chat/delete/${id}`)
 }
 
+function analysis(record_id: number | undefined) {
+  return request.fetchStream(`/chat/record/${record_id}/analysis`, {})
+}
+
 export const chatApi = {
   toChatRecord,
   toChatRecordList,
@@ -273,4 +287,5 @@ export const chatApi = {
   startChat,
   renameChat,
   deleteChat,
+  analysis,
 }
