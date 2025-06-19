@@ -84,6 +84,7 @@
               <el-dropdown-item>
                 <language-selector />
               </el-dropdown-item>
+              <el-dropdown-item @click="toAbout">About</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -116,6 +117,7 @@
                   <el-dropdown-item>
                     <language-selector />
                   </el-dropdown-item>
+                  <el-dropdown-item @click="toAbout">About</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -153,6 +155,7 @@
       </div>
     </div>
   </div>
+  <AboutDialog ref="aboutRef" />
 </template>
 
 <script lang="ts" setup>
@@ -170,7 +173,9 @@ import { ArrowLeftBold } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
 import { useI18n } from 'vue-i18n'
 import LanguageSelector from '@/components/Language-selector/index.vue'
+import AboutDialog from '@/components/about/index.vue'
 
+const aboutRef = ref()
 const { t } = useI18n()
 const { wsCache } = useCache()
 const topLayout = ref(false)
@@ -244,7 +249,9 @@ const switchLayout = () => {
   topLayout.value = !topLayout.value
   wsCache.set('sqlbot-topbar-layout', topLayout.value)
 }
-
+const toAbout = () => {
+  aboutRef.value?.open()
+}
 onMounted(() => {
   topLayout.value = wsCache.get('sqlbot-topbar-layout') || true
 })

@@ -149,5 +149,26 @@
     "chart_generation": "生成图表",
     "inference_process": "思考过程",
     "thinking": "思考中"
+  },
+  "about": {
+    "title": "关于",
+    "auth_to": "授权给",
+    "invalid_license": "License 无效",
+    "update_license": "更新 License",
+    "expiration_time": "过期时间",
+    "expirationed": "(已过期)",
+    "auth_num": "授权数量",
+    "version": "版本",
+    "version_num": "版本号",
+    "standard": "社区版",
+    "enterprise": "企业版",
+    "Professional": "专业版",
+    "Embedded": "嵌入式版",
+    "support": "获取技术支持",
+    "update_success": "更新成功，请重新登录",
+    "serial_no": "序列号",
+    "remark": "备注",
+    "back_community": "还原至社区版",
+    "confirm_tips": "确定还原至社区版？"
   }
 }

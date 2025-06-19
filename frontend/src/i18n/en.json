@@ -147,7 +147,28 @@
     },
     "sql_generation": "SQL Generation",
     "chart_generation": "Chart Generation",
-    "inference_process" : "Inference process",
+    "inference_process": "Inference process",
     "thinking": "Thinking"
+  },
+  "about": {
+    "title": "About",
+    "auth_to": "Authorized to",
+    "invalid_license": " License is invalid",
+    "update_license": "Update License",
+    "expiration_time": "Expiration Time",
+    "expirationed": "(Expired)",
+    "auth_num": "Authorized Number",
+    "version": "Version",
+    "version_num": "Version {0}",
+    "standard": "Community Edition",
+    "enterprise": "Enterprise Edition",
+    "Professional": "Professional Edition",
+    "Embedded": "Embedded Edition",
+    "support": "Support",
+    "update_success": "Update Successful",
+    "serial_no": "Serial Number",
+    "remark": "Remark",
+    "back_community": "Restore to Community Edition",
+    "confirm_tips": "Are you sure to restore to Community Edition?"
   }
 }

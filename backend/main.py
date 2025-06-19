@@ -15,7 +15,7 @@ from common.core.response_middleware import ResponseMiddleware, exception_handle
 from alembic.config import Config
 from alembic import command
 from fastapi_mcp import FastApiMCP
-
+import sqlbot_xpack
 
 def run_migrations():
     alembic_cfg = Config("alembic.ini")
@@ -88,6 +88,7 @@ else:
 
 mcp.setup_server()
 
+sqlbot_xpack.init_fastapi_app(app)
 if __name__ == "__main__":
     import uvicorn
 
