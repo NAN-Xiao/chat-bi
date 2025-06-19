@@ -55,14 +55,13 @@ const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.val
 <style lang="less" scoped>
 .wrapper-outer {
   position: absolute;
-
+  overflow: hidden;
   .wrapper-inner {
     width: 100%;
     height: 100%;
     position: relative;
     background: #fff;
     background-size: 100% 100% !important;
-
     .wrapper-inner-adaptor {
       position: relative;
       transform-style: preserve-3d;

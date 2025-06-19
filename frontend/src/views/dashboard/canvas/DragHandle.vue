@@ -60,7 +60,7 @@ const shadowStyle = (size: number, index: number) => {
 .dragHandle {
   background: #c1e2e8;
   position: absolute;
-  cursor: move;
+  cursor: move !important;
   z-index: 3;
 }
 </style>

@@ -272,6 +272,7 @@ const addChatChart = (views: any) => {
       width: 300px;
       text-align: left;
       color: #a6a6a6;
+      display: none;
 
       .opt-icon-redo {
         margin-left: 12px;

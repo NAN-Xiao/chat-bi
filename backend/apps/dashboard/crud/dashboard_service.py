@@ -71,7 +71,7 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     record.node_type = dashboard.node_type
     record.component_data = dashboard.component_data
     record.canvas_style_data = dashboard.canvas_style_data
-    record.canvas_views = dashboard.canvas_views
+    record.canvas_view_info = dashboard.canvas_view_info
     session.add(record)
     session.flush()
     session.refresh(record)
@@ -86,7 +86,7 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     record.update_time = int(time.time())
     record.component_data = dashboard.component_data
     record.canvas_style_data = dashboard.canvas_style_data
-    record.canvas_views = dashboard.canvas_views
+    record.canvas_view_info = dashboard.canvas_view_info
     session.add(record)
     session.commit()
     return record

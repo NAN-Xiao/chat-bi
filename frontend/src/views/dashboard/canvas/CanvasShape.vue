@@ -2,6 +2,8 @@
 import { type CanvasItem } from '@/utils/canvas.ts'
 import { ref, toRefs, type PropType } from 'vue'
 import ResizeHandle from '@/views/dashboard/canvas/ResizeHandle.vue'
+import DragHandle from '@/views/dashboard/canvas/DragHandle.vue'
+import ComponentBar from '@/views/dashboard/canvas/ComponentBar.vue'
 
 const shapeRef = ref(null)
 // Props
@@ -38,6 +40,10 @@ const props = defineProps({
       return {}
     },
   },
+  canvasId: {
+    type: String,
+    default: 'canvas-main',
+  },
 })
 
 const { draggable } = toRefs(props)
@@ -61,6 +67,13 @@ const shapeClick = (e: MouseEvent) => {
     @click="shapeClick"
     @mousedown="startMove($event, configItem, itemIndex)"
   >
+    <component-bar
+      :config-item="configItem"
+      :active="active"
+      :show-position="'canvas'"
+      :canvas-id="canvasId"
+    ></component-bar>
+    <drag-handle></drag-handle>
     <slot></slot>
     <resize-handle
       v-if="active"

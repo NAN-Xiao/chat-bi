@@ -6,7 +6,8 @@ import { type CanvasCoord, type CanvasItem } from '@/utils/canvas.ts'
 import CanvasShape from './CanvasShape.vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import { storeToRefs } from 'pinia'
-import { useEmittLazy } from '@/utils/useEmitt.ts'
+import { useEmitt, useEmittLazy } from '@/utils/useEmitt.ts'
+import html2canvas from 'html2canvas'
 
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
@@ -815,7 +816,6 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
     infoBox.value.moveItem = item
     infoBox.value.moveItemIndex = index
   }
-
   infoBox.value.cloneItem = null
   infoBox.value.nowItemNode = null
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -829,6 +829,15 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
     infoBox.value.cloneItem = infoBox.value.nowItemNode.cloneNode(true)
   }
   infoBox.value.cloneItem.classList.add('cloneNode')
+  const img = new Image()
+  img.classList.add('clone_img')
+  const clonedSlot = infoBox.value.nowItemNode.querySelector('.slot-component')
+
+  html2canvas(clonedSlot).then((canvas) => {
+    img.src = canvas.toDataURL()
+    infoBox.value.cloneItem.appendChild(img)
+  })
+
   if (containerRef.value) {
     containerRef.value.append(infoBox.value.cloneItem)
   }
@@ -1130,6 +1139,11 @@ function tabMoveInCheckSQ() {
   }
 }
 
+useEmitt({
+  name: `editor-delete-${props.canvasId}`,
+  callback: removeItemById,
+})
+
 onMounted(() => {
   currentInstance = getCurrentInstance()
 })
@@ -1171,12 +1185,13 @@ defineExpose({
         :move-animate="moveAnimate"
         :start-move="startMove"
         :start-resize="startResize"
+        :canvas-id="canvasId"
         :style="nowItemStyle(item)"
       >
         <component
           :is="findComponent(item.component)"
           :ref="'shape_component_' + item.id"
-          class="sql-component dragHandle"
+          class="sql-component slot-component dragHandle"
           :config-item="item"
           :view-info="canvasViewInfo[item.id]"
           @parent-add-item-box="(subItem: any) => addItemBox(subItem)"

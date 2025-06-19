@@ -41,9 +41,9 @@ export const useEmitt = (option?: Option) => {
  * Debounced event emitter
  * @param eventName - Name of the event to emit
  * @param params - Parameters to pass with the event
- * @param delay - Debounce delay in milliseconds (default: 300ms)
+ * @param delay - Debounce delay in milliseconds (default: 200ms)
  */
-export const useEmittLazy = (eventName: string, params: any = null, delay = 500) => {
+export const useEmittLazy = (eventName: string, params: any = null, delay = 150) => {
   // If there's already a pending execution, skip this call
   if (lazyDebounceMap.has(eventName)) {
     const entry = lazyDebounceMap.get(eventName)!

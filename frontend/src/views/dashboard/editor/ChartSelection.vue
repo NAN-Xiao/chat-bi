@@ -36,6 +36,7 @@ const curSelectChange = (value: boolean) => {
   position: relative;
   padding: 15px;
   float: left;
+  overflow: hidden;
   .select-area {
     position: absolute;
     top: 20px;

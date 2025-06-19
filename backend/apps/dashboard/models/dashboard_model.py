@@ -50,7 +50,7 @@ class CoreDashboard(SQLModel, table=True):
         default=None,
         sa_column=Column(Text, nullable=True)
     )
-    canvas_views: str = Field(
+    canvas_view_info: str = Field(
         default=None,
         sa_column=Column(Text, nullable=True)
     )
@@ -160,5 +160,5 @@ class QueryDashboard(BaseDashboard):
 class CreateDashboard(QueryDashboard):
     canvas_style_data: str =''
     component_data: str = ''
-    canvas_views: str = ''
+    canvas_view_info: str = ''
     description: str = ''

@@ -9,6 +9,7 @@ import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { storeToRefs } from 'pinia'
 import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
+import { useEmittLazy } from '@/utils/useEmitt.ts'
 
 const props = defineProps({
   canvasStyleData: {
@@ -48,7 +49,7 @@ const props = defineProps({
   },
 })
 
-const { canvasStyleData, componentData, showPosition, canvasId } = toRefs(props)
+const { componentData, showPosition, canvasId } = toRefs(props)
 const domId = 'preview-' + canvasId.value
 const previewCanvas = ref(null)
 const renderReady = ref(true)
@@ -93,6 +94,7 @@ const sizeInit = () => {
     cellWidth.value = baseWidth.value + baseMarginLeft.value
     cellHeight.value = baseHeight.value + baseMarginTop.value
   }
+  useEmittLazy('view-render-all')
 }
 
 onMounted(() => {
@@ -120,7 +122,7 @@ defineExpose({
         :key="index"
         :active="!!curComponent && item.id === curComponent['id']"
         :config-item="item"
-        :canvas-view-info="canvasStyleData"
+        :canvas-view-info="canvasViewInfo"
         :show-position="showPosition"
         :canvas-id="canvasId"
         :style="nowItemStyle(item)"

@@ -13,17 +13,17 @@ import { initCanvasData } from '@/views/dashboard/utils/canvasUtils.ts'
 const dashboardStore = dashboardStoreWithOut()
 const { componentData, canvasViewInfo } = storeToRefs(dashboardStore)
 
-const dataInitState = ref(false)
+const dataInitState = ref(true)
 const state = reactive({
   routerPid: null,
   resourceId: null,
   opt: null,
 })
 
-const dashboardEditorRef = ref(null)
+const dashboardEditorInnerRef = ref(null)
 const addComponent = (componentType: string, viewInfo?: any) => {
   const component = cloneDeep(findNewComponentFromList(componentType))
-  if (component && dashboardEditorRef.value) {
+  if (component && dashboardEditorInnerRef.value) {
     component.id = guid()
     // add view
     if (component?.component === 'SQView' && !!viewInfo) {
@@ -38,7 +38,7 @@ const addComponent = (componentType: string, viewInfo?: any) => {
       component.activeTabName = subTabName
     }
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    dashboardEditorRef.value.addItemToBox(component)
+    dashboardEditorInnerRef.value.addItemToBox(component)
   }
 }
 
@@ -77,7 +77,7 @@ const baseParams = computed(() => {
     <Toolbar :base-params="baseParams" @add-component="addComponent"></Toolbar>
     <DashboardEditor
       v-if="dataInitState"
-      ref="dashboardEditorRef"
+      ref="dashboardEditorInnerRef"
       :canvas-component-data="componentData"
       :canvas-view-info="canvasViewInfo"
     >
