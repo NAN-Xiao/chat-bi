@@ -42,8 +42,7 @@ export class Column extends BaseG2Chart {
       })
       .label({
         text: y[0].value,
-        position: 'inside',
-        transform: [{ type: 'overlapDodgeY' }],
+        transform: [{ type: 'overlapDodgeY' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
       })
 
     if (series.length > 0) {
