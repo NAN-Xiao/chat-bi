@@ -3,6 +3,7 @@ import type { ChatMessage } from '@/api/chat.ts'
 import { computed, nextTick, ref } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
 import ChartComponent from './component/ChartComponent.vue'
+import MdComponent from './component/MdComponent.vue'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import { ArrowDown } from '@element-plus/icons-vue'
 import ICON_BAR from '@/assets/svg/chart/bar.svg'
@@ -27,13 +28,20 @@ const settings = ref<{
 })
 
 const renderSqlThinking = computed(() => {
-  //todo md render?
-  return props.message?.record?.sql_answer
+  return props.message?.record?.sql_answer ?? ''
 })
 
 const renderChartThinking = computed(() => {
-  //todo md render?
-  return props.message?.record?.chart_answer
+  return props.message?.record?.chart_answer ?? ''
+})
+
+const renderSQL = computed(() => {
+  return props.message?.record?.sql
+    ? `\`\`\`sql
+
+${props.message?.record?.sql}
+    `
+    : ''
 })
 
 const dataObject = computed<{
@@ -212,7 +220,7 @@ function onTypeChange() {
     <el-container direction="vertical">
       <template v-if="message.record">
         <el-collapse expand-icon-position="left">
-          <el-collapse-item name="1">
+          <el-collapse-item name="1" class="md-collapse">
             <template #title>
               {{ t('chat.inference_process') }}
               <el-icon v-if="props.message?.isTyping">
@@ -222,12 +230,15 @@ function onTypeChange() {
             <div>
               <template v-if="message.record.sql_answer">
                 <div style="font-weight: 500">{{ t('chat.sql_generation') }}:</div>
-                <div v-if="message.record.sql_answer" v-dompurify-html="renderSqlThinking"></div>
+                <MdComponent
+                  v-if="message.record.sql_answer"
+                  :message="renderSqlThinking"
+                ></MdComponent>
               </template>
               <template v-if="message.record.chart_answer">
                 <el-divider></el-divider>
                 <div style="font-weight: 500">{{ t('chat.chart_generation') }}:</div>
-                <div v-dompurify-html="renderChartThinking"></div>
+                <MdComponent :message="renderChartThinking"></MdComponent>
               </template>
             </div>
           </el-collapse-item>
@@ -235,9 +246,7 @@ function onTypeChange() {
         <div class="answer-content">
           <template v-if="settings.type === 'sql'">
             <div>
-              <div v-if="message.record.sql">
-                {{ message.record.sql }}
-              </div>
+              <MdComponent v-if="message.record.sql" :message="renderSQL"></MdComponent>
             </div>
           </template>
           <template v-else-if="settings.type === 'chart'">
@@ -293,6 +302,12 @@ function onTypeChange() {
   flex-direction: row;
   align-items: center;
   gap: 4px;
+}
+
+.md-collapse {
+  :deep(.ed-collapse-item__content) {
+    padding: 16px 22px;
+  }
 }
 
 .base-chart-choose-btn {

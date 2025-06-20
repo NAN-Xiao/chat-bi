@@ -276,6 +276,9 @@ function deleteChat(id: number | undefined): Promise<string> {
 function analysis(record_id: number | undefined) {
   return request.fetchStream(`/chat/record/${record_id}/analysis`, {})
 }
+function predict(record_id: number | undefined) {
+  return request.fetchStream(`/chat/record/${record_id}/predict`, {})
+}
 
 export const chatApi = {
   toChatRecord,
@@ -288,4 +291,5 @@ export const chatApi = {
   renameChat,
   deleteChat,
   analysis,
+  predict,
 }

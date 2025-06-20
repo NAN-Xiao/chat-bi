@@ -34,10 +34,20 @@
               <template v-if="message.role === 'assistant'">
                 <ChatAnswer :message="message">
                   <template #footer>
-                    <el-button text type="primary" @click="clickAnalysis(message.record?.id)">{{
-                      t('chat.data_analysis')
-                    }}</el-button>
-                    {{ message.record?.analysis }}
+                    <div style="padding: 0 22px; display: flex; justify-content: flex-end">
+                      <el-button text type="primary" @click="clickAnalysis(message.record?.id)">
+                        {{ t('chat.data_analysis') }}
+                      </el-button>
+                      <el-button text type="primary" @click="clickPredict(message.record?.id)">
+                        {{ t('chat.data_predict') }}
+                      </el-button>
+                    </div>
+                    <div class="analysis-container">
+                      <MdComponent
+                        v-if="message.record?.analysis || isAnalysisTyping"
+                        :message="message.record?.analysis"
+                      />
+                    </div>
                   </template>
                 </ChatAnswer>
               </template>
@@ -90,6 +100,7 @@ import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } fr
 import ChatList from './ChatList.vue'
 import ChatRow from './ChatRow.vue'
 import ChatAnswer from './ChatAnswer.vue'
+import MdComponent from './component/MdComponent.vue'
 import { useI18n } from 'vue-i18n'
 import { find } from 'lodash-es'
 
@@ -115,6 +126,7 @@ const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
 const isTyping = ref<boolean>(false)
 const isAnalysisTyping = ref<boolean>(false)
+const isPredictTyping = ref<boolean>(false)
 
 const computedMessages = computed<Array<ChatMessage>>(() => {
   const welcome: ChatMessage = {
@@ -306,6 +318,16 @@ const sendMessage = async () => {
           throw err
         }
 
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          isTyping.value = false
+          return
+        }
+
         switch (data.type) {
           case 'id':
             currentChat.value.records[currentChat.value.records.length - 1].id = data.id
@@ -412,14 +434,22 @@ async function clickAnalysis(id?: number) {
           throw err
         }
 
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          isAnalysisTyping.value = false
+          return
+        }
+
         switch (data.type) {
           case 'info':
             console.log(data.msg)
             break
           case 'error':
-            currentRecord.error = data.content
-            isAnalysisTyping.value = false
-            break
+            throw Error(data.content)
           case 'analysis-result':
             analysis_answer += data.content
             currentChat.value.records[_index].analysis = analysis_answer
@@ -432,15 +462,107 @@ async function clickAnalysis(id?: number) {
       }
     }
   } catch (error) {
-    if (!currentRecord.error) {
-      currentRecord.error = ''
-    }
-    if (currentRecord.error.trim().length !== 0) {
-      currentRecord.error = currentRecord.error + '\n'
-    }
-    currentRecord.error = currentRecord.error + 'Error:' + error
     console.error('Error:', error)
+    ElMessage({
+      message: error + '',
+      type: 'error',
+      showClose: true,
+    })
     isAnalysisTyping.value = false
+  }
+}
+
+async function clickPredict(id?: number) {
+  let _index = -1
+  const currentRecord = find(currentChat.value.records, (value, index) => {
+    if (id === value.id) {
+      _index = index
+      return true
+    }
+    return false
+  })
+  if (currentRecord == undefined) {
+    return
+  }
+  currentChat.value.records[_index].predict = ''
+
+  try {
+    const response = await chatApi.predict(id)
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    let predict_answer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        isPredictTyping.value = false
+        break
+      }
+
+      const chunk = decoder.decode(value)
+
+      let _list = [chunk]
+
+      const lines = chunk.trim().split('}\n\n{')
+      if (lines.length > 1) {
+        _list = []
+        for (let line of lines) {
+          if (!line.trim().startsWith('{')) {
+            line = '{' + line.trim()
+          }
+          if (!line.trim().endsWith('}')) {
+            line = line.trim() + '}'
+          }
+          _list.push(line)
+        }
+      }
+
+      console.log(_list)
+
+      for (const str of _list) {
+        let data
+        try {
+          data = JSON.parse(str)
+        } catch (err) {
+          console.error('JSON string:', str)
+          throw err
+        }
+
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          return
+        }
+
+        switch (data.type) {
+          case 'info':
+            console.log(data.msg)
+            break
+          case 'error':
+            throw Error(data.content)
+          case 'predict-result':
+            predict_answer += data.content
+            currentChat.value.records[_index].predict = predict_answer
+            break
+          case 'predict_finish':
+            isPredictTyping.value = false
+            break
+        }
+        await nextTick()
+      }
+    }
+  } catch (error) {
+    console.error('Error:', error)
+    ElMessage({
+      message: error + '',
+      type: 'error',
+      showClose: true,
+    })
+    isPredictTyping.value = false
   }
 }
 
@@ -521,5 +643,12 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   .send-btn {
     min-width: 0;
   }
+}
+
+.analysis-container {
+  color: var(--ed-text-color-primary);
+  font-size: 12px;
+  line-height: 1.7692307692;
+  padding: 16px 22px;
 }
 </style>
