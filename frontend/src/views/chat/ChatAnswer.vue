@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { ChatMessage } from '@/api/chat.ts'
-import { computed, nextTick, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Loading } from '@element-plus/icons-vue'
-import ChartComponent from './component/ChartComponent.vue'
 import MdComponent from './component/MdComponent.vue'
+import DisplayChartBlock from './component/DisplayChartBlock.vue'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import { ArrowDown } from '@element-plus/icons-vue'
 import ICON_BAR from '@/assets/svg/chart/bar.svg'
@@ -68,25 +68,6 @@ const chartObject = computed<{
     return JSON.parse(props.message.record.chart)
   }
   return {}
-})
-
-const xAxis = computed(() => {
-  if (chartObject.value?.axis?.x) {
-    return [chartObject.value.axis.x]
-  }
-  return []
-})
-const yAxis = computed(() => {
-  if (chartObject.value?.axis?.y) {
-    return [chartObject.value.axis.y]
-  }
-  return []
-})
-const series = computed(() => {
-  if (chartObject.value?.axis?.series) {
-    return [chartObject.value.axis.series]
-  }
-  return []
 })
 
 const currentChartType = ref<ChartTypes | undefined>(undefined)
@@ -163,10 +144,7 @@ const currentChartTypeIcon = computed(() => {
 const chartRef = ref()
 
 function onTypeChange() {
-  nextTick(() => {
-    chartRef.value?.destroyChart()
-    chartRef.value?.renderChart()
-  })
+  chartRef.value?.onTypeChange()
 }
 </script>
 
@@ -250,23 +228,13 @@ function onTypeChange() {
             </div>
           </template>
           <template v-else-if="settings.type === 'chart'">
-            <div>
-              <div v-if="message.record.chart" class="chart-base-container">
-                <div>
-                  <ChartComponent
-                    v-if="message.record.id"
-                    :id="message.record.id"
-                    ref="chartRef"
-                    :type="chartType"
-                    :columns="chartObject?.columns"
-                    :x="xAxis"
-                    :y="yAxis"
-                    :series="series"
-                    :data="dataObject.data"
-                  />
-                </div>
-              </div>
-            </div>
+            <DisplayChartBlock
+              :id="message.record.id"
+              ref="chartRef"
+              :chart-type="chartType"
+              :message="message"
+              :data="dataObject.data"
+            />
             <div v-if="message.record.error" style="color: red">
               {{ message.record.error }}
             </div>
@@ -274,7 +242,7 @@ function onTypeChange() {
         </div>
       </template>
     </el-container>
-    <slot name="footer"></slot>
+    <slot :data="{ id: message.record?.id, chartType: chartType, chartObject: chartObject }"></slot>
   </el-container>
 </template>
 

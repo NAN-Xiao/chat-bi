@@ -40,6 +40,7 @@ class ChatRecord(SQLModel, table=True):
     chart: str = Field(sa_column=Column(Text, nullable=True))
     analysis: str = Field(sa_column=Column(Text, nullable=True))
     predict: str = Field(sa_column=Column(Text, nullable=True))
+    predict_data: str = Field(sa_column=Column(Text, nullable=True))
     full_sql_message: str = Field(sa_column=Column(Text, nullable=True))
     full_chart_message: str = Field(sa_column=Column(Text, nullable=True))
     full_analysis_message: str = Field(sa_column=Column(Text, nullable=True))

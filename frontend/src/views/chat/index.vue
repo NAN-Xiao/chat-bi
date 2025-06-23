@@ -32,23 +32,36 @@
               :msg="message"
             >
               <template v-if="message.role === 'assistant'">
-                <ChatAnswer :message="message">
-                  <template #footer>
-                    <div style="padding: 0 22px; display: flex; justify-content: flex-end">
-                      <el-button text type="primary" @click="clickAnalysis(message.record?.id)">
-                        {{ t('chat.data_analysis') }}
-                      </el-button>
-                      <el-button text type="primary" @click="clickPredict(message.record?.id)">
-                        {{ t('chat.data_predict') }}
-                      </el-button>
-                    </div>
-                    <div class="analysis-container">
-                      <MdComponent
-                        v-if="message.record?.analysis || isAnalysisTyping"
-                        :message="message.record?.analysis"
+                <ChatAnswer v-slot="{ data }" :message="message">
+                  <div style="padding: 0 22px; display: flex; justify-content: flex-end">
+                    <el-button text type="primary" @click="clickAnalysis(message.record?.id)">
+                      {{ t('chat.data_analysis') }}
+                    </el-button>
+                    <el-button text type="primary" @click="clickPredict(message.record?.id)">
+                      {{ t('chat.data_predict') }}
+                    </el-button>
+                  </div>
+                  <div class="analysis-container">
+                    <MdComponent
+                      v-if="message.record?.analysis || isAnalysisTyping"
+                      :message="message.record?.analysis"
+                    />
+                    <el-divider
+                      v-if="
+                        (message.record?.analysis || isAnalysisTyping) &&
+                        (message.record?.predict || isPredictTyping)
+                      "
+                    />
+                    <template v-if="message.record?.predict || isPredictTyping">
+                      <MdComponent :message="message.record?.predict" />
+                      <PredictChartBlock
+                        :id="message.record?.id + '-predict'"
+                        :data="message.record?.predict_data ?? '[]'"
+                        :message="message"
+                        :chart-type="data.chartType"
                       />
-                    </div>
-                  </template>
+                    </template>
+                  </div>
                 </ChatAnswer>
               </template>
               <template v-if="message.role === 'assistant'" #footer>
@@ -67,7 +80,7 @@
         <div class="input-wrapper">
           <el-input
             v-model="inputMessage"
-            :disabled="isTyping"
+            :disabled="isTyping || isPredictTyping || isAnalysisTyping"
             class="input-area"
             type="textarea"
             :rows="1"
@@ -80,7 +93,7 @@
             link
             type="primary"
             class="input-icon"
-            :disabled="isTyping"
+            :disabled="isTyping || isPredictTyping || isAnalysisTyping"
             @click="sendMessage"
           >
             <el-icon size="20">
@@ -101,6 +114,7 @@ import ChatList from './ChatList.vue'
 import ChatRow from './ChatRow.vue'
 import ChatAnswer from './ChatAnswer.vue'
 import MdComponent from './component/MdComponent.vue'
+import PredictChartBlock from './component/PredictChartBlock.vue'
 import { useI18n } from 'vue-i18n'
 import { find } from 'lodash-es'
 
@@ -389,6 +403,7 @@ async function clickAnalysis(id?: number) {
   if (currentRecord == undefined) {
     return
   }
+  isAnalysisTyping.value = true
   currentChat.value.records[_index].analysis = ''
 
   try {
@@ -484,7 +499,9 @@ async function clickPredict(id?: number) {
   if (currentRecord == undefined) {
     return
   }
+  isPredictTyping.value = true
   currentChat.value.records[_index].predict = ''
+  currentChat.value.records[_index].predict_data = ''
 
   try {
     const response = await chatApi.predict(id)
@@ -547,6 +564,9 @@ async function clickPredict(id?: number) {
           case 'predict-result':
             predict_answer += data.content
             currentChat.value.records[_index].predict = predict_answer
+            break
+          case 'predict':
+            currentChat.value.records[_index].predict_data = data.content
             break
           case 'predict_finish':
             isPredictTyping.value = false

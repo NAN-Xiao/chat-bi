@@ -59,8 +59,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     record_list = session.query(ChatRecord).options(
         load_only(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.data,
-                  ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict, ChatRecord.finish,
-                  ChatRecord.error, ChatRecord.run_time)).filter(
+                  ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
+                  ChatRecord.predict_data, ChatRecord.finish, ChatRecord.error, ChatRecord.run_time)).filter(
         and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
 
     chat_info.records = record_list
@@ -178,12 +178,13 @@ def save_full_analysis_message_and_answer(session: SessionDep, record_id: int, a
 
 
 def save_full_predict_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                         full_message: str) -> ChatRecord:
+                                         full_message: str, data: str) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
     record.full_predict_message = full_message
     record.predict = answer
+    record.predict_data = data
 
     result = ChatRecord(**record.model_dump())
 
@@ -242,6 +243,23 @@ def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
     record.chart = chart
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+
+
+def save_predict_data(session: SessionDep, record_id: int, data: str) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.predict_data = data
 
     result = ChatRecord(**record.model_dump())
 

@@ -169,8 +169,14 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     return StreamingResponse(run_task(), media_type="text/event-stream")
 
 
-@router.post("/record/{chart_record_id}/analysis")
-async def analysis(session: SessionDep, current_user: CurrentUser, chart_record_id: int):
+@router.post("/record/{chart_record_id}/{action_type}")
+async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chart_record_id: int, action_type: str):
+    if action_type != 'analysis' and action_type != 'predict':
+        raise HTTPException(
+            status_code=404,
+            detail="Not Found"
+        )
+
     record = session.query(ChatRecord).get(chart_record_id)
     if not record:
         raise HTTPException(
@@ -217,13 +223,29 @@ async def analysis(session: SessionDep, current_user: CurrentUser, chart_record_
 
     def run_task():
         try:
-            # generate analysis
-            analysis_res = llm_service.generate_analysis(session=session)
-            for chunk in analysis_res:
-                yield orjson.dumps({'content': chunk, 'type': 'analysis-result'}).decode() + '\n\n'
-            yield orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
+            if action_type == 'analysis':
+                # generate analysis
+                analysis_res = llm_service.generate_analysis(session=session)
+                for chunk in analysis_res:
+                    yield orjson.dumps({'content': chunk, 'type': 'analysis-result'}).decode() + '\n\n'
+                yield orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
 
-            yield orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
+                yield orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
+
+            elif action_type == 'predict':
+                # generate predict
+                analysis_res = llm_service.generate_predict(session=session)
+                full_text = ''
+                for chunk in analysis_res:
+                    yield orjson.dumps({'content': chunk, 'type': 'predict-result'}).decode() + '\n\n'
+                    full_text += chunk
+                yield orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
+
+                _data = llm_service.check_save_predict_data(session=session, res=full_text)
+                yield orjson.dumps({'type': 'predict', 'content': _data}).decode() + '\n\n'
+
+                yield orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
+
 
         except Exception as e:
             traceback.print_exc()

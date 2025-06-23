@@ -38,6 +38,7 @@ export class ChatRecord {
   chart?: string
   analysis?: string
   predict?: string
+  predict_data?: string
   finish?: boolean = false
   error?: string
   run_time: number = 0
@@ -56,6 +57,7 @@ export class ChatRecord {
     chart: string | undefined,
     analysis: string | undefined,
     predict: string | undefined,
+    predict_data: string | undefined,
     finish: boolean,
     error: string | undefined,
     run_time: number
@@ -73,6 +75,7 @@ export class ChatRecord {
     chart?: string,
     analysis?: string,
     predict?: string,
+    predict_data?: string,
     finish?: boolean,
     error?: string,
     run_time?: number
@@ -89,6 +92,7 @@ export class ChatRecord {
     this.chart = chart
     this.analysis = analysis
     this.predict = predict
+    this.predict_data = predict_data
     this.finish = finish
     this.error = error
     this.run_time = run_time ?? 0
@@ -207,6 +211,7 @@ function toChatRecord(data?: any): ChatRecord | undefined {
     data.chart,
     data.analysis,
     data.predict,
+    data.predict_data,
     data.finish,
     data.error,
     data.run_time
