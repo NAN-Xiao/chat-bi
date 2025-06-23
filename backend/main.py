@@ -43,16 +43,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# mcp_app = FastAPI()
+mcp_app = FastAPI()
+mcp_app.add_middleware(TokenMiddleware)
+mcp_app.include_router(api_router, prefix=settings.API_V1_STR)
 
 mcp = FastApiMCP(
     app,
     name="SQLBot MCP Server",
     description="SQLBot MCP Server",
+    describe_all_responses=True,
+    describe_full_response_schema=True,
     include_operations=["get_datasource_list", "get_model_list", "question"]
 )
 
-mcp.mount(app)
+mcp.mount(mcp_app)
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:
