@@ -43,8 +43,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-mcp_app = FastAPI()
-mcp_app.add_middleware(TokenMiddleware)
+# mcp_app = FastAPI()
 
 mcp = FastApiMCP(
     app,
@@ -53,7 +52,7 @@ mcp = FastApiMCP(
     include_operations=["get_datasource_list", "get_model_list", "question"]
 )
 
-mcp.mount(mcp_app)
+mcp.mount(app)
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:
