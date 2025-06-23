@@ -44,6 +44,7 @@ app = FastAPI(
 )
 
 mcp_app = FastAPI()
+mcp_app.add_middleware(TokenMiddleware)
 
 mcp = FastApiMCP(
     app,
