@@ -24,6 +24,10 @@ export class Pie extends BaseG2Chart {
       .encode('y', y[0].value)
       .encode('color', series[0].value)
       .legend('color', { position: 'bottom', layout: { justifyContent: 'center' } })
+      .label({
+        position: 'outside',
+        text: (data: any) => `${data[series[0].value]}: ${data[y[0].value]}`,
+      })
       .tooltip((data) => {
         return { name: y[0].name, value: data[y[0].value] }
       })
