@@ -25,7 +25,7 @@ wlist = [
     "/mcp/message",
     "/datasource/list",
     "/system/aimodel/list",
-    "/chat/question"
+    "/chat/mcp_question"
 ]
 
 class WhitelistChecker:

@@ -14,7 +14,7 @@ from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.user import get_user_info
 from apps.system.models.system_model import AiModelDetail
-from common.core.deps import SessionDep, CurrentUser
+from common.core.deps import SessionDep, CurrentUser, get_current_user
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
@@ -68,6 +68,12 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
         )
 
 
+@router.post("/mcp_question", operation_id="mcp_question")
+async def mcp_question(session: SessionDep, token: str, request_question: ChatQuestion):
+    user = await get_current_user(session, token)
+    return await stream_sql(session, user, request_question)
+
+
 @router.post("/question", operation_id="question")
 async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion):
     """Stream SQL analysis results
@@ -85,7 +91,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     if not chat:
         raise HTTPException(
             status_code=400,
-            detail=f"Chat with id {request_question.chart_id} not found"
+            detail=f"Chat with id {request_question.chat_id} not found"
         )
 
     # Get available datasource

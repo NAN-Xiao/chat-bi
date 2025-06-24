@@ -15,6 +15,8 @@ from common.core.response_middleware import ResponseMiddleware, exception_handle
 from alembic.config import Config
 from alembic import command
 from fastapi_mcp import FastApiMCP
+
+
 # import sqlbot_xpack
 
 def run_migrations():
@@ -44,8 +46,6 @@ app = FastAPI(
 )
 
 mcp_app = FastAPI()
-mcp_app.add_middleware(TokenMiddleware)
-mcp_app.include_router(api_router, prefix=settings.API_V1_STR)
 
 mcp = FastApiMCP(
     app,
@@ -53,7 +53,7 @@ mcp = FastApiMCP(
     description="SQLBot MCP Server",
     describe_all_responses=True,
     describe_full_response_schema=True,
-    include_operations=["get_datasource_list", "get_model_list", "question"]
+    include_operations=["get_datasource_list", "get_model_list", "mcp_question"]
 )
 
 mcp.mount(mcp_app)
