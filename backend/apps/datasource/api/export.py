@@ -10,13 +10,20 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from common.core.deps import SessionDep
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 
 router = APIRouter(tags=["export"], prefix="/export")
 
 
 @router.get("/png")
 async def export(session: SessionDep):
-    driver = webdriver.Chrome()  # 或者使用webdriver.Firefox()等
+
+
+    options = Options()
+    options.add_argument("--headless")
+    service = Service(executable_path='/root/sqlbot/chromedriver-linux64/chromedriver')
+    driver = webdriver.Chrome(service=service, options=options)  # 或者使用webdriver.Firefox()等
     print('init done')
     # 打开网页
     driver.get('https://g2.antv.antgroup.com/examples/general/interval/#bar-basic')
