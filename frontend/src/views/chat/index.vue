@@ -33,35 +33,47 @@
             >
               <template v-if="message.role === 'assistant'">
                 <ChatAnswer v-slot="{ data }" :message="message">
-                  <div style="padding: 0 22px; display: flex; justify-content: flex-end">
-                    <el-button text type="primary" @click="clickAnalysis(message.record?.id)">
-                      {{ t('chat.data_analysis') }}
-                    </el-button>
-                    <el-button text type="primary" @click="clickPredict(message.record?.id)">
-                      {{ t('chat.data_predict') }}
-                    </el-button>
-                  </div>
-                  <div class="analysis-container">
-                    <MdComponent
-                      v-if="message.record?.analysis || isAnalysisTyping"
-                      :message="message.record?.analysis"
-                    />
-                    <el-divider
-                      v-if="
-                        (message.record?.analysis || isAnalysisTyping) &&
-                        (message.record?.predict || isPredictTyping)
-                      "
-                    />
-                    <template v-if="message.record?.predict || isPredictTyping">
-                      <MdComponent :message="message.record?.predict" />
-                      <PredictChartBlock
-                        :id="message.record?.id + '-predict'"
-                        :data="message.record?.predict_data ?? '[]'"
-                        :message="message"
-                        :chart-type="data.chartType"
+                  <template v-if="message.record?.chart">
+                    <div style="padding: 0 22px; display: flex; justify-content: flex-end">
+                      <el-button
+                        text
+                        type="primary"
+                        :disabled="isTyping || isPredictTyping || isAnalysisTyping"
+                        @click="clickAnalysis(message.record?.id)"
+                      >
+                        {{ t('chat.data_analysis') }}
+                      </el-button>
+                      <el-button
+                        text
+                        type="primary"
+                        :disabled="isTyping || isPredictTyping || isAnalysisTyping"
+                        @click="clickPredict(message.record?.id)"
+                      >
+                        {{ t('chat.data_predict') }}
+                      </el-button>
+                    </div>
+                    <div class="analysis-container">
+                      <MdComponent
+                        v-if="message.record?.analysis || isAnalysisTyping"
+                        :message="message.record?.analysis"
                       />
-                    </template>
-                  </div>
+                      <el-divider
+                        v-if="
+                          (message.record?.analysis || isAnalysisTyping) &&
+                          (message.record?.predict || isPredictTyping)
+                        "
+                      />
+                      <template v-if="message.record?.predict || isPredictTyping">
+                        <MdComponent :message="message.record?.predict" />
+                        <PredictChartBlock
+                          :id="message.record?.id + '-predict'"
+                          :data="message.record?.predict_data ?? '[]'"
+                          :message="message"
+                          :chart-type="data.chartType"
+                        />
+                      </template>
+                    </div>
+                  </template>
                 </ChatAnswer>
               </template>
               <template v-if="message.role === 'assistant'" #footer>
@@ -321,7 +333,7 @@ const sendMessage = async () => {
         }
       }
 
-      console.log(_list)
+      // console.log(_list)
 
       for (const str of _list) {
         let data
@@ -438,7 +450,7 @@ async function clickAnalysis(id?: number) {
         }
       }
 
-      console.log(_list)
+      // console.log(_list)
 
       for (const str of _list) {
         let data
@@ -535,7 +547,7 @@ async function clickPredict(id?: number) {
         }
       }
 
-      console.log(_list)
+      // console.log(_list)
 
       for (const str of _list) {
         let data
