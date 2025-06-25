@@ -25,9 +25,6 @@
         @click="editDs(undefined)"
         >{{ t('ds.add') }}</el-button
       >
-      <el-button class="border-radius_8" type="primary" :icon="IconOpeAdd" @click="exportPng"
-        >export</el-button
-      >
     </div>
 
     <div class="connections-container">
@@ -77,17 +74,6 @@ const dsList = ref<any>([]) // show ds list
 const allDsList = ref<any>([]) // all ds list
 const router = useRouter()
 const loading = ref(false)
-
-const exportPng = () => {
-  datasourceApi
-    .exportFromServer()
-    .then(() => {
-      console.log('export success')
-    })
-    .catch((e) => {
-      console.log(e)
-    })
-}
 
 function searchHandle() {
   if (searchValue.value) {

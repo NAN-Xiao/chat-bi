@@ -19,5 +19,4 @@ export const datasourceApi = {
   saveTable: (data: any) => request.post('/datasource/editTable', data),
   saveField: (data: any) => request.post('/datasource/editField', data),
   getDs: (id: number) => request.post(`/datasource/get/${id}`),
-  exportFromServer: () => request.get('/export/png'),
 }
