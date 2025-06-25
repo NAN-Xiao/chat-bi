@@ -30,7 +30,7 @@ async def export(session: SessionDep):
     driver = webdriver.Chrome(service=service, options=options)  # 或者使用webdriver.Firefox()等
     print('init done')
     # 打开网页
-    driver.get('https://g2.antv.antgroup.com/examples/general/interval/#bar-basic')
+    driver.get('https://g2.antv.antgroup.com/examples/general/pie/#pie-base')
     driver.set_window_size(width=1920, height=1080)
 
     # 等待页面加载完成（根据需要调整时间）
@@ -39,7 +39,6 @@ async def export(session: SessionDep):
         # 等待直到某个元素加载完成，例如某个具体的元素或者某个时间（例如10秒）
         print("started driver")
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "canvas")))
-        time.sleep(2)
     except:
         print("Timeout")
 
