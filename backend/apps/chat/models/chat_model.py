@@ -18,7 +18,7 @@ class Chat(SQLModel, table=True):
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
     brief: str = Field(max_length=64, nullable=True)
     chat_type: str = Field(max_length=20, default="chat")  # chat, datasource
-    datasource: int = Field(sa_column=Column(Integer, nullable=False))
+    datasource: int = Field(sa_column=Column(Integer, nullable=True))
     engine_type: str = Field(max_length=64)
 
 
