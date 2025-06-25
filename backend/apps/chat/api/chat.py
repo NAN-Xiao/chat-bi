@@ -63,7 +63,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
         return create_chat(session, current_user, create_chat_obj)
     except Exception as e:
         raise HTTPException(
-            status_code=400,
+            status_code=500,
             detail=str(e)
         )
 

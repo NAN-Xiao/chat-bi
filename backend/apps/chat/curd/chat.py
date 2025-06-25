@@ -79,7 +79,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
         raise Exception("Datasource cannot be None")
 
     if not create_chat_obj.question or create_chat_obj.question.strip() == '':
-        raise Exception("Question cannot be Empty")
+        create_chat_obj.question = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     chat = Chat(create_time=datetime.datetime.now(),
                 create_by=current_user.id,

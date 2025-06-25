@@ -52,7 +52,7 @@ class ChatRecord(SQLModel, table=True):
 
 class CreateChat(BaseModel):
     id: int = None
-    question: str = ''
+    question: str = None
     datasource: int = None
 
 

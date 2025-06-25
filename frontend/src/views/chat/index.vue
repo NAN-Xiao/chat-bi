@@ -24,7 +24,20 @@
     </el-aside>
     <el-container :loading="loading">
       <el-main class="chat-record-list">
-        <el-scrollbar ref="chatListRef">
+        <div v-if="computedMessages.length == 0" class="welcome-content-block">
+          <div class="welcome-content">
+            <div class="logo">SQLBot</div>
+            <div>{{ t('qa.greeting') }}</div>
+            <div class="sub">{{ t('qa.description') }}</div>
+            <el-button size="large" type="primary" @click="createNewChat">
+              <el-icon>
+                <Plus />
+              </el-icon>
+              {{ t('qa.New Conversation') }}
+            </el-button>
+          </div>
+        </div>
+        <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef">
           <template v-for="(message, _index) in computedMessages" :key="_index">
             <ChatRow
               v-model:datasource="currentChat.datasource"
@@ -83,7 +96,7 @@
           </template>
         </el-scrollbar>
       </el-main>
-      <el-footer class="chat-footer">
+      <el-footer v-if="computedMessages.length > 0" class="chat-footer">
         <div style="height: 24px">
           <template v-if="currentChat.datasource && currentChat.datasource_name">
             {{ t('ds.title') }}：{{ currentChat.datasource_name }}
@@ -115,6 +128,8 @@
         </div>
       </el-footer>
     </el-container>
+
+    <ChatCreator ref="chatCreatorRef" @on-chat-created="onChatCreated" />
   </el-container>
 </template>
 
@@ -127,6 +142,7 @@ import ChatRow from './ChatRow.vue'
 import ChatAnswer from './ChatAnswer.vue'
 import MdComponent from './component/MdComponent.vue'
 import PredictChartBlock from './component/PredictChartBlock.vue'
+import ChatCreator from './ChatCreator.vue'
 import { useI18n } from 'vue-i18n'
 import { find } from 'lodash-es'
 
@@ -135,6 +151,7 @@ const { t } = useI18n()
 const inputMessage = ref('')
 
 const chatListRef = ref()
+const chatCreatorRef = ref()
 
 function scrollToBottom() {
   nextTick(() => {
@@ -155,17 +172,18 @@ const isAnalysisTyping = ref<boolean>(false)
 const isPredictTyping = ref<boolean>(false)
 
 const computedMessages = computed<Array<ChatMessage>>(() => {
-  const welcome: ChatMessage = {
+  const firstMessage: ChatMessage = {
     role: 'assistant',
     create_time: currentChat.value?.create_time,
     content: currentChat.value?.datasource,
     isTyping: false,
     isWelcome: true,
   }
-  const messages: Array<ChatMessage> = [welcome]
+  const messages: Array<ChatMessage> = []
   if (currentChatId.value === undefined) {
     return messages
   }
+  messages.push(firstMessage)
   for (let i = 0; i < currentChat.value.records.length; i++) {
     const record = currentChat.value.records[i]
     if (record.question !== undefined) {
@@ -186,10 +204,15 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
   return messages
 })
 
-const createNewChat = () => {
+const goEmpty = () => {
   currentChat.value = new ChatInfo()
   currentChatId.value = undefined
   inputMessage.value = ''
+}
+
+const createNewChat = () => {
+  goEmpty()
+  chatCreatorRef.value?.showDs()
 }
 
 function getChatList() {
@@ -229,8 +252,11 @@ function onChatDeleted(id: number) {
   for (let i = 0; i < chatList.value.length; i++) {
     if (chatList.value[i].id === id) {
       chatList.value.splice(i, 1)
-      return
+      break
     }
+  }
+  if (id === currentChatId.value) {
+    goEmpty()
   }
 }
 
@@ -243,6 +269,12 @@ function onChatRenamed(chat: Chat) {
   if (currentChat.value.id === chat.id) {
     currentChat.value.brief = chat.brief
   }
+}
+
+function onChatCreated(chat: ChatInfo) {
+  chatList.value.unshift(chat)
+  currentChatId.value = chat.id
+  currentChat.value = chat
 }
 
 onMounted(() => {
@@ -268,32 +300,9 @@ const sendMessage = async () => {
   currentChat.value.records.push(currentRecord)
   inputMessage.value = ''
 
-  let error = false
+  let error: boolean = false
   if (currentChatId.value === undefined) {
-    await chatApi
-      .startChat({
-        question: currentRecord.question.trim(),
-        datasource: currentChat.value.datasource,
-      })
-      .then((res) => {
-        const chat = chatApi.toChatInfo(res)
-        if (chat !== undefined) {
-          chatList.value.unshift(chat)
-          currentChatId.value = chat.id
-          chat.records.push(currentRecord)
-          currentChat.value = chat
-        } else {
-          error = true
-        }
-      })
-      .catch((e) => {
-        isTyping.value = false
-        error = true
-        console.error(e)
-      })
-      .finally(() => {
-        loading.value = false
-      })
+    error = true
   }
   if (error) return
 
@@ -682,5 +691,37 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   font-size: 12px;
   line-height: 1.7692307692;
   padding: 16px 22px;
+}
+
+.welcome-content-block {
+  height: 100%;
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  .welcome-content {
+    padding: 12px;
+
+    width: fit-content;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-direction: column;
+
+    .logo {
+      line-height: 60px;
+      font-size: 3em;
+      font-weight: bold;
+      color: var(--el-color-primary);
+      text-align: left;
+    }
+
+    .sub {
+      color: grey;
+      font-size: 0.8em;
+    }
+  }
 }
 </style>
