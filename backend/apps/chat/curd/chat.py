@@ -74,8 +74,8 @@ def list_records(session: SessionDep, chart_id: int, current_user: CurrentUser) 
     return record_list
 
 
-def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat) -> ChatInfo:
-    if not create_chat_obj.datasource:
+def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat, require_datasource: bool = True) -> ChatInfo:
+    if not create_chat_obj.datasource and require_datasource:
         raise Exception("Datasource cannot be None")
 
     if not create_chat_obj.question or create_chat_obj.question.strip() == '':
@@ -83,15 +83,16 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
 
     chat = Chat(create_time=datetime.datetime.now(),
                 create_by=current_user.id,
-                brief=create_chat_obj.question.strip()[:20],
-                datasource=create_chat_obj.datasource)
+                brief=create_chat_obj.question.strip()[:20])
+    ds: CoreDatasource = None
+    if create_chat_obj.datasource:
+        chat.datasource = create_chat_obj.datasource
+        ds = session.query(CoreDatasource).filter(CoreDatasource.id == create_chat_obj.datasource).first()
 
-    ds = session.query(CoreDatasource).filter(CoreDatasource.id == create_chat_obj.datasource).first()
+        if not ds:
+            raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
 
-    if not ds:
-        raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
-
-    chat.engine_type = ds.type_name
+        chat.engine_type = ds.type_name
 
     chat_info = ChatInfo(**chat.model_dump())
 
@@ -100,6 +101,13 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
     session.refresh(chat)
     chat_info.id = chat.id
     session.commit()
+
+    if not create_chat_obj.datasource:
+        # use AI to get ds
+
+        if not ds:
+            raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
+
 
     chat_info.datasource_exists = True
     chat_info.datasource_name = ds.name
