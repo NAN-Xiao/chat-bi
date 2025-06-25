@@ -1,26 +1,30 @@
 # Author: Junjun
 # Date: 2025/6/24
 
+import tempfile
 import time
 
 from fastapi import APIRouter
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from common.core.deps import SessionDep
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 
 router = APIRouter(tags=["export"], prefix="/export")
 
 
 @router.get("/png")
 async def export(session: SessionDep):
-
+    user_data_dir = tempfile.mkdtemp()
 
     options = Options()
+    options.add_argument(f"--user-data-dir={user_data_dir}")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--headless")
     service = Service(executable_path='/root/sqlbot/chromedriver-linux64/chromedriver')
     driver = webdriver.Chrome(service=service, options=options)  # 或者使用webdriver.Firefox()等
