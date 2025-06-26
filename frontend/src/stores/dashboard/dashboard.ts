@@ -67,7 +67,27 @@ export const dashboardStore = defineStore('dashboard', {
       // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       this.canvasViewInfo[params.id] = params
     },
-    canvasDataInit() {},
+    canvasDataInit() {
+      this.curComponent = null
+      this.curComponentId = null
+      this.canvasStyleData = {}
+      this.componentData = []
+      this.canvasViewInfo = {}
+      this.dashboardInfo = {
+        id: null,
+        name: null,
+        pid: null,
+        workspaceId: null,
+        status: null,
+        dataState: null,
+        createName: null,
+        updateName: null,
+        createTime: null,
+        updateTime: null,
+        contentId: null,
+        type: null,
+      }
+    },
   },
 })
 

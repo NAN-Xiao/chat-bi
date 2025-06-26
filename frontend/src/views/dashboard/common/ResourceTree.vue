@@ -213,6 +213,7 @@ const addOperation = (params: any) => {
   if (params.opt === 'newLeaf') {
     const newCanvasUrl = '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '')
     window.open(newCanvasUrl, '_self')
+    dashboardStore.canvasDataInit()
   } else {
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit(params)
