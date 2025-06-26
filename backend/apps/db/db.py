@@ -48,11 +48,17 @@ def get_uri(ds: CoreDatasource):
 
 def get_engine(ds: CoreDatasource) -> Engine:
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+    if conf.timeout is None:
+        conf.timeout = 30
     if ds.type == "pg" and (conf.dbSchema is not None and conf.dbSchema != ""):
-        engine = create_engine(get_uri(ds), connect_args={"options": f"-c search_path={conf.dbSchema}"},
-                               pool_timeout=30, pool_size=20, max_overflow=10)
+        engine = create_engine(get_uri(ds),
+                               connect_args={"options": f"-c search_path={conf.dbSchema}",
+                                             "connect_timeout": conf.timeout},
+                               pool_timeout=conf.timeout, pool_size=20, max_overflow=10)
     else:
-        engine = create_engine(get_uri(ds), pool_timeout=30, pool_size=20, max_overflow=10)
+        engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, pool_timeout=conf.timeout,
+                               pool_size=20,
+                               max_overflow=10)
     return engine
 
 
