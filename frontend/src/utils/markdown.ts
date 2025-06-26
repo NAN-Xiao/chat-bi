@@ -4,7 +4,7 @@ import hljs from 'highlight.js'
 const md = new MarkdownIt({
   html: true,
   linkify: true,
-  highlight: (str, lang): string => {
+  highlight: (str: any, lang: any): string => {
     if (lang && hljs.getLanguage(lang)) {
       try {
         return `
