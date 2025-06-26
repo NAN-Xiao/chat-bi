@@ -1,15 +1,19 @@
 <template>
-  <div
-    class="rich-main-class"
-    :class="{ 'edit-model': configItem.editing }"
-    @keydown.stop
-    @keyup.stop
-    @dblclick="setEdit"
-  >
+  <div class="rich-main-class" :class="{ 'edit-model': configItem.editing }" draggable="false">
+    <div
+      draggable="false"
+      :class="{ 'custom-text-content': true, 'preview-text': true, 'layer-hidden': !isDisabled }"
+      @keydown.stop
+      @keyup.stop
+      @mousedown.stop
+      @dblclick.stop="setEdit"
+      v-html="configItem.propValue"
+    ></div>
     <editor
       :id="tinymceId"
       v-model="configItem.propValue"
-      :class="{ 'custom-text-content': true, dragHandle: isDisabled }"
+      draggable="false"
+      :class="{ 'custom-text-content': true, 'layer-hidden': isDisabled }"
       :init="init"
     ></editor>
   </div>
@@ -38,6 +42,8 @@ import '@npkg/tinymce-plugins/letterspacing'
 import { computed, nextTick, type PropType, reactive, toRefs } from 'vue'
 import { onMounted } from 'vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
+const dashboardStore = dashboardStoreWithOut()
 
 const props = defineProps({
   configItem: {
@@ -82,6 +88,7 @@ const isDisabled = computed(() => props.disabled || !configItem.value.editing)
 
 const setEdit = () => {
   configItem.value.editing = true
+  dashboardStore.setCurComponent(configItem.value)
   nextTick(() => {
     editCursor()
   })
@@ -163,9 +170,18 @@ onMounted(() => {
   outline: none !important;
   border: none !important;
   margin: 2px;
+  cursor: text;
 
   ol {
     list-style-type: decimal;
   }
+}
+
+.layer-hidden {
+  display: none !important;
+}
+
+.preview-text {
+  cursor: pointer;
 }
 </style>

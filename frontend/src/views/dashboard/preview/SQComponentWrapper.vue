@@ -45,6 +45,7 @@ const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.val
           :view-info="canvasViewInfo[configItem.id]"
           :config-item="configItem"
           :show-position="showPosition"
+          :disabled="true"
           :active="active"
         />
       </div>
