@@ -409,6 +409,8 @@ const sendMessage = async () => {
     currentRecord.error = currentRecord.error + 'Error:' + error
     console.error('Error:', error)
     isTyping.value = false
+  } finally {
+    loading.value = false
   }
 }
 

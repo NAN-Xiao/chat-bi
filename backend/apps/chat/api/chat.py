@@ -72,7 +72,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 async def mcp_question(session: SessionDep, token: str, request_question: ChatQuestion):
     user = await get_current_user(session, token)
     # return await stream_sql(session, user, request_question)
-    return {"content":"""步骤1: 确定需要查询的字段。
+    return {"content": """步骤1: 确定需要查询的字段。
 我们需要统计上海的订单总数，因此需要从"城市"字段中筛选出值为"上海"的记录，并使用COUNT函数计算这些记录的数量。
 
 步骤2: 确定筛选条件。
@@ -106,16 +106,17 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             status_code=400,
             detail=f"Chat with id {request_question.chat_id} not found"
         )
+    ds: CoreDatasource | None = None
+    if chat.datasource:
+        # Get available datasource
+        ds = session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
+        if not ds:
+            raise HTTPException(
+                status_code=500,
+                detail="No available datasource configuration found"
+            )
 
-    # Get available datasource
-    ds = session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
-    if not ds:
-        raise HTTPException(
-            status_code=500,
-            detail="No available datasource configuration found"
-        )
-
-    request_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
+        request_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
 
     # Get available AI model
     aimodel = session.exec(select(AiModelDetail).where(
@@ -128,14 +129,18 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             detail="No available AI model configuration found"
         )
 
-    history_records: List[ChatRecord] = list_records(session=session, current_user=current_user,
-                                                     chart_id=request_question.chat_id)
+    history_records: List[ChatRecord] = list(filter(lambda r: True if r.first_chat != True else False,
+                                                    list_records(session=session, current_user=current_user,
+                                                                 chart_id=request_question.chat_id)))
     # get schema
-    request_question.db_schema = get_table_schema(session=session, ds=ds)
+    if ds:
+        request_question.db_schema = get_table_schema(session=session, ds=ds)
+
     db_user = get_user_info(session=session, user_id=current_user.id)
     request_question.lang = db_user.language
 
-    llm_service = LLMService(request_question, aimodel, history_records, CoreDatasource(**ds.model_dump()))
+    llm_service = LLMService(request_question, aimodel, history_records,
+                             CoreDatasource(**ds.model_dump()) if ds else None)
 
     llm_service.init_record(session=session, current_user=current_user)
 
@@ -143,6 +148,16 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
         try:
             # return id
             yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
+
+            # select datasource if datasource is none
+            if not ds:
+                ds_res = llm_service.select_datasource(session=session)
+                for chunk in ds_res:
+                    yield orjson.dumps({'content': chunk, 'type': 'datasource-result'}).decode() + '\n\n'
+                yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
+                                    'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
+
+                llm_service.chat_question.db_schema = get_table_schema(session=session, ds=llm_service.ds)
 
             # generate sql
             sql_res = llm_service.generate_sql(session=session)
