@@ -8,7 +8,7 @@
 import { ref } from 'vue'
 import Editor from '@tinymce/tinymce-vue'
 
-const props = defineProps({
+defineProps({
   modelValue: {
     type: String,
     default: '',
