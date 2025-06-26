@@ -13,7 +13,7 @@ from common.core.config import settings
 def get_engine_config():
     return DatasourceConf(username=settings.POSTGRES_USER, password=settings.POSTGRES_PASSWORD,
                           host=settings.POSTGRES_SERVER, port=settings.POSTGRES_PORT, database=settings.POSTGRES_DB,
-                          dbSchema="public")
+                          dbSchema="public", timeout=30)
 
 
 def get_engine_uri(conf: DatasourceConf):

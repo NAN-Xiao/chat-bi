@@ -73,6 +73,7 @@ class DatasourceConf(BaseModel):
     filename: str = ''
     sheets: List = ''
     mode: str = ''
+    timeout: int = 30
 
     def to_dict(self):
         return {
@@ -86,7 +87,8 @@ class DatasourceConf(BaseModel):
             "dbSchema": self.dbSchema,
             "filename": self.filename,
             "sheets": self.sheets,
-            "mode": self.mode
+            "mode": self.mode,
+            "timeout": self.timeout
         }
 
 

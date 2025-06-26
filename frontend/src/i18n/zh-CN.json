@@ -134,7 +134,8 @@
       "connect": {
         "success": "连接成功",
         "failed": "连接失败"
-      }
+      },
+      "timeout":"查询超时(秒)"
     }
   },
   "chat": {

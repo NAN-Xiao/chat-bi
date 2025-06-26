@@ -96,6 +96,9 @@
             <el-input v-model="form.dbSchema" />
             <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
           </el-form-item>
+          <el-form-item :label="t('ds.form.timeout')" prop="timeout">
+            <el-input-number v-model="form.timeout" :min="0" :max="300" controls-position="right" />
+          </el-form-item>
           <span>
             <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
             <span v-if="form.type === 'sqlServer'">2012+</span>
@@ -211,6 +214,7 @@ const form = ref<any>({
   filename: '',
   sheets: [],
   mode: 'service_name',
+  timeout: 30,
 })
 
 const close = () => {
@@ -246,6 +250,7 @@ const open = (item: any, editTable: boolean = false) => {
       form.value.filename = configuration.filename
       form.value.sheets = configuration.sheets
       form.value.mode = configuration.mode
+      form.value.timeout = configuration.timeout ? configuration.timeout : 30
     }
 
     if (editTable) {
@@ -304,6 +309,7 @@ const open = (item: any, editTable: boolean = false) => {
       filename: '',
       sheets: [],
       mode: 'service_name',
+      timeout: 30,
     }
   }
   dialogVisible.value = true
@@ -363,6 +369,7 @@ const buildConf = () => {
       filename: form.value.filename,
       sheets: form.value.sheets,
       mode: form.value.mode,
+      timeout: form.value.timeout,
     })
   )
   const obj = JSON.parse(JSON.stringify(form.value))
@@ -377,6 +384,7 @@ const buildConf = () => {
   delete obj.filename
   delete obj.sheets
   delete obj.mode
+  delete obj.timeout
   return obj
 }
 
