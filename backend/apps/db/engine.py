@@ -13,7 +13,7 @@ from common.core.config import settings
 def get_engine_config():
     return DatasourceConf(username=settings.POSTGRES_USER, password=settings.POSTGRES_PASSWORD,
                           host=settings.POSTGRES_SERVER, port=settings.POSTGRES_PORT, database=settings.POSTGRES_DB,
-                          dbSchema="public", timeout=30)
+                          dbSchema="public", timeout=30) # read engine config
 
 
 def get_engine_uri(conf: DatasourceConf):
@@ -23,7 +23,9 @@ def get_engine_uri(conf: DatasourceConf):
 def get_engine_conn():
     conf = get_engine_config()
     db_url = get_engine_uri(conf)
-    engine = create_engine(db_url, connect_args={"options": f"-c search_path={conf.dbSchema}"}, pool_timeout=300,
+    engine = create_engine(db_url,
+                           connect_args={"options": f"-c search_path={conf.dbSchema}", "connect_timeout": conf.timeout},
+                           pool_timeout=conf.timeout,
                            pool_size=20,
                            max_overflow=10)
     return engine
