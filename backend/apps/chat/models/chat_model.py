@@ -138,5 +138,9 @@ class AiModelQuestion(BaseModel):
 
 
 class ChatQuestion(AiModelQuestion):
-    question: str
-    chat_id: int
+    question: str = ''
+    chat_id: int = 0
+
+
+class ChatToken(ChatQuestion):
+    token:str = ''
