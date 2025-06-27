@@ -1,10 +1,7 @@
 import logging
 from fastapi.concurrency import asynccontextmanager
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-import os
 import sentry_sdk
-from fastapi import FastAPI, Path, HTTPException
+from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -76,19 +73,7 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 app.add_exception_handler(StarletteHTTPException, exception_handler.http_exception_handler)
 app.add_exception_handler(Exception, exception_handler.global_exception_handler)
 
-frontend_dist = os.path.abspath("../frontend/dist")
-if not os.path.exists(frontend_dist):
-    logging.warning(f"The front-end build directory does not exist: {frontend_dist}")
-    logging.warning("Please make sure you have built the front-end project")
 
-else:
-
-    @app.get("/", include_in_schema=False)
-    async def read_index():
-        return FileResponse(path=os.path.join(frontend_dist, "index.html"))
-
-
-    app.mount("/", StaticFiles(directory=frontend_dist), name="static")
 
 mcp.setup_server()
 
