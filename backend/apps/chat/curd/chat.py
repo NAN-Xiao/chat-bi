@@ -96,6 +96,8 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
             raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
 
         chat.engine_type = ds.type_name
+    else:
+        chat.engine_type = ''
 
     chat_info = ChatInfo(**chat.model_dump())
 
