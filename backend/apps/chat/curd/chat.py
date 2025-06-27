@@ -60,6 +60,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         load_only(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.data,
                   ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
+                  ChatRecord.datasource_select_answer, ChatRecord.recommended_question_answer,
+                  ChatRecord.recommended_question,
                   ChatRecord.predict_data, ChatRecord.finish, ChatRecord.error, ChatRecord.run_time)).filter(
         and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
 
@@ -74,7 +76,8 @@ def list_records(session: SessionDep, chart_id: int, current_user: CurrentUser) 
     return record_list
 
 
-def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat, require_datasource: bool = True) -> ChatInfo:
+def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat,
+                require_datasource: bool = True) -> ChatInfo:
     if not create_chat_obj.datasource and require_datasource:
         raise Exception("Datasource cannot be None")
 
@@ -84,7 +87,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
     chat = Chat(create_time=datetime.datetime.now(),
                 create_by=current_user.id,
                 brief=create_chat_obj.question.strip()[:20])
-    ds: CoreDatasource = None
+    ds: CoreDatasource | None = None
     if create_chat_obj.datasource:
         chat.datasource = create_chat_obj.datasource
         ds = session.query(CoreDatasource).filter(CoreDatasource.id == create_chat_obj.datasource).first()
@@ -93,6 +96,8 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
             raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
 
         chat.engine_type = ds.type_name
+    else:
+        chat.engine_type = ''
 
     chat_info = ChatInfo(**chat.model_dump())
 
@@ -102,15 +107,9 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
     chat_info.id = chat.id
     session.commit()
 
-    if not create_chat_obj.datasource:
-        # use AI to get ds
-
-        if not ds:
-            raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
-
-
-    chat_info.datasource_exists = True
-    chat_info.datasource_name = ds.name
+    if ds:
+        chat_info.datasource_exists = True
+        chat_info.datasource_name = ds.name
 
     return chat_info
 
@@ -193,6 +192,30 @@ def save_full_predict_message_and_answer(session: SessionDep, record_id: int, an
     record.full_predict_message = full_message
     record.predict = answer
     record.predict_data = data
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+
+
+def save_full_select_datasource_message_and_answer(session: SessionDep, record_id: int, answer: str,
+                                                   full_message: str, datasource: int = None,
+                                                   engine_type: str = None) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.full_select_datasource_message = full_message
+    record.datasource_select_answer = answer
+
+    if datasource:
+        record.datasource = datasource
+        record.engine_type = engine_type
 
     result = ChatRecord(**record.model_dump())
 

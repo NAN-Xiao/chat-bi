@@ -63,7 +63,7 @@ defineExpose({
 <template>
   <div v-if="message?.record">
     <div v-if="message.record.chart" class="chart-base-container">
-      <div>
+      <div v-if="data?.length > 0">
         <ChartComponent
           v-if="message.record.id"
           :id="id ?? 'default_chat_id'"
@@ -76,6 +76,7 @@ defineExpose({
           :data="data"
         />
       </div>
+      <el-empty v-else description="No Data" />
     </div>
   </div>
 </template>

@@ -6,12 +6,15 @@ import orjson
 from langchain_community.utilities import SQLDatabase
 from langchain_core.language_models import BaseLLM
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, AIMessageChunk
+from sqlalchemy import select
+from sqlalchemy.orm import load_only
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_llm_config
 from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer, save_sql, \
     save_error_message, save_sql_exec_data, save_full_chart_message, save_full_chart_message_and_answer, save_chart, \
-    finish_record, save_full_analysis_message_and_answer, save_full_predict_message_and_answer, save_predict_data
-from apps.chat.models.chat_model import ChatQuestion, ChatRecord
+    finish_record, save_full_analysis_message_and_answer, save_full_predict_message_and_answer, save_predict_data, \
+    save_full_select_datasource_message_and_answer
+from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
 from apps.system.models.system_model import AiModelDetail
@@ -30,6 +33,7 @@ class LLMService:
     llm: BaseLLM
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
+    history_records: List[ChatRecord] = []
 
     def __init__(self, chat_question: ChatQuestion, aimodel: AiModelDetail, history_records: List[ChatRecord] = [],
                  ds: CoreDatasource = None):
@@ -41,17 +45,22 @@ class LLMService:
         llm_instance = LLMFactory.create_llm(self.config)
         self.llm = llm_instance.llm
 
+        self.history_records = history_records
+
+        self.init_messages()
+
+    def init_messages(self):
         # self.agent_executor = create_react_agent(self.llm)
         last_sql_messages = list(
             filter(lambda r: True if r.full_sql_message is not None and r.full_sql_message.strip() != '' else False,
-                   history_records))
+                   self.history_records))
         last_sql_message_str = "[]" if last_sql_messages is None or len(last_sql_messages) == 0 else last_sql_messages[
             -1].full_sql_message
 
         last_chart_messages = list(
             filter(
                 lambda r: True if r.full_chart_message is not None and r.full_chart_message.strip() != '' else False,
-                history_records))
+                self.history_records))
         last_chart_message_str = "[]" if last_chart_messages is None or len(last_chart_messages) == 0 else \
             last_chart_messages[-1].full_chart_message
 
@@ -215,6 +224,92 @@ class LLMService:
                                                                                        'content': msg.content} for msg
                                                                                       in
                                                                                       predict_msg]).decode())
+
+    def select_datasource(self, session: SessionDep):
+        datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+        datasource_msg.append(SystemMessage(self.chat_question.datasource_sys_question()))
+        _ds_list = session.exec(select(CoreDatasource).options(
+            load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all()
+        _ds_list_dict = []
+        for _ds in _ds_list:
+            _ds_list_dict.append({'id': _ds[0].id, 'name': _ds[0].name, 'description': _ds[0].description})
+        datasource_msg.append(
+            HumanMessage(self.chat_question.datasource_user_question(orjson.dumps(_ds_list_dict).decode())))
+
+        history_msg = []
+        if self.record.full_select_datasource_message and self.record.full_select_datasource_message.strip() != '':
+            history_msg = orjson.loads(self.record.full_select_datasource_message)
+
+        self.record = save_full_select_datasource_message_and_answer(session=session, record_id=self.record.id,
+                                                                     answer='',
+                                                                     full_message=orjson.dumps(history_msg +
+                                                                                               [{'type': msg.type,
+                                                                                                 'content': msg.content}
+                                                                                                for msg
+                                                                                                in
+                                                                                                datasource_msg]).decode())
+        full_text = ''
+        res = self.llm.stream(datasource_msg)
+        for chunk in res:
+            print(chunk)
+            if isinstance(chunk, dict):
+                full_text += chunk['content']
+                yield chunk['content']
+                continue
+            if isinstance(chunk, AIMessageChunk):
+                full_text += chunk.content
+                yield chunk.content
+                continue
+        datasource_msg.append(AIMessage(full_text))
+
+        json_str = extract_nested_json(full_text)
+
+        _error: Exception | None = None
+        _datasource: int | None = None
+        _engine_type: str | None = None
+        try:
+            data = orjson.loads(json_str)
+
+            if data['id'] and data['id'] != 0:
+                _datasource = data['id']
+                _ds = session.query(CoreDatasource).filter(CoreDatasource.id == _datasource).first()
+                if not _ds:
+                    _datasource = None
+                    raise Exception(f"Datasource configuration with id {_datasource} not found")
+                self.ds = CoreDatasource(**_ds.model_dump())
+                self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
+                _engine_type = self.chat_question.engine
+                # save chat
+                _chat = session.query(Chat).filter(Chat.id == self.record.chat_id).first()
+                _chat.datasource = _datasource
+                _chat.engine_type = _ds.type_name
+
+                session.add(_chat)
+                session.flush()
+                session.refresh(_chat)
+                session.commit()
+
+            elif data['fail']:
+                raise Exception(data['fail'])
+            else:
+                raise Exception('No available datasource configuration found')
+
+        except Exception as e:
+            _error = e
+
+        self.record = save_full_select_datasource_message_and_answer(session=session, record_id=self.record.id,
+                                                                     answer=full_text, datasource=_datasource,
+                                                                     engine_type=_engine_type,
+                                                                     full_message=orjson.dumps(history_msg +
+                                                                                               [{'type': msg.type,
+                                                                                                 'content': msg.content}
+                                                                                                for msg
+                                                                                                in
+                                                                                                datasource_msg]).decode())
+        self.init_messages()
+
+        if _error:
+            raise _error
 
     def generate_sql(self, session: SessionDep):
         # append current question

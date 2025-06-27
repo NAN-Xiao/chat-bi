@@ -69,6 +69,15 @@ class HttpService {
         if (token && config.headers) {
           config.headers['X-SQLBOT-TOKEN'] = `Bearer ${token}`
         }
+        if (config.url?.includes('/xpack_static/') && config.baseURL) {
+          config.baseURL = config.baseURL.replace('/api/v1', '')
+          // Skip auth for xpack_static requests
+          return config
+        }
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const request_key = LicenseGenerator.generate()
+        config.headers['X-SQLBOT-KEY'] = request_key
 
         // Request logging
         // console.log(`[Request] ${config.method?.toUpperCase()} ${config.url}`)
@@ -256,6 +265,38 @@ class HttpService {
       method: 'GET',
       url,
       responseType: 'blob',
+    })
+  }
+
+  public loadRemoteScript(url: string, id?: string, cb?: any): Promise<HTMLElement> {
+    if (!url) {
+      return Promise.reject(new Error('URL is required to load remote script'))
+    }
+    if (id && document.getElementById(id)) {
+      return Promise.resolve(document.getElementById(id) as HTMLElement)
+    }
+    return new Promise<HTMLElement>((resolve, reject) => {
+      this.get(url, {
+        responseType: 'text',
+        headers: {
+          'Content-Type': 'application/javascript',
+        },
+      })
+        .then((response: any) => {
+          const script = document.createElement('script')
+          script.textContent = response
+          script.id = id || `remote-script-${Date.now()}`
+          // Append script to head
+          document.head.appendChild(script)
+          if (cb) {
+            cb()
+          }
+          resolve(script)
+        })
+        .catch((error: any) => {
+          console.error(`Failed to load script from ${url}:`, error)
+          reject(new Error(`Failed to load script from ${url}: ${error.message}`))
+        })
     })
   }
 }
