@@ -53,7 +53,7 @@ mcp = FastApiMCP(
     description="SQLBot MCP Server",
     describe_all_responses=True,
     describe_full_response_schema=True,
-    include_operations=["get_datasource_list", "get_model_list", "mcp_question"]
+    include_operations=["get_datasource_list", "get_model_list", "mcp_question", "mcp_start"]
 )
 
 mcp.mount(mcp_app)
