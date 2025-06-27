@@ -142,5 +142,5 @@ class ChatQuestion(AiModelQuestion):
     chat_id: int = 0
 
 
-class ChatToken(ChatQuestion):
+class ChatMcp(ChatQuestion):
     token:str = ''

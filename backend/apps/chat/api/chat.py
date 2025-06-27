@@ -8,7 +8,7 @@ from sqlmodel import select
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
     delete_chat, list_records
-from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat, ChatQuestion, ChatToken
+from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat, ChatQuestion, ChatMcp
 from apps.chat.task.llm import LLMService
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
@@ -58,13 +58,13 @@ async def delete(session: SessionDep, chart_id: int):
 
 
 @router.post("/mcp_start", operation_id="mcp_start")
-async def mcp_start(session: SessionDep, chat: ChatToken):
+async def mcp_start(session: SessionDep, chat: ChatMcp):
     user = await get_current_user(session, chat.token)
     return create_chat(session, user, CreateChat(), False)
 
 
 @router.post("/mcp_question", operation_id="mcp_question")
-async def mcp_question(session: SessionDep, chat: ChatToken):
+async def mcp_question(session: SessionDep, chat: ChatMcp):
     user = await get_current_user(session, chat.token)
     return await stream_sql(session, user, chat)
 
