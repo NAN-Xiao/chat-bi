@@ -22,21 +22,8 @@
 <script setup lang="ts">
 import tinymce from 'tinymce/tinymce'
 import Editor from '@tinymce/tinymce-vue'
-import 'tinymce/themes/silver'
-import 'tinymce/themes/silver/theme'
 import 'tinymce/icons/default'
-
-import 'tinymce/plugins/advlist'
-import 'tinymce/plugins/autolink'
 import 'tinymce/plugins/link'
-import 'tinymce/plugins/image'
-import 'tinymce/plugins/lists'
-import 'tinymce/plugins/charmap'
-import 'tinymce/plugins/media'
-import 'tinymce/plugins/wordcount'
-import 'tinymce/plugins/directionality'
-import 'tinymce/plugins/nonbreaking'
-import 'tinymce/plugins/pagebreak'
 import '@npkg/tinymce-plugins/letterspacing'
 
 import { computed, nextTick, type PropType, reactive, toRefs } from 'vue'
@@ -64,8 +51,7 @@ const init = reactive({
   selector: tinymceId,
   language: 'zh_CN',
   skin: 'oxide',
-  plugins:
-    'advlist autolink link image lists charmap  media wordcount contextmenu directionality pagebreak letterspacing', // 插件
+  plugins: 'link letterspacing', // 插件
   // 工具栏
   toolbar:
     'undo redo | fontfamily fontsize | |forecolor backcolor bold italic letterspacing |underline strikethrough link lineheight| formatselect | alignleft aligncenter alignright |',

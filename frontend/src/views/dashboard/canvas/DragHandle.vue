@@ -61,6 +61,6 @@ const shadowStyle = (size: number, index: number) => {
   background: #c1e2e8;
   position: absolute;
   cursor: move !important;
-  z-index: 3;
+  z-index: 1;
 }
 </style>
