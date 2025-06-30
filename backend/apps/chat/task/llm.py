@@ -39,6 +39,7 @@ class LLMService:
                  ds: CoreDatasource = None):
         self.ds = ds
         self.chat_question = chat_question
+        self.chat_question.ai_modal_id = aimodel.id
         self.config = get_llm_config(aimodel)
 
         # Create LLM instance through factory

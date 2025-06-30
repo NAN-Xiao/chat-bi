@@ -61,7 +61,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.data,
                   ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                   ChatRecord.datasource_select_answer, ChatRecord.recommended_question_answer,
-                  ChatRecord.recommended_question,
+                  ChatRecord.recommended_question, ChatRecord.first_chat,
                   ChatRecord.predict_data, ChatRecord.finish, ChatRecord.error, ChatRecord.run_time)).filter(
         and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
 
@@ -111,6 +111,29 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
         chat_info.datasource_exists = True
         chat_info.datasource_name = ds.name
 
+    if require_datasource and ds:
+        # generate first empty record
+        record = ChatRecord()
+        record.chat_id = chat.id
+        record.datasource = ds.id
+        record.engine_type = ds.type_name
+        record.first_chat = True
+        record.finish = True
+        record.create_time = datetime.datetime.now()
+        record.create_by = current_user.id
+
+        _record = ChatRecord(**record.model_dump())
+
+        session.add(record)
+        session.flush()
+        session.refresh(record)
+        _record.id = record.id
+        session.commit()
+
+        # todo suggest questions
+
+        chat_info.records.append(_record)
+
     return chat_info
 
 
@@ -131,6 +154,7 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     record.create_by = current_user.id
     record.datasource = chat.datasource
     record.engine_type = chat.engine_type
+    record.ai_modal_id = question.ai_modal_id
 
     result = ChatRecord(**record.model_dump())
 

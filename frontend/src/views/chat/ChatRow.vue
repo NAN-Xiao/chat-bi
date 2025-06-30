@@ -1,31 +1,16 @@
 <script setup lang="ts">
 import ChatBlock from './ChatBlock.vue'
-import WelcomeBlock from './WelcomeBlock.vue'
+import ChatRecordFirst from './ChatRecordFirst.vue'
 import { ChatInfo, type ChatMessage } from '@/api/chat.ts'
-import { computed } from 'vue'
 import { UserFilled } from '@element-plus/icons-vue'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     msg: ChatMessage
     currentChat: ChatInfo
-    datasource?: number
   }>(),
-  {
-    datasource: undefined,
-  }
+  {}
 )
-
-const emits = defineEmits(['update:datasource'])
-
-const _datasource = computed({
-  get() {
-    return props.datasource
-  },
-  set(v) {
-    emits('update:datasource', v)
-  },
-})
 </script>
 
 <template>
@@ -36,13 +21,13 @@ const _datasource = computed({
         <UserFilled />
       </el-icon>
     </el-avatar>
-    <ChatBlock v-if="!msg.isWelcome" :msg="msg" :class="{ 'row-full': msg.role === 'assistant' }">
+    <ChatBlock v-if="!msg.first_chat" :msg="msg" :class="{ 'row-full': msg.role === 'assistant' }">
       <slot></slot>
       <template #footer>
         <slot name="footer"></slot>
       </template>
     </ChatBlock>
-    <WelcomeBlock v-else v-model="_datasource" :current-chat="currentChat" class="row-full" />
+    <ChatRecordFirst v-else :current-chat="currentChat" :msg="msg" />
   </div>
 </template>
 

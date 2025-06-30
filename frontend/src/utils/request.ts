@@ -217,6 +217,10 @@ class HttpService {
     if (token) {
       heads['X-SQLBOT-TOKEN'] = `Bearer ${token}`
     }
+    // @ts-ignore
+    const request_key = LicenseGenerator.generate()
+    heads['X-SQLBOT-KEY'] = request_key
+
     const real_url = import.meta.env.VITE_API_BASE_URL
     return fetch(real_url + url, {
       method: 'POST',

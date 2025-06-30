@@ -39,11 +39,7 @@
         </div>
         <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef">
           <template v-for="(message, _index) in computedMessages" :key="_index">
-            <ChatRow
-              v-model:datasource="currentChat.datasource"
-              :current-chat="currentChat"
-              :msg="message"
-            >
+            <ChatRow :current-chat="currentChat" :msg="message">
               <template v-if="message.role === 'assistant'">
                 <ChatAnswer v-slot="{ data }" :message="message">
                   <template v-if="message.record?.chart">
@@ -172,21 +168,13 @@ const isAnalysisTyping = ref<boolean>(false)
 const isPredictTyping = ref<boolean>(false)
 
 const computedMessages = computed<Array<ChatMessage>>(() => {
-  const firstMessage: ChatMessage = {
-    role: 'assistant',
-    create_time: currentChat.value?.create_time,
-    content: currentChat.value?.datasource,
-    isTyping: false,
-    isWelcome: true,
-  }
   const messages: Array<ChatMessage> = []
   if (currentChatId.value === undefined) {
     return messages
   }
-  messages.push(firstMessage)
   for (let i = 0; i < currentChat.value.records.length; i++) {
     const record = currentChat.value.records[i]
-    if (record.question !== undefined) {
+    if (record.question !== undefined && !record.first_chat) {
       messages.push({
         role: 'user',
         create_time: record.create_time,
@@ -198,8 +186,11 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
       create_time: record.create_time,
       record: record,
       isTyping: i === currentChat.value.records.length - 1 && isTyping.value,
+      first_chat: record.first_chat,
     })
   }
+
+  console.log(messages)
 
   return messages
 })
@@ -283,7 +274,6 @@ onMounted(() => {
 
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
-  if (computedMessages.value[0].content === undefined) return
 
   loading.value = true
   isTyping.value = true

@@ -15,25 +15,25 @@ from apps.template.select_datasource.generator import get_datasource_template
 
 class Chat(SQLModel, table=True):
     __tablename__ = "chat"
-    id: Optional[int] = Field(sa_column=Column(Integer, Identity(always=True), primary_key=True))
+    id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
     create_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
     brief: str = Field(max_length=64, nullable=True)
     chat_type: str = Field(max_length=20, default="chat")  # chat, datasource
-    datasource: int = Field(sa_column=Column(Integer, nullable=True))
+    datasource: int = Field(sa_column=Column(BigInteger, nullable=True))
     engine_type: str = Field(max_length=64)
 
 
 class ChatRecord(SQLModel, table=True):
     __tablename__ = "chat_record"
-    id: Optional[int] = Field(sa_column=Column(Integer, Identity(always=True), primary_key=True))
-    chat_id: int = Field(sa_column=Column(Integer, nullable=False))
-    ai_modal_id: Optional[int] = Field(sa_column=Column(Integer))
+    id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    chat_id: int = Field(sa_column=Column(BigInteger, nullable=False))
+    ai_modal_id: Optional[int] = Field(sa_column=Column(BigInteger))
     first_chat: bool = Field(sa_column=Column(Boolean, nullable=True, default=False))
     create_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=True))
     finish_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
-    datasource: int = Field(sa_column=Column(Integer, nullable=True))
+    datasource: int = Field(sa_column=Column(BigInteger, nullable=True))
     engine_type: str = Field(max_length=64)
     question: str = Field(sa_column=Column(Text, nullable=True))
     sql_answer: str = Field(sa_column=Column(Text, nullable=True))
@@ -90,6 +90,7 @@ class ChatInfo(BaseModel):
 
 
 class AiModelQuestion(BaseModel):
+    ai_modal_id: int = None
     engine: str = ""
     db_schema: str = ""
     sql: str = ""

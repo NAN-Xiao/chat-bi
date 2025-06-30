@@ -22,7 +22,7 @@ export interface ChatMessage {
   content?: string | number
   record?: ChatRecord
   isTyping?: boolean
-  isWelcome?: boolean
+  first_chat?: boolean
 }
 
 export class ChatRecord {
@@ -42,6 +42,7 @@ export class ChatRecord {
   finish?: boolean = false
   error?: string
   run_time: number = 0
+  first_chat: boolean = false
 
   constructor()
   constructor(
@@ -60,7 +61,8 @@ export class ChatRecord {
     predict_data: string | undefined,
     finish: boolean,
     error: string | undefined,
-    run_time: number
+    run_time: number,
+    first_chat: boolean
   )
   constructor(
     id?: number,
@@ -78,7 +80,8 @@ export class ChatRecord {
     predict_data?: string,
     finish?: boolean,
     error?: string,
-    run_time?: number
+    run_time?: number,
+    first_chat?: boolean
   ) {
     this.id = id
     this.chat_id = chat_id
@@ -93,9 +96,10 @@ export class ChatRecord {
     this.analysis = analysis
     this.predict = predict
     this.predict_data = predict_data
-    this.finish = finish
+    this.finish = !!finish
     this.error = error
     this.run_time = run_time ?? 0
+    this.first_chat = !!first_chat
   }
 }
 
@@ -214,7 +218,8 @@ function toChatRecord(data?: any): ChatRecord | undefined {
     data.predict_data,
     data.finish,
     data.error,
-    data.run_time
+    data.run_time,
+    data.first_chat
   )
 }
 
