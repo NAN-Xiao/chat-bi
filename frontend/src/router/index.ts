@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 
 import Layout from '@/components/layout/index.vue'
+import LayoutDsl from '@/components/layout/LayoutDsl.vue'
 import SinglePage from '@/components/layout/SinglePage.vue'
 import login from '@/views/login/index.vue'
 import chat from '@/views/chat/index.vue'
@@ -8,7 +9,8 @@ import ds from '@/views/ds/index.vue'
 import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
-import Model from '@/views/system/model/index.vue'
+// import Model from '@/views/system/model/index.vue'
+import Model from '@/views/system/model/Model.vue'
 // import User from "@/views/system/user/index.vue";
 import { watchRouter } from './watch'
 const router = createRouter({
@@ -95,17 +97,30 @@ const router = createRouter({
         },
       ],
     }, */
+    // {
+    //   path: '/system',
+    //   component: Layout,
+    //   redirect: '/system/model',
+    //   children: [
+    //     /*  {
+    //       path: "user",
+    //       name: "user",
+    //       component: User,
+    //       meta: { title: "User Management", icon: "icon_user" },
+    //     }, */
+    //     {
+    //       path: 'model',
+    //       name: 'model',
+    //       component: Model,
+    //       meta: { title: 'AI Model Configuration', icon: 'icon_ai' },
+    //     },
+    //   ],
+    // },
     {
       path: '/system',
-      component: Layout,
+      component: LayoutDsl,
       redirect: '/system/model',
       children: [
-        /*  {
-          path: "user",
-          name: "user",
-          component: User,
-          meta: { title: "User Management", icon: "icon_user" },
-        }, */
         {
           path: 'model',
           name: 'model',

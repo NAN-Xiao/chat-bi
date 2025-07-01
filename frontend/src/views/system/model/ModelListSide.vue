@@ -1,0 +1,113 @@
+<script lang="ts" setup>
+import { ref, shallowRef, computed } from 'vue'
+import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import icon_Azure_OpenAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
+interface Model {
+  name: string
+  modleType: string
+  baseModle: string
+  img?: string
+}
+withDefaults(
+  defineProps<{
+    activeName: string
+  }>(),
+  {
+    activeName: '',
+  }
+)
+const keywords = ref('')
+const modelList = shallowRef([
+  {
+    img: icon_Azure_OpenAI_colorful,
+    name: '千帆大模型-chinese',
+  },
+  {
+    img: icon_Azure_OpenAI_colorful,
+    name: '千帆大模-chinese',
+  },
+] as Model[])
+const modelListWithSearch = computed(() => {
+  if (!keywords.value) return modelList.value
+  return modelList.value.filter((ele) =>
+    ele.name.toLowerCase().includes(keywords.value.toLowerCase())
+  )
+})
+const emits = defineEmits(['clickModel'])
+const handleModelClick = (item: any) => {
+  emits('clickModel', item)
+}
+</script>
+
+<template>
+  <div class="model-list_side">
+    <el-input
+      clearable
+      v-model="keywords"
+      style="width: 232px; margin: 16px 0 8px 24px"
+      placeholder="搜索"
+    >
+      <template #prefix>
+        <el-icon>
+          <icon_searchOutline_outlined class="svg-icon" />
+        </el-icon>
+      </template>
+    </el-input>
+    <div class="list-content">
+      <div
+        @click="handleModelClick(ele)"
+        class="model"
+        :class="activeName === ele.name && 'isActive'"
+        v-for="ele in modelListWithSearch"
+        :key="ele.name"
+      >
+        <img width="32px" height="32px" :src="ele.img" />
+        <span class="name">{{ ele.name }}</span>
+      </div>
+      <EmptyBackground
+        v-if="!!keywords && !modelListWithSearch.length"
+        :description="'没有找到相关内容'"
+        img-type="tree"
+        style="width: 100%; margin-top: 100px"
+      />
+    </div>
+  </div>
+</template>
+
+<style lang="less" scoped>
+.model-list_side {
+  width: 280px;
+  height: 100%;
+  border-right: 1px solid #1f232926;
+
+  .list-content {
+    height: calc(100% - 56px);
+    padding: 0 16px;
+
+    .model {
+      width: 100%;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      .name {
+        margin-left: 8px;
+        font-weight: 500;
+        font-size: 14px;
+        line-height: 22px;
+      }
+      &:hover {
+        background: #1f23291a;
+      }
+
+      &.isActive {
+        background: #1cba901a;
+        color: var(--ed-color-primary);
+      }
+    }
+  }
+}
+</style>
