@@ -21,12 +21,7 @@ wlist = [
     "*.ttf",
     "*.eot",
     "*.otf",
-    "/mcp",
-    "/mcp/message",
-    "/mcp/ds_list",
-    "/mcp/model_list",
-    "/mcp/mcp_question",
-    "/mcp/mcp_start",
+    "/mcp*",
     "/system/license",
     "/system/config/key",
     "/images/*"
