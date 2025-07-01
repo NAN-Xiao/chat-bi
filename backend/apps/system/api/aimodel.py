@@ -88,8 +88,3 @@ async def status(session: SessionDep, dto: model_status):
         session.add(term)
     session.commit()
     return {"message": f"AiModel with IDs {ids} updated successfully."}
-
-
-@router.get("/list", operation_id="get_model_list")
-async def get_model_list(session: SessionDep):
-    return session.query(AiModelDetail).all()
