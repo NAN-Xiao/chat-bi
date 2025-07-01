@@ -28,7 +28,8 @@ wlist = [
     "/chat/mcp_question",
     "/chat/mcp_start",
     "/system/license",
-    "/system/config/key"
+    "/system/config/key",
+    "/images/*"
 ]
 
 class WhitelistChecker:

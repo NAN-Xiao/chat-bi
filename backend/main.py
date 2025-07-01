@@ -12,6 +12,7 @@ from common.core.response_middleware import ResponseMiddleware, exception_handle
 from alembic.config import Config
 from alembic import command
 from fastapi_mcp import FastApiMCP
+from fastapi.staticfiles import StaticFiles
 import sqlbot_xpack
 
 def run_migrations():
@@ -39,6 +40,8 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan
 )
+# mcp server, images path
+app.mount("/images", StaticFiles(directory="/opt/sqlbot/images"), name="images")
 
 mcp_app = FastAPI()
 
