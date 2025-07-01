@@ -1,19 +1,22 @@
 # Author: Junjun
 # Date: 2025/7/1
 
+from datetime import timedelta
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from common.core.deps import SessionDep, get_current_user
-from apps.system.crud.user import authenticate
-from common.core.security import create_access_token
-from datetime import timedelta
-from common.core.config import settings
-from common.core.schemas import Token
-from apps.datasource.crud.datasource import get_datasource_list
-from apps.system.models.system_model import AiModelDetail
+
+from apps.chat.api.chat import create_chat
 from apps.chat.models.chat_model import ChatMcp, CreateChat
-from apps.chat.api.chat import create_chat, stream_sql
+from apps.chat.task.llm import LLMService, run_task
+from apps.datasource.crud.datasource import get_datasource_list
+from apps.system.crud.user import authenticate
+from apps.system.models.system_model import AiModelDetail
+from common.core.config import settings
+from common.core.deps import SessionDep, get_current_user
+from common.core.schemas import Token
+from common.core.security import create_access_token
 
 router = APIRouter(tags=["mcp"], prefix="/mcp")
 
@@ -52,6 +55,12 @@ async def mcp_start(session: SessionDep, chat: ChatMcp):
 @router.post("/mcp_question", operation_id="mcp_question")
 async def mcp_question(session: SessionDep, chat: ChatMcp):
     user = await get_current_user(session, chat.token)
+
+    llm_service = LLMService(session, user, chat)
+    llm_service.init_record()
+
+    run_task(llm_service, session)
+
     # return await stream_sql(session, user, chat)
     return {"content": """这是一段写死的测试内容：
 
