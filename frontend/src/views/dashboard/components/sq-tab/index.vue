@@ -220,6 +220,7 @@ defineExpose({
           :ref="'tabEditorRef_' + index"
           class="tab-dashboard-editor-main"
           :canvas-component-data="tabItem.componentData"
+          :canvas-view-info="canvasViewInfo"
           :move-in-active="configItem.moveInActive"
           :base-matrix-count="tabBaseMatrixCount"
           :canvas-id="tabItem.name"

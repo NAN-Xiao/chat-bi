@@ -1191,9 +1191,11 @@ defineExpose({
         <component
           :is="findComponent(item.component)"
           :ref="'shape_component_' + item.id"
-          class="sql-component slot-component dragHandle"
+          class="sq-component slot-component dragHandle"
+          :class="{ 'sq-component-hidden': item.component !== 'SQTab' }"
           :config-item="item"
           :view-info="canvasViewInfo[item.id]"
+          :canvas-view-info="canvasViewInfo"
           @parent-add-item-box="(subItem: any) => addItemBox(subItem)"
         >
         </component>

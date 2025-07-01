@@ -169,7 +169,7 @@ function createNewObject() {}
 
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const resourceEdit = (resourceId) => {
-  window.open(`#/canvas?resourceId=${resourceId}`, '_blank')
+  window.open(`#/canvas?resourceId=${resourceId}`, '_self')
 }
 
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
