@@ -29,7 +29,12 @@
             <div class="logo">SQLBot</div>
             <div>{{ t('qa.greeting') }}</div>
             <div class="sub">{{ t('qa.description') }}</div>
-            <el-button size="large" type="primary" @click="createNewChat">
+            <el-button
+              v-if="currentChatId === undefined"
+              size="large"
+              type="primary"
+              @click="createNewChat"
+            >
               <el-icon>
                 <Plus />
               </el-icon>
