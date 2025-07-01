@@ -66,7 +66,23 @@ async def mcp_start(session: SessionDep, chat: ChatMcp):
 @router.post("/mcp_question", operation_id="mcp_question")
 async def mcp_question(session: SessionDep, chat: ChatMcp):
     user = await get_current_user(session, chat.token)
-    return await stream_sql(session, user, chat)
+    # return await stream_sql(session, user, chat)
+    return {"content": """这是一段写死的测试内容：
+    
+    步骤1: 确定需要查询的字段。
+    我们需要统计上海的订单总数，因此需要从"城市"字段中筛选出值为"上海"的记录，并使用COUNT函数计算这些记录的数量。
+    
+    步骤2: 确定筛选条件。
+    问题要求统计上海的订单总数，所以我们需要在SQL语句中添加WHERE "城市" = '上海'来筛选出符合条件的记录。
+    
+    步骤3: 避免关键字冲突。
+    因为这个Excel/CSV数据库是 PostgreSQL 类型，所以在schema、表名、字段名和别名外层加双引号。
+    
+    最终答案:
+    ```json
+    {"success":true,"sql":"SELECT COUNT(*) AS \"TotalOrders\" FROM \"public\".\"Sheet1_c27345b66e\" WHERE \"城市\" = '上海';"}
+    ```
+    <img src="https://sqlbot.fit2cloud.cn/images/111.png">"""}
 
 
 @router.post("/start")
