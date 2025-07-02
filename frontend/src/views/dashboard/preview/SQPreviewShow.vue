@@ -8,7 +8,8 @@ import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
-
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const previewCanvasContainer = ref(null)
 const dashboardPreview = ref(null)
@@ -128,7 +129,7 @@ defineExpose({
         <EmptyBackground :description="'Please Select Resource'" img-type="select" />
       </template>
       <template v-else-if="mounted">
-        <EmptyBackground :description="'No Resource'" img-type="none">
+        <EmptyBackground :description="t('dashboard.select_dashboard')" img-type="none">
           <el-button v-if="rootManage" type="primary" @click="createNew">
             <template #icon>
               <Icon name="icon_add_outlined">

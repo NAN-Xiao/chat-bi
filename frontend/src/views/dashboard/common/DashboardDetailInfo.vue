@@ -1,14 +1,14 @@
 <template>
   <div class="info-card">
-    <div class="info-title">Dashboard ID</div>
+    <div class="info-title">{{ t('dashboard.dashboard_id') }}</div>
     <div class="info-content">{{ dashboardInfo.id }}</div>
-    <div v-if="dashboardInfo.createName" class="info-title">Creator</div>
+    <div v-if="dashboardInfo.createName" class="info-title">{{ t('dashboard.creator') }}</div>
     <div v-if="dashboardInfo.createName" class="info-content">{{ dashboardInfo.createName }}</div>
-    <div class="info-title">Create Time</div>
+    <div class="info-title">{{ t('dashboard.create_time') }}</div>
     <div class="info-content">{{ timestampFormatDate(dashboardInfo.createTime) }}</div>
-    <div v-if="dashboardInfo.updateName" class="info-title">Updator</div>
+    <div v-if="dashboardInfo.updateName" class="info-title">{{ t('dashboard.updator') }}</div>
     <div v-if="dashboardInfo.updateName" class="info-content">{{ dashboardInfo.updateName }}</div>
-    <div class="info-title">Update Time</div>
+    <div class="info-title">{{ t('dashboard.update_time') }}</div>
     <div v-if="dashboardInfo.updateTime" class="info-content">
       {{ timestampFormatDate(dashboardInfo.updateTime) }}
     </div>
@@ -17,6 +17,9 @@
 </template>
 
 <script lang="ts" setup>
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+
 defineProps({
   dashboardInfo: {
     type: Object,

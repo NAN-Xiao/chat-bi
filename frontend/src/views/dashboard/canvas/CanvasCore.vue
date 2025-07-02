@@ -1196,6 +1196,7 @@ defineExpose({
           :config-item="item"
           :view-info="canvasViewInfo[item.id]"
           :canvas-view-info="canvasViewInfo"
+          :show-position="'canvas'"
           @parent-add-item-box="(subItem: any) => addItemBox(subItem)"
         >
         </component>

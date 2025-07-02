@@ -9,7 +9,9 @@ import { storeToRefs } from 'pinia'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import router from '@/router'
 import { initCanvasData } from '@/views/dashboard/utils/canvasUtils.ts'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const { componentData, canvasViewInfo } = storeToRefs(dashboardStore)
 
@@ -52,7 +54,7 @@ onMounted(() => {
   if (state.opt === 'create') {
     dashboardStore.updateDashboardInfo({
       dataState: 'prepare',
-      name: 'New Dashboard',
+      name: t('dashboard.new_dashboard'),
       pid: state.routerPid,
     })
   } else if (state.resourceId) {

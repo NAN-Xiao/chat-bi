@@ -3,6 +3,8 @@ import dashboardInfoSvg from '@/assets/svg/dashboard-info.svg'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import DashboardDetailInfo from '@/views/dashboard/common/DashboardDetailInfo.vue'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const preview = () => {
   window.open(`#/dashboard-preview?resourceId=${props.dashboardInfo.id}`, '_blank')
@@ -23,7 +25,7 @@ const props = defineProps({
     <div class="canvas-name ellipsis">{{ dashboardInfo.name }}</div>
     <el-divider style="margin: 5px 10px 0 17px" direction="vertical" />
     <span class="create-area" style="line-height: 22px"
-      >Creator:{{ dashboardInfo.createName }}</span
+      >{{ t('dashboard.creator') }}: {{ dashboardInfo.createName }}</span
     >
     <div style="padding-top: 4px" class="create-area flex-align-center">
       <el-popover show-arrow :offset="8" placement="bottom" width="400" trigger="hover">
@@ -42,7 +44,7 @@ const props = defineProps({
             <icon_pc_outlined class="svg-icon" />
           </icon>
         </template>
-        Preview
+        {{ t('dashboard.preview') }}
       </el-button>
       <el-button class="custom-button" type="primary" @click="edit">
         <template #icon>
@@ -50,7 +52,7 @@ const props = defineProps({
             <icon_edit_outlined class="svg-icon" />
           </Icon>
         </template>
-        Edit
+        {{ t('dashboard.edit') }}
       </el-button>
     </div>
   </div>

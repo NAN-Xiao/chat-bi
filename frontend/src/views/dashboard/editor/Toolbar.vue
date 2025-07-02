@@ -181,21 +181,21 @@ const addChatChart = (views: any) => {
     <div class="core-toolbar">
       <component-button-label
         :icon-name="dvView"
-        title="Add View"
+        :title="t('dashboard.view')"
         themes="light"
         is-label
         @custom-click="openViewDialog"
       ></component-button-label>
       <component-button-label
         :icon-name="dvText"
-        title="Text"
+        :title="t('dashboard.text')"
         themes="light"
         is-label
         @custom-click="() => emits('addComponent', 'SQText')"
       ></component-button-label>
       <component-button-label
         :icon-name="dvTab"
-        title="Tab Item"
+        title="Tab"
         themes="light"
         is-label
         @custom-click="() => emits('addComponent', 'SQTab')"
@@ -208,7 +208,7 @@ const addChatChart = (views: any) => {
         type="primary"
         @click="saveCanvasWithCheck()"
       >
-        Save
+        {{ t('common.save') }}
       </el-button>
     </div>
     <Teleport v-if="nameEdit" :to="'#canvas-name'">

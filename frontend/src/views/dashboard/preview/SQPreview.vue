@@ -14,7 +14,8 @@ import { useEmittLazy } from '@/utils/useEmitt.ts'
 const props = defineProps({
   canvasStyleData: {
     type: Object,
-    required: true,
+    required: false,
+    default: () => {},
   },
   componentData: {
     type: Object,
@@ -26,7 +27,8 @@ const props = defineProps({
   },
   dashboardInfo: {
     type: Object,
-    required: true,
+    required: false,
+    default: () => {},
   },
   baseMatrixCount: {
     type: Object,

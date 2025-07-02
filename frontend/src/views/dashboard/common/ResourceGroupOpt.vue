@@ -4,7 +4,9 @@ import { type SQTreeNode } from '@/views/dashboard/utils/treeNode'
 import { computed, reactive, ref } from 'vue'
 import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 import { dashboardApi } from '@/api/dashboard.ts'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const emits = defineEmits(['finish'])
 const state = reactive({
   id: null,
@@ -12,7 +14,7 @@ const state = reactive({
   placeholder: '',
   nodeType: 'folder',
   parentSelect: false,
-  resourceFormNameLabel: 'Name',
+  resourceFormNameLabel: t('dashboard.name'),
   dialogTitle: '',
   tData: [],
   tDataSource: [],
@@ -24,11 +26,11 @@ const state = reactive({
 const getTitle = (opt: string) => {
   switch (opt) {
     case 'newLeaf':
-      return 'New Dashboard'
+      return t('dashboard.new_dashboard')
     case 'newFolder':
-      return 'New Folder'
+      return t('dashboard.new_folder')
     case 'rename':
-      return 'Rename'
+      return t('dashboard.rename')
     default:
       return
   }
@@ -137,7 +139,8 @@ const saveResource = () => {
     level: state.nodeType === 'folder' ? 0 : 1,
   }
   saveDashboardResource(params, function (rsp: any) {
-    const messageTips = state.opt === 'rename' ? 'Update Success' : 'Save Success'
+    const messageTips =
+      state.opt === 'rename' ? t('common.update_success') : t('common.save_success')
     ElMessage({
       type: 'success',
       message: messageTips,
@@ -169,6 +172,7 @@ defineExpose({
     :title="state.dialogTitle"
     width="420px"
     :before-close="resetForm"
+    append-to-body
     @submit.prevent
   >
     <el-form
@@ -212,8 +216,8 @@ defineExpose({
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button secondary @click="resetForm()">Cancel</el-button>
-      <el-button type="primary" @click="saveResource()">Confirm</el-button>
+      <el-button secondary @click="resetForm()">{{ t('common.cancel') }}</el-button>
+      <el-button type="primary" @click="saveResource()">{{ t('common.confirm') }}</el-button>
     </template>
   </el-dialog>
 </template>

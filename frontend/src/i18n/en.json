@@ -6,6 +6,7 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
+    "input_content": "Please Input Content",
     "back": "Back",
     "confirm": "Confirm",
     "cancel": "Cancel",
@@ -18,6 +19,17 @@
     "logout": "Logout"
   },
   "dashboard": {
+    "select_dashboard": "Please Select Dashboard",
+    "view": "View",
+    "text": "Text",
+    "preview": "Preview",
+    "creator": "Creator",
+    "dashboard_id": "Dashboard ID",
+    "create_time": "Create Time",
+    "updator": "Updater",
+    "update_time": "Update Time",
+    "edit": "Edit",
+    "edit_title": "Edit Title",
     "length_1_64_characters": "Name field length must be 1-64 characters",
     "rename": "Rename",
     "delete": "Delete",

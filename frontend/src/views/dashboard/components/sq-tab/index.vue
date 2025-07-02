@@ -20,6 +20,9 @@ const showTabTitleFlag = ref(true)
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 let currentInstance
 import _ from 'lodash'
+import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const emits = defineEmits(['parentAddItemBox'])
 
@@ -117,16 +120,7 @@ const beforeHandleCommand = (item: any, param: any) => {
     param: param,
   }
 }
-
-const titleStyle = (itemName: string) => {
-  if (editableTabsValue.value === itemName) {
-    return {}
-  } else {
-    return {}
-  }
-}
-
-const isEditMode = computed(() => true)
+const isEditMode = computed(() => props.showPosition === 'canvas')
 
 const addTabItem = (item: CanvasItem) => {
   // do addTabItem
@@ -144,8 +138,34 @@ const addTabItem = (item: CanvasItem) => {
   refInstance.addItemToBox(newTabItem)
 }
 
+function sureCurTitle() {
+  state.curItem.title = state.textarea
+  state.dialogVisible = false
+}
+
+const titleValid = computed(() => {
+  return !!state.textarea && !!state.textarea.trim()
+})
+
+const titleStyle = (itemName: string) => {
+  let style = {}
+  if (editableTabsValue.value === itemName) {
+    style = {
+      fontSize: '16px',
+    }
+  } else {
+    style = {
+      fontSize: '14px',
+    }
+  }
+  return style
+}
+
 onMounted(() => {
   currentInstance = getCurrentInstance()
+  if (configItem.value.propValue.length > 0) {
+    editableTabsValue.value = configItem.value.propValue[0].name
+  }
 })
 
 defineExpose({
@@ -166,7 +186,6 @@ defineExpose({
       :hide-title="!showTabTitleFlag"
       @tab-add="addTab"
     >
-      <!-- {{ configItem.collisionActive }} & {{ configItem.moveInActive }}${{ configItem.moveOutActive }}-->
       <template v-for="tabItem in configItem.propValue" :key="tabItem.name">
         <el-tab-pane
           class="el-tab-pane-custom"
@@ -185,21 +204,18 @@ defineExpose({
                     @command="handleCommand"
                   >
                     <span class="el-dropdown-link">
-                      <el-icon v-if="isEditMode"><ArrowDown /></el-icon>
+                      <el-icon v-if="isEditMode" style="margin-top: 5px"><ArrowDown /></el-icon>
                     </span>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item :command="beforeHandleCommand('editTitle', tabItem)">
-                          edit
-                        </el-dropdown-item>
-                        <el-dropdown-item :command="beforeHandleCommand('copyCur', tabItem)">
-                          copy
+                          {{ t('dashboard.edit') }}
                         </el-dropdown-item>
                         <el-dropdown-item
                           v-if="configItem.propValue.length > 1"
                           :command="beforeHandleCommand('deleteCur', tabItem)"
                         >
-                          delete
+                          {{ t('dashboard.delete') }}
                         </el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
@@ -216,7 +232,16 @@ defineExpose({
         class="tab-content-custom"
         :class="{ 'switch-hidden': editableTabsValue !== tabItem.name }"
       >
+        <SQPreview
+          v-if="showPosition === 'preview'"
+          :ref="'tabPreviewRef_' + index"
+          class="tab-dashboard-preview"
+          :component-data="tabItem.componentData"
+          :canvas-view-info="canvasViewInfo"
+          :base-matrix-count="tabBaseMatrixCount"
+        ></SQPreview>
         <DashboardEditor
+          v-else
           :ref="'tabEditorRef_' + index"
           class="tab-dashboard-editor-main"
           :canvas-component-data="tabItem.componentData"
@@ -230,10 +255,35 @@ defineExpose({
         </DashboardEditor>
       </div>
     </custom-tab>
+    <el-dialog
+      v-model="state.dialogVisible"
+      :title="t('dashboard.edit_title')"
+      :append-to-body="true"
+      width="30%"
+      :show-close="false"
+      :close-on-click-modal="false"
+      center
+    >
+      <el-input v-model="state.textarea" maxlength="50" :placeholder="t('common.input_content')" />
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="state.dialogVisible = false">{{ t('common.cancel') }}</el-button>
+          <el-button :disabled="!titleValid" type="primary" @click="sureCurTitle">{{
+            t('common.confirm')
+          }}</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped lang="less">
+::v-deep(.ed-tabs__header) {
+  margin: 0 24px 0 12px !important;
+}
+::v-deep(.ed-tabs__nav-scroll) {
+  margin: 0 12px !important;
+}
 .ed-dropdown-link {
   margin-top: 3px !important;
 }
@@ -243,6 +293,10 @@ defineExpose({
   width: 100%;
   height: 100%;
   margin: 2px !important; // border size
+}
+
+.tab-dashboard-preview {
+  background: #ffffff !important;
 }
 
 .tab-dashboard-editor-main {
@@ -257,5 +311,14 @@ defineExpose({
   ::v-deep(.dashboard-editor-main) {
     overflow: visible !important;
   }
+}
+
+.custom-tab-title {
+  padding: 0 8px 0 4px !important;
+}
+
+.switch-hidden {
+  opacity: 0;
+  z-index: -1;
 }
 </style>
