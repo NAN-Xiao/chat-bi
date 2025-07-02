@@ -641,6 +641,7 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
             if chart['type'] != 'table':
                 yield '# todo generate chart picture'
 
+            yield f'![{chart["type"]}](https://sqlbot.fit2cloud.cn/images/111.png)'
     except Exception as e:
         llm_service.save_error(message=str(e))
         if in_chat:
