@@ -2,6 +2,7 @@ import logging
 import warnings
 from typing import Any, List, Union, Dict
 
+import numpy as np
 import orjson
 import pandas as pd
 from langchain_community.utilities import SQLDatabase
@@ -543,16 +544,16 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
         raise RuntimeError(error_msg)
 
 
-def run_task(llm_service: LLMService, session: SessionDep, stream: bool = True):
+def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True):
     try:
         # return id
-        if stream:
+        if in_chat:
             yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
 
         # select datasource if datasource is none
         if not llm_service.ds:
             ds_res = llm_service.select_datasource()
-            if stream:
+            if in_chat:
                 for chunk in ds_res:
                     yield orjson.dumps({'content': chunk, 'type': 'datasource-result'}).decode() + '\n\n'
                 yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
@@ -565,22 +566,24 @@ def run_task(llm_service: LLMService, session: SessionDep, stream: bool = True):
         full_sql_text = ''
         for chunk in sql_res:
             full_sql_text += chunk
-            if stream:
+            if in_chat:
                 yield orjson.dumps({'content': chunk, 'type': 'sql-result'}).decode() + '\n\n'
-        if stream:
+        if in_chat:
             yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
 
         # filter sql
         print(full_sql_text)
         sql = llm_service.check_save_sql(res=full_sql_text)
         print(sql)
-        if stream:
+        if in_chat:
             yield orjson.dumps({'content': sql, 'type': 'sql'}).decode() + '\n\n'
+        else:
+            yield f'```sql\n{sql}\n```\n\n'
 
         # execute sql
         result = llm_service.execute_sql(sql=sql)
         llm_service.save_sql_data(data_obj=result)
-        if stream:
+        if in_chat:
             yield orjson.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}).decode() + '\n\n'
 
         # generate chart
@@ -588,40 +591,56 @@ def run_task(llm_service: LLMService, session: SessionDep, stream: bool = True):
         full_chart_text = ''
         for chunk in chart_res:
             full_chart_text += chunk
-            if stream:
+            if in_chat:
                 yield orjson.dumps({'content': chunk, 'type': 'chart-result'}).decode() + '\n\n'
-        if stream:
+        if in_chat:
             yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
         # filter chart
         print(full_chart_text)
         chart = llm_service.check_save_chart(res=full_chart_text)
         print(chart)
-        if stream:
+        if in_chat:
             yield orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
+        else:
+            data = []
+            _fields = {}
+            if chart.get('columns'):
+                for _column in chart.get('columns'):
+                    if _column:
+                        _fields[_column.get('value')] = _column.get('name')
+            if chart.get('axis'):
+                if chart.get('axis').get('x'):
+                    _fields[chart.get('axis').get('x').get('value')] = chart.get('axis').get('x').get('name')
+                if chart.get('axis').get('y'):
+                    _fields[chart.get('axis').get('y').get('value')] = chart.get('axis').get('y').get('name')
+                if chart.get('axis').get('series'):
+                    _fields[chart.get('axis').get('series').get('value')] = chart.get('axis').get('series').get('name')
+            _fields_list = []
+            _fields_skip = False
+            for _data in result.get('data'):
+                _row = []
+                for field in result.get('fields'):
+                    _row.append(_data.get(field))
+                    if not _fields_skip:
+                        _fields_list.append(field if not _fields.get(field) else _fields.get(field))
+                data.append(_row)
+                _fields_skip = True
+            df = pd.DataFrame(np.array(data), columns=_fields_list)
+            markdown_table = df.to_markdown(index=False)
+            yield markdown_table + '\n\n'
 
         record = llm_service.finish()
-        if stream:
+        if in_chat:
             yield orjson.dumps({'type': 'finish'}).decode() + '\n\n'
         else:
-            md_str = f'```sql\n{sql}\n```\n\n'
             # todo generate picture
-            if chart['type'] == 'table':
-                data = {}
-                for _data in result['data']:
-                    for field in result['fields']:
-                        if not data[field]:
-                            data[field] = []
-                        data[field].append(_data[field])
-                df = pd.DataFrame(data, columns=result['fields'])
-                markdown_table = df.to_markdown(index=False)
-                md_str += markdown_table
-            else:
-                md_str += ''
+            if chart['type'] != 'table':
+                yield '# todo generate chart picture'
 
     except Exception as e:
         llm_service.save_error(message=str(e))
-        if stream:
+        if in_chat:
             yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
         else:
             raise e
