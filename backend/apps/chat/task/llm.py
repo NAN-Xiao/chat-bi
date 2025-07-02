@@ -66,9 +66,10 @@ class LLMService:
         if not aimodel and aimodel[0]:
             raise Exception("No available AI model configuration found")
 
-        history_records: List[ChatRecord] = list(filter(lambda r: True if r.first_chat != True else False,
-                                                        list_records(session=self.session, current_user=current_user,
-                                                                     chart_id=chat_question.chat_id)))
+        history_records: List[ChatRecord] = list(
+            map(lambda x: ChatRecord(**x.model_dump()), filter(lambda r: True if r.first_chat != True else False,
+                                                  list_records(session=self.session, current_user=current_user,
+                                                               chart_id=chat_question.chat_id))))
         # get schema
         if ds:
             chat_question.db_schema = get_table_schema(session=self.session, ds=ds)
@@ -291,7 +292,6 @@ class LLMService:
         full_text = ''
         res = self.llm.stream(datasource_msg)
         for chunk in res:
-            print(chunk)
             if isinstance(chunk, dict):
                 full_text += chunk['content']
                 yield chunk['content']
@@ -553,9 +553,12 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
         # select datasource if datasource is none
         if not llm_service.ds:
             ds_res = llm_service.select_datasource()
-            if in_chat:
-                for chunk in ds_res:
+
+            for chunk in ds_res:
+                print(chunk)
+                if in_chat:
                     yield orjson.dumps({'content': chunk, 'type': 'datasource-result'}).decode() + '\n\n'
+            if in_chat:
                 yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
                                     'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
 
