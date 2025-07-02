@@ -55,7 +55,7 @@ const { configItem } = toRefs(props)
 
 const state = reactive({
   activeTabName: '',
-  curItem: {},
+  curItem: { title: '' },
   textarea: '',
   dialogVisible: false,
   tabShow: true,
