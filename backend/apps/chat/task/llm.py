@@ -646,4 +646,4 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
         if in_chat:
             yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
         else:
-            raise e
+            yield f'> &#x274c; **ERROR**\n\n> \n\n> {str(e)}。'
