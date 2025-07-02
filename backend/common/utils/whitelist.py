@@ -21,14 +21,11 @@ wlist = [
     "*.ttf",
     "*.eot",
     "*.otf",
-    "/mcp",
-    "/mcp/message",
-    "/datasource/list",
-    "/system/aimodel/list",
-    "/chat/mcp_question",
-    "/chat/mcp_start",
+    "/mcp*",
     "/system/license",
-    "/system/config/key"
+    "/system/config/key",
+    "/images/*",
+    "/sse",
 ]
 
 class WhitelistChecker:
