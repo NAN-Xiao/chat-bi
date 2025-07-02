@@ -35,14 +35,14 @@ dependencies = [
     "oracledb (>=3.1.1,<4.0.0)",
     "pyyaml (>=6.0.2,<7.0.0)",
     "fastapi-mcp (>=0.3.4,<0.4.0)",
-    "sqlbot-xpack==0.0.3",
+    "sqlbot-xpack==0.0.3.1",
 ]
 [[tool.uv.index]]
 name = "default"
 url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 default = true
-[[tool.uv.index]]
 
+[[tool.uv.index]]
 name = "testpypi"
 url = "https://test.pypi.org/simple"
 explicit = true
