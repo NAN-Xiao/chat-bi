@@ -41,7 +41,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 # mcp server, images path
-app.mount("/images", StaticFiles(directory="/opt/sqlbot/images"), name="images")
+app.mount("/images", StaticFiles(directory=settings.MCP_IMAGE_PATH), name="images")
 
 mcp_app = FastAPI()
 
@@ -51,7 +51,7 @@ mcp = FastApiMCP(
     description="SQLBot MCP Server",
     describe_all_responses=True,
     describe_full_response_schema=True,
-    include_operations=["get_datasource_list", "get_model_list", "mcp_question", "mcp_start"]
+    include_operations=["get_datasource_list", "get_model_list", "mcp_question", "mcp_start", "access_token"]
 )
 
 mcp.mount(mcp_app)

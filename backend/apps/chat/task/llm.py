@@ -2,7 +2,9 @@ import logging
 import warnings
 from typing import Any, List, Union, Dict
 
+import numpy as np
 import orjson
+import pandas as pd
 from langchain_community.utilities import SQLDatabase
 from langchain_core.language_models import BaseLLM
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, AIMessageChunk
@@ -13,10 +15,12 @@ from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_llm_config
 from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer, save_sql, \
     save_error_message, save_sql_exec_data, save_full_chart_message, save_full_chart_message_and_answer, save_chart, \
     finish_record, save_full_analysis_message_and_answer, save_full_predict_message_and_answer, save_predict_data, \
-    save_full_select_datasource_message_and_answer
+    save_full_select_datasource_message_and_answer, list_records
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat
+from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
+from apps.system.crud.user import get_user_info
 from apps.system.models.system_model import AiModelDetail
 from common.core.deps import SessionDep, CurrentUser
 
@@ -34,13 +38,49 @@ class LLMService:
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
     history_records: List[ChatRecord] = []
+    session: SessionDep
+    _current_user: CurrentUser
 
-    def __init__(self, chat_question: ChatQuestion, aimodel: AiModelDetail, history_records: List[ChatRecord] = [],
-                 ds: CoreDatasource = None):
-        self.ds = ds
+    def __init__(self, session: SessionDep, current_user: CurrentUser, chat_question: ChatQuestion):
+
+        self.session = session
+        self.current_user = current_user
+
+        chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
+        if not chat:
+            raise Exception(f"Chat with id {chat_question.chat_id} not found")
+        ds: CoreDatasource | None = None
+        if chat.datasource:
+            # Get available datasource
+            ds = self.session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
+            if not ds:
+                raise Exception("No available datasource configuration found")
+
+            chat_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
+
+        # Get available AI model
+        aimodel = self.session.exec(select(AiModelDetail).where(
+            AiModelDetail.status == True,
+            AiModelDetail.api_key.is_not(None)
+        )).first()
+        if not aimodel and aimodel[0]:
+            raise Exception("No available AI model configuration found")
+
+        history_records: List[ChatRecord] = list(
+            map(lambda x: ChatRecord(**x.model_dump()), filter(lambda r: True if r.first_chat != True else False,
+                                                  list_records(session=self.session, current_user=current_user,
+                                                               chart_id=chat_question.chat_id))))
+        # get schema
+        if ds:
+            chat_question.db_schema = get_table_schema(session=self.session, ds=ds)
+
+        db_user = get_user_info(session=self.session, user_id=current_user.id)
+        chat_question.lang = db_user.language
+
+        self.ds = CoreDatasource(**ds.model_dump()) if ds else None
         self.chat_question = chat_question
-        self.chat_question.ai_modal_id = aimodel.id
-        self.config = get_llm_config(aimodel)
+        self.chat_question.ai_modal_id = aimodel[0].id
+        self.config = get_llm_config(aimodel[0])
 
         # Create LLM instance through factory
         llm_instance = LLMFactory.create_llm(self.config)
@@ -112,8 +152,8 @@ class LLMService:
                     _msg = AIMessage(content=last_chart_message['content'])
                     self.chart_message.append(_msg)
 
-    def init_record(self, session: SessionDep, current_user: CurrentUser) -> ChatRecord:
-        self.record = save_question(session=session, current_user=current_user, question=self.chat_question)
+    def init_record(self) -> ChatRecord:
+        self.record = save_question(session=self.session, current_user=self.current_user, question=self.chat_question)
         return self.record
 
     def get_record(self):
@@ -183,7 +223,7 @@ class LLMService:
                                                                                        in
                                                                                        analysis_msg]).decode())
 
-    def generate_predict(self, session: SessionDep):
+    def generate_predict(self):
         fields = self.get_fields_from_chart()
 
         self.chat_question.fields = orjson.dumps(fields).decode()
@@ -196,7 +236,7 @@ class LLMService:
         if self.record.full_predict_message and self.record.full_predict_message.strip() != '':
             history_msg = orjson.loads(self.record.full_predict_message)
 
-        self.record = save_full_predict_message_and_answer(session=session, record_id=self.record.id, answer='',
+        self.record = save_full_predict_message_and_answer(session=self.session, record_id=self.record.id, answer='',
                                                            data='',
                                                            full_message=orjson.dumps(history_msg +
                                                                                      [{'type': msg.type,
@@ -218,7 +258,7 @@ class LLMService:
                 continue
 
         predict_msg.append(AIMessage(full_predict_text))
-        self.record = save_full_predict_message_and_answer(session=session, record_id=self.record.id,
+        self.record = save_full_predict_message_and_answer(session=self.session, record_id=self.record.id,
                                                            answer=full_predict_text, data='',
                                                            full_message=orjson.dumps(history_msg +
                                                                                      [{'type': msg.type,
@@ -226,10 +266,10 @@ class LLMService:
                                                                                       in
                                                                                       predict_msg]).decode())
 
-    def select_datasource(self, session: SessionDep):
+    def select_datasource(self):
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemMessage(self.chat_question.datasource_sys_question()))
-        _ds_list = session.exec(select(CoreDatasource).options(
+        _ds_list = self.session.exec(select(CoreDatasource).options(
             load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all()
         _ds_list_dict = []
         for _ds in _ds_list:
@@ -241,7 +281,7 @@ class LLMService:
         if self.record.full_select_datasource_message and self.record.full_select_datasource_message.strip() != '':
             history_msg = orjson.loads(self.record.full_select_datasource_message)
 
-        self.record = save_full_select_datasource_message_and_answer(session=session, record_id=self.record.id,
+        self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
                                                                      answer='',
                                                                      full_message=orjson.dumps(history_msg +
                                                                                                [{'type': msg.type,
@@ -252,7 +292,6 @@ class LLMService:
         full_text = ''
         res = self.llm.stream(datasource_msg)
         for chunk in res:
-            print(chunk)
             if isinstance(chunk, dict):
                 full_text += chunk['content']
                 yield chunk['content']
@@ -273,7 +312,7 @@ class LLMService:
 
             if data['id'] and data['id'] != 0:
                 _datasource = data['id']
-                _ds = session.query(CoreDatasource).filter(CoreDatasource.id == _datasource).first()
+                _ds = self.session.query(CoreDatasource).filter(CoreDatasource.id == _datasource).first()
                 if not _ds:
                     _datasource = None
                     raise Exception(f"Datasource configuration with id {_datasource} not found")
@@ -281,14 +320,14 @@ class LLMService:
                 self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
                 _engine_type = self.chat_question.engine
                 # save chat
-                _chat = session.query(Chat).filter(Chat.id == self.record.chat_id).first()
+                _chat = self.session.query(Chat).filter(Chat.id == self.record.chat_id).first()
                 _chat.datasource = _datasource
                 _chat.engine_type = _ds.type_name
 
-                session.add(_chat)
-                session.flush()
-                session.refresh(_chat)
-                session.commit()
+                self.session.add(_chat)
+                self.session.flush()
+                self.session.refresh(_chat)
+                self.session.commit()
 
             elif data['fail']:
                 raise Exception(data['fail'])
@@ -298,7 +337,7 @@ class LLMService:
         except Exception as e:
             _error = e
 
-        self.record = save_full_select_datasource_message_and_answer(session=session, record_id=self.record.id,
+        self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
                                                                      answer=full_text, datasource=_datasource,
                                                                      engine_type=_engine_type,
                                                                      full_message=orjson.dumps(history_msg +
@@ -312,10 +351,10 @@ class LLMService:
         if _error:
             raise _error
 
-    def generate_sql(self, session: SessionDep):
+    def generate_sql(self):
         # append current question
         self.sql_message.append(HumanMessage(self.chat_question.sql_user_question()))
-        self.record = save_full_sql_message(session=session, record_id=self.record.id,
+        self.record = save_full_sql_message(session=self.session, record_id=self.record.id,
                                             full_message=orjson.dumps(
                                                 [{'type': msg.type, 'content': msg.content} for msg in
                                                  self.sql_message]).decode())
@@ -333,16 +372,16 @@ class LLMService:
                 continue
 
         self.sql_message.append(AIMessage(full_sql_text))
-        self.record = save_full_sql_message_and_answer(session=session, record_id=self.record.id,
+        self.record = save_full_sql_message_and_answer(session=self.session, record_id=self.record.id,
                                                        answer=full_sql_text,
                                                        full_message=orjson.dumps(
                                                            [{'type': msg.type, 'content': msg.content} for msg in
                                                             self.sql_message]).decode())
 
-    def generate_chart(self, session: SessionDep):
+    def generate_chart(self):
         # append current question
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question()))
-        self.record = save_full_chart_message(session=session, record_id=self.record.id,
+        self.record = save_full_chart_message(session=self.session, record_id=self.record.id,
                                               full_message=orjson.dumps(
                                                   [{'type': msg.type, 'content': msg.content} for msg in
                                                    self.chart_message]).decode())
@@ -359,13 +398,13 @@ class LLMService:
                 continue
 
         self.chart_message.append(AIMessage(full_chart_text))
-        self.record = save_full_chart_message_and_answer(session=session, record_id=self.record.id,
+        self.record = save_full_chart_message_and_answer(session=self.session, record_id=self.record.id,
                                                          answer=full_chart_text,
                                                          full_message=orjson.dumps(
                                                              [{'type': msg.type, 'content': msg.content} for msg in
                                                               self.chart_message]).decode())
 
-    def check_save_sql(self, session: SessionDep, res: str) -> str:
+    def check_save_sql(self, res: str) -> str:
 
         json_str = extract_nested_json(res)
         data = orjson.loads(json_str)
@@ -385,13 +424,13 @@ class LLMService:
         if sql.strip() == '':
             raise Exception("SQL query is empty")
 
-        save_sql(session=session, sql=sql, record_id=self.record.id)
+        save_sql(session=self.session, sql=sql, record_id=self.record.id)
 
         self.chat_question.sql = sql
 
         return sql
 
-    def check_save_chart(self, session: SessionDep, res: str) -> Dict[str, Any]:
+    def check_save_chart(self, res: str) -> Dict[str, Any]:
 
         json_str = extract_nested_json(res)
         data = orjson.loads(json_str)
@@ -413,30 +452,30 @@ class LLMService:
         if error:
             raise Exception(message)
 
-        save_chart(session=session, chart=orjson.dumps(chart).decode(), record_id=self.record.id)
+        save_chart(session=self.session, chart=orjson.dumps(chart).decode(), record_id=self.record.id)
 
         return chart
 
-    def check_save_predict_data(self, session: SessionDep, res: str) -> Dict[str, Any]:
+    def check_save_predict_data(self, res: str) -> Dict[str, Any]:
 
         json_str = extract_nested_json(res)
 
         if not json_str:
             json_str = ''
 
-        save_predict_data(session=session, record_id=self.record.id, data=json_str)
+        save_predict_data(session=self.session, record_id=self.record.id, data=json_str)
 
         return json_str
 
-    def save_error(self, session: SessionDep, message: str):
-        return save_error_message(session=session, record_id=self.record.id, message=message)
+    def save_error(self, message: str):
+        return save_error_message(session=self.session, record_id=self.record.id, message=message)
 
-    def save_sql_data(self, session: SessionDep, data_obj: Dict[str, Any]):
-        return save_sql_exec_data(session=session, record_id=self.record.id,
+    def save_sql_data(self, data_obj: Dict[str, Any]):
+        return save_sql_exec_data(session=self.session, record_id=self.record.id,
                                   data=orjson.dumps(data_obj).decode())
 
-    def finish(self, session: SessionDep):
-        return finish_record(session=session, record_id=self.record.id)
+    def finish(self):
+        return finish_record(session=self.session, record_id=self.record.id)
 
     def execute_sql(self, sql: str):
         """Execute SQL query
@@ -503,3 +542,109 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
         error_msg = f"SQL execution failed: {str(e)}"
         logging.error(error_msg)
         raise RuntimeError(error_msg)
+
+
+def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True):
+    try:
+        # return id
+        if in_chat:
+            yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
+
+        # select datasource if datasource is none
+        if not llm_service.ds:
+            ds_res = llm_service.select_datasource()
+
+            for chunk in ds_res:
+                print(chunk)
+                if in_chat:
+                    yield orjson.dumps({'content': chunk, 'type': 'datasource-result'}).decode() + '\n\n'
+            if in_chat:
+                yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
+                                    'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
+
+            llm_service.chat_question.db_schema = get_table_schema(session=session, ds=llm_service.ds)
+
+        # generate sql
+        sql_res = llm_service.generate_sql()
+        full_sql_text = ''
+        for chunk in sql_res:
+            full_sql_text += chunk
+            if in_chat:
+                yield orjson.dumps({'content': chunk, 'type': 'sql-result'}).decode() + '\n\n'
+        if in_chat:
+            yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
+
+        # filter sql
+        print(full_sql_text)
+        sql = llm_service.check_save_sql(res=full_sql_text)
+        print(sql)
+        if in_chat:
+            yield orjson.dumps({'content': sql, 'type': 'sql'}).decode() + '\n\n'
+        else:
+            yield f'```sql\n{sql}\n```\n\n'
+
+        # execute sql
+        result = llm_service.execute_sql(sql=sql)
+        llm_service.save_sql_data(data_obj=result)
+        if in_chat:
+            yield orjson.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}).decode() + '\n\n'
+
+        # generate chart
+        chart_res = llm_service.generate_chart()
+        full_chart_text = ''
+        for chunk in chart_res:
+            full_chart_text += chunk
+            if in_chat:
+                yield orjson.dumps({'content': chunk, 'type': 'chart-result'}).decode() + '\n\n'
+        if in_chat:
+            yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
+
+        # filter chart
+        print(full_chart_text)
+        chart = llm_service.check_save_chart(res=full_chart_text)
+        print(chart)
+        if in_chat:
+            yield orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
+        else:
+            data = []
+            _fields = {}
+            if chart.get('columns'):
+                for _column in chart.get('columns'):
+                    if _column:
+                        _fields[_column.get('value')] = _column.get('name')
+            if chart.get('axis'):
+                if chart.get('axis').get('x'):
+                    _fields[chart.get('axis').get('x').get('value')] = chart.get('axis').get('x').get('name')
+                if chart.get('axis').get('y'):
+                    _fields[chart.get('axis').get('y').get('value')] = chart.get('axis').get('y').get('name')
+                if chart.get('axis').get('series'):
+                    _fields[chart.get('axis').get('series').get('value')] = chart.get('axis').get('series').get('name')
+            _fields_list = []
+            _fields_skip = False
+            for _data in result.get('data'):
+                _row = []
+                for field in result.get('fields'):
+                    _row.append(_data.get(field))
+                    if not _fields_skip:
+                        _fields_list.append(field if not _fields.get(field) else _fields.get(field))
+                data.append(_row)
+                _fields_skip = True
+            df = pd.DataFrame(np.array(data), columns=_fields_list)
+            markdown_table = df.to_markdown(index=False)
+            yield markdown_table + '\n\n'
+
+        record = llm_service.finish()
+        if in_chat:
+            yield orjson.dumps({'type': 'finish'}).decode() + '\n\n'
+        else:
+            # todo generate picture
+            if chart['type'] != 'table':
+                yield '# todo generate chart picture'
+
+            yield f'![{chart["type"]}](https://sqlbot.fit2cloud.cn/images/111.png)'
+    except Exception as e:
+        llm_service.save_error(message=str(e))
+        if in_chat:
+            yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
+        else:
+            yield f'> &#x274c; **ERROR**\n\n> \n\n> {str(e)}。'

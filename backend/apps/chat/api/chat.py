@@ -1,20 +1,14 @@
 import traceback
-from typing import List
 
 import orjson
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlmodel import select
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
-    delete_chat, list_records
-from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat, ChatQuestion, ChatMcp
-from apps.chat.task.llm import LLMService
-from apps.datasource.crud.datasource import get_table_schema
-from apps.datasource.models.datasource import CoreDatasource
-from apps.system.crud.user import get_user_info
-from apps.system.models.system_model import AiModelDetail
-from common.core.deps import SessionDep, CurrentUser, get_current_user
+    delete_chat
+from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion
+from apps.chat.task.llm import LLMService, run_task
+from common.core.deps import SessionDep, CurrentUser
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
@@ -57,34 +51,6 @@ async def delete(session: SessionDep, chart_id: int):
         )
 
 
-@router.post("/mcp_start", operation_id="mcp_start")
-async def mcp_start(session: SessionDep, chat: ChatMcp):
-    user = await get_current_user(session, chat.token)
-    return create_chat(session, user, CreateChat(), False)
-
-
-@router.post("/mcp_question", operation_id="mcp_question")
-async def mcp_question(session: SessionDep, chat: ChatMcp):
-    user = await get_current_user(session, chat.token)
-    # return await stream_sql(session, user, chat)
-    return {"content": """这是一段写死的测试内容：
-    
-    步骤1: 确定需要查询的字段。
-    我们需要统计上海的订单总数，因此需要从"城市"字段中筛选出值为"上海"的记录，并使用COUNT函数计算这些记录的数量。
-    
-    步骤2: 确定筛选条件。
-    问题要求统计上海的订单总数，所以我们需要在SQL语句中添加WHERE "城市" = '上海'来筛选出符合条件的记录。
-    
-    步骤3: 避免关键字冲突。
-    因为这个Excel/CSV数据库是 PostgreSQL 类型，所以在schema、表名、字段名和别名外层加双引号。
-    
-    最终答案:
-    ```json
-    {"success":true,"sql":"SELECT COUNT(*) AS \"TotalOrders\" FROM \"public\".\"Sheet1_c27345b66e\" WHERE \"城市\" = '上海';"}
-    ```
-    <img src="https://sqlbot.fit2cloud.cn/images/111.png">"""}
-
-
 @router.post("/start")
 async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat):
     try:
@@ -96,7 +62,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
         )
 
 
-@router.post("/question", operation_id="question")
+@router.post("/question")
 async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion):
     """Stream SQL analysis results
     
@@ -109,107 +75,17 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
         Streaming response with analysis results
     """
 
-    chat = session.query(Chat).filter(Chat.id == request_question.chat_id).first()
-    if not chat:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Chat with id {request_question.chat_id} not found"
-        )
-    ds: CoreDatasource | None = None
-    if chat.datasource:
-        # Get available datasource
-        ds = session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
-        if not ds:
-            raise HTTPException(
-                status_code=500,
-                detail="No available datasource configuration found"
-            )
-
-        request_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
-
-    # Get available AI model
-    aimodel = session.exec(select(AiModelDetail).where(
-        AiModelDetail.status == True,
-        AiModelDetail.api_key.is_not(None)
-    )).first()
-    if not aimodel:
+    try:
+        llm_service = LLMService(session, current_user, request_question)
+        llm_service.init_record()
+    except Exception as e:
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail="No available AI model configuration found"
+            detail=str(e)
         )
 
-    history_records: List[ChatRecord] = list(filter(lambda r: True if r.first_chat != True else False,
-                                                    list_records(session=session, current_user=current_user,
-                                                                 chart_id=request_question.chat_id)))
-    # get schema
-    if ds:
-        request_question.db_schema = get_table_schema(session=session, ds=ds)
-
-    db_user = get_user_info(session=session, user_id=current_user.id)
-    request_question.lang = db_user.language
-
-    llm_service = LLMService(request_question, aimodel, history_records,
-                             CoreDatasource(**ds.model_dump()) if ds else None)
-
-    llm_service.init_record(session=session, current_user=current_user)
-
-    def run_task():
-        try:
-            # return id
-            yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
-
-            # select datasource if datasource is none
-            if not ds:
-                ds_res = llm_service.select_datasource(session=session)
-                for chunk in ds_res:
-                    yield orjson.dumps({'content': chunk, 'type': 'datasource-result'}).decode() + '\n\n'
-                yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
-                                    'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
-
-                llm_service.chat_question.db_schema = get_table_schema(session=session, ds=llm_service.ds)
-
-            # generate sql
-            sql_res = llm_service.generate_sql(session=session)
-            full_sql_text = ''
-            for chunk in sql_res:
-                full_sql_text += chunk
-                yield orjson.dumps({'content': chunk, 'type': 'sql-result'}).decode() + '\n\n'
-            yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
-
-            # filter sql
-            print(full_sql_text)
-            sql = llm_service.check_save_sql(session=session, res=full_sql_text)
-            print(sql)
-            yield orjson.dumps({'content': sql, 'type': 'sql'}).decode() + '\n\n'
-
-            # execute sql
-            result = llm_service.execute_sql(sql=sql)
-            llm_service.save_sql_data(session=session, data_obj=result)
-            yield orjson.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}).decode() + '\n\n'
-
-            # generate chart
-            chart_res = llm_service.generate_chart(session=session)
-            full_chart_text = ''
-            for chunk in chart_res:
-                full_chart_text += chunk
-                yield orjson.dumps({'content': chunk, 'type': 'chart-result'}).decode() + '\n\n'
-            yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
-
-            # filter chart
-            print(full_chart_text)
-            chart = llm_service.check_save_chart(session=session, res=full_chart_text)
-            print(chart)
-            yield orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
-
-            llm_service.finish(session=session)
-            yield orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-
-        except Exception as e:
-            traceback.print_exc()
-            llm_service.save_error(session=session, message=str(e))
-            yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
-
-    return StreamingResponse(run_task(), media_type="text/event-stream")
+    return StreamingResponse(run_task(llm_service, session), media_type="text/event-stream")
 
 
 @router.post("/record/{chart_record_id}/{action_type}")
@@ -233,35 +109,9 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             detail=f"Chat record with id {chart_record_id} has not generated chart, do not support to analyze it"
         )
 
-    chat = session.query(Chat).filter(Chat.id == record.chat_id).first()
-    if not chat:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Chat with id {record.chart_id} not found"
-        )
+    request_question = ChatQuestion(chat_id=record.chat_id, question='')
 
-    if chat.create_by != current_user.id:
-        raise HTTPException(
-            status_code=401,
-            detail=f"You cannot use the chat with id {record.chart_id}"
-        )
-
-    # Get available AI model
-    aimodel = session.exec(select(AiModelDetail).where(
-        AiModelDetail.status == True,
-        AiModelDetail.api_key.is_not(None)
-    )).first()
-    if not aimodel:
-        raise HTTPException(
-            status_code=500,
-            detail="No available AI model configuration found"
-        )
-
-    request_question = ChatQuestion(chat_id=chat.id, question='')
-    db_user = get_user_info(session=session, user_id=current_user.id)
-    request_question.lang = db_user.language
-
-    llm_service = LLMService(request_question, aimodel)
+    llm_service = LLMService(session, current_user, request_question)
     llm_service.set_record(record)
 
     def run_task():
@@ -277,14 +127,14 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 
             elif action_type == 'predict':
                 # generate predict
-                analysis_res = llm_service.generate_predict(session=session)
+                analysis_res = llm_service.generate_predict()
                 full_text = ''
                 for chunk in analysis_res:
                     yield orjson.dumps({'content': chunk, 'type': 'predict-result'}).decode() + '\n\n'
                     full_text += chunk
                 yield orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
 
-                _data = llm_service.check_save_predict_data(session=session, res=full_text)
+                _data = llm_service.check_save_predict_data(res=full_text)
                 yield orjson.dumps({'type': 'predict', 'content': _data}).decode() + '\n\n'
 
                 yield orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
