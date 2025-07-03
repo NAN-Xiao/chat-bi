@@ -144,4 +144,9 @@ class ChatQuestion(AiModelQuestion):
 
 
 class ChatMcp(ChatQuestion):
-    token:str = ''
+    token: str = ''
+
+
+class ChatStart(BaseModel):
+    username: str = ''
+    password: str = ''
