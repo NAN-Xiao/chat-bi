@@ -128,7 +128,18 @@ const handleDefaultLanguageChange = (item: any) => {
   background-color: transparent;
 
   &.collapse {
-    width: 40px;
+    min-width: 48px;
+    margin-left: -4px;
+    position: relative;
+    margin-top: -6px;
+    margin-bottom: 16px;
+
+    .default-avatar {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
   }
 
   .name {
