@@ -3,9 +3,11 @@ import { h } from 'vue'
 import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
 
 import model from '@/assets/svg/icon_dataset_filled.svg'
+import ds from '@/assets/svg/ds.svg'
 
 const iconMap = {
   icon_ai: model,
+  ds,
 } as { [key: string]: any }
 
 const titleWithIcon = (props: any) => {

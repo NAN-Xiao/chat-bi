@@ -66,11 +66,11 @@ defineExpose({
           controls-position="right"
         />
         <el-input
-          placeholder="请输入 1-50 个字符"
           v-if="paramsForm.type === 0"
           v-model="paramsForm.value"
+          placeholder="请输入 1-50 个字符"
         />
-        <el-input type="textarea" v-if="paramsForm.type === 2" v-model="paramsForm.value" />
+        <el-input v-if="paramsForm.type === 2" v-model="paramsForm.value" type="textarea" />
       </el-form-item>
     </el-form>
   </div>

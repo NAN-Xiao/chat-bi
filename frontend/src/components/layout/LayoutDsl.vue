@@ -1,11 +1,12 @@
 <script lang="ts" setup>
 import { ref } from 'vue'
 import Menu from './Menu.vue'
+import Workspace from './Workspace.vue'
+import Person from './Person.vue'
 import LOGO from '@/assets/LOGO.svg'
 import LOGO_fold from '@/assets/LOGO-fold.svg'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
-import Default_avatar from '@/assets/svg/icon-member-default.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 const collapse = ref(false)
 
@@ -19,6 +20,7 @@ const handleFoldExpand = () => {
     <div class="left-side" :class="collapse && 'left-side-collapse'">
       <LOGO_fold v-if="collapse" style="margin: 0 0 6px 5px"></LOGO_fold>
       <LOGO v-else style="margin-bottom: 6px"></LOGO>
+      <Workspace :collapse="collapse"></Workspace>
       <Menu :collapse="collapse"></Menu>
       <div class="bottom">
         <div class="back-to_workspace">
@@ -28,12 +30,8 @@ const handleFoldExpand = () => {
           {{ collapse ? '' : '返回工作空间' }}
         </div>
         <div class="personal-info">
-          <el-icon size="32" class="default-avatar">
-            <Default_avatar></Default_avatar>
-          </el-icon>
-
-          {{ collapse ? '' : '飞小致' }}
-          <el-icon @click="handleFoldExpand" size="20" class="fold">
+          <Person :collapse="collapse"></Person>
+          <el-icon size="20" class="fold" @click="handleFoldExpand">
             <icon_side_expand_outlined v-if="collapse"></icon_side_expand_outlined>
             <icon_side_fold_outlined v-else></icon_side_fold_outlined>
           </el-icon>
@@ -97,10 +95,6 @@ const handleFoldExpand = () => {
         display: flex;
         align-items: center;
         margin-top: 16px;
-        .default-avatar {
-          margin-right: 8px;
-          cursor: pointer;
-        }
 
         .fold {
           cursor: pointer;
@@ -153,6 +147,10 @@ const handleFoldExpand = () => {
       box-shadow: 0px 2px 4px 0px #1f23291f;
       background-color: #fff;
       border-radius: 12px;
+
+      &:has(.no-padding) {
+        padding: 0;
+      }
     }
   }
 }

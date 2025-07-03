@@ -5,7 +5,7 @@ import LayoutDsl from '@/components/layout/LayoutDsl.vue'
 import SinglePage from '@/components/layout/SinglePage.vue'
 import login from '@/views/login/index.vue'
 import chat from '@/views/chat/index.vue'
-import ds from '@/views/ds/index.vue'
+import Datasource from '@/views/ds/Datasource.vue'
 import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
@@ -48,13 +48,13 @@ const router = createRouter({
     },
     {
       path: '/ds',
-      component: Layout,
+      component: LayoutDsl,
       redirect: '/ds/index',
       children: [
         {
           path: 'index',
           name: 'ds',
-          component: ds,
+          component: Datasource,
           meta: { title: 'Data Connections', icon: 'ds' },
         },
       ],

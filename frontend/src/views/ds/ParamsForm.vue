@@ -1,0 +1,66 @@
+<script lang="ts" setup>
+import { nextTick, ref } from 'vue'
+import DatasourceForm from './DatasourceForm.vue'
+import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
+
+const datasourceFormRef = ref()
+const datasourceConfigvVisible = ref(false)
+const beforeClose = () => {
+  datasourceConfigvVisible.value = false
+}
+
+const emit = defineEmits(['refresh'])
+const refresh = () => {
+  emit('refresh')
+}
+const changeActiveStep = (val: any) => {
+  if (val === 0) {
+    datasourceConfigvVisible.value = false
+  }
+}
+const save = () => {
+  datasourceFormRef.value.tableListSave()
+}
+
+const open = (item: any) => {
+  datasourceConfigvVisible.value = true
+  nextTick(() => {
+    datasourceFormRef.value.initForm(item, true)
+  })
+}
+
+defineExpose({
+  open,
+})
+</script>
+
+<template>
+  <el-drawer
+    v-model="datasourceConfigvVisible"
+    :close-on-click-modal="false"
+    size="calc(100% - 100px)"
+    modal-class="datasource-drawer-fullscreen"
+    direction="btt"
+    :before-close="beforeClose"
+    :show-close="false"
+  >
+    <template #header="{ close }">
+      <span style="white-space: nowrap">选择数据表</span>
+      <el-icon style="cursor: pointer" @click="close">
+        <icon_close_outlined></icon_close_outlined>
+      </el-icon>
+    </template>
+    <DatasourceForm
+      ref="datasourceFormRef"
+      :active-step="2"
+      @change-active-step="changeActiveStep"
+      @refresh="refresh"
+    ></DatasourceForm>
+    <template #footer>
+      <el-button secondary @click="beforeClose"> 取消 </el-button>
+      <el-button type="primary" @click="save"> 保存 </el-button>
+    </template>
+  </el-drawer>
+</template>
+
+<style lang="less" scoped></style>

@@ -33,7 +33,7 @@ const activeIndex = computed(() => {
     height: 40px;
     border-radius: 6px;
     &.is-active.is-active.is-active {
-      background-color: #1CBA901A;
+      background-color: #1cba901a;
     }
   }
 }

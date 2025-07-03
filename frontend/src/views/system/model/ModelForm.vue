@@ -22,7 +22,7 @@ interface Options {
   value: string
 }
 
-interface ParamsForm {
+interface Form {
   name: string
   id: string
 }
@@ -41,7 +41,7 @@ const modelForm = reactive({
 let isCreate = false
 const modelRef = ref()
 const paramsFormRef = ref()
-const advancedSetting = ref([] as ParamsForm[])
+const advancedSetting = ref([] as Form[])
 const modelList = ref([] as Options[])
 const paramsFormDrawer = ref(false)
 const advancedSettingExpand = ref(false)
@@ -185,13 +185,13 @@ defineExpose({
           <el-input v-model="modelForm.endpoint" />
         </el-form-item>
         <el-form-item prop="api_key" label="API Key">
-          <el-input type="password" show-password v-model="modelForm.api_key" />
+          <el-input v-model="modelForm.api_key" type="password" show-password />
         </el-form-item>
       </el-form>
       <div
-        @click="advancedSettingExpand = !advancedSettingExpand"
         class="advance-setting"
         :class="advancedSettingExpand && 'expand'"
+        @click="advancedSettingExpand = !advancedSettingExpand"
       >
         高级设置
         <el-icon size="16">
@@ -200,7 +200,7 @@ defineExpose({
       </div>
       <div v-if="advancedSettingExpand" class="model-params">
         模型参数
-        <span @click="handleParamsCreate" class="add">
+        <span class="add" @click="handleParamsCreate">
           <el-icon size="16">
             <icon_add_outlined></icon_add_outlined>
           </el-icon>
@@ -215,12 +215,12 @@ defineExpose({
           <el-table-column prop="value" label="参数值" />
           <el-table-column fixed="right" width="80" class-name="operation-column_text" label="操作">
             <template #default="scope">
-              <el-button text @click="handleParamsEdite(scope.row)" type="primary">
+              <el-button text type="primary" @click="handleParamsEdite(scope.row)">
                 <el-icon size="16">
                   <icon_edit_outlined></icon_edit_outlined>
                 </el-icon>
               </el-button>
-              <el-button text @click="handleParamsDel(scope.row)" type="primary">
+              <el-button text type="primary" @click="handleParamsDel(scope.row)">
                 <el-icon size="16">
                   <icon_delete></icon_delete>
                 </el-icon>
@@ -230,11 +230,11 @@ defineExpose({
         </el-table>
       </div>
     </div>
-    <el-drawer :size="600" v-model="paramsFormDrawer" title="添加参数">
-      <ParamsForm @submit="submit" ref="paramsFormRef"></ParamsForm>
+    <el-drawer v-model="paramsFormDrawer" :size="600" title="添加参数">
+      <ParamsForm ref="paramsFormRef" @submit="submit"></ParamsForm>
       <template #footer>
-        <el-button @click="cancel" secondary> 取消 </el-button>
-        <el-button @click="addParams" type="primary"> 添加 </el-button>
+        <el-button secondary @click="cancel"> 取消 </el-button>
+        <el-button type="primary" @click="addParams"> 添加 </el-button>
       </template>
     </el-drawer>
   </div>

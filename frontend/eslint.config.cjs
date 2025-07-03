@@ -28,6 +28,7 @@ module.exports = typescriptEslint.config(
       'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
       'vue/multi-word-component-names': 'off',
       'vue/no-required-prop-with-default': 'off',
+      'vue/no-v-html': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/ban-ts-comment': 'warn',
 

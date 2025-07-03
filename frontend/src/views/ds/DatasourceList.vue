@@ -2,39 +2,32 @@
 import { ref, shallowRef, computed } from 'vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
-import icon_Azure_OpenAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
-interface Model {
+import { dsTypeWithImg } from './js/ds-type'
+
+interface Datasource {
   name: string
-  modleType: string
-  baseModle: string
-  img?: string
+  type: string
+  img: string
+  rate?: string
+  id?: string
 }
 const keywords = ref('')
-const modelList = shallowRef([
-  {
-    img: icon_Azure_OpenAI_colorful,
-    name: '千帆大模型-chinese',
-  },
-  {
-    img: icon_Azure_OpenAI_colorful,
-    name: '千帆大模-chinese',
-  },
-] as Model[])
+const modelList = shallowRef(dsTypeWithImg as Datasource[])
 const modelListWithSearch = computed(() => {
   if (!keywords.value) return modelList.value
   return modelList.value.filter((ele) =>
     ele.name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
-const emits = defineEmits(['clickModel'])
+const emits = defineEmits(['clickDatasource'])
 const handleModelClick = (item: any) => {
-  emits('clickModel', item)
+  emits('clickDatasource', item)
 }
 </script>
 
 <template>
   <div class="model-list">
-    <div class="title">选择供应商</div>
+    <div class="title">选择数据源</div>
     <el-input
       v-model="keywords"
       clearable
@@ -83,8 +76,8 @@ const handleModelClick = (item: any) => {
   .list-content {
     margin-top: 16px;
     display: flex;
-    justify-content: space-between;
     height: calc(100% - 40px);
+    flex-wrap: wrap;
 
     .model:nth-child(odd) {
       margin-left: 0;
@@ -97,10 +90,9 @@ const handleModelClick = (item: any) => {
       align-items: center;
       padding-left: 16px;
       margin-bottom: 16px;
-      margin-left: 16px;
-      flex-wrap: wrap;
       border: 1px solid #dee0e3;
       border-radius: 4px;
+      margin-left: 16px;
       cursor: pointer;
       &:hover {
         box-shadow: 0px 6px 24px 0px #1f232914;

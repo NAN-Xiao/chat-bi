@@ -1,115 +1,80 @@
 <script lang="ts" setup>
-import { ref, computed, shallowRef, reactive, nextTick } from 'vue'
+import { ref, computed, shallowRef, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
+import arrow_down from '@/assets/svg/arrow-down.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
-import icon_Azure_OpenAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
+import DataTable from './DataTable.vue'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
-import ModelList from './ModelList.vue'
-import ModelListSide from './ModelListSide.vue'
-import ModelForm from './ModelForm.vue'
-import { modelApi } from '@/api/system'
+import DatasourceList from './DatasourceList.vue'
+import DatasourceListSide from './DatasourceListSide.vue'
+import DatasourceForm from './DatasourceForm.vue'
+import { datasourceApi } from '@/api/datasource'
 import Card from './Card.vue'
-import { getModelTypeName } from '@/entity/CommonEntity.ts'
+import { dsTypeWithImg } from './js/ds-type'
 
-interface Model {
+interface Datasource {
   name: string
   type: string
-  baseModle: string
+  img: string
+  rate?: string
   id?: string
 }
 
 const keywords = ref('')
-const defaultModelKeywords = ref('')
-const modelConfigvVisible = ref(false)
-const editModel = ref(false)
+const defaultDatasourceKeywords = ref('')
+const datasourceConfigvVisible = ref(false)
+const editDatasource = ref(false)
 const activeStep = ref(0)
 const activeName = ref('')
-const modelFormRef = ref()
+const datasourceFormRef = ref()
 
-const state = reactive({
-  form: {
-    id: '',
-    name: '',
-    type: 0,
-    api_key: '',
-    endpoint: '',
-    max_context_window: 0,
-    temperature: 0,
-    status: false,
-    description: '',
-  },
-  pageInfo: {
-    currentPage: 1,
-    pageSize: 20,
-    total: 0,
-  },
-  selectedIds: [],
-})
-const modelList = shallowRef([] as Model[])
-const defaultModelList = shallowRef([
-  {
-    img: icon_Azure_OpenAI_colorful,
-    name: '千帆大模型-chinese',
-  },
-] as (Model & { img: string })[])
+const datasourceList = shallowRef([] as Datasource[])
+const defaultDatasourceList = shallowRef(dsTypeWithImg as (Datasource & { img: string })[])
 
-const currentDefaultModel = ref('')
-const modelListWithSearch = computed(() => {
-  if (!keywords.value) return modelList.value
-  return modelList.value.filter((ele) =>
+const currentDefaultDatasource = ref('')
+const datasourceListWithSearch = computed(() => {
+  if (!keywords.value) return datasourceList.value
+  return datasourceList.value.filter((ele) =>
     ele.name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
 const beforeClose = () => {
-  modelConfigvVisible.value = false
-  ElMessage.success('设置成功')
-  ElMessageBox.confirm('是否设置 Azure OpenAI 123 为系统默认模型？', {
-    confirmButtonType: 'primary',
-    tip: '系统默认模型被替换后，智能问数的结果将会受到影响，请谨慎操作。',
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    customClass: 'confirm-no_icon',
-    autofocus: false,
-  })
-  ElMessageBox.confirm('是否设置 Azure OpenAI 123 为系统默认模型？', {
-    confirmButtonType: 'danger',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-    customClass: 'confirm-no_icon',
-    autofocus: false,
-  })
+  datasourceConfigvVisible.value = false
 }
-const defaultModelListWithSearch = computed(() => {
-  if (!defaultModelKeywords.value) return defaultModelList.value
-  return defaultModelList.value.filter((ele) =>
-    ele.name.toLowerCase().includes(defaultModelKeywords.value.toLowerCase())
+const defaultDatasourceListWithSearch = computed(() => {
+  if (!defaultDatasourceKeywords.value) return defaultDatasourceList.value
+  return defaultDatasourceList.value.filter((ele) =>
+    ele.name.toLowerCase().includes(defaultDatasourceKeywords.value.toLowerCase())
   )
 })
 
-const handleDefaultModelChange = (item: any) => {
-  currentDefaultModel.value = item.name
+const handleDefaultDatasourceChange = (item: any) => {
+  currentDefaultDatasource.value = item.name
 }
 
 const formatKeywords = (item: string) => {
-  if (!defaultModelKeywords.value) return item
+  if (!defaultDatasourceKeywords.value) return item
   return item.replaceAll(
-    defaultModelKeywords.value,
-    `<span class="isSearch">${defaultModelKeywords.value}</span>`
+    defaultDatasourceKeywords.value,
+    `<span class="isSearch">${defaultDatasourceKeywords.value}</span>`
   )
 }
 
-const handleEditModel = (id: any) => {
+const handleEditDatasource = (res: any) => {
   activeStep.value = 1
-  modelApi.query(id).then((res: any) => {
-    modelConfigvVisible.value = true
-    nextTick(() => {
-      modelFormRef.value.initForm({ ...res, temperature: res.temperature * 100 })
-    })
+  datasourceConfigvVisible.value = true
+  editDatasource.value = true
+  nextTick(() => {
+    datasourceFormRef.value.initForm(res)
   })
+}
+
+const handleAddDatasource = () => {
+  editDatasource.value = false
+  datasourceConfigvVisible.value = true
 }
 
 const deleteHandler = (id: any) => {
@@ -119,7 +84,7 @@ const deleteHandler = (id: any) => {
     type: 'warning',
   })
     .then(() => {
-      modelApi.delete(id).then(() => {
+      datasourceApi.delete(id).then(() => {
         ElMessage({
           type: 'success',
           message: 'Delete completed',
@@ -135,38 +100,26 @@ const deleteHandler = (id: any) => {
     })
 }
 
-const clickModel = (ele: any) => {
+const clickDatasource = (ele: any) => {
   activeStep.value = 1
   activeName.value = ele.name
 }
 
-const clickModelSide = (ele: any) => {
+const clickDatasourceSide = (ele: any) => {
   activeName.value = ele.name
-}
-
-const cancel = () => {
-  beforeClose()
-}
-
-const preStep = () => {
-  activeStep.value = 0
-}
-
-const saveModel = () => {
-  modelFormRef.value.submit()
+  activeStep.value = 1
 }
 
 const search = () => {
-  modelApi.pager(state.pageInfo.currentPage, state.pageInfo.pageSize).then((res: any) => {
-    modelList.value = res.items
-    state.pageInfo.total = res.total
+  datasourceApi.list().then((res: any) => {
+    datasourceList.value = res
   })
 }
 search()
 
 const submit = (item: any) => {
   if (!item.id) {
-    modelApi.add(item).then(() => {
+    datasourceApi.add(item).then(() => {
       beforeClose()
       search()
       ElMessage({
@@ -176,7 +129,7 @@ const submit = (item: any) => {
     })
     return
   }
-  modelApi.edit(item).then(() => {
+  datasourceApi.edit(item).then(() => {
     beforeClose()
     search()
     ElMessage({
@@ -185,12 +138,17 @@ const submit = (item: any) => {
     })
   })
 }
+
+const currentDataTable = ref()
+const dataTableDetail = (ele: any) => {
+  currentDataTable.value = ele
+}
 </script>
 
 <template>
-  <div class="model-config">
-    <div class="model-methods">
-      <span class="title">AI 模型配置</span>
+  <div v-show="!currentDataTable" class="datasource-config">
+    <div class="datasource-methods">
+      <span class="title">数据源</span>
       <div class="button-input">
         <el-input
           v-model="keywords"
@@ -205,18 +163,17 @@ const submit = (item: any) => {
           </template>
         </el-input>
 
-        <el-popover popper-class="system-default_model" placement="bottom">
+        <el-popover popper-class="system-default_datasource" placement="bottom">
           <template #reference>
             <el-button secondary>
-              <template #icon>
-                <icon_admin_outlined></icon_admin_outlined>
-              </template>
-              系统默认模型
-            </el-button></template
-          >
+              全部类型
+              <el-icon style="margin-left: 8px">
+                <arrow_down></arrow_down>
+              </el-icon> </el-button
+          ></template>
           <div class="popover">
             <el-input
-              v-model="defaultModelKeywords"
+              v-model="defaultDatasourceKeywords"
               clearable
               style="width: 100%; margin-right: 12px"
               placeholder="通过名称搜索"
@@ -229,69 +186,73 @@ const submit = (item: any) => {
             </el-input>
             <div class="popover-content">
               <div
-                v-for="ele in defaultModelListWithSearch"
+                v-for="ele in defaultDatasourceListWithSearch"
                 :key="ele.name"
                 class="popover-item"
-                :class="currentDefaultModel === ele.name && 'isActive'"
-                @click="handleDefaultModelChange(ele)"
+                :class="currentDefaultDatasource === ele.name && 'isActive'"
+                @click="handleDefaultDatasourceChange(ele)"
               >
                 <img :src="ele.img" width="24px" height="24px" />
-                <div class="model-name" v-html="formatKeywords(ele.name)"></div>
+                <div class="datasource-name" v-html="formatKeywords(ele.name)"></div>
                 <el-icon size="16" class="done">
                   <icon_done_outlined></icon_done_outlined>
                 </el-icon>
               </div>
-              <div v-if="!defaultModelListWithSearch.length" class="popover-item empty">
+              <div v-if="!defaultDatasourceListWithSearch.length" class="popover-item empty">
                 没有找到相关结果
               </div>
             </div>
           </div>
         </el-popover>
 
-        <el-button type="primary">
+        <el-button type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
-          添加模型
+          新建数据源
         </el-button>
       </div>
     </div>
     <EmptyBackground
-      v-if="!!keywords && !modelListWithSearch.length"
+      v-if="!!keywords && !datasourceListWithSearch.length"
       :description="'没有找到相关内容'"
       img-type="tree"
     />
 
     <div v-else class="card-content">
       <Card
-        v-for="ele in modelListWithSearch"
+        v-for="ele in datasourceListWithSearch"
         :id="ele.id"
         :key="ele.id"
         :name="ele.name"
-        :modle-type="getModelTypeName(ele.type)"
-        :base-modle="ele.baseModle"
-        @edit="handleEditModel"
+        :type="ele.type"
+        :rate="ele.rate"
+        @edit="handleEditDatasource(ele)"
         @del="deleteHandler"
+        @data-table-detail="dataTableDetail(ele)"
       ></Card>
     </div>
     <el-drawer
-      v-model="modelConfigvVisible"
+      v-model="datasourceConfigvVisible"
       :close-on-click-modal="false"
       size="calc(100% - 100px)"
-      modal-class="model-drawer-fullscreen"
+      modal-class="datasource-drawer-fullscreen"
       direction="btt"
       :before-close="beforeClose"
       :show-close="false"
     >
       <template #header="{ close }">
-        <span style="white-space: nowrap">添加模型</span>
-        <div v-if="!editModel" class="flex-center" style="width: 100%">
+        <span style="white-space: nowrap">新建数据源</span>
+        <div v-if="!editDatasource" class="flex-center" style="width: 100%">
           <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
             <el-step>
-              <template #title> 选择供应商 </template>
+              <template #title> 选择数据源 </template>
             </el-step>
             <el-step>
-              <template #title> 添加模型 </template>
+              <template #title> 配置信息 </template>
+            </el-step>
+            <el-step>
+              <template #title> 选择数据表 </template>
             </el-step>
           </el-steps>
         </div>
@@ -299,31 +260,29 @@ const submit = (item: any) => {
           <icon_close_outlined></icon_close_outlined>
         </el-icon>
       </template>
-      <ModelList v-if="activeStep === 0" @click-model="clickModel"></ModelList>
-      <ModelListSide
-        v-if="activeStep === 1"
+      <DatasourceList v-if="activeStep === 0" @click-datasource="clickDatasource"></DatasourceList>
+      <DatasourceListSide
+        v-if="activeStep === 1 && !editDatasource"
         :active-name="activeName"
-        @click-model="clickModelSide"
-      ></ModelListSide>
-      <ModelForm
-        v-if="activeStep === 1"
-        ref="modelFormRef"
+        @click-datasource="clickDatasourceSide"
+      ></DatasourceListSide>
+      <DatasourceForm
+        v-if="[1, 2].includes(activeStep)"
+        ref="datasourceFormRef"
+        :active-step="activeStep"
         :active-name="activeName"
         @submit="submit"
-      ></ModelForm>
-      <template #footer>
-        <el-button secondary @click="cancel"> 取消 </el-button>
-        <el-button secondary @click="preStep"> 上一步 </el-button>
-        <el-button type="primary" @click="saveModel"> 保存 </el-button>
-      </template>
+        @change-active-step="(val: number) => (activeStep = val)"
+      ></DatasourceForm>
     </el-drawer>
   </div>
+  <DataTable v-if="currentDataTable" :info="currentDataTable"></DataTable>
 </template>
 
 <style lang="less" scoped>
-.model-config {
+.datasource-config {
   height: calc(100% - 16px);
-  .model-methods {
+  .datasource-methods {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -337,12 +296,13 @@ const submit = (item: any) => {
 
   .card-content {
     display: flex;
+    flex-wrap: wrap;
   }
 }
 </style>
 
 <style lang="less">
-.system-default_model.system-default_model {
+.system-default_datasource.system-default_datasource {
   padding: 4px 0;
   width: 325px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
@@ -381,7 +341,7 @@ const submit = (item: any) => {
         cursor: default;
       }
 
-      .model-name {
+      .datasource-name {
         margin-left: 8px;
         font-weight: 400;
         font-size: 14px;
@@ -408,7 +368,7 @@ const submit = (item: any) => {
   }
 }
 
-.model-drawer-fullscreen {
+.datasource-drawer-fullscreen {
   .ed-drawer__body {
     padding: 0;
   }

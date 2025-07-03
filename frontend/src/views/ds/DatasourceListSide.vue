@@ -2,43 +2,43 @@
 import { ref, shallowRef, computed } from 'vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
-import icon_Azure_OpenAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
-interface Model {
+import { dsTypeWithImg } from './js/ds-type'
+
+interface Datasource {
   name: string
-  modleType: string
-  baseModle: string
-  img?: string
+  type: string
+  img: string
+  rate?: string
+  id?: string
 }
+withDefaults(
+  defineProps<{
+    activeName: string
+  }>(),
+  {
+    activeName: '',
+  }
+)
 const keywords = ref('')
-const modelList = shallowRef([
-  {
-    img: icon_Azure_OpenAI_colorful,
-    name: '千帆大模型-chinese',
-  },
-  {
-    img: icon_Azure_OpenAI_colorful,
-    name: '千帆大模-chinese',
-  },
-] as Model[])
+const modelList = shallowRef(dsTypeWithImg as Datasource[])
 const modelListWithSearch = computed(() => {
   if (!keywords.value) return modelList.value
   return modelList.value.filter((ele) =>
     ele.name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
-const emits = defineEmits(['clickModel'])
+const emits = defineEmits(['clickDatasource'])
 const handleModelClick = (item: any) => {
-  emits('clickModel', item)
+  emits('clickDatasource', item)
 }
 </script>
 
 <template>
-  <div class="model-list">
-    <div class="title">选择供应商</div>
+  <div class="model-list_side">
     <el-input
       v-model="keywords"
       clearable
-      style="width: 100%; margin-right: 12px"
+      style="width: 232px; margin: 16px 0 8px 24px"
       placeholder="搜索"
     >
       <template #prefix>
@@ -52,9 +52,10 @@ const handleModelClick = (item: any) => {
         v-for="ele in modelListWithSearch"
         :key="ele.name"
         class="model"
+        :class="activeName === ele.name && 'isActive'"
         @click="handleModelClick(ele)"
       >
-        <img width="32px" height="32px" :src="ele.img" />
+        <img width="20px" height="20px" :src="ele.img" />
         <span class="name">{{ ele.name }}</span>
       </div>
       <EmptyBackground
@@ -68,48 +69,36 @@ const handleModelClick = (item: any) => {
 </template>
 
 <style lang="less" scoped>
-.model-list {
-  width: 800px;
-  margin: 0 auto;
-  max-height: 100%;
-  padding-top: 24px;
-  .title {
-    font-weight: 500;
-    font-size: 16px;
-    line-height: 24px;
-    margin-bottom: 16px;
-  }
+.model-list_side {
+  width: 280px;
+  height: 100%;
+  border-right: 1px solid #1f232926;
 
   .list-content {
-    margin-top: 16px;
-    display: flex;
-    justify-content: space-between;
-    height: calc(100% - 40px);
-
-    .model:nth-child(odd) {
-      margin-left: 0;
-    }
+    height: calc(100% - 56px);
+    padding: 0 16px;
 
     .model {
-      width: 392px;
-      height: 64px;
+      width: 100%;
+      height: 40px;
       display: flex;
       align-items: center;
-      padding-left: 16px;
-      margin-bottom: 16px;
-      margin-left: 16px;
-      flex-wrap: wrap;
-      border: 1px solid #dee0e3;
+      padding-left: 8px;
       border-radius: 4px;
       cursor: pointer;
-      &:hover {
-        box-shadow: 0px 6px 24px 0px #1f232914;
-      }
       .name {
-        margin-left: 12px;
+        margin-left: 8px;
         font-weight: 500;
         font-size: 14px;
         line-height: 22px;
+      }
+      &:hover {
+        background: #1f23291a;
+      }
+
+      &.isActive {
+        background: #1cba901a;
+        color: var(--ed-color-primary);
       }
     }
   }

@@ -43,8 +43,8 @@ const handleModelClick = (item: any) => {
 <template>
   <div class="model-list_side">
     <el-input
-      clearable
       v-model="keywords"
+      clearable
       style="width: 232px; margin: 16px 0 8px 24px"
       placeholder="搜索"
     >
@@ -56,11 +56,11 @@ const handleModelClick = (item: any) => {
     </el-input>
     <div class="list-content">
       <div
-        @click="handleModelClick(ele)"
-        class="model"
-        :class="activeName === ele.name && 'isActive'"
         v-for="ele in modelListWithSearch"
         :key="ele.name"
+        class="model"
+        :class="activeName === ele.name && 'isActive'"
+        @click="handleModelClick(ele)"
       >
         <img width="32px" height="32px" :src="ele.img" />
         <span class="name">{{ ele.name }}</span>

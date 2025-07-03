@@ -48,14 +48,14 @@ const handleDel = () => {
     </div>
     <div class="methods">
       <el-tooltip :offset="14" effect="dark" content="编辑" placement="top">
-        <el-icon @click="handleEdit" size="16">
+        <el-icon size="16" @click="handleEdit">
           <edit></edit>
         </el-icon>
       </el-tooltip>
       <template v-if="!isDefault">
         <span class="divide"></span>
         <el-tooltip :offset="14" effect="dark" content="删除" placement="top">
-          <el-icon @click="handleDel" size="16">
+          <el-icon size="16" @click="handleDel">
             <delIcon></delIcon>
           </el-icon>
         </el-tooltip>
