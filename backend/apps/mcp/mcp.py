@@ -2,14 +2,12 @@
 # Date: 2025/7/1
 
 from datetime import timedelta
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from fastapi.security import OAuth2PasswordRequestForm
 
 from apps.chat.api.chat import create_chat
-from apps.chat.models.chat_model import ChatMcp, CreateChat
+from apps.chat.models.chat_model import ChatMcp, CreateChat, ChatStart
 from apps.chat.task.llm import LLMService, run_task
 from apps.datasource.crud.datasource import get_datasource_list
 from apps.system.crud.user import authenticate
@@ -22,19 +20,19 @@ from common.core.security import create_access_token
 router = APIRouter(tags=["mcp"], prefix="/mcp")
 
 
-@router.post("/access_token", operation_id="access_token")
-def local_login(
-        session: SessionDep,
-        form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
-) -> Token:
-    user = authenticate(session=session, account=form_data.username, password=form_data.password)
-    if not user:
-        raise HTTPException(status_code=400, detail="Incorrect account or password")
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    user_dict = user.to_dict()
-    return Token(access_token=create_access_token(
-        user_dict, expires_delta=access_token_expires
-    ))
+# @router.post("/access_token", operation_id="access_token")
+# def local_login(
+#         session: SessionDep,
+#         form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+# ) -> Token:
+#     user = authenticate(session=session, account=form_data.username, password=form_data.password)
+#     if not user:
+#         raise HTTPException(status_code=400, detail="Incorrect account or password")
+#     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+#     user_dict = user.to_dict()
+#     return Token(access_token=create_access_token(
+#         user_dict, expires_delta=access_token_expires
+#     ))
 
 
 @router.get("/ds_list", operation_id="get_datasource_list")
@@ -48,9 +46,17 @@ async def get_model_list(session: SessionDep):
 
 
 @router.post("/mcp_start", operation_id="mcp_start")
-async def mcp_start(session: SessionDep, chat: ChatMcp):
-    user = await get_current_user(session, chat.token)
-    return create_chat(session, user, CreateChat(), False)
+async def mcp_start(session: SessionDep, chat: ChatStart):
+    user = authenticate(session=session, account=chat.username, password=chat.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="Incorrect account or password")
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    user_dict = user.to_dict()
+    t = Token(access_token=create_access_token(
+        user_dict, expires_delta=access_token_expires
+    ))
+    c = create_chat(session, user, CreateChat(), False)
+    return {"access_token": t.access_token, "chat_id": c.id}
 
 
 @router.post("/mcp_question", operation_id="mcp_question")

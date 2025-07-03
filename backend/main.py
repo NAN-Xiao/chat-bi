@@ -15,6 +15,7 @@ from fastapi_mcp import FastApiMCP
 from fastapi.staticfiles import StaticFiles
 import sqlbot_xpack
 
+
 def run_migrations():
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
@@ -51,7 +52,7 @@ mcp = FastApiMCP(
     description="SQLBot MCP Server",
     describe_all_responses=True,
     describe_full_response_schema=True,
-    include_operations=["get_datasource_list", "get_model_list", "mcp_question", "mcp_start", "access_token"]
+    include_operations=["get_datasource_list", "get_model_list", "mcp_question", "mcp_start"]
 )
 
 mcp.mount(mcp_app)
@@ -73,8 +74,6 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 # Register exception handlers
 app.add_exception_handler(StarletteHTTPException, exception_handler.http_exception_handler)
 app.add_exception_handler(Exception, exception_handler.global_exception_handler)
-
-
 
 mcp.setup_server()
 
