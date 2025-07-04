@@ -78,7 +78,13 @@ const rules = {
       trigger: 'change',
     },
   ],
-  api_domain: [{ required: true, message: 'api_domain', trigger: 'blur' }],
+  api_domain: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('model.api_domain_name'),
+      trigger: 'blur',
+    },
+  ],
   base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
   name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
   api_key: [{ required: true, message: 'api_key', trigger: 'blur' }],
@@ -171,10 +177,15 @@ defineExpose({
               </el-icon>
             </el-tooltip>
           </template>
-          <el-input v-model="modelForm.name" />
+          <el-input
+            v-model="modelForm.name"
+            :placeholder="
+              $t('datasource.please_enter') + $t('common.empty') + $t('model.model_name')
+            "
+          />
         </el-form-item>
         <el-form-item prop="type" :label="t('model.model_type')">
-          <el-select v-model="modelForm.model_type" style="width: 100%">
+          <el-select v-model="modelForm.model_type" style="width: 100%" disabled>
             <el-option
               v-for="item in modelTypeOptions"
               :key="item.value"
@@ -183,12 +194,19 @@ defineExpose({
             />
           </el-select>
         </el-form-item>
-        <el-form-item class="custom-require" prop="modelName">
+        <el-form-item class="custom-require" prop="base_model">
           <template #label
             ><span class="custom-require_danger">{{ t('model.basic_model') }}</span>
             <span class="enter">{{ t('model.enter_to_add') }}</span>
           </template>
-          <el-select v-model="modelForm['base_model']" style="width: 100%">
+          <el-select
+            v-model="modelForm['base_model']"
+            style="width: 100%"
+            filterable
+            allow-create
+            default-first-option
+            :reserve-keyword="false"
+          >
             <el-option v-for="item in modelList" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
