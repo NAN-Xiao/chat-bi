@@ -14,6 +14,7 @@ import DatasourceForm from './DatasourceForm.vue'
 import { datasourceApi } from '@/api/datasource'
 import Card from './Card.vue'
 import { dsTypeWithImg } from './js/ds-type'
+import { useI18n } from 'vue-i18n'
 
 interface Datasource {
   name: string
@@ -23,6 +24,7 @@ interface Datasource {
   id?: string
 }
 
+const { t } = useI18n()
 const keywords = ref('')
 const defaultDatasourceKeywords = ref('')
 const datasourceConfigvVisible = ref(false)
@@ -77,17 +79,28 @@ const handleAddDatasource = () => {
   datasourceConfigvVisible.value = true
 }
 
-const deleteHandler = (id: any) => {
-  ElMessageBox.confirm('Are you sure to delete?', 'Warning', {
-    confirmButtonText: 'OK',
-    cancelButtonText: 'Cancel',
-    type: 'warning',
+const deleteHandler = (item: any) => {
+  ElMessageBox.confirm(t('datasource.data_source_de', { msg: item.name }), {
+    tip: t('datasource.cannot_be_deleted'),
+    cancelButtonText: t('datasource.got_it'),
+    showConfirmButton: false,
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+  })
+  return
+  ElMessageBox.confirm(t('datasource.data_source', { msg: item.name }), {
+    confirmButtonType: 'danger',
+    tip: t('datasource.operate_with_caution'),
+    confirmButtonText: t('dashboard.delete'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
   })
     .then(() => {
-      datasourceApi.delete(id).then(() => {
+      datasourceApi.delete(item.id).then(() => {
         ElMessage({
           type: 'success',
-          message: 'Delete completed',
+          message: t('dashboard.delete_success'),
         })
         search()
       })
@@ -148,13 +161,13 @@ const dataTableDetail = (ele: any) => {
 <template>
   <div v-show="!currentDataTable" class="datasource-config">
     <div class="datasource-methods">
-      <span class="title">数据源</span>
+      <span class="title">{{ $t('ds.title') }}</span>
       <div class="button-input">
         <el-input
           v-model="keywords"
           clearable
           style="width: 240px; margin-right: 12px"
-          placeholder="搜索"
+          :placeholder="$t('datasource.search')"
         >
           <template #prefix>
             <el-icon>
@@ -166,7 +179,7 @@ const dataTableDetail = (ele: any) => {
         <el-popover popper-class="system-default_datasource" placement="bottom">
           <template #reference>
             <el-button secondary>
-              全部类型
+              {{ $t('datasource.all_types') }}
               <el-icon style="margin-left: 8px">
                 <arrow_down></arrow_down>
               </el-icon> </el-button
@@ -176,7 +189,7 @@ const dataTableDetail = (ele: any) => {
               v-model="defaultDatasourceKeywords"
               clearable
               style="width: 100%; margin-right: 12px"
-              placeholder="通过名称搜索"
+              :placeholder="$t('datasource.search_by_name')"
             >
               <template #prefix>
                 <el-icon>
@@ -209,13 +222,13 @@ const dataTableDetail = (ele: any) => {
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
-          新建数据源
+          {{ $t('datasource.new_data_source') }}
         </el-button>
       </div>
     </div>
     <EmptyBackground
       v-if="!!keywords && !datasourceListWithSearch.length"
-      :description="'没有找到相关内容'"
+      :description="$t('datasource.relevant_content_found')"
       img-type="tree"
     />
 
@@ -228,7 +241,7 @@ const dataTableDetail = (ele: any) => {
         :type="ele.type"
         :rate="ele.rate"
         @edit="handleEditDatasource(ele)"
-        @del="deleteHandler"
+        @del="deleteHandler(ele)"
         @data-table-detail="dataTableDetail(ele)"
       ></Card>
     </div>
@@ -242,17 +255,17 @@ const dataTableDetail = (ele: any) => {
       :show-close="false"
     >
       <template #header="{ close }">
-        <span style="white-space: nowrap">新建数据源</span>
+        <span style="white-space: nowrap">{{ $t('datasource.new_data_source') }}</span>
         <div v-if="!editDatasource" class="flex-center" style="width: 100%">
           <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
             <el-step>
-              <template #title> 选择数据源 </template>
+              <template #title> {{ $t('qa.select_datasource') }} </template>
             </el-step>
             <el-step>
-              <template #title> 配置信息 </template>
+              <template #title> {{ $t('datasource.configuration_information') }} </template>
             </el-step>
             <el-step>
-              <template #title> 选择数据表 </template>
+              <template #title> {{ $t('ds.form.choose_tables') }} </template>
             </el-step>
           </el-steps>
         </div>

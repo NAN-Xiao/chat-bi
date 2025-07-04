@@ -233,7 +233,7 @@ defineExpose({
     <el-drawer v-model="paramsFormDrawer" :size="600" title="添加参数">
       <ParamsForm ref="paramsFormRef" @submit="submit"></ParamsForm>
       <template #footer>
-        <el-button secondary @click="cancel"> 取消 </el-button>
+        <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
         <el-button type="primary" @click="addParams"> 添加 </el-button>
       </template>
     </el-drawer>

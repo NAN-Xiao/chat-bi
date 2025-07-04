@@ -14,6 +14,7 @@ import ModelForm from './ModelForm.vue'
 import { modelApi } from '@/api/system'
 import Card from './Card.vue'
 import { getModelTypeName } from '@/entity/CommonEntity.ts'
+import { useI18n } from 'vue-i18n'
 
 interface Model {
   name: string
@@ -22,6 +23,7 @@ interface Model {
   id?: string
 }
 
+const { t } = useI18n()
 const keywords = ref('')
 const defaultModelKeywords = ref('')
 const modelConfigvVisible = ref(false)
@@ -70,15 +72,15 @@ const beforeClose = () => {
   ElMessageBox.confirm('是否设置 Azure OpenAI 123 为系统默认模型？', {
     confirmButtonType: 'primary',
     tip: '系统默认模型被替换后，智能问数的结果将会受到影响，请谨慎操作。',
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
+    confirmButtonText: t('datasource.confirm'),
+    cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
   })
   ElMessageBox.confirm('是否设置 Azure OpenAI 123 为系统默认模型？', {
     confirmButtonType: 'danger',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
+    confirmButtonText: t('dashboard.delete'),
+    cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
   })
@@ -196,7 +198,7 @@ const submit = (item: any) => {
           v-model="keywords"
           clearable
           style="width: 240px; margin-right: 12px"
-          placeholder="搜索"
+          :placeholder="$t('datasource.search')"
         >
           <template #prefix>
             <el-icon>
@@ -219,7 +221,7 @@ const submit = (item: any) => {
               v-model="defaultModelKeywords"
               clearable
               style="width: 100%; margin-right: 12px"
-              placeholder="通过名称搜索"
+              :placeholder="t('datasource.search_by_name')"
             >
               <template #prefix>
                 <el-icon>
@@ -258,7 +260,7 @@ const submit = (item: any) => {
     </div>
     <EmptyBackground
       v-if="!!keywords && !modelListWithSearch.length"
-      :description="'没有找到相关内容'"
+      :description="$t('datasource.relevant_content_found')"
       img-type="tree"
     />
 
@@ -312,9 +314,9 @@ const submit = (item: any) => {
         @submit="submit"
       ></ModelForm>
       <template #footer>
-        <el-button secondary @click="cancel"> 取消 </el-button>
-        <el-button secondary @click="preStep"> 上一步 </el-button>
-        <el-button type="primary" @click="saveModel"> 保存 </el-button>
+        <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
+        <el-button secondary @click="preStep"> {{ $t('ds.previous') }} </el-button>
+        <el-button type="primary" @click="saveModel"> {{ $t('common.save') }} </el-button>
       </template>
     </el-drawer>
   </div>

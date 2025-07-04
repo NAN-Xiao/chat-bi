@@ -59,6 +59,7 @@
     "type": "Data Source Type",
     "status": "Status",
     "actions": "Actions",
+    "pieces_in_total": "Showing {ms} records out of {msg}",
     "test_connection": "Test Connection",
     "connection_success": "Connection Successful",
     "connection_failed": "Connection Failed, Please Check Configuration",
@@ -135,8 +136,34 @@
         "success": "Connect success",
         "failed": "Connect failed"
       },
-      "timeout":"Timeout(second)"
+      "timeout": "Timeout(second)"
     }
+  },
+  "datasource": {
+    "search_by_name": "Search by Name",
+    "search": "Search",
+    "all_types": "All types",
+    "new_data_source": "New data source",
+    "open_query": "Open query",
+    "edit": "Edit",
+    "source_connection_failed": "Data source connection failed",
+    "confirm": "Confirm",
+    "enabled_status": "Enabled status",
+    "custom_notes": "Custom notes",
+    "field_type": "Field type",
+    "field_name": "Field name",
+    "relevant_content_found": "No relevant content found",
+    "please_enter": "Please enter",
+    "table_notes": "Table notes",
+    "field_notes": "Field notes",
+    "select_all": "Select all",
+    "mysql_data_source": "Modify MySQL data source",
+    "configuration_information": "Configuration information",
+    "data_source": "Do you want to delete the data source: {msg}?",
+    "operate_with_caution": "After being deleted, the data source cannot be intelligently counted. Please operate with caution.",
+    "data_source_de": "Unable to delete data source: {msg}",
+    "cannot_be_deleted": "The chart of the dashboard uses this data source and cannot be deleted.",
+    "got_it": "Got it"
   },
   "chat": {
     "chart_type": {

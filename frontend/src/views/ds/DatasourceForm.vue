@@ -491,12 +491,14 @@ defineExpose({
         </div>
       </el-form>
       <div v-show="activeStep === 2" v-loading="tableListLoading" class="select-data_table">
-        <div class="title">选择数据表 ({{ checkList.length }}/ {{ tableList.length }})</div>
+        <div class="title">
+          {{ $t('ds.form.choose_tables') }} ({{ checkList.length }}/ {{ tableList.length }})
+        </div>
         <el-input
           v-model="keywords"
           clearable
           style="width: 100%; margin-bottom: 16px"
-          placeholder="搜索"
+          :placeholder="$t('datasource.search')"
         >
           <template #prefix>
             <el-icon>
@@ -511,12 +513,12 @@ defineExpose({
               :indeterminate="isIndeterminate"
               @change="handleCheckAllChange"
             >
-              全选
+              {{ t('datasource.select_all') }}
             </el-checkbox>
           </div>
           <EmptyBackground
             v-if="!!keywords && !tableListWithSearch.length"
-            :description="'没有找到相关内容'"
+            :description="$t('datasource.relevant_content_found')"
             img-type="tree"
             style="width: 100%"
           />

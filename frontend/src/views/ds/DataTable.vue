@@ -59,7 +59,8 @@ const tableListWithSearch = computed(() => {
     ele.name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
-
+const total = ref(1000)
+const showNum = ref(100)
 const currentTable = ref<any>({})
 const ds = ref<any>({})
 const btnSelect = ref('q')
@@ -169,7 +170,7 @@ const changeStatus = (row: any) => {
 <template>
   <div class="data-table no-padding">
     <div class="info">
-      数据源
+      {{ $t('ds.title') }}
       <el-icon size="12">
         <icon_right_outlined></icon_right_outlined>
       </el-icon>
@@ -178,12 +179,20 @@ const changeStatus = (row: any) => {
     <div class="content">
       <div class="side-list">
         <div class="select-table_top">
-          数据表
-          <el-icon size="18" @click="handleSelectTableList">
-            <icon_form_outlined></icon_form_outlined>
-          </el-icon>
+          {{ $t('ds.tables') }}
+
+          <el-tooltip effect="dark" :content="$t('ds.form.choose_tables')" placement="top">
+            <el-icon size="18" @click="handleSelectTableList">
+              <icon_form_outlined></icon_form_outlined>
+            </el-icon>
+          </el-tooltip>
         </div>
-        <el-input v-model="keywords" clearable style="width: 232px" placeholder="搜索">
+        <el-input
+          v-model="keywords"
+          clearable
+          style="width: 232px"
+          :placeholder="$t('datasource.search')"
+        >
           <template #prefix>
             <el-icon>
               <icon_searchOutline_outlined class="svg-icon" />
@@ -206,7 +215,7 @@ const changeStatus = (row: any) => {
           </div>
           <EmptyBackground
             v-if="!!keywords && !tableListWithSearch.length"
-            :description="'没有找到相关内容'"
+            :description="$t('datasource.relevant_content_found')"
             img-type="tree"
             style="width: 100%; margin-top: 100px"
           />
@@ -217,7 +226,8 @@ const changeStatus = (row: any) => {
         <div class="table-name">
           <div class="name">{{ currentTable.table_name }}</div>
           <div class="notes">
-            {{ currentTable.custom_comment }}
+            {{ $t('about.remark') }}:
+            {{ currentTable.custom_comment || '-' }}
             <el-icon style="margin-left: 8px; cursor: pointer" size="16" @click="editTable">
               <edit></edit>
             </el-icon>
@@ -235,14 +245,19 @@ const changeStatus = (row: any) => {
 
           <div class="preview-or-schema">
             <el-table v-if="btnSelect === 'd'" :data="fieldList" style="width: 100%">
-              <el-table-column prop="field_name" :label="t('ds.field.name')" width="180" />
-              <el-table-column prop="field_type" :label="t('ds.field.type')" width="180" />
-              <el-table-column prop="field_comment" :label="t('ds.field.comment')" />
-              <el-table-column :label="t('ds.field.custom_comment')">
+              <el-table-column prop="field_name" :label="t('datasource.field_name')" width="180" />
+              <el-table-column prop="field_type" :label="t('datasource.field_type')" width="180" />
+              <el-table-column prop="field_comment" :label="t('about.remark')" />
+              <el-table-column :label="t('datasource.custom_notes')">
                 <template #default="scope">
                   <div class="field-comment">
                     <span>{{ scope.row.custom_comment }}</span>
-                    <el-tooltip :offset="14" effect="dark" content="编辑" placement="top">
+                    <el-tooltip
+                      :offset="14"
+                      effect="dark"
+                      :content="$t('datasource.edit')"
+                      placement="top"
+                    >
                       <el-icon class="action-btn" size="16" @click="editField(scope.row)">
                         <edit></edit>
                       </el-icon>
@@ -250,7 +265,7 @@ const changeStatus = (row: any) => {
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column :label="t('ds.field.status')" width="180">
+              <el-table-column :label="t('datasource.enabled_status')" width="180">
                 <template #default="scope">
                   <div style="display: flex; align-items: center">
                     <el-switch
@@ -262,15 +277,19 @@ const changeStatus = (row: any) => {
                 </template>
               </el-table-column>
             </el-table>
-
-            <el-table v-else :data="previewData.data" style="width: 100%; height: 600px">
-              <el-table-column
-                v-for="(c, index) in previewData.fields"
-                :key="index"
-                :prop="c"
-                :label="c"
-              />
-            </el-table>
+            <template v-else>
+              <div class="preview-num">
+                {{ t('ds.pieces_in_total', { msg: total, ms: showNum }) }}
+              </div>
+              <el-table :data="previewData.data" style="width: 100%; height: 600px">
+                <el-table-column
+                  v-for="(c, index) in previewData.fields"
+                  :key="index"
+                  :prop="c"
+                  :label="c"
+                />
+              </el-table>
+            </template>
           </div>
         </div>
       </div>
@@ -278,13 +297,18 @@ const changeStatus = (row: any) => {
   </div>
   <el-dialog
     v-model="tableDialog"
-    :title="t('ds.edit.table_comment')"
+    :title="t('datasource.table_notes')"
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
     @closed="closeTable"
   >
-    <el-input v-model="tableComment" :rows="3" type="textarea" />
+    <el-input
+      :placeholder="$t('datasource.please_enter')"
+      v-model="tableComment"
+      :rows="3"
+      type="textarea"
+    />
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="closeTable">{{ t('common.cancel') }}</el-button>
       <el-button type="primary" @click="saveTable">{{ t('common.confirm') }}</el-button>
@@ -293,13 +317,18 @@ const changeStatus = (row: any) => {
 
   <el-dialog
     v-model="fieldDialog"
-    :title="t('ds.edit.field_comment')"
+    :title="t('datasource.field_notes')"
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
     @closed="closeField"
   >
-    <el-input v-model="fieldComment" :rows="3" type="textarea" />
+    <el-input
+      :placeholder="$t('datasource.please_enter')"
+      v-model="fieldComment"
+      :rows="3"
+      type="textarea"
+    />
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="closeField">{{ t('common.cancel') }}</el-button>
       <el-button type="primary" @click="saveField">{{ t('common.confirm') }}</el-button>
@@ -466,6 +495,14 @@ const changeStatus = (row: any) => {
                 display: block;
               }
             }
+          }
+
+          .preview-num {
+            margin: 12px 0;
+            font-weight: 400;
+            font-size: 14px;
+            line-height: 22px;
+            color: #646a73;
           }
         }
       }

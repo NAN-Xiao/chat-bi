@@ -45,7 +45,7 @@ defineExpose({
     :show-close="false"
   >
     <template #header="{ close }">
-      <span style="white-space: nowrap">选择数据表</span>
+      <span style="white-space: nowrap">{{ $t('ds.form.choose_tables') }}</span>
       <el-icon style="cursor: pointer" @click="close">
         <icon_close_outlined></icon_close_outlined>
       </el-icon>
@@ -58,8 +58,8 @@ defineExpose({
       @refresh="refresh"
     ></DatasourceForm>
     <template #footer>
-      <el-button secondary @click="beforeClose"> 取消 </el-button>
-      <el-button type="primary" @click="save"> 保存 </el-button>
+      <el-button secondary @click="beforeClose"> {{ $t('common.cancel') }} </el-button>
+      <el-button type="primary" @click="save"> {{ $t('common.save') }} </el-button>
     </template>
   </el-drawer>
 </template>

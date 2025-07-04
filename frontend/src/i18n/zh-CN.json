@@ -58,6 +58,7 @@
     "name": "数据源名称",
     "type": "数据源类型",
     "status": "状态",
+    "pieces_in_total": "显示 {ms} 条数据，共 {msg} 条",
     "actions": "操作",
     "test_connection": "测试连接",
     "connection_success": "连接成功",
@@ -135,8 +136,34 @@
         "success": "连接成功",
         "failed": "连接失败"
       },
-      "timeout":"查询超时(秒)"
+      "timeout": "查询超时(秒)"
     }
+  },
+  "datasource": {
+    "search_by_name": "通过名称搜索",
+    "search": "搜索",
+    "all_types": "全部类型",
+    "new_data_source": "新建数据源",
+    "open_query": "开启问数",
+    "edit": "编辑",
+    "source_connection_failed": "数据源连接失败",
+    "confirm": "确定",
+    "enabled_status": "启用状态",
+    "custom_notes": "自定义备注",
+    "field_type": "字段类型",
+    "field_name": "字段名称",
+    "relevant_content_found": "没有找到相关内容",
+    "please_enter": "请输入",
+    "table_notes": "表备注",
+    "field_notes": "字段备注",
+    "select_all": "全选",
+    "mysql_data_source": "修改 MySQL 数据源",
+    "configuration_information": "配置信息",
+    "data_source": "是否删除数据源：{msg}？",
+    "operate_with_caution": "被删除后，将无法对该数据源进行智能问数，请谨慎操作。",
+    "data_source_de": "无法删除数据源：{msg}",
+    "cannot_be_deleted": "仪表板的图表使用了该数据源，不可删除。",
+    "got_it": "知道了"
   },
   "chat": {
     "chart_type": {

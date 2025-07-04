@@ -4,6 +4,8 @@ import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_chat_outlined from '@/assets/svg/icon_chat_outlined.svg'
+import { ref, unref } from 'vue'
+import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 
@@ -31,7 +33,7 @@ const handleEdit = () => {
 }
 
 const handleDel = () => {
-  emits('del', props.id)
+  emits('del')
 }
 
 const handleQuestion = () => {
@@ -40,6 +42,11 @@ const handleQuestion = () => {
 
 const dataTableDetail = () => {
   emits('dataTableDetail')
+}
+const buttonRef = ref()
+const popoverRef = ref()
+const onClickOutside = () => {
+  unref(popoverRef).popperRef?.delayHide?.()
 }
 </script>
 
@@ -63,30 +70,43 @@ const dataTableDetail = () => {
         </el-icon>
         {{ rate }}
       </div>
-      <div class="methods">
+      <div click.stop class="methods">
         <el-button type="primary" style="margin-right: 8px" @click.stop="handleQuestion">
           <el-icon style="margin-right: 2px" size="12">
             <icon_chat_outlined></icon_chat_outlined>
           </el-icon>
-          开启问数
+          {{ $t('datasource.open_query') }}
         </el-button>
-        <el-popover click.stop :teleported="false" popper-class="popover-card" placement="bottom">
-          <template #reference>
-            <el-icon class="more" size="16"> <icon_more_outlined></icon_more_outlined> </el-icon
-          ></template>
-
+        <el-icon
+          ref="buttonRef"
+          v-click-outside="onClickOutside"
+          @click.stop
+          class="more"
+          size="16"
+        >
+          <icon_more_outlined></icon_more_outlined>
+        </el-icon>
+        <el-popover
+          ref="popoverRef"
+          :virtual-ref="buttonRef"
+          virtual-triggering
+          trigger="click"
+          :teleported="false"
+          popper-class="popover-card"
+          placement="bottom"
+        >
           <div class="content">
             <div class="item" @click.stop="handleEdit">
               <el-icon size="16">
                 <edit></edit>
               </el-icon>
-              编辑
+              {{ $t('datasource.edit') }}
             </div>
             <div class="item" @click.stop="handleDel">
               <el-icon size="16">
                 <delIcon></delIcon>
               </el-icon>
-              删除
+              {{ $t('dashboard.delete') }}
             </div>
           </div>
         </el-popover>

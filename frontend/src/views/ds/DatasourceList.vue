@@ -27,12 +27,12 @@ const handleModelClick = (item: any) => {
 
 <template>
   <div class="model-list">
-    <div class="title">选择数据源</div>
+    <div class="title">{{ $t('qa.select_datasource') }}</div>
     <el-input
       v-model="keywords"
       clearable
       style="width: 100%; margin-right: 12px"
-      placeholder="搜索"
+      :placeholder="$t('datasource.search')"
     >
       <template #prefix>
         <el-icon>
@@ -52,7 +52,7 @@ const handleModelClick = (item: any) => {
       </div>
       <EmptyBackground
         v-if="!!keywords && !modelListWithSearch.length"
-        :description="'没有找到相关内容'"
+        :description="$t('datasource.relevant_content_found')"
         img-type="tree"
         style="width: 100%; margin-top: 100px"
       />

@@ -56,7 +56,7 @@ const handleDefaultWorkspaceChange = (item: any) => {
         v-model="workspaceKeywords"
         clearable
         style="width: 100%; margin-right: 12px"
-        placeholder="通过名称搜索"
+        :placeholder="$t('datasource.search_by_name')"
       >
         <template #prefix>
           <el-icon>
