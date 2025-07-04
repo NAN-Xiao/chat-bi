@@ -85,7 +85,6 @@ const rules = {
       trigger: 'blur',
     },
   ],
-  modelName: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
   base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
   name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
   api_key: [
@@ -185,14 +184,14 @@ defineExpose({
             </el-tooltip>
           </template>
           <el-input
+            v-model="modelForm.name"
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + $t('model.model_name')
             "
-            v-model="modelForm.name"
           />
         </el-form-item>
         <el-form-item prop="type" :label="t('model.model_type')">
-          <el-select v-model="modelForm.model_type" style="width: 100%">
+          <el-select v-model="modelForm.model_type" style="width: 100%" disabled>
             <el-option
               v-for="item in modelTypeOptions"
               :key="item.value"
@@ -201,7 +200,7 @@ defineExpose({
             />
           </el-select>
         </el-form-item>
-        <el-form-item class="custom-require" prop="modelName">
+        <el-form-item class="custom-require" prop="base_model">
           <template #label
             ><span class="custom-require_danger">{{ t('model.basic_model') }}</span>
             <span class="enter">{{ t('model.enter_to_add') }}</span>
@@ -209,7 +208,6 @@ defineExpose({
           <el-select
             v-model="modelForm['base_model']"
             style="width: 100%"
-            multiple
             filterable
             allow-create
             default-first-option
