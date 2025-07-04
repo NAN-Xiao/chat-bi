@@ -5,6 +5,7 @@ import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlin
 import arrow_down from '@/assets/svg/arrow-down.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import { useRouter } from 'vue-router'
 import DataTable from './DataTable.vue'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
@@ -18,12 +19,14 @@ import { useI18n } from 'vue-i18n'
 
 interface Datasource {
   name: string
+  type_name: string
   type: string
   img: string
-  rate?: string
+  description: string
   id?: string
 }
 
+const router = useRouter()
 const { t } = useI18n()
 const keywords = ref('')
 const defaultDatasourceKeywords = ref('')
@@ -72,6 +75,15 @@ const handleEditDatasource = (res: any) => {
   currentType.value = res.type_name
   nextTick(() => {
     datasourceFormRef.value.initForm(res)
+  })
+}
+
+const handleQuestion = (id: string) => {
+  router.push({
+    path: '/chat/index',
+    query: {
+      id,
+    },
   })
 }
 
@@ -208,7 +220,7 @@ const dataTableDetail = (ele: any) => {
                 </el-icon>
               </div>
               <div v-if="!defaultDatasourceListWithSearch.length" class="popover-item empty">
-                没有找到相关结果
+                {{ t('model.relevant_results_found') }}
               </div>
             </div>
           </div>
@@ -235,7 +247,9 @@ const dataTableDetail = (ele: any) => {
         :key="ele.id"
         :name="ele.name"
         :type="ele.type"
-        :rate="ele.rate"
+        :type_name="ele.type_name"
+        :description="ele.description"
+        @question="handleQuestion"
         @edit="handleEditDatasource(ele)"
         @del="deleteHandler(ele)"
         @data-table-detail="dataTableDetail(ele)"

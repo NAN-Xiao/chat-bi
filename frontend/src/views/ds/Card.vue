@@ -12,6 +12,7 @@ const props = withDefaults(
   defineProps<{
     name: string
     type: string
+    type_name: string
     rate?: string
     description?: string
     id?: string
@@ -19,13 +20,13 @@ const props = withDefaults(
   {
     name: '-',
     type: '-',
-    rate: '-',
     description: '-',
     id: '-',
+    type_name: '-',
   }
 )
 
-const emits = defineEmits(['edit', 'del', 'question', 'dataTableDetail'])
+const emits = defineEmits(['edit', 'del', 'question', 'dataTableDetail', 'showTable'])
 const icon = computed(() => {
   return (dsTypeWithImg.find((ele) => props.type === ele.type) || {}).img
 })
@@ -57,7 +58,7 @@ const onClickOutside = () => {
       <img :src="icon" width="32px" height="32px" />
       <div class="info">
         <div class="name">{{ name }}</div>
-        <div class="type">{{ type }}</div>
+        <div class="type">{{ type_name }}</div>
       </div>
     </div>
     <div class="type-value">
@@ -69,7 +70,6 @@ const onClickOutside = () => {
         <el-icon class="form-icon" size="16">
           <icon_form_outlined></icon_form_outlined>
         </el-icon>
-        {{ rate }}
       </div>
       <div click.stop class="methods">
         <el-button type="primary" style="margin-right: 8px" @click.stop="handleQuestion">
