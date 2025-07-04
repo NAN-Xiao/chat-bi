@@ -643,7 +643,7 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
         else:
             # todo generate picture
             if chart['type'] != 'table':
-                yield '# generated chart picture'
+                yield '### generated chart picture\n\n'
                 image_url = request_picture(llm_service.record.chat_id, llm_service.record.id, chart, result)
                 print(image_url)
                 yield f'![{chart["type"]}]({image_url})'
