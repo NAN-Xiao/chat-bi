@@ -34,7 +34,7 @@ const handleModelClick = (item: any) => {
 
 <template>
   <div class="model-list">
-    <div class="title">选择供应商</div>
+    <div class="title">{{ $t('model.select_supplier') }}</div>
     <el-input
       v-model="keywords"
       clearable

@@ -64,11 +64,12 @@ const formatKeywords = (item: string) => {
     `<span class="isSearch">${defaultDatasourceKeywords.value}</span>`
   )
 }
-
+const currentType = ref('')
 const handleEditDatasource = (res: any) => {
   activeStep.value = 1
   datasourceConfigvVisible.value = true
   editDatasource.value = true
+  currentType.value = res.type_name
   nextTick(() => {
     datasourceFormRef.value.initForm(res)
   })
@@ -80,14 +81,6 @@ const handleAddDatasource = () => {
 }
 
 const deleteHandler = (item: any) => {
-  ElMessageBox.confirm(t('datasource.data_source_de', { msg: item.name }), {
-    tip: t('datasource.cannot_be_deleted'),
-    cancelButtonText: t('datasource.got_it'),
-    showConfirmButton: false,
-    customClass: 'confirm-no_icon',
-    autofocus: false,
-  })
-  return
   ElMessageBox.confirm(t('datasource.data_source', { msg: item.name }), {
     confirmButtonType: 'danger',
     tip: t('datasource.operate_with_caution'),
@@ -106,9 +99,12 @@ const deleteHandler = (item: any) => {
       })
     })
     .catch(() => {
-      ElMessage({
-        type: 'info',
-        message: 'Delete canceled',
+      ElMessageBox.confirm(t('datasource.data_source_de', { msg: item.name }), {
+        tip: t('datasource.cannot_be_deleted'),
+        cancelButtonText: t('datasource.got_it'),
+        showConfirmButton: false,
+        customClass: 'confirm-no_icon',
+        autofocus: false,
       })
     })
 }
@@ -255,7 +251,11 @@ const dataTableDetail = (ele: any) => {
       :show-close="false"
     >
       <template #header="{ close }">
-        <span style="white-space: nowrap">{{ $t('datasource.new_data_source') }}</span>
+        <span style="white-space: nowrap">{{
+          editDatasource
+            ? t('datasource.mysql_data_source', { msg: currentType })
+            : $t('datasource.new_data_source')
+        }}</span>
         <div v-if="!editDatasource" class="flex-center" style="width: 100%">
           <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
             <el-step>

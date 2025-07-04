@@ -1,12 +1,11 @@
 <script lang="ts" setup>
-import azure from '@/assets/model/icon_Azure_OpenAI_colorful.png'
 import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_chat_outlined from '@/assets/svg/icon_chat_outlined.svg'
-import { ref, unref } from 'vue'
+import { ref, unref, computed } from 'vue'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
-
+import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 
 const props = withDefaults(
@@ -27,7 +26,9 @@ const props = withDefaults(
 )
 
 const emits = defineEmits(['edit', 'del', 'question', 'dataTableDetail'])
-
+const icon = computed(() => {
+  return (dsTypeWithImg.find((ele) => props.type === ele.type) || {}).img
+})
 const handleEdit = () => {
   emits('edit')
 }
@@ -53,7 +54,7 @@ const onClickOutside = () => {
 <template>
   <div class="card" @click="dataTableDetail">
     <div class="name-icon">
-      <img :src="azure" width="32px" height="32px" />
+      <img :src="icon" width="32px" height="32px" />
       <div class="info">
         <div class="name">{{ name }}</div>
         <div class="type">{{ type }}</div>
@@ -80,9 +81,9 @@ const onClickOutside = () => {
         <el-icon
           ref="buttonRef"
           v-click-outside="onClickOutside"
-          @click.stop
           class="more"
           size="16"
+          @click.stop
         >
           <icon_more_outlined></icon_more_outlined>
         </el-icon>

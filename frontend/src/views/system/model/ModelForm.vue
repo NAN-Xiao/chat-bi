@@ -7,6 +7,7 @@ import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import ParamsForm from './ParamsForm.vue'
 import { modelTypeOptions } from '@/entity/CommonEntity.ts'
+import { useI18n } from 'vue-i18n'
 
 withDefaults(
   defineProps<{
@@ -26,6 +27,7 @@ interface Form {
   name: string
   id: string
 }
+const { t } = useI18n()
 
 const modelForm = reactive({
   id: '',
@@ -75,8 +77,8 @@ const rules = {
     },
   ],
   endpoint: [{ required: true, message: 'endpoint', trigger: 'blur' }],
-  modelName: [{ required: true, message: '请选择基础模型', trigger: 'blur' }],
-  name: [{ required: true, message: '请给基础模型设置一个名称', trigger: 'blur' }],
+  modelName: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
+  name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
   api_key: [{ required: true, message: 'api_key', trigger: 'blur' }],
 }
 
@@ -148,8 +150,8 @@ defineExpose({
       >
         <el-form-item class="custom-require flex-inline" prop="name">
           <template #label
-            ><span class="custom-require_danger">模型名称</span>
-            <el-tooltip effect="dark" content="自定义的模型名称" placement="right">
+            ><span class="custom-require_danger">{{ t('model.model_name') }}</span>
+            <el-tooltip effect="dark" :content="t('model.custom_model_name')" placement="right">
               <el-icon style="margin-left: 4px" size="16">
                 <dashboard_info></dashboard_info>
               </el-icon>
@@ -157,7 +159,7 @@ defineExpose({
           </template>
           <el-input v-model="modelForm.name" />
         </el-form-item>
-        <el-form-item prop="type" label="模型类型">
+        <el-form-item prop="type" :label="t('model.model_type')">
           <el-select v-model="modelForm.type" style="width: 100%">
             <el-option
               v-for="item in modelTypeOptions"
@@ -169,8 +171,8 @@ defineExpose({
         </el-form-item>
         <el-form-item class="custom-require" prop="modelName">
           <template #label
-            ><span class="custom-require_danger">基础模型</span>
-            <span class="enter">列表中未列出的模型，直接输入模型名称，回车即可添加</span>
+            ><span class="custom-require_danger">{{ t('model.basic_model') }}</span>
+            <span class="enter">{{ t('model.enter_to_add') }}</span>
           </template>
           <el-select v-model="modelForm.type" style="width: 100%">
             <el-option
@@ -181,11 +183,21 @@ defineExpose({
             />
           </el-select>
         </el-form-item>
-        <el-form-item prop="endpoint" label="API 域名">
-          <el-input v-model="modelForm.endpoint" />
+        <el-form-item prop="endpoint" :label="t('model.api_domain_name')">
+          <el-input
+            v-model="modelForm.endpoint"
+            :placeholder="
+              $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
+            "
+          />
         </el-form-item>
         <el-form-item prop="api_key" label="API Key">
-          <el-input v-model="modelForm.api_key" type="password" show-password />
+          <el-input
+            v-model="modelForm.api_key"
+            :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
+            type="password"
+            show-password
+          />
         </el-form-item>
       </el-form>
       <div
@@ -193,27 +205,32 @@ defineExpose({
         :class="advancedSettingExpand && 'expand'"
         @click="advancedSettingExpand = !advancedSettingExpand"
       >
-        高级设置
+        {{ t('model.advanced_settings') }}
         <el-icon size="16">
           <arrow_down></arrow_down>
         </el-icon>
       </div>
       <div v-if="advancedSettingExpand" class="model-params">
-        模型参数
+        {{ t('model.model_parameters') }}
         <span class="add" @click="handleParamsCreate">
           <el-icon size="16">
             <icon_add_outlined></icon_add_outlined>
           </el-icon>
-          添加
+          {{ t('model.add') }}
         </span>
       </div>
 
       <div v-if="advancedSettingExpand" class="params-table">
         <el-table :data="advancedSetting" style="width: 100%">
-          <el-table-column prop="params" label="参数" width="280" />
-          <el-table-column prop="name" label="显示名称" width="280" />
-          <el-table-column prop="value" label="参数值" />
-          <el-table-column fixed="right" width="80" class-name="operation-column_text" label="操作">
+          <el-table-column prop="params" :label="t('model.parameters')" width="280" />
+          <el-table-column prop="name" :label="t('model.display_name')" width="280" />
+          <el-table-column prop="value" :label="t('model.parameter_value')" />
+          <el-table-column
+            fixed="right"
+            width="80"
+            class-name="operation-column_text"
+            :label="$t('ds.actions')"
+          >
             <template #default="scope">
               <el-button text type="primary" @click="handleParamsEdite(scope.row)">
                 <el-icon size="16">
@@ -230,11 +247,15 @@ defineExpose({
         </el-table>
       </div>
     </div>
-    <el-drawer v-model="paramsFormDrawer" :size="600" title="添加参数">
+    <el-drawer
+      v-model="paramsFormDrawer"
+      :size="600"
+      :title="$t('model.add') + $t('common.empty') + $t('model.parameters')"
+    >
       <ParamsForm ref="paramsFormRef" @submit="submit"></ParamsForm>
       <template #footer>
         <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
-        <el-button type="primary" @click="addParams"> 添加 </el-button>
+        <el-button type="primary" @click="addParams"> {{ t('model.add') }} </el-button>
       </template>
     </el-drawer>
   </div>

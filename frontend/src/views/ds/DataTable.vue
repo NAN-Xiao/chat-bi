@@ -304,8 +304,8 @@ const changeStatus = (row: any) => {
     @closed="closeTable"
   >
     <el-input
-      :placeholder="$t('datasource.please_enter')"
       v-model="tableComment"
+      :placeholder="$t('datasource.please_enter')"
       :rows="3"
       type="textarea"
     />
@@ -324,8 +324,8 @@ const changeStatus = (row: any) => {
     @closed="closeField"
   >
     <el-input
-      :placeholder="$t('datasource.please_enter')"
       v-model="fieldComment"
+      :placeholder="$t('datasource.please_enter')"
       :rows="3"
       type="textarea"
     />

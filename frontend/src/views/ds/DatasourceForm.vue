@@ -88,8 +88,6 @@ const close = () => {
 const initForm = (item: any, editTable: boolean = false) => {
   isEditTable.value = false
   dsFormRef.value!.clearValidate()
-  console.log('item', item)
-
   if (item) {
     dialogTitle.value = editTable ? t('ds.form.title.choose_tables') : t('ds.form.title.edit')
     isCreate.value = false
@@ -198,8 +196,7 @@ const save = async (formEl: FormInstance | undefined) => {
       if (form.value.id) {
         if (!isEditTable.value) {
           // only update datasource config info
-          datasourceApi.update(requestObj).then((res) => {
-            console.log(res)
+          datasourceApi.update(requestObj).then(() => {
             close()
             emit('refresh')
           })
@@ -212,8 +209,7 @@ const save = async (formEl: FormInstance | undefined) => {
         }
       } else {
         requestObj.tables = list
-        datasourceApi.add(requestObj).then((res: any) => {
-          console.log(res)
+        datasourceApi.add(requestObj).then(() => {
           close()
           emit('refresh')
         })

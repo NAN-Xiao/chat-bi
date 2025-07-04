@@ -36,14 +36,14 @@ const handleDel = () => {
     <div class="name-icon">
       <img :src="azure" width="32px" height="32px" />
       <span class="name">{{ name }}</span>
-      <span class="default">默认模型</span>
+      <span class="default">{{ $t('model.default_model') }}</span>
     </div>
     <div class="type-value">
-      <span class="type">模型类型</span>
+      <span class="type">{{ $t('model.model_type') }}</span>
       <span class="value"> {{ modleType }}</span>
     </div>
     <div class="type-value">
-      <span class="type">基础模型</span>
+      <span class="type">{{ $t('model.basic_model') }}</span>
       <span class="value"> {{ baseModle }}</span>
     </div>
     <div class="methods">

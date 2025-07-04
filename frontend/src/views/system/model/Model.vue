@@ -68,22 +68,22 @@ const modelListWithSearch = computed(() => {
 })
 const beforeClose = () => {
   modelConfigvVisible.value = false
-  ElMessage.success('设置成功')
-  ElMessageBox.confirm('是否设置 Azure OpenAI 123 为系统默认模型？', {
-    confirmButtonType: 'primary',
-    tip: '系统默认模型被替换后，智能问数的结果将会受到影响，请谨慎操作。',
-    confirmButtonText: t('datasource.confirm'),
-    cancelButtonText: t('common.cancel'),
-    customClass: 'confirm-no_icon',
-    autofocus: false,
-  })
-  ElMessageBox.confirm('是否设置 Azure OpenAI 123 为系统默认模型？', {
-    confirmButtonType: 'danger',
-    confirmButtonText: t('dashboard.delete'),
-    cancelButtonText: t('common.cancel'),
-    customClass: 'confirm-no_icon',
-    autofocus: false,
-  })
+  ElMessage.success(t('model.set_successfully'))
+  // ElMessageBox.confirm(t('model.system_default_model', { msg: msg}), {
+  //   confirmButtonType: 'primary',
+  //   tip: t('model.operate_with_caution'),
+  //   confirmButtonText: t('datasource.confirm'),
+  //   cancelButtonText: t('common.cancel'),
+  //   customClass: 'confirm-no_icon',
+  //   autofocus: false,
+  // })
+  // ElMessageBox.confirm(t('model.system_default_model', { msg: msg}), {
+  //   confirmButtonType: 'danger',
+  //   confirmButtonText: t('dashboard.delete'),
+  //   cancelButtonText: t('common.cancel'),
+  //   customClass: 'confirm-no_icon',
+  //   autofocus: false,
+  // })
 }
 const defaultModelListWithSearch = computed(() => {
   if (!defaultModelKeywords.value) return defaultModelList.value
@@ -192,7 +192,7 @@ const submit = (item: any) => {
 <template>
   <div class="model-config">
     <div class="model-methods">
-      <span class="title">AI 模型配置</span>
+      <span class="title">{{ t('model.ai_model_configuration') }}</span>
       <div class="button-input">
         <el-input
           v-model="keywords"
@@ -213,7 +213,7 @@ const submit = (item: any) => {
               <template #icon>
                 <icon_admin_outlined></icon_admin_outlined>
               </template>
-              系统默认模型
+              {{ t('model.system_default_model_de') }}
             </el-button></template
           >
           <div class="popover">
@@ -244,7 +244,7 @@ const submit = (item: any) => {
                 </el-icon>
               </div>
               <div v-if="!defaultModelListWithSearch.length" class="popover-item empty">
-                没有找到相关结果
+                {{ t('model.relevant_results_found') }}
               </div>
             </div>
           </div>
@@ -254,7 +254,7 @@ const submit = (item: any) => {
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
-          添加模型
+          {{ t('model.add_model') }}
         </el-button>
       </div>
     </div>
@@ -286,14 +286,14 @@ const submit = (item: any) => {
       :show-close="false"
     >
       <template #header="{ close }">
-        <span style="white-space: nowrap">添加模型</span>
+        <span style="white-space: nowrap">{{ t('model.add_model') }}</span>
         <div v-if="!editModel" class="flex-center" style="width: 100%">
           <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
             <el-step>
-              <template #title> 选择供应商 </template>
+              <template #title> {{ t('model.select_supplier') }} </template>
             </el-step>
             <el-step>
-              <template #title> 添加模型 </template>
+              <template #title> {{ t('model.add_model') }} </template>
             </el-step>
           </el-steps>
         </div>
