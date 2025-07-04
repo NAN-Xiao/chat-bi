@@ -87,7 +87,13 @@ const rules = {
   ],
   base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
   name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
-  api_key: [{ required: true, message: 'api_key', trigger: 'blur' }],
+  api_key: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + 'API Key',
+      trigger: 'blur',
+    },
+  ],
 }
 
 onMounted(() => {

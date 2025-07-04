@@ -69,6 +69,10 @@ const defaultModelListWithSearch = computed(() => {
 })
 
 const handleDefaultModelChange = (item: any) => {
+  const current_default_node = modelList.value.find((ele: Model) => ele.default_model)
+  if (current_default_node?.id === item.id) {
+    return
+  }
   ElMessageBox.confirm(`是否设置 ${item.name} 为系统默认模型？`, {
     confirmButtonType: 'primary',
     tip: '系统默认模型被替换后，智能问数的结果将会受到影响，请谨慎操作。',
@@ -78,10 +82,10 @@ const handleDefaultModelChange = (item: any) => {
     autofocus: false,
     callback: (val: string) => {
       if (val === 'confirm') {
-        modelList.value.forEach((ele: any) => {
-          ele.default_model = ele.id === item.id
+        modelApi.setDefault(item.id).then(() => {
+          ElMessage.success('设置成功')
+          search()
         })
-        ElMessage.success('设置成功')
       }
     },
   })

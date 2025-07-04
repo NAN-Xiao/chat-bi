@@ -2,7 +2,7 @@ import json
 from typing import List, Union
 from apps.system.schemas.ai_model_schema import AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem
 from fastapi import APIRouter, Query
-from sqlmodel import func, select
+from sqlmodel import func, select, update
 
 from apps.system.models.system_model import AiModelDetail
 from common.core.deps import SessionDep
@@ -23,7 +23,7 @@ async def query(
                        AiModelDetail.default_model)
     if keyword is not None:
         statement = statement.where(AiModelDetail.name.like(f"%{keyword}%"))
-    
+    statement = statement.order_by(AiModelDetail.create_time.asc())
     items = session.exec(statement).all()
     return items
 
@@ -85,6 +85,27 @@ async def delete_model(
         id: int
 ):
     item = session.get(AiModelDetail, id)
+    if item.default_model:
+        raise RuntimeError(f"Can not delete [${item.name}], because it is default model!")
     session.delete(item)
     session.commit()
+    
+@router.put("/default/{id}")
+async def set_default(session: SessionDep, id: int):
+    db_model = session.get(AiModelDetail, id)
+    if not db_model:
+        raise ValueError(f"AiModelDetail with id {id} not found")
+    if db_model.default_model:
+        return
+
+    try:
+        session.exec(
+            update(AiModelDetail).values(default_model=False)
+        )
+        db_model.default_model = True
+        session.add(db_model)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
     

@@ -59,14 +59,12 @@ const handleDel = () => {
           <edit></edit>
         </el-icon>
       </el-tooltip>
-      <template v-if="!isDefault">
-        <span class="divide"></span>
-        <el-tooltip :offset="14" effect="dark" :content="$t('dashboard.delete')" placement="top">
-          <el-icon size="16" @click="handleDel">
-            <delIcon></delIcon>
-          </el-icon>
-        </el-tooltip>
-      </template>
+      <span class="divide"></span>
+      <el-tooltip :offset="14" effect="dark" :content="$t('dashboard.delete')" placement="top">
+        <el-icon size="16" @click="handleDel">
+          <delIcon></delIcon>
+        </el-icon>
+      </el-tooltip>
     </div>
   </div>
 </template>

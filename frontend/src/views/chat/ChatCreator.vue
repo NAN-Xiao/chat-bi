@@ -3,6 +3,7 @@ import { chatApi, ChatInfo } from '@/api/chat.ts'
 import { onMounted, ref } from 'vue'
 import { datasourceApi } from '@/api/datasource.ts'
 import DatasourceItemCard from '../ds/DatasourceItemCard.vue'
+import { useRoute } from 'vue-router'
 
 const dsList = ref<Array<any>>([])
 
@@ -13,6 +14,7 @@ function listDs() {
     dsList.value = res
   })
 }
+const route = useRoute()
 
 const dialogVisible = ref(false)
 
@@ -66,6 +68,9 @@ function createChat(datasource: number) {
 
 onMounted(() => {
   listDs()
+  const id = route.query.id as unknown as number
+  if (!id) return
+  createChat(id)
 })
 
 defineExpose({
