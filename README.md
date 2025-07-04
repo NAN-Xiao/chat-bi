@@ -26,7 +26,7 @@ docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/
 ```
 
 - 你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot；
-- 如果是内网环境，推荐使用 [离线安装包](https://community.fit2cloud.com/#/products/sqlbot/downloads) 进行安装部署；
+- 如果是内网环境，推荐使用 [离线安装包](https://community.fit2cloud.com/#/products/sqlbot/downloads) 进行安装部署。
 
 如你有更多问题，可以加入我们的技术交流群与我们交流。
 
