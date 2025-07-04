@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-import azure from '@/assets/model/icon_Azure_OpenAI_colorful.png'
 import delIcon from '@/assets/svg/icon_delete.svg'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
-
+import { get_supplier } from '@/entity/supplier'
+import { computed } from 'vue'
 const props = withDefaults(
   defineProps<{
     name: string
@@ -10,6 +10,7 @@ const props = withDefaults(
     baseModle: string
     id?: string
     isDefault?: boolean
+    supplier?: number
   }>(),
   {
     name: '-',
@@ -17,9 +18,15 @@ const props = withDefaults(
     baseModle: '-',
     id: '-',
     isDefault: false,
+    supplier: 0,
   }
 )
-
+const current_supplier = computed(() => {
+  if (!props.supplier) {
+    return null
+  }
+  return get_supplier(props.supplier)
+})
 const emits = defineEmits(['edit', 'del'])
 
 const handleEdit = () => {
@@ -27,16 +34,16 @@ const handleEdit = () => {
 }
 
 const handleDel = () => {
-  emits('del', props.id)
+  emits('del', { id: props.id, name: props.name, default_model: props.isDefault })
 }
 </script>
 
 <template>
   <div class="card">
     <div class="name-icon">
-      <img :src="azure" width="32px" height="32px" />
+      <img :src="current_supplier?.icon" width="32px" height="32px" />
       <span class="name">{{ name }}</span>
-      <span class="default">{{ $t('model.default_model') }}</span>
+      <span v-if="isDefault" class="default">{{ $t('model.default_model') }}</span>
     </div>
     <div class="type-value">
       <span class="type">{{ $t('model.model_type') }}</span>

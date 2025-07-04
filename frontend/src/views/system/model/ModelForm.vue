@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, nextTick, computed } from 'vue'
 import arrow_down from '@/assets/svg/arrow-down.svg'
 import dashboard_info from '@/assets/svg/dashboard-info.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
@@ -7,6 +7,7 @@ import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import ParamsForm from './ParamsForm.vue'
 import { modelTypeOptions } from '@/entity/CommonEntity.ts'
+import { base_model_options } from '@/entity/supplier'
 import { useI18n } from 'vue-i18n'
 
 withDefaults(
@@ -18,36 +19,37 @@ withDefaults(
   }
 )
 
-interface Options {
-  label: string
-  value: string
-}
-
-interface Form {
-  name: string
-  id: string
+interface ParamsFormData {
+  key?: string
+  val?: string
+  name?: string
+  id?: string
 }
 const { t } = useI18n()
 
 const modelForm = reactive({
   id: '',
+  supplier: 0,
   name: '',
-  type: 0,
+  model_type: 0,
+  base_model: '',
   api_key: '',
-  endpoint: '',
-  max_context_window: 0,
-  temperature: 0,
-  status: false,
-  description: '',
+  api_domain: '',
+  config_list: [],
 })
 let isCreate = false
 const modelRef = ref()
 const paramsFormRef = ref()
-const advancedSetting = ref([] as Form[])
-const modelList = ref([] as Options[])
+const advancedSetting = ref([] as ParamsFormData[])
 const paramsFormDrawer = ref(false)
-const advancedSettingExpand = ref(false)
+const configExpand = ref(false)
 
+const modelList = computed(() => {
+  if (!modelForm.supplier) {
+    return []
+  }
+  return base_model_options(modelForm.supplier, modelForm.model_type)
+})
 const handleParamsEdite = (ele?: any) => {
   isCreate = false
   paramsFormDrawer.value = true
@@ -65,18 +67,18 @@ const handleParamsCreate = () => {
 }
 
 const handleParamsDel = (item: any) => {
-  advancedSetting.value = advancedSetting.value.filter((ele) => ele.name !== item.name)
+  advancedSetting.value = advancedSetting.value.filter((ele) => ele.key !== item.key)
 }
 
 const rules = {
-  type: [
+  model_type: [
     {
       required: true,
       message: 'type',
       trigger: 'change',
     },
   ],
-  endpoint: [
+  api_domain: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('model.api_domain_name'),
@@ -84,6 +86,7 @@ const rules = {
     },
   ],
   modelName: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
+  base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
   name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
   api_key: [
     {
@@ -123,11 +126,23 @@ const submit = (item: any) => {
 const cancel = () => {
   paramsFormDrawer.value = false
 }
-
-const initForm = (item: any) => {
+const supplierChang = (supplier: any) => {
+  modelForm.supplier = supplier.id
+  const config = supplier.model_config[modelForm.model_type || 0]
+  modelForm.api_domain = config.api_domain
+  if (!modelForm.id) {
+    modelForm.name = supplier.name
+  }
+}
+const initForm = (item?: any) => {
   modelForm.id = ''
   modelRef.value.clearValidate()
-  Object.assign(modelForm, { ...item })
+  if (item) {
+    Object.assign(modelForm, { ...item })
+    if (item?.config_list?.length) {
+      advancedSetting.value = item.config_list
+    }
+  }
 }
 const emits = defineEmits(['submit'])
 
@@ -136,8 +151,7 @@ const submitModle = () => {
     if (res) {
       emits('submit', {
         ...modelForm,
-        temperature: modelForm.temperature / 100,
-        advancedSetting: [...advancedSetting.value],
+        config_list: [...advancedSetting.value],
       })
     }
   })
@@ -146,6 +160,7 @@ const submitModle = () => {
 defineExpose({
   initForm,
   submitModle,
+  supplierChang,
 })
 </script>
 
@@ -177,7 +192,7 @@ defineExpose({
           />
         </el-form-item>
         <el-form-item prop="type" :label="t('model.model_type')">
-          <el-select v-model="modelForm.type" style="width: 100%">
+          <el-select v-model="modelForm.model_type" style="width: 100%">
             <el-option
               v-for="item in modelTypeOptions"
               :key="item.value"
@@ -192,7 +207,7 @@ defineExpose({
             <span class="enter">{{ t('model.enter_to_add') }}</span>
           </template>
           <el-select
-            v-model="modelForm.type"
+            v-model="modelForm['base_model']"
             style="width: 100%"
             multiple
             filterable
@@ -200,17 +215,12 @@ defineExpose({
             default-first-option
             :reserve-keyword="false"
           >
-            <el-option
-              v-for="item in modelList"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
+            <el-option v-for="item in modelList" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
-        <el-form-item prop="endpoint" :label="t('model.api_domain_name')">
+        <el-form-item prop="api_domain" :label="t('model.api_domain_name')">
           <el-input
-            v-model="modelForm.endpoint"
+            v-model="modelForm.api_domain"
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
             "
@@ -227,15 +237,15 @@ defineExpose({
       </el-form>
       <div
         class="advance-setting"
-        :class="advancedSettingExpand && 'expand'"
-        @click="advancedSettingExpand = !advancedSettingExpand"
+        :class="configExpand && 'expand'"
+        @click="configExpand = !configExpand"
       >
         {{ t('model.advanced_settings') }}
         <el-icon size="16">
           <arrow_down></arrow_down>
         </el-icon>
       </div>
-      <div v-if="advancedSettingExpand" class="model-params">
+      <div v-if="configExpand" class="model-params">
         {{ t('model.model_parameters') }}
         <span class="add" @click="handleParamsCreate">
           <el-icon size="16">
@@ -245,11 +255,11 @@ defineExpose({
         </span>
       </div>
 
-      <div v-if="advancedSettingExpand" class="params-table">
+      <div v-if="configExpand" class="params-table">
         <el-table :data="advancedSetting" style="width: 100%">
-          <el-table-column prop="params" :label="t('model.parameters')" width="280" />
+          <el-table-column prop="key" :label="t('model.parameters')" width="280" />
           <el-table-column prop="name" :label="t('model.display_name')" width="280" />
-          <el-table-column prop="value" :label="t('model.parameter_value')" />
+          <el-table-column prop="val" :label="t('model.parameter_value')" />
           <el-table-column
             fixed="right"
             width="80"

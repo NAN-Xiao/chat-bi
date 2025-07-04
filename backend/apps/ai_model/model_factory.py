@@ -1,9 +1,12 @@
+import json
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, Type
 from abc import ABC, abstractmethod
 from langchain_core.language_models import BaseLLM as LangchainBaseLLM
 from langchain_openai import ChatOpenAI
+from sqlmodel import Session, select
 
+from common.core.db import engine 
 from apps.system.models.system_model import AiModelDetail
 
 
@@ -11,6 +14,7 @@ from apps.system.models.system_model import AiModelDetail
 
 class LLMConfig(BaseModel):
     """Base configuration class for large language models"""
+    model_id: Optional[int] = None
     model_type: str  # Model type: openai/tongyi/vllm etc.
     model_name: str  # Specific model name
     api_key: Optional[str] = None
@@ -93,7 +97,7 @@ class LLMFactory:
 
 
 #  todo
-def get_llm_config(aimodel: AiModelDetail) -> LLMConfig:
+""" def get_llm_config(aimodel: AiModelDetail) -> LLMConfig:
     config = LLMConfig(
         model_type="openai",
         model_name=aimodel.name,
@@ -101,4 +105,31 @@ def get_llm_config(aimodel: AiModelDetail) -> LLMConfig:
         api_base_url=aimodel.endpoint,
         additional_params={"temperature": aimodel.temperature}
     )
-    return config
+    return config """
+
+def get_default_config() -> LLMConfig:
+    with Session(engine) as session:
+        db_model = session.exec(
+            select(AiModelDetail).where(AiModelDetail.default_model == True)
+        ).first()
+        if not db_model:
+            raise ValueError("The system default model has not been set")
+
+        additional_params = {}
+        if db_model.config:
+            try:
+                config_raw = json.loads(db_model.config)
+                additional_params = {item["key"]: item["val"] for item in config_raw if "key" in item and "val" in item}
+            except Exception:
+                pass
+
+        # 构造 LLMConfig
+        return LLMConfig(
+            model_id=db_model.id,
+            model_type="openai",
+            model_name=db_model.base_model,
+            api_key=db_model.api_key,
+            api_base_url=db_model.api_domain,
+            additional_params=additional_params
+        )
+    

@@ -1,18 +1,20 @@
-
-from sqlmodel import BigInteger, Field, SQLModel
+   
+from sqlmodel import BigInteger, Field, Text, SQLModel
 from common.core.models import SnowflakeBase
 
 
 class AiModelBase:
+    supplier: int = Field(nullable=False)
     name: str = Field(max_length=255, nullable=False)
-    type: int = Field(nullable=False)
+    model_type: int = Field(nullable=False)
+    base_model: str = Field(max_length = 255, nullable=False)
+    default_model: bool = Field(default=False, nullable=False)
 
-class AiModelDetail(AiModelBase, SnowflakeBase, table=True):
+class AiModelDetail(SnowflakeBase, AiModelBase, table=True):
    __tablename__ = "ai_model"
    api_key: str | None = Field(max_length=255, nullable=True)
-   endpoint: str = Field(max_length=255, nullable=False)
-   max_context_window: int = Field(default=0)
-   temperature: float = Field(default=0.0)
-   status: bool = Field(default=True)
-   description: str | None = Field(max_length=255, nullable=True)
+   api_domain: str = Field(max_length=255, nullable=False)
+   protocol: int = Field(nullable=False, default = 1)
+   config: str = Field(sa_type = Text())
+   status: int = Field(nullable=False, default = 1)
    create_time: int = Field(default=0, sa_type=BigInteger())
