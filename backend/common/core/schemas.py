@@ -47,3 +47,11 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page: int
     size: int
     total_pages: int
+    
+
+class BaseCreatorDTO(BaseModel):
+    id: int
+    class Config:
+        json_encoders = {
+            int: lambda v: str(v) if isinstance(v, int) and v > (2**53 - 1) else v
+        }

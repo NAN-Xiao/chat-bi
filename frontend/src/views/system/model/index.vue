@@ -265,10 +265,10 @@ const onFormClose = () => {
 }
 
 const search = () => {
-  modelApi.pager(state.pageInfo.currentPage, state.pageInfo.pageSize).then((res: any) => {
+  /* modelApi.pager(state.pageInfo.currentPage, state.pageInfo.pageSize).then((res: any) => {
     state.tableData = res.items
     state.pageInfo.total = res.total
-  })
+  }) */
 }
 const addTerm = () => {
   const param: any = {

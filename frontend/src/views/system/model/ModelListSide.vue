@@ -1,14 +1,9 @@
 <script lang="ts" setup>
-import { ref, shallowRef, computed } from 'vue'
+import { ref, computed } from 'vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
-import icon_Azure_OpenAI_colorful from '@/assets/model/icon_Azure_OpenAI_colorful.png'
-interface Model {
-  name: string
-  modleType: string
-  baseModle: string
-  img?: string
-}
+import { supplierList } from '@/entity/supplier'
+
 withDefaults(
   defineProps<{
     activeName: string
@@ -18,21 +13,10 @@ withDefaults(
   }
 )
 const keywords = ref('')
-const modelList = shallowRef([
-  {
-    img: icon_Azure_OpenAI_colorful,
-    name: '千帆大模型-chinese',
-  },
-  {
-    img: icon_Azure_OpenAI_colorful,
-    name: '千帆大模-chinese',
-  },
-] as Model[])
+
 const modelListWithSearch = computed(() => {
-  if (!keywords.value) return modelList.value
-  return modelList.value.filter((ele) =>
-    ele.name.toLowerCase().includes(keywords.value.toLowerCase())
-  )
+  if (!keywords.value) return supplierList
+  return supplierList.filter((ele) => ele.name.toLowerCase().includes(keywords.value.toLowerCase()))
 })
 const emits = defineEmits(['clickModel'])
 const handleModelClick = (item: any) => {
@@ -62,7 +46,7 @@ const handleModelClick = (item: any) => {
         :class="activeName === ele.name && 'isActive'"
         @click="handleModelClick(ele)"
       >
-        <img width="32px" height="32px" :src="ele.img" />
+        <img width="32px" height="32px" :src="ele.icon" />
         <span class="name">{{ ele.name }}</span>
       </div>
       <EmptyBackground

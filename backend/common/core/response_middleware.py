@@ -4,7 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
-
+from common.core.config import settings
 class ResponseMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
@@ -12,7 +12,7 @@ class ResponseMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         
-        if isinstance(response, JSONResponse):
+        if isinstance(response, JSONResponse) or request.url.path == f"{settings.API_V1_STR}/openapi.json":
             return response
     
         if response.headers.get("content-type") == "application/json":

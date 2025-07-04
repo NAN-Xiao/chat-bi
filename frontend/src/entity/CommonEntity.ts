@@ -4,7 +4,7 @@ export interface SelectOption {
 }
 
 export const modelTypeOptions: SelectOption[] = [
-  { label: 'OpenAI', value: 0 },
+  { label: '大语言模型', value: 0 },
   /* { label: 'Anthropic', value: 1 },
   { label: 'Baidu', value: 2 },
   { label: 'iFLYTEK', value: 3 },

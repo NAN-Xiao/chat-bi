@@ -6,9 +6,8 @@ const { t } = useI18n()
 const paramsRef = ref()
 const paramsForm = reactive({
   name: '',
-  params: '',
-  value: null,
-  type: 0,
+  key: '',
+  val: '',
 })
 
 const rules = {
@@ -19,14 +18,14 @@ const rules = {
       trigger: 'blur',
     },
   ],
-  params: [
+  key: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('model.parameters'),
       trigger: 'blur',
     },
   ],
-  value: [
+  val: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('model.parameter_value'),
@@ -66,9 +65,9 @@ defineExpose({
       :model="paramsForm"
       style="width: 100%"
     >
-      <el-form-item prop="params" :label="$t('model.parameters')">
+      <el-form-item prop="key" :label="$t('model.parameters')">
         <el-input
-          v-model="paramsForm.params"
+          v-model="paramsForm.key"
           :placeholder="$t('datasource.please_enter') + $t('common.empty') + $t('model.parameters')"
         />
       </el-form-item>
@@ -80,9 +79,9 @@ defineExpose({
           "
         />
       </el-form-item>
-      <el-form-item prop="value" :label="$t('model.parameter_value')">
+      <el-form-item prop="val" :label="$t('model.parameter_value')">
         <el-input
-          v-model="paramsForm.value"
+          v-model="paramsForm.val"
           :placeholder="
             $t('datasource.please_enter') + $t('common.empty') + $t('model.parameter_value')
           "

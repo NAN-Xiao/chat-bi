@@ -1,8 +1,8 @@
 import { request } from '@/utils/request'
 
 export const modelApi = {
-  pager: (pageNumber: number, pageSize: number) =>
-    request.get(`/system/aimodel/pager/${pageNumber}/${pageSize}`),
+  queryAll: (keyword?: string) =>
+    request.get('/system/aimodel', { params: keyword ? { keyword } : {} }),
   add: (data: any) => request.post('/system/aimodel', data),
   edit: (data: any) => request.put('/system/aimodel', data),
   delete: (id: number) => request.delete(`/system/aimodel/${id}`),
