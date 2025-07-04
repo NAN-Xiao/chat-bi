@@ -1,5 +1,5 @@
 <p align="center"><img src= "TBD" alt="SQLBot" width="300" /></p>
-<h3 align="center">Chat with your SQL database</h3>
+<h3 align="center">基于大模型和 RAG 的智能问数系统</h3>
 <p align="center">
   <a href="https://www.gnu.org/licenses/gpl-3.0.html#license-text"><img src="https://img.shields.io/github/license/1Panel-dev/SQLBot?color=%231890FF" alt="License: GPL v3"></a>
   <a href="https://github.com/1Panel-dev/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/1Panel-dev/SQLBot" alt="Latest release"></a>
@@ -8,31 +8,33 @@
 </p>
 <hr/>
 
-SQLBot allows you to interact with your SQL database through advanced Text-to-SQL technology. This capability is powered by Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG).
+SQLBot 是一款基于大模型和 RAG 的智能问数系统。SQLBot 的优势包括：
 
-- **Easy to use**: TBD.
-- **Accurate text-to-sql generation**: TBD.
-- **Easy to integrate**: TBD.
-- **Supported databases**: MySQL, PostgreSQL, Oracle, Microsoft SQL Server, PrestoDB, Apache Hive, Apache Doris, ClickHouse,etc.
+- **开箱即用**: 只需配置大模型和数据源即可开启问数之旅，通过大模型和 RAG 的结合来实现高质量的 NL2SQL/Text-to-SQL；
+- **易于集成**: 不仅可以嵌入 n8n、MaxKB、Dify 、Coze 等 AI 应用开发平台，也可以直接嵌入到第三方业务系统，让业务系统快速拥有智能问数能力；
+- **安全可控**: 提供基于工作空间的资源隔离机制，能够实现细粒度的数据权限控制。
 
-## How SQLBot works
+## 快速开始
+
+```
+# Linux 机器
+docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/postgresql/data -v ~/.python-packages:/opt/sqlbot/app/sandbox/python-packages registry.fit2cloud.com/sqlbot/sqlbot
+
+# Windows 机器
+docker run -d --name=sqlbot --restart=always -p 8080:8080 -v C:/sqlbot:/var/lib/postgresql/data -v C:/python-packages:/opt/sqlbot/app/sandbox/python-packages registry.fit2cloud.com/sqlbot/sqlbot
+
+# 用户名: admin
+# 密码: SQLBot@123..
+```
+
+- 你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot；
+- 如果是内网环境，推荐使用 [离线安装包](https://community.fit2cloud.com/#/products/sqlbot/downloads) 进行安装部署；
+
+如你有更多问题，可以加入我们的技术交流群与我们交流。
 
 TBD
 
-## Quick Start
-
-Execute the script below to start a SQLBot container using Docker:
-
-```bash
-docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/postgresql/data 1panel/sqlbot
-```
-
-Access SQLBot web interface at `http://your_server_ip:8080` with default admin credentials:
-
-- username: admin
-- password: SQLBot@123..
-
-## Screenshots
+## UI 展示
 
 <table style="border-collapse: collapse; border: 1px solid black;">
   <tr>
@@ -45,7 +47,7 @@ Access SQLBot web interface at `http://your_server_ip:8080` with default admin c
   </tr>
 </table>
 
-## Technical Stack
+## 技术栈
 
 - Frontend：[Vue.js](https://vuejs.org/)
 - Backend：[Python / Django](https://www.djangoproject.com/)
