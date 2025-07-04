@@ -1,5 +1,6 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import type { G2Spec } from '@antv/g2'
 
 export class Column extends BaseG2Chart {
   constructor(id: string) {
@@ -17,36 +18,55 @@ export class Column extends BaseG2Chart {
       return
     }
 
-    this.chart
-      ?.interval()
-      .data(data)
-      .encode('x', x[0].value)
-      .encode('y', y[0].value)
-      .axis({
+    const options: G2Spec = {
+      ...this.chart.options(),
+      type: 'interval',
+      data: data,
+      encode: {
+        x: x[0].value,
+        y: y[0].value,
+        color: series.length > 0 ? series[0].value : undefined,
+      },
+      axis: {
         x: { title: x[0].name },
         y: { title: y[0].name },
-      })
-      .scale('x', {
-        nice: true,
-      })
-      .scale('y', {
-        nice: true,
-      })
-      .interaction('elementHighlight', { background: true })
-      .tooltip((data) => {
+      },
+      scale: {
+        x: {
+          nice: true,
+        },
+        y: {
+          nice: true,
+        },
+      },
+      interaction: {
+        elementHighlight: { background: true },
+      },
+      tooltip: (data) => {
         if (series.length > 0) {
           return { name: data[series[0].value], value: data[y[0].value] }
         } else {
           return { name: y[0].name, value: data[y[0].value] }
         }
-      })
-      .label({
-        text: y[0].value,
-        transform: [{ type: 'overlapDodgeY' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
-      })
+      },
+      labels: [
+        {
+          text: y[0].value,
+          position: 'top',
+          dy: -25,
+          transform: [
+            { type: 'overlapDodgeY' },
+            { type: 'contrastReverse' },
+            { type: 'overlapHide' },
+          ],
+        },
+      ],
+    } as G2Spec
 
     if (series.length > 0) {
-      this.chart?.encode('color', series[0].value).transform({ type: 'stackY' })
+      options.transform = [{ type: 'stackY' }]
     }
+
+    this.chart.options(options)
   }
 }

@@ -1,5 +1,6 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import type { G2Spec } from '@antv/g2'
 
 export class Pie extends BaseG2Chart {
   constructor(id: string) {
@@ -15,21 +16,30 @@ export class Pie extends BaseG2Chart {
       return
     }
 
-    this.chart.coordinate({ type: 'theta', outerRadius: 0.8 })
-
-    this.chart
-      ?.interval()
-      .transform({ type: 'stackY' })
-      .data(data)
-      .encode('y', y[0].value)
-      .encode('color', series[0].value)
-      .legend('color', { position: 'bottom', layout: { justifyContent: 'center' } })
-      .label({
-        position: 'outside',
-        text: (data: any) => `${data[series[0].value]}: ${data[y[0].value]}`,
-      })
-      .tooltip((data) => {
+    const options: G2Spec = {
+      ...this.chart.options(),
+      type: 'interval',
+      coordinate: { type: 'theta', outerRadius: 0.8 },
+      transform: [{ type: 'stackY' }],
+      data: data,
+      encode: {
+        y: y[0].value,
+        color: series[0].value,
+      },
+      legend: {
+        color: { position: 'bottom', layout: { justifyContent: 'center' } },
+      },
+      labels: [
+        {
+          position: 'outside',
+          text: (data: any) => `${data[series[0].value]}: ${data[y[0].value]}`,
+        },
+      ],
+      tooltip: (data) => {
         return { name: y[0].name, value: data[y[0].value] }
-      })
+      },
+    }
+
+    this.chart.options(options)
   }
 }
