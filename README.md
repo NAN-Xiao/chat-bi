@@ -16,12 +16,10 @@ SQLBot 是一款基于大模型和 RAG 的智能问数系统。SQLBot 的优势�
 
 ## 快速开始
 
-```
-# Linux 机器
-docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/postgresql/data -v ~/.python-packages:/opt/sqlbot/app/sandbox/python-packages registry.fit2cloud.com/sqlbot/sqlbot
+准备一台 Linux 机器，执行一键安装脚本：
 
-# Windows 机器
-docker run -d --name=sqlbot --restart=always -p 8080:8080 -v C:/sqlbot:/var/lib/postgresql/data -v C:/python-packages:/opt/sqlbot/app/sandbox/python-packages registry.fit2cloud.com/sqlbot/sqlbot
+```
+docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/postgresql/data -v ~/.python-packages:/opt/sqlbot/app/sandbox/python-packages registry.fit2cloud.com/sqlbot/sqlbot
 
 # 用户名: admin
 # 密码: SQLBot@123..
