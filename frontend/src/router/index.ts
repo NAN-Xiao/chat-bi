@@ -9,7 +9,6 @@ import Datasource from '@/views/ds/Datasource.vue'
 import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
-// import Model from '@/views/system/model/index.vue'
 import Model from '@/views/system/model/Model.vue'
 // import User from "@/views/system/user/index.vue";
 import { watchRouter } from './watch'
