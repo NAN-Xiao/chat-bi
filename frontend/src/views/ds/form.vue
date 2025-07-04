@@ -332,8 +332,7 @@ const save = async (formEl: FormInstance | undefined) => {
       if (form.value.id) {
         if (!isEditTable.value) {
           // only update datasource config info
-          datasourceApi.update(requestObj).then((res) => {
-            console.log(res)
+          datasourceApi.update(requestObj).then(() => {
             close()
             emit('refresh')
           })
@@ -346,8 +345,7 @@ const save = async (formEl: FormInstance | undefined) => {
         }
       } else {
         requestObj.tables = list
-        datasourceApi.add(requestObj).then((res: any) => {
-          console.log(res)
+        datasourceApi.add(requestObj).then(() => {
           close()
           emit('refresh')
         })

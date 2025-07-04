@@ -46,6 +46,16 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    // server: {
+    //   proxy: {
+    //     '/api': {
+    //       target: 'https://sqlbot.fit2cloud.cn',
+    //       changeOrigin: true,
+    //       rewrite: path => path.replace(/^\/api/, 'api')
+    //     }
+    //   },
+    //   port: 8080
+    // },
     esbuild: {
       jsxFactory: 'h',
       jsxFragment: 'Fragment',

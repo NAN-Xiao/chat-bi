@@ -1,0 +1,665 @@
+<script lang="ts" setup>
+import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { datasourceApi } from '@/api/datasource'
+import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
+import { encrypted, decrypted } from './js/aes'
+import { ElMessage } from 'element-plus-secondary'
+import type { FormInstance, FormRules } from 'element-plus-secondary'
+import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
+import FixedSizeList from 'element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs'
+import { Plus } from '@element-plus/icons-vue'
+import { useCache } from '@/utils/useCache'
+import { dsType, haveSchema } from '@/views/ds/js/ds-type'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+
+const props = withDefaults(
+  defineProps<{
+    activeName: string
+    activeStep: number
+  }>(),
+  {
+    activeName: '',
+    activeStep: 0,
+  }
+)
+
+const { wsCache } = useCache()
+const dsFormRef = ref<FormInstance>()
+const emit = defineEmits(['refresh', 'submit', 'changeActiveStep'])
+const isCreate = ref(true)
+const isEditTable = ref(false)
+const checkList = ref<any>([])
+const tableList = ref<any>([])
+const excelUploadSuccess = ref(false)
+const tableListLoading = ref(false)
+const token = wsCache.get('user.token')
+const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}` })
+const dialogTitle = ref('')
+const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
+const saveLoading = ref<boolean>(false)
+
+const { t } = useI18n()
+
+const rules = reactive<FormRules>({
+  name: [
+    { required: true, message: t('ds.form.validate.name_required'), trigger: 'blur' },
+    { min: 1, max: 50, message: t('ds.form.validate.name_length'), trigger: 'blur' },
+  ],
+  type: [{ required: true, message: t('ds.form.validate.type_required'), trigger: 'change' }],
+  host: [{ required: true, message: 'Please input host', trigger: 'blur' }],
+  port: [{ required: true, message: 'Please input port', trigger: 'blur' }],
+  database: [{ required: true, message: 'Please input database', trigger: 'blur' }],
+  mode: [{ required: true, message: 'Please choose mode', trigger: 'change' }],
+  dbSchema: [{ required: true, message: 'Please input schema', trigger: 'blur' }],
+})
+
+const dialogVisible = ref<boolean>(false)
+const form = ref<any>({
+  name: '',
+  description: '',
+  type: 'mysql',
+  configuration: '',
+  driver: '',
+  host: '',
+  port: 0,
+  username: '',
+  password: '',
+  database: '',
+  extraJdbc: '',
+  dbSchema: '',
+  filename: '',
+  sheets: [],
+  mode: 'service_name',
+  timeout: 30,
+})
+
+const close = () => {
+  dialogVisible.value = false
+  isCreate.value = true
+  emit('changeActiveStep', 0)
+  isEditTable.value = false
+  checkList.value = []
+  tableList.value = []
+  excelUploadSuccess.value = false
+  saveLoading.value = false
+}
+
+const initForm = (item: any, editTable: boolean = false) => {
+  isEditTable.value = false
+  dsFormRef.value!.clearValidate()
+  if (item) {
+    dialogTitle.value = editTable ? t('ds.form.title.choose_tables') : t('ds.form.title.edit')
+    isCreate.value = false
+    form.value.id = item.id
+    form.value.name = item.name
+    form.value.description = item.description
+    form.value.type = item.type
+    form.value.configuration = item.configuration
+    if (item.configuration) {
+      const configuration = JSON.parse(decrypted(item.configuration))
+      form.value.host = configuration.host
+      form.value.port = configuration.port
+      form.value.username = configuration.username
+      form.value.password = configuration.password
+      form.value.database = configuration.database
+      form.value.extraJdbc = configuration.extraJdbc
+      form.value.dbSchema = configuration.dbSchema
+      form.value.filename = configuration.filename
+      form.value.sheets = configuration.sheets
+      form.value.mode = configuration.mode
+      form.value.timeout = configuration.timeout ? configuration.timeout : 30
+    }
+
+    if (editTable) {
+      dialogTitle.value = t('ds.form.choose_tables')
+      emit('changeActiveStep', 2)
+      isEditTable.value = true
+      isCreate.value = false
+      // request tables and check tables
+
+      datasourceApi.tableList(item.id).then((res: any) => {
+        checkList.value = res.map((ele: any) => {
+          return ele.table_name
+        })
+        if (item.type === 'excel') {
+          tableList.value = form.value.sheets
+          nextTick(() => {
+            handleCheckedTablesChange([...checkList.value])
+          })
+        } else {
+          tableListLoading.value = true
+          const requestObj = buildConf()
+          datasourceApi
+            .getTablesByConf(requestObj)
+            .then((table) => {
+              tableList.value = table
+              checkList.value = checkList.value.filter((ele: string) => {
+                return table
+                  .map((ele: any) => {
+                    return ele.tableName
+                  })
+                  .includes(ele)
+              })
+              nextTick(() => {
+                handleCheckedTablesChange([...checkList.value])
+              })
+            })
+            .finally(() => {
+              tableListLoading.value = false
+            })
+        }
+      })
+    }
+  } else {
+    dialogTitle.value = t('ds.form.title.add')
+    isCreate.value = true
+    isEditTable.value = false
+    checkList.value = []
+    tableList.value = []
+    form.value = {
+      name: '',
+      description: '',
+      type: 'mysql',
+      configuration: '',
+      driver: '',
+      host: '',
+      port: 0,
+      username: '',
+      password: '',
+      database: '',
+      extraJdbc: '',
+      dbSchema: '',
+      filename: '',
+      sheets: [],
+      mode: 'service_name',
+      timeout: 30,
+    }
+  }
+  dialogVisible.value = true
+}
+
+const save = async (formEl: FormInstance | undefined) => {
+  if (!formEl) return
+  await formEl.validate((valid) => {
+    if (valid) {
+      saveLoading.value = true
+      const list = tableList.value
+        .filter((ele: any) => {
+          return checkList.value.includes(ele.tableName)
+        })
+        .map((ele: any) => {
+          return { table_name: ele.tableName, table_comment: ele.tableComment }
+        })
+
+      const requestObj = buildConf()
+      if (form.value.id) {
+        if (!isEditTable.value) {
+          // only update datasource config info
+          datasourceApi.update(requestObj).then(() => {
+            close()
+            emit('refresh')
+          })
+        } else {
+          // save table and field
+          datasourceApi.chooseTables(form.value.id, list).then(() => {
+            close()
+            emit('refresh')
+          })
+        }
+      } else {
+        requestObj.tables = list
+        datasourceApi.add(requestObj).then(() => {
+          close()
+          emit('refresh')
+        })
+      }
+    }
+  })
+}
+
+const buildConf = () => {
+  form.value.configuration = encrypted(
+    JSON.stringify({
+      host: form.value.host,
+      port: form.value.port,
+      username: form.value.username,
+      password: form.value.password,
+      database: form.value.database,
+      extraJdbc: form.value.extraJdbc,
+      dbSchema: form.value.dbSchema,
+      filename: form.value.filename,
+      sheets: form.value.sheets,
+      mode: form.value.mode,
+      timeout: form.value.timeout,
+    })
+  )
+  const obj = JSON.parse(JSON.stringify(form.value))
+  delete obj.driver
+  delete obj.host
+  delete obj.port
+  delete obj.username
+  delete obj.password
+  delete obj.database
+  delete obj.extraJdbc
+  delete obj.dbSchema
+  delete obj.filename
+  delete obj.sheets
+  delete obj.mode
+  delete obj.timeout
+  return obj
+}
+
+const check = () => {
+  const requestObj = buildConf()
+  datasourceApi.check(requestObj).then((res: any) => {
+    if (res) {
+      ElMessage({
+        message: t('ds.form.connect.success'),
+        type: 'success',
+        showClose: true,
+      })
+    } else {
+      ElMessage({
+        message: t('ds.form.connect.failed'),
+        type: 'error',
+        showClose: true,
+      })
+    }
+  })
+}
+
+const next = async (formEl: FormInstance | undefined) => {
+  if (!formEl) return
+  await formEl.validate((valid) => {
+    if (valid) {
+      if (form.value.type === 'excel') {
+        // next, show tables
+        if (excelUploadSuccess.value) {
+          emit('changeActiveStep', props.activeStep + 1)
+        }
+      } else {
+        // check status if success do next
+        const requestObj = buildConf()
+        datasourceApi.check(requestObj).then((res: boolean) => {
+          if (res) {
+            emit('changeActiveStep', props.activeStep + 1)
+            // request tables
+            datasourceApi.getTablesByConf(requestObj).then((res: any) => {
+              tableList.value = res
+            })
+          } else {
+            ElMessage({
+              message: t('ds.form.connect.failed'),
+              type: 'error',
+              showClose: true,
+            })
+          }
+        })
+      }
+    }
+  })
+}
+
+const preview = () => {
+  emit('changeActiveStep', props.activeStep - 1)
+}
+
+const beforeUpload = (rawFile: any) => {
+  if (rawFile.size / 1024 / 1024 > 50) {
+    ElMessage.error('File size can not exceed 50MB!')
+    return false
+  }
+  return true
+}
+
+const onSuccess = (response: any) => {
+  form.value.filename = response.data.filename
+  form.value.sheets = response.data.sheets
+  tableList.value = response.data.sheets
+  excelUploadSuccess.value = true
+}
+
+onMounted(() => {
+  setTimeout(() => {
+    dsFormRef.value!.clearValidate()
+  }, 100)
+})
+
+const submitModle = () => {
+  dsFormRef.value!.validate((res: any) => {
+    if (res) {
+      emit('submit')
+    }
+  })
+}
+
+const keywords = ref('')
+const tableListWithSearch = computed(() => {
+  if (!keywords.value) return tableList.value
+  return tableList.value.filter((ele: any) =>
+    ele.tableName.toLowerCase().includes(keywords.value.toLowerCase())
+  )
+})
+
+watch(keywords, () => {
+  const tableNameArr = tableListWithSearch.value.map((ele: any) => ele.tableName)
+  checkList.value = checkTableList.filter((ele) => tableNameArr.includes(ele))
+  const checkedCount = checkList.value.length
+  checkAll.value = checkedCount === tableListWithSearch.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < tableListWithSearch.value.length
+})
+
+const checkAll = ref(false)
+const isIndeterminate = ref(false)
+let checkTableList = [] as any[]
+
+const handleCheckAllChange = (val: any) => {
+  checkList.value = val
+    ? [
+        ...new Set([
+          ...tableListWithSearch.value.map((ele: any) => ele.tableName),
+          ...checkList.value,
+        ]),
+      ]
+    : []
+  isIndeterminate.value = false
+  const tableNameArr = tableListWithSearch.value.map((ele: any) => ele.tableName)
+  checkTableList = val
+    ? [...new Set([...tableNameArr, ...checkTableList])]
+    : checkTableList.filter((ele) => !tableNameArr.includes(ele))
+}
+
+const handleCheckedTablesChange = (value: any[]) => {
+  const checkedCount = value.length
+  checkAll.value = checkedCount === tableListWithSearch.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < tableListWithSearch.value.length
+  const tableNameArr = tableListWithSearch.value.map((ele: any) => ele.tableName)
+  checkTableList = [
+    ...new Set([...checkTableList.filter((ele) => !tableNameArr.includes(ele)), ...value]),
+  ]
+}
+
+const tableListSave = () => {
+  save(dsFormRef.value)
+}
+
+defineExpose({
+  initForm,
+  submitModle,
+  tableListSave,
+})
+</script>
+
+<template>
+  <div class="model-form" :class="(!isCreate || activeStep === 2) && 'edit-form'">
+    <div v-if="isCreate && activeStep !== 2" class="model-name">{{ activeName }}</div>
+
+    <div class="form-content">
+      <el-form
+        v-show="activeStep === 1"
+        ref="dsFormRef"
+        :model="form"
+        label-position="top"
+        label-width="auto"
+        :rules="rules"
+      >
+        <el-form-item :label="t('ds.form.name')" prop="name">
+          <el-input v-model="form.name" />
+        </el-form-item>
+        <el-form-item :label="t('ds.form.description')">
+          <el-input v-model="form.description" :rows="2" type="textarea" />
+        </el-form-item>
+        <el-form-item :label="t('ds.type')" prop="type">
+          <el-select v-model="form.type" placeholder="Select Type" :disabled="!isCreate">
+            <el-option
+              v-for="item in dsType"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
+        <div v-if="form.type === 'excel'">
+          <el-form-item label="File">
+            <el-upload
+              :disabled="!isCreate"
+              accept=".xls, .xlsx, .csv"
+              :headers="headers"
+              :action="getUploadURL"
+              :before-upload="beforeUpload"
+              :on-success="onSuccess"
+            >
+              <el-button :disabled="!isCreate">{{ t('ds.form.upload.button') }}</el-button>
+              <template #tip>
+                <div class="el-upload__tip">{{ t('ds.form.upload.tip') }}</div>
+              </template>
+            </el-upload>
+          </el-form-item>
+        </div>
+        <div v-else>
+          <el-form-item :label="t('ds.form.host')" prop="host">
+            <el-input v-model="form.host" />
+          </el-form-item>
+          <el-form-item :label="t('ds.form.port')" prop="port">
+            <el-input v-model="form.port" />
+          </el-form-item>
+          <el-form-item :label="t('ds.form.username')">
+            <el-input v-model="form.username" />
+          </el-form-item>
+          <el-form-item :label="t('ds.form.password')">
+            <el-input v-model="form.password" type="password" show-password />
+          </el-form-item>
+          <el-form-item :label="t('ds.form.database')" prop="database">
+            <el-input v-model="form.database" />
+          </el-form-item>
+          <el-form-item
+            v-if="form.type === 'oracle'"
+            :label="t('ds.form.connect_mode')"
+            prop="mode"
+          >
+            <el-radio-group v-model="form.mode">
+              <el-radio value="service_name">{{ t('ds.form.mode.service_name') }}</el-radio>
+              <el-radio value="sid">{{ t('ds.form.mode.sid') }}</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item :label="t('ds.form.extra_jdbc')">
+            <el-input v-model="form.extraJdbc" />
+          </el-form-item>
+          <el-form-item
+            v-if="haveSchema.includes(form.type)"
+            :label="t('ds.form.schema')"
+            prop="dbSchema"
+          >
+            <el-input v-model="form.dbSchema" />
+            <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
+          </el-form-item>
+          <el-form-item :label="t('ds.form.timeout')" prop="timeout">
+            <el-input-number v-model="form.timeout" :min="0" :max="300" controls-position="right" />
+          </el-form-item>
+          <span>
+            <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
+            <span v-if="form.type === 'sqlServer'">2012+</span>
+            <span v-else-if="form.type === 'oracle'">12+</span>
+            <span v-else-if="form.type === 'mysql'">5.6+</span>
+            <span v-else-if="form.type === 'pg'">9.6+</span>
+          </span>
+        </div>
+      </el-form>
+      <div v-show="activeStep === 2" v-loading="tableListLoading" class="select-data_table">
+        <div class="title">
+          {{ $t('ds.form.choose_tables') }} ({{ checkList.length }}/ {{ tableList.length }})
+        </div>
+        <el-input
+          v-model="keywords"
+          clearable
+          style="width: 100%; margin-bottom: 16px"
+          :placeholder="$t('datasource.search')"
+        >
+          <template #prefix>
+            <el-icon>
+              <icon_searchOutline_outlined class="svg-icon" />
+            </el-icon>
+          </template>
+        </el-input>
+        <div class="container">
+          <div class="select-all">
+            <el-checkbox
+              v-model="checkAll"
+              :indeterminate="isIndeterminate"
+              @change="handleCheckAllChange"
+            >
+              {{ t('datasource.select_all') }}
+            </el-checkbox>
+          </div>
+          <EmptyBackground
+            v-if="!!keywords && !tableListWithSearch.length"
+            :description="$t('datasource.relevant_content_found')"
+            img-type="tree"
+            style="width: 100%"
+          />
+          <el-checkbox-group
+            v-else
+            v-model="checkList"
+            style="position: relative"
+            @change="handleCheckedTablesChange"
+          >
+            <FixedSizeList
+              :item-size="32"
+              :data="tableListWithSearch"
+              :total="tableListWithSearch.length"
+              :width="800"
+              :height="460"
+              :scrollbar-always-on="true"
+              class-name="ed-select-dropdown__list"
+              layout="vertical"
+            >
+              <template #default="{ index, style }">
+                <div class="list-item_primary" :style="style">
+                  <el-checkbox :label="tableListWithSearch[index].tableName">
+                    <el-icon size="16" style="margin-right: 8px">
+                      <icon_form_outlined></icon_form_outlined>
+                    </el-icon>
+                    {{ tableListWithSearch[index].tableName }}</el-checkbox
+                  >
+                </div>
+              </template>
+            </FixedSizeList>
+          </el-checkbox-group>
+        </div>
+      </div>
+    </div>
+    <div class="draw-foot">
+      <el-button @click="close">{{ t('common.cancel') }}</el-button>
+      <el-button v-show="!isCreate && !isEditTable && form.type !== 'excel'" @click="check">
+        {{ t('ds.test_connection') }}
+      </el-button>
+      <el-button v-show="activeStep === 1 && isCreate" type="primary" @click="next(dsFormRef)">
+        {{ t('common.next') }}
+      </el-button>
+      <el-button v-show="activeStep === 2 && isCreate" @click="preview">
+        {{ t('ds.previous') }}
+      </el-button>
+      <el-button
+        v-show="activeStep === 2 || !isCreate"
+        :loading="saveLoading"
+        type="primary"
+        @click="save(dsFormRef)"
+      >
+        {{ t('common.save') }}
+      </el-button>
+    </div>
+  </div>
+</template>
+
+<style lang="less" scoped>
+.model-form {
+  width: calc(100% - 280px);
+  position: absolute;
+  right: 0;
+  top: 56px;
+  height: 100%;
+  padding-bottom: 120px;
+  overflow-y: auto;
+  .model-name {
+    height: 56px;
+    width: 100%;
+    padding-left: 24px;
+    border-bottom: 1px solid #1f232926;
+    font-weight: 500;
+    font-size: 16px;
+    line-height: 24px;
+    display: flex;
+    align-items: center;
+  }
+
+  .form-content {
+    width: 800px;
+    margin: 0 auto;
+    padding-top: 24px;
+
+    .ed-form-item--default {
+      margin-bottom: 16px;
+
+      &.is-error {
+        margin-bottom: 40px;
+      }
+    }
+  }
+
+  :deep(.draw-foot) {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    width: calc(100% - 280px);
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    border-top: 1px solid #1f232926;
+    padding-right: 24px;
+    background-color: #fff;
+    z-index: 10;
+  }
+
+  &.edit-form {
+    width: 100%;
+
+    :deep(.draw-foot) {
+      width: 100%;
+    }
+  }
+  .select-data_table {
+    .title {
+      font-weight: 500;
+      font-size: 16px;
+      line-height: 24px;
+      margin: 0 0 16px 0;
+    }
+    .container {
+      height: 524px;
+      overflow-y: auto;
+      border: 1px solid #dee0e3;
+      border-radius: 4px;
+
+      .select-all {
+        background: #f5f6f7;
+        height: 40px;
+        padding-left: 12px;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid #dee0e3;
+      }
+
+      :deep(.ed-checkbox__label) {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      :deep(.ed-vl__window) {
+        scrollbar-width: none;
+      }
+    }
+  }
+}
+</style>

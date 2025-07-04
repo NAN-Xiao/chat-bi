@@ -13,7 +13,7 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AI
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 
-from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_llm_config
+from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
 from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer, save_sql, \
     save_error_message, save_sql_exec_data, save_full_chart_message, save_full_chart_message_and_answer, save_chart, \
     finish_record, save_full_analysis_message_and_answer, save_full_predict_message_and_answer, save_predict_data, \
@@ -23,7 +23,6 @@ from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
 from apps.system.crud.user import get_user_info
-from apps.system.models.system_model import AiModelDetail
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser
 
@@ -61,13 +60,6 @@ class LLMService:
 
             chat_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
 
-        # Get available AI model
-        aimodel = self.session.exec(select(AiModelDetail).where(
-            AiModelDetail.status == True,
-            AiModelDetail.api_key.is_not(None)
-        )).first()
-        if not aimodel and aimodel[0]:
-            raise Exception("No available AI model configuration found")
 
         history_records: List[ChatRecord] = list(
             map(lambda x: ChatRecord(**x.model_dump()), filter(lambda r: True if r.first_chat != True else False,
@@ -83,8 +75,9 @@ class LLMService:
 
         self.ds = CoreDatasource(**ds.model_dump()) if ds else None
         self.chat_question = chat_question
-        self.chat_question.ai_modal_id = aimodel[0].id
-        self.config = get_llm_config(aimodel[0])
+        self.config = get_default_config()
+        self.chat_question.ai_modal_id = self.config.model_id
+        
 
         # Create LLM instance through factory
         llm_instance = LLMFactory.create_llm(self.config)

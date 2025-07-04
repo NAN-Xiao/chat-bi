@@ -1,0 +1,439 @@
+<script lang="ts" setup>
+import { ref, computed, shallowRef, reactive, nextTick } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus-secondary'
+import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
+import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
+import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
+import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
+import ModelList from './ModelList.vue'
+import ModelListSide from './ModelListSide.vue'
+import ModelForm from './ModelForm.vue'
+import { modelApi } from '@/api/system'
+import Card from './Card.vue'
+import { getModelTypeName } from '@/entity/CommonEntity.ts'
+import { useI18n } from 'vue-i18n'
+import { get_supplier } from '@/entity/supplier'
+
+interface Model {
+  name: string
+  model_type: string
+  base_model: string
+  id?: string
+  default_model: boolean
+  supplier: number
+}
+
+const { t } = useI18n()
+const keywords = ref('')
+const defaultModelKeywords = ref('')
+const modelConfigvVisible = ref(false)
+const editModel = ref(false)
+const activeStep = ref(0)
+const activeName = ref('')
+const modelFormRef = ref()
+
+reactive({
+  form: {
+    id: '',
+    name: '',
+    model_type: 0,
+    api_key: '',
+    api_domain: '',
+  },
+  selectedIds: [],
+})
+const modelList = shallowRef([] as Model[])
+
+const modelListWithSearch = computed(() => {
+  if (!keywords.value) return modelList.value
+  return modelList.value.filter((ele) =>
+    ele.name.toLowerCase().includes(keywords.value.toLowerCase())
+  )
+})
+const beforeClose = () => {
+  modelConfigvVisible.value = false
+}
+const defaultModelListWithSearch = computed(() => {
+  let tempModelList = modelList.value
+  if (defaultModelKeywords.value) {
+    tempModelList = tempModelList.filter((ele) =>
+      ele.name.toLowerCase().includes(defaultModelKeywords.value.toLowerCase())
+    )
+  }
+  return tempModelList.map((item: any) => {
+    item['supplier_item'] = get_supplier(item.supplier)
+    return item
+  })
+})
+
+const handleDefaultModelChange = (item: any) => {
+  ElMessageBox.confirm(`是否设置 ${item.name} 为系统默认模型？`, {
+    confirmButtonType: 'primary',
+    tip: '系统默认模型被替换后，智能问数的结果将会受到影响，请谨慎操作。',
+    confirmButtonText: t('datasource.confirm'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+    callback: (val: string) => {
+      if (val === 'confirm') {
+        modelList.value.forEach((ele: any) => {
+          ele.default_model = ele.id === item.id
+        })
+        ElMessage.success('设置成功')
+      }
+    },
+  })
+}
+
+const formatKeywords = (item: string) => {
+  if (!defaultModelKeywords.value) return item
+  return item.replaceAll(
+    defaultModelKeywords.value,
+    `<span class="isSearch">${defaultModelKeywords.value}</span>`
+  )
+}
+const handleAddModel = () => {
+  activeStep.value = 0
+  modelConfigvVisible.value = true
+}
+const handleEditModel = (id: any) => {
+  activeStep.value = 1
+  modelApi.query(id).then((res: any) => {
+    modelConfigvVisible.value = true
+    nextTick(() => {
+      modelFormRef.value.initForm({ ...res })
+    })
+  })
+}
+
+const deleteHandler = (item: any) => {
+  if (item.default_model) {
+    ElMessageBox.confirm(`无法删除模型：${item.name}？`, {
+      confirmButtonType: 'primary',
+      tip: '该模型为系统默认模型，请先设置其他模型为系统默认模型，再删除此模型。',
+      showConfirmButton: false,
+      confirmButtonText: '确定',
+      cancelButtonText: '知道了',
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+      callback: (val: string) => {
+        console.log(val)
+      },
+    })
+    return
+  }
+  ElMessageBox.confirm(`是否删除模型：${item.name}？`, {
+    confirmButtonType: 'danger',
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+    callback: (value: string) => {
+      if (value === 'confirm') {
+        modelApi.delete(item.id).then(() => {
+          ElMessage({
+            type: 'success',
+            message: '删除成功',
+          })
+          search()
+        })
+      }
+    },
+  })
+}
+
+const clickModel = (ele: any) => {
+  activeStep.value = 1
+  supplierChang(ele)
+}
+
+const supplierChang = (ele: any) => {
+  activeName.value = ele.name
+  nextTick(() => {
+    modelFormRef.value.supplierChang({ ...ele })
+  })
+}
+
+const cancel = () => {
+  beforeClose()
+}
+
+const preStep = () => {
+  activeStep.value = 0
+}
+
+const saveModel = () => {
+  modelFormRef.value.submitModle()
+}
+
+const search = () => {
+  modelApi.queryAll().then((res: any) => {
+    modelList.value = res
+  })
+}
+search()
+
+const submit = (item: any) => {
+  if (!item.id) {
+    modelApi.add(item).then(() => {
+      beforeClose()
+      search()
+      ElMessage({
+        type: 'success',
+        message: 'Add completed',
+      })
+    })
+    return
+  }
+  modelApi.edit(item).then(() => {
+    beforeClose()
+    search()
+    ElMessage({
+      type: 'success',
+      message: 'Edit completed',
+    })
+  })
+}
+</script>
+
+<template>
+  <div class="model-config">
+    <div class="model-methods">
+      <span class="title">{{ t('model.ai_model_configuration') }}</span>
+      <div class="button-input">
+        <el-input
+          v-model="keywords"
+          clearable
+          style="width: 240px; margin-right: 12px"
+          :placeholder="$t('datasource.search')"
+        >
+          <template #prefix>
+            <el-icon>
+              <icon_searchOutline_outlined class="svg-icon" />
+            </el-icon>
+          </template>
+        </el-input>
+
+        <el-popover popper-class="system-default_model" placement="bottom">
+          <template #reference>
+            <el-button secondary>
+              <template #icon>
+                <icon_admin_outlined></icon_admin_outlined>
+              </template>
+              {{ t('model.system_default_model_de') }}
+            </el-button></template
+          >
+          <div class="popover">
+            <el-input
+              v-model="defaultModelKeywords"
+              clearable
+              style="width: 100%; margin-right: 12px"
+              :placeholder="t('datasource.search_by_name')"
+            >
+              <template #prefix>
+                <el-icon>
+                  <icon_searchOutline_outlined class="svg-icon" />
+                </el-icon>
+              </template>
+            </el-input>
+            <div class="popover-content">
+              <div
+                v-for="ele in defaultModelListWithSearch"
+                :key="ele.name"
+                class="popover-item"
+                :class="ele.default_model && 'isActive'"
+                @click="handleDefaultModelChange(ele)"
+              >
+                <img :src="ele.supplier_item.icon" width="24px" height="24px" />
+                <div class="model-name" v-html="formatKeywords(ele.name)"></div>
+                <el-icon size="16" class="done">
+                  <icon_done_outlined></icon_done_outlined>
+                </el-icon>
+              </div>
+              <div v-if="!defaultModelListWithSearch.length" class="popover-item empty">
+                {{ t('model.relevant_results_found') }}
+              </div>
+            </div>
+          </div>
+        </el-popover>
+
+        <el-button type="primary" @click="handleAddModel">
+          <template #icon>
+            <icon_add_outlined></icon_add_outlined>
+          </template>
+          {{ t('model.add_model') }}
+        </el-button>
+      </div>
+    </div>
+    <EmptyBackground
+      v-if="!!keywords && !modelListWithSearch.length"
+      :description="$t('datasource.relevant_content_found')"
+      img-type="tree"
+    />
+
+    <div v-else class="card-content">
+      <card
+        v-for="ele in modelListWithSearch"
+        :id="ele.id"
+        :key="ele.id"
+        :name="ele.name"
+        :supplier="ele.supplier"
+        :modle-type="getModelTypeName(ele['model_type'])"
+        :base-modle="ele['base_model']"
+        :is-default="ele['default_model']"
+        @edit="handleEditModel"
+        @del="deleteHandler"
+      ></card>
+    </div>
+    <el-drawer
+      v-model="modelConfigvVisible"
+      :close-on-click-modal="false"
+      size="calc(100% - 100px)"
+      modal-class="model-drawer-fullscreen"
+      direction="btt"
+      :before-close="beforeClose"
+      :show-close="false"
+    >
+      <template #header="{ close }">
+        <span style="white-space: nowrap">{{ t('model.add_model') }}</span>
+        <div v-if="!editModel" class="flex-center" style="width: 100%">
+          <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
+            <el-step>
+              <template #title> {{ t('model.select_supplier') }} </template>
+            </el-step>
+            <el-step>
+              <template #title> {{ t('model.add_model') }} </template>
+            </el-step>
+          </el-steps>
+        </div>
+        <el-icon style="cursor: pointer" @click="close">
+          <icon_close_outlined></icon_close_outlined>
+        </el-icon>
+      </template>
+      <ModelList v-if="activeStep === 0" @click-model="clickModel"></ModelList>
+      <ModelListSide
+        v-if="activeStep === 1"
+        :active-name="activeName"
+        @click-model="supplierChang"
+      ></ModelListSide>
+      <ModelForm
+        v-if="activeStep === 1"
+        ref="modelFormRef"
+        :active-name="activeName"
+        @submit="submit"
+      ></ModelForm>
+      <template #footer>
+        <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
+        <el-button secondary @click="preStep"> {{ $t('ds.previous') }} </el-button>
+        <el-button type="primary" @click="saveModel"> {{ $t('common.save') }} </el-button>
+      </template>
+    </el-drawer>
+  </div>
+</template>
+
+<style lang="less" scoped>
+.model-config {
+  height: calc(100% - 16px);
+  .model-methods {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    .title {
+      font-weight: 500;
+      font-size: 20px;
+      line-height: 28px;
+    }
+  }
+
+  .card-content {
+    display: flex;
+  }
+}
+</style>
+
+<style lang="less">
+.system-default_model.system-default_model {
+  padding: 4px 0;
+  width: 325px !important;
+  box-shadow: 0px 4px 8px 0px #1f23291a;
+  border: 1px solid #dee0e3;
+  .ed-input {
+    .ed-input__wrapper {
+      box-shadow: none;
+    }
+
+    border-bottom: 1px solid #1f232926;
+  }
+
+  .popover {
+    .popover-content {
+      padding: 4px;
+    }
+    .popover-item {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding-left: 12px;
+      padding-right: 8px;
+      margin-bottom: 2px;
+      position: relative;
+      border-radius: 4px;
+      cursor: pointer;
+      &:not(.empty):hover {
+        background: #1f23291a;
+      }
+
+      &.empty {
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+        color: #8f959e;
+        cursor: default;
+      }
+
+      .model-name {
+        margin-left: 8px;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+      }
+
+      .done {
+        margin-left: auto;
+        display: none;
+      }
+
+      .isSearch {
+        color: var(--ed-color-primary);
+      }
+
+      &.isActive {
+        color: var(--ed-color-primary);
+
+        .done {
+          display: block;
+        }
+      }
+    }
+  }
+}
+
+.model-drawer-fullscreen {
+  .ed-drawer__body {
+    padding: 0;
+  }
+  .is-process .ed-step__line {
+    background-color: var(--ed-color-primary);
+  }
+}
+.confirm-no_icon {
+  border-radius: 12px;
+  padding: 24px;
+  .tip {
+    margin-top: 24px;
+  }
+}
+</style>
