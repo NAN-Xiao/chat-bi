@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     EMAILS_FROM_EMAIL: EmailStr | None = None
     EMAILS_FROM_NAME: EmailStr | None = None
     MCP_IMAGE_PATH: str
+    MCP_IMAGE_HOST: str
+    SERVER_IMAGE_HOST: str
 
     @model_validator(mode="after")
     def _set_default_emails_from(self) -> Self:

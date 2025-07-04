@@ -1,10 +1,12 @@
 import logging
+import traceback
 import warnings
 from typing import Any, List, Union, Dict
 
 import numpy as np
 import orjson
 import pandas as pd
+import requests
 from langchain_community.utilities import SQLDatabase
 from langchain_core.language_models import BaseLLM
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, AIMessageChunk
@@ -22,6 +24,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
 from apps.system.crud.user import get_user_info
 from apps.system.models.system_model import AiModelDetail
+from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser
 
 warnings.filterwarnings("ignore")
@@ -68,8 +71,9 @@ class LLMService:
 
         history_records: List[ChatRecord] = list(
             map(lambda x: ChatRecord(**x.model_dump()), filter(lambda r: True if r.first_chat != True else False,
-                                                  list_records(session=self.session, current_user=current_user,
-                                                               chart_id=chat_question.chat_id))))
+                                                               list_records(session=self.session,
+                                                                            current_user=current_user,
+                                                                            chart_id=chat_question.chat_id))))
         # get schema
         if ds:
             chat_question.db_schema = get_table_schema(session=self.session, ds=ds)
@@ -639,12 +643,49 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
         else:
             # todo generate picture
             if chart['type'] != 'table':
-                yield '# todo generate chart picture'
-
-            yield f'![{chart["type"]}](https://sqlbot.fit2cloud.cn/images/111.png)'
+                yield '# generated chart picture'
+                image_url = request_picture(llm_service.record.chat_id, llm_service.record.id, chart, result)
+                print(image_url)
+                yield f'![{chart["type"]}]({image_url})'
     except Exception as e:
+        traceback.print_exc()
         llm_service.save_error(message=str(e))
         if in_chat:
             yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
         else:
             yield f'> &#x274c; **ERROR**\n\n> \n\n> {str(e)}。'
+
+
+def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
+    file_name = f'c_{chat_id}_r_{record_id}'
+
+    columns = chart.get('columns') if chart.get('columns') else []
+    x = None
+    y = None
+    series = None
+    if chart.get('axis'):
+        x = chart.get('axis').get('x')
+        y = chart.get('axis').get('y')
+        series = chart.get('axis').get('series')
+
+    axis = []
+    for v in columns:
+        axis.append({'name': v.get('name'), 'value': v.get('value')})
+    if x:
+        axis.append({'name': x.get('name'), 'value': x.get('value'), 'type': 'x'})
+    if y:
+        axis.append({'name': y.get('name'), 'value': y.get('value'), 'type': 'y'})
+    if series:
+        axis.append({'name': series.get('name'), 'value': series.get('value'), 'type': 'series'})
+
+    request_obj = {
+        "path": (settings.MCP_IMAGE_PATH if settings.MCP_IMAGE_PATH[-1] == '/' else (
+                settings.MCP_IMAGE_PATH + '/')) + file_name,
+        "type": chart['type'],
+        "data": orjson.dumps(data.get('data') if data.get('data') else []).decode(),
+        "axis": orjson.dumps(axis).decode(),
+    }
+
+    requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj)
+
+    return f'{(settings.SERVER_IMAGE_HOST if settings.SERVER_IMAGE_HOST[-1] == "/" else (settings.SERVER_IMAGE_HOST + "/"))}{file_name}.png'
