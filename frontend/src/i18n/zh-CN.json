@@ -206,7 +206,10 @@
     "text": "文本",
     "number": "数值",
     "parameter_type": "参数类型",
-    "verification_successful": "校验成功"
+    "verification_successful": "校验成功",
+    "del_default_tip": "无法删除模型: {msg}",
+    "del_default_warn": "该模型为系统默认模型，请先设置其他模型为系统默认模型，再删除此模型。",
+    "del_warn_tip": "是否删除模型: {msg}？"
   },
   "chat": {
     "chart_type": {

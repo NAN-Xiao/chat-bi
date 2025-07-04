@@ -73,9 +73,9 @@ const handleDefaultModelChange = (item: any) => {
   if (current_default_node?.id === item.id) {
     return
   }
-  ElMessageBox.confirm(`是否设置 ${item.name} 为系统默认模型？`, {
+  ElMessageBox.confirm(t('model.system_default_model', { msg: item.name }), {
     confirmButtonType: 'primary',
-    tip: '系统默认模型被替换后，智能问数的结果将会受到影响，请谨慎操作。',
+    tip: t('model.operate_with_caution'),
     confirmButtonText: t('datasource.confirm'),
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
@@ -83,7 +83,7 @@ const handleDefaultModelChange = (item: any) => {
     callback: (val: string) => {
       if (val === 'confirm') {
         modelApi.setDefault(item.id).then(() => {
-          ElMessage.success('设置成功')
+          ElMessage.success(t('model.set_successfully'))
           search()
         })
       }
@@ -114,12 +114,12 @@ const handleEditModel = (id: any) => {
 
 const deleteHandler = (item: any) => {
   if (item.default_model) {
-    ElMessageBox.confirm(`无法删除模型：${item.name}？`, {
+    ElMessageBox.confirm(t('model.del_default_tip', { msg: item.name }), {
       confirmButtonType: 'primary',
-      tip: '该模型为系统默认模型，请先设置其他模型为系统默认模型，再删除此模型。',
+      tip: t('model.del_default_warn'),
       showConfirmButton: false,
-      confirmButtonText: '确定',
-      cancelButtonText: '知道了',
+      confirmButtonText: t('datasource.confirm'),
+      cancelButtonText: t('datasource.got_it'),
       customClass: 'confirm-no_icon',
       autofocus: false,
       callback: (val: string) => {
@@ -128,10 +128,10 @@ const deleteHandler = (item: any) => {
     })
     return
   }
-  ElMessageBox.confirm(`是否删除模型：${item.name}？`, {
+  ElMessageBox.confirm(t('model.del_warn_tip', { msg: item.name }), {
     confirmButtonType: 'danger',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
+    confirmButtonText: t('dashboard.delete'),
+    cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
     callback: (value: string) => {
@@ -139,7 +139,7 @@ const deleteHandler = (item: any) => {
         modelApi.delete(item.id).then(() => {
           ElMessage({
             type: 'success',
-            message: '删除成功',
+            message: t('dashboard.delete_success'),
           })
           search()
         })

@@ -8,10 +8,15 @@ import LOGO_fold from '@/assets/LOGO-fold.svg'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
+import { useRouter } from 'vue-router'
+const router = useRouter()
 const collapse = ref(false)
 
 const handleFoldExpand = () => {
   collapse.value = !collapse.value
+}
+const toWorkspace = () => {
+  router.push('/')
 }
 </script>
 
@@ -23,7 +28,7 @@ const handleFoldExpand = () => {
       <Workspace :collapse="collapse"></Workspace>
       <Menu :collapse="collapse"></Menu>
       <div class="bottom">
-        <div class="back-to_workspace">
+        <div class="back-to_workspace" @click="toWorkspace">
           <el-icon size="16">
             <icon_moments_categories_outlined></icon_moments_categories_outlined>
           </el-icon>
@@ -85,7 +90,12 @@ const handleFoldExpand = () => {
         border-radius: 6px;
         height: 40px;
         cursor: pointer;
-
+        &:hover {
+          background-color: #1f23291a;
+        }
+        &:active {
+          background-color: #1f232926;
+        }
         .ed-icon {
           margin-right: 4.95px;
         }
