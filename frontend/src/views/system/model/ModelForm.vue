@@ -76,10 +76,22 @@ const rules = {
       trigger: 'change',
     },
   ],
-  endpoint: [{ required: true, message: 'endpoint', trigger: 'blur' }],
+  endpoint: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('model.api_domain_name'),
+      trigger: 'blur',
+    },
+  ],
   modelName: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
   name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
-  api_key: [{ required: true, message: 'api_key', trigger: 'blur' }],
+  api_key: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + 'API Key',
+      trigger: 'blur',
+    },
+  ],
 }
 
 onMounted(() => {
@@ -157,7 +169,12 @@ defineExpose({
               </el-icon>
             </el-tooltip>
           </template>
-          <el-input v-model="modelForm.name" />
+          <el-input
+            :placeholder="
+              $t('datasource.please_enter') + $t('common.empty') + $t('model.model_name')
+            "
+            v-model="modelForm.name"
+          />
         </el-form-item>
         <el-form-item prop="type" :label="t('model.model_type')">
           <el-select v-model="modelForm.type" style="width: 100%">
@@ -174,7 +191,15 @@ defineExpose({
             ><span class="custom-require_danger">{{ t('model.basic_model') }}</span>
             <span class="enter">{{ t('model.enter_to_add') }}</span>
           </template>
-          <el-select v-model="modelForm.type" style="width: 100%">
+          <el-select
+            v-model="modelForm.type"
+            style="width: 100%"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            :reserve-keyword="false"
+          >
             <el-option
               v-for="item in modelList"
               :key="item.value"
