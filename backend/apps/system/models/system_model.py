@@ -1,6 +1,7 @@
    
 from sqlmodel import BigInteger, Field, Text, SQLModel
 from common.core.models import SnowflakeBase
+from common.core.schemas import BaseCreatorDTO
 
 
 class AiModelBase:
@@ -18,3 +19,16 @@ class AiModelDetail(SnowflakeBase, AiModelBase, table=True):
    config: str = Field(sa_type = Text())
    status: int = Field(nullable=False, default = 1)
    create_time: int = Field(default=0, sa_type=BigInteger())
+   
+
+
+
+class WorkspaceBase(SQLModel):
+    name: str = Field(max_length=255, nullable=False)
+
+class WorkspaceEditor(WorkspaceBase, BaseCreatorDTO):
+    pass
+    
+class WorkspaceModel(SnowflakeBase, WorkspaceBase, table=True):
+    __tablename__ = "sys_workspace"
+    create_time: int = Field(default=0, sa_type=BigInteger())
