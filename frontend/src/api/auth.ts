@@ -8,4 +8,5 @@ export const userApi = {
   delete: (id: number) => request.delete(`/settings/terminology/${id}`),
   query: (id: number) => request.get(`/settings/terminology/${id}`),
   language: (data: any) => request.put('/user/language', data),
+  pwd: (data: any) => request.put('/user/pwd', data),
 }

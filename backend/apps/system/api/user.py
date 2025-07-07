@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 from apps.system.crud.user import get_db_user, get_user_info
 from apps.system.models.user import UserModel
-from apps.system.schemas.system_schema import UserCreator, UserEditor, UserGrid, UserLanguage
+from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage
 from common.core.deps import CurrentUser, SessionDep
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
+from common.core.security import md5pwd, verify_md5pwd
 from common.utils.time import get_timestamp
 
 router = APIRouter(tags=["user"], prefix="/user")
@@ -66,10 +67,17 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
     lang = language.language
     if lang not in ["zh-CN", "en"]:
         return {"message": "Language not supported"}
-    db_user = session.get(UserModel, current_user.id)
-    if not db_user:
-        return {"message": "User not found"}
+    db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     db_user.language = lang
     session.add(db_user)
     session.commit()
     return {"message": "Language changed successfully", "language": lang}
+
+@router.put("/pwd")
+async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdEditor):
+    db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
+    if not verify_md5pwd(editor.pwd, db_user.password):
+        raise RuntimeError("pwd error")
+    db_user.password = md5pwd(editor.new_pwd)
+    session.add(db_user)
+    session.commit()

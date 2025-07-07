@@ -8,7 +8,14 @@ import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
 import icon_logout_outlined from '@/assets/svg/icon_logout_outlined.svg'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
-
+import { useI18n } from 'vue-i18n'
+import PwdForm from './PwdForm.vue'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+const router = useRouter()
+const userStore = useUserStore()
+const pwdFormRef = ref()
+const { t } = useI18n()
 defineProps({
   collapse: { type: [Boolean], required: true },
 })
@@ -16,6 +23,7 @@ defineProps({
 const name = ref('飞小致')
 const currentLanguage = ref('zh-CN')
 const emit = defineEmits(['selectPerson'])
+const dialogVisible = ref(false)
 const languageList = [
   {
     name: 'English',
@@ -36,6 +44,20 @@ const handlePersonChange = () => {
 
 const handleDefaultLanguageChange = (item: any) => {
   currentLanguage.value = item.value
+}
+
+const openPwd = () => {
+  dialogVisible.value = true
+}
+const closePwd = () => {
+  dialogVisible.value = false
+}
+const savePwdHandler = () => {
+  pwdFormRef.value?.submit()
+}
+const logout = () => {
+  userStore.logout()
+  router.push('/login')
 }
 </script>
 
@@ -64,7 +86,7 @@ const handleDefaultLanguageChange = (item: any) => {
           </el-icon>
           <div class="datasource-name">系统管理</div>
         </div>
-        <div class="popover-item">
+        <div class="popover-item" @click="openPwd">
           <el-icon size="16">
             <icon_key_outlined></icon_key_outlined>
           </el-icon>
@@ -104,7 +126,7 @@ const handleDefaultLanguageChange = (item: any) => {
           </el-icon>
           <div class="datasource-name">帮助</div>
         </div>
-        <div class="popover-item mr4">
+        <div class="popover-item mr4" @click="logout">
           <el-icon size="16">
             <icon_logout_outlined></icon_logout_outlined>
           </el-icon>
@@ -113,6 +135,16 @@ const handleDefaultLanguageChange = (item: any) => {
       </div>
     </div>
   </el-popover>
+
+  <el-dialog v-model="dialogVisible" :title="t('user.upgrade_pwd.title')" width="600">
+    <pwd-form v-if="dialogVisible" ref="pwdFormRef" @pwd-saved="closePwd" />
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button @click="closePwd">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="savePwdHandler">{{ t('common.save') }}</el-button>
+      </div>
+    </template>
+  </el-dialog>
 </template>
 
 <style lang="less" scoped>

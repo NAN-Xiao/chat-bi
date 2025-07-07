@@ -37,3 +37,7 @@ class UserEditor(UserCreator, BaseCreatorDTO):
 class UserGrid(UserEditor):
     create_time: int
     language: str = "zh-CN"
+    
+class PwdEditor(BaseModel):
+    pwd: str
+    new_pwd: str
