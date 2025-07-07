@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = ""
     
     TOKEN_KEY: str
+    DEFAULT_PWD: str
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -35,3 +35,10 @@ def md5pwd(password: str) -> str:
 
 def verify_md5pwd(plain_password: str, md5_password: str) -> bool:
     return md5pwd(plain_password) == md5_password
+
+def default_pwd() -> str:
+    return settings.DEFAULT_PWD
+
+def default_md5_pwd() -> str:
+    pwd = default_pwd()
+    return md5pwd(pwd)

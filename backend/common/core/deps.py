@@ -4,13 +4,15 @@ import jwt
 from fastapi import Depends, HTTPException, status
 # from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
-from pydantic import BaseModel, ValidationError
-from sqlmodel import Session, select
+from pydantic import ValidationError
+from sqlmodel import Session
+from apps.system.crud.user import get_db_user
+from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.schemas import TokenPayload, XOAuth2PasswordBearer
 from common.core import security
 from common.core.config import settings
 from common.core.db import get_session
-from apps.system.models.user import sys_user, user_grid
+from apps.system.models.user import UserModel
 reusable_oauth2 = XOAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
 )
@@ -21,7 +23,7 @@ reusable_oauth2 = XOAuth2PasswordBearer(
 SessionDep = Annotated[Session, Depends(get_session)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
-async def get_current_user(session: SessionDep, token: TokenDep) -> sys_user:
+async def get_current_user(session: SessionDep, token: TokenDep) -> BaseUserDTO:
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
@@ -32,17 +34,16 @@ async def get_current_user(session: SessionDep, token: TokenDep) -> sys_user:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
         )
-    statement = select(user_grid.id, user_grid.account, user_grid.oid, user_grid.password).where(user_grid.id == token_data.id)
-    session_user = session.exec(statement).first()
+    session_user: UserModel = get_db_user(session = session, user_id = token_data.id)
     if not session_user:
         raise HTTPException(status_code=404, detail="User not found")
-    user = sys_user.model_validate(session_user)
+    user = BaseUserDTO.model_validate(session_user.model_dump())
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     """ if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user") """
     return user
-CurrentUser = Annotated[sys_user, Depends(get_current_user)]
+CurrentUser = Annotated[BaseUserDTO, Depends(get_current_user)]
 
 
 

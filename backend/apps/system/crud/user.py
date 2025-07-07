@@ -1,22 +1,28 @@
 
 from sqlmodel import Session, select
-from ..models.user import sys_user, user_grid
+
+from apps.system.schemas.system_schema import BaseUserDTO
+from ..models.user import UserModel
 from common.core.security import verify_md5pwd
 
-def get_user_by_account(*, session: Session, account: str) -> sys_user | None:
-    #statement = select(sys_user).where(sys_user.account == account)
-    statement = select(user_grid.id, user_grid.account, user_grid.oid, user_grid.password).where(user_grid.account == account)
-    session_user = session.exec(statement).first()
-    result_user = sys_user.model_validate(session_user)
-    return result_user
-
-def get_user_info(*, session: Session, user_id: int) -> sys_user | None:
-    db_user = session.get(user_grid, user_id)
+def get_db_user(*, session: Session, user_id: int) -> UserModel:
+    db_user = session.get(UserModel, user_id)
     if not db_user:
-        return None
+        raise RuntimeError("user not exist")
     return db_user
 
-def authenticate(*, session: Session, account: str, password: str) -> sys_user | None:
+def get_user_by_account(*, session: Session, account: str) -> BaseUserDTO | None:
+    statement = select(UserModel).where(UserModel.account == account)
+    db_user = session.exec(statement).first()
+    if not db_user:
+        return None
+    return BaseUserDTO.model_validate(db_user.model_dump())
+
+def get_user_info(*, session: Session, user_id: int) -> BaseUserDTO | None:
+    db_user = get_db_user(session = session, user_id = user_id)
+    return BaseUserDTO.model_validate(db_user.model_dump())
+
+def authenticate(*, session: Session, account: str, password: str) -> BaseUserDTO | None:
     db_user = get_user_by_account(session=session, account=account)
     if not db_user:
         return None
