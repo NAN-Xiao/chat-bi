@@ -25,8 +25,7 @@ wlist = [
     "/system/license",
     "/system/config/key",
     "/images/*",
-    "/sse",
-    "/user*"
+    "/sse"
 ]
 
 class WhitelistChecker:
