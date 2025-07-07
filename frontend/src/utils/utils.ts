@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
-
+import { useCache } from '@/utils/useCache'
+const { wsCache } = useCache()
 const getCheckDate = (timestamp: any) => {
   if (!timestamp) return false
   const dt = new Date(timestamp)
@@ -34,4 +35,22 @@ export function getDate(time?: Date | string | number) {
     return dayjs(time).toDate()
   }
   return new Date(time)
+}
+
+export const getBrowserLocale = () => {
+  const language = navigator.language
+  if (!language) {
+    return 'zh-CN'
+  }
+  if (language.startsWith('en')) {
+    return 'en'
+  }
+  if (language.toLowerCase().startsWith('zh')) {
+    const temp = language.toLowerCase().replace('_', '-')
+    return temp === 'zh' ? 'zh-CN' : temp === 'zh-cn' ? 'zh-CN' : 'tw'
+  }
+  return language
+}
+export const getLocale = () => {
+  return wsCache.get('user.language') || getBrowserLocale() || 'zh-CN'
 }

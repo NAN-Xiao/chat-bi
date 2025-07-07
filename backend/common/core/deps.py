@@ -1,7 +1,7 @@
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 # from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
@@ -13,6 +13,7 @@ from common.core import security
 from common.core.config import settings
 from common.core.db import get_session
 from apps.system.models.user import UserModel
+from common.utils.locale import I18n
 reusable_oauth2 = XOAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
 )
@@ -22,7 +23,11 @@ reusable_oauth2 = XOAuth2PasswordBearer(
 
 SessionDep = Annotated[Session, Depends(get_session)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
+i18n = I18n()
+async def get_i18n(request: Request):
+    return i18n(request)
 
+Trans = Annotated[I18n, Depends(get_i18n)]
 async def get_current_user(session: SessionDep, token: TokenDep) -> BaseUserDTO:
     try:
         payload = jwt.decode(

@@ -9,6 +9,7 @@ import axios, {
 } from 'axios'
 
 import { useCache } from '@/utils/useCache'
+import { getLocale } from './utils'
 const { wsCache } = useCache()
 // Response data structure
 export interface ApiResponse<T = unknown> {
@@ -68,6 +69,16 @@ class HttpService {
         const token = wsCache.get('user.token')
         if (token && config.headers) {
           config.headers['X-SQLBOT-TOKEN'] = `Bearer ${token}`
+        }
+        const locale = getLocale()
+        if (locale) {
+          /* const mapping = {
+            'zh-CN': 'zh-CN',
+            en: 'en-US',
+            tw: 'zh-TW',
+          } */
+          /* const val = mapping[locale] || locale */
+          config.headers['Accept-Language'] = locale
         }
         if (config.url?.includes('/xpack_static/') && config.baseURL) {
           config.baseURL = config.baseURL.replace('/api/v1', '')
