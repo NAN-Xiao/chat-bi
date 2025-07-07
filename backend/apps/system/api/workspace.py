@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from sqlmodel import select    
-from apps.system.models.system_model import WorkspaceBase, WorkspaceEditor, WorkspaceModel
+from apps.system.models.system_model import UserWsModel, WorkspaceBase, WorkspaceEditor, WorkspaceModel
+from apps.system.schemas.system_schema import UserWsBase, UserWsDTO
 from common.core.deps import SessionDep, Trans
 from common.utils.time import get_timestamp
 
@@ -49,6 +50,16 @@ async def delete(session: SessionDep, id: int):
     session.delete(db_model)
     session.commit()
 
-@router.post("/user/{id}")     
-async def bindUser(session: SessionDep, user_id: int):
-    pass
+@router.post("/uws")     
+async def create(session: SessionDep, creator: UserWsDTO):
+    db_model = UserWsModel.model_validate(creator)
+    session.add(db_model)
+    session.commit()
+
+@router.delete("/uws")     
+async def delete(session: SessionDep, dto: UserWsBase):
+    db_model: UserWsModel = session.exec(select(UserWsModel).where(UserWsModel.uid == dto.uid, UserWsModel.oid == dto.oid)).first()
+    if not db_model:
+        raise ValueError(f"UserWsModel not found")
+    session.delete(db_model)
+    session.commit()

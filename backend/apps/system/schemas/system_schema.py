@@ -42,3 +42,9 @@ class UserGrid(UserEditor):
 class PwdEditor(BaseModel):
     pwd: str
     new_pwd: str
+    
+class UserWsBase(BaseModel):
+    uid: int
+    oid: int
+class UserWsDTO(UserWsBase):
+    weight: int = 0
