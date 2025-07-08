@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Default_avatar from '@/assets/svg/icon-member-default.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_maybe_outlined from '@/assets/svg/icon-maybe_outlined.svg'
@@ -12,16 +12,19 @@ import { useI18n } from 'vue-i18n'
 import PwdForm from './PwdForm.vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { userApi } from '@/api/auth'
 const router = useRouter()
 const userStore = useUserStore()
 const pwdFormRef = ref()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 defineProps({
   collapse: { type: [Boolean], required: true },
 })
 
-const name = ref('飞小致')
-const currentLanguage = ref('zh-CN')
+const name = computed(() => userStore.getName)
+const account = computed(() => userStore.getAccount)
+const currentLanguage = computed(() => userStore.getLanguage)
+const isAdmin = computed(() => userStore.getUid === '1')
 const emit = defineEmits(['selectPerson'])
 const dialogVisible = ref(false)
 const languageList = [
@@ -30,20 +33,25 @@ const languageList = [
     value: 'en',
   },
   {
-    name: '简体中文',
+    name: '中文',
     value: 'zh-CN',
-  },
+  } /* ,
   {
     name: '繁體中文',
     value: 'zh-CN',
-  },
+  }, */,
 ]
 const handlePersonChange = () => {
   emit('selectPerson')
 }
 
-const handleDefaultLanguageChange = (item: any) => {
-  currentLanguage.value = item.value
+const changeLanguage = (lang: string) => {
+  locale.value = lang
+  userStore.setLanguage(lang)
+  const param = {
+    language: lang,
+  }
+  userApi.language(param)
 }
 
 const openPwd = () => {
@@ -78,9 +86,9 @@ const logout = () => {
             <Default_avatar></Default_avatar>
           </el-icon>
           <div class="top">{{ name }}</div>
-          <div class="bottom">feixaozhi</div>
+          <div class="bottom">{{ account }}</div>
         </div>
-        <div class="popover-item" @click="handlePersonChange">
+        <div v-if="isAdmin" class="popover-item" @click="handlePersonChange">
           <el-icon size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>
@@ -110,7 +118,7 @@ const logout = () => {
               :key="ele.name"
               class="popover-item_language"
               :class="currentLanguage === ele.value && 'isActive'"
-              @click="handleDefaultLanguageChange(ele)"
+              @click="changeLanguage(ele.value)"
             >
               <div class="language-name">{{ ele.name }}</div>
               <el-icon size="16" class="done">
@@ -256,6 +264,12 @@ const logout = () => {
       padding-right: 8px;
       position: relative;
       cursor: pointer;
+      &:hover {
+        background-color: #1f23291a;
+      }
+      &:active {
+        background-color: #1f232926;
+      }
       .datasource-name {
         margin-left: 8px;
       }

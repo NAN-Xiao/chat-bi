@@ -10,6 +10,7 @@ const { wsCache } = useCache()
 interface UserState {
   token: string
   uid: string
+  account: string
   name: string
   oid: string
   language: string
@@ -23,6 +24,7 @@ export const UserStore = defineStore('user', {
     return {
       token: '',
       uid: '',
+      account: '',
       name: '',
       oid: '',
       language: 'zh-CN',
@@ -36,6 +38,9 @@ export const UserStore = defineStore('user', {
     },
     getUid(): string {
       return this.uid
+    },
+    getAccount(): string {
+      return this.account
     },
     getName(): string {
       return this.name
@@ -67,7 +72,7 @@ export const UserStore = defineStore('user', {
       const res: any = await AuthApi.info()
       const res_data = res || {}
 
-      const keys = ['uid', 'name', 'oid', 'language', 'exp', 'time'] as const
+      const keys = ['uid', 'account', 'name', 'oid', 'language', 'exp', 'time'] as const
 
       keys.forEach((key) => {
         const dkey = key === 'uid' ? 'id' : key
@@ -98,6 +103,10 @@ export const UserStore = defineStore('user', {
       wsCache.set('user.uid', uid)
       this.uid = uid
     },
+    setAccount(account: string) {
+      wsCache.set('user.account', account)
+      this.account = account
+    },
     setName(name: string) {
       wsCache.set('user.name', name)
       this.name = name
@@ -118,8 +127,9 @@ export const UserStore = defineStore('user', {
       // locale.setLang(language)
     },
     clear() {
-      const keys: string[] = ['token', 'uid', 'name', 'oid', 'language', 'exp', 'time']
+      const keys: string[] = ['token', 'uid', 'account', 'name', 'oid', 'language', 'exp', 'time']
       keys.forEach((key) => wsCache.delete('user.' + key))
+      this.$reset()
     },
   },
 })

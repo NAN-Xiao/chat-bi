@@ -18,9 +18,12 @@ export const watchRouter = (router: any) => {
       next('/login')
       return
     }
-    if (!wsCache.get('user.uid')) {
+    if (!userStore.getUid) {
       await userStore.info()
     }
+    /* if (!wsCache.get('user.uid')) {
+      await userStore.info()
+    } */
     if (to.path === '/') {
       next('/chat')
       return

@@ -1,19 +1,18 @@
 from fastapi import APIRouter
-from apps.system.crud.user import get_db_user, get_user_info
+from apps.system.crud.user import get_db_user
 from apps.system.models.user import UserModel
 from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage
 from common.core.deps import CurrentUser, SessionDep
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
 from common.core.security import md5pwd, verify_md5pwd
-from common.utils.time import get_timestamp
 
 router = APIRouter(tags=["user"], prefix="/user")
 
 
 @router.get("/info")
 async def user_info(session: SessionDep, current_user: CurrentUser):
-    db_user = get_user_info(session=session, user_id=current_user.id)
+    db_user = get_db_user(session=session, user_id=current_user.id)
     if not db_user:
         return {"message": "User not found"}
     db_user.password = None

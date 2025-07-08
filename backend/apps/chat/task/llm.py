@@ -22,7 +22,6 @@ from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
-from apps.system.crud.user import get_user_info
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser
 
@@ -70,8 +69,7 @@ class LLMService:
         if ds:
             chat_question.db_schema = get_table_schema(session=self.session, ds=ds)
 
-        db_user = get_user_info(session=self.session, user_id=current_user.id)
-        chat_question.lang = db_user.language
+        chat_question.lang = current_user.language
 
         self.ds = CoreDatasource(**ds.model_dump()) if ds else None
         self.chat_question = chat_question
