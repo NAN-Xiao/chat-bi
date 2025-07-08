@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import Menu from './Menu.vue'
 import Workspace from './Workspace.vue'
 import Person from './Person.vue'
@@ -8,16 +8,19 @@ import LOGO_fold from '@/assets/LOGO-fold.svg'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 const router = useRouter()
 const collapse = ref(false)
-
 const handleFoldExpand = () => {
   collapse.value = !collapse.value
 }
 const toWorkspace = () => {
   router.push('/')
 }
+const route = useRoute()
+const showSysmenu = computed(() => {
+  return route.path.includes('/system')
+})
 </script>
 
 <template>
@@ -25,10 +28,10 @@ const toWorkspace = () => {
     <div class="left-side" :class="collapse && 'left-side-collapse'">
       <LOGO_fold v-if="collapse" style="margin: 0 0 6px 5px"></LOGO_fold>
       <LOGO v-else style="margin-bottom: 6px"></LOGO>
-      <Workspace :collapse="collapse"></Workspace>
+      <Workspace v-if="!showSysmenu" :collapse="collapse"></Workspace>
       <Menu :collapse="collapse"></Menu>
       <div class="bottom">
-        <div class="back-to_workspace" @click="toWorkspace">
+        <div v-if="showSysmenu" class="back-to_workspace" @click="toWorkspace">
           <el-icon size="16">
             <icon_moments_categories_outlined></icon_moments_categories_outlined>
           </el-icon>

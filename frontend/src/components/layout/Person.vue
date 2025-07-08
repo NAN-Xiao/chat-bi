@@ -41,8 +41,8 @@ const languageList = [
     value: 'zh-CN',
   }, */,
 ]
-const handlePersonChange = () => {
-  emit('selectPerson')
+const toSystem = () => {
+  router.push('/system')
 }
 
 const changeLanguage = (lang: string) => {
@@ -88,7 +88,7 @@ const logout = () => {
           <div class="top">{{ name }}</div>
           <div class="bottom">{{ account }}</div>
         </div>
-        <div v-if="isAdmin" class="popover-item" @click="handlePersonChange">
+        <div v-if="isAdmin" class="popover-item" @click="toSystem">
           <el-icon size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>

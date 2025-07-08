@@ -22,7 +22,7 @@ const router = createRouter({
     },
     {
       path: '/chat',
-      component: Layout,
+      component: LayoutDsl,
       redirect: '/chat/index',
       children: [
         {
