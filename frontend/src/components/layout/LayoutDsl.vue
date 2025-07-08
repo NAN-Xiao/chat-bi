@@ -38,7 +38,7 @@ const showSysmenu = computed(() => {
           {{ collapse ? '' : '返回工作空间' }}
         </div>
         <div class="personal-info">
-          <Person :collapse="collapse"></Person>
+          <Person :collapse="collapse" :in-sysmenu="showSysmenu"></Person>
           <el-icon size="20" class="fold" @click="handleFoldExpand">
             <icon_side_expand_outlined v-if="collapse"></icon_side_expand_outlined>
             <icon_side_fold_outlined v-else></icon_side_fold_outlined>

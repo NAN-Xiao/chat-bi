@@ -19,14 +19,15 @@ const pwdFormRef = ref()
 const { t, locale } = useI18n()
 defineProps({
   collapse: { type: [Boolean], required: true },
+  inSysmenu: { type: [Boolean], required: true },
 })
 
 const name = computed(() => userStore.getName)
 const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
 const isAdmin = computed(() => userStore.getUid === '1')
-const emit = defineEmits(['selectPerson'])
 const dialogVisible = ref(false)
+
 const languageList = [
   {
     name: 'English',
@@ -88,7 +89,7 @@ const logout = () => {
           <div class="top">{{ name }}</div>
           <div class="bottom">{{ account }}</div>
         </div>
-        <div v-if="isAdmin" class="popover-item" @click="toSystem">
+        <div v-if="isAdmin && !inSysmenu" class="popover-item" @click="toSystem">
           <el-icon size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>
