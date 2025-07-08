@@ -57,7 +57,7 @@ export class Pie extends BaseG2Chart {
         },
       ],
       tooltip: (data) => {
-        return { name: y[0].name, value: data[y[0].value] }
+        return { name: y[0].name, value: `${data[y[0].value]}${isPercent ? '%' : ''}` }
       },
     }
 
