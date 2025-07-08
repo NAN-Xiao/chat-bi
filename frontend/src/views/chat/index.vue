@@ -91,7 +91,10 @@
                 </ChatAnswer>
               </template>
               <template v-if="message.role === 'assistant'" #footer>
-                <!--<div>Suggestion</div>-->
+                <RecommendQuestion
+                  :questions="message.recommended_question"
+                  @click-question="quickAsk"
+                />
               </template>
             </ChatRow>
           </template>
@@ -143,9 +146,10 @@ import ChatRow from './ChatRow.vue'
 import ChatAnswer from './ChatAnswer.vue'
 import MdComponent from './component/MdComponent.vue'
 import PredictChartBlock from './component/PredictChartBlock.vue'
+import RecommendQuestion from './RecommendQuestion.vue'
 import ChatCreator from './ChatCreator.vue'
 import { useI18n } from 'vue-i18n'
-import { find } from 'lodash-es'
+import { endsWith, find, startsWith } from 'lodash-es'
 
 const { t } = useI18n()
 
@@ -192,10 +196,9 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
       record: record,
       isTyping: i === currentChat.value.records.length - 1 && isTyping.value,
       first_chat: record.first_chat,
+      recommended_question: record.recommended_question,
     })
   }
-
-  console.log(messages)
 
   return messages
 })
@@ -271,11 +274,35 @@ function onChatCreated(chat: ChatInfo) {
   chatList.value.unshift(chat)
   currentChatId.value = chat.id
   currentChat.value = chat
+  if (chat.records.length === 1) {
+    getRecommendQuestions(chat.records[0].id)
+  }
+}
+
+function getRecommendQuestions(record_id?: number) {
+  chatApi.recommendQuestions(record_id).then((res) => {
+    if (res && res.length > 0 && startsWith(res.trim(), '[') && endsWith(res.trim(), ']')) {
+      if (currentChat.value?.records) {
+        for (let record of currentChat.value.records) {
+          if (record.id === record_id) {
+            record.recommended_question = res
+          }
+        }
+      }
+    }
+  })
 }
 
 onMounted(() => {
   getChatList()
 })
+
+function quickAsk(question: string) {
+  inputMessage.value = question
+  nextTick(() => {
+    sendMessage()
+  })
+}
 
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
@@ -360,6 +387,7 @@ const sendMessage = async () => {
 
         switch (data.type) {
           case 'id':
+            currentRecord.id = data.id
             currentChat.value.records[currentChat.value.records.length - 1].id = data.id
             break
           case 'info':
@@ -389,6 +417,7 @@ const sendMessage = async () => {
             break
           case 'finish':
             isTyping.value = false
+            getRecommendQuestions(currentRecord.id)
             break
         }
         await nextTick()

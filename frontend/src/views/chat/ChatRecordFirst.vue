@@ -25,6 +25,9 @@ const show = computed(() => {
         {{ currentChat.datasource_name }}
       </div>
     </div>
+    <template #footer>
+      <slot name="footer"></slot>
+    </template>
   </ChatBlock>
 </template>
 

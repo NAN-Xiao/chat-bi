@@ -23,6 +23,7 @@ export interface ChatMessage {
   record?: ChatRecord
   isTyping?: boolean
   first_chat?: boolean
+  recommended_question?: string
 }
 
 export class ChatRecord {
@@ -43,6 +44,7 @@ export class ChatRecord {
   error?: string
   run_time: number = 0
   first_chat: boolean = false
+  recommended_question?: string
 
   constructor()
   constructor(
@@ -62,7 +64,8 @@ export class ChatRecord {
     finish: boolean,
     error: string | undefined,
     run_time: number,
-    first_chat: boolean
+    first_chat: boolean,
+    recommended_question: string | undefined
   )
   constructor(
     id?: number,
@@ -81,7 +84,8 @@ export class ChatRecord {
     finish?: boolean,
     error?: string,
     run_time?: number,
-    first_chat?: boolean
+    first_chat?: boolean,
+    recommended_question?: string
   ) {
     this.id = id
     this.chat_id = chat_id
@@ -100,6 +104,7 @@ export class ChatRecord {
     this.error = error
     this.run_time = run_time ?? 0
     this.first_chat = !!first_chat
+    this.recommended_question = recommended_question
   }
 }
 
@@ -198,7 +203,7 @@ export class ChatInfo extends Chat {
   }
 }
 
-function toChatRecord(data?: any): ChatRecord | undefined {
+const toChatRecord = (data?: any): ChatRecord | undefined => {
   if (!data) {
     return undefined
   }
@@ -219,11 +224,11 @@ function toChatRecord(data?: any): ChatRecord | undefined {
     data.finish,
     data.error,
     data.run_time,
-    data.first_chat
+    data.first_chat,
+    data.recommended_question
   )
 }
-
-function toChatRecordList(list: any = []): ChatRecord[] {
+const toChatRecordList = (list: any = []): ChatRecord[] => {
   const records: Array<ChatRecord> = []
   for (let i = 0; i < list.length; i++) {
     const record = toChatRecord(list[i])
@@ -234,72 +239,56 @@ function toChatRecordList(list: any = []): ChatRecord[] {
   return records
 }
 
-function toChatInfo(data?: any): ChatInfo | undefined {
-  if (!data) {
-    return undefined
-  }
-  return new ChatInfo(
-    data.id,
-    data.create_time,
-    data.create_by,
-    data.brief,
-    data.chat_type,
-    data.datasource,
-    data.engine_type,
-    data.datasource_name,
-    data.datasource_exists,
-    toChatRecordList(data.records)
-  )
-}
-
-function toChatInfoList(list: any[] = []): ChatInfo[] {
-  const infos: Array<ChatInfo> = []
-  for (let i = 0; i < list.length; i++) {
-    const chatInfo = toChatInfo(list[i])
-    if (chatInfo) {
-      infos.push(chatInfo)
-    }
-  }
-  return infos
-}
-
-function list(): Promise<Array<ChatInfo>> {
-  return request.get('/chat/list')
-}
-
-function get(id: number): Promise<ChatInfo> {
-  return request.get(`/chat/get/${id}`)
-}
-
-function startChat(data: any): Promise<ChatInfo> {
-  return request.post('/chat/start', data)
-}
-
-function renameChat(chat_id: number | undefined, brief: string): Promise<string> {
-  return request.post('/chat/rename', { id: chat_id, brief: brief })
-}
-
-function deleteChat(id: number | undefined): Promise<string> {
-  return request.get(`/chat/delete/${id}`)
-}
-
-function analysis(record_id: number | undefined) {
-  return request.fetchStream(`/chat/record/${record_id}/analysis`, {})
-}
-function predict(record_id: number | undefined) {
-  return request.fetchStream(`/chat/record/${record_id}/predict`, {})
-}
-
 export const chatApi = {
-  toChatRecord,
-  toChatRecordList,
-  toChatInfo,
-  toChatInfoList,
-  list,
-  get,
-  startChat,
-  renameChat,
-  deleteChat,
-  analysis,
-  predict,
+  toChatInfo: (data?: any): ChatInfo | undefined => {
+    if (!data) {
+      return undefined
+    }
+    return new ChatInfo(
+      data.id,
+      data.create_time,
+      data.create_by,
+      data.brief,
+      data.chat_type,
+      data.datasource,
+      data.engine_type,
+      data.datasource_name,
+      data.datasource_exists,
+      toChatRecordList(data.records)
+    )
+  },
+  toChatInfoList: (list: any[] = []): ChatInfo[] => {
+    const infos: Array<ChatInfo> = []
+    for (let i = 0; i < list.length; i++) {
+      const chatInfo = chatApi.toChatInfo(list[i])
+      if (chatInfo) {
+        infos.push(chatInfo)
+      }
+    }
+    return infos
+  },
+  list: (): Promise<Array<ChatInfo>> => {
+    return request.get('/chat/list')
+  },
+  get: (id: number): Promise<ChatInfo> => {
+    return request.get(`/chat/get/${id}`)
+  },
+  startChat: (data: any): Promise<ChatInfo> => {
+    return request.post('/chat/start', data)
+  },
+  renameChat: (chat_id: number | undefined, brief: string): Promise<string> => {
+    return request.post('/chat/rename', { id: chat_id, brief: brief })
+  },
+  deleteChat: (id: number | undefined): Promise<string> => {
+    return request.get(`/chat/delete/${id}`)
+  },
+  analysis: (record_id: number | undefined) => {
+    return request.fetchStream(`/chat/record/${record_id}/analysis`, {})
+  },
+  predict: (record_id: number | undefined) => {
+    return request.fetchStream(`/chat/record/${record_id}/predict`, {})
+  },
+  recommendQuestions: (record_id: number | undefined) => {
+    return request.get(`/chat/recommend_questions/${record_id}`)
+  },
 }

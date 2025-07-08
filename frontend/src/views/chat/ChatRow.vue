@@ -27,7 +27,11 @@ withDefaults(
         <slot name="footer"></slot>
       </template>
     </ChatBlock>
-    <ChatRecordFirst v-else :current-chat="currentChat" :msg="msg" />
+    <ChatRecordFirst v-else :current-chat="currentChat" :msg="msg">
+      <template #footer>
+        <slot name="footer"></slot>
+      </template>
+    </ChatRecordFirst>
   </div>
 </template>
 

@@ -1,12 +1,8 @@
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any
-
 
 import jwt
-
+import orjson
 from jwt.exceptions import InvalidTokenError
 
 from common.core import security
@@ -47,3 +43,30 @@ def deepcopy_ignore_extra(src, dest):
             dest_value = copy.deepcopy(src_value)  # deep copy
             setattr(dest, attr, dest_value)
     return dest
+
+
+def extract_nested_json(text):
+    stack = []
+    start_index = -1
+    results = []
+
+    for i, char in enumerate(text):
+        if char in '{[':
+            if not stack:  # 记录起始位置
+                start_index = i
+            stack.append(char)
+        elif char in '}]':
+            if stack and ((char == '}' and stack[-1] == '{') or (char == ']' and stack[-1] == '[')):
+                stack.pop()
+                if not stack:  # 栈空时截取完整JSON
+                    json_str = text[start_index:i + 1]
+                    try:
+                        orjson.loads(json_str)  # 验证有效性
+                        results.append(json_str)
+                    except:
+                        pass
+            else:
+                stack = []  # 括号不匹配则重置
+    if len(results) > 0 and results[0]:
+        return results[0]
+    return None

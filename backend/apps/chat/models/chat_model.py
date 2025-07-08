@@ -130,10 +130,10 @@ class AiModelQuestion(BaseModel):
     def datasource_user_question(self, datasource_list: str = "[]"):
         return get_datasource_template()['user'].format(question=self.question, data=datasource_list, lang=self.lang)
 
-    def datasource_guess_sys_question(self):
+    def guess_sys_question(self):
         return get_guess_question_template()['system']
 
-    def datasource_guess_user_question(self, old_questions: str = "[]"):
+    def guess_user_question(self, old_questions: str = "[]"):
         return get_guess_question_template()['user'].format(question=self.question, schema=self.db_schema,
                                                             old_questions=old_questions, lang=self.lang)
 

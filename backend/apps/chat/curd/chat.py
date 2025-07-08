@@ -1,12 +1,13 @@
 import datetime
 from typing import List
 
-from sqlalchemy import and_
+from sqlalchemy import and_, distinct
 from sqlalchemy.orm import load_only
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion
 from apps.datasource.models.datasource import CoreDatasource
 from common.core.deps import SessionDep, CurrentUser
+from common.utils.utils import extract_nested_json
 
 
 def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
@@ -130,8 +131,6 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
         _record.id = record.id
         session.commit()
 
-        # todo suggest questions
-
         chat_info.records.append(_record)
 
     return chat_info
@@ -240,6 +239,36 @@ def save_full_select_datasource_message_and_answer(session: SessionDep, record_i
     if datasource:
         record.datasource = datasource
         record.engine_type = engine_type
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+
+    session.commit()
+
+    return result
+
+
+def save_full_recommend_question_message_and_answer(session: SessionDep, record_id: int, answer: str,
+                                                    full_message: str) -> ChatRecord:
+    if not record_id:
+        raise Exception("Record id cannot be None")
+    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record.full_recommended_question_message = full_message
+    record.recommended_question_answer = answer
+
+    json_str = '[]'
+    if answer and answer != '':
+        try:
+            json_str = extract_nested_json(answer)
+
+            if not json_str:
+                json_str = '[]'
+        except Exception as e:
+            pass
+    record.recommended_question = json_str
 
     result = ChatRecord(**record.model_dump())
 
@@ -379,3 +408,12 @@ def finish_record(session: SessionDep, record_id: int) -> ChatRecord:
     session.commit()
 
     return result
+
+
+def get_old_questions(session: SessionDep, datasource: int):
+    if not datasource:
+        return []
+    records = session.query(ChatRecord.question, ChatRecord.create_time).filter(ChatRecord.datasource == datasource,
+                                                                  ChatRecord.question != None).order_by(
+        ChatRecord.create_time.desc()).limit(20).all()
+    return records
