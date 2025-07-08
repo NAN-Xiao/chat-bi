@@ -1,22 +1,18 @@
 from fastapi import APIRouter
 from apps.system.crud.user import get_db_user
 from apps.system.models.user import UserModel
+from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage
 from common.core.deps import CurrentUser, SessionDep
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
 from common.core.security import md5pwd, verify_md5pwd
-
+from common.core.sqlbot_cache import clear_cache
 router = APIRouter(tags=["user"], prefix="/user")
 
-
 @router.get("/info")
-async def user_info(session: SessionDep, current_user: CurrentUser):
-    db_user = get_db_user(session=session, user_id=current_user.id)
-    if not db_user:
-        return {"message": "User not found"}
-    db_user.password = None
-    return db_user
+async def user_info(current_user: CurrentUser):
+    return current_user
 
 
 @router.get("/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[UserGrid])
@@ -48,6 +44,7 @@ async def create(session: SessionDep, creator: UserCreator):
     session.commit()
     
 @router.put("")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
 async def update(session: SessionDep, editor: UserEditor):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
     data = editor.model_dump(exclude_unset=True)
@@ -55,13 +52,15 @@ async def update(session: SessionDep, editor: UserEditor):
     session.add(user_model)
     session.commit()
     
-@router.delete("/{id}") 
+@router.delete("/{id}")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def delete(session: SessionDep, id: int):
     user_model: UserModel = get_db_user(session = session, user_id = id)
     session.delete(user_model)
     session.commit()
     
 @router.put("/language")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def langChange(session: SessionDep, current_user: CurrentUser, language: UserLanguage):
     lang = language.language
     if lang not in ["zh-CN", "en"]:
@@ -73,6 +72,7 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
     return {"message": "Language changed successfully", "language": lang}
 
 @router.put("/pwd")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdEditor):
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     if not verify_md5pwd(editor.pwd, db_user.password):

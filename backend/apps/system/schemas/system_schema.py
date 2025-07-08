@@ -25,8 +25,6 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
             "oid": self.oid
         }
 
-
-
 class UserCreator(BaseUser):
     name: str
     email: str
@@ -48,3 +46,9 @@ class UserWsBase(BaseModel):
     oid: int
 class UserWsDTO(UserWsBase):
     weight: int = 0
+    
+
+class UserInfoDTO(UserEditor):
+    language: str = "zh-CN"
+    weight: int = 0
+    isAdmin: bool = False

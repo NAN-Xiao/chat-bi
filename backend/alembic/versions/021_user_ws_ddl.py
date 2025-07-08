@@ -29,5 +29,5 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_index(op.f('ix_sys_user_ws_id'), table_name='sys_user_ws')
+    #op.drop_index(op.f('ix_sys_user_ws_id'), table_name='sys_user_ws')
     op.drop_table('sys_user_ws')
