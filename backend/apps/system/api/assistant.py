@@ -1,0 +1,93 @@
+from datetime import timedelta
+from fastapi import APIRouter, FastAPI, Request
+from sqlmodel import Session, select
+from apps.system.crud.user import get_user_by_account
+from apps.system.models.system_model import AssistantModel
+from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantValidator
+from common.core.deps import SessionDep
+from common.core.security import create_access_token
+from common.utils.time import get_timestamp
+from starlette.middleware.cors import CORSMiddleware
+from common.core.config import settings
+router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
+
+@router.get("/validator/{id}", response_model=AssistantValidator) 
+async def info(session: SessionDep, id: int):
+    db_model = session.get(AssistantModel, id)
+    if not db_model:
+        return AssistantValidator()
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    user = get_user_by_account(session=session, account='admin')
+    access_token = create_access_token(
+        user.to_dict(), expires_delta=access_token_expires
+    )
+    return AssistantValidator(True, True, True, access_token)
+        
+
+@router.get("", response_model=list[AssistantModel])
+async def query(session: SessionDep):
+    list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time)).all()
+    return list_result
+
+@router.post("")
+async def add(request: Request, session: SessionDep, creator: AssistantBase):
+    db_model = AssistantModel.model_validate(creator)
+    db_model.create_time = get_timestamp()
+    session.add(db_model)
+    session.commit()
+    dynamic_upgrade_cors(request=request, session=session)
+
+    
+@router.put("")
+async def update(request: Request, session: SessionDep, editor: AssistantDTO):
+    id = editor.id
+    db_model = session.get(AssistantModel, id)
+    if not db_model:
+        raise ValueError(f"AssistantModel with id {id} not found")
+    update_data = AssistantModel.model_validate(editor)
+    db_model.sqlmodel_update(update_data)
+    session.add(db_model)
+    session.commit()
+    dynamic_upgrade_cors(request=request, session=session)
+
+@router.get("/{id}", response_model=AssistantModel)    
+async def get_one(session: SessionDep, id: int):
+    db_model = session.get(AssistantModel, id)
+    if not db_model:
+        raise ValueError(f"AssistantModel with id {id} not found")
+    return db_model
+
+@router.delete("/{id}")  
+async def delete(request: Request, session: SessionDep, id: int):
+    db_model = session.get(AssistantModel, id)
+    if not db_model:
+        raise ValueError(f"AssistantModel with id {id} not found")
+    session.delete(db_model)
+    session.commit()
+    dynamic_upgrade_cors(request=request, session=session)
+
+def dynamic_upgrade_cors(request: Request, session: Session):
+    list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time)).all()
+    seen = set()
+    unique_domains = []
+    for item in list_result:
+        if item.domain:
+            for domain in item.domain.split(','):
+                domain = domain.strip()
+                if domain and domain not in seen:
+                    seen.add(domain)
+                    unique_domains.append(domain)
+    app: FastAPI = request.app
+    cors_middleware = None
+    for middleware in app.user_middleware:
+        if middleware.cls == CORSMiddleware:
+            cors_middleware = middleware
+            break
+    if cors_middleware:
+        updated_origins = list(set(settings.all_cors_origins + unique_domains))
+        cors_middleware.kwargs['allow_origins'] = updated_origins
+
+
+        
+
+    

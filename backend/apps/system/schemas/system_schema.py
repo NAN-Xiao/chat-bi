@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel
 
 from common.core.schemas import BaseCreatorDTO
@@ -52,3 +53,34 @@ class UserInfoDTO(UserEditor):
     language: str = "zh-CN"
     weight: int = 0
     isAdmin: bool = False
+    
+
+class AssistantBase(BaseModel):
+    name: str
+    domain: str
+    type: int = 0
+    configuration: Optional[str] = None
+class AssistantDTO(AssistantBase, BaseCreatorDTO):
+    pass
+
+class AssistantValidator(BaseModel):
+    valid: bool = False
+    id_match: bool = False
+    domain_match: bool = False
+    token: Optional[str] = None
+    
+    def __init__(
+        self,
+        valid: bool = False,
+        id_match: bool = False,
+        domain_match: bool = False,
+        token: Optional[str] = None,
+        **kwargs
+    ):
+        super().__init__(
+            valid=valid,
+            id_match=id_match,
+            domain_match=domain_match,
+            token=token,
+            **kwargs
+        )

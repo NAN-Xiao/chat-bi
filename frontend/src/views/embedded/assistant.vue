@@ -8,7 +8,7 @@
         <h4>SQLBot 小助手</h4>
       </div>
     </div>
-    <chat-component ref="chatRef" class="sqlbot-chat-container" />
+    <chat-component v-if="!loading" ref="chatRef" class="sqlbot-chat-container" />
   </div>
   <div class="sqlbot-top-btn">
     <el-icon style="cursor: pointer" @click="openHistory">
@@ -54,12 +54,17 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeMount, ref } from 'vue'
 import ChatComponent from '@/views/chat/index.vue'
 import AssistantGif from '@/assets/img/assistant.gif'
 import history from '@/assets/svg/chart/history.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
+import { useRoute } from 'vue-router'
+import { assistantApi } from '@/api/assistant'
+import { useUserStore } from '@/stores/user'
+const userStore = useUserStore()
+const route = useRoute()
 
 const chatRef = ref()
 const chatList = ref<Array<any>>([])
@@ -81,6 +86,19 @@ const EditPen = (chat: any) => {
 const Delete = (chat: any) => {
   chatRef.value?.onChatDeleted(chat.id)
 }
+const validator = ref({
+  id: '',
+  valid: false,
+  id_match: false,
+  token: '',
+})
+const loading = ref(true)
+onBeforeMount(async () => {
+  const assistantId = route.params.id
+  validator.value = await assistantApi.validate(assistantId)
+  userStore.setToken(validator.value.token)
+  loading.value = false
+})
 </script>
 
 <style lang="less" scoped>
