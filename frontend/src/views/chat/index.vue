@@ -645,6 +645,20 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     textarea.selectionStart = textarea.selectionEnd = start + 1
   })
 }
+
+const getHistoryList = () => {
+  return chatList.value
+}
+const getCurrentChatId = () => {
+  return currentChatId.value
+}
+defineExpose({
+  getHistoryList,
+  onClickHistory,
+  onChatDeleted,
+  onChatRenamed,
+  getCurrentChatId,
+})
 </script>
 
 <style lang="less" scoped>

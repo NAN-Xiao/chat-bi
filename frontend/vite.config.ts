@@ -39,6 +39,10 @@ export default defineConfig(({ mode }) => {
     build: {
       chunkSizeWarningLimit: 2000,
       rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          assistant: path.resolve(__dirname, 'assistant.html'),
+        },
         output: {
           manualChunks: {
             'element-plus-secondary': ['element-plus-secondary'],
@@ -46,16 +50,6 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    // server: {
-    //   proxy: {
-    //     '/api': {
-    //       target: 'https://sqlbot.fit2cloud.cn',
-    //       changeOrigin: true,
-    //       rewrite: path => path.replace(/^\/api/, 'api')
-    //     }
-    //   },
-    //   port: 8080
-    // },
     esbuild: {
       jsxFactory: 'h',
       jsxFragment: 'Fragment',
