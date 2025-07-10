@@ -18,8 +18,11 @@ class Token(SQLModel):
 class XOAuth2PasswordBearer(OAuth2PasswordBearer):
     async def __call__(self, request: Request) -> Optional[str]:
         authorization = request.headers.get(settings.TOKEN_KEY)
+        if request.headers.get(settings.ASSISTANT_TOKEN_KEY):
+            authorization = request.headers.get(settings.ASSISTANT_TOKEN_KEY)
         scheme, param = get_authorization_scheme_param(authorization)
-        if not authorization or scheme.lower() != "bearer":
+        
+        if not authorization or scheme.lower() not in  ["bearer", "assistant"]:
             if self.auto_error:
                 raise HTTPException(
                     status_code=HTTP_401_UNAUTHORIZED,

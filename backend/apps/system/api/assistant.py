@@ -1,11 +1,13 @@
 from datetime import timedelta
 from fastapi import APIRouter, FastAPI, Request
 from sqlmodel import Session, select
-from apps.system.crud.user import get_user_by_account
+from apps.system.crud.assistant import get_assistant_info
 from apps.system.models.system_model import AssistantModel
+from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantValidator
 from common.core.deps import SessionDep
 from common.core.security import create_access_token
+from common.core.sqlbot_cache import clear_cache
 from common.utils.time import get_timestamp
 from starlette.middleware.cors import CORSMiddleware
 from common.core.config import settings
@@ -13,13 +15,15 @@ router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
 
 @router.get("/validator/{id}", response_model=AssistantValidator) 
 async def info(session: SessionDep, id: int):
-    db_model = session.get(AssistantModel, id)
+    db_model = get_assistant_info(session, id)
     if not db_model:
         return AssistantValidator()
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    user = get_user_by_account(session=session, account='admin')
+    assistantDict = {
+        "id": 1, "account": 'admin', "oid": 1, "assistant_id": id
+    }
     access_token = create_access_token(
-        user.to_dict(), expires_delta=access_token_expires
+        assistantDict, expires_delta=access_token_expires
     )
     return AssistantValidator(True, True, True, access_token)
         
@@ -39,6 +43,7 @@ async def add(request: Request, session: SessionDep, creator: AssistantBase):
 
     
 @router.put("")
+@clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="editor.id")  
 async def update(request: Request, session: SessionDep, editor: AssistantDTO):
     id = editor.id
     db_model = session.get(AssistantModel, id)
@@ -52,12 +57,13 @@ async def update(request: Request, session: SessionDep, editor: AssistantDTO):
 
 @router.get("/{id}", response_model=AssistantModel)    
 async def get_one(session: SessionDep, id: int):
-    db_model = session.get(AssistantModel, id)
+    db_model = get_assistant_info(session, id)
     if not db_model:
         raise ValueError(f"AssistantModel with id {id} not found")
     return db_model
 
-@router.delete("/{id}")  
+@router.delete("/{id}")
+@clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")  
 async def delete(request: Request, session: SessionDep, id: int):
     db_model = session.get(AssistantModel, id)
     if not db_model:

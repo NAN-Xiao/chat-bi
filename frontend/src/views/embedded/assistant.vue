@@ -62,8 +62,9 @@ import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { useRoute } from 'vue-router'
 import { assistantApi } from '@/api/assistant'
-import { useUserStore } from '@/stores/user'
-const userStore = useUserStore()
+import { useAssistantStore } from '@/stores/assistant'
+
+const assistantStore = useAssistantStore()
 const route = useRoute()
 
 const chatRef = ref()
@@ -96,7 +97,7 @@ const loading = ref(true)
 onBeforeMount(async () => {
   const assistantId = route.params.id
   validator.value = await assistantApi.validate(assistantId)
-  userStore.setToken(validator.value.token)
+  assistantStore.setToken(validator.value.token)
   loading.value = false
 })
 </script>

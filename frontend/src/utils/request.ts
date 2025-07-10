@@ -10,6 +10,8 @@ import axios, {
 
 import { useCache } from '@/utils/useCache'
 import { getLocale } from './utils'
+import { useAssistantStore } from '@/stores/assistant'
+const assistantStore = useAssistantStore()
 const { wsCache } = useCache()
 // Response data structure
 export interface ApiResponse<T = unknown> {
@@ -69,6 +71,10 @@ class HttpService {
         const token = wsCache.get('user.token')
         if (token && config.headers) {
           config.headers['X-SQLBOT-TOKEN'] = `Bearer ${token}`
+        }
+        if (assistantStore.getToken) {
+          config.headers['X-SQLBOT-ASSISTANT-TOKEN'] = `Assistant ${assistantStore.getToken}`
+          if (config.headers['X-SQLBOT-TOKEN']) config.headers.delete('X-SQLBOT-TOKEN')
         }
         const locale = getLocale()
         if (locale) {

@@ -57,8 +57,9 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = ""
     
-    TOKEN_KEY: str
-    DEFAULT_PWD: str
+    TOKEN_KEY: str =  "X-SQLBOT-TOKEN"
+    DEFAULT_PWD: str = "SQLBot@123456"
+    ASSISTANT_TOKEN_KEY: str = "X-SQLBOT-ASSISTANT-TOKEN"
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -8,10 +8,11 @@ class LocalLoginSchema(BaseModel):
     
 class CacheNamespace(Enum):
     AUTH_INFO = "sqlbot:auth"
+    EMBEDDED_INFO = "sqlbot:embedded"
     def __str__(self):
         return self.value
 class CacheName(Enum):
     USER_INFO = "user:info"
-
+    ASSISTANT_INFO = "assistant:info"
     def __str__(self):
         return self.value
