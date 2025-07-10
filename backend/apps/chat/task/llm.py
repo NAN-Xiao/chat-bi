@@ -7,9 +7,9 @@ import numpy as np
 import orjson
 import pandas as pd
 import requests
+from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
-from langchain_core.language_models import BaseLLM
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, AIMessageChunk
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 
@@ -37,7 +37,7 @@ class LLMService:
     chat_question: ChatQuestion
     record: ChatRecord
     config: LLMConfig
-    llm: BaseLLM
+    llm: BaseChatModel
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
     history_records: List[ChatRecord] = []
@@ -195,23 +195,27 @@ class LLMService:
                                                                                         'content': msg.content} for msg
                                                                                        in
                                                                                        analysis_msg]).decode())
-
+        full_thinking_text = ''
         full_analysis_text = ''
         res = self.llm.stream(analysis_msg)
         for chunk in res:
             print(chunk)
-            if isinstance(chunk, dict):
-                full_analysis_text += chunk['content']
-                yield chunk['content']
-                continue
-            if isinstance(chunk, AIMessageChunk):
-                full_analysis_text += chunk.content
-                yield chunk.content
-                continue
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_analysis_text += chunk.content
+            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
 
         analysis_msg.append(AIMessage(full_analysis_text))
         self.record = save_full_analysis_message_and_answer(session=self.session, record_id=self.record.id,
-                                                            answer=full_analysis_text,
+                                                            answer=orjson.dumps({'content': full_analysis_text,
+                                                                                 'reasoning_content': full_thinking_text}).decode(),
                                                             full_message=orjson.dumps(history_msg +
                                                                                       [{'type': msg.type,
                                                                                         'content': msg.content} for msg
@@ -238,23 +242,28 @@ class LLMService:
                                                                                        'content': msg.content} for msg
                                                                                       in
                                                                                       predict_msg]).decode())
-
+        full_thinking_text = ''
         full_predict_text = ''
         res = self.llm.stream(predict_msg)
         for chunk in res:
             print(chunk)
-            if isinstance(chunk, dict):
-                full_predict_text += chunk['content']
-                yield chunk['content']
-                continue
-            if isinstance(chunk, AIMessageChunk):
-                full_predict_text += chunk.content
-                yield chunk.content
-                continue
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_predict_text += chunk.content
+            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
 
         predict_msg.append(AIMessage(full_predict_text))
         self.record = save_full_predict_message_and_answer(session=self.session, record_id=self.record.id,
-                                                           answer=full_predict_text, data='',
+                                                           answer=orjson.dumps({'content': full_predict_text,
+                                                                                'reasoning_content': full_thinking_text}).decode(),
+                                                           data='',
                                                            full_message=orjson.dumps(history_msg +
                                                                                      [{'type': msg.type,
                                                                                        'content': msg.content} for msg
@@ -269,38 +278,44 @@ class LLMService:
 
         guess_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         guess_msg.append(SystemMessage(content=self.chat_question.guess_sys_question()))
-        #  todo old questions
+
         old_questions = list(map(lambda q: q[0].strip(), get_old_questions(self.session, self.record.datasource)))
-        guess_msg.append(HumanMessage(content=self.chat_question.guess_user_question(orjson.dumps(old_questions).decode())))
+        guess_msg.append(
+            HumanMessage(content=self.chat_question.guess_user_question(orjson.dumps(old_questions).decode())))
 
         self.record = save_full_recommend_question_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                      answer='',
                                                                       full_message=orjson.dumps([{'type': msg.type,
                                                                                                   'content': msg.content}
                                                                                                  for msg
                                                                                                  in
                                                                                                  guess_msg]).decode())
-
+        full_thinking_text = ''
         full_guess_text = ''
         res = self.llm.stream(guess_msg)
         for chunk in res:
             print(chunk)
-            if isinstance(chunk, dict):
-                full_guess_text += chunk['content']
-                continue
-            if isinstance(chunk, AIMessageChunk):
-                full_guess_text += chunk.content
-                continue
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_guess_text += chunk.content
+            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
 
         guess_msg.append(AIMessage(full_guess_text))
         self.record = save_full_recommend_question_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                      answer=full_guess_text,
+                                                                      answer={'content': full_guess_text,
+                                                                              'reasoning_content': full_thinking_text},
                                                                       full_message=orjson.dumps([{'type': msg.type,
                                                                                                   'content': msg.content}
                                                                                                  for msg
                                                                                                  in
                                                                                                  guess_msg]).decode())
-        return self.record.recommended_question
+        yield {'recommended_question': self.record.recommended_question}
 
     def select_datasource(self):
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
@@ -325,17 +340,22 @@ class LLMService:
                                                                                                 for msg
                                                                                                 in
                                                                                                 datasource_msg]).decode())
+        full_thinking_text = ''
         full_text = ''
         res = self.llm.stream(datasource_msg)
         for chunk in res:
-            if isinstance(chunk, dict):
-                full_text += chunk['content']
-                yield chunk['content']
-                continue
-            if isinstance(chunk, AIMessageChunk):
-                full_text += chunk.content
-                yield chunk.content
-                continue
+            print(chunk)
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_text += chunk.content
+            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
         datasource_msg.append(AIMessage(full_text))
 
         json_str = extract_nested_json(full_text)
@@ -374,7 +394,9 @@ class LLMService:
             _error = e
 
         self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                     answer=full_text, datasource=_datasource,
+                                                                     answer=orjson.dumps({'content': full_text,
+                                                                                          'reasoning_content': full_thinking_text}).decode(),
+                                                                     datasource=_datasource,
                                                                      engine_type=_engine_type,
                                                                      full_message=orjson.dumps(history_msg +
                                                                                                [{'type': msg.type,
@@ -394,22 +416,27 @@ class LLMService:
                                             full_message=orjson.dumps(
                                                 [{'type': msg.type, 'content': msg.content} for msg in
                                                  self.sql_message]).decode())
+        full_thinking_text = ''
         full_sql_text = ''
         res = self.llm.stream(self.sql_message)
         for chunk in res:
             print(chunk)
-            if isinstance(chunk, dict):
-                full_sql_text += chunk['content']
-                yield chunk['content']
-                continue
-            if isinstance(chunk, AIMessageChunk):
-                full_sql_text += chunk.content
-                yield chunk.content
-                continue
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_sql_text += chunk.content
+            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
 
         self.sql_message.append(AIMessage(full_sql_text))
         self.record = save_full_sql_message_and_answer(session=self.session, record_id=self.record.id,
-                                                       answer=full_sql_text,
+                                                       answer=orjson.dumps({'content': full_sql_text,
+                                                                            'reasoning_content': full_thinking_text}).decode(),
                                                        full_message=orjson.dumps(
                                                            [{'type': msg.type, 'content': msg.content} for msg in
                                                             self.sql_message]).decode())
@@ -421,21 +448,27 @@ class LLMService:
                                               full_message=orjson.dumps(
                                                   [{'type': msg.type, 'content': msg.content} for msg in
                                                    self.chart_message]).decode())
+        full_thinking_text = ''
         full_chart_text = ''
         res = self.llm.stream(self.chart_message)
         for chunk in res:
-            if isinstance(chunk, dict):
-                full_chart_text += chunk['content']
-                yield chunk['content']
-                continue
-            if isinstance(chunk, AIMessageChunk):
-                full_chart_text += chunk.content
-                yield chunk.content
-                continue
+            print(chunk)
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_chart_text += chunk.content
+            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
 
         self.chart_message.append(AIMessage(full_chart_text))
         self.record = save_full_chart_message_and_answer(session=self.session, record_id=self.record.id,
-                                                         answer=full_chart_text,
+                                                         answer=orjson.dumps({'content': full_chart_text,
+                                                                              'reasoning_content': full_thinking_text}).decode(),
                                                          full_message=orjson.dumps(
                                                              [{'type': msg.type, 'content': msg.content} for msg in
                                                               self.chart_message]).decode())
@@ -492,7 +525,7 @@ class LLMService:
 
         return chart
 
-    def check_save_predict_data(self, res: str) -> Dict[str, Any]:
+    def check_save_predict_data(self, res: str) -> bool:
 
         json_str = extract_nested_json(res)
 
@@ -501,7 +534,10 @@ class LLMService:
 
         save_predict_data(session=self.session, record_id=self.record.id, data=json_str)
 
-        return json_str
+        if json_str == '':
+            return False
+
+        return True
 
     def save_error(self, message: str):
         return save_error_message(session=self.session, record_id=self.record.id, message=message)
@@ -566,7 +602,9 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
             for chunk in ds_res:
                 print(chunk)
                 if in_chat:
-                    yield orjson.dumps({'content': chunk, 'type': 'datasource-result'}).decode() + '\n\n'
+                    yield orjson.dumps(
+                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                         'type': 'datasource-result'}).decode() + '\n\n'
             if in_chat:
                 yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
                                     'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
@@ -577,9 +615,11 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
         sql_res = llm_service.generate_sql()
         full_sql_text = ''
         for chunk in sql_res:
-            full_sql_text += chunk
+            full_sql_text += chunk.get('content')
             if in_chat:
-                yield orjson.dumps({'content': chunk, 'type': 'sql-result'}).decode() + '\n\n'
+                yield orjson.dumps(
+                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                     'type': 'sql-result'}).decode() + '\n\n'
         if in_chat:
             yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
 
@@ -596,15 +636,17 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
         result = llm_service.execute_sql(sql=sql)
         llm_service.save_sql_data(data_obj=result)
         if in_chat:
-            yield orjson.dumps({'content': orjson.dumps(result).decode(), 'type': 'sql-data'}).decode() + '\n\n'
+            yield orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
 
         # generate chart
         chart_res = llm_service.generate_chart()
         full_chart_text = ''
         for chunk in chart_res:
-            full_chart_text += chunk
+            full_chart_text += chunk.get('content')
             if in_chat:
-                yield orjson.dumps({'content': chunk, 'type': 'chart-result'}).decode() + '\n\n'
+                yield orjson.dumps(
+                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                     'type': 'chart-result'}).decode() + '\n\n'
         if in_chat:
             yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
@@ -667,7 +709,9 @@ def run_analysis_or_predict_task(llm_service: LLMService, action_type: str):
             # generate analysis
             analysis_res = llm_service.generate_analysis()
             for chunk in analysis_res:
-                yield orjson.dumps({'content': chunk, 'type': 'analysis-result'}).decode() + '\n\n'
+                yield orjson.dumps(
+                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                     'type': 'analysis-result'}).decode() + '\n\n'
             yield orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
 
             yield orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
@@ -677,12 +721,17 @@ def run_analysis_or_predict_task(llm_service: LLMService, action_type: str):
             analysis_res = llm_service.generate_predict()
             full_text = ''
             for chunk in analysis_res:
-                yield orjson.dumps({'content': chunk, 'type': 'predict-result'}).decode() + '\n\n'
-                full_text += chunk
+                yield orjson.dumps(
+                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                     'type': 'predict-result'}).decode() + '\n\n'
+                full_text += chunk.get('content')
             yield orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
 
             _data = llm_service.check_save_predict_data(res=full_text)
-            yield orjson.dumps({'type': 'predict', 'content': _data}).decode() + '\n\n'
+            if _data:
+                yield orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
+            else:
+                yield orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
 
             yield orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
 
@@ -694,7 +743,16 @@ def run_analysis_or_predict_task(llm_service: LLMService, action_type: str):
 
 
 def run_recommend_questions_task(llm_service: LLMService):
-    return llm_service.generate_recommend_questions_task()
+    res = llm_service.generate_recommend_questions_task()
+
+    for chunk in res:
+        if chunk.get('recommended_question'):
+            yield orjson.dumps(
+                {'content': chunk.get('recommended_question'), 'type': 'recommended_question'}).decode() + '\n\n'
+        else:
+            yield orjson.dumps(
+                {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                 'type': 'recommended_question_result'}).decode() + '\n\n'
 
 
 def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):

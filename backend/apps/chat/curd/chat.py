@@ -1,7 +1,8 @@
 import datetime
 from typing import List
 
-from sqlalchemy import and_, distinct
+import orjson
+from sqlalchemy import and_
 from sqlalchemy.orm import load_only
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion
@@ -42,6 +43,26 @@ def delete_chat(session, chart_id) -> str:
     return f'Chat with id {chart_id} has been deleted'
 
 
+def get_chat_chart_data(session: SessionDep, chart_record_id: int):
+    res = session.query(ChatRecord).options(load_only(ChatRecord.data)).get(chart_record_id)
+    if res:
+        try:
+            return orjson.loads(res.data)
+        except Exception:
+            pass
+    return {}
+
+
+def get_chat_predict_data(session: SessionDep, chart_record_id: int):
+    res = session.query(ChatRecord).options(load_only(ChatRecord.predict_data)).get(chart_record_id)
+    if res:
+        try:
+            return orjson.loads(res.data)
+        except Exception:
+            pass
+    return ''
+
+
 def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> ChatInfo:
     chat = session.query(Chat).filter(Chat.id == chart_id).first()
     if not chat:
@@ -61,14 +82,52 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         load_only(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.data,
                   ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
-                  ChatRecord.datasource_select_answer, ChatRecord.recommended_question_answer,
+                  ChatRecord.datasource_select_answer,
                   ChatRecord.recommended_question, ChatRecord.first_chat,
                   ChatRecord.predict_data, ChatRecord.finish, ChatRecord.error, ChatRecord.run_time)).filter(
         and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
 
-    chat_info.records = record_list
+    result = list(map(format_record, record_list))
+
+    chat_info.records = result
 
     return chat_info
+
+
+def format_record(record: ChatRecord):
+    _dict = record.model_dump()
+
+    if record.sql_answer and record.sql_answer.strip() != '' and record.sql_answer.strip()[0] == '{' and \
+            record.sql_answer.strip()[-1] == '}':
+        _obj = orjson.loads(record.sql_answer)
+        _dict['sql_answer'] = _obj.get('reasoning_content')
+    if record.chart_answer and record.chart_answer.strip() != '' and record.chart_answer.strip()[0] == '{' and \
+            record.chart_answer.strip()[-1] == '}':
+        _obj = orjson.loads(record.chart_answer)
+        _dict['chart_answer'] = _obj.get('reasoning_content')
+    if record.analysis and record.analysis.strip() != '' and record.analysis.strip()[0] == '{' and \
+            record.analysis.strip()[-1] == '}':
+        _obj = orjson.loads(record.analysis)
+        _dict['analysis_thinking'] = _obj.get('reasoning_content')
+        _dict['analysis'] = _obj.get('content')
+    if record.predict and record.predict.strip() != '' and record.predict.strip()[0] == '{' and record.predict.strip()[
+        -1] == '}':
+        _obj = orjson.loads(record.predict)
+        _dict['predict'] = _obj.get('reasoning_content')
+        _dict['predict_content'] = _obj.get('content')
+    if record.data and record.data.strip() != '':
+        try:
+            _obj = orjson.loads(record.data)
+            _dict['data'] = _obj
+        except Exception:
+            pass
+    if record.predict_data and record.predict_data.strip() != '':
+        try:
+            _obj = orjson.loads(record.predict_data)
+            _dict['predict_data'] = _obj
+        except Exception:
+            pass
+    return _dict
 
 
 def list_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> List[ChatRecord]:
@@ -251,18 +310,18 @@ def save_full_select_datasource_message_and_answer(session: SessionDep, record_i
     return result
 
 
-def save_full_recommend_question_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                                    full_message: str) -> ChatRecord:
+def save_full_recommend_question_message_and_answer(session: SessionDep, record_id: int, answer: dict = None,
+                                                    full_message: str = '[]') -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
     record.full_recommended_question_message = full_message
-    record.recommended_question_answer = answer
+    record.recommended_question_answer = orjson.dumps(answer).decode()
 
     json_str = '[]'
-    if answer and answer != '':
+    if answer and answer.get('content') and answer.get('content') != '':
         try:
-            json_str = extract_nested_json(answer)
+            json_str = extract_nested_json(answer.get('content'))
 
             if not json_str:
                 json_str = '[]'
@@ -339,7 +398,7 @@ def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:
     return result
 
 
-def save_predict_data(session: SessionDep, record_id: int, data: str) -> ChatRecord:
+def save_predict_data(session: SessionDep, record_id: int, data: str = '') -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
@@ -414,6 +473,6 @@ def get_old_questions(session: SessionDep, datasource: int):
     if not datasource:
         return []
     records = session.query(ChatRecord.question, ChatRecord.create_time).filter(ChatRecord.datasource == datasource,
-                                                                  ChatRecord.question != None).order_by(
+                                                                                ChatRecord.question != None).order_by(
         ChatRecord.create_time.desc()).limit(20).all()
     return records

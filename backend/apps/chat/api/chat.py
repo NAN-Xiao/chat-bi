@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
-    delete_chat
+    delete_chat, get_chat_chart_data, get_chat_predict_data
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion
 from apps.chat.task.llm import LLMService, run_task, run_analysis_or_predict_task, run_recommend_questions_task
 from common.core.deps import SessionDep, CurrentUser
@@ -21,6 +21,28 @@ async def chats(session: SessionDep, current_user: CurrentUser):
 async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int):
     try:
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@router.get("/record/get/{chart_record_id}/data")
+async def chat_record_data(session: SessionDep, chart_record_id: int):
+    try:
+        return get_chat_chart_data(chart_record_id=chart_record_id, session=session)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@router.get("/record/get/{chart_record_id}/predict_data")
+async def chat_predict_data(session: SessionDep, chart_record_id: int):
+    try:
+        return get_chat_predict_data(chart_record_id=chart_record_id, session=session)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -61,7 +83,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
         )
 
 
-@router.get("/recommend_questions/{chat_record_id}")
+@router.post("/recommend_questions/{chat_record_id}")
 async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     try:
         record = session.query(ChatRecord).get(chat_record_id)
@@ -74,11 +96,14 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
 
         llm_service = LLMService(session, current_user, request_question)
         llm_service.set_record(record)
-
-        return run_recommend_questions_task(llm_service)
     except Exception as e:
         traceback.print_exc()
-        return '[]'
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+    return StreamingResponse(run_recommend_questions_task(llm_service), media_type="text/event-stream")
 
 
 @router.post("/question")

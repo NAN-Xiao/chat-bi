@@ -79,6 +79,7 @@
                       />
                       <template v-if="message.record?.predict || isPredictTyping">
                         <MdComponent :message="message.record?.predict" />
+                        <MdComponent :message="message.record?.predict_content" />
                         <PredictChartBlock
                           :id="message.record?.id + '-predict'"
                           :data="message.record?.predict_data ?? '[]'"
@@ -279,8 +280,8 @@ function onChatCreated(chat: ChatInfo) {
   }
 }
 
-function getRecommendQuestions(record_id?: number) {
-  chatApi.recommendQuestions(record_id).then((res) => {
+async function getRecommendQuestions(record_id?: number) {
+  /*chatApi.recommendQuestions(record_id).then((res) => {
     if (res && res.length > 0 && startsWith(res.trim(), '[') && endsWith(res.trim(), ']')) {
       if (currentChat.value?.records) {
         for (let record of currentChat.value.records) {
@@ -290,7 +291,74 @@ function getRecommendQuestions(record_id?: number) {
         }
       }
     }
-  })
+  })*/
+  const response = await chatApi.recommendQuestions(record_id)
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      isTyping.value = false
+      break
+    }
+
+    const chunk = decoder.decode(value)
+
+    let _list = [chunk]
+
+    const lines = chunk.trim().split('}\n\n{')
+    if (lines.length > 1) {
+      _list = []
+      for (let line of lines) {
+        if (!line.trim().startsWith('{')) {
+          line = '{' + line.trim()
+        }
+        if (!line.trim().endsWith('}')) {
+          line = line.trim() + '}'
+        }
+        _list.push(line)
+      }
+    }
+
+    for (const str of _list) {
+      let data
+      try {
+        data = JSON.parse(str)
+      } catch (err) {
+        console.error('JSON string:', str)
+        throw err
+      }
+
+      if (data.code && data.code !== 200) {
+        ElMessage({
+          message: data.msg,
+          type: 'error',
+          showClose: true,
+        })
+        isTyping.value = false
+        return
+      }
+
+      switch (data.type) {
+        case 'recommended_question':
+          if (
+            data.content &&
+            data.content.length > 0 &&
+            startsWith(data.content.trim(), '[') &&
+            endsWith(data.content.trim(), ']')
+          ) {
+            if (currentChat.value?.records) {
+              for (let record of currentChat.value.records) {
+                if (record.id === record_id) {
+                  record.recommended_question = data.content
+                }
+              }
+            }
+          }
+      }
+    }
+  }
 }
 
 onMounted(() => {
@@ -398,17 +466,18 @@ const sendMessage = async () => {
             isTyping.value = false
             break
           case 'sql-result':
-            sql_answer += data.content
+            sql_answer += data.reasoning_content
             currentChat.value.records[currentChat.value.records.length - 1].sql_answer = sql_answer
             break
           case 'sql':
             currentChat.value.records[currentChat.value.records.length - 1].sql = data.content
             break
           case 'sql-data':
-            currentChat.value.records[currentChat.value.records.length - 1].data = data.content
+            //currentChat.value.records[currentChat.value.records.length - 1].data = data.content
+            getChatData(currentChat.value.records[currentChat.value.records.length - 1].id)
             break
           case 'chart-result':
-            chart_answer += data.content
+            chart_answer += data.reasoning_content
             currentChat.value.records[currentChat.value.records.length - 1].chart_answer =
               chart_answer
             break
@@ -417,7 +486,7 @@ const sendMessage = async () => {
             break
           case 'finish':
             isTyping.value = false
-            getRecommendQuestions(currentRecord.id)
+            await getRecommendQuestions(currentRecord.id)
             break
         }
         await nextTick()
@@ -436,6 +505,26 @@ const sendMessage = async () => {
   } finally {
     loading.value = false
   }
+}
+
+function getChatData(recordId) {
+  chatApi.get_chart_data(recordId).then((response) => {
+    currentChat.value.records.forEach((record) => {
+      if (record.id === recordId) {
+        record.data = response
+      }
+    })
+  })
+}
+
+function getChatPredictData(recordId) {
+  chatApi.get_chart_predict_data(recordId).then((response) => {
+    currentChat.value.records.forEach((record) => {
+      if (record.id === recordId) {
+        record.predict_data = response
+      }
+    })
+  })
 }
 
 async function clickAnalysis(id?: number) {
@@ -459,6 +548,7 @@ async function clickAnalysis(id?: number) {
     const decoder = new TextDecoder()
 
     let analysis_answer = ''
+    let analysis_answer_thinking = ''
 
     while (true) {
       const { done, value } = await reader.read()
@@ -514,7 +604,9 @@ async function clickAnalysis(id?: number) {
             throw Error(data.content)
           case 'analysis-result':
             analysis_answer += data.content
+            analysis_answer_thinking += data.reasoning_content
             currentChat.value.records[_index].analysis = analysis_answer
+            currentChat.value.records[_index].analysis_thinking = analysis_answer_thinking
             break
           case 'analysis_finish':
             isAnalysisTyping.value = false
@@ -556,6 +648,7 @@ async function clickPredict(id?: number) {
     const decoder = new TextDecoder()
 
     let predict_answer = ''
+    let predict_content = ''
 
     while (true) {
       const { done, value } = await reader.read()
@@ -609,11 +702,16 @@ async function clickPredict(id?: number) {
           case 'error':
             throw Error(data.content)
           case 'predict-result':
-            predict_answer += data.content
+            predict_answer += data.reasoning_content
+            predict_content += data.content
             currentChat.value.records[_index].predict = predict_answer
+            currentChat.value.records[_index].predict_content = predict_content
             break
-          case 'predict':
-            currentChat.value.records[_index].predict_data = data.content
+          case 'predict-failed':
+            break
+          case 'predict-success':
+            //currentChat.value.records[_index].predict_data = data.content
+            getChatPredictData(currentChat.value.records[_index].id)
             break
           case 'predict_finish':
             isPredictTyping.value = false

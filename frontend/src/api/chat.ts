@@ -34,12 +34,14 @@ export class ChatRecord {
   question?: string
   sql_answer?: string
   sql?: string
-  data?: string
+  data?: string | any
   chart_answer?: string
   chart?: string
   analysis?: string
+  analysis_thinking?: string
   predict?: string
-  predict_data?: string
+  predict_content?: string
+  predict_data?: string | any
   finish?: boolean = false
   error?: string
   run_time: number = 0
@@ -55,12 +57,14 @@ export class ChatRecord {
     question: string,
     sql_answer: string | undefined,
     sql: string | undefined,
-    data: string | undefined,
+    data: string | any | undefined,
     chart_answer: string | undefined,
     chart: string | undefined,
     analysis: string | undefined,
+    analysis_thinking: string | undefined,
     predict: string | undefined,
-    predict_data: string | undefined,
+    predict_content: string | undefined,
+    predict_data: string | any | undefined,
     finish: boolean,
     error: string | undefined,
     run_time: number,
@@ -75,12 +79,14 @@ export class ChatRecord {
     question?: string,
     sql_answer?: string,
     sql?: string,
-    data?: string,
+    data?: string | any,
     chart_answer?: string,
     chart?: string,
     analysis?: string,
+    analysis_thinking?: string,
     predict?: string,
-    predict_data?: string,
+    predict_content?: string,
+    predict_data?: string | any,
     finish?: boolean,
     error?: string,
     run_time?: number,
@@ -98,7 +104,9 @@ export class ChatRecord {
     this.chart_answer = chart_answer
     this.chart = chart
     this.analysis = analysis
+    this.analysis_thinking = analysis_thinking
     this.predict = predict
+    this.predict_content = predict_content
     this.predict_data = predict_data
     this.finish = !!finish
     this.error = error
@@ -219,7 +227,9 @@ const toChatRecord = (data?: any): ChatRecord | undefined => {
     data.chart_answer,
     data.chart,
     data.analysis,
+    data.analysis_thinking,
     data.predict,
+    data.predict_content,
     data.predict_data,
     data.finish,
     data.error,
@@ -273,6 +283,12 @@ export const chatApi = {
   get: (id: number): Promise<ChatInfo> => {
     return request.get(`/chat/get/${id}`)
   },
+  get_chart_data: (record_id: number): Promise<any> => {
+    return request.get(`/chat/record/get/${record_id}/data`)
+  },
+  get_chart_predict_data: (record_id: number): Promise<any> => {
+    return request.get(`/chat/record/get/${record_id}/predict_data`)
+  },
   startChat: (data: any): Promise<ChatInfo> => {
     return request.post('/chat/start', data)
   },
@@ -289,6 +305,6 @@ export const chatApi = {
     return request.fetchStream(`/chat/record/${record_id}/predict`, {})
   },
   recommendQuestions: (record_id: number | undefined) => {
-    return request.get(`/chat/recommend_questions/${record_id}`)
+    return request.fetchStream(`/chat/recommend_questions/${record_id}`, {})
   },
 }

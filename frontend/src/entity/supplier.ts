@@ -38,7 +38,7 @@ export const supplierList: Array<{
     model_config: {
       0: {
         api_domain: 'https://api.deepseek.com',
-        model_options: ['deepseek-chat'],
+        model_options: ['deepseek-chat', 'deepseek-reasoner'],
       },
     },
   },

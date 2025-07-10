@@ -49,7 +49,11 @@ const dataObject = computed<{
   data: Array<{ [key: string]: any }>
 }>(() => {
   if (props.message?.record?.data) {
-    return JSON.parse(props.message.record.data)
+    if (typeof props.message?.record?.data === 'string') {
+      return JSON.parse(props.message.record.data)
+    } else {
+      return props.message.record.data
+    }
   }
   return {}
 })

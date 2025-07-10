@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Text, BigInteger, DateTime, Integer, Identity, Boolean
+from sqlalchemy import Column, Text, BigInteger, DateTime, Identity, Boolean
 from sqlmodel import SQLModel, Field
 
 from apps.template.generate_analysis.generator import get_analysis_template
@@ -86,7 +86,7 @@ class ChatInfo(BaseModel):
     engine_type: str = ''
     datasource_name: str = ''
     datasource_exists: bool = True
-    records: List[ChatRecord] = []
+    records: List[ChatRecord | dict] = []
 
 
 class AiModelQuestion(BaseModel):

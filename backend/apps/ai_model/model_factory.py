@@ -1,13 +1,14 @@
 import json
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, Type
 from abc import ABC, abstractmethod
-from langchain_core.language_models import BaseLLM as LangchainBaseLLM
-from langchain_openai import ChatOpenAI
+from typing import Optional, Dict, Any, Type
+
+from langchain.chat_models.base import BaseChatModel
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from common.core.db import engine 
+from apps.ai_model.openai.llm import BaseChatOpenAI
 from apps.system.models.system_model import AiModelDetail
+from common.core.db import engine
 
 
 # from langchain_community.llms import Tongyi, VLLM
@@ -20,76 +21,57 @@ class LLMConfig(BaseModel):
     api_key: Optional[str] = None
     api_base_url: Optional[str] = None
     additional_params: Dict[str, Any] = {}
-    
+
 
 class BaseLLM(ABC):
     """Abstract base class for large language models"""
-    
+
     def __init__(self, config: LLMConfig):
         self.config = config
         self._llm = self._init_llm()
-    
+
     @abstractmethod
-    def _init_llm(self) -> LangchainBaseLLM:
+    def _init_llm(self) -> BaseChatModel:
         """Initialize specific large language model instance"""
         pass
-    
+
     @property
-    def llm(self) -> LangchainBaseLLM:
+    def llm(self) -> BaseChatModel:
         """Return the langchain LLM instance"""
         return self._llm
 
+
 class OpenAILLM(BaseLLM):
-    def _init_llm(self) -> LangchainBaseLLM:
-        return ChatOpenAI(
+    def _init_llm(self) -> BaseChatModel:
+        return BaseChatOpenAI(
             model=self.config.model_name,
             api_key=self.config.api_key,
             base_url=self.config.api_base_url,
             stream_usage=True,
-            **self.config.additional_params
+            **self.config.additional_params,
+            extra_body={"enable_thinking": True},
         )
-    
+
     def generate(self, prompt: str) -> str:
         return self.llm.invoke(prompt)
-
-""" class TongyiLLM(BaseLLM):
-    def _init_llm(self) -> LangchainBaseLLM:
-        return Tongyi(
-            model_name=self.config.model_name,
-            dashscope_api_key=self.config.api_key,
-            **self.config.additional_params
-        )
-    
-    def generate(self, prompt: str) -> str:
-        return self.llm.invoke(prompt)
-
-class VLLMLLM(BaseLLM):
-    def _init_llm(self) -> LangchainBaseLLM:
-        return VLLM(
-            model=self.config.model_name,
-            **self.config.additional_params
-        )
-    
-    def generate(self, prompt: str) -> str:
-        return self.llm.invoke(prompt) """
 
 
 class LLMFactory:
     """Large Language Model Factory Class"""
-    
+
     _llm_types: Dict[str, Type[BaseLLM]] = {
         "openai": OpenAILLM,
         "tongyi": OpenAILLM,
         "vllm": OpenAILLM
     }
-    
+
     @classmethod
     def create_llm(cls, config: LLMConfig) -> BaseLLM:
         llm_class = cls._llm_types.get(config.model_type)
         if not llm_class:
             raise ValueError(f"Unsupported LLM type: {config.model_type}")
         return llm_class(config)
-    
+
     @classmethod
     def register_llm(cls, model_type: str, llm_class: Type[BaseLLM]):
         """Register new model type"""
@@ -106,6 +88,7 @@ class LLMFactory:
         additional_params={"temperature": aimodel.temperature}
     )
     return config """
+
 
 def get_default_config() -> LLMConfig:
     with Session(engine) as session:
@@ -130,6 +113,5 @@ def get_default_config() -> LLMConfig:
             model_name=db_model.base_model,
             api_key=db_model.api_key,
             api_base_url=db_model.api_domain,
-            additional_params=additional_params
+            additional_params=additional_params,
         )
-    

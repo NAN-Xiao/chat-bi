@@ -9,7 +9,7 @@ const props = defineProps<{
   id?: number | string
   chartType: ChartTypes
   message: ChatMessage
-  data: string
+  data: string | any
 }>()
 
 const dataObject = computed<{
@@ -17,23 +17,32 @@ const dataObject = computed<{
   data: Array<{ [key: string]: any }>
 }>(() => {
   if (props.message?.record?.data) {
-    return JSON.parse(props.message.record.data)
+    if (typeof props.message?.record?.data === 'string') {
+      return JSON.parse(props.message.record.data)
+    } else {
+      return props.message.record.data
+    }
   }
   return {}
 })
 
 const _data = computed(() => {
   let _list = []
-  if (
-    props.data &&
-    props.data.length > 0 &&
-    props.data.trim().startsWith('[') &&
-    props.data.trim().endsWith(']')
-  ) {
-    try {
-      _list = JSON.parse(props.data)
-    } catch (e) {
-      console.error(e)
+  if (props.data && typeof props.data === 'string') {
+    if (
+      props.data.length > 0 &&
+      props.data.trim().startsWith('[') &&
+      props.data.trim().endsWith(']')
+    ) {
+      try {
+        _list = JSON.parse(props.data)
+      } catch (e) {
+        console.error(e)
+      }
+    }
+  } else {
+    if (props.data.length > 0) {
+      _list = props.data
     }
   }
 
