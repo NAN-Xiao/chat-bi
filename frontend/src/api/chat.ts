@@ -283,10 +283,10 @@ export const chatApi = {
   get: (id: number): Promise<ChatInfo> => {
     return request.get(`/chat/get/${id}`)
   },
-  get_chart_data: (record_id: number): Promise<any> => {
+  get_chart_data: (record_id?: number): Promise<any> => {
     return request.get(`/chat/record/get/${record_id}/data`)
   },
-  get_chart_predict_data: (record_id: number): Promise<any> => {
+  get_chart_predict_data: (record_id?: number): Promise<any> => {
     return request.get(`/chat/record/get/${record_id}/predict_data`)
   },
   startChat: (data: any): Promise<ChatInfo> => {

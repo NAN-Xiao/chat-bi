@@ -507,7 +507,7 @@ const sendMessage = async () => {
   }
 }
 
-function getChatData(recordId) {
+function getChatData(recordId?: number) {
   chatApi.get_chart_data(recordId).then((response) => {
     currentChat.value.records.forEach((record) => {
       if (record.id === recordId) {
@@ -517,7 +517,7 @@ function getChatData(recordId) {
   })
 }
 
-function getChatPredictData(recordId) {
+function getChatPredictData(recordId?: number) {
   chatApi.get_chart_predict_data(recordId).then((response) => {
     currentChat.value.records.forEach((record) => {
       if (record.id === recordId) {
