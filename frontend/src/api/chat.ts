@@ -47,6 +47,8 @@ export class ChatRecord {
   run_time: number = 0
   first_chat: boolean = false
   recommended_question?: string
+  analysis_record_id?: number
+  predict_record_id?: number
 
   constructor()
   constructor(
@@ -69,7 +71,9 @@ export class ChatRecord {
     error: string | undefined,
     run_time: number,
     first_chat: boolean,
-    recommended_question: string | undefined
+    recommended_question: string | undefined,
+    analysis_record_id: number | undefined,
+    predict_record_id: number | undefined
   )
   constructor(
     id?: number,
@@ -91,7 +95,9 @@ export class ChatRecord {
     error?: string,
     run_time?: number,
     first_chat?: boolean,
-    recommended_question?: string
+    recommended_question?: string,
+    analysis_record_id?: number,
+    predict_record_id?: number
   ) {
     this.id = id
     this.chat_id = chat_id
@@ -113,6 +119,8 @@ export class ChatRecord {
     this.run_time = run_time ?? 0
     this.first_chat = !!first_chat
     this.recommended_question = recommended_question
+    this.analysis_record_id = analysis_record_id
+    this.predict_record_id = predict_record_id
   }
 }
 
@@ -235,7 +243,9 @@ const toChatRecord = (data?: any): ChatRecord | undefined => {
     data.error,
     data.run_time,
     data.first_chat,
-    data.recommended_question
+    data.recommended_question,
+    data.analysis_record_id,
+    data.predict_record_id
   )
 }
 const toChatRecordList = (list: any = []): ChatRecord[] => {

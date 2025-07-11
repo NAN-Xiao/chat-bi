@@ -17,8 +17,8 @@ from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_confi
 from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer, save_sql, \
     save_error_message, save_sql_exec_data, save_full_chart_message, save_full_chart_message_and_answer, save_chart, \
     finish_record, save_full_analysis_message_and_answer, save_full_predict_message_and_answer, save_predict_data, \
-    save_full_select_datasource_message_and_answer, list_records, save_full_recommend_question_message_and_answer, \
-    get_old_questions
+    save_full_select_datasource_message_and_answer, save_full_recommend_question_message_and_answer, \
+    get_old_questions, save_analysis_predict_record, list_base_records
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
@@ -63,9 +63,9 @@ class LLMService:
 
         history_records: List[ChatRecord] = list(
             map(lambda x: ChatRecord(**x.model_dump()), filter(lambda r: True if r.first_chat != True else False,
-                                                               list_records(session=self.session,
-                                                                            current_user=current_user,
-                                                                            chart_id=chat_question.chat_id))))
+                                                               list_base_records(session=self.session,
+                                                                                 current_user=current_user,
+                                                                                 chart_id=chat_question.chat_id))))
         # get schema
         if ds:
             chat_question.db_schema = get_table_schema(session=self.session, ds=ds)
@@ -606,7 +606,7 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
         raise RuntimeError(error_msg)
 
 
-def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True):
+def run_task(llm_service: LLMService, in_chat: bool = True):
     try:
         # return id
         if in_chat:
@@ -626,7 +626,7 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
                 yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
                                     'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
 
-            llm_service.chat_question.db_schema = get_table_schema(session=session, ds=llm_service.ds)
+            llm_service.chat_question.db_schema = get_table_schema(session=llm_service.session, ds=llm_service.ds)
 
         # generate sql
         sql_res = llm_service.generate_sql()
@@ -720,8 +720,10 @@ def run_task(llm_service: LLMService, session: SessionDep, in_chat: bool = True)
             yield f'> &#x274c; **ERROR**\n\n> \n\n> {str(e)}。'
 
 
-def run_analysis_or_predict_task(llm_service: LLMService, action_type: str):
+def run_analysis_or_predict_task(llm_service: LLMService, action_type: str, base_record: ChatRecord):
     try:
+        llm_service.set_record(save_analysis_predict_record(llm_service.session, base_record, action_type))
+
         if action_type == 'analysis':
             # generate analysis
             analysis_res = llm_service.generate_analysis()
@@ -752,10 +754,10 @@ def run_analysis_or_predict_task(llm_service: LLMService, action_type: str):
 
             yield orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
 
-
+        llm_service.finish()
     except Exception as e:
         traceback.print_exc()
-        # llm_service.save_error(session=session, message=str(e))
+        llm_service.save_error(message=str(e))
         yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
     finally:
         # end

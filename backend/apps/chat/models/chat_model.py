@@ -62,8 +62,8 @@ class ChatRecord(SQLModel, table=True):
     token_select_datasource_question: str = Field(max_length=256, nullable=True)
     finish: bool = Field(sa_column=Column(Boolean, nullable=True, default=False))
     error: str = Field(sa_column=Column(Text, nullable=True))
-    run_time: float = Field(default=0)
-
+    analysis_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
+    predict_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
 
 class CreateChat(BaseModel):
     id: int = None

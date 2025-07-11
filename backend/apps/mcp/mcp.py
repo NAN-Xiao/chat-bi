@@ -66,4 +66,4 @@ async def mcp_question(session: SessionDep, chat: ChatMcp):
     llm_service = LLMService(session, user, chat)
     llm_service.init_record()
 
-    return StreamingResponse(run_task(llm_service, session, False), media_type="text/event-stream")
+    return StreamingResponse(run_task(llm_service, False), media_type="text/event-stream")

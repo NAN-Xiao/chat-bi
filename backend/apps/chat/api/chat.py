@@ -129,7 +129,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             detail=str(e)
         )
 
-    return StreamingResponse(run_task(llm_service, session), media_type="text/event-stream")
+    return StreamingResponse(run_task(llm_service), media_type="text/event-stream")
 
 
 @router.post("/record/{chat_record_id}/{action_type}")
@@ -157,7 +157,6 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 
     try:
         llm_service = LLMService(session, current_user, request_question)
-        llm_service.set_record(record)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(
@@ -165,5 +164,5 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             detail=str(e)
         )
 
-    return StreamingResponse(run_analysis_or_predict_task(llm_service, action_type),
+    return StreamingResponse(run_analysis_or_predict_task(llm_service, action_type, record),
                              media_type="text/event-stream")

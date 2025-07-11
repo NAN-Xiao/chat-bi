@@ -82,9 +82,9 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         load_only(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
                   ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.data,
                   ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
-                  ChatRecord.datasource_select_answer,
+                  ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                   ChatRecord.recommended_question, ChatRecord.first_chat,
-                  ChatRecord.predict_data, ChatRecord.finish, ChatRecord.error, ChatRecord.run_time)).filter(
+                  ChatRecord.predict_data, ChatRecord.finish, ChatRecord.error)).filter(
         and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
 
     result = list(map(format_record, record_list))
@@ -130,9 +130,11 @@ def format_record(record: ChatRecord):
     return _dict
 
 
-def list_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> List[ChatRecord]:
+def list_base_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> List[ChatRecord]:
     record_list = session.query(ChatRecord).filter(
-        and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
+        and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id,
+             ChatRecord.analysis_record_id is None, ChatRecord.predict_record_id is None)).order_by(
+        ChatRecord.create_time).all()
     return record_list
 
 
@@ -213,6 +215,34 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     record.datasource = chat.datasource
     record.engine_type = chat.engine_type
     record.ai_modal_id = question.ai_modal_id
+
+    result = ChatRecord(**record.model_dump())
+
+    session.add(record)
+    session.flush()
+    session.refresh(record)
+    result.id = record.id
+    session.commit()
+
+    return result
+
+
+def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, action_type: str) -> ChatRecord:
+    record = ChatRecord()
+    record.question = base_record.question
+    record.chat_id = base_record.chat_id
+    record.datasource = base_record.datasource
+    record.engine_type = base_record.engine_type
+    record.ai_modal_id = base_record.ai_modal_id
+    record.create_time = datetime.datetime.now()
+    record.create_by = base_record.id
+    record.chart = base_record.chart
+    record.data = base_record.data
+
+    if action_type == 'analysis':
+        record.analysis_record_id = base_record.id
+    elif action_type == 'predict':
+        record.predict_record_id = base_record.id
 
     result = ChatRecord(**record.model_dump())
 

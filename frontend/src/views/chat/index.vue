@@ -46,7 +46,13 @@
           <template v-for="(message, _index) in computedMessages" :key="_index">
             <ChatRow :current-chat="currentChat" :msg="message">
               <template v-if="message.role === 'assistant'">
-                <ChatAnswer v-slot="{ data }" :message="message">
+                <ChatAnswer
+                  v-if="
+                    message?.record?.analysis_record_id == undefined &&
+                    message?.record?.predict_record_id == undefined
+                  "
+                  :message="message"
+                >
                   <template v-if="message.record?.chart">
                     <div style="padding: 0 22px; display: flex; justify-content: flex-end">
                       <el-button
@@ -66,31 +72,38 @@
                         {{ t('chat.data_predict') }}
                       </el-button>
                     </div>
-                    <div class="analysis-container">
-                      <MdComponent
-                        v-if="message.record?.analysis || isAnalysisTyping"
-                        :message="message.record?.analysis"
-                      />
-                      <el-divider
-                        v-if="
-                          (message.record?.analysis || isAnalysisTyping) &&
-                          (message.record?.predict || isPredictTyping)
-                        "
-                      />
-                      <template v-if="message.record?.predict || isPredictTyping">
-                        <MdComponent :message="message.record?.predict" />
-                        <MdComponent :message="message.record?.predict_content" />
-                        <PredictChartBlock
-                          :id="message.record?.id + '-predict'"
-                          :data="message.record?.predict_data ?? '[]'"
-                          :message="message"
-                          :chart-type="data.chartType"
-                        />
-                      </template>
-                    </div>
                   </template>
                 </ChatAnswer>
               </template>
+              <div
+                v-if="
+                  message?.record?.analysis_record_id != undefined ||
+                  message?.record?.predict_record_id != undefined
+                "
+                class="analysis-container"
+              >
+                <template v-if="message.record?.analysis || isAnalysisTyping">
+                  <MdComponent :message="message.record?.analysis_thinking" />
+                  <MdComponent :message="message.record?.analysis" />
+                </template>
+
+                <el-divider
+                  v-if="
+                    (message.record?.analysis || isAnalysisTyping) &&
+                    (message.record?.predict || isPredictTyping)
+                  "
+                />
+                <template v-if="message.record?.predict || isPredictTyping">
+                  <MdComponent :message="message.record?.predict" />
+                  <MdComponent :message="message.record?.predict_content" />
+                  <!--                  <PredictChartBlock-->
+                  <!--                    :id="message.record?.id + '-predict'"-->
+                  <!--                    :data="message.record?.predict_data ?? '[]'"-->
+                  <!--                    :message="message"-->
+                  <!--                    :chart-type="data.chartType"-->
+                  <!--                  />-->
+                </template>
+              </div>
               <template v-if="message.role === 'assistant'" #footer>
                 <RecommendQuestion
                   :questions="message.recommended_question"
@@ -146,7 +159,7 @@ import ChatList from './ChatList.vue'
 import ChatRow from './ChatRow.vue'
 import ChatAnswer from './ChatAnswer.vue'
 import MdComponent from './component/MdComponent.vue'
-import PredictChartBlock from './component/PredictChartBlock.vue'
+// import PredictChartBlock from './component/PredictChartBlock.vue'
 import RecommendQuestion from './RecommendQuestion.vue'
 import ChatCreator from './ChatCreator.vue'
 import { useI18n } from 'vue-i18n'
@@ -528,17 +541,23 @@ function getChatPredictData(recordId?: number) {
 }
 
 async function clickAnalysis(id?: number) {
-  let _index = -1
-  const currentRecord = find(currentChat.value.records, (value, index) => {
-    if (id === value.id) {
-      _index = index
-      return true
-    }
-    return false
-  })
-  if (currentRecord == undefined) {
+  const baseRecord = find(currentChat.value.records, (value) => id === value.id)
+  if (baseRecord == undefined) {
     return
   }
+
+  const currentRecord = new ChatRecord()
+  currentRecord.create_time = new Date()
+  currentRecord.chat_id = baseRecord.chat_id
+  currentRecord.question = baseRecord.question
+  currentRecord.chart = baseRecord.chart
+  currentRecord.data = baseRecord.data
+  currentRecord.analysis_record_id = id
+
+  currentChat.value.records.push(currentRecord)
+
+  let _index = currentChat.value.records.length - 1
+
   isAnalysisTyping.value = true
   currentChat.value.records[_index].analysis = ''
 
@@ -627,17 +646,23 @@ async function clickAnalysis(id?: number) {
 }
 
 async function clickPredict(id?: number) {
-  let _index = -1
-  const currentRecord = find(currentChat.value.records, (value, index) => {
-    if (id === value.id) {
-      _index = index
-      return true
-    }
-    return false
-  })
-  if (currentRecord == undefined) {
+  const baseRecord = find(currentChat.value.records, (value) => id === value.id)
+  if (baseRecord == undefined) {
     return
   }
+
+  const currentRecord = new ChatRecord()
+  currentRecord.create_time = new Date()
+  currentRecord.chat_id = baseRecord.chat_id
+  currentRecord.question = baseRecord.question
+  currentRecord.chart = baseRecord.chart
+  currentRecord.data = baseRecord.data
+  currentRecord.predict_record_id = id
+
+  currentChat.value.records.push(currentRecord)
+
+  let _index = currentChat.value.records.length - 1
+
   isPredictTyping.value = true
   currentChat.value.records[_index].predict = ''
   currentChat.value.records[_index].predict_data = ''
