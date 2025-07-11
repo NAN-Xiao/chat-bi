@@ -4,10 +4,12 @@ import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
 
 import model from '@/assets/svg/icon_dataset_filled.svg'
 import ds from '@/assets/svg/ds.svg'
+import user from '@/assets/svg/icon_member_filled.svg'
 
 const iconMap = {
   icon_ai: model,
   ds,
+  user,
 } as { [key: string]: any }
 
 const titleWithIcon = (props: any) => {

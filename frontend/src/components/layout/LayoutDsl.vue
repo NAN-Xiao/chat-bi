@@ -149,6 +149,7 @@ const toWorkspace = () => {
     flex: 1;
     padding: 8px 8px 8px 0;
     max-height: 100vh;
+    overflow-x: auto;
 
     .content {
       width: 100%;

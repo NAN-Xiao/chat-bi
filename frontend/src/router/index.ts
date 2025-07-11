@@ -10,7 +10,7 @@ import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
-// import User from "@/views/system/user/index.vue";
+import User from '@/views/system/user/User.vue'
 import { watchRouter } from './watch'
 const router = createRouter({
   history: createWebHashHistory(),
@@ -125,6 +125,12 @@ const router = createRouter({
           name: 'model',
           component: Model,
           meta: { title: 'AI Model Configuration', icon: 'icon_ai' },
+        },
+        {
+          path: 'user',
+          name: 'user',
+          component: User,
+          meta: { title: '用户管理', icon: 'user' },
         },
       ],
     },
