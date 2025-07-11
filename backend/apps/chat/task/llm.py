@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import select
 from sqlalchemy.orm import load_only
 
@@ -198,6 +198,7 @@ class LLMService:
         full_thinking_text = ''
         full_analysis_text = ''
         res = self.llm.stream(analysis_msg)
+        token_usage = {}
         for chunk in res:
             print(chunk)
             reasoning_content_chunk = ''
@@ -211,9 +212,11 @@ class LLMService:
 
             full_analysis_text += chunk.content
             yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
 
         analysis_msg.append(AIMessage(full_analysis_text))
         self.record = save_full_analysis_message_and_answer(session=self.session, record_id=self.record.id,
+                                                            token_usage=token_usage,
                                                             answer=orjson.dumps({'content': full_analysis_text,
                                                                                  'reasoning_content': full_thinking_text}).decode(),
                                                             full_message=orjson.dumps(history_msg +
@@ -245,6 +248,7 @@ class LLMService:
         full_thinking_text = ''
         full_predict_text = ''
         res = self.llm.stream(predict_msg)
+        token_usage = {}
         for chunk in res:
             print(chunk)
             reasoning_content_chunk = ''
@@ -258,9 +262,11 @@ class LLMService:
 
             full_predict_text += chunk.content
             yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
 
         predict_msg.append(AIMessage(full_predict_text))
         self.record = save_full_predict_message_and_answer(session=self.session, record_id=self.record.id,
+                                                           token_usage=token_usage,
                                                            answer=orjson.dumps({'content': full_predict_text,
                                                                                 'reasoning_content': full_thinking_text}).decode(),
                                                            data='',
@@ -291,6 +297,7 @@ class LLMService:
                                                                                                  guess_msg]).decode())
         full_thinking_text = ''
         full_guess_text = ''
+        token_usage = {}
         res = self.llm.stream(guess_msg)
         for chunk in res:
             print(chunk)
@@ -305,9 +312,11 @@ class LLMService:
 
             full_guess_text += chunk.content
             yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
 
         guess_msg.append(AIMessage(full_guess_text))
         self.record = save_full_recommend_question_message_and_answer(session=self.session, record_id=self.record.id,
+                                                                      token_usage=token_usage,
                                                                       answer={'content': full_guess_text,
                                                                               'reasoning_content': full_thinking_text},
                                                                       full_message=orjson.dumps([{'type': msg.type,
@@ -342,6 +351,7 @@ class LLMService:
                                                                                                 datasource_msg]).decode())
         full_thinking_text = ''
         full_text = ''
+        token_usage = {}
         res = self.llm.stream(datasource_msg)
         for chunk in res:
             print(chunk)
@@ -356,6 +366,7 @@ class LLMService:
 
             full_text += chunk.content
             yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
         datasource_msg.append(AIMessage(full_text))
 
         json_str = extract_nested_json(full_text)
@@ -418,6 +429,7 @@ class LLMService:
                                                  self.sql_message]).decode())
         full_thinking_text = ''
         full_sql_text = ''
+        token_usage = {}
         res = self.llm.stream(self.sql_message)
         for chunk in res:
             print(chunk)
@@ -432,9 +444,11 @@ class LLMService:
 
             full_sql_text += chunk.content
             yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
 
         self.sql_message.append(AIMessage(full_sql_text))
         self.record = save_full_sql_message_and_answer(session=self.session, record_id=self.record.id,
+                                                       token_usage=token_usage,
                                                        answer=orjson.dumps({'content': full_sql_text,
                                                                             'reasoning_content': full_thinking_text}).decode(),
                                                        full_message=orjson.dumps(
@@ -450,6 +464,7 @@ class LLMService:
                                                    self.chart_message]).decode())
         full_thinking_text = ''
         full_chart_text = ''
+        token_usage = {}
         res = self.llm.stream(self.chart_message)
         for chunk in res:
             print(chunk)
@@ -464,9 +479,11 @@ class LLMService:
 
             full_chart_text += chunk.content
             yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
 
         self.chart_message.append(AIMessage(full_chart_text))
         self.record = save_full_chart_message_and_answer(session=self.session, record_id=self.record.id,
+                                                         token_usage=token_usage,
                                                          answer=orjson.dumps({'content': full_chart_text,
                                                                               'reasoning_content': full_thinking_text}).decode(),
                                                          full_message=orjson.dumps(
@@ -740,6 +757,9 @@ def run_analysis_or_predict_task(llm_service: LLMService, action_type: str):
         traceback.print_exc()
         # llm_service.save_error(session=session, message=str(e))
         yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
+    finally:
+        # end
+        pass
 
 
 def run_recommend_questions_task(llm_service: LLMService):
@@ -788,3 +808,13 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
     requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj)
 
     return f'{(settings.SERVER_IMAGE_HOST if settings.SERVER_IMAGE_HOST[-1] == "/" else (settings.SERVER_IMAGE_HOST + "/"))}{file_name}.png'
+
+
+def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = {}):
+    try:
+        if chunk.usage_metadata:
+            token_usage['input_tokens'] = chunk.usage_metadata.get('input_tokens')
+            token_usage['output_tokens'] = chunk.usage_metadata.get('output_tokens')
+            token_usage['total_tokens'] = chunk.usage_metadata.get('total_tokens')
+    except Exception:
+        pass

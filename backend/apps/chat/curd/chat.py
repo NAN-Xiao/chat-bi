@@ -229,12 +229,16 @@ def save_full_sql_message(session: SessionDep, record_id: int, full_message: str
     return save_full_sql_message_and_answer(session=session, record_id=record_id, full_message=full_message, answer='')
 
 
-def save_full_sql_message_and_answer(session: SessionDep, record_id: int, answer: str, full_message: str) -> ChatRecord:
+def save_full_sql_message_and_answer(session: SessionDep, record_id: int, answer: str, full_message: str,
+                                     token_usage: dict = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
     record.full_sql_message = full_message
     record.sql_answer = answer
+
+    if token_usage:
+        record.token_sql = orjson.dumps(token_usage).decode()
 
     result = ChatRecord(**record.model_dump())
 
@@ -248,12 +252,15 @@ def save_full_sql_message_and_answer(session: SessionDep, record_id: int, answer
 
 
 def save_full_analysis_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                          full_message: str) -> ChatRecord:
+                                          full_message: str, token_usage: dict = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
     record.full_analysis_message = full_message
     record.analysis = answer
+
+    if token_usage:
+        record.token_analysis = orjson.dumps(token_usage).decode()
 
     result = ChatRecord(**record.model_dump())
 
@@ -267,13 +274,16 @@ def save_full_analysis_message_and_answer(session: SessionDep, record_id: int, a
 
 
 def save_full_predict_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                         full_message: str, data: str) -> ChatRecord:
+                                         full_message: str, data: str, token_usage: dict = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
     record.full_predict_message = full_message
     record.predict = answer
     record.predict_data = data
+
+    if token_usage:
+        record.token_predict = orjson.dumps(token_usage).decode()
 
     result = ChatRecord(**record.model_dump())
 
@@ -288,7 +298,7 @@ def save_full_predict_message_and_answer(session: SessionDep, record_id: int, an
 
 def save_full_select_datasource_message_and_answer(session: SessionDep, record_id: int, answer: str,
                                                    full_message: str, datasource: int = None,
-                                                   engine_type: str = None) -> ChatRecord:
+                                                   engine_type: str = None, token_usage: dict = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
@@ -298,6 +308,9 @@ def save_full_select_datasource_message_and_answer(session: SessionDep, record_i
     if datasource:
         record.datasource = datasource
         record.engine_type = engine_type
+
+    if token_usage:
+        record.token_select_datasource_question = orjson.dumps(token_usage).decode()
 
     result = ChatRecord(**record.model_dump())
 
@@ -311,7 +324,7 @@ def save_full_select_datasource_message_and_answer(session: SessionDep, record_i
 
 
 def save_full_recommend_question_message_and_answer(session: SessionDep, record_id: int, answer: dict = None,
-                                                    full_message: str = '[]') -> ChatRecord:
+                                                    full_message: str = '[]', token_usage: dict = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
@@ -328,6 +341,9 @@ def save_full_recommend_question_message_and_answer(session: SessionDep, record_
         except Exception as e:
             pass
     record.recommended_question = json_str
+
+    if token_usage:
+        record.token_recommended_question = orjson.dumps(token_usage).decode()
 
     result = ChatRecord(**record.model_dump())
 
@@ -363,12 +379,15 @@ def save_full_chart_message(session: SessionDep, record_id: int, full_message: s
 
 
 def save_full_chart_message_and_answer(session: SessionDep, record_id: int, answer: str,
-                                       full_message: str) -> ChatRecord:
+                                       full_message: str, token_usage: dict = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
     record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
     record.full_chart_message = full_message
     record.chart_answer = answer
+
+    if token_usage:
+        record.token_chart = orjson.dumps(token_usage).decode()
 
     result = ChatRecord(**record.model_dump())
 
