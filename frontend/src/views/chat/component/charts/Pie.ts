@@ -1,7 +1,7 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
-import { endsWith, replace } from 'lodash-es'
+import { endsWith, filter, replace } from 'lodash-es'
 
 export class Pie extends BaseG2Chart {
   constructor(id: string) {
@@ -17,12 +17,21 @@ export class Pie extends BaseG2Chart {
       return
     }
 
-    // 特殊处理 %
+    // %
     const _data = []
     let isPercent = false
-    if (data.length > 0) {
-      const v = data[0][y[0].value] + ''
-      if (endsWith(v, '%')) {
+    const notEmptyData = filter(
+      data,
+      (d) =>
+        d &&
+        d[y[0].value] !== null &&
+        d[y[0].value] !== undefined &&
+        d[y[0].value] !== 0 &&
+        d[y[0].value] !== '0'
+    )
+    if (notEmptyData.length > 0) {
+      const v = notEmptyData[0][y[0].value] + ''
+      if (endsWith(v.trim(), '%')) {
         isPercent = true
       }
     }
