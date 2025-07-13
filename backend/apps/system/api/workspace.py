@@ -1,11 +1,77 @@
-from fastapi import APIRouter
-from sqlmodel import select    
+from typing import Optional
+from fastapi import APIRouter, Query
+from sqlmodel import or_, select    
 from apps.system.models.system_model import UserWsModel, WorkspaceBase, WorkspaceEditor, WorkspaceModel
-from apps.system.schemas.system_schema import UserWsBase, UserWsDTO
-from common.core.deps import SessionDep, Trans
+from apps.system.models.user import UserModel
+from apps.system.schemas.system_schema import UserWsBase, UserWsDTO, WorkspaceUser
+from common.core.deps import CurrentUser, SessionDep, Trans
+from common.core.pagination import Paginator
+from common.core.schemas import PaginatedResponse, PaginationParams
 from common.utils.time import get_timestamp
 
 router = APIRouter(tags=["system/workspace"], prefix="/system/workspace")
+
+
+@router.get("/uws/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[WorkspaceUser])
+async def pager(
+    session: SessionDep,
+    current_user: CurrentUser,
+    pageNum: int,
+    pageSize: int,
+    keyword: Optional[str] = Query(None, description="搜索关键字(可选)"),
+    oid: Optional[int] = Query(None, description="空间ID(仅admin用户生效)"),
+):
+    if current_user.isAdmin:
+        if not oid:
+            raise RuntimeError('oid miss error')
+        workspace_id = oid
+    else:
+        workspace_id = current_user.oid
+    pagination = PaginationParams(page=pageNum, size=pageSize)
+    paginator = Paginator(session)
+    stmt = select(UserModel.id, UserModel.account, UserModel.name, UserModel.email, UserModel.status, UserModel.create_time, UserModel.oid, UserWsModel.weight).join(
+        UserWsModel, UserModel.id == UserWsModel.uid
+    ).where(
+        UserWsModel.oid == workspace_id,
+    ).order_by(UserModel.create_time)
+    
+    if keyword:
+        keyword_pattern = f"%{keyword}%"
+        stmt = stmt.where(
+            or_(
+                UserModel.account.ilike(keyword_pattern),
+                UserModel.name.ilike(keyword_pattern),
+                UserModel.email.ilike(keyword_pattern)
+            )
+        )
+    return await paginator.get_paginated_response(
+        stmt=stmt,
+        pagination=pagination,
+    )
+    
+
+@router.post("/uws")     
+async def create(session: SessionDep, creator: UserWsDTO):
+    # 判断uid_list以及oid合法性
+    db_model_list = [
+        UserWsModel.model_validate({
+            "oid": creator.oid,
+            "uid": uid,
+            "weight": creator.weight
+        })
+        for uid in creator.uid_list
+    ]
+    session.add_all(db_model_list)
+    session.commit()
+
+@router.delete("/uws")     
+async def delete(session: SessionDep, dto: UserWsBase):
+    db_model_list: list[UserWsModel] = session.exec(select(UserWsModel).where(UserWsModel.uid.in_(dto.uid_list), UserWsModel.oid == dto.oid)).all()
+    if not db_model_list:
+        raise ValueError(f"UserWsModel not found")
+    for db_model in db_model_list:
+        session.delete(db_model)
+    session.commit()
 
 @router.get("", response_model=list[WorkspaceModel])
 async def query(session: SessionDep, trans: Trans):
@@ -50,16 +116,4 @@ async def delete(session: SessionDep, id: int):
     session.delete(db_model)
     session.commit()
 
-@router.post("/uws")     
-async def create(session: SessionDep, creator: UserWsDTO):
-    db_model = UserWsModel.model_validate(creator)
-    session.add(db_model)
-    session.commit()
 
-@router.delete("/uws")     
-async def delete(session: SessionDep, dto: UserWsBase):
-    db_model: UserWsModel = session.exec(select(UserWsModel).where(UserWsModel.uid == dto.uid, UserWsModel.oid == dto.oid)).first()
-    if not db_model:
-        raise ValueError(f"UserWsModel not found")
-    session.delete(db_model)
-    session.commit()

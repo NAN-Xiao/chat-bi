@@ -43,7 +43,7 @@ class PwdEditor(BaseModel):
     new_pwd: str
     
 class UserWsBase(BaseModel):
-    uid: int
+    uid_list: list[int]
     oid: int
 class UserWsDTO(UserWsBase):
     weight: int = 0
@@ -84,3 +84,10 @@ class AssistantValidator(BaseModel):
             token=token,
             **kwargs
         )
+        
+class WorkspaceUser(UserEditor):
+    weight: int
+    create_time: int
+    
+class UserWs(BaseCreatorDTO):
+    name: str

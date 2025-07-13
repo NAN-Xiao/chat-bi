@@ -9,4 +9,6 @@ export const userApi = {
   query: (id: number) => request.get(`/settings/terminology/${id}`),
   language: (data: any) => request.put('/user/language', data),
   pwd: (data: any) => request.put('/user/pwd', data),
+  ws_options: () => request.get('/user/ws'),
+  ws_change: (oid: number) => request.put(`/user/ws/${oid}`),
 }

@@ -1,10 +1,12 @@
 
+from typing import Optional
 from sqlmodel import Session, select
 
-from apps.system.models.system_model import UserWsModel
+from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.system_schema import BaseUserDTO, UserInfoDTO
+from apps.system.schemas.system_schema import BaseUserDTO, UserInfoDTO, UserWs
 from common.core.sqlbot_cache import cache
+from common.utils.locale import I18n
 from ..models.user import UserModel
 from common.core.security import verify_md5pwd
 
@@ -37,3 +39,20 @@ def authenticate(*, session: Session, account: str, password: str) -> BaseUserDT
     if not verify_md5pwd(password, db_user.password):
         return None
     return db_user
+
+async def user_ws_options(session: Session, uid: int, trans: Optional[I18n] = None) -> list[UserWs]:
+    if uid == 1:
+        stmt = select(WorkspaceModel.id, WorkspaceModel.name).order_by(WorkspaceModel.create_time)
+    else:
+        stmt = select(UserWsModel.oid, WorkspaceModel.name).join(
+            WorkspaceModel, UserWsModel.oid == WorkspaceModel.id
+        ).where(
+            UserWsModel.uid == uid,
+        ).order_by(WorkspaceModel.create_time)
+    result = session.exec(stmt)
+    if not trans:
+        return result.all()
+    return [
+        UserWs(id = id, name = trans(name) if name.startswith('i18n') else name) 
+        for id, name in result.all()
+    ]

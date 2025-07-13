@@ -1,21 +1,24 @@
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import icon_expand_down_filled from '@/assets/svg/icon_expand-down_filled.svg'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-
+import { userApi } from '@/api/auth'
+import { ElMessage } from 'element-plus-secondary'
+import { useI18n } from 'vue-i18n'
+import { useUserStore } from '@/stores/user'
+const userStore = useUserStore()
+const { t } = useI18n()
 defineProps({
   collapse: { type: [Boolean], required: true },
 })
 
-const name = ref('默认工作空间')
-const currentWorkspace = ref('默认工作空间')
-const defaultDatasourceList = ref([
-  {
-    name: '默认工作空间',
-  },
-] as any[])
+const currentWorkspace = ref({
+  id: '',
+  name: '',
+})
+const defaultDatasourceList = ref([] as any[])
 const workspaceKeywords = ref('')
 const defaultWorkspaceListWithSearch = computed(() => {
   if (!workspaceKeywords.value) return defaultDatasourceList.value
@@ -34,9 +37,28 @@ const formatKeywords = (item: string) => {
 const emit = defineEmits(['selectWorkspace'])
 
 const handleDefaultWorkspaceChange = (item: any) => {
-  currentWorkspace.value = item.name
+  currentWorkspace.value = { id: item.id, name: item.name }
+  userApi.ws_change(item.id).then(() => {
+    ElMessage.success(t('common.switch_success'))
+  })
   emit('selectWorkspace', item)
 }
+
+const init_ws_data = async () => {
+  const res = await userApi.ws_options()
+  defaultDatasourceList.value = res
+}
+
+const init_current_ws = () => {
+  const oid = userStore.getOid
+  currentWorkspace.value = defaultDatasourceList.value.find(
+    (item) => item.id.toString() === oid.toString()
+  )
+}
+onMounted(async () => {
+  await init_ws_data()
+  init_current_ws()
+})
 </script>
 
 <template>
@@ -46,7 +68,7 @@ const handleDefaultWorkspaceChange = (item: any) => {
         <el-icon size="16">
           <icon_moments_categories_outlined></icon_moments_categories_outlined>
         </el-icon>
-        <span v-if="!collapse" class="name">{{ name }}</span>
+        <span v-if="!collapse" class="name">{{ currentWorkspace.name }}</span>
         <el-icon v-if="!collapse" style="transform: scale(0.5)" class="expand" size="24">
           <icon_expand_down_filled></icon_expand_down_filled>
         </el-icon></button
@@ -69,7 +91,7 @@ const handleDefaultWorkspaceChange = (item: any) => {
           v-for="ele in defaultWorkspaceListWithSearch"
           :key="ele.name"
           class="popover-item"
-          :class="currentWorkspace === ele.name && 'isActive'"
+          :class="currentWorkspace.id === ele.id && 'isActive'"
           @click="handleDefaultWorkspaceChange(ele)"
         >
           <el-icon size="16">

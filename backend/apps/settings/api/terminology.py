@@ -18,7 +18,7 @@ async def pager(
     paginator = Paginator(session)
     filters = {}
     return await paginator.get_paginated_response(
-        model=term_model,
+        stmt=term_model,
         pagination=pagination,
         **filters)
     

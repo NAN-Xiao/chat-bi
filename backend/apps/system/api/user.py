@@ -1,9 +1,9 @@
 from fastapi import APIRouter
-from apps.system.crud.user import get_db_user
+from apps.system.crud.user import get_db_user, user_ws_options
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage
-from common.core.deps import CurrentUser, SessionDep
+from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage, UserWs
+from common.core.deps import CurrentUser, SessionDep, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
 from common.core.security import md5pwd, verify_md5pwd
@@ -13,7 +13,6 @@ router = APIRouter(tags=["user"], prefix="/user")
 @router.get("/info")
 async def user_info(current_user: CurrentUser):
     return current_user
-
 
 @router.get("/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[UserGrid])
 async def pager(
@@ -25,9 +24,24 @@ async def pager(
     paginator = Paginator(session)
     filters = {}
     return await paginator.get_paginated_response(
-        model=UserModel,
+        stmt=UserModel,
         pagination=pagination,
         **filters)
+
+@router.get("/ws")
+async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Trans) -> list[UserWs]:
+    return await user_ws_options(session, current_user.id, trans)
+
+@router.put("/ws/{oid}")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
+async def ws_change(session: SessionDep, current_user: CurrentUser, oid: int):
+    ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
+    if not any(x.id == oid for x in ws_list):
+        raise RuntimeError(f"oid [{oid}] is invalid!")
+    user_model: UserModel = get_db_user(session = session, user_id = current_user.id)
+    user_model.oid = oid
+    session.add(user_model)
+    session.commit()
 
 @router.get("/{id}", response_model=UserEditor)
 async def query(session: SessionDep, id: int) -> UserEditor:
@@ -58,6 +72,11 @@ async def delete(session: SessionDep, id: int):
     user_model: UserModel = get_db_user(session = session, user_id = id)
     session.delete(user_model)
     session.commit()
+
+@router.delete("")    
+async def batch_del(session: SessionDep, id_list: list[int]):
+    for id in id_list:
+        delete(session, id)
     
 @router.put("/language")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
@@ -69,7 +88,6 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
     db_user.language = lang
     session.add(db_user)
     session.commit()
-    return {"message": "Language changed successfully", "language": lang}
 
 @router.put("/pwd")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
