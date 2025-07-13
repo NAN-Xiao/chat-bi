@@ -37,6 +37,9 @@ const formatKeywords = (item: string) => {
 const emit = defineEmits(['selectWorkspace'])
 
 const handleDefaultWorkspaceChange = (item: any) => {
+  if (item.id.toString() === currentWorkspace.value.id.toString()) {
+    return
+  }
   currentWorkspace.value = { id: item.id, name: item.name }
   userApi.ws_change(item.id).then(() => {
     ElMessage.success(t('common.switch_success'))
