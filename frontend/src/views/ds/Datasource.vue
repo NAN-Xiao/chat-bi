@@ -247,7 +247,7 @@ const dataTableDetail = (ele: any) => {
         :key="ele.id"
         :name="ele.name"
         :type="ele.type"
-        :type_name="ele.type_name"
+        :type-name="ele.type_name"
         :description="ele.description"
         @question="handleQuestion"
         @edit="handleEditDatasource(ele)"

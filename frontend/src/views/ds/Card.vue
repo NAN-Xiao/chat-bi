@@ -12,8 +12,7 @@ const props = withDefaults(
   defineProps<{
     name: string
     type: string
-    type_name: string
-    rate?: string
+    typeName: string
     description?: string
     id?: string
   }>(),
@@ -22,7 +21,7 @@ const props = withDefaults(
     type: '-',
     description: '-',
     id: '-',
-    type_name: '-',
+    typeName: '-',
   }
 )
 
@@ -58,7 +57,7 @@ const onClickOutside = () => {
       <img :src="icon" width="32px" height="32px" />
       <div class="info">
         <div class="name">{{ name }}</div>
-        <div class="type">{{ type_name }}</div>
+        <div class="type">{{ typeName }}</div>
       </div>
     </div>
     <div class="type-value">

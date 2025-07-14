@@ -1,15 +1,18 @@
 <script lang="ts">
 import { h } from 'vue'
 import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
+import { useRouter } from 'vue-router'
 
 import model from '@/assets/svg/icon_dataset_filled.svg'
 import ds from '@/assets/svg/ds.svg'
 import user from '@/assets/svg/icon_member_filled.svg'
+import workspace from '@/assets/svg/icon_moments-categories_outlined.svg'
 
 const iconMap = {
   icon_ai: model,
   ds,
   user,
+  workspace,
 } as { [key: string]: any }
 
 const titleWithIcon = (props: any) => {
@@ -21,6 +24,8 @@ const titleWithIcon = (props: any) => {
 }
 
 const MenuItem = (props: any) => {
+  const router = useRouter()
+
   const { children, hidden, path } = props.menu
   if (hidden) {
     return null
@@ -28,7 +33,9 @@ const MenuItem = (props: any) => {
   if (children?.length) {
     return h(
       ElSubMenu,
-      { index: path },
+      {
+        index: path,
+      },
       {
         title: () => titleWithIcon(props),
         default: () => children.map((ele: any) => h(MenuItem, { menu: ele })),
@@ -39,7 +46,12 @@ const MenuItem = (props: any) => {
   const iconCom: any = iconMap[icon] ? ElIcon : null
   return h(
     ElMenuItem,
-    { index: path },
+    {
+      index: path,
+      onClick: () => {
+        router.push(path)
+      },
+    },
     {
       title: h('span', null, { default: () => title }),
       default: h(iconCom, null, {

@@ -11,6 +11,7 @@ import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
 import User from '@/views/system/user/User.vue'
+import Workspace from '@/views/system/workspace/index.vue'
 import { watchRouter } from './watch'
 const router = createRouter({
   history: createWebHashHistory(),
@@ -121,16 +122,22 @@ const router = createRouter({
       redirect: '/system/model',
       children: [
         {
-          path: 'model',
-          name: 'model',
-          component: Model,
-          meta: { title: 'AI Model Configuration', icon: 'icon_ai' },
-        },
-        {
           path: 'user',
           name: 'user',
           component: User,
           meta: { title: '用户管理', icon: 'user' },
+        },
+        {
+          path: 'workspace',
+          name: 'workspace',
+          component: Workspace,
+          meta: { title: '工作空间', icon: 'workspace' },
+        },
+        {
+          path: 'model',
+          name: 'model',
+          component: Model,
+          meta: { title: 'AI Model Configuration', icon: 'icon_ai' },
         },
       ],
     },
