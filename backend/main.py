@@ -6,6 +6,7 @@ from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from apps.api import api_router
+from apps.system.crud.assistant import init_dynamic_cors
 from apps.system.middleware.auth import TokenMiddleware
 from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
     run_migrations()
     FastAPICache.init(InMemoryBackend())
     print("✅ FastAPICache 初始化完成")
+    init_dynamic_cors(app)
     yield
 
 
