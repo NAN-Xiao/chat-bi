@@ -1,6 +1,6 @@
 <template>
   <el-container class="chat-container">
-    <el-aside class="chat-container-left">
+    <el-aside v-if="!isAssistant" class="chat-container-left">
       <el-container class="chat-container-right-container">
         <el-header class="chat-list-header">
           <el-button type="primary" @click="createNewChat">
@@ -114,7 +114,10 @@
           </template>
         </el-scrollbar>
       </el-main>
-      <el-footer v-if="computedMessages.length > 0" class="chat-footer">
+      <el-footer
+        v-if="computedMessages.length > 0 || (isAssistant && currentChatId)"
+        class="chat-footer"
+      >
         <div style="height: 24px">
           <template v-if="currentChat.datasource && currentChat.datasource_name">
             {{ t('ds.title') }}：{{ currentChat.datasource_name }}
@@ -147,7 +150,7 @@
       </el-footer>
     </el-container>
 
-    <ChatCreator ref="chatCreatorRef" @on-chat-created="onChatCreated" />
+    <ChatCreator v-if="!isAssistant" ref="chatCreatorRef" @on-chat-created="onChatCreated" />
   </el-container>
 </template>
 
@@ -164,6 +167,11 @@ import RecommendQuestion from './RecommendQuestion.vue'
 import ChatCreator from './ChatCreator.vue'
 import { useI18n } from 'vue-i18n'
 import { endsWith, find, startsWith } from 'lodash-es'
+
+import { useAssistantStore } from '@/stores/assistant'
+const assistantStore = useAssistantStore()
+
+const isAssistant = computed(() => assistantStore.getAssistant)
 
 const { t } = useI18n()
 
@@ -223,8 +231,15 @@ const goEmpty = () => {
   inputMessage.value = ''
 }
 
-const createNewChat = () => {
+const createNewChat = async () => {
   goEmpty()
+  if (isAssistant.value) {
+    const assistantChat = await assistantStore.setChat()
+    if (assistantChat) {
+      onChatCreated(assistantChat as any)
+    }
+    return
+  }
   chatCreatorRef.value?.showDs()
 }
 
@@ -390,6 +405,11 @@ const sendMessage = async () => {
 
   loading.value = true
   isTyping.value = true
+
+  /* const assistantChat = await assistantStore.setChat()
+  if (assistantChat) {
+    onChatCreated(assistantChat as any)
+  } */
 
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()

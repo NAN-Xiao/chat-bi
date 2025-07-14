@@ -180,7 +180,9 @@ class HttpService {
       }
       if (error?.response?.data) {
         const msgData: any = error.response.data
-        msgData.msg && (errorMessage = msgData.msg)
+        if (msgData?.msg) {
+          errorMessage = msgData.msg
+        }
       }
     } else if (error.request) {
       errorMessage = 'No response from server'
@@ -234,6 +236,11 @@ class HttpService {
     if (token) {
       heads['X-SQLBOT-TOKEN'] = `Bearer ${token}`
     }
+    if (assistantStore.getToken) {
+      heads['X-SQLBOT-ASSISTANT-TOKEN'] = `Assistant ${assistantStore.getToken}`
+      if (heads['X-SQLBOT-TOKEN']) heads.delete('X-SQLBOT-TOKEN')
+    }
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     const request_key = LicenseGenerator.generate()
     heads['X-SQLBOT-KEY'] = request_key

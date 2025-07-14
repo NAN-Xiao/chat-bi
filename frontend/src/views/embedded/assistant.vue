@@ -98,6 +98,7 @@ onBeforeMount(async () => {
   const assistantId = route.params.id
   validator.value = await assistantApi.validate(assistantId)
   assistantStore.setToken(validator.value.token)
+  assistantStore.setAssistant(true)
   loading.value = false
 })
 </script>

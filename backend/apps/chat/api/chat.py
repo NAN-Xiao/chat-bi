@@ -81,6 +81,16 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
             status_code=500,
             detail=str(e)
         )
+        
+@router.post("/assistant/start")
+async def start_chat(session: SessionDep, current_user: CurrentUser):
+    try:
+        return create_chat(session, current_user, CreateChat(), False)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 
 @router.post("/recommend_questions/{chat_record_id}")

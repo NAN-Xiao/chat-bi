@@ -49,13 +49,16 @@ class LLMService:
         self.session = session
         self.current_user = current_user
 
-        chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
+        #chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
+        chat_id = chat_question.chat_id
+        chat: Chat = self.session.get(Chat, chat_id)
         if not chat:
-            raise Exception(f"Chat with id {chat_question.chat_id} not found")
+            raise Exception(f"Chat with id {chat_id} not found")
         ds: CoreDatasource | None = None
         if chat.datasource:
             # Get available datasource
-            ds = self.session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
+            # ds = self.session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
+            ds = self.session.get(CoreDatasource, chat.datasource)
             if not ds:
                 raise Exception("No available datasource configuration found")
 
@@ -65,7 +68,7 @@ class LLMService:
             map(lambda x: ChatRecord(**x.model_dump()), filter(lambda r: True if r.first_chat != True else False,
                                                                list_base_records(session=self.session,
                                                                                  current_user=current_user,
-                                                                                 chart_id=chat_question.chat_id))))
+                                                                                 chart_id=chat_id))))
         # get schema
         if ds:
             chat_question.db_schema = get_table_schema(session=self.session, ds=ds)

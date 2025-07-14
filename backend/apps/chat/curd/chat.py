@@ -203,7 +203,8 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     if not question.question or question.question.strip() == '':
         raise Exception("Question cannot be Empty")
 
-    chat = session.query(Chat).filter(Chat.id == question.chat_id).first()
+    #chat = session.query(Chat).filter(Chat.id == question.chat_id).first()
+    chat: Chat = session.get(Chat, question.chat_id)
     if not chat:
         raise Exception(f"Chat with id {question.chat_id} not found")
 
