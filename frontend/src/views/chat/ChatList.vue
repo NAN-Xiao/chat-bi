@@ -137,8 +137,8 @@ function handleCommand(command: string | number | object, chat: Chat) {
   --hover-color: var(--ed-color-primary-light-9);
   --active-color: var(--hover-color);
 
-  padding-left: 14px;
-  padding-right: 14px;
+  padding-left: 16px;
+  padding-right: 16px;
   width: 100%;
 
   display: flex;
@@ -152,6 +152,7 @@ function handleCommand(command: string | number | object, chat: Chat) {
     cursor: pointer;
     border-radius: 6px;
     line-height: 1em;
+    font-size: 14px;
 
     display: flex;
     align-items: center;
@@ -177,15 +178,21 @@ function handleCommand(command: string | number | object, chat: Chat) {
     }
 
     &:hover {
-      background-color: var(--hover-color);
+      background-color: rgba(31, 35, 41, 0.1);
 
       .icon-more {
         display: inline-flex;
+        color: rgba(100, 106, 115, 1);
+
+        &:hover {
+          background-color: rgba(31, 35, 41, 0.1);
+        }
       }
     }
 
     &.active {
-      background-color: var(--active-color);
+      background-color: rgba(255, 255, 255, 1);
+      font-weight: 500;
     }
   }
 }

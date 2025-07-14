@@ -1,14 +1,23 @@
 <template>
-  <el-container class="chat-container">
+  <el-container class="chat-container no-padding">
     <el-aside v-if="!isAssistant" class="chat-container-left">
       <el-container class="chat-container-right-container">
         <el-header class="chat-list-header">
-          <el-button type="primary" @click="createNewChat">
+          <div class="title">
+            <div>智能问数</div>
+            <el-button link type="primary" class="icon-btn">
+              <el-icon>
+                <icon_sidebar_outlined />
+              </el-icon>
+            </el-button>
+          </div>
+          <el-button class="btn" type="primary" @click="createNewChat">
             <el-icon>
               <Plus />
             </el-icon>
             {{ t('qa.New Conversation') }}
           </el-button>
+          <el-input v-model="search" class="search" placeholder="placeholder" />
         </el-header>
         <el-main class="chat-list">
           <ChatList
@@ -166,6 +175,7 @@ import MdComponent from './component/MdComponent.vue'
 import RecommendQuestion from './RecommendQuestion.vue'
 import ChatCreator from './ChatCreator.vue'
 import { useI18n } from 'vue-i18n'
+import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import { endsWith, find, startsWith } from 'lodash-es'
 
 import { useAssistantStore } from '@/stores/assistant'
@@ -230,6 +240,8 @@ const goEmpty = () => {
   currentChatId.value = undefined
   inputMessage.value = ''
 }
+
+const search = ref<string>()
 
 const createNewChat = async () => {
   goEmpty()
@@ -493,6 +505,14 @@ const sendMessage = async () => {
             break
           case 'info':
             console.log(data.msg)
+            break
+          case 'brief':
+            currentChat.value.brief = data.brief
+            chatList.value.forEach((c: Chat) => {
+              if (c.id === currentChat.value.id) {
+                c.brief = currentChat.value.brief
+              }
+            })
             break
           case 'error':
             currentRecord.error = data.content
@@ -808,21 +828,57 @@ defineExpose({
 .chat-container {
   height: 100%;
 
+  .icon-btn {
+    min-width: unset;
+    width: 26px;
+    height: 26px;
+    font-size: 18px;
+
+    &:hover {
+      background: rgba(31, 35, 41, 0.1);
+    }
+  }
+
   .chat-container-left {
-    --ed-aside-width: 260px;
+    --ed-aside-width: 280px;
+    border-radius: 12px 0 0 12px;
+    //box-shadow: 0 0 3px #d7d7d7;
+    //z-index: 1;
 
-    box-shadow: 0 0 3px #d7d7d7;
-    z-index: 1;
-
-    background: var(--ed-fill-color-blank);
+    background: rgba(245, 246, 247, 1);
 
     .chat-container-right-container {
       height: 100%;
 
       .chat-list-header {
+        --ed-header-padding: 16px;
+        --ed-header-height: calc(16px + 24px + 16px + 40px + 16px + 32px + 16px);
+
         display: flex;
         align-items: center;
         justify-content: center;
+        flex-direction: column;
+        gap: 16px;
+
+        .title {
+          height: 24px;
+          width: 100%;
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          justify-content: space-between;
+          font-weight: 500;
+        }
+
+        .btn {
+          width: 100%;
+          height: 40px;
+        }
+
+        .search {
+          height: 32px;
+          width: 100%;
+        }
       }
 
       .chat-list {
@@ -833,7 +889,7 @@ defineExpose({
 
   .chat-record-list {
     padding: 0 0 20px 0;
-    background: rgba(224, 224, 226, 0.29);
+    background: rgba(255, 255, 255, 1);
   }
 
   .chat-footer {

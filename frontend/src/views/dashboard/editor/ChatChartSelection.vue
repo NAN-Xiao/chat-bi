@@ -216,7 +216,7 @@ defineExpose({
 }
 </style>
 
-<style lang="less">
+<style lang="less" scoped>
 .custom-drawer {
   .ed-drawer__footer {
     height: 64px !important;
@@ -235,9 +235,9 @@ defineExpose({
   .chat-container-left {
     padding-top: 20px;
     --ed-aside-width: 260px;
-
-    box-shadow: 0 0 3px #d7d7d7;
-    z-index: 1;
+    border-radius: 12px 0 0 12px;
+    //box-shadow: 0 0 3px #d7d7d7;
+    //z-index: 1;
 
     background: var(--ed-fill-color-blank);
 
@@ -258,7 +258,7 @@ defineExpose({
 
   .chat-record-list {
     padding: 0 0 20px 0;
-    background: rgba(224, 224, 226, 0.29);
+    background: rgba(255, 255, 255, 1);
   }
 
   .chat-footer {

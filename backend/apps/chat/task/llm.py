@@ -18,8 +18,8 @@ from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_
     save_error_message, save_sql_exec_data, save_full_chart_message, save_full_chart_message_and_answer, save_chart, \
     finish_record, save_full_analysis_message_and_answer, save_full_predict_message_and_answer, save_predict_data, \
     save_full_select_datasource_message_and_answer, save_full_recommend_question_message_and_answer, \
-    get_old_questions, save_analysis_predict_record, list_base_records
-from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat
+    get_old_questions, save_analysis_predict_record, list_base_records, rename_chat
+from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
@@ -45,13 +45,15 @@ class LLMService:
     session: SessionDep
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
+    change_title: bool = False
 
-    def __init__(self, session: SessionDep, current_user: CurrentUser, chat_question: ChatQuestion, current_assistant: Optional[CurrentAssistant] = None):
+    def __init__(self, session: SessionDep, current_user: CurrentUser, chat_question: ChatQuestion,
+                 current_assistant: Optional[CurrentAssistant] = None):
 
         self.session = session
         self.current_user = current_user
         self.current_assistant = current_assistant
-        #chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
+        # chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
         chat_id = chat_question.chat_id
         chat: Chat = self.session.get(Chat, chat_id)
         if not chat:
@@ -71,6 +73,8 @@ class LLMService:
                                                                list_base_records(session=self.session,
                                                                                  current_user=current_user,
                                                                                  chart_id=chat_id))))
+        self.change_title = len(history_records) == 0
+
         # get schema
         if ds:
             chat_question.db_schema = get_table_schema(session=self.session, ds=ds)
@@ -335,7 +339,7 @@ class LLMService:
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemMessage(self.chat_question.datasource_sys_question()))
         if self.current_assistant:
-            _ds_list = get_assistant_ds(session = self.session, assistant = self.current_assistant)
+            _ds_list = get_assistant_ds(session=self.session, assistant=self.current_assistant)
         else:
             _ds_list = self.session.exec(select(CoreDatasource).options(
                 load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all()
@@ -619,6 +623,14 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
         # return id
         if in_chat:
             yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
+
+        # return title
+        if llm_service.change_title:
+            if llm_service.chat_question.question or llm_service.chat_question.question.strip() != '':
+                brief = rename_chat(session=llm_service.session,
+                                    rename_object=RenameChat(id=llm_service.get_record().chat_id,
+                                                             brief=llm_service.chat_question.question.strip()[:20]))
+                yield orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
 
         # select datasource if datasource is none
         if not llm_service.ds:

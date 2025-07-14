@@ -13,7 +13,8 @@ from common.utils.utils import extract_nested_json
 
 
 def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
-    chart_list = session.exec(select(Chat).where(Chat.create_by == current_user.id).order_by(Chat.create_time.desc())).all()
+    chart_list = session.exec(
+        select(Chat).where(Chat.create_by == current_user.id).order_by(Chat.create_time.desc())).all()
     return chart_list
 
 
@@ -133,7 +134,7 @@ def format_record(record: ChatRecord):
 def list_base_records(session: SessionDep, chart_id: int, current_user: CurrentUser) -> List[ChatRecord]:
     record_list = session.query(ChatRecord).filter(
         and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id,
-             ChatRecord.analysis_record_id is None, ChatRecord.predict_record_id is None)).order_by(
+             ChatRecord.analysis_record_id.is_(None), ChatRecord.predict_record_id.is_(None))).order_by(
         ChatRecord.create_time).all()
     return record_list
 
@@ -203,7 +204,7 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     if not question.question or question.question.strip() == '':
         raise Exception("Question cannot be Empty")
 
-    #chat = session.query(Chat).filter(Chat.id == question.chat_id).first()
+    # chat = session.query(Chat).filter(Chat.id == question.chat_id).first()
     chat: Chat = session.get(Chat, question.chat_id)
     if not chat:
         raise Exception(f"Chat with id {question.chat_id} not found")
@@ -236,7 +237,7 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
     record.engine_type = base_record.engine_type
     record.ai_modal_id = base_record.ai_modal_id
     record.create_time = datetime.datetime.now()
-    record.create_by = base_record.id
+    record.create_by = base_record.create_by
     record.chart = base_record.chart
     record.data = base_record.data
 
