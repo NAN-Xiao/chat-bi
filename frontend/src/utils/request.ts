@@ -238,7 +238,7 @@ class HttpService {
     }
     if (assistantStore.getToken) {
       heads['X-SQLBOT-ASSISTANT-TOKEN'] = `Assistant ${assistantStore.getToken}`
-      if (heads['X-SQLBOT-TOKEN']) heads.delete('X-SQLBOT-TOKEN')
+      if (heads['X-SQLBOT-TOKEN']) delete heads['X-SQLBOT-TOKEN']
     }
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore

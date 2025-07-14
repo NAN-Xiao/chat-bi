@@ -96,7 +96,10 @@ const validator = ref({
 const loading = ref(true)
 onBeforeMount(async () => {
   const assistantId = route.params.id
-  validator.value = await assistantApi.validate(assistantId)
+  const now = Date.now()
+  assistantStore.setFlag(now)
+  const id = `${assistantId}-${assistantStore.getFlag}`
+  validator.value = await assistantApi.validate(id)
   assistantStore.setToken(validator.value.token)
   assistantStore.setAssistant(true)
   loading.value = false

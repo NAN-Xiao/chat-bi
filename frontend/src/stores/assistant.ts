@@ -1,10 +1,14 @@
 import { defineStore } from 'pinia'
 import { store } from './index'
 import { chatApi, ChatInfo } from '@/api/chat'
+import { useCache } from '@/utils/useCache'
 
+const { wsCache } = useCache()
+const flagKey = 'sqlbit-assistant-flag'
 interface AssistantState {
   token: string
   assistant: boolean
+  flag: number
 }
 
 export const AssistantStore = defineStore('assistant', {
@@ -12,6 +16,7 @@ export const AssistantStore = defineStore('assistant', {
     return {
       token: '',
       assistant: false,
+      flag: 0,
     }
   },
   getters: {
@@ -21,6 +26,9 @@ export const AssistantStore = defineStore('assistant', {
     getAssistant(): boolean {
       return this.assistant
     },
+    getFlag(): number {
+      return this.flag
+    },
   },
   actions: {
     setToken(token: string) {
@@ -28,6 +36,14 @@ export const AssistantStore = defineStore('assistant', {
     },
     setAssistant(assistant: boolean) {
       this.assistant = assistant
+    },
+    setFlag(flag: number) {
+      if (wsCache.get(flagKey)) {
+        this.flag = wsCache.get(flagKey)
+      } else {
+        this.flag = flag
+        wsCache.set(flagKey, flag)
+      }
     },
     async setChat() {
       if (!this.assistant) {
@@ -38,6 +54,7 @@ export const AssistantStore = defineStore('assistant', {
       return chat
     },
     clear() {
+      wsCache.delete(flagKey)
       this.$reset()
     },
   },

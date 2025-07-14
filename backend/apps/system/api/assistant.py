@@ -14,13 +14,14 @@ from common.core.config import settings
 router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
 
 @router.get("/validator/{id}", response_model=AssistantValidator) 
-async def info(session: SessionDep, id: int):
-    db_model = get_assistant_info(session, id)
+async def info(session: SessionDep, id: str):
+    as_id, flag = id.split('-')
+    db_model = get_assistant_info(session, as_id)
     if not db_model:
         return AssistantValidator()
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     assistantDict = {
-        "id": 1, "account": 'admin', "oid": 1, "assistant_id": id
+        "id": flag, "account": 'sqlbot-inner-assistant', "oid": 1, "assistant_id": id
     }
     access_token = create_access_token(
         assistantDict, expires_delta=access_token_expires

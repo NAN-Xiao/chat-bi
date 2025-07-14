@@ -4,6 +4,7 @@ from typing import List
 import orjson
 from sqlalchemy import and_
 from sqlalchemy.orm import load_only
+from sqlmodel import select
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion
 from apps.datasource.models.datasource import CoreDatasource
@@ -12,8 +13,7 @@ from common.utils.utils import extract_nested_json
 
 
 def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
-    chart_list = session.query(Chat).filter(Chat.create_by == current_user.id).order_by(
-        Chat.create_time.desc()).all()
+    chart_list = session.exec(select(Chat).where(Chat.create_by == current_user.id).order_by(Chat.create_time.desc())).all()
     return chart_list
 
 

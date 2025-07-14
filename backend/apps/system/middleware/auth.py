@@ -6,7 +6,7 @@ import jwt
 from sqlmodel import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 from common.core.db import engine 
-from apps.system.crud.assistant import get_assistant_info
+from apps.system.crud.assistant import get_assistant_info, get_assistant_user
 from apps.system.crud.user import get_user_info
 from apps.system.schemas.system_schema import UserInfoDTO
 from common.core import security
@@ -80,8 +80,9 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return False, f"Miss assistant payload error!"
         try: 
             with Session(engine) as session:
-                session_user = await get_user_info(session = session, user_id = token_data.id)
-                session_user = UserInfoDTO.model_validate(session_user)
+                """ session_user = await get_user_info(session = session, user_id = token_data.id)
+                session_user = UserInfoDTO.model_validate(session_user) """
+                session_user = get_assistant_user(id = token_data.id)
                 assistant_info = get_assistant_info(session, payload['assistant_id'])
                 return True, session_user, assistant_info
         except Exception as e:
