@@ -833,6 +833,7 @@ defineExpose({
 
   .chat-record-list {
     padding: 0 0 20px 0;
+    background: rgba(224, 224, 226, 0.29);
   }
 
   .chat-footer {

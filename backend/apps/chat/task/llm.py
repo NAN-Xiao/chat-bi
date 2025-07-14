@@ -1,7 +1,7 @@
 import logging
 import traceback
 import warnings
-from typing import Any, List, Union, Dict
+from typing import Any, List, Optional, Union, Dict
 
 import numpy as np
 import orjson
@@ -23,8 +23,9 @@ from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
+from apps.system.crud.assistant import get_assistant_ds
 from common.core.config import settings
-from common.core.deps import SessionDep, CurrentUser
+from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
 from common.utils.utils import extract_nested_json
 
 warnings.filterwarnings("ignore")
@@ -42,13 +43,14 @@ class LLMService:
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
     history_records: List[ChatRecord] = []
     session: SessionDep
-    _current_user: CurrentUser
+    current_user: CurrentUser
+    current_assistant: Optional[CurrentAssistant] = None
 
-    def __init__(self, session: SessionDep, current_user: CurrentUser, chat_question: ChatQuestion):
+    def __init__(self, session: SessionDep, current_user: CurrentUser, chat_question: ChatQuestion, current_assistant: Optional[CurrentAssistant] = None):
 
         self.session = session
         self.current_user = current_user
-
+        self.current_assistant = current_assistant
         #chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
         chat_id = chat_question.chat_id
         chat: Chat = self.session.get(Chat, chat_id)
@@ -332,8 +334,11 @@ class LLMService:
     def select_datasource(self):
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemMessage(self.chat_question.datasource_sys_question()))
-        _ds_list = self.session.exec(select(CoreDatasource).options(
-            load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all()
+        if self.current_assistant:
+            _ds_list = get_assistant_ds(session = self.session, assistant = self.current_assistant)
+        else:
+            _ds_list = self.session.exec(select(CoreDatasource).options(
+                load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all()
         _ds_list_dict = []
         for _ds in _ds_list:
             _ds_list_dict.append({'id': _ds[0].id, 'name': _ds[0].name, 'description': _ds[0].description})

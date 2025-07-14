@@ -11,7 +11,9 @@ defineProps<{
     <div class="chat-block">
       <slot>
         <div class="chat-block-content">
-          <div v-dompurify-html="msg?.content"></div>
+          <!-- <div v-dompurify-html="msg?.content"></div> -->
+          <div v-if="msg?.role === 'user'" v-html="msg.content"></div>
+          <div v-else v-dompurify-html="msg?.content"></div>
         </div>
       </slot>
     </div>
