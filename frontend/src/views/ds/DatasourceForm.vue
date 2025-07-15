@@ -551,14 +551,14 @@ defineExpose({
     </div>
     <div class="draw-foot">
       <el-button @click="close">{{ t('common.cancel') }}</el-button>
-      <el-button v-show="!isCreate && !isEditTable && form.type !== 'excel'" @click="check">
-        {{ t('ds.test_connection') }}
+      <el-button v-show="form.type !== 'excel'" @click="check">
+        {{ t('ds.check') }}
+      </el-button>
+      <el-button v-show="activeStep !== 0 && isCreate" secondary @click="preview">
+        {{ t('ds.previous') }}
       </el-button>
       <el-button v-show="activeStep === 1 && isCreate" type="primary" @click="next(dsFormRef)">
         {{ t('common.next') }}
-      </el-button>
-      <el-button v-show="activeStep === 2 && isCreate" @click="preview">
-        {{ t('ds.previous') }}
       </el-button>
       <el-button
         v-show="activeStep === 2 || !isCreate"

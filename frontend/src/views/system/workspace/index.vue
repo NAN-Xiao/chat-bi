@@ -276,6 +276,7 @@ const handleCurrentChange = (val: number) => {
           :key="ele.name"
           class="model"
           :class="currentTable.name === ele.name && 'isActive'"
+          :title="ele.name"
           @click="clickTable(ele)"
         >
           <el-icon size="16">
@@ -609,6 +610,10 @@ const handleCurrentChange = (val: number) => {
           font-weight: 500;
           font-size: 14px;
           line-height: 22px;
+          max-width: 80%;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         &:hover {
           background: #1f23291a;

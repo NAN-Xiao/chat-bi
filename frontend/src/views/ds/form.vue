@@ -135,7 +135,7 @@
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="close">{{ t('common.cancel') }}</el-button>
       <el-button v-show="!isCreate && !isEditTable && form.type !== 'excel'" @click="check">
-        {{ t('ds.test_connection') }}
+        {{ t('ds.check') }}
       </el-button>
       <el-button v-show="active === 0 && isCreate" type="primary" @click="next(dsFormRef)">
         {{ t('common.next') }}

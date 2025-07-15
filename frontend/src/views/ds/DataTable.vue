@@ -206,6 +206,7 @@ const changeStatus = (row: any) => {
             :key="ele.table_name"
             class="model"
             :class="currentTable.table_name === ele.table_name && 'isActive'"
+            :title="ele.table_name"
             @click="clickTable(ele)"
           >
             <el-icon size="16">
@@ -372,7 +373,7 @@ const changeStatus = (row: any) => {
         justify-content: space-between;
         padding: 8px;
 
-        .ed-icon:hover {
+        .ed-icon {
           cursor: pointer;
           color: var(--ed-color-primary);
         }
@@ -392,11 +393,16 @@ const changeStatus = (row: any) => {
           padding-left: 8px;
           border-radius: 4px;
           cursor: pointer;
+
           .name {
             margin-left: 8px;
             font-weight: 500;
             font-size: 14px;
             line-height: 22px;
+            max-width: 80%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
           &:hover {
             background: #1f23291a;

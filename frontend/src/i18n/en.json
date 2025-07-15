@@ -65,6 +65,7 @@
     "actions": "Actions",
     "pieces_in_total": "Showing {ms} records out of {msg}",
     "test_connection": "Test Connection",
+    "check": "check",
     "connection_success": "Connection Successful",
     "connection_failed": "Connection Failed, Please Check Configuration",
     "Search Datasource": "Search Datasource",

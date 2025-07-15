@@ -65,6 +65,7 @@
     "pieces_in_total": "显示 {ms} 条数据，共 {msg} 条",
     "actions": "操作",
     "test_connection": "测试连接",
+    "check": "校验",
     "connection_success": "连接成功",
     "connection_failed": "连接失败，请检查配置",
     "Search Datasource": "搜索数据源",
