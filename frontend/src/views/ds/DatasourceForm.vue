@@ -16,17 +16,19 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 const props = withDefaults(
   defineProps<{
     activeName: string
+    activeType: string
     activeStep: number
   }>(),
   {
     activeName: '',
+    activeType: '',
     activeStep: 0,
   }
 )
 
 const { wsCache } = useCache()
 const dsFormRef = ref<FormInstance>()
-const emit = defineEmits(['refresh', 'submit', 'changeActiveStep'])
+const emit = defineEmits(['refresh', 'changeActiveStep'])
 const isCreate = ref(true)
 const isEditTable = ref(false)
 const checkList = ref<any>([])
@@ -58,7 +60,7 @@ const dialogVisible = ref<boolean>(false)
 const form = ref<any>({
   name: '',
   description: '',
-  type: 'mysql',
+  type: props.activeType,
   configuration: '',
   driver: '',
   host: '',
@@ -326,14 +328,6 @@ onMounted(() => {
   }, 100)
 })
 
-const submitModle = () => {
-  dsFormRef.value!.validate((res: any) => {
-    if (res) {
-      emit('submit')
-    }
-  })
-}
-
 const keywords = ref('')
 const tableListWithSearch = computed(() => {
   if (!keywords.value) return tableList.value
@@ -349,6 +343,13 @@ watch(keywords, () => {
   checkAll.value = checkedCount === tableListWithSearch.value.length
   isIndeterminate.value = checkedCount > 0 && checkedCount < tableListWithSearch.value.length
 })
+
+watch(
+  () => props.activeType,
+  (val) => {
+    form.value.type = val
+  }
+)
 
 const checkAll = ref(false)
 const isIndeterminate = ref(false)
@@ -386,7 +387,6 @@ const tableListSave = () => {
 
 defineExpose({
   initForm,
-  submitModle,
   tableListSave,
 })
 </script>

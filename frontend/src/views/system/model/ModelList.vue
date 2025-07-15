@@ -67,9 +67,8 @@ const handleModelClick = (item: any) => {
   .list-content {
     margin-top: 16px;
     display: flex;
-    justify-content: space-between;
     height: calc(100% - 40px);
-    gap: 16px;
+    flex-wrap: wrap;
     .model:nth-child(odd) {
       margin-left: 0;
     }
@@ -81,10 +80,9 @@ const handleModelClick = (item: any) => {
       align-items: center;
       padding-left: 16px;
       margin-bottom: 16px;
-      margin-left: 16px;
-      flex-wrap: wrap;
       border: 1px solid #dee0e3;
-      border-radius: 4px;
+      border-radius: 12px;
+      margin-left: 16px;
       cursor: pointer;
       &:hover {
         box-shadow: 0px 6px 24px 0px #1f232914;

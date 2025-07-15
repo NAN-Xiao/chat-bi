@@ -14,7 +14,7 @@ import DatasourceListSide from './DatasourceListSide.vue'
 import DatasourceForm from './DatasourceForm.vue'
 import { datasourceApi } from '@/api/datasource'
 import Card from './Card.vue'
-import { dsTypeWithImg } from './js/ds-type'
+import { dsTypeWithImgSort } from './js/ds-type'
 import { useI18n } from 'vue-i18n'
 
 interface Datasource {
@@ -34,20 +34,24 @@ const datasourceConfigvVisible = ref(false)
 const editDatasource = ref(false)
 const activeStep = ref(0)
 const activeName = ref('')
+const activeType = ref('')
 const datasourceFormRef = ref()
 
 const datasourceList = shallowRef([] as Datasource[])
-const defaultDatasourceList = shallowRef(dsTypeWithImg as (Datasource & { img: string })[])
+const defaultDatasourceList = shallowRef(dsTypeWithImgSort as (Datasource & { img: string })[])
 
 const currentDefaultDatasource = ref('')
 const datasourceListWithSearch = computed(() => {
-  if (!keywords.value) return datasourceList.value
-  return datasourceList.value.filter((ele) =>
-    ele.name.toLowerCase().includes(keywords.value.toLowerCase())
+  if (!keywords.value && !currentDatasourceType.value) return datasourceList.value
+  return datasourceList.value.filter(
+    (ele) =>
+      ele.name.toLowerCase().includes(keywords.value.toLowerCase()) &&
+      (ele.type === currentDatasourceType.value || !currentDatasourceType.value)
   )
 })
 const beforeClose = () => {
   datasourceConfigvVisible.value = false
+  activeStep.value = 0
 }
 const defaultDatasourceListWithSearch = computed(() => {
   if (!defaultDatasourceKeywords.value) return defaultDatasourceList.value
@@ -56,8 +60,16 @@ const defaultDatasourceListWithSearch = computed(() => {
   )
 })
 
+const currentDatasourceType = ref('')
+
 const handleDefaultDatasourceChange = (item: any) => {
-  currentDefaultDatasource.value = item.name
+  if (currentDatasourceType.value === item.type) {
+    currentDefaultDatasource.value = ''
+    currentDatasourceType.value = ''
+  } else {
+    currentDefaultDatasource.value = item.name
+    currentDatasourceType.value = item.type
+  }
 }
 
 const formatKeywords = (item: string) => {
@@ -92,6 +104,14 @@ const handleAddDatasource = () => {
   datasourceConfigvVisible.value = true
 }
 
+const refresh = () => {
+  activeName.value = ''
+  activeStep.value = 0
+  activeType.value = ''
+  datasourceConfigvVisible.value = false
+  search()
+}
+
 const deleteHandler = (item: any) => {
   ElMessageBox.confirm(t('datasource.data_source', { msg: item.name }), {
     confirmButtonType: 'danger',
@@ -124,11 +144,12 @@ const deleteHandler = (item: any) => {
 const clickDatasource = (ele: any) => {
   activeStep.value = 1
   activeName.value = ele.name
+  activeType.value = ele.type
 }
 
 const clickDatasourceSide = (ele: any) => {
   activeName.value = ele.name
-  activeStep.value = 1
+  activeType.value = ele.type
 }
 
 const search = () => {
@@ -137,28 +158,6 @@ const search = () => {
   })
 }
 search()
-
-const submit = (item: any) => {
-  if (!item.id) {
-    datasourceApi.add(item).then(() => {
-      beforeClose()
-      search()
-      ElMessage({
-        type: 'success',
-        message: 'Add completed',
-      })
-    })
-    return
-  }
-  datasourceApi.edit(item).then(() => {
-    beforeClose()
-    search()
-    ElMessage({
-      type: 'success',
-      message: 'Edit completed',
-    })
-  })
-}
 
 const currentDataTable = ref()
 const dataTableDetail = (ele: any) => {
@@ -187,7 +186,7 @@ const dataTableDetail = (ele: any) => {
         <el-popover popper-class="system-default_datasource" placement="bottom">
           <template #reference>
             <el-button secondary>
-              {{ $t('datasource.all_types') }}
+              {{ currentDefaultDatasource || $t('datasource.all_types') }}
               <el-icon style="margin-left: 8px">
                 <arrow_down></arrow_down>
               </el-icon> </el-button
@@ -298,7 +297,8 @@ const dataTableDetail = (ele: any) => {
         ref="datasourceFormRef"
         :active-step="activeStep"
         :active-name="activeName"
-        @submit="submit"
+        :active-type="activeType"
+        @refresh="refresh"
         @change-active-step="(val: number) => (activeStep = val)"
       ></DatasourceForm>
     </el-drawer>
@@ -324,6 +324,8 @@ const dataTableDetail = (ele: any) => {
   .card-content {
     display: flex;
     flex-wrap: wrap;
+    max-height: calc(100% - 40px);
+    overflow-y: auto;
   }
 }
 </style>
