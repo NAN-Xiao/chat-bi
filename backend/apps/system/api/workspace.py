@@ -1,9 +1,9 @@
 from typing import Optional
 from fastapi import APIRouter, Query
-from sqlmodel import or_, select    
+from sqlmodel import exists, or_, select    
 from apps.system.models.system_model import UserWsModel, WorkspaceBase, WorkspaceEditor, WorkspaceModel
 from apps.system.models.user import UserModel
-from apps.system.schemas.system_schema import UserWsBase, UserWsDTO, WorkspaceUser
+from apps.system.schemas.system_schema import UserWsBase, UserWsDTO, UserWsOption, WorkspaceUser
 from common.core.deps import CurrentUser, SessionDep, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
@@ -11,6 +11,37 @@ from common.utils.time import get_timestamp
 
 router = APIRouter(tags=["system/workspace"], prefix="/system/workspace")
 
+@router.get("/uws/option/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[UserWsOption])
+async def option_pager(
+    session: SessionDep,
+    current_user: CurrentUser,
+    pageNum: int,
+    pageSize: int,
+    oid: int = Query(description="空间ID"),
+    keyword: Optional[str] = Query(None, description="搜索关键字(可选)"),
+):
+    if not current_user.isAdmin:
+        raise RuntimeError('only for admin')
+    if not oid:
+        raise RuntimeError('oid miss error')
+    pagination = PaginationParams(page=pageNum, size=pageSize)
+    paginator = Paginator(session)
+    stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
+        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid)
+    ).order_by(UserModel.create_time)
+    
+    if keyword:
+        keyword_pattern = f"%{keyword}%"
+        stmt = stmt.where(
+            or_(
+                UserModel.account.ilike(keyword_pattern),
+                UserModel.name.ilike(keyword_pattern),
+            )
+        )
+    return await paginator.get_paginated_response(
+        stmt=stmt,
+        pagination=pagination,
+    )
 
 @router.get("/uws/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[WorkspaceUser])
 async def pager(

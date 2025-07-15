@@ -94,3 +94,6 @@ class WorkspaceUser(UserEditor):
     
 class UserWs(BaseCreatorDTO):
     name: str
+    
+class UserWsOption(UserWs):
+    account: str
