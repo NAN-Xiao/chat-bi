@@ -34,7 +34,11 @@ const tableList = ref<any>([])
 const excelUploadSuccess = ref(false)
 const tableListLoading = ref(false)
 const token = wsCache.get('user.token')
-const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}` })
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-expect-error
+// eslint-disable-next-line no-undef
+const request_key = LicenseGenerator.generate()
+const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}`, 'X-SQLBOT-KEY': request_key })
 const dialogTitle = ref('')
 const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
 const saveLoading = ref<boolean>(false)

@@ -497,7 +497,7 @@ class LLMService:
             filters.append({"table": table.table_name, "filter": wheres})
 
         filter = json.dumps(filters, ensure_ascii=False)
-        # filter = f"""[{{"table":"{tables[0]}","filter":"省份 = '广东省' or 销售额（万元） > 10000"}}]"""  # todo get filters
+
         self.chat_question.sql = sql
         self.chat_question.filter = filter
         msg: List[Union[BaseMessage, dict[str, Any]]] = []
@@ -746,7 +746,7 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
         # todo row permission
         sql_json_str = extract_nested_json(full_sql_text)
         data = orjson.loads(sql_json_str)
-        sql_result = llm_service.generate_filter(data['sql'], data['tables'])
+        sql_result = llm_service.generate_filter(data['sql'], data['tables']) # maybe no sql and tables
         print(sql_result)
         sql = llm_service.check_save_sql(res=sql_result)
         # sql = llm_service.check_save_sql(res=full_sql_text)
