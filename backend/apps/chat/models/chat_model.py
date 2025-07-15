@@ -11,6 +11,7 @@ from apps.template.generate_guess_question.generator import get_guess_question_t
 from apps.template.generate_predict.generator import get_predict_template
 from apps.template.generate_sql.generator import get_sql_template
 from apps.template.select_datasource.generator import get_datasource_template
+from apps.template.filter.generator import get_permissions_template
 
 
 class Chat(SQLModel, table=True):
@@ -98,6 +99,7 @@ class AiModelQuestion(BaseModel):
     fields: str = ""
     data: str = ""
     lang: str = "zh-CN"
+    filter: str = []
 
     def sql_sys_question(self):
         return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question)
@@ -136,6 +138,12 @@ class AiModelQuestion(BaseModel):
     def guess_user_question(self, old_questions: str = "[]"):
         return get_guess_question_template()['user'].format(question=self.question, schema=self.db_schema,
                                                             old_questions=old_questions, lang=self.lang)
+
+    def filter_sys_question(self):
+        return get_permissions_template()['system']
+
+    def filter_user_question(self):
+        return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter, lang=self.lang)
 
 
 class ChatQuestion(AiModelQuestion):

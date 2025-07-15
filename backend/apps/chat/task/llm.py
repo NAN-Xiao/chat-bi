@@ -1,3 +1,4 @@
+import json
 import logging
 import traceback
 import warnings
@@ -10,8 +11,13 @@ import requests
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
+from sqlalchemy import and_, cast
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import load_only
+from sqlbot_xpack.permissions.api.permission import transRecord2DTO
+from sqlbot_xpack.permissions.models.ds_permission import DsPermission, PermissionDTO
+from sqlbot_xpack.permissions.models.ds_rules import DsRules
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
 from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer, save_sql, \
@@ -21,7 +27,8 @@ from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_
     get_old_questions, save_analysis_predict_record, list_base_records, rename_chat
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat
 from apps.datasource.crud.datasource import get_table_schema
-from apps.datasource.models.datasource import CoreDatasource
+from apps.datasource.crud.row_permission import transFilterTree
+from apps.datasource.models.datasource import CoreDatasource, CoreTable
 from apps.db.db import exec_sql
 from apps.system.crud.assistant import get_assistant_ds
 from common.core.config import settings
@@ -77,7 +84,7 @@ class LLMService:
 
         # get schema
         if ds:
-            chat_question.db_schema = get_table_schema(session=self.session, ds=ds)
+            chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds)
 
         chat_question.lang = current_user.language
 
@@ -467,6 +474,78 @@ class LLMService:
                                                            [{'type': msg.type, 'content': msg.content} for msg in
                                                             self.sql_message]).decode())
 
+    def generate_filter(self, sql: str, tables: List):
+        table_list = self.session.query(CoreTable).filter(
+            and_(CoreTable.ds_id == self.ds.id, CoreTable.table_name.in_(tables))
+        ).all()
+
+        filters = []
+        for table in table_list:
+            row_permissions = self.session.query(DsPermission).filter(
+                and_(DsPermission.table_id == table.id, DsPermission.type == 'row')).all()
+            res: List[PermissionDTO] = []
+            if row_permissions is not None:
+                for permission in row_permissions:
+                    # check permission and user in same rules
+                    obj = self.session.query(DsRules).filter(
+                        and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
+                             DsRules.user_list.op('@>')(cast([self.current_user.id], JSONB)))
+                    ).first()
+                    if obj is not None:
+                        res.append(transRecord2DTO(self.session, permission))
+            wheres = transFilterTree(self.session, res, self.ds)
+            filters.append({"table": table.table_name, "filter": wheres})
+
+        filter = json.dumps(filters, ensure_ascii=False)
+        # filter = f"""[{{"table":"{tables[0]}","filter":"省份 = '广东省' or 销售额（万元） > 10000"}}]"""  # todo get filters
+        self.chat_question.sql = sql
+        self.chat_question.filter = filter
+        msg: List[Union[BaseMessage, dict[str, Any]]] = []
+        msg.append(SystemMessage(content=self.chat_question.filter_sys_question()))
+        msg.append(HumanMessage(content=self.chat_question.filter_user_question()))
+
+        history_msg = []
+        # if self.record.full_analysis_message and self.record.full_analysis_message.strip() != '':
+        #     history_msg = orjson.loads(self.record.full_analysis_message)
+
+        # self.record = save_full_analysis_message_and_answer(session=self.session, record_id=self.record.id, answer='',
+        #                                                     full_message=orjson.dumps(history_msg +
+        #                                                                               [{'type': msg.type,
+        #                                                                                 'content': msg.content} for msg
+        #                                                                                in
+        #                                                                                msg]).decode())
+        full_thinking_text = ''
+        full_filter_text = ''
+        res = self.llm.stream(msg)
+        token_usage = {}
+        for chunk in res:
+            print(chunk)
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            # else:
+            #     reasoning_content_chunk = chunk.get('reasoning_content')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+
+            full_filter_text += chunk.content
+            # yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+            get_token_usage(chunk, token_usage)
+
+        msg.append(AIMessage(full_filter_text))
+        # self.record = save_full_analysis_message_and_answer(session=self.session, record_id=self.record.id,
+        #                                                     token_usage=token_usage,
+        #                                                     answer=orjson.dumps({'content': full_analysis_text,
+        #                                                                          'reasoning_content': full_thinking_text}).decode(),
+        #                                                     full_message=orjson.dumps(history_msg +
+        #                                                                               [{'type': msg.type,
+        #                                                                                 'content': msg.content} for msg
+        #                                                                                in
+        #                                                                                analysis_msg]).decode())
+        print(full_filter_text)
+        return full_filter_text
+
     def generate_chart(self):
         # append current question
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question()))
@@ -663,7 +742,15 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
 
         # filter sql
         print(full_sql_text)
-        sql = llm_service.check_save_sql(res=full_sql_text)
+
+        # todo row permission
+        sql_json_str = extract_nested_json(full_sql_text)
+        data = orjson.loads(sql_json_str)
+        sql_result = llm_service.generate_filter(data['sql'], data['tables'])
+        print(sql_result)
+        sql = llm_service.check_save_sql(res=sql_result)
+        # sql = llm_service.check_save_sql(res=full_sql_text)
+
         print(sql)
         if in_chat:
             yield orjson.dumps({'content': sql, 'type': 'sql'}).decode() + '\n\n'

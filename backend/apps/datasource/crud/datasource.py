@@ -2,7 +2,10 @@ import datetime
 import json
 from typing import List
 
-from sqlalchemy import and_, text
+from sqlalchemy import and_, text, cast
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlbot_xpack.permissions.models.ds_permission import DsPermission
+from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import select
 
 from apps.datasource.utils.utils import aes_decrypt
@@ -12,6 +15,7 @@ from apps.db.engine import get_engine_conn
 from apps.db.type import db_type_relation
 from common.core.deps import SessionDep, CurrentUser
 from common.utils.utils import deepcopy_ignore_extra
+from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
 from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj, \
@@ -71,12 +75,14 @@ def create_ds(session: SessionDep, user: CurrentUser, create_ds: CreateDatasourc
 
     # save tables and fields
     sync_table(session, ds, create_ds.tables)
+    updateNum(session, ds)
     return ds
 
 
 def chooseTables(session: SessionDep, id: int, tables: List[CoreTable]):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     sync_table(session, ds, tables)
+    updateNum(session, ds)
 
 
 def update_ds(session: SessionDep, ds: CoreDatasource):
@@ -239,20 +245,49 @@ def preview(session: SessionDep, id: int, data: TableObj):
     return exec_sql(ds, sql)
 
 
-def get_table_obj_by_ds(session: SessionDep, ds: CoreDatasource) -> List[TableAndFields]:
+def updateNum(session: SessionDep, ds: CoreDatasource):
+    all_tables = get_tables(ds)
+    selected_tables = get_tables_by_ds_id(session, ds.id)
+    num = f'{len(selected_tables)}/{len(all_tables)}'
+
+    record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()
+    update_data = ds.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(record, field, value)
+    record.num = num
+    session.add(record)
+    session.commit()
+
+
+def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> List[TableAndFields]:
     _list: List = []
     tables = session.query(CoreTable).filter(CoreTable.ds_id == ds.id).all()
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     schema = conf.dbSchema if conf.dbSchema is not None and conf.dbSchema != "" else conf.database
     for table in tables:
         fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
+
+        # do column permissions, filter fields
+        column_permissions = session.query(DsPermission).filter(
+            and_(DsPermission.table_id == table.id, DsPermission.type == 'column')).all()
+        if column_permissions is not None:
+            for permission in column_permissions:
+                # check permission and user in same rules
+                obj = session.query(DsRules).filter(
+                    and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
+                         DsRules.user_list.op('@>')(cast([current_user.id], JSONB)))
+                ).first()
+                if obj is not None:
+                    permission_list = json.loads(permission.permissions)
+                    fields = filter_list(fields, permission_list)
+
         _list.append(TableAndFields(schema=schema, table=table, fields=fields))
     return _list
 
 
-def get_table_schema(session: SessionDep, ds: CoreDatasource) -> str:
+def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> str:
     schema_str = ""
-    table_objs = get_table_obj_by_ds(session=session, ds=ds)
+    table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
     if len(table_objs) == 0:
         return schema_str
     db_name = table_objs[0].schema
@@ -279,3 +314,12 @@ def get_table_schema(session: SessionDep, ds: CoreDatasource) -> str:
         schema_str += ",\n".join(field_list)
         schema_str += '\n]\n'
     return schema_str
+
+
+def filter_list(list_a, list_b):
+    id_to_invalid = {}
+    for b in list_b:
+        if not b['enable']:
+            id_to_invalid[b['field_id']] = True
+
+    return [a for a in list_a if not id_to_invalid.get(a.id, False)]
