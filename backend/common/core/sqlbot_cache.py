@@ -168,9 +168,9 @@ def clear_cache(
             )
             
             logger.debug(f"Clearing cache for key: {cache_key}")
-            
             # 2. 清除缓存
-            await FastAPICache.clear(key=cache_key)
+            if await FastAPICache.get_backend().get(cache_key):
+                await FastAPICache.clear(key=cache_key)
             
             # 3. 执行原函数
             return await func(*args, **kwargs)
