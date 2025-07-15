@@ -8,6 +8,7 @@
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('user.name_account_email')"
           @keyup.enter="handleSearch"
+          @blur="handleSearch"
         >
           <template #prefix>
             <el-icon>
@@ -28,7 +29,7 @@
           </template>
           {{ $t('user.batch_import') }}
         </el-button>
-        <el-button type="primary">
+        <el-button type="primary" @click="editHandler(null)">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -63,9 +64,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="email" :label="$t('user.email')" width="280" />
-        <el-table-column prop="phone" :label="$t('user.phone_number')" width="280" />
-        <el-table-column prop="user_source" :label="$t('user.user_source')" width="280" />
-        <el-table-column prop="workspace" :label="$t('user.workspace')" width="280" />
+        <!-- <el-table-column prop="phone" :label="$t('user.phone_number')" width="280" /> -->
+        <!-- <el-table-column prop="user_source" :label="$t('user.user_source')" width="280" /> -->
+        <el-table-column prop="space_name" :label="$t('user.workspace')" width="280" />
 
         <el-table-column prop="create_time" width="180" sortable :label="$t('user.creation_time')">
           <template #default="scope">
@@ -75,7 +76,13 @@
         <el-table-column fixed="right" width="150" :label="$t('ds.actions')">
           <template #default="scope">
             <div class="table-operate">
-              <el-switch v-model="scope.row.checked" size="small" />
+              <el-switch
+                v-model="scope.row.status"
+                :active-value="1"
+                :inactive-value="0"
+                size="small"
+                @change="statusHandler(scope.row)"
+              />
               <div class="line"></div>
               <el-tooltip
                 :offset="14"
@@ -83,7 +90,7 @@
                 :content="$t('datasource.edit')"
                 placement="top"
               >
-                <el-icon class="action-btn" size="16" @click="editHandler(scope.row.id)">
+                <el-icon class="action-btn" size="16" @click="editHandler(scope.row)">
                   <IconOpeEdit></IconOpeEdit>
                 </el-icon>
               </el-tooltip>
@@ -91,7 +98,7 @@
               <el-tooltip
                 :offset="14"
                 effect="dark"
-                :content="$t('datasource.edit')"
+                :content="$t('user.change_password')"
                 placement="top"
               >
                 <el-icon class="action-btn" size="16" @click="handleEditPassword(scope.row.id)">
@@ -186,7 +193,7 @@
           autocomplete="off"
         />
       </el-form-item>
-      <el-form-item :label="$t('user.phone_number')">
+      <!-- <el-form-item :label="$t('user.phone_number')">
         <el-input
           v-model="state.form.phoneNumber"
           :placeholder="
@@ -194,20 +201,18 @@
           "
           autocomplete="off"
         />
-      </el-form-item>
+      </el-form-item> -->
 
       <el-form-item :label="$t('user.workspace')">
         <el-select
-          v-model="state.form.workspace"
+          v-model="state.form.oid"
           :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('user.workspace')"
         >
-          <el-option label="domain1" value="domain1" />
-          <el-option label="domain2" value="domain2" />
-          <el-option label="domain3" value="domain3" />
+          <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id" />
         </el-select>
       </el-form-item>
       <el-form-item :label="$t('user.user_status')">
-        <el-switch v-model="state.form.status" />
+        <el-switch v-model="state.form.status" :active-value="1" :inactive-value="0" />
       </el-form-item>
     </el-form>
     <template #footer>
@@ -282,7 +287,8 @@ import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import ccmUpload from '@/assets/svg/icon_ccm-upload_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
-import { userApi } from '@/api/auth'
+import { userApi } from '@/api/user'
+import { workspaceList } from '@/api/workspace'
 import { formatTimestamp } from '@/utils/date'
 
 const { t } = useI18n()
@@ -294,7 +300,43 @@ const dialogVisiblePassword = ref(false)
 const isIndeterminate = ref(true)
 const drawerMainRef = ref()
 const userImportRef = ref()
-const filterOption = ref<any[]>([])
+const filterOption = ref<any[]>([
+  {
+    type: 'enum',
+    option: [
+      { id: 1, name: t('user.enable') },
+      { id: 0, name: t('user.disable') },
+    ],
+    field: 'status',
+    title: t('user.user_status'),
+    operate: 'in',
+  },
+  {
+    type: 'enum',
+    option: [
+      { id: '0', name: t('user.local_creation') },
+      { id: 1, name: 'LDAP' },
+      { id: 2, name: 'OIDC' },
+      { id: 3, name: 'CAS' },
+      { id: 9, name: 'OAuth2' },
+      { id: 4, name: t('user.feishu') },
+      { id: 5, name: t('user.dingtalk') },
+      { id: 6, name: t('user.wechat_for_business') },
+    ],
+    field: 'origins',
+    title: t('user.user_source'),
+    operate: 'in',
+  },
+  {
+    type: 'select',
+    option: [],
+    field: 'oidist',
+    title: t('user.workspace'),
+    operate: 'in',
+    property: { placeholder: t('common.empty') + t('user.workspace') },
+  },
+])
+const options = ref<any[]>([])
 const state = reactive<any>({
   tableData: [],
   filterTexts: [],
@@ -303,7 +345,7 @@ const state = reactive<any>({
     id: '',
     name: '',
     account: '',
-    workspace: '',
+    oid: '',
     email: '',
     status: '',
     phoneNumber: '',
@@ -417,8 +459,8 @@ const handleToggleRowSelection = (check: boolean = true) => {
   checkAll.value = i === state.tableData.length
   isIndeterminate.value = !(i === 0 || i === state.tableData.length)
 }
-const handleSearch = (e: any) => {
-  console.log('search', e)
+const handleSearch = () => {
+  search()
 }
 const fillFilterText = () => {
   const textArray = state.conditions?.length
@@ -439,62 +481,26 @@ const clearFilter = (params?: number) => {
 const searchCondition = (conditions: any) => {
   state.conditions = conditions
   fillFilterText()
-  console.log(conditions)
+  search()
   drawerMainClose()
 }
 const drawerMainOpen = async () => {
-  filterOption.value = [
-    {
-      type: 'enum',
-      option: [
-        { id: true, name: t('user.enable') },
-        { id: false, name: t('user.disable') },
-      ],
-      field: 'statusList',
-      title: t('user.user_status'),
-      operate: 'in',
-    },
-    {
-      type: 'enum',
-      option: [
-        { id: '0', name: t('user.local_creation') },
-        { id: 1, name: 'LDAP' },
-        { id: 2, name: 'OIDC' },
-        { id: 3, name: 'CAS' },
-        { id: 9, name: 'OAuth2' },
-        { id: 4, name: t('user.feishu') },
-        { id: 5, name: t('user.dingtalk') },
-        { id: 6, name: t('user.wechat_for_business') },
-      ],
-      field: 'originList',
-      title: t('user.user_source'),
-      operate: 'in',
-    },
-    {
-      type: 'select',
-      option: [{ id: '0', name: 'LOCAL' }],
-      field: 'workspaceList',
-      title: t('user.workspace'),
-      operate: 'in',
-      property: { placeholder: t('common.empty') + t('user.workspace') },
-    },
-  ]
-
   drawerMainRef.value.init()
 }
 const drawerMainClose = () => {
   drawerMainRef.value.close()
 }
-const editHandler = (id: any) => {
-  console.log('editHandler', id)
+const editHandler = (row: any) => {
+  if (row) {
+    state.form = { ...row }
+  }
   dialogFormVisible.value = true
-  dialogTitle.value = id ? t('user.edit_user') : t('user.add_users')
+  dialogTitle.value = row?.id ? t('user.edit_user') : t('user.add_users')
+}
 
-  // userApi.query(id).then((res: any) => {
-  //   console.log('term detail', res)
-  //   state.form = res
-  //   dialogFormVisible.value = true
-  // })
+const statusHandler = (row: any) => {
+  state.form = { ...row }
+  editTerm()
 }
 
 const cancelDelete = () => {
@@ -521,18 +527,15 @@ const deleteHandler = (row: any) => {
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
-    callback: (val: string) => {
-      console.log(val)
-    },
   })
     .then(() => {
-      /* userApi.delete(id).then(() => {
+      userApi.delete(row.id).then(() => {
         ElMessage({
           type: 'success',
           message: 'Delete completed',
         })
         search()
-      }) */
+      })
     })
     .catch(() => {
       ElMessage({
@@ -560,15 +563,36 @@ const onFormClose = () => {
   dialogFormVisible.value = false
 }
 
-const search = () => {
-  userApi.pager(state.pageInfo.currentPage, state.pageInfo.pageSize).then((res: any) => {
-    state.tableData = res.items
-    state.pageInfo.total = res.total
+const configParams = () => {
+  let str = ''
+  if (keyword.value) {
+    str += `keyword=${keyword.value}`
+  }
 
-    nextTick(() => {
-      handleToggleRowSelection()
+  state.conditions.forEach((ele: any) => {
+    ele.value.forEach((itx: any) => {
+      str += str ? `&${ele.field}=${itx}` : `${ele.field}=${itx}`
     })
   })
+
+  if (str.length) {
+    str = `?${str}`
+  }
+
+  return str
+}
+
+const search = () => {
+  userApi
+    .pager(configParams(), state.pageInfo.currentPage, state.pageInfo.pageSize)
+    .then((res: any) => {
+      state.tableData = res.items
+      state.pageInfo.total = res.total
+
+      nextTick(() => {
+        handleToggleRowSelection()
+      })
+    })
 }
 const addTerm = () => {
   userApi.add(state.form).then(() => {
@@ -576,18 +600,17 @@ const addTerm = () => {
     search()
     ElMessage({
       type: 'success',
-      message: 'Add completed',
+      message: t('common.save_success'),
     })
   })
 }
 const editTerm = () => {
-  userApi.edit(state.form).then((res: any) => {
-    console.log('edit term', res)
+  userApi.edit(state.form).then(() => {
     dialogFormVisible.value = false
     search()
     ElMessage({
       type: 'success',
-      message: 'Edit completed',
+      message: t('common.save_success'),
     })
   })
 }
@@ -607,6 +630,10 @@ const handleCurrentChange = (val: number) => {
   search()
 }
 onMounted(() => {
+  workspaceList().then((res) => {
+    options.value = res || []
+    filterOption.value[2].option = [...options.value]
+  })
   search()
 })
 </script>

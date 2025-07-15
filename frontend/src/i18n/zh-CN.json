@@ -266,12 +266,13 @@
     "remove": "移除",
     "selected_2_members": "是否移除选中的 {msg} 个成员？",
     "removed_successfully": "移除成功",
-    "workspace:_de_workspace": "是否删除工作空间：{msg}？",
-    "member:_feng_yibudao": "是否移除成员：{msg}？",
+    "workspace_de_workspace": "是否删除工作空间：{msg}？",
+    "member_feng_yibudao": "是否移除成员：{msg}？",
     "select_member": "选择成员",
-    "selected:_2_people": "已选：{msg} 人",
+    "selected_2_people": "已选：{msg} 人",
     "clear": "清空",
-    "historical_dialogue": "暂无历史对话"
+    "historical_dialogue": "暂无历史对话",
+    "rename_a_workspace" : "重命名工作空间"
   },
   "chat": {
     "chart_type": {

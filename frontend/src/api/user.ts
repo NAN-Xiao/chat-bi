@@ -14,3 +14,14 @@ export const userImportApi = {
     request.get(`/user/clearErrorRecord/${key}`)
   },
 }
+
+export const userApi = {
+  pager: (params: any, pageNumber: number, pageSize: number) =>
+    request.get(`/user/pager/${pageNumber}/${pageSize}${params}`),
+  add: (data: any) => request.post('/user', data),
+  edit: (data: any) => request.put('/user', data),
+  clearErrorApi: (key: string) => request.get(`/user/clearErrorRecord/${key}`),
+  delete: (key: string) => request.delete(`/user/${key}`),
+  get: (key: string) => request.get(`/user/${key}`),
+  pwd: (data: any) => request.put('/user/pwd', data),
+}

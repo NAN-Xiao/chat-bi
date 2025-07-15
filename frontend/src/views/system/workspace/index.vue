@@ -1,70 +1,71 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { workspaceList, workspaceUserList } from '@/api/workspace'
-import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import arrow_down from '@/assets/svg/arrow-down.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-// import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import icon_form_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import assigned from '@/assets/svg/icon_assigned_outlined.svg'
-// import rename from '@/assets/svg/icon_rename_outlined.svg'
-// import icon_member from '@/assets/svg/icon_member.svg'
+import AuthorizedWorkspaceDialog from './AuthorizedWorkspaceDialog.vue'
+import rename from '@/assets/svg/icon_rename_outlined.svg'
+import icon_member from '@/assets/svg/icon_member.svg'
 import SuccessFilled from '@/assets/svg/gou_icon.svg'
 import CircleCloseFilled from '@/assets/svg/icon_ban_filled.svg'
 import { useI18n } from 'vue-i18n'
-import ParamsForm from './ParamsForm.vue'
+import delIcon from '@/assets/svg/icon_delete.svg'
+import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
+import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 
-interface Table {
-  name: string
-  host: string
-  port: string
-  username: string
-  password: string
-  database: string
-  extraJdbc: string
-  dbSchema: string
-  filename: string
-  sheets: string
-  mode: string
-  timeout: string
-  configuration: string
-  id: number
-}
-
-const props = withDefaults(
-  defineProps<{
-    info: Table
-  }>(),
-  {
-    info: () => ({
-      name: '-',
-      host: '-',
-      port: '-',
-      username: '-',
-      password: '-',
-      database: '-',
-      extraJdbc: '-',
-      dbSchema: '-',
-      filename: '-',
-      sheets: '-',
-      mode: '-',
-      timeout: '-',
-      configuration: '-',
-      id: 0,
-    }),
-  }
-)
 const { t } = useI18n()
-const paramsFormRef = ref()
+const multipleSelectionAll = ref<any[]>([])
 const tableList = ref([] as any[])
 const keywords = ref('')
+const keywordsMember = ref('')
+const workspaceFormRef = ref()
+const authorizedWorkspaceDialog = ref()
 const tableListWithSearch = computed(() => {
   if (!keywords.value) return tableList.value
   return tableList.value.filter((ele) =>
     ele.name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
-const currentTable = ref<any>({})
+const workspaceForm = reactive({
+  name: '',
+  id: '',
+})
 
+const userTypeList = [
+  {
+    name: t('workspace.administrator'),
+    value: '0',
+  },
+  {
+    name: t('workspace.ordinary_member'),
+    value: '1',
+  },
+]
+
+const handleUserTypeChange = (val: any, row: any) => {
+  row.user_source = val
+}
+
+const rules = {
+  name: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('workspace.workspace_name'),
+      trigger: 'blur',
+    },
+  ],
+}
+const fieldListWithSearch = computed(() => {
+  if (!keywords.value) return fieldList.value
+  return fieldList.value.filter((ele: any) =>
+    ele.name.toLowerCase().includes(keywordsMember.value.toLowerCase())
+  )
+})
+const currentTable = ref<any>({})
 const init = () => {
   workspaceList().then((res) => {
     tableList.value = res
@@ -73,76 +74,174 @@ const init = () => {
 onMounted(() => {
   init()
 })
-const tableComment = ref('')
 const fieldDialog = ref<boolean>(false)
-const tableDialog = ref<boolean>(false)
-const fieldComment = ref('')
-const currentField = ref<any>({})
+const multipleTableRef = ref()
+const isIndeterminate = ref(true)
+const checkAll = ref(false)
 const fieldList = ref<any>([])
-
-const handleSelectTableList = () => {
-  paramsFormRef.value.open(props.info)
-}
+const pageInfo = reactive({
+  currentPage: 1,
+  pageSize: 1,
+  total: 0,
+})
 
 const clickTable = (table: any) => {
   currentTable.value = table
-  workspaceUserList({ oid: table.id }, 1, 10).then((res) => {
-    fieldList.value = res
-    //   datasourceApi.previewData(props.info.id, buildData()).then((res) => {
-    //     previewData.value = res
-    //   })
+  pageInfo.currentPage = 1
+  search()
+}
+const cancelDelete = () => {
+  multipleSelectionAll.value = []
+  checkAll.value = false
+  isIndeterminate.value = false
+}
+const deleteBatchUser = () => {
+  ElMessageBox.confirm(
+    t('workspace.selected_2_members', { msg: multipleSelectionAll.value.length }),
+    {
+      confirmButtonType: 'danger',
+      confirmButtonText: t('dashboard.delete'),
+      cancelButtonText: t('common.cancel'),
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+      callback: (val: string) => {
+        console.log(val)
+      },
+    }
+  )
+}
+const deleteHandler = (row: any) => {
+  ElMessageBox.confirm(t('workspace.member_feng_yibudao', { msg: row.name }), {
+    confirmButtonType: 'danger',
+    confirmButtonText: t('dashboard.delete'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+    callback: (val: string) => {
+      console.log(val)
+    },
   })
+    .then(() => {
+      /* userApi.delete(id).then(() => {
+        ElMessage({
+          type: 'success',
+          message: 'Delete completed',
+        })
+        search()
+      }) */
+    })
+    .catch(() => {
+      ElMessage({
+        type: 'info',
+        message: 'Delete canceled',
+      })
+    })
+}
+const handleSelectionChange = (val: any[]) => {
+  const ids = fieldList.value.map((ele: any) => ele.id)
+  multipleSelectionAll.value = [
+    ...multipleSelectionAll.value.filter((ele) => !ids.includes(ele.id)),
+    ...val,
+  ]
+  isIndeterminate.value = !(val.length === 0 || val.length === fieldList.value.length)
+  checkAll.value = val.length === fieldList.value.length
+}
+const handleCheckAllChange = (val: any) => {
+  isIndeterminate.value = false
+  handleSelectionChange(val ? fieldList.value : [])
+  if (val) {
+    handleToggleRowSelection()
+  } else {
+    multipleTableRef.value.clearSelection()
+  }
 }
 
-const closeTable = () => {
-  tableDialog.value = false
+const handleToggleRowSelection = (check: boolean = true) => {
+  let i = 0
+  const ids = multipleSelectionAll.value.map((ele: any) => ele.id)
+  for (const key in fieldList.value) {
+    if (ids.includes((fieldList.value[key] as any).id)) {
+      i += 1
+      multipleTableRef.value.toggleRowSelection(fieldList.value[key], check)
+    }
+  }
+  checkAll.value = i === fieldList.value.length
+  isIndeterminate.value = !(i === 0 || i === fieldList.value.length)
 }
-const editTable = () => {
-  tableComment.value = currentTable.value.custom_comment
-  tableDialog.value = true
+
+const handleAddMember = () => {
+  authorizedWorkspaceDialog.value.open(1)
 }
-const saveTable = () => {
-  currentTable.value.custom_comment = tableComment.value
-  //   datasourceApi.saveTable(currentTable.value).then(() => {
-  //     closeTable()
-  //     ElMessage({
-  //       message: t('common.save_success'),
-  //       type: 'success',
-  //       showClose: true,
-  //     })
-  //   })
+const search = () => {
+  workspaceUserList({ oid: currentTable.value.id }, pageInfo.currentPage, pageInfo.pageSize).then(
+    (res) => {
+      fieldList.value = res.items
+      fieldList.value = [{ id: 0, user_source: '管理员' }]
+      //   datasourceApi.previewData(props.info.id, buildData()).then((res) => {
+      //     previewData.value = res
+      //   })
+    }
+  )
 }
+
 const closeField = () => {
   fieldDialog.value = false
 }
 
-const refresh = () => {
-  //   datasourceApi.tableList(props.info.id).then((res) => {
-  //     tableList.value = res
-  //     if (!currentTable.value.name) return
-  //     const nameArr = tableList.value.map((ele: any) => ele.name)
-  //     if (!nameArr.includes(currentTable.value.name)) {
-  //       currentTable.value = {}
-  //     }
-  //   })
-}
-
 const saveField = () => {
-  currentField.value.custom_comment = fieldComment.value
-  //   datasourceApi.saveField(currentField.value).then(() => {
-  //     closeField()
-  //     ElMessage({
-  //       message: t('common.save_success'),
-  //       type: 'success',
-  //       showClose: true,
-  //     })
-  //   })
+  workspaceFormRef.value.validate((res: any) => {
+    if (res) {
+      console.log(res)
+    }
+  })
 }
 
-const editField = (row: any) => {
-  currentField.value = row
-  fieldComment.value = currentField.value.custom_comment
+const delWorkspace = (row: any) => {
+  ElMessageBox.confirm(t('workspace.workspace_de_workspace', { msg: row.name }), {
+    confirmButtonType: 'danger',
+    confirmButtonText: t('dashboard.delete'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+    callback: (val: string) => {
+      console.log(val)
+    },
+  })
+    .then(() => {
+      /* userApi.delete(id).then(() => {
+        ElMessage({
+          type: 'success',
+          message: 'Delete completed',
+        })
+        search()
+      }) */
+    })
+    .catch(() => {
+      ElMessage({
+        type: 'info',
+        message: 'Delete canceled',
+      })
+    })
+}
+
+const addWorkspace = (row: any) => {
+  if (row) {
+    workspaceForm.name = row.name
+    workspaceForm.id = row.id
+  } else {
+    workspaceForm.name = ''
+    workspaceForm.id = ''
+  }
   fieldDialog.value = true
+}
+
+const handleSizeChange = (val: number) => {
+  pageInfo.pageSize = val
+  search()
+}
+const handleCurrentChange = (val: number) => {
+  pageInfo.currentPage = val
+  search()
 }
 </script>
 
@@ -153,7 +252,7 @@ const editField = (row: any) => {
         {{ $t('user.workspace') }}
 
         <el-tooltip effect="dark" :content="$t('workspace.add_workspace')" placement="top">
-          <el-icon size="18" @click="handleSelectTableList">
+          <el-icon size="18" @click="addWorkspace">
             <icon_add_outlined></icon_add_outlined>
           </el-icon>
         </el-tooltip>
@@ -183,6 +282,33 @@ const editField = (row: any) => {
             <icon_form_outlined></icon_form_outlined>
           </el-icon>
           <span class="name">{{ ele.name }}</span>
+
+          <el-popover
+            trigger="click"
+            :teleported="false"
+            popper-class="popover-card"
+            placement="bottom"
+          >
+            <template #reference>
+              <el-icon class="more" size="16" style="margin-left: auto" @click.stop>
+                <icon_more_outlined></icon_more_outlined>
+              </el-icon>
+            </template>
+            <div class="content">
+              <div class="item" @click.stop="addWorkspace(ele)">
+                <el-icon size="16">
+                  <rename></rename>
+                </el-icon>
+                {{ $t('datasource.edit') }}
+              </div>
+              <div class="item" @click.stop="delWorkspace(ele)">
+                <el-icon size="16">
+                  <delIcon></delIcon>
+                </el-icon>
+                {{ $t('dashboard.delete') }}
+              </div>
+            </div>
+          </el-popover>
         </div>
         <div v-if="!!keywords && !tableListWithSearch.length" class="no-result">
           {{ $t('workspace.historical_dialogue') }}
@@ -192,22 +318,47 @@ const editField = (row: any) => {
 
     <div v-if="currentTable.name" class="info-table">
       <div class="table-name">
-        <div class="name">{{ currentTable.name }}</div>
-        <div class="notes">
-          {{ $t('about.remark') }}:
-          {{ currentTable.custom_comment || '-' }}
-          <el-icon style="margin-left: 8px; cursor: pointer" size="16" @click="editTable">
-            <edit></edit>
+        <div class="name">
+          {{ currentTable.name }}
+          <span class="line"></span>
+          <el-icon style="margin: 0 4px 0 8px" size="16">
+            <icon_member></icon_member>
           </el-icon>
+          {{ pageInfo.total }}
+        </div>
+        <div class="notes">
+          <el-button type="primary" @click="handleAddMember">
+            <template #icon>
+              <icon_add_outlined></icon_add_outlined>
+            </template>
+            {{ $t('workspace.add_member') }}
+          </el-button>
+          <el-input
+            v-model="keywordsMember"
+            clearable
+            style="width: 232px"
+            :placeholder="$t('workspace.name_username_email')"
+          >
+            <template #prefix>
+              <el-icon>
+                <icon_searchOutline_outlined class="svg-icon" />
+              </el-icon>
+            </template>
+          </el-input>
         </div>
       </div>
       <div class="table-content">
         <div class="preview-or-schema">
-          <el-table :data="fieldList" style="width: 100%">
+          <el-table
+            ref="multipleTableRef"
+            :data="fieldListWithSearch"
+            style="width: 100%"
+            @selection-change="handleSelectionChange"
+          >
             <el-table-column type="selection" width="55" />
-            <el-table-column prop="name" :label="$t('user.name')" width="280" />
-            <el-table-column prop="account" :label="$t('user.account')" width="280" />
-            <el-table-column prop="status" :label="$t('user.user_status')" width="180">
+            <el-table-column prop="name" :label="$t('user.name')" width="160" />
+            <el-table-column prop="account" :label="$t('user.account')" width="160" />
+            <el-table-column prop="status" :label="$t('user.user_status')">
               <template #default="scope">
                 <div
                   class="user-status-container"
@@ -221,71 +372,141 @@ const editField = (row: any) => {
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="email" :label="$t('user.email')" width="280" />
-            <el-table-column prop="phone" :label="$t('user.phone_number')" width="280" />
-            <el-table-column prop="user_source" :label="$t('user.user_source')" width="280" />
-            <el-table-column :label="t('datasource.custom_notes')">
+            <el-table-column prop="email" :label="$t('user.email')" width="204" />
+            <el-table-column
+              class-name="user-source"
+              prop="user_source"
+              :label="$t('user.user_source')"
+              width="120"
+            >
+              <template #default="scope">
+                <el-popover popper-class="system-workspace_user" placement="bottom">
+                  <template #reference>
+                    <div style="display: flex; align-items: center; justify-content: space-between">
+                      <span>{{ scope.row.user_source }}</span>
+                      <el-icon size="16">
+                        <arrow_down></arrow_down>
+                      </el-icon>
+                    </div>
+                  </template>
+                  <div class="popover">
+                    <div class="popover-content">
+                      <div
+                        v-for="ele in userTypeList"
+                        :key="ele.name"
+                        class="popover-item"
+                        :class="ele.name === scope.row.user_source && 'isActive'"
+                        @click="handleUserTypeChange(ele.value, scope.row)"
+                      >
+                        <div class="model-name">{{ ele.name }}</div>
+                        <el-icon size="16" class="done">
+                          <icon_done_outlined></icon_done_outlined>
+                        </el-icon>
+                      </div>
+                    </div>
+                  </div>
+                </el-popover>
+              </template>
+            </el-table-column>
+            <el-table-column fixed="right" width="80" :label="t('ds.actions')">
               <template #default="scope">
                 <div class="field-comment">
-                  <span>{{ scope.row.custom_comment }}</span>
                   <el-tooltip
                     :offset="14"
                     effect="dark"
-                    :content="$t('datasource.edit')"
+                    :content="$t('workspace.remove')"
                     placement="top"
                   >
-                    <el-icon class="action-btn" size="16" @click="editField(scope.row)">
+                    <el-icon class="action-btn" size="16" @click="deleteHandler(scope.row)">
                       <assigned></assigned>
                     </el-icon>
                   </el-tooltip>
                 </div>
               </template>
             </el-table-column>
+            <template #empty>
+              <EmptyBackground
+                v-if="!keywordsMember && !fieldListWithSearch.length"
+                :description="$t('workspace.no_user')"
+                img-type="noneWhite"
+              />
+
+              <EmptyBackground
+                v-if="!!keywordsMember && !fieldListWithSearch.length"
+                :description="$t('datasource.relevant_content_found')"
+                img-type="tree"
+              />
+            </template>
           </el-table>
         </div>
+        <div class="pagination-container">
+          <el-pagination
+            v-model:current-page="pageInfo.currentPage"
+            v-model:page-size="pageInfo.pageSize"
+            :page-sizes="[10, 20, 30]"
+            :background="true"
+            layout="total, sizes, prev, pager, next, jumper"
+            :total="pageInfo.total"
+            @size-change="handleSizeChange"
+            @current-change="handleCurrentChange"
+          />
+        </div>
+      </div>
+      <div v-if="multipleSelectionAll.length" class="bottom-select">
+        <el-checkbox
+          v-model="checkAll"
+          :indeterminate="isIndeterminate"
+          @change="handleCheckAllChange"
+        >
+          {{ $t('datasource.select_all') }}
+        </el-checkbox>
+
+        <button class="danger-button" @click="deleteBatchUser">{{ $t('workspace.remove') }}</button>
+
+        <span class="selected">{{
+          $t('user.selected_2_items', { msg: multipleSelectionAll.length })
+        }}</span>
+
+        <el-button text @click="cancelDelete">
+          {{ $t('common.cancel') }}
+        </el-button>
       </div>
     </div>
   </div>
-  <el-dialog
-    v-model="tableDialog"
-    :title="t('datasource.table_notes')"
-    width="600"
-    :destroy-on-close="true"
-    :close-on-click-modal="false"
-    @closed="closeTable"
-  >
-    <el-input
-      v-model="tableComment"
-      :placeholder="$t('datasource.please_enter')"
-      :rows="3"
-      type="textarea"
-    />
-    <div style="display: flex; justify-content: flex-end; margin-top: 20px">
-      <el-button @click="closeTable">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="saveTable">{{ t('common.confirm') }}</el-button>
-    </div>
-  </el-dialog>
-
+  <AuthorizedWorkspaceDialog ref="authorizedWorkspaceDialog"></AuthorizedWorkspaceDialog>
   <el-dialog
     v-model="fieldDialog"
-    :title="t('datasource.field_notes')"
-    width="600"
-    :destroy-on-close="true"
+    :title="$t(workspaceForm.id ? 'workspace.rename_a_workspace' : 'workspace.add_workspace')"
+    width="420"
+    destroy-on-close
     :close-on-click-modal="false"
-    @closed="closeField"
+    @before-closed="closeField"
   >
-    <el-input
-      v-model="fieldComment"
-      :placeholder="$t('datasource.please_enter')"
-      :rows="3"
-      type="textarea"
-    />
+    <el-form
+      ref="workspaceFormRef"
+      :model="workspaceForm"
+      label-width="180px"
+      label-position="top"
+      :rules="rules"
+      class="form-content_error"
+    >
+      <el-form-item prop="name" :label="t('workspace.workspace_name')">
+        <el-input
+          v-model="workspaceForm.name"
+          :placeholder="
+            $t('datasource.please_enter') + $t('common.empty') + $t('workspace.workspace_name')
+          "
+        />
+      </el-form-item>
+    </el-form>
+
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="closeField">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="saveField">{{ t('common.confirm') }}</el-button>
+      <el-button type="primary" @click="saveField">{{
+        t(workspaceForm.id ? 'common.save' : 'model.add')
+      }}</el-button>
     </div>
   </el-dialog>
-  <ParamsForm ref="paramsFormRef" @refresh="refresh"></ParamsForm>
 </template>
 
 <style lang="less" scoped>
@@ -337,75 +558,9 @@ const editField = (row: any) => {
     .list-content {
       height: calc(100% - 100px);
 
-      .no-result {
-        margin-top: 72px;
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
-        text-align: center;
-        color: #646a73;
-      }
-      .model {
-        width: 100%;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        padding-left: 8px;
-        border-radius: 4px;
-        cursor: pointer;
-        .name {
-          margin-left: 8px;
-          font-weight: 500;
-          font-size: 14px;
-          line-height: 22px;
-        }
-        &:hover {
-          background: #1f23291a;
-        }
-
-        &.isActive {
-          background: #1cba901a;
-          color: var(--ed-color-primary);
-        }
-      }
-    }
-  }
-  .info-table {
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: calc(100% - 280px);
-    .table-name {
-      height: 80px;
-      padding: 16px 0 0 24px;
-      border-bottom: 1px solid #1f232926;
-
-      .name {
-        font-weight: 500;
-        font-size: 16px;
-        line-height: 24px;
-      }
-
-      .notes {
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
-        color: #646a73;
-        display: flex;
-        align-items: center;
-      }
-    }
-
-    .table-content {
-      padding: 16px 24px;
-
-      .preview-or-schema {
-        margin-top: 16px;
-
-        .field-comment {
-          height: 24px;
-        }
-        .ed-icon {
+      .more {
+        display: none;
+        &.ed-icon {
           position: relative;
           cursor: pointer;
           margin-top: 4px;
@@ -429,6 +584,135 @@ const editField = (row: any) => {
             }
           }
         }
+      }
+
+      .no-result {
+        margin-top: 72px;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+        text-align: center;
+        color: #646a73;
+      }
+      .model {
+        width: 100%;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        padding-left: 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        padding-right: 8px;
+
+        .name {
+          margin-left: 8px;
+          font-weight: 500;
+          font-size: 14px;
+          line-height: 22px;
+        }
+        &:hover {
+          background: #1f23291a;
+          .more {
+            display: block;
+          }
+        }
+
+        &.isActive {
+          background: #1cba901a;
+          color: var(--ed-color-primary);
+        }
+      }
+    }
+  }
+  .info-table {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: calc(100% - 280px);
+    height: 100%;
+    .table-name {
+      padding: 16px 24px 0 24px;
+
+      .name {
+        font-weight: 500;
+        font-size: 16px;
+        line-height: 24px;
+        display: flex;
+        align-items: center;
+        .line {
+          height: 16px;
+          width: 1px;
+          background: #bbbfc4;
+          margin-left: 8px;
+        }
+      }
+
+      .notes {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 16px 0;
+      }
+    }
+
+    .table-content {
+      padding: 0 24px 16px 24px;
+      height: calc(100% - 104px);
+
+      .pagination-container {
+        display: flex;
+        justify-content: end;
+        align-items: center;
+        margin-top: 16px;
+      }
+
+      .preview-or-schema {
+        :deep(.user-source) {
+          cursor: pointer;
+          &:hover {
+            .ed-icon {
+              transform: rotate(180deg);
+            }
+          }
+        }
+        .user-status-container {
+          display: flex;
+          align-items: center;
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 22px;
+
+          .ed-icon {
+            margin-right: 8px;
+          }
+        }
+        .field-comment {
+          height: 24px;
+          .ed-icon {
+            position: relative;
+            cursor: pointer;
+            margin-top: 4px;
+
+            &::after {
+              content: '';
+              background-color: #1f23291a;
+              position: absolute;
+              border-radius: 6px;
+              width: 24px;
+              height: 24px;
+              transform: translate(-50%, -50%);
+              top: 50%;
+              left: 50%;
+              display: none;
+            }
+
+            &:hover {
+              &::after {
+                display: block;
+              }
+            }
+          }
+        }
 
         .preview-num {
           margin: 12px 0;
@@ -436,6 +720,119 @@ const editField = (row: any) => {
           font-size: 14px;
           line-height: 22px;
           color: #646a73;
+        }
+      }
+    }
+  }
+}
+</style>
+<style lang="less">
+.popover-card.popover-card.popover-card {
+  box-shadow: 0px 4px 8px 0px #1f23291a;
+  border-radius: 4px;
+  border: 1px solid #dee0e3;
+  width: 120px !important;
+  min-width: 120px !important;
+  padding: 0;
+  .content {
+    position: relative;
+    &::after {
+      position: absolute;
+      content: '';
+      top: 40px;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background: #dee0e3;
+    }
+    .item {
+      position: relative;
+      padding-left: 12px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      .ed-icon {
+        margin-right: 8px;
+        color: #646a73;
+      }
+      &:hover {
+        &::after {
+          display: block;
+        }
+      }
+
+      &::after {
+        content: '';
+        width: 112px;
+        height: 32px;
+        border-radius: 4px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #1f23291a;
+        display: none;
+      }
+    }
+  }
+}
+
+.system-workspace_user.system-workspace_user {
+  padding: 0;
+  width: 120px !important;
+  min-width: 120px !important;
+  box-shadow: 0px 4px 8px 0px #1f23291a;
+  border: 1px solid #dee0e3;
+
+  .popover {
+    .popover-content {
+      padding: 4px;
+      position: relative;
+      &::after {
+        position: absolute;
+        content: '';
+        left: 0;
+        top: 40px;
+        width: 100%;
+        height: 1px;
+        background: #1f232926;
+      }
+    }
+    .popover-item {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding-left: 12px;
+      padding-right: 8px;
+      position: relative;
+      border-radius: 4px;
+      cursor: pointer;
+      &:hover {
+        background: #1f23291a;
+      }
+
+      &:nth-child(2) {
+        margin: 9px 0 0 0;
+      }
+
+      .model-name {
+        margin-left: 8px;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+      }
+
+      .done {
+        margin-left: auto;
+        display: none;
+      }
+
+      &.isActive {
+        color: var(--ed-color-primary);
+
+        .done {
+          display: block;
         }
       }
     }
