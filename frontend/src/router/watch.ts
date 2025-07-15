@@ -5,9 +5,14 @@ import { request } from '@/utils/request'
 const userStore = useUserStore()
 const { wsCache } = useCache()
 const whiteList = ['/login']
+const assistantWhiteList = ['/assistant']
 export const watchRouter = (router: any) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
     await loadXpackStatic()
+    if (assistantWhiteList.includes(to.path)) {
+      next()
+      return
+    }
     const token = wsCache.get('user.token')
     if (whiteList.includes(to.path)) {
       next()

@@ -95,7 +95,9 @@ const validator = ref({
 })
 const loading = ref(true)
 onBeforeMount(async () => {
-  const assistantId = route.params.id
+  const assistantId = route.query.id
+  const online = route.query.online
+  console.log(online)
   const now = Date.now()
   assistantStore.setFlag(now)
   const id = `${assistantId}-${assistantStore.getFlag}`

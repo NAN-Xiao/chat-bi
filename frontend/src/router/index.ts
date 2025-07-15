@@ -10,6 +10,7 @@ import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
+import assistant from '@/views/embedded/assistant.vue'
 // import User from "@/views/system/user/index.vue";
 import { watchRouter } from './watch'
 const router = createRouter({
@@ -127,6 +128,11 @@ const router = createRouter({
           meta: { title: 'AI Model Configuration', icon: 'icon_ai' },
         },
       ],
+    },
+    {
+      path: '/assistant',
+      name: 'assistant',
+      component: assistant,
     },
   ],
 })

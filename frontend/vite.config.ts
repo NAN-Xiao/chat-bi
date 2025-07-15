@@ -39,10 +39,6 @@ export default defineConfig(({ mode }) => {
     build: {
       chunkSizeWarningLimit: 2000,
       rollupOptions: {
-        input: {
-          main: path.resolve(__dirname, 'index.html'),
-          assistant: path.resolve(__dirname, 'assistant.html'),
-        },
         output: {
           manualChunks: {
             'element-plus-secondary': ['element-plus-secondary'],
