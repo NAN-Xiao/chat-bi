@@ -52,6 +52,7 @@
   },
   "qa": {
     "new_chat": "新建对话",
+    "start_sqlbot": "开启问数",
     "title": "智能问数",
     "placeholder": "请输入您的问题",
     "ask": "提问",
@@ -60,7 +61,7 @@
     "error": "发生错误，请稍后再试",
     "question_placeholder": "按下 Enter 提交问题, 或使用 Ctrl + Enter 换行",
     "greeting": "你好，我是SQLBot，很高兴为你服务",
-    "description": "我可以帮忙查询数据、生成图表、检测数据异常、预测数据等，请选择一个数据源，开启智能问数吧～",
+    "hint_description": "我可以查询数据、生成图表、检测数据异常、预测数据等，请选择一个数据源，开启智能问数吧～",
     "select_datasource": "选择数据源",
     "view_more": "查看更多",
     "selected_datasource": "已选择数据源",

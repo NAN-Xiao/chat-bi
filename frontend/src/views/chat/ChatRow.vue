@@ -24,23 +24,9 @@ withDefaults(
         <logo_fold v-if="!hideAvatar" />
       </el-icon>
     </el-avatar>
-    <!--    <el-avatar v-if="msg.role === 'user'" class="user-avatar" shape="square">-->
-    <!--      <el-icon>-->
-    <!--        <UserFilled v-if="!hideAvatar" />-->
-    <!--      </el-icon>-->
-    <!--    </el-avatar>-->
-    <slot></slot>
-    <!--    <ChatBlock v-if="!msg.first_chat" :msg="msg" :class="{ 'row-full': msg.role === 'assistant' }">-->
-    <!--      <slot></slot>-->
-    <!--      <template #footer>-->
-    <!--        <slot name="footer"></slot>-->
-    <!--      </template>-->
-    <!--    </ChatBlock>-->
-    <!--    <ChatRecordFirst v-else :current-chat="currentChat" :msg="msg">-->
-    <!--      <template #footer>-->
-    <!--        <slot name="footer"></slot>-->
-    <!--      </template>-->
-    <!--    </ChatRecordFirst>-->
+    <div :class="{ 'row-full': msg.role === 'assistant' }">
+      <slot></slot>
+    </div>
   </div>
 </template>
 
@@ -51,7 +37,9 @@ withDefaults(
   align-items: flex-start;
   gap: 8px;
 
-  padding: 20px 20px 0;
+  padding: 20px 0 0;
+  max-width: 800px;
+  width: 100%;
 
   &.right-to-left {
     flex-direction: row-reverse;
@@ -61,14 +49,11 @@ withDefaults(
     flex: 1;
     width: 0;
   }
-}
 
-.ai-avatar {
-  font-size: 28px;
-  background: transparent;
-}
-
-.user-avatar {
-  font-size: 28px;
+  .ai-avatar {
+    font-size: 28px;
+    background: transparent;
+    width: 28px;
+  }
 }
 </style>

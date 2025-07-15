@@ -59,11 +59,15 @@
         class="chat-record-list"
         :class="{ 'hide-sidebar': !isAssistant && !chatListSideBarShow }"
       >
-        <div v-if="computedMessages.length == 0" class="welcome-content-block">
+        <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
           <div class="welcome-content">
-            <div class="logo">SQLBot</div>
-            <div>{{ t('qa.greeting') }}</div>
-            <div class="sub">{{ t('qa.description') }}</div>
+            <div class="greeting">
+              <el-icon size="32">
+                <logo_fold />
+              </el-icon>
+              {{ t('qa.greeting') }}
+            </div>
+            <div class="sub">{{ t('qa.hint_description') }}</div>
             <el-button
               v-if="currentChatId === undefined"
               size="large"
@@ -71,91 +75,96 @@
               @click="createNewChat"
             >
               <el-icon>
-                <Plus />
+                <icon_new_chat_outlined />
               </el-icon>
-              {{ t('qa.new_chat') }}
+              {{ t('qa.start_sqlbot') }}
             </el-button>
           </div>
         </div>
+        <div v-else-if="computedMessages.length == 0 && loading" class="welcome-content-block">
+          <logo />
+        </div>
         <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef">
-          <template v-for="(message, _index) in computedMessages" :key="_index">
-            <ChatRow :current-chat="currentChat" :msg="message" :hide-avatar="message.first_chat">
-              <RecommendQuestion
-                v-if="message.role === 'assistant' && message.first_chat"
-                :questions="message.recommended_question"
-                :first-chat="message.first_chat"
-                @click-question="quickAsk"
-              />
-              <UserChat v-if="message.role === 'user'" :message="message" />
-              <template v-if="message.role === 'assistant' && !message.first_chat">
-                <ChatAnswer
-                  v-if="
-                    message?.record?.analysis_record_id == undefined &&
-                    message?.record?.predict_record_id == undefined
-                  "
-                  :message="message"
-                >
-                  <template v-if="message.record?.chart">
-                    <div style="padding: 0 22px; display: flex; justify-content: flex-end">
-                      <el-button
-                        text
-                        type="primary"
-                        :disabled="isTyping || isPredictTyping || isAnalysisTyping"
-                        @click="clickAnalysis(message.record?.id)"
-                      >
-                        {{ t('chat.data_analysis') }}
-                      </el-button>
-                      <el-button
-                        text
-                        type="primary"
-                        :disabled="isTyping || isPredictTyping || isAnalysisTyping"
-                        @click="clickPredict(message.record?.id)"
-                      >
-                        {{ t('chat.data_predict') }}
-                      </el-button>
-                    </div>
-                  </template>
-                </ChatAnswer>
-
-                <div
-                  v-if="
-                    message?.record?.analysis_record_id != undefined ||
-                    message?.record?.predict_record_id != undefined
-                  "
-                  class="analysis-container"
-                >
-                  <template v-if="message.record?.analysis || isAnalysisTyping">
-                    <MdComponent :message="message.record?.analysis_thinking" />
-                    <MdComponent :message="message.record?.analysis" />
-                  </template>
-
-                  <el-divider
-                    v-if="
-                      (message.record?.analysis || isAnalysisTyping) &&
-                      (message.record?.predict || isPredictTyping)
-                    "
-                  />
-                  <template v-if="message.record?.predict || isPredictTyping">
-                    <MdComponent :message="message.record?.predict" />
-                    <MdComponent :message="message.record?.predict_content" />
-                    <!--                  <PredictChartBlock-->
-                    <!--                    :id="message.record?.id + '-predict'"-->
-                    <!--                    :data="message.record?.predict_data ?? '[]'"-->
-                    <!--                    :message="message"-->
-                    <!--                    :chart-type="data.chartType"-->
-                    <!--                  />-->
-                  </template>
-                </div>
-              </template>
-              <template v-if="message.role === 'assistant'" #footer>
+          <div class="chat-scroll" :class="{ 'no-sidebar': !isAssistant && !chatListSideBarShow }">
+            <template v-for="(message, _index) in computedMessages" :key="_index">
+              <ChatRow :current-chat="currentChat" :msg="message" :hide-avatar="message.first_chat">
                 <RecommendQuestion
+                  v-if="message.role === 'assistant' && message.first_chat"
                   :questions="message.recommended_question"
                   :first-chat="message.first_chat"
                   @click-question="quickAsk"
                 />
-              </template>
-            </ChatRow>
-          </template>
+                <UserChat v-if="message.role === 'user'" :message="message" />
+                <template v-if="message.role === 'assistant' && !message.first_chat">
+                  <ChatAnswer
+                    v-if="
+                      message?.record?.analysis_record_id == undefined &&
+                      message?.record?.predict_record_id == undefined
+                    "
+                    :message="message"
+                  >
+                    <template v-if="message.record?.chart">
+                      <div style="padding: 0 22px; display: flex; justify-content: flex-end">
+                        <el-button
+                          text
+                          type="primary"
+                          :disabled="isTyping || isPredictTyping || isAnalysisTyping"
+                          @click="clickAnalysis(message.record?.id)"
+                        >
+                          {{ t('chat.data_analysis') }}
+                        </el-button>
+                        <el-button
+                          text
+                          type="primary"
+                          :disabled="isTyping || isPredictTyping || isAnalysisTyping"
+                          @click="clickPredict(message.record?.id)"
+                        >
+                          {{ t('chat.data_predict') }}
+                        </el-button>
+                      </div>
+                    </template>
+                  </ChatAnswer>
+
+                  <div
+                    v-if="
+                      message?.record?.analysis_record_id != undefined ||
+                      message?.record?.predict_record_id != undefined
+                    "
+                    class="analysis-container"
+                  >
+                    <template v-if="message.record?.analysis || isAnalysisTyping">
+                      <MdComponent :message="message.record?.analysis_thinking" />
+                      <MdComponent :message="message.record?.analysis" />
+                    </template>
+
+                    <el-divider
+                      v-if="
+                        (message.record?.analysis || isAnalysisTyping) &&
+                        (message.record?.predict || isPredictTyping)
+                      "
+                    />
+                    <template v-if="message.record?.predict || isPredictTyping">
+                      <MdComponent :message="message.record?.predict" />
+                      <MdComponent :message="message.record?.predict_content" />
+                      <!--                  <PredictChartBlock-->
+                      <!--                    :id="message.record?.id + '-predict'"-->
+                      <!--                    :data="message.record?.predict_data ?? '[]'"-->
+                      <!--                    :message="message"-->
+                      <!--                    :chart-type="data.chartType"-->
+                      <!--                  />-->
+                    </template>
+                  </div>
+                </template>
+                <template v-if="message.role === 'assistant'" #footer>
+                  <RecommendQuestion
+                    :questions="message.recommended_question"
+                    :first-chat="message.first_chat"
+                    @click-question="quickAsk"
+                  />
+                </template>
+              </ChatRow>
+            </template>
+          </div>
         </el-scrollbar>
       </el-main>
       <el-footer
@@ -200,7 +209,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { Plus, Position } from '@element-plus/icons-vue'
+import { Position } from '@element-plus/icons-vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat'
 import ChatRow from './ChatRow.vue'
 import ChatAnswer from './ChatAnswer.vue'
@@ -213,6 +222,8 @@ import { useI18n } from 'vue-i18n'
 import { endsWith, find, startsWith } from 'lodash-es'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
+import logo_fold from '@/assets/LOGO-fold.svg'
+import logo from '@/assets/LOGO.svg'
 
 import { useAssistantStore } from '@/stores/assistant'
 const assistantStore = useAssistantStore()
@@ -876,6 +887,19 @@ defineExpose({
     }
   }
 
+  .chat-scroll {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-left: 56px;
+    padding-right: 56px;
+
+    &.no-sidebar {
+      padding-left: 96px;
+    }
+  }
+
   .chat-footer {
     --ed-footer-height: 120px;
 
@@ -929,22 +953,26 @@ defineExpose({
     padding: 12px;
 
     width: fit-content;
+    max-width: 800px;
     display: flex;
     gap: 16px;
     align-items: center;
     flex-direction: column;
 
-    .logo {
-      line-height: 60px;
-      font-size: 3em;
-      font-weight: bold;
-      color: var(--el-color-primary);
-      text-align: left;
+    .greeting {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      line-height: 32px;
+      font-size: 24px;
+      font-weight: 600;
+      color: rgba(31, 35, 41, 1);
     }
 
     .sub {
       color: grey;
-      font-size: 0.8em;
+      font-size: 16px;
+      line-height: 24px;
     }
   }
 }

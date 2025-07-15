@@ -33,7 +33,7 @@ function clickPredict() {
   flex-direction: row;
   gap: 8px;
   border-radius: 16px;
-  height: 48px;
+  min-height: 48px;
   line-height: 24px;
   font-size: 16px;
   padding: 12px 16px;

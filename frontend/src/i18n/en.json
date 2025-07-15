@@ -49,6 +49,7 @@
   },
   "qa": {
     "new_chat": "New Chat",
+    "start_sqlbot": "Start SQLBot",
     "title": "Smart Query",
     "placeholder": "Enter your question",
     "ask": "Ask",
@@ -57,7 +58,7 @@
     "error": "An error occurred, please try again later",
     "question_placeholder": "Press Enter to submit, or use Ctrl + Enter for new line",
     "greeting": "Hi, I'm SQLBot, nice to serve you",
-    "description": "I can help query data, generate charts, detect data anomalies, predict data, etc. Please select a data source to start smart querying~",
+    "hint_description": "I can help query data, generate charts, detect data anomalies, predict data, etc. Please select a data source to start smart querying~",
     "select_datasource": "Select Data Source",
     "view_more": "View More",
     "selected_datasource": "Selected Data Source",
