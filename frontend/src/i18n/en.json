@@ -48,7 +48,7 @@
     "chart_selected": "Selected {0}"
   },
   "qa": {
-    "New Conversation": "New Conversation",
+    "new_chat": "New Chat",
     "title": "Smart Query",
     "placeholder": "Enter your question",
     "ask": "Ask",

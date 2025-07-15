@@ -630,7 +630,8 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
                 brief = rename_chat(session=llm_service.session,
                                     rename_object=RenameChat(id=llm_service.get_record().chat_id,
                                                              brief=llm_service.chat_question.question.strip()[:20]))
-                yield orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
+                if in_chat:
+                    yield orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
 
         # select datasource if datasource is none
         if not llm_service.ds:

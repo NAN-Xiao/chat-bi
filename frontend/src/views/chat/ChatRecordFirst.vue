@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import ChatBlock from './ChatBlock.vue'
 import { ChatInfo, type ChatMessage } from '@/api/chat.ts'
 import { computed } from 'vue'
-import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
 const props = defineProps<{
   msg: ChatMessage
   currentChat: ChatInfo
@@ -16,7 +13,10 @@ const show = computed(() => {
 </script>
 
 <template>
-  <ChatBlock v-if="show">
+  <span v-if="show">
+    <slot name="footer"></slot>
+  </span>
+  <!--  <ChatBlock v-if="show">
     <div class="welcome-content">
       <div class="ds-select-row">
         <div>{{ t('qa.selected_datasource') }}:</div>
@@ -28,7 +28,7 @@ const show = computed(() => {
     <template #footer>
       <slot name="footer"></slot>
     </template>
-  </ChatBlock>
+  </ChatBlock>-->
 </template>
 
 <style scoped lang="less">

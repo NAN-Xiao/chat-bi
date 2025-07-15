@@ -1,36 +1,51 @@
 <template>
   <el-container class="chat-container no-padding">
-    <el-aside v-if="!isAssistant" class="chat-container-left">
-      <el-container class="chat-container-right-container">
-        <el-header class="chat-list-header">
-          <div class="title">
-            <div>智能问数</div>
-            <el-button link type="primary" class="icon-btn">
-              <el-icon>
-                <icon_sidebar_outlined />
-              </el-icon>
-            </el-button>
-          </div>
-          <el-button class="btn" type="primary" @click="createNewChat">
-            <el-icon>
-              <Plus />
-            </el-icon>
-            {{ t('qa.New Conversation') }}
-          </el-button>
-          <el-input v-model="search" class="search" placeholder="placeholder" />
-        </el-header>
-        <el-main class="chat-list">
-          <ChatList
-            v-model:loading="loading"
-            :current-chat-id="currentChatId"
-            :chat-list="chatList"
-            @chat-selected="onClickHistory"
-            @chat-deleted="onChatDeleted"
-            @chat-renamed="onChatRenamed"
-          />
-        </el-main>
-      </el-container>
+    <el-aside v-if="!isAssistant && chatListSideBarShow" class="chat-container-left">
+      <ChatListContainer
+        v-model:chat-list="chatList"
+        v-model:current-chat-id="currentChatId"
+        v-model:current-chat="currentChat"
+        v-model:loading="loading"
+        :in-popover="!chatListSideBarShow"
+        @go-empty="goEmpty"
+        @on-chat-created="onChatCreated"
+        @on-click-history="onClickHistory"
+        @on-chat-deleted="onChatDeleted"
+        @on-chat-renamed="onChatRenamed"
+        @on-click-side-bar-btn="hideSideBar"
+      />
     </el-aside>
+    <div v-if="!isAssistant && !chatListSideBarShow" class="hidden-sidebar-btn">
+      <el-popover :width="280" placement="bottom-start" popper-style="padding: 0; height: 654px">
+        <template #reference>
+          <el-button link type="primary" class="icon-btn" @click="showSideBar">
+            <el-icon>
+              <icon_sidebar_outlined />
+            </el-icon>
+          </el-button>
+        </template>
+        <ChatListContainer
+          v-model:chat-list="chatList"
+          v-model:current-chat-id="currentChatId"
+          v-model:current-chat="currentChat"
+          v-model:loading="loading"
+          :in-popover="!chatListSideBarShow"
+          @go-empty="goEmpty"
+          @on-chat-created="onChatCreated"
+          @on-click-history="onClickHistory"
+          @on-chat-deleted="onChatDeleted"
+          @on-chat-renamed="onChatRenamed"
+          @on-click-side-bar-btn="hideSideBar"
+        />
+      </el-popover>
+      <el-tooltip effect="dark" :content="t('qa.new_chat')" placement="bottom">
+        <el-button link type="primary" class="icon-btn" @click="createNewChat">
+          <el-icon>
+            <icon_new_chat_outlined />
+          </el-icon>
+        </el-button>
+      </el-tooltip>
+    </div>
     <el-container :loading="loading">
       <el-main class="chat-record-list">
         <div v-if="computedMessages.length == 0" class="welcome-content-block">
@@ -47,14 +62,21 @@
               <el-icon>
                 <Plus />
               </el-icon>
-              {{ t('qa.New Conversation') }}
+              {{ t('qa.new_chat') }}
             </el-button>
           </div>
         </div>
         <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef">
           <template v-for="(message, _index) in computedMessages" :key="_index">
-            <ChatRow :current-chat="currentChat" :msg="message">
-              <template v-if="message.role === 'assistant'">
+            <ChatRow :current-chat="currentChat" :msg="message" :hide-avatar="message.first_chat">
+              <RecommendQuestion
+                v-if="message.role === 'assistant' && message.first_chat"
+                :questions="message.recommended_question"
+                :first-chat="message.first_chat"
+                @click-question="quickAsk"
+              />
+              <UserChat v-if="message.role === 'user'" :message="message" />
+              <template v-if="message.role === 'assistant' && !message.first_chat">
                 <ChatAnswer
                   v-if="
                     message?.record?.analysis_record_id == undefined &&
@@ -83,39 +105,41 @@
                     </div>
                   </template>
                 </ChatAnswer>
-              </template>
-              <div
-                v-if="
-                  message?.record?.analysis_record_id != undefined ||
-                  message?.record?.predict_record_id != undefined
-                "
-                class="analysis-container"
-              >
-                <template v-if="message.record?.analysis || isAnalysisTyping">
-                  <MdComponent :message="message.record?.analysis_thinking" />
-                  <MdComponent :message="message.record?.analysis" />
-                </template>
 
-                <el-divider
+                <div
                   v-if="
-                    (message.record?.analysis || isAnalysisTyping) &&
-                    (message.record?.predict || isPredictTyping)
+                    message?.record?.analysis_record_id != undefined ||
+                    message?.record?.predict_record_id != undefined
                   "
-                />
-                <template v-if="message.record?.predict || isPredictTyping">
-                  <MdComponent :message="message.record?.predict" />
-                  <MdComponent :message="message.record?.predict_content" />
-                  <!--                  <PredictChartBlock-->
-                  <!--                    :id="message.record?.id + '-predict'"-->
-                  <!--                    :data="message.record?.predict_data ?? '[]'"-->
-                  <!--                    :message="message"-->
-                  <!--                    :chart-type="data.chartType"-->
-                  <!--                  />-->
-                </template>
-              </div>
+                  class="analysis-container"
+                >
+                  <template v-if="message.record?.analysis || isAnalysisTyping">
+                    <MdComponent :message="message.record?.analysis_thinking" />
+                    <MdComponent :message="message.record?.analysis" />
+                  </template>
+
+                  <el-divider
+                    v-if="
+                      (message.record?.analysis || isAnalysisTyping) &&
+                      (message.record?.predict || isPredictTyping)
+                    "
+                  />
+                  <template v-if="message.record?.predict || isPredictTyping">
+                    <MdComponent :message="message.record?.predict" />
+                    <MdComponent :message="message.record?.predict_content" />
+                    <!--                  <PredictChartBlock-->
+                    <!--                    :id="message.record?.id + '-predict'"-->
+                    <!--                    :data="message.record?.predict_data ?? '[]'"-->
+                    <!--                    :message="message"-->
+                    <!--                    :chart-type="data.chartType"-->
+                    <!--                  />-->
+                  </template>
+                </div>
+              </template>
               <template v-if="message.role === 'assistant'" #footer>
                 <RecommendQuestion
                   :questions="message.recommended_question"
+                  :first-chat="message.first_chat"
                   @click-question="quickAsk"
                 />
               </template>
@@ -159,7 +183,7 @@
       </el-footer>
     </el-container>
 
-    <ChatCreator v-if="!isAssistant" ref="chatCreatorRef" @on-chat-created="onChatCreated" />
+    <ChatCreator v-if="!isAssistant" ref="chatCreatorRef" @on-chat-created="onChatCreatedQuick" />
   </el-container>
 </template>
 
@@ -167,16 +191,17 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { Plus, Position } from '@element-plus/icons-vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat'
-import ChatList from './ChatList.vue'
 import ChatRow from './ChatRow.vue'
 import ChatAnswer from './ChatAnswer.vue'
+import UserChat from './chat-block/UserChat.vue'
 import MdComponent from './component/MdComponent.vue'
-// import PredictChartBlock from './component/PredictChartBlock.vue'
 import RecommendQuestion from './RecommendQuestion.vue'
-import ChatCreator from './ChatCreator.vue'
+import ChatListContainer from './ChatListContainer.vue'
+import ChatCreator from '@/views/chat/ChatCreator.vue'
 import { useI18n } from 'vue-i18n'
-import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import { endsWith, find, startsWith } from 'lodash-es'
+import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
+import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 
 import { useAssistantStore } from '@/stores/assistant'
 const assistantStore = useAssistantStore()
@@ -219,6 +244,7 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
       messages.push({
         role: 'user',
         create_time: record.create_time,
+        record: record,
         content: record.question,
       })
     }
@@ -236,12 +262,8 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
 })
 
 const goEmpty = () => {
-  currentChat.value = new ChatInfo()
-  currentChatId.value = undefined
   inputMessage.value = ''
 }
-
-const search = ref<string>()
 
 const createNewChat = async () => {
   goEmpty()
@@ -252,6 +274,7 @@ const createNewChat = async () => {
     }
     return
   }
+  console.log(chatCreatorRef.value)
   chatCreatorRef.value?.showDs()
 }
 
@@ -268,70 +291,41 @@ function getChatList() {
 }
 
 function onClickHistory(chat: Chat) {
-  currentChat.value = new ChatInfo(chat)
-  if (chat !== undefined && chat.id !== undefined && !loading.value) {
-    currentChatId.value = chat.id
-    loading.value = true
-    chatApi
-      .get(chat.id)
-      .then((res) => {
-        const info = chatApi.toChatInfo(res)
-        if (info) {
-          currentChat.value = info
-
-          scrollToBottom()
-        }
-      })
-      .finally(() => {
-        loading.value = false
-      })
-  }
+  console.log('click history', chat)
+  scrollToBottom()
 }
 
 function onChatDeleted(id: number) {
-  for (let i = 0; i < chatList.value.length; i++) {
-    if (chatList.value[i].id === id) {
-      chatList.value.splice(i, 1)
-      break
-    }
-  }
-  if (id === currentChatId.value) {
-    goEmpty()
-  }
+  console.log('deleted', id)
 }
 
 function onChatRenamed(chat: Chat) {
-  chatList.value.forEach((c: Chat) => {
-    if (c.id === chat.id) {
-      c.brief = chat.brief
-    }
-  })
-  if (currentChat.value.id === chat.id) {
-    currentChat.value.brief = chat.brief
-  }
+  console.log('renamed', chat)
 }
 
-function onChatCreated(chat: ChatInfo) {
+const chatListSideBarShow = ref<boolean>(true)
+function hideSideBar() {
+  chatListSideBarShow.value = false
+}
+
+function showSideBar() {
+  chatListSideBarShow.value = true
+}
+
+function onChatCreatedQuick(chat: ChatInfo) {
   chatList.value.unshift(chat)
   currentChatId.value = chat.id
   currentChat.value = chat
+  onChatCreated(chat)
+}
+
+function onChatCreated(chat: ChatInfo) {
   if (chat.records.length === 1) {
     getRecommendQuestions(chat.records[0].id)
   }
 }
 
 async function getRecommendQuestions(record_id?: number) {
-  /*chatApi.recommendQuestions(record_id).then((res) => {
-    if (res && res.length > 0 && startsWith(res.trim(), '[') && endsWith(res.trim(), ']')) {
-      if (currentChat.value?.records) {
-        for (let record of currentChat.value.records) {
-          if (record.id === record_id) {
-            record.recommended_question = res
-          }
-        }
-      }
-    }
-  })*/
   const response = await chatApi.recommendQuestions(record_id)
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -827,6 +821,15 @@ defineExpose({
 <style lang="less" scoped>
 .chat-container {
   height: 100%;
+  position: relative;
+
+  .hidden-sidebar-btn {
+    z-index: 1;
+    position: absolute;
+    padding: 16px;
+    top: 0;
+    left: 0;
+  }
 
   .icon-btn {
     min-width: unset;
@@ -834,6 +837,10 @@ defineExpose({
     height: 26px;
     font-size: 18px;
 
+    --ed-button-text-color: rgba(31, 35, 41, 1);
+    --ed-button-hover-text-color: var(--ed-button-text-color);
+    --ed-button-active-text-color: var(--ed-button-text-color);
+    --ed-button-hover-link-text-color: var(--ed-button-text-color);
     &:hover {
       background: rgba(31, 35, 41, 0.1);
     }
@@ -842,49 +849,8 @@ defineExpose({
   .chat-container-left {
     --ed-aside-width: 280px;
     border-radius: 12px 0 0 12px;
-    //box-shadow: 0 0 3px #d7d7d7;
-    //z-index: 1;
 
     background: rgba(245, 246, 247, 1);
-
-    .chat-container-right-container {
-      height: 100%;
-
-      .chat-list-header {
-        --ed-header-padding: 16px;
-        --ed-header-height: calc(16px + 24px + 16px + 40px + 16px + 32px + 16px);
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        gap: 16px;
-
-        .title {
-          height: 24px;
-          width: 100%;
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          justify-content: space-between;
-          font-weight: 500;
-        }
-
-        .btn {
-          width: 100%;
-          height: 40px;
-        }
-
-        .search {
-          height: 32px;
-          width: 100%;
-        }
-      }
-
-      .chat-list {
-        padding: 0 0 20px 0;
-      }
-    }
   }
 
   .chat-record-list {

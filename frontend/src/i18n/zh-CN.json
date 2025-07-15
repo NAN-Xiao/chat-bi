@@ -51,7 +51,7 @@
     "chart_selected": "已选{0}"
   },
   "qa": {
-    "New Conversation": "开启新问数",
+    "new_chat": "新建对话",
     "title": "智能问数",
     "placeholder": "请输入您的问题",
     "ask": "提问",
@@ -65,7 +65,12 @@
     "view_more": "查看更多",
     "selected_datasource": "已选择数据源",
     "empty_datasource": "数据源为空，请新建后再开启智能问数！",
-    "datasource_not_exist": "数据源不存在"
+    "datasource_not_exist": "数据源不存在",
+    "guess_u_ask": "猜你想问:",
+    "continue_to_ask": "继续提问:",
+    "data_analysis": "数据预测",
+    "data_predict": "数据分析",
+    "chat_search": "搜索"
   },
   "ds": {
     "title": "数据源",

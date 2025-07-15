@@ -1,37 +1,46 @@
 <script setup lang="ts">
-import ChatBlock from './ChatBlock.vue'
-import ChatRecordFirst from './ChatRecordFirst.vue'
+// import ChatBlock from './ChatBlock.vue'
+// import ChatRecordFirst from './ChatRecordFirst.vue'
 import { ChatInfo, type ChatMessage } from '@/api/chat.ts'
-import { UserFilled } from '@element-plus/icons-vue'
+// import { UserFilled } from '@element-plus/icons-vue'
+import logo_fold from '@/assets/LOGO-fold.svg'
 
 withDefaults(
   defineProps<{
     msg: ChatMessage
     currentChat: ChatInfo
+    hideAvatar?: boolean
   }>(),
-  {}
+  {
+    hideAvatar: false,
+  }
 )
 </script>
 
 <template>
   <div class="chat-row" :class="{ 'right-to-left': msg.role === 'user' }">
-    <el-avatar v-if="msg.role === 'assistant'" class="ai-avatar" shape="square">SQLBot</el-avatar>
-    <el-avatar v-if="msg.role === 'user'" class="user-avatar" shape="square">
+    <el-avatar v-if="msg.role === 'assistant'" class="ai-avatar" shape="square">
       <el-icon>
-        <UserFilled />
+        <logo_fold v-if="!hideAvatar" />
       </el-icon>
     </el-avatar>
-    <ChatBlock v-if="!msg.first_chat" :msg="msg" :class="{ 'row-full': msg.role === 'assistant' }">
-      <slot></slot>
-      <template #footer>
-        <slot name="footer"></slot>
-      </template>
-    </ChatBlock>
-    <ChatRecordFirst v-else :current-chat="currentChat" :msg="msg">
-      <template #footer>
-        <slot name="footer"></slot>
-      </template>
-    </ChatRecordFirst>
+    <!--    <el-avatar v-if="msg.role === 'user'" class="user-avatar" shape="square">-->
+    <!--      <el-icon>-->
+    <!--        <UserFilled v-if="!hideAvatar" />-->
+    <!--      </el-icon>-->
+    <!--    </el-avatar>-->
+    <slot></slot>
+    <!--    <ChatBlock v-if="!msg.first_chat" :msg="msg" :class="{ 'row-full': msg.role === 'assistant' }">-->
+    <!--      <slot></slot>-->
+    <!--      <template #footer>-->
+    <!--        <slot name="footer"></slot>-->
+    <!--      </template>-->
+    <!--    </ChatBlock>-->
+    <!--    <ChatRecordFirst v-else :current-chat="currentChat" :msg="msg">-->
+    <!--      <template #footer>-->
+    <!--        <slot name="footer"></slot>-->
+    <!--      </template>-->
+    <!--    </ChatRecordFirst>-->
   </div>
 </template>
 
@@ -55,10 +64,11 @@ withDefaults(
 }
 
 .ai-avatar {
-  background: var(--el-color-primary);
+  font-size: 28px;
+  background: transparent;
 }
 
 .user-avatar {
-  background: var(--ed-color-primary);
+  font-size: 28px;
 }
 </style>
