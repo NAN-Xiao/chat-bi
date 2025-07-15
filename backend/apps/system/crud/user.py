@@ -44,8 +44,8 @@ async def user_ws_options(session: Session, uid: int, trans: Optional[I18n] = No
     if uid == 1:
         stmt = select(WorkspaceModel.id, WorkspaceModel.name).order_by(WorkspaceModel.create_time)
     else:
-        stmt = select(UserWsModel.oid, WorkspaceModel.name).join(
-            WorkspaceModel, UserWsModel.oid == WorkspaceModel.id
+        stmt = select(WorkspaceModel.id, WorkspaceModel.name).join(
+            UserWsModel, UserWsModel.oid == WorkspaceModel.id
         ).where(
             UserWsModel.uid == uid,
         ).order_by(WorkspaceModel.create_time)

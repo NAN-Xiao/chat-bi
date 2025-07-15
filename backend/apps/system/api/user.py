@@ -1,5 +1,8 @@
-from fastapi import APIRouter
+from typing import Optional
+from fastapi import APIRouter, Query
+from sqlmodel import func, or_, select
 from apps.system.crud.user import get_db_user, user_ws_options
+from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage, UserWs
@@ -18,13 +21,54 @@ async def user_info(current_user: CurrentUser):
 async def pager(
     session: SessionDep,
     pageNum: int,
-    pageSize: int
+    pageSize: int,
+    keyword: Optional[str] = Query(None, description="搜索关键字(可选)"),
+    status: Optional[int] = Query(None, description="状态"),
+    origins: Optional[list[int]] = Query(None, description="来源"),
+    oidlist: Optional[list[int]] = Query(None, description="空间ID集合(可选)"),
 ):
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
     filters = {}
+        
+    stmt = (
+        select(
+            UserModel,
+            func.coalesce(func.string_agg(WorkspaceModel.name, ','), '').label("space_name")
+        )
+        .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
+        .join(WorkspaceModel, UserWsModel.oid == WorkspaceModel.id, isouter=True)
+        .group_by(UserModel.id)
+        .order_by(UserModel.create_time)
+    )
+    
+    if status is not None:
+        stmt = stmt.where(UserModel.status == status)
+    
+    if oidlist:
+        user_filter = (
+            select(UserModel.id)
+            .join(UserWsModel, UserModel.id == UserWsModel.uid)
+            .where(UserWsModel.oid.in_(oidlist))
+            .distinct()
+        )
+        stmt = stmt.where(UserModel.id.in_(user_filter))
+    
+    """ if origins is not None:
+        stmt = stmt.where(UserModel.origin == origins) """
+    
+    if keyword:
+        keyword_pattern = f"%{keyword}%"
+        stmt = stmt.where(
+            or_(
+                UserModel.account.ilike(keyword_pattern),
+                UserModel.name.ilike(keyword_pattern),
+                UserModel.email.ilike(keyword_pattern)
+            )
+        )
+        
     return await paginator.get_paginated_response(
-        stmt=UserModel,
+        stmt=stmt,
         pagination=pagination,
         **filters)
 
