@@ -746,7 +746,21 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
         # todo row permission
         sql_json_str = extract_nested_json(full_sql_text)
         data = orjson.loads(sql_json_str)
-        sql_result = llm_service.generate_filter(data['sql'], data['tables']) # maybe no sql and tables
+
+        sql = ''
+        message = ''
+        error = False
+        if data['success']:
+            sql = data['sql']
+        else:
+            message = data['message']
+            error = True
+        if error:
+            raise Exception(message)
+        if sql.strip() == '':
+            raise Exception("SQL query is empty")
+
+        sql_result = llm_service.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
         print(sql_result)
         sql = llm_service.check_save_sql(res=sql_result)
         # sql = llm_service.check_save_sql(res=full_sql_text)
