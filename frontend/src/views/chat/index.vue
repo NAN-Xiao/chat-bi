@@ -16,7 +16,15 @@
       />
     </el-aside>
     <div v-if="!isAssistant && !chatListSideBarShow" class="hidden-sidebar-btn">
-      <el-popover :width="280" placement="bottom-start" popper-style="padding: 0; height: 654px">
+      <el-popover
+        :width="280"
+        placement="bottom-start"
+        popper-style="padding: 0;
+                      height: 654px;
+                      border: 1px solid rgba(222, 224, 227, 1);
+                      border-radius: 6px;
+                      "
+      >
         <template #reference>
           <el-button link type="primary" class="icon-btn" @click="showSideBar">
             <el-icon>
@@ -47,7 +55,10 @@
       </el-tooltip>
     </div>
     <el-container :loading="loading">
-      <el-main class="chat-record-list">
+      <el-main
+        class="chat-record-list"
+        :class="{ 'hide-sidebar': !isAssistant && !chatListSideBarShow }"
+      >
         <div v-if="computedMessages.length == 0" class="welcome-content-block">
           <div class="welcome-content">
             <div class="logo">SQLBot</div>
@@ -823,6 +834,8 @@ defineExpose({
   height: 100%;
   position: relative;
 
+  border-radius: 12px;
+
   .hidden-sidebar-btn {
     z-index: 1;
     position: absolute;
@@ -856,6 +869,11 @@ defineExpose({
   .chat-record-list {
     padding: 0 0 20px 0;
     background: rgba(255, 255, 255, 1);
+    border-radius: 0 12px 12px 0;
+
+    &.hide-sidebar {
+      border-radius: 12px;
+    }
   }
 
   .chat-footer {
