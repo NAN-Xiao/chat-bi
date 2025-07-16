@@ -122,7 +122,7 @@ async def create(session: SessionDep, creator: UserWsDTO):
 async def edit(session: SessionDep, editor: UserWsEditor):
     if not editor.oid or not editor.uid:
         raise RuntimeError("param [oid, uid] miss")
-    db_model = session.exec(select(UserWsModel).where(UserWsModel.uid.in_(editor.uid), UserWsModel.oid == editor.oid)).first()
+    db_model = session.exec(select(UserWsModel).where(UserWsModel.uid == editor.uid, UserWsModel.oid == editor.oid)).first()
     if not db_model:
         raise RuntimeError("uws not exist")
     if editor.weight == db_model.weight:
