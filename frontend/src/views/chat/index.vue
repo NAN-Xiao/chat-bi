@@ -72,11 +72,14 @@
               v-if="currentChatId === undefined"
               size="large"
               type="primary"
+              class="greeting-btn"
               @click="createNewChat"
             >
-              <el-icon>
-                <icon_new_chat_outlined />
-              </el-icon>
+              <span class="inner-icon">
+                <el-icon>
+                  <icon_new_chat_outlined />
+                </el-icon>
+              </span>
               {{ t('qa.start_sqlbot') }}
             </el-button>
           </div>
@@ -893,7 +896,6 @@ defineExpose({
 
   .chat-record-list {
     padding: 0 0 20px 0;
-    background: rgba(255, 255, 255, 1);
     border-radius: 0 12px 12px 0;
 
     &.hide-sidebar {
@@ -987,6 +989,35 @@ defineExpose({
       color: grey;
       font-size: 16px;
       line-height: 24px;
+    }
+
+    .greeting-btn {
+      width: 100%;
+      height: 88px;
+
+      border-style: dashed;
+
+      .inner-icon {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+
+        margin-right: 6px;
+      }
+
+      font-size: 16px;
+      line-height: 24px;
+      font-weight: 500;
+
+      --ed-button-text-color: rgba(28, 186, 144, 1);
+      --ed-button-hover-text-color: rgba(28, 186, 144, 1);
+      --ed-button-active-text-color: rgba(28, 186, 144, 1);
+      --ed-button-bg-color: rgba(248, 249, 250, 1);
+      --ed-button-hover-bg-color: rgba(28, 186, 144, 0.1);
+      --ed-button-border-color: rgba(217, 220, 223, 1);
+      --ed-button-hover-border-color: rgba(28, 186, 144, 1);
+      --ed-button-active-bg-color: rgba(28, 186, 144, 0.2);
+      --ed-button-active-border-color: rgba(28, 186, 144, 1);
     }
   }
 }
