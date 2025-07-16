@@ -13,11 +13,19 @@ export const dsType = [
 ]
 
 export const dsTypeWithImg = [
-  { name: 'MySQL', type: 'mysql', img: mysql_ds },
-  { name: 'PostgreSQL', type: 'pg', img: pg },
-  { name: 'Microsoft SQL Server', type: 'sqlServer', img: sqlServer },
-  { name: 'Oracle', type: 'oracle', img: oracle },
   { name: '本地 Excel/CSV', type: 'excel', img: excel },
+  { name: 'MySQL', type: 'mysql', img: mysql_ds },
+  { name: 'SQL Server', type: 'sqlServer', img: sqlServer },
+  { name: 'Oracle', type: 'oracle', img: oracle },
+  { name: 'PostgreSQL', type: 'pg', img: pg },
+]
+
+export const dsTypeWithImgSort = [
+  { name: '本地 Excel/CSV', type: 'excel', img: excel },
+  { name: 'PostgreSQL', type: 'pg', img: pg },
+  { name: 'Oracle', type: 'oracle', img: oracle },
+  { name: 'MySQL', type: 'mysql', img: mysql_ds },
+  { name: 'SQL Server', type: 'sqlServer', img: sqlServer },
 ]
 
 export const haveSchema = ['sqlServer', 'pg', 'oracle']

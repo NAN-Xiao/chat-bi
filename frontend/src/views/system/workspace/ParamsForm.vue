@@ -8,7 +8,6 @@ const paramsForm = reactive({
   name: '',
   key: '',
   val: '',
-  id: '',
 })
 
 const rules = {
@@ -39,9 +38,6 @@ const initForm = (item: any) => {
   if (item) {
     Object.assign(paramsForm, { ...item })
   }
-  if (!paramsForm.id) {
-    paramsForm.id = `${+new Date()}`
-  }
   paramsRef.value.clearValidate()
 }
 
@@ -54,17 +50,9 @@ const submit = () => {
     }
   })
 }
-
-const close = () => {
-  paramsForm.name = ''
-  paramsForm.key = ''
-  paramsForm.val = ''
-  paramsForm.id = ''
-}
 defineExpose({
   initForm,
   submit,
-  close,
 })
 </script>
 

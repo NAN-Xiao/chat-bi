@@ -12,6 +12,8 @@ import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
 import assistant from '@/views/embedded/assistant.vue'
 // import User from "@/views/system/user/index.vue";
+import User from '@/views/system/user/User.vue'
+import Workspace from '@/views/system/workspace/index.vue'
 import { watchRouter } from './watch'
 const router = createRouter({
   history: createWebHashHistory(),
@@ -121,6 +123,18 @@ const router = createRouter({
       component: LayoutDsl,
       redirect: '/system/model',
       children: [
+        {
+          path: 'user',
+          name: 'user',
+          component: User,
+          meta: { title: '用户管理', icon: 'user' },
+        },
+        {
+          path: 'workspace',
+          name: 'workspace',
+          component: Workspace,
+          meta: { title: '工作空间', icon: 'workspace' },
+        },
         {
           path: 'model',
           name: 'model',

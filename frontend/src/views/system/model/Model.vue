@@ -32,6 +32,7 @@ const modelConfigvVisible = ref(false)
 const editModel = ref(false)
 const activeStep = ref(0)
 const activeName = ref('')
+const activeType = ref('')
 const modelFormRef = ref()
 
 reactive({
@@ -102,9 +103,11 @@ const handleAddModel = () => {
   activeStep.value = 0
   modelConfigvVisible.value = true
 }
-const handleEditModel = (id: any) => {
+const handleEditModel = (row: any) => {
   activeStep.value = 1
-  modelApi.query(id).then((res: any) => {
+  activeType.value = row.supplier
+  activeName.value = row.supplier_item.name
+  modelApi.query(row.id).then((res: any) => {
     modelConfigvVisible.value = true
     nextTick(() => {
       modelFormRef.value.initForm({ ...res })
@@ -287,7 +290,7 @@ const submit = (item: any) => {
         :modle-type="getModelTypeName(ele['model_type'])"
         :base-modle="ele['base_model']"
         :is-default="ele['default_model']"
-        @edit="handleEditModel"
+        @edit="handleEditModel(ele)"
         @del="deleteHandler"
       ></card>
     </div>
@@ -320,12 +323,14 @@ const submit = (item: any) => {
       <ModelListSide
         v-if="activeStep === 1"
         :active-name="activeName"
+        :active-type="activeType"
         @click-model="supplierChang"
       ></ModelListSide>
       <ModelForm
         v-if="activeStep === 1"
         ref="modelFormRef"
         :active-name="activeName"
+        :active-type="activeType"
         @submit="submit"
       ></ModelForm>
       <template #footer>
@@ -354,6 +359,8 @@ const submit = (item: any) => {
 
   .card-content {
     display: flex;
+    flex-wrap: wrap;
+    max-height: calc(100% - 40px);
   }
 }
 </style>

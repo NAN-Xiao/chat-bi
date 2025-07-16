@@ -16,17 +16,19 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 const props = withDefaults(
   defineProps<{
     activeName: string
+    activeType: string
     activeStep: number
   }>(),
   {
     activeName: '',
+    activeType: '',
     activeStep: 0,
   }
 )
 
 const { wsCache } = useCache()
 const dsFormRef = ref<FormInstance>()
-const emit = defineEmits(['refresh', 'submit', 'changeActiveStep'])
+const emit = defineEmits(['refresh', 'changeActiveStep'])
 const isCreate = ref(true)
 const isEditTable = ref(false)
 const checkList = ref<any>([])
@@ -62,7 +64,7 @@ const dialogVisible = ref<boolean>(false)
 const form = ref<any>({
   name: '',
   description: '',
-  type: 'mysql',
+  type: props.activeType,
   configuration: '',
   driver: '',
   host: '',
@@ -330,14 +332,6 @@ onMounted(() => {
   }, 100)
 })
 
-const submitModle = () => {
-  dsFormRef.value!.validate((res: any) => {
-    if (res) {
-      emit('submit')
-    }
-  })
-}
-
 const keywords = ref('')
 const tableListWithSearch = computed(() => {
   if (!keywords.value) return tableList.value
@@ -353,6 +347,13 @@ watch(keywords, () => {
   checkAll.value = checkedCount === tableListWithSearch.value.length
   isIndeterminate.value = checkedCount > 0 && checkedCount < tableListWithSearch.value.length
 })
+
+watch(
+  () => props.activeType,
+  (val) => {
+    form.value.type = val
+  }
+)
 
 const checkAll = ref(false)
 const isIndeterminate = ref(false)
@@ -390,7 +391,6 @@ const tableListSave = () => {
 
 defineExpose({
   initForm,
-  submitModle,
   tableListSave,
 })
 </script>
@@ -555,14 +555,14 @@ defineExpose({
     </div>
     <div class="draw-foot">
       <el-button @click="close">{{ t('common.cancel') }}</el-button>
-      <el-button v-show="!isCreate && !isEditTable && form.type !== 'excel'" @click="check">
-        {{ t('ds.test_connection') }}
+      <el-button v-show="form.type !== 'excel'" @click="check">
+        {{ t('ds.check') }}
+      </el-button>
+      <el-button v-show="activeStep !== 0 && isCreate" secondary @click="preview">
+        {{ t('ds.previous') }}
       </el-button>
       <el-button v-show="activeStep === 1 && isCreate" type="primary" @click="next(dsFormRef)">
         {{ t('common.next') }}
-      </el-button>
-      <el-button v-show="activeStep === 2 && isCreate" @click="preview">
-        {{ t('ds.previous') }}
       </el-button>
       <el-button
         v-show="activeStep === 2 || !isCreate"
@@ -642,7 +642,6 @@ defineExpose({
     }
     .container {
       height: 524px;
-      overflow-y: auto;
       border: 1px solid #dee0e3;
       border-radius: 4px;
 

@@ -1,0 +1,27 @@
+import { request } from '@/utils/request'
+
+export const userImportApi = {
+  downExcelTemplateApi: () => request.post('/user/excelTemplate', {}, { responseType: 'blob' }),
+  importUserApi: (data: any) =>
+    request.post('/user/batchImport', data, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
+  downErrorRecordApi: (key: string) =>
+    request.get(`/user/errorRecord/${key}`, { responseType: 'blob' }),
+  clearErrorApi: (key: string) => {
+    request.get(`/user/clearErrorRecord/${key}`)
+  },
+}
+
+export const userApi = {
+  pager: (params: any, pageNumber: number, pageSize: number) =>
+    request.get(`/user/pager/${pageNumber}/${pageSize}${params}`),
+  add: (data: any) => request.post('/user', data),
+  edit: (data: any) => request.put('/user', data),
+  clearErrorApi: (key: string) => request.get(`/user/clearErrorRecord/${key}`),
+  delete: (key: string) => request.delete(`/user/${key}`),
+  get: (key: string) => request.get(`/user/${key}`),
+  pwd: (data: any) => request.put('/user/pwd', data),
+}

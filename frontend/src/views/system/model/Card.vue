@@ -30,7 +30,7 @@ const current_supplier = computed(() => {
 const emits = defineEmits(['edit', 'del'])
 
 const handleEdit = () => {
-  emits('edit', props.id)
+  emits('edit')
 }
 
 const handleDel = () => {

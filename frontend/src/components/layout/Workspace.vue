@@ -128,6 +128,8 @@ onMounted(async () => {
 
   &.collapse {
     width: 40px;
+    background: none;
+    border: none;
   }
 
   .name {

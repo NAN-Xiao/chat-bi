@@ -37,7 +37,7 @@ const modelForm = reactive({
   api_domain: '',
   config_list: [],
 })
-let isCreate = false
+const isCreate = ref(false)
 const modelRef = ref()
 const paramsFormRef = ref()
 const advancedSetting = ref([] as ParamsFormData[])
@@ -51,7 +51,7 @@ const modelList = computed(() => {
   return base_model_options(modelForm.supplier, modelForm.model_type)
 })
 const handleParamsEdite = (ele?: any) => {
-  isCreate = false
+  isCreate.value = false
   paramsFormDrawer.value = true
   nextTick(() => {
     paramsFormRef.value.initForm(ele)
@@ -59,7 +59,7 @@ const handleParamsEdite = (ele?: any) => {
 }
 
 const handleParamsCreate = () => {
-  isCreate = true
+  isCreate.value = true
   paramsFormDrawer.value = true
   nextTick(() => {
     paramsFormRef.value.initForm()
@@ -67,7 +67,7 @@ const handleParamsCreate = () => {
 }
 
 const handleParamsDel = (item: any) => {
-  advancedSetting.value = advancedSetting.value.filter((ele) => ele.key !== item.key)
+  advancedSetting.value = advancedSetting.value.filter((ele) => ele.id !== item.id)
 }
 
 const rules = {
@@ -107,9 +107,9 @@ const addParams = () => {
 }
 
 const submit = (item: any) => {
-  if (isCreate) {
+  if (isCreate.value) {
     advancedSetting.value.push({ ...item })
-    cancel()
+    beforeClose()
     return
   }
   for (const key in advancedSetting.value) {
@@ -119,16 +119,18 @@ const submit = (item: any) => {
     }
   }
 
-  cancel()
+  beforeClose()
 }
 
-const cancel = () => {
+const beforeClose = () => {
+  paramsFormRef.value.close()
   paramsFormDrawer.value = false
 }
 const supplierChang = (supplier: any) => {
   modelForm.supplier = supplier.id
   const config = supplier.model_config[modelForm.model_type || 0]
   modelForm.api_domain = config.api_domain
+  modelForm.base_model = ''
   if (!modelForm.id) {
     modelForm.name = supplier.name
   }
@@ -283,12 +285,19 @@ defineExpose({
     <el-drawer
       v-model="paramsFormDrawer"
       :size="600"
-      :title="$t('model.add') + $t('common.empty') + $t('model.parameters')"
+      :before-close="beforeClose"
+      :title="
+        isCreate
+          ? $t('model.add') + $t('common.empty') + $t('model.parameters')
+          : $t('datasource.edit') + $t('common.empty') + $t('model.parameters')
+      "
     >
       <ParamsForm ref="paramsFormRef" @submit="submit"></ParamsForm>
       <template #footer>
-        <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
-        <el-button type="primary" @click="addParams"> {{ t('model.add') }} </el-button>
+        <el-button secondary @click="beforeClose"> {{ $t('common.cancel') }} </el-button>
+        <el-button type="primary" @click="addParams">
+          {{ isCreate ? t('model.add') : t('common.save') }}
+        </el-button>
       </template>
     </el-drawer>
   </div>
@@ -316,6 +325,8 @@ defineExpose({
     width: 800px;
     margin: 0 auto;
     padding-top: 24px;
+    overflow-y: auto;
+    height: calc(100% - 180px);
 
     .ed-form-item--default {
       margin-bottom: 16px;

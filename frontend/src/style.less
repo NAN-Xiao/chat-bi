@@ -26,6 +26,7 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 
   --ed-color-primary: #1cba90 !important;
+  --ed-border-radius-base: 6px !important;
 }
 
 a {
@@ -148,4 +149,30 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.ed-input__prefix-inner .ed-icon {
+  color: #646a73;
+}
+
+.confirm-no_icon {
+  border-radius: 12px;
+  padding: 24px;
+  .tip {
+    margin-top: 24px;
+  }
+}
+
+.form-content_error {
+  .ed-form-item--default {
+    margin-bottom: 16px;
+
+    &.is-error {
+      margin-bottom: 40px;
+    }
+  }
+}
+
+.ed-dialog {
+  border-radius: 12px !important;
 }

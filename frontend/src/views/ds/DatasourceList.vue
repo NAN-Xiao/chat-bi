@@ -26,7 +26,7 @@ const handleModelClick = (item: any) => {
 </script>
 
 <template>
-  <div class="model-list">
+  <div class="datasouce-list">
     <div class="title">{{ $t('qa.select_datasource') }}</div>
     <el-input
       v-model="keywords"
@@ -61,7 +61,7 @@ const handleModelClick = (item: any) => {
 </template>
 
 <style lang="less" scoped>
-.model-list {
+.datasouce-list {
   width: 800px;
   margin: 0 auto;
   max-height: 100%;
@@ -91,7 +91,7 @@ const handleModelClick = (item: any) => {
       padding-left: 16px;
       margin-bottom: 16px;
       border: 1px solid #dee0e3;
-      border-radius: 4px;
+      border-radius: 12px;
       margin-left: 16px;
       cursor: pointer;
       &:hover {
