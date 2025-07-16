@@ -33,8 +33,10 @@ def get_assistant_ds(*, session: Session, assistant: AssistantModel):
         db_ds_list = session.exec(stmt).all()
         # filter private ds if offline
         return db_ds_list
-    pass
-
+    out_ds_instance: AssistantOutDs = AssistantOutDsFactory.get_instance(assistant)
+    dslist = out_ds_instance.get_ds_list()
+    # format?
+    return dslist
 
 def init_dynamic_cors(app: FastAPI):
     try: 
@@ -59,3 +61,21 @@ def init_dynamic_cors(app: FastAPI):
                 cors_middleware.kwargs['allow_origins'] = updated_origins
     except Exception as e:
         return False, e
+    
+    
+
+class AssistantOutDs:
+    assistant: AssistantModel
+    def get_ds_list(self):
+        config: dict[any] = json.loads(self.assistant.configuration)
+        url: str = config['url']
+        return None
+    
+class AssistantOutDsFactory:
+    _instance: AssistantOutDs = None
+    @staticmethod
+    def get_instance(cls, assistant: AssistantModel) -> AssistantOutDs:
+        if not cls._instance:
+            cls._instance = AssistantOutDs(assistant)
+        return cls._instance
+    

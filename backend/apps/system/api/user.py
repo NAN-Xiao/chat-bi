@@ -9,7 +9,7 @@ from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor
 from common.core.deps import CurrentUser, SessionDep, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
-from common.core.security import md5pwd, verify_md5pwd
+from common.core.security import default_md5_pwd, md5pwd, verify_md5pwd
 from common.core.sqlbot_cache import clear_cache
 router = APIRouter(tags=["user"], prefix="/user")
 
@@ -130,6 +130,16 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
         return {"message": "Language not supported"}
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     db_user.language = lang
+    session.add(db_user)
+    session.commit()
+    
+@router.patch("/pwd/{id}")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
+async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
+    if not current_user.isAdmin:
+        raise RuntimeError('only for admin')
+    db_user: UserModel = get_db_user(session=session, user_id=id)
+    db_user.password = default_md5_pwd()
     session.add(db_user)
     session.commit()
 
