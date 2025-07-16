@@ -504,6 +504,7 @@ const statusHandler = (row: any) => {
 }
 
 const cancelDelete = () => {
+  handleToggleRowSelection(false)
   multipleSelectionAll.value = []
   checkAll.value = false
   isIndeterminate.value = false
@@ -515,9 +516,14 @@ const deleteBatchUser = () => {
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
-    callback: (val: string) => {
-      console.log(val)
-    },
+  }).then(() => {
+    userApi.deleteBatch(multipleSelectionAll.value.map((ele) => ele.id)).then(() => {
+      ElMessage({
+        type: 'success',
+        message: t('dashboard.delete_success'),
+      })
+      search()
+    })
   })
 }
 const deleteHandler = (row: any) => {
@@ -532,7 +538,7 @@ const deleteHandler = (row: any) => {
       userApi.delete(row.id).then(() => {
         ElMessage({
           type: 'success',
-          message: 'Delete completed',
+          message: t('dashboard.delete_success'),
         })
         search()
       })

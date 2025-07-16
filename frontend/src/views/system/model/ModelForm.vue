@@ -147,7 +147,7 @@ const initForm = (item?: any) => {
 }
 const emits = defineEmits(['submit'])
 
-const submitModle = () => {
+const submitModel = () => {
   modelRef.value.validate((res: any) => {
     if (res) {
       emits('submit', {
@@ -160,7 +160,7 @@ const submitModle = () => {
 
 defineExpose({
   initForm,
-  submitModle,
+  submitModel,
   supplierChang,
 })
 </script>

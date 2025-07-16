@@ -7,8 +7,8 @@
   >
     <p class="mb-8 lighter">{{ $t('workspace.member_type') }}</p>
     <el-radio-group v-model="listType">
-      <el-radio value="0">{{ $t('workspace.ordinary_member') }}</el-radio>
-      <el-radio value="1">{{ $t('workspace.administrator') }}</el-radio>
+      <el-radio :value="0">{{ $t('workspace.ordinary_member') }}</el-radio>
+      <el-radio :value="1">{{ $t('workspace.administrator') }}</el-radio>
     </el-radio-group>
     <p class="mb-8 lighter mt-16">{{ $t('workspace.select_member') }}</p>
     <div v-loading="loading" class="flex border" style="height: 428px; border-radius: 6px">
@@ -48,8 +48,11 @@
               :value="space"
             >
               <div class="flex">
-                <img :src="avatar_personal" width="28px" height="28px" />
+                <el-icon size="28">
+                  <avatar_personal></avatar_personal>
+                </el-icon>
                 <span class="ml-4"> {{ space.name }}</span>
+                <span class="account">({{ space.account }})</span>
               </div>
             </el-checkbox>
           </el-checkbox-group>
@@ -67,11 +70,14 @@
         </div>
         <div v-for="ele in checkedWorkspace" :key="ele.name" class="flex-between">
           <div class="flex align-center">
-            <img :src="avatar_personal" width="28px" height="28px" />
+            <el-icon size="28">
+              <avatar_personal></avatar_personal>
+            </el-icon>
             <span class="ml-4 lighter">{{ ele.name }}</span>
+            <span class="account">({{ ele.account }})</span>
           </div>
           <el-button text>
-            <el-icon :size="18" @click="clearWorkspace(ele)"><Close /></el-icon>
+            <el-icon size="16" @click="clearWorkspace(ele)"><Close /></el-icon>
           </el-button>
         </div>
       </div>
@@ -89,16 +95,16 @@
 
 <script lang="ts" setup>
 import { ref, computed } from 'vue'
-
-import avatar_personal from '@/assets/workspace/avatar_personal.png'
-import Close from '@/assets/svg/icon_close_outlined.svg'
+import { workspaceOptionUserList, workspaceUwsCreate } from '@/api/workspace'
+import avatar_personal from '@/assets/svg/avatar_personal.svg'
+import Close from '@/assets/svg/icon_close_outlined_w.svg'
 import Search from '@/assets/svg/icon_search-outline_outlined.svg'
 import type { CheckboxValueType } from 'element-plus-secondary'
 const checkAll = ref(false)
-const isIndeterminate = ref(true)
+const isIndeterminate = ref(false)
 const checkedWorkspace = ref<any[]>([])
 const workspace = ref<any[]>([])
-const listType = ref('0')
+const listType = ref(0)
 const search = ref('')
 const loading = ref(false)
 const centerDialogVisible = ref(false)
@@ -118,29 +124,26 @@ const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   checkAll.value = checkedCount === workspace.value.length
   isIndeterminate.value = checkedCount > 0 && checkedCount < workspace.value.length
 }
+let oid: any = null
 
-const open = async () => {
+const open = async (id: any) => {
   loading.value = true
-  // const [authList, systemWorkspaceList] = await Promise.all([
-  //   authorizationApi[`getSharedAuthorization${type}`](id),
-  //   workspaceApi.getSystemWorkspaceList(),
-  // ])
-  // workspace.value = systemWorkspaceList.data as any
-  // listType.value = (authList.data || {}).authentication_type || 'WHITE_LIST'
-  // let workspace_id_list = (authList.data || {}).workspace_id_list || []
-  // checkedWorkspace.value = workspace.value.filter((ele) => workspace_id_list.includes(ele.id))
-  // handleCheckedWorkspaceChange(checkedWorkspace.value)
-  // loading.value = false
-  // centerDialogVisible.value = true
+  oid = id
+  const systemWorkspaceList = await workspaceOptionUserList({ oid }, 1, 1000)
+  workspace.value = systemWorkspaceList.items as any
+  loading.value = false
+  centerDialogVisible.value = true
 }
-
+const emits = defineEmits(['refresh'])
 const handleConfirm = () => {
-  // authorizationApi[`postSharedAuthorization${currentType}`](knowledge_id, {
-  //   workspace_id_list: checkedWorkspace.value.map((ele: any) => ele.id),
-  //   authentication_type: listType.value,
-  // }).then(() => {
-  //   centerDialogVisible.value = false
-  // })
+  workspaceUwsCreate({
+    uid_list: checkedWorkspace.value.map((ele: any) => ele.id),
+    oid,
+    weight: listType.value,
+  }).then(() => {
+    centerDialogVisible.value = false
+    emits('refresh')
+  })
 }
 
 const clearWorkspace = (val: any) => {
@@ -176,12 +179,32 @@ defineExpose({
     line-height: 22px;
   }
 
+  .checkbox-group-block {
+    .ed-checkbox,
+    .ed-checkbox__label,
+    .flex {
+      width: 100%;
+      height: 44px;
+    }
+
+    .flex {
+      align-items: center;
+      .account {
+        color: #8f959e;
+      }
+    }
+  }
+
   .border {
     border: 1px solid #dee0e3;
   }
 
   .w-full {
     width: 100%;
+
+    .flex-between {
+      height: 44px;
+    }
   }
 
   .mt-8 {

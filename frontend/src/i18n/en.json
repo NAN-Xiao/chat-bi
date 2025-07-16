@@ -80,7 +80,7 @@
     "type": "Data Source Type",
     "status": "Status",
     "actions": "Actions",
-    "pieces_in_total": "Showing {ms} records out of {msg}",
+    "pieces_in_total": "Showing {ms} records",
     "test_connection": "Test Connection",
     "check": "check",
     "connection_success": "Connection Successful",

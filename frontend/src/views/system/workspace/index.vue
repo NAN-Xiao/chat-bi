@@ -1,6 +1,14 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted, reactive } from 'vue'
-import { workspaceList, workspaceUserList } from '@/api/workspace'
+import {
+  workspaceList,
+  workspaceUserList,
+  workspaceDelete,
+  workspaceUwsDelete,
+  workspaceCreate,
+  workspaceUpdate,
+  workspaceUwsUpdate,
+} from '@/api/workspace'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import arrow_down from '@/assets/svg/arrow-down.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
@@ -20,14 +28,14 @@ import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 const { t } = useI18n()
 const multipleSelectionAll = ref<any[]>([])
 const tableList = ref([] as any[])
-const keywords = ref('')
+const keyword = ref('')
 const keywordsMember = ref('')
 const workspaceFormRef = ref()
 const authorizedWorkspaceDialog = ref()
 const tableListWithSearch = computed(() => {
-  if (!keywords.value) return tableList.value
+  if (!keyword.value) return tableList.value
   return tableList.value.filter((ele) =>
-    ele.name.toLowerCase().includes(keywords.value.toLowerCase())
+    ele.name.toLowerCase().includes(keyword.value.toLowerCase())
   )
 })
 const workspaceForm = reactive({
@@ -38,16 +46,26 @@ const workspaceForm = reactive({
 const userTypeList = [
   {
     name: t('workspace.administrator'),
-    value: '0',
+    value: 1,
   },
   {
     name: t('workspace.ordinary_member'),
-    value: '1',
+    value: 0,
   },
 ]
 
 const handleUserTypeChange = (val: any, row: any) => {
-  row.user_source = val
+  workspaceUwsUpdate({
+    uid: row.id,
+    oid: currentTable.value.id,
+    weight: val,
+  }).then(() => {
+    ElMessage({
+      type: 'success',
+      message: t('common.save_success'),
+    })
+    search()
+  })
 }
 
 const rules = {
@@ -60,7 +78,7 @@ const rules = {
   ],
 }
 const fieldListWithSearch = computed(() => {
-  if (!keywords.value) return fieldList.value
+  if (!keyword.value) return fieldList.value
   return fieldList.value.filter((ele: any) =>
     ele.name.toLowerCase().includes(keywordsMember.value.toLowerCase())
   )
@@ -81,7 +99,7 @@ const checkAll = ref(false)
 const fieldList = ref<any>([])
 const pageInfo = reactive({
   currentPage: 1,
-  pageSize: 1,
+  pageSize: 10,
   total: 0,
 })
 
@@ -91,6 +109,7 @@ const clickTable = (table: any) => {
   search()
 }
 const cancelDelete = () => {
+  handleToggleRowSelection(false)
   multipleSelectionAll.value = []
   checkAll.value = false
   isIndeterminate.value = false
@@ -104,11 +123,20 @@ const deleteBatchUser = () => {
       cancelButtonText: t('common.cancel'),
       customClass: 'confirm-no_icon',
       autofocus: false,
-      callback: (val: string) => {
-        console.log(val)
-      },
     }
-  )
+  ).then(() => {
+    workspaceUwsDelete({
+      uid_list: multipleSelectionAll.value.map((ele) => ele.id),
+      oid: currentTable.value.id,
+    }).then(() => {
+      ElMessage({
+        type: 'success',
+        message: t('dashboard.delete_success'),
+      })
+      multipleSelectionAll.value = []
+      search()
+    })
+  })
 }
 const deleteHandler = (row: any) => {
   ElMessageBox.confirm(t('workspace.member_feng_yibudao', { msg: row.name }), {
@@ -117,25 +145,18 @@ const deleteHandler = (row: any) => {
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
-    callback: (val: string) => {
-      console.log(val)
-    },
-  })
-    .then(() => {
-      /* userApi.delete(id).then(() => {
-        ElMessage({
-          type: 'success',
-          message: 'Delete completed',
-        })
-        search()
-      }) */
-    })
-    .catch(() => {
+  }).then(() => {
+    workspaceUwsDelete({
+      uid_list: [row.id],
+      oid: currentTable.value.id,
+    }).then(() => {
       ElMessage({
-        type: 'info',
-        message: 'Delete canceled',
+        type: 'success',
+        message: t('dashboard.delete_success'),
       })
+      search()
     })
+  })
 }
 const handleSelectionChange = (val: any[]) => {
   const ids = fieldList.value.map((ele: any) => ele.id)
@@ -170,18 +191,21 @@ const handleToggleRowSelection = (check: boolean = true) => {
 }
 
 const handleAddMember = () => {
-  authorizedWorkspaceDialog.value.open(1)
+  authorizedWorkspaceDialog.value.open(currentTable.value.id)
+}
+
+const refresh = () => {
+  search()
 }
 const search = () => {
-  workspaceUserList({ oid: currentTable.value.id }, pageInfo.currentPage, pageInfo.pageSize).then(
-    (res) => {
-      fieldList.value = res.items
-      fieldList.value = [{ id: 0, user_source: '管理员' }]
-      //   datasourceApi.previewData(props.info.id, buildData()).then((res) => {
-      //     previewData.value = res
-      //   })
-    }
-  )
+  workspaceUserList(
+    { oid: currentTable.value.id, keyword: keywordsMember.value },
+    pageInfo.currentPage,
+    pageInfo.pageSize
+  ).then((res) => {
+    fieldList.value = res.items
+    pageInfo.total = res.total
+  })
 }
 
 const closeField = () => {
@@ -191,7 +215,15 @@ const closeField = () => {
 const saveField = () => {
   workspaceFormRef.value.validate((res: any) => {
     if (res) {
-      console.log(res)
+      const req = workspaceForm.id ? workspaceUpdate : workspaceCreate
+      req(workspaceForm).then(() => {
+        ElMessage({
+          type: 'success',
+          message: t('common.save_success'),
+        })
+        init()
+        fieldDialog.value = false
+      })
     }
   })
 }
@@ -203,25 +235,17 @@ const delWorkspace = (row: any) => {
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
-    callback: (val: string) => {
-      console.log(val)
-    },
-  })
-    .then(() => {
-      /* userApi.delete(id).then(() => {
-        ElMessage({
-          type: 'success',
-          message: 'Delete completed',
-        })
-        search()
-      }) */
-    })
-    .catch(() => {
+  }).then(() => {
+    workspaceDelete({
+      id: row.id,
+    }).then(() => {
       ElMessage({
-        type: 'info',
-        message: 'Delete canceled',
+        type: 'success',
+        message: t('dashboard.delete_success'),
       })
+      init()
     })
+  })
 }
 
 const addWorkspace = (row: any) => {
@@ -258,7 +282,7 @@ const handleCurrentChange = (val: number) => {
         </el-tooltip>
       </div>
       <el-input
-        v-model="keywords"
+        v-model="keyword"
         clearable
         style="width: 232px"
         :placeholder="$t('datasource.search')"
@@ -311,7 +335,7 @@ const handleCurrentChange = (val: number) => {
             </div>
           </el-popover>
         </div>
-        <div v-if="!!keywords && !tableListWithSearch.length" class="no-result">
+        <div v-if="!!keyword && !tableListWithSearch.length" class="no-result">
           {{ $t('workspace.historical_dialogue') }}
         </div>
       </div>
@@ -338,6 +362,8 @@ const handleCurrentChange = (val: number) => {
             v-model="keywordsMember"
             clearable
             style="width: 232px"
+            @blur="search"
+            @keyup.enter="search"
             :placeholder="$t('workspace.name_username_email')"
           >
             <template #prefix>
@@ -376,15 +402,19 @@ const handleCurrentChange = (val: number) => {
             <el-table-column prop="email" :label="$t('user.email')" width="204" />
             <el-table-column
               class-name="user-source"
-              prop="user_source"
-              :label="$t('user.user_source')"
+              prop="weight"
+              :label="$t('workspace.member_type')"
               width="120"
             >
               <template #default="scope">
                 <el-popover popper-class="system-workspace_user" placement="bottom">
                   <template #reference>
                     <div style="display: flex; align-items: center; justify-content: space-between">
-                      <span>{{ scope.row.user_source }}</span>
+                      <span>{{
+                        scope.row.weight === 1
+                          ? t('workspace.administrator')
+                          : t('workspace.ordinary_member')
+                      }}</span>
                       <el-icon size="16">
                         <arrow_down></arrow_down>
                       </el-icon>
@@ -474,7 +504,10 @@ const handleCurrentChange = (val: number) => {
       </div>
     </div>
   </div>
-  <AuthorizedWorkspaceDialog ref="authorizedWorkspaceDialog"></AuthorizedWorkspaceDialog>
+  <AuthorizedWorkspaceDialog
+    @refresh="refresh"
+    ref="authorizedWorkspaceDialog"
+  ></AuthorizedWorkspaceDialog>
   <el-dialog
     v-model="fieldDialog"
     :title="$t(workspaceForm.id ? 'workspace.rename_a_workspace' : 'workspace.add_workspace')"
@@ -726,6 +759,39 @@ const handleCurrentChange = (val: number) => {
           line-height: 22px;
           color: #646a73;
         }
+      }
+    }
+
+    .bottom-select {
+      position: absolute;
+      height: 64px;
+      width: 100%;
+      left: 0;
+      bottom: 0;
+      border-top: 1px solid #1f232926;
+      display: flex;
+      align-items: center;
+      padding-left: 24px;
+
+      .danger-button {
+        border: 1px solid var(--ed-color-danger);
+        color: var(--ed-color-danger);
+        border-radius: var(--ed-border-radius-base);
+        min-width: 80px;
+        height: 32px;
+        line-height: 32px;
+        text-align: center;
+        cursor: pointer;
+        margin: 0 16px;
+        background-color: transparent;
+      }
+
+      .selected {
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+        color: #646a73;
+        margin-right: 12px;
       }
     }
   }

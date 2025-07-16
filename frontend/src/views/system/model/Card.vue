@@ -6,16 +6,16 @@ import { computed } from 'vue'
 const props = withDefaults(
   defineProps<{
     name: string
-    modleType: string
-    baseModle: string
+    modelType: string
+    baseModel: string
     id?: string
     isDefault?: boolean
     supplier?: number
   }>(),
   {
     name: '-',
-    modleType: '-',
-    baseModle: '-',
+    modelType: '-',
+    baseModel: '-',
     id: '-',
     isDefault: false,
     supplier: 0,
@@ -47,11 +47,11 @@ const handleDel = () => {
     </div>
     <div class="type-value">
       <span class="type">{{ $t('model.model_type') }}</span>
-      <span class="value"> {{ modleType }}</span>
+      <span class="value"> {{ modelType }}</span>
     </div>
     <div class="type-value">
       <span class="type">{{ $t('model.basic_model') }}</span>
-      <span class="value"> {{ baseModle }}</span>
+      <span class="value"> {{ baseModel }}</span>
     </div>
     <div class="methods">
       <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">

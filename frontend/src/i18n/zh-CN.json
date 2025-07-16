@@ -87,7 +87,7 @@
     "name": "数据源名称",
     "type": "数据源类型",
     "status": "状态",
-    "pieces_in_total": "显示 {ms} 条数据，共 {msg} 条",
+    "pieces_in_total": "显示 {ms} 条数据",
     "actions": "操作",
     "test_connection": "测试连接",
     "check": "校验",

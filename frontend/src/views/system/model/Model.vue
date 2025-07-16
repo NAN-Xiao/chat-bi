@@ -172,7 +172,7 @@ const preStep = () => {
 }
 
 const saveModel = () => {
-  modelFormRef.value.submitModle()
+  modelFormRef.value.submitModel()
 }
 
 const search = () => {
@@ -287,8 +287,8 @@ const submit = (item: any) => {
         :key="ele.id"
         :name="ele.name"
         :supplier="ele.supplier"
-        :modle-type="getModelTypeName(ele['model_type'])"
-        :base-modle="ele['base_model']"
+        :model-type="getModelTypeName(ele['model_type'])"
+        :base-model="ele['base_model']"
         :is-default="ele['default_model']"
         @edit="handleEditModel(ele)"
         @del="deleteHandler"
