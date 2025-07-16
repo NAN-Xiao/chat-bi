@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { datasourceApi } from '@/api/datasource'
+import icon_upload_outlined from '@/assets/svg/icon_upload_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import { encrypted, decrypted } from './js/aes'
 import { ElMessage } from 'element-plus-secondary'
@@ -11,18 +12,23 @@ import FixedSizeList from 'element-plus-secondary/es/components/virtual-list/src
 import { Plus } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
 import { dsType, haveSchema } from '@/views/ds/js/ds-type'
+import { setSize } from '@/utils/utils'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import icon_fileExcel_colorful from '@/assets/datasource/icon_excel.png'
+import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 
 const props = withDefaults(
   defineProps<{
     activeName: string
     activeType: string
     activeStep: number
+    isDataTable: boolean
   }>(),
   {
     activeName: '',
     activeType: '',
     activeStep: 0,
+    isDataTable: false,
   }
 )
 
@@ -44,20 +50,55 @@ const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}`, 'X-SQLBOT-KEY': 
 const dialogTitle = ref('')
 const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
 const saveLoading = ref<boolean>(false)
-
+const uploadLoading = ref(false)
 const { t } = useI18n()
 
 const rules = reactive<FormRules>({
   name: [
-    { required: true, message: t('ds.form.validate.name_required'), trigger: 'blur' },
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.name'),
+      trigger: 'blur',
+    },
     { min: 1, max: 50, message: t('ds.form.validate.name_length'), trigger: 'blur' },
   ],
-  type: [{ required: true, message: t('ds.form.validate.type_required'), trigger: 'change' }],
-  host: [{ required: true, message: 'Please input host', trigger: 'blur' }],
-  port: [{ required: true, message: 'Please input port', trigger: 'blur' }],
-  database: [{ required: true, message: 'Please input database', trigger: 'blur' }],
+  type: [
+    {
+      required: true,
+      message: t('datasource.Please_select') + t('common.empty') + t('ds.type'),
+      trigger: 'change',
+    },
+  ],
+  host: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.port'),
+      trigger: 'blur',
+    },
+  ],
+  port: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.host'),
+      trigger: 'blur',
+    },
+  ],
+  database: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.database'),
+      trigger: 'blur',
+    },
+  ],
   mode: [{ required: true, message: 'Please choose mode', trigger: 'change' }],
-  dbSchema: [{ required: true, message: 'Please input schema', trigger: 'blur' }],
+  sheets: [{ required: true, message: t('user.upload_file'), trigger: 'change' }],
+  dbSchema: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.schema'),
+      trigger: 'blur',
+    },
+  ],
 })
 
 const dialogVisible = ref<boolean>(false)
@@ -312,10 +353,12 @@ const preview = () => {
 }
 
 const beforeUpload = (rawFile: any) => {
+  setFile(rawFile)
   if (rawFile.size / 1024 / 1024 > 50) {
-    ElMessage.error('File size can not exceed 50MB!')
+    ElMessage.error(t('common.not_exceed_50mb'))
     return false
   }
+  uploadLoading.value = true
   return true
 }
 
@@ -324,6 +367,11 @@ const onSuccess = (response: any) => {
   form.value.sheets = response.data.sheets
   tableList.value = response.data.sheets
   excelUploadSuccess.value = true
+  uploadLoading.value = false
+}
+
+const onError = () => {
+  uploadLoading.value = false
 }
 
 onMounted(() => {
@@ -354,6 +402,17 @@ watch(
     form.value.type = val
   }
 )
+const fileSize = ref('-')
+const clearFile = () => {
+  fileSize.value = ''
+  form.value.filename = ''
+  form.value.sheets = []
+  tableList.value = []
+}
+
+const setFile = (file: any) => {
+  fileSize.value = setSize(file.size)
+}
 
 const checkAll = ref(false)
 const isIndeterminate = ref(false)
@@ -396,9 +455,12 @@ defineExpose({
 </script>
 
 <template>
-  <div class="model-form" :class="(!isCreate || activeStep === 2) && 'edit-form'">
+  <div
+    class="model-form"
+    v-loading="uploadLoading"
+    :class="(!isCreate || activeStep === 2) && 'edit-form'"
+  >
     <div v-if="isCreate && activeStep !== 2" class="model-name">{{ activeName }}</div>
-
     <div class="form-content">
       <el-form
         v-show="activeStep === 1"
@@ -408,14 +470,78 @@ defineExpose({
         label-width="auto"
         :rules="rules"
       >
+        <div v-if="form.type === 'excel'">
+          <el-form-item prop="sheets" :label="t('ds.form.file')">
+            <div v-if="form.filename" class="pdf-card">
+              <img :src="icon_fileExcel_colorful" width="40px" height="40px" />
+              <div class="file-name">
+                <div class="name">{{ form.filename }}</div>
+                <div class="size">{{ form.filename.split('.')[1] }} - {{ fileSize }}</div>
+              </div>
+              <el-icon class="action-btn" size="16" @click="clearFile">
+                <IconOpeDelete></IconOpeDelete>
+              </el-icon>
+            </div>
+            <el-upload
+              v-if="form.filename"
+              class="upload-user"
+              accept=".xlsx,.xls"
+              :headers="headers"
+              :action="getUploadURL"
+              :before-upload="beforeUpload"
+              :on-error="onError"
+              :on-success="onSuccess"
+              :show-file-list="false"
+              :file-list="form.sheets"
+            >
+              <el-button text style="line-height: 22px; height: 22px">
+                {{ $t('common.re_upload') }}
+              </el-button>
+            </el-upload>
+            <el-upload
+              v-else
+              class="upload-user"
+              accept=".xlsx,.xls"
+              :headers="headers"
+              :action="getUploadURL"
+              :before-upload="beforeUpload"
+              :on-success="onSuccess"
+              :on-error="onError"
+              :show-file-list="false"
+              :file-list="form.sheets"
+            >
+              <el-button secondary>
+                <el-icon size="16" style="margin-right: 4px">
+                  <icon_upload_outlined></icon_upload_outlined>
+                </el-icon>
+                {{ t('user.upload_file') }}</el-button
+              >
+            </el-upload>
+            <span v-if="!form.filename" class="not_exceed">{{ $t('common.not_exceed_50mb') }}</span>
+          </el-form-item>
+        </div>
         <el-form-item :label="t('ds.form.name')" prop="name">
-          <el-input v-model="form.name" />
+          <el-input
+            :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.name')"
+            v-model="form.name"
+          />
         </el-form-item>
         <el-form-item :label="t('ds.form.description')">
-          <el-input v-model="form.description" :rows="2" type="textarea" />
+          <el-input
+            :placeholder="
+              $t('datasource.please_enter') + $t('common.empty') + t('ds.form.description')
+            "
+            v-model="form.description"
+            :rows="2"
+            type="textarea"
+          />
         </el-form-item>
         <el-form-item :label="t('ds.type')" prop="type">
-          <el-select v-model="form.type" placeholder="Select Type" :disabled="!isCreate">
+          <el-select
+            v-model="form.type"
+            :placeholder="$t('datasource.Please_select') + $t('common.empty') + t('ds.type')"
+            :disabled="!isCreate"
+          >
             <el-option
               v-for="item in dsType"
               :key="item.value"
@@ -424,38 +550,52 @@ defineExpose({
             />
           </el-select>
         </el-form-item>
-        <div v-if="form.type === 'excel'">
-          <el-form-item label="File">
-            <el-upload
-              :disabled="!isCreate"
-              accept=".xls, .xlsx, .csv"
-              :headers="headers"
-              :action="getUploadURL"
-              :before-upload="beforeUpload"
-              :on-success="onSuccess"
-            >
-              <el-button :disabled="!isCreate">{{ t('ds.form.upload.button') }}</el-button>
-              <template #tip>
-                <div class="el-upload__tip">{{ t('ds.form.upload.tip') }}</div>
-              </template>
-            </el-upload>
-          </el-form-item>
-        </div>
-        <div v-else>
+        <span v-if="form.type !== 'excel'">
+          <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
+          <span v-if="form.type === 'sqlServer'">2012+</span>
+          <span v-else-if="form.type === 'oracle'">12+</span>
+          <span v-else-if="form.type === 'mysql'">5.6+</span>
+          <span v-else-if="form.type === 'pg'">9.6+</span>
+        </span>
+
+        <div style="margin-top: 16px" v-if="form.type !== 'excel'">
           <el-form-item :label="t('ds.form.host')" prop="host">
-            <el-input v-model="form.host" />
+            <el-input
+              :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.host')"
+              v-model="form.host"
+            />
           </el-form-item>
           <el-form-item :label="t('ds.form.port')" prop="port">
-            <el-input v-model="form.port" />
+            <el-input
+              :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.port')"
+              v-model="form.port"
+            />
           </el-form-item>
           <el-form-item :label="t('ds.form.username')">
-            <el-input v-model="form.username" />
+            <el-input
+              :placeholder="
+                $t('datasource.please_enter') + $t('common.empty') + t('ds.form.username')
+              "
+              v-model="form.username"
+            />
           </el-form-item>
           <el-form-item :label="t('ds.form.password')">
-            <el-input v-model="form.password" type="password" show-password />
+            <el-input
+              :placeholder="
+                $t('datasource.please_enter') + $t('common.empty') + t('ds.form.password')
+              "
+              v-model="form.password"
+              type="password"
+              show-password
+            />
           </el-form-item>
           <el-form-item :label="t('ds.form.database')" prop="database">
-            <el-input v-model="form.database" />
+            <el-input
+              :placeholder="
+                $t('datasource.please_enter') + $t('common.empty') + t('ds.form.database')
+              "
+              v-model="form.database"
+            />
           </el-form-item>
           <el-form-item
             v-if="form.type === 'oracle'"
@@ -468,26 +608,29 @@ defineExpose({
             </el-radio-group>
           </el-form-item>
           <el-form-item :label="t('ds.form.extra_jdbc')">
-            <el-input v-model="form.extraJdbc" />
+            <el-input
+              :placeholder="
+                $t('datasource.please_enter') + $t('common.empty') + t('ds.form.extra_jdbc')
+              "
+              v-model="form.extraJdbc"
+            />
           </el-form-item>
           <el-form-item
             v-if="haveSchema.includes(form.type)"
             :label="t('ds.form.schema')"
             prop="dbSchema"
           >
-            <el-input v-model="form.dbSchema" />
+            <el-input
+              :placeholder="
+                $t('datasource.please_enter') + $t('common.empty') + t('ds.form.schema')
+              "
+              v-model="form.dbSchema"
+            />
             <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
           </el-form-item>
           <el-form-item :label="t('ds.form.timeout')" prop="timeout">
             <el-input-number v-model="form.timeout" :min="0" :max="300" controls-position="right" />
           </el-form-item>
-          <span>
-            <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
-            <span v-if="form.type === 'sqlServer'">2012+</span>
-            <span v-else-if="form.type === 'oracle'">12+</span>
-            <span v-else-if="form.type === 'mysql'">5.6+</span>
-            <span v-else-if="form.type === 'pg'">9.6+</span>
-          </span>
         </div>
       </el-form>
       <div v-show="activeStep === 2" v-loading="tableListLoading" class="select-data_table">
@@ -554,8 +697,8 @@ defineExpose({
       </div>
     </div>
     <div class="draw-foot">
-      <el-button @click="close">{{ t('common.cancel') }}</el-button>
-      <el-button v-show="form.type !== 'excel'" @click="check">
+      <el-button secondary @click="close">{{ t('common.cancel') }}</el-button>
+      <el-button v-show="form.type !== 'excel' && !isDataTable" @click="check">
         {{ t('ds.check') }}
       </el-button>
       <el-button v-show="activeStep !== 0 && isCreate" secondary @click="preview">
@@ -601,6 +744,77 @@ defineExpose({
     width: 800px;
     margin: 0 auto;
     padding-top: 24px;
+
+    .upload-user {
+      height: 32px;
+      .ed-upload {
+        width: 100% !important;
+      }
+    }
+
+    .not_exceed {
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 22px;
+      color: #8f959e;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .pdf-card {
+      width: 100%;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px 0 12px;
+      border: 1px solid #dee0e3;
+      border-radius: 6px;
+
+      .file-name {
+        margin-left: 8px;
+        .name {
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 22px;
+        }
+
+        .size {
+          font-weight: 400;
+          font-size: 12px;
+          line-height: 20px;
+          color: #8f959e;
+        }
+      }
+
+      .action-btn {
+        margin-left: auto;
+      }
+
+      .ed-icon {
+        position: relative;
+        cursor: pointer;
+        color: #646a73;
+
+        &::after {
+          content: '';
+          background-color: #1f23291a;
+          position: absolute;
+          border-radius: 6px;
+          width: 24px;
+          height: 24px;
+          transform: translate(-50%, -50%);
+          top: 50%;
+          left: 50%;
+          display: none;
+        }
+
+        &:hover {
+          &::after {
+            display: block;
+          }
+        }
+      }
+    }
 
     .ed-form-item--default {
       margin-bottom: 16px;

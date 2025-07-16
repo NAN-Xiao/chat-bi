@@ -55,6 +55,7 @@ defineExpose({
       :active-step="2"
       active-name=""
       active-type=""
+      isDataTable
       @change-active-step="changeActiveStep"
       @refresh="refresh"
     ></DatasourceForm>

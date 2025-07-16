@@ -26,7 +26,11 @@
     "simplified_chinese": "简体中文",
     "traditional_chinese": "繁體中文",
     "help": "帮助",
-    "language": "语言"
+    "language": "语言",
+    "re_upload": "重新上传",
+    "not_exceed_50mb": "支持 XLS、XLSX、CSV 格式，文件大小不超过 50MB",
+    "reset_password": "重置密码",
+    "password_reset_successful": "重置密码成功"
   },
   "dashboard": {
     "select_dashboard": "请选择仪表板",
@@ -124,14 +128,14 @@
       "choose_tables": "选择数据表",
       "name": "名称",
       "description": "描述",
-      "host": "主机/IP",
+      "host": "主机名/IP地址",
       "port": "端口",
       "username": "用户名",
       "password": "密码",
       "database": "数据库",
       "connect_mode": "连接方式",
       "service_name": "服务名",
-      "extra_jdbc": "额外 JDBC 参数",
+      "extra_jdbc": "额外的 JDBC 连接字符串",
       "schema": "模式",
       "get_schema": "获取模式",
       "file": "文件",
@@ -194,7 +198,9 @@
     "operate_with_caution": "被删除后，将无法对该数据源进行智能问数，请谨慎操作。",
     "data_source_de": "无法删除数据源：{msg}",
     "cannot_be_deleted": "仪表板的图表使用了该数据源，不可删除。",
-    "got_it": "知道了"
+    "got_it": "知道了",
+    "field_original_notes": "字段原始备注",
+    "field_notes_1": "字段备注"
   },
   "model": {
     "default_model": "默认模型",

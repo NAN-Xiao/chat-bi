@@ -52,6 +52,7 @@ const props = withDefaults(
 const { t } = useI18n()
 const paramsFormRef = ref()
 const tableList = ref([] as any[])
+const loading = ref(false)
 const keywords = ref('')
 const tableListWithSearch = computed(() => {
   if (!keywords.value) return tableList.value
@@ -63,7 +64,7 @@ const total = ref(1000)
 const showNum = ref(100)
 const currentTable = ref<any>({})
 const ds = ref<any>({})
-const btnSelect = ref('q')
+const btnSelect = ref('d')
 
 const init = () => {
   datasourceApi.getDs(props.info.id).then((res) => {
@@ -94,13 +95,19 @@ const handleSelectTableList = () => {
 }
 
 const clickTable = (table: any) => {
+  loading.value = true
   currentTable.value = table
-  datasourceApi.fieldList(table.id).then((res) => {
-    fieldList.value = res
-    datasourceApi.previewData(props.info.id, buildData()).then((res) => {
-      previewData.value = res
+  datasourceApi
+    .fieldList(table.id)
+    .then((res) => {
+      fieldList.value = res
+      datasourceApi.previewData(props.info.id, buildData()).then((res) => {
+        previewData.value = res
+      })
     })
-  })
+    .finally(() => {
+      loading.value = false
+    })
 }
 
 const closeTable = () => {
@@ -228,12 +235,14 @@ const back = () => {
         </div>
       </div>
 
-      <div v-if="currentTable.table_name" class="info-table">
+      <div v-if="currentTable.table_name" v-loading="loading" class="info-table">
         <div class="table-name">
           <div class="name">{{ currentTable.table_name }}</div>
           <div class="notes">
             {{ $t('about.remark') }}:
-            {{ currentTable.custom_comment || '-' }}
+            <span :title="currentTable.custom_comment" class="field-notes">{{
+              currentTable.custom_comment || '-'
+            }}</span>
             <el-icon style="margin-left: 8px; cursor: pointer" size="16" @click="editTable">
               <edit></edit>
             </el-icon>
@@ -253,11 +262,13 @@ const back = () => {
             <el-table v-if="btnSelect === 'd'" :data="fieldList" style="width: 100%">
               <el-table-column prop="field_name" :label="t('datasource.field_name')" width="180" />
               <el-table-column prop="field_type" :label="t('datasource.field_type')" width="180" />
-              <el-table-column prop="field_comment" :label="t('about.remark')" />
-              <el-table-column :label="t('datasource.custom_notes')">
+              <el-table-column prop="field_comment" :label="t('datasource.field_original_notes')" />
+              <el-table-column :label="t('datasource.field_notes_1')">
                 <template #default="scope">
                   <div class="field-comment">
-                    <span>{{ scope.row.custom_comment }}</span>
+                    <span :title="scope.row.custom_comment" class="notes-in_table">{{
+                      scope.row.custom_comment
+                    }}</span>
                     <el-tooltip
                       :offset="14"
                       effect="dark"
@@ -441,6 +452,7 @@ const back = () => {
       right: 0;
       top: 0;
       width: calc(100% - 280px);
+      height: 100%;
       .table-name {
         height: 80px;
         padding: 16px 0 0 24px;
@@ -459,11 +471,20 @@ const back = () => {
           color: #646a73;
           display: flex;
           align-items: center;
+
+          .field-notes {
+            display: inline-block;
+            max-width: calc(100% - 75px);
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            overflow: hidden;
+          }
         }
       }
 
       .table-content {
         padding: 16px 24px;
+        height: calc(100% - 80px);
 
         .btn-select {
           height: 32px;
@@ -495,31 +516,51 @@ const back = () => {
 
         .preview-or-schema {
           margin-top: 16px;
+          height: calc(100% - 50px);
+          overflow-y: auto;
 
           .field-comment {
-            height: 24px;
-          }
-          .ed-icon {
-            position: relative;
-            cursor: pointer;
-            margin-top: 4px;
-
-            &::after {
-              content: '';
-              background-color: #1f23291a;
-              position: absolute;
-              border-radius: 6px;
-              width: 24px;
-              height: 24px;
-              transform: translate(-50%, -50%);
-              top: 50%;
-              left: 50%;
-              display: none;
+            display: flex;
+            align-items: center;
+            min-height: 24px;
+            .notes-in_table {
+              max-width: 192px;
+              display: -webkit-box;
+              max-height: 66px;
+              -webkit-box-orient: vertical;
+              -webkit-line-clamp: 3; /* 限制行数为3 */
+              overflow: hidden;
+              text-overflow: ellipsis;
             }
-
             &:hover {
-              &::after {
+              .ed-icon {
                 display: block;
+              }
+            }
+            .ed-icon {
+              position: relative;
+              cursor: pointer;
+              margin-top: 4px;
+              margin-left: 8px;
+              display: none;
+
+              &::after {
+                content: '';
+                background-color: #1f23291a;
+                position: absolute;
+                border-radius: 6px;
+                width: 24px;
+                height: 24px;
+                transform: translate(-50%, -50%);
+                top: 50%;
+                left: 50%;
+                display: none;
+              }
+
+              &:hover {
+                &::after {
+                  display: block;
+                }
               }
             }
           }

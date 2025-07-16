@@ -13,9 +13,11 @@ import { useI18n } from 'vue-i18n'
 withDefaults(
   defineProps<{
     activeName: string
+    editModel: boolean
   }>(),
   {
     activeName: '',
+    editModel: false,
   }
 )
 
@@ -166,8 +168,8 @@ defineExpose({
 </script>
 
 <template>
-  <div class="model-form">
-    <div class="model-name">{{ activeName }}</div>
+  <div class="model-form" :class="editModel && 'is-edit_model'">
+    <div class="model-name" v-if="!editModel">{{ activeName }}</div>
     <div class="form-content">
       <el-form
         ref="modelRef"
@@ -310,6 +312,10 @@ defineExpose({
   right: 0;
   top: 56px;
   height: 100%;
+
+  &.is-edit_model {
+    width: 100%;
+  }
   .model-name {
     height: 56px;
     width: 100%;

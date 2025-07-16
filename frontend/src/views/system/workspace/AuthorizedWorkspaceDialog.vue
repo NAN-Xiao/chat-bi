@@ -26,7 +26,7 @@
             </el-icon>
           </template>
         </el-input>
-        <div class="mt-8">
+        <div class="mt-8 max-height_workspace">
           <el-checkbox
             v-if="!search"
             v-model="checkAll"
@@ -129,6 +129,9 @@ let oid: any = null
 const open = async (id: any) => {
   loading.value = true
   oid = id
+  checkedWorkspace.value = []
+  checkAll.value = false
+  isIndeterminate.value = false
   const systemWorkspaceList = await workspaceOptionUserList({ oid }, 1, 1000)
   workspace.value = systemWorkspaceList.items as any
   loading.value = false
@@ -201,6 +204,7 @@ defineExpose({
 
   .w-full {
     width: 100%;
+    overflow-y: auto;
 
     .flex-between {
       height: 44px;
@@ -209,6 +213,11 @@ defineExpose({
 
   .mt-8 {
     margin-top: 8px;
+  }
+
+  .max-height_workspace {
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
   }
 
   .align-center {

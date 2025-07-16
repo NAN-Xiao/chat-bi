@@ -101,10 +101,12 @@ const formatKeywords = (item: string) => {
 }
 const handleAddModel = () => {
   activeStep.value = 0
+  editModel.value = false
   modelConfigvVisible.value = true
 }
 const handleEditModel = (row: any) => {
   activeStep.value = 1
+  editModel.value = true
   activeType.value = row.supplier
   activeName.value = row.supplier_item.name
   modelApi.query(row.id).then((res: any) => {
@@ -304,7 +306,9 @@ const submit = (item: any) => {
       :show-close="false"
     >
       <template #header="{ close }">
-        <span style="white-space: nowrap">{{ t('model.add_model') }}</span>
+        <span style="white-space: nowrap">{{
+          editModel ? $t('dashboard.edit') + $t('common.empty') + activeName : t('model.add_model')
+        }}</span>
         <div v-if="!editModel" class="flex-center" style="width: 100%">
           <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
             <el-step>
@@ -321,7 +325,7 @@ const submit = (item: any) => {
       </template>
       <ModelList v-if="activeStep === 0" @click-model="clickModel"></ModelList>
       <ModelListSide
-        v-if="activeStep === 1"
+        v-if="activeStep === 1 && !editModel"
         :active-name="activeName"
         :active-type="activeType"
         @click-model="supplierChang"
@@ -331,11 +335,14 @@ const submit = (item: any) => {
         ref="modelFormRef"
         :active-name="activeName"
         :active-type="activeType"
+        :edit-model="editModel"
         @submit="submit"
       ></ModelForm>
-      <template #footer>
+      <template v-if="activeStep !== 0" #footer>
         <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
-        <el-button secondary @click="preStep"> {{ $t('ds.previous') }} </el-button>
+        <el-button v-if="!editModel" secondary @click="preStep">
+          {{ $t('ds.previous') }}
+        </el-button>
         <el-button type="primary" @click="saveModel"> {{ $t('common.save') }} </el-button>
       </template>
     </el-drawer>

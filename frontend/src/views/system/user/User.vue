@@ -98,7 +98,7 @@
               <el-tooltip
                 :offset="14"
                 effect="dark"
-                :content="$t('user.change_password')"
+                :content="$t('common.reset_password')"
                 placement="top"
               >
                 <el-icon class="action-btn" size="16" @click="handleEditPassword(scope.row.id)">
@@ -205,6 +205,7 @@
 
       <el-form-item :label="$t('user.workspace')">
         <el-select
+          clearable
           v-model="state.form.oid"
           :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('user.workspace')"
         >
@@ -218,7 +219,9 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="closeForm">{{ $t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="saveHandler"> {{ $t('model.add') }} </el-button>
+        <el-button type="primary" @click="saveHandler">
+          {{ state.form.id ? $t('common.save') : $t('model.add') }}
+        </el-button>
       </div>
     </template>
   </el-drawer>
@@ -315,13 +318,13 @@ const filterOption = ref<any[]>([
     type: 'enum',
     option: [
       { id: '0', name: t('user.local_creation') },
-      { id: 1, name: 'LDAP' },
-      { id: 2, name: 'OIDC' },
-      { id: 3, name: 'CAS' },
-      { id: 9, name: 'OAuth2' },
-      { id: 4, name: t('user.feishu') },
-      { id: 5, name: t('user.dingtalk') },
-      { id: 6, name: t('user.wechat_for_business') },
+      // { id: 1, name: 'LDAP' },
+      // { id: 2, name: 'OIDC' },
+      // { id: 3, name: 'CAS' },
+      // { id: 9, name: 'OAuth2' },
+      // { id: 4, name: t('user.feishu') },
+      // { id: 5, name: t('user.dingtalk') },
+      // { id: 6, name: t('user.wechat_for_business') },
     ],
     field: 'origins',
     title: t('user.user_source'),
@@ -330,7 +333,7 @@ const filterOption = ref<any[]>([
   {
     type: 'select',
     option: [],
-    field: 'oidist',
+    field: 'oidlist',
     title: t('user.workspace'),
     operate: 'in',
     property: { placeholder: t('common.empty') + t('user.workspace') },
@@ -412,8 +415,12 @@ const handleClosePassword = () => {
 }
 
 const handleEditPassword = (id: any) => {
-  password.value.id = id
-  dialogVisiblePassword.value = true
+  userApi.pwd(id).then(() => {
+    ElMessage({
+      type: 'success',
+      message: t('common.password_reset_successful'),
+    })
+  })
 }
 
 const handleUserImport = () => {
@@ -576,6 +583,9 @@ const configParams = () => {
   }
 
   state.conditions.forEach((ele: any) => {
+    if (ele.field === 'status' && ele.value.length === 2) {
+      return
+    }
     ele.value.forEach((itx: any) => {
       str += str ? `&${ele.field}=${itx}` : `${ele.field}=${itx}`
     })

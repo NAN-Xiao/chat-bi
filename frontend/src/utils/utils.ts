@@ -54,3 +54,29 @@ export const getBrowserLocale = () => {
 export const getLocale = () => {
   return wsCache.get('user.language') || getBrowserLocale() || 'zh-CN'
 }
+
+export const setSize = (size: any) => {
+  let data = ''
+  const _size = Number.parseFloat(size)
+  if (_size < 1 * 1024) {
+    //如果小于0.1KB转化成B
+    data = _size.toFixed(2) + 'B'
+  } else if (_size < 1 * 1024 * 1024) {
+    //如果小于0.1MB转化成KB
+    data = (_size / 1024).toFixed(2) + 'KB'
+  } else if (_size < 1 * 1024 * 1024 * 1024) {
+    //如果小于0.1GB转化成MB
+    data = (_size / (1024 * 1024)).toFixed(2) + 'MB'
+  } else {
+    //其他转化成GB
+    data = (_size / (1024 * 1024 * 1024)).toFixed(2) + 'GB'
+  }
+  const size_str = data + ''
+  const len = size_str.indexOf('.')
+  const dec = size_str.substr(len + 1, 2)
+  if (dec == '00') {
+    //当小数点后为00时 去掉小数部分
+    return size_str.substring(0, len) + size_str.substr(len + 3, 2)
+  }
+  return size_str
+}
