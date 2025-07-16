@@ -21,6 +21,7 @@ import { useI18n } from 'vue-i18n'
 
 interface Datasource {
   name: string
+  num: string
   type_name: string
   type: string
   img: string
@@ -274,6 +275,7 @@ const back = () => {
         :name="ele.name"
         :type="ele.type"
         :type-name="ele.type_name"
+        :num="ele.num"
         :description="ele.description"
         @question="handleQuestion"
         @edit="handleEditDatasource(ele)"

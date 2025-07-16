@@ -13,6 +13,7 @@ const props = withDefaults(
     name: string
     type: string
     typeName: string
+    num: string
     description?: string
     id?: string
   }>(),
@@ -69,6 +70,7 @@ const onClickOutside = () => {
         <el-icon class="form-icon" size="16">
           <icon_form_outlined></icon_form_outlined>
         </el-icon>
+        {{ num }}
       </div>
       <div click.stop class="methods">
         <el-button type="primary" style="margin-right: 8px" @click.stop="handleQuestion">

@@ -359,6 +359,8 @@ const submit = (item: any) => {
 
   .card-content {
     display: flex;
+    flex-wrap: wrap;
+    max-height: calc(100% - 40px);
   }
 }
 </style>

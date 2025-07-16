@@ -37,7 +37,7 @@ const toWorkspace = () => {
       <Workspace :collapse="collapse"></Workspace>
       <Menu :collapse="collapse"></Menu>
       <div class="bottom">
-        <div class="back-to_workspace" @click="toWorkspace">
+        <div class="back-to_workspace" :class="collapse && 'collapse'" @click="toWorkspace">
           <el-icon size="16">
             <icon_moments_categories_outlined></icon_moments_categories_outlined>
           </el-icon>
@@ -97,6 +97,11 @@ const toWorkspace = () => {
         border-radius: 6px;
         height: 40px;
         cursor: pointer;
+
+        &:not(.collapse) {
+          background: #1f23290a;
+          border: 1px solid #d9dcdf;
+        }
         &:hover {
           background-color: #1f23291a;
         }
