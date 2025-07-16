@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 from apps.db.engine import create_table, get_data_engine, insert_data
 from common.core.deps import SessionDep, CurrentUser
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
-    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds
+    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField
@@ -101,6 +101,11 @@ async def edit_field(session: SessionDep, field: CoreField):
 @router.post("/previewData/{id}")
 async def edit_local(session: SessionDep, id: int, data: TableObj):
     return preview(session, id, data)
+
+
+@router.post("/fieldEnum/{id}")
+async def field_enum(session: SessionDep, id: int):
+    return fieldEnum(session, id)
 
 
 @router.post("/uploadExcel")
