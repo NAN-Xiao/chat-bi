@@ -638,7 +638,6 @@ defineExpose({
     }
     .container {
       height: 524px;
-      overflow-y: auto;
       border: 1px solid #dee0e3;
       border-radius: 4px;
 
