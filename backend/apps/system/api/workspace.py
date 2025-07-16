@@ -42,6 +42,29 @@ async def option_pager(
         stmt=stmt,
         pagination=pagination,
     )
+    
+@router.get("/uws/option", response_model=UserWsOption)
+async def option_user(
+    session: SessionDep, 
+    current_user: CurrentUser,
+    keyword: str = Query(description="搜索关键字")
+    ):
+    if (not current_user.isAdmin) and current_user.weight == 0:
+        raise RuntimeError("no permission to execute this api")
+    oid = current_user.oid
+    
+    stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
+        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid)
+    )
+    
+    if keyword:
+        stmt = stmt.where(
+            or_(
+                UserModel.account == int(keyword),
+                UserModel.name == keyword,
+            )
+        )
+    return session.exec(stmt).first()
 
 @router.get("/uws/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[WorkspaceUser])
 async def pager(
