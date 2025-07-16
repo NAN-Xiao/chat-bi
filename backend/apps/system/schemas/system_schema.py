@@ -50,7 +50,11 @@ class UserWsBase(BaseModel):
     oid: int
 class UserWsDTO(UserWsBase):
     weight: int = 0
-    
+
+class UserWsEditor(BaseModel):
+    uid: int
+    oid: int    
+    weight: int = 0
 
 class UserInfoDTO(UserEditor):
     language: str = "zh-CN"
