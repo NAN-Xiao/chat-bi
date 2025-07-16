@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 import jwt
 from sqlmodel import Session
 from starlette.middleware.base import BaseHTTPMiddleware
+from apps.system.models.system_model import AssistantModel
 from common.core.db import engine 
 from apps.system.crud.assistant import get_assistant_info, get_assistant_user
 from apps.system.crud.user import get_user_info
@@ -29,12 +30,12 @@ class TokenMiddleware(BaseHTTPMiddleware):
         assistantToken = request.headers.get(assistantTokenKey)
         #if assistantToken and assistantToken.lower().startswith("assistant "):
         if assistantToken:
-            validate_pass, data, assistant = await self.validateAssistant(assistantToken)
-            if validate_pass:
-                request.state.current_user = data
-                request.state.assistant = assistant
+            validator: tuple[any] = await self.validateAssistant(assistantToken)
+            if validator[0]:
+                request.state.current_user = validator[1]
+                request.state.assistant = validator[2]
                 return await call_next(request)
-            return JSONResponse({"error": f"Unauthorized:[{data}]"}, status_code=401)
+            return JSONResponse({"error": f"Unauthorized:[{validator[1]}]"}, status_code=401)
         #validate pass
         tokenkey = settings.TOKEN_KEY
         token = request.headers.get(tokenkey)
@@ -66,7 +67,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return False, e
             
     
-    async def validateAssistant(self, assistantToken: Optional[str]):
+    async def validateAssistant(self, assistantToken: Optional[str]) -> tuple[any]:
         if not assistantToken:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(assistantToken)
@@ -83,7 +84,8 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 """ session_user = await get_user_info(session = session, user_id = token_data.id)
                 session_user = UserInfoDTO.model_validate(session_user) """
                 session_user = get_assistant_user(id = token_data.id)
-                assistant_info = get_assistant_info(session, payload['assistant_id'])
+                assistant_info = await get_assistant_info(session=session, assistant_id=payload['assistant_id'])
+                assistant_info = AssistantModel.model_validate(assistant_info)
                 return True, session_user, assistant_info
         except Exception as e:
             return False, e

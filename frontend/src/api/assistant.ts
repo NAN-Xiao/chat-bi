@@ -7,5 +7,5 @@ export const assistantApi = {
   edit: (data: any) => request.put('/system/assistant', data),
   delete: (id: number) => request.delete(`/system/assistant/${id}`),
   query: (id: number) => request.get(`/system/assistant/${id}`),
-  validate: (id: any) => request.get(`/system/assistant/validator/${id}`),
+  validate: (data: any) => request.get('/system/assistant/validator', { params: data }),
 }

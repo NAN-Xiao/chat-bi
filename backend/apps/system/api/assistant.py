@@ -1,5 +1,6 @@
 from datetime import timedelta
-from fastapi import APIRouter, FastAPI, Request
+from typing import Optional
+from fastapi import APIRouter, FastAPI, Query, Request, Response
 from sqlmodel import Session, select
 from apps.system.crud.assistant import get_assistant_info
 from apps.system.models.system_model import AssistantModel
@@ -13,15 +14,28 @@ from starlette.middleware.cors import CORSMiddleware
 from common.core.config import settings
 router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
 
-@router.get("/validator/{id}", response_model=AssistantValidator) 
-async def info(session: SessionDep, id: str):
-    as_id, flag = id.split('-')
-    db_model = get_assistant_info(session, as_id)
+@router.get("/info/{id}") 
+async def info(request: Request, response: Response, session: SessionDep, id: int) -> dict:
+    db_model = await get_assistant_info(session=session, assistant_id=id)
+    if not db_model:
+        raise RuntimeError(f"assistant application not exist")
+    db_model = AssistantModel.model_validate(db_model)
+    response.headers["Access-Control-Allow-Origin"] = db_model.domain
+    origin = request.headers.get("origin") or request.headers.get("referer")
+    origin = origin.rstrip('/')
+    """ if origin != db_model.domain:
+        raise RuntimeError("invalid domain [{origin}]") """
+    return db_model.model_dump()
+
+@router.get("/validator", response_model=AssistantValidator) 
+async def info(session: SessionDep, id: str, virtual: Optional[int] = Query(None), online: Optional[bool] = Query(default=False)):
+    db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         return AssistantValidator()
+    db_model = AssistantModel.model_validate(db_model)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     assistantDict = {
-        "id": flag, "account": 'sqlbot-inner-assistant', "oid": 1, "assistant_id": id
+        "id": virtual, "account": 'sqlbot-inner-assistant', "oid": 1, "assistant_id": id
     }
     access_token = create_access_token(
         assistantDict, expires_delta=access_token_expires
@@ -58,9 +72,10 @@ async def update(request: Request, session: SessionDep, editor: AssistantDTO):
 
 @router.get("/{id}", response_model=AssistantModel)    
 async def get_one(session: SessionDep, id: int):
-    db_model = get_assistant_info(session, id)
+    db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         raise ValueError(f"AssistantModel with id {id} not found")
+    db_model = AssistantModel.model_validate(db_model)
     return db_model
 
 @router.delete("/{id}")

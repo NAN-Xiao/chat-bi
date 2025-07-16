@@ -100,8 +100,12 @@ onBeforeMount(async () => {
   console.log(online)
   const now = Date.now()
   assistantStore.setFlag(now)
-  const id = `${assistantId}-${assistantStore.getFlag}`
-  validator.value = await assistantApi.validate(id)
+  const param = {
+    id: assistantId,
+    virtual: assistantStore.getFlag,
+    online,
+  }
+  validator.value = await assistantApi.validate(param)
   assistantStore.setToken(validator.value.token)
   assistantStore.setAssistant(true)
   loading.value = false

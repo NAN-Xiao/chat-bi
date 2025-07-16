@@ -3,7 +3,7 @@
     id: '1',
     show_guide: false,
     float_icon: '',
-    domain_url: 'http://localhost:5173/',
+    domain_url: 'http://localhost:5173',
     header_font_color: 'rgb(100, 106, 115)',
     x_type: 'right',
     y_type: 'bottom',
@@ -40,7 +40,7 @@
   const getChatContainerHtml = (data) => {
     return `
 <div id="sqlbot-assistant-chat-container">
-  <iframe id="sqlbot-assistant-chat" allow="microphone" src="${data.domain_url}#/assistant?id=${data.id}"></iframe>
+  <iframe id="sqlbot-assistant-chat" allow="microphone" src="${data.domain_url}/#/assistant?id=${data.id}"></iframe>
 <div class="sqlbot-assistant-operate">
   <div class="sqlbot-assistant-closeviewport sqlbot-assistant-viewportnone">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -337,19 +337,26 @@
 
   function loadScript(src, id) {
     const domain_url = getDomain(src)
-    // const url = `${domain_url}api/v1/system/assistant/validator/${id}`
-    /* const url = `http://localhost:8000/api/v1/system/assistant/validator/${id}`
+    let url = `${domain_url}/api/v1/system/assistant/info/${id}`
+    if (domain_url.includes('5173')) {
+      url = url.replace('5173', '8000')
+    }
     fetch(url)
       .then((response) => response.json())
-      .then((data) => {
-        console.log(data)
-        const tempData = Object.assign(defaultData, data)
+      .then((res) => {
+        const data = res.data
+        const config_json = data.configuration
+        let tempData = Object.assign(defaultData, { id, domain_url })
+        if (config_json) {
+          const config = JSON.parse(config_json)
+          Object.assign(tempData, config)
+          tempData = Object.assign(tempData, config)
+        }
         initsqlbot_assistant(tempData)
-      }) */
-    initsqlbot_assistant(defaultData)
+      })
   }
   function getDomain(src) {
-    return src.substring(0, src.indexOf('assistant.js'))
+    return src.substring(0, src.indexOf('/assistant.js'))
   }
   function init() {
     const sqlbotScripts = document.querySelectorAll(`script[id^="${script_id_prefix}"]`)
