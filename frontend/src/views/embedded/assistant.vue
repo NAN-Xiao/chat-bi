@@ -160,7 +160,7 @@ onBeforeMount(async () => {
 .sqlbot-top-btn {
   right: 85px;
   z-index: 2009;
-  position: absolute;
+  position: fixed;
   top: 16px;
   display: flex;
   column-gap: 16px;
