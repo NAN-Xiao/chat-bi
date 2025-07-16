@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from sqlmodel import func, or_, select, delete as sqlmodel_delete
 from apps.system.crud.user import get_db_user, single_delete, user_ws_options
-from apps.system.models.system_model import UserWsModel, WorkspaceModel
+from apps.system.models.system_model import UserWsModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage, UserWs
@@ -20,7 +20,6 @@ async def user_info(current_user: CurrentUser):
 @router.get("/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[UserGrid])
 async def pager(
     session: SessionDep,
-    trans: Trans,
     pageNum: int,
     pageSize: int,
     keyword: Optional[str] = Query(None, description="搜索关键字(可选)"),
@@ -35,14 +34,21 @@ async def pager(
     stmt = (
         select(
             UserModel,
-            func.coalesce(func.string_agg(WorkspaceModel.name, ','), '').label("space_name")
+            func.coalesce(
+                func.array_remove(
+                    func.array_agg(UserWsModel.oid),
+                    None
+                ),
+                []
+            ).label("oid_list")
+            #func.coalesce(func.string_agg(WorkspaceModel.name, ','), '').label("space_name")
         )
         .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
-        .join(WorkspaceModel, UserWsModel.oid == WorkspaceModel.id, isouter=True)
+        #.join(WorkspaceModel, UserWsModel.oid == WorkspaceModel.id, isouter=True)
+        .where(UserModel.id != 1)
         .group_by(UserModel.id)
         .order_by(UserModel.create_time)
     )
-    
     if status is not None:
         stmt = stmt.where(UserModel.status == status)
     
@@ -73,7 +79,7 @@ async def pager(
         pagination=pagination,
         **filters)
     
-    for item in user_page.items:
+    """ for item in user_page.items:
         space_name: str = item['space_name']
         if space_name and 'i18n_default_workspace' in space_name:
             parts = list(map(
@@ -81,7 +87,7 @@ async def pager(
                 space_name.split(',')
             ))
             output_str = ','.join(parts)
-            item['space_name'] = output_str
+            item['space_name'] = output_str """
     return user_page
 
 @router.get("/ws")

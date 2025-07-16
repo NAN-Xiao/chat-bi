@@ -38,7 +38,7 @@ class UserEditor(UserCreator, BaseCreatorDTO):
 class UserGrid(UserEditor):
     create_time: int
     language: str = "zh-CN"
-    space_name: Optional[str] = None
+    #space_name: Optional[str] = None
     origin: str = ''
     
     

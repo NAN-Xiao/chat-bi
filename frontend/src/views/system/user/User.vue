@@ -66,7 +66,11 @@
         <el-table-column prop="email" :label="$t('user.email')" width="280" />
         <!-- <el-table-column prop="phone" :label="$t('user.phone_number')" width="280" /> -->
         <!-- <el-table-column prop="user_source" :label="$t('user.user_source')" width="280" /> -->
-        <el-table-column prop="space_name" :label="$t('user.workspace')" width="280" />
+        <el-table-column prop="oid_list" :label="$t('user.workspace')" width="280">
+          <template #default="scope">
+            <span>{{ formatSpaceName(scope.row.oid_list) }}</span>
+          </template>
+        </el-table-column>
 
         <el-table-column prop="create_time" width="180" sortable :label="$t('user.creation_time')">
           <template #default="scope">
@@ -645,6 +649,16 @@ const handleSizeChange = (val: number) => {
 const handleCurrentChange = (val: number) => {
   state.pageInfo.currentPage = val
   search()
+}
+const formatSpaceName = (row_oid_list: Array<any>) => {
+  if (!row_oid_list?.length) {
+    return '-'
+  }
+  const wsMap: Record<string, string> = {}
+  options.value.forEach((option: any) => {
+    wsMap[option.id] = option.name
+  })
+  return row_oid_list.map((id: any) => wsMap[id]).join(',')
 }
 onMounted(() => {
   workspaceList().then((res) => {
