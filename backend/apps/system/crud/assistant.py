@@ -1,5 +1,6 @@
 
 
+import json
 from fastapi import FastAPI
 from sqlmodel import Session, select
 from apps.datasource.models.datasource import CoreDatasource
@@ -22,7 +23,14 @@ def get_assistant_user(*, id: int):
 def get_assistant_ds(*, session: Session, assistant: AssistantModel):
     type = assistant.type
     if type == 0:
-        db_ds_list = session.exec(select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description)).all()
+        stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description)
+        configuration = assistant.configuration
+        if configuration:
+            config = json.loads(configuration)
+            private_list:list[int] = config['private_list']
+            if not private_list:
+                stmt.where(~CoreDatasource.id.in_(private_list))
+        db_ds_list = session.exec(stmt).all()
         # filter private ds if offline
         return db_ds_list
     pass
