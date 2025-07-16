@@ -3,7 +3,7 @@ from fastapi import APIRouter, Query
 from sqlmodel import exists, or_, select    
 from apps.system.models.system_model import UserWsModel, WorkspaceBase, WorkspaceEditor, WorkspaceModel
 from apps.system.models.user import UserModel
-from apps.system.schemas.system_schema import UserWsBase, UserWsDTO, UserWsOption, WorkspaceUser
+from apps.system.schemas.system_schema import UserWsBase, UserWsDTO, UserWsEditor, UserWsOption, WorkspaceUser
 from common.core.deps import CurrentUser, SessionDep, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
@@ -42,6 +42,29 @@ async def option_pager(
         stmt=stmt,
         pagination=pagination,
     )
+    
+@router.get("/uws/option", response_model=UserWsOption)
+async def option_user(
+    session: SessionDep, 
+    current_user: CurrentUser,
+    keyword: str = Query(description="搜索关键字")
+    ):
+    if (not current_user.isAdmin) and current_user.weight == 0:
+        raise RuntimeError("no permission to execute this api")
+    oid = current_user.oid
+    
+    stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
+        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid)
+    )
+    
+    if keyword:
+        stmt = stmt.where(
+            or_(
+                UserModel.account == int(keyword),
+                UserModel.name == keyword,
+            )
+        )
+    return session.exec(stmt).first()
 
 @router.get("/uws/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[WorkspaceUser])
 async def pager(
@@ -93,6 +116,20 @@ async def create(session: SessionDep, creator: UserWsDTO):
         for uid in creator.uid_list
     ]
     session.add_all(db_model_list)
+    session.commit()
+
+@router.put("/uws")     
+async def edit(session: SessionDep, editor: UserWsEditor):
+    if not editor.oid or not editor.uid:
+        raise RuntimeError("param [oid, uid] miss")
+    db_model = session.exec(select(UserWsModel).where(UserWsModel.uid == editor.uid, UserWsModel.oid == editor.oid)).first()
+    if not db_model:
+        raise RuntimeError("uws not exist")
+    if editor.weight == db_model.weight:
+        return
+    
+    db_model.weight = editor.weight
+    session.add(db_model)
     session.commit()
 
 @router.delete("/uws")     

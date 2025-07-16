@@ -1,0 +1,5 @@
+[default.extend-words]
+[default.extend-identifiers]
+maintain_column_froms = "maintain_column_froms"
+[files]
+extend-exclude = ["frontend/public", "backend/alembic/versions"]

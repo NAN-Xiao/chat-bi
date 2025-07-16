@@ -11,6 +11,9 @@
     <chat-component v-if="!loading" ref="chatRef" class="sqlbot-chat-container" />
   </div>
   <div class="sqlbot-top-btn">
+    <el-icon style="cursor: pointer" @click="createChat">
+      <icon_new_chat_outlined />
+    </el-icon>
     <el-icon style="cursor: pointer" @click="openHistory">
       <history></history>
     </el-icon>
@@ -41,10 +44,10 @@
                 @click="onClickHistory(chat)"
               >
                 <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
-                <div class="history-operate">
+                <!-- <div class="history-operate">
                   <el-icon @click="EditPen(chat)"><IconOpeEdit /></el-icon>
                   <el-icon @click="Delete(chat)"><IconOpeDelete /></el-icon>
-                </div>
+                </div> -->
               </div>
             </template>
           </el-scrollbar>
@@ -58,8 +61,9 @@ import { onBeforeMount, ref } from 'vue'
 import ChatComponent from '@/views/chat/index.vue'
 import AssistantGif from '@/assets/img/assistant.gif'
 import history from '@/assets/svg/chart/history.svg'
-import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
-import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
+import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
+/* import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
+import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg' */
 import { useRoute } from 'vue-router'
 import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
@@ -72,21 +76,24 @@ const chatList = ref<Array<any>>([])
 const drawer = ref(false)
 const currentId = ref()
 
+const createChat = () => {
+  chatRef.value?.createNewChat()
+}
 const openHistory = () => {
   chatList.value = chatRef.value?.getHistoryList()
   currentId.value = chatRef.value?.getCurrentChatId()
   drawer.value = true
 }
 const onClickHistory = (chat: any) => {
-  chatRef.value?.onClickHistory(chat)
+  chatRef.value?.toAssistantHistory(chat)
 }
 
-const EditPen = (chat: any) => {
+/* const EditPen = (chat: any) => {
   chatRef.value?.onChatRenamed(chat)
 }
 const Delete = (chat: any) => {
   chatRef.value?.onChatDeleted(chat.id)
-}
+} */
 const validator = ref({
   id: '',
   valid: false,
@@ -153,10 +160,15 @@ onBeforeMount(async () => {
 .sqlbot-top-btn {
   right: 85px;
   z-index: 2009;
-  position: absolute;
+  position: fixed;
   top: 16px;
+  display: flex;
+  column-gap: 16px;
   // right: 16px;
   font-size: 22px;
+  i:first-child {
+    color: var(--primary-color);
+  }
 }
 .sqlbot-history-container {
   width: 100%;

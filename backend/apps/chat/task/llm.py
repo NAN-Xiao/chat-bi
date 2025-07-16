@@ -296,7 +296,7 @@ class LLMService:
 
         # get schema
         if self.ds and not self.chat_question.db_schema:
-            self.chat_question.db_schema = get_table_schema(session=self.session, ds=self.ds)
+            self.chat_question.db_schema = get_table_schema(session=self.session, current_user=self.current_user, ds=self.ds)
 
         guess_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         guess_msg.append(SystemMessage(content=self.chat_question.guess_sys_question()))
@@ -726,7 +726,7 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
                 yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
                                     'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
 
-            llm_service.chat_question.db_schema = get_table_schema(session=llm_service.session, ds=llm_service.ds)
+            llm_service.chat_question.db_schema = get_table_schema(session=llm_service.session, current_user=llm_service.current_user, ds=llm_service.ds)
 
         # generate sql
         sql_res = llm_service.generate_sql()

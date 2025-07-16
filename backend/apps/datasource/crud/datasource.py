@@ -9,9 +9,9 @@ from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import select
 
 from apps.datasource.utils.utils import aes_decrypt
+from apps.db.constant import DB
 from apps.db.db import get_engine, get_tables, get_fields, exec_sql
-from apps.db.engine import get_engine_config
-from apps.db.engine import get_engine_conn
+from apps.db.engine import get_engine_config, get_engine_conn
 from apps.db.type import db_type_relation
 from common.core.deps import SessionDep, CurrentUser
 from common.utils.utils import deepcopy_ignore_extra
@@ -243,6 +243,23 @@ def preview(session: SessionDep, id: int, data: TableObj):
             ORDER BY "{data.fields[0].field_name}"
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     return exec_sql(ds, sql)
+
+
+def fieldEnum(session: SessionDep, id: int):
+    field = session.query(CoreField).filter(CoreField.id == id).first()
+    if field is None:
+        return []
+    table = session.query(CoreTable).filter(CoreTable.id == field.table_id).first()
+    if table is None:
+        return []
+    ds = session.query(CoreDatasource).filter(CoreDatasource.id == table.ds_id).first()
+    if ds is None:
+        return []
+
+    db = DB.get_db(ds.type)
+    sql = f"""SELECT DISTINCT {db.prefix}{field.field_name}{db.suffix} FROM {db.prefix}{table.table_name}{db.suffix}"""
+    res = exec_sql(ds, sql)
+    return [item.get(res.get('fields')[0]) for item in res.get('data')]
 
 
 def updateNum(session: SessionDep, ds: CoreDatasource):
