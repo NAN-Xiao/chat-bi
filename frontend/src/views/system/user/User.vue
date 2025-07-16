@@ -205,8 +205,8 @@
 
       <el-form-item :label="$t('user.workspace')">
         <el-select
-          clearable
           v-model="state.form.oid"
+          clearable
           :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('user.workspace')"
         >
           <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id" />

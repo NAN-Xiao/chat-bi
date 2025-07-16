@@ -362,9 +362,9 @@ const handleCurrentChange = (val: number) => {
             v-model="keywordsMember"
             clearable
             style="width: 232px"
+            :placeholder="$t('workspace.name_username_email')"
             @blur="search"
             @keyup.enter="search"
-            :placeholder="$t('workspace.name_username_email')"
           >
             <template #prefix>
               <el-icon>
@@ -505,8 +505,8 @@ const handleCurrentChange = (val: number) => {
     </div>
   </div>
   <AuthorizedWorkspaceDialog
-    @refresh="refresh"
     ref="authorizedWorkspaceDialog"
+    @refresh="refresh"
   ></AuthorizedWorkspaceDialog>
   <el-dialog
     v-model="fieldDialog"

@@ -456,8 +456,8 @@ defineExpose({
 
 <template>
   <div
-    class="model-form"
     v-loading="uploadLoading"
+    class="model-form"
     :class="(!isCreate || activeStep === 2) && 'edit-form'"
   >
     <div v-if="isCreate && activeStep !== 2" class="model-name">{{ activeName }}</div>
@@ -522,16 +522,16 @@ defineExpose({
         </div>
         <el-form-item :label="t('ds.form.name')" prop="name">
           <el-input
-            :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.name')"
             v-model="form.name"
+            :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.name')"
           />
         </el-form-item>
         <el-form-item :label="t('ds.form.description')">
           <el-input
+            v-model="form.description"
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + t('ds.form.description')
             "
-            v-model="form.description"
             :rows="2"
             type="textarea"
           />
@@ -558,43 +558,43 @@ defineExpose({
           <span v-else-if="form.type === 'pg'">9.6+</span>
         </span>
 
-        <div style="margin-top: 16px" v-if="form.type !== 'excel'">
+        <div v-if="form.type !== 'excel'" style="margin-top: 16px">
           <el-form-item :label="t('ds.form.host')" prop="host">
             <el-input
-              :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.host')"
               v-model="form.host"
+              :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.host')"
             />
           </el-form-item>
           <el-form-item :label="t('ds.form.port')" prop="port">
             <el-input
-              :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.port')"
               v-model="form.port"
+              :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.port')"
             />
           </el-form-item>
           <el-form-item :label="t('ds.form.username')">
             <el-input
+              v-model="form.username"
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.username')
               "
-              v-model="form.username"
             />
           </el-form-item>
           <el-form-item :label="t('ds.form.password')">
             <el-input
+              v-model="form.password"
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.password')
               "
-              v-model="form.password"
               type="password"
               show-password
             />
           </el-form-item>
           <el-form-item :label="t('ds.form.database')" prop="database">
             <el-input
+              v-model="form.database"
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.database')
               "
-              v-model="form.database"
             />
           </el-form-item>
           <el-form-item
@@ -609,10 +609,10 @@ defineExpose({
           </el-form-item>
           <el-form-item :label="t('ds.form.extra_jdbc')">
             <el-input
+              v-model="form.extraJdbc"
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.extra_jdbc')
               "
-              v-model="form.extraJdbc"
             />
           </el-form-item>
           <el-form-item
@@ -621,10 +621,10 @@ defineExpose({
             prop="dbSchema"
           >
             <el-input
+              v-model="form.dbSchema"
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.schema')
               "
-              v-model="form.dbSchema"
             />
             <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
           </el-form-item>

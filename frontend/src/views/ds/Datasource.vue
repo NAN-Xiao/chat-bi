@@ -324,7 +324,7 @@ const back = () => {
       <DatasourceForm
         v-if="[1, 2].includes(activeStep)"
         ref="datasourceFormRef"
-        :isDataTable="false"
+        :is-data-table="false"
         :active-step="activeStep"
         :active-name="activeName"
         :active-type="activeType"

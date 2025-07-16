@@ -169,7 +169,7 @@ defineExpose({
 
 <template>
   <div class="model-form" :class="editModel && 'is-edit_model'">
-    <div class="model-name" v-if="!editModel">{{ activeName }}</div>
+    <div v-if="!editModel" class="model-name">{{ activeName }}</div>
     <div class="form-content">
       <el-form
         ref="modelRef"
