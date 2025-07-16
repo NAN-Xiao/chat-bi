@@ -292,7 +292,7 @@ const createNewChat = async () => {
   if (isAssistant.value) {
     const assistantChat = await assistantStore.setChat()
     if (assistantChat) {
-      onChatCreated(assistantChat as any)
+      onChatCreatedQuick(assistantChat as any)
     }
     return
   }
@@ -315,6 +315,26 @@ function getChatList() {
 function onClickHistory(chat: Chat) {
   console.log('click history', chat)
   scrollToBottom()
+}
+
+function toAssistantHistory(chat: Chat) {
+  currentChat.value = new ChatInfo(chat)
+  if (chat !== undefined && chat.id !== undefined && !loading.value) {
+    currentChatId.value = chat.id
+    loading.value = true
+    chatApi
+      .get(chat.id)
+      .then((res) => {
+        const info = chatApi.toChatInfo(res)
+        if (info) {
+          currentChat.value = info
+          onClickHistory(info)
+        }
+      })
+      .finally(() => {
+        loading.value = false
+      })
+  }
 }
 
 function onChatDeleted(id: number) {
@@ -433,11 +453,6 @@ const sendMessage = async () => {
 
   loading.value = true
   isTyping.value = true
-
-  /* const assistantChat = await assistantStore.setChat()
-  if (assistantChat) {
-    onChatCreated(assistantChat as any)
-  } */
 
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
@@ -833,10 +848,9 @@ const getCurrentChatId = () => {
 }
 defineExpose({
   getHistoryList,
-  onClickHistory,
-  onChatDeleted,
-  onChatRenamed,
+  toAssistantHistory,
   getCurrentChatId,
+  createNewChat,
 })
 </script>
 
