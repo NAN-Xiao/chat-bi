@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Query
-from sqlmodel import func, or_, select
-from apps.system.crud.user import get_db_user, user_ws_options
+from sqlmodel import func, or_, select, delete as sqlmodel_delete
+from apps.system.crud.user import get_db_user, single_delete, user_ws_options
 from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -20,6 +20,7 @@ async def user_info(current_user: CurrentUser):
 @router.get("/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[UserGrid])
 async def pager(
     session: SessionDep,
+    trans: Trans,
     pageNum: int,
     pageSize: int,
     keyword: Optional[str] = Query(None, description="搜索关键字(可选)"),
@@ -67,10 +68,21 @@ async def pager(
             )
         )
         
-    return await paginator.get_paginated_response(
+    user_page = await paginator.get_paginated_response(
         stmt=stmt,
         pagination=pagination,
         **filters)
+    
+    for item in user_page.items:
+        space_name: str = item['space_name']
+        if space_name and 'i18n_default_workspace' in space_name:
+            parts = list(map(
+                lambda x: trans(x) if x == "i18n_default_workspace" else x,
+                space_name.split(',')
+            ))
+            output_str = ','.join(parts)
+            item['space_name'] = output_str
+    return user_page
 
 @router.get("/ws")
 async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Trans) -> list[UserWs]:
@@ -88,9 +100,13 @@ async def ws_change(session: SessionDep, current_user: CurrentUser, oid: int):
     session.commit()
 
 @router.get("/{id}", response_model=UserEditor)
-async def query(session: SessionDep, id: int) -> UserEditor:
+async def query(session: SessionDep, trans: Trans, id: int) -> UserEditor:
     db_user: UserModel = get_db_user(session = session, user_id = id)
-    return db_user
+    u_ws_options = await user_ws_options(session, id, trans)
+    result = UserEditor.model_validate(db_user.model_dump())
+    if u_ws_options:
+        result.oid_list = [item.id for item in u_ws_options]
+    return result
 
 @router.post("")
 async def create(session: SessionDep, creator: UserCreator):
@@ -99,28 +115,53 @@ async def create(session: SessionDep, creator: UserCreator):
     #user_model.create_time = get_timestamp()
     user_model.language = "zh-CN"
     session.add(user_model)
+    if creator.oid_list:
+        # need to validate oid_list
+        db_model_list = [
+            UserWsModel.model_validate({
+                "oid": oid,
+                "uid": user_model.id,
+                "weight": 0
+            })
+            for oid in creator.oid_list
+        ]
+        session.add_all(db_model_list)
     session.commit()
     
 @router.put("")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
 async def update(session: SessionDep, editor: UserEditor):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
+    
+    del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == editor.id)
+    session.exec(del_stmt)
+    
     data = editor.model_dump(exclude_unset=True)
     user_model.sqlmodel_update(data)
     session.add(user_model)
+    
+    if editor.oid_list:
+        # need to validate oid_list
+        db_model_list = [
+            UserWsModel.model_validate({
+                "oid": oid,
+                "uid": user_model.id,
+                "weight": 0
+            })
+            for oid in editor.oid_list
+        ]
+        session.add_all(db_model_list)
+    
     session.commit()
     
 @router.delete("/{id}")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def delete(session: SessionDep, id: int):
-    user_model: UserModel = get_db_user(session = session, user_id = id)
-    session.delete(user_model)
-    session.commit()
+    await single_delete(session, id)
 
 @router.delete("")    
 async def batch_del(session: SessionDep, id_list: list[int]):
     for id in id_list:
-        delete(session, id)
+        await single_delete(session, id)
     
 @router.put("/language")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")

@@ -205,8 +205,8 @@
 
       <el-form-item :label="$t('user.workspace')">
         <el-select
-          v-model="state.form.oid"
-          clearable
+          v-model="state.form.oid_list"
+          multiple
           :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('user.workspace')"
         >
           <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id" />
@@ -348,10 +348,11 @@ const state = reactive<any>({
     id: '',
     name: '',
     account: '',
-    oid: '',
+    oid: 1,
     email: '',
     status: '',
     phoneNumber: '',
+    oid_list: [],
   },
   pageInfo: {
     currentPage: 1,

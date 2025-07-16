@@ -30,6 +30,7 @@ class UserCreator(BaseUser):
     name: str
     email: str
     status: int = 1
+    oid_list: Optional[list[int]] = None 
 
 class UserEditor(UserCreator, BaseCreatorDTO):
    pass
