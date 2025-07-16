@@ -37,11 +37,16 @@ function clickQuestion(question: string): void {
 <template>
   <div v-if="computedQuestions.length > 0" class="recommend-questions">
     <div v-if="firstChat">{{ t('qa.guess_u_ask') }}</div>
-    <div v-else>{{ t('qa.continue_to_ask') }}</div>
-    <div v-for="(question, index) in computedQuestions" :key="index">
-      <span class="question" @click="clickQuestion(question)">
+    <div v-else class="continue-ask">{{ t('qa.continue_to_ask') }}</div>
+    <div class="question-grid">
+      <div
+        v-for="(question, index) in computedQuestions"
+        :key="index"
+        class="question"
+        @click="clickQuestion(question)"
+      >
         {{ question }}
-      </span>
+      </div>
     </div>
   </div>
 </template>
@@ -49,19 +54,34 @@ function clickQuestion(question: string): void {
 <style scoped lang="less">
 .recommend-questions {
   padding: 8px;
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+
+  .continue-ask {
+    color: rgba(100, 106, 115, 1);
+    font-weight: 400;
+  }
+
+  .question-grid {
+    display: grid;
+    grid-gap: 12px;
+    grid-template-columns: repeat(2, 50%);
+  }
+
   .question {
+    font-weight: 400;
     cursor: pointer;
-    background: lightgray;
-    border-radius: 4px;
-    padding: 4px;
-    line-height: 20px;
+    background: rgba(245, 246, 247, 1);
+    min-height: 46px;
+    border-radius: 6px;
+    padding: 12px;
+    line-height: 22px;
     &:hover {
-      background: grey;
+      background: rgba(31, 35, 41, 0.1);
     }
   }
 }
