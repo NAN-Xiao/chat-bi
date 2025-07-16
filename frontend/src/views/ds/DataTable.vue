@@ -165,12 +165,17 @@ const changeStatus = (row: any) => {
     })
   })
 }
+
+const emits = defineEmits(['back'])
+const back = () => {
+  emits('back')
+}
 </script>
 
 <template>
   <div class="data-table no-padding">
     <div class="info">
-      {{ $t('ds.title') }}
+      <el-button text @click="back">{{ $t('ds.title') }}</el-button>
       <el-icon size="12">
         <icon_right_outlined></icon_right_outlined>
       </el-icon>
@@ -354,8 +359,24 @@ const changeStatus = (row: any) => {
     color: #646a73;
     border-bottom: 1px solid #1f232926;
 
+    .ed-button {
+      height: 22px;
+      line-height: 22px;
+      color: #646a73;
+
+      &:hover {
+        background: #1cba901a;
+        color: #1cba90;
+      }
+      &:active {
+        color: #189e7a;
+        background: #1cba9033;
+      }
+    }
+
     .name {
       color: #1f2329;
+      margin-left: 4px;
     }
   }
   .content {

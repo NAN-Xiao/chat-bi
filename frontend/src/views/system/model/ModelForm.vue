@@ -130,6 +130,7 @@ const supplierChang = (supplier: any) => {
   modelForm.supplier = supplier.id
   const config = supplier.model_config[modelForm.model_type || 0]
   modelForm.api_domain = config.api_domain
+  modelForm.base_model = ''
   if (!modelForm.id) {
     modelForm.name = supplier.name
   }

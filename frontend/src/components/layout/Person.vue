@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { ref } from 'vue'
-import Default_avatar from '@/assets/svg/icon-member-default.svg'
+import Default_avatar from '@/assets/workspace/default_avatar.png'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_maybe_outlined from '@/assets/svg/icon-maybe_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
@@ -8,11 +8,13 @@ import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
 import icon_logout_outlined from '@/assets/svg/icon_logout_outlined.svg'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
+import { useI18n } from 'vue-i18n'
 
 defineProps({
   collapse: { type: [Boolean], required: true },
 })
 
+const { t } = useI18n()
 const name = ref('飞小致')
 const currentLanguage = ref('zh-CN')
 const emit = defineEmits(['selectPerson'])
@@ -22,11 +24,11 @@ const languageList = [
     value: 'en',
   },
   {
-    name: '简体中文',
+    name: t('common.simplified_chinese'),
     value: 'zh-CN',
   },
   {
-    name: '繁體中文',
+    name: t('common.traditional_chinese'),
     value: 'zh-CN',
   },
 ]
@@ -43,18 +45,14 @@ const handleDefaultLanguageChange = (item: any) => {
   <el-popover popper-class="system-person" :placement="collapse ? 'right' : 'top'">
     <template #reference>
       <button class="person" :class="collapse && 'collapse'">
-        <el-icon size="32" class="default-avatar">
-          <Default_avatar></Default_avatar>
-        </el-icon>
+        <img class="default-avatar" :src="Default_avatar" width="32px" height="32px" />
         <span v-if="!collapse" class="name">{{ name }}</span>
       </button></template
     >
     <div class="popover">
       <div class="popover-content">
         <div class="info">
-          <el-icon style="transform: scale(1.25)" size="32">
-            <Default_avatar></Default_avatar>
-          </el-icon>
+          <img :src="Default_avatar" width="40px" height="40px" />
           <div class="top">{{ name }}</div>
           <div class="bottom">feixaozhi</div>
         </div>
@@ -62,13 +60,13 @@ const handleDefaultLanguageChange = (item: any) => {
           <el-icon size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>
-          <div class="datasource-name">系统管理</div>
+          <div class="datasource-name">{{ $t('common.system_manage') }}</div>
         </div>
         <div class="popover-item">
           <el-icon size="16">
             <icon_key_outlined></icon_key_outlined>
           </el-icon>
-          <div class="datasource-name">修改密码</div>
+          <div class="datasource-name">{{ $t('user.change_password') }}</div>
         </div>
         <el-popover :teleported="false" popper-class="system-language" placement="right">
           <template #reference>
@@ -76,7 +74,7 @@ const handleDefaultLanguageChange = (item: any) => {
               <el-icon size="16">
                 <icon_translate_outlined></icon_translate_outlined>
               </el-icon>
-              <div class="datasource-name">语言</div>
+              <div class="datasource-name">{{ $t('common.language') }}</div>
               <el-icon style="transform: scale(1.33)" class="right" size="16">
                 <icon_right_outlined></icon_right_outlined>
               </el-icon>
@@ -102,13 +100,13 @@ const handleDefaultLanguageChange = (item: any) => {
           <el-icon size="16">
             <icon_maybe_outlined></icon_maybe_outlined>
           </el-icon>
-          <div class="datasource-name">帮助</div>
+          <div class="datasource-name">{{ $t('common.help') }}</div>
         </div>
         <div class="popover-item mr4">
           <el-icon size="16">
             <icon_logout_outlined></icon_logout_outlined>
           </el-icon>
-          <div class="datasource-name">退出登录</div>
+          <div class="datasource-name">{{ $t('common.logout') }}</div>
         </div>
       </div>
     </div>
@@ -117,7 +115,6 @@ const handleDefaultLanguageChange = (item: any) => {
 
 <style lang="less" scoped>
 .person {
-  border-radius: 6px;
   padding: 0 8px;
   display: flex;
   align-items: center;
@@ -126,6 +123,7 @@ const handleDefaultLanguageChange = (item: any) => {
   height: 40px;
   border: none;
   background-color: transparent;
+  position: relative;
 
   &.collapse {
     min-width: 48px;
@@ -149,15 +147,28 @@ const handleDefaultLanguageChange = (item: any) => {
     margin-left: 8px;
   }
 
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    border-radius: 6px;
+  }
+
   &:hover,
-  &:active {
-    background: #1f23291a;
-    border: 1px solid #1f23291a;
+  &:focus {
+    &::after {
+      background: #1f23291a;
+    }
   }
 
   &:active {
-    background: #1f232926;
-    border: 1px solid #1f23291a;
+    &::after {
+      background: #1f232926;
+    }
   }
 }
 </style>
@@ -195,9 +206,9 @@ const handleDefaultLanguageChange = (item: any) => {
       height: 62px;
       padding: 8px;
 
-      .ed-icon {
-        margin: 6px 8px 0 7px;
+      img {
         float: left;
+        margin: 3px 8px 0 7px;
       }
 
       .top {

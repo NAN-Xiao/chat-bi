@@ -103,6 +103,8 @@ const handleDefaultWorkspaceChange = (item: any) => {
 
   &.collapse {
     width: 40px;
+    background: none;
+    border: none;
   }
 
   .name {

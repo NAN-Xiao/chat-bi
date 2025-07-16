@@ -9,12 +9,21 @@ import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categori
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 import { useRouter } from 'vue-router'
+import { useEmitt } from '@/utils/useEmitt'
+
 const router = useRouter()
 const collapse = ref(false)
-
+const handleCollapseChange = (val: any = true) => {
+  collapse.value = val
+}
+useEmitt({
+  name: 'collapse-change',
+  callback: handleCollapseChange,
+})
 const handleFoldExpand = () => {
   collapse.value = !collapse.value
 }
+
 const toWorkspace = () => {
   router.push('/')
 }
@@ -32,7 +41,7 @@ const toWorkspace = () => {
           <el-icon size="16">
             <icon_moments_categories_outlined></icon_moments_categories_outlined>
           </el-icon>
-          {{ collapse ? '' : '返回工作空间' }}
+          {{ collapse ? '' : $t('workspace.return_to_workspace') }}
         </div>
         <div class="personal-info">
           <Person :collapse="collapse"></Person>
@@ -82,8 +91,6 @@ const toWorkspace = () => {
       line-height: 22px;
       width: calc(100% - 32px);
       .back-to_workspace {
-        background-color: #1f23290a;
-        border: 1px solid #d0d3d6;
         display: flex;
         align-items: center;
         justify-content: center;

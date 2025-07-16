@@ -19,7 +19,11 @@
     "logout": "Logout",
     "result_count": "result",
     "clear_filter": "Clear conditions",
-    "reset": "Reset"
+    "reset": "Reset",
+    "simplified_chinese": "Simplified Chinese",
+    "traditional_chinese": "Traditional Chinese",
+    "help": "Help",
+    "language": "Language"
   },
   "dashboard": {
     "length_1_64_characters": "Name field length must be 1-64 characters",
@@ -270,7 +274,12 @@
     "selected_2_people": "Selected: {msg} people",
     "clear": "Clear",
     "historical_dialogue": "No historical dialogue",
-    "rename_a_workspace" : "Rename a workspace"
+    "rename_a_workspace": "Rename a workspace",
+    "return_to_workspace": "Return to workspace",
+    "there_are": "There are",
+    "2_dashboards": "{msg} dashboards",
+    "smart_data_centers": "{msg} smart data centers",
+    "confirm_to_delete": "This data source is in use. Deleting it will cause these resources to not work properly. Confirm to delete?"
   },
   "chat": {
     "chart_type": {

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, shallowRef, nextTick } from 'vue'
+import { ref, computed, shallowRef, nextTick, h } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import arrow_down from '@/assets/svg/arrow-down.svg'
@@ -13,7 +13,9 @@ import DatasourceList from './DatasourceList.vue'
 import DatasourceListSide from './DatasourceListSide.vue'
 import DatasourceForm from './DatasourceForm.vue'
 import { datasourceApi } from '@/api/datasource'
+import { useEmitt } from '@/utils/useEmitt'
 import Card from './Card.vue'
+import DelMessageBox from './DelMessageBox.vue'
 import { dsTypeWithImgSort } from './js/ds-type'
 import { useI18n } from 'vue-i18n'
 
@@ -112,33 +114,53 @@ const refresh = () => {
   search()
 }
 
+const panelClick = () => {
+  console.log('panelClick')
+}
+
+const smartClick = () => {
+  console.log('smartClick')
+}
+
 const deleteHandler = (item: any) => {
-  ElMessageBox.confirm(t('datasource.data_source', { msg: item.name }), {
+  ElMessageBox.confirm('', {
     confirmButtonType: 'danger',
     tip: t('datasource.operate_with_caution'),
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
+    dangerouslyUseHTMLString: true,
+    message: h(
+      DelMessageBox,
+      {
+        name: item.name,
+        panelNum: 1,
+        smartNum: 4,
+        onPanelClick: panelClick,
+        onSmartClick: smartClick,
+        t,
+      },
+      ''
+    ),
+  }).then(() => {
+    datasourceApi.delete(item.id).then(() => {
+      ElMessage({
+        type: 'success',
+        message: t('dashboard.delete_success'),
+      })
+      search()
+    })
   })
-    .then(() => {
-      datasourceApi.delete(item.id).then(() => {
-        ElMessage({
-          type: 'success',
-          message: t('dashboard.delete_success'),
-        })
-        search()
-      })
-    })
-    .catch(() => {
-      ElMessageBox.confirm(t('datasource.data_source_de', { msg: item.name }), {
-        tip: t('datasource.cannot_be_deleted'),
-        cancelButtonText: t('datasource.got_it'),
-        showConfirmButton: false,
-        customClass: 'confirm-no_icon',
-        autofocus: false,
-      })
-    })
+  // .catch(() => {
+  //   ElMessageBox.confirm(t('datasource.data_source_de', { msg: item.name }), {
+  //     tip: t('datasource.cannot_be_deleted'),
+  //     cancelButtonText: t('datasource.got_it'),
+  //     showConfirmButton: false,
+  //     customClass: 'confirm-no_icon',
+  //     autofocus: false,
+  //   })
+  // })
 }
 
 const clickDatasource = (ele: any) => {
@@ -161,7 +183,12 @@ search()
 
 const currentDataTable = ref()
 const dataTableDetail = (ele: any) => {
+  useEmitt().emitter.emit('collapse-change')
   currentDataTable.value = ele
+}
+
+const back = () => {
+  currentDataTable.value = null
 }
 </script>
 
@@ -303,7 +330,7 @@ const dataTableDetail = (ele: any) => {
       ></DatasourceForm>
     </el-drawer>
   </div>
-  <DataTable v-if="currentDataTable" :info="currentDataTable"></DataTable>
+  <DataTable v-if="currentDataTable" :info="currentDataTable" @back="back"></DataTable>
 </template>
 
 <style lang="less" scoped>
