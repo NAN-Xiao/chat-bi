@@ -62,7 +62,7 @@ async def option_user(
     if keyword:
         stmt = stmt.where(
             or_(
-                UserModel.account == int(keyword),
+                UserModel.account == keyword,
                 UserModel.name == keyword,
             )
         )
