@@ -10,7 +10,7 @@ from common.utils.time import get_timestamp
 
 class BaseUserPO(SQLModel):
     account: str = Field(max_length=255, unique=True)
-    oid: int = Field(nullable=False, sa_type=BigInteger())
+    oid: int = Field(nullable=False, sa_type=BigInteger(), default=0)
     name: str = Field(max_length=255, unique=True)
     password: str = Field(default_factory=default_md5_pwd, max_length=255)
     email: str = Field(max_length=255)

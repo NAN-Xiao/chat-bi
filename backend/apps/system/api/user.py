@@ -1,8 +1,8 @@
 from typing import Optional
-from fastapi import APIRouter, Query
-from sqlmodel import func, or_, select
-from apps.system.crud.user import get_db_user, user_ws_options
-from apps.system.models.system_model import UserWsModel, WorkspaceModel
+from fastapi import APIRouter, HTTPException, Query
+from sqlmodel import func, or_, select, delete as sqlmodel_delete
+from apps.system.crud.user import get_db_user, single_delete, user_ws_options
+from apps.system.models.system_model import UserWsModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage, UserWs
@@ -34,14 +34,21 @@ async def pager(
     stmt = (
         select(
             UserModel,
-            func.coalesce(func.string_agg(WorkspaceModel.name, ','), '').label("space_name")
+            func.coalesce(
+                func.array_remove(
+                    func.array_agg(UserWsModel.oid),
+                    None
+                ),
+                []
+            ).label("oid_list")
+            #func.coalesce(func.string_agg(WorkspaceModel.name, ','), '').label("space_name")
         )
         .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
-        .join(WorkspaceModel, UserWsModel.oid == WorkspaceModel.id, isouter=True)
+        #.join(WorkspaceModel, UserWsModel.oid == WorkspaceModel.id, isouter=True)
+        .where(UserModel.id != 1)
         .group_by(UserModel.id)
         .order_by(UserModel.create_time)
     )
-    
     if status is not None:
         stmt = stmt.where(UserModel.status == status)
     
@@ -67,10 +74,21 @@ async def pager(
             )
         )
         
-    return await paginator.get_paginated_response(
+    user_page = await paginator.get_paginated_response(
         stmt=stmt,
         pagination=pagination,
         **filters)
+    
+    """ for item in user_page.items:
+        space_name: str = item['space_name']
+        if space_name and 'i18n_default_workspace' in space_name:
+            parts = list(map(
+                lambda x: trans(x) if x == "i18n_default_workspace" else x,
+                space_name.split(',')
+            ))
+            output_str = ','.join(parts)
+            item['space_name'] = output_str """
+    return user_page
 
 @router.get("/ws")
 async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Trans) -> list[UserWs]:
@@ -81,16 +99,20 @@ async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Tran
 async def ws_change(session: SessionDep, current_user: CurrentUser, oid: int):
     ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
     if not any(x.id == oid for x in ws_list):
-        raise RuntimeError(f"oid [{oid}] is invalid!")
+        raise HTTPException(f"oid [{oid}] is invalid!")
     user_model: UserModel = get_db_user(session = session, user_id = current_user.id)
     user_model.oid = oid
     session.add(user_model)
     session.commit()
 
 @router.get("/{id}", response_model=UserEditor)
-async def query(session: SessionDep, id: int) -> UserEditor:
+async def query(session: SessionDep, trans: Trans, id: int) -> UserEditor:
     db_user: UserModel = get_db_user(session = session, user_id = id)
-    return db_user
+    u_ws_options = await user_ws_options(session, id, trans)
+    result = UserEditor.model_validate(db_user.model_dump())
+    if u_ws_options:
+        result.oid_list = [item.id for item in u_ws_options]
+    return result
 
 @router.post("")
 async def create(session: SessionDep, creator: UserCreator):
@@ -98,6 +120,19 @@ async def create(session: SessionDep, creator: UserCreator):
     user_model = UserModel.model_validate(data)
     #user_model.create_time = get_timestamp()
     user_model.language = "zh-CN"
+    user_model.oid = 0
+    if creator.oid_list:
+        # need to validate oid_list
+        db_model_list = [
+            UserWsModel.model_validate({
+                "oid": oid,
+                "uid": user_model.id,
+                "weight": 0
+            })
+            for oid in creator.oid_list
+        ]
+        session.add_all(db_model_list)
+        user_model.oid = creator.oid_list[0]   
     session.add(user_model)
     session.commit()
     
@@ -105,22 +140,37 @@ async def create(session: SessionDep, creator: UserCreator):
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
 async def update(session: SessionDep, editor: UserEditor):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
+    origin_oid: int = user_model.oid
+    del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == editor.id)
+    session.exec(del_stmt)
+    
     data = editor.model_dump(exclude_unset=True)
     user_model.sqlmodel_update(data)
+    
+    user_model.oid = 0
+    if editor.oid_list:
+        # need to validate oid_list
+        db_model_list = [
+            UserWsModel.model_validate({
+                "oid": oid,
+                "uid": user_model.id,
+                "weight": 0
+            })
+            for oid in editor.oid_list
+        ]
+        session.add_all(db_model_list)
+        user_model.oid = origin_oid if origin_oid in editor.oid_list else  editor.oid_list[0]
     session.add(user_model)
     session.commit()
     
 @router.delete("/{id}")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def delete(session: SessionDep, id: int):
-    user_model: UserModel = get_db_user(session = session, user_id = id)
-    session.delete(user_model)
-    session.commit()
+    await single_delete(session, id)
 
 @router.delete("")    
 async def batch_del(session: SessionDep, id_list: list[int]):
     for id in id_list:
-        delete(session, id)
+        await single_delete(session, id)
     
 @router.put("/language")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
@@ -137,7 +187,7 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
     if not current_user.isAdmin:
-        raise RuntimeError('only for admin')
+        raise HTTPException('only for admin')
     db_user: UserModel = get_db_user(session=session, user_id=id)
     db_user.password = default_md5_pwd()
     session.add(db_user)
@@ -148,7 +198,7 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
 async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdEditor):
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     if not verify_md5pwd(editor.pwd, db_user.password):
-        raise RuntimeError("pwd error")
+        raise HTTPException("pwd error")
     db_user.password = md5pwd(editor.new_pwd)
     session.add(db_user)
     session.commit()

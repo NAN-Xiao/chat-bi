@@ -24,6 +24,7 @@ export interface ChatMessage {
   isTyping?: boolean
   first_chat?: boolean
   recommended_question?: string
+  index: number
 }
 
 export class ChatRecord {

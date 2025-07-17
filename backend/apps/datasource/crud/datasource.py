@@ -263,7 +263,7 @@ def fieldEnum(session: SessionDep, id: int):
 
 
 def updateNum(session: SessionDep, ds: CoreDatasource):
-    all_tables = get_tables(ds)
+    all_tables = get_tables(ds) if ds.type != 'excel' else json.loads(aes_decrypt(ds.configuration)).get('sheets')
     selected_tables = get_tables_by_ds_id(session, ds.id)
     num = f'{len(selected_tables)}/{len(all_tables)}'
 

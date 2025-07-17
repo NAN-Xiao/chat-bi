@@ -121,7 +121,7 @@ const router = createRouter({
     {
       path: '/system',
       component: LayoutDsl,
-      redirect: '/system/model',
+      redirect: '/system/user',
       children: [
         {
           path: 'user',

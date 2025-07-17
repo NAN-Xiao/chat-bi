@@ -64,7 +64,7 @@ async def get_tables_by_conf(session: SessionDep, ds: CoreDatasource):
 
 
 @router.post("/getFields/{id}/{table_name}")
-async def get_tables(session: SessionDep, id: int, table_name: str):
+async def get_fields(session: SessionDep, id: int, table_name: str):
     return getFields(session, id, table_name)
 
 

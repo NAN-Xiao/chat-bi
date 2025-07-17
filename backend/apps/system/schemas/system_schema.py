@@ -30,6 +30,7 @@ class UserCreator(BaseUser):
     name: str
     email: str
     status: int = 1
+    oid_list: Optional[list[int]] = None 
 
 class UserEditor(UserCreator, BaseCreatorDTO):
    pass
@@ -37,7 +38,7 @@ class UserEditor(UserCreator, BaseCreatorDTO):
 class UserGrid(UserEditor):
     create_time: int
     language: str = "zh-CN"
-    space_name: Optional[str] = None
+    #space_name: Optional[str] = None
     origin: str = ''
     
     

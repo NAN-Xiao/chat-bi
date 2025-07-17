@@ -99,70 +99,77 @@
                 />
                 <UserChat v-if="message.role === 'user'" :message="message" />
                 <template v-if="message.role === 'assistant' && !message.first_chat">
-                  <ChatAnswer
+                  <ChartAnswer
                     v-if="
-                      message?.record?.analysis_record_id == undefined &&
-                      message?.record?.predict_record_id == undefined
+                      (message?.record?.analysis_record_id === undefined ||
+                        message?.record?.analysis_record_id === null) &&
+                      (message?.record?.predict_record_id === undefined ||
+                        message?.record?.predict_record_id === null)
                     "
+                    ref="chartAnswerRef"
+                    :chat-list="chatList"
+                    :current-chat="currentChat"
+                    :current-chat-id="currentChatId"
+                    :loading="isTyping"
                     :message="message"
+                    :reasoning-name="['sql_answer', 'chart_answer']"
+                    @finish="onChartAnswerFinish"
+                    @error="onChartAnswerError"
                   >
-                    <template v-if="message.record?.chart">
-                      <div style="padding: 0 22px; display: flex; justify-content: flex-end">
-                        <el-button
-                          text
-                          type="primary"
-                          :disabled="isTyping || isPredictTyping || isAnalysisTyping"
-                          @click="clickAnalysis(message.record?.id)"
-                        >
-                          {{ t('chat.data_analysis') }}
-                        </el-button>
-                        <el-button
-                          text
-                          type="primary"
-                          :disabled="isTyping || isPredictTyping || isAnalysisTyping"
-                          @click="clickPredict(message.record?.id)"
-                        >
-                          {{ t('chat.data_predict') }}
-                        </el-button>
-                      </div>
+                    <div style="height: 100px; width: 100%; background: grey">todo</div>
+                    <div style="padding: 0 22px; display: flex; justify-content: flex-end">
+                      <el-button
+                        text
+                        type="primary"
+                        :disabled="isTyping"
+                        @click="clickAnalysis(message.record?.id)"
+                      >
+                        {{ t('chat.data_analysis') }}
+                      </el-button>
+                      <el-button
+                        text
+                        type="primary"
+                        :disabled="isTyping"
+                        @click="clickPredict(message.record?.id)"
+                      >
+                        {{ t('chat.data_predict') }}
+                      </el-button>
+                    </div>
+                    <template #footer>
+                      <RecommendQuestion
+                        :questions="message.recommended_question"
+                        :first-chat="message.first_chat"
+                        @click-question="quickAsk"
+                      />
                     </template>
-                  </ChatAnswer>
-
-                  <div
+                  </ChartAnswer>
+                  <AnalysisAnswer
                     v-if="
-                      message?.record?.analysis_record_id != undefined ||
-                      message?.record?.predict_record_id != undefined
+                      message?.record?.analysis_record_id !== undefined &&
+                      message?.record?.analysis_record_id !== null
                     "
-                    class="analysis-container"
-                  >
-                    <template v-if="message.record?.analysis || isAnalysisTyping">
-                      <MdComponent :message="message.record?.analysis_thinking" />
-                      <MdComponent :message="message.record?.analysis" />
-                    </template>
-
-                    <el-divider
-                      v-if="
-                        (message.record?.analysis || isAnalysisTyping) &&
-                        (message.record?.predict || isPredictTyping)
-                      "
-                    />
-                    <template v-if="message.record?.predict || isPredictTyping">
-                      <MdComponent :message="message.record?.predict" />
-                      <MdComponent :message="message.record?.predict_content" />
-                      <!--                  <PredictChartBlock-->
-                      <!--                    :id="message.record?.id + '-predict'"-->
-                      <!--                    :data="message.record?.predict_data ?? '[]'"-->
-                      <!--                    :message="message"-->
-                      <!--                    :chart-type="data.chartType"-->
-                      <!--                  />-->
-                    </template>
-                  </div>
-                </template>
-                <template v-if="message.role === 'assistant'" #footer>
-                  <RecommendQuestion
-                    :questions="message.recommended_question"
-                    :first-chat="message.first_chat"
-                    @click-question="quickAsk"
+                    ref="analysisAnswerRef"
+                    :chat-list="chatList"
+                    :current-chat="currentChat"
+                    :current-chat-id="currentChatId"
+                    :loading="isTyping"
+                    :message="message"
+                    @finish="onAnalysisAnswerFinish"
+                    @error="onAnalysisAnswerError"
+                  />
+                  <PredictAnswer
+                    v-if="
+                      message?.record?.predict_record_id !== undefined &&
+                      message?.record?.predict_record_id !== null
+                    "
+                    ref="predictAnswerRef"
+                    :chat-list="chatList"
+                    :current-chat="currentChat"
+                    :current-chat-id="currentChatId"
+                    :loading="isTyping"
+                    :message="message"
+                    @finish="onPredictAnswerFinish"
+                    @error="onPredictAnswerError"
                   />
                 </template>
               </ChatRow>
@@ -182,7 +189,7 @@
         <div class="input-wrapper">
           <el-input
             v-model="inputMessage"
-            :disabled="isTyping || isPredictTyping || isAnalysisTyping"
+            :disabled="isTyping"
             class="input-area"
             type="textarea"
             :rows="1"
@@ -195,7 +202,7 @@
             link
             type="primary"
             class="input-icon"
-            :disabled="isTyping || isPredictTyping || isAnalysisTyping"
+            :disabled="isTyping"
             @click="sendMessage"
           >
             <el-icon size="20">
@@ -213,11 +220,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { Position } from '@element-plus/icons-vue'
-import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat'
+import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat'
 import ChatRow from './ChatRow.vue'
-import ChatAnswer from './ChatAnswer.vue'
+import ChartAnswer from './answer/ChartAnswer.vue'
+import AnalysisAnswer from './answer/AnalysisAnswer.vue'
+import PredictAnswer from './answer/PredictAnswer.vue'
 import UserChat from './chat-block/UserChat.vue'
-import MdComponent from './component/MdComponent.vue'
 import RecommendQuestion from './RecommendQuestion.vue'
 import ChatListContainer from './ChatListContainer.vue'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
@@ -255,8 +263,6 @@ const chatList = ref<Array<ChatInfo>>([])
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
 const isTyping = ref<boolean>(false)
-const isAnalysisTyping = ref<boolean>(false)
-const isPredictTyping = ref<boolean>(false)
 
 const computedMessages = computed<Array<ChatMessage>>(() => {
   const messages: Array<ChatMessage> = []
@@ -271,6 +277,7 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
         create_time: record.create_time,
         record: record,
         content: record.question,
+        index: i,
       })
     }
     messages.push({
@@ -280,9 +287,11 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
       isTyping: i === currentChat.value.records.length - 1 && isTyping.value,
       first_chat: record.first_chat,
       recommended_question: record.recommended_question,
+      index: i,
     })
   }
 
+  console.log(messages)
   return messages
 })
 
@@ -378,7 +387,6 @@ async function getRecommendQuestions(record_id?: number) {
   while (true) {
     const { done, value } = await reader.read()
     if (done) {
-      isTyping.value = false
       break
     }
 
@@ -415,7 +423,6 @@ async function getRecommendQuestions(record_id?: number) {
           type: 'error',
           showClose: true,
         })
-        isTyping.value = false
         return
       }
 
@@ -451,6 +458,19 @@ function quickAsk(question: string) {
   })
 }
 
+const chartAnswerRef = ref()
+
+async function onChartAnswerFinish(id: number) {
+  loading.value = false
+  isTyping.value = false
+  await getRecommendQuestions(id)
+}
+
+function onChartAnswerError() {
+  loading.value = false
+  isTyping.value = false
+}
+
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
 
@@ -469,138 +489,21 @@ const sendMessage = async () => {
   currentChat.value.records.push(currentRecord)
   inputMessage.value = ''
 
-  let error: boolean = false
-  if (currentChatId.value === undefined) {
-    error = true
-  }
-  if (error) return
-
-  try {
-    const response = await questionApi.add({
-      question: currentRecord.question,
-      chat_id: currentChatId.value,
-    })
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-
-    let sql_answer = ''
-    let chart_answer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        isTyping.value = false
-        break
-      }
-
-      const chunk = decoder.decode(value)
-
-      let _list = [chunk]
-
-      const lines = chunk.trim().split('}\n\n{')
-      if (lines.length > 1) {
-        _list = []
-        for (let line of lines) {
-          if (!line.trim().startsWith('{')) {
-            line = '{' + line.trim()
+  nextTick(async () => {
+    const index = currentChat.value.records.length - 1
+    if (chartAnswerRef.value) {
+      if (chartAnswerRef.value instanceof Array) {
+        for (let i = 0; i < chartAnswerRef.value.length; i++) {
+          const _index = chartAnswerRef.value[i].index
+          if (index === _index) {
+            await chartAnswerRef.value[i].sendMessage()
+            break
           }
-          if (!line.trim().endsWith('}')) {
-            line = line.trim() + '}'
-          }
-          _list.push(line)
         }
-      }
-
-      // console.log(_list)
-
-      for (const str of _list) {
-        let data
-        try {
-          data = JSON.parse(str)
-        } catch (err) {
-          console.error('JSON string:', str)
-          throw err
-        }
-
-        if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          isTyping.value = false
-          return
-        }
-
-        switch (data.type) {
-          case 'id':
-            currentRecord.id = data.id
-            currentChat.value.records[currentChat.value.records.length - 1].id = data.id
-            break
-          case 'info':
-            console.log(data.msg)
-            break
-          case 'brief':
-            currentChat.value.brief = data.brief
-            chatList.value.forEach((c: Chat) => {
-              if (c.id === currentChat.value.id) {
-                c.brief = currentChat.value.brief
-              }
-            })
-            break
-          case 'error':
-            currentRecord.error = data.content
-            isTyping.value = false
-            break
-          case 'sql-result':
-            sql_answer += data.reasoning_content
-            currentChat.value.records[currentChat.value.records.length - 1].sql_answer = sql_answer
-            break
-          case 'sql':
-            currentChat.value.records[currentChat.value.records.length - 1].sql = data.content
-            break
-          case 'sql-data':
-            //currentChat.value.records[currentChat.value.records.length - 1].data = data.content
-            getChatData(currentChat.value.records[currentChat.value.records.length - 1].id)
-            break
-          case 'chart-result':
-            chart_answer += data.reasoning_content
-            currentChat.value.records[currentChat.value.records.length - 1].chart_answer =
-              chart_answer
-            break
-          case 'chart':
-            currentChat.value.records[currentChat.value.records.length - 1].chart = data.content
-            break
-          case 'finish':
-            isTyping.value = false
-            await getRecommendQuestions(currentRecord.id)
-            break
-        }
-        await nextTick()
+      } else {
+        await chartAnswerRef.value.sendMessage()
       }
     }
-  } catch (error) {
-    if (!currentRecord.error) {
-      currentRecord.error = ''
-    }
-    if (currentRecord.error.trim().length !== 0) {
-      currentRecord.error = currentRecord.error + '\n'
-    }
-    currentRecord.error = currentRecord.error + 'Error:' + error
-    console.error('Error:', error)
-    isTyping.value = false
-  } finally {
-    loading.value = false
-  }
-}
-
-function getChatData(recordId?: number) {
-  chatApi.get_chart_data(recordId).then((response) => {
-    currentChat.value.records.forEach((record) => {
-      if (record.id === recordId) {
-        record.data = response
-      }
-    })
   })
 }
 
@@ -614,11 +517,27 @@ function getChatPredictData(recordId?: number) {
   })
 }
 
+const analysisAnswerRef = ref()
+
+async function onAnalysisAnswerFinish(id: number) {
+  loading.value = false
+  isTyping.value = false
+  console.log(id)
+  //await getRecommendQuestions(id)
+}
+function onAnalysisAnswerError() {
+  loading.value = false
+  isTyping.value = false
+}
+
 async function clickAnalysis(id?: number) {
   const baseRecord = find(currentChat.value.records, (value) => id === value.id)
   if (baseRecord == undefined) {
     return
   }
+
+  loading.value = true
+  isTyping.value = true
 
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
@@ -627,96 +546,41 @@ async function clickAnalysis(id?: number) {
   currentRecord.chart = baseRecord.chart
   currentRecord.data = baseRecord.data
   currentRecord.analysis_record_id = id
+  currentRecord.analysis = ''
 
   currentChat.value.records.push(currentRecord)
 
-  let _index = currentChat.value.records.length - 1
-
-  isAnalysisTyping.value = true
-  currentChat.value.records[_index].analysis = ''
-
-  try {
-    const response = await chatApi.analysis(id)
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-
-    let analysis_answer = ''
-    let analysis_answer_thinking = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        isAnalysisTyping.value = false
-        break
-      }
-
-      const chunk = decoder.decode(value)
-
-      let _list = [chunk]
-
-      const lines = chunk.trim().split('}\n\n{')
-      if (lines.length > 1) {
-        _list = []
-        for (let line of lines) {
-          if (!line.trim().startsWith('{')) {
-            line = '{' + line.trim()
+  nextTick(async () => {
+    const index = currentChat.value.records.length - 1
+    if (analysisAnswerRef.value) {
+      if (analysisAnswerRef.value instanceof Array) {
+        for (let i = 0; i < analysisAnswerRef.value.length; i++) {
+          const _index = analysisAnswerRef.value[i].index
+          if (index === _index) {
+            await analysisAnswerRef.value[i].sendMessage()
+            break
           }
-          if (!line.trim().endsWith('}')) {
-            line = line.trim() + '}'
-          }
-          _list.push(line)
         }
-      }
-
-      // console.log(_list)
-
-      for (const str of _list) {
-        let data
-        try {
-          data = JSON.parse(str)
-        } catch (err) {
-          console.error('JSON string:', str)
-          throw err
-        }
-
-        if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          isAnalysisTyping.value = false
-          return
-        }
-
-        switch (data.type) {
-          case 'info':
-            console.log(data.msg)
-            break
-          case 'error':
-            throw Error(data.content)
-          case 'analysis-result':
-            analysis_answer += data.content
-            analysis_answer_thinking += data.reasoning_content
-            currentChat.value.records[_index].analysis = analysis_answer
-            currentChat.value.records[_index].analysis_thinking = analysis_answer_thinking
-            break
-          case 'analysis_finish':
-            isAnalysisTyping.value = false
-            break
-        }
-        await nextTick()
+      } else {
+        await analysisAnswerRef.value.sendMessage()
       }
     }
-  } catch (error) {
-    console.error('Error:', error)
-    ElMessage({
-      message: error + '',
-      type: 'error',
-      showClose: true,
-    })
-    isAnalysisTyping.value = false
-  }
+  })
+
+  return
+}
+
+const predictAnswerRef = ref()
+
+async function onPredictAnswerFinish(id: number) {
+  loading.value = false
+  isTyping.value = false
+  getChatPredictData(id)
+  //await getRecommendQuestions(id)
+}
+function onPredictAnswerError() {
+  loading.value = false
+  isTyping.value = false
 }
 
 async function clickPredict(id?: number) {
@@ -725,6 +589,9 @@ async function clickPredict(id?: number) {
     return
   }
 
+  loading.value = true
+  isTyping.value = true
+
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
   currentRecord.chat_id = baseRecord.chat_id
@@ -732,102 +599,29 @@ async function clickPredict(id?: number) {
   currentRecord.chart = baseRecord.chart
   currentRecord.data = baseRecord.data
   currentRecord.predict_record_id = id
+  currentRecord.predict = ''
+  currentRecord.predict_data = ''
 
   currentChat.value.records.push(currentRecord)
 
-  let _index = currentChat.value.records.length - 1
-
-  isPredictTyping.value = true
-  currentChat.value.records[_index].predict = ''
-  currentChat.value.records[_index].predict_data = ''
-
-  try {
-    const response = await chatApi.predict(id)
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-
-    let predict_answer = ''
-    let predict_content = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        isPredictTyping.value = false
-        break
-      }
-
-      const chunk = decoder.decode(value)
-
-      let _list = [chunk]
-
-      const lines = chunk.trim().split('}\n\n{')
-      if (lines.length > 1) {
-        _list = []
-        for (let line of lines) {
-          if (!line.trim().startsWith('{')) {
-            line = '{' + line.trim()
+  nextTick(async () => {
+    const index = currentChat.value.records.length - 1
+    if (predictAnswerRef.value) {
+      if (predictAnswerRef.value instanceof Array) {
+        for (let i = 0; i < predictAnswerRef.value.length; i++) {
+          const _index = predictAnswerRef.value[i].index
+          if (index === _index) {
+            await predictAnswerRef.value[i].sendMessage()
+            break
           }
-          if (!line.trim().endsWith('}')) {
-            line = line.trim() + '}'
-          }
-          _list.push(line)
         }
-      }
-
-      // console.log(_list)
-
-      for (const str of _list) {
-        let data
-        try {
-          data = JSON.parse(str)
-        } catch (err) {
-          console.error('JSON string:', str)
-          throw err
-        }
-
-        if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          return
-        }
-
-        switch (data.type) {
-          case 'info':
-            console.log(data.msg)
-            break
-          case 'error':
-            throw Error(data.content)
-          case 'predict-result':
-            predict_answer += data.reasoning_content
-            predict_content += data.content
-            currentChat.value.records[_index].predict = predict_answer
-            currentChat.value.records[_index].predict_content = predict_content
-            break
-          case 'predict-failed':
-            break
-          case 'predict-success':
-            //currentChat.value.records[_index].predict_data = data.content
-            getChatPredictData(currentChat.value.records[_index].id)
-            break
-          case 'predict_finish':
-            isPredictTyping.value = false
-            break
-        }
-        await nextTick()
+      } else {
+        await predictAnswerRef.value.sendMessage()
       }
     }
-  } catch (error) {
-    console.error('Error:', error)
-    ElMessage({
-      message: error + '',
-      type: 'error',
-      showClose: true,
-    })
-    isPredictTyping.value = false
-  }
+  })
+
+  return
 }
 
 const handleCtrlEnter = (e: KeyboardEvent) => {
