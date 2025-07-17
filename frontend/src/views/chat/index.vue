@@ -47,7 +47,7 @@
         />
       </el-popover>
       <el-tooltip effect="dark" :content="t('qa.new_chat')" placement="bottom">
-        <el-button link type="primary" class="icon-btn" @click="createNewChat">
+        <el-button link type="primary" class="icon-btn" @click="createNewChatSimple">
           <el-icon>
             <icon_new_chat_outlined />
           </el-icon>
@@ -73,7 +73,7 @@
               size="large"
               type="primary"
               class="greeting-btn"
-              @click="createNewChat"
+              @click="createNewChatSimple"
             >
               <span class="inner-icon">
                 <el-icon>
@@ -297,6 +297,12 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
 
 const goEmpty = () => {
   inputMessage.value = ''
+}
+
+const createNewChatSimple = async () => {
+  currentChat.value = new ChatInfo()
+  currentChatId.value = undefined
+  await createNewChat()
 }
 
 const createNewChat = async () => {
@@ -760,9 +766,7 @@ defineExpose({
   align-items: center;
 
   .welcome-content {
-    padding: 12px;
-
-    width: fit-content;
+    width: 100%;
     max-width: 800px;
     display: flex;
     gap: 16px;
