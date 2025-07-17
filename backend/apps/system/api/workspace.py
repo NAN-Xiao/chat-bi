@@ -1,6 +1,8 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import exists, or_, select    
+from sqlmodel import exists, or_, select, delete as sqlmodel_delete   
+from apps.system.crud.user import clean_user_cache
+from apps.system.crud.workspace import reset_single_user_oid, reset_user_oid
 from apps.system.models.system_model import UserWsModel, WorkspaceBase, WorkspaceEditor, WorkspaceModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.system_schema import UserWsBase, UserWsDTO, UserWsEditor, UserWsOption, WorkspaceUser
@@ -118,21 +120,27 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserWs
         })
         for uid in creator.uid_list
     ]
+    for uid in creator.uid_list:
+        await reset_single_user_oid(session, uid, oid)
+        await clean_user_cache(uid)
+        
     session.add_all(db_model_list)
     session.commit()
 
 @router.put("/uws")     
 async def edit(session: SessionDep, editor: UserWsEditor):
     if not editor.oid or not editor.uid:
-        raise RuntimeError("param [oid, uid] miss")
+        raise HTTPException("param [oid, uid] miss")
     db_model = session.exec(select(UserWsModel).where(UserWsModel.uid == editor.uid, UserWsModel.oid == editor.oid)).first()
     if not db_model:
-        raise RuntimeError("uws not exist")
+        raise HTTPException("uws not exist")
     if editor.weight == db_model.weight:
         return
     
     db_model.weight = editor.weight
     session.add(db_model)
+    
+    await clean_user_cache(editor.uid)
     session.commit()
 
 @router.delete("/uws")     
@@ -145,6 +153,11 @@ async def delete(session: SessionDep, current_user: CurrentUser, dto: UserWsBase
         raise HTTPException(f"UserWsModel not found")
     for db_model in db_model_list:
         session.delete(db_model)
+    
+    for uid in dto.uid_list:
+        await reset_single_user_oid(session, uid, oid, False)
+        await clean_user_cache(uid)
+        
     session.commit()
 
 @router.get("", response_model=list[WorkspaceModel])
@@ -167,7 +180,7 @@ async def update(session: SessionDep, editor: WorkspaceEditor):
     id = editor.id
     db_model = session.get(WorkspaceModel, id)
     if not db_model:
-        raise ValueError(f"WorkspaceModel with id {id} not found")
+        raise HTTPException(f"WorkspaceModel with id {id} not found")
     update_data = WorkspaceModel.model_validate(editor)
     db_model.sqlmodel_update(update_data)
     session.add(db_model)
@@ -177,16 +190,27 @@ async def update(session: SessionDep, editor: WorkspaceEditor):
 async def get_one(session: SessionDep, trans: Trans, id: int):
     db_model = session.get(WorkspaceModel, id)
     if not db_model:
-        raise ValueError(f"WorkspaceModel with id {id} not found")
+        raise HTTPException(f"WorkspaceModel with id {id} not found")
     if db_model.name.startswith('i18n'):
         db_model.name = trans(db_model.name)
     return db_model
 
 @router.delete("/{id}")  
-async def delete(session: SessionDep, id: int):
+async def single_delete(session: SessionDep, id: int):
     db_model = session.get(WorkspaceModel, id)
     if not db_model:
-        raise ValueError(f"WorkspaceModel with id {id} not found")
+        raise HTTPException(f"WorkspaceModel with id {id} not found")
+    
+    user_ws_list = session.exec(select(UserWsModel).where(UserWsModel.oid == id)).all()
+    if user_ws_list:
+        # clean user cache
+        for user_ws in user_ws_list:
+            await clean_user_cache(user_ws.uid)
+        # reset user default oid
+        await reset_user_oid(session, id)
+        # delete user_ws
+        session.exec(sqlmodel_delete(UserWsModel).where(UserWsModel.oid == id))
+        
     session.delete(db_model)
     session.commit()
 

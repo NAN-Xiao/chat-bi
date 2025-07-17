@@ -11,6 +11,6 @@ export const workspaceUwsUpdate = (data: any) => request.put('/system/workspace/
 export const workspaceCreate = (data: any) => request.post('/system/workspace', data)
 export const workspaceUpdate = (data: any) => request.put('/system/workspace', data)
 export const workspaceUwsDelete = (data: any) => request.delete('/system/workspace/uws', { data })
-export const workspaceDelete = (data: any) => request.delete('/system/workspace', { data })
+export const workspaceDelete = (id: any) => request.delete(`/system/workspace/${id}`)
 export const workspaceList = () => request.get('/system/workspace')
 export const workspaceDetail = (id: any) => request.get(`/system/workspace/${id}`)
