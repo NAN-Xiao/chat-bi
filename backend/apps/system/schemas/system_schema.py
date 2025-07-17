@@ -48,7 +48,7 @@ class PwdEditor(BaseModel):
     
 class UserWsBase(BaseModel):
     uid_list: list[int]
-    oid: int
+    oid: Optional[int] = None
 class UserWsDTO(UserWsBase):
     weight: int = 0
 
