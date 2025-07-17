@@ -117,23 +117,67 @@
                     @error="onChartAnswerError"
                   >
                     <div style="height: 100px; width: 100%; background: grey">todo</div>
-                    <div style="padding: 0 22px; display: flex; justify-content: flex-end">
-                      <el-button
-                        text
-                        type="primary"
-                        :disabled="isTyping"
-                        @click="clickAnalysis(message.record?.id)"
-                      >
-                        {{ t('chat.data_analysis') }}
-                      </el-button>
-                      <el-button
-                        text
-                        type="primary"
-                        :disabled="isTyping"
-                        @click="clickPredict(message.record?.id)"
-                      >
-                        {{ t('chat.data_predict') }}
-                      </el-button>
+                    <div
+                      v-if="message.record?.error && message.record?.error?.trim().length > 0"
+                      class="error-container"
+                    >
+                      {{ message.record?.error }}
+                    </div>
+                    <div class="tool-container">
+                      <div class="tool-btns">
+                        <el-tooltip effect="dark" :content="t('qa.ask_again')" placement="top">
+                          <el-button
+                            class="tool-btn"
+                            text
+                            :disabled="isTyping"
+                            @click="askAgain(message)"
+                          >
+                            <el-icon size="18">
+                              <icon_replace_outlined />
+                            </el-icon>
+                          </el-button>
+                        </el-tooltip>
+                        <template v-if="message.record?.chart">
+                          <div class="divider"></div>
+                          <div>
+                            <el-button
+                              class="tool-btn"
+                              text
+                              :disabled="isTyping"
+                              @click="clickAnalysis(message.record?.id)"
+                            >
+                              <span class="tool-btn-inner">
+                                <el-icon size="18">
+                                  <icon_screen_outlined />
+                                </el-icon>
+                                <span class="btn-text">
+                                  {{ t('chat.data_analysis') }}
+                                </span>
+                              </span>
+                            </el-button>
+                          </div>
+                          <div>
+                            <el-button
+                              class="tool-btn"
+                              text
+                              :disabled="isTyping"
+                              @click="clickPredict(message.record?.id)"
+                            >
+                              <span class="tool-btn-inner">
+                                <el-icon size="18">
+                                  <icon_start_outlined />
+                                </el-icon>
+                                <span class="btn-text">
+                                  {{ t('chat.data_predict') }}
+                                </span>
+                              </span>
+                            </el-button>
+                          </div>
+                        </template>
+                      </div>
+                      <div class="tool-times">
+                        {{ datetimeFormat(message.record?.create_time) }}
+                      </div>
                     </div>
                     <template #footer>
                       <RecommendQuestion
@@ -156,7 +200,20 @@
                     :message="message"
                     @finish="onAnalysisAnswerFinish"
                     @error="onAnalysisAnswerError"
-                  />
+                  >
+                    <div
+                      v-if="message.record?.error && message.record?.error?.trim().length > 0"
+                      class="error-container"
+                    >
+                      {{ message.record?.error }}
+                    </div>
+                    <div class="tool-container">
+                      <div class="tool-btns"></div>
+                      <div class="tool-times">
+                        {{ datetimeFormat(message.record?.create_time) }}
+                      </div>
+                    </div>
+                  </AnalysisAnswer>
                   <PredictAnswer
                     v-if="
                       message?.record?.predict_record_id !== undefined &&
@@ -170,7 +227,20 @@
                     :message="message"
                     @finish="onPredictAnswerFinish"
                     @error="onPredictAnswerError"
-                  />
+                  >
+                    <div
+                      v-if="message.record?.error && message.record?.error?.trim().length > 0"
+                      class="error-container"
+                    >
+                      {{ message.record?.error }}
+                    </div>
+                    <div class="tool-container">
+                      <div class="tool-btns"></div>
+                      <div class="tool-times">
+                        {{ datetimeFormat(message.record?.create_time) }}
+                      </div>
+                    </div>
+                  </PredictAnswer>
                 </template>
               </ChatRow>
             </template>
@@ -233,8 +303,12 @@ import { useI18n } from 'vue-i18n'
 import { endsWith, find, startsWith } from 'lodash-es'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
+import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
+import icon_screen_outlined from '@/assets/svg/icon_screen_outlined.svg'
+import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import logo_fold from '@/assets/LOGO-fold.svg'
 import logo from '@/assets/LOGO.svg'
+import { datetimeFormat } from '@/utils/utils.ts'
 
 import { useAssistantStore } from '@/stores/assistant'
 const assistantStore = useAssistantStore()
@@ -536,6 +610,13 @@ function onAnalysisAnswerError() {
   isTyping.value = false
 }
 
+function askAgain(message: ChatMessage) {
+  inputMessage.value = message.record?.question ?? ''
+  nextTick(() => {
+    sendMessage()
+  })
+}
+
 async function clickAnalysis(id?: number) {
   const baseRecord = find(currentChat.value.records, (value) => id === value.id)
   if (baseRecord == undefined) {
@@ -750,11 +831,72 @@ defineExpose({
   }
 }
 
-.analysis-container {
-  color: var(--ed-text-color-primary);
-  font-size: 12px;
-  line-height: 1.7692307692;
-  padding: 16px 22px;
+.error-container {
+  margin-top: 12px;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 24px;
+  color: rgba(31, 35, 41, 1);
+}
+
+.tool-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+
+  min-height: 22px;
+
+  margin-top: 12px;
+  margin-bottom: 12px;
+
+  .tool-times {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 22px;
+    color: rgba(100, 106, 115, 1);
+  }
+
+  .tool-btns {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+
+    column-gap: 16px;
+    row-gap: 8px;
+
+    .tool-btn {
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 22px;
+      color: rgba(100, 106, 115, 1);
+
+      .tool-btn-inner {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+      }
+
+      &:hover {
+        background: rgba(31, 35, 41, 0.1);
+      }
+      &:active {
+        background: rgba(31, 35, 41, 0.1);
+      }
+    }
+
+    .btn-text {
+      margin-left: 4px;
+    }
+
+    .divider {
+      width: 1px;
+      height: 16px;
+      border-left: 1px solid rgba(31, 35, 41, 0.15);
+    }
+  }
 }
 
 .welcome-content-block {

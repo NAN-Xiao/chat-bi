@@ -154,6 +154,11 @@ onMounted(() => {
 
   .answer-container {
     width: 100%;
+
+    line-height: 24px;
+    font-size: 16px;
+    font-weight: 400;
+    color: rgba(31, 35, 41, 1);
   }
 }
 </style>

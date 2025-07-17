@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import md from '@/utils/markdown.ts'
-import 'highlight.js/styles/github-dark-dimmed.css'
+import 'highlight.js/styles/github-dark-dimmed.min.css'
+import 'github-markdown-css/github-markdown-light.css'
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -13,7 +14,22 @@ const renderMd = computed(() => {
 </script>
 
 <template>
-  <div v-dompurify-html="renderMd"></div>
+  <div v-dompurify-html="renderMd" class="markdown-body md-render-container"></div>
 </template>
 
-<style scoped lang="less"></style>
+<style lang="less">
+.md-render-container {
+  .hljs {
+    overflow: auto;
+    padding: 1rem;
+    display: block;
+  }
+
+  //ul {
+  //  padding-left: 16px;
+  //}
+  //ol {
+  //  padding-left: 16px;
+  //}
+}
+</style>

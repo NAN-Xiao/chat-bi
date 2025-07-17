@@ -17,7 +17,8 @@ from apps.template.filter.generator import get_permissions_template
 class Chat(SQLModel, table=True):
     __tablename__ = "chat"
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
-    create_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=True))
+    oid: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True, default=1))
+    create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
     brief: str = Field(max_length=64, nullable=True)
     chat_type: str = Field(max_length=20, default="chat")  # chat, datasource
@@ -31,8 +32,8 @@ class ChatRecord(SQLModel, table=True):
     chat_id: int = Field(sa_column=Column(BigInteger, nullable=False))
     ai_modal_id: Optional[int] = Field(sa_column=Column(BigInteger))
     first_chat: bool = Field(sa_column=Column(Boolean, nullable=True, default=False))
-    create_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=True))
-    finish_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=True))
+    create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
+    finish_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
     datasource: int = Field(sa_column=Column(BigInteger, nullable=True))
     engine_type: str = Field(max_length=64)
@@ -65,6 +66,7 @@ class ChatRecord(SQLModel, table=True):
     error: str = Field(sa_column=Column(Text, nullable=True))
     analysis_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     predict_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
+
 
 class CreateChat(BaseModel):
     id: int = None
