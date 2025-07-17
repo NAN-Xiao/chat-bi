@@ -19,8 +19,8 @@ path = "/opt/sqlbot/data/excel"
 
 
 @router.get("/list")
-async def datasource_list(session: SessionDep):
-    return get_datasource_list(session=session)
+async def datasource_list(session: SessionDep, user: CurrentUser):
+    return get_datasource_list(session=session, user=user)
 
 
 @router.post("/get/{id}")
@@ -44,8 +44,8 @@ async def choose_tables(session: SessionDep, id: int, tables: List[CoreTable]):
 
 
 @router.post("/update", response_model=CoreDatasource)
-async def update(session: SessionDep, ds: CoreDatasource):
-    return update_ds(session, ds)
+async def update(session: SessionDep,user: CurrentUser, ds: CoreDatasource):
+    return update_ds(session,user, ds)
 
 
 @router.post("/delete/{id}", response_model=CoreDatasource)
