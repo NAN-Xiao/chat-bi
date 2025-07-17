@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import exists, or_, select    
 from apps.system.models.system_model import UserWsModel, WorkspaceBase, WorkspaceEditor, WorkspaceModel
 from apps.system.models.user import UserModel
@@ -105,11 +105,14 @@ async def pager(
     
 
 @router.post("/uws")     
-async def create(session: SessionDep, creator: UserWsDTO):
+async def create(session: SessionDep, current_user: CurrentUser, creator: UserWsDTO):
+    if not current_user.isAdmin and current_user.weight == 0:
+        raise HTTPException("no permission to execute")
+    oid: int = creator.oid if current_user.isAdmin else current_user.oid
     # 判断uid_list以及oid合法性
     db_model_list = [
         UserWsModel.model_validate({
-            "oid": creator.oid,
+            "oid": oid,
             "uid": uid,
             "weight": creator.weight
         })
@@ -133,10 +136,13 @@ async def edit(session: SessionDep, editor: UserWsEditor):
     session.commit()
 
 @router.delete("/uws")     
-async def delete(session: SessionDep, dto: UserWsBase):
-    db_model_list: list[UserWsModel] = session.exec(select(UserWsModel).where(UserWsModel.uid.in_(dto.uid_list), UserWsModel.oid == dto.oid)).all()
+async def delete(session: SessionDep, current_user: CurrentUser, dto: UserWsBase):
+    if not current_user.isAdmin and current_user.weight == 0:
+        raise HTTPException("no permission to execute")
+    oid: int = dto.oid if current_user.isAdmin else current_user.oid
+    db_model_list: list[UserWsModel] = session.exec(select(UserWsModel).where(UserWsModel.uid.in_(dto.uid_list), UserWsModel.oid == oid)).all()
     if not db_model_list:
-        raise ValueError(f"UserWsModel not found")
+        raise HTTPException(f"UserWsModel not found")
     for db_model in db_model_list:
         session.delete(db_model)
     session.commit()
