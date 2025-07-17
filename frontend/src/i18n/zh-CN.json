@@ -327,7 +327,8 @@
     "add_successfully": "添加成功",
     "member_management": "成员管理",
     "permission_configuration": "权限配置",
-    "set": "设置"
+    "set": "设置",
+    "operate_with_caution": "删除后，该工作空间下的用户将被移除，所有资源也将被删除，请谨慎操作。"
   },
   "permission": {
     "search_rule_group": "搜索规则组",

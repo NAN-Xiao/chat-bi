@@ -140,6 +140,7 @@ const refresh = () => {
     if (!nameArr.includes(currentTable.value.table_name)) {
       currentTable.value = {}
     }
+    emits('refresh')
   })
 }
 
@@ -173,7 +174,7 @@ const changeStatus = (row: any) => {
   })
 }
 
-const emits = defineEmits(['back'])
+const emits = defineEmits(['back', 'refresh'])
 const back = () => {
   emits('back')
 }

@@ -115,6 +115,11 @@ const refresh = () => {
   search()
 }
 
+const refreshData = () => {
+  console.log(123)
+  search()
+}
+
 const panelClick = () => {
   console.log('panelClick')
 }
@@ -329,11 +334,17 @@ const back = () => {
         :active-name="activeName"
         :active-type="activeType"
         @refresh="refresh"
+        @close="beforeClose"
         @change-active-step="(val: number) => (activeStep = val)"
       ></DatasourceForm>
     </el-drawer>
   </div>
-  <DataTable v-if="currentDataTable" :info="currentDataTable" @back="back"></DataTable>
+  <DataTable
+    v-if="currentDataTable"
+    :info="currentDataTable"
+    @refresh="refreshData"
+    @back="back"
+  ></DataTable>
 </template>
 
 <style lang="less" scoped>

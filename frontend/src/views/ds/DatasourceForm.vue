@@ -11,7 +11,7 @@ import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import FixedSizeList from 'element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs'
 import { Plus } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
-import { dsType, haveSchema } from '@/views/ds/js/ds-type'
+import { haveSchema } from '@/views/ds/js/ds-type'
 import { setSize } from '@/utils/utils'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_fileExcel_colorful from '@/assets/datasource/icon_excel.png'
@@ -34,7 +34,7 @@ const props = withDefaults(
 
 const { wsCache } = useCache()
 const dsFormRef = ref<FormInstance>()
-const emit = defineEmits(['refresh', 'changeActiveStep'])
+const emit = defineEmits(['refresh', 'changeActiveStep', 'close'])
 const isCreate = ref(true)
 const isEditTable = ref(false)
 const checkList = ref<any>([])
@@ -125,6 +125,7 @@ const close = () => {
   dialogVisible.value = false
   isCreate.value = true
   emit('changeActiveStep', 0)
+  emit('close')
   isEditTable.value = false
   checkList.value = []
   tableList.value = []
@@ -548,21 +549,6 @@ defineExpose({
             type="textarea"
           />
         </el-form-item>
-        <el-form-item :label="t('ds.type')" prop="type">
-          <el-select
-            v-model="form.type"
-            :placeholder="$t('datasource.Please_select') + $t('common.empty') + t('ds.type')"
-            :disabled="!isCreate"
-          >
-            <el-option
-              v-for="item in dsType"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-
         <div v-if="form.type !== 'excel'" style="margin-top: 16px">
           <el-form-item :label="t('ds.form.host')" prop="host">
             <el-input

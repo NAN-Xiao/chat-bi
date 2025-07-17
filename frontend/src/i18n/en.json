@@ -306,7 +306,8 @@
     "add_successfully": "Add successfully",
     "member_management": "Member management",
     "permission_configuration": "Permission configuration",
-    "set": "Set"
+    "set": "Set",
+    "operate_with_caution": "After deletion, the users under the workspace will be removed and all resources will be deleted. Please operate with caution."
   },
   "permission": {
     "search_rule_group": "Search rule group",
