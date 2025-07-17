@@ -50,7 +50,7 @@ class UserWsBase(BaseModel):
     uid_list: list[int]
     oid: Optional[int] = None
 class UserWsDTO(UserWsBase):
-    weight: int = 0
+    weight: Optional[int] = 0
 
 class UserWsEditor(BaseModel):
     uid: int

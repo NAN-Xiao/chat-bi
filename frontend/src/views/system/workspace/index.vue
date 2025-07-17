@@ -236,9 +236,7 @@ const delWorkspace = (row: any) => {
     customClass: 'confirm-no_icon',
     autofocus: false,
   }).then(() => {
-    workspaceDelete({
-      id: row.id,
-    }).then(() => {
+    workspaceDelete(row.id).then(() => {
       ElMessage({
         type: 'success',
         message: t('dashboard.delete_success'),

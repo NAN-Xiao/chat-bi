@@ -18,6 +18,7 @@ class CoreDatasource(SQLModel, table=True):
     create_by: int = Field(sa_column=Column(BigInteger()))
     status: str = Field(max_length=64, nullable=True)
     num: str = Field(max_length=256, nullable=True)
+    oid: int = Field(sa_column=Column(BigInteger()))
 
 
 class CoreTable(SQLModel, table=True):
@@ -53,6 +54,7 @@ class CreateDatasource(BaseModel):
     create_by: int = 0
     status: str = ''
     num: str = ''
+    oid: int = 1
     tables: List[CoreTable] = []
 
 

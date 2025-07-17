@@ -22,10 +22,10 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
     DatasourceConf, TableAndFields
 
 
-def get_datasource_list(session: SessionDep):
-    statement = select(CoreDatasource).order_by(CoreDatasource.create_time.desc())
-    datasource_list = session.exec(statement).fetchall()
-    return datasource_list
+def get_datasource_list(session: SessionDep, user: CurrentUser):
+    oid = user.oid if user.oid is not None else 1
+    return session.query(CoreDatasource).filter(CoreDatasource.oid == oid).order_by(
+        CoreDatasource.create_time.desc()).all()
 
 
 def get_ds(session: SessionDep, id: int):
@@ -45,14 +45,15 @@ def check_status(session: SessionDep, ds: CoreDatasource):
         return False
 
 
-def check_name(session: SessionDep, ds: CoreDatasource):
+def check_name(session: SessionDep, user: CurrentUser, ds: CoreDatasource):
     if ds.id is not None:
         ds_list = session.query(CoreDatasource).filter(
-            and_(CoreDatasource.name == ds.name, CoreDatasource.id != ds.id)).all()
+            and_(CoreDatasource.name == ds.name, CoreDatasource.id != ds.id, CoreDatasource.oid == user.oid)).all()
         if ds_list is not None and len(ds_list) > 0:
             raise 'Name exist'
     else:
-        ds_list = session.query(CoreDatasource).filter(CoreDatasource.name == ds.name).all()
+        ds_list = session.query(CoreDatasource).filter(
+            and_(CoreDatasource.name == ds.name, CoreDatasource.oid == user.oid)).all()
         if ds_list is not None and len(ds_list) > 0:
             raise 'Name exist'
 
@@ -60,10 +61,11 @@ def check_name(session: SessionDep, ds: CoreDatasource):
 def create_ds(session: SessionDep, user: CurrentUser, create_ds: CreateDatasource):
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
-    check_name(session, ds)
+    check_name(session, user, ds)
     ds.create_time = datetime.datetime.now()
     # status = check_status(session, ds)
     ds.create_by = user.id
+    ds.oid = user.oid if user.oid is not None else 1
     ds.status = "Success"
     ds.type_name = db_type_relation()[ds.type]
     record = CoreDatasource(**ds.model_dump())
@@ -85,9 +87,9 @@ def chooseTables(session: SessionDep, id: int, tables: List[CoreTable]):
     updateNum(session, ds)
 
 
-def update_ds(session: SessionDep, ds: CoreDatasource):
+def update_ds(session: SessionDep, user: CurrentUser, ds: CoreDatasource):
     ds.id = int(ds.id)
-    check_name(session, ds)
+    check_name(session, user, ds)
     status = check_status(session, ds)
     ds.status = "Success" if status is True else "Fail"
     record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()

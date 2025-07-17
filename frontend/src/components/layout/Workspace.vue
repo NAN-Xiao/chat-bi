@@ -43,6 +43,7 @@ const handleDefaultWorkspaceChange = (item: any) => {
   currentWorkspace.value = { id: item.id, name: item.name }
   userApi.ws_change(item.id).then(() => {
     ElMessage.success(t('common.switch_success'))
+    location.reload()
   })
   emit('selectWorkspace', item)
 }

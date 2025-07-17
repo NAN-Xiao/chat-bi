@@ -3,19 +3,28 @@
 
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException
+import jwt
+from fastapi import HTTPException, status, APIRouter
 from fastapi.responses import StreamingResponse
+# from fastapi.security import OAuth2PasswordBearer
+from jwt.exceptions import InvalidTokenError
+from pydantic import ValidationError
 
 from apps.chat.api.chat import create_chat
 from apps.chat.models.chat_model import ChatMcp, CreateChat, ChatStart
 from apps.chat.task.llm import LLMService, run_task
-from apps.datasource.crud.datasource import get_datasource_list
-from apps.system.crud.user import authenticate
-from apps.system.models.system_model import AiModelDetail
+from apps.system.crud.user import authenticate, get_user_info
+from apps.system.schemas.system_schema import BaseUserDTO
+from apps.system.schemas.system_schema import UserInfoDTO
+from common.core import security
 from common.core.config import settings
-from common.core.deps import SessionDep, get_current_user
-from common.core.schemas import Token
+from common.core.deps import SessionDep
+from common.core.schemas import TokenPayload, XOAuth2PasswordBearer, Token
 from common.core.security import create_access_token
+
+reusable_oauth2 = XOAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/login/access-token"
+)
 
 router = APIRouter(tags=["mcp"], prefix="/mcp")
 
@@ -35,21 +44,24 @@ router = APIRouter(tags=["mcp"], prefix="/mcp")
 #     ))
 
 
-@router.get("/ds_list", operation_id="get_datasource_list")
-async def datasource_list(session: SessionDep):
-    return get_datasource_list(session=session)
-
-
-@router.get("/model_list", operation_id="get_model_list")
-async def get_model_list(session: SessionDep):
-    return session.query(AiModelDetail).all()
+# @router.get("/ds_list", operation_id="get_datasource_list")
+# async def datasource_list(session: SessionDep):
+#     return get_datasource_list(session=session)
+#
+#
+# @router.get("/model_list", operation_id="get_model_list")
+# async def get_model_list(session: SessionDep):
+#     return session.query(AiModelDetail).all()
 
 
 @router.post("/mcp_start", operation_id="mcp_start")
 async def mcp_start(session: SessionDep, chat: ChatStart):
-    user = authenticate(session=session, account=chat.username, password=chat.password)
+    user: BaseUserDTO = authenticate(session=session, account=chat.username, password=chat.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect account or password")
+
+    if not user.oid or user.oid == 0:
+        raise HTTPException(status_code=400, detail="No associated workspace, Please contact the administrator")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     user_dict = user.to_dict()
     t = Token(access_token=create_access_token(
@@ -61,9 +73,26 @@ async def mcp_start(session: SessionDep, chat: ChatStart):
 
 @router.post("/mcp_question", operation_id="mcp_question")
 async def mcp_question(session: SessionDep, chat: ChatMcp):
-    user = await get_current_user(session, chat.token)
+    try:
+        payload = jwt.decode(
+            chat.token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+        )
+        token_data = TokenPayload(**payload)
+    except (InvalidTokenError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials",
+        )
+    session_user = await get_user_info(session=session, user_id=token_data.id)
+    session_user = UserInfoDTO.model_validate(session_user)
+    if not session_user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    llm_service = LLMService(session, user, chat)
+    if session_user.status != 1:
+        raise HTTPException(status_code=400, detail="Inactive user")
+
+    # ask
+    llm_service = LLMService(session, session_user, chat)
     llm_service.init_record()
 
     return StreamingResponse(run_task(llm_service, False), media_type="text/event-stream")

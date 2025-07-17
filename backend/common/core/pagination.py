@@ -14,7 +14,7 @@ class Paginator:
         result_dict = {}
         for item, key in zip(row, row._fields):
             if isinstance(item, SQLModel):
-                result_dict.update(item.dict())
+                result_dict.update(item.model_dump())
             else:
                 result_dict[key] = item
                 
