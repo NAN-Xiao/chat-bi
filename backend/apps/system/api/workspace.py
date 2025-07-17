@@ -45,7 +45,7 @@ async def option_pager(
         pagination=pagination,
     )
     
-@router.get("/uws/option", response_model=UserWsOption)
+@router.get("/uws/option", response_model=UserWsOption | None)
 async def option_user(
     session: SessionDep, 
     current_user: CurrentUser,
