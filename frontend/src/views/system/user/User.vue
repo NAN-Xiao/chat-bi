@@ -165,8 +165,7 @@
     :title="dialogTitle"
     destroy-on-close
     size="600px"
-    modle-class="sqlbot-drawer"
-    @close="onFormClose"
+    :before-close="onFormClose"
   >
     <el-form
       ref="termFormRef"

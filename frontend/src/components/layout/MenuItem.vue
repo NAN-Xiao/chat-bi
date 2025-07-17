@@ -8,13 +8,16 @@ import model from '@/assets/svg/icon_dataset_filled.svg'
 import ds from '@/assets/svg/ds.svg'
 import dashboard from '@/assets/svg/dashboard.svg'
 import chat from '@/assets/svg/chat.svg'
+import setting from '@/assets/svg/icon_setting_filled.svg'
 import icon_user from '@/assets/svg/icon_user.svg'
+
 const iconMap = {
   icon_ai: model,
   ds,
   dashboard,
   chat,
   user,
+  setting,
   icon_user: icon_user,
   workspace,
 } as { [key: string]: any }
@@ -38,7 +41,9 @@ const MenuItem = defineComponent({
     const router = useRouter()
 
     const handleMenuClick = (e: any) => {
-      router.push(e.index)
+      if (e.index) {
+        router.push(e.redirect || e.index)
+      }
     }
 
     return () => {
@@ -50,7 +55,7 @@ const MenuItem = defineComponent({
       if (children?.length) {
         return h(
           ElSubMenu,
-          { index: path, onClick: (e: any) => handleMenuClick(e) },
+          { index: path, onClick: () => handleMenuClick(props.menu) },
           {
             title: () => titleWithIcon(props),
             default: () => children.map((ele: any) => h(MenuItem, { menu: ele })),

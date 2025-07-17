@@ -1,5 +1,4 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-
 import Layout from '@/components/layout/index.vue'
 import LayoutDsl from '@/components/layout/LayoutDsl.vue'
 import SinglePage from '@/components/layout/SinglePage.vue'
@@ -11,10 +10,14 @@ import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
 import assistant from '@/views/embedded/assistant.vue'
-// import User from "@/views/system/user/index.vue";
+import Member from '@/views/system/member/index.vue'
+import Permission from '@/views/system/permission/index.vue'
 import User from '@/views/system/user/User.vue'
 import Workspace from '@/views/system/workspace/index.vue'
+import { i18n } from '@/i18n'
 import { watchRouter } from './watch'
+
+const t = i18n.global.t
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
@@ -32,7 +35,7 @@ const router = createRouter({
           path: 'index',
           name: 'chat',
           component: chat,
-          meta: { title: 'Data Q&A', icon: 'chat' },
+          meta: { title: t('menu.Data Q&A'), icon: 'chat' },
         },
       ],
     },
@@ -57,7 +60,7 @@ const router = createRouter({
           path: 'index',
           name: 'ds',
           component: Datasource,
-          meta: { title: 'Data Connections', icon: 'ds' },
+          meta: { title: t('menu.Data Connections'), icon: 'ds' },
         },
       ],
     },
@@ -70,7 +73,27 @@ const router = createRouter({
           path: 'index',
           name: 'dashboard',
           component: Dashboard,
-          meta: { title: 'Dashboard', icon: 'dashboard' },
+          meta: { title: t('dashboard.dashboard'), icon: 'dashboard' },
+        },
+      ],
+    },
+    {
+      path: '/set',
+      component: LayoutDsl,
+      redirect: '/set/member',
+      meta: { title: t('workspace.set'), icon: 'setting' },
+      children: [
+        {
+          path: '/set/member',
+          name: 'member',
+          component: Member,
+          meta: { title: t('workspace.member_management') },
+        },
+        {
+          path: '/set/permission',
+          name: 'permission',
+          component: Permission,
+          meta: { title: t('workspace.permission_configuration') },
         },
       ],
     },
@@ -127,13 +150,13 @@ const router = createRouter({
           path: 'user',
           name: 'user',
           component: User,
-          meta: { title: '用户管理', icon: 'user' },
+          meta: { title: t('user.user_management'), icon: 'user' },
         },
         {
           path: 'workspace',
           name: 'workspace',
           component: Workspace,
-          meta: { title: '工作空间', icon: 'workspace' },
+          meta: { title: t('user.workspace'), icon: 'workspace' },
         },
         {
           path: 'model',

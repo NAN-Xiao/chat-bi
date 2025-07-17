@@ -1,5 +1,5 @@
 {
-  "menu": {
+  "menu": { 
     "Data Q&A": "智能问数",
     "Data Connections": "数据源",
     "Dashboard": "仪表盘",
@@ -7,6 +7,7 @@
   },
   "common": {
     "input_content": "请输入内容",
+    "may_not_exist": "暂无结果，用户可能不存在",
     "empty": "",
     "back": "返回",
     "confirm": "确认",
@@ -319,7 +320,42 @@
     "there_are": "有 ",
     "2_dashboards": "{msg} 个仪表板",
     "smart_data_centers": "{msg} 个智能问数",
-    "confirm_to_delete": "正在使用此数据源，删除后会导致这些资源无法正常使用，确认删除?"
+    "confirm_to_delete": "正在使用此数据源，删除后会导致这些资源无法正常使用，确认删除?",
+    "id_account_to_add": "搜索用户ID/账号添加",
+    "find_user": "查找用户",
+    "add_successfully": "添加成功",
+    "member_management": "成员管理",
+    "permission_configuration": "权限配置",
+    "set": "设置"
+  },
+  "permission": {
+    "search_rule_group": "搜索规则组",
+    "add_rule_group": "添加规则组",
+    "permission_rule": "权限规则",
+    "restricted_user": "受限用户",
+    "set_rule": "设置规则",
+    "set_user": "设置用户",
+    "2": "{msg} 个",
+    "238_people": "{msg} 人",
+    "no_permission_rule": "暂无权限规则",
+    "set_permission_rule": "设置权限规则",
+    "rule_group_name": "规则组名称",
+    "rule_name": "规则名称", 
+    "type": "类型",
+    "data_source": "数据源",
+    "data_table": "数据表",
+    "select_restricted_user": "选择受限用户",
+    "rule_group_1": "是否删除规则组：{msg}？",
+    "no_rule": "暂无规则",
+    "row_permission": "行权限",
+    "column_permission": "列权限",
+    "rule_rule_1": "是否删除规则：{msg}？",
+    "no_content": "暂无内容",
+    "edit_column_permission": "编辑列权限",
+    "edit_row_permission": "编辑行权限",
+    "add_column_permission": "添加列权限",
+    "add_row_permission": "添加行权限",
+    "no_fields_yet": "暂无字段"
   },
   "chat": {
     "chart_type": {
