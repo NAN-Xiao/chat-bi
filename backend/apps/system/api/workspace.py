@@ -108,7 +108,7 @@ async def pager(
 async def create(session: SessionDep, current_user: CurrentUser, creator: UserWsDTO):
     if not current_user.isAdmin and current_user.weight == 0:
         raise HTTPException("no permission to execute")
-    oid: int = creator.oid if current_user.isAdmin else current_user.oid
+    oid: int = creator.oid if (current_user.isAdmin and creator.oid) else current_user.oid
     weight = creator.weight if (current_user.isAdmin and creator.weight) else 0
     # 判断uid_list以及oid合法性
     db_model_list = [
@@ -146,7 +146,7 @@ async def edit(session: SessionDep, editor: UserWsEditor):
 async def delete(session: SessionDep, current_user: CurrentUser, dto: UserWsBase):
     if not current_user.isAdmin and current_user.weight == 0:
         raise HTTPException("no permission to execute")
-    oid: int = dto.oid if current_user.isAdmin else current_user.oid
+    oid: int = dto.oid if (current_user.isAdmin and dto.oid) else current_user.oid
     db_model_list: list[UserWsModel] = session.exec(select(UserWsModel).where(UserWsModel.uid.in_(dto.uid_list), UserWsModel.oid == oid)).all()
     if not db_model_list:
         raise HTTPException(f"UserWsModel not found")
