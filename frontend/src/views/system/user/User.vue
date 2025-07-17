@@ -352,7 +352,7 @@ const state = reactive<any>({
     id: '',
     name: '',
     account: '',
-    oid: 1,
+    oid: 0,
     email: '',
     status: '',
     phoneNumber: '',

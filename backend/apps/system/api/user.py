@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import func, or_, select, delete as sqlmodel_delete
 from apps.system.crud.user import get_db_user, single_delete, user_ws_options
 from apps.system.models.system_model import UserWsModel
@@ -99,7 +99,7 @@ async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Tran
 async def ws_change(session: SessionDep, current_user: CurrentUser, oid: int):
     ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
     if not any(x.id == oid for x in ws_list):
-        raise RuntimeError(f"oid [{oid}] is invalid!")
+        raise HTTPException(f"oid [{oid}] is invalid!")
     user_model: UserModel = get_db_user(session = session, user_id = current_user.id)
     user_model.oid = oid
     session.add(user_model)
@@ -120,7 +120,7 @@ async def create(session: SessionDep, creator: UserCreator):
     user_model = UserModel.model_validate(data)
     #user_model.create_time = get_timestamp()
     user_model.language = "zh-CN"
-    session.add(user_model)
+    user_model.oid = 0
     if creator.oid_list:
         # need to validate oid_list
         db_model_list = [
@@ -132,20 +132,22 @@ async def create(session: SessionDep, creator: UserCreator):
             for oid in creator.oid_list
         ]
         session.add_all(db_model_list)
+        user_model.oid = creator.oid_list[0]   
+    session.add(user_model)
     session.commit()
     
 @router.put("")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
 async def update(session: SessionDep, editor: UserEditor):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
-    
+    origin_oid: int = user_model.oid
     del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == editor.id)
     session.exec(del_stmt)
     
     data = editor.model_dump(exclude_unset=True)
     user_model.sqlmodel_update(data)
-    session.add(user_model)
     
+    user_model.oid = 0
     if editor.oid_list:
         # need to validate oid_list
         db_model_list = [
@@ -157,7 +159,8 @@ async def update(session: SessionDep, editor: UserEditor):
             for oid in editor.oid_list
         ]
         session.add_all(db_model_list)
-    
+        user_model.oid = origin_oid if origin_oid in editor.oid_list else  editor.oid_list[0]
+    session.add(user_model)
     session.commit()
     
 @router.delete("/{id}")
@@ -184,7 +187,7 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
     if not current_user.isAdmin:
-        raise RuntimeError('only for admin')
+        raise HTTPException('only for admin')
     db_user: UserModel = get_db_user(session=session, user_id=id)
     db_user.password = default_md5_pwd()
     session.add(db_user)
@@ -195,7 +198,7 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
 async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdEditor):
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     if not verify_md5pwd(editor.pwd, db_user.password):
-        raise RuntimeError("pwd error")
+        raise HTTPException("pwd error")
     db_user.password = md5pwd(editor.new_pwd)
     session.add(db_user)
     session.commit()
