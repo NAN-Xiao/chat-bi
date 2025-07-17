@@ -78,8 +78,6 @@ async def pager(
     oid: Optional[int] = Query(None, description="空间ID(仅admin用户生效)"),
 ):
     if current_user.isAdmin:
-        if not oid:
-            raise RuntimeError('oid miss error')
         workspace_id = oid
     else:
         workspace_id = current_user.oid
