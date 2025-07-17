@@ -40,7 +40,7 @@
   const getChatContainerHtml = (data) => {
     return `
 <div id="sqlbot-assistant-chat-container">
-  <iframe id="sqlbot-assistant-chat" allow="microphone" src="${data.domain_url}/#/assistant?id=${data.id}"></iframe>
+  <iframe id="sqlbot-assistant-chat-iframe-${data.id}" allow="microphone" src="${data.domain_url}/#/assistant?id=${data.id}"></iframe>
 <div class="sqlbot-assistant-operate">
   <div class="sqlbot-assistant-closeviewport sqlbot-assistant-viewportnone">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -311,7 +311,7 @@
     #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-viewportnone{
       display:none;
     }
-    #sqlbot-assistant #sqlbot-assistant-chat-container #sqlbot-assistant-chat{
+    #sqlbot-assistant #sqlbot-assistant-chat-container #sqlbot-assistant-chat-iframe-${data.id}{
      height:100%;
      width:100%;
      border: none;
@@ -334,7 +334,79 @@
     const url = new URL(src)
     return url.searchParams.get(key)
   }
+  function parsrCertificate(config) {
+    const certificateList = config.certificate
+    if (!certificateList?.length) {
+      return null
+    }
+    const list = certificateList.map((item) => formatCertificate(item)).filter((item) => !!item)
+    return JSON.stringify(list)
+  }
+  function isEmpty(obj) {
+    return obj == null || typeof obj == 'undefined'
+  }
+  function formatCertificate(item) {
+    const { type, source, target, target_key, target_val } = item
+    let source_val = null
+    if (type.toLocaleLowerCase() == 'localstorage') {
+      source_val = localStorage.getItem(source)
+    }
+    if (type.toLocaleLowerCase() == 'sessionstorage') {
+      source_val = sessionStorage.getItem(source)
+    }
+    if (type.toLocaleLowerCase() == 'cookie') {
+      source_val = getCookie(source)
+    }
+    if (type.toLocaleLowerCase() == 'custom') {
+      source_val = source
+    }
+    if (isEmpty(source_val)) {
+      return null
+    }
+    return {
+      target,
+      key: target_key || source,
+      value: (target_val && eval(target_val)) || source_val,
+    }
+  }
+  function getCookie(key) {
+    if (!key || !document.cookie) {
+      return null
+    }
+    const cookies = document.cookie.split(';')
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim()
 
+      if (cookie.startsWith(key + '=')) {
+        return decodeURIComponent(cookie.substring(key.length + 1))
+      }
+    }
+    return null
+  }
+  function registerMessageEvent(id, data) {
+    const iframe = document.getElementById(`sqlbot-assistant-chat-iframe-${id}`)
+    const url = iframe.src
+    const eventName = 'sqlbot_assistant_event'
+    window.addEventListener('message', (event) => {
+      if (event.data?.eventName === eventName) {
+        if (event.data?.messageId !== id) {
+          return
+        }
+        if (event.data?.busi == 'ready' && event.data?.ready) {
+          const certificate = parsrCertificate(data)
+          console.log(certificate)
+          params = {
+            busi: 'certificate',
+            certificate,
+            eventName,
+            messageId: id,
+          }
+          const contentWindow = iframe.contentWindow
+          contentWindow.postMessage(params, url)
+        }
+      }
+    })
+  }
   function loadScript(src, id) {
     const domain_url = getDomain(src)
     let url = `${domain_url}/api/v1/system/assistant/info/${id}`
@@ -353,6 +425,10 @@
           tempData = Object.assign(tempData, config)
         }
         initsqlbot_assistant(tempData)
+        if (data.type == 1) {
+          registerMessageEvent(id, tempData)
+          // postMessage the certificate to iframe
+        }
       })
   }
   function getDomain(src) {
