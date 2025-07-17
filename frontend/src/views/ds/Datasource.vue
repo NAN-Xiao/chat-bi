@@ -16,7 +16,7 @@ import { datasourceApi } from '@/api/datasource'
 import { useEmitt } from '@/utils/useEmitt'
 import Card from './Card.vue'
 import DelMessageBox from './DelMessageBox.vue'
-import { dsTypeWithImgSort } from './js/ds-type'
+import { dsTypeWithImg } from './js/ds-type'
 import { useI18n } from 'vue-i18n'
 
 interface Datasource {
@@ -41,7 +41,7 @@ const activeType = ref('')
 const datasourceFormRef = ref()
 
 const datasourceList = shallowRef([] as Datasource[])
-const defaultDatasourceList = shallowRef(dsTypeWithImgSort as (Datasource & { img: string })[])
+const defaultDatasourceList = shallowRef(dsTypeWithImg as (Datasource & { img: string })[])
 
 const currentDefaultDatasource = ref('')
 const datasourceListWithSearch = computed(() => {

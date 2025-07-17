@@ -86,6 +86,7 @@
   },
   "ds": {
     "title": "数据源",
+    "local_excelcsv": "本地 Excel/CSV",
     "add": "添加数据源",
     "delete": "删除数据源",
     "name": "数据源名称",

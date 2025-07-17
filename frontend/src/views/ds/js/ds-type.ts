@@ -3,28 +3,22 @@ import excel from '@/assets/datasource/icon_excel.png'
 import oracle from '@/assets/datasource/icon_oracle.png'
 import pg from '@/assets/datasource/icon_PostgreSQL.png'
 import sqlServer from '@/assets/datasource/icon_SQL_Server.png'
+import { i18n } from '@/i18n'
 
+const t = i18n.global.t
 export const dsType = [
+  { label: t('ds.local_excelcsv'), value: 'excel' },
   { label: 'MySQL', value: 'mysql' },
-  { label: 'PostgreSQL', value: 'pg' },
-  { label: 'Microsoft SQL Server', value: 'sqlServer' },
   { label: 'Oracle', value: 'oracle' },
-  { label: 'Excel/CSV', value: 'excel' },
+  { label: 'PostgreSQL', value: 'pg' },
+  { label: 'SQL Server', value: 'sqlServer' },
 ]
 
 export const dsTypeWithImg = [
-  { name: '本地 Excel/CSV', type: 'excel', img: excel },
+  { name: t('ds.local_excelcsv'), type: 'excel', img: excel },
   { name: 'MySQL', type: 'mysql', img: mysql_ds },
-  { name: 'SQL Server', type: 'sqlServer', img: sqlServer },
   { name: 'Oracle', type: 'oracle', img: oracle },
   { name: 'PostgreSQL', type: 'pg', img: pg },
-]
-
-export const dsTypeWithImgSort = [
-  { name: '本地 Excel/CSV', type: 'excel', img: excel },
-  { name: 'PostgreSQL', type: 'pg', img: pg },
-  { name: 'Oracle', type: 'oracle', img: oracle },
-  { name: 'MySQL', type: 'mysql', img: mysql_ds },
   { name: 'SQL Server', type: 'sqlServer', img: sqlServer },
 ]
 

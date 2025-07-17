@@ -460,7 +460,19 @@ defineExpose({
     class="model-form"
     :class="(!isCreate || activeStep === 2) && 'edit-form'"
   >
-    <div v-if="isCreate && activeStep !== 2" class="model-name">{{ activeName }}</div>
+    <div v-if="isCreate && activeStep !== 2" class="model-name">
+      {{ activeName }}
+      <span
+        style="margin-left: 8px; color: #8f959e; font-size: 12px; margin-top: 7px"
+        v-if="form.type !== 'excel'"
+      >
+        <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
+        <span v-if="form.type === 'sqlServer'">2012+</span>
+        <span v-else-if="form.type === 'oracle'">12+</span>
+        <span v-else-if="form.type === 'mysql'">5.6+</span>
+        <span v-else-if="form.type === 'pg'">9.6+</span>
+      </span>
+    </div>
     <div class="form-content">
       <el-form
         v-show="activeStep === 1"
@@ -550,13 +562,6 @@ defineExpose({
             />
           </el-select>
         </el-form-item>
-        <span v-if="form.type !== 'excel'">
-          <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
-          <span v-if="form.type === 'sqlServer'">2012+</span>
-          <span v-else-if="form.type === 'oracle'">12+</span>
-          <span v-else-if="form.type === 'mysql'">5.6+</span>
-          <span v-else-if="form.type === 'pg'">9.6+</span>
-        </span>
 
         <div v-if="form.type !== 'excel'" style="margin-top: 16px">
           <el-form-item :label="t('ds.form.host')" prop="host">

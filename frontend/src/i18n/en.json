@@ -84,6 +84,7 @@
     "type": "Data Source Type",
     "status": "Status",
     "actions": "Actions",
+    "local_excelcsv": "Local Excel/CSV",
     "pieces_in_total": "Showing {ms} records",
     "test_connection": "Test Connection",
     "check": "check",
