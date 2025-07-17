@@ -116,14 +116,14 @@
                     @finish="onChartAnswerFinish"
                     @error="onChartAnswerError"
                   >
-                    <div style="height: 100px; width: 100%; background: grey">todo</div>
+                    <ChartBlock :message="message" />
                     <div
                       v-if="message.record?.error && message.record?.error?.trim().length > 0"
                       class="error-container"
                     >
                       {{ message.record?.error }}
                     </div>
-                    <div class="tool-container">
+                    <ChatToolBar :message="message">
                       <div class="tool-btns">
                         <el-tooltip effect="dark" :content="t('qa.ask_again')" placement="top">
                           <el-button
@@ -175,10 +175,7 @@
                           </div>
                         </template>
                       </div>
-                      <div class="tool-times">
-                        {{ datetimeFormat(message.record?.create_time) }}
-                      </div>
-                    </div>
+                    </ChatToolBar>
                     <template #footer>
                       <RecommendQuestion
                         :questions="message.recommended_question"
@@ -207,12 +204,7 @@
                     >
                       {{ message.record?.error }}
                     </div>
-                    <div class="tool-container">
-                      <div class="tool-btns"></div>
-                      <div class="tool-times">
-                        {{ datetimeFormat(message.record?.create_time) }}
-                      </div>
-                    </div>
+                    <ChatToolBar :message="message" />
                   </AnalysisAnswer>
                   <PredictAnswer
                     v-if="
@@ -228,18 +220,14 @@
                     @finish="onPredictAnswerFinish"
                     @error="onPredictAnswerError"
                   >
+                    <ChartBlock :message="message" is-predict />
                     <div
                       v-if="message.record?.error && message.record?.error?.trim().length > 0"
                       class="error-container"
                     >
                       {{ message.record?.error }}
                     </div>
-                    <div class="tool-container">
-                      <div class="tool-btns"></div>
-                      <div class="tool-times">
-                        {{ datetimeFormat(message.record?.create_time) }}
-                      </div>
-                    </div>
+                    <ChatToolBar :message="message" />
                   </PredictAnswer>
                 </template>
               </ChatRow>
@@ -296,9 +284,11 @@ import ChartAnswer from './answer/ChartAnswer.vue'
 import AnalysisAnswer from './answer/AnalysisAnswer.vue'
 import PredictAnswer from './answer/PredictAnswer.vue'
 import UserChat from './chat-block/UserChat.vue'
+import ChartBlock from './chat-block/ChartBlock.vue'
 import RecommendQuestion from './RecommendQuestion.vue'
 import ChatListContainer from './ChatListContainer.vue'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
+import ChatToolBar from './ChatToolBar.vue'
 import { useI18n } from 'vue-i18n'
 import { endsWith, find, startsWith } from 'lodash-es'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
@@ -308,7 +298,6 @@ import icon_screen_outlined from '@/assets/svg/icon_screen_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import logo_fold from '@/assets/LOGO-fold.svg'
 import logo from '@/assets/LOGO.svg'
-import { datetimeFormat } from '@/utils/utils.ts'
 
 import { useAssistantStore } from '@/stores/assistant'
 const assistantStore = useAssistantStore()
@@ -839,63 +828,43 @@ defineExpose({
   color: rgba(31, 35, 41, 1);
 }
 
-.tool-container {
+.tool-btns {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
   flex-wrap: wrap;
 
-  min-height: 22px;
+  column-gap: 16px;
+  row-gap: 8px;
 
-  margin-top: 12px;
-  margin-bottom: 12px;
-
-  .tool-times {
+  .tool-btn {
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
     color: rgba(100, 106, 115, 1);
+
+    .tool-btn-inner {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+    }
+
+    &:hover {
+      background: rgba(31, 35, 41, 0.1);
+    }
+    &:active {
+      background: rgba(31, 35, 41, 0.1);
+    }
   }
 
-  .tool-btns {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
+  .btn-text {
+    margin-left: 4px;
+  }
 
-    column-gap: 16px;
-    row-gap: 8px;
-
-    .tool-btn {
-      font-size: 14px;
-      font-weight: 400;
-      line-height: 22px;
-      color: rgba(100, 106, 115, 1);
-
-      .tool-btn-inner {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-      }
-
-      &:hover {
-        background: rgba(31, 35, 41, 0.1);
-      }
-      &:active {
-        background: rgba(31, 35, 41, 0.1);
-      }
-    }
-
-    .btn-text {
-      margin-left: 4px;
-    }
-
-    .divider {
-      width: 1px;
-      height: 16px;
-      border-left: 1px solid rgba(31, 35, 41, 0.15);
-    }
+  .divider {
+    width: 1px;
+    height: 16px;
+    border-left: 1px solid rgba(31, 35, 41, 0.15);
   }
 }
 
