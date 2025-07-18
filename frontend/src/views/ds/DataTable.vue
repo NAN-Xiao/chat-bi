@@ -133,6 +133,7 @@ const closeField = () => {
 }
 
 const refresh = () => {
+  emits('refresh')
   datasourceApi.tableList(props.info.id).then((res) => {
     tableList.value = res
     if (!currentTable.value.table_name) return
@@ -140,7 +141,6 @@ const refresh = () => {
     if (!nameArr.includes(currentTable.value.table_name)) {
       currentTable.value = {}
     }
-    emits('refresh')
   })
 }
 

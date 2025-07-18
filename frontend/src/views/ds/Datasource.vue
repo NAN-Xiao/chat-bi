@@ -116,7 +116,6 @@ const refresh = () => {
 }
 
 const refreshData = () => {
-  console.log(123)
   search()
 }
 
