@@ -236,16 +236,17 @@ function addToDashboard() {
           </el-tooltip>
         </div>
 
-        <div>
+        <div v-if="message?.record?.sql">
           <el-tooltip effect="dark" :content="t('chat.show_sql')" placement="top">
-            <el-button v-if="message?.record?.sql" class="tool-btn" text @click="showSql">
+            <el-button class="tool-btn" text @click="showSql">
               <el-icon size="16">
                 <icon_sql_outlined />
               </el-icon>
             </el-button>
           </el-tooltip>
         </div>
-        <div>
+        <div v-if="false">
+          <!--    todo      -->
           <el-tooltip effect="dark" :content="t('chat.export_to')" placement="top">
             <el-button class="tool-btn" text>
               <el-icon size="16">
@@ -254,7 +255,8 @@ function addToDashboard() {
             </el-button>
           </el-tooltip>
         </div>
-        <div>
+        <div v-if="false">
+          <!--    todo      -->
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">

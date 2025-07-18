@@ -246,32 +246,38 @@
         v-if="computedMessages.length > 0 || (isAssistant && currentChatId)"
         class="chat-footer"
       >
-        <div style="height: 24px">
-          <template v-if="currentChat.datasource && currentChat.datasource_name">
-            {{ t('ds.title') }}：{{ currentChat.datasource_name }}
-          </template>
-        </div>
-        <div class="input-wrapper">
-          <el-input
-            v-model="inputMessage"
-            :disabled="isTyping"
-            class="input-area"
-            type="textarea"
-            :rows="1"
-            :autosize="{ minRows: 1, maxRows: 8 }"
-            :placeholder="t('qa.question_placeholder')"
-            @keydown.enter.exact.prevent="sendMessage"
-            @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
-          />
+        <div class="input-container" @click="clickInput">
+          <div class="datasource">
+            <template v-if="currentChat.datasource && currentChat.datasource_name">
+              {{ t('qa.selected_datasource') }}：
+              <span class="name">
+                {{ currentChat.datasource_name }}
+              </span>
+            </template>
+          </div>
+          <div class="input-wrapper">
+            <el-input
+              ref="inputRef"
+              v-model="inputMessage"
+              :disabled="isTyping"
+              class="input-area"
+              type="textarea"
+              :rows="1"
+              :autosize="{ minRows: 1, maxRows: 8 }"
+              :placeholder="t('qa.question_placeholder')"
+              @keydown.enter.exact.prevent="sendMessage"
+              @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
+            />
+          </div>
           <el-button
-            link
+            circle
             type="primary"
             class="input-icon"
             :disabled="isTyping"
-            @click="sendMessage"
+            @click.stop="sendMessage"
           >
-            <el-icon size="20">
-              <Position />
+            <el-icon size="16">
+              <icon_send_filled />
             </el-icon>
           </el-button>
         </div>
@@ -284,7 +290,6 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { Position } from '@element-plus/icons-vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat'
 import ChatRow from './ChatRow.vue'
 import ChartAnswer from './answer/ChartAnswer.vue'
@@ -305,6 +310,7 @@ import icon_screen_outlined from '@/assets/svg/icon_screen_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import logo_fold from '@/assets/LOGO-fold.svg'
 import logo from '@/assets/LOGO.svg'
+import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 
 import { useAssistantStore } from '@/stores/assistant'
 const assistantStore = useAssistantStore()
@@ -726,6 +732,13 @@ const getHistoryList = () => {
 const getCurrentChatId = () => {
   return currentChatId.value
 }
+
+const inputRef = ref()
+
+function clickInput() {
+  inputRef.value?.focus()
+}
+
 defineExpose({
   getHistoryList,
   toAssistantHistory,
@@ -794,30 +807,74 @@ defineExpose({
   }
 
   .chat-footer {
-    --ed-footer-height: 120px;
+    --ed-footer-height: calc(142px + 16px);
+
+    padding-bottom: 16px;
 
     display: flex;
     flex-direction: column;
+    align-items: center;
 
-    .input-wrapper {
+    .input-container {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 800px;
+      border-radius: 16px;
+      border: 1px solid rgba(217, 220, 223, 1);
+      background: rgba(248, 249, 250, 1);
+      padding: 12px;
+      gap: 8px;
 
       position: relative;
-
-      .input-area {
-        height: 100%;
-        padding-bottom: 8px;
-
-        :deep(.ed-textarea__inner) {
-          height: 100% !important;
-        }
-      }
 
       .input-icon {
         min-width: unset;
         position: absolute;
-        bottom: 14px;
-        right: 8px;
+        bottom: 12px;
+        right: 12px;
+
+        border-color: unset;
+
+        &.is-disabled {
+          background: rgba(187, 191, 196, 1);
+          border-color: unset;
+        }
+      }
+
+      &:hover {
+        border-color: rgba(28, 186, 144, 1);
+      }
+    }
+
+    .datasource {
+      width: 100%;
+
+      line-height: 22px;
+      font-size: 14px;
+      font-weight: 400;
+      color: rgba(100, 106, 115, 1);
+
+      .name {
+        color: rgba(31, 35, 41, 1);
+      }
+    }
+
+    .input-wrapper {
+      width: 100%;
+      flex: 1;
+
+      .input-area {
+        height: 100%;
+
+        :deep(.ed-textarea__inner) {
+          height: 100% !important;
+          background: transparent;
+          box-shadow: unset;
+          padding: unset;
+        }
       }
     }
   }
