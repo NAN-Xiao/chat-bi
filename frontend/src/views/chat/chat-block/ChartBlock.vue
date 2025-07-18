@@ -15,6 +15,7 @@ import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
 import icon_window_max_outlined from '@/assets/svg/icon_window-max_outlined.svg'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import { useI18n } from 'vue-i18n'
+import MdComponent from '@/views/chat/component/MdComponent.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -178,9 +179,12 @@ function onExitFullScreen() {
   dialogVisible.value = false
 }
 
+const sqlShow = ref(false)
+
 function showSql() {
-  console.log('todo')
+  sqlShow.value = true
 }
+
 function addToDashboard() {
   console.log('todo')
 }
@@ -234,7 +238,7 @@ function addToDashboard() {
 
         <div>
           <el-tooltip effect="dark" :content="t('chat.show_sql')" placement="top">
-            <el-button class="tool-btn" text @click="showSql">
+            <el-button v-if="message?.record?.sql" class="tool-btn" text @click="showSql">
               <el-icon size="16">
                 <icon_sql_outlined />
               </el-icon>
@@ -309,6 +313,21 @@ function addToDashboard() {
         @exit-full-screen="onExitFullScreen"
       />
     </el-dialog>
+
+    <el-drawer
+      v-model="sqlShow"
+      size="600"
+      :title="t('chat.show_sql')"
+      direction="rtl"
+      body-class="chart-sql-drawer-body"
+    >
+      <div>
+        <MdComponent
+          :message="'```sql\n' + message.record?.sql + '\n```'"
+          style="margin-top: 12px"
+        />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -321,6 +340,9 @@ function addToDashboard() {
 }
 .chart-fullscreen-dialog-body {
   padding: 0;
+}
+.chart-sql-drawer-body {
+  padding: 24px;
 }
 </style>
 <style scoped lang="less">
@@ -358,6 +380,7 @@ function addToDashboard() {
 
     align-items: center;
     flex-direction: row;
+    gap: 16px;
 
     .tool-btn {
       width: 24px;

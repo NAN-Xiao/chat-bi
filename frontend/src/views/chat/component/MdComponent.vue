@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import md from '@/utils/markdown.ts'
-import 'highlight.js/styles/github-dark-dimmed.min.css'
+import 'highlight.js/styles/github.min.css'
 import 'github-markdown-css/github-markdown-light.css'
 import { computed } from 'vue'
 

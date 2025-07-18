@@ -66,6 +66,7 @@ template:
       其中“y”和“series”必须从SQL查询列中提取。
       - 如果答案未知或者与生成JSON无关，则生成的 JSON 格式应为：
       {{"type":"error", "reason": "抱歉，我无法回答您的问题。"}}
+      - JSON中生成的标题需要尽量精简
       
       ### 示例:
       如果 SQL 为： SELECT products_sales_data.category, AVG(products_sales_data.price) AS average_price FROM products_sales_data GROUP BY products_sales_data.category;

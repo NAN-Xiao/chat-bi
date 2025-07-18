@@ -193,7 +193,12 @@ defineExpose({ sendMessage, index: index.value, chatList: _chatList })
   >
     <MdComponent :message="message.record?.analysis" style="margin-top: 12px" />
     <slot></slot>
-    <slot name="footer"></slot>
+    <template #tool>
+      <slot name="tool"></slot>
+    </template>
+    <template #footer>
+      <slot name="footer"></slot>
+    </template>
   </BaseAnswer>
 </template>
 
