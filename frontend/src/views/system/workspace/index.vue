@@ -421,7 +421,7 @@ const handleCurrentChange = (val: number) => {
                           ? t('workspace.administrator')
                           : t('workspace.ordinary_member')
                       }}</span>
-                      <el-icon size="16">
+                      <el-icon style="display: none" size="16">
                         <arrow_down></arrow_down>
                       </el-icon>
                     </div>
@@ -715,6 +715,7 @@ const handleCurrentChange = (val: number) => {
           cursor: pointer;
           &:hover {
             .ed-icon {
+              display: block !important;
               transform: rotate(180deg);
             }
           }
