@@ -46,7 +46,7 @@ const handleModelClick = (item: any) => {
         :class="activeName === ele.name && 'isActive'"
         @click="handleModelClick(ele)"
       >
-        <img width="32px" height="32px" :src="ele.icon" />
+        <img width="18px" height="18px" :src="ele.icon" />
         <span class="name">{{ ele.name }}</span>
       </div>
       <EmptyBackground

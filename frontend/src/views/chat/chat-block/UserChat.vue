@@ -45,6 +45,7 @@ function clickPredict() {
 
   .prefix-title {
     color: rgba(28, 186, 144, 1);
+    white-space: nowrap;
   }
 }
 </style>

@@ -61,29 +61,26 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="message?.record">
-    <div v-if="message.record.chart" class="chart-base-container">
-      <div v-if="data?.length > 0">
-        <ChartComponent
-          v-if="message.record.id"
-          :id="id ?? 'default_chat_id'"
-          ref="chartRef"
-          :type="chartType"
-          :columns="chartObject?.columns"
-          :x="xAxis"
-          :y="yAxis"
-          :series="series"
-          :data="data"
-        />
-      </div>
-      <el-empty v-else description="No Data" />
-    </div>
+  <div v-if="message.record?.chart" class="chart-base-container">
+    <ChartComponent
+      v-if="message.record.id && data?.length > 0"
+      :id="id ?? 'default_chat_id'"
+      ref="chartRef"
+      :type="chartType"
+      :columns="chartObject?.columns"
+      :x="xAxis"
+      :y="yAxis"
+      :series="series"
+      :data="data"
+    />
+    <el-empty v-else description="No Data" />
   </div>
 </template>
 
 <style scoped lang="less">
 .chart-base-container {
-  padding: 20px;
+  height: 100%;
+  width: 100%;
   background: rgba(224, 224, 226, 0.29);
 }
 </style>

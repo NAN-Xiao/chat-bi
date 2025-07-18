@@ -74,7 +74,7 @@
 
         <el-table-column prop="create_time" width="180" sortable :label="$t('user.creation_time')">
           <template #default="scope">
-            <span>{{ formatTimestamp(scope.row.create_time) }}</span>
+            <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
           </template>
         </el-table-column>
         <el-table-column fixed="right" width="150" :label="$t('ds.actions')">
@@ -165,8 +165,7 @@
     :title="dialogTitle"
     destroy-on-close
     size="600px"
-    modle-class="sqlbot-drawer"
-    @close="onFormClose"
+    :before-close="onFormClose"
   >
     <el-form
       ref="termFormRef"
@@ -343,21 +342,23 @@ const filterOption = ref<any[]>([
     property: { placeholder: t('common.empty') + t('user.workspace') },
   },
 ])
+
+const defaultForm = {
+  id: '',
+  name: '',
+  account: '',
+  oid: 0,
+  email: '',
+  status: '',
+  phoneNumber: '',
+  oid_list: [],
+}
 const options = ref<any[]>([])
 const state = reactive<any>({
   tableData: [],
   filterTexts: [],
   conditions: [],
-  form: {
-    id: '',
-    name: '',
-    account: '',
-    oid: 0,
-    email: '',
-    status: '',
-    phoneNumber: '',
-    oid_list: [],
-  },
+  form: { ...defaultForm },
   pageInfo: {
     currentPage: 1,
     pageSize: 20,
@@ -616,14 +617,19 @@ const search = () => {
     })
 }
 const addTerm = () => {
-  userApi.add(state.form).then(() => {
-    dialogFormVisible.value = false
-    search()
-    ElMessage({
-      type: 'success',
-      message: t('common.save_success'),
+  userApi
+    .add(state.form)
+    .then(() => {
+      dialogFormVisible.value = false
+      search()
+      ElMessage({
+        type: 'success',
+        message: t('common.save_success'),
+      })
     })
-  })
+    .finally(() => {
+      state.form = { ...defaultForm }
+    })
 }
 const editTerm = () => {
   userApi.edit(state.form).then(() => {
@@ -721,7 +727,8 @@ onMounted(() => {
   .sqlbot-table {
     border-radius: 6px;
     width: 100%;
-    max-height: calc(100vh - 200px);
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
 
     &.is-filter {
       max-height: calc(100vh - 256px);

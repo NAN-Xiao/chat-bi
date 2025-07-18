@@ -87,6 +87,13 @@ const currentTable = ref<any>({})
 const init = () => {
   workspaceList().then((res) => {
     tableList.value = res
+    if (currentTable.value.id) {
+      tableList.value.forEach((ele: any) => {
+        if (ele.id === currentTable.value.id) {
+          currentTable.value.name = ele.name
+        }
+      })
+    }
   })
 }
 onMounted(() => {
@@ -119,7 +126,7 @@ const deleteBatchUser = () => {
     t('workspace.selected_2_members', { msg: multipleSelectionAll.value.length }),
     {
       confirmButtonType: 'danger',
-      confirmButtonText: t('dashboard.delete'),
+      confirmButtonText: t('workspace.remove'),
       cancelButtonText: t('common.cancel'),
       customClass: 'confirm-no_icon',
       autofocus: false,
@@ -141,7 +148,7 @@ const deleteBatchUser = () => {
 const deleteHandler = (row: any) => {
   ElMessageBox.confirm(t('workspace.member_feng_yibudao', { msg: row.name }), {
     confirmButtonType: 'danger',
-    confirmButtonText: t('dashboard.delete'),
+    confirmButtonText: t('workspace.remove'),
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
@@ -231,6 +238,7 @@ const saveField = () => {
 const delWorkspace = (row: any) => {
   ElMessageBox.confirm(t('workspace.workspace_de_workspace', { msg: row.name }), {
     confirmButtonType: 'danger',
+    tip: t('workspace.operate_with_caution'),
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
@@ -413,7 +421,7 @@ const handleCurrentChange = (val: number) => {
                           ? t('workspace.administrator')
                           : t('workspace.ordinary_member')
                       }}</span>
-                      <el-icon size="16">
+                      <el-icon style="display: none" size="16">
                         <arrow_down></arrow_down>
                       </el-icon>
                     </div>
@@ -533,7 +541,7 @@ const handleCurrentChange = (val: number) => {
     </el-form>
 
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
-      <el-button @click="closeField">{{ t('common.cancel') }}</el-button>
+      <el-button secondary @click="closeField">{{ t('common.cancel') }}</el-button>
       <el-button type="primary" @click="saveField">{{
         t(workspaceForm.id ? 'common.save' : 'model.add')
       }}</el-button>
@@ -707,6 +715,7 @@ const handleCurrentChange = (val: number) => {
           cursor: pointer;
           &:hover {
             .ed-icon {
+              display: block !important;
               transform: rotate(180deg);
             }
           }

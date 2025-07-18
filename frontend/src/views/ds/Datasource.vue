@@ -16,7 +16,7 @@ import { datasourceApi } from '@/api/datasource'
 import { useEmitt } from '@/utils/useEmitt'
 import Card from './Card.vue'
 import DelMessageBox from './DelMessageBox.vue'
-import { dsTypeWithImgSort } from './js/ds-type'
+import { dsTypeWithImg } from './js/ds-type'
 import { useI18n } from 'vue-i18n'
 
 interface Datasource {
@@ -41,7 +41,7 @@ const activeType = ref('')
 const datasourceFormRef = ref()
 
 const datasourceList = shallowRef([] as Datasource[])
-const defaultDatasourceList = shallowRef(dsTypeWithImgSort as (Datasource & { img: string })[])
+const defaultDatasourceList = shallowRef(dsTypeWithImg as (Datasource & { img: string })[])
 
 const currentDefaultDatasource = ref('')
 const datasourceListWithSearch = computed(() => {
@@ -112,6 +112,10 @@ const refresh = () => {
   activeStep.value = 0
   activeType.value = ''
   datasourceConfigvVisible.value = false
+  search()
+}
+
+const refreshData = () => {
   search()
 }
 
@@ -329,11 +333,17 @@ const back = () => {
         :active-name="activeName"
         :active-type="activeType"
         @refresh="refresh"
+        @close="beforeClose"
         @change-active-step="(val: number) => (activeStep = val)"
       ></DatasourceForm>
     </el-drawer>
   </div>
-  <DataTable v-if="currentDataTable" :info="currentDataTable" @back="back"></DataTable>
+  <DataTable
+    v-if="currentDataTable"
+    :info="currentDataTable"
+    @refresh="refreshData"
+    @back="back"
+  ></DataTable>
 </template>
 
 <style lang="less" scoped>

@@ -25,13 +25,16 @@ const routerList = computed(() => {
   if (showSysmenu.value) {
     return router.getRoutes().filter((route) => route.path.includes('/system') && !route.redirect)
   }
+
   return router.getRoutes().filter((route) => {
     return (
       !route.path.includes('canvas') &&
+      !route.path.includes('member') &&
+      !route.path.includes('permission') &&
       !route.path.includes('preview') &&
       route.path !== '/login' &&
       !route.path.includes('/system') &&
-      !route.redirect &&
+      (route.path.includes('set') || !route.redirect) &&
       route.path !== '/:pathMatch(.*)*' &&
       !route.path.includes('dsTable')
     )
@@ -45,17 +48,28 @@ const routerList = computed(() => {
   </el-menu>
 </template>
 
-<style lang="less" scoped>
+<style lang="less">
 .ed-menu-vertical {
   --ed-menu-item-height: 40px;
   --ed-menu-bg-color: transparent;
   --ed-menu-base-level-padding: 4px;
   border-right: none;
   .ed-menu-item {
-    height: 40px;
+    height: 40px !important;
+    border-radius: 6px !important;
+    &.is-active {
+      background-color: #fff !important;
+      border-radius: 6px;
+    }
+  }
+
+  .ed-sub-menu .ed-sub-menu__title:hover {
     border-radius: 6px;
-    &.is-active.is-active.is-active {
-      background-color: #1cba901a;
+  }
+
+  .ed-sub-menu.is-active {
+    .ed-sub-menu__title {
+      color: #1cba90 !important;
     }
   }
 }

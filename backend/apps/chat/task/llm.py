@@ -846,6 +846,8 @@ def run_analysis_or_predict_task(llm_service: LLMService, action_type: str, base
     try:
         llm_service.set_record(save_analysis_predict_record(llm_service.session, base_record, action_type))
 
+        yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
+
         if action_type == 'analysis':
             # generate analysis
             analysis_res = llm_service.generate_analysis()

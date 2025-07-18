@@ -70,9 +70,9 @@ onMounted(() => {
 
 <template>
   <div class="base-answer-block">
-    <el-button v-if="loading || hasReasoning" class="thinking-btn" @click="clickShow">
+    <el-button v-if="message.isTyping || hasReasoning" class="thinking-btn" @click="clickShow">
       <div class="thinking-btn-inner">
-        <span v-if="loading">{{ t('qa.thinking') }}</span>
+        <span v-if="message.isTyping">{{ t('qa.thinking') }}</span>
         <span v-else>{{ t('qa.thinking_step') }}</span>
         <span class="btn-icon">
           <el-icon v-if="show">
@@ -140,7 +140,14 @@ onMounted(() => {
       line-height: 22px;
       font-weight: 400;
       font-size: 14px;
-      color: rgba(143, 149, 158, 1);
+      color: rgba(143, 149, 158, 1) !important;
+
+      .markdown-body {
+        color: rgba(143, 149, 158, 1) !important;
+        line-height: 22px;
+        font-weight: 400;
+        font-size: 14px;
+      }
 
       padding-bottom: 8px;
       border-bottom: 1px solid rgba(31, 35, 41, 0.15);
@@ -154,6 +161,11 @@ onMounted(() => {
 
   .answer-container {
     width: 100%;
+
+    line-height: 24px;
+    font-size: 16px;
+    font-weight: 400;
+    color: rgba(31, 35, 41, 1);
   }
 }
 </style>

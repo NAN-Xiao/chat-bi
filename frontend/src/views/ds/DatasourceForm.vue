@@ -11,7 +11,7 @@ import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import FixedSizeList from 'element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs'
 import { Plus } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
-import { dsType, haveSchema } from '@/views/ds/js/ds-type'
+import { haveSchema } from '@/views/ds/js/ds-type'
 import { setSize } from '@/utils/utils'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_fileExcel_colorful from '@/assets/datasource/icon_excel.png'
@@ -34,7 +34,7 @@ const props = withDefaults(
 
 const { wsCache } = useCache()
 const dsFormRef = ref<FormInstance>()
-const emit = defineEmits(['refresh', 'changeActiveStep'])
+const emit = defineEmits(['refresh', 'changeActiveStep', 'close'])
 const isCreate = ref(true)
 const isEditTable = ref(false)
 const checkList = ref<any>([])
@@ -125,6 +125,7 @@ const close = () => {
   dialogVisible.value = false
   isCreate.value = true
   emit('changeActiveStep', 0)
+  emit('close')
   isEditTable.value = false
   checkList.value = []
   tableList.value = []
@@ -460,7 +461,19 @@ defineExpose({
     class="model-form"
     :class="(!isCreate || activeStep === 2) && 'edit-form'"
   >
-    <div v-if="isCreate && activeStep !== 2" class="model-name">{{ activeName }}</div>
+    <div v-if="isCreate && activeStep !== 2" class="model-name">
+      {{ activeName }}
+      <span
+        v-if="form.type !== 'excel'"
+        style="margin-left: 8px; color: #8f959e; font-size: 12px; margin-top: 7px"
+      >
+        <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
+        <span v-if="form.type === 'sqlServer'">2012+</span>
+        <span v-else-if="form.type === 'oracle'">12+</span>
+        <span v-else-if="form.type === 'mysql'">5.6+</span>
+        <span v-else-if="form.type === 'pg'">9.6+</span>
+      </span>
+    </div>
     <div class="form-content">
       <el-form
         v-show="activeStep === 1"
@@ -536,28 +549,6 @@ defineExpose({
             type="textarea"
           />
         </el-form-item>
-        <el-form-item :label="t('ds.type')" prop="type">
-          <el-select
-            v-model="form.type"
-            :placeholder="$t('datasource.Please_select') + $t('common.empty') + t('ds.type')"
-            :disabled="!isCreate"
-          >
-            <el-option
-              v-for="item in dsType"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-        <span v-if="form.type !== 'excel'">
-          <span>{{ t('ds.form.support_version') }}:&nbsp;</span>
-          <span v-if="form.type === 'sqlServer'">2012+</span>
-          <span v-else-if="form.type === 'oracle'">12+</span>
-          <span v-else-if="form.type === 'mysql'">5.6+</span>
-          <span v-else-if="form.type === 'pg'">9.6+</span>
-        </span>
-
         <div v-if="form.type !== 'excel'" style="margin-top: 16px">
           <el-form-item :label="t('ds.form.host')" prop="host">
             <el-input

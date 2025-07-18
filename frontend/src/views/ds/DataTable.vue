@@ -133,6 +133,7 @@ const closeField = () => {
 }
 
 const refresh = () => {
+  emits('refresh')
   datasourceApi.tableList(props.info.id).then((res) => {
     tableList.value = res
     if (!currentTable.value.table_name) return
@@ -173,7 +174,7 @@ const changeStatus = (row: any) => {
   })
 }
 
-const emits = defineEmits(['back'])
+const emits = defineEmits(['back', 'refresh'])
 const back = () => {
   emits('back')
 }

@@ -53,7 +53,6 @@ function clickQuestion(question: string): void {
 
 <style scoped lang="less">
 .recommend-questions {
-  padding: 8px;
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
@@ -69,7 +68,7 @@ function clickQuestion(question: string): void {
   .question-grid {
     display: grid;
     grid-gap: 12px;
-    grid-template-columns: repeat(2, 50%);
+    grid-template-columns: repeat(2, calc(50% - 6px));
   }
 
   .question {
