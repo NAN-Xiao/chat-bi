@@ -31,10 +31,10 @@ const curSelectChange = (value: boolean) => {
 
 <style scoped lang="less">
 .chart-selection-container {
-  width: 33%;
-  height: 250px;
+  width: 50%;
+  height: 320px;
   position: relative;
-  padding: 15px;
+  padding: 8px;
   float: left;
   overflow: hidden;
   .select-area {

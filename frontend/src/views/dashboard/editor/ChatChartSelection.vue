@@ -24,13 +24,12 @@
       </el-aside>
       <el-container :loading="loading">
         <el-main v-if="!loading" class="chat-record-list">
-          <el-scrollbar ref="chatListRef">
+          <el-scrollbar ref="chatListRef" style="padding: 8px">
             <chart-selection
               v-for="(viewInfo, index) in chartInfoList"
               :key="index"
               :view-info="viewInfo"
               :select-change="(value: boolean) => selectChange(value, viewInfo)"
-              style="width: 33%"
             >
             </chart-selection>
           </el-scrollbar>
@@ -100,11 +99,8 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
   chartInfoList.value = []
   if (chatInfo && chatInfo.records) {
     chatInfo.records.forEach((record: any) => {
-      const recordeInfo = { id: chatInfo.id + '_' + record.id, data: null, chart: {} }
-      if (record?.data) {
-        recordeInfo['data'] = JSON.parse(record.data)
-      }
-      if (record?.chart) {
+      if (record?.chart && record.data) {
+        const recordeInfo = { id: chatInfo.id + '_' + record.id, data: record.data, chart: {} }
         const chartBaseInfo = JSON.parse(record.chart)
         recordeInfo['chart'] = {
           type: chartBaseInfo.type,
@@ -114,8 +110,8 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
           yAxis: chartBaseInfo.axis?.y ? [chartBaseInfo.axis.y] : [],
           series: chartBaseInfo.axis?.series ? [chartBaseInfo.axis.series] : [],
         }
+        chartInfoList.value.push(recordeInfo)
       }
-      chartInfoList.value.push(recordeInfo)
     })
   }
 }

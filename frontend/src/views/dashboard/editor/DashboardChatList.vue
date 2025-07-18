@@ -24,49 +24,35 @@ function onClickHistory(chat: Chat) {
   emits('chatSelected', chat)
 }
 
-// 获取当前日期和本周的开始日期
 const now = new Date()
 const startOfWeek = new Date(now)
 startOfWeek.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1)) // 设置为本周一
 startOfWeek.setHours(0, 0, 0, 0)
 
-// 格式化日期函数
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
-  return date.toLocaleString()
-}
-
-// 过滤和分类数据
 const filteredAndGroupedData = computed(() => {
   const today: Chat[] = []
   const thisWeek: Chat[] = []
   const earlier: Chat[] = []
 
-  // 先过滤数据
   const filteredList = props.chatList.filter(
     (chat) =>
       !filterText.value ||
       (chat.brief && chat.brief.toLowerCase().includes(filterText.value.toLowerCase()))
   )
 
-  // 然后分类
   filteredList.forEach((item) => {
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const itemDate = new Date(item.create_time)
 
-    // 检查是否是今天
     if (
       itemDate.getDate() === now.getDate() &&
       itemDate.getMonth() === now.getMonth() &&
       itemDate.getFullYear() === now.getFullYear()
     ) {
       today.push(item)
-    }
-    // 检查是否是本周但不是今天
-    else if (itemDate >= startOfWeek && itemDate < now) {
+    } else if (itemDate >= startOfWeek && itemDate < now) {
       thisWeek.push(item)
-    }
-    // 更早的数据
-    else {
+    } else {
       earlier.push(item)
     }
   })
