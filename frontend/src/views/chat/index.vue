@@ -116,7 +116,7 @@
                     @finish="onChartAnswerFinish"
                     @error="onChartAnswerError"
                   >
-                    <ChartBlock :message="message" />
+                    <ChartBlock style="margin-top: 12px" :message="message" />
                     <div
                       v-if="message.record?.error && message.record?.error?.trim().length > 0"
                       class="error-container"
@@ -220,7 +220,7 @@
                     @finish="onPredictAnswerFinish"
                     @error="onPredictAnswerError"
                   >
-                    <ChartBlock :message="message" is-predict />
+                    <ChartBlock style="margin-top: 12px" :message="message" is-predict />
                     <div
                       v-if="message.record?.error && message.record?.error?.trim().length > 0"
                       class="error-container"

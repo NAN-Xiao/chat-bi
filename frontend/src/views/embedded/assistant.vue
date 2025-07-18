@@ -57,7 +57,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { onBeforeMount, ref } from 'vue'
+import { onBeforeMount, onBeforeUnmount, ref } from 'vue'
 import ChatComponent from '@/views/chat/index.vue'
 import AssistantGif from '@/assets/img/assistant.gif'
 import history from '@/assets/svg/chart/history.svg'
@@ -101,6 +101,21 @@ const validator = ref({
   token: '',
 })
 const loading = ref(true)
+const eventName = 'sqlbot_assistant_event'
+const communicationCb = async (event: any) => {
+  if (event.data?.eventName === eventName) {
+    if (event.data?.messageId !== route.query.id) {
+      return
+    }
+    if (event.data?.busi == 'certificate') {
+      const certificate = event.data['certificate']
+      console.log(certificate)
+      assistantStore.setType(1)
+      assistantStore.setCertificate(certificate)
+      // store certificate to pinia
+    }
+  }
+}
 onBeforeMount(async () => {
   const assistantId = route.query.id
   const online = route.query.online
@@ -116,6 +131,19 @@ onBeforeMount(async () => {
   assistantStore.setToken(validator.value.token)
   assistantStore.setAssistant(true)
   loading.value = false
+
+  window.addEventListener('message', communicationCb)
+  const readyData = {
+    eventName: 'sqlbot_assistant_event',
+    busi: 'ready',
+    ready: true,
+    messageId: assistantId,
+  }
+  window.parent.postMessage(readyData, '*')
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('message', communicationCb)
 })
 </script>
 

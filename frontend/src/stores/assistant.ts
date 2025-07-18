@@ -9,6 +9,8 @@ interface AssistantState {
   token: string
   assistant: boolean
   flag: number
+  type: number
+  certificate: string
 }
 
 export const AssistantStore = defineStore('assistant', {
@@ -17,9 +19,14 @@ export const AssistantStore = defineStore('assistant', {
       token: '',
       assistant: false,
       flag: 0,
+      type: 0,
+      certificate: '',
     }
   },
   getters: {
+    getCertificate(): string {
+      return this.certificate
+    },
     getToken(): string {
       return this.token
     },
@@ -29,8 +36,17 @@ export const AssistantStore = defineStore('assistant', {
     getFlag(): number {
       return this.flag
     },
+    getType(): number {
+      return this.type
+    },
   },
   actions: {
+    setCertificate(certificate: string) {
+      this.certificate = certificate
+    },
+    setType(type: number) {
+      this.type = type
+    },
     setToken(token: string) {
       this.token = token
     },
