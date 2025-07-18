@@ -138,7 +138,7 @@ async def create(session: SessionDep, creator: UserCreator):
     session.commit()
     
 @router.put("")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
+#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
 async def update(session: SessionDep, editor: UserEditor):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
     origin_oid: int = user_model.oid
@@ -186,7 +186,7 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
     session.commit()
     
 @router.patch("/pwd/{id}")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
+#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
     if not current_user.isAdmin:
         raise HTTPException('only for admin')
