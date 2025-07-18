@@ -12,6 +12,10 @@ const props = defineProps({
     type: Object as PropType<CanvasItem>,
     required: true,
   },
+  canEdit: {
+    type: Boolean,
+    default: true,
+  },
   active: {
     type: Boolean,
     default: false,
@@ -69,14 +73,16 @@ const shapeClick = (e: MouseEvent) => {
   >
     <component-bar
       :config-item="configItem"
-      :active="active"
+      :active="active && canEdit"
       :show-position="'canvas'"
       :canvas-id="canvasId"
     ></component-bar>
-    <drag-handle></drag-handle>
+    <template v-if="canEdit">
+      <drag-handle></drag-handle>
+    </template>
     <slot></slot>
     <resize-handle
-      v-if="active"
+      v-if="active && canEdit"
       :start-resize="
         (event: MouseEvent, point: string) => startResize(event, point, configItem, itemIndex)
       "

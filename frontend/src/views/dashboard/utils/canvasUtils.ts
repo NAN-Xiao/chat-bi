@@ -34,6 +34,10 @@ export const load_resource_prepare = (params: any, callBack: (obj: any) => void)
     })
 }
 
+export const isMainCanvas = (canvasId: string) => {
+  return canvasId === 'canvas-main'
+}
+
 export const initCanvasData = (params: any, callBack: () => void) => {
   load_resource_prepare(params, function (result: any) {
     dashboardStore.setDashboardInfo(result?.dashboardInfo)

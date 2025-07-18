@@ -10,12 +10,13 @@ import { useEmitt, useEmittLazy } from '@/utils/useEmitt.ts'
 import html2canvas from 'html2canvas'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { useI18n } from 'vue-i18n'
+import { isMainCanvas } from '@/views/dashboard/utils/canvasUtils.ts'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
 const emits = defineEmits(['parentAddItemBox'])
-const { curComponentId, curComponent } = storeToRefs(dashboardStore)
+const { curComponentId, curComponent, fullscreenFlag } = storeToRefs(dashboardStore)
 let currentInstance: any
 const props = defineProps({
   canvasId: {
@@ -1178,7 +1179,7 @@ defineExpose({
     @mousemove="moving()"
   >
     <EmptyBackground
-      v-if="!canvasComponentData.length"
+      v-if="!canvasComponentData.length && isMainCanvas(canvasId)"
       :description="t('dashboard.add_component_tips')"
       img-type="selectDashboard"
     />
@@ -1186,6 +1187,7 @@ defineExpose({
       <CanvasShape
         v-for="(item, index) in canvasComponentData"
         :key="'item' + index"
+        :can-edit="!fullscreenFlag"
         :active="curComponentId === item.id"
         :config-item="item"
         :draggable="draggable"

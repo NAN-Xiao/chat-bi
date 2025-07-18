@@ -2,7 +2,7 @@
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 
 const dashboardStore = dashboardStoreWithOut()
-import { nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { useEmitt } from '@/utils/useEmitt.ts'
 defineProps({
   themes: {
@@ -37,8 +37,7 @@ const toggleFullscreen = () => {
   }
 }
 
-// 针对钉钉windows版无法退出全屏问题 这里主动退出
-const handleKeydown = (event) => {
+const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && document.fullscreenElement) {
     document.exitFullscreen()
   }
