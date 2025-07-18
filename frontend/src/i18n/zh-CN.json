@@ -1,5 +1,5 @@
 {
-  "menu": { 
+  "menu": {
     "Data Q&A": "智能问数",
     "Data Connections": "数据源",
     "Dashboard": "仪表盘",
@@ -34,6 +34,7 @@
     "password_reset_successful": "重置密码成功"
   },
   "dashboard": {
+    "delete_dashboard_warn": "是否删除仪表板：{0}",
     "rename_dashboard": "重命名仪表板",
     "dashboard_name": "仪表板名称",
     "select_dashboard_tips": "请在左侧选择仪表板",
@@ -352,7 +353,7 @@
     "no_permission_rule": "暂无权限规则",
     "set_permission_rule": "设置权限规则",
     "rule_group_name": "规则组名称",
-    "rule_name": "规则名称", 
+    "rule_name": "规则名称",
     "type": "类型",
     "data_source": "数据源",
     "data_table": "数据表",

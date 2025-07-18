@@ -220,8 +220,7 @@ const addOperation = (params: any) => {
 const operation = (opt: string, data: SQTreeNode) => {
   if (opt === 'delete') {
     const msg = data.node_type === 'leaf' ? '' : t('dashboard.delete_tips')
-    const tips_label = data.node_type === 'leaf' ? t('dashboard.dashboard') : t('dashboard.folder')
-    ElMessageBox.confirm(t('dashboard.delete_resource_warn', [tips_label]), {
+    ElMessageBox.confirm(t('dashboard.delete_dashboard_warn', [data.name]), {
       confirmButtonType: 'danger',
       type: 'warning',
       tip: msg,

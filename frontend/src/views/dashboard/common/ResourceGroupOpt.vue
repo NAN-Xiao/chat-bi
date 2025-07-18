@@ -139,8 +139,7 @@ const saveResource = () => {
     level: state.nodeType === 'folder' ? 0 : 1,
   }
   saveDashboardResource(params, function (rsp: any) {
-    const messageTips =
-      state.opt === 'rename' ? t('common.update_success') : t('common.save_success')
+    const messageTips = t('common.save_success')
     ElMessage({
       type: 'success',
       message: messageTips,

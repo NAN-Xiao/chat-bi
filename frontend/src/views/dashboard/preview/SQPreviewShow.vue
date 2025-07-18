@@ -88,7 +88,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="dv-preview dv-teleport-query">
+  <div class="dv-preview dv-teleport-query no-padding">
     <el-aside
       ref="node"
       class="resource-area"
@@ -151,6 +151,7 @@ defineExpose({
   display: flex;
   background: #ffffff;
   position: relative;
+  border-radius: 12px;
 
   .resource-area {
     --ed-aside-width: 260px;
