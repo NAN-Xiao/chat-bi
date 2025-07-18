@@ -1,12 +1,18 @@
 <script lang="ts" setup>
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, provide, nextTick } from 'vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
+import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
 import icon_down_outlined from '@/assets/svg/icon_down_outlined.svg'
 import Card from './Card.vue'
-
+import SelectPermission from './SelectPermission.vue'
+import AuthTree from './auth-tree/RowAuth.vue'
+import { getList, savePermissions } from '@/api/permissions'
+import { datasourceApi } from '@/api/datasource'
 import { useI18n } from 'vue-i18n'
+import { cloneDeep } from 'lodash-es'
 
 const { t } = useI18n()
 const keywords = ref('')
@@ -18,38 +24,51 @@ const termFormRef = ref()
 const columnFormRef = ref()
 const drawerTitle = ref('')
 const dialogTitle = ref('')
-const tableData = ref<any[]>([])
-const ruleList = ref<any[]>([
-  {
-    id: 1,
-    num: '10',
-    type: '90',
-    name: 'jkjkj',
-  },
-])
-const form = reactive({
-  name: '',
+const activeDs = ref({})
+const activeTable = ref({})
+const ruleList = ref<any[]>([])
+
+const defaultPermission = {
   id: '',
-})
-const tableColumnData = ref<any[]>([])
+  name: '',
+  permissions: [],
+  users: [],
+}
+const currentPermission = reactive<any>(cloneDeep(defaultPermission))
+
 const searchColumn = ref('')
-
-const columnForm = reactive({
+const isCreate = ref(false)
+const defaultForm = {
   name: '',
   id: '',
-  dataTable: '',
-  datasource: '',
-})
-
-const options = ref<any[]>([])
+  table_id: '',
+  type: 'row',
+  ds_id: '',
+  table_name: '',
+  ds_name: '',
+  permissions: [] as any[],
+  expression_tree: {},
+}
+const columnForm = reactive(cloneDeep(defaultForm))
+const selectPermissionRef = ref()
+const tableListOptions = ref<any[]>([])
+const fieldListOptions = ref<any[]>([])
+const dsListOptions = ref<any[]>([])
 const ruleListWithSearch = computed(() => {
   if (!keywords.value) return ruleList.value
   return ruleList.value.filter((ele) =>
     ele.name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
+const tableColumnData = computed<any[]>(() => {
+  if (!searchColumn.value) return columnForm.permissions
+  return columnForm.permissions.filter((ele) =>
+    ele.field_name.toLowerCase().includes(searchColumn.value.toLowerCase())
+  )
+})
+provide('filedList', fieldListOptions)
 const setDrawerTitle = () => {
-  if (activeStep.value === 0) {
+  if (activeStep.value === 0 && isCreate.value) {
     drawerTitle.value = t('permission.add_rule_group')
   } else {
     if (editRule.value === 1) {
@@ -72,39 +91,194 @@ const userTypeList = [
     value: 0,
   },
 ]
-
+const ruleType = ref(0)
 const handleAddPermission = (val: any) => {
+  ruleType.value = val
+  Object.assign(columnForm, cloneDeep(defaultForm))
   if (val === 1) {
-    handleRowPermission()
+    handleRowPermission(null)
   } else {
     handleColumnPermission(null)
   }
 }
+const saveAuthTree = (val: any) => {
+  if (val.errorMessage) {
+    ElMessage.error(val.errorMessage)
+    return
+  }
+  delete val.errorMessage
+  columnForm.expression_tree = cloneDeep(val)
+  const { expression_tree, table_id, ds_id, type, name, ds_name, table_name } = columnForm
+  if (columnForm.id) {
+    for (const key in currentPermission.permissions) {
+      if (currentPermission.permissions[key].id === columnForm.id) {
+        Object.assign(
+          currentPermission.permissions[key],
+          cloneDeep({
+            expression_tree,
+            table_id,
+            ds_id,
+            type,
+            name,
+            ds_name,
+            table_name,
+          })
+        )
+      }
+    }
+  } else {
+    currentPermission.permissions.push(
+      cloneDeep({ expression_tree, table_id, ds_id, type, name, ds_name, table_name })
+    )
+  }
+  dialogFormVisible.value = false
+}
+const getDsList = (row: any) => {
+  activeDs.value = {}
+  activeTable.value = {}
+  datasourceApi
+    .list()
+    .then((res: any) => {
+      dsListOptions.value = res || []
+      if (!row?.ds_id) return
+      dsListOptions.value.forEach((ele) => {
+        if (ele.id === row.ds_id) {
+          activeDs.value = ele
+        }
+      })
+    })
+    .finally(() => {
+      if (!row && columnForm.type === 'row') {
+        authTreeRef.value.init(columnForm.expression_tree)
+      }
+    })
 
-const handleRowPermission = () => {
-  console.log('handleRowPermission')
+  if (row) {
+    handleDsIdChange(row)
+    handleEditeTable(row.table_id)
+  }
+}
+const handleRowPermission = (row: any) => {
+  columnForm.type = 'row'
+  getDsList(row)
+  if (row) {
+    const { name, ds_id, table_id, tree, id, ds_name, table_name } = row
+    Object.assign(columnForm, {
+      id,
+      name,
+      ds_id,
+      table_id,
+      ds_name,
+      table_name,
+      expression_tree: tree,
+    })
+  }
+  dialogFormVisible.value = true
+  dialogTitle.value = row?.id
+    ? t('permission.edit_row_permission')
+    : t('permission.add_row_permission')
 }
 const handleColumnPermission = (row: any) => {
+  columnForm.type = 'column'
+  getDsList(row)
+  if (row) {
+    const { name, ds_id, table_id, id, permission_list, ds_name, table_name } = row
+    Object.assign(columnForm, {
+      id,
+      name,
+      ds_id,
+      ds_name,
+      table_id,
+      table_name,
+      permissions: permission_list,
+    })
+  }
   dialogFormVisible.value = true
   dialogTitle.value = row?.id
     ? t('permission.edit_column_permission')
     : t('permission.add_column_permission')
 }
+
+const handleDsIdChange = (val: any) => {
+  columnForm.ds_id = val.id
+  columnForm.ds_name = val.name
+  datasourceApi.tableList(val.id).then((res: any) => {
+    tableListOptions.value = res || []
+    if (!columnForm.table_id) return
+    tableListOptions.value.forEach((ele) => {
+      if (ele.id === columnForm.table_id) {
+        activeTable.value = ele
+      }
+    })
+  })
+}
+
+const handleTableIdChange = (val: any) => {
+  columnForm.table_id = val.id
+  columnForm.table_name = val.name
+  datasourceApi.fieldList(val.id).then((res: any) => {
+    fieldListOptions.value = res || []
+    if (columnForm.type === 'row') return
+    columnForm.permissions = fieldListOptions.value.map((ele) => {
+      const { id, field_name, field_comment } = ele
+      return { field_id: id, field_name, field_comment, enable: true }
+    })
+  })
+}
+
+const handleEditeTable = (val: any) => {
+  datasourceApi
+    .fieldList(val)
+    .then((res: any) => {
+      fieldListOptions.value = res || []
+      if (columnForm.type === 'row') return
+      const enableMap = columnForm.permissions.reduce((pre, next) => {
+        pre[next.field_id] = next.enable
+        return pre
+      }, {})
+      columnForm.permissions = fieldListOptions.value.map((ele) => {
+        const { id, field_name, field_comment } = ele
+        return { field_id: id, field_name, field_comment, enable: enableMap[id] ?? false }
+      })
+    })
+    .finally(() => {
+      authTreeRef.value.init(columnForm.expression_tree)
+    })
+}
 const beforeClose = () => {
   ruleConfigvVisible.value = false
   activeStep.value = 0
+  isCreate.value = false
 }
-const handleSearch = () => {}
-const editHandler = (row: any) => {
+const handleSearch = () => {
+  getList().then((res: any) => {
+    ruleList.value = res || []
+  })
+}
+handleSearch()
+const addHandler = () => {
   editRule.value = 0
   setDrawerTitle()
+  isCreate.value = true
+  Object.assign(currentPermission, cloneDeep(defaultPermission))
   ruleConfigvVisible.value = true
-  console.log('row', row)
+}
+
+const editForm = (row: any) => {
+  if (row.type === 'row') {
+    ruleType.value = 1
+    handleRowPermission(row)
+  } else {
+    ruleType.value = 0
+    handleColumnPermission(row)
+  }
 }
 const handleEditRule = (row: any) => {
   editRule.value = 1
+  isCreate.value = false
   setDrawerTitle()
-  console.log(row)
+  Object.assign(currentPermission, cloneDeep(row))
+  ruleConfigvVisible.value = true
 }
 const deleteHandler = (row: any) => {
   console.log(row)
@@ -128,8 +302,81 @@ const rules = {
 const closeForm = () => {
   dialogFormVisible.value = false
 }
+const authTreeRef = ref()
+const saveHandler = () => {
+  columnFormRef.value.validate((res: any) => {
+    if (res) {
+      if (columnForm.type === 'row') {
+        authTreeRef.value.submit()
+      } else {
+        const { permissions, table_id, ds_id, type, name, ds_name, table_name } = columnForm
+        if (columnForm.id) {
+          for (const key in currentPermission.permissions) {
+            if (currentPermission.permissions[key].id === columnForm.id) {
+              Object.assign(
+                currentPermission.permissions[key],
+                cloneDeep({
+                  permissions,
+                  table_id,
+                  ds_id,
+                  type,
+                  name,
+                  ds_name,
+                  table_name,
+                })
+              )
+            }
+          }
+        } else {
+          currentPermission.permissions.push(
+            cloneDeep({ permissions, table_id, ds_id, type, name, ds_name, table_name })
+          )
+        }
+      }
+      dialogFormVisible.value = false
+    }
+  })
+}
+const preview = () => {}
+const next = () => {
+  activeStep.value = 1
+  nextTick(() => {
+    selectPermissionRef.value.open()
+  })
+}
+const savePermission = () => {
+  // termFormRef.value.validate((res: any) => {
+  //   if (res) {
 
-const saveHandler = () => {}
+  //   }
+  // })
+
+  const { id, name, permissions } = currentPermission
+  const permissionsObj = permissions.map((ele: any) => {
+    return {
+      ...cloneDeep(ele),
+      permissions: JSON.stringify(ele.permissions || []),
+      expression_tree: JSON.stringify(ele.expression_tree || {}),
+    }
+  })
+  const obj = {
+    id,
+    name,
+    permissions: permissionsObj,
+    users: selectPermissionRef.value.checkedWorkspace.map((ele: any) => ele.id),
+  }
+  if (!id) {
+    delete obj.id
+  }
+  savePermissions(obj).then(() => {
+    ElMessage({
+      type: 'success',
+      message: t('common.save_success'),
+    })
+    ruleConfigvVisible.value = false
+    handleSearch()
+  })
+}
 
 const columnRules = {
   name: [
@@ -139,8 +386,7 @@ const columnRules = {
       trigger: 'blur',
     },
   ],
-
-  dataTable: [
+  table_id: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('permission.rule_group_name'),
@@ -169,7 +415,7 @@ const columnRules = {
           </template>
         </el-input>
 
-        <el-button type="primary" @click="editHandler(null)">
+        <el-button type="primary" @click="addHandler()">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -190,8 +436,8 @@ const columnRules = {
         :id="ele.id"
         :key="ele.id"
         :name="ele.name"
-        :type="ele.type"
-        :num="ele.num"
+        :type="ele.users.length"
+        :num="ele.permissions.length"
         @edit="handleEditRule(ele)"
         @del="deleteHandler(ele)"
         @set-user="setUser(ele)"
@@ -223,14 +469,14 @@ const columnRules = {
         </el-icon>
       </template>
 
-      <div class="drawer-content">
+      <div v-show="activeStep === 0" class="drawer-content">
         <div class="title">
           {{ $t('ds.form.base_info') }}
         </div>
 
         <el-form
           ref="termFormRef"
-          :model="form"
+          :model="currentPermission"
           label-width="180px"
           label-position="top"
           :rules="rules"
@@ -238,7 +484,7 @@ const columnRules = {
         >
           <el-form-item prop="name" :label="t('permission.rule_group_name')">
             <el-input
-              v-model="form.name"
+              v-model="currentPermission.name"
               :placeholder="
                 $t('datasource.please_enter') +
                 $t('common.empty') +
@@ -287,14 +533,27 @@ const columnRules = {
             <div class="table-content">
               <el-table
                 :empty-text="$t('permission.no_rule')"
-                :data="tableData"
+                :data="currentPermission.permissions"
                 style="width: 100%"
               >
                 <el-table-column prop="name" :label="$t('permission.rule_name')" />
-                <el-table-column prop="type" :label="$t('permission.type')" />
-                <el-table-column prop="datasource" :label="$t('permission.data_source')" />
-                <el-table-column prop="data_table" :label="$t('permission.data_table')" />
-                <el-table-column fixed="right" width="150" :label="$t('ds.actions')">
+                <el-table-column prop="type" :label="$t('permission.type')">
+                  <template #default="scope">
+                    {{
+                      scope.row.type === 'row'
+                        ? $t('permission.row_permission')
+                        : $t('permission.column_permission')
+                    }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="ds_name" :label="$t('permission.data_source')" />
+                <el-table-column prop="table_name" :label="$t('permission.data_table')" />
+                <el-table-column
+                  class-name="actions-methods"
+                  fixed="right"
+                  width="80"
+                  :label="$t('ds.actions')"
+                >
                   <template #default="scope">
                     <el-tooltip
                       :offset="14"
@@ -302,7 +561,7 @@ const columnRules = {
                       :content="$t('datasource.edit')"
                       placement="top"
                     >
-                      <el-icon class="action-btn" size="16" @click="editHandler(scope.row)">
+                      <el-icon class="action-btn" size="16" @click="editForm(scope.row)">
                         <IconOpeEdit></IconOpeEdit>
                       </el-icon>
                     </el-tooltip>
@@ -324,6 +583,21 @@ const columnRules = {
           </el-form-item>
         </el-form>
       </div>
+      <div v-show="activeStep !== 0" class="select-permission_content">
+        <SelectPermission ref="selectPermissionRef"></SelectPermission>
+      </div>
+      <template #footer>
+        <el-button secondary @click="beforeClose"> {{ $t('common.cancel') }} </el-button>
+        <el-button v-if="activeStep === 1 && isCreate" secondary @click="preview">
+          {{ t('ds.previous') }}
+        </el-button>
+        <el-button v-if="activeStep === 0 && isCreate" type="primary" @click="next">
+          {{ t('common.next') }}
+        </el-button>
+        <el-button v-if="activeStep === 1" type="primary" @click="savePermission">
+          {{ $t('common.save') }}
+        </el-button>
+      </template>
     </el-drawer>
 
     <el-drawer
@@ -351,25 +625,39 @@ const columnRules = {
             autocomplete="off"
           />
         </el-form-item>
-        <el-form-item prop="dataTable" :label="t('permission.data_table')">
+        <el-form-item prop="table_id" :label="t('permission.data_table')">
           <el-select
-            v-model="columnForm.datasource"
+            v-model="activeDs"
             style="width: 416px"
+            value-key="id"
             :placeholder="
               $t('datasource.Please_select') + $t('common.empty') + $t('permission.data_source')
             "
+            @change="handleDsIdChange"
           >
-            <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id" />
+            <el-option
+              v-for="item in dsListOptions"
+              :key="item.id"
+              :label="item.name"
+              :value="item"
+            />
           </el-select>
           <el-select
-            v-model="columnForm.dataTable"
+            v-model="activeTable"
             style="width: 416px; margin-left: auto"
-            :disabled="!columnForm.datasource"
+            :disabled="!columnForm.ds_id"
+            value-key="id"
             :placeholder="
               $t('datasource.Please_select') + $t('common.empty') + $t('permission.data_table')
             "
+            @change="handleTableIdChange"
           >
-            <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id" />
+            <el-option
+              v-for="item in tableListOptions"
+              :key="item.id"
+              :label="item.table_name"
+              :value="item"
+            />
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('permission.set_rule')">
@@ -377,6 +665,7 @@ const columnRules = {
             v-model="searchColumn"
             :placeholder="$t('permission.search_rule_group')"
             autocomplete="off"
+            clearable
             ><template #prefix>
               <el-icon>
                 <icon_searchOutline_outlined />
@@ -384,17 +673,18 @@ const columnRules = {
           ></el-input>
         </el-form-item>
       </el-form>
-      <div class="table-content">
+      <AuthTree v-if="ruleType === 1" ref="authTreeRef" @save="saveAuthTree"></AuthTree>
+      <div v-else class="table-content">
         <el-table
           :empty-text="$t('permission.no_fields_yet')"
           :data="tableColumnData"
           style="width: 100%"
         >
-          <el-table-column prop="name" :label="$t('datasource.field_name')" />
-          <el-table-column prop="type" :label="$t('datasource.field_notes')" />
+          <el-table-column prop="field_name" :label="$t('datasource.field_name')" />
+          <el-table-column prop="field_comment" :label="$t('datasource.field_notes')" />
           <el-table-column fixed="right" width="150" :label="$t('ds.actions')">
             <template #default="scope">
-              <el-switch v-model="scope.row.checked" size="small" />
+              <el-switch v-model="scope.row.enable" size="small" />
             </template>
           </el-table-column>
         </el-table>
@@ -445,11 +735,14 @@ const columnRules = {
     margin-bottom: 16px;
   }
 
+  .select-permission_content,
   .drawer-content {
     width: 800px;
     margin: 0 auto;
     height: calc(100% - 20px);
+  }
 
+  .drawer-content {
     .add-btn:hover {
       .ed-icon {
         transform: rotate(180deg);
@@ -466,11 +759,24 @@ const columnRules = {
         margin-top: 16px;
         border: 1px solid #1f232926;
         border-top: none;
+        border-bottom: none;
         border-radius: 6px;
         overflow: hidden;
         max-height: calc(100vh - 400px);
         .ed-table__empty-text {
           padding-top: 0;
+        }
+
+        .actions-methods {
+          .cell {
+            height: 24px;
+            .action-btn {
+              margin-top: 4px;
+              &:nth-child(1) {
+                margin-right: 8px;
+              }
+            }
+          }
         }
 
         .ed-icon {

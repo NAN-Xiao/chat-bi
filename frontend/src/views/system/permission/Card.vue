@@ -45,7 +45,7 @@ const setUser = () => {
     </div>
     <div class="type-value">
       <span class="type">{{ $t('permission.permission_rule') }}</span>
-      <span class="value"> {{ $t('permission.2', { msg: type }) }}</span>
+      <span class="value"> {{ $t('permission.2', { msg: num }) }}</span>
     </div>
     <div class="type-value">
       <span class="type">{{ $t('permission.restricted_user') }}</span>
