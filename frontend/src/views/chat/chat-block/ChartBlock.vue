@@ -4,16 +4,35 @@ import DisplayChartBlock from '@/views/chat/component/DisplayChartBlock.vue'
 import { computed, ref } from 'vue'
 import { concat } from 'lodash-es'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import ICON_BAR from '@/assets/svg/chart/icon_bar_outlined.svg'
+import ICON_COLUMN from '@/assets/svg/chart/icon_dashboard_outlined.svg'
+import ICON_LINE from '@/assets/svg/chart/icon_chart-line.svg'
+import ICON_PIE from '@/assets/svg/chart/icon_pie_outlined.svg'
+import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
+import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
+import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
+import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
+import icon_window_max_outlined from '@/assets/svg/icon_window-max_outlined.svg'
+import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
+import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(
   defineProps<{
     message: ChatMessage
     isPredict?: boolean
+    chatType?: ChartTypes
+    enlarge?: boolean
   }>(),
   {
     isPredict: false,
+    chatType: undefined,
+    enlarge: false,
   }
 )
+
+const { t } = useI18n()
+
+const emits = defineEmits(['exitFullScreen'])
 
 const dataObject = computed<{
   fields: Array<string>
@@ -92,12 +111,72 @@ const chartType = computed<ChartTypes>({
     if (currentChartType.value) {
       return currentChartType.value
     }
-    return chartObject.value.type ?? 'table'
+    return props.chatType ?? chartObject.value.type ?? 'table'
   },
   set(v) {
     currentChartType.value = v
   },
 })
+
+const chartTypeList = computed(() => {
+  const _list = []
+  if (chartObject.value) {
+    switch (chartObject.value.type) {
+      case 'table':
+        break
+      case 'column':
+      case 'bar':
+      case 'line':
+        _list.push({
+          value: 'column',
+          name: t('chat.chart_type.column'),
+          icon: ICON_COLUMN,
+        })
+        _list.push({
+          value: 'bar',
+          name: t('chat.chart_type.bar'),
+          icon: ICON_BAR,
+        })
+        _list.push({
+          value: 'line',
+          name: t('chat.chart_type.line'),
+          icon: ICON_LINE,
+        })
+        break
+      case 'pie':
+        _list.push({
+          value: 'pie',
+          name: t('chat.chart_type.pie'),
+          icon: ICON_PIE,
+        })
+    }
+  }
+
+  return _list
+})
+
+function changeTable() {
+  chartType.value = 'table'
+  onTypeChange()
+}
+
+function onTypeChange() {
+  chartRef.value?.onTypeChange()
+}
+
+const dialogVisible = ref(false)
+
+function openFullScreen() {
+  dialogVisible.value = true
+}
+
+function closeFullScreen() {
+  emits('exitFullScreen')
+}
+
+function onExitFullScreen() {
+  dialogVisible.value = false
+}
 </script>
 
 <template>
@@ -107,20 +186,136 @@ const chartType = computed<ChartTypes>({
       (isPredict && message?.record?.chart && data.length > 0)
     "
     class="chart-component-container"
+    :class="{ 'full-screen': enlarge }"
   >
-    <div class="header-bar">todo</div>
+    <div class="header-bar">
+      <div class="title">
+        {{ chartObject.title }}
+      </div>
+      <div class="buttons-bar">
+        <div class="chart-select-container">
+          <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
+            <el-select
+              v-if="chartTypeList.length > 0"
+              v-model="chartType"
+              class="chart-select"
+              :class="{ 'chart-active': currentChartType !== 'table' }"
+              @change="onTypeChange"
+            >
+              <el-option v-for="type in chartTypeList" :key="type.value" :value="type.value">
+                <el-icon size="16">
+                  <component :is="type.icon" />
+                </el-icon>
+                {{ type.name }}
+              </el-option>
+            </el-select>
+          </el-tooltip>
+
+          <el-tooltip effect="dark" :content="t('chat.chart_type.table')" placement="top">
+            <el-button
+              class="tool-btn"
+              :class="{ 'chart-active': currentChartType === 'table' }"
+              text
+              @click="changeTable"
+            >
+              <el-icon size="16">
+                <ICON_TABLE />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+
+        <div>
+          <el-tooltip effect="dark" :content="t('chat.show_sql')" placement="top">
+            <el-button class="tool-btn" text @click="showSQL">
+              <el-icon size="16">
+                <icon_sql_outlined />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+        <div>
+          <el-tooltip effect="dark" :content="t('chat.export_to')" placement="top">
+            <el-button class="tool-btn" text @click="showSQL">
+              <el-icon size="16">
+                <icon_export_outlined />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+        <div>
+          <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
+            <el-button class="tool-btn" text @click="showSQL">
+              <el-icon size="16">
+                <icon_into_item_outlined />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+        <div class="divider" />
+        <div v-if="!enlarge">
+          <el-tooltip effect="dark" :content="t('chat.full_screen')" placement="top">
+            <el-button class="tool-btn" text @click="openFullScreen">
+              <el-icon size="16">
+                <icon_window_max_outlined />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+        <div v-else>
+          <el-tooltip effect="dark" :content="t('chat.exit_full_screen')" placement="top">
+            <el-button class="tool-btn" text @click="closeFullScreen">
+              <el-icon size="16">
+                <icon_window_mini_outlined />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+      </div>
+    </div>
+
     <div v-if="message?.record?.chart" class="chart-block">
       <DisplayChartBlock
-        :id="message.record.id"
+        :id="message.record.id + (enlarge ? '-fullscreen' : '')"
         ref="chartRef"
         :chart-type="chartType"
         :message="message"
         :data="data"
       />
     </div>
+
+    <el-dialog
+      v-if="!enlarge"
+      v-model="dialogVisible"
+      fullscreen
+      :show-close="false"
+      class="chart-fullscreen-dialog"
+      header-class="chart-fullscreen-dialog-header"
+      body-class="chart-fullscreen-dialog-body"
+    >
+      <ChartBlock
+        v-if="dialogVisible"
+        :message="message"
+        :is-predict="isPredict"
+        :chat-type="chartType"
+        enlarge
+        @exit-full-screen="onExitFullScreen"
+      />
+    </el-dialog>
   </div>
 </template>
 
+<style lang="less">
+.chart-fullscreen-dialog {
+  padding: 0;
+}
+.chart-fullscreen-dialog-header {
+  display: none;
+}
+.chart-fullscreen-dialog-body {
+  padding: 0;
+}
+</style>
 <style scoped lang="less">
 .chart-component-container {
   width: 100%;
@@ -128,18 +323,143 @@ const chartType = computed<ChartTypes>({
   display: flex;
   flex-direction: column;
 
-  gap: 16px;
-
   border: 1px solid rgba(222, 224, 227, 1);
   border-radius: 12px;
 
+  &.full-screen {
+    border: unset;
+    border-radius: unset;
+    padding: 0;
+
+    .header-bar {
+      border-bottom: 1px solid rgba(31, 35, 41, 0.15);
+      height: 55px;
+      padding: 16px 24px;
+    }
+
+    .chart-block {
+      margin: unset;
+      padding: 16px;
+
+      height: calc(100vh - 56px);
+    }
+  }
+
   .header-bar {
     height: 32px;
+    display: flex;
+
+    align-items: center;
+    flex-direction: row;
+
+    .tool-btn {
+      width: 24px;
+      height: 24px;
+
+      font-size: 16px;
+      font-weight: 400;
+      line-height: 24px;
+      border-radius: 6px;
+      color: rgba(100, 106, 115, 1);
+
+      .tool-btn-inner {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+      }
+
+      &:hover {
+        background: rgba(31, 35, 41, 0.1);
+      }
+      &:active {
+        background: rgba(31, 35, 41, 0.1);
+      }
+    }
+
+    .chart-active {
+      background: rgba(28, 186, 144, 0.1);
+      color: rgba(28, 186, 144, 1);
+      border-radius: 6px;
+
+      :deep(.ed-select__wrapper) {
+        background: transparent;
+      }
+      :deep(.ed-select__input) {
+        color: rgba(28, 186, 144, 1);
+      }
+      :deep(.ed-select__placeholder) {
+        color: rgba(28, 186, 144, 1);
+      }
+      :deep(.ed-select__caret) {
+        color: rgba(28, 186, 144, 1);
+      }
+    }
+
+    .title {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+
+      color: rgba(31, 35, 41, 1);
+      font-weight: 500;
+      font-size: 16px;
+      line-height: 24px;
+    }
+
+    .buttons-bar {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+
+      gap: 16px;
+
+      .divider {
+        width: 1px;
+        height: 16px;
+        border-left: 1px solid rgba(31, 35, 41, 0.15);
+      }
+    }
+
+    .chart-select-container {
+      padding: 3px;
+      display: flex;
+      flex-direction: row;
+      gap: 4px;
+      border-radius: 6px;
+
+      border: 1px solid rgba(217, 220, 223, 1);
+
+      .chart-select {
+        min-width: 40px;
+        width: 40px;
+        height: 24px;
+
+        :deep(.ed-select__wrapper) {
+          padding: 4px;
+          min-height: 24px;
+          box-shadow: unset;
+          border-radius: 6px;
+
+          &:hover {
+            background: rgba(31, 35, 41, 0.1);
+          }
+          &:active {
+            background: rgba(31, 35, 41, 0.1);
+          }
+        }
+        :deep(.ed-select__caret) {
+          font-size: 12px !important;
+        }
+      }
+    }
   }
 
   .chart-block {
     height: 352px;
     width: 100%;
+
+    margin-top: 16px;
   }
 }
 </style>

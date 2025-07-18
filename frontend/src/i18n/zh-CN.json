@@ -371,6 +371,7 @@
     "no_fields_yet": "暂无字段"
   },
   "chat": {
+    "type": "图表类型",
     "chart_type": {
       "table": "明细表",
       "bar": "条形图",
@@ -378,6 +379,13 @@
       "line": "折线图",
       "pie": "饼图"
     },
+    "show_sql": "查看SQL",
+    "export_to": "导出为",
+    "excel": "Excel",
+    "picture": "图片",
+    "add_to_dashboard": "添加到仪表板",
+    "full_screen": "全屏",
+    "exit_full_screen": "退出全屏",
     "sql_generation": "生成SQL",
     "chart_generation": "生成图表",
     "inference_process": "思考过程",
