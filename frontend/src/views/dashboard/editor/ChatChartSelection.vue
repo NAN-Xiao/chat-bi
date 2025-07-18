@@ -214,33 +214,14 @@ defineExpose({
   color: #1f2329;
   line-height: 22px;
 }
-</style>
-
-<style lang="less" scoped>
-.custom-drawer {
-  .ed-drawer__footer {
-    height: 64px !important;
-    padding: 0 !important;
-    box-shadow: 0 -1px 0px #d7d7d7 !important;
-  }
-
-  .ed-drawer__body {
-    padding: 0 0 64px 0 !important;
-  }
-}
 
 .chat-container {
   height: 100%;
-
   .chat-container-left {
     padding-top: 20px;
     --ed-aside-width: 260px;
     border-radius: 12px 0 0 12px;
-    //box-shadow: 0 0 3px #d7d7d7;
-    //z-index: 1;
-
-    background: var(--ed-fill-color-blank);
-
+    border-right: 1px solid rgba(31, 35, 41, 0.15);
     .chat-container-right-container {
       height: 100%;
 
@@ -258,7 +239,6 @@ defineExpose({
 
   .chat-record-list {
     padding: 0 0 20px 0;
-    background: rgba(255, 255, 255, 1);
   }
 
   .chat-footer {
@@ -292,6 +272,21 @@ defineExpose({
 
   .send-btn {
     min-width: 0;
+  }
+}
+</style>
+
+<style lang="less">
+.custom-drawer {
+  .ed-drawer__footer {
+    height: 64px !important;
+    padding: 0 !important;
+    box-shadow: 0 -1px 0px #d7d7d7 !important;
+  }
+
+  .ed-drawer__body {
+    background: rgba(245, 246, 247, 1) !important;
+    padding: 0 0 64px 0 !important;
   }
 }
 </style>

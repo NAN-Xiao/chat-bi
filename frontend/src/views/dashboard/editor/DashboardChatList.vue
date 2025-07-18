@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { type Chat } from '@/api/chat.ts'
+import { ElIcon } from 'element-plus-secondary'
+import { Icon } from '@/components/icon-custom'
+import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     currentChatId?: number
     chatList: Array<Chat>
@@ -11,28 +16,139 @@ withDefaults(
     chatList: () => [],
   }
 )
-
+const { t } = useI18n()
 const emits = defineEmits(['chatSelected'])
+const filterText = ref('')
 
 function onClickHistory(chat: Chat) {
   emits('chatSelected', chat)
 }
+
+// 获取当前日期和本周的开始日期
+const now = new Date()
+const startOfWeek = new Date(now)
+startOfWeek.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1)) // 设置为本周一
+startOfWeek.setHours(0, 0, 0, 0)
+
+// 格式化日期函数
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString)
+  return date.toLocaleString()
+}
+
+// 过滤和分类数据
+const filteredAndGroupedData = computed(() => {
+  const today: Chat[] = []
+  const thisWeek: Chat[] = []
+  const earlier: Chat[] = []
+
+  // 先过滤数据
+  const filteredList = props.chatList.filter(
+    (chat) =>
+      !filterText.value ||
+      (chat.brief && chat.brief.toLowerCase().includes(filterText.value.toLowerCase()))
+  )
+
+  // 然后分类
+  filteredList.forEach((item) => {
+    const itemDate = new Date(item.create_time)
+
+    // 检查是否是今天
+    if (
+      itemDate.getDate() === now.getDate() &&
+      itemDate.getMonth() === now.getMonth() &&
+      itemDate.getFullYear() === now.getFullYear()
+    ) {
+      today.push(item)
+    }
+    // 检查是否是本周但不是今天
+    else if (itemDate >= startOfWeek && itemDate < now) {
+      thisWeek.push(item)
+    }
+    // 更早的数据
+    else {
+      earlier.push(item)
+    }
+  })
+
+  return { today, thisWeek, earlier }
+})
 </script>
 
 <template>
-  <el-scrollbar ref="chatListRef">
-    <div class="chat-list-inner">
-      <template v-for="chat in chatList" :key="chat.id">
-        <div
-          class="chat-list-item"
-          :class="{ active: currentChatId === chat.id }"
-          @click="onClickHistory(chat)"
-        >
-          <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
-        </div>
+  <div style="width: 100%; height: 100%">
+    <el-input
+      v-model="filterText"
+      :placeholder="t('dashboard.search')"
+      clearable
+      class="search-bar"
+    >
+      <template #prefix>
+        <el-icon>
+          <Icon name="icon_search-outline_outlined">
+            <icon_searchOutline_outlined class="svg-icon" />
+          </Icon>
+        </el-icon>
       </template>
-    </div>
-  </el-scrollbar>
+    </el-input>
+    <el-scrollbar ref="chatListRef" class="custom-chart-list">
+      <div class="chat-list-inner">
+        <!-- today -->
+        <div v-if="filteredAndGroupedData.today.length > 0" class="time-group">
+          <div class="time-group-title">{{ t('dashboard.today') }}</div>
+          <div
+            v-for="chat in filteredAndGroupedData.today"
+            :key="chat.id"
+            class="chat-list-item"
+            :class="{ active: currentChatId === chat.id }"
+            @click="onClickHistory(chat)"
+          >
+            <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
+          </div>
+        </div>
+
+        <!-- this week -->
+        <div v-if="filteredAndGroupedData.thisWeek.length > 0" class="time-group">
+          <div class="time-group-title">{{ t('dashboard.this_week') }}</div>
+          <div
+            v-for="chat in filteredAndGroupedData.thisWeek"
+            :key="chat.id"
+            class="chat-list-item"
+            :class="{ active: currentChatId === chat.id }"
+            @click="onClickHistory(chat)"
+          >
+            <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
+          </div>
+        </div>
+
+        <!-- earlier -->
+        <div v-if="filteredAndGroupedData.earlier.length > 0" class="time-group">
+          <div class="time-group-title">{{ t('dashboard.earlier') }}</div>
+          <div
+            v-for="chat in filteredAndGroupedData.earlier"
+            :key="chat.id"
+            class="chat-list-item"
+            :class="{ active: currentChatId === chat.id }"
+            @click="onClickHistory(chat)"
+          >
+            <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
+          </div>
+        </div>
+
+        <!-- no data -->
+        <div
+          v-if="
+            filteredAndGroupedData.today.length === 0 &&
+            filteredAndGroupedData.thisWeek.length === 0 &&
+            filteredAndGroupedData.earlier.length === 0
+          "
+          class="no-data"
+        >
+          {{ t('dashboard.no_chat') }}
+        </div>
+      </div>
+    </el-scrollbar>
+  </div>
 </template>
 
 <style scoped lang="less">
@@ -48,6 +164,24 @@ function onClickHistory(chat: Chat) {
   flex-direction: column;
 
   gap: 8px;
+
+  .time-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+
+    &:first-child {
+      margin-top: 0;
+    }
+
+    .time-group-title {
+      font-size: 12px;
+      color: rgba(100, 106, 115, 1);
+      padding: 4px 8px;
+      font-weight: 500;
+    }
+  }
 
   .chat-list-item {
     width: 100%;
@@ -67,6 +201,8 @@ function onClickHistory(chat: Chat) {
     .title {
       flex: 1;
       width: 0;
+      color: rgba(31, 35, 41, 1);
+      font-size: 14px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -80,7 +216,7 @@ function onClickHistory(chat: Chat) {
     }
 
     &:hover {
-      background-color: var(--hover-color);
+      background-color: rgba(255, 255, 255, 0.75);
 
       .icon-more {
         display: inline-flex;
@@ -88,8 +224,23 @@ function onClickHistory(chat: Chat) {
     }
 
     &.active {
-      background-color: var(--active-color);
+      background-color: rgba(255, 255, 255, 1);
     }
   }
+
+  .no-data {
+    text-align: center;
+    padding: 16px;
+    color: var(--ed-text-color-placeholder);
+    font-size: 14px;
+  }
+}
+.custom-chart-list {
+  height: calc(100% - 32px);
+}
+.search-bar {
+  padding: 0 12px 10px 12px;
+  width: 100%;
+  --ed-input-bg-color: rgba(245, 246, 247, 1);
 }
 </style>

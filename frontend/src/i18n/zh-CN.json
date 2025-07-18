@@ -34,6 +34,10 @@
     "password_reset_successful": "重置密码成功"
   },
   "dashboard": {
+    "no_chat": "暂无对话",
+    "today": "今日",
+    "this_week": "本周",
+    "earlier": "更早",
     "add_component_tips": "从顶部工具栏中选择组件，添加到这里创建仪表板",
     "add_view": "添加图表",
     "delete_dashboard_warn": "是否删除仪表板：{0}",
