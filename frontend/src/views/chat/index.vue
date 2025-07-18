@@ -125,7 +125,7 @@
                     </div>
 
                     <template #tool>
-                      <ChatToolBar :message="message">
+                      <ChatToolBar v-if="!message.isTyping" :message="message">
                         <div class="tool-btns">
                           <el-tooltip effect="dark" :content="t('qa.ask_again')" placement="top">
                             <el-button
@@ -208,7 +208,7 @@
                       {{ message.record?.error }}
                     </div>
                     <template #tool>
-                      <ChatToolBar :message="message" />
+                      <ChatToolBar v-if="!message.isTyping" :message="message" />
                     </template>
                   </AnalysisAnswer>
                   <PredictAnswer
@@ -233,7 +233,7 @@
                       {{ message.record?.error }}
                     </div>
                     <template #tool>
-                      <ChatToolBar :message="message" />
+                      <ChatToolBar v-if="!message.isTyping" :message="message" />
                     </template>
                   </PredictAnswer>
                 </template>
