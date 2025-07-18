@@ -32,6 +32,7 @@
     "password_reset_successful": "Password reset successful"
   },
   "dashboard": {
+    "add_view": "Add Chart",
     "delete_dashboard_warn": "Delete This Dashboard: {0}",
     "rename_dashboard": "Rename Dashboard",
     "dashboard_name": "Dashboard Name",

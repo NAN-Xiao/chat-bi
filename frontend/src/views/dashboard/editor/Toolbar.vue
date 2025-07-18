@@ -11,7 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { snapshotStoreWithOut } from '@/stores/dashboard/snapshot.ts'
 import icon_undo_outlined from '@/assets/svg/icon_undo_outlined.svg'
 import icon_redo_outlined from '@/assets/svg/icon_redo_outlined.svg'
-import icon_left_outlined from '@/assets/svg/icon_left_outlined.svg'
+import icon_arrow_left_outlined from '@/assets/svg/icon_arrow-left_outlined.svg'
 import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 import ChatChartSelection from '@/views/dashboard/editor/ChatChartSelection.vue'
 
@@ -142,7 +142,7 @@ const addChatChart = (views: any) => {
   <div class="toolbar-main">
     <el-icon class="custom-el-icon back-icon" @click="backToMain()">
       <Icon name="icon_left_outlined">
-        <icon_left_outlined class="toolbar-hover-icon toolbar-icon" />
+        <icon_arrow_left_outlined class="toolbar-hover-icon toolbar-icon" />
       </Icon>
     </el-icon>
     <div class="left-area">
@@ -181,9 +181,10 @@ const addChatChart = (views: any) => {
     <div class="core-toolbar">
       <component-button-label
         :icon-name="dvView"
-        :title="t('dashboard.view')"
+        :title="t('dashboard.add_view')"
         themes="light"
         is-label
+        show-split-line
         @custom-click="openViewDialog"
       ></component-button-label>
       <component-button-label
@@ -234,12 +235,12 @@ const addChatChart = (views: any) => {
   height: 56px;
   display: flex;
   align-items: center;
-  background: #d1ddf6;
-  padding-left: 8px;
+  background: #fff;
+  padding-left: 24px;
+  border-bottom: 1px solid rgba(31, 35, 41, 0.15);
 
   .left-area {
-    margin-top: 8px;
-    margin-left: 14px;
+    margin-left: 12px;
     width: 300px;
     display: flex;
     flex-direction: column;
@@ -252,18 +253,18 @@ const addChatChart = (views: any) => {
       width: 300px;
       overflow: hidden;
       cursor: pointer;
-      color: #fff;
+      color: #1f2329;
 
       input {
         position: absolute;
         left: 0;
         width: 100%;
-        color: #fff;
-        background-color: #d1ddf6;
+        background-color: #f5f6f7;
         outline: none;
-        border: 1px solid #295acc;
+        font-size: 16px;
+        border: 1px solid #1cba90;
         border-radius: 4px;
-        padding: 0 4px;
+        padding-left: 4px;
         height: 100%;
       }
     }
@@ -298,6 +299,10 @@ const addChatChart = (views: any) => {
   width: 20px;
   height: 20px;
   color: #fff;
+}
+
+.back-icon {
+  margin-top: 8px;
 }
 
 .toolbar-hover-icon {

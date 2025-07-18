@@ -75,23 +75,35 @@ const baseParams = computed(() => {
 </script>
 
 <template>
-  <div class="editor-main">
-    <Toolbar :base-params="baseParams" @add-component="addComponent"></Toolbar>
-    <DashboardEditor
-      v-if="dataInitState"
-      ref="dashboardEditorInnerRef"
-      :canvas-component-data="componentData"
-      :canvas-view-info="canvasViewInfo"
-    >
-    </DashboardEditor>
+  <div class="editor-content">
+    <div class="editor-main">
+      <Toolbar :base-params="baseParams" @add-component="addComponent"></Toolbar>
+      <DashboardEditor
+        v-if="dataInitState"
+        ref="dashboardEditorInnerRef"
+        :canvas-component-data="componentData"
+        :canvas-view-info="canvasViewInfo"
+      >
+      </DashboardEditor>
+    </div>
   </div>
 </template>
 
 <style scoped lang="less">
-.editor-main {
-  position: relative;
+.editor-content {
+  padding: 12px;
   width: 100vw;
   height: 100vh;
+  background: #fff;
+  overflow: hidden;
+}
+.editor-main {
+  border-radius: 12px;
+  position: relative;
   background: #f5f6f7;
+  box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.1);
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
 }
 </style>

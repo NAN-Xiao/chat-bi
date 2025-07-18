@@ -124,9 +124,11 @@ const propsTree = {
   isLeaf: (node) => !node.children?.length,
 }
 
-const showPid = computed(() => {
-  return state.opt && ['newLeaf'].includes(state.opt) && state.parentSelect
-})
+// const showPid = computed(() => {
+//   return state.opt && ['newLeaf'].includes(state.opt) && state.parentSelect
+// })
+
+const showPid = false
 
 const saveResource = () => {
   const params = {

@@ -26,42 +26,42 @@ const emits = defineEmits(['customClick'])
 </template>
 <style lang="less" scoped>
 .flex-align-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   & + & {
-    margin-left: 4px;
+    margin-left: 12px;
   }
 }
 
 .group_inner {
-  padding: 8px;
+  padding: 4px;
   display: flex;
   cursor: pointer;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
   border-radius: 4px;
-  color: #a6a6a6;
+  color: #1f2329;
 
   span {
     float: left;
-    font-size: 12px;
-    margin-top: 8px;
-    line-height: 12px;
+    font-size: 14px;
+    margin-left: 4px;
   }
 
   &:hover {
-    background: rgba(235, 235, 235, 0.1);
-    color: #fff;
+    background: rgba(31, 35, 41, 0.1);
   }
 
   &:active {
-    color: #fff;
-    background: rgba(235, 235, 235, 0.2);
+    background: rgba(31, 35, 41, 0.1);
   }
 }
 
 .group-right-border {
-  border-color: rgba(255, 255, 255, 0.15);
-  margin: 0 2px 0 6px;
-  height: 40px;
+  border-color: rgba(31, 35, 41, 0.15);
+  margin: 0 4px 0 16px;
+  height: 14px;
 }
 
 .inner-active {

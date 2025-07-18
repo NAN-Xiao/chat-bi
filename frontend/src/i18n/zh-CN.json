@@ -34,6 +34,7 @@
     "password_reset_successful": "重置密码成功"
   },
   "dashboard": {
+    "add_view": "添加图表",
     "delete_dashboard_warn": "是否删除仪表板：{0}",
     "rename_dashboard": "重命名仪表板",
     "dashboard_name": "仪表板名称",
