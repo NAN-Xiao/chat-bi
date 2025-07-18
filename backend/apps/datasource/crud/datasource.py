@@ -2,6 +2,7 @@ import datetime
 import json
 from typing import List
 
+from fastapi import HTTPException
 from sqlalchemy import and_, text, cast
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlbot_xpack.permissions.models.ds_permission import DsPermission
@@ -13,7 +14,7 @@ from apps.db.constant import DB
 from apps.db.db import get_engine, get_tables, get_fields, exec_sql
 from apps.db.engine import get_engine_config, get_engine_conn
 from apps.db.type import db_type_relation
-from common.core.deps import SessionDep, CurrentUser
+from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.utils import deepcopy_ignore_extra
 from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
@@ -45,23 +46,23 @@ def check_status(session: SessionDep, ds: CoreDatasource):
         return False
 
 
-def check_name(session: SessionDep, user: CurrentUser, ds: CoreDatasource):
+def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     if ds.id is not None:
         ds_list = session.query(CoreDatasource).filter(
             and_(CoreDatasource.name == ds.name, CoreDatasource.id != ds.id, CoreDatasource.oid == user.oid)).all()
         if ds_list is not None and len(ds_list) > 0:
-            raise 'Name exist'
+            raise HTTPException(status_code=500, detail=trans('i18n_ds_name_exist'))
     else:
         ds_list = session.query(CoreDatasource).filter(
             and_(CoreDatasource.name == ds.name, CoreDatasource.oid == user.oid)).all()
         if ds_list is not None and len(ds_list) > 0:
-            raise 'Name exist'
+            raise HTTPException(status_code=500, detail=trans('i18n_ds_name_exist'))
 
 
-def create_ds(session: SessionDep, user: CurrentUser, create_ds: CreateDatasource):
+def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: CreateDatasource):
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
-    check_name(session, user, ds)
+    check_name(session, trans, user, ds)
     ds.create_time = datetime.datetime.now()
     # status = check_status(session, ds)
     ds.create_by = user.id
@@ -87,9 +88,9 @@ def chooseTables(session: SessionDep, id: int, tables: List[CoreTable]):
     updateNum(session, ds)
 
 
-def update_ds(session: SessionDep, user: CurrentUser, ds: CoreDatasource):
+def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     ds.id = int(ds.id)
-    check_name(session, user, ds)
+    check_name(session, trans, user, ds)
     status = check_status(session, ds)
     ds.status = "Success" if status is True else "Fail"
     record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()

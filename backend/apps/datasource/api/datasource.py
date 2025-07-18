@@ -7,7 +7,7 @@ import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from apps.db.engine import create_table, get_data_engine, insert_data
-from common.core.deps import SessionDep, CurrentUser
+from common.core.deps import SessionDep, CurrentUser, Trans
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum
 from ..crud.field import get_fields_by_table_id
@@ -34,8 +34,8 @@ async def check(session: SessionDep, ds: CoreDatasource):
 
 
 @router.post("/add", response_model=CoreDatasource)
-async def add(session: SessionDep, user: CurrentUser, ds: CreateDatasource):
-    return create_ds(session, user, ds)
+async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDatasource):
+    return create_ds(session, trans, user, ds)
 
 
 @router.post("/chooseTables/{id}")
@@ -44,8 +44,8 @@ async def choose_tables(session: SessionDep, id: int, tables: List[CoreTable]):
 
 
 @router.post("/update", response_model=CoreDatasource)
-async def update(session: SessionDep,user: CurrentUser, ds: CoreDatasource):
-    return update_ds(session,user, ds)
+async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
+    return update_ds(session, trans, user, ds)
 
 
 @router.post("/delete/{id}", response_model=CoreDatasource)

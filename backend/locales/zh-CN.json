@@ -1,3 +1,4 @@
 {
-    "i18n_default_workspace": "默认工作空间"
+    "i18n_default_workspace": "默认工作空间",
+    "i18n_ds_name_exist": "名称已存在"
 }
