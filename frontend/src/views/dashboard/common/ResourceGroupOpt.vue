@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import folder from '@/assets/svg/folder.svg'
 import { type SQTreeNode } from '@/views/dashboard/utils/treeNode'
-import { computed, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { useI18n } from 'vue-i18n'
