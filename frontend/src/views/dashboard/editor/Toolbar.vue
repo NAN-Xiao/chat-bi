@@ -14,10 +14,11 @@ import icon_redo_outlined from '@/assets/svg/icon_redo_outlined.svg'
 import icon_arrow_left_outlined from '@/assets/svg/icon_arrow-left_outlined.svg'
 import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 import ChatChartSelection from '@/views/dashboard/editor/ChatChartSelection.vue'
-
+import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
+const fullScreeRef = ref(null)
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
-const { dashboardInfo } = storeToRefs(dashboardStore)
+const { dashboardInfo, fullscreenFlag } = storeToRefs(dashboardStore)
 
 const snapshotStore = snapshotStoreWithOut()
 const { snapshotIndex } = storeToRefs(snapshotStore)
@@ -30,6 +31,7 @@ const openViewDialog = () => {
 }
 
 import cloneDeep from 'lodash/cloneDeep'
+import SQFullscreen from '@/views/dashboard/common/SQFullscreen.vue'
 
 let nameEdit = ref(false)
 let inputName = ref('')
@@ -136,10 +138,16 @@ const addChatChart = (views: any) => {
     emits('addComponent', 'SQView', cloneDeep(view))
   })
 }
+
+const previewInner = () => {
+  if (fullScreeRef.value) {
+    fullScreeRef.value.toggleFullscreen()
+  }
+}
 </script>
 
 <template>
-  <div class="toolbar-main">
+  <div class="toolbar-main" :class="{ 'toolbar-main-hidden': fullscreenFlag }">
     <el-icon class="custom-el-icon back-icon" @click="backToMain()">
       <Icon name="icon_left_outlined">
         <icon_arrow_left_outlined class="toolbar-hover-icon toolbar-icon" />
@@ -204,6 +212,14 @@ const addChatChart = (views: any) => {
       </component-button-label>
     </div>
     <div class="right-toolbar">
+      <el-button secondary @click="previewInner">
+        <template #icon>
+          <icon name="icon_pc_outlined">
+            <icon_pc_outlined class="svg-icon" />
+          </icon>
+        </template>
+        {{ t('dashboard.preview') }}
+      </el-button>
       <el-button
         style="float: right; margin-right: 12px"
         type="primary"
@@ -226,10 +242,14 @@ const addChatChart = (views: any) => {
       @add-chat-chart="addChatChart"
       @finish="chartSelectionFinish"
     ></ChatChartSelection>
+    <SQFullscreen ref="fullScreeRef" show-position="edit"></SQFullscreen>
   </div>
 </template>
 
 <style scoped lang="less">
+.toolbar-main-hidden {
+  display: none !important;
+}
 .toolbar-main {
   width: 100%;
   height: 56px;

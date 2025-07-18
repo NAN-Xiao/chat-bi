@@ -8,7 +8,10 @@ import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import { storeToRefs } from 'pinia'
 import { useEmitt, useEmittLazy } from '@/utils/useEmitt.ts'
 import html2canvas from 'html2canvas'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
 const emits = defineEmits(['parentAddItemBox'])
@@ -1174,6 +1177,11 @@ defineExpose({
     @mouseup="endMove()"
     @mousemove="moving()"
   >
+    <EmptyBackground
+      v-if="!canvasComponentData.length"
+      :description="t('dashboard.add_component_tips')"
+      img-type="selectDashboard"
+    />
     <template v-if="renderOk">
       <CanvasShape
         v-for="(item, index) in canvasComponentData"

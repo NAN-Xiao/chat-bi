@@ -13,7 +13,7 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
-const { componentData, canvasViewInfo } = storeToRefs(dashboardStore)
+const { componentData, canvasViewInfo, fullscreenFlag } = storeToRefs(dashboardStore)
 
 const dataInitState = ref(true)
 const state = reactive({
@@ -75,7 +75,7 @@ const baseParams = computed(() => {
 </script>
 
 <template>
-  <div class="editor-content">
+  <div class="editor-content" :class="{ 'editor-content-fullscreen': fullscreenFlag }">
     <div class="editor-main">
       <Toolbar :base-params="baseParams" @add-component="addComponent"></Toolbar>
       <DashboardEditor
@@ -96,6 +96,10 @@ const baseParams = computed(() => {
   height: 100vh;
   background: #fff;
   overflow: hidden;
+}
+
+.editor-content-fullscreen {
+  padding: 0 !important;
 }
 .editor-main {
   border-radius: 12px;

@@ -2,7 +2,7 @@
 import CanvasCore from '@/views/dashboard/canvas/CanvasCore.vue'
 import { nextTick, onMounted, type PropType, ref } from 'vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
-import { useEmittLazy } from '@/utils/useEmitt.ts'
+import { useEmitt, useEmittLazy } from '@/utils/useEmitt.ts'
 
 const canvasCoreRef = ref(null)
 const dashboardEditorRef = ref(null)
@@ -84,6 +84,11 @@ const addItemToBox = (item: CanvasItem) => {
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   canvasCoreRef.value.addItemBox(item)
 }
+
+useEmitt({
+  name: 'custom-canvas-resize',
+  callback: canvasSizeInit,
+})
 
 defineExpose({
   canvasSizeInit,

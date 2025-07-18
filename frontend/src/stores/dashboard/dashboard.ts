@@ -35,6 +35,9 @@ export const dashboardStore = defineStore('dashboard', {
     },
   },
   actions: {
+    setFullscreenFlag(val: boolean) {
+      this.fullscreenFlag = val
+    },
     setCurComponent(value: any) {
       this.curComponent = value
       this.curComponentId = value && value.id ? value.id : null
