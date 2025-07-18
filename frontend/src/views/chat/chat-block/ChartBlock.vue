@@ -177,6 +177,13 @@ function closeFullScreen() {
 function onExitFullScreen() {
   dialogVisible.value = false
 }
+
+function showSql() {
+  console.log('todo')
+}
+function addToDashboard() {
+  console.log('todo')
+}
 </script>
 
 <template>
@@ -227,7 +234,7 @@ function onExitFullScreen() {
 
         <div>
           <el-tooltip effect="dark" :content="t('chat.show_sql')" placement="top">
-            <el-button class="tool-btn" text @click="showSQL">
+            <el-button class="tool-btn" text @click="showSql">
               <el-icon size="16">
                 <icon_sql_outlined />
               </el-icon>
@@ -236,7 +243,7 @@ function onExitFullScreen() {
         </div>
         <div>
           <el-tooltip effect="dark" :content="t('chat.export_to')" placement="top">
-            <el-button class="tool-btn" text @click="showSQL">
+            <el-button class="tool-btn" text>
               <el-icon size="16">
                 <icon_export_outlined />
               </el-icon>
@@ -245,7 +252,7 @@ function onExitFullScreen() {
         </div>
         <div>
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
-            <el-button class="tool-btn" text @click="showSQL">
+            <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">
                 <icon_into_item_outlined />
               </el-icon>
