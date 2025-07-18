@@ -25,7 +25,7 @@ defineProps({
 const name = computed(() => userStore.getName)
 const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
-const isAdmin = computed(() => userStore.getUid === '1')
+const isAdmin = computed(() => userStore.isAdmin)
 const dialogVisible = ref(false)
 
 const languageList = [

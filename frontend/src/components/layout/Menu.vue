@@ -3,7 +3,8 @@ import { computed } from 'vue'
 import { ElMenu } from 'element-plus-secondary'
 import { useRoute, useRouter } from 'vue-router'
 import MenuItem from './MenuItem.vue'
-
+import { useUserStore } from '@/stores/user'
+const userStore = useUserStore()
 const router = useRouter()
 defineProps({
   collapse: Boolean,
@@ -16,7 +17,6 @@ const activeMenu = computed(() => route.path)
   const arr = route.path.split('/')
   return arr[arr.length - 1]
 }) */
-
 const showSysmenu = computed(() => {
   return route.path.includes('/system')
 })
@@ -25,8 +25,7 @@ const routerList = computed(() => {
   if (showSysmenu.value) {
     return router.getRoutes().filter((route) => route.path.includes('/system') && !route.redirect)
   }
-
-  return router.getRoutes().filter((route) => {
+  const list = router.getRoutes().filter((route) => {
     return (
       !route.path.includes('canvas') &&
       !route.path.includes('member') &&
@@ -34,11 +33,13 @@ const routerList = computed(() => {
       !route.path.includes('preview') &&
       route.path !== '/login' &&
       !route.path.includes('/system') &&
-      (route.path.includes('set') || !route.redirect) &&
+      ((route.path.includes('set') && userStore.isSpaceAdmin) || !route.redirect) &&
       route.path !== '/:pathMatch(.*)*' &&
       !route.path.includes('dsTable')
     )
   })
+
+  return list
 })
 </script>
 

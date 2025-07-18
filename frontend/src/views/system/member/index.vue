@@ -1,6 +1,11 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted, reactive } from 'vue'
-import { uwsOption, workspaceUserList, workspaceUwsDelete, workspaceCreate } from '@/api/workspace'
+import {
+  uwsOption,
+  workspaceUserList,
+  workspaceUwsDelete,
+  workspaceUwsCreate,
+} from '@/api/workspace'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
@@ -142,9 +147,8 @@ const closeField = () => {
 }
 
 const saveField = () => {
-  workspaceCreate({
+  workspaceUwsCreate({
     uid_list: [userInfo.value.id],
-    weight: 0,
   }).then(() => {
     ElMessage({
       type: 'success',

@@ -77,8 +77,10 @@ async def pager(
     keyword: Optional[str] = Query(None, description="搜索关键字(可选)"),
     oid: Optional[int] = Query(None, description="空间ID(仅admin用户生效)"),
 ):
+    if not current_user.isAdmin and current_user.weight == 0:
+        raise HTTPException("no permission to execute")
     if current_user.isAdmin:
-        workspace_id = oid
+        workspace_id = oid if oid else current_user.oid
     else:
         workspace_id = current_user.oid
     pagination = PaginationParams(page=pageNum, size=pageSize)

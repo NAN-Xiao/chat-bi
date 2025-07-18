@@ -16,6 +16,7 @@ interface UserState {
   language: string
   exp: number
   time: number
+  weight: number
   [key: string]: string | number
 }
 
@@ -30,6 +31,7 @@ export const UserStore = defineStore('user', {
       language: 'zh-CN',
       exp: 0,
       time: 0,
+      weight: 0,
     }
   },
   getters: {
@@ -57,6 +59,15 @@ export const UserStore = defineStore('user', {
     getTime(): number {
       return this.time
     },
+    isAdmin(): boolean {
+      return this.uid === '1'
+    },
+    getWeight(): number {
+      return this.weight
+    },
+    isSpaceAdmin(): boolean {
+      return this.uid === '1' || !!this.weight
+    },
   },
   actions: {
     async login(formData: { username: string; password: string }) {
@@ -72,12 +83,12 @@ export const UserStore = defineStore('user', {
       const res: any = await AuthApi.info()
       const res_data = res || {}
 
-      const keys = ['uid', 'account', 'name', 'oid', 'language', 'exp', 'time'] as const
+      const keys = ['uid', 'account', 'name', 'oid', 'language', 'exp', 'time', 'weight'] as const
 
       keys.forEach((key) => {
         const dkey = key === 'uid' ? 'id' : key
         const value = res_data[dkey]
-        if (key === 'exp' || key === 'time') {
+        if (key === 'exp' || key === 'time' || key === 'weight') {
           this[key] = Number(value)
         } else {
           this[key] = String(value)
@@ -126,8 +137,22 @@ export const UserStore = defineStore('user', {
       locale.value = language */
       // locale.setLang(language)
     },
+    setWeight(weight: number) {
+      wsCache.set('user.weight', weight)
+      this.weight = weight
+    },
     clear() {
-      const keys: string[] = ['token', 'uid', 'account', 'name', 'oid', 'language', 'exp', 'time']
+      const keys: string[] = [
+        'token',
+        'uid',
+        'account',
+        'name',
+        'oid',
+        'language',
+        'exp',
+        'time',
+        'weight',
+      ]
       keys.forEach((key) => wsCache.delete('user.' + key))
       this.$reset()
     },
