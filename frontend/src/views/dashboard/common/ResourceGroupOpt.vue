@@ -14,7 +14,7 @@ const state = reactive({
   placeholder: '',
   nodeType: 'folder',
   parentSelect: false,
-  resourceFormNameLabel: t('dashboard.name'),
+  resourceFormNameLabel: t('dashboard.dashboard_name'),
   dialogTitle: '',
   tData: [],
   tDataSource: [],
@@ -30,7 +30,7 @@ const getTitle = (opt: string) => {
     case 'newFolder':
       return t('dashboard.new_folder')
     case 'rename':
-      return t('dashboard.rename')
+      return t('dashboard.rename_dashboard')
     default:
       return
   }

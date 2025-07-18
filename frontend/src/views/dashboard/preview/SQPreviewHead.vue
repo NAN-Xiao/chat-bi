@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import dashboardInfoSvg from '@/assets/svg/dashboard-info.svg'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
-import DashboardDetailInfo from '@/views/dashboard/common/DashboardDetailInfo.vue'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
@@ -23,20 +21,6 @@ const props = defineProps({
 <template>
   <div class="preview-head flex-align-center">
     <div class="canvas-name ellipsis">{{ dashboardInfo.name }}</div>
-    <el-divider style="margin: 5px 10px 0 17px" direction="vertical" />
-    <span class="create-area" style="line-height: 22px"
-      >{{ t('dashboard.creator') }}: {{ dashboardInfo.createName }}</span
-    >
-    <div style="padding-top: 4px" class="create-area flex-align-center">
-      <el-popover show-arrow :offset="8" placement="bottom" width="400" trigger="hover">
-        <template #reference>
-          <el-icon class="info-tips">
-            <dashboardInfoSvg class="svg-icon" />
-          </el-icon>
-        </template>
-        <DashboardDetailInfo :dashboard-info="dashboardInfo"></DashboardDetailInfo>
-      </el-popover>
-    </div>
     <div class="canvas-opt-button">
       <el-button secondary @click="preview">
         <template #icon>

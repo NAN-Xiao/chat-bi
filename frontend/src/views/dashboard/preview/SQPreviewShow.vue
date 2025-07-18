@@ -42,10 +42,6 @@ const resourceTreeRef = ref()
 const hasTreeData = computed(() => {
   return resourceTreeRef.value?.hasData
 })
-
-const rootManage = computed(() => {
-  return resourceTreeRef.value?.rootManage
-})
 const mounted = computed(() => {
   return resourceTreeRef.value?.mounted
 })
@@ -126,17 +122,20 @@ defineExpose({
         </div>
       </template>
       <template v-else-if="hasTreeData && mounted">
-        <EmptyBackground :description="'Please Select Resource'" img-type="select" />
+        <EmptyBackground
+          :description="t('dashboard.select_dashboard_tips')"
+          img-type="selectDashboard"
+        />
       </template>
       <template v-else-if="mounted">
-        <EmptyBackground :description="t('dashboard.select_dashboard')" img-type="none">
-          <el-button v-if="rootManage" type="primary" @click="createNew">
+        <EmptyBackground :description="t('dashboard.no_dashboard_info')" img-type="none">
+          <el-button type="primary" @click="createNew">
             <template #icon>
               <Icon name="icon_add_outlined">
                 <icon_add_outlined class="svg-icon" />
               </Icon>
             </template>
-            Create Dashboard
+            {{ t('dashboard.new_dashboard') }}
           </el-button>
         </EmptyBackground>
       </template>

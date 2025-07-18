@@ -31,6 +31,16 @@
     "password_reset_successful": "Password reset successful"
   },
   "dashboard": {
+    "rename_dashboard": "Rename Dashboard",
+    "dashboard_name": "Dashboard Name",
+    "select_dashboard_tips": "Please select a dashboard on the left",
+    "no_dashboard": "No Dashboards",
+    "no_dashboard_info": "No content yet, click the button below to add",
+    "search": "Search",
+    "time_asc": "Sort by Time (Ascending)",
+    "time_desc": "Sort by Time (Descending)",
+    "name_asc": "Sort by Name (Ascending)",
+    "name_desc": "Sort by Name (Descending)",
     "select_dashboard": "Please Select Dashboard",
     "view": "View",
     "text": "Text",

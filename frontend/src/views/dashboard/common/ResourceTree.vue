@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { treeDraggableChart } from '@/views/dashboard/utils/treeDraggableChart'
-import newFolder from '@/assets/svg/new-folder.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_folder from '@/assets/svg/icon_folder.svg'
-import icon_fileAdd_outlined from '@/assets/svg/icon_file-add_outlined.svg'
+import ope_add from '@/assets/svg/operate/ope-add.svg'
 import icon_dashboard from '@/assets/svg/icon_dashboard.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
+import dv_sort_asc from '@/assets/svg/dv-sort-asc.svg'
+import dv_sort_desc from '@/assets/svg/dv-sort-desc.svg'
 import { onMounted, reactive, ref, watch, nextTick, computed } from 'vue'
 import { ElIcon, ElScrollbar } from 'element-plus-secondary'
 import { Icon } from '@/components/icon-custom'
@@ -21,6 +22,9 @@ import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import HandleMore from '@/views/dashboard/common/HandleMore.vue'
 import { useI18n } from 'vue-i18n'
+import treeSort from '@/views/dashboard/utils/treeSortUtils.ts'
+import { useCache } from '@/utils/useCache.ts'
+const { wsCache } = useCache()
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -58,7 +62,12 @@ const state = reactive({
   originResourceTree: [] as SQTreeNode[],
   sortType: [],
   templateCreatePid: 0,
-  folderMenuList: [
+  menuList: [
+    {
+      label: t('dashboard.edit'),
+      command: 'edit',
+      svgName: icon_edit_outlined,
+    },
     {
       label: t('dashboard.rename'),
       command: 'rename',
@@ -128,22 +137,8 @@ const getTree = async () => {
     afterTreeInit()
   })
 }
-// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-const flattedTree = computed<SQTreeNode[]>(() => {
-  return _.filter(flatTree(state.resourceTree), (node) => node.leaf)
-})
 
-const hasData = computed<boolean>(() => flattedTree.value.length > 0)
-
-function flatTree(tree: SQTreeNode[]) {
-  let result = _.cloneDeep(tree)
-  _.forEach(tree, (node) => {
-    if (node.children && node.children.length > 0) {
-      result = _.union(result, flatTree(node.children))
-    }
-  })
-  return result
-}
+const hasData = computed<boolean>(() => state.resourceTree.length > 0)
 
 const afterTreeInit = () => {
   mounted.value = true
@@ -165,7 +160,9 @@ const afterTreeInit = () => {
 const copyLoading = ref(false)
 const emit = defineEmits(['nodeClick'])
 
-function createNewObject() {}
+function createNewObject() {
+  addOperation({ opt: 'newLeaf' })
+}
 
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const resourceEdit = (resourceId) => {
@@ -240,12 +237,50 @@ const operation = (opt: string, data: SQTreeNode) => {
   } else if (opt === 'rename') {
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit({ opt: 'rename', id: data.id, name: data.name })
+  } else if (opt === 'edit') {
+    resourceEdit(data.id)
   }
 }
 
 const baseInfoChangeFinish = () => {
   getTree()
 }
+
+const handleSortTypeChange = (sortType: string) => {
+  state.resourceTree = treeSort(state.originResourceTree, sortType)
+  state.curSortType = sortType
+  wsCache.set('TreeSort-dashboard', state.curSortType)
+}
+
+// const sortTypeChange = (sortType: string) => {
+//   state.resourceTree = treeSort(state.originResourceTree, sortType)
+//   state.curSortType = sortType
+// }
+
+const sortList = [
+  {
+    name: t('dashboard.time_asc'),
+    value: 'time_asc',
+  },
+  {
+    name: t('dashboard.time_desc'),
+    value: 'time_desc',
+    divided: true,
+  },
+  {
+    name: t('dashboard.name_asc'),
+    value: 'name_asc',
+  },
+  {
+    name: t('dashboard.name_desc'),
+    value: 'name_desc',
+  },
+]
+
+const sortTypeTip = computed(() => {
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  return sortList.find((ele) => ele.value === state.curSortType).name
+})
 
 defineExpose({
   hasData,
@@ -260,17 +295,6 @@ defineExpose({
       <div class="icon-methods">
         <span class="title">{{ t('dashboard.dashboard') }} </span>
         <div class="flex-align-center">
-          <el-tooltip :content="t('dashboard.new_folder')" placement="top" effect="dark">
-            <el-icon
-              class="custom-icon btn"
-              style="margin-right: 10px"
-              @click="addOperation({ opt: 'newFolder', type: 'folder', pid: 'root' })"
-            >
-              <Icon name="dv-new-folder">
-                <newFolder class="svg-icon" />
-              </Icon>
-            </el-icon>
-          </el-tooltip>
           <el-tooltip :content="t('dashboard.new_dashboard')" placement="top" effect="dark">
             <el-icon
               class="custom-icon btn"
@@ -278,13 +302,18 @@ defineExpose({
               @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
             >
               <Icon name="dv-new-folder">
-                <icon_fileAdd_outlined class="svg-icon" />
+                <ope_add class="svg-icon" />
               </Icon>
             </el-icon>
           </el-tooltip>
         </div>
       </div>
-      <el-input v-model="filterText" :placeholder="t('common.search')" clearable class="search-bar">
+      <el-input
+        v-model="filterText"
+        :placeholder="t('dashboard.search')"
+        clearable
+        class="search-bar"
+      >
         <template #prefix>
           <el-icon>
             <Icon name="icon_search-outline_outlined">
@@ -293,11 +322,40 @@ defineExpose({
           </el-icon>
         </template>
       </el-input>
+      <el-dropdown trigger="click" @command="handleSortTypeChange">
+        <el-icon class="filter-icon-span">
+          <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
+            <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc" class="opt-icon"
+              ><dv_sort_asc class="svg-icon opt-icon"
+            /></Icon>
+          </el-tooltip>
+          <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
+            <Icon v-if="state.curSortType.includes('desc')" name="dv-sort-desc" class="opt-icon"
+              ><dv_sort_desc class="svg-icon opt-icon"
+            /></Icon>
+          </el-tooltip>
+        </el-icon>
+        <template #dropdown>
+          <el-dropdown-menu style="width: 246px">
+            <template v-for="ele in sortList" :key="ele.value">
+              <el-dropdown-item
+                class="ed-select-dropdown__item"
+                :class="ele.value === state.curSortType && 'selected'"
+                :command="ele.value"
+              >
+                {{ ele.name }}
+              </el-dropdown-item>
+              <li v-if="ele.divided" class="ed-dropdown-menu__item--divided"></li>
+            </template>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
     <el-scrollbar v-loading="copyLoading" class="custom-tree">
       <el-tree
         ref="resourceListTree"
         menu
+        :empty-text="t('dashboard.no_dashboard')"
         :default-expanded-keys="expandedArray"
         :data="state.resourceTree"
         :props="defaultProps"
@@ -332,16 +390,8 @@ defineExpose({
               >
                 <Icon><icon_add_outlined class="svg-icon" /></Icon>
               </el-icon>
-              <el-icon
-                v-if="data.node_type === 'leaf'"
-                class="hover-icon"
-                @click.stop
-                @click="resourceEdit(data.id)"
-              >
-                <Icon><icon_edit_outlined class="svg-icon" /></Icon>
-              </el-icon>
               <HandleMore
-                :menu-list="state.folderMenuList"
+                :menu-list="state.menuList"
                 :icon-name="icon_more_outlined"
                 placement="bottom-start"
                 @handle-command="(opt: string) => operation(opt, data)"
@@ -360,7 +410,7 @@ defineExpose({
   width: 32px;
   height: 32px;
   border-radius: 4px;
-  color: #1f2329;
+  color: var(--ed-color-primary);
   padding: 8px;
   margin-left: 8px;
   font-size: 16px;

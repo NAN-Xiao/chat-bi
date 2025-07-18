@@ -1,5 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-
+// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 import Layout from '@/components/layout/index.vue'
 import LayoutDsl from '@/components/layout/LayoutDsl.vue'
 import SinglePage from '@/components/layout/SinglePage.vue'
@@ -11,7 +11,6 @@ import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
 import assistant from '@/views/embedded/assistant.vue'
-// import User from "@/views/system/user/index.vue";
 import User from '@/views/system/user/User.vue'
 import Workspace from '@/views/system/workspace/index.vue'
 import { watchRouter } from './watch'
@@ -63,7 +62,7 @@ const router = createRouter({
     },
     {
       path: '/dashboard',
-      component: Layout,
+      component: LayoutDsl,
       redirect: '/dashboard/index',
       children: [
         {

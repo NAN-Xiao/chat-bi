@@ -33,6 +33,16 @@
     "password_reset_successful": "重置密码成功"
   },
   "dashboard": {
+    "rename_dashboard": "重命名仪表板",
+    "dashboard_name": "仪表板名称",
+    "select_dashboard_tips": "请在左侧选择仪表板",
+    "no_dashboard": "暂无仪表板",
+    "no_dashboard_info": "暂无内容，点击下列按钮进行添加",
+    "search": "搜索",
+    "time_asc": "按时间升序",
+    "time_desc": "按时间降序",
+    "name_asc": "按名称升序",
+    "name_desc": "按名称降序",
     "select_dashboard": "请选择仪表板",
     "name": "名称",
     "view": "图表",
