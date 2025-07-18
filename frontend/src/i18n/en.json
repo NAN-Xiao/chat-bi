@@ -75,20 +75,28 @@
   "qa": {
     "new_chat": "New Chat",
     "start_sqlbot": "Start SQLBot",
-    "title": "Smart Query",
-    "placeholder": "Enter your question",
+    "title": "Smart Data Query",
+    "placeholder": "Please enter your question",
     "ask": "Ask",
     "loading": "Loading...",
-    "no_data": "No Data",
+    "no_data": "No data available",
     "error": "An error occurred, please try again later",
-    "question_placeholder": "Press Enter to submit, or use Ctrl + Enter for new line",
-    "greeting": "Hi, I'm SQLBot, nice to serve you",
-    "hint_description": "I can help query data, generate charts, detect data anomalies, predict data, etc. Please select a data source to start smart querying~",
+    "question_placeholder": "Press Enter to submit, or use Ctrl + Enter for a new line",
+    "greeting": "Hello, I'm SQLBot. How can I assist you today?",
+    "hint_description": "I can query data, generate charts, detect anomalies, predict trends, and more. Please select a data source to begin!",
     "select_datasource": "Select Data Source",
     "view_more": "View More",
     "selected_datasource": "Selected Data Source",
-    "empty_datasource": "No data source available, please create one first!",
-    "datasource_not_exist": "Data source does not exist"
+    "empty_datasource": "No data sources available. Please create one before starting Smart Data Query!",
+    "datasource_not_exist": "Data source does not exist",
+    "guess_u_ask": "You might want to ask:",
+    "continue_to_ask": "Continue asking:",
+    "data_analysis": "Data Analysis",
+    "data_predict": "Data Prediction",
+    "chat_search": "Search",
+    "thinking": "Thinking",
+    "thinking_step": "Thought Process",
+    "ask_again": "Regenerate"
   },
   "ds": {
     "title": "Data Source",
@@ -353,19 +361,27 @@
     "no_fields_yet": "No fields yet"
   },
   "chat": {
+    "type": "Chart Type",
     "chart_type": {
-      "table": "Table",
-      "bar": "Bar",
-      "column": "Column",
-      "line": "Line",
-      "pie": "Pie"
+      "table": "Detail Table",
+      "bar": "Bar Chart",
+      "column": "Column Chart",
+      "line": "Line Chart",
+      "pie": "Pie Chart"
     },
-    "sql_generation": "SQL Generation",
-    "chart_generation": "Chart Generation",
-    "inference_process": "Inference process",
+    "show_sql": "View SQL",
+    "export_to": "Export As",
+    "excel": "Excel",
+    "picture": "Image",
+    "add_to_dashboard": "Add to Dashboard",
+    "full_screen": "Full Screen",
+    "exit_full_screen": "Exit Full Screen",
+    "sql_generation": "Generate SQL",
+    "chart_generation": "Generate Chart",
+    "inference_process": "Thought Process",
     "thinking": "Thinking",
     "data_analysis": "Data Analysis",
-    "data_predict": "Data Predict"
+    "data_predict": "Data Prediction"
   },
   "about": {
     "title": "About",

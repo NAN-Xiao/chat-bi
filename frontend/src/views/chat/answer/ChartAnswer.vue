@@ -223,7 +223,12 @@ defineExpose({ sendMessage, index: index.value })
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
     <slot></slot>
-    <slot name="footer"></slot>
+    <template #tool>
+      <slot name="tool"></slot>
+    </template>
+    <template #footer>
+      <slot name="footer"></slot>
+    </template>
   </BaseAnswer>
 </template>
 

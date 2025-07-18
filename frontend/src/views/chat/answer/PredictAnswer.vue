@@ -194,7 +194,12 @@ defineExpose({ sendMessage, index: index.value, chatList: _chatList })
   <BaseAnswer v-if="message" :message="message" :reasoning-name="['predict']" :loading="_loading">
     <MdComponent :message="message.record?.predict_content" style="margin-top: 12px" />
     <slot></slot>
-    <slot name="footer"></slot>
+    <template #tool>
+      <slot name="tool"></slot>
+    </template>
+    <template #footer>
+      <slot name="footer"></slot>
+    </template>
   </BaseAnswer>
 </template>
 

@@ -62,9 +62,9 @@ function clickShow() {
 }
 
 onMounted(() => {
-  if (props.loading) {
-    show.value = true
-  }
+  // if (props.loading) {
+  //   show.value = true
+  // }
 })
 </script>
 
@@ -91,6 +91,9 @@ onMounted(() => {
     </div>
     <div class="answer-container">
       <slot></slot>
+      <el-button v-if="message.isTyping" style="min-width: unset" type="primary" link loading />
+      <slot name="tool"></slot>
+      <slot name="footer"></slot>
     </div>
   </div>
 </template>
