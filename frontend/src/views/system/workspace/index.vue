@@ -529,6 +529,7 @@ const handleCurrentChange = (val: number) => {
       label-position="top"
       :rules="rules"
       class="form-content_error"
+      @submit.prevent
     >
       <el-form-item prop="name" :label="t('workspace.workspace_name')">
         <el-input

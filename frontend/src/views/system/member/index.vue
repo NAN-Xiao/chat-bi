@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import {
   uwsOption,
   workspaceUserList,
@@ -17,7 +17,6 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const multipleSelectionAll = ref<any[]>([])
-const keyword = ref('')
 const keywordsMember = ref('')
 const userStore = useUserStore()
 
@@ -26,12 +25,6 @@ const workspaceForm = reactive({
   id: '',
 })
 const selectable = (row: any) => ![userStore.getUid].includes(row.id)
-const fieldListWithSearch = computed(() => {
-  if (!keyword.value) return fieldList.value
-  return fieldList.value.filter((ele: any) =>
-    ele.name.toLowerCase().includes(keywordsMember.value.toLowerCase())
-  )
-})
 
 onMounted(() => {
   search()
@@ -77,6 +70,7 @@ const deleteBatchUser = () => {
   })
 }
 const deleteHandler = (row: any) => {
+  if (row.weight === 1) return
   ElMessageBox.confirm(t('workspace.member_feng_yibudao', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -89,7 +83,7 @@ const deleteHandler = (row: any) => {
     }).then(() => {
       ElMessage({
         type: 'success',
-        message: t('dashboard.delete_success'),
+        message: t('workspace.remove'),
       })
       search()
     })
@@ -197,9 +191,10 @@ const handleCurrentChange = (val: number) => {
       <span class="page-title">{{ $t('workspace.member_management') }}</span>
       <div class="search-bar">
         <el-input
-          v-model="keyword"
+          v-model="keywordsMember"
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('user.name_account_email')"
+          clearable
           @keyup.enter="search"
           @blur="search"
         >
@@ -222,7 +217,7 @@ const handleCurrentChange = (val: number) => {
       <div class="preview-or-schema">
         <el-table
           ref="multipleTableRef"
-          :data="fieldListWithSearch"
+          :data="fieldList"
           :selectable="selectable"
           style="width: 100%"
           @selection-change="handleSelectionChange"
@@ -263,7 +258,12 @@ const handleCurrentChange = (val: number) => {
                   :content="$t('workspace.remove')"
                   placement="top"
                 >
-                  <el-icon class="action-btn" size="16" @click="deleteHandler(scope.row)">
+                  <el-icon
+                    class="action-btn"
+                    :class="scope.row.weight === 1 && 'not-allow'"
+                    size="16"
+                    @click="deleteHandler(scope.row)"
+                  >
                     <assigned></assigned>
                   </el-icon>
                 </el-tooltip>
@@ -272,13 +272,13 @@ const handleCurrentChange = (val: number) => {
           </el-table-column>
           <template #empty>
             <EmptyBackground
-              v-if="!keywordsMember && !fieldListWithSearch.length"
+              v-if="!keywordsMember && !fieldList.length"
               :description="$t('workspace.no_user')"
               img-type="noneWhite"
             />
 
             <EmptyBackground
-              v-if="!!keywordsMember && !fieldListWithSearch.length"
+              v-if="!!keywordsMember && !fieldList.length"
               :description="$t('datasource.relevant_content_found')"
               img-type="tree"
             />
@@ -410,10 +410,14 @@ const handleCurrentChange = (val: number) => {
             display: none;
           }
 
-          &:hover {
+          &:not(.not-allow):hover {
             &::after {
               display: block;
             }
+          }
+
+          &.not-allow {
+            cursor: not-allowed;
           }
         }
       }

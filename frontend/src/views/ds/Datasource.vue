@@ -39,6 +39,7 @@ const activeStep = ref(0)
 const activeName = ref('')
 const activeType = ref('')
 const datasourceFormRef = ref()
+const searchLoading = ref(false)
 
 const datasourceList = shallowRef([] as Datasource[])
 const defaultDatasourceList = shallowRef(dsTypeWithImg as (Datasource & { img: string })[])
@@ -180,9 +181,15 @@ const clickDatasourceSide = (ele: any) => {
 }
 
 const search = () => {
-  datasourceApi.list().then((res: any) => {
-    datasourceList.value = res
-  })
+  searchLoading.value = true
+  datasourceApi
+    .list()
+    .then((res: any) => {
+      datasourceList.value = res
+    })
+    .finally(() => {
+      searchLoading.value = false
+    })
 }
 search()
 
@@ -287,6 +294,22 @@ const back = () => {
         @data-table-detail="dataTableDetail(ele)"
       ></Card>
     </div>
+    <template v-if="!keywords && !datasourceListWithSearch.length && !searchLoading">
+      <EmptyBackground
+        class="datasource-yet"
+        :description="$t('datasource.data_source_yet')"
+        img-type="noneWhite"
+      />
+
+      <div style="text-align: center; margin-top: -10px">
+        <el-button type="primary" @click="handleAddDatasource">
+          <template #icon>
+            <icon_add_outlined></icon_add_outlined>
+          </template>
+          {{ $t('datasource.new_data_source') }}
+        </el-button>
+      </div>
+    </template>
     <el-drawer
       v-model="datasourceConfigvVisible"
       :close-on-click-modal="false"
@@ -366,6 +389,12 @@ const back = () => {
     flex-wrap: wrap;
     max-height: calc(100% - 40px);
     overflow-y: auto;
+  }
+
+  .datasource-yet {
+    padding-bottom: 0;
+    height: auto;
+    padding-top: 200px;
   }
 }
 </style>

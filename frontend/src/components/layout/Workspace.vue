@@ -66,7 +66,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <el-popover popper-class="system-workspace" :placement="collapse ? 'right' : 'bottom'">
+  <el-popover
+    trigger="click"
+    popper-class="system-workspace"
+    :placement="collapse ? 'right' : 'bottom'"
+  >
     <template #reference>
       <button class="workspace" :class="collapse && 'collapse'">
         <el-icon size="16">

@@ -283,6 +283,7 @@ defineExpose({
       class="form-content_error import-form"
       :model="form"
       label-width="0px"
+      @submit.prevent
     >
       <el-form-item prop="file" :label="t('user.file')" style="margin-bottom: 0px">
         <div v-if="fileName" class="pdf-card">

@@ -177,6 +177,7 @@ defineExpose({
         label-position="top"
         :model="modelForm"
         style="width: 100%"
+        @submit.prevent
       >
         <el-form-item class="custom-require flex-inline" prop="name">
           <template #label

@@ -94,6 +94,7 @@
       label-position="top"
       class="sqlbot-form"
       size="large"
+      @submit.prevent
     >
       <el-form-item label="Account">
         <el-input v-model="state.form.term" autocomplete="off" />
@@ -123,6 +124,7 @@ import { ref, reactive, onMounted } from 'vue'
 /* import IconOpeUpload from '@/assets/svg/operate/ope-upload.svg';
 import IconOpeDownload from '@/assets/svg/operate/ope-download.svg';
 import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'; */
+import { useI18n } from 'vue-i18n'
 
 import { SuccessFilled, CircleCloseFilled } from '@element-plus/icons-vue'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
@@ -130,6 +132,7 @@ import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { userApi } from '@/api/auth'
 import { formatTimestamp } from '@/utils/date'
 
+const { t } = useI18n()
 const keyword = ref('')
 const dialogFormVisible = ref(false)
 const termFormRef = ref()
@@ -223,7 +226,7 @@ const editTerm = () => {
     search()
     ElMessage({
       type: 'success',
-      message: 'Edit completed',
+      message: t('common.save_success'),
     })
   })
 }

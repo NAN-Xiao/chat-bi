@@ -71,7 +71,7 @@ const logout = () => {
 </script>
 
 <template>
-  <el-popover popper-class="system-person" :placement="collapse ? 'right' : 'top'">
+  <el-popover trigger="click" popper-class="system-person" :placement="collapse ? 'right' : 'top'">
     <template #reference>
       <button class="person" :class="collapse && 'collapse'">
         <img class="default-avatar" :src="Default_avatar" width="32px" height="32px" />
@@ -82,8 +82,8 @@ const logout = () => {
       <div class="popover-content">
         <div class="info">
           <img :src="Default_avatar" width="40px" height="40px" />
-          <div class="top">{{ name }}</div>
-          <div class="bottom">{{ account }}</div>
+          <div :title="name" class="top ellipsis">{{ name }}</div>
+          <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
         <div v-if="isAdmin && !inSysmenu" class="popover-item" @click="toSystem">
           <el-icon size="16">

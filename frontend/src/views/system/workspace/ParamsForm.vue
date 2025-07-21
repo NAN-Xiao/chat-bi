@@ -64,6 +64,7 @@ defineExpose({
       label-position="top"
       :model="paramsForm"
       style="width: 100%"
+      @submit.prevent
     >
       <el-form-item prop="key" :label="$t('model.parameters')">
         <el-input

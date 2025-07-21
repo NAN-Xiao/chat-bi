@@ -418,22 +418,33 @@ const next = () => {
   })
 }
 const savePermission = () => {
-  const { id, name, permissions } = currentPermission
+  const { id, name, permissions, users } = cloneDeep(currentPermission)
 
   const permissionsObj = permissions.map((ele: any) => {
     return {
       ...cloneDeep(ele),
-      permissions: ele.type !== 'row' ? JSON.stringify(ele.permissions || []) : JSON.stringify([]),
+      permissions:
+        ele.type !== 'row'
+          ? typeof ele.permissions === 'object'
+            ? JSON.stringify(ele.permissions || [])
+            : ele.permissions
+          : JSON.stringify([]),
       permission_list: [],
       expression_tree:
-        ele.type === 'row' ? JSON.stringify(ele.expression_tree || {}) : JSON.stringify({}),
+        ele.type === 'row'
+          ? typeof ele.expression_tree === 'object'
+            ? JSON.stringify(ele.expression_tree || {})
+            : ele.expression_tree
+          : JSON.stringify({}),
     }
   })
   const obj = {
     id,
     name,
     permissions: permissionsObj,
-    users: selectPermissionRef.value.checkedWorkspace.map((ele: any) => ele.id),
+    users: isCreate.value
+      ? selectPermissionRef.value.checkedWorkspace.map((ele: any) => ele.id)
+      : users,
   }
   if (!id) {
     delete obj.id
@@ -536,7 +547,7 @@ const columnRules = {
     >
       <template #header="{ close }">
         <span style="white-space: nowrap">{{ drawerTitle }}</span>
-        <div v-if="editRule !== 2" class="flex-center" style="width: 100%">
+        <div v-if="isCreate" class="flex-center" style="width: 100%">
           <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
             <el-step>
               <template #title> {{ $t('permission.set_permission_rule') }} </template>
@@ -563,6 +574,7 @@ const columnRules = {
           label-position="top"
           :rules="rules"
           class="form-content_error"
+          @submit.prevent
         >
           <el-form-item prop="name" :label="t('permission.rule_group_name')">
             <el-input
@@ -612,7 +624,10 @@ const columnRules = {
                 </el-popover>
               </div>
             </template>
-            <div class="table-content">
+            <div
+              class="table-content"
+              :class="!currentPermission.permissions.length && 'border-bottom'"
+            >
               <el-table
                 :empty-text="$t('permission.no_rule')"
                 :data="currentPermission.permissions"
@@ -670,13 +685,17 @@ const columnRules = {
       </div>
       <template #footer>
         <el-button secondary @click="beforeClose"> {{ $t('common.cancel') }} </el-button>
-        <el-button v-if="activeStep === 1 && editRule !== 2" secondary @click="preview">
+        <el-button v-if="activeStep === 1 && isCreate" secondary @click="preview">
           {{ t('ds.previous') }}
         </el-button>
-        <el-button v-if="activeStep === 0 && editRule !== 2" type="primary" @click="next">
+        <el-button v-if="activeStep === 0 && isCreate" type="primary" @click="next">
           {{ t('common.next') }}
         </el-button>
-        <el-button v-if="activeStep === 1" type="primary" @click="savePermission">
+        <el-button
+          v-if="(isCreate && activeStep === 1) || !isCreate"
+          type="primary"
+          @click="savePermission"
+        >
           {{ $t('common.save') }}
         </el-button>
       </template>
@@ -697,6 +716,7 @@ const columnRules = {
         label-position="top"
         :rules="columnRules"
         class="form-content_error"
+        @submit.prevent
       >
         <el-form-item prop="name" :label="t('permission.rule_name')">
           <el-input
@@ -849,6 +869,10 @@ const columnRules = {
         border-radius: 6px;
         overflow: hidden;
         max-height: calc(100vh - 400px);
+
+        &.border-bottom {
+          border-bottom: 1px solid #1f232926;
+        }
         .ed-table__empty-text {
           padding-top: 0;
         }

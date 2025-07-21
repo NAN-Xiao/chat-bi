@@ -10,6 +10,7 @@ import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
+import Embedded from '@/views/system/embedded/index.vue'
 import assistant from '@/views/embedded/assistant.vue'
 import Member from '@/views/system/member/index.vue'
 import Permission from '@/views/system/permission/index.vue'
@@ -167,6 +168,12 @@ const router = createRouter({
           name: 'model',
           component: Model,
           meta: { title: 'AI Model Configuration', icon: 'icon_ai' },
+        },
+        {
+          path: 'embedded',
+          name: 'embedded',
+          component: Embedded,
+          meta: { title: t('embedded.embedded_management'), icon: 'icon_ai' },
         },
       ],
     },

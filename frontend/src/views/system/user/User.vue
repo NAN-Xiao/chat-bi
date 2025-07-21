@@ -123,6 +123,13 @@
             </div>
           </template>
         </el-table-column>
+        <template #empty>
+          <EmptyBackground
+            v-if="!!keyword && !state.tableData.length"
+            :description="$t('datasource.relevant_content_found')"
+            img-type="tree"
+          />
+        </template>
       </el-table>
 
       <div class="pagination-container">
@@ -174,6 +181,7 @@
       label-position="top"
       :rules="rules"
       class="form-content_error"
+      @submit.prevent
     >
       <el-form-item prop="name" :label="t('user.name')">
         <el-input
@@ -241,6 +249,7 @@
       label-position="top"
       :rules="passwordRules"
       class="form-content_error"
+      @submit.prevent
     >
       <el-form-item prop="new" :label="t('user.new_password')">
         <el-input
@@ -285,6 +294,7 @@ import SuccessFilled from '@/assets/svg/gou_icon.svg'
 import CircleCloseFilled from '@/assets/svg/icon_ban_filled.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import { useI18n } from 'vue-i18n'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { convertFilterText, FilterText } from '@/components/filter-text'
 
 import IconLock from '@/assets/svg/icon-key_outlined.svg'
@@ -635,11 +645,15 @@ const editTerm = () => {
   })
 }
 const saveHandler = () => {
-  if (state.form.id) {
-    editTerm()
-  } else {
-    addTerm()
-  }
+  termFormRef.value.validate((res: any) => {
+    if (res) {
+      if (state.form.id) {
+        editTerm()
+      } else {
+        addTerm()
+      }
+    }
+  })
 }
 const handleSizeChange = (val: number) => {
   state.pageInfo.pageSize = val

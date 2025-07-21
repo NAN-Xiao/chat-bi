@@ -182,7 +182,7 @@ const editTerm = () => {
     search()
     ElMessage({
       type: 'success',
-      message: 'Edit completed',
+      message: t('common.save_success'),
     })
   })
 }
