@@ -3,6 +3,10 @@ import { toRefs } from 'vue'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import { Icon } from '@/components/icon-custom'
 import { useEmitt } from '@/utils/useEmitt.ts'
+import { useI18n } from 'vue-i18n'
+import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
+import icon_chart_preview from '@/assets/svg/icon_chart_preview.svg'
+const { t } = useI18n()
 
 const props = defineProps({
   active: {
@@ -26,6 +30,10 @@ const props = defineProps({
 
 const { configItem } = toRefs(props)
 
+const doPreview = () => {
+  // do preview
+}
+
 const doDeleteComponent = (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
@@ -36,11 +44,23 @@ const doDeleteComponent = (e: MouseEvent) => {
 <template>
   <div class="component-bar-main" :class="{ 'bar-hidden': !active }">
     <div>
-      <el-icon class="handle-icon" @click="doDeleteComponent">
-        <Icon>
-          <icon_delete class="svg-icon"></icon_delete>
-        </Icon>
-      </el-icon>
+      <el-dropdown ref="curDropdown" trigger="click" placement="bottom-end">
+        <el-icon class="bar-more">
+          <el-tooltip :content="t('dashboard.more')" placement="bottom">
+            <icon name="icon_more_outlined"><icon_more_outlined class="svg-icon" /></icon>
+          </el-tooltip>
+        </el-icon>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item :icon="icon_chart_preview" @click="doPreview">{{
+              t('dashboard.preview')
+            }}</el-dropdown-item>
+            <el-dropdown-item divided :icon="icon_delete" @click="doDeleteComponent">{{
+              t('dashboard.delete')
+            }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
   </div>
 </template>
@@ -54,16 +74,27 @@ const doDeleteComponent = (e: MouseEvent) => {
   display: flex;
   z-index: 5;
   cursor: pointer !important;
-  .handle-icon {
-    color: #646a73;
-  }
-  &:hover {
-    background-color: #e8f0fe;
-    color: var(--el-color-primary);
-  }
 }
 
 .bar-hidden {
   display: none;
+}
+
+.bar-more {
+  width: 24px;
+  height: 24px;
+  color: rgba(31, 35, 41, 1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 1);
+  border: 1px solid rgba(217, 220, 223, 1);
+  padding: 8px;
+
+  &:hover {
+    background-color: rgba(245, 246, 247, 1);
+  }
+
+  &:active {
+    background-color: rgba(245, 246, 247, 0.5);
+  }
 }
 </style>
