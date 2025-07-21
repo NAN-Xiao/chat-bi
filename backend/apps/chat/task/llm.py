@@ -1,4 +1,5 @@
 import json
+import sqlparse
 import logging
 import traceback
 import warnings
@@ -775,10 +776,11 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
         # sql = llm_service.check_save_sql(res=full_sql_text)
 
         print(sql)
+        format_sql = sqlparse.format(sql, reindent=True)
         if in_chat:
-            yield orjson.dumps({'content': sql, 'type': 'sql'}).decode() + '\n\n'
+            yield orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
         else:
-            yield f'```sql\n{sql}\n```\n\n'
+            yield f'```sql\n{format_sql}\n```\n\n'
 
         # execute sql
         result = llm_service.execute_sql(sql=sql)
