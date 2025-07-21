@@ -26,11 +26,8 @@ defineExpose({
       <div class="title">
         {{ viewInfo.chart.title }}
       </div>
-      <div class="buttons-bar">
-        <div class="chart-select-container"></div>
-      </div>
     </div>
-    <div style="height: 100%; width: 100%">
+    <div class="chart-show-area">
       <ChartComponent
         v-if="viewInfo.id"
         :id="viewInfo.id"
@@ -51,6 +48,7 @@ defineExpose({
   width: 100%;
   height: 100%;
   background: #fff;
+  padding: 12px !important;
   .header-bar {
     height: 32px;
     display: flex;

@@ -22,7 +22,7 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
 
     if filters:
         sql += " WHERE " + " AND ".join(filters)
-
+    sql += " ORDER BY create_time DESC"
     result = session.execute(text(sql), params)
     nodes = [DashboardBaseResponse(**row) for row in result.mappings()]
     tree = build_tree_generic(nodes, root_pid="root")
