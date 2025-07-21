@@ -1093,7 +1093,7 @@ function tabMoveOutCheckSQ() {
 
 function tabMoveInCheckSQ() {
   const { cloneItem, moveItem } = infoBox.value
-  if (cloneItem && moveItem && moveItem !== 'SQTab') {
+  if (cloneItem && moveItem && moveItem.component !== 'SQTab') {
     const width = cloneItem.offsetWidth
     const height = cloneItem.offsetHeight
     const left = cloneItem.offsetLeft

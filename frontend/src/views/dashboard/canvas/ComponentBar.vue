@@ -60,9 +60,12 @@ const doDeleteComponent = (e: MouseEvent) => {
               @click="doPreview"
               >{{ t('dashboard.preview') }}</el-dropdown-item
             >
-            <el-dropdown-item divided :icon="icon_delete" @click="doDeleteComponent">{{
-              t('dashboard.delete')
-            }}</el-dropdown-item>
+            <el-dropdown-item
+              :divided="configItem.component === 'SQView'"
+              :icon="icon_delete"
+              @click="doDeleteComponent"
+              >{{ t('dashboard.delete') }}</el-dropdown-item
+            >
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -74,10 +77,10 @@ const doDeleteComponent = (e: MouseEvent) => {
 .component-bar-main {
   height: 20px;
   position: absolute;
-  right: 5px;
-  top: 5px;
+  right: 12px;
+  top: 12px;
   display: flex;
-  z-index: 5;
+  z-index: 1;
   cursor: pointer !important;
 }
 
@@ -93,7 +96,6 @@ const doDeleteComponent = (e: MouseEvent) => {
   background: rgba(255, 255, 255, 1);
   border: 1px solid rgba(217, 220, 223, 1);
   padding: 8px;
-
   &:hover {
     background-color: rgba(245, 246, 247, 1);
   }

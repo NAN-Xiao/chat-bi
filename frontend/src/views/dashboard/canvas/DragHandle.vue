@@ -54,7 +54,7 @@ const shadowStyle = (size: number, index: number) => {
 
 <style scoped lang="less">
 .dragArea {
-  opacity: 0.05;
+  opacity: 0;
 }
 
 .dragHandle {

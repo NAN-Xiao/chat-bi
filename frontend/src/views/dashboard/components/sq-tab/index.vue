@@ -279,7 +279,7 @@ defineExpose({
 
 <style scoped lang="less">
 ::v-deep(.ed-tabs__header) {
-  margin: 0 24px 0 12px !important;
+  margin: 0 40px 0 12px !important;
 }
 ::v-deep(.ed-tabs__nav-scroll) {
   margin: 0 12px !important;
