@@ -194,6 +194,7 @@ function onChatRenamed(chat: Chat) {
         name="quick-search"
         autocomplete="off"
         :placeholder="t('qa.chat_search')"
+        clearable
       />
     </el-header>
     <el-main class="chat-list">

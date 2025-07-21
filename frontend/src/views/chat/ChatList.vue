@@ -2,6 +2,10 @@
 import { Delete, EditPen, MoreFilled } from '@element-plus/icons-vue'
 import { type Chat, chatApi } from '@/api/chat.ts'
 import { computed } from 'vue'
+import dayjs from 'dayjs'
+import { getDate } from '@/utils/utils.ts'
+import { groupBy } from 'lodash-es'
+import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -15,6 +19,64 @@ const props = withDefaults(
     loading: false,
   }
 )
+
+const { t } = useI18n()
+
+function groupByDate(chat: Chat) {
+  const todayStart = dayjs(dayjs().format('YYYY-MM-DD') + ' 00:00:00').toDate()
+  const todayEnd = dayjs(dayjs().format('YYYY-MM-DD') + ' 23:59:59').toDate()
+  const weekStart = dayjs(dayjs().subtract(7, 'day').format('YYYY-MM-DD') + ' 00:00:00').toDate()
+
+  const time = getDate(chat.create_time)
+
+  if (time) {
+    if (time >= todayStart && time <= todayEnd) {
+      return t('qa.today')
+    }
+    if (time < todayStart && time >= weekStart) {
+      return t('qa.week')
+    }
+    if (time < weekStart) {
+      return t('qa.earlier')
+    }
+  }
+
+  return t('qa.no_time')
+}
+
+const computedChatGroup = computed(() => {
+  return groupBy(props.chatList, groupByDate)
+})
+
+const computedChatList = computed(() => {
+  const _list = []
+  if (computedChatGroup.value[t('qa.today')]) {
+    _list.push({
+      key: t('qa.today'),
+      list: computedChatGroup.value[t('qa.today')],
+    })
+  }
+  if (computedChatGroup.value[t('qa.week')]) {
+    _list.push({
+      key: t('qa.week'),
+      list: computedChatGroup.value[t('qa.week')],
+    })
+  }
+  if (computedChatGroup.value[t('qa.earlier')]) {
+    _list.push({
+      key: t('qa.earlier'),
+      list: computedChatGroup.value[t('qa.earlier')],
+    })
+  }
+  if (computedChatGroup.value[t('qa.no_time')]) {
+    _list.push({
+      key: t('qa.no_time'),
+      list: computedChatGroup.value[t('qa.no_time')],
+    })
+  }
+
+  return _list
+})
 
 const emits = defineEmits(['chatSelected', 'chatRenamed', 'chatDeleted', 'update:loading'])
 
@@ -106,28 +168,31 @@ function handleCommand(command: string | number | object, chat: Chat) {
 <template>
   <el-scrollbar ref="chatListRef">
     <div class="chat-list-inner">
-      <template v-for="chat in chatList" :key="chat.id">
-        <div
-          class="chat-list-item"
-          :class="{ active: currentChatId === chat.id }"
-          @click="onClickHistory(chat)"
-        >
-          <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
-          <el-button class="icon-more" link type="primary" @click.stop>
-            <el-dropdown trigger="click" @command="(cmd: any) => handleCommand(cmd, chat)">
-              <el-icon>
-                <MoreFilled />
-              </el-icon>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item :icon="EditPen" command="rename">Rename</el-dropdown-item>
-                  <el-dropdown-item :icon="Delete" command="delete">Delete</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </el-button>
-        </div>
-      </template>
+      <div v-for="group in computedChatList" :key="group.key" class="group">
+        <div class="group-title">{{ group.key }}</div>
+        <template v-for="chat in group.list" :key="chat.id">
+          <div
+            class="chat-list-item"
+            :class="{ active: currentChatId === chat.id }"
+            @click="onClickHistory(chat)"
+          >
+            <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
+            <el-button class="icon-more" link type="primary" @click.stop>
+              <el-dropdown trigger="click" @command="(cmd: any) => handleCommand(cmd, chat)">
+                <el-icon>
+                  <MoreFilled />
+                </el-icon>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item :icon="EditPen" command="rename">Rename</el-dropdown-item>
+                    <el-dropdown-item :icon="Delete" command="delete">Delete</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </el-button>
+          </div>
+        </template>
+      </div>
     </div>
   </el-scrollbar>
 </template>
@@ -144,15 +209,31 @@ function handleCommand(command: string | number | object, chat: Chat) {
   display: flex;
   flex-direction: column;
 
-  gap: 8px;
+  gap: 16px;
+
+  .group {
+    display: flex;
+    flex-direction: column;
+
+    .group-title {
+      padding: 0 8px;
+      color: rgba(100, 106, 115, 1);
+      line-height: 20px;
+      font-weight: 500;
+      font-size: 12px;
+
+      margin-bottom: 4px;
+    }
+  }
 
   .chat-list-item {
     width: 100%;
-    height: 42px;
+    height: 40px;
     cursor: pointer;
     border-radius: 6px;
-    line-height: 1em;
+    line-height: 22px;
     font-size: 14px;
+    font-weight: 400;
 
     display: flex;
     align-items: center;

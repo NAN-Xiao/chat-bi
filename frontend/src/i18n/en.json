@@ -96,7 +96,11 @@
     "chat_search": "Search",
     "thinking": "Thinking",
     "thinking_step": "Thought Process",
-    "ask_again": "Regenerate"
+    "ask_again": "Regenerate",
+    "today": "Today",
+    "week": "This Week",
+    "earlier": "Earlier",
+    "no_time": "No Time"
   },
   "ds": {
     "title": "Data Source",
