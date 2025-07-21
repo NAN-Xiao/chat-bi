@@ -16,7 +16,7 @@ const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
 const emits = defineEmits(['parentAddItemBox'])
-const { curComponentId, curComponent, fullscreenFlag } = storeToRefs(dashboardStore)
+const { curComponentId, fullscreenFlag } = storeToRefs(dashboardStore)
 let currentInstance: any
 const props = defineProps({
   canvasId: {
@@ -734,12 +734,6 @@ function containerMouseDown(e: MouseEvent) {
   }
   infoBox.value.startX = e.pageX
   infoBox.value.startY = e.pageY
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // if (curComponent.value?.component !== 'SQText') {
-  //   e.preventDefault()
-  //   e.stopPropagation()
-  // }
-
   e.preventDefault()
   e.stopPropagation()
 }
