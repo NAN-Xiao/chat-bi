@@ -353,11 +353,21 @@ class LLMService:
         if self.current_assistant:
             _ds_list = get_assistant_ds(llm_service=self)
         else:
-            _ds_list = self.session.exec(select(CoreDatasource).options(
-                load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all()
+            oid: str = self.current_user.oid
+            stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(CoreDatasource.oid == oid)
+            _ds_list = [
+                {
+                    "id": ds.id,
+                    "name": ds.name,
+                    "description": ds.description
+                }
+                for ds in self.session.exec(stmt)
+            ]
+            """ _ds_list = self.session.exec(select(CoreDatasource).options(
+                load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all() """
         _ds_list_dict = []
         for _ds in _ds_list:
-            _ds_list_dict.append({'id': _ds[0].id, 'name': _ds[0].name, 'description': _ds[0].description})
+            _ds_list_dict.append(_ds)
         datasource_msg.append(
             HumanMessage(self.chat_question.datasource_user_question(orjson.dumps(_ds_list_dict).decode())))
 

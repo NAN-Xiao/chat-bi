@@ -822,7 +822,9 @@ onMounted(() => {
   }
 
   .chat-footer {
-    --ed-footer-height: calc(142px + 16px);
+    min-height: calc(120px + 16px);
+    max-height: calc(300px + 16px);
+    height: fit-content;
 
     padding-bottom: 16px;
 
