@@ -1,5 +1,5 @@
 from sqlalchemy import select, and_, text
-from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard, QueryDashboard,DashboardBaseResponse
+from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard, QueryDashboard, DashboardBaseResponse
 from common.core.deps import SessionDep, CurrentUser
 import uuid
 import time
@@ -7,10 +7,15 @@ import time
 from common.utils.tree_utils import build_tree_generic
 
 
-def list_resource(session: SessionDep, dashboard: QueryDashboard):
+def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
     sql = "SELECT id, name, type, node_type, pid, create_time FROM core_dashboard"
     filters = []
     params = {}
+    oid = str(current_user.oid if current_user.oid is not None else 1)
+    filters.append("workspace_id = :workspace_id")
+    filters.append("create_by = :create_by")
+    params["workspace_id"] = oid
+    params["create_by"] = str(current_user.id)
     if dashboard.node_type is not None and dashboard.node_type != "":
         filters.append("node_type = :node_type")
         params["node_type"] = dashboard.node_type
@@ -42,6 +47,7 @@ def load_resource(session: SessionDep, dashboard: QueryDashboard):
 def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
     new_id = uuid.uuid4().hex
     record = CoreDashboard(**dashboard.model_dump())
+    record.workspace_id = user.oid
     record.id = new_id
     record.create_by = user.id
     record.create_time = int(time.time())
@@ -65,6 +71,7 @@ def update_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDash
     session.add(record)
     session.commit()
     return record
+
 
 def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
     record = get_create_base_info(user, dashboard)
