@@ -57,6 +57,7 @@ const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.val
 .wrapper-outer {
   position: absolute;
   overflow: hidden;
+  border-radius: 12px;
   .wrapper-inner {
     width: 100%;
     height: 100%;

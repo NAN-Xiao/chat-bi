@@ -32,6 +32,11 @@
     "password_reset_successful": "Password reset successful"
   },
   "dashboard": {
+    "exit_preview": "Exit preview",
+    "no_chat": "No conversations",
+    "today": "Today",
+    "this_week": "This week",
+    "earlier": "Earlier",
     "add_component_tips": "Select components from the top toolbar and add them here to create a dashboard",
     "add_view": "Add Chart",
     "delete_dashboard_warn": "Delete This Dashboard: {0}",

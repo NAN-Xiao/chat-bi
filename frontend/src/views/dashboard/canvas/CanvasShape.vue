@@ -4,7 +4,7 @@ import { ref, toRefs, type PropType } from 'vue'
 import ResizeHandle from '@/views/dashboard/canvas/ResizeHandle.vue'
 import DragHandle from '@/views/dashboard/canvas/DragHandle.vue'
 import ComponentBar from '@/views/dashboard/canvas/ComponentBar.vue'
-
+const emits = defineEmits(['enlargeView'])
 const shapeRef = ref(null)
 // Props
 const props = defineProps({
@@ -76,6 +76,7 @@ const shapeClick = (e: MouseEvent) => {
       :active="active && canEdit"
       :show-position="'canvas'"
       :canvas-id="canvasId"
+      @enlarge-view="() => emits('enlargeView')"
     ></component-bar>
     <template v-if="canEdit">
       <drag-handle></drag-handle>

@@ -81,6 +81,7 @@ defineExpose({
 .chart-base-container {
   height: 100%;
   width: 100%;
+  border-radius: 12px;
   background: rgba(224, 224, 226, 0.29);
 }
 </style>

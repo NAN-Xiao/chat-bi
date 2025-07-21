@@ -34,6 +34,7 @@
     "password_reset_successful": "重置密码成功"
   },
   "dashboard": {
+    "exit_preview": "退出预览",
     "no_chat": "暂无对话",
     "today": "今日",
     "this_week": "本周",

@@ -1,22 +1,36 @@
 <script setup lang="ts">
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
+import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
+import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
 defineProps({
   viewInfo: {
     type: Object,
     required: true,
   },
+  outerId: {
+    type: String,
+    required: false,
+    default: null,
+  },
 })
 
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 const chartRef = ref(null)
 const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   chartRef.value?.renderChart
 }
+const enlargeDialogVisible = ref(false)
 
+const enlargeView = () => {
+  enlargeDialogVisible.value = true
+}
 defineExpose({
   renderChart,
+  enlargeView,
 })
 </script>
 
@@ -30,7 +44,7 @@ defineExpose({
     <div class="chart-show-area">
       <ChartComponent
         v-if="viewInfo.id"
-        :id="viewInfo.id"
+        :id="outerId || viewInfo.id"
         ref="chartRef"
         :type="viewInfo.chart.type"
         :columns="viewInfo.chart.columns"
@@ -40,8 +54,46 @@ defineExpose({
         :data="viewInfo.data?.data"
       />
     </div>
+    <el-dialog
+      v-if="enlargeDialogVisible"
+      v-model="enlargeDialogVisible"
+      fullscreen
+      :show-close="false"
+      class="chart-fullscreen-dialog-view"
+      header-class="chart-fullscreen-dialog-header-view"
+      body-class="chart-fullscreen-dialog-body-view"
+    >
+      <div style="position: absolute; right: 15px; top: 15px; cursor: pointer">
+        <el-tooltip effect="dark" :content="t('dashboard.exit_preview')" placement="top">
+          <el-button
+            class="tool-btn"
+            style="width: 26px"
+            text
+            @click="() => (enlargeDialogVisible = false)"
+          >
+            <el-icon size="16">
+              <icon_window_mini_outlined />
+            </el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
+      <SqViewDisplay :view-info="viewInfo" :outer-id="'enlarge-' + viewInfo.id" />
+    </el-dialog>
   </div>
 </template>
+
+<style lang="less">
+.chart-fullscreen-dialog-view {
+  padding: 0;
+}
+.chart-fullscreen-dialog-header-view {
+  display: none;
+}
+.chart-fullscreen-dialog-body-view {
+  padding: 0;
+  height: 100%;
+}
+</style>
 
 <style scoped lang="less">
 .chart-base-container {
@@ -49,6 +101,7 @@ defineExpose({
   height: 100%;
   background: #fff;
   padding: 12px !important;
+  border-radius: 12px;
   .header-bar {
     height: 32px;
     display: flex;

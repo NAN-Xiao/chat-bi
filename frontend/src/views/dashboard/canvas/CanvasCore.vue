@@ -1149,6 +1149,11 @@ onMounted(() => {
   currentInstance = getCurrentInstance()
 })
 
+const enlargeView = (itemId: string) => {
+  const refTabInstance = currentInstance.refs['shape_component_' + itemId][0]
+  refTabInstance.enlargeView()
+}
+
 defineExpose({
   getRenderState,
   init,
@@ -1194,6 +1199,7 @@ defineExpose({
         :start-resize="startResize"
         :canvas-id="canvasId"
         :style="nowItemStyle(item)"
+        @enlarge-view="() => enlargeView(item.id)"
       >
         <component
           :is="findComponent(item.component)"

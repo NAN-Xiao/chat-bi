@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_chart_preview from '@/assets/svg/icon_chart_preview.svg'
 const { t } = useI18n()
+const emits = defineEmits(['enlargeView'])
 
 const props = defineProps({
   active: {
@@ -32,6 +33,7 @@ const { configItem } = toRefs(props)
 
 const doPreview = () => {
   // do preview
+  emits('enlargeView')
 }
 
 const doDeleteComponent = (e: MouseEvent) => {
@@ -52,9 +54,12 @@ const doDeleteComponent = (e: MouseEvent) => {
         </el-icon>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item :icon="icon_chart_preview" @click="doPreview">{{
-              t('dashboard.preview')
-            }}</el-dropdown-item>
+            <el-dropdown-item
+              v-if="configItem.component === 'SQView'"
+              :icon="icon_chart_preview"
+              @click="doPreview"
+              >{{ t('dashboard.preview') }}</el-dropdown-item
+            >
             <el-dropdown-item divided :icon="icon_delete" @click="doDeleteComponent">{{
               t('dashboard.delete')
             }}</el-dropdown-item>
