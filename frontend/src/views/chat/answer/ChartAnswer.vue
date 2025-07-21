@@ -4,9 +4,9 @@ import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } fr
 import { computed, nextTick } from 'vue'
 const props = withDefaults(
   defineProps<{
-    chatList: Array<ChatInfo>
+    chatList?: Array<ChatInfo>
     currentChatId?: number
-    currentChat: ChatInfo
+    currentChat?: ChatInfo
     message?: ChatMessage
     loading?: boolean
     reasoningName: 'sql_answer' | 'chart_answer' | Array<'sql_answer' | 'chart_answer'>

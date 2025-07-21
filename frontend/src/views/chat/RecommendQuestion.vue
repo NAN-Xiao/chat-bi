@@ -1,18 +1,37 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { endsWith, startsWith } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
+import { chatApi, ChatInfo } from '@/api/chat.ts'
 
 const props = withDefaults(
   defineProps<{
+    recordId?: number
+    currentChat?: ChatInfo
     questions?: string
     firstChat?: boolean
   }>(),
   {
+    recordId: undefined,
+    currentChat: () => new ChatInfo(),
     questions: '[]',
     firstChat: false,
   }
 )
+
+const emits = defineEmits(['clickQuestion', 'update:currentChat'])
+
+const loading = ref(false)
+
+const _currentChat = computed({
+  get() {
+    return props.currentChat
+  },
+  set(v) {
+    emits('update:currentChat', v)
+  },
+})
+
 const computedQuestions = computed<string>(() => {
   if (
     props.questions &&
@@ -25,20 +44,98 @@ const computedQuestions = computed<string>(() => {
   return []
 })
 
-const emits = defineEmits(['clickQuestion'])
-
 const { t } = useI18n()
 
 function clickQuestion(question: string): void {
   emits('clickQuestion', question)
 }
+
+async function getRecommendQuestions() {
+  loading.value = true
+  try {
+    const response = await chatApi.recommendQuestions(props.recordId)
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+
+      const chunk = decoder.decode(value)
+
+      let _list = [chunk]
+
+      const lines = chunk.trim().split('}\n\n{')
+      if (lines.length > 1) {
+        _list = []
+        for (let line of lines) {
+          if (!line.trim().startsWith('{')) {
+            line = '{' + line.trim()
+          }
+          if (!line.trim().endsWith('}')) {
+            line = line.trim() + '}'
+          }
+          _list.push(line)
+        }
+      }
+
+      for (const str of _list) {
+        let data
+        try {
+          data = JSON.parse(str)
+        } catch (err) {
+          console.error('JSON string:', str)
+          throw err
+        }
+
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          return
+        }
+
+        switch (data.type) {
+          case 'recommended_question':
+            if (
+              data.content &&
+              data.content.length > 0 &&
+              startsWith(data.content.trim(), '[') &&
+              endsWith(data.content.trim(), ']')
+            ) {
+              if (_currentChat.value?.records) {
+                for (let record of _currentChat.value.records) {
+                  if (record.id === props.recordId) {
+                    record.recommended_question = data.content
+
+                    await nextTick()
+                  }
+                }
+              }
+            }
+        }
+      }
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+defineExpose({ getRecommendQuestions, id: () => props.recordId })
 </script>
 
 <template>
-  <div v-if="computedQuestions.length > 0" class="recommend-questions">
+  <div v-if="computedQuestions.length > 0 || loading" class="recommend-questions">
     <div v-if="firstChat">{{ t('qa.guess_u_ask') }}</div>
     <div v-else class="continue-ask">{{ t('qa.continue_to_ask') }}</div>
-    <div class="question-grid">
+    <div v-if="loading">
+      <el-button style="min-width: unset" type="primary" link loading />
+    </div>
+    <div v-else class="question-grid">
       <div
         v-for="(question, index) in computedQuestions"
         :key="index"
