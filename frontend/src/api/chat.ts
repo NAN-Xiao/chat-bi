@@ -10,7 +10,8 @@ export const questionApi = {
       }}).catch(e => reject(e))
     }), */
   // add: (data: any) => request.post('/chat/question', data),
-  add: (data: any) => request.fetchStream('/chat/question', data),
+  add: (data: any, controller?: AbortController) =>
+    request.fetchStream('/chat/question', data, controller),
   edit: (data: any) => request.put('/chat/question', data),
   delete: (id: number) => request.delete(`/chat/question/${id}`),
   query: (id: number) => request.get(`/chat/question/${id}`),
@@ -312,13 +313,13 @@ export const chatApi = {
   deleteChat: (id: number | undefined): Promise<string> => {
     return request.get(`/chat/delete/${id}`)
   },
-  analysis: (record_id: number | undefined) => {
-    return request.fetchStream(`/chat/record/${record_id}/analysis`, {})
+  analysis: (record_id: number | undefined, controller?: AbortController) => {
+    return request.fetchStream(`/chat/record/${record_id}/analysis`, {}, controller)
   },
-  predict: (record_id: number | undefined) => {
-    return request.fetchStream(`/chat/record/${record_id}/predict`, {})
+  predict: (record_id: number | undefined, controller?: AbortController) => {
+    return request.fetchStream(`/chat/record/${record_id}/predict`, {}, controller)
   },
-  recommendQuestions: (record_id: number | undefined) => {
-    return request.fetchStream(`/chat/recommend_questions/${record_id}`, {})
+  recommendQuestions: (record_id: number | undefined, controller?: AbortController) => {
+    return request.fetchStream(`/chat/recommend_questions/${record_id}`, {}, controller)
   },
 }

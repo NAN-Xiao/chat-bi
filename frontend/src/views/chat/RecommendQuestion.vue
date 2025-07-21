@@ -50,14 +50,24 @@ function clickQuestion(question: string): void {
   emits('clickQuestion', question)
 }
 
+const stopFlag = ref(false)
+
 async function getRecommendQuestions() {
+  stopFlag.value = false
   loading.value = true
   try {
+    const controller: AbortController = new AbortController()
     const response = await chatApi.recommendQuestions(props.recordId)
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
 
     while (true) {
+      if (stopFlag.value) {
+        controller.abort()
+        loading.value = false
+        break
+      }
+
       const { done, value } = await reader.read()
       if (done) {
         break
@@ -125,7 +135,12 @@ async function getRecommendQuestions() {
   }
 }
 
-defineExpose({ getRecommendQuestions, id: () => props.recordId })
+function stop() {
+  stopFlag.value = true
+  loading.value = false
+}
+
+defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
 </script>
 
 <template>

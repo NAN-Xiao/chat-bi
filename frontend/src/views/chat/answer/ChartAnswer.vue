@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat.ts'
-import { computed, nextTick } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 const props = withDefaults(
   defineProps<{
     chatList?: Array<ChatInfo>
@@ -75,7 +75,10 @@ const _loading = computed({
   },
 })
 
+const stopFlag = ref(false)
+
 const sendMessage = async () => {
+  stopFlag.value = false
   _loading.value = true
 
   if (index.value < 0) {
@@ -92,9 +95,11 @@ const sendMessage = async () => {
   if (error) return
 
   try {
+    const controller: AbortController = new AbortController()
     const response = await questionApi.add({
       question: currentRecord.question,
       chat_id: _currentChatId.value,
+      controller,
     })
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -103,6 +108,11 @@ const sendMessage = async () => {
     let chart_answer = ''
 
     while (true) {
+      if (stopFlag.value) {
+        controller.abort()
+        break
+      }
+
       const { done, value } = await reader.read()
       if (done) {
         _loading.value = false
@@ -216,8 +226,11 @@ function getChatData(recordId?: number) {
     })
   })
 }
-
-defineExpose({ sendMessage, index: index.value })
+function stop() {
+  stopFlag.value = true
+  _loading.value = false
+}
+defineExpose({ sendMessage, index: () => index.value, stop })
 </script>
 
 <template>

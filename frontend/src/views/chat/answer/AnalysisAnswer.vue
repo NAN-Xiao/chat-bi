@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat.ts'
-import { computed, nextTick } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 const props = withDefaults(
   defineProps<{
@@ -75,7 +75,9 @@ const _loading = computed({
   },
 })
 
+const stopFlag = ref(false)
 const sendMessage = async () => {
+  stopFlag.value = false
   _loading.value = true
 
   if (index.value < 0) {
@@ -92,7 +94,8 @@ const sendMessage = async () => {
   if (error) return
 
   try {
-    const response = await chatApi.analysis(currentRecord.analysis_record_id)
+    const controller: AbortController = new AbortController()
+    const response = await chatApi.analysis(currentRecord.analysis_record_id, controller)
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
 
@@ -100,6 +103,12 @@ const sendMessage = async () => {
     let analysis_answer_thinking = ''
 
     while (true) {
+      if (stopFlag.value) {
+        controller.abort()
+        _loading.value = false
+        break
+      }
+
       const { done, value } = await reader.read()
       if (done) {
         _loading.value = false
@@ -180,8 +189,11 @@ const sendMessage = async () => {
     _loading.value = false
   }
 }
-
-defineExpose({ sendMessage, index: index.value, chatList: _chatList })
+function stop() {
+  stopFlag.value = true
+  _loading.value = false
+}
+defineExpose({ sendMessage, index: () => index.value, chatList: () => _chatList.value, stop })
 </script>
 
 <template>

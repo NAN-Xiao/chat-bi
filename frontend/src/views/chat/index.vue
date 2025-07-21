@@ -379,12 +379,12 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
     })
   }
 
-  console.log(messages)
   return messages
 })
 
 const goEmpty = () => {
   inputMessage.value = ''
+  stop()
 }
 
 const createNewChatSimple = async () => {
@@ -492,10 +492,6 @@ function getRecommendQuestions(id?: number) {
   })
 }
 
-onMounted(() => {
-  getChatList()
-})
-
 function quickAsk(question: string) {
   inputMessage.value = question
   nextTick(() => {
@@ -539,7 +535,7 @@ const sendMessage = async () => {
     if (chartAnswerRef.value) {
       if (chartAnswerRef.value instanceof Array) {
         for (let i = 0; i < chartAnswerRef.value.length; i++) {
-          const _index = chartAnswerRef.value[i].index
+          const _index = chartAnswerRef.value[i].index()
           if (index === _index) {
             await chartAnswerRef.value[i].sendMessage()
             break
@@ -567,7 +563,7 @@ const analysisAnswerRef = ref()
 async function onAnalysisAnswerFinish(id: number) {
   loading.value = false
   isTyping.value = false
-  console.log(id)
+  console.debug(id)
   //await getRecommendQuestions(id)
 }
 function onAnalysisAnswerError() {
@@ -607,7 +603,7 @@ async function clickAnalysis(id?: number) {
     if (analysisAnswerRef.value) {
       if (analysisAnswerRef.value instanceof Array) {
         for (let i = 0; i < analysisAnswerRef.value.length; i++) {
-          const _index = analysisAnswerRef.value[i].index
+          const _index = analysisAnswerRef.value[i].index()
           if (index === _index) {
             await analysisAnswerRef.value[i].sendMessage()
             break
@@ -661,7 +657,7 @@ async function clickPredict(id?: number) {
     if (predictAnswerRef.value) {
       if (predictAnswerRef.value instanceof Array) {
         for (let i = 0; i < predictAnswerRef.value.length; i++) {
-          const _index = predictAnswerRef.value[i].index
+          const _index = predictAnswerRef.value[i].index()
           if (index === _index) {
             await predictAnswerRef.value[i].sendMessage()
             break
@@ -701,6 +697,49 @@ const inputRef = ref()
 function clickInput() {
   inputRef.value?.focus()
 }
+
+function stop() {
+  if (recommendQuestionRef.value) {
+    if (recommendQuestionRef.value instanceof Array) {
+      for (let i = 0; i < recommendQuestionRef.value.length; i++) {
+        recommendQuestionRef.value[i].stop()
+      }
+    } else {
+      recommendQuestionRef.value.stop()
+    }
+  }
+  if (chartAnswerRef.value) {
+    if (chartAnswerRef.value instanceof Array) {
+      for (let i = 0; i < chartAnswerRef.value.length; i++) {
+        chartAnswerRef.value[i].stop()
+      }
+    } else {
+      chartAnswerRef.value.stop()
+    }
+  }
+  if (analysisAnswerRef.value) {
+    if (analysisAnswerRef.value instanceof Array) {
+      for (let i = 0; i < analysisAnswerRef.value.length; i++) {
+        analysisAnswerRef.value[i].stop()
+      }
+    } else {
+      analysisAnswerRef.value.stop()
+    }
+  }
+  if (predictAnswerRef.value) {
+    if (predictAnswerRef.value instanceof Array) {
+      for (let i = 0; i < predictAnswerRef.value.length; i++) {
+        predictAnswerRef.value[i].stop()
+      }
+    } else {
+      predictAnswerRef.value.stop()
+    }
+  }
+}
+
+onMounted(() => {
+  getChatList()
+})
 
 defineExpose({
   getHistoryList,
