@@ -87,7 +87,7 @@ export const saveDashboardResource = (params: any, callBack: Function) => {
     } else {
       ElMessage({
         type: 'warning',
-        message: 'Name Already In Use',
+        message: '名称重复',
       })
     }
   })

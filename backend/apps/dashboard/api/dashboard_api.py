@@ -44,5 +44,5 @@ async def update_canvas_api(session: SessionDep, user: CurrentUser, dashboard: C
 
 
 @router.post("/check_name")
-async def check_name_api(session: SessionDep, dashboard: QueryDashboard):
-    return validate_name(session, dashboard)
+async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
+    return validate_name(session, user, dashboard)

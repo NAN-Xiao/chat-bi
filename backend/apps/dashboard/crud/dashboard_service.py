@@ -99,19 +99,18 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     return record
 
 
-def validate_name(session: SessionDep, dashboard: QueryDashboard) -> bool:
-    if not dashboard.workspace_id:
-        raise ValueError("workspace_id is required")
-    if not dashboard.pid:
-        raise ValueError("pid is required")
+def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashboard) -> bool:
     if not dashboard.opt:
         raise ValueError("opt is required")
+    oid = str(user.oid if user.oid is not None else 1)
+    uid = str(user.id)
+
 
     if dashboard.opt in ('newLeaf', 'newFolder'):
         query = session.query(CoreDashboard).filter(
             and_(
-                CoreDashboard.workspace_id == dashboard.workspace_id,
-                CoreDashboard.pid == dashboard.pid,
+                CoreDashboard.workspace_id == oid,
+                CoreDashboard.create_by == uid,
                 CoreDashboard.name == dashboard.name
             )
         )
@@ -120,8 +119,8 @@ def validate_name(session: SessionDep, dashboard: QueryDashboard) -> bool:
             raise ValueError("id is required for update operation")
         query = session.query(CoreDashboard).filter(
             and_(
-                CoreDashboard.workspace_id == dashboard.workspace_id,
-                CoreDashboard.pid == dashboard.pid,
+                CoreDashboard.workspace_id == oid,
+                CoreDashboard.create_by == uid,
                 CoreDashboard.name == dashboard.name,
                 CoreDashboard.id != dashboard.id
             )

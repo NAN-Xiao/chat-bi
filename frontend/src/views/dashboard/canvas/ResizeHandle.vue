@@ -28,8 +28,8 @@ function getPointStyle(point: string) {
 
   // Points at the four corners
   if (point.length === 2) {
-    newLeft = hasL ? '0px' : '100%'
-    newTop = hasT ? '0px' : '100%'
+    newLeft = hasL ? '3px' : 'calc(100% - 3px)'
+    newTop = hasT ? '3px' : 'calc(100% - 3px)'
   } else {
     // The point between the upper and lower points, with a width centered
     if (hasT || hasB) {

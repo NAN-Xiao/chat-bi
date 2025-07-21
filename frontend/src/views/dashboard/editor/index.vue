@@ -32,13 +32,13 @@ const addComponent = (componentType: string, viewInfo?: any) => {
       viewInfo['sourceId'] = viewInfo['id']
       viewInfo['id'] = component.id
       dashboardStore.addCanvasViewInfo(viewInfo)
-    }
-    if (component.component === 'SQTab') {
+    } else if (component.component === 'SQTab') {
       const subTabName = guid('tab')
       // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       component.propValue[0].name = subTabName
       component.activeTabName = subTabName
     }
+
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     dashboardEditorInnerRef.value.addItemToBox(component)
   }

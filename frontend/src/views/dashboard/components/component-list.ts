@@ -49,7 +49,7 @@ const COMPONENT_LIST = [
     component: 'SQText',
     name: 'new text',
     locked: false,
-    propValue: 'Double click to edit text',
+    propValue: null,
     editing: false,
     x: 1,
     y: 1,

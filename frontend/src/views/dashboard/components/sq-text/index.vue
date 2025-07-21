@@ -1,7 +1,17 @@
 <template>
   <div class="rich-main-class" :class="{ 'edit-model': configItem.editing }" draggable="false">
     <div
-      v-if="isDisabled"
+      v-if="isDisabled && !configItem.propValue"
+      class="rich-text-empty"
+      @keydown.stop
+      @keyup.stop
+      @mousedown.stop
+      @dblclick.stop="setEdit"
+    >
+      {{ t('dashboard.rich_text_tips') }}
+    </div>
+    <div
+      v-else-if="isDisabled"
       draggable="false"
       :class="{ 'custom-text-content': true, 'preview-text': true }"
       @keydown.stop
@@ -32,7 +42,9 @@ import { computed, nextTick, type PropType, reactive, toRefs } from 'vue'
 import { onMounted } from 'vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
+import { useI18n } from 'vue-i18n'
 const dashboardStore = dashboardStoreWithOut()
+const { t } = useI18n()
 
 const props = defineProps({
   configItem: {
@@ -114,7 +126,16 @@ onMounted(() => {
   height: 100%;
   overflow-y: auto !important;
   position: relative;
-
+  padding: 12px !important;
+  .rich-text-empty {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: rgba(100, 106, 115, 1);
+  }
   div::-webkit-scrollbar {
     width: 0px !important;
     height: 0px !important;

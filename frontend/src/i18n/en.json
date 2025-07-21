@@ -32,6 +32,8 @@
     "password_reset_successful": "Password reset successful"
   },
   "dashboard": {
+    "name_repeat": "Name Repeat",
+    "rich_text_tips": "Double-click to enter text content",
     "exit_preview": "Exit preview",
     "no_chat": "No conversations",
     "today": "Today",
