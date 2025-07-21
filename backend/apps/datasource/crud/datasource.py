@@ -3,7 +3,7 @@ import json
 from typing import List
 
 from fastapi import HTTPException
-from sqlalchemy import and_, text, cast
+from sqlalchemy import and_, text, cast, or_
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlbot_xpack.permissions.models.ds_permission import DsPermission
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
@@ -295,7 +295,8 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
                 # check permission and user in same rules
                 obj = session.query(DsRules).filter(
                     and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
-                         DsRules.user_list.op('@>')(cast([current_user.id], JSONB)))
+                         or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
+                             DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
                 ).first()
                 if obj is not None:
                     permission_list = json.loads(permission.permissions)
