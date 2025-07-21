@@ -97,6 +97,8 @@ import IconOpeAdd from '@/assets/svg/operate/ope-add.svg'
 import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
 import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg'
 import { termApi } from '@/api/setting'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 const keyword = ref('')
 const dialogFormVisible = ref(false)
 const termFormRef = ref()
