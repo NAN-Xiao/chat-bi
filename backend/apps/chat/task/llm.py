@@ -11,7 +11,7 @@ import requests
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
-from sqlalchemy import and_, cast
+from sqlalchemy import and_, cast, or_
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import load_only
@@ -489,7 +489,8 @@ class LLMService:
                     # check permission and user in same rules
                     obj = self.session.query(DsRules).filter(
                         and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
-                             DsRules.user_list.op('@>')(cast([self.current_user.id], JSONB)))
+                             or_(DsRules.user_list.op('@>')(cast([f'{self.current_user.id}'], JSONB)),
+                             DsRules.user_list.op('@>')(cast([self.current_user.id], JSONB))))
                     ).first()
                     if obj is not None:
                         res.append(transRecord2DTO(self.session, permission))
