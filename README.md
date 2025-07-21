@@ -8,7 +8,13 @@
 </p>
 <hr/>
 
-SQLBot 是一款基于大模型和 RAG 的智能问数系统。SQLBot 的优势包括：
+SQLBot 是一款基于大模型和 RAG 的智能问数系统。
+
+SQLBot 的工作原理：
+
+TBD
+
+SQLBot 的优势包括：
 
 - **开箱即用**: 只需配置大模型和数据源即可开启问数之旅，通过大模型和 RAG 的结合来实现高质量的 NL2SQL 和 Text2SQL；
 - **易于集成**: 支持快速嵌入到第三方业务系统，也支持被 n8n、MaxKB、Dify 、Coze 等 AI 应用开发平台集成调用，让各类应用快速拥有智能问数能力；
@@ -25,8 +31,7 @@ docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/
 # 密码: SQLBot@123..
 ```
 
-- 你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot；
-- 如果是内网环境，推荐使用 [离线安装包](https://community.fit2cloud.com/#/products/sqlbot/downloads) 进行安装部署。
+你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot；
 
 如你有更多问题，可以加入我们的技术交流群与我们交流。
 
