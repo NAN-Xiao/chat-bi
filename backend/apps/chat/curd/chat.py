@@ -1,4 +1,5 @@
 import datetime
+import sqlparse
 from typing import List
 
 import orjson
@@ -128,6 +129,12 @@ def format_record(record: ChatRecord):
             _dict['predict_data'] = _obj
         except Exception:
             pass
+    if record.sql and record.sql.strip() != '':
+        try:
+            _dict['sql'] = sqlparse.format(record.sql, reindent=True)
+        except Exception:
+            pass
+
     return _dict
 
 
