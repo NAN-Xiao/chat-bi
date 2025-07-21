@@ -30,7 +30,7 @@ from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreTable
 from apps.db.db import exec_sql
-from apps.system.crud.assistant import get_assistant_ds
+from apps.system.crud.assistant import AssistantOutDs, get_assistant_ds
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
 from common.utils.utils import extract_nested_json
@@ -52,6 +52,8 @@ class LLMService:
     session: SessionDep
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
+    assistant_certificate: str
+    out_ds_instance: Optional[AssistantOutDs] = None
     change_title: bool = False
 
     def __init__(self, session: SessionDep, current_user: CurrentUser, chat_question: ChatQuestion,
@@ -60,6 +62,8 @@ class LLMService:
         self.session = session
         self.current_user = current_user
         self.current_assistant = current_assistant
+        if chat_question.assistant_certificate:
+            self.assistant_certificate = chat_question.assistant_certificate
         # chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
         chat_id = chat_question.chat_id
         chat: Chat = self.session.get(Chat, chat_id)
@@ -346,7 +350,7 @@ class LLMService:
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemMessage(self.chat_question.datasource_sys_question()))
         if self.current_assistant:
-            _ds_list = get_assistant_ds(session=self.session, assistant=self.current_assistant)
+            _ds_list = get_assistant_ds(llm_service=self)
         else:
             _ds_list = self.session.exec(select(CoreDatasource).options(
                 load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all()
@@ -398,15 +402,19 @@ class LLMService:
 
             if data['id'] and data['id'] != 0:
                 _datasource = data['id']
-                _ds = self.session.query(CoreDatasource).filter(CoreDatasource.id == _datasource).first()
-                if not _ds:
-                    _datasource = None
-                    raise Exception(f"Datasource configuration with id {_datasource} not found")
-                self.ds = CoreDatasource(**_ds.model_dump())
+                if self.current_assistant.type == 1:
+                    _ds = self.out_ds_instance.get_ds(data['id'])
+                    self.ds = _ds
+                else:
+                    _ds = self.session.get(CoreDatasource, _datasource)
+                    if not _ds:
+                        _datasource = None
+                        raise Exception(f"Datasource configuration with id {_datasource} not found")
+                    self.ds = CoreDatasource(**_ds.model_dump())
                 self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
                 _engine_type = self.chat_question.engine
                 # save chat
-                _chat = self.session.query(Chat).filter(Chat.id == self.record.chat_id).first()
+                _chat = self.session.get(Chat, self.record.chat_id)
                 _chat.datasource = _datasource
                 _chat.engine_type = _ds.type_name
 
@@ -727,7 +735,7 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
                 yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
                                     'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
 
-            llm_service.chat_question.db_schema = get_table_schema(session=llm_service.session, current_user=llm_service.current_user, ds=llm_service.ds)
+            llm_service.chat_question.db_schema = llm_service.out_ds_instance.get_db_schema() if llm_service.out_ds_instance else get_table_schema(session=llm_service.session, current_user=llm_service.current_user, ds=llm_service.ds)
 
         # generate sql
         sql_res = llm_service.generate_sql()

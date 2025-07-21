@@ -14,5 +14,6 @@ class CacheNamespace(Enum):
 class CacheName(Enum):
     USER_INFO = "user:info"
     ASSISTANT_INFO = "assistant:info"
+    ASSISTANT_DS = "assistant:ds"
     def __str__(self):
         return self.value

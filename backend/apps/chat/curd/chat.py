@@ -341,7 +341,7 @@ def save_full_select_datasource_message_and_answer(session: SessionDep, record_i
                                                    engine_type: str = None, token_usage: dict = None) -> ChatRecord:
     if not record_id:
         raise Exception("Record id cannot be None")
-    record = session.query(ChatRecord).filter(ChatRecord.id == record_id).first()
+    record = session.get(ChatRecord, record_id)
     record.full_select_datasource_message = full_message
     record.datasource_select_answer = answer
 
