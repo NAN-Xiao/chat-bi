@@ -36,7 +36,7 @@ class ChatRecord(SQLModel, table=True):
     finish_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
     datasource: int = Field(sa_column=Column(BigInteger, nullable=True))
-    engine_type: str = Field(max_length=64)
+    engine_type: str = Field(max_length=64, nullable=True)
     question: str = Field(sa_column=Column(Text, nullable=True))
     sql_answer: str = Field(sa_column=Column(Text, nullable=True))
     sql: str = Field(sa_column=Column(Text, nullable=True))
