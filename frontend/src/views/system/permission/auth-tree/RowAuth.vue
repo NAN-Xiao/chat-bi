@@ -58,9 +58,9 @@ const errorDetected = ({ filter_type, field_id, term, value }: any) => {
 const dfsInit = (arr: any[]) => {
   const elementList: any[] = []
   arr.forEach((ele: any) => {
-    const { subTree } = ele
-    if (subTree) {
-      const { items, logic } = subTree
+    const { sub_tree } = ele
+    if (sub_tree) {
+      const { items, logic } = sub_tree
       const child = dfsInit(items)
       elementList.push({ logic, child })
     } else {
@@ -84,7 +84,7 @@ const dfsSubmit = (arr: any[]) => {
     const { child = [] } = ele
     if (child.length) {
       const { logic } = ele
-      const subTree = dfsSubmit(child)
+      const sub_tree = dfsSubmit(child)
       items.push({
         enum_value: [],
         field_id: '',
@@ -92,7 +92,7 @@ const dfsSubmit = (arr: any[]) => {
         term: '',
         type: 'tree',
         value: '',
-        subTree: { logic, items: subTree },
+        sub_tree: { logic, items: sub_tree },
       })
     } else {
       const { enum_value, field_id, filter_type, term, value, name } = ele
@@ -105,7 +105,7 @@ const dfsSubmit = (arr: any[]) => {
           term,
           value,
           type: 'item',
-          subTree: null,
+          sub_tree: null,
         })
       }
     }

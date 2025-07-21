@@ -758,7 +758,8 @@ onMounted(() => {
     nextTick(() => {
       hiddenChatCreatorRef.value?.createChat(_id)
     })
-    // todo remove 'start_chat' in url
+    const newUrl = window.location.hash.replace(/\?.*$/, '')
+    history.replaceState({}, '', newUrl)
   }
 })
 </script>

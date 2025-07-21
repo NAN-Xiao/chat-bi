@@ -546,22 +546,15 @@ const deleteHandler = (row: any) => {
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
-  })
-    .then(() => {
-      userApi.delete(row.id).then(() => {
-        ElMessage({
-          type: 'success',
-          message: t('dashboard.delete_success'),
-        })
-        search()
-      })
-    })
-    .catch(() => {
+  }).then(() => {
+    userApi.delete(row.id).then(() => {
       ElMessage({
-        type: 'info',
-        message: 'Delete canceled',
+        type: 'success',
+        message: t('dashboard.delete_success'),
       })
+      search()
     })
+  })
 }
 
 /* const openDialog = () => {

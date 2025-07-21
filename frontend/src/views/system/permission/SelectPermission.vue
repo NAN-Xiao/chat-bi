@@ -106,13 +106,17 @@ const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   isIndeterminate.value = checkedCount > 0 && checkedCount < workspace.value.length
 }
 
-const open = async () => {
+const open = async (user: any) => {
   loading.value = true
   checkedWorkspace.value = []
   checkAll.value = false
   isIndeterminate.value = false
   const systemWorkspaceList = await workspaceUserList({}, 1, 1000)
   workspace.value = systemWorkspaceList.items.filter((ele: any) => ele.weight !== 1) as any
+  if (user?.length) {
+    checkedWorkspace.value = workspace.value.filter((ele) => user.includes(ele.id + ''))
+    handleCheckedWorkspaceChange(checkedWorkspace.value)
+  }
   loading.value = false
   centerDialogVisible.value = true
 }

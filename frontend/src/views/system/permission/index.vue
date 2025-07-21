@@ -5,11 +5,12 @@ import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_down_outlined from '@/assets/svg/icon_down_outlined.svg'
 import Card from './Card.vue'
 import SelectPermission from './SelectPermission.vue'
 import AuthTree from './auth-tree/RowAuth.vue'
-import { getList, savePermissions } from '@/api/permissions'
+import { getList, savePermissions, delPermissions } from '@/api/permissions'
 import { datasourceApi } from '@/api/datasource'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
@@ -116,6 +117,7 @@ const saveAuthTree = (val: any) => {
           currentPermission.permissions[key],
           cloneDeep({
             expression_tree,
+            tree: expression_tree,
             table_id,
             ds_id,
             type,
@@ -128,7 +130,17 @@ const saveAuthTree = (val: any) => {
     }
   } else {
     currentPermission.permissions.push(
-      cloneDeep({ expression_tree, table_id, ds_id, type, name, ds_name, table_name })
+      cloneDeep({
+        expression_tree,
+        tree: expression_tree,
+        table_id,
+        ds_id,
+        type,
+        name,
+        ds_name,
+        table_name,
+        id: +new Date(),
+      })
     )
   }
   dialogFormVisible.value = false
@@ -142,7 +154,7 @@ const getDsList = (row: any) => {
       dsListOptions.value = res || []
       if (!row?.ds_id) return
       dsListOptions.value.forEach((ele) => {
-        if (ele.id === row.ds_id) {
+        if (+ele.id === +row.ds_id) {
           activeDs.value = ele
         }
       })
@@ -154,7 +166,7 @@ const getDsList = (row: any) => {
     })
 
   if (row) {
-    handleDsIdChange(row)
+    handleDsIdChange({ id: row.ds_id, name: row.ds_name })
     handleEditeTable(row.table_id)
   }
 }
@@ -170,7 +182,7 @@ const handleRowPermission = (row: any) => {
       table_id,
       ds_name,
       table_name,
-      expression_tree: tree,
+      expression_tree: typeof tree === 'object' ? tree : JSON.parse(tree),
     })
   }
   dialogFormVisible.value = true
@@ -206,7 +218,7 @@ const handleDsIdChange = (val: any) => {
     tableListOptions.value = res || []
     if (!columnForm.table_id) return
     tableListOptions.value.forEach((ele) => {
-      if (ele.id === columnForm.table_id) {
+      if (+ele.id === +columnForm.table_id) {
         activeTable.value = ele
       }
     })
@@ -215,7 +227,7 @@ const handleDsIdChange = (val: any) => {
 
 const handleTableIdChange = (val: any) => {
   columnForm.table_id = val.id
-  columnForm.table_name = val.name
+  columnForm.table_name = val.table_name
   datasourceApi.fieldList(val.id).then((res: any) => {
     fieldListOptions.value = res || []
     if (columnForm.type === 'row') return
@@ -242,6 +254,7 @@ const handleEditeTable = (val: any) => {
       })
     })
     .finally(() => {
+      if (columnForm.type !== 'row') return
       authTreeRef.value.init(columnForm.expression_tree)
     })
 }
@@ -250,10 +263,17 @@ const beforeClose = () => {
   activeStep.value = 0
   isCreate.value = false
 }
+
+const searchLoading = ref(false)
 const handleSearch = () => {
-  getList().then((res: any) => {
-    ruleList.value = res || []
-  })
+  searchLoading.value = true
+  getList()
+    .then((res: any) => {
+      ruleList.value = res || []
+    })
+    .finally(() => {
+      searchLoading.value = false
+    })
 }
 handleSearch()
 const addHandler = () => {
@@ -280,13 +300,48 @@ const handleEditRule = (row: any) => {
   Object.assign(currentPermission, cloneDeep(row))
   ruleConfigvVisible.value = true
 }
+
+const deleteRuleHandler = (row: any) => {
+  ElMessageBox.confirm(t('permission.rule_rule_1', { msg: row.name }), {
+    confirmButtonType: 'danger',
+    confirmButtonText: t('dashboard.delete'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+  }).then(() => {
+    currentPermission.permissions = currentPermission.permissions.filter(
+      (ele: any) => ele.id !== row.id
+    )
+  })
+}
+
 const deleteHandler = (row: any) => {
-  console.log(row)
+  ElMessageBox.confirm(t('permission.rule_group_1', { msg: row.name }), {
+    confirmButtonType: 'danger',
+    confirmButtonText: t('dashboard.delete'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+  }).then(() => {
+    delPermissions(row.id).then(() => {
+      ElMessage({
+        type: 'success',
+        message: t('dashboard.delete_success'),
+      })
+      handleSearch()
+    })
+  })
 }
 const setUser = (row: any) => {
   editRule.value = 2
   setDrawerTitle()
-  console.log(row)
+  isCreate.value = false
+  Object.assign(currentPermission, cloneDeep(row))
+  activeStep.value = 1
+  ruleConfigvVisible.value = true
+  nextTick(() => {
+    selectPermissionRef.value.open(row.users)
+  })
 }
 
 const rules = {
@@ -317,6 +372,7 @@ const saveHandler = () => {
                 currentPermission.permissions[key],
                 cloneDeep({
                   permissions,
+                  permission_list: permissions,
                   table_id,
                   ds_id,
                   type,
@@ -329,7 +385,17 @@ const saveHandler = () => {
           }
         } else {
           currentPermission.permissions.push(
-            cloneDeep({ permissions, table_id, ds_id, type, name, ds_name, table_name })
+            cloneDeep({
+              permissions,
+              permission_list: permissions,
+              table_id,
+              ds_id,
+              type,
+              name,
+              ds_name,
+              table_name,
+              id: +new Date(),
+            })
           )
         }
       }
@@ -337,26 +403,30 @@ const saveHandler = () => {
     }
   })
 }
-const preview = () => {}
+const preview = () => {
+  currentPermission.user = selectPermissionRef.value.checkedWorkspace.map((ele: any) => ele.id)
+  activeStep.value = 0
+}
 const next = () => {
-  activeStep.value = 1
-  nextTick(() => {
-    selectPermissionRef.value.open()
+  termFormRef.value.validate((res: any) => {
+    if (res) {
+      activeStep.value = 1
+      nextTick(() => {
+        selectPermissionRef.value.open(currentPermission.users)
+      })
+    }
   })
 }
 const savePermission = () => {
-  // termFormRef.value.validate((res: any) => {
-  //   if (res) {
-
-  //   }
-  // })
-
   const { id, name, permissions } = currentPermission
+
   const permissionsObj = permissions.map((ele: any) => {
     return {
       ...cloneDeep(ele),
-      permissions: JSON.stringify(ele.permissions || []),
-      expression_tree: JSON.stringify(ele.expression_tree || {}),
+      permissions: ele.type !== 'row' ? JSON.stringify(ele.permissions || []) : JSON.stringify([]),
+      permission_list: [],
+      expression_tree:
+        ele.type === 'row' ? JSON.stringify(ele.expression_tree || {}) : JSON.stringify({}),
     }
   })
   const obj = {
@@ -373,7 +443,7 @@ const savePermission = () => {
       type: 'success',
       message: t('common.save_success'),
     })
-    ruleConfigvVisible.value = false
+    beforeClose()
     handleSearch()
   })
 }
@@ -397,7 +467,7 @@ const columnRules = {
 </script>
 
 <template>
-  <div class="permission">
+  <div v-loading="searchLoading" class="permission">
     <div class="tool-left">
       <span class="page-title">{{ $t('workspace.permission_configuration') }}</span>
       <div>
@@ -443,6 +513,18 @@ const columnRules = {
         @set-user="setUser(ele)"
       ></Card>
     </div>
+    <template v-if="!keywords && !ruleListWithSearch.length && !searchLoading">
+      <EmptyBackground :description="$t('permission.no_permission_rule')" img-type="noneWhite" />
+
+      <div style="text-align: center; margin-top: -10px">
+        <el-button type="primary" @click="addHandler()">
+          <template #icon>
+            <icon_add_outlined></icon_add_outlined>
+          </template>
+          {{ $t('permission.add_rule_group') }}
+        </el-button>
+      </div>
+    </template>
     <el-drawer
       v-model="ruleConfigvVisible"
       :close-on-click-modal="false"
@@ -454,7 +536,7 @@ const columnRules = {
     >
       <template #header="{ close }">
         <span style="white-space: nowrap">{{ drawerTitle }}</span>
-        <div v-if="!editRule" class="flex-center" style="width: 100%">
+        <div v-if="editRule !== 2" class="flex-center" style="width: 100%">
           <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
             <el-step>
               <template #title> {{ $t('permission.set_permission_rule') }} </template>
@@ -572,7 +654,7 @@ const columnRules = {
                       :content="$t('dashboard.delete')"
                       placement="top"
                     >
-                      <el-icon class="action-btn" size="16" @click="deleteHandler(scope.row)">
+                      <el-icon class="action-btn" size="16" @click="deleteRuleHandler(scope.row)">
                         <IconOpeDelete></IconOpeDelete>
                       </el-icon>
                     </el-tooltip>
@@ -588,10 +670,10 @@ const columnRules = {
       </div>
       <template #footer>
         <el-button secondary @click="beforeClose"> {{ $t('common.cancel') }} </el-button>
-        <el-button v-if="activeStep === 1 && isCreate" secondary @click="preview">
+        <el-button v-if="activeStep === 1 && editRule !== 2" secondary @click="preview">
           {{ t('ds.previous') }}
         </el-button>
-        <el-button v-if="activeStep === 0 && isCreate" type="primary" @click="next">
+        <el-button v-if="activeStep === 0 && editRule !== 2" type="primary" @click="next">
           {{ t('common.next') }}
         </el-button>
         <el-button v-if="activeStep === 1" type="primary" @click="savePermission">
@@ -703,6 +785,10 @@ const columnRules = {
 
 <style lang="less" scoped>
 .permission {
+  .ed-empty {
+    padding-top: 200px;
+    padding-bottom: 0;
+  }
   .tool-left {
     display: flex;
     align-items: center;
