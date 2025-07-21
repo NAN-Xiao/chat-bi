@@ -97,7 +97,7 @@ const handleQuestion = (id: string) => {
   router.push({
     path: '/chat/index',
     query: {
-      id,
+      start_chat: id,
     },
   })
 }

@@ -285,6 +285,7 @@
     </el-container>
 
     <ChatCreator v-if="!isAssistant" ref="chatCreatorRef" @on-chat-created="onChatCreatedQuick" />
+    <ChatCreator ref="hiddenChatCreatorRef" hidden @on-chat-created="onChatCreatedQuick" />
   </el-container>
 </template>
 
@@ -313,6 +314,11 @@ import logo from '@/assets/LOGO.svg'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 
 import { useAssistantStore } from '@/stores/assistant'
+
+const props = defineProps<{
+  startChatDsId?: number
+}>()
+
 const assistantStore = useAssistantStore()
 
 const isAssistant = computed(() => assistantStore.getAssistant)
@@ -367,7 +373,6 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
     })
   }
 
-  console.log(messages)
   return messages
 })
 
@@ -390,7 +395,6 @@ const createNewChat = async () => {
     }
     return
   }
-  console.log(chatCreatorRef.value)
   chatCreatorRef.value?.showDs()
 }
 
@@ -744,6 +748,18 @@ defineExpose({
   toAssistantHistory,
   getCurrentChatId,
   createNewChat,
+})
+
+const hiddenChatCreatorRef = ref()
+
+onMounted(() => {
+  if (props.startChatDsId) {
+    const _id = props.startChatDsId
+    nextTick(() => {
+      hiddenChatCreatorRef.value?.createChat(_id)
+    })
+    // todo remove 'start_chat' in url
+  }
 })
 </script>
 

@@ -36,6 +36,9 @@ const router = createRouter({
           path: 'index',
           name: 'chat',
           component: chat,
+          props: (route) => {
+            return { startChatDsId: route.query.start_chat }
+          },
           meta: { title: t('menu.Data Q&A'), icon: 'chat' },
         },
       ],
