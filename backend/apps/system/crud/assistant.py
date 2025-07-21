@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.system_schema import UserInfoDTO
+from apps.system.schemas.system_schema import AssistantOutDsSchema, UserInfoDTO
 from common.core.sqlbot_cache import cache
 from common.core.db import engine
 from starlette.middleware.cors import CORSMiddleware
@@ -73,7 +73,7 @@ def init_dynamic_cors(app: FastAPI):
 
 class AssistantOutDs:
     assistant: AssistantModel
-    ds_list: Optional[list[dict]] = None
+    ds_list: Optional[list[AssistantOutDsSchema]] = None
     certificate: Optional[str] = None
     def __init__(self, assistant: AssistantModel, certificate: Optional[str] = None):
         self.assistant = assistant
@@ -99,9 +99,11 @@ class AssistantOutDs:
             result_json: dict[any] = json.loads(res.json())
             if result_json.get('code') == 0:
                 temp_list = result_json.get('data', [])
-                for idx, item in enumerate(temp_list, start=1):
-                    item["id"] = idx
-                self.ds_list = temp_list
+                self.ds_list = [
+                    AssistantOutDsSchema(**{**item, "id": idx})
+                    for idx, item in enumerate(temp_list, start=1)
+                ]
+                
                 return self.ds_list
             else:
                 raise Exception(f"Failed to get datasource list from {endpoint}, error: {result_json.get('message')}")
@@ -110,12 +112,25 @@ class AssistantOutDs:
     
     def get_simple_ds_list(self):
         if self.ds_list:
-            return [{'id': ds['id'], 'name': ds['name'], 'description': ds['comment']} for ds in self.ds_list]
+            return [{'id': ds.id, 'name': ds.name, 'description': ds.comment} for ds in self.ds_list]
         else:
             raise Exception("Datasource list is not found.")
        
-    def get_db_schema(self, ds_id: int):
-        return None
+    def get_db_schema(self, ds_id: int) -> str:
+        ds = self.get_ds(ds_id)
+        schema_str = ""
+        db_name = ds.schema
+        schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
+        for table in ds.tables:
+            schema_str += f"# Table: {db_name}.{table.name}"
+            schema_str += f", {table.comment}\n[\n"
+            field_list = []
+            for field in table.fields:
+                field_list.append(f"({field.name}:{field.type}, {field.comment})")
+            schema_str += ",\n".join(field_list)
+            schema_str += '\n]\n'
+        return schema_str
+    
     def get_ds(self, ds_id: int):
         if self.ds_list:
             for ds in self.ds_list:

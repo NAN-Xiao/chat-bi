@@ -93,6 +93,9 @@
               <ChatRow :current-chat="currentChat" :msg="message" :hide-avatar="message.first_chat">
                 <RecommendQuestion
                   v-if="message.role === 'assistant' && message.first_chat"
+                  ref="recommendQuestionRef"
+                  :current-chat="currentChat"
+                  :record-id="message.record?.id"
                   :questions="message.recommended_question"
                   :first-chat="message.first_chat"
                   @click-question="quickAsk"
@@ -181,6 +184,9 @@
                     </template>
                     <template #footer>
                       <RecommendQuestion
+                        ref="recommendQuestionRef"
+                        :current-chat="currentChat"
+                        :record-id="message.record?.id"
                         :questions="message.recommended_question"
                         :first-chat="message.first_chat"
                         @click-question="quickAsk"
@@ -303,7 +309,7 @@ import ChatListContainer from './ChatListContainer.vue'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
 import ChatToolBar from './ChatToolBar.vue'
 import { useI18n } from 'vue-i18n'
-import { endsWith, find, startsWith } from 'lodash-es'
+import { find } from 'lodash-es'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
@@ -373,6 +379,7 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
     })
   }
 
+  console.log(messages)
   return messages
 })
 
@@ -465,72 +472,24 @@ function onChatCreated(chat: ChatInfo) {
   }
 }
 
-async function getRecommendQuestions(record_id?: number) {
-  const response = await chatApi.recommendQuestions(record_id)
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
+const recommendQuestionRef = ref()
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) {
-      break
-    }
-
-    const chunk = decoder.decode(value)
-
-    let _list = [chunk]
-
-    const lines = chunk.trim().split('}\n\n{')
-    if (lines.length > 1) {
-      _list = []
-      for (let line of lines) {
-        if (!line.trim().startsWith('{')) {
-          line = '{' + line.trim()
-        }
-        if (!line.trim().endsWith('}')) {
-          line = line.trim() + '}'
-        }
-        _list.push(line)
-      }
-    }
-
-    for (const str of _list) {
-      let data
-      try {
-        data = JSON.parse(str)
-      } catch (err) {
-        console.error('JSON string:', str)
-        throw err
-      }
-
-      if (data.code && data.code !== 200) {
-        ElMessage({
-          message: data.msg,
-          type: 'error',
-          showClose: true,
-        })
-        return
-      }
-
-      switch (data.type) {
-        case 'recommended_question':
-          if (
-            data.content &&
-            data.content.length > 0 &&
-            startsWith(data.content.trim(), '[') &&
-            endsWith(data.content.trim(), ']')
-          ) {
-            if (currentChat.value?.records) {
-              for (let record of currentChat.value.records) {
-                if (record.id === record_id) {
-                  record.recommended_question = data.content
-                }
-              }
-            }
+function getRecommendQuestions(id?: number) {
+  nextTick(() => {
+    if (recommendQuestionRef.value) {
+      if (recommendQuestionRef.value instanceof Array) {
+        for (let i = 0; i < recommendQuestionRef.value.length; i++) {
+          const _id = recommendQuestionRef.value[i].id()
+          if (_id === id) {
+            recommendQuestionRef.value[i].getRecommendQuestions()
+            break
           }
+        }
+      } else {
+        recommendQuestionRef.value.getRecommendQuestions()
       }
     }
-  }
+  })
 }
 
 onMounted(() => {
@@ -549,7 +508,7 @@ const chartAnswerRef = ref()
 async function onChartAnswerFinish(id: number) {
   loading.value = false
   isTyping.value = false
-  await getRecommendQuestions(id)
+  getRecommendQuestions(id)
 }
 
 function onChartAnswerError() {

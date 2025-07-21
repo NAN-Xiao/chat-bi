@@ -403,22 +403,24 @@ class LLMService:
 
             if data['id'] and data['id'] != 0:
                 _datasource = data['id']
-                if self.current_assistant.type == 1:
+                _chat = self.session.get(Chat, self.record.chat_id)
+                _chat.datasource = _datasource
+                if self.current_assistant and self.current_assistant.type == 1:
                     _ds = self.out_ds_instance.get_ds(data['id'])
                     self.ds = _ds
+                    self.chat_question.engine = _ds.type
+                    _engine_type = self.chat_question.engine
+                    _chat.engine_type =  _ds.type
                 else:
                     _ds = self.session.get(CoreDatasource, _datasource)
                     if not _ds:
                         _datasource = None
                         raise Exception(f"Datasource configuration with id {_datasource} not found")
                     self.ds = CoreDatasource(**_ds.model_dump())
-                self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
-                _engine_type = self.chat_question.engine
+                    self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
+                    _engine_type = self.chat_question.engine
+                    _chat.engine_type = _ds.type_name
                 # save chat
-                _chat = self.session.get(Chat, self.record.chat_id)
-                _chat.datasource = _datasource
-                _chat.engine_type = _ds.type_name
-
                 self.session.add(_chat)
                 self.session.flush()
                 self.session.refresh(_chat)
@@ -734,7 +736,7 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
                          'type': 'datasource-result'}).decode() + '\n\n'
             if in_chat:
                 yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
-                                    'engine_type': llm_service.ds.type_name, 'type': 'datasource'}).decode() + '\n\n'
+                                    'engine_type': llm_service.ds.type_name or llm_service.ds.type, 'type': 'datasource'}).decode() + '\n\n'
 
             llm_service.chat_question.db_schema = llm_service.out_ds_instance.get_db_schema() if llm_service.out_ds_instance else get_table_schema(session=llm_service.session, current_user=llm_service.current_user, ds=llm_service.ds)
 

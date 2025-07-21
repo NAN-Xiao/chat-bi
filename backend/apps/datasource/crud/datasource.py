@@ -230,19 +230,26 @@ def updateField(session: SessionDep, field: CoreField):
 
 
 def preview(session: SessionDep, id: int, data: TableObj):
+    if data.fields is None or len(data.fields) == 0:
+        return {"fields": [], "data": [], "sql": ''}
+
+    fields = [f.field_name for f in data.fields if f.checked]
+    if fields is None or len(fields) == 0:
+        return {"fields": [], "data": [], "sql": ''}
+
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
     if ds.type == "mysql":
-        sql = f"""SELECT `{"`, `".join([f.field_name for f in data.fields if f.checked])}` FROM `{data.table.table_name}` LIMIT 100"""
+        sql = f"""SELECT `{"`, `".join(fields)}` FROM `{data.table.table_name}` LIMIT 100"""
     elif ds.type == "sqlServer":
-        sql = f"""SELECT [{"], [".join([f.field_name for f in data.fields if f.checked])}] FROM [{conf.dbSchema}].[{data.table.table_name}]
+        sql = f"""SELECT [{"], [".join(fields)}] FROM [{conf.dbSchema}].[{data.table.table_name}]
             ORDER BY [{data.fields[0].field_name}]
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     elif ds.type == "pg" or ds.type == "excel":
-        sql = f"""SELECT "{'", "'.join([f.field_name for f in data.fields if f.checked])}" FROM "{conf.dbSchema}"."{data.table.table_name}" LIMIT 100"""
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}" LIMIT 100"""
     elif ds.type == "oracle":
-        sql = f"""SELECT "{'", "'.join([f.field_name for f in data.fields if f.checked])}" FROM "{conf.dbSchema}"."{data.table.table_name}"
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}"
             ORDER BY "{data.fields[0].field_name}"
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     return exec_sql(ds, sql)

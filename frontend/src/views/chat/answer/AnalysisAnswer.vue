@@ -5,9 +5,9 @@ import { computed, nextTick } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 const props = withDefaults(
   defineProps<{
-    chatList: Array<ChatInfo>
+    chatList?: Array<ChatInfo>
     currentChatId?: number
-    currentChat: ChatInfo
+    currentChat?: ChatInfo
     message?: ChatMessage
     loading?: boolean
   }>(),

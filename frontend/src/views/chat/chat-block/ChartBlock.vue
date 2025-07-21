@@ -193,8 +193,9 @@ function addToDashboard() {
 <template>
   <div
     v-if="
-      (!isPredict && (message?.record?.sql || message?.record?.chart)) ||
-      (isPredict && message?.record?.chart && data.length > 0)
+      !message.isTyping &&
+      ((!isPredict && (message?.record?.sql || message?.record?.chart)) ||
+        (isPredict && message?.record?.chart && data.length > 0))
     "
     class="chart-component-container"
     :class="{ 'full-screen': enlarge }"
