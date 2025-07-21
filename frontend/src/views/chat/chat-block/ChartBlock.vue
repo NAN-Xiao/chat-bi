@@ -15,7 +15,7 @@ import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
 import icon_window_max_outlined from '@/assets/svg/icon_window-max_outlined.svg'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import { useI18n } from 'vue-i18n'
-import MdComponent from '@/views/chat/component/MdComponent.vue'
+import SQLComponent from '@/views/chat/component/SQLComponent.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -324,8 +324,9 @@ function addToDashboard() {
       body-class="chart-sql-drawer-body"
     >
       <div>
-        <MdComponent
-          :message="'```sql\n' + message.record?.sql + '\n```'"
+        <SQLComponent
+          v-if="message.record?.sql"
+          :sql="message.record?.sql"
           style="margin-top: 12px"
         />
       </div>
