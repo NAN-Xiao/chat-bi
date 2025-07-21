@@ -1,8 +1,9 @@
 <template>
   <div class="rich-main-class" :class="{ 'edit-model': configItem.editing }" draggable="false">
     <div
+      v-if="isDisabled"
       draggable="false"
-      :class="{ 'custom-text-content': true, 'preview-text': true, 'layer-hidden': !isDisabled }"
+      :class="{ 'custom-text-content': true, 'preview-text': true }"
       @keydown.stop
       @keyup.stop
       @mousedown.stop
@@ -10,10 +11,11 @@
       v-html="configItem.propValue"
     ></div>
     <editor
+      v-else
       :id="tinymceId"
       v-model="configItem.propValue"
       draggable="false"
-      :class="{ 'custom-text-content': true, 'layer-hidden': isDisabled }"
+      :class="{ 'custom-text-content': true }"
       :init="init"
     ></editor>
   </div>

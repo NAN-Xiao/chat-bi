@@ -6,7 +6,7 @@ defineProps({
     type: Array as PropType<number[]>,
     required: false,
     // eslint-disable-next-line vue/require-valid-default-prop
-    default: [12, 12, 12, 12],
+    default: [16, 16, 16, 16],
   },
 })
 
