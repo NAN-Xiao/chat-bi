@@ -38,7 +38,11 @@ export const dashboardStore = defineStore('dashboard', {
     setFullscreenFlag(val: boolean) {
       this.fullscreenFlag = val
     },
-    setCurComponent(value: any) {
+    setCurComponent: function (value: any) {
+      if (!value && this.curComponent) {
+        // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        this.curComponent.editing = false
+      }
       this.curComponent = value
       this.curComponentId = value && value.id ? value.id : null
     },

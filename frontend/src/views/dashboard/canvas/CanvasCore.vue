@@ -735,10 +735,13 @@ function containerMouseDown(e: MouseEvent) {
   infoBox.value.startX = e.pageX
   infoBox.value.startY = e.pageY
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  if (curComponent.value?.component !== 'SQText') {
-    e.preventDefault()
-    e.stopPropagation()
-  }
+  // if (curComponent.value?.component !== 'SQText') {
+  //   e.preventDefault()
+  //   e.stopPropagation()
+  // }
+
+  e.preventDefault()
+  e.stopPropagation()
 }
 
 function getNowPosition(addSizeX: number, addSizeY: number, moveXSize: number, moveYSize: number) {

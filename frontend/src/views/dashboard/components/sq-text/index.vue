@@ -65,11 +65,6 @@ const init = reactive({
   menubar: false,
   placeholder: '',
   inline: true,
-  setup: function (editor: any) {
-    editor.on('blur', function () {
-      configItem.value.editing = false
-    })
-  },
 })
 
 const isDisabled = computed(() => props.disabled || !configItem.value.editing)
