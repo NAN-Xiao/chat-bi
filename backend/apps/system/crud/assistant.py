@@ -5,7 +5,6 @@ from typing import Optional
 from fastapi import FastAPI
 import requests
 from sqlmodel import Session, select
-from apps.chat.task.llm import LLMService
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -14,7 +13,6 @@ from common.core.sqlbot_cache import cache
 from common.core.db import engine
 from starlette.middleware.cors import CORSMiddleware
 from common.core.config import settings
-from deps import CurrentUser
 
 @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
 async def get_assistant_info(*, session: Session, assistant_id: int) -> AssistantModel | None:
@@ -25,7 +23,7 @@ def get_assistant_user(*, id: int):
     return UserInfoDTO(id=id, account="sqlbot-inner-assistant", oid=1, name="sqlbot-inner-assistant", email="sqlbot-inner-assistant@sqlbot.com")
 
 # def get_assistant_ds(*, session: Session, assistant: AssistantModel):
-def get_assistant_ds(llm_service: LLMService) -> list[dict]:
+def get_assistant_ds(llm_service) -> list[dict]:
     assistant: AssistantModel = llm_service.current_assistant
     session: Session = llm_service.session
     type = assistant.type
