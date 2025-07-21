@@ -27,6 +27,7 @@ const routerList = computed(() => {
   }
   const list = router.getRoutes().filter((route) => {
     return (
+      !route.path.includes('assistant') &&
       !route.path.includes('canvas') &&
       !route.path.includes('member') &&
       !route.path.includes('permission') &&
