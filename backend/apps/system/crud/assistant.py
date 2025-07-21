@@ -33,12 +33,22 @@ def get_assistant_ds(llm_service) -> list[dict]:
             config: dict[any] = json.loads(configuration)
             oid: str = config['oid']
             stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(CoreDatasource.oid == oid)
-            private_list:list[int] = config['private_list']
+            private_list:list[int] = config.get('private_list') or None
             if private_list:
                 stmt.where(~CoreDatasource.id.in_(private_list))
-        db_ds_list = session.exec(stmt).all()
+        db_ds_list = session.exec(stmt)
+        
+        result_list = [
+            {
+                "id": ds.id,
+                "name": ds.name,
+                "description": ds.description
+            }
+            for ds in db_ds_list
+        ]
+    
         # filter private ds if offline
-        return db_ds_list
+        return result_list
     out_ds_instance: AssistantOutDs = AssistantOutDsFactory.get_instance(assistant, llm_service.assistant_certificate)
     llm_service.out_ds_instance = out_ds_instance
     dslist = out_ds_instance.get_simple_ds_list()

@@ -7,7 +7,7 @@ from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, 
     delete_chat, get_chat_chart_data, get_chat_predict_data
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion
 from apps.chat.task.llm import LLMService, run_task, run_analysis_or_predict_task, run_recommend_questions_task
-from common.core.deps import SessionDep, CurrentUser
+from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
@@ -94,7 +94,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
 
 
 @router.post("/recommend_questions/{chat_record_id}")
-async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int, current_assistant: CurrentAssistant):
     try:
         record = session.query(ChatRecord).get(chat_record_id)
         if not record:
@@ -104,7 +104,7 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
             )
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
 
-        llm_service = LLMService(session, current_user, request_question)
+        llm_service = LLMService(session, current_user, request_question, current_assistant)
         llm_service.set_record(record)
     except Exception as e:
         traceback.print_exc()
@@ -117,7 +117,7 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
 
 
 @router.post("/question")
-async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion):
+async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion, current_assistant: CurrentAssistant):
     """Stream SQL analysis results
     
     Args:
@@ -130,7 +130,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     """
 
     try:
-        llm_service = LLMService(session, current_user, request_question)
+        llm_service = LLMService(session, current_user, request_question, current_assistant)
         llm_service.init_record()
     except Exception as e:
         traceback.print_exc()
@@ -143,7 +143,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
 
 
 @router.post("/record/{chat_record_id}/{action_type}")
-async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str):
+async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str, current_assistant: CurrentAssistant):
     if action_type != 'analysis' and action_type != 'predict':
         raise HTTPException(
             status_code=404,
@@ -166,7 +166,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
     request_question = ChatQuestion(chat_id=record.chat_id, question='')
 
     try:
-        llm_service = LLMService(session, current_user, request_question)
+        llm_service = LLMService(session, current_user, request_question, current_assistant)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(
