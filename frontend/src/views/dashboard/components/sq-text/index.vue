@@ -1,8 +1,7 @@
 <template>
   <div class="rich-main-class" :class="{ 'edit-model': configItem.editing }" draggable="false">
     <div
-      v-if="isDisabled && !configItem.propValue"
-      class="rich-text-empty"
+      :class="{ 'rich-text-empty': true, 'layer-hidden': !isDisabled }"
       @keydown.stop
       @keyup.stop
       @mousedown.stop
@@ -11,9 +10,8 @@
       {{ t('dashboard.rich_text_tips') }}
     </div>
     <div
-      v-else-if="isDisabled"
       draggable="false"
-      :class="{ 'custom-text-content': true, 'preview-text': true }"
+      :class="{ 'custom-text-content': true, 'preview-text': true, 'layer-hidden': !isDisabled }"
       @keydown.stop
       @keyup.stop
       @mousedown.stop
@@ -21,11 +19,10 @@
       v-html="configItem.propValue"
     ></div>
     <editor
-      v-else
       :id="tinymceId"
       v-model="configItem.propValue"
       draggable="false"
-      :class="{ 'custom-text-content': true }"
+      :class="{ 'custom-text-content': true, 'layer-hidden': isDisabled }"
       :init="init"
     ></editor>
   </div>
@@ -128,12 +125,14 @@ onMounted(() => {
   position: relative;
   padding: 12px !important;
   .rich-text-empty {
+    position: absolute;
+    width: calc(100% - 24px);
+    height: calc(100% - 24px);
     display: flex;
-    width: 100%;
-    height: 100%;
     align-items: center;
     justify-content: center;
     font-size: 16px;
+    z-index: 10;
     color: rgba(100, 106, 115, 1);
   }
   div::-webkit-scrollbar {

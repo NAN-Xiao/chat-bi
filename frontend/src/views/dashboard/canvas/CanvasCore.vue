@@ -1037,8 +1037,18 @@ function afterInitOk(func) {
   }, 100)
 }
 
+const forceComputed = () => {
+  // Force the trigger of copy-add calculation here, as the position calculation uses a method and there is no change in internal style attributes
+  // In some cases, recalculation may not be triggered, resulting in a positional offset. The cellHeight property is being monitored, and forced recalculation is performed here
+  cellHeight.value = cellHeight.value + 0.001
+  nextTick(function () {
+    cellHeight.value = cellHeight.value - 0.001
+  })
+}
+
 function addItemBox(item: CanvasItem) {
   canvasComponentData.value.push(item)
+  forceComputed()
   nextTick(() => {
     addItem(item, canvasComponentData.value.length - 1)
   })

@@ -38,7 +38,7 @@ const addComponent = (componentType: string, viewInfo?: any) => {
       component.propValue[0].name = subTabName
       component.activeTabName = subTabName
     }
-
+    component.y = 100
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     dashboardEditorInnerRef.value.addItemToBox(component)
   }
