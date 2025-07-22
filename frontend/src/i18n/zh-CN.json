@@ -231,8 +231,8 @@
     "got_it": "知道了",
     "field_original_notes": "字段原始备注",
     "field_notes_1": "字段备注",
-    "no_table":"暂无数据表",
-    "go_add":"去添加"
+    "no_table": "暂无数据表",
+    "go_add": "去添加"
   },
   "model": {
     "default_model": "默认模型",
@@ -442,7 +442,12 @@
     "target_credential_name": "目标凭证名称",
     "target_credential": "目标凭证",
     "edit_advanced_applications": "编辑高级应用",
-    "edit_basic_applications": "编辑基础应用"
+    "edit_basic_applications": "编辑基础应用",
+    "delete": "是否删除: {msg}?",
+    "code_to_embed": "复制以下代码进行嵌入",
+    "floating_window_mode": "浮窗模式",
+    "copy_successful": "复制成功",
+    "copy_failed": "复制失败"
   },
   "chat": {
     "type": "图表类型",

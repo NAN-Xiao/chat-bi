@@ -160,6 +160,7 @@ const userInfo = ref({
 })
 const afterFind = ref(false)
 const findUser = () => {
+  if (!workspaceForm.name) return
   uwsOption({ keyword: workspaceForm.name })
     .then((res: any) => {
       userInfo.value = res || {}

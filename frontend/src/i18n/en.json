@@ -228,8 +228,8 @@
     "got_it": "Got it",
     "field_original_notes": "Field original notes",
     "field_notes_1": "Field notes",
-    "no_table":"No Table",
-    "go_add":"Add"
+    "no_table": "No Table",
+    "go_add": "Add"
   },
   "model": {
     "default_model": "Default model",
@@ -430,7 +430,12 @@
     "target_credential_name": "Target credential name",
     "target_credential": "Target credential",
     "edit_advanced_applications": "Edit advanced applications",
-    "edit_basic_applications": "Edit basic applications"
+    "edit_basic_applications": "Edit basic applications",
+    "delete": "delete {msg}?",
+    "code_to_embed": "Copy the following code to embed",
+    "floating_window_mode": "Floating window mode",
+    "copy_successful": "Copy successful",
+    "copy_failed": "Copy failed"
   },
   "chat": {
     "type": "Chart Type",
