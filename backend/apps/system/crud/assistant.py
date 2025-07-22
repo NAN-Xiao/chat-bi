@@ -4,8 +4,10 @@ import json
 from typing import Optional
 from fastapi import FastAPI
 import requests
+from sqlalchemy import Engine, create_engine
 from sqlmodel import Session, select
-from apps.datasource.models.datasource import CoreDatasource
+from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
+
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import AssistantOutDsSchema, UserInfoDTO
@@ -92,7 +94,7 @@ class AssistantOutDs:
         self.get_ds_from_api(certificate)
         
     #@cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_DS, keyExpression="current_user.id")    
-    async def get_ds_from_api(self, certificate: Optional[str] = None):
+    def get_ds_from_api(self, certificate: Optional[str] = None):
         config: dict[any] = json.loads(self.assistant.configuration)
         endpoint: str = config['endpoint']
         certificateList: list[any] = json.loads(certificate)
@@ -106,7 +108,7 @@ class AssistantOutDs:
         
         res = requests.get(url=endpoint, headers=header, cookies=cookies, timeout=10)
         if res.status_code == 200:
-            result_json: dict[any] = json.loads(res.json())
+            result_json: dict[any] = json.loads(res.text)
             if result_json.get('code') == 0:
                 temp_list = result_json.get('data', [])
                 self.ds_list = [
@@ -144,20 +146,35 @@ class AssistantOutDs:
     def get_ds(self, ds_id: int):
         if self.ds_list:
             for ds in self.ds_list:
-                if ds['id'] == ds_id:
+                if ds.id == ds_id:
                     return ds
         else:
             raise Exception("Datasource list is not found.")
         raise Exception(f"Datasource with id {ds_id} not found.")
-    def get_ds_engine(self, ds_id: int):
-        ds = self.get_ds(ds_id)
-        ds_type =  ds.get('type') if ds else None
-        if not ds_type:
-            raise Exception(f"Datasource with id {ds_id} not found or type is not defined.")
-        return ds_type
+
     
 class AssistantOutDsFactory:
     @staticmethod
     def get_instance(assistant: AssistantModel, certificate: Optional[str] = None) -> AssistantOutDs:
         return AssistantOutDs(assistant, certificate)
+
+def get_ds_engine(ds: AssistantOutDsSchema) -> Engine:
+    timeout: int = 30
+    connect_args = {"connect_timeout": timeout}
+    conf = DatasourceConf(
+        host=ds.host, 
+        port=ds.port, 
+        username=ds.user,
+        password=ds.password,   
+        database=ds.dataBase,
+        driver='',
+        extraJdbc=ds.extraParams,
+        dbSchema=ds.schema or ''
+    )
+    from apps.db.db import get_uri_from_config
+    uri = get_uri_from_config(ds.type, conf)
+    if ds.type == "pg" and ds.schema:
+        connect_args.update({"options": f"-c search_path={ds.schema}"})
+    engine = create_engine(uri, connect_args=connect_args, pool_timeout=timeout, pool_size=20, max_overflow=10)
+    return engine
     

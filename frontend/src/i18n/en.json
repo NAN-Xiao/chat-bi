@@ -227,7 +227,9 @@
     "cannot_be_deleted": "The chart of the dashboard uses this data source and cannot be deleted.",
     "got_it": "Got it",
     "field_original_notes": "Field original notes",
-    "field_notes_1": "Field notes"
+    "field_notes_1": "Field notes",
+    "no_table":"No Table",
+    "go_add":"Add"
   },
   "model": {
     "default_model": "Default model",

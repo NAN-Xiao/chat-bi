@@ -8,6 +8,7 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import ParamsForm from './ParamsForm.vue'
+import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 
 interface Table {
   name: string
@@ -53,6 +54,7 @@ const { t } = useI18n()
 const paramsFormRef = ref()
 const tableList = ref([] as any[])
 const loading = ref(false)
+const initLoading = ref(false)
 const keywords = ref('')
 const tableListWithSearch = computed(() => {
   if (!keywords.value) return tableList.value
@@ -67,11 +69,13 @@ const ds = ref<any>({})
 const btnSelect = ref('d')
 
 const init = () => {
+  initLoading.value = true
   datasourceApi.getDs(props.info.id).then((res) => {
     ds.value = res
     fieldList.value = []
     datasourceApi.tableList(props.info.id).then((res) => {
       tableList.value = res
+      initLoading.value = false
     })
   })
 }
@@ -213,7 +217,7 @@ const back = () => {
           </template>
         </el-input>
 
-        <div class="list-content">
+        <div v-loading="initLoading" class="list-content">
           <div
             v-for="ele in tableListWithSearch"
             :key="ele.table_name"
@@ -233,6 +237,16 @@ const back = () => {
             img-type="tree"
             style="width: 100%; margin-top: 100px"
           />
+          <div v-else-if="!initLoading && !tableListWithSearch.length" class="no-data">
+            <div class="no-data-msg">
+              <div>
+                {{ $t('datasource.no_table') }}
+              </div>
+              <el-button type="primary" link @click="handleSelectTableList">
+                {{ $t('datasource.go_add') }}
+              </el-button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -445,6 +459,20 @@ const back = () => {
             background: #1cba901a;
             color: var(--ed-color-primary);
           }
+        }
+      }
+
+      .no-data {
+        height: 100%;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        .no-data-msg {
+          display: inline;
+          width: 100%;
+          color: var(--ed-text-color-secondary);
+          font-size: var(--ed-font-size-base);
         }
       }
     }

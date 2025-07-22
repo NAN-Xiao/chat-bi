@@ -11,26 +11,32 @@ from apps.datasource.utils.utils import aes_decrypt
 from apps.db.engine import get_engine_config
 from decimal import Decimal
 
+from apps.system.crud.assistant import get_ds_engine
+from apps.system.schemas.system_schema import AssistantOutDsSchema
 
-def get_uri(ds: CoreDatasource):
+
+def get_uri(ds: CoreDatasource) -> str:
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+    return get_uri_from_config(ds.type, conf)
+
+def get_uri_from_config(type: str,conf: DatasourceConf) -> str:
     db_url: str
-    if ds.type == "mysql":
+    if type == "mysql":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
             db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{conf.extraJdbc}"
         else:
             db_url = f"mysql+pymysql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
-    elif ds.type == "sqlServer":
+    elif type == "sqlServer":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
             db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{conf.extraJdbc}"
         else:
             db_url = f"mssql+pymssql://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
-    elif ds.type == "pg" or ds.type == "excel":
+    elif type == "pg" or type == "excel":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
             db_url = f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}?{conf.extraJdbc}"
         else:
             db_url = f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{urllib.parse.quote(conf.database)}"
-    elif ds.type == "oracle":
+    elif type == "oracle":
         if conf.mode == "service_name":
             if conf.extraJdbc is not None and conf.extraJdbc != '':
                 db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}?service_name={urllib.parse.quote(conf.database)}&{conf.extraJdbc}"
@@ -62,8 +68,8 @@ def get_engine(ds: CoreDatasource) -> Engine:
     return engine
 
 
-def get_session(ds: CoreDatasource):
-    engine = get_engine(ds)
+def get_session(ds: CoreDatasource | AssistantOutDsSchema):
+    engine = get_engine(ds) if isinstance(ds, CoreDatasource) else get_ds_engine(ds)
     session_maker = sessionmaker(bind=engine)
     session = session_maker()
     return session
@@ -238,7 +244,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             session.close()
 
 
-def exec_sql(ds: CoreDatasource, sql: str):
+def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str):
     session = get_session(ds)
     result = session.execute(text(sql))
     try:
