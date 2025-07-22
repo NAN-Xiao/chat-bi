@@ -70,7 +70,17 @@ export class Bar extends BaseG2Chart {
           labelAutoWrap: true,
           labelAutoEllipsis: true,
         },
-        y: { title: y[0].name },
+        y: {
+          title: y[0].name,
+          labelFontSize: 12,
+          labelAutoHide: {
+            type: 'hide',
+            keepHeader: true,
+          },
+          labelAutoRotate: false,
+          labelAutoWrap: true,
+          labelAutoEllipsis: true,
+        },
       },
       scale: {
         x: {
