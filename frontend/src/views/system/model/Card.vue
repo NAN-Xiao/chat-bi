@@ -42,7 +42,7 @@ const handleDel = () => {
   <div class="card">
     <div class="name-icon">
       <img :src="current_supplier?.icon" width="32px" height="32px" />
-      <span class="name">{{ name }}</span>
+      <span :title="name" class="name ellipsis">{{ name }}</span>
       <span v-if="isDefault" class="default">{{ $t('model.default_model') }}</span>
     </div>
     <div class="type-value">
@@ -90,6 +90,7 @@ const handleDel = () => {
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
+      max-width: 280px;
     }
     .default {
       margin-left: auto;

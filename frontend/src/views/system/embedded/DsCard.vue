@@ -67,13 +67,13 @@ const handlePublic = () => {
       <div click.stop class="methods">
         <el-button v-if="isPrivate" secondary @click.stop="handlePublic">
           <el-icon style="margin-right: 4px" size="16">
-            <icon_personal_privacy_outlined></icon_personal_privacy_outlined>
+            <icon_community_tab_outlined></icon_community_tab_outlined>
           </el-icon>
           {{ $t('embedded.set_to_public') }}
         </el-button>
         <el-button v-else secondary @click.stop="handlePrivate">
           <el-icon style="margin-right: 4px" size="16">
-            <icon_community_tab_outlined></icon_community_tab_outlined>
+            <icon_personal_privacy_outlined></icon_personal_privacy_outlined>
           </el-icon>
           {{ $t('embedded.set_to_private') }}
         </el-button>

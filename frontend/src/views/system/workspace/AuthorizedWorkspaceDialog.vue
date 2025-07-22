@@ -110,7 +110,9 @@ const loading = ref(false)
 const centerDialogVisible = ref(false)
 
 const workspaceWithKeywords = computed(() => {
-  return workspace.value.filter((ele: any) => (ele.name as string).includes(search.value))
+  return workspace.value.filter((ele: any) =>
+    (ele.name.toLowerCase() as string).includes(search.value.toLowerCase())
+  )
 })
 const handleCheckAllChange = (val: CheckboxValueType) => {
   checkedWorkspace.value = val ? workspace.value : []
@@ -128,6 +130,7 @@ let oid: any = null
 
 const open = async (id: any) => {
   loading.value = true
+  search.value = ''
   oid = id
   checkedWorkspace.value = []
   checkAll.value = false

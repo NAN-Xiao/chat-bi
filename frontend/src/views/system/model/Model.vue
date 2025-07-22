@@ -191,7 +191,7 @@ const submit = (item: any) => {
       search()
       ElMessage({
         type: 'success',
-        message: 'Add completed',
+        message: t('workspace.add_successfully'),
       })
     })
     return
@@ -368,6 +368,7 @@ const submit = (item: any) => {
     display: flex;
     flex-wrap: wrap;
     max-height: calc(100% - 40px);
+    overflow-y: auto;
   }
 }
 </style>
@@ -389,6 +390,8 @@ const submit = (item: any) => {
   .popover {
     .popover-content {
       padding: 4px;
+      max-height: 300px;
+      overflow-y: auto;
     }
     .popover-item {
       height: 32px;

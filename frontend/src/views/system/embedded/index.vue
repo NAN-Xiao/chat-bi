@@ -99,6 +99,9 @@ const handleAddEmbedded = (val: any) => {
 const getDsList = () => {
   datasourceApi.list().then((res: any) => {
     dsListOptions.value = res || []
+    if (!currentEmbedded.id) {
+      dsForm.private_list = dsListOptions.value.map((ele) => ele.id)
+    }
   })
 }
 const handleBaseEmbedded = (row: any) => {
@@ -645,6 +648,7 @@ const copyCode = () => {
           <el-form-item prop="workspace" :label="t('user.workspace')">
             <el-select
               v-model="dsForm.oid"
+              filterable
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
               "
@@ -814,11 +818,12 @@ const copyCode = () => {
     .popover-item {
       height: 98px;
       display: flex;
-      padding-left: 12px;
+      padding-left: 8px;
       padding-right: 8px;
       position: relative;
       border-radius: 4px;
       cursor: pointer;
+      padding-top: 8px;
       &:hover {
         background: #1f23291a;
       }

@@ -74,14 +74,14 @@ const rules = reactive<FormRules>({
   host: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.port'),
+      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.host'),
       trigger: 'blur',
     },
   ],
   port: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.host'),
+      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.port'),
       trigger: 'blur',
     },
   ],
@@ -97,7 +97,7 @@ const rules = reactive<FormRules>({
   dbSchema: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('ds.form.schema'),
+      message: t('datasource.please_enter') + t('common.empty') + 'Schema',
       trigger: 'blur',
     },
   ],
@@ -605,16 +605,10 @@ defineExpose({
               "
             />
           </el-form-item>
-          <el-form-item
-            v-if="haveSchema.includes(form.type)"
-            :label="t('ds.form.schema')"
-            prop="dbSchema"
-          >
+          <el-form-item v-if="haveSchema.includes(form.type)" label="Schema" prop="dbSchema">
             <el-input
               v-model="form.dbSchema"
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + t('ds.form.schema')
-              "
+              :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'Schema'"
             />
             <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
           </el-form-item>

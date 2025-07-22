@@ -536,6 +536,7 @@ const handleCurrentChange = (val: number) => {
       <el-form-item prop="name" :label="t('workspace.workspace_name')">
         <el-input
           v-model="workspaceForm.name"
+          maxlength="50"
           :placeholder="
             $t('datasource.please_enter') + $t('common.empty') + $t('workspace.workspace_name')
           "

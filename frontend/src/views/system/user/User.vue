@@ -63,7 +63,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="email" :label="$t('user.email')" width="280" />
+        <el-table-column prop="email" show-overflow-tooltip :label="$t('user.email')" />
         <!-- <el-table-column prop="phone" :label="$t('user.phone_number')" width="280" /> -->
         <!-- <el-table-column prop="user_source" :label="$t('user.user_source')" width="280" /> -->
         <el-table-column prop="oid_list" :label="$t('user.workspace')" width="280">
@@ -187,6 +187,7 @@
           v-model="state.form.name"
           :placeholder="$t('datasource.please_enter') + $t('common.empty') + $t('user.name')"
           autocomplete="off"
+          maxlength="50"
         />
       </el-form-item>
       <el-form-item prop="account" :label="t('user.account')">
@@ -195,6 +196,7 @@
           :disabled="!!state.form.id"
           :placeholder="$t('datasource.please_enter') + $t('common.empty') + $t('user.account')"
           autocomplete="off"
+          maxlength="50"
         />
       </el-form-item>
       <el-form-item prop="email" :label="$t('user.email')">
