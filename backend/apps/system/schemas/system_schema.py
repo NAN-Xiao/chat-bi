@@ -71,6 +71,12 @@ class AssistantBase(BaseModel):
 class AssistantDTO(AssistantBase, BaseCreatorDTO):
     pass
 
+class AssistantHeader(AssistantDTO):
+    unique: Optional[str] = None
+    certificate: Optional[str] = None
+    online: bool = False
+    
+
 class AssistantValidator(BaseModel):
     valid: bool = False
     id_match: bool = False

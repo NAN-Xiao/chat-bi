@@ -1,9 +1,10 @@
+import base64
 from typing import Annotated
+from urllib.parse import unquote
 
 from fastapi import Depends, Request
 from sqlmodel import Session
-from apps.system.models.system_model import AssistantModel
-from apps.system.schemas.system_schema import UserInfoDTO
+from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core.db import get_session
 from common.utils.locale import I18n
 
@@ -19,10 +20,14 @@ async def get_current_user(request: Request) -> UserInfoDTO:
 
 CurrentUser = Annotated[UserInfoDTO, Depends(get_current_user)]
 
-async def get_current_assistant(request: Request) -> AssistantModel | None:
-    return request.state.assistant if hasattr(request.state, "assistant") else None
+async def get_current_assistant(request: Request) -> AssistantHeader | None:
+    base_assistant = request.state.assistant if hasattr(request.state, "assistant") else None
+    if request.headers.get("X-SQLBOT-ASSISTANT-CERTIFICATE"):
+        entry_certificate = request.headers['X-SQLBOT-ASSISTANT-CERTIFICATE']
+        base_assistant.certificate = unquote(base64.b64decode(entry_certificate).decode('utf-8'))
+    return base_assistant
 
-CurrentAssistant = Annotated[AssistantModel, Depends(get_current_assistant)]
+CurrentAssistant = Annotated[AssistantHeader, Depends(get_current_assistant)]
 
 
 

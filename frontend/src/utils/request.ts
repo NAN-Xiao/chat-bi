@@ -75,6 +75,11 @@ class HttpService {
         if (assistantStore.getToken) {
           config.headers['X-SQLBOT-ASSISTANT-TOKEN'] = `Assistant ${assistantStore.getToken}`
           if (config.headers['X-SQLBOT-TOKEN']) config.headers.delete('X-SQLBOT-TOKEN')
+          if (assistantStore.getType && assistantStore.getCertificate) {
+            config.headers['X-SQLBOT-ASSISTANT-CERTIFICATE'] = btoa(
+              encodeURIComponent(assistantStore.getCertificate)
+            )
+          }
         }
         const locale = getLocale()
         if (locale) {
@@ -239,6 +244,11 @@ class HttpService {
     if (assistantStore.getToken) {
       heads['X-SQLBOT-ASSISTANT-TOKEN'] = `Assistant ${assistantStore.getToken}`
       if (heads['X-SQLBOT-TOKEN']) delete heads['X-SQLBOT-TOKEN']
+      if (assistantStore.getType && assistantStore.getCertificate) {
+        heads['X-SQLBOT-ASSISTANT-CERTIFICATE'] = btoa(
+          encodeURIComponent(assistantStore.getCertificate)
+        )
+      }
     }
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore

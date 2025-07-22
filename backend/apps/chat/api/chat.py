@@ -96,7 +96,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
 @router.post("/recommend_questions/{chat_record_id}")
 async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int, current_assistant: CurrentAssistant):
     try:
-        record = session.query(ChatRecord).get(chat_record_id)
+        record = session.get(ChatRecord, chat_record_id)
         if not record:
             raise HTTPException(
                 status_code=400,

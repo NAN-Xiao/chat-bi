@@ -9,7 +9,7 @@ from apps.system.models.system_model import AssistantModel
 from common.core.db import engine 
 from apps.system.crud.assistant import get_assistant_info, get_assistant_user
 from apps.system.crud.user import get_user_info
-from apps.system.schemas.system_schema import UserInfoDTO
+from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core import security
 from common.core.config import settings
 from common.core.schemas import TokenPayload
@@ -92,6 +92,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 session_user = get_assistant_user(id = token_data.id)
                 assistant_info = await get_assistant_info(session=session, assistant_id=payload['assistant_id'])
                 assistant_info = AssistantModel.model_validate(assistant_info)
+                assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
                 return True, session_user, assistant_info
         except Exception as e:
             return False, e

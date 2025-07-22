@@ -10,7 +10,7 @@ from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
 
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.system_schema import AssistantOutDsSchema, UserInfoDTO
+from apps.system.schemas.system_schema import AssistantHeader, AssistantOutDsSchema, UserInfoDTO
 from common.core.sqlbot_cache import cache
 from common.core.db import engine
 from starlette.middleware.cors import CORSMiddleware
@@ -24,9 +24,8 @@ async def get_assistant_info(*, session: Session, assistant_id: int) -> Assistan
 def get_assistant_user(*, id: int):
     return UserInfoDTO(id=id, account="sqlbot-inner-assistant", oid=1, name="sqlbot-inner-assistant", email="sqlbot-inner-assistant@sqlbot.com")
 
-# def get_assistant_ds(*, session: Session, assistant: AssistantModel):
 def get_assistant_ds(llm_service) -> list[dict]:
-    assistant: AssistantModel = llm_service.current_assistant
+    assistant: AssistantHeader = llm_service.current_assistant
     session: Session = llm_service.session
     type = assistant.type
     if type == 0:
@@ -51,7 +50,7 @@ def get_assistant_ds(llm_service) -> list[dict]:
     
         # filter private ds if offline
         return result_list
-    out_ds_instance: AssistantOutDs = AssistantOutDsFactory.get_instance(assistant, llm_service.assistant_certificate)
+    out_ds_instance: AssistantOutDs = AssistantOutDsFactory.get_instance(assistant)
     llm_service.out_ds_instance = out_ds_instance
     dslist = out_ds_instance.get_simple_ds_list()
     # format?
@@ -84,20 +83,20 @@ def init_dynamic_cors(app: FastAPI):
     
 
 class AssistantOutDs:
-    assistant: AssistantModel
+    assistant: AssistantHeader
     ds_list: Optional[list[AssistantOutDsSchema]] = None
     certificate: Optional[str] = None
-    def __init__(self, assistant: AssistantModel, certificate: Optional[str] = None):
+    def __init__(self, assistant: AssistantHeader):
         self.assistant = assistant
         self.ds_list = None
-        self.certificate = certificate
-        self.get_ds_from_api(certificate)
+        self.certificate = assistant.certificate
+        self.get_ds_from_api()
         
     #@cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_DS, keyExpression="current_user.id")    
-    def get_ds_from_api(self, certificate: Optional[str] = None):
+    def get_ds_from_api(self):
         config: dict[any] = json.loads(self.assistant.configuration)
         endpoint: str = config['endpoint']
-        certificateList: list[any] = json.loads(certificate)
+        certificateList: list[any] = json.loads(self.certificate)
         header = {}
         cookies = {}
         for item in certificateList:
@@ -155,8 +154,8 @@ class AssistantOutDs:
     
 class AssistantOutDsFactory:
     @staticmethod
-    def get_instance(assistant: AssistantModel, certificate: Optional[str] = None) -> AssistantOutDs:
-        return AssistantOutDs(assistant, certificate)
+    def get_instance(assistant: AssistantHeader) -> AssistantOutDs:
+        return AssistantOutDs(assistant)
 
 def get_ds_engine(ds: AssistantOutDsSchema) -> Engine:
     timeout: int = 30

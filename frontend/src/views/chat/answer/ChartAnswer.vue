@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat.ts'
-import { useAssistantStore } from '@/stores/assistant'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
-const assistantStore = useAssistantStore()
 const props = withDefaults(
   defineProps<{
     chatList?: Array<ChatInfo>
@@ -102,10 +100,7 @@ const sendMessage = async () => {
     const param = {
       question: currentRecord.question,
       chat_id: _currentChatId.value,
-      assistant_certificate: assistantStore.getCertificate,
     }
-    console.log(assistantStore.getCertificate)
-    console.log(param)
     const response = await questionApi.add(param, controller)
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
