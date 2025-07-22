@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Text, BigInteger, DateTime, Identity, Boolean
+from sqlalchemy import Column, Integer, Text, BigInteger, DateTime, Identity, Boolean
 from sqlmodel import SQLModel, Field
 
 from apps.template.generate_analysis.generator import get_analysis_template
@@ -24,6 +24,7 @@ class Chat(SQLModel, table=True):
     chat_type: str = Field(max_length=20, default="chat")  # chat, datasource
     datasource: int = Field(sa_column=Column(BigInteger, nullable=True))
     engine_type: str = Field(max_length=64)
+    origin: Optional[int] = Field(sa_column=Column(Integer, nullable=False, default=0))  # 0: default, 1: mcp, 2: assistant
 
 
 class ChatRecord(SQLModel, table=True):
@@ -72,6 +73,7 @@ class CreateChat(BaseModel):
     id: int = None
     question: str = None
     datasource: int = None
+    origin: Optional[int] = 0
 
 
 class RenameChat(BaseModel):

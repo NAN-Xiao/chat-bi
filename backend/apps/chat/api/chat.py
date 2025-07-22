@@ -85,7 +85,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 @router.post("/assistant/start")
 async def start_chat(session: SessionDep, current_user: CurrentUser):
     try:
-        return create_chat(session, current_user, CreateChat(), False)
+        return create_chat(session, current_user, CreateChat(origin=2), False)
     except Exception as e:
         raise HTTPException(
             status_code=500,

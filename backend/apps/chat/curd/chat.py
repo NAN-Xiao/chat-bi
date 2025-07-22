@@ -21,7 +21,7 @@ def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
 
 
 def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
-    chat = session.query(Chat).filter(Chat.id == rename_object.id).first()
+    chat = session.get(Chat, rename_object.id)
     if not chat:
         raise Exception(f"Chat with id {rename_object.id} not found")
 
@@ -163,11 +163,12 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
     chat = Chat(create_time=datetime.datetime.now(),
                 create_by=current_user.id,
                 oid=current_user.oid if current_user.oid is not None else 1,
-                brief=create_chat_obj.question.strip()[:20])
+                brief=create_chat_obj.question.strip()[:20],
+                origin=create_chat_obj.origin if create_chat_obj.origin is not None else 0)
     ds: CoreDatasource | None = None
     if create_chat_obj.datasource:
         chat.datasource = create_chat_obj.datasource
-        ds = session.query(CoreDatasource).filter(CoreDatasource.id == create_chat_obj.datasource).first()
+        ds = session.get(CoreDatasource, create_chat_obj.datasource)
 
         if not ds:
             raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")

@@ -71,7 +71,7 @@ async def mcp_start(session: SessionDep, chat: ChatStart):
     t = Token(access_token=create_access_token(
         user_dict, expires_delta=access_token_expires
     ))
-    c = create_chat(session, user, CreateChat(), False)
+    c = create_chat(session, user, CreateChat(origin=1), False)
     return {"access_token": t.access_token, "chat_id": c.id}
 
 
