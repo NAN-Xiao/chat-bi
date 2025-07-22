@@ -45,7 +45,7 @@ async def info(session: SessionDep, id: str, virtual: Optional[int] = Query(None
 
 @router.get("", response_model=list[AssistantModel])
 async def query(session: SessionDep):
-    list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time)).all()
+    list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time.asc())).all()
     return list_result
 
 @router.post("")
