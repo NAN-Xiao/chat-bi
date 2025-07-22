@@ -103,52 +103,59 @@ function onChatCreated(chat: ChatInfo) {
 
 const chatCreatorRef = ref()
 
-function goEmpty() {
+function goEmpty(func?: (...p: any[]) => void, ...params: any[]) {
   _currentChat.value = new ChatInfo()
   _currentChatId.value = undefined
-  emits('goEmpty')
+  emits('goEmpty', func, ...params)
 }
 
 const createNewChat = async () => {
-  if (!_loading.value) {
-    goEmpty()
-    if (isAssistant.value) {
-      const assistantChat = await assistantStore.setChat()
-      if (assistantChat) {
-        onChatCreated(assistantChat)
-      }
-      return
-    } else {
-      chatCreatorRef.value?.showDs()
+  goEmpty(doCreateNewChat)
+}
+
+async function doCreateNewChat() {
+  if (isAssistant.value) {
+    const assistantChat = await assistantStore.setChat()
+    if (assistantChat) {
+      onChatCreated(assistantChat)
     }
+    return
+  } else {
+    chatCreatorRef.value?.showDs()
   }
 }
 
 function onClickHistory(chat: Chat) {
-  if (chat !== undefined && chat.id !== undefined && !_loading.value) {
-    goEmpty()
-    nextTick(() => {
-      if (chat !== undefined && chat.id !== undefined) {
-        _currentChat.value = new ChatInfo(chat)
-        _currentChatId.value = chat.id
-        _loading.value = true
-        chatApi
-          .get(chat.id)
-          .then((res) => {
-            const info = chatApi.toChatInfo(res)
-            if (info) {
-              _currentChat.value = info
-
-              // scrollToBottom()
-              emits('onClickHistory', info)
-            }
-          })
-          .finally(() => {
-            _loading.value = false
-          })
-      }
-    })
+  if (chat !== undefined && chat.id !== undefined) {
+    if (_currentChatId.value === chat.id) {
+      return
+    }
+    goEmpty(goHistory, chat)
   }
+}
+
+function goHistory(chat: Chat) {
+  nextTick(() => {
+    if (chat !== undefined && chat.id !== undefined) {
+      _currentChat.value = new ChatInfo(chat)
+      _currentChatId.value = chat.id
+      _loading.value = true
+      chatApi
+        .get(chat.id)
+        .then((res) => {
+          const info = chatApi.toChatInfo(res)
+          if (info && info.id === _currentChatId.value) {
+            _currentChat.value = info
+
+            // scrollToBottom()
+            emits('onClickHistory', info)
+          }
+        })
+        .finally(() => {
+          _loading.value = false
+        })
+    }
+  })
 }
 
 function onChatDeleted(id: number) {
