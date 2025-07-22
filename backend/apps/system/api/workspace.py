@@ -29,7 +29,8 @@ async def option_pager(
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
     stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
-        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid)
+        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid),
+        UserModel.id != 1
     ).order_by(UserModel.create_time)
     
     if keyword:
@@ -51,12 +52,15 @@ async def option_user(
     current_user: CurrentUser,
     keyword: str = Query(description="搜索关键字")
     ):
+    if not keyword:
+        raise HTTPException("keyword is required")
     if (not current_user.isAdmin) and current_user.weight == 0:
         raise RuntimeError("no permission to execute this api")
     oid = current_user.oid
     
     stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
-        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid)
+        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid),
+        UserModel.id != 1
     )
     
     if keyword:
@@ -89,6 +93,7 @@ async def pager(
         UserWsModel, UserModel.id == UserWsModel.uid
     ).where(
         UserWsModel.oid == workspace_id,
+        UserModel.id != 1
     ).order_by(UserModel.create_time)
     
     if keyword:
