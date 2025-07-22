@@ -1,7 +1,7 @@
 <template>
   <div class="rich-main-class" :class="{ 'edit-model': configItem.editing }" draggable="false">
     <div
-      :class="{ 'rich-text-empty': true, 'layer-hidden': !isDisabled }"
+      :class="{ 'rich-text-empty': true, 'layer-hidden': !isDisabled || configItem.propValue }"
       @keydown.stop
       @keyup.stop
       @mousedown.stop
