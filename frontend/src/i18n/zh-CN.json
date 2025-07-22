@@ -447,7 +447,8 @@
     "code_to_embed": "复制以下代码进行嵌入",
     "floating_window_mode": "浮窗模式",
     "copy_successful": "复制成功",
-    "copy_failed": "复制失败"
+    "copy_failed": "复制失败",
+    "open_the_query": "公共的数据源，允许所有用户开启问数；私有数据源，登录状态的用户可以开启问数"
   },
   "chat": {
     "type": "图表类型",

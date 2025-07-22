@@ -28,7 +28,7 @@ const dsFormRef = ref()
 const urlFormRef = ref()
 const dialogTitle = ref('')
 const embeddedList = ref<any[]>([])
-const systemCredentials = ['localStorage', 'cookie', 'sessionStorage']
+const systemCredentials = ['localStorage', 'custom', 'cookie', 'sessionStorage']
 const credentials = ['header', 'cookie', 'param']
 const workspaces = ref<any[]>([])
 
@@ -133,6 +133,21 @@ const beforeClose = () => {
   ruleConfigvVisible.value = false
   activeStep.value = 0
   isCreate.value = false
+  Object.assign(currentEmbedded, cloneDeep(defaultEmbedded))
+  Object.assign(dsForm, cloneDeep(defaultForm))
+  Object.assign(urlForm, cloneDeep(defaultUrlForm))
+
+  if (embeddedFormRef.value) {
+    embeddedFormRef.value.clearValidate()
+  }
+
+  if (dsFormRef.value) {
+    dsFormRef.value.clearValidate()
+  }
+
+  if (urlFormRef.value) {
+    urlFormRef.value.clearValidate()
+  }
 }
 
 const handleActive = (row: any) => {
@@ -210,14 +225,6 @@ const rules = {
       trigger: 'blur',
     },
   ],
-  description: [
-    {
-      required: true,
-      message:
-        t('datasource.please_enter') + t('common.empty') + t('embedded.application_description'),
-      trigger: 'blur',
-    },
-  ],
   domain: [
     {
       required: true,
@@ -284,14 +291,6 @@ const urlRules = {
       required: true,
       message:
         t('datasource.please_enter') + t('common.empty') + t('embedded.target_credential_name'),
-      trigger: 'blur',
-    },
-  ],
-
-  target_val: [
-    {
-      required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('embedded.target_credential'),
       trigger: 'blur',
     },
   ],
@@ -380,6 +379,7 @@ const copyCode = () => {
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('dashboard.search')"
           @keyup.enter="handleSearch"
+          clearable
           @blur="handleSearch"
         >
           <template #prefix>
@@ -526,6 +526,8 @@ const copyCode = () => {
               v-model="currentEmbedded.description"
               :rows="3"
               type="textarea"
+              maxlength="200"
+              show-word-limit
               :placeholder="$t('datasource.please_enter')"
               autocomplete="off"
             />
@@ -534,11 +536,7 @@ const copyCode = () => {
           <el-form-item prop="domain" :label="t('embedded.cross_domain_settings')">
             <el-input
               v-model="currentEmbedded.domain"
-              :placeholder="
-                $t('datasource.please_enter') +
-                $t('common.empty') +
-                $t('embedded.third_party_address')
-              "
+              :placeholder="$t('embedded.third_party_address')"
               autocomplete="off"
             />
           </el-form-item>
@@ -645,7 +643,7 @@ const copyCode = () => {
           class="form-content_error"
           @submit.prevent
         >
-          <el-form-item prop="workspace" :label="t('user.workspace')">
+          <el-form-item prop="oid" :label="t('user.workspace')">
             <el-select
               v-model="dsForm.oid"
               filterable
@@ -662,7 +660,13 @@ const copyCode = () => {
             </el-select>
           </el-form-item>
 
-          <el-form-item prop="private_list" :label="t('embedded.set_data_source')">
+          <el-form-item class="private-list_form" prop="private_list">
+            <template #label>
+              <div class="private-list">
+                {{ t('embedded.set_data_source') }}
+                <span class="open-the_query">{{ $t('embedded.open_the_query') }} </span>
+              </div>
+            </template>
             <div class="card-ds_content">
               <DsCard
                 v-for="ele in dsListOptions"
@@ -783,11 +787,31 @@ const copyCode = () => {
     margin-bottom: 16px;
   }
 
+  .private-list_form {
+    .ed-form-item__label:after {
+      display: none;
+    }
+  }
+
+  .private-list {
+    display: flex;
+    align-items: center;
+    .open-the_query {
+      color: #ff8800;
+      &::before {
+        color: var(--ed-color-danger);
+        content: '*';
+        margin-left: 2px;
+      }
+    }
+  }
+
   .card-ds_content {
     width: 100%;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    padding-bottom: 50px;
 
     .card {
       width: 392px;

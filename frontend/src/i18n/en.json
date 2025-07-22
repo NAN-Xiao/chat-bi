@@ -435,7 +435,8 @@
     "code_to_embed": "Copy the following code to embed",
     "floating_window_mode": "Floating window mode",
     "copy_successful": "Copy successful",
-    "copy_failed": "Copy failed"
+    "copy_failed": "Copy failed",
+    "open_the_query": "Public data sources allow all users to open the query; private data sources allow logged-in users to open the query"
   },
   "chat": {
     "type": "Chart Type",

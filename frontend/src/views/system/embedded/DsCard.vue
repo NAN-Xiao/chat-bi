@@ -174,7 +174,6 @@ const handlePublic = () => {
 
     .methods {
       align-items: center;
-      display: none;
 
       .more {
         position: relative;
