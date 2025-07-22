@@ -131,19 +131,18 @@
           />
         </template>
       </el-table>
-
-      <div class="pagination-container">
-        <el-pagination
-          v-model:current-page="state.pageInfo.currentPage"
-          v-model:page-size="state.pageInfo.pageSize"
-          :page-sizes="[10, 20, 30]"
-          :background="true"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="state.pageInfo.total"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+    </div>
+    <div class="pagination-container">
+      <el-pagination
+        v-model:current-page="state.pageInfo.currentPage"
+        v-model:page-size="state.pageInfo.pageSize"
+        :page-sizes="[10, 20, 30]"
+        :background="true"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="state.pageInfo.total"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </div>
 
     <div v-if="multipleSelectionAll.length" class="bottom-select">
@@ -193,6 +192,7 @@
       <el-form-item prop="account" :label="t('user.account')">
         <el-input
           v-model="state.form.account"
+          :disabled="!!state.form.id"
           :placeholder="$t('datasource.please_enter') + $t('common.empty') + $t('user.account')"
           autocomplete="off"
         />
@@ -316,6 +316,7 @@ const dialogVisiblePassword = ref(false)
 const isIndeterminate = ref(true)
 const drawerMainRef = ref()
 const userImportRef = ref()
+const selectionLoading = ref(false)
 const filterOption = ref<any[]>([
   {
     type: 'enum',
@@ -359,7 +360,7 @@ const defaultForm = {
   account: '',
   oid: 0,
   email: '',
-  status: '',
+  status: 1,
   phoneNumber: '',
   oid_list: [],
 }
@@ -451,7 +452,9 @@ const handleConfirmPassword = () => {
   })
   dialogVisiblePassword.value = false
 }
+
 const handleSelectionChange = (val: any[]) => {
+  if (selectionLoading.value) return
   const ids = state.tableData.map((ele: any) => ele.id)
   multipleSelectionAll.value = [
     ...multipleSelectionAll.value.filter((ele) => !ids.includes(ele.id)),
@@ -481,6 +484,7 @@ const handleToggleRowSelection = (check: boolean = true) => {
   }
   checkAll.value = i === state.tableData.length
   isIndeterminate.value = !(i === 0 || i === state.tableData.length)
+  selectionLoading.value = false
 }
 const handleSearch = () => {
   search()
@@ -541,6 +545,7 @@ const deleteBatchUser = () => {
     autofocus: false,
   }).then(() => {
     userApi.deleteBatch(multipleSelectionAll.value.map((ele) => ele.id)).then(() => {
+      multipleSelectionAll.value = []
       ElMessage({
         type: 'success',
         message: t('dashboard.delete_success'),
@@ -557,13 +562,20 @@ const deleteHandler = (row: any) => {
     customClass: 'confirm-no_icon',
     autofocus: false,
   }).then(() => {
-    userApi.delete(row.id).then(() => {
-      ElMessage({
-        type: 'success',
-        message: t('dashboard.delete_success'),
-      })
-      search()
+    multipleSelectionAll.value = multipleSelectionAll.value.filter((ele) => ele.id !== row.id)
+    ElMessage({
+      type: 'success',
+      message: t('dashboard.delete_success'),
     })
+    search()
+    // userApi.delete(row.id).then(() => {
+    //   multipleSelectionAll.value = multipleSelectionAll.value.filter((ele) => ele.id !== row.id)
+    //   ElMessage({
+    //     type: 'success',
+    //     message: t('dashboard.delete_success'),
+    //   })
+    //   search()
+    // })
   })
 }
 
@@ -613,7 +625,7 @@ const search = () => {
     .then((res: any) => {
       state.tableData = res.items
       state.pageInfo.total = res.total
-
+      selectionLoading.value = true
       nextTick(() => {
         handleToggleRowSelection()
       })
@@ -692,11 +704,13 @@ onMounted(() => {
     height: 64px;
     width: calc(100% + 48px);
     left: -24px;
+    background-color: #fff;
     bottom: 0;
     border-top: 1px solid #1f232926;
     display: flex;
     align-items: center;
     padding-left: 24px;
+    z-index: 10;
 
     .danger-button {
       border: 1px solid var(--ed-color-danger);
@@ -734,12 +748,8 @@ onMounted(() => {
   .sqlbot-table {
     border-radius: 6px;
     width: 100%;
-    max-height: calc(100vh - 100px);
+    max-height: calc(100vh - 150px);
     overflow-y: auto;
-
-    &.is-filter {
-      max-height: calc(100vh - 256px);
-    }
     :deep(.ed-table) {
       --el-table-header-bg-color: #f5f7fa;
       --el-table-border-color: #ebeef5;
@@ -795,12 +805,13 @@ onMounted(() => {
         }
       }
     }
-    .pagination-container {
-      display: flex;
-      justify-content: end;
-      align-items: center;
-      margin-top: 16px;
-    }
+  }
+
+  .pagination-container {
+    display: flex;
+    justify-content: end;
+    align-items: center;
+    margin-top: 16px;
   }
 }
 

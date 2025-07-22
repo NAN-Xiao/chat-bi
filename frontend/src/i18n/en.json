@@ -312,6 +312,7 @@
     "old_password": "Old password"
   },
   "workspace": {
+    "relevant_content_found": "No relevant content found",
     "add_workspace": "Add workspace",
     "administrator": "Administrator",
     "ordinary_member": "Ordinary member",

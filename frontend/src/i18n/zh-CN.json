@@ -325,6 +325,7 @@
     }
   },
   "workspace": {
+    "relevant_content_found": "找不到相关内容",
     "add_workspace": "添加工作空间",
     "administrator": "管理员",
     "ordinary_member": "普通成员",
