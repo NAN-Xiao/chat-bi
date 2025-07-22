@@ -230,7 +230,9 @@
     "cannot_be_deleted": "仪表板的图表使用了该数据源，不可删除。",
     "got_it": "知道了",
     "field_original_notes": "字段原始备注",
-    "field_notes_1": "字段备注"
+    "field_notes_1": "字段备注",
+    "no_table":"暂无数据表",
+    "go_add":"去添加"
   },
   "model": {
     "default_model": "默认模型",

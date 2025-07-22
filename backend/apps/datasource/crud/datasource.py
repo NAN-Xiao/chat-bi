@@ -183,6 +183,10 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
         session.query(CoreField).filter(and_(CoreField.ds_id == ds.id, CoreField.table_id.not_in(id_list))).delete(
             synchronize_session=False)
         session.commit()
+    else:  # delete all tables and fields in this ds
+        session.query(CoreTable).filter(CoreTable.ds_id == ds.id).delete(synchronize_session=False)
+        session.query(CoreField).filter(CoreField.ds_id == ds.id).delete(synchronize_session=False)
+        session.commit()
 
 
 def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, fields: List[ColumnSchema]):
