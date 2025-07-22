@@ -19,8 +19,8 @@ async def get_current_user(request: Request) -> UserInfoDTO:
 
 CurrentUser = Annotated[UserInfoDTO, Depends(get_current_user)]
 
-async def get_current_assistant(request: Request) -> AssistantModel:
-    return request.state.assistant
+async def get_current_assistant(request: Request) -> AssistantModel | None:
+    return request.state.assistant if hasattr(request.state, "assistant") else None
 
 CurrentAssistant = Annotated[AssistantModel, Depends(get_current_assistant)]
 

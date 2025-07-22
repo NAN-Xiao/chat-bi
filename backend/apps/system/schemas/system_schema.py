@@ -125,29 +125,14 @@ class AssistantOutDsBase(BaseModel):
     comment: Optional[str] = None
     description: Optional[str] = None
     
-    def __init__(self, id: Optional[int] = None, name: str = '', type: Optional[str] = None,
-                 type_name: Optional[str] = None, comment: Optional[str] = None):
-        super().__init__(id=id, name=name, type=type, type_name=type_name, comment=comment)
         
 class AssistantOutDsSchema(AssistantOutDsBase):
     host: Optional[str] = None
     port: Optional[int] = None
+    dataBase: Optional[str] = None
     user: Optional[str] = None
     password: Optional[str] = None
     schema: Optional[str] = None
+    extraParams: Optional[str] = None
     tables: Optional[list[AssistantTableSchema]] = None
-
-    def __init__(self, id: int, name: str, comment: Optional[str] = None, type: Optional[str] = None,
-                 type_name: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None,
-                 username: Optional[str] = None, password: Optional[str] = None, schema: Optional[str] = None):
-        self.id = id
-        self.name = name
-        self.comment = comment
-        self.type = type
-        self.type_name = type_name
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.schema = schema
-        self.description = comment
+    

@@ -748,7 +748,7 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
                 yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
                                     'engine_type': llm_service.ds.type_name or llm_service.ds.type, 'type': 'datasource'}).decode() + '\n\n'
 
-            llm_service.chat_question.db_schema = llm_service.out_ds_instance.get_db_schema() if llm_service.out_ds_instance else get_table_schema(session=llm_service.session, current_user=llm_service.current_user, ds=llm_service.ds)
+            llm_service.chat_question.db_schema = llm_service.out_ds_instance.get_db_schema(llm_service.ds.id) if llm_service.out_ds_instance else get_table_schema(session=llm_service.session, current_user=llm_service.current_user, ds=llm_service.ds)
 
         # generate sql
         sql_res = llm_service.generate_sql()
