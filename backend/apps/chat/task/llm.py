@@ -53,7 +53,6 @@ class LLMService:
     session: SessionDep
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
-    assistant_certificate: str
     out_ds_instance: Optional[AssistantOutDs] = None
     change_title: bool = False
 
@@ -63,8 +62,6 @@ class LLMService:
         self.session = session
         self.current_user = current_user
         self.current_assistant = current_assistant
-        if chat_question.assistant_certificate:
-            self.assistant_certificate = chat_question.assistant_certificate
         # chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
         chat_id = chat_question.chat_id
         chat: Chat = self.session.get(Chat, chat_id)

@@ -151,8 +151,6 @@ class AiModelQuestion(BaseModel):
 class ChatQuestion(AiModelQuestion):
     question: str = ''
     chat_id: int = 0
-    assistant_certificate: Optional[str] = None
-
 
 class ChatMcp(ChatQuestion):
     token: str = ''

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { endsWith, startsWith } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import { chatApi, ChatInfo } from '@/api/chat.ts'
@@ -19,7 +19,7 @@ const props = withDefaults(
   }
 )
 
-const emits = defineEmits(['clickQuestion', 'update:currentChat'])
+const emits = defineEmits(['clickQuestion', 'update:currentChat', 'stop'])
 
 const loading = ref(false)
 
@@ -57,7 +57,7 @@ async function getRecommendQuestions() {
   loading.value = true
   try {
     const controller: AbortController = new AbortController()
-    const response = await chatApi.recommendQuestions(props.recordId)
+    const response = await chatApi.recommendQuestions(props.recordId, controller)
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
 
@@ -138,7 +138,12 @@ async function getRecommendQuestions() {
 function stop() {
   stopFlag.value = true
   loading.value = false
+  emits('stop')
 }
+
+onBeforeUnmount(() => {
+  stop()
+})
 
 defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
 </script>

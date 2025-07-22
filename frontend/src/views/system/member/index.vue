@@ -440,8 +440,11 @@ const handleCurrentChange = (val: number) => {
     bottom: 0;
     border-top: 1px solid #1f232926;
     display: flex;
+    background-color: #fff;
     align-items: center;
     padding-left: 24px;
+    background-color: #fff;
+    z-index: 10;
 
     .danger-button {
       border: 1px solid var(--ed-color-danger);

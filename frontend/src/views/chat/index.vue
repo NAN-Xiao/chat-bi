@@ -99,6 +99,7 @@
                   :questions="message.recommended_question"
                   :first-chat="message.first_chat"
                   @click-question="quickAsk"
+                  @stop="onChatStop"
                 />
                 <UserChat v-if="message.role === 'user'" :message="message" />
                 <template v-if="message.role === 'assistant' && !message.first_chat">
@@ -118,6 +119,7 @@
                     :reasoning-name="['sql_answer', 'chart_answer']"
                     @finish="onChartAnswerFinish"
                     @error="onChartAnswerError"
+                    @stop="onChatStop"
                   >
                     <ChartBlock style="margin-top: 12px" :message="message" />
                     <div
@@ -190,6 +192,7 @@
                         :questions="message.recommended_question"
                         :first-chat="message.first_chat"
                         @click-question="quickAsk"
+                        @stop="onChatStop"
                       />
                     </template>
                   </ChartAnswer>
@@ -206,6 +209,7 @@
                     :message="message"
                     @finish="onAnalysisAnswerFinish"
                     @error="onAnalysisAnswerError"
+                    @stop="onChatStop"
                   >
                     <div
                       v-if="message.record?.error && message.record?.error?.trim().length > 0"
@@ -230,6 +234,7 @@
                     :message="message"
                     @finish="onPredictAnswerFinish"
                     @error="onPredictAnswerError"
+                    @stop="onChatStop"
                   >
                     <ChartBlock style="margin-top: 12px" :message="message" is-predict />
                     <div
@@ -382,9 +387,9 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
   return messages
 })
 
-const goEmpty = () => {
+const goEmpty = (func?: (...p: any[]) => void, ...param: any[]) => {
   inputMessage.value = ''
-  stop()
+  stop(func, ...param)
 }
 
 const createNewChatSimple = async () => {
@@ -418,8 +423,8 @@ function getChatList() {
 }
 
 function onClickHistory(chat: Chat) {
-  console.log('click history', chat)
   scrollToBottom()
+  console.debug('click history', chat)
 }
 
 function toAssistantHistory(chat: Chat) {
@@ -510,6 +515,13 @@ async function onChartAnswerFinish(id: number) {
 function onChartAnswerError() {
   loading.value = false
   isTyping.value = false
+  console.debug('onChartAnswerError')
+}
+
+function onChatStop() {
+  loading.value = false
+  isTyping.value = false
+  console.debug('onChatStop')
 }
 
 const sendMessage = async () => {
@@ -698,7 +710,7 @@ function clickInput() {
   inputRef.value?.focus()
 }
 
-function stop() {
+function stop(func?: (...p: any[]) => void, ...param: any[]) {
   if (recommendQuestionRef.value) {
     if (recommendQuestionRef.value instanceof Array) {
       for (let i = 0; i < recommendQuestionRef.value.length; i++) {
@@ -734,6 +746,9 @@ function stop() {
     } else {
       predictAnswerRef.value.stop()
     }
+  }
+  if (func && typeof func === 'function') {
+    func(...param)
   }
 }
 

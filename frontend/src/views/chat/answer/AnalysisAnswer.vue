@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat.ts'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 const props = withDefaults(
   defineProps<{
@@ -23,6 +23,7 @@ const props = withDefaults(
 const emits = defineEmits([
   'finish',
   'error',
+  'stop',
   'update:loading',
   'update:chatList',
   'update:currentChat',
@@ -192,7 +193,12 @@ const sendMessage = async () => {
 function stop() {
   stopFlag.value = true
   _loading.value = false
+  emits('stop')
 }
+
+onBeforeUnmount(() => {
+  stop()
+})
 defineExpose({ sendMessage, index: () => index.value, chatList: () => _chatList.value, stop })
 </script>
 

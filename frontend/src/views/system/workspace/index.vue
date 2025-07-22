@@ -30,6 +30,7 @@ const multipleSelectionAll = ref<any[]>([])
 const tableList = ref([] as any[])
 const keyword = ref('')
 const keywordsMember = ref('')
+const oldKeywordsMember = ref('')
 const workspaceFormRef = ref()
 const authorizedWorkspaceDialog = ref()
 const tableListWithSearch = computed(() => {
@@ -210,8 +211,9 @@ const search = () => {
     pageInfo.currentPage,
     pageInfo.pageSize
   ).then((res) => {
-    fieldList.value = res.items
+    fieldList.value = res.items.sort((a: any, b: any) => b.weight - a.weight)
     pageInfo.total = res.total
+    oldKeywordsMember.value = keywordsMember.value
   })
 }
 
@@ -342,7 +344,7 @@ const handleCurrentChange = (val: number) => {
           </el-popover>
         </div>
         <div v-if="!!keyword && !tableListWithSearch.length" class="no-result">
-          {{ $t('workspace.historical_dialogue') }}
+          {{ $t('workspace.relevant_content_found') }}
         </div>
       </div>
     </div>
@@ -463,31 +465,31 @@ const handleCurrentChange = (val: number) => {
             </el-table-column>
             <template #empty>
               <EmptyBackground
-                v-if="!keywordsMember && !fieldListWithSearch.length"
+                v-if="!oldKeywordsMember && !fieldListWithSearch.length"
                 :description="$t('workspace.no_user')"
                 img-type="noneWhite"
               />
 
               <EmptyBackground
-                v-if="!!keywordsMember && !fieldListWithSearch.length"
+                v-if="!!oldKeywordsMember && !fieldListWithSearch.length"
                 :description="$t('datasource.relevant_content_found')"
                 img-type="tree"
               />
             </template>
           </el-table>
         </div>
-        <div class="pagination-container">
-          <el-pagination
-            v-model:current-page="pageInfo.currentPage"
-            v-model:page-size="pageInfo.pageSize"
-            :page-sizes="[10, 20, 30]"
-            :background="true"
-            layout="total, sizes, prev, pager, next, jumper"
-            :total="pageInfo.total"
-            @size-change="handleSizeChange"
-            @current-change="handleCurrentChange"
-          />
-        </div>
+      </div>
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="pageInfo.currentPage"
+          v-model:page-size="pageInfo.pageSize"
+          :page-sizes="[10, 20, 30]"
+          :background="true"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="pageInfo.total"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+        />
       </div>
       <div v-if="multipleSelectionAll.length" class="bottom-select">
         <el-checkbox
@@ -700,16 +702,17 @@ const handleCurrentChange = (val: number) => {
       }
     }
 
+    .pagination-container {
+      display: flex;
+      justify-content: end;
+      align-items: center;
+      margin-top: 16px;
+    }
+
     .table-content {
       padding: 0 24px 16px 24px;
-      height: calc(100% - 104px);
-
-      .pagination-container {
-        display: flex;
-        justify-content: end;
-        align-items: center;
-        margin-top: 16px;
-      }
+      height: calc(100% - 168px);
+      overflow-y: auto;
 
       .preview-or-schema {
         :deep(.user-source) {
@@ -779,7 +782,9 @@ const handleCurrentChange = (val: number) => {
       border-top: 1px solid #1f232926;
       display: flex;
       align-items: center;
+      background-color: #fff;
       padding-left: 24px;
+      z-index: 10;
 
       .danger-button {
         border: 1px solid var(--ed-color-danger);

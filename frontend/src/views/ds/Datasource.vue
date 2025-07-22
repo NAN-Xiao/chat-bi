@@ -275,6 +275,7 @@ const back = () => {
     <EmptyBackground
       v-if="!!keywords && !datasourceListWithSearch.length"
       :description="$t('datasource.relevant_content_found')"
+      class="datasource-yet"
       img-type="tree"
     />
 

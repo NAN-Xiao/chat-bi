@@ -74,5 +74,9 @@ const routerList = computed(() => {
       color: #1cba90 !important;
     }
   }
+
+  .ed-sub-menu .ed-icon {
+    margin-right: 8px;
+  }
 }
 </style>

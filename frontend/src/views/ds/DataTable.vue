@@ -8,7 +8,6 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import ParamsForm from './ParamsForm.vue'
-import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 
 interface Table {
   name: string

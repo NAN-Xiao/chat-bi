@@ -133,7 +133,7 @@ const open = async (id: any) => {
   checkAll.value = false
   isIndeterminate.value = false
   const systemWorkspaceList = await workspaceOptionUserList({ oid }, 1, 1000)
-  workspace.value = systemWorkspaceList.items as any
+  workspace.value = systemWorkspaceList.items.filter((ele: any) => +ele.id !== 1) as any
   loading.value = false
   centerDialogVisible.value = true
 }
@@ -203,7 +203,8 @@ defineExpose({
   }
 
   .w-full {
-    width: 100%;
+    height: 100%;
+    width: 50%;
     overflow-y: auto;
 
     .flex-between {
@@ -239,6 +240,8 @@ defineExpose({
 
   .border-r {
     border-right: 1px solid #dee0e3;
+    width: 50%;
+    overflow: hidden;
   }
 }
 </style>

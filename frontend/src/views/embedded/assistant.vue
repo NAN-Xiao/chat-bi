@@ -109,7 +109,6 @@ const communicationCb = async (event: any) => {
     }
     if (event.data?.busi == 'certificate') {
       const certificate = event.data['certificate']
-      console.log(certificate)
       assistantStore.setType(1)
       assistantStore.setCertificate(certificate)
       // store certificate to pinia

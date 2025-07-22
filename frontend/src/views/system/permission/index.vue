@@ -442,9 +442,10 @@ const savePermission = () => {
     id,
     name,
     permissions: permissionsObj,
-    users: isCreate.value
-      ? selectPermissionRef.value.checkedWorkspace.map((ele: any) => ele.id)
-      : users,
+    users:
+      isCreate.value || activeStep.value === 1
+        ? selectPermissionRef.value.checkedWorkspace.map((ele: any) => ele.id)
+        : users,
   }
   if (!id) {
     delete obj.id
@@ -764,6 +765,7 @@ const columnRules = {
         </el-form-item>
         <el-form-item :label="$t('permission.set_rule')">
           <el-input
+            v-if="ruleType !== 1"
             v-model="searchColumn"
             :placeholder="$t('permission.search_rule_group')"
             autocomplete="off"
@@ -775,7 +777,9 @@ const columnRules = {
           ></el-input>
         </el-form-item>
       </el-form>
-      <AuthTree v-if="ruleType === 1" ref="authTreeRef" @save="saveAuthTree"></AuthTree>
+      <div v-if="ruleType === 1" class="auth-tree_content">
+        <AuthTree ref="authTreeRef" @save="saveAuthTree"></AuthTree>
+      </div>
       <div v-else class="table-content">
         <el-table
           :empty-text="$t('permission.no_fields_yet')"
@@ -930,6 +934,17 @@ const columnRules = {
     .ed-table__empty-text {
       padding-top: 0;
     }
+  }
+
+  .auth-tree_content {
+    padding: 16px;
+    border-radius: 6px;
+    border: 1px solid #dee0e3;
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    overflow-y: auto;
+    margin-top: -16px;
   }
 }
 

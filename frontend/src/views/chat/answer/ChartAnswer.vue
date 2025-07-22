@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat.ts'
-import { useAssistantStore } from '@/stores/assistant'
-import { computed, nextTick, ref } from 'vue'
-const assistantStore = useAssistantStore()
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 const props = withDefaults(
   defineProps<{
     chatList?: Array<ChatInfo>
@@ -25,6 +23,7 @@ const props = withDefaults(
 const emits = defineEmits([
   'finish',
   'error',
+  'stop',
   'update:loading',
   'update:chatList',
   'update:currentChat',
@@ -101,12 +100,8 @@ const sendMessage = async () => {
     const param = {
       question: currentRecord.question,
       chat_id: _currentChatId.value,
-      assistant_certificate: assistantStore.getCertificate,
-      controller,
     }
-    console.log(assistantStore.getCertificate)
-    console.log(param)
-    const response = await questionApi.add(param)
+    const response = await questionApi.add(param, controller)
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
 
@@ -235,7 +230,13 @@ function getChatData(recordId?: number) {
 function stop() {
   stopFlag.value = true
   _loading.value = false
+  emits('stop')
 }
+
+onBeforeUnmount(() => {
+  stop()
+})
+
 defineExpose({ sendMessage, index: () => index.value, stop })
 </script>
 

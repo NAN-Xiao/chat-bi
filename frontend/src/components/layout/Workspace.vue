@@ -76,7 +76,9 @@ onMounted(async () => {
         <el-icon size="16">
           <icon_moments_categories_outlined></icon_moments_categories_outlined>
         </el-icon>
-        <span v-if="!collapse" class="name">{{ currentWorkspace.name }}</span>
+        <span v-if="!collapse" :title="currentWorkspace.name" class="name ellipsis">{{
+          currentWorkspace.name
+        }}</span>
         <el-icon v-if="!collapse" style="transform: scale(0.5)" class="expand" size="24">
           <icon_expand_down_filled></icon_expand_down_filled>
         </el-icon></button
@@ -105,13 +107,17 @@ onMounted(async () => {
           <el-icon size="16">
             <icon_moments_categories_outlined></icon_moments_categories_outlined>
           </el-icon>
-          <div class="datasource-name" v-html="formatKeywords(ele.name)"></div>
+          <div
+            :title="ele.name"
+            class="datasource-name ellipsis"
+            v-html="formatKeywords(ele.name)"
+          ></div>
           <el-icon size="16" class="done">
             <icon_done_outlined></icon_done_outlined>
           </el-icon>
         </div>
         <div v-if="!defaultWorkspaceListWithSearch.length" class="popover-item empty">
-          没有找到相关结果
+          {{ $t('model.relevant_results_found') }}
         </div>
       </div>
     </div>
@@ -142,6 +148,7 @@ onMounted(async () => {
     font-size: 14px;
     line-height: 22px;
     margin-left: 8px;
+    max-width: 120px;
   }
 
   .expand {
@@ -203,6 +210,7 @@ onMounted(async () => {
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
+        max-width: 180px;
       }
 
       .done {
