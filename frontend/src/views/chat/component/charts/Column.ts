@@ -30,8 +30,23 @@ export class Column extends BaseG2Chart {
         y: y[0].value,
         color: series.length > 0 ? series[0].value : undefined,
       },
+      style: {
+        radiusTopLeft: 4,
+        radiusTopRight: 4,
+      },
       axis: {
-        x: { title: x[0].name },
+        x: {
+          title: x[0].name,
+          labelFontSize: 12,
+          labelAutoHide: {
+            type: 'hide',
+            keepHeader: true,
+            keepTail: true,
+          },
+          labelAutoRotate: false,
+          labelAutoWrap: true,
+          labelAutoEllipsis: true,
+        },
         y: { title: y[0].name },
       },
       scale: {
@@ -43,7 +58,8 @@ export class Column extends BaseG2Chart {
         },
       },
       interaction: {
-        elementHighlight: { background: true },
+        elementHighlight: { background: true, region: true },
+        tooltip: { series: series.length > 0, shared: true },
       },
       tooltip: (data) => {
         if (series.length > 0) {
@@ -59,10 +75,9 @@ export class Column extends BaseG2Chart {
         {
           text: (data: any) => `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
           position: 'top',
-          dy: -25,
           transform: [
-            { type: 'overlapDodgeY' },
             { type: 'contrastReverse' },
+            { type: 'exceedAdjust' },
             { type: 'overlapHide' },
           ],
         },

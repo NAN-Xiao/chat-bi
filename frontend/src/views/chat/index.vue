@@ -97,6 +97,7 @@
                   :current-chat="currentChat"
                   :record-id="message.record?.id"
                   :questions="message.recommended_question"
+                  :disabled="isTyping"
                   :first-chat="message.first_chat"
                   @click-question="quickAsk"
                   @stop="onChatStop"
@@ -191,6 +192,7 @@
                         :record-id="message.record?.id"
                         :questions="message.recommended_question"
                         :first-chat="message.first_chat"
+                        :disabled="isTyping"
                         @click-question="quickAsk"
                         @stop="onChatStop"
                       />

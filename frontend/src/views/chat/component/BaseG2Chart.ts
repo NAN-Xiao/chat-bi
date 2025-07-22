@@ -9,6 +9,7 @@ export abstract class BaseG2Chart extends BaseChart {
     this.chart = new Chart({
       container: id,
       autoFit: true,
+      padding: 'auto',
     })
 
     this.chart.theme({

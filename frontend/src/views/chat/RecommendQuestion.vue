@@ -10,12 +10,14 @@ const props = withDefaults(
     currentChat?: ChatInfo
     questions?: string
     firstChat?: boolean
+    disabled?: boolean
   }>(),
   {
     recordId: undefined,
     currentChat: () => new ChatInfo(),
     questions: '[]',
     firstChat: false,
+    disabled: false,
   }
 )
 
@@ -47,7 +49,9 @@ const computedQuestions = computed<string>(() => {
 const { t } = useI18n()
 
 function clickQuestion(question: string): void {
-  emits('clickQuestion', question)
+  if (!props.disabled) {
+    emits('clickQuestion', question)
+  }
 }
 
 const stopFlag = ref(false)
