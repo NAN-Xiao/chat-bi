@@ -164,6 +164,7 @@ defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
         v-for="(question, index) in computedQuestions"
         :key="index"
         class="question"
+        :class="{ disabled: disabled }"
         @click="clickQuestion(question)"
       >
         {{ question }}
@@ -202,6 +203,10 @@ defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
     line-height: 22px;
     &:hover {
       background: rgba(31, 35, 41, 0.1);
+    }
+    &.disabled {
+      cursor: not-allowed;
+      background: rgba(245, 246, 247, 1);
     }
   }
 }
