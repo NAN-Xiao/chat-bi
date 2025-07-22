@@ -164,11 +164,13 @@ def clear_cache(
             )
             
             async with _get_cache_lock(cache_key):
-                await FastAPICache.clear(key=cache_key)
-                result = await func(*args, **kwargs)
-                logging.info(f"Clearing cache for key: {cache_key}")
-                print(f"Clearing cache for key: {cache_key}")
-                return result
+                if await FastAPICache.get_backend().get(cache_key):
+                    await FastAPICache.clear(key=cache_key)
+                    result = await func(*args, **kwargs)
+                    logging.info(f"Clearing cache for key: {cache_key}")
+                    print(f"Clearing cache for key: {cache_key}")
+                    return result
+                return await func(*args, **kwargs)
         
         return wrapper
     return decorator

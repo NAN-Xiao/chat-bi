@@ -29,8 +29,9 @@ async def option_pager(
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
     stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
-        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid)
-    ).order_by(UserModel.create_time)
+        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid),
+        UserModel.id != 1
+    ).order_by(UserModel.create_time.asc())
     
     if keyword:
         keyword_pattern = f"%{keyword}%"
@@ -51,12 +52,15 @@ async def option_user(
     current_user: CurrentUser,
     keyword: str = Query(description="搜索关键字")
     ):
+    if not keyword:
+        raise HTTPException("keyword is required")
     if (not current_user.isAdmin) and current_user.weight == 0:
         raise RuntimeError("no permission to execute this api")
     oid = current_user.oid
     
     stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
-        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid)
+        ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid),
+        UserModel.id != 1
     )
     
     if keyword:
@@ -89,7 +93,8 @@ async def pager(
         UserWsModel, UserModel.id == UserWsModel.uid
     ).where(
         UserWsModel.oid == workspace_id,
-    ).order_by(UserModel.create_time)
+        UserModel.id != 1
+    ).order_by(UserModel.create_time.asc())
     
     if keyword:
         keyword_pattern = f"%{keyword}%"
@@ -163,7 +168,7 @@ async def delete(session: SessionDep, current_user: CurrentUser, dto: UserWsBase
 
 @router.get("", response_model=list[WorkspaceModel])
 async def query(session: SessionDep, trans: Trans):
-    list_result = session.exec(select(WorkspaceModel).order_by(WorkspaceModel.create_time)).all()
+    list_result = session.exec(select(WorkspaceModel).order_by(WorkspaceModel.create_time.asc())).all()
     for ws in list_result:
         if ws.name.startswith('i18n'):
             ws.name =  trans(ws.name)
@@ -182,8 +187,7 @@ async def update(session: SessionDep, editor: WorkspaceEditor):
     db_model = session.get(WorkspaceModel, id)
     if not db_model:
         raise HTTPException(f"WorkspaceModel with id {id} not found")
-    update_data = WorkspaceModel.model_validate(editor)
-    db_model.sqlmodel_update(update_data)
+    db_model.name = editor.name
     session.add(db_model)
     session.commit()
 

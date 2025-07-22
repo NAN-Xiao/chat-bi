@@ -47,6 +47,7 @@ class AssistantBaseModel(SQLModel):
     name: str = Field(max_length=255, nullable=False)
     type: int = Field(nullable=False, default=0)
     domain: str = Field(max_length=255, nullable=False)
+    description: str = Field(sa_type = Text(), nullable=True)
     configuration: Optional[str] = Field(sa_type = Text(), nullable=True)
     create_time: int = Field(default=0, sa_type=BigInteger())
 

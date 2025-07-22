@@ -6,9 +6,14 @@ import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_database_colorful from '@/assets/embedded/icon_database_colorful.png'
 import icon_web_site_colorful from '@/assets/embedded/icon_web-site_colorful.png'
+import floating_window from '@/assets/embedded/window.png'
+import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
+
 import Card from './Card.vue'
+import { workspaceList } from '@/api/workspace'
 import DsCard from './DsCard.vue'
 import { datasourceApi } from '@/api/datasource'
+import { getList, updateAssistant, saveAssistant, delOne } from '@/api/embedded'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 
@@ -23,14 +28,14 @@ const dsFormRef = ref()
 const urlFormRef = ref()
 const dialogTitle = ref('')
 const embeddedList = ref<any[]>([])
-const systemCredentials = ref<any[]>([])
-const credentials = ref<any[]>([])
+const systemCredentials = ['localStorage', 'cookie', 'sessionStorage']
+const credentials = ['header', 'cookie', 'param']
 const workspaces = ref<any[]>([])
 
 const defaultEmbedded = {
   id: '',
   name: '',
-  isBase: false,
+  type: 0,
   description: '',
   domain: '',
 }
@@ -38,19 +43,18 @@ const currentEmbedded = reactive<any>(cloneDeep(defaultEmbedded))
 
 const isCreate = ref(false)
 const defaultForm = {
-  workspace: '',
-  id: '',
+  oid: '',
+  private_list: [] as any,
 }
 const dsForm = reactive(cloneDeep(defaultForm))
 
 const defaultUrlForm = {
-  url: '',
-  system_credential_type: '',
-  target_credential_location: '',
-  credential_name: '',
-  target_credential_name: '',
-  target_credential: '',
-  id: '',
+  endpoint: '',
+  type: '',
+  source: '',
+  target: '',
+  target_key: '',
+  target_val: '',
 }
 const urlForm = reactive(cloneDeep(defaultUrlForm))
 
@@ -68,20 +72,24 @@ const userTypeList = [
     name: t('embedded.basic_application'),
     img: icon_database_colorful,
     tip: t('embedded.support_is_required'),
-    value: 1,
+    value: 0,
   },
   {
     name: t('embedded.advanced_application'),
     img: icon_web_site_colorful,
     tip: t('embedded.data_permissions_etc'),
-    value: 0,
+    value: 1,
   },
 ]
-const ruleType = ref(0)
+const initWorkspace = () => {
+  workspaceList().then((res) => {
+    workspaces.value = res
+  })
+}
 const handleAddEmbedded = (val: any) => {
-  ruleType.value = val
   Object.assign(currentEmbedded, cloneDeep(defaultEmbedded))
-  if (val === 1) {
+  currentEmbedded.type = val
+  if (val === 0) {
     handleBaseEmbedded(null)
   } else {
     handleAdvancedEmbedded(null)
@@ -95,19 +103,10 @@ const getDsList = () => {
 }
 const handleBaseEmbedded = (row: any) => {
   advancedApplication.value = false
+  initWorkspace()
   getDsList()
   if (row) {
-    Object.assign(dsForm, cloneDeep(defaultForm))
-    // const { name, ds_id, table_id, tree, id, ds_name, table_name } = row
-    // Object.assign(dsForm, {
-    //   id,
-    //   name,
-    //   ds_id,
-    //   table_id,
-    //   ds_name,
-    //   table_name,
-    //   expression_tree: typeof tree === 'object' ? tree : JSON.parse(tree),
-    // })
+    Object.assign(dsForm, JSON.parse(row.configuration))
   }
   ruleConfigvVisible.value = true
   dialogTitle.value = row?.id
@@ -117,18 +116,9 @@ const handleBaseEmbedded = (row: any) => {
 const handleAdvancedEmbedded = (row: any) => {
   advancedApplication.value = true
   if (row) {
-    Object.assign(urlForm, cloneDeep(defaultUrlForm))
-
-    // const { name, ds_id, table_id, id, permission_list, ds_name, table_name } = row
-    // Object.assign(dsForm, {
-    //   id,
-    //   name,
-    //   ds_id,
-    //   ds_name,
-    //   table_id,
-    //   table_name,
-    //   permissions: permission_list,
-    // })
+    const obj = JSON.parse(row.configuration)
+    Object.assign(urlForm, cloneDeep(obj.certificate))
+    urlForm.endpoint = obj.endpoint
   }
   ruleConfigvVisible.value = true
   dialogTitle.value = row?.id
@@ -147,53 +137,34 @@ const handleActive = (row: any) => {
 }
 
 const handlePrivate = (row: any) => {
-  console.log('row', row)
+  dsForm.private_list.push(row.id)
 }
+
 const handlePublic = (row: any) => {
-  console.log('row', row)
+  dsForm.private_list = dsForm.private_list.filter((ele: any) => ele !== row.id)
 }
 
 const searchLoading = ref(false)
 const handleSearch = () => {
-  embeddedList.value = [
-    {
-      id: '1',
-      name: 'jkajsdkjs',
-      isBase: false,
-      description: 'klasdkljlkasjdklljkajsdksa',
-    },
-    {
-      id: '2',
-      name: 'jkajsdkjsklk',
-      isBase: true,
-      description: 'kajldj',
-    },
-  ]
-  // searchLoading.value = true
-  //   getList()
-  //     .then((res: any) => {
-  //       embeddedList.value = res || []
-  //     })
-  //     .finally(() => {
-  //       searchLoading.value = false
-  //     })
+  searchLoading.value = true
+  getList()
+    .then((res: any) => {
+      embeddedList.value = res || []
+    })
+    .finally(() => {
+      searchLoading.value = false
+    })
 }
 handleSearch()
 
-// const editForm = (row: any) => {
-//   if (row.type === 'row') {
-//     ruleType.value = 1
-//     handleBaseEmbedded(row)
-//   } else {
-//     ruleType.value = 0
-//     handleAdvancedEmbedded(row)
-//   }
-// }
 const handleEditRule = (row: any) => {
-  editRule.value = 1
-  isCreate.value = false
   Object.assign(currentEmbedded, cloneDeep(row))
-  ruleConfigvVisible.value = true
+  delete currentEmbedded.configuration
+  if (row.type === 0) {
+    handleBaseEmbedded(row)
+  } else {
+    handleAdvancedEmbedded(row)
+  }
 }
 
 // const deleteRuleHandler = (row: any) => {
@@ -211,20 +182,20 @@ const handleEditRule = (row: any) => {
 // }
 
 const deleteHandler = (row: any) => {
-  ElMessageBox.confirm(t('permission.rule_group_1', { msg: row.name }), {
+  ElMessageBox.confirm(t('embedded.delete', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
   }).then(() => {
-    // delPermissions(row.id).then(() => {
-    //   ElMessage({
-    //     type: 'success',
-    //     message: t('dashboard.delete_success'),
-    //   })
-    //   handleSearch()
-    // })
+    delOne(row.id).then(() => {
+      ElMessage({
+        type: 'success',
+        message: t('dashboard.delete_success'),
+      })
+      handleSearch()
+    })
   })
 }
 
@@ -255,7 +226,14 @@ const rules = {
 }
 
 const dsRules = {
-  workspace: [
+  oid: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('user.workspace'),
+      trigger: 'change',
+    },
+  ],
+  private_list: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('user.workspace'),
@@ -265,24 +243,22 @@ const dsRules = {
 }
 
 const urlRules = {
-  url: [
+  endpoint: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('embedded.interface_url'),
       trigger: 'blur',
     },
   ],
-  system_credential_type: [
+  type: [
     {
       required: true,
       message:
-        t('datasource.Please_select') +
-        t('common.empty') +
-        t('embedded.target_credential_location'),
+        t('datasource.Please_select') + t('common.empty') + t('embedded.system_credential_type'),
       trigger: 'change',
     },
   ],
-  credential_name: [
+  source: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('embedded.credential_name'),
@@ -290,7 +266,7 @@ const urlRules = {
     },
   ],
 
-  target_credential_location: [
+  target: [
     {
       required: true,
       message:
@@ -300,7 +276,7 @@ const urlRules = {
       trigger: 'change',
     },
   ],
-  target_credential_name: [
+  target_key: [
     {
       required: true,
       message:
@@ -309,7 +285,7 @@ const urlRules = {
     },
   ],
 
-  target_credential: [
+  target_val: [
     {
       required: true,
       message: t('datasource.please_enter') + t('common.empty') + t('embedded.target_credential'),
@@ -318,16 +294,6 @@ const urlRules = {
   ],
 }
 
-// const closeForm = () => {
-//   dialogFormVisible.value = false
-// }
-// const saveHandler = () => {
-//   dsFormRef.value.validate((res: any) => {
-//     if (res) {
-//       dialogFormVisible.value = false
-//     }
-//   })
-// }
 const preview = () => {
   activeStep.value = 0
 }
@@ -339,17 +305,59 @@ const next = () => {
   })
 }
 const saveEmbedded = () => {
-  //   const { id, name, permissions } = currentEmbedded
-  //   saveEmbeddeds(permissions).then(() => {
-  //     ElMessage({
-  //       type: 'success',
-  //       message: t('common.save_success'),
-  //     })
-  //     beforeClose()
-  //     handleSearch()
-  //   })
+  const req = currentEmbedded.id ? updateAssistant : saveAssistant
+  const formRef = currentEmbedded.type === 1 ? urlFormRef : dsFormRef
+  formRef.value.validate((res: any) => {
+    if (res) {
+      const obj = { ...currentEmbedded }
+      if (currentEmbedded.type === 0) {
+        obj.configuration = JSON.stringify(dsForm)
+      } else {
+        obj.configuration = JSON.stringify({
+          endpoint: urlForm.endpoint,
+          certificate: { ...urlForm },
+        })
+      }
+
+      if (!currentEmbedded.id) {
+        delete obj.id
+      }
+      req(obj).then(() => {
+        ElMessage({
+          type: 'success',
+          message: t('common.save_success'),
+        })
+        beforeClose()
+        handleSearch()
+      })
+    }
+  })
 }
 const btnSelect = ref('d')
+
+const dialogVisible = ref(false)
+const scriptElement = ref('')
+const handleEmbedded = (row: any) => {
+  dialogVisible.value = true
+  const { origin, pathname } = window.location
+  scriptElement.value = `g-#script
+  async
+  defer
+  id="${row.id}"
+  src="${origin + pathname}assistant.js?id=${row.id}"k-*g-#/scriptk-*`
+    .replaceAll('g-#', '<')
+    .replaceAll('k-*', '>')
+}
+const copyCode = () => {
+  navigator.clipboard
+    .writeText(scriptElement.value)
+    .then(function () {
+      ElMessage.success(t('embedded.copy_successful'))
+    })
+    .catch(function () {
+      ElMessage.error(t('embedded.copy_successful'))
+    })
+}
 </script>
 
 <template>
@@ -419,8 +427,9 @@ const btnSelect = ref('d')
         :id="ele.id"
         :key="ele.id"
         :name="ele.name"
-        :is-base="ele.isBase"
+        :is-base="ele.type === 0"
         :description="ele.description"
+        @embedded="handleEmbedded(ele)"
         @edit="handleEditRule(ele)"
         @del="deleteHandler(ele)"
       ></Card>
@@ -546,65 +555,57 @@ const btnSelect = ref('d')
           class="form-content_error"
           @submit.prevent
         >
-          <el-form-item prop="url" :label="t('embedded.interface_url')">
+          <el-form-item prop="endpoint" :label="t('embedded.interface_url')">
             <el-input
-              v-model="urlForm.url"
+              v-model="urlForm.endpoint"
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('embedded.interface_url')
               "
               autocomplete="off"
             />
           </el-form-item>
-          <el-form-item prop="system_credential_type" :label="t('embedded.system_credential_type')">
+          <el-form-item prop="type" :label="t('embedded.system_credential_type')">
             <el-select
-              v-model="urlForm.system_credential_type"
+              v-model="urlForm.type"
               :placeholder="
                 $t('datasource.Please_select') +
                 $t('common.empty') +
-                $t('embedded.target_credential_location')
+                $t('embedded.system_credential_type')
               "
             >
               <el-option
                 v-for="item in systemCredentials"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
+                :key="item"
+                :label="item"
+                :value="item"
               />
             </el-select>
           </el-form-item>
-          <el-form-item prop="credential_name" :label="t('embedded.credential_name')">
+          <el-form-item prop="source" :label="t('embedded.credential_name')">
             <el-input
-              v-model="urlForm.credential_name"
+              v-model="urlForm.source"
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('embedded.credential_name')
               "
               autocomplete="off"
             />
           </el-form-item>
-          <el-form-item
-            prop="target_credential_location"
-            :label="t('embedded.target_credential_location')"
-          >
+          <el-form-item prop="target" :label="t('embedded.target_credential_location')">
             <el-select
-              v-model="urlForm.target_credential_location"
+              v-model="urlForm.target"
               :placeholder="
                 $t('datasource.Please_select') +
                 $t('common.empty') +
                 $t('embedded.target_credential_location')
               "
             >
-              <el-option
-                v-for="item in credentials"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
+              <el-option v-for="item in credentials" :key="item" :label="item" :value="item" />
             </el-select>
           </el-form-item>
 
-          <el-form-item prop="target_credential_name" :label="t('embedded.target_credential_name')">
+          <el-form-item prop="target_key" :label="t('embedded.target_credential_name')">
             <el-input
-              v-model="urlForm.target_credential_name"
+              v-model="urlForm.target_key"
               :placeholder="
                 $t('datasource.please_enter') +
                 $t('common.empty') +
@@ -614,9 +615,9 @@ const btnSelect = ref('d')
             />
           </el-form-item>
 
-          <el-form-item prop="target_credential" :label="t('embedded.target_credential')">
+          <el-form-item prop="target_val" :label="t('embedded.target_credential')">
             <el-input
-              v-model="urlForm.target_credential"
+              v-model="urlForm.target_val"
               :placeholder="
                 $t('datasource.please_enter') +
                 $t('common.empty') +
@@ -643,21 +644,21 @@ const btnSelect = ref('d')
         >
           <el-form-item prop="workspace" :label="t('user.workspace')">
             <el-select
-              v-model="dsForm.workspace"
+              v-model="dsForm.oid"
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
               "
             >
               <el-option
                 v-for="item in workspaces"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
+                :key="item.id"
+                :label="item.name"
+                :value="item.id"
               />
             </el-select>
           </el-form-item>
 
-          <el-form-item prop="datasource" :label="t('embedded.set_data_source')">
+          <el-form-item prop="private_list" :label="t('embedded.set_data_source')">
             <div class="card-ds_content">
               <DsCard
                 v-for="ele in dsListOptions"
@@ -666,7 +667,7 @@ const btnSelect = ref('d')
                 :name="ele.name"
                 :type="ele.type"
                 :type-name="ele.type_name"
-                :is-private="ele.isPrivate"
+                :is-private="dsForm.private_list.includes(ele.id)"
                 :num="ele.num"
                 @active="handleActive(ele)"
                 @private="handlePrivate(ele)"
@@ -691,6 +692,31 @@ const btnSelect = ref('d')
       </template>
     </el-drawer>
   </div>
+  <el-dialog
+    v-model="dialogVisible"
+    :title="$t('embedded.embed_third_party')"
+    width="600"
+    modal-class="embed-third_party"
+  >
+    <div class="floating-window">
+      <div class="floating">
+        <div class="title">{{ $t('embedded.floating_window_mode') }}</div>
+        <img :src="floating_window" width="180px" height="120px" alt="" />
+      </div>
+      <div class="code">
+        <div class="copy">
+          {{ $t('embedded.code_to_embed') }}
+          <el-icon size="16" @click="copyCode">
+            <icon_copy_outlined></icon_copy_outlined>
+          </el-icon>
+        </div>
+
+        <div class="script">
+          {{ scriptElement }}
+        </div>
+      </div>
+    </div>
+  </el-dialog>
 </template>
 
 <style lang="less" scoped>
@@ -816,6 +842,50 @@ const btnSelect = ref('d')
           font-size: 12px;
           line-height: 20px;
         }
+      }
+    }
+  }
+}
+
+.embed-third_party {
+  .floating-window {
+    border: 1px solid #dee0e3;
+    width: 552px;
+    height: 431px;
+    opacity: 1;
+    border-radius: 4px;
+
+    .floating {
+      padding: 16px;
+      padding-bottom: 0;
+      .title {
+        font-weight: 500;
+        font-size: 14px;
+        line-height: 22px;
+        margin-bottom: 16px;
+      }
+    }
+
+    .code {
+      border-top: 1px solid #1f232926;
+      padding: 16px;
+      .copy {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 500;
+        font-size: 14px;
+        line-height: 22px;
+
+        .ed-icon {
+          cursor: pointer;
+        }
+      }
+
+      .script {
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
       }
     }
   }

@@ -49,7 +49,7 @@ const handlePublic = () => {
         <div class="name">{{ name }}</div>
         <div class="type">{{ typeName }}</div>
       </div>
-      <span v-if="isPrivate" class="default" :class="isPrivate && 'is-private'">{{
+      <span class="default" :class="isPrivate && 'is-private'">{{
         isPrivate ? $t('embedded.private') : $t('embedded.public')
       }}</span>
     </div>
@@ -127,7 +127,7 @@ const handlePublic = () => {
       right: 0;
       top: 12px;
 
-      .is-private {
+      &.is-private {
         background: #f54a4533;
         color: #d03f3b;
       }
