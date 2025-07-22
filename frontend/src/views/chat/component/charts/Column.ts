@@ -31,8 +31,30 @@ export class Column extends BaseG2Chart {
         color: series.length > 0 ? series[0].value : undefined,
       },
       style: {
-        radiusTopLeft: 4,
-        radiusTopRight: 4,
+        radiusTopLeft: (d: ChartData) => {
+          if (d[y[0].value] && d[y[0].value] > 0) {
+            return 4
+          }
+          return 0
+        },
+        radiusTopRight: (d: ChartData) => {
+          if (d[y[0].value] && d[y[0].value] > 0) {
+            return 4
+          }
+          return 0
+        },
+        radiusBottomLeft: (d: ChartData) => {
+          if (d[y[0].value] && d[y[0].value] < 0) {
+            return 4
+          }
+          return 0
+        },
+        radiusBottomRight: (d: ChartData) => {
+          if (d[y[0].value] && d[y[0].value] < 0) {
+            return 4
+          }
+          return 0
+        },
       },
       axis: {
         x: {
