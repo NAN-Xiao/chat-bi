@@ -15,6 +15,7 @@ from common.core.sqlbot_cache import cache
 from common.core.db import engine
 from starlette.middleware.cors import CORSMiddleware
 from common.core.config import settings
+from common.utils.utils import string_to_numeric_hash
 
 @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
 async def get_assistant_info(*, session: Session, assistant_id: int) -> AssistantModel | None:
@@ -100,7 +101,7 @@ class AssistantOutDs:
         header = {}
         cookies = {}
         for item in certificateList:
-            if item['target'] == 'head':
+            if item['target'] == 'header':
                 header[item['key']] = item['value']
             if item['target'] == 'cookie':
                 cookies[item['key']] = item['value']
@@ -111,8 +112,8 @@ class AssistantOutDs:
             if result_json.get('code') == 0:
                 temp_list = result_json.get('data', [])
                 self.ds_list = [
-                    AssistantOutDsSchema(**{**item, "id": idx})
-                    for idx, item in enumerate(temp_list, start=1)
+                    self.convert2schema(item)
+                    for item in temp_list
                 ]
                 
                 return self.ds_list
@@ -151,6 +152,14 @@ class AssistantOutDs:
             raise Exception("Datasource list is not found.")
         raise Exception(f"Datasource with id {ds_id} not found.")
 
+    def convert2schema(self, ds_dict: dict) -> AssistantOutDsSchema:
+        id_marker: str = ''
+        attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema']
+        for attr in attr_list:
+            if attr in ds_dict:
+                id_marker += str(ds_dict.get(attr, '')) + '--sqlbot--'
+        id = string_to_numeric_hash(id_marker)
+        return AssistantOutDsSchema(**{**ds_dict, "id": id})
     
 class AssistantOutDsFactory:
     @staticmethod

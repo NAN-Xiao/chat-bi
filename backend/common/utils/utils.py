@@ -1,5 +1,7 @@
+import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import jwt
 import orjson
@@ -70,3 +72,7 @@ def extract_nested_json(text):
     if len(results) > 0 and results[0]:
         return results[0]
     return None
+
+def string_to_numeric_hash(text: str, bits: Optional[int] = 64) -> int:
+    hash_bytes = hashlib.sha256(text.encode()).digest()
+    return int.from_bytes(hash_bytes[:bits//8], byteorder='big')

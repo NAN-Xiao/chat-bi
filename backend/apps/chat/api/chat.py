@@ -18,9 +18,9 @@ async def chats(session: SessionDep, current_user: CurrentUser):
 
 
 @router.get("/get/{chart_id}")
-async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int):
+async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant):
     try:
-        return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user)
+        return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user, current_assistant=current_assistant)
     except Exception as e:
         raise HTTPException(
             status_code=500,
