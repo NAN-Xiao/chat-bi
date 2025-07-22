@@ -99,7 +99,7 @@ class DatasourceConf(BaseModel):
 class TableSchema:
     def __init__(self, attr1, attr2):
         self.tableName = attr1
-        self.tableComment = attr2
+        self.tableComment = attr2 if isinstance(attr2, str) else attr2.decode("utf-8")
 
     tableName: str
     tableComment: str
@@ -109,7 +109,7 @@ class ColumnSchema:
     def __init__(self, attr1, attr2, attr3):
         self.fieldName = attr1
         self.fieldType = attr2
-        self.fieldComment = attr3
+        self.fieldComment = attr3 if isinstance(attr3, str) else attr3.decode("utf-8")
 
     fieldName: str
     fieldType: str

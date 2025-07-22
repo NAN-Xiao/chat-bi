@@ -61,8 +61,13 @@ def get_engine(ds: CoreDatasource) -> Engine:
                                connect_args={"options": f"-c search_path={conf.dbSchema}",
                                              "connect_timeout": conf.timeout},
                                pool_timeout=conf.timeout, pool_size=20, max_overflow=10)
-    elif ds.type == 'oracle' or ds.type == 'sqlServer':
+    elif ds.type == 'sqlServer':
         engine = create_engine(get_uri(ds), pool_timeout=conf.timeout,
+                               pool_size=20,
+                               max_overflow=10)
+    elif ds.type == 'oracle':
+        engine = create_engine(get_uri(ds),
+                               pool_timeout=conf.timeout,
                                pool_size=20,
                                max_overflow=10)
     else:
