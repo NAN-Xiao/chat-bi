@@ -1,7 +1,7 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
-import { endsWith, filter, replace } from 'lodash-es'
+import { checkIsPercent } from '@/views/chat/component/charts/utils.ts'
 
 export class Pie extends BaseG2Chart {
   constructor(id: string) {
@@ -18,39 +18,14 @@ export class Pie extends BaseG2Chart {
     }
 
     // %
-    const _data = []
-    let isPercent = false
-    const notEmptyData = filter(
-      data,
-      (d) =>
-        d &&
-        d[y[0].value] !== null &&
-        d[y[0].value] !== undefined &&
-        d[y[0].value] !== 0 &&
-        d[y[0].value] !== '0'
-    )
-    if (notEmptyData.length > 0) {
-      const v = notEmptyData[0][y[0].value] + ''
-      if (endsWith(v.trim(), '%')) {
-        isPercent = true
-      }
-    }
-    for (let i = 0; i < data.length; i++) {
-      const v = data[i]
-      const _v = { ...v }
-      if (isPercent) {
-        const formatValue = replace(v[y[0].value], '%', '')
-        _v[y[0].value] = Number(formatValue)
-      }
-      _data.push(_v)
-    }
+    const _data = checkIsPercent(y[0], data)
 
     const options: G2Spec = {
       ...this.chart.options(),
       type: 'interval',
       coordinate: { type: 'theta', outerRadius: 0.8 },
       transform: [{ type: 'stackY' }],
-      data: _data,
+      data: _data.data,
       encode: {
         y: y[0].value,
         color: series[0].value,
@@ -62,11 +37,11 @@ export class Pie extends BaseG2Chart {
         {
           position: 'outside',
           text: (data: any) =>
-            `${data[series[0].value]}: ${data[y[0].value]}${isPercent ? '%' : ''}`,
+            `${data[series[0].value]}: ${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
         },
       ],
       tooltip: (data) => {
-        return { name: y[0].name, value: `${data[y[0].value]}${isPercent ? '%' : ''}` }
+        return { name: y[0].name, value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}` }
       },
     }
 

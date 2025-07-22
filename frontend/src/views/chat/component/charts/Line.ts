@@ -1,6 +1,7 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
+import { checkIsPercent } from '@/views/chat/component/charts/utils.ts'
 
 export class Line extends BaseG2Chart {
   constructor(id: string) {
@@ -18,10 +19,12 @@ export class Line extends BaseG2Chart {
       return
     }
 
+    const _data = checkIsPercent(y[0], data)
+
     const options: G2Spec = {
       ...this.chart.options(),
       type: 'view',
-      data: data,
+      data: _data.data,
       encode: {
         x: x[0].value,
         y: y[0].value,
@@ -44,7 +47,7 @@ export class Line extends BaseG2Chart {
           type: 'line',
           labels: [
             {
-              text: y[0].value,
+              text: (data: any) => `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
               style: {
                 dx: -10,
                 dy: -12,
@@ -58,9 +61,12 @@ export class Line extends BaseG2Chart {
           ],
           tooltip: (data) => {
             if (series.length > 0) {
-              return { name: data[series[0].value], value: data[y[0].value] }
+              return {
+                name: data[series[0].value],
+                value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
+              }
             } else {
-              return { name: y[0].name, value: data[y[0].value] }
+              return { name: y[0].name, value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}` }
             }
           },
         },
