@@ -1,6 +1,7 @@
 import base64
 import json
 import urllib.parse
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import create_engine, text, Result, Engine
@@ -9,8 +10,6 @@ from sqlalchemy.orm import sessionmaker
 from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.engine import get_engine_config
-from decimal import Decimal
-
 from apps.system.crud.assistant import get_ds_engine
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 
@@ -19,7 +18,8 @@ def get_uri(ds: CoreDatasource) -> str:
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     return get_uri_from_config(ds.type, conf)
 
-def get_uri_from_config(type: str,conf: DatasourceConf) -> str:
+
+def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
     db_url: str
     if type == "mysql":
         if conf.extraJdbc is not None and conf.extraJdbc != '':
@@ -61,6 +61,10 @@ def get_engine(ds: CoreDatasource) -> Engine:
                                connect_args={"options": f"-c search_path={conf.dbSchema}",
                                              "connect_timeout": conf.timeout},
                                pool_timeout=conf.timeout, pool_size=20, max_overflow=10)
+    elif ds.type == 'oracle' or ds.type == 'sqlServer':
+        engine = create_engine(get_uri(ds), pool_timeout=conf.timeout,
+                               pool_size=20,
+                               max_overflow=10)
     else:
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, pool_timeout=conf.timeout,
                                pool_size=20,
