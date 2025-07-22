@@ -68,6 +68,7 @@ class AssistantBase(BaseModel):
     domain: str
     type: int = 0
     configuration: Optional[str] = None
+    description: Optional[str] = None
 class AssistantDTO(AssistantBase, BaseCreatorDTO):
     pass
 
