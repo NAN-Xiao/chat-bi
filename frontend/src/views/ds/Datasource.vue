@@ -56,6 +56,7 @@ const datasourceListWithSearch = computed(() => {
 const beforeClose = () => {
   datasourceConfigvVisible.value = false
   activeStep.value = 0
+  datasourceApi.cancelRequests()
 }
 const defaultDatasourceListWithSearch = computed(() => {
   if (!defaultDatasourceKeywords.value) return defaultDatasourceList.value

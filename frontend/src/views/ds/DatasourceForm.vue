@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, reactive, onMounted, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { datasourceApi } from '@/api/datasource'
 import icon_upload_outlined from '@/assets/svg/icon_upload_outlined.svg'
@@ -246,23 +246,40 @@ const save = async (formEl: FormInstance | undefined) => {
       if (form.value.id) {
         if (!isEditTable.value) {
           // only update datasource config info
-          datasourceApi.update(requestObj).then(() => {
-            close()
-            emit('refresh')
-          })
+          datasourceApi
+            .update(requestObj)
+            .then(() => {
+              close()
+              emit('refresh')
+            })
+            .finally(() => {
+              saveLoading.value = false
+            })
         } else {
           // save table and field
-          datasourceApi.chooseTables(form.value.id, list).then(() => {
-            close()
-            emit('refresh')
-          })
+          datasourceApi
+            .chooseTables(form.value.id, list)
+            .then(() => {
+              close()
+              emit('refresh')
+            })
+            .finally(() => {
+              saveLoading.value = false
+            })
         }
       } else {
         requestObj.tables = list
-        datasourceApi.add(requestObj).then(() => {
-          close()
-          emit('refresh')
-        })
+        const a = datasourceApi
+          .add(requestObj)
+          .then(() => {
+            close()
+            emit('refresh')
+          })
+          .finally(() => {
+            saveLoading.value = false
+          })
+
+        console.log(a, 'datasourceApi')
       }
     }
   })
@@ -318,6 +335,8 @@ const check = () => {
     }
   })
 }
+
+onBeforeUnmount(() => (saveLoading.value = false))
 
 const next = async (formEl: FormInstance | undefined) => {
   if (!formEl) return
@@ -459,7 +478,7 @@ defineExpose({
 
 <template>
   <div
-    v-loading="uploadLoading"
+    v-loading="uploadLoading || saveLoading"
     class="model-form"
     :class="(!isCreate || activeStep === 2) && 'edit-form'"
   >
@@ -691,12 +710,7 @@ defineExpose({
       <el-button v-show="activeStep === 1 && isCreate" type="primary" @click="next(dsFormRef)">
         {{ t('common.next') }}
       </el-button>
-      <el-button
-        v-show="activeStep === 2 || !isCreate"
-        :loading="saveLoading"
-        type="primary"
-        @click="save(dsFormRef)"
-      >
+      <el-button v-show="activeStep === 2 || !isCreate" type="primary" @click="save(dsFormRef)">
         {{ t('common.save') }}
       </el-button>
     </div>
