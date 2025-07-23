@@ -30,7 +30,7 @@ async def get_datasource(session: SessionDep, id: int):
 
 @router.post("/check")
 async def check(session: SessionDep, ds: CoreDatasource):
-    return check_status(session, ds)
+    return check_status(session, ds, True)
 
 
 @router.post("/add", response_model=CoreDatasource)
