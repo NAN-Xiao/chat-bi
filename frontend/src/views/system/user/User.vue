@@ -66,7 +66,12 @@
         <el-table-column prop="email" show-overflow-tooltip :label="$t('user.email')" />
         <!-- <el-table-column prop="phone" :label="$t('user.phone_number')" width="280" /> -->
         <!-- <el-table-column prop="user_source" :label="$t('user.user_source')" width="280" /> -->
-        <el-table-column prop="oid_list" :label="$t('user.workspace')" width="280">
+        <el-table-column
+          show-overflow-tooltip
+          prop="oid_list"
+          :label="$t('user.workspace')"
+          width="280"
+        >
           <template #default="scope">
             <span>{{ formatSpaceName(scope.row.oid_list) }}</span>
           </template>
@@ -671,6 +676,7 @@ const saveHandler = () => {
 }
 const handleSizeChange = (val: number) => {
   state.pageInfo.pageSize = val
+  state.pageInfo.currentPage = 1
   search()
 }
 const handleCurrentChange = (val: number) => {

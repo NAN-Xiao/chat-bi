@@ -70,7 +70,7 @@ const deleteBatchUser = () => {
   })
 }
 const deleteHandler = (row: any) => {
-  if (row.weight === 1) return
+  if (row.weight === 1 && +userStore.getUid !== 1) return
   ElMessageBox.confirm(t('workspace.member_feng_yibudao', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -177,6 +177,7 @@ const addWorkspace = () => {
 }
 
 const handleSizeChange = (val: number) => {
+  pageInfo.currentPage = 1
   pageInfo.pageSize = val
   search()
 }
@@ -261,7 +262,7 @@ const handleCurrentChange = (val: number) => {
                 >
                   <el-icon
                     class="action-btn"
-                    :class="scope.row.weight === 1 && 'not-allow'"
+                    :class="+userStore.getUid !== 1 && scope.row.weight === 1 && 'not-allow'"
                     size="16"
                     @click="deleteHandler(scope.row)"
                   >
@@ -286,18 +287,18 @@ const handleCurrentChange = (val: number) => {
           </template>
         </el-table>
       </div>
-      <div class="pagination-container">
-        <el-pagination
-          v-model:current-page="pageInfo.currentPage"
-          v-model:page-size="pageInfo.pageSize"
-          :page-sizes="[10, 20, 30]"
-          :background="true"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="pageInfo.total"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+    </div>
+    <div class="pagination-container">
+      <el-pagination
+        v-model:current-page="pageInfo.currentPage"
+        v-model:page-size="pageInfo.pageSize"
+        :page-sizes="[10, 20, 30]"
+        :background="true"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="pageInfo.total"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </div>
     <div v-if="multipleSelectionAll.length" class="bottom-select">
       <el-checkbox
@@ -369,15 +370,15 @@ const handleCurrentChange = (val: number) => {
       line-height: 28px;
     }
   }
+  .pagination-container {
+    display: flex;
+    justify-content: end;
+    align-items: center;
+    margin-top: 16px;
+  }
   .table-content {
-    height: calc(100% - 104px);
-
-    .pagination-container {
-      display: flex;
-      justify-content: end;
-      align-items: center;
-      margin-top: 16px;
-    }
+    max-height: calc(100% - 104px);
+    overflow-y: auto;
 
     .preview-or-schema {
       .user-status-container {

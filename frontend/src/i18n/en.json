@@ -341,7 +341,7 @@
     "there_are": "There are",
     "2_dashboards": "{msg} dashboards",
     "smart_data_centers": "{msg} smart data centers",
-    "confirm_to_delete": "This data source is in use. Deleting it will cause these resources to not work properly. Confirm to delete?",
+    "confirm_to_delete": "After the data source is deleted, the related questions can no longer be asked and the charts in the dashboard cannot be displayed normally. Please operate with caution!",
     "id_account_to_add": "Search user ID/account to add",
     "find_user": "Find user",
     "add_successfully": "Add successfully",

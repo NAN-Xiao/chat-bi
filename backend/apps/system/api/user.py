@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import func, or_, select, delete as sqlmodel_delete
-from apps.system.crud.user import clean_user_cache, get_db_user, single_delete, user_ws_options
+from apps.system.crud.user import get_db_user, single_delete, user_ws_options
 from apps.system.models.system_model import UserWsModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -95,14 +95,13 @@ async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Tran
     return await user_ws_options(session, current_user.id, trans)
 
 @router.put("/ws/{oid}")
-# @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
+#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def ws_change(session: SessionDep, current_user: CurrentUser, oid: int):
     ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
     if not any(x.id == oid for x in ws_list):
         raise HTTPException(f"oid [{oid}] is invalid!")
     user_model: UserModel = get_db_user(session = session, user_id = current_user.id)
     user_model.oid = oid
-    await clean_user_cache(user_model.id)
     session.add(user_model)
     session.commit()
 
@@ -181,7 +180,6 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
         return {"message": "Language not supported"}
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     db_user.language = lang
-    await clean_user_cache(db_user.id)
     session.add(db_user)
     session.commit()
     
@@ -202,6 +200,5 @@ async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdE
     if not verify_md5pwd(editor.pwd, db_user.password):
         raise HTTPException("pwd error")
     db_user.password = md5pwd(editor.new_pwd)
-    await clean_user_cache(db_user.id)
     session.add(db_user)
     session.commit()

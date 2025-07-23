@@ -256,7 +256,7 @@ const submit = (item: any) => {
                 @click="handleDefaultModelChange(ele)"
               >
                 <img :src="ele.supplier_item.icon" width="24px" height="24px" />
-                <div class="model-name" v-html="formatKeywords(ele.name)"></div>
+                <div class="model-name ellipsis" v-html="formatKeywords(ele.name)"></div>
                 <el-icon size="16" class="done">
                   <icon_done_outlined></icon_done_outlined>
                 </el-icon>
@@ -420,6 +420,7 @@ const submit = (item: any) => {
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
+        max-width: 220px;
       }
 
       .done {

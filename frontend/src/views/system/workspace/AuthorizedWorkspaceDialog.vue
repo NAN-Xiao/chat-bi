@@ -171,6 +171,10 @@ defineExpose({
     margin-bottom: 8px;
   }
 
+  .ed-checkbox {
+    margin-right: 0;
+  }
+
   .mt-16 {
     margin-top: 16px;
   }

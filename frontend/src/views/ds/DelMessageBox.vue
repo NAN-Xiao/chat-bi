@@ -19,13 +19,6 @@ defineProps({
 })
 
 const emits = defineEmits(['panelClick', 'smartClick'])
-const panelClick = () => {
-  emits('panelClick')
-}
-
-const smartClick = () => {
-  emits('smartClick')
-}
 </script>
 
 <template>
@@ -34,9 +27,6 @@ const smartClick = () => {
       {{ t('datasource.data_source', { msg: name }) }}
     </div>
     <div class="use-panel">
-      {{ t('workspace.there_are') }}
-      <span @click="panelClick">{{ t('workspace.2_dashboards', { msg: panelNum }) }}</span
-      >、<span @click="smartClick">{{ t('workspace.smart_data_centers', { msg: smartNum }) }}</span>
       {{ t('workspace.confirm_to_delete') }}
     </div>
   </div>

@@ -71,7 +71,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                     ) """
                 return True, session_user
         except Exception as e:
-            SQLBotLogUtil.exception(f"Token validation error: {str(e)}", exc_info=True)
+            SQLBotLogUtil.exception(f"Token validation error: {str(e)}")
             return False, e
             
     
@@ -97,6 +97,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
                 return True, session_user, assistant_info
         except Exception as e:
-            SQLBotLogUtil.exception(f"Assistant validation error: {str(e)}", exc_info=True)
+            SQLBotLogUtil.exception(f"Assistant validation error: {str(e)}")
             # Return False and the exception message
             return False, e

@@ -99,8 +99,8 @@ async def edit_field(session: SessionDep, field: CoreField):
 
 
 @router.post("/previewData/{id}")
-async def edit_local(session: SessionDep, id: int, data: TableObj):
-    return preview(session, id, data)
+async def edit_local(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
+    return preview(session, current_user, id, data)
 
 
 @router.post("/fieldEnum/{id}")
