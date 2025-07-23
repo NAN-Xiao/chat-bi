@@ -105,7 +105,7 @@ const baseParams = computed(() => {
   border-radius: 12px;
   position: relative;
   background: #f5f6f7;
-  box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.1);
+  box-shadow: 4px 4px 8px 4px rgba(31, 35, 41, 0.2);
   overflow: hidden;
   width: 100%;
   height: 100%;

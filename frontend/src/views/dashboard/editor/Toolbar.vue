@@ -272,6 +272,7 @@ const previewInner = () => {
       height: 24px;
       font-size: 16px;
       width: 300px;
+      font-weight: 500;
       overflow: hidden;
       cursor: pointer;
       color: #1f2329;
@@ -324,6 +325,8 @@ const previewInner = () => {
 
 .back-icon {
   margin-top: 8px;
+  width: 20px;
+  height: 20px;
 }
 
 .toolbar-hover-icon {
