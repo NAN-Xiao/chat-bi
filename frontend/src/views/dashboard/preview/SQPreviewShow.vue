@@ -48,6 +48,13 @@ const mounted = computed(() => {
 function createNew() {
   resourceTreeRef.value?.createNewObject()
 }
+
+const stateInit = () => {
+  state.canvasDataPreview = []
+  state.canvasStylePreview = {}
+  state.canvasViewInfoPreview = {}
+  state.dashboardInfo = {}
+}
 const loadCanvasData = (params: any) => {
   dataInitState.value = false
   load_resource_prepare(
@@ -100,6 +107,7 @@ defineExpose({
         :cur-canvas-type="'dashboard'"
         :show-position="showPosition"
         @node-click="resourceNodeClick"
+        @delete-cur-resource="stateInit"
       />
     </el-aside>
     <el-container

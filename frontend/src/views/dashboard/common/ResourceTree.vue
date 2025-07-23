@@ -158,7 +158,7 @@ const afterTreeInit = () => {
 }
 
 const copyLoading = ref(false)
-const emit = defineEmits(['nodeClick'])
+const emit = defineEmits(['nodeClick', 'deleteCurResource'])
 
 function createNewObject() {
   addOperation({ opt: 'newLeaf' })
@@ -230,7 +230,8 @@ const operation = (opt: string, data: SQTreeNode) => {
       dashboardApi.delete_resource({ id: data.id }).then(() => {
         ElMessage.success(t('dashboard.delete_success'))
         getTree()
-        dashboardStore.setCurComponent(null)
+        dashboardStore.canvasDataInit()
+        emit('deleteCurResource')
       })
     })
   } else if (opt === 'rename') {
