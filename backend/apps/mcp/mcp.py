@@ -13,7 +13,7 @@ from sqlmodel import select
 
 from apps.chat.api.chat import create_chat
 from apps.chat.models.chat_model import ChatMcp, CreateChat, ChatStart
-from apps.chat.task.llm import LLMService, run_task
+from apps.chat.task.llm import LLMService
 from apps.system.crud.user import authenticate
 from apps.system.crud.user import get_db_user
 from apps.system.models.system_model import UserWsModel
@@ -109,4 +109,4 @@ async def mcp_question(session: SessionDep, chat: ChatMcp):
     llm_service = LLMService(session, session_user, chat)
     llm_service.init_record()
 
-    return StreamingResponse(run_task(llm_service, False), media_type="text/event-stream")
+    return StreamingResponse(llm_service.run_task(False), media_type="text/event-stream")
