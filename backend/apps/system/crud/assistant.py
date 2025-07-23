@@ -17,7 +17,7 @@ from starlette.middleware.cors import CORSMiddleware
 from common.core.config import settings
 from common.utils.utils import string_to_numeric_hash
 
-#@cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
+@cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
 async def get_assistant_info(*, session: Session, assistant_id: int) -> AssistantModel | None:
     db_model = session.get(AssistantModel, assistant_id)
     return db_model

@@ -32,7 +32,6 @@ async def info(session: SessionDep, id: str, virtual: Optional[int] = Query(None
     db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         return AssistantValidator()
-    print(db_model)
     db_model = AssistantModel.model_validate(db_model)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     assistantDict = {
