@@ -22,7 +22,7 @@ def get_user_by_account(*, session: Session, account: str) -> BaseUserDTO | None
         return None
     return BaseUserDTO.model_validate(db_user.model_dump())
 
-#@cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="user_id")
+@cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="user_id")
 async def get_user_info(*, session: Session, user_id: int) -> UserInfoDTO | None:
     db_user: UserModel = get_db_user(session = session, user_id = user_id)
     userInfo = UserInfoDTO.model_validate(db_user.model_dump())
@@ -58,7 +58,7 @@ async def user_ws_options(session: Session, uid: int, trans: Optional[I18n] = No
         for id, name in result.all()
     ]
     
-#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def single_delete(session: SessionDep, id: int):
     user_model: UserModel = get_db_user(session = session, user_id = id)
     del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == id)
@@ -66,6 +66,6 @@ async def single_delete(session: SessionDep, id: int):
     session.delete(user_model)
     session.commit()
 
-#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")    
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")    
 async def clean_user_cache(id: int):
     SQLBotLogUtil.info(f"User cache for [{id}] has been cleaned")

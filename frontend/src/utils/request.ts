@@ -314,6 +314,36 @@ class HttpService {
     if (id && document.getElementById(id)) {
       return Promise.resolve(document.getElementById(id) as HTMLElement)
     }
+    if (url.startsWith('/')) {
+      const real_url = import.meta.env.VITE_API_BASE_URL.replace('/api/v1', '')
+      url = real_url + url
+    }
+    return new Promise<HTMLElement>((resolve, reject) => {
+      // 改用传统的script标签加载方式
+      const script = document.createElement('script')
+      script.src = url
+      script.id = id || `remote-script-${Date.now()}`
+
+      script.onload = () => {
+        if (cb) cb()
+        resolve(script)
+      }
+
+      script.onerror = (error) => {
+        console.error(`Failed to load script from ${url}:`, error)
+        reject(new Error(`Failed to load script from ${url}`))
+      }
+
+      document.head.appendChild(script)
+    })
+  }
+  /* public loadRemoteScript(url: string, id?: string, cb?: any): Promise<HTMLElement> {
+    if (!url) {
+      return Promise.reject(new Error('URL is required to load remote script'))
+    }
+    if (id && document.getElementById(id)) {
+      return Promise.resolve(document.getElementById(id) as HTMLElement)
+    }
     return new Promise<HTMLElement>((resolve, reject) => {
       this.get(url, {
         responseType: 'text',
@@ -337,7 +367,7 @@ class HttpService {
           reject(new Error(`Failed to load script from ${url}: ${error.message}`))
         })
     })
-  }
+  } */
 }
 
 // Create singleton instance
