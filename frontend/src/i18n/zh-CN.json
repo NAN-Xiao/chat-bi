@@ -34,6 +34,11 @@
     "password_reset_successful": "重置密码成功"
   },
   "dashboard": {
+    "sort_column": "排序字段",
+    "sort_type": "排序方式",
+    "time": "时间",
+    "sort_asc": "升序",
+    "sort_desc": "降序",
     "name_repeat": "仪表板名称已被使用",
     "rich_text_tips": "双击输入文本内容",
     "exit_preview": "退出预览",

@@ -57,7 +57,9 @@ const expandedArray = ref([])
 const resourceListTree = ref()
 const returnMounted = ref(false)
 const state = reactive({
-  curSortType: 'time_desc',
+  curSortType: 'name_asc',
+  curSortTypePrefix: 'name',
+  curSortTypeSuffix: '_asc',
   resourceTree: [] as SQTreeNode[],
   originResourceTree: [] as SQTreeNode[],
   sortType: [],
@@ -134,6 +136,7 @@ const getTree = async () => {
   dashboardApi.list_resource(params).then((res: SQTreeNode[]) => {
     state.originResourceTree = res || []
     state.resourceTree = _.cloneDeep(state.originResourceTree)
+    handleSortTypeChange('name_asc')
     afterTreeInit()
   })
 }
@@ -246,16 +249,41 @@ const baseInfoChangeFinish = () => {
   getTree()
 }
 
-const handleSortTypeChange = (sortType: string) => {
-  state.resourceTree = treeSort(state.originResourceTree, sortType)
-  state.curSortType = sortType
+const handleSortTypeChange = (menuSortType: string) => {
+  state.curSortTypePrefix = ['name', 'time'].includes(menuSortType)
+    ? menuSortType
+    : state.curSortTypePrefix
+  state.curSortTypeSuffix = ['_asc', '_desc'].includes(menuSortType)
+    ? menuSortType
+    : state.curSortTypeSuffix
+  const curMenuSortType = state.curSortTypePrefix + state.curSortTypeSuffix
+  state.resourceTree = treeSort(state.originResourceTree, curMenuSortType)
+  state.curSortType = curMenuSortType
   wsCache.set('TreeSort-dashboard', state.curSortType)
 }
 
-// const sortTypeChange = (sortType: string) => {
-//   state.resourceTree = treeSort(state.originResourceTree, sortType)
-//   state.curSortType = sortType
-// }
+const sortColumnList = [
+  {
+    name: t('dashboard.time'),
+    value: 'time',
+  },
+  {
+    name: t('dashboard.name'),
+    value: 'name',
+    divided: true,
+  },
+]
+
+const sortTypeList = [
+  {
+    name: t('dashboard.sort_asc'),
+    value: '_asc',
+  },
+  {
+    name: t('dashboard.sort_desc'),
+    value: '_desc',
+  },
+]
 
 const sortList = [
   {
@@ -322,7 +350,12 @@ defineExpose({
           </el-icon>
         </template>
       </el-input>
-      <el-dropdown trigger="click" @command="handleSortTypeChange">
+      <el-dropdown
+        popper-class="tree-sort-menu-custom"
+        trigger="click"
+        placement="bottom-end"
+        @command="handleSortTypeChange"
+      >
         <el-icon class="filter-icon-span">
           <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
             <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc" class="opt-icon"
@@ -336,16 +369,27 @@ defineExpose({
           </el-tooltip>
         </el-icon>
         <template #dropdown>
-          <el-dropdown-menu style="width: 246px">
-            <template v-for="ele in sortList" :key="ele.value">
+          <el-dropdown-menu style="width: 120px">
+            <span class="sort_menu">{{ t('dashboard.sort_column') }}</span>
+            <template v-for="ele in sortColumnList" :key="ele.value">
               <el-dropdown-item
                 class="ed-select-dropdown__item"
-                :class="ele.value === state.curSortType && 'selected'"
+                :class="state.curSortType.includes(ele.value) && 'selected'"
                 :command="ele.value"
               >
                 {{ ele.name }}
               </el-dropdown-item>
               <li v-if="ele.divided" class="ed-dropdown-menu__item--divided"></li>
+            </template>
+            <span class="sort_menu">{{ t('dashboard.sort_type') }}</span>
+            <template v-for="ele in sortTypeList" :key="ele.value">
+              <el-dropdown-item
+                class="ed-select-dropdown__item"
+                :class="state.curSortType.includes(ele.value) && 'selected'"
+                :command="ele.value"
+              >
+                {{ ele.name }}
+              </el-dropdown-item>
             </template>
           </el-dropdown-menu>
         </template>
@@ -555,6 +599,17 @@ defineExpose({
 </style>
 
 <style lang="less">
+.tree-sort-menu-custom {
+  padding: 0 4px !important;
+  li {
+    border-radius: 4px;
+    padding: 0 8px !important;
+    &:hover {
+      // color: var(--primary-color);
+      background-color: rgba(31, 35, 41, 0.1) !important;
+    }
+  }
+}
 .menu-outer-dv_popper {
   min-width: 140px;
   margin-top: -2px !important;
@@ -585,5 +640,11 @@ defineExpose({
 
 .color-dataV-disabled {
   background: #bbbfc4 !important;
+}
+
+.sort_menu {
+  color: rgba(143, 149, 158, 1);
+  font-size: 14px;
+  margin-left: 12px;
 }
 </style>
