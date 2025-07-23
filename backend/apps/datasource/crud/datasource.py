@@ -86,6 +86,7 @@ def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: C
 
 def chooseTables(session: SessionDep, id: int, tables: List[CoreTable]):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+    check_status(session, ds, True)
     sync_table(session, ds, tables)
     updateNum(session, ds)
 
@@ -131,6 +132,7 @@ def getTables(session: SessionDep, id: int):
 
 
 def getTablesByDs(session: SessionDep, ds: CoreDatasource):
+    check_status(session, ds, True)
     tables = get_tables(ds)
     return tables
 
@@ -244,6 +246,7 @@ def preview(session: SessionDep, id: int, data: TableObj):
         return {"fields": [], "data": [], "sql": ''}
 
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+    check_status(session, ds, True)
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
     if ds.type == "mysql":
