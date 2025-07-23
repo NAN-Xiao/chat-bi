@@ -32,6 +32,11 @@
     "password_reset_successful": "Password reset successful"
   },
   "dashboard": {
+    "sort_column": "Sort field",
+    "sort_type": "Sort type",
+    "time": "Time",
+    "sort_asc": "Ascending",
+    "sort_desc": "Descending",
     "name_repeat": "Name Repeat",
     "rich_text_tips": "Double-click to enter text content",
     "exit_preview": "Exit preview",
