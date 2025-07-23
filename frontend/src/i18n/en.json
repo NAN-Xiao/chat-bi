@@ -395,7 +395,14 @@
     "filter_like": "Contains",
     "filter_not_like": "Does not contain",
     "filter_in": "Belongs to",
-    "filter_not_in": "Does not belong to"
+    "filter_not_in": "Does not belong to",
+    "enter_a_question": "Please enter a question",
+    "new_conversation": "New Conversation",
+    "send": "Send",
+    "stop_replying": "Stop replying",
+    "i_am_sqlbot": "Hello, I am SQLBot",
+    "predict_data_etc": "I can query data, generate charts, detect data anomalies, predict data, etc.",
+    "intelligent_data_query": "Hurry up and start intelligent data query~"
   },
   "embedded": {
     "embedded_management": "Embedded management",
@@ -441,7 +448,8 @@
     "edit_interface_credentials": "Edit interface credentials",
     "duplicate_name": "Duplicate name",
     "interface_credentials": "Interface credentials",
-    "no_credentials_yet": "No credentials yet"
+    "no_credentials_yet": "No credentials yet",
+    "intelligent_customer_service": "SQLBot Intelligent Customer Service"
   },
   "chat": {
     "type": "Chart Type",
