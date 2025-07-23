@@ -1,10 +1,10 @@
 import json
-import logging
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from common.core.config import settings
+from common.utils.utils import SQLBotLogUtil
 class ResponseMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
@@ -48,7 +48,7 @@ class ResponseMiddleware(BaseHTTPMiddleware):
                     }
                 )
             except Exception as e:
-                logging.error(f"Response processing error: {str(e)}", exc_info=True)
+                SQLBotLogUtil.error(f"Response processing error: {str(e)}", exc_info=True)
                 return JSONResponse(
                     status_code=500,
                     content={
@@ -68,6 +68,7 @@ class ResponseMiddleware(BaseHTTPMiddleware):
 class exception_handler():
     @staticmethod
     async def http_exception_handler(request: Request, exc: HTTPException):
+        SQLBotLogUtil.exception(f"HTTP Exception: {exc.detail}", exc_info=True)
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -81,8 +82,7 @@ class exception_handler():
 
     @staticmethod
     async def global_exception_handler(request: Request, exc: Exception):
-        logging.error(f"Error info: {str(exc)}", exc_info=True)
-        
+        SQLBotLogUtil.exception(f"Unhandled Exception: {str(exc)}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={

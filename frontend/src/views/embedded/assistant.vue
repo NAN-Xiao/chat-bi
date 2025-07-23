@@ -1,264 +1,198 @@
-<template>
-  <div class="sqlbot-assistant-container">
-    <div class="head">
-      <div class="flex align-center">
-        <div class="head-img-div">
-          <img :src="AssistantGif" />
-        </div>
-        <h4>SQLBot 小助手</h4>
-      </div>
-    </div>
-    <chat-component v-if="!loading" ref="chatRef" class="sqlbot-chat-container" />
-  </div>
-  <div class="sqlbot-top-btn">
-    <el-icon style="cursor: pointer" @click="createChat">
-      <icon_new_chat_outlined />
-    </el-icon>
-    <el-icon style="cursor: pointer" @click="openHistory">
-      <history></history>
-    </el-icon>
-  </div>
-  <div class="sqlbot-history-container">
-    <el-drawer
-      v-model="drawer"
-      :append-to-body="false"
-      class="sqlbot-history-drawer"
-      modal-class="sqlbot-history-modal"
-      title=""
-      direction="ttb"
-      :with-header="false"
-    >
-      <div class="sqlbot-history-title">
-        <span>历史记录</span>
-      </div>
-      <div class="sqlbot-history-content">
-        <div v-if="!chatList.length" class="history-empty">
-          <span>暂无历史记录</span>
-        </div>
-        <div v-else class="sqlbot-chat-list-inner">
-          <el-scrollbar max-height="350px" class="sqlbot-chat-scroller">
-            <template v-for="chat in chatList" :key="chat.id">
-              <div
-                class="chat-list-item"
-                :class="{ 'is-active-chat': currentId === chat.id }"
-                @click="onClickHistory(chat)"
-              >
-                <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
-                <!-- <div class="history-operate">
-                  <el-icon @click="EditPen(chat)"><IconOpeEdit /></el-icon>
-                  <el-icon @click="Delete(chat)"><IconOpeDelete /></el-icon>
-                </div> -->
-              </div>
-            </template>
-          </el-scrollbar>
-        </div>
-      </div>
-    </el-drawer>
-  </div>
-</template>
-<script setup lang="ts">
-import { onBeforeMount, onBeforeUnmount, ref } from 'vue'
-import ChatComponent from '@/views/chat/index.vue'
-import AssistantGif from '@/assets/img/assistant.gif'
-import history from '@/assets/svg/chart/history.svg'
-import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
-/* import IconOpeEdit from '@/assets/svg/operate/ope-edit.svg'
-import IconOpeDelete from '@/assets/svg/operate/ope-delete.svg' */
-import { useRoute } from 'vue-router'
-import { assistantApi } from '@/api/assistant'
-import { useAssistantStore } from '@/stores/assistant'
+<script lang="ts" setup>
+import { ref } from 'vue'
+import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined.svg'
+import icon_new_chat_outlined from '@/assets/embedded/icon_new-chat_outlined.svg'
+import LOGO from '@/assets/embedded/LOGO.png'
+import answer from '@/assets/embedded/answer.png'
+import disable_answer from '@/assets/embedded/disable.png'
+import loading_answer from '@/assets/embedded/loading.png'
+import send_answer from '@/assets/embedded/send.png'
 
-const assistantStore = useAssistantStore()
-const route = useRoute()
-
-const chatRef = ref()
-const chatList = ref<Array<any>>([])
-const drawer = ref(false)
-const currentId = ref()
-
-const createChat = () => {
-  chatRef.value?.createNewChat()
-}
-const openHistory = () => {
-  chatList.value = chatRef.value?.getHistoryList()
-  currentId.value = chatRef.value?.getCurrentChatId()
-  drawer.value = true
-}
-const onClickHistory = (chat: any) => {
-  chatRef.value?.toAssistantHistory(chat)
-}
-
-/* const EditPen = (chat: any) => {
-  chatRef.value?.onChatRenamed(chat)
-}
-const Delete = (chat: any) => {
-  chatRef.value?.onChatDeleted(chat.id)
-} */
-const validator = ref({
-  id: '',
-  valid: false,
-  id_match: false,
-  token: '',
-})
-const loading = ref(true)
-const eventName = 'sqlbot_assistant_event'
-const communicationCb = async (event: any) => {
-  if (event.data?.eventName === eventName) {
-    if (event.data?.messageId !== route.query.id) {
-      return
-    }
-    if (event.data?.busi == 'certificate') {
-      const certificate = event.data['certificate']
-      assistantStore.setType(1)
-      assistantStore.setCertificate(certificate)
-      // store certificate to pinia
-    }
-  }
-}
-onBeforeMount(async () => {
-  const assistantId = route.query.id
-  const online = route.query.online
-  console.log(online)
-  const now = Date.now()
-  assistantStore.setFlag(now)
-  const param = {
-    id: assistantId,
-    virtual: assistantStore.getFlag,
-    online,
-  }
-  validator.value = await assistantApi.validate(param)
-  assistantStore.setToken(validator.value.token)
-  assistantStore.setAssistant(true)
-  loading.value = false
-
-  window.addEventListener('message', communicationCb)
-  const readyData = {
-    eventName: 'sqlbot_assistant_event',
-    busi: 'ready',
-    ready: true,
-    messageId: assistantId,
-  }
-  window.parent.postMessage(readyData, '*')
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('message', communicationCb)
-})
+const textareaVal = ref('')
 </script>
 
+<template>
+  <div class="assistant-window">
+    <div class="header">
+      <el-icon size="20">
+        <icon_sidebar_outlined></icon_sidebar_outlined>
+      </el-icon>
+      <img :src="LOGO" class="logo" width="30px" height="30px" alt="" />
+      <span class="tite">{{ $t('embedded.intelligent_customer_service') }}</span>
+
+      <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
+        <el-icon class="new-chat" size="20">
+          <icon_new_chat_outlined></icon_new_chat_outlined>
+        </el-icon>
+      </el-tooltip>
+    </div>
+    <div class="center">
+      <img :src="LOGO" class="logo" width="30px" height="30px" alt="" />
+      <div class="i-am">{{ $t('embedded.i_am_sqlbot') }}</div>
+      <div class="i-can">{{ $t('embedded.predict_data_etc') }}</div>
+      <div class="data-query">{{ $t('embedded.intelligent_data_query') }}</div>
+    </div>
+    <div class="content">
+      <div class="textarea-send">
+        <el-input
+          v-model="textareaVal"
+          :autosize="{ minRows: 1, maxRows: 8.5848 }"
+          type="textarea"
+          :placeholder="$t('embedded.enter_a_question')"
+        />
+        <el-tooltip :offset="10" effect="dark" :content="$t('embedded.send')" placement="top">
+          <img :src="disable_answer" width="32px" height="32px" alt="" />
+        </el-tooltip>
+
+        <el-tooltip
+          :offset="10"
+          effect="dark"
+          :content="$t('embedded.stop_replying')"
+          placement="top"
+        >
+          <img :src="answer" width="32px" height="32px" alt="" />
+        </el-tooltip>
+
+        <img :src="loading_answer" width="32px" height="32px" alt="" />
+        <img :src="send_answer" width="32px" height="32px" alt="" />
+      </div>
+    </div>
+
+    <div class="drawer-assistant"></div>
+  </div>
+</template>
+
 <style lang="less" scoped>
-.sqlbot-assistant-container {
-  height: 100%;
-  width: 100%;
-  color: rgb(31, 35, 41);
-  .flex {
+.assistant-window {
+  width: 460px;
+  height: 640px;
+  border-radius: 12px;
+  border: 1px solid #dee0e3;
+  box-shadow: 0px 6px 24px 0px #1f232914;
+  background-color: #fff;
+  position: relative;
+  .header {
+    background: #1cba9014;
+    height: 56px;
+    padding: 0 16px;
     display: flex;
+    align-items: center;
+    position: relative;
+    .logo {
+      margin: 0 8px 0 16px;
+    }
+
+    .title {
+      font-weight: 500;
+      font-size: 16px;
+      line-height: 24px;
+    }
+
+    .ed-icon {
+      position: relative;
+      cursor: pointer;
+
+      &::after {
+        content: '';
+        background-color: #1f23291a;
+        position: absolute;
+        border-radius: 6px;
+        width: 28px;
+        height: 28px;
+        transform: translate(-50%, -50%);
+        top: 50%;
+        left: 50%;
+        display: none;
+      }
+
+      &:hover {
+        &::after {
+          display: block;
+        }
+      }
+    }
+
+    .new-chat {
+      position: absolute;
+      right: 88px;
+      top: 17px;
+    }
   }
-  .head {
-    background: linear-gradient(90deg, #ebf1ff 24.34%, #e5fbf8 56.18%, #f2ebfe 90.18%);
-    position: fixed;
+  .center {
     width: 100%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+
+    .i-am {
+      font-weight: 600;
+      font-size: 24px;
+      line-height: 32px;
+      margin: 16px 0;
+    }
+
+    .i-can {
+      margin-bottom: 4px;
+    }
+
+    .data-query,
+    .i-can {
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 22px;
+      color: #646a73;
+    }
+  }
+  .content {
+    width: calc(100% - 32px);
+
+    .textarea-send {
+      width: 100%;
+      position: relative;
+      .ed-textarea {
+        width: 100%;
+      }
+
+      :deep(.ed-textarea__inner) {
+        padding: 12px 12px 52px 12px;
+        font-weight: 400;
+        font-size: 16px;
+        line-height: 24px;
+        border-radius: 16px;
+
+        &::placeholder {
+          color: #8f959e;
+        }
+      }
+
+      img {
+        cursor: pointer;
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+      }
+    }
+
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+  }
+
+  .drawer-assistant {
+    height: 100%;
+    position: absolute;
     left: 0;
     top: 0;
-    z-index: 100;
-    height: 56px;
-    line-height: 56px;
-    box-sizing: border-box;
-    border-bottom: 1px solid #dee0e3;
-    .align-center {
-      align-items: center;
-      .head-img-div {
-        display: flex;
-        margin-left: 24px;
-        img {
-          width: 32px;
-          height: 32px;
-        }
-      }
-    }
-  }
-  .sqlbot-chat-container {
-    padding-top: 56px;
-    :deep(.ed-aside) {
-      display: none;
-    }
-  }
-}
-.sqlbot-top-btn {
-  right: 85px;
-  z-index: 2009;
-  position: fixed;
-  top: 16px;
-  display: flex;
-  column-gap: 16px;
-  // right: 16px;
-  font-size: 22px;
-  i:first-child {
-    color: var(--primary-color);
-  }
-}
-.sqlbot-history-container {
-  width: 100%;
-  :deep(.sqlbot-history-modal) {
-    top: 56px !important;
-  }
-  :deep(.sqlbot-history-title) {
-    border-bottom: 1px solid #dee0e3;
-    padding: 16px 24px;
-    font-size: 14px;
-    font-weight: 500;
-    color: #1f2329;
-  }
-  :deep(.ed-drawer__body) {
-    padding: 0 !important;
-  }
-  :deep(.sqlbot-history-drawer) {
-    height: fit-content !important;
-    .sqlbot-history-content {
-      padding: 16px;
-      .history-empty {
-        height: 60px;
-        color: #8f959e !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-      }
-      .is-active-chat {
-        background-color: #ebf1ff;
-        color: #3370ff;
-        font-weight: 500;
-      }
-      .chat-list-item {
-        display: flex;
-        align-items: center;
-        padding: 10px 8px;
-        font-size: 14px;
-        color: #1f2329;
-        justify-content: space-between;
-        .history-operate {
-          display: none;
-        }
-        &:hover {
-          cursor: pointer;
-          border-radius: 4px;
-          background: rgba(31, 35, 41, 0.1);
-          .history-operate {
-            padding-right: 16px;
-            display: flex;
-            column-gap: 16px;
-            align-items: center;
-            font-size: 18px;
-            i {
-              color: #8f959e;
-              &:hover {
-                color: #8f959e99;
-              }
-            }
-          }
-        }
-      }
-    }
+    width: 50%;
+    background: #f5f6f7;
+    box-shadow: 0px 6px 24px 0px #1f232914;
+    padding: 16px;
+    border-right: 1px solid #dee0e3;
+    display: none;
   }
 }
 </style>

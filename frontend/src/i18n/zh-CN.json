@@ -458,7 +458,15 @@
     "edit_interface_credentials": "编辑接口凭证",
     "duplicate_name": "重复名称",
     "interface_credentials": "接口凭证",
-    "no_credentials_yet": "暂无凭证"
+    "no_credentials_yet": "暂无凭证",
+    "intelligent_customer_service": "SQLBot 智能客服",
+    "enter_a_question": "请输入问题",
+    "new_conversation": "新建对话",
+    "send": "发送",
+    "stop_replying": "停止回答",
+    "i_am_sqlbot": "你好，我是 SQLBot",
+    "predict_data_etc": "我可以查询数据、生成图表、检测数据异常、预测数据等",
+    "intelligent_data_query": "赶快开启智能问数吧～"
   },
   "chat": {
     "type": "图表类型",

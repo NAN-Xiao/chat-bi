@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { Delete, EditPen, MoreFilled } from '@element-plus/icons-vue'
+import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
+import icon_expand_down_filled from '@/assets/embedded/icon_expand-down_filled.svg'
+import rename from '@/assets/svg/icon_rename_outlined.svg'
+import delIcon from '@/assets/svg/icon_delete.svg'
 import { type Chat, chatApi } from '@/api/chat.ts'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import dayjs from 'dayjs'
 import { getDate } from '@/utils/utils.ts'
 import { groupBy } from 'lodash-es'
@@ -46,6 +49,13 @@ function groupByDate(chat: Chat) {
 
 const computedChatGroup = computed(() => {
   return groupBy(props.chatList, groupByDate)
+})
+
+const expandMap = ref({
+  [t('qa.today')]: true,
+  [t('qa.week')]: true,
+  [t('qa.earlier')]: true,
+  [t('qa.no_time')]: true,
 })
 
 const computedChatList = computed(() => {
@@ -169,27 +179,44 @@ function handleCommand(command: string | number | object, chat: Chat) {
   <el-scrollbar ref="chatListRef">
     <div class="chat-list-inner">
       <div v-for="group in computedChatList" :key="group.key" class="group">
-        <div class="group-title">{{ group.key }}</div>
+        <div
+          class="group-title"
+          style="cursor: pointer"
+          @click="expandMap[group.key] = !expandMap[group.key]"
+        >
+          <el-icon :class="!expandMap[group.key] && 'expand'" style="margin-right: 8px" size="10">
+            <icon_expand_down_filled></icon_expand_down_filled>
+          </el-icon>
+          {{ group.key }}
+        </div>
         <template v-for="chat in group.list" :key="chat.id">
           <div
             class="chat-list-item"
-            :class="{ active: currentChatId === chat.id }"
+            :class="{ active: currentChatId === chat.id, hide: !expandMap[group.key] }"
             @click="onClickHistory(chat)"
           >
             <span class="title">{{ chat.brief ?? 'Untitled' }}</span>
-            <el-button class="icon-more" link type="primary" @click.stop>
-              <el-dropdown trigger="click" @command="(cmd: any) => handleCommand(cmd, chat)">
-                <el-icon>
-                  <MoreFilled />
+            <el-popover :teleported="false" popper-class="popover-card" placement="bottom">
+              <template #reference>
+                <el-icon class="more" size="16" style="margin-left: auto" @click.stop>
+                  <icon_more_outlined></icon_more_outlined>
                 </el-icon>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item :icon="EditPen" command="rename">Rename</el-dropdown-item>
-                    <el-dropdown-item :icon="Delete" command="delete">Delete</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </el-button>
+              </template>
+              <div class="content">
+                <div class="item" @click.stop="handleCommand('rename', chat)">
+                  <el-icon size="16">
+                    <rename></rename>
+                  </el-icon>
+                  {{ $t('dashboard.rename') }}
+                </div>
+                <div class="item" @click.stop="handleCommand('delete', chat)">
+                  <el-icon size="16">
+                    <delIcon></delIcon>
+                  </el-icon>
+                  {{ $t('dashboard.delete') }}
+                </div>
+              </div>
+            </el-popover>
           </div>
         </template>
       </div>
@@ -223,6 +250,10 @@ function handleCommand(command: string | number | object, chat: Chat) {
       font-size: 12px;
 
       margin-bottom: 4px;
+
+      .expand {
+        transform: rotate(-90deg);
+      }
     }
   }
 
@@ -251,29 +282,102 @@ function handleCommand(command: string | number | object, chat: Chat) {
       white-space: nowrap;
     }
 
-    .icon-more {
-      margin-left: auto;
+    .more {
       display: none;
+      &.ed-icon {
+        position: relative;
+        cursor: pointer;
+        margin-top: 4px;
 
-      min-width: unset;
+        &::after {
+          content: '';
+          background-color: #1f23291a;
+          position: absolute;
+          border-radius: 6px;
+          width: 24px;
+          height: 24px;
+          transform: translate(-50%, -50%);
+          top: 50%;
+          left: 50%;
+          display: none;
+        }
+
+        &:hover {
+          &::after {
+            display: block;
+          }
+        }
+      }
     }
 
     &:hover {
       background-color: rgba(31, 35, 41, 0.1);
 
-      .icon-more {
-        display: inline-flex;
-        color: rgba(100, 106, 115, 1);
-
-        &:hover {
-          background-color: rgba(31, 35, 41, 0.1);
-        }
+      .more {
+        display: block;
       }
     }
 
     &.active {
       background-color: rgba(255, 255, 255, 1);
       font-weight: 500;
+    }
+
+    &.hide {
+      display: none;
+    }
+  }
+}
+</style>
+
+<style lang="less">
+.popover-card.popover-card.popover-card {
+  box-shadow: 0px 4px 8px 0px #1f23291a;
+  border-radius: 4px;
+  border: 1px solid #dee0e3;
+  width: 120px !important;
+  min-width: 120px !important;
+  padding: 0;
+  .content {
+    position: relative;
+    &::after {
+      position: absolute;
+      content: '';
+      top: 40px;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      background: #dee0e3;
+    }
+    .item {
+      position: relative;
+      padding-left: 12px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      .ed-icon {
+        margin-right: 8px;
+        color: #646a73;
+      }
+      &:hover {
+        &::after {
+          display: block;
+        }
+      }
+
+      &::after {
+        content: '';
+        width: 112px;
+        height: 32px;
+        border-radius: 4px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #1f23291a;
+        display: none;
+      }
     }
   }
 }

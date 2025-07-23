@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     TOKEN_KEY: str =  "X-SQLBOT-TOKEN"
     DEFAULT_PWD: str = "SQLBot@123456"
     ASSISTANT_TOKEN_KEY: str = "X-SQLBOT-ASSISTANT-TOKEN"
+    
+    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
+    LOG_DIR: str = "logs"
+    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
+    SQL_DEBUG: bool = False
 
     @computed_field  # type: ignore[prop-decorator]
     @property

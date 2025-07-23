@@ -291,10 +291,10 @@ defineExpose({
       </div>
       <div v-if="advancedSetting.length > 5 && configExpand" class="params-table_pagination">
         <el-pagination
-          @current-change="handelCurrentChange"
           :default-page-size="5"
           layout="prev, pager, next"
           :total="advancedSetting.length"
+          @current-change="handelCurrentChange"
         />
       </div>
     </div>

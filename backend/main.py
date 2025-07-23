@@ -1,4 +1,3 @@
-import logging
 from fastapi.concurrency import asynccontextmanager
 import sentry_sdk
 from fastapi import FastAPI
@@ -18,6 +17,8 @@ import sqlbot_xpack
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 
+from common.utils.utils import SQLBotLogUtil
+
 def run_migrations():
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
@@ -27,10 +28,10 @@ def run_migrations():
 async def lifespan(app: FastAPI):
     run_migrations()
     FastAPICache.init(InMemoryBackend())
-    print("✅ FastAPICache 初始化完成")
     init_dynamic_cors(app)
+    SQLBotLogUtil.info("✅ SQLBot 初始化完成")
     yield
-
+    SQLBotLogUtil.info("SQLBot 应用关闭")
 
 def custom_generate_unique_id(route: APIRoute) -> str:
     tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
