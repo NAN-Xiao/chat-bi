@@ -63,8 +63,10 @@ export const dashboardStore = defineStore('dashboard', {
     },
     updateDashboardInfo(params: any) {
       Object.keys(params).forEach((key: string) => {
-        // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        this.dashboardInfo[key] = params[key]
+        if (params[key]) {
+          // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          this.dashboardInfo[key] = params[key]
+        }
       })
     },
     setCanvasViewInfo(params: any) {
