@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
     delete_chat, get_chat_chart_data, get_chat_predict_data
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion
-from apps.chat.task.llm import LLMService, run_task, run_analysis_or_predict_task, run_recommend_questions_task
+from apps.chat.task.llm import LLMService
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
@@ -20,7 +20,8 @@ async def chats(session: SessionDep, current_user: CurrentUser):
 @router.get("/get/{chart_id}")
 async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant):
     try:
-        return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user, current_assistant=current_assistant)
+        return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user,
+                                     current_assistant=current_assistant)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -81,7 +82,8 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
             status_code=500,
             detail=str(e)
         )
-        
+
+
 @router.post("/assistant/start")
 async def start_chat(session: SessionDep, current_user: CurrentUser):
     try:
@@ -94,7 +96,8 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
 
 
 @router.post("/recommend_questions/{chat_record_id}")
-async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int, current_assistant: CurrentAssistant):
+async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
+                              current_assistant: CurrentAssistant):
     try:
         record = session.get(ChatRecord, chat_record_id)
         if not record:
@@ -106,6 +109,7 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
 
         llm_service = LLMService(session, current_user, request_question, current_assistant)
         llm_service.set_record(record)
+        llm_service.run_recommend_questions_task_async()
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(
@@ -113,11 +117,12 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
             detail=str(e)
         )
 
-    return StreamingResponse(run_recommend_questions_task(llm_service), media_type="text/event-stream")
+    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
 
 @router.post("/question")
-async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion, current_assistant: CurrentAssistant):
+async def stream_sql(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,
+                     current_assistant: CurrentAssistant):
     """Stream SQL analysis results
     
     Args:
@@ -132,6 +137,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     try:
         llm_service = LLMService(session, current_user, request_question, current_assistant)
         llm_service.init_record()
+        llm_service.run_task_async()
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(
@@ -139,11 +145,12 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
             detail=str(e)
         )
 
-    return StreamingResponse(run_task(llm_service), media_type="text/event-stream")
+    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
 
 @router.post("/record/{chat_record_id}/{action_type}")
-async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str, current_assistant: CurrentAssistant):
+async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str,
+                              current_assistant: CurrentAssistant):
     if action_type != 'analysis' and action_type != 'predict':
         raise HTTPException(
             status_code=404,
@@ -167,6 +174,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 
     try:
         llm_service = LLMService(session, current_user, request_question, current_assistant)
+        llm_service.run_analysis_or_predict_task_async(action_type, record)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(
@@ -174,5 +182,4 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             detail=str(e)
         )
 
-    return StreamingResponse(run_analysis_or_predict_task(llm_service, action_type, record),
-                             media_type="text/event-stream")
+    return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")

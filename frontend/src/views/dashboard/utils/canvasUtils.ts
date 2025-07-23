@@ -62,7 +62,7 @@ export const saveDashboardResource = (params: any, callBack: Function) => {
           canvas_view_info: JSON.stringify(canvasViewInfo.value),
         }
         dashboardApi.create_canvas(requestParams).then((res: any) => {
-          dashboardStore.updateDashboardInfo({ id: res.id, dataState: 'ready' })
+          dashboardStore.updateDashboardInfo({ id: res.id, name: params.name, dataState: 'ready' })
           callBack(res)
         })
       } else if (params.opt === 'newFolder') {
