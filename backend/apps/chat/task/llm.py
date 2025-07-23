@@ -1,6 +1,5 @@
 import json
 import sqlparse
-import logging
 import traceback
 import warnings
 from typing import Any, List, Optional, Union, Dict
@@ -35,7 +34,7 @@ from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, ge
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
-from common.utils.utils import extract_nested_json
+from common.utils.utils import SQLBotLogUtil, extract_nested_json
 
 warnings.filterwarnings("ignore")
 
@@ -223,7 +222,7 @@ class LLMService:
         res = self.llm.stream(analysis_msg)
         token_usage = {}
         for chunk in res:
-            print(chunk)
+            SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
             if 'reasoning_content' in chunk.additional_kwargs:
                 reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
@@ -273,7 +272,7 @@ class LLMService:
         res = self.llm.stream(predict_msg)
         token_usage = {}
         for chunk in res:
-            print(chunk)
+            SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
             if 'reasoning_content' in chunk.additional_kwargs:
                 reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
@@ -323,7 +322,7 @@ class LLMService:
         token_usage = {}
         res = self.llm.stream(guess_msg)
         for chunk in res:
-            print(chunk)
+            SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
             if 'reasoning_content' in chunk.additional_kwargs:
                 reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
@@ -390,7 +389,7 @@ class LLMService:
         token_usage = {}
         res = self.llm.stream(datasource_msg)
         for chunk in res:
-            print(chunk)
+            SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
             if 'reasoning_content' in chunk.additional_kwargs:
                 reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
@@ -474,7 +473,7 @@ class LLMService:
         token_usage = {}
         res = self.llm.stream(self.sql_message)
         for chunk in res:
-            print(chunk)
+            SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
             if 'reasoning_content' in chunk.additional_kwargs:
                 reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
@@ -543,7 +542,7 @@ class LLMService:
         res = self.llm.stream(msg)
         token_usage = {}
         for chunk in res:
-            print(chunk)
+            SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
             if 'reasoning_content' in chunk.additional_kwargs:
                 reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
@@ -567,7 +566,7 @@ class LLMService:
         #                                                                                 'content': msg.content} for msg
         #                                                                                in
         #                                                                                analysis_msg]).decode())
-        print(full_filter_text)
+        SQLBotLogUtil.info(full_filter_text)
         return full_filter_text
 
     def generate_chart(self):
@@ -582,7 +581,7 @@ class LLMService:
         token_usage = {}
         res = self.llm.stream(self.chart_message)
         for chunk in res:
-            print(chunk)
+            SQLBotLogUtil.info(chunk)
             reasoning_content_chunk = ''
             if 'reasoning_content' in chunk.additional_kwargs:
                 reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
@@ -691,7 +690,7 @@ class LLMService:
         Returns:
             Query results
         """
-        print(f"Executing SQL on ds_id {self.ds.id}: {sql}")
+        SQLBotLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         return exec_sql(self.ds, sql)
 
 
@@ -717,7 +716,7 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
 
     except Exception as e:
         error_msg = f"SQL execution failed: {str(e)}"
-        logging.error(error_msg)
+        SQLBotLogUtil.exception(error_msg)
         raise RuntimeError(error_msg)
 
 
@@ -741,7 +740,7 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
             ds_res = llm_service.select_datasource()
 
             for chunk in ds_res:
-                print(chunk)
+                SQLBotLogUtil.info(chunk)
                 if in_chat:
                     yield orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
@@ -765,7 +764,7 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
             yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
 
         # filter sql
-        print(full_sql_text)
+        SQLBotLogUtil.info(full_sql_text)
 
         # todo row permission
         sql_json_str = extract_nested_json(full_sql_text)
@@ -785,11 +784,11 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
             raise Exception("SQL query is empty")
 
         sql_result = llm_service.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
-        print(sql_result)
+        SQLBotLogUtil.info(sql_result)
         sql = llm_service.check_save_sql(res=sql_result)
         # sql = llm_service.check_save_sql(res=full_sql_text)
 
-        print(sql)
+        SQLBotLogUtil.info(sql)
         format_sql = sqlparse.format(sql, reindent=True)
         if in_chat:
             yield orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
@@ -815,9 +814,9 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
             yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
         # filter chart
-        print(full_chart_text)
+        SQLBotLogUtil.info(full_chart_text)
         chart = llm_service.check_save_chart(res=full_chart_text)
-        print(chart)
+        SQLBotLogUtil.info(chart)
         if in_chat:
             yield orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
         else:
@@ -856,7 +855,7 @@ def run_task(llm_service: LLMService, in_chat: bool = True):
             if chart['type'] != 'table':
                 yield '### generated chart picture\n\n'
                 image_url = request_picture(llm_service.record.chat_id, llm_service.record.id, chart, result)
-                print(image_url)
+                SQLBotLogUtil.info(image_url)
                 yield f'![{chart["type"]}]({image_url})'
     except Exception as e:
         traceback.print_exc()

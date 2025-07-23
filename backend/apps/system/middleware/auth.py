@@ -1,6 +1,6 @@
 
 from typing import Optional
-from fastapi import HTTPException, Request
+from fastapi import Request
 from fastapi.responses import JSONResponse
 import jwt
 from sqlmodel import Session
@@ -13,6 +13,7 @@ from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core import security
 from common.core.config import settings
 from common.core.schemas import TokenPayload
+from common.utils.utils import SQLBotLogUtil
 from common.utils.whitelist import whiteUtils
 from fastapi.security.utils import get_authorization_scheme_param
 class TokenMiddleware(BaseHTTPMiddleware):
@@ -35,7 +36,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 request.state.current_user = validator[1]
                 request.state.assistant = validator[2]
                 return await call_next(request)
-            return JSONResponse({"msg": f"Unauthorized:[{validator[1]}]"}, status_code=401)
+            return JSONResponse({"msg": f"Unauthorized:[{validator[1]}]"}, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
         #validate pass
         tokenkey = settings.TOKEN_KEY
         token = request.headers.get(tokenkey)
@@ -43,7 +44,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         if validate_pass:
             request.state.current_user = data
             return await call_next(request)
-        return JSONResponse({"msg": f"Unauthorized:[{data}]"}, status_code=401)
+        return JSONResponse({"msg": f"Unauthorized:[{data}]"}, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
     
     def is_options(self, request: Request):
         return request.method == "OPTIONS"
@@ -70,6 +71,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                     ) """
                 return True, session_user
         except Exception as e:
+            SQLBotLogUtil.exception(f"Token validation error: {str(e)}", exc_info=True)
             return False, e
             
     
@@ -95,4 +97,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
                 return True, session_user, assistant_info
         except Exception as e:
+            SQLBotLogUtil.exception(f"Assistant validation error: {str(e)}", exc_info=True)
+            # Return False and the exception message
             return False, e

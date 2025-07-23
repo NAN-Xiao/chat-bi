@@ -126,7 +126,7 @@ def get_tables(ds: CoreDatasource):
                            LEFT JOIN
                        pg_description d ON d.objoid = c.oid AND d.objsubid = 0
                   WHERE n.nspname = current_schema()
-                    AND c.relkind IN ('r', 'v', 'p')
+                    AND c.relkind IN ('r', 'v', 'p', 'm')
                     AND c.relname NOT LIKE 'pg_%'
                     AND c.relname NOT LIKE 'sql_%'
                   ORDER BY c.relname \

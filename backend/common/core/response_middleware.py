@@ -1,10 +1,10 @@
 import json
-import logging
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from common.core.config import settings
+from common.utils.utils import SQLBotLogUtil
 class ResponseMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
@@ -48,13 +48,17 @@ class ResponseMiddleware(BaseHTTPMiddleware):
                     }
                 )
             except Exception as e:
-                logging.error(f"Response processing error: {str(e)}", exc_info=True)
+                SQLBotLogUtil.error(f"Response processing error: {str(e)}", exc_info=True)
                 return JSONResponse(
                     status_code=500,
                     content={
                         "code": 500,
                         "data": None,
                         "msg": str(e)
+                    },
+                    headers={
+                        k: v for k, v in response.headers.items()
+                        if k.lower() not in ("content-length", "content-type")
                     }
                 )
                 
@@ -64,26 +68,28 @@ class ResponseMiddleware(BaseHTTPMiddleware):
 class exception_handler():
     @staticmethod
     async def http_exception_handler(request: Request, exc: HTTPException):
+        SQLBotLogUtil.exception(f"HTTP Exception: {exc.detail}", exc_info=True)
         return JSONResponse(
             status_code=exc.status_code,
             content={
                 "code": exc.status_code,
                 "msg": exc.detail,
                 "data": None
-            }
+            },
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
 
     @staticmethod
     async def global_exception_handler(request: Request, exc: Exception):
-        logging.error(f"Error info: {str(exc)}", exc_info=True)
-        
+        SQLBotLogUtil.exception(f"Unhandled Exception: {str(exc)}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
                 "code": 500,
                 "msg": str(exc),
                 "data": None
-            }
+            },
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
