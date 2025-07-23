@@ -58,7 +58,7 @@ def get_engine(ds: CoreDatasource) -> Engine:
         conf.timeout = 30
     if ds.type == "pg" and (conf.dbSchema is not None and conf.dbSchema != ""):
         engine = create_engine(get_uri(ds),
-                               connect_args={"options": f"-c search_path={conf.dbSchema}",
+                               connect_args={"options": f"-c search_path={urllib.parse.quote(conf.dbSchema)}",
                                              "connect_timeout": conf.timeout},
                                pool_timeout=conf.timeout, pool_size=20, max_overflow=10)
     elif ds.type == 'sqlServer':

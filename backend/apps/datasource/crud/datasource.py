@@ -26,7 +26,7 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
 def get_datasource_list(session: SessionDep, user: CurrentUser):
     oid = user.oid if user.oid is not None else 1
     return session.query(CoreDatasource).filter(CoreDatasource.oid == oid).order_by(
-            func.convert_to(CoreDatasource.name, 'gbk')).all()
+        func.convert_to(CoreDatasource.name, 'gbk')).all()
 
 
 def get_ds(session: SessionDep, id: int):
@@ -42,6 +42,7 @@ def check_status(session: SessionDep, ds: CoreDatasource):
             print("success")
             return True
     except Exception as e:
+        raise HTTPException(status_code=500, detail=e.args)
         print("Fail:", e)
         return False
 
