@@ -95,7 +95,7 @@ async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Tran
     return await user_ws_options(session, current_user.id, trans)
 
 @router.put("/ws/{oid}")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
+#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def ws_change(session: SessionDep, current_user: CurrentUser, oid: int):
     ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
     if not any(x.id == oid for x in ws_list):
@@ -137,7 +137,7 @@ async def create(session: SessionDep, creator: UserCreator):
     session.commit()
     
 @router.put("")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
+#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
 async def update(session: SessionDep, editor: UserEditor):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
     origin_oid: int = user_model.oid
@@ -173,7 +173,7 @@ async def batch_del(session: SessionDep, id_list: list[int]):
         await single_delete(session, id)
     
 @router.put("/language")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
+#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def langChange(session: SessionDep, current_user: CurrentUser, language: UserLanguage):
     lang = language.language
     if lang not in ["zh-CN", "en"]:
@@ -184,7 +184,7 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
     session.commit()
     
 @router.patch("/pwd/{id}")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
+#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
     if not current_user.isAdmin:
         raise HTTPException('only for admin')
@@ -194,7 +194,7 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
     session.commit()
 
 @router.put("/pwd")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
+#@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdEditor):
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     if not verify_md5pwd(editor.pwd, db_user.password):
