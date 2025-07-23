@@ -31,7 +31,8 @@ from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreTable
 from apps.db.db import exec_sql
-from apps.system.crud.assistant import AssistantOutDs, get_assistant_ds
+from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
+from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
 from common.utils.utils import extract_nested_json
@@ -67,15 +68,23 @@ class LLMService:
         chat: Chat = self.session.get(Chat, chat_id)
         if not chat:
             raise Exception(f"Chat with id {chat_id} not found")
-        ds: CoreDatasource | None = None
+        ds: CoreDatasource | AssistantOutDsSchema | None = None
         if chat.datasource:
             # Get available datasource
             # ds = self.session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
-            ds = self.session.get(CoreDatasource, chat.datasource)
-            if not ds:
-                raise Exception("No available datasource configuration found")
-
-            chat_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
+            if current_assistant and current_assistant.type == 1:
+                self.out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
+                ds = self.out_ds_instance.get_ds(chat.datasource)
+                if not ds:
+                    raise Exception("No available datasource configuration found")
+                chat_question.engine = ds.type
+                chat_question.db_schema = self.out_ds_instance.get_db_schema(ds.id)
+            else:
+                ds = self.session.get(CoreDatasource, chat.datasource)
+                if not ds:
+                    raise Exception("No available datasource configuration found")
+                chat_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
+                chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds)
 
         history_records: List[ChatRecord] = list(
             map(lambda x: ChatRecord(**x.model_dump()), filter(lambda r: True if r.first_chat != True else False,
@@ -84,13 +93,9 @@ class LLMService:
                                                                                  chart_id=chat_id))))
         self.change_title = len(history_records) == 0
 
-        # get schema
-        if ds:
-            chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds)
-
         chat_question.lang = current_user.language
 
-        self.ds = CoreDatasource(**ds.model_dump()) if ds else None
+        self.ds = (ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
         self.chat_question = chat_question
         self.config = get_default_config()
         self.chat_question.ai_modal_id = self.config.model_id
@@ -298,7 +303,7 @@ class LLMService:
 
         # get schema
         if self.ds and not self.chat_question.db_schema:
-            self.chat_question.db_schema = get_table_schema(session=self.session, current_user=self.current_user, ds=self.ds)
+            self.chat_question.db_schema = self.out_ds_instance.get_db_schema(self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session, current_user=self.current_user, ds=self.ds)
 
         guess_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         guess_msg.append(SystemMessage(content=self.chat_question.guess_sys_question()))

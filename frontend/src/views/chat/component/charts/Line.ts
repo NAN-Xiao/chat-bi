@@ -31,7 +31,18 @@ export class Line extends BaseG2Chart {
         color: series.length > 0 ? series[0].value : undefined,
       },
       axis: {
-        x: { title: x[0].name },
+        x: {
+          title: x[0].name,
+          labelFontSize: 12,
+          labelAutoHide: {
+            type: 'hide',
+            keepHeader: true,
+            keepTail: true,
+          },
+          labelAutoRotate: false,
+          labelAutoWrap: true,
+          labelAutoEllipsis: true,
+        },
         y: { title: y[0].name },
       },
       scale: {
@@ -42,9 +53,16 @@ export class Line extends BaseG2Chart {
           nice: true,
         },
       },
+      interaction: {
+        tooltip: { series: series.length > 0, shared: true },
+      },
+
       children: [
         {
           type: 'line',
+          encode: {
+            shape: 'smooth',
+          },
           labels: [
             {
               text: (data: any) => `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
@@ -53,7 +71,7 @@ export class Line extends BaseG2Chart {
                 dy: -12,
               },
               transform: [
-                { type: 'overlapDodgeY' },
+                { type: 'contrastReverse' },
                 { type: 'exceedAdjust' },
                 { type: 'overlapHide' },
               ],

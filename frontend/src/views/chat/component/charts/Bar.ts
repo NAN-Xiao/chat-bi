@@ -31,9 +31,56 @@ export class Bar extends BaseG2Chart {
         y: y[0].value,
         color: series.length > 0 ? series[0].value : undefined,
       },
+      style: {
+        radiusTopLeft: (d: ChartData) => {
+          if (d[y[0].value] && d[y[0].value] > 0) {
+            return 4
+          }
+          return 0
+        },
+        radiusTopRight: (d: ChartData) => {
+          if (d[y[0].value] && d[y[0].value] > 0) {
+            return 4
+          }
+          return 0
+        },
+        radiusBottomLeft: (d: ChartData) => {
+          if (d[y[0].value] && d[y[0].value] < 0) {
+            return 4
+          }
+          return 0
+        },
+        radiusBottomRight: (d: ChartData) => {
+          if (d[y[0].value] && d[y[0].value] < 0) {
+            return 4
+          }
+          return 0
+        },
+      },
       axis: {
-        x: { title: x[0].name },
-        y: { title: y[0].name },
+        x: {
+          title: x[0].name,
+          labelFontSize: 12,
+          labelAutoHide: {
+            type: 'hide',
+            keepHeader: true,
+            keepTail: true,
+          },
+          labelAutoRotate: false,
+          labelAutoWrap: true,
+          labelAutoEllipsis: true,
+        },
+        y: {
+          title: y[0].name,
+          labelFontSize: 12,
+          labelAutoHide: {
+            type: 'hide',
+            keepHeader: true,
+          },
+          labelAutoRotate: false,
+          labelAutoWrap: true,
+          labelAutoEllipsis: true,
+        },
       },
       scale: {
         x: {
@@ -44,7 +91,8 @@ export class Bar extends BaseG2Chart {
         },
       },
       interaction: {
-        elementHighlight: { background: true },
+        elementHighlight: { background: true, region: true },
+        tooltip: { series: series.length > 0, shared: true },
       },
       tooltip: (data) => {
         if (series.length > 0) {
@@ -60,8 +108,8 @@ export class Bar extends BaseG2Chart {
         {
           text: (data: any) => `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
           transform: [
-            { type: 'overlapDodgeY' },
             { type: 'contrastReverse' },
+            { type: 'exceedAdjust' },
             { type: 'overlapHide' },
           ],
         },
