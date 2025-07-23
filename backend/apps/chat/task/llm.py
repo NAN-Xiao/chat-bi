@@ -1,20 +1,21 @@
+import concurrent
 import json
-import sqlparse
 import traceback
 import warnings
+from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Any, List, Optional, Union, Dict
 
 import numpy as np
 import orjson
 import pandas as pd
 import requests
+import sqlparse
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import and_, cast, or_
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import load_only
 from sqlbot_xpack.permissions.api.permission import transRecord2DTO
 from sqlbot_xpack.permissions.models.ds_permission import DsPermission, PermissionDTO
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
@@ -40,6 +41,8 @@ warnings.filterwarnings("ignore")
 
 base_message_count_limit = 5
 
+executor = ThreadPoolExecutor(max_workers=200)
+
 
 class LLMService:
     ds: CoreDatasource
@@ -56,9 +59,12 @@ class LLMService:
     out_ds_instance: Optional[AssistantOutDs] = None
     change_title: bool = False
 
+    chunk_list: List[str] = []
+    future: Future
+
     def __init__(self, session: SessionDep, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None):
-
+        self.chunk_list = []
         self.session = session
         self.current_user = current_user
         self.current_assistant = current_assistant
@@ -106,6 +112,16 @@ class LLMService:
         self.history_records = history_records
 
         self.init_messages()
+
+    def is_running(self, timeout=0.5):
+        try:
+            r = concurrent.futures.wait([self.future], timeout)
+            if len(r.not_done) > 0:
+                return True
+            else:
+                return False
+        except Exception as e:
+            return True
 
     def init_messages(self):
         # self.agent_executor = create_react_agent(self.llm)
@@ -302,7 +318,9 @@ class LLMService:
 
         # get schema
         if self.ds and not self.chat_question.db_schema:
-            self.chat_question.db_schema = self.out_ds_instance.get_db_schema(self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session, current_user=self.current_user, ds=self.ds)
+            self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
+                self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session,
+                                                                          current_user=self.current_user, ds=self.ds)
 
         guess_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         guess_msg.append(SystemMessage(content=self.chat_question.guess_sys_question()))
@@ -355,7 +373,8 @@ class LLMService:
             _ds_list = get_assistant_ds(llm_service=self)
         else:
             oid: str = self.current_user.oid
-            stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(CoreDatasource.oid == oid)
+            stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(
+                CoreDatasource.oid == oid)
             _ds_list = [
                 {
                     "id": ds.id,
@@ -421,7 +440,7 @@ class LLMService:
                     self.ds = _ds
                     self.chat_question.engine = _ds.type
                     _engine_type = self.chat_question.engine
-                    _chat.engine_type =  _ds.type
+                    _chat.engine_type = _ds.type
                 else:
                     _ds = self.session.get(CoreDatasource, _datasource)
                     if not _ds:
@@ -512,7 +531,7 @@ class LLMService:
                     obj = self.session.query(DsRules).filter(
                         and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
                              or_(DsRules.user_list.op('@>')(cast([f'{self.current_user.id}'], JSONB)),
-                             DsRules.user_list.op('@>')(cast([self.current_user.id], JSONB))))
+                                 DsRules.user_list.op('@>')(cast([self.current_user.id], JSONB))))
                     ).first()
                     if obj is not None:
                         res.append(transRecord2DTO(self.session, permission))
@@ -693,6 +712,255 @@ class LLMService:
         SQLBotLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         return exec_sql(self.ds, sql)
 
+    def pop_chunk(self):
+        try:
+            chunk = self.chunk_list.pop(0)
+            return chunk
+        except IndexError as e:
+            return None
+
+    def await_result(self):
+        while self.is_running():
+            while True:
+                chunk = self.pop_chunk()
+                if chunk is not None:
+                    yield chunk
+                else:
+                    break
+        while True:
+            chunk = self.pop_chunk()
+            if chunk is None:
+                break
+            yield chunk
+
+    def run_task_async(self, in_chat: bool = True):
+        self.future = executor.submit(self.run_task_cache, in_chat)
+
+    def run_task_cache(self, in_chat: bool = True):
+        for chunk in self.run_task(in_chat):
+            self.chunk_list.append(chunk)
+
+    def run_task(self, in_chat: bool = True):
+        try:
+            # return id
+            if in_chat:
+                yield orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
+
+            # return title
+            if self.change_title:
+                if self.chat_question.question or self.chat_question.question.strip() != '':
+                    brief = rename_chat(session=self.session,
+                                        rename_object=RenameChat(id=self.get_record().chat_id,
+                                                                 brief=self.chat_question.question.strip()[:20]))
+                    if in_chat:
+                        yield orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
+
+            # select datasource if datasource is none
+            if not self.ds:
+                ds_res = self.select_datasource()
+
+                for chunk in ds_res:
+                    SQLBotLogUtil.info(chunk)
+                    if in_chat:
+                        yield orjson.dumps(
+                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                             'type': 'datasource-result'}).decode() + '\n\n'
+                if in_chat:
+                    yield orjson.dumps({'id': self.ds.id, 'datasource_name': self.ds.name,
+                                        'engine_type': self.ds.type_name or self.ds.type,
+                                        'type': 'datasource'}).decode() + '\n\n'
+
+                self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
+                    self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session,
+                                                                              current_user=self.current_user,
+                                                                              ds=self.ds)
+
+            # generate sql
+            sql_res = self.generate_sql()
+            full_sql_text = ''
+            for chunk in sql_res:
+                full_sql_text += chunk.get('content')
+                if in_chat:
+                    yield orjson.dumps(
+                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                         'type': 'sql-result'}).decode() + '\n\n'
+            if in_chat:
+                yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
+
+            # filter sql
+            SQLBotLogUtil.info(full_sql_text)
+
+            # todo row permission
+            sql_json_str = extract_nested_json(full_sql_text)
+            data = orjson.loads(sql_json_str)
+
+            sql = ''
+            message = ''
+            error = False
+            if data['success']:
+                sql = data['sql']
+            else:
+                message = data['message']
+                error = True
+            if error:
+                raise Exception(message)
+            if sql.strip() == '':
+                raise Exception("SQL query is empty")
+
+            sql_result = self.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
+            SQLBotLogUtil.info(sql_result)
+            sql = self.check_save_sql(res=sql_result)
+            # sql = llm_service.check_save_sql(res=full_sql_text)
+
+            SQLBotLogUtil.info(sql)
+            format_sql = sqlparse.format(sql, reindent=True)
+            if in_chat:
+                yield orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
+            else:
+                yield f'```sql\n{format_sql}\n```\n\n'
+
+            # execute sql
+            result = self.execute_sql(sql=sql)
+            self.save_sql_data(data_obj=result)
+            if in_chat:
+                yield orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
+
+            # generate chart
+            chart_res = self.generate_chart()
+            full_chart_text = ''
+            for chunk in chart_res:
+                full_chart_text += chunk.get('content')
+                if in_chat:
+                    yield orjson.dumps(
+                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                         'type': 'chart-result'}).decode() + '\n\n'
+            if in_chat:
+                yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
+
+            # filter chart
+            SQLBotLogUtil.info(full_chart_text)
+            chart = self.check_save_chart(res=full_chart_text)
+            SQLBotLogUtil.info(chart)
+            if in_chat:
+                yield orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
+            else:
+                data = []
+                _fields = {}
+                if chart.get('columns'):
+                    for _column in chart.get('columns'):
+                        if _column:
+                            _fields[_column.get('value')] = _column.get('name')
+                if chart.get('axis'):
+                    if chart.get('axis').get('x'):
+                        _fields[chart.get('axis').get('x').get('value')] = chart.get('axis').get('x').get('name')
+                    if chart.get('axis').get('y'):
+                        _fields[chart.get('axis').get('y').get('value')] = chart.get('axis').get('y').get('name')
+                    if chart.get('axis').get('series'):
+                        _fields[chart.get('axis').get('series').get('value')] = chart.get('axis').get('series').get(
+                            'name')
+                _fields_list = []
+                _fields_skip = False
+                for _data in result.get('data'):
+                    _row = []
+                    for field in result.get('fields'):
+                        _row.append(_data.get(field))
+                        if not _fields_skip:
+                            _fields_list.append(field if not _fields.get(field) else _fields.get(field))
+                    data.append(_row)
+                    _fields_skip = True
+                df = pd.DataFrame(np.array(data), columns=_fields_list)
+                markdown_table = df.to_markdown(index=False)
+                yield markdown_table + '\n\n'
+
+            record = self.finish()
+            if in_chat:
+                yield orjson.dumps({'type': 'finish'}).decode() + '\n\n'
+            else:
+                # todo generate picture
+                if chart['type'] != 'table':
+                    yield '### generated chart picture\n\n'
+                    image_url = request_picture(self.record.chat_id, self.record.id, chart, result)
+                    SQLBotLogUtil.info(image_url)
+                    yield f'![{chart["type"]}]({image_url})'
+        except Exception as e:
+            traceback.print_exc()
+            self.save_error(message=str(e))
+            if in_chat:
+                yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
+            else:
+                yield f'> &#x274c; **ERROR**\n\n> \n\n> {str(e)}。'
+
+    def run_recommend_questions_task_async(self):
+        self.future = executor.submit(self.run_recommend_questions_task_cache)
+
+    def run_recommend_questions_task_cache(self):
+        for chunk in self.run_recommend_questions_task():
+            self.chunk_list.append(chunk)
+
+    def run_recommend_questions_task(self):
+        res = self.generate_recommend_questions_task()
+
+        for chunk in res:
+            if chunk.get('recommended_question'):
+                yield orjson.dumps(
+                    {'content': chunk.get('recommended_question'), 'type': 'recommended_question'}).decode() + '\n\n'
+            else:
+                yield orjson.dumps(
+                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                     'type': 'recommended_question_result'}).decode() + '\n\n'
+
+    def run_analysis_or_predict_task_async(self, action_type: str, base_record: ChatRecord):
+        self.set_record(save_analysis_predict_record(self.session, base_record, action_type))
+        self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type)
+
+    def run_analysis_or_predict_task_cache(self, action_type: str):
+        for chunk in self.run_analysis_or_predict_task(action_type):
+            self.chunk_list.append(chunk)
+
+    def run_analysis_or_predict_task(self, action_type: str):
+        try:
+
+            yield orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
+
+            if action_type == 'analysis':
+                # generate analysis
+                analysis_res = self.generate_analysis()
+                for chunk in analysis_res:
+                    yield orjson.dumps(
+                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                         'type': 'analysis-result'}).decode() + '\n\n'
+                yield orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
+
+                yield orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
+
+            elif action_type == 'predict':
+                # generate predict
+                analysis_res = self.generate_predict()
+                full_text = ''
+                for chunk in analysis_res:
+                    yield orjson.dumps(
+                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
+                         'type': 'predict-result'}).decode() + '\n\n'
+                    full_text += chunk.get('content')
+                yield orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
+
+                _data = self.check_save_predict_data(res=full_text)
+                if _data:
+                    yield orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
+                else:
+                    yield orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
+
+                yield orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
+
+            self.finish()
+        except Exception as e:
+            traceback.print_exc()
+            self.save_error(message=str(e))
+            yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
+        finally:
+            # end
+            pass
+
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
     """Execute SQL query using SQLDatabase
@@ -718,211 +986,6 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
         error_msg = f"SQL execution failed: {str(e)}"
         SQLBotLogUtil.exception(error_msg)
         raise RuntimeError(error_msg)
-
-
-def run_task(llm_service: LLMService, in_chat: bool = True):
-    try:
-        # return id
-        if in_chat:
-            yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
-
-        # return title
-        if llm_service.change_title:
-            if llm_service.chat_question.question or llm_service.chat_question.question.strip() != '':
-                brief = rename_chat(session=llm_service.session,
-                                    rename_object=RenameChat(id=llm_service.get_record().chat_id,
-                                                             brief=llm_service.chat_question.question.strip()[:20]))
-                if in_chat:
-                    yield orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
-
-        # select datasource if datasource is none
-        if not llm_service.ds:
-            ds_res = llm_service.select_datasource()
-
-            for chunk in ds_res:
-                SQLBotLogUtil.info(chunk)
-                if in_chat:
-                    yield orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'datasource-result'}).decode() + '\n\n'
-            if in_chat:
-                yield orjson.dumps({'id': llm_service.ds.id, 'datasource_name': llm_service.ds.name,
-                                    'engine_type': llm_service.ds.type_name or llm_service.ds.type, 'type': 'datasource'}).decode() + '\n\n'
-
-            llm_service.chat_question.db_schema = llm_service.out_ds_instance.get_db_schema(llm_service.ds.id) if llm_service.out_ds_instance else get_table_schema(session=llm_service.session, current_user=llm_service.current_user, ds=llm_service.ds)
-
-        # generate sql
-        sql_res = llm_service.generate_sql()
-        full_sql_text = ''
-        for chunk in sql_res:
-            full_sql_text += chunk.get('content')
-            if in_chat:
-                yield orjson.dumps(
-                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                     'type': 'sql-result'}).decode() + '\n\n'
-        if in_chat:
-            yield orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
-
-        # filter sql
-        SQLBotLogUtil.info(full_sql_text)
-
-        # todo row permission
-        sql_json_str = extract_nested_json(full_sql_text)
-        data = orjson.loads(sql_json_str)
-
-        sql = ''
-        message = ''
-        error = False
-        if data['success']:
-            sql = data['sql']
-        else:
-            message = data['message']
-            error = True
-        if error:
-            raise Exception(message)
-        if sql.strip() == '':
-            raise Exception("SQL query is empty")
-
-        sql_result = llm_service.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
-        SQLBotLogUtil.info(sql_result)
-        sql = llm_service.check_save_sql(res=sql_result)
-        # sql = llm_service.check_save_sql(res=full_sql_text)
-
-        SQLBotLogUtil.info(sql)
-        format_sql = sqlparse.format(sql, reindent=True)
-        if in_chat:
-            yield orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
-        else:
-            yield f'```sql\n{format_sql}\n```\n\n'
-
-        # execute sql
-        result = llm_service.execute_sql(sql=sql)
-        llm_service.save_sql_data(data_obj=result)
-        if in_chat:
-            yield orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
-
-        # generate chart
-        chart_res = llm_service.generate_chart()
-        full_chart_text = ''
-        for chunk in chart_res:
-            full_chart_text += chunk.get('content')
-            if in_chat:
-                yield orjson.dumps(
-                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                     'type': 'chart-result'}).decode() + '\n\n'
-        if in_chat:
-            yield orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
-
-        # filter chart
-        SQLBotLogUtil.info(full_chart_text)
-        chart = llm_service.check_save_chart(res=full_chart_text)
-        SQLBotLogUtil.info(chart)
-        if in_chat:
-            yield orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
-        else:
-            data = []
-            _fields = {}
-            if chart.get('columns'):
-                for _column in chart.get('columns'):
-                    if _column:
-                        _fields[_column.get('value')] = _column.get('name')
-            if chart.get('axis'):
-                if chart.get('axis').get('x'):
-                    _fields[chart.get('axis').get('x').get('value')] = chart.get('axis').get('x').get('name')
-                if chart.get('axis').get('y'):
-                    _fields[chart.get('axis').get('y').get('value')] = chart.get('axis').get('y').get('name')
-                if chart.get('axis').get('series'):
-                    _fields[chart.get('axis').get('series').get('value')] = chart.get('axis').get('series').get('name')
-            _fields_list = []
-            _fields_skip = False
-            for _data in result.get('data'):
-                _row = []
-                for field in result.get('fields'):
-                    _row.append(_data.get(field))
-                    if not _fields_skip:
-                        _fields_list.append(field if not _fields.get(field) else _fields.get(field))
-                data.append(_row)
-                _fields_skip = True
-            df = pd.DataFrame(np.array(data), columns=_fields_list)
-            markdown_table = df.to_markdown(index=False)
-            yield markdown_table + '\n\n'
-
-        record = llm_service.finish()
-        if in_chat:
-            yield orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-        else:
-            # todo generate picture
-            if chart['type'] != 'table':
-                yield '### generated chart picture\n\n'
-                image_url = request_picture(llm_service.record.chat_id, llm_service.record.id, chart, result)
-                SQLBotLogUtil.info(image_url)
-                yield f'![{chart["type"]}]({image_url})'
-    except Exception as e:
-        traceback.print_exc()
-        llm_service.save_error(message=str(e))
-        if in_chat:
-            yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
-        else:
-            yield f'> &#x274c; **ERROR**\n\n> \n\n> {str(e)}。'
-
-
-def run_analysis_or_predict_task(llm_service: LLMService, action_type: str, base_record: ChatRecord):
-    try:
-        llm_service.set_record(save_analysis_predict_record(llm_service.session, base_record, action_type))
-
-        yield orjson.dumps({'type': 'id', 'id': llm_service.get_record().id}).decode() + '\n\n'
-
-        if action_type == 'analysis':
-            # generate analysis
-            analysis_res = llm_service.generate_analysis()
-            for chunk in analysis_res:
-                yield orjson.dumps(
-                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                     'type': 'analysis-result'}).decode() + '\n\n'
-            yield orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
-
-            yield orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
-
-        elif action_type == 'predict':
-            # generate predict
-            analysis_res = llm_service.generate_predict()
-            full_text = ''
-            for chunk in analysis_res:
-                yield orjson.dumps(
-                    {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                     'type': 'predict-result'}).decode() + '\n\n'
-                full_text += chunk.get('content')
-            yield orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
-
-            _data = llm_service.check_save_predict_data(res=full_text)
-            if _data:
-                yield orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
-            else:
-                yield orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
-
-            yield orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
-
-        llm_service.finish()
-    except Exception as e:
-        traceback.print_exc()
-        llm_service.save_error(message=str(e))
-        yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
-    finally:
-        # end
-        pass
-
-
-def run_recommend_questions_task(llm_service: LLMService):
-    res = llm_service.generate_recommend_questions_task()
-
-    for chunk in res:
-        if chunk.get('recommended_question'):
-            yield orjson.dumps(
-                {'content': chunk.get('recommended_question'), 'type': 'recommended_question'}).decode() + '\n\n'
-        else:
-            yield orjson.dumps(
-                {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                 'type': 'recommended_question_result'}).decode() + '\n\n'
 
 
 def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
