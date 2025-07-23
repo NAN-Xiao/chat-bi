@@ -237,11 +237,27 @@ def updateField(session: SessionDep, field: CoreField):
     update_field(session, field)
 
 
-def preview(session: SessionDep, id: int, data: TableObj):
+def preview(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
     if data.fields is None or len(data.fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
-    fields = [f.field_name for f in data.fields if f.checked]
+    # column is checked, and, column permission for data.fields
+    f_list = [f for f in data.fields if f.checked]
+    column_permissions = session.query(DsPermission).filter(
+        and_(DsPermission.table_id == data.table.id, DsPermission.type == 'column')).all()
+    if column_permissions is not None:
+        for permission in column_permissions:
+            # check permission and user in same rules
+            obj = session.query(DsRules).filter(
+                and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
+                     or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
+                         DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
+            ).first()
+            if obj is not None:
+                permission_list = json.loads(permission.permissions)
+                f_list = filter_list(f_list, permission_list)
+
+    fields = [f.field_name for f in f_list]
     if fields is None or len(fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
