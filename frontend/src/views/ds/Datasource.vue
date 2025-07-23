@@ -95,16 +95,12 @@ const handleEditDatasource = (res: any) => {
   })
 }
 
-const handleQuestion = (ele: any) => {
-  datasourceApi.check(ele).then((res: any) => {
-    if (res) {
-      router.push({
-        path: '/chat/index',
-        query: {
-          start_chat: ele.id,
-        },
-      })
-    }
+const handleQuestion = (id: string) => {
+  router.push({
+    path: '/chat/index',
+    query: {
+      start_chat: id,
+    },
   })
 }
 
@@ -294,7 +290,7 @@ const back = () => {
         :type-name="ele.type_name"
         :num="ele.num"
         :description="ele.description"
-        @question="handleQuestion(ele)"
+        @question="handleQuestion"
         @edit="handleEditDatasource(ele)"
         @del="deleteHandler(ele)"
         @data-table-detail="dataTableDetail(ele)"
