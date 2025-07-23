@@ -3,7 +3,7 @@ import json
 from typing import List
 
 from fastapi import HTTPException
-from sqlalchemy import and_, text, cast, or_
+from sqlalchemy import and_, text, cast, or_, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlbot_xpack.permissions.models.ds_permission import DsPermission
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
@@ -26,7 +26,7 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
 def get_datasource_list(session: SessionDep, user: CurrentUser):
     oid = user.oid if user.oid is not None else 1
     return session.query(CoreDatasource).filter(CoreDatasource.oid == oid).order_by(
-        CoreDatasource.create_time.desc()).all()
+            func.convert_to(CoreDatasource.name, 'gbk')).all()
 
 
 def get_ds(session: SessionDep, id: int):
