@@ -25,7 +25,14 @@
     </template>
 
     <div v-show="active === 0" class="container">
-      <el-form ref="dsFormRef" :model="form" label-position="top" label-width="auto" :rules="rules">
+      <el-form
+        @submit.prevent
+        ref="dsFormRef"
+        :model="form"
+        label-position="top"
+        label-width="auto"
+        :rules="rules"
+      >
         <el-form-item :label="t('ds.form.name')" prop="name">
           <el-input v-model="form.name" />
         </el-form-item>

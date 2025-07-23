@@ -64,6 +64,7 @@
       label-width="180px"
       label-position="top"
       class="sqlbot-form"
+      @submit.prevent
       size="large"
     >
       <el-form-item label="Term name">

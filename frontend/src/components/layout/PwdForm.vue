@@ -68,7 +68,14 @@ defineExpose({
 
 <template>
   <div class="params-form">
-    <el-form ref="pwdRef" :rules="rules" label-position="top" :model="pwdForm" style="width: 100%">
+    <el-form
+      ref="pwdRef"
+      @submit.prevent
+      :rules="rules"
+      label-position="top"
+      :model="pwdForm"
+      style="width: 100%"
+    >
       <el-form-item prop="pwd" :label="t('user.upgrade_pwd.old_pwd')">
         <el-input
           v-model="pwdForm.pwd"

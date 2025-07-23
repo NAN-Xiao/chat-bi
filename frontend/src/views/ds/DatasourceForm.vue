@@ -500,6 +500,7 @@ defineExpose({
         label-position="top"
         label-width="auto"
         :rules="rules"
+        @submit.prevent
       >
         <div v-if="form.type === 'excel'">
           <el-form-item prop="sheets" :label="t('ds.form.file')">
