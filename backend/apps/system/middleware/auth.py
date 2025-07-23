@@ -35,7 +35,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 request.state.current_user = validator[1]
                 request.state.assistant = validator[2]
                 return await call_next(request)
-            return JSONResponse({"msg": f"Unauthorized:[{validator[1]}]"}, status_code=401)
+            return JSONResponse({"msg": f"Unauthorized:[{validator[1]}]"}, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
         #validate pass
         tokenkey = settings.TOKEN_KEY
         token = request.headers.get(tokenkey)
@@ -43,7 +43,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         if validate_pass:
             request.state.current_user = data
             return await call_next(request)
-        return JSONResponse({"msg": f"Unauthorized:[{data}]"}, status_code=401)
+        return JSONResponse({"msg": f"Unauthorized:[{data}]"}, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
     
     def is_options(self, request: Request):
         return request.method == "OPTIONS"

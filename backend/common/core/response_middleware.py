@@ -55,6 +55,10 @@ class ResponseMiddleware(BaseHTTPMiddleware):
                         "code": 500,
                         "data": None,
                         "msg": str(e)
+                    },
+                    headers={
+                        k: v for k, v in response.headers.items()
+                        if k.lower() not in ("content-length", "content-type")
                     }
                 )
                 
@@ -70,7 +74,8 @@ class exception_handler():
                 "code": exc.status_code,
                 "msg": exc.detail,
                 "data": None
-            }
+            },
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
 
@@ -84,6 +89,7 @@ class exception_handler():
                 "code": 500,
                 "msg": str(exc),
                 "data": None
-            }
+            },
+            headers={"Access-Control-Allow-Origin": "*"}
         )
 
