@@ -35,14 +35,15 @@ def get_ds(session: SessionDep, id: int):
     return datasource
 
 
-def check_status(session: SessionDep, ds: CoreDatasource):
+def check_status(session: SessionDep, ds: CoreDatasource, is_raise: bool = False):
     conn = get_engine(ds)
     try:
         with conn.connect() as connection:
             print("success")
             return True
     except Exception as e:
-        raise HTTPException(status_code=500, detail=e.args)
+        if is_raise:
+            raise HTTPException(status_code=500, detail=f'Connect Failed: {e.args}')
         print("Fail:", e)
         return False
 
