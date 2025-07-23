@@ -57,11 +57,11 @@ const onClickOutside = () => {
     <div class="name-icon">
       <img :src="icon" width="32px" height="32px" />
       <div class="info">
-        <div class="name">{{ name }}</div>
+        <div :title="name" class="name ellipsis">{{ name }}</div>
         <div class="type">{{ typeName }}</div>
       </div>
     </div>
-    <div class="type-value">
+    <div :title="description" class="type-value">
       {{ description }}
     </div>
 
@@ -140,6 +140,7 @@ const onClickOutside = () => {
         font-weight: 500;
         font-size: 16px;
         line-height: 24px;
+        max-width: 250px;
       }
       .type {
         font-weight: 400;

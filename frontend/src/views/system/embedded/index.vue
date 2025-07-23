@@ -714,7 +714,7 @@ const saveHandler = () => {
             </el-select>
           </el-form-item>
 
-          <el-form-item class="private-list_form" prop="private_list">
+          <el-form-item class="private-list_form">
             <template #label>
               <div class="private-list">
                 {{ t('embedded.set_data_source') }}

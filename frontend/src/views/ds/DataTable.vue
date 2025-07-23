@@ -312,7 +312,7 @@ const back = () => {
               <div class="preview-num">
                 {{ t('ds.pieces_in_total', { msg: total, ms: showNum }) }}
               </div>
-              <el-table :data="previewData.data" style="width: 100%; height: 600px">
+              <el-table :data="previewData.data" style="width: 100%">
                 <el-table-column
                   v-for="(c, index) in previewData.fields"
                   :key="index"
