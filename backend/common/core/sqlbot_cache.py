@@ -1,11 +1,12 @@
-import logging
 from fastapi_cache import FastAPICache
 from fastapi_cache.decorator import cache as original_cache
 from functools import partial, wraps
-from typing import Optional, Set, Any, Dict, Tuple, Callable
+from typing import Optional, Set, Any, Dict, Tuple
 from inspect import Parameter, signature
 from contextlib import asynccontextmanager
 import asyncio
+
+from common.utils.utils import SQLBotLogUtil
 
 
 # 锁管理
@@ -65,7 +66,7 @@ def custom_key_builder(
                     base_key += f"{value}:"
                 
             except (IndexError, KeyError, AttributeError) as e:
-                logging.warning(f"Failed to evaluate keyExpression '{keyExpression}': {str(e)}")
+                SQLBotLogUtil.warning(f"Failed to evaluate keyExpression '{keyExpression}': {str(e)}")
         
         return base_key
     
@@ -127,19 +128,16 @@ def cache(
             )
             
             async with _get_cache_lock(cache_key):
-                logging.info(f"Using cache key: {cache_key}")
-                print(f"Using cache key: {cache_key}")
+                SQLBotLogUtil.info(f"Using cache key: {cache_key}")
                 backend = FastAPICache.get_backend()
                 cached_value = await backend.get(cache_key)
                 if cached_value is not None:
-                    logging.info(f"Cache hit for key: {cache_key}, the value is: {cached_value}")
-                    print(f"Cache hit for key: {cache_key}, the value is: {cached_value}")
+                    SQLBotLogUtil.info(f"Cache hit for key: {cache_key}, the value is: {cached_value}")
                     return cached_value
                 
                 result = await func(*args, **kwargs)
                 await backend.set(cache_key, result, expire)
-                logging.info(f"Cache miss for key: {cache_key}, result cached.")
-                print(f"Cache miss for key: {cache_key}, result cached.")
+                SQLBotLogUtil.info(f"Cache miss for key: {cache_key}, result cached.")
                 return result
                 
         return wrapper
@@ -167,8 +165,7 @@ def clear_cache(
                 if await FastAPICache.get_backend().get(cache_key):
                     await FastAPICache.clear(key=cache_key)
                     result = await func(*args, **kwargs)
-                    logging.info(f"Clearing cache for key: {cache_key}")
-                    print(f"Clearing cache for key: {cache_key}")
+                    SQLBotLogUtil.info(f"Clearing cache for key: {cache_key}")
                     return result
                 return await func(*args, **kwargs)
         

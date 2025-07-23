@@ -15,7 +15,7 @@ from apps.db.db import get_engine, get_tables, get_fields, exec_sql
 from apps.db.engine import get_engine_config, get_engine_conn
 from apps.db.type import db_type_relation
 from common.core.deps import SessionDep, CurrentUser, Trans
-from common.utils.utils import deepcopy_ignore_extra
+from common.utils.utils import SQLBotLogUtil, deepcopy_ignore_extra
 from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
@@ -39,12 +39,12 @@ def check_status(session: SessionDep, ds: CoreDatasource, is_raise: bool = False
     conn = get_engine(ds)
     try:
         with conn.connect() as connection:
-            print("success")
+            SQLBotLogUtil.info("success")
             return True
     except Exception as e:
+        SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
         if is_raise:
             raise HTTPException(status_code=500, detail=f'Connect Failed: {e.args}')
-        print("Fail:", e)
         return False
 
 

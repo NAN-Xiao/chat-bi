@@ -1,6 +1,6 @@
 
 from typing import Optional
-from fastapi import HTTPException, Request
+from fastapi import Request
 from fastapi.responses import JSONResponse
 import jwt
 from sqlmodel import Session
@@ -13,6 +13,7 @@ from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core import security
 from common.core.config import settings
 from common.core.schemas import TokenPayload
+from common.utils.utils import SQLBotLogUtil
 from common.utils.whitelist import whiteUtils
 from fastapi.security.utils import get_authorization_scheme_param
 class TokenMiddleware(BaseHTTPMiddleware):
@@ -70,6 +71,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                     ) """
                 return True, session_user
         except Exception as e:
+            SQLBotLogUtil.exception(f"Token validation error: {str(e)}", exc_info=True)
             return False, e
             
     
@@ -95,4 +97,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
                 return True, session_user, assistant_info
         except Exception as e:
+            SQLBotLogUtil.exception(f"Assistant validation error: {str(e)}", exc_info=True)
+            # Return False and the exception message
             return False, e

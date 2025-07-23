@@ -1,13 +1,13 @@
 
 from typing import Optional
 from sqlmodel import Session, select, delete as sqlmodel_delete
-import logging
 from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import BaseUserDTO, UserInfoDTO, UserWs
 from common.core.deps import SessionDep
 from common.core.sqlbot_cache import cache, clear_cache
 from common.utils.locale import I18n
+from common.utils.utils import SQLBotLogUtil
 from ..models.user import UserModel
 from common.core.security import verify_md5pwd
 
@@ -68,4 +68,4 @@ async def single_delete(session: SessionDep, id: int):
 
 #@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")    
 async def clean_user_cache(id: int):
-    logging.info(f"User cache for [{id}] has been cleaned")
+    SQLBotLogUtil.info(f"User cache for [{id}] has been cleaned")
