@@ -71,6 +71,14 @@ const handleParamsCreate = () => {
 const handleParamsDel = (item: any) => {
   advancedSetting.value = advancedSetting.value.filter((ele) => ele.id !== item.id)
 }
+const currentPage = ref(1)
+const advancedSettingPagination = computed(() => {
+  return advancedSetting.value.slice(currentPage.value * 5 - 5, currentPage.value * 5)
+})
+
+const handelCurrentChange = (val: any) => {
+  currentPage.value = val
+}
 
 const rules = {
   model_type: [
@@ -256,7 +264,7 @@ defineExpose({
       </div>
 
       <div v-if="configExpand" class="params-table">
-        <el-table :data="advancedSetting" style="width: 100%">
+        <el-table :data="advancedSettingPagination" style="width: 100%">
           <el-table-column prop="key" :label="t('model.parameters')" width="280" />
           <el-table-column prop="name" :label="t('model.display_name')" width="280" />
           <el-table-column prop="val" :label="t('model.parameter_value')" />
@@ -280,6 +288,14 @@ defineExpose({
             </template>
           </el-table-column>
         </el-table>
+      </div>
+      <div v-if="advancedSetting.length > 5 && configExpand" class="params-table_pagination">
+        <el-pagination
+          @current-change="handelCurrentChange"
+          :default-page-size="5"
+          layout="prev, pager, next"
+          :total="advancedSetting.length"
+        />
       </div>
     </div>
     <el-drawer
@@ -330,7 +346,7 @@ defineExpose({
     margin: 0 auto;
     padding-top: 24px;
     overflow-y: auto;
-    height: calc(100% - 180px);
+    height: calc(100% - 120px);
 
     .ed-form-item--default {
       margin-bottom: 16px;
@@ -410,6 +426,26 @@ defineExpose({
       border: 1px solid #dee0e3;
       border-top: none;
       border-bottom: none;
+      overflow-y: auto;
+      :deep(.ed-table .ed-table__cell) {
+        padding: 7px 0;
+      }
+
+      :deep(.ed-table .cell) {
+        line-height: 24px;
+      }
+    }
+
+    .params-table_pagination {
+      margin-top: 8px;
+
+      .ed-pagination {
+        justify-content: flex-end;
+      }
+
+      :deep(.ed-pager li.number:hover) {
+        background-color: #1cba901a;
+      }
     }
 
     .operation-column_text {
