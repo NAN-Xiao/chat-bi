@@ -287,18 +287,18 @@ const handleCurrentChange = (val: number) => {
           </template>
         </el-table>
       </div>
-      <div class="pagination-container">
-        <el-pagination
-          v-model:current-page="pageInfo.currentPage"
-          v-model:page-size="pageInfo.pageSize"
-          :page-sizes="[10, 20, 30]"
-          :background="true"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="pageInfo.total"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+    </div>
+    <div class="pagination-container">
+      <el-pagination
+        v-model:current-page="pageInfo.currentPage"
+        v-model:page-size="pageInfo.pageSize"
+        :page-sizes="[10, 20, 30]"
+        :background="true"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="pageInfo.total"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
+      />
     </div>
     <div v-if="multipleSelectionAll.length" class="bottom-select">
       <el-checkbox
@@ -370,15 +370,15 @@ const handleCurrentChange = (val: number) => {
       line-height: 28px;
     }
   }
+  .pagination-container {
+    display: flex;
+    justify-content: end;
+    align-items: center;
+    margin-top: 16px;
+  }
   .table-content {
-    height: calc(100% - 104px);
-
-    .pagination-container {
-      display: flex;
-      justify-content: end;
-      align-items: center;
-      margin-top: 16px;
-    }
+    max-height: calc(100% - 104px);
+    overflow-y: auto;
 
     .preview-or-schema {
       .user-status-container {
