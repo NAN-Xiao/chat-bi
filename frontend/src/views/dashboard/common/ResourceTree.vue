@@ -600,14 +600,10 @@ defineExpose({
 
 <style lang="less">
 .tree-sort-menu-custom {
-  padding: 0 4px !important;
+  padding: 4px !important;
   li {
     border-radius: 4px;
     padding: 0 8px !important;
-    &:hover {
-      // color: var(--primary-color);
-      background-color: rgba(31, 35, 41, 0.1) !important;
-    }
   }
 }
 .menu-outer-dv_popper {
@@ -645,6 +641,6 @@ defineExpose({
 .sort_menu {
   color: rgba(143, 149, 158, 1);
   font-size: 14px;
-  margin-left: 12px;
+  margin-left: 8px;
 }
 </style>
