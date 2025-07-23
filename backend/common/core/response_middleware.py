@@ -68,7 +68,7 @@ class ResponseMiddleware(BaseHTTPMiddleware):
 class exception_handler():
     @staticmethod
     async def http_exception_handler(request: Request, exc: HTTPException):
-        SQLBotLogUtil.exception(f"HTTP Exception: {exc.detail}", exc_info=True)
+        SQLBotLogUtil.error(f"HTTP Exception: {exc.detail}", exc_info=True)
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -82,7 +82,7 @@ class exception_handler():
 
     @staticmethod
     async def global_exception_handler(request: Request, exc: Exception):
-        SQLBotLogUtil.exception(f"Unhandled Exception: {str(exc)}", exc_info=True)
+        SQLBotLogUtil.error(f"Unhandled Exception: {str(exc)}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content={
