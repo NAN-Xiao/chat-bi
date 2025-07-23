@@ -70,7 +70,7 @@ const deleteBatchUser = () => {
   })
 }
 const deleteHandler = (row: any) => {
-  if (row.weight === 1) return
+  if (row.weight === 1 && +userStore.getUid !== 1) return
   ElMessageBox.confirm(t('workspace.member_feng_yibudao', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -177,6 +177,7 @@ const addWorkspace = () => {
 }
 
 const handleSizeChange = (val: number) => {
+  pageInfo.currentPage = 1
   pageInfo.pageSize = val
   search()
 }
@@ -261,7 +262,7 @@ const handleCurrentChange = (val: number) => {
                 >
                   <el-icon
                     class="action-btn"
-                    :class="scope.row.weight === 1 && 'not-allow'"
+                    :class="+userStore.getUid !== 1 && scope.row.weight === 1 && 'not-allow'"
                     size="16"
                     @click="deleteHandler(scope.row)"
                   >

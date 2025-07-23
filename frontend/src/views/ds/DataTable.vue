@@ -58,7 +58,7 @@ const keywords = ref('')
 const tableListWithSearch = computed(() => {
   if (!keywords.value) return tableList.value
   return tableList.value.filter((ele) =>
-    ele.name.toLowerCase().includes(keywords.value.toLowerCase())
+    ele.table_name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
 const total = ref(1000)
@@ -181,6 +181,31 @@ const emits = defineEmits(['back', 'refresh'])
 const back = () => {
   emits('back')
 }
+
+const btnSelectClick = (val: any) => {
+  btnSelect.value = val
+  loading.value = true
+
+  if (val === 'd') {
+    datasourceApi
+      .fieldList(currentTable.value.id)
+      .then((res) => {
+        fieldList.value = res
+      })
+      .finally(() => {
+        loading.value = false
+      })
+  } else {
+    datasourceApi
+      .previewData(props.info.id, buildData())
+      .then((res) => {
+        previewData.value = res
+      })
+      .finally(() => {
+        loading.value = false
+      })
+  }
+}
 </script>
 
 <template>
@@ -217,24 +242,26 @@ const back = () => {
         </el-input>
 
         <div v-loading="initLoading" class="list-content">
-          <div
-            v-for="ele in tableListWithSearch"
-            :key="ele.table_name"
-            class="model"
-            :class="currentTable.table_name === ele.table_name && 'isActive'"
-            :title="ele.table_name"
-            @click="clickTable(ele)"
-          >
-            <el-icon size="16">
-              <icon_form_outlined></icon_form_outlined>
-            </el-icon>
-            <span class="name">{{ ele.table_name }}</span>
-          </div>
+          <el-scrollbar v-if="tableListWithSearch.length">
+            <div
+              v-for="ele in tableListWithSearch"
+              :key="ele.table_name"
+              class="model"
+              :class="currentTable.table_name === ele.table_name && 'isActive'"
+              :title="ele.table_name"
+              @click="clickTable(ele)"
+            >
+              <el-icon size="16">
+                <icon_form_outlined></icon_form_outlined>
+              </el-icon>
+              <span class="name">{{ ele.table_name }}</span>
+            </div>
+          </el-scrollbar>
           <EmptyBackground
             v-if="!!keywords && !tableListWithSearch.length"
             :description="$t('datasource.relevant_content_found')"
             img-type="tree"
-            style="width: 100%; margin-top: 100px"
+            style="width: 100%"
           />
           <div v-else-if="!initLoading && !tableListWithSearch.length" class="no-data">
             <div class="no-data-msg">
@@ -264,10 +291,18 @@ const back = () => {
         </div>
         <div class="table-content">
           <div class="btn-select">
-            <el-button :class="[btnSelect === 'd' && 'is-active']" text @click="btnSelect = 'd'">
+            <el-button
+              :class="[btnSelect === 'd' && 'is-active']"
+              text
+              @click="btnSelectClick('d')"
+            >
               {{ t('ds.table_schema') }}
             </el-button>
-            <el-button :class="[btnSelect === 'q' && 'is-active']" text @click="btnSelect = 'q'">
+            <el-button
+              :class="[btnSelect === 'q' && 'is-active']"
+              text
+              @click="btnSelectClick('q')"
+            >
               {{ t('ds.preview') }}
             </el-button>
           </div>
@@ -431,6 +466,14 @@ const back = () => {
 
       .list-content {
         height: calc(100% - 100px);
+        .no-result {
+          margin-top: 72px;
+          font-weight: 400;
+          font-size: 14px;
+          line-height: 22px;
+          text-align: center;
+          color: #646a73;
+        }
         .model {
           width: 100%;
           height: 32px;

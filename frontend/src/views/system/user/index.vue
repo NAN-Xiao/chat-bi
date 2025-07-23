@@ -238,6 +238,7 @@ const saveHandler = () => {
   }
 }
 const handleSizeChange = (val: number) => {
+  state.pageInfo.currentPage = 1
   state.pageInfo.pageSize = val
   search()
 }

@@ -269,6 +269,7 @@ const addWorkspace = (row: any) => {
 
 const handleSizeChange = (val: number) => {
   pageInfo.pageSize = val
+  pageInfo.currentPage = 1
   search()
 }
 const handleCurrentChange = (val: number) => {
