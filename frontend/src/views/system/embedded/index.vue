@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, nextTick } from 'vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
@@ -7,6 +7,8 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_database_colorful from '@/assets/embedded/icon_database_colorful.png'
 import icon_web_site_colorful from '@/assets/embedded/icon_web-site_colorful.png'
 import floating_window from '@/assets/embedded/window.png'
+import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
+import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
 
 import Card from './Card.vue'
@@ -21,12 +23,16 @@ const { t } = useI18n()
 const keywords = ref('')
 const activeStep = ref(0)
 const ruleConfigvVisible = ref(false)
+const drawerConfigvVisible = ref(false)
 const advancedApplication = ref(false)
 const editRule = ref(0)
 const embeddedFormRef = ref()
 const dsFormRef = ref()
 const urlFormRef = ref()
+const certificateFormRef = ref()
 const dialogTitle = ref('')
+const drawerTitle = ref('')
+
 const embeddedList = ref<any[]>([])
 const systemCredentials = ['localStorage', 'custom', 'cookie', 'sessionStorage']
 const credentials = ['header', 'cookie', 'param']
@@ -48,13 +54,19 @@ const defaultForm = {
 }
 const dsForm = reactive(cloneDeep(defaultForm))
 
-const defaultUrlForm = {
-  endpoint: '',
+const defaultCertificateForm = {
+  id: '',
   type: '',
   source: '',
   target: '',
   target_key: '',
   target_val: '',
+}
+const certificateForm = reactive(cloneDeep(defaultCertificateForm))
+
+const defaultUrlForm = {
+  endpoint: '',
+  certificate: [] as any,
 }
 const urlForm = reactive(cloneDeep(defaultUrlForm))
 
@@ -119,9 +131,7 @@ const handleBaseEmbedded = (row: any) => {
 const handleAdvancedEmbedded = (row: any) => {
   advancedApplication.value = true
   if (row) {
-    const obj = JSON.parse(row.configuration)
-    Object.assign(urlForm, cloneDeep(obj.certificate))
-    urlForm.endpoint = obj.endpoint
+    Object.assign(urlForm, cloneDeep(JSON.parse(row.configuration)))
   }
   ruleConfigvVisible.value = true
   dialogTitle.value = row?.id
@@ -260,6 +270,17 @@ const urlRules = {
       trigger: 'blur',
     },
   ],
+  certificate: [
+    {
+      required: true,
+      message:
+        t('datasource.Please_select') + t('common.empty') + t('embedded.system_credential_type'),
+      trigger: 'change',
+    },
+  ],
+}
+
+const certificateRules = {
   type: [
     {
       required: true,
@@ -315,10 +336,7 @@ const saveEmbedded = () => {
       if (currentEmbedded.type === 0) {
         obj.configuration = JSON.stringify(dsForm)
       } else {
-        obj.configuration = JSON.stringify({
-          endpoint: urlForm.endpoint,
-          certificate: { ...urlForm },
-        })
+        obj.configuration = JSON.stringify(urlForm)
       }
 
       if (!currentEmbedded.id) {
@@ -360,6 +378,49 @@ const copyCode = () => {
       ElMessage.error(t('embedded.copy_successful'))
     })
 }
+const certificateBeforeClose = () => {
+  drawerConfigvVisible.value = false
+  Object.assign(certificateForm, cloneDeep(defaultCertificateForm))
+  certificateFormRef.value.clearValidate()
+}
+
+const initCertificate = (row: any) => {
+  drawerTitle.value = t('embedded.add_interface_credentials')
+  if (row) {
+    Object.assign(certificateForm, cloneDeep(row))
+    drawerTitle.value = t('embedded.edit_interface_credentials')
+  } else {
+    Object.assign(certificateForm, cloneDeep(defaultCertificateForm))
+  }
+  drawerConfigvVisible.value = true
+  nextTick(() => {
+    certificateFormRef.value.clearValidate()
+  })
+}
+
+const handleCredentialsDel = (row: any) => {
+  urlForm.certificate = urlForm.certificate.filter((ele: any) => ele.id !== row.id)
+}
+
+const saveHandler = () => {
+  certificateFormRef.value.validate((res: any) => {
+    if (res) {
+      if (certificateForm.id) {
+        for (const key in urlForm.certificate) {
+          if (Object.prototype.hasOwnProperty.call(urlForm.certificate, key)) {
+            if (urlForm.certificate[key].id === certificateForm.id) {
+              Object.assign(urlForm.certificate[key], cloneDeep(certificateForm))
+            }
+          }
+        }
+      } else {
+        urlForm.certificate.push({ ...cloneDeep(certificateForm), id: +new Date() })
+      }
+
+      certificateBeforeClose()
+    }
+  })
+}
 </script>
 
 <template>
@@ -378,8 +439,8 @@ const copyCode = () => {
           v-model="keywords"
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('dashboard.search')"
-          @keyup.enter="handleSearch"
           clearable
+          @keyup.enter="handleSearch"
           @blur="handleSearch"
         >
           <template #prefix>
@@ -565,67 +626,60 @@ const copyCode = () => {
               autocomplete="off"
             />
           </el-form-item>
-          <el-form-item prop="type" :label="t('embedded.system_credential_type')">
-            <el-select
-              v-model="urlForm.type"
-              :placeholder="
-                $t('datasource.Please_select') +
-                $t('common.empty') +
-                $t('embedded.system_credential_type')
-              "
+          <el-form-item class="certificate-table_form" prop="type">
+            <template #label>
+              <div class="title-content">
+                <span class="title-form">{{ t('embedded.interface_credentials') }}</span>
+                <span class="add" @click="initCertificate(null)">
+                  <el-icon size="16">
+                    <icon_add_outlined></icon_add_outlined>
+                  </el-icon>
+                  {{ t('model.add') }}
+                </span>
+              </div>
+            </template>
+            <div
+              class="table-content"
+              :class="!!urlForm.certificate.length && 'no-credentials_yet'"
             >
-              <el-option
-                v-for="item in systemCredentials"
-                :key="item"
-                :label="item"
-                :value="item"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item prop="source" :label="t('embedded.credential_name')">
-            <el-input
-              v-model="urlForm.source"
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('embedded.credential_name')
-              "
-              autocomplete="off"
-            />
-          </el-form-item>
-          <el-form-item prop="target" :label="t('embedded.target_credential_location')">
-            <el-select
-              v-model="urlForm.target"
-              :placeholder="
-                $t('datasource.Please_select') +
-                $t('common.empty') +
-                $t('embedded.target_credential_location')
-              "
-            >
-              <el-option v-for="item in credentials" :key="item" :label="item" :value="item" />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item prop="target_key" :label="t('embedded.target_credential_name')">
-            <el-input
-              v-model="urlForm.target_key"
-              :placeholder="
-                $t('datasource.please_enter') +
-                $t('common.empty') +
-                $t('embedded.target_credential_name')
-              "
-              autocomplete="off"
-            />
-          </el-form-item>
-
-          <el-form-item prop="target_val" :label="t('embedded.target_credential')">
-            <el-input
-              v-model="urlForm.target_val"
-              :placeholder="
-                $t('datasource.please_enter') +
-                $t('common.empty') +
-                $t('embedded.target_credential')
-              "
-              autocomplete="off"
-            />
+              <el-table
+                :empty-text="$t('embedded.no_credentials_yet')"
+                :data="urlForm.certificate"
+                style="width: 100%"
+              >
+                <el-table-column prop="source" :label="t('embedded.credential_name')" width="180" />
+                <el-table-column
+                  prop="type"
+                  :label="t('embedded.system_credential_type')"
+                  width="180"
+                />
+                <el-table-column
+                  prop="target_key"
+                  :label="t('embedded.target_credential_name')"
+                  width="180"
+                />
+                <el-table-column prop="target" :label="t('embedded.target_credential_location')" />
+                <el-table-column
+                  fixed="right"
+                  width="80"
+                  class-name="operation-column_text"
+                  :label="$t('ds.actions')"
+                >
+                  <template #default="scope">
+                    <el-button text type="primary" @click="initCertificate(scope.row)">
+                      <el-icon size="16">
+                        <icon_edit_outlined></icon_edit_outlined>
+                      </el-icon>
+                    </el-button>
+                    <el-button text type="primary" @click="handleCredentialsDel(scope.row)">
+                      <el-icon size="16">
+                        <icon_delete></icon_delete>
+                      </el-icon>
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </el-form-item>
         </el-form>
       </div>
@@ -725,6 +779,88 @@ const copyCode = () => {
       </div>
     </div>
   </el-dialog>
+  <el-drawer
+    v-model="drawerConfigvVisible"
+    :title="drawerTitle"
+    modal-class="certificate-form_drawer"
+    direction="rtl"
+    size="600px"
+    :before-close="certificateBeforeClose"
+  >
+    <el-form
+      ref="certificateFormRef"
+      :model="certificateForm"
+      label-width="180px"
+      label-position="top"
+      :rules="certificateRules"
+      class="form-content_error"
+      @submit.prevent
+    >
+      <el-form-item prop="source" :label="t('embedded.credential_name')">
+        <el-input
+          v-model="certificateForm.source"
+          :placeholder="
+            $t('datasource.please_enter') + $t('common.empty') + $t('embedded.credential_name')
+          "
+          autocomplete="off"
+        />
+      </el-form-item>
+      <el-form-item prop="type" :label="t('embedded.system_credential_type')">
+        <el-select
+          v-model="certificateForm.type"
+          :placeholder="
+            $t('datasource.Please_select') +
+            $t('common.empty') +
+            $t('embedded.system_credential_type')
+          "
+        >
+          <el-option v-for="item in systemCredentials" :key="item" :label="item" :value="item" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item prop="target_key" :label="t('embedded.target_credential_name')">
+        <el-input
+          v-model="certificateForm.target_key"
+          :placeholder="
+            $t('datasource.please_enter') +
+            $t('common.empty') +
+            $t('embedded.target_credential_name')
+          "
+          autocomplete="off"
+        />
+      </el-form-item>
+      <el-form-item prop="target" :label="t('embedded.target_credential_location')">
+        <el-select
+          v-model="certificateForm.target"
+          :placeholder="
+            $t('datasource.Please_select') +
+            $t('common.empty') +
+            $t('embedded.target_credential_location')
+          "
+        >
+          <el-option v-for="item in credentials" :key="item" :label="item" :value="item" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item prop="target_val" :label="t('embedded.target_credential')">
+        <el-input
+          v-model="certificateForm.target_val"
+          :placeholder="
+            $t('datasource.please_enter') + $t('common.empty') + $t('embedded.target_credential')
+          "
+          autocomplete="off"
+        />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button @click="certificateBeforeClose">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveHandler">
+          {{ $t('common.save') }}
+        </el-button>
+      </div>
+    </template>
+  </el-drawer>
 </template>
 
 <style lang="less" scoped>
@@ -825,6 +961,67 @@ const copyCode = () => {
     width: 800px;
     margin: 0 auto;
     height: calc(100% - 20px);
+  }
+
+  .certificate-table_form {
+    .ed-form-item__label:after {
+      display: none;
+    }
+
+    .title-content {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .ed-form-item__label {
+      width: 100%;
+      padding-right: 0;
+    }
+
+    .title-form::after {
+      color: var(--ed-color-danger);
+      content: '*';
+      margin-left: 2px;
+    }
+
+    .add {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+  }
+
+  .table-content {
+    width: 100%;
+    max-height: calc(100vh - 390px);
+    overflow-y: auto;
+    border: 1px solid #dee0e3;
+    border-radius: 6px;
+    border-top: none;
+
+    .operation-column_text {
+      .ed-button {
+        color: #646a73;
+        height: 24px;
+      }
+      .ed-button:not(.is-disabled):hover {
+        background: #1f23291a;
+      }
+      .ed-button + .ed-button {
+        margin-left: 4px;
+      }
+    }
+
+    .ed-table__empty-text {
+      padding-top: 0;
+    }
+
+    &.no-credentials_yet {
+      border-bottom: none;
+    }
   }
 }
 

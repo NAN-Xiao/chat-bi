@@ -448,7 +448,12 @@
     "floating_window_mode": "浮窗模式",
     "copy_successful": "复制成功",
     "copy_failed": "复制失败",
-    "open_the_query": "公共的数据源，允许所有用户开启问数；私有数据源，登录状态的用户可以开启问数"
+    "open_the_query": "公共的数据源，允许所有用户开启问数；私有数据源，登录状态的用户可以开启问数",
+    "add_interface_credentials": "添加接口凭证",
+    "edit_interface_credentials": "编辑接口凭证",
+    "duplicate_name": "重复名称",
+    "interface_credentials": "接口凭证",
+    "no_credentials_yet": "暂无凭证"
   },
   "chat": {
     "type": "图表类型",

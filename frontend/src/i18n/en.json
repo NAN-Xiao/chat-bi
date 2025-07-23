@@ -436,7 +436,12 @@
     "floating_window_mode": "Floating window mode",
     "copy_successful": "Copy successful",
     "copy_failed": "Copy failed",
-    "open_the_query": "Public data sources allow all users to open the query; private data sources allow logged-in users to open the query"
+    "open_the_query": "Public data sources allow all users to open the query; private data sources allow logged-in users to open the query",
+    "add_interface_credentials": "Add interface credentials",
+    "edit_interface_credentials": "Edit interface credentials",
+    "duplicate_name": "Duplicate name",
+    "interface_credentials": "Interface credentials",
+    "no_credentials_yet": "No credentials yet"
   },
   "chat": {
     "type": "Chart Type",
