@@ -160,6 +160,7 @@ const onClickOutside = () => {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+    word-break: break-word;
     overflow: hidden;
     width: 100%;
   }

@@ -103,6 +103,7 @@ const SelectDs = () => {
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
+    word-break: break-word;
     width: 100%;
   }
 
