@@ -40,7 +40,7 @@ const router = createRouter({
           props: (route) => {
             return { startChatDsId: route.query.start_chat }
           },
-          meta: { title: t('menu.Data Q&A'), icon: 'chat' },
+          meta: { title: t('menu.Data Q&A'), iconActive: 'chat', iconDeActive: 'noChat' },
         },
       ],
     },
@@ -65,7 +65,7 @@ const router = createRouter({
           path: 'index',
           name: 'ds',
           component: Datasource,
-          meta: { title: t('menu.Data Connections'), icon: 'ds' },
+          meta: { title: t('menu.Data Connections'), iconActive: 'ds', iconDeActive: 'noDs' },
         },
       ],
     },
@@ -78,7 +78,11 @@ const router = createRouter({
           path: 'index',
           name: 'dashboard',
           component: Dashboard,
-          meta: { title: t('dashboard.dashboard'), icon: 'dashboard' },
+          meta: {
+            title: t('dashboard.dashboard'),
+            iconActive: 'dashboard',
+            iconDeActive: 'noDashboard',
+          },
         },
       ],
     },
@@ -86,7 +90,7 @@ const router = createRouter({
       path: '/set',
       component: LayoutDsl,
       redirect: '/set/member',
-      meta: { title: t('workspace.set'), icon: 'setting' },
+      meta: { title: t('workspace.set'), iconActive: 'set', iconDeActive: 'noSet' },
       children: [
         {
           path: '/set/member',
@@ -123,25 +127,37 @@ const router = createRouter({
           path: 'user',
           name: 'user',
           component: User,
-          meta: { title: t('user.user_management'), icon: 'user' },
+          meta: { title: t('user.user_management'), iconActive: 'user', iconDeActive: 'noUser' },
         },
         {
           path: 'workspace',
           name: 'workspace',
           component: Workspace,
-          meta: { title: t('user.workspace'), icon: 'workspace' },
+          meta: {
+            title: t('user.workspace'),
+            iconActive: 'workspace',
+            iconDeActive: 'noWorkspace',
+          },
         },
         {
           path: 'model',
           name: 'model',
           component: Model,
-          meta: { title: 'AI Model Configuration', icon: 'icon_ai' },
+          meta: {
+            title: t('model.ai_model_configuration'),
+            iconActive: 'model',
+            iconDeActive: 'noModel',
+          },
         },
         {
           path: 'embedded',
           name: 'embedded',
           component: Embedded,
-          meta: { title: t('embedded.embedded_management'), icon: 'icon_ai' },
+          meta: {
+            title: t('embedded.embedded_management'),
+            iconActive: 'embedded',
+            iconDeActive: 'noEmbedded',
+          },
         },
       ],
     },

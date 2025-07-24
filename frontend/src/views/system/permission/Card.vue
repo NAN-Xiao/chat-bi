@@ -41,7 +41,7 @@ const setUser = () => {
   <div class="card">
     <div class="name-icon">
       <img :src="Lock" width="32px" height="32px" />
-      <span class="name">{{ name }}</span>
+      <span class="name ellipsis" :title="name">{{ name }}</span>
     </div>
     <div class="type-value">
       <span class="type">{{ $t('permission.permission_rule') }}</span>
@@ -95,6 +95,7 @@ const setUser = () => {
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
+      max-width: 250px;
     }
   }
 
