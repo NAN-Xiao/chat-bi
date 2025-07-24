@@ -117,7 +117,9 @@
     "today": "今天",
     "week": "7天内",
     "earlier": "更早以前",
-    "no_time": "没有时间"
+    "no_time": "没有时间",
+    "rename_conversation_title": "重命名对话标题",
+    "conversation_title": "对话标题"
   },
   "ds": {
     "title": "数据源",

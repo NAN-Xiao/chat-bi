@@ -4,7 +4,7 @@ import icon_expand_down_filled from '@/assets/embedded/icon_expand-down_filled.s
 import rename from '@/assets/svg/icon_rename_outlined.svg'
 import delIcon from '@/assets/svg/icon_delete.svg'
 import { type Chat, chatApi } from '@/api/chat.ts'
-import { computed, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import dayjs from 'dayjs'
 import { getDate } from '@/utils/utils.ts'
 import { groupBy } from 'lodash-es'
@@ -107,39 +107,9 @@ function handleCommand(command: string | number | object, chat: Chat) {
   if (chat && chat.id !== undefined) {
     switch (command) {
       case 'rename':
-        ElMessageBox.prompt('Please enter new brief', 'Rename', {
-          confirmButtonText: 'OK',
-          cancelButtonText: 'Cancel',
-          customStyle: { 'padding-left': 'unset', padding: 'var(--ed-messagebox-padding-primary)' },
-          inputValue: chat.brief,
-          inputValidator: (value: string) => {
-            if (!value) return false
-            if (value.trim().length == 0) return false
-            return true
-          },
-        }).then(({ value }) => {
-          _loading.value = true
-          chatApi
-            .renameChat(chat.id, value)
-            .then((res) => {
-              ElMessage({
-                type: 'success',
-                message: 'Successfully renamed chat',
-              })
-              emits('chatRenamed', { id: chat.id, brief: res })
-            })
-            .catch((err) => {
-              ElMessage({
-                type: 'error',
-                message: err.message,
-              })
-              console.error(err)
-            })
-            .finally(() => {
-              _loading.value = false
-            })
-        })
-
+        password.id = chat.id
+        password.name = chat.brief as string
+        dialogVisiblePassword.value = true
         break
       case 'delete':
         ElMessageBox.confirm('This action will permanently delete the chat. Continue?', 'Warning', {
@@ -172,6 +142,56 @@ function handleCommand(command: string | number | object, chat: Chat) {
         break
     }
   }
+}
+
+const passwordRef = ref()
+const dialogVisiblePassword = ref(false)
+const password = reactive({
+  name: '',
+  id: 0,
+})
+
+const passwordRules = {
+  name: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('qa.conversation_title'),
+      trigger: 'blur',
+    },
+  ],
+}
+
+const handleClosePassword = () => {
+  passwordRef.value.clearValidate()
+  dialogVisiblePassword.value = false
+  password.id = 0
+  password.name = ''
+}
+const handleConfirmPassword = () => {
+  passwordRef.value.validate((res: any) => {
+    if (res) {
+      chatApi
+        .renameChat(password.id, password.name)
+        .then((res) => {
+          ElMessage({
+            type: 'success',
+            message: t('common.save_success'),
+          })
+          emits('chatRenamed', { id: password.id, brief: res })
+          handleClosePassword()
+        })
+        .catch((err) => {
+          ElMessage({
+            type: 'error',
+            message: err.message,
+          })
+          console.error(err)
+        })
+        .finally(() => {
+          _loading.value = false
+        })
+    }
+  })
 }
 </script>
 
@@ -222,6 +242,41 @@ function handleCommand(command: string | number | object, chat: Chat) {
       </div>
     </div>
   </el-scrollbar>
+  <el-dialog
+    v-model="dialogVisiblePassword"
+    :title="$t('qa.rename_conversation_title')"
+    width="420"
+    :before-close="handleClosePassword"
+  >
+    <el-form
+      ref="passwordRef"
+      :model="password"
+      label-width="180px"
+      label-position="top"
+      :rules="passwordRules"
+      class="form-content_error"
+      @submit.prevent
+    >
+      <el-form-item prop="name" :label="t('qa.conversation_title')">
+        <el-input
+          v-model="password.name"
+          maxlength="20"
+          :placeholder="
+            $t('datasource.please_enter') + $t('common.empty') + $t('qa.conversation_title')
+          "
+          autocomplete="off"
+        />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button secondary @click="handleClosePassword">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleConfirmPassword">
+          {{ $t('common.save') }}
+        </el-button>
+      </div>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped lang="less">

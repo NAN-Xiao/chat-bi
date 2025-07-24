@@ -114,7 +114,9 @@
     "today": "Today",
     "week": "This Week",
     "earlier": "Earlier",
-    "no_time": "No Time"
+    "no_time": "No Time",
+    "rename_conversation_title": "Rename conversation title",
+    "conversation_title": "Conversation title"
   },
   "ds": {
     "title": "Data Source",
