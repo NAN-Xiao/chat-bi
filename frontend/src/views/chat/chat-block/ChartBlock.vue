@@ -219,6 +219,7 @@ function addToDashboard() {
                   <component :is="type.icon" />
                 </el-icon>
                 {{ type.name }}
+                &nbsp;
               </el-option>
             </el-select>
           </el-tooltip>

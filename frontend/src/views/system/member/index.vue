@@ -51,7 +51,7 @@ const deleteBatchUser = () => {
     t('workspace.selected_2_members', { msg: multipleSelectionAll.value.length }),
     {
       confirmButtonType: 'danger',
-      confirmButtonText: t('dashboard.delete'),
+      confirmButtonText: t('workspace.remove'),
       cancelButtonText: t('common.cancel'),
       customClass: 'confirm-no_icon',
       autofocus: false,
@@ -73,7 +73,7 @@ const deleteHandler = (row: any) => {
   if (row.weight === 1 && +userStore.getUid !== 1) return
   ElMessageBox.confirm(t('workspace.member_feng_yibudao', { msg: row.name }), {
     confirmButtonType: 'danger',
-    confirmButtonText: t('dashboard.delete'),
+    confirmButtonText: t('workspace.remove'),
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
