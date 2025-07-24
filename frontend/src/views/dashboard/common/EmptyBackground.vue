@@ -4,6 +4,7 @@ import nothingInput from '@/assets/img/nothing-input.png'
 import nothingSelect from '@/assets/img/nothing-select.png'
 import nothingTable from '@/assets/img/nothing-table.png'
 import nothingSelectDashboard from '@/assets/img/none-dashboard.png'
+import addComponent from '@/assets/img/add_component.png'
 import none from '@/assets/img/none.png'
 import error from '@/assets/img/error.png'
 import nothingTree from '@/assets/img/nothing-tree.png'
@@ -11,7 +12,15 @@ import nothingNone from '@/assets/img/nothing-none.png'
 defineProps({
   imgType: {
     type: String as PropType<
-      'input' | 'select' | 'table' | 'none' | 'noneWhite' | 'tree' | 'error' | 'selectDashboard'
+      | 'input'
+      | 'select'
+      | 'table'
+      | 'none'
+      | 'noneWhite'
+      | 'tree'
+      | 'error'
+      | 'selectDashboard'
+      | 'addComponent'
     >,
     default: 'table',
   },
@@ -33,6 +42,7 @@ const getAssetsFile = {
   selectDashboard: nothingSelectDashboard,
   error,
   none,
+  addComponent,
 }
 </script>
 
