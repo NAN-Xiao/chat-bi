@@ -69,7 +69,7 @@ const state = reactive({
 function addTab() {
   const newTab = {
     name: guid('tab'),
-    title: 'New Tab',
+    title: t('dashboard.new_tab'),
     componentData: [],
     closable: true,
   }
