@@ -38,7 +38,7 @@ const props = withDefaults(defineProps<Props>(), {
 const { t } = useI18n()
 const showDel = ref(false)
 const keywords = ref('')
-const activeName = ref({})
+const activeName = ref()
 const checklist = ref<string[]>([])
 const filterList = ref<any[]>([])
 

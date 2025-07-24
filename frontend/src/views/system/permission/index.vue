@@ -412,8 +412,8 @@ const saveHandler = () => {
             })
           )
         }
+        dialogFormVisible.value = false
       }
-      dialogFormVisible.value = false
     }
   })
 }
@@ -498,8 +498,8 @@ const columnRules = {
   table_id: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('permission.rule_group_name'),
-      trigger: 'blur',
+      message: t('datasource.Please_select') + t('common.empty') + t('permission.set_rule'),
+      trigger: 'change',
     },
   ],
 }
