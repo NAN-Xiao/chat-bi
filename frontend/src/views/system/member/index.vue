@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, nextTick } from 'vue'
 import {
   uwsOption,
   workspaceUserList,
@@ -24,7 +24,7 @@ const workspaceForm = reactive({
   name: '',
   id: '',
 })
-const selectable = (row: any) => ![userStore.getUid].includes(row.id)
+const selectable = (row: any) => ![userStore.getUid].includes(row.id) && row.weight !== 1
 
 onMounted(() => {
   search()
@@ -90,17 +90,19 @@ const deleteHandler = (row: any) => {
   })
 }
 const handleSelectionChange = (val: any[]) => {
-  const ids = fieldList.value.map((ele: any) => ele.id)
+  if (toggleRowLoading.value) return
+  const arr = fieldList.value.filter(selectable)
+  const ids = arr.map((ele: any) => ele.id)
   multipleSelectionAll.value = [
     ...multipleSelectionAll.value.filter((ele) => !ids.includes(ele.id)),
     ...val,
   ]
-  isIndeterminate.value = !(val.length === 0 || val.length === fieldList.value.length)
-  checkAll.value = val.length === fieldList.value.length
+  isIndeterminate.value = !(val.length === 0 || val.length === arr.length)
+  checkAll.value = val.length === arr.length
 }
 const handleCheckAllChange = (val: any) => {
   isIndeterminate.value = false
-  handleSelectionChange(val ? fieldList.value : [])
+  handleSelectionChange(val ? fieldList.value.filter(selectable) : [])
   if (val) {
     handleToggleRowSelection()
   } else {
@@ -108,17 +110,22 @@ const handleCheckAllChange = (val: any) => {
   }
 }
 
+const toggleRowLoading = ref(false)
+
 const handleToggleRowSelection = (check: boolean = true) => {
+  toggleRowLoading.value = true
+  const arr = fieldList.value.filter(selectable)
   let i = 0
   const ids = multipleSelectionAll.value.map((ele: any) => ele.id)
-  for (const key in fieldList.value) {
-    if (ids.includes((fieldList.value[key] as any).id)) {
+  for (const key in arr) {
+    if (ids.includes((arr[key] as any).id)) {
       i += 1
-      multipleTableRef.value.toggleRowSelection(fieldList.value[key], check)
+      multipleTableRef.value.toggleRowSelection(arr[key], check)
     }
   }
-  checkAll.value = i === fieldList.value.length
-  isIndeterminate.value = !(i === 0 || i === fieldList.value.length)
+  toggleRowLoading.value = false
+  checkAll.value = i === arr.length
+  isIndeterminate.value = !(i === 0 || i === arr.length)
 }
 
 const search = () => {
@@ -127,8 +134,12 @@ const search = () => {
     pageInfo.currentPage,
     pageInfo.pageSize
   ).then((res) => {
+    toggleRowLoading.value = true
     fieldList.value = res.items
     pageInfo.total = res.total
+    nextTick(() => {
+      handleToggleRowSelection()
+    })
   })
 }
 
@@ -220,11 +231,10 @@ const handleCurrentChange = (val: number) => {
         <el-table
           ref="multipleTableRef"
           :data="fieldList"
-          :selectable="selectable"
           style="width: 100%"
           @selection-change="handleSelectionChange"
         >
-          <el-table-column type="selection" width="55" />
+          <el-table-column :selectable="selectable" type="selection" width="55" />
           <el-table-column prop="name" :label="$t('user.name')" width="160" />
           <el-table-column prop="account" :label="$t('user.account')" width="160" />
           <el-table-column prop="status" :label="$t('user.user_status')">
@@ -288,7 +298,7 @@ const handleCurrentChange = (val: number) => {
         </el-table>
       </div>
     </div>
-    <div class="pagination-container">
+    <div v-if="fieldList.length" class="pagination-container">
       <el-pagination
         v-model:current-page="pageInfo.currentPage"
         v-model:page-size="pageInfo.pageSize"

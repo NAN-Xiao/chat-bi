@@ -216,9 +216,13 @@ defineExpose({
   .flex {
     display: flex;
   }
+  .ed-checkbox {
+    margin-right: 0 !important;
+  }
 
   .border-r {
     border-right: 1px solid #dee0e3;
+    width: 50%;
   }
 }
 </style>

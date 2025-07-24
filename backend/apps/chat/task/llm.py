@@ -28,6 +28,7 @@ from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_
     get_old_questions, save_analysis_predict_record, list_base_records, rename_chat
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat
 from apps.datasource.crud.datasource import get_table_schema
+from apps.datasource.crud.datasource import is_normal_user
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreTable
 from apps.db.db import exec_sql
@@ -791,26 +792,28 @@ class LLMService:
             SQLBotLogUtil.info(full_sql_text)
 
             # todo row permission
-            sql_json_str = extract_nested_json(full_sql_text)
-            data = orjson.loads(sql_json_str)
+            if is_normal_user(self.current_user):
+                sql_json_str = extract_nested_json(full_sql_text)
+                data = orjson.loads(sql_json_str)
 
-            sql = ''
-            message = ''
-            error = False
-            if data['success']:
-                sql = data['sql']
+                sql = ''
+                message = ''
+                error = False
+                if data['success']:
+                    sql = data['sql']
+                else:
+                    message = data['message']
+                    error = True
+                if error:
+                    raise Exception(message)
+                if sql.strip() == '':
+                    raise Exception("SQL query is empty")
+
+                sql_result = self.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
+                SQLBotLogUtil.info(sql_result)
+                sql = self.check_save_sql(res=sql_result)
             else:
-                message = data['message']
-                error = True
-            if error:
-                raise Exception(message)
-            if sql.strip() == '':
-                raise Exception("SQL query is empty")
-
-            sql_result = self.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
-            SQLBotLogUtil.info(sql_result)
-            sql = self.check_save_sql(res=sql_result)
-            # sql = llm_service.check_save_sql(res=full_sql_text)
+                sql = self.check_save_sql(res=full_sql_text)
 
             SQLBotLogUtil.info(sql)
             format_sql = sqlparse.format(sql, reindent=True)

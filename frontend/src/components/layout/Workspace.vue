@@ -6,13 +6,11 @@ import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import { userApi } from '@/api/auth'
 import { ElMessage } from 'element-plus-secondary'
-import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
 const { t } = useI18n()
-const router = useRouter()
 defineProps({
   collapse: { type: [Boolean], required: true },
 })
@@ -46,7 +44,6 @@ const handleDefaultWorkspaceChange = (item: any) => {
   currentWorkspace.value = { id: item.id, name: item.name }
   userApi.ws_change(item.id).then(() => {
     ElMessage.success(t('common.switch_success'))
-    router.push('/chat/index')
     setTimeout(() => {
       location.reload()
     }, 300)

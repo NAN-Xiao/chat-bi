@@ -124,6 +124,8 @@ def cache(
                 result = await func(*args, **kwargs)
                 
                 actual_expire = expire + random.randint(-jitter, jitter)
+                if await backend.get(cache_key):
+                    await backend.clear(cache_key)
                 await backend.set(cache_key, result, actual_expire)
                 
                 SQLBotLogUtil.debug(f"Cache set: {cache_key} (expire: {actual_expire}s)")

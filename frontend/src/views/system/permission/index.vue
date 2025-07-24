@@ -25,8 +25,8 @@ const termFormRef = ref()
 const columnFormRef = ref()
 const drawerTitle = ref('')
 const dialogTitle = ref('')
-const activeDs = ref({})
-const activeTable = ref({})
+const activeDs = ref(null)
+const activeTable = ref(null)
 const ruleList = ref<any[]>([])
 
 const defaultPermission = {
@@ -146,8 +146,8 @@ const saveAuthTree = (val: any) => {
   dialogFormVisible.value = false
 }
 const getDsList = (row: any) => {
-  activeDs.value = {}
-  activeTable.value = {}
+  activeDs.value = null
+  activeTable.value = null
   datasourceApi
     .list()
     .then((res: any) => {
@@ -211,6 +211,17 @@ const handleColumnPermission = (row: any) => {
     : t('permission.add_column_permission')
 }
 
+const handleInitDsIdChange = (val: any) => {
+  columnForm.ds_id = val.id
+  columnForm.ds_name = val.name
+  datasourceApi.tableList(val.id).then((res: any) => {
+    tableListOptions.value = res || []
+    activeTable.value = null
+    fieldListOptions.value = []
+    columnForm.permissions = []
+  })
+}
+
 const handleDsIdChange = (val: any) => {
   columnForm.ds_id = val.id
   columnForm.ds_name = val.name
@@ -259,6 +270,9 @@ const handleEditeTable = (val: any) => {
     })
 }
 const beforeClose = () => {
+  if (termFormRef.value) {
+    termFormRef.value.clearValidate()
+  }
   ruleConfigvVisible.value = false
   activeStep.value = 0
   isCreate.value = false
@@ -398,8 +412,8 @@ const saveHandler = () => {
             })
           )
         }
+        dialogFormVisible.value = false
       }
-      dialogFormVisible.value = false
     }
   })
 }
@@ -417,7 +431,8 @@ const next = () => {
     }
   })
 }
-const savePermission = () => {
+
+const save = () => {
   const { id, name, permissions, users } = cloneDeep(currentPermission)
 
   const permissionsObj = permissions.map((ele: any) => {
@@ -459,6 +474,18 @@ const savePermission = () => {
     handleSearch()
   })
 }
+const savePermission = () => {
+  if (!isCreate.value && activeStep.value === 0) {
+    termFormRef.value.validate((res: any) => {
+      if (res) {
+        save()
+      }
+    })
+    return
+  }
+
+  save()
+}
 
 const columnRules = {
   name: [
@@ -471,8 +498,8 @@ const columnRules = {
   table_id: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('permission.rule_group_name'),
-      trigger: 'blur',
+      message: t('datasource.Please_select') + t('common.empty') + t('permission.set_rule'),
+      trigger: 'change',
     },
   ],
 }
@@ -485,10 +512,9 @@ const columnRules = {
       <div>
         <el-input
           v-model="keywords"
+          clearable
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('permission.search_rule_group')"
-          @keyup.enter="handleSearch"
-          @blur="handleSearch"
         >
           <template #prefix>
             <el-icon>
@@ -526,7 +552,11 @@ const columnRules = {
       ></Card>
     </div>
     <template v-if="!keywords && !ruleListWithSearch.length && !searchLoading">
-      <EmptyBackground :description="$t('permission.no_permission_rule')" img-type="noneWhite" />
+      <EmptyBackground
+        class="ed-empty_200"
+        :description="$t('permission.no_permission_rule')"
+        img-type="noneWhite"
+      />
 
       <div style="text-align: center; margin-top: -10px">
         <el-button type="primary" @click="addHandler()">
@@ -579,6 +609,8 @@ const columnRules = {
         >
           <el-form-item prop="name" :label="t('permission.rule_group_name')">
             <el-input
+              maxlength="50"
+              clearable
               v-model="currentPermission.name"
               :placeholder="
                 $t('datasource.please_enter') +
@@ -722,6 +754,8 @@ const columnRules = {
         <el-form-item prop="name" :label="t('permission.rule_name')">
           <el-input
             v-model="columnForm.name"
+            maxlength="50"
+            clearable
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + $t('permission.rule_name')
             "
@@ -731,12 +765,13 @@ const columnRules = {
         <el-form-item prop="table_id" :label="t('permission.data_table')">
           <el-select
             v-model="activeDs"
+            filterable
             style="width: 416px"
             value-key="id"
             :placeholder="
               $t('datasource.Please_select') + $t('common.empty') + $t('permission.data_source')
             "
-            @change="handleDsIdChange"
+            @change="handleInitDsIdChange"
           >
             <el-option
               v-for="item in dsListOptions"
@@ -747,6 +782,7 @@ const columnRules = {
           </el-select>
           <el-select
             v-model="activeTable"
+            filterable
             style="width: 416px; margin-left: auto"
             :disabled="!columnForm.ds_id"
             value-key="id"
@@ -809,7 +845,9 @@ const columnRules = {
 
 <style lang="less" scoped>
 .permission {
-  .ed-empty {
+  height: 100%;
+  width: 100%;
+  .ed-empty_200 {
     padding-top: 200px;
     padding-bottom: 0;
   }
@@ -864,6 +902,10 @@ const columnRules = {
         padding-right: 0;
       }
 
+      .ed-form-item__content {
+        padding-bottom: 100px;
+      }
+
       .table-content {
         width: 100%;
         margin-top: 16px;
@@ -871,7 +913,7 @@ const columnRules = {
         border-top: none;
         border-bottom: none;
         border-radius: 6px;
-        overflow: hidden;
+        overflow-y: auto;
         max-height: calc(100vh - 400px);
 
         &.border-bottom {
@@ -929,7 +971,7 @@ const columnRules = {
     border: 1px solid #1f232926;
     border-top: none;
     border-radius: 6px;
-    overflow: hidden;
+    overflow-y: auto;
     max-height: calc(100vh - 400px);
     .ed-table__empty-text {
       padding-top: 0;

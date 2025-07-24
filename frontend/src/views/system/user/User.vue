@@ -137,7 +137,7 @@
         </template>
       </el-table>
     </div>
-    <div class="pagination-container">
+    <div v-if="state.tableData.length" class="pagination-container">
       <el-pagination
         v-model:current-page="state.pageInfo.currentPage"
         v-model:page-size="state.pageInfo.pageSize"

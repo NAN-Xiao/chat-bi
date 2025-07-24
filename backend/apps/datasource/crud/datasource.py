@@ -5,10 +5,12 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy import and_, text, cast, or_, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlbot_xpack.permissions.models.ds_permission import DsPermission
+from sqlbot_xpack.permissions.api.permission import transRecord2DTO
+from sqlbot_xpack.permissions.models.ds_permission import DsPermission, PermissionDTO
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import select
 
+from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
 from apps.db.db import get_engine, get_tables, get_fields, exec_sql
@@ -238,43 +240,69 @@ def updateField(session: SessionDep, field: CoreField):
 
 
 def preview(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
+    ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+    check_status(session, ds, True)
+
     if data.fields is None or len(data.fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
-    # column is checked, and, column permission for data.fields
+    where = None
     f_list = [f for f in data.fields if f.checked]
-    column_permissions = session.query(DsPermission).filter(
-        and_(DsPermission.table_id == data.table.id, DsPermission.type == 'column')).all()
-    if column_permissions is not None:
-        for permission in column_permissions:
-            # check permission and user in same rules
-            obj = session.query(DsRules).filter(
-                and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
-                     or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
-                         DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
-            ).first()
-            if obj is not None:
-                permission_list = json.loads(permission.permissions)
-                f_list = filter_list(f_list, permission_list)
+    if is_normal_user(current_user):
+        # column is checked, and, column permission for data.fields
+        column_permissions = session.query(DsPermission).filter(
+            and_(DsPermission.table_id == data.table.id, DsPermission.type == 'column')).all()
+        if column_permissions is not None:
+            for permission in column_permissions:
+                # check permission and user in same rules
+                obj = session.query(DsRules).filter(
+                    and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
+                         or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
+                             DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
+                ).first()
+                if obj is not None:
+                    permission_list = json.loads(permission.permissions)
+                    f_list = filter_list(f_list, permission_list)
+
+        # row permission tree
+        row_permissions = session.query(DsPermission).filter(
+            and_(DsPermission.table_id == data.table.id, DsPermission.type == 'row')).all()
+        res: List[PermissionDTO] = []
+        if row_permissions is not None:
+            for permission in row_permissions:
+                # check permission and user in same rules
+                obj = session.query(DsRules).filter(
+                    and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
+                         or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
+                             DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
+                ).first()
+                if obj is not None:
+                    res.append(transRecord2DTO(session, permission))
+        wheres = transFilterTree(session, res, ds)
+        where = (' where ' + wheres) if wheres is not None and wheres != '' else ''
 
     fields = [f.field_name for f in f_list]
     if fields is None or len(fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
-    ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
-    check_status(session, ds, True)
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
     if ds.type == "mysql":
-        sql = f"""SELECT `{"`, `".join(fields)}` FROM `{data.table.table_name}` LIMIT 100"""
+        sql = f"""SELECT `{"`, `".join(fields)}` FROM `{data.table.table_name}` 
+            {where} 
+            LIMIT 100"""
     elif ds.type == "sqlServer":
         sql = f"""SELECT [{"], [".join(fields)}] FROM [{conf.dbSchema}].[{data.table.table_name}]
+            {where} 
             ORDER BY [{data.fields[0].field_name}]
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     elif ds.type == "pg" or ds.type == "excel":
-        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}" LIMIT 100"""
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}" 
+            {where} 
+            LIMIT 100"""
     elif ds.type == "oracle":
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}"
+            {where} 
             ORDER BY "{data.fields[0].field_name}"
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     return exec_sql(ds, sql)
@@ -320,19 +348,20 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
         fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
 
         # do column permissions, filter fields
-        column_permissions = session.query(DsPermission).filter(
-            and_(DsPermission.table_id == table.id, DsPermission.type == 'column')).all()
-        if column_permissions is not None:
-            for permission in column_permissions:
-                # check permission and user in same rules
-                obj = session.query(DsRules).filter(
-                    and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
-                         or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
-                             DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
-                ).first()
-                if obj is not None:
-                    permission_list = json.loads(permission.permissions)
-                    fields = filter_list(fields, permission_list)
+        if is_normal_user(current_user):
+            column_permissions = session.query(DsPermission).filter(
+                and_(DsPermission.table_id == table.id, DsPermission.type == 'column')).all()
+            if column_permissions is not None:
+                for permission in column_permissions:
+                    # check permission and user in same rules
+                    obj = session.query(DsRules).filter(
+                        and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
+                             or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
+                                 DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
+                    ).first()
+                    if obj is not None:
+                        permission_list = json.loads(permission.permissions)
+                        fields = filter_list(fields, permission_list)
 
         _list.append(TableAndFields(schema=schema, table=table, fields=fields))
     return _list
@@ -376,3 +405,7 @@ def filter_list(list_a, list_b):
             id_to_invalid[b['field_id']] = True
 
     return [a for a in list_a if not id_to_invalid.get(a.id, False)]
+
+
+def is_normal_user(current_user: CurrentUser):
+    return current_user.id != 1 and (current_user.weight is not None and current_user.weight != 1)
