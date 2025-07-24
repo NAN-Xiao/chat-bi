@@ -114,38 +114,6 @@ const router = createRouter({
       component: DashboardPreview,
       meta: { title: 'DashboardPreview', icon: 'dashboard' },
     },
-    /* {
-      path: "/setting",
-      component: Layout,
-      redirect: "/setting/index",
-      children: [
-        {
-          path: "index",
-          name: "setting",
-          component: setting,
-          meta: { title: "Settings", icon: "setting" },
-        },
-      ],
-    }, */
-    // {
-    //   path: '/system',
-    //   component: Layout,
-    //   redirect: '/system/model',
-    //   children: [
-    //     /*  {
-    //       path: "user",
-    //       name: "user",
-    //       component: User,
-    //       meta: { title: "User Management", icon: "icon_user" },
-    //     }, */
-    //     {
-    //       path: 'model',
-    //       name: 'model',
-    //       component: Model,
-    //       meta: { title: 'AI Model Configuration', icon: 'icon_ai' },
-    //     },
-    //   ],
-    // },
     {
       path: '/system',
       component: LayoutDsl,

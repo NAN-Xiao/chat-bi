@@ -26,10 +26,7 @@ export const watchRouter = (router: any) => {
     if (!userStore.getUid) {
       await userStore.info()
     }
-    /* if (!wsCache.get('user.uid')) {
-      await userStore.info()
-    } */
-    if (to.path === '/') {
+    if (to.path === '/' || accessCrossPermission(to)) {
       next('/chat')
       return
     }
@@ -40,6 +37,14 @@ export const watchRouter = (router: any) => {
       next()
     }
   })
+}
+
+const accessCrossPermission = (to: any) => {
+  if (!to?.path) return false
+  return (
+    (to.path.startsWith('/system') && !userStore.isAdmin) ||
+    (to.path.startsWith('/set') && !userStore.isSpaceAdmin)
+  )
 }
 const loadXpackStatic = () => {
   if (document.getElementById('sqlbot_xpack_static')) {
