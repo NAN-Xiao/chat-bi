@@ -501,10 +501,9 @@ const columnRules = {
       <div>
         <el-input
           v-model="keywords"
+          clearable
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('permission.search_rule_group')"
-          @keyup.enter="handleSearch"
-          @blur="handleSearch"
         >
           <template #prefix>
             <el-icon>
@@ -542,7 +541,11 @@ const columnRules = {
       ></Card>
     </div>
     <template v-if="!keywords && !ruleListWithSearch.length && !searchLoading">
-      <EmptyBackground :description="$t('permission.no_permission_rule')" img-type="noneWhite" />
+      <EmptyBackground
+        class="ed-empty_200"
+        :description="$t('permission.no_permission_rule')"
+        img-type="noneWhite"
+      />
 
       <div style="text-align: center; margin-top: -10px">
         <el-button type="primary" @click="addHandler()">
@@ -827,7 +830,7 @@ const columnRules = {
 .permission {
   height: 100%;
   width: 100%;
-  .ed-empty {
+  .ed-empty_200 {
     padding-top: 200px;
     padding-bottom: 0;
   }
