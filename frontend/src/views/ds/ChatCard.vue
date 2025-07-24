@@ -9,7 +9,7 @@ const props = withDefaults(
     type: string
     typeName: string
     num: string
-    isSelected: boolean
+    isSelected?: boolean
     description?: string
     id?: string
   }>(),
@@ -34,7 +34,7 @@ const SelectDs = () => {
 </script>
 
 <template>
-  <div class="card" @click="SelectDs" :class="isSelected && 'is-selected'">
+  <div class="card" :class="isSelected && 'is-selected'" @click="SelectDs">
     <div class="name-icon">
       <img :src="icon" width="32px" height="32px" />
       <div class="info">
