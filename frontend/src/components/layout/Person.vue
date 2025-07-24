@@ -75,7 +75,7 @@ const logout = () => {
     <template #reference>
       <button class="person" :class="collapse && 'collapse'">
         <img class="default-avatar" :src="Default_avatar" width="32px" height="32px" />
-        <span v-if="!collapse" class="name">{{ name }}</span>
+        <span v-if="!collapse" class="name ellipsis" :title="name">{{ name }}</span>
       </button></template
     >
     <div class="popover">
@@ -184,6 +184,7 @@ const logout = () => {
     font-size: 14px;
     line-height: 22px;
     margin-left: 8px;
+    max-width: 85px;
   }
 
   &::after {

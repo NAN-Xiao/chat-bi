@@ -253,13 +253,6 @@ const dsRules = {
       trigger: 'change',
     },
   ],
-  private_list: [
-    {
-      required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('user.workspace'),
-      trigger: 'change',
-    },
-  ],
 }
 
 const urlRules = {
@@ -934,11 +927,7 @@ const saveHandler = () => {
     align-items: center;
     .open-the_query {
       color: #ff8800;
-      &::before {
-        color: var(--ed-color-danger);
-        content: '*';
-        margin-left: 2px;
-      }
+      margin-left: 4px;
     }
   }
 

@@ -279,7 +279,7 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClosePassword">{{ $t('common.cancel') }}</el-button>
+        <el-button secondary @click="handleClosePassword">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" @click="handleConfirmPassword">
           {{ $t('common.save') }}
         </el-button>

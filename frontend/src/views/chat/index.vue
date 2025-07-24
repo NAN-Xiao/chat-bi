@@ -569,7 +569,7 @@ function getChatPredictData(recordId?: number) {
   chatApi.get_chart_predict_data(recordId).then((response) => {
     currentChat.value.records.forEach((record) => {
       if (record.id === recordId) {
-        record.predict_data = response
+        record.predict_data = response.data ?? []
       }
     })
   })

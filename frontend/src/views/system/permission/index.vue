@@ -498,7 +498,7 @@ const columnRules = {
   table_id: [
     {
       required: true,
-      message: t('datasource.Please_select') + t('common.empty') + t('permission.set_rule'),
+      message: t('datasource.Please_select') + t('common.empty') + t('permission.data_table'),
       trigger: 'change',
     },
   ],
@@ -609,9 +609,9 @@ const columnRules = {
         >
           <el-form-item prop="name" :label="t('permission.rule_group_name')">
             <el-input
+              v-model="currentPermission.name"
               maxlength="50"
               clearable
-              v-model="currentPermission.name"
               :placeholder="
                 $t('datasource.please_enter') +
                 $t('common.empty') +
@@ -850,6 +850,7 @@ const columnRules = {
   .ed-empty_200 {
     padding-top: 200px;
     padding-bottom: 0;
+    height: auto;
   }
   .tool-left {
     display: flex;
