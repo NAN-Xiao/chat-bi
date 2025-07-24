@@ -37,18 +37,20 @@ function listDs() {
   })
 }
 
+const dialogVisible = ref(false)
+
 const innerDs = ref()
 
 const loading = ref(false)
 
 function showDs() {
   listDs()
-  datasourceConfigvVisible.value = true
+  dialogVisible.value = true
 }
 
 function hideDs() {
   innerDs.value = undefined
-  datasourceConfigvVisible.value = false
+  dialogVisible.value = false
 }
 
 function selectDsInDialog(ds: any) {
@@ -135,7 +137,6 @@ defineExpose({
         :type="ele.type"
         :type-name="ele.type_name"
         :num="ele.num"
-        :is-selected="ele.id === innerDs"
         :description="ele.description"
         @select-ds="selectDsInDialog(ele)"
       ></Card>
@@ -146,7 +147,7 @@ defineExpose({
           $t('common.cancel')
         }}</el-button>
         <el-button
-          :type="loading || innerDs === undefined ? 'info' : 'primary'"
+          type="primary"
           :disabled="loading || innerDs === undefined"
           @click="confirmSelectDs"
         >
@@ -162,7 +163,7 @@ defineExpose({
   .card-content {
     display: flex;
     flex-wrap: wrap;
-    max-height: 100%;
+    max-height: calc(100% - 40px);
     overflow-y: auto;
   }
 }
