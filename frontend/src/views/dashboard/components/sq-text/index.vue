@@ -124,6 +124,10 @@ onMounted(() => {
   overflow-y: auto !important;
   position: relative;
   padding: 12px !important;
+  div::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+  }
   .rich-text-empty {
     position: absolute;
     width: calc(100% - 24px);

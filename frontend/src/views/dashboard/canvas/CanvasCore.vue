@@ -16,7 +16,7 @@ const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const canvasLocked = ref(false) // Is the canvas movement locked， Default false
 const emits = defineEmits(['parentAddItemBox'])
-const { curComponentId, fullscreenFlag } = storeToRefs(dashboardStore)
+const { curComponentId, curComponent, fullscreenFlag } = storeToRefs(dashboardStore)
 let currentInstance: any
 const props = defineProps({
   canvasId: {
@@ -409,6 +409,10 @@ function removeItemById(id: number) {
   const index = canvasComponentData.value.findIndex((item) => item.id === id)
   if (index >= 0) {
     removeItem(index)
+    renderOk.value = false
+    nextTick(() => {
+      renderOk.value = true
+    })
   }
 }
 
@@ -736,8 +740,13 @@ function containerMouseDown(e: MouseEvent) {
   }
   infoBox.value.startX = e.pageX
   infoBox.value.startY = e.pageY
-  e.preventDefault()
-  e.stopPropagation()
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  if (isMainCanvas(props.canvasId) && curComponent.value?.editing) {
+    // do SQtext
+  } else {
+    e.preventDefault()
+    e.stopPropagation()
+  }
 }
 
 function getNowPosition(addSizeX: number, addSizeY: number, moveXSize: number, moveYSize: number) {

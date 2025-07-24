@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { type CanvasItem } from '@/utils/canvas.ts'
-import { ref, toRefs, type PropType } from 'vue'
+import { ref, toRefs, type PropType, computed } from 'vue'
 import ResizeHandle from '@/views/dashboard/canvas/ResizeHandle.vue'
 import DragHandle from '@/views/dashboard/canvas/DragHandle.vue'
 import ComponentBar from '@/views/dashboard/canvas/ComponentBar.vue'
@@ -55,6 +55,8 @@ const shapeClick = (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
 }
+
+const dragDandleValue = computed(() => props.canEdit && !props.configItem.editing)
 </script>
 
 <template>
@@ -78,7 +80,7 @@ const shapeClick = (e: MouseEvent) => {
       :canvas-id="canvasId"
       @enlarge-view="() => emits('enlargeView')"
     ></component-bar>
-    <template v-if="canEdit">
+    <template v-if="dragDandleValue">
       <drag-handle></drag-handle>
     </template>
     <slot></slot>

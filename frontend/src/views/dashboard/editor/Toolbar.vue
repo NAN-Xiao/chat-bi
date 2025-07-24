@@ -94,6 +94,7 @@ const editCanvasName = () => {
 const closeEditCanvasName = () => {
   nameEdit.value = false
   if (!inputName.value || !inputName.value.trim()) {
+    ElMessage.warning(t('dashboard.length_1_64_characters'))
     return
   }
   if (inputName.value.trim() === dashboardInfo.value.name) {

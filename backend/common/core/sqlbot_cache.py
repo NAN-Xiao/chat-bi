@@ -7,11 +7,9 @@ from contextlib import asynccontextmanager
 import asyncio
 import random
 from collections import defaultdict
-
-from apps.system.schemas.auth import CacheName
-from apps.system.schemas.system_schema import UserInfoDTO
+from common.core.config import settings
 from common.utils.utils import SQLBotLogUtil
-
+from fastapi_cache.backends.inmemory import InMemoryBackend
 # 使用contextvar来跟踪当前线程已持有的锁
 _held_locks = contextvars.ContextVar('held_locks', default=set())
 # 高效锁管理器
@@ -105,6 +103,8 @@ def cache(
         
         @wraps(func)
         async def wrapper(*args, **kwargs):
+            if not settings.CACHE_TYPE or settings.CACHE_TYPE.lower() == "none":
+                return await func(*args, **kwargs)
             # 生成缓存键
             cache_key = used_key_builder(
                 func=func,
@@ -116,13 +116,9 @@ def cache(
             # 防击穿锁
             async with _get_cache_lock(cache_key):
                 backend = FastAPICache.get_backend()
-                
                 # 双重检查
                 if (cached := await backend.get(cache_key)) is not None:
                     SQLBotLogUtil.debug(f"Cache hit: {cache_key}")
-                    if CacheName.USER_INFO.value in cache_key:
-                        user = UserInfoDTO.model_validate(cached)
-                        SQLBotLogUtil.info(f"User cache hit: [uid: {user.id}, account: {user.account}, oid: {user.oid}]")
                     return cached
                 
                 # 执行函数并缓存结果
@@ -134,9 +130,6 @@ def cache(
                 await backend.set(cache_key, result, actual_expire)
                 
                 SQLBotLogUtil.debug(f"Cache set: {cache_key} (expire: {actual_expire}s)")
-                if CacheName.USER_INFO.value in cache_key:
-                    user = UserInfoDTO.model_validate(result)
-                    SQLBotLogUtil.info(f"User cache set: [uid: {user.id}, account: {user.account}, oid: {user.oid}]")
                 return result
                 
         return wrapper
@@ -152,6 +145,8 @@ def clear_cache(
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
+            if not settings.CACHE_TYPE or settings.CACHE_TYPE.lower() == "none":
+                return await func(*args, **kwargs)
             cache_key = custom_key_builder(
                 func=func,
                 namespace=namespace,
@@ -170,8 +165,27 @@ def clear_cache(
                     result = await func(*args, **kwargs)
                     if await backend.get(cache_key):
                         await backend.clear(cache_key)
-                    SQLBotLogUtil.info(f"Cache cleared: {cache_key}")
+                    SQLBotLogUtil.debug(f"Cache cleared: {cache_key}")
                 return result
         
         return wrapper
     return decorator
+
+
+def init_sqlbot_cache():
+    cache_type: str = settings.CACHE_TYPE
+    if cache_type == "memory":
+        FastAPICache.init(InMemoryBackend())
+        SQLBotLogUtil.info("SQLBot 使用内存缓存, 仅支持单进程模式")
+    elif cache_type == "redis":
+        from fastapi_cache.backends.redis import RedisBackend
+        import redis.asyncio as redis
+        from redis.asyncio.connection import ConnectionPool
+        redis_url = settings.CACHE_REDIS_URL or "redis://localhost:6379/0"
+        pool = ConnectionPool.from_url(url=redis_url)
+        redis_client = redis.Redis(connection_pool=pool)
+        FastAPICache.init(RedisBackend(redis_client), prefix="sqlbot-cache")
+        SQLBotLogUtil.info(f"SQLBot 使用Redis缓存, 可使用多进程模式")
+    else:
+        SQLBotLogUtil.warning("SQLBot 未启用缓存, 可使用多进程模式")
+    

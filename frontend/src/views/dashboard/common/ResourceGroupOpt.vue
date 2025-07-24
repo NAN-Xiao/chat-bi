@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const emits = defineEmits(['finish'])
+const resource = ref(null)
 const state = reactive({
   id: null,
   opt: null,
@@ -84,21 +85,11 @@ const resourceFormRules = ref({
   name: [
     {
       required: true,
-      message: state.placeholder,
-      trigger: 'change',
-    },
-    {
-      required: true,
-      message: state.placeholder,
-      trigger: 'blur',
-    },
-    {
       min: 1,
       max: 64,
       message: t('dashboard.length_limit64'),
       trigger: 'change',
     },
-    { required: true, trigger: 'blur' },
   ],
   pid: [
     {
@@ -131,23 +122,28 @@ const propsTree = {
 const showPid = false
 
 const saveResource = () => {
-  const params = {
-    id: state.id,
-    node_type: state.nodeType,
-    name: resourceForm.name,
-    opt: state.opt,
-    pid: resourceForm.pid,
-    type: 'dashboard',
-    level: state.nodeType === 'folder' ? 0 : 1,
-  }
-  saveDashboardResource(params, function (rsp: any) {
-    const messageTips = t('common.save_success')
-    ElMessage({
-      type: 'success',
-      message: messageTips,
-    })
-    emits('finish', { opt: state.opt, resourceId: rsp.id })
-    resetForm()
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  resource.value?.validate((result) => {
+    if (result) {
+      const params = {
+        id: state.id,
+        node_type: state.nodeType,
+        name: resourceForm.name,
+        opt: state.opt,
+        pid: resourceForm.pid,
+        type: 'dashboard',
+        level: state.nodeType === 'folder' ? 0 : 1,
+      }
+      saveDashboardResource(params, function (rsp: any) {
+        const messageTips = t('common.save_success')
+        ElMessage({
+          type: 'success',
+          message: messageTips,
+        })
+        emits('finish', { opt: state.opt, resourceId: rsp.id })
+        resetForm()
+      })
+    }
   })
 }
 

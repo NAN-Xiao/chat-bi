@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     DEFAULT_PWD: str = "SQLBot@123456"
     ASSISTANT_TOKEN_KEY: str = "X-SQLBOT-ASSISTANT-TOKEN"
     
+    CACHE_TYPE: Literal["redis", "memory", "None"] = "memory"
+    CACHE_REDIS_URL: str | None = None # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
+    
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     LOG_DIR: str = "logs"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"

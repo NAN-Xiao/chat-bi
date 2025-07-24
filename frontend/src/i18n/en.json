@@ -32,6 +32,7 @@
     "password_reset_successful": "Password reset successful"
   },
   "dashboard": {
+    "new_tab": "New Tab",
     "length_limit64": "Field length must be between 1 and 64",
     "sort_column": "Sort field",
     "sort_type": "Sort type",

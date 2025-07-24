@@ -53,10 +53,6 @@ export class Line extends BaseG2Chart {
           nice: true,
         },
       },
-      interaction: {
-        tooltip: { series: series.length > 0, shared: true },
-      },
-
       children: [
         {
           type: 'line',

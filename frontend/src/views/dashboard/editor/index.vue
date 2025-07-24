@@ -36,6 +36,8 @@ const addComponent = (componentType: string, viewInfo?: any) => {
       const subTabName = guid('tab')
       // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
       component.propValue[0].name = subTabName
+      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      component.propValue[0].title = t('dashboard.new_tab')
       component.activeTabName = subTabName
     }
     component.y = 100
