@@ -63,7 +63,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
             with Session(engine) as session:
                 session_user = await get_user_info(session = session, user_id = token_data.id)
                 session_user = UserInfoDTO.model_validate(session_user)
-                session_user = UserInfoDTO.model_validate(session_user)
                 """ if token_data.oid != session_user.oid:
                     raise HTTPException(
                         status_code=401,

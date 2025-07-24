@@ -41,8 +41,12 @@
                 <el-icon size="28">
                   <avatar_personal></avatar_personal>
                 </el-icon>
-                <span class="ml-4"> {{ space.name }}</span>
-                <span class="account">({{ space.account }})</span>
+                <span class="ml-4 ellipsis" style="max-width: 40%" :title="space.name">
+                  {{ space.name }}</span
+                >
+                <span class="account ellipsis" style="max-width: 40%" :title="space.account"
+                  >({{ space.account }})</span
+                >
               </div>
             </el-checkbox>
           </el-checkbox-group>
@@ -59,12 +63,16 @@
           </el-button>
         </div>
         <div v-for="ele in checkedWorkspace" :key="ele.name" class="flex-between">
-          <div class="flex align-center">
+          <div class="flex align-center ellipsis" style="width: 100%">
             <el-icon size="28">
               <avatar_personal></avatar_personal>
             </el-icon>
-            <span class="ml-4 lighter">{{ ele.name }}</span>
-            <span class="account">({{ ele.account }})</span>
+            <span class="ml-4 lighter ellipsis" style="max-width: 40%" :title="ele.name">{{
+              ele.name
+            }}</span>
+            <span class="account ellipsis" style="max-width: 40%" :title="ele.account"
+              >({{ ele.account }})</span
+            >
           </div>
           <el-button text>
             <el-icon size="16" @click="clearWorkspace(ele)"><Close /></el-icon>

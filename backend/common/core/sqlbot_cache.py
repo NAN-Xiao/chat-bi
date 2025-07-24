@@ -8,6 +8,8 @@ import asyncio
 import random
 from collections import defaultdict
 
+from apps.system.schemas.auth import CacheName
+from apps.system.schemas.system_schema import UserInfoDTO
 from common.utils.utils import SQLBotLogUtil
 
 # 使用contextvar来跟踪当前线程已持有的锁
@@ -118,6 +120,9 @@ def cache(
                 # 双重检查
                 if (cached := await backend.get(cache_key)) is not None:
                     SQLBotLogUtil.debug(f"Cache hit: {cache_key}")
+                    if CacheName.USER_INFO.value in cache_key:
+                        user = UserInfoDTO.model_validate(cached)
+                        SQLBotLogUtil.info(f"User cache hit: [uid: {user.id}, account: {user.account}, oid: {user.oid}]")
                     return cached
                 
                 # 执行函数并缓存结果
@@ -129,6 +134,9 @@ def cache(
                 await backend.set(cache_key, result, actual_expire)
                 
                 SQLBotLogUtil.debug(f"Cache set: {cache_key} (expire: {actual_expire}s)")
+                if CacheName.USER_INFO.value in cache_key:
+                    user = UserInfoDTO.model_validate(result)
+                    SQLBotLogUtil.info(f"User cache set: [uid: {user.id}, account: {user.account}, oid: {user.oid}]")
                 return result
                 
         return wrapper

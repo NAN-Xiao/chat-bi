@@ -117,6 +117,7 @@ const handleEmbedded = () => {
     height: 44px;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+    word-break: break-word;
     overflow: hidden;
     text-overflow: ellipsis;
   }
