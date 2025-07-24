@@ -259,6 +259,9 @@ const handleEditeTable = (val: any) => {
     })
 }
 const beforeClose = () => {
+  if (termFormRef.value) {
+    termFormRef.value.clearValidate()
+  }
   ruleConfigvVisible.value = false
   activeStep.value = 0
   isCreate.value = false
