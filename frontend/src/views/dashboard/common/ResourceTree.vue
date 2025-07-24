@@ -398,6 +398,7 @@ defineExpose({
     <el-scrollbar v-loading="copyLoading" class="custom-tree">
       <el-tree
         ref="resourceListTree"
+        style="overflow-x: hidden"
         menu
         :empty-text="t('dashboard.no_dashboard')"
         :default-expanded-keys="expandedArray"
