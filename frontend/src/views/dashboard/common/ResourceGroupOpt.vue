@@ -95,7 +95,7 @@ const resourceFormRules = ref({
     {
       min: 1,
       max: 64,
-      message: 'Chart limit 1-64',
+      message: t('dashboard.length_limit64'),
       trigger: 'change',
     },
     { required: true, trigger: 'blur' },
