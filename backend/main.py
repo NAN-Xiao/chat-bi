@@ -14,10 +14,9 @@ from alembic import command
 from fastapi_mcp import FastApiMCP
 from fastapi.staticfiles import StaticFiles
 import sqlbot_xpack
-from fastapi_cache import FastAPICache
-from fastapi_cache.backends.inmemory import InMemoryBackend
 
 from common.utils.utils import SQLBotLogUtil
+from common.core.sqlbot_cache import init_sqlbot_cache
 
 def run_migrations():
     alembic_cfg = Config("alembic.ini")
@@ -27,7 +26,7 @@ def run_migrations():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
-    FastAPICache.init(InMemoryBackend())
+    init_sqlbot_cache()
     init_dynamic_cors(app)
     SQLBotLogUtil.info("✅ SQLBot 初始化完成")
     yield
