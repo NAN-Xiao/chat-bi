@@ -34,6 +34,7 @@
     "password_reset_successful": "重置密码成功"
   },
   "dashboard": {
+    "length_limit64": "字段长度需要在1-64之间",
     "sort_column": "排序字段",
     "sort_type": "排序方式",
     "time": "时间",
@@ -62,7 +63,7 @@
     "select_dashboard": "请选择仪表板",
     "name": "名称",
     "view": "图表",
-    "text": "文本",
+    "text": "富文本",
     "preview": "预览",
     "creator": "创建人",
     "dashboard_id": "仪表板ID",

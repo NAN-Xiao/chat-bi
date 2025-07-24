@@ -32,6 +32,7 @@
     "password_reset_successful": "Password reset successful"
   },
   "dashboard": {
+    "length_limit64": "Field length must be between 1 and 64",
     "sort_column": "Sort field",
     "sort_type": "Sort type",
     "time": "Time",
@@ -59,7 +60,7 @@
     "name_desc": "Sort by Name (Descending)",
     "select_dashboard": "Please Select Dashboard",
     "view": "View",
-    "text": "Text",
+    "text": "Rich Text",
     "preview": "Preview",
     "creator": "Creator",
     "dashboard_id": "Dashboard ID",
