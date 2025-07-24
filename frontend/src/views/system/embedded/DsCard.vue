@@ -46,7 +46,7 @@ const handlePublic = () => {
     <div class="name-icon">
       <img :src="icon" width="32px" height="32px" />
       <div class="info">
-        <div class="name">{{ name }}</div>
+        <div class="name ellipsis" :title="name">{{ name }}</div>
         <div class="type">{{ typeName }}</div>
       </div>
       <span class="default" :class="isPrivate && 'is-private'">{{
@@ -106,6 +106,7 @@ const handlePublic = () => {
         font-weight: 500;
         font-size: 16px;
         line-height: 24px;
+        max-width: 250px;
       }
       .type {
         font-weight: 400;
