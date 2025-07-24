@@ -24,8 +24,12 @@ const workspaceForm = reactive({
   name: '',
   id: '',
 })
-const selectable = (row: any) => ![userStore.getUid].includes(row.id) && row.weight !== 1
-
+const selectable = (row: any) => {
+  if (+userStore.getUid === 1) {
+    return true
+  }
+  return ![userStore.getUid].includes(row.id) && row.weight !== 1
+}
 onMounted(() => {
   search()
 })
