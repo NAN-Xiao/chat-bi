@@ -246,7 +246,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     if data.fields is None or len(data.fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
-    where = None
+    where = ''
     f_list = [f for f in data.fields if f.checked]
     if is_normal_user(current_user):
         # column is checked, and, column permission for data.fields
