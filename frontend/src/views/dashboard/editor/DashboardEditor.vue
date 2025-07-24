@@ -66,12 +66,12 @@ const canvasSizeInit = () => {
 
 const sizeInit = () => {
   if (dashboardEditorRef.value) {
+    baseMarginLeft.value = 16
+    baseMarginTop.value = 16
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenWidth = dashboardEditorRef.value.offsetWidth
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenHeight = dashboardEditorRef.value.offsetHeight
-    baseMarginLeft.value = 10
-    baseMarginTop.value = 10
     baseWidth.value =
       (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
     baseHeight.value =
