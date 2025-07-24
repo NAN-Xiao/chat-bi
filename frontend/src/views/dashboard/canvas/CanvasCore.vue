@@ -740,6 +740,7 @@ function containerMouseDown(e: MouseEvent) {
   }
   infoBox.value.startX = e.pageX
   infoBox.value.startY = e.pageY
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   if (isMainCanvas(props.canvasId) && curComponent.value?.editing) {
     // do SQtext
   } else {
