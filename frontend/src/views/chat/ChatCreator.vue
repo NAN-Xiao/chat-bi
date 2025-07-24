@@ -1,6 +1,9 @@
 <script lang="ts" setup>
 import { onMounted, ref, computed, shallowRef } from 'vue'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
+import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import { useRouter } from 'vue-router'
+import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import { chatApi, ChatInfo } from '@/api/chat.ts'
 import { datasourceApi } from '@/api/datasource.ts'
@@ -15,6 +18,8 @@ const props = withDefaults(
   }
 )
 
+const router = useRouter()
+const searchLoading = ref(false)
 const datasourceConfigvVisible = ref(false)
 const keywords = ref('')
 const datasourceList = shallowRef([] as any[])
@@ -32,9 +37,15 @@ const beforeClose = () => {
 const emits = defineEmits(['onChatCreated'])
 
 function listDs() {
-  datasourceApi.list().then((res) => {
-    datasourceList.value = res
-  })
+  searchLoading.value = true
+  datasourceApi
+    .list()
+    .then((res) => {
+      datasourceList.value = res
+    })
+    .finally(() => {
+      searchLoading.value = false
+    })
 }
 
 const innerDs = ref()
@@ -89,6 +100,10 @@ onMounted(() => {
   }
 })
 
+const handleAddDatasource = () => {
+  router.push('/ds/index')
+}
+
 defineExpose({
   showDs,
   hideDs,
@@ -126,7 +141,7 @@ defineExpose({
         <icon_close_outlined></icon_close_outlined>
       </el-icon>
     </template>
-    <div class="card-content">
+    <div v-if="datasourceListWithSearch.length" class="card-content">
       <Card
         v-for="ele in datasourceListWithSearch"
         :id="ele.id"
@@ -140,6 +155,28 @@ defineExpose({
         @select-ds="selectDsInDialog(ele)"
       ></Card>
     </div>
+    <template v-if="!keywords && !datasourceListWithSearch.length && !searchLoading">
+      <EmptyBackground
+        class="datasource-yet_btn"
+        :description="$t('datasource.data_source_yet')"
+        img-type="noneWhite"
+      />
+
+      <div style="text-align: center; margin-top: -10px">
+        <el-button type="primary" @click="handleAddDatasource">
+          <template #icon>
+            <icon_add_outlined></icon_add_outlined>
+          </template>
+          {{ $t('datasource.new_data_source') }}
+        </el-button>
+      </div>
+    </template>
+    <EmptyBackground
+      v-if="!!keywords && !datasourceListWithSearch.length"
+      :description="$t('datasource.relevant_content_found')"
+      class="datasource-yet"
+      img-type="tree"
+    />
     <template #footer>
       <div class="dialog-footer">
         <el-button secondary :disabled="loading" @click="hideDs">{{
@@ -164,6 +201,18 @@ defineExpose({
     flex-wrap: wrap;
     max-height: 100%;
     overflow-y: auto;
+  }
+
+  .datasource-yet {
+    padding-bottom: 0;
+    height: auto;
+    padding-top: 200px;
+  }
+
+  .datasource-yet_btn {
+    height: auto !important;
+    padding-top: 200px;
+    padding-bottom: 0;
   }
 }
 </style>
