@@ -5,10 +5,12 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy import and_, text, cast, or_, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlbot_xpack.permissions.models.ds_permission import DsPermission
+from sqlbot_xpack.permissions.api.permission import transRecord2DTO
+from sqlbot_xpack.permissions.models.ds_permission import DsPermission, PermissionDTO
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import select
 
+from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
 from apps.db.db import get_engine, get_tables, get_fields, exec_sql
@@ -238,6 +240,9 @@ def updateField(session: SessionDep, field: CoreField):
 
 
 def preview(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
+    ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+    check_status(session, ds, True)
+
     if data.fields is None or len(data.fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
@@ -261,20 +266,41 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     if fields is None or len(fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
-    ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
-    check_status(session, ds, True)
+    # row permission tree
+    row_permissions = session.query(DsPermission).filter(
+        and_(DsPermission.table_id == data.table.id, DsPermission.type == 'row')).all()
+    res: List[PermissionDTO] = []
+    if row_permissions is not None:
+        for permission in row_permissions:
+            # check permission and user in same rules
+            obj = session.query(DsRules).filter(
+                and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
+                     or_(DsRules.user_list.op('@>')(cast([f'{current_user.id}'], JSONB)),
+                         DsRules.user_list.op('@>')(cast([current_user.id], JSONB))))
+            ).first()
+            if obj is not None:
+                res.append(transRecord2DTO(session, permission))
+    wheres = transFilterTree(session, res, ds)
+    where = (' where ' + wheres) if wheres is not None and wheres != '' else ''
+
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
     if ds.type == "mysql":
-        sql = f"""SELECT `{"`, `".join(fields)}` FROM `{data.table.table_name}` LIMIT 100"""
+        sql = f"""SELECT `{"`, `".join(fields)}` FROM `{data.table.table_name}` 
+            {where} 
+            LIMIT 100"""
     elif ds.type == "sqlServer":
         sql = f"""SELECT [{"], [".join(fields)}] FROM [{conf.dbSchema}].[{data.table.table_name}]
+            {where} 
             ORDER BY [{data.fields[0].field_name}]
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     elif ds.type == "pg" or ds.type == "excel":
-        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}" LIMIT 100"""
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}" 
+            {where} 
+            LIMIT 100"""
     elif ds.type == "oracle":
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}"
+            {where} 
             ORDER BY "{data.fields[0].field_name}"
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     return exec_sql(ds, sql)

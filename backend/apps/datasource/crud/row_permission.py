@@ -3,8 +3,10 @@
 
 from typing import List, Dict
 
-from apps.datasource.models.datasource import CoreField, CoreDatasource
 from sqlbot_xpack.permissions.models.ds_permission import PermissionTree, PermissionDTO
+
+from apps.datasource.models.datasource import CoreField, CoreDatasource
+from apps.db.constant import DB
 from common.core.deps import SessionDep
 
 
@@ -48,7 +50,8 @@ def transTreeItem(session: SessionDep, item: Dict, ds: CoreDatasource) -> str | 
     if field is None:
         return None
 
-    whereName = field.field_name
+    db = DB.get_db(ds.type)
+    whereName = db.prefix + field.field_name + db.suffix
     if item['filter_type'] == 'enum':
         if len(item['enum_value']) > 0:
             if ds['type'] == 'sqlServer' and (
