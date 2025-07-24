@@ -91,7 +91,7 @@ const baseParams = computed(() => {
 
 <style scoped lang="less">
 .editor-content {
-  padding: 12px;
+  padding: 8px;
   width: 100vw;
   height: 100vh;
   background: #fff;
