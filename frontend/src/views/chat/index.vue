@@ -412,7 +412,7 @@ const createNewChat = async () => {
   chatCreatorRef.value?.showDs()
 }
 
-function getChatList() {
+function getChatList(callback?: () => void) {
   loading.value = true
   chatApi
     .list()
@@ -421,6 +421,9 @@ function getChatList() {
     })
     .finally(() => {
       loading.value = false
+      if (callback && typeof callback === 'function') {
+        callback()
+      }
     })
 }
 
@@ -754,10 +757,6 @@ function stop(func?: (...p: any[]) => void, ...param: any[]) {
   }
 }
 
-onMounted(() => {
-  getChatList()
-})
-
 defineExpose({
   getHistoryList,
   toAssistantHistory,
@@ -767,7 +766,7 @@ defineExpose({
 
 const hiddenChatCreatorRef = ref()
 
-onMounted(() => {
+function jumpCreatChat() {
   if (props.startChatDsId) {
     const _id = props.startChatDsId
     nextTick(() => {
@@ -776,6 +775,10 @@ onMounted(() => {
     const newUrl = window.location.hash.replace(/\?.*$/, '')
     history.replaceState({}, '', newUrl)
   }
+}
+
+onMounted(() => {
+  getChatList(jumpCreatChat)
 })
 </script>
 
