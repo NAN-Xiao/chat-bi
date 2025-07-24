@@ -1206,7 +1206,7 @@ defineExpose({
     <EmptyBackground
       v-if="!canvasComponentData.length && isMainCanvas(canvasId)"
       :description="t('dashboard.add_component_tips')"
-      img-type="selectDashboard"
+      img-type="addComponent"
     />
     <template v-if="renderOk">
       <CanvasShape

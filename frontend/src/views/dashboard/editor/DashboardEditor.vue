@@ -140,6 +140,9 @@ const emits = defineEmits(['parentAddItemBox'])
   width: 100%;
   height: 100%;
   overflow-y: auto;
+  :deep(.ed-empty__description) {
+    width: 240px !important;
+  }
 }
 
 .move-in-active {
