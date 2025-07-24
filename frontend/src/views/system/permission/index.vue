@@ -417,7 +417,8 @@ const next = () => {
     }
   })
 }
-const savePermission = () => {
+
+const save = () => {
   const { id, name, permissions, users } = cloneDeep(currentPermission)
 
   const permissionsObj = permissions.map((ele: any) => {
@@ -458,6 +459,18 @@ const savePermission = () => {
     beforeClose()
     handleSearch()
   })
+}
+const savePermission = () => {
+  if (!isCreate.value && activeStep.value === 0) {
+    termFormRef.value.validate((res: any) => {
+      if (res) {
+        save()
+      }
+    })
+    return
+  }
+
+  save()
 }
 
 const columnRules = {
@@ -809,6 +822,8 @@ const columnRules = {
 
 <style lang="less" scoped>
 .permission {
+  height: 100%;
+  width: 100%;
   .ed-empty {
     padding-top: 200px;
     padding-bottom: 0;
