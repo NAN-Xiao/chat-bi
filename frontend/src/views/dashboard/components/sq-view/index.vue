@@ -102,6 +102,10 @@ defineExpose({
   background: #fff;
   padding: 12px !important;
   border-radius: 12px;
+  div::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+  }
   .header-bar {
     height: 32px;
     display: flex;
