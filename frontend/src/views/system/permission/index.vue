@@ -25,8 +25,8 @@ const termFormRef = ref()
 const columnFormRef = ref()
 const drawerTitle = ref('')
 const dialogTitle = ref('')
-const activeDs = ref({})
-const activeTable = ref({})
+const activeDs = ref(null)
+const activeTable = ref(null)
 const ruleList = ref<any[]>([])
 
 const defaultPermission = {
@@ -146,8 +146,8 @@ const saveAuthTree = (val: any) => {
   dialogFormVisible.value = false
 }
 const getDsList = (row: any) => {
-  activeDs.value = {}
-  activeTable.value = {}
+  activeDs.value = null
+  activeTable.value = null
   datasourceApi
     .list()
     .then((res: any) => {
@@ -209,6 +209,17 @@ const handleColumnPermission = (row: any) => {
   dialogTitle.value = row?.id
     ? t('permission.edit_column_permission')
     : t('permission.add_column_permission')
+}
+
+const handleInitDsIdChange = (val: any) => {
+  columnForm.ds_id = val.id
+  columnForm.ds_name = val.name
+  datasourceApi.tableList(val.id).then((res: any) => {
+    tableListOptions.value = res || []
+    activeTable.value = null
+    fieldListOptions.value = []
+    columnForm.permissions = []
+  })
 }
 
 const handleDsIdChange = (val: any) => {
@@ -598,6 +609,8 @@ const columnRules = {
         >
           <el-form-item prop="name" :label="t('permission.rule_group_name')">
             <el-input
+              maxlength="50"
+              clearable
               v-model="currentPermission.name"
               :placeholder="
                 $t('datasource.please_enter') +
@@ -741,6 +754,8 @@ const columnRules = {
         <el-form-item prop="name" :label="t('permission.rule_name')">
           <el-input
             v-model="columnForm.name"
+            maxlength="50"
+            clearable
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + $t('permission.rule_name')
             "
@@ -750,12 +765,13 @@ const columnRules = {
         <el-form-item prop="table_id" :label="t('permission.data_table')">
           <el-select
             v-model="activeDs"
+            filterable
             style="width: 416px"
             value-key="id"
             :placeholder="
               $t('datasource.Please_select') + $t('common.empty') + $t('permission.data_source')
             "
-            @change="handleDsIdChange"
+            @change="handleInitDsIdChange"
           >
             <el-option
               v-for="item in dsListOptions"
@@ -766,6 +782,7 @@ const columnRules = {
           </el-select>
           <el-select
             v-model="activeTable"
+            filterable
             style="width: 416px; margin-left: auto"
             :disabled="!columnForm.ds_id"
             value-key="id"

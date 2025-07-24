@@ -152,7 +152,22 @@ const emits = defineEmits(['update:item', 'del'])
           >
           </el-option>
         </el-select>
+        <el-select
+          v-if="['null', 'empty'].includes(item.term)"
+          v-model="item.term"
+          style="max-width: 280px; margin-left: 8px"
+          :placeholder="t('datasource.Please_select')"
+        >
+          <el-option
+            v-for="ele in operators"
+            :key="ele.value"
+            :label="t(ele.label)"
+            :value="ele.value"
+          >
+          </el-option>
+        </el-select>
         <el-input
+          v-else
           v-model="item.value"
           style="max-width: 280px; margin-left: 8px"
           :placeholder="$t('datasource.please_enter')"
