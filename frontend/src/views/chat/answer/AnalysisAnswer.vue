@@ -156,6 +156,10 @@ const sendMessage = async () => {
         }
 
         switch (data.type) {
+          case 'id':
+            currentRecord.id = data.id
+            _currentChat.value.records[index.value].id = data.id
+            break
           case 'info':
             console.log(data.msg)
             break
