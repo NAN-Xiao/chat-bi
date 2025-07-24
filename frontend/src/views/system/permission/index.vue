@@ -882,6 +882,10 @@ const columnRules = {
         padding-right: 0;
       }
 
+      .ed-form-item__content {
+        padding-bottom: 100px;
+      }
+
       .table-content {
         width: 100%;
         margin-top: 16px;
@@ -889,7 +893,7 @@ const columnRules = {
         border-top: none;
         border-bottom: none;
         border-radius: 6px;
-        overflow: hidden;
+        overflow-y: auto;
         max-height: calc(100vh - 400px);
 
         &.border-bottom {
@@ -947,7 +951,7 @@ const columnRules = {
     border: 1px solid #1f232926;
     border-top: none;
     border-radius: 6px;
-    overflow: hidden;
+    overflow-y: auto;
     max-height: calc(100vh - 400px);
     .ed-table__empty-text {
       padding-top: 0;
