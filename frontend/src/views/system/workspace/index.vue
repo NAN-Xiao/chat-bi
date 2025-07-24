@@ -480,7 +480,7 @@ const handleCurrentChange = (val: number) => {
           </el-table>
         </div>
       </div>
-      <div class="pagination-container">
+      <div v-if="fieldListWithSearch.length" class="pagination-container">
         <el-pagination
           v-model:current-page="pageInfo.currentPage"
           v-model:page-size="pageInfo.pageSize"
