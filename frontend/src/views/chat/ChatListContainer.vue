@@ -73,7 +73,9 @@ const _chatList = computed({
 
 const computedChatList = computed<Array<ChatInfo>>(() => {
   if (search.value && search.value.length > 0) {
-    return filter(_chatList.value, (c) => includes(c.brief, search.value))
+    return filter(_chatList.value, (c) =>
+      includes(c.brief?.toLowerCase(), search.value?.toLowerCase())
+    )
   } else {
     return _chatList.value
   }
