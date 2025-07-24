@@ -409,6 +409,10 @@ function removeItemById(id: number) {
   const index = canvasComponentData.value.findIndex((item) => item.id === id)
   if (index >= 0) {
     removeItem(index)
+    renderOk.value = false
+    nextTick(() => {
+      renderOk.value = true
+    })
   }
 }
 
