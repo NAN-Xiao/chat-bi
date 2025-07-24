@@ -17,8 +17,6 @@ defineProps({
     default: () => {},
   },
 })
-
-const emits = defineEmits(['panelClick', 'smartClick'])
 </script>
 
 <template>

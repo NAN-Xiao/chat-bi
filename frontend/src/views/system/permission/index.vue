@@ -609,9 +609,9 @@ const columnRules = {
         >
           <el-form-item prop="name" :label="t('permission.rule_group_name')">
             <el-input
+              v-model="currentPermission.name"
               maxlength="50"
               clearable
-              v-model="currentPermission.name"
               :placeholder="
                 $t('datasource.please_enter') +
                 $t('common.empty') +

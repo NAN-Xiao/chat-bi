@@ -4,7 +4,7 @@ import icon_expand_down_filled from '@/assets/embedded/icon_expand-down_filled.s
 import rename from '@/assets/svg/icon_rename_outlined.svg'
 import delIcon from '@/assets/svg/icon_delete.svg'
 import { type Chat, chatApi } from '@/api/chat.ts'
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import dayjs from 'dayjs'
 import { getDate } from '@/utils/utils.ts'
 import { groupBy } from 'lodash-es'

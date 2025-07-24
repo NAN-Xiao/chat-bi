@@ -252,7 +252,7 @@ const dsRules = {
       message: t('datasource.please_enter') + t('common.empty') + t('user.workspace'),
       trigger: 'change',
     },
-  ]
+  ],
 }
 
 const urlRules = {

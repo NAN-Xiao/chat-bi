@@ -64,8 +64,8 @@
       label-width="180px"
       label-position="top"
       class="sqlbot-form"
-      @submit.prevent
       size="large"
+      @submit.prevent
     >
       <el-form-item label="Term name">
         <el-input v-model="state.form.term" autocomplete="off" />
