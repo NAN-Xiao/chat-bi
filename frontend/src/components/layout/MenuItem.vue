@@ -1,34 +1,43 @@
 <script lang="ts">
 import { h, defineComponent } from 'vue'
 import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
-import { useRouter } from 'vue-router'
-import user from '@/assets/svg/icon_member_filled.svg'
-import workspace from '@/assets/svg/icon_moments-categories_outlined.svg'
-import model from '@/assets/svg/icon_dataset_filled.svg'
-import ds from '@/assets/svg/ds.svg'
-import dashboard from '@/assets/svg/dashboard.svg'
-import chat from '@/assets/svg/chat.svg'
-import setting from '@/assets/svg/icon_setting_filled.svg'
-import icon_user from '@/assets/svg/icon_user.svg'
+import { useRouter, useRoute } from 'vue-router'
+import chat from '@/assets/svg/menu/icon_chat_filled.svg'
+import noChat from '@/assets/svg/menu/icon_chat_outlined.svg'
+import dashboard from '@/assets/svg/menu/icon_dashboard_filled.svg'
+import noDashboard from '@/assets/svg/menu/icon_dashboard_outlined.svg'
+import ds from '@/assets/svg/menu/icon_database_filled.svg'
+import noDs from '@/assets/svg/menu/icon_database_outlined.svg'
+import model from '@/assets/svg/menu/icon_dataset_filled.svg'
+import noModel from '@/assets/svg/menu/icon_dataset_outlined.svg'
+import embedded from '@/assets/svg/menu/icon_embedded_filled.svg'
+import noEmbedded from '@/assets/svg/menu/icon_embedded_outlined.svg'
+import user from '@/assets/svg/menu/icon_member_filled.svg'
+import noUser from '@/assets/svg/menu/icon_member_outlined.svg'
+import workspace from '@/assets/svg/menu/icon_moments-categories_filled.svg'
+import noWorkspace from '@/assets/svg/menu/icon_moments-categories_outlined.svg'
+import set from '@/assets/svg/menu/icon_setting_filled.svg'
+import noSet from '@/assets/svg/menu/icon-setting.svg'
 
 const iconMap = {
-  icon_ai: model,
-  ds,
-  dashboard,
   chat,
-  user,
-  setting,
-  icon_user: icon_user,
+  noChat,
+  ds,
+  noDs,
+  dashboard,
+  noDashboard,
   workspace,
+  noWorkspace,
+  set,
+  noSet,
+  user,
+  noUser,
+  model,
+  noModel,
+  embedded,
+  noEmbedded,
 } as { [key: string]: any }
 
-const titleWithIcon = (props: any) => {
-  const { title, icon } = props.menu?.meta || {}
-  return [
-    h(ElIcon, null, { default: () => h(iconMap[icon]) }),
-    h('span', null, { default: () => title }),
-  ]
-}
 const MenuItem = defineComponent({
   name: 'MenuItem',
   props: {
@@ -39,6 +48,14 @@ const MenuItem = defineComponent({
   },
   setup(props) {
     const router = useRouter()
+    const route = useRoute()
+    const titleWithIcon = (props: any) => {
+      const { title, icon } = props
+      return [
+        h(ElIcon, { size: '18' }, { default: () => h(iconMap[icon]) }),
+        h('span', null, { default: () => title }),
+      ]
+    }
 
     const handleMenuClick = (e: any) => {
       if (e.index) {
@@ -53,26 +70,33 @@ const MenuItem = defineComponent({
       }
 
       if (children?.length) {
+        const { title, iconDeActive, iconActive } = props.menu?.meta || {}
+        const icon = route.path.startsWith(path) ? iconActive : iconDeActive
         return h(
           ElSubMenu,
           { index: path, onClick: () => handleMenuClick(props.menu) },
           {
-            title: () => titleWithIcon(props),
+            title: () => titleWithIcon({ title, icon }),
             default: () => children.map((ele: any) => h(MenuItem, { menu: ele })),
           }
         )
       }
 
-      const { title, icon } = props.menu?.meta || {}
+      const { title, iconDeActive, iconActive } = props.menu?.meta || {}
+      const icon = route.path === path ? iconActive : iconDeActive
       const iconCom: any = iconMap[icon] ? ElIcon : null
       return h(
         ElMenuItem,
         { index: path, onClick: (e: any) => handleMenuClick(e) },
         {
           default: () => [
-            h(iconCom, null, {
-              default: () => h(iconMap[icon]),
-            }),
+            h(
+              iconCom,
+              { size: 18 },
+              {
+                default: () => h(iconMap[icon]),
+              }
+            ),
             h('span', null, { default: () => title }),
           ],
         }
