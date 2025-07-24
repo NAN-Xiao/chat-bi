@@ -602,6 +602,7 @@ const handleCurrentChange = (val: number) => {
 
     .list-content {
       height: calc(100% - 100px);
+      overflow-y: auto;
 
       .more {
         display: none;
