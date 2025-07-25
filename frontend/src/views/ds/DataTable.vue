@@ -335,7 +335,11 @@ const btnSelectClick = (val: any) => {
             </el-button>
           </div>
 
-          <div v-if="!loading" class="preview-or-schema">
+          <div
+            v-if="!loading"
+            class="preview-or-schema"
+            :class="btnSelect === 'q' && 'overflow-preview'"
+          >
             <div v-if="btnSelect === 'd'" class="table-content_preview">
               <el-table :data="fieldListComputed" style="width: 100%">
                 <el-table-column
@@ -641,6 +645,10 @@ const btnSelectClick = (val: any) => {
         .preview-or-schema {
           margin-top: 16px;
           height: calc(100% - 50px);
+
+          &.overflow-preview {
+            overflow-y: auto;
+          }
 
           .table-content_preview {
             max-height: calc(100% - 50px);
