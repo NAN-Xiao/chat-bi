@@ -834,7 +834,6 @@ class LLMService:
 
             # execute sql
             result = self.execute_sql(sql=sql)
-            print(result)
             self.save_sql_data(data_obj=result)
             if in_chat:
                 yield orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
