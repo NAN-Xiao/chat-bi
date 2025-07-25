@@ -223,6 +223,8 @@
     "edit": "编辑",
     "source_connection_failed": "数据源连接失败",
     "confirm": "确定",
+    "copy": "复制",
+    "the_original_one": "确认恢复为初始密码吗？",
     "enabled_status": "启用状态",
     "custom_notes": "自定义备注",
     "field_type": "字段类型",

@@ -110,10 +110,57 @@
                 :content="$t('common.reset_password')"
                 placement="top"
               >
-                <el-icon class="action-btn" size="16" @click="handleEditPassword(scope.row.id)">
+                <el-icon
+                  :ref="
+                    (el: any) => {
+                      setButtonRef(el, scope.row)
+                    }
+                  "
+                  v-click-outside="onClickOutside(scope.row)"
+                  class="action-btn"
+                  size="16"
+                >
                   <IconLock></IconLock>
                 </el-icon>
               </el-tooltip>
+              <el-popover
+                placement="right"
+                virtual-triggering
+                :width="300"
+                :virtual-ref="scope.row.buttonRef"
+                trigger="click"
+                show-arrow
+                :ref="
+                  (el: any) => {
+                    setPopoverRef(el, scope.row)
+                  }
+                "
+              >
+                <div class="reset-pwd-confirm">
+                  <div class="confirm-header">
+                    <span class="icon-span">
+                      <el-icon size="24">
+                        <icon_warning_filled class="svg-icon" />
+                      </el-icon>
+                    </span>
+                    <span class="header-span">{{ t('datasource.the_original_one') }}</span>
+                  </div>
+                  <div class="confirm-content">
+                    <span>SQLBot@123456</span>
+                    <el-button @click="copyText" style="margin-left: 4px" text>{{
+                      t('datasource.copy')
+                    }}</el-button>
+                  </div>
+                  <div class="confirm-foot">
+                    <el-button secondary @click="closeResetInfo(scope.row)">{{
+                      t('common.cancel')
+                    }}</el-button>
+                    <el-button type="primary" @click="handleEditPassword(scope.row.id)">
+                      {{ t('datasource.confirm') }}
+                    </el-button>
+                  </div>
+                </div>
+              </el-popover>
 
               <el-tooltip
                 :offset="14"
@@ -299,7 +346,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, unref, reactive, onMounted, nextTick } from 'vue'
 import UserImport from './UserImport.vue'
 import SuccessFilled from '@/assets/svg/gou_icon.svg'
 import CircleCloseFilled from '@/assets/svg/icon_ban_filled.svg'
@@ -317,6 +364,8 @@ import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { userApi } from '@/api/user'
 import { workspaceList } from '@/api/workspace'
 import { formatTimestamp } from '@/utils/date'
+import { ClickOutside as vClickOutside } from 'element-plus-secondary'
+import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
 
 const { t } = useI18n()
 const keyword = ref('')
@@ -426,6 +475,34 @@ const passwordRules = {
       trigger: 'blur',
     },
   ],
+}
+
+const closeResetInfo = (row: any) => {
+  row.popoverRef?.hide()
+  row.resetInfoShow = false
+}
+const setPopoverRef = (el: any, row: any) => {
+  row.popoverRef = el
+}
+
+const copyText = () => {
+  navigator.clipboard
+    .writeText('SQLBot@123456')
+    .then(function () {
+      ElMessage.success(t('embedded.copy_successful'))
+    })
+    .catch(function () {
+      ElMessage.error(t('embedded.copy_successful'))
+    })
+}
+
+const setButtonRef = (el: any, row: any) => {
+  row.buttonRef = el
+}
+const onClickOutside = (row: any) => {
+  if (row.popoverRef) {
+    unref(row.popoverRef).popperRef?.delayHide?.()
+  }
 }
 
 const multipleTableRef = ref()
@@ -859,6 +936,57 @@ onMounted(() => {
 
   .ed-icon {
     margin-right: 8px;
+  }
+}
+</style>
+
+<style lang="less">
+.reset-pwd-confirm {
+  padding: 5px 15px;
+  .confirm-header {
+    width: 100%;
+    min-height: 40px;
+    line-height: 40px;
+    display: flex;
+    flex-direction: row;
+    .icon-span {
+      color: var(--ed-color-warning);
+      font-size: 22px;
+      i {
+        top: 3px;
+      }
+    }
+    .header-span {
+      font-size: 16px;
+      font-weight: bold;
+      margin-left: 10px;
+      white-space: pre-wrap;
+      word-break: keep-all;
+    }
+  }
+  .confirm-foot {
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 15px;
+    .ed-button {
+      min-width: 48px;
+      height: 28px;
+      line-height: 28px;
+      font-size: 12px;
+    }
+  }
+  .confirm-warning {
+    font-size: 12px;
+    color: var(--ed-color-danger);
+    margin-left: 33px;
+  }
+  .confirm-content {
+    margin-left: 33px;
+    display: flex;
+    align-items: center;
   }
 }
 </style>

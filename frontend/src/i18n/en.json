@@ -224,6 +224,8 @@
     "custom_notes": "Custom notes",
     "field_type": "Field type",
     "field_name": "Field name",
+    "copy": "Copy",
+    "the_original_one": "Are you sure you want to restore the password to the original one?",
     "relevant_content_found": "No relevant content found",
     "please_enter": "Please enter",
     "Please_select": "Please select",
