@@ -740,26 +740,6 @@ const editTerm = () => {
 }
 
 const duplicateName = async () => {
-  const res = await userApi.pager({}, 1, 1000)
-  const arr = res.filter((ele: any) => ele.id !== state.form.id)
-  const names = arr.map((ele: any) => ele.name)
-  const accounts = arr.map((ele: any) => ele.account)
-  const emails = arr.map((ele: any) => ele.email)
-  if (names.includes(state.form.name)) {
-    ElMessage.error(t('embedded.duplicate_name_'))
-    return
-  }
-
-  if (accounts.includes(state.form.account)) {
-    ElMessage.error(t('embedded.duplicate_account'))
-    return
-  }
-
-  if (emails.includes(state.form.email)) {
-    ElMessage.error(t('embedded.duplicate_email'))
-    return
-  }
-
   if (state.form.id) {
     editTerm()
   } else {
