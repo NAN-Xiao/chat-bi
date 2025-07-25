@@ -3,7 +3,7 @@ from typing import Optional
 from sqlmodel import Session, func, select, delete as sqlmodel_delete
 from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.system_schema import BaseUserDTO, UserInfoDTO, UserWs
+from apps.system.schemas.system_schema import EMAIL_REGEX, PWD_REGEX, BaseUserDTO, UserInfoDTO, UserWs
 from common.core.deps import SessionDep
 from common.core.sqlbot_cache import cache, clear_cache
 from common.utils.locale import I18n
@@ -78,18 +78,7 @@ def check_email_exists(*, session: Session, email: str) -> bool:
     return session.exec(select(func.count()).select_from(UserModel).where(UserModel.email == email)).one() > 0
 
 
-# 预编译正则表达式，提高效率
-EMAIL_REGEX = re.compile(
-    r"^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*@"
-    r"([a-zA-Z0-9]+(-[a-zA-Z0-9]+)*\.)+"
-    r"[a-zA-Z]{2,}$"
-)
 
-PWD_REGEX = re.compile(
-    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)"
-    r"(?=.*[~!@#$%^&*()_+\-={}|:\"<>?`\[\];',./])"
-    r"[A-Za-z\d~!@#$%^&*()_+\-={}|:\"<>?`\[\];',./]{8,20}$"
-)
 def check_email_format(email: str) -> bool:
     return bool(EMAIL_REGEX.fullmatch(email))
 
