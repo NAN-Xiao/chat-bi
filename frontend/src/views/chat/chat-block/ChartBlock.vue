@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChatMessage } from '@/api/chat.ts'
 import DisplayChartBlock from '@/views/chat/component/DisplayChartBlock.vue'
+import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import { computed, ref } from 'vue'
 import { concat } from 'lodash-es'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
@@ -157,11 +158,11 @@ const chartTypeList = computed(() => {
 })
 
 function changeTable() {
-  chartType.value = 'table'
-  onTypeChange()
+  onTypeChange('table')
 }
 
-function onTypeChange() {
+function onTypeChange(val: any) {
+  chartType.value = val
   chartRef.value?.onTypeChange()
 }
 
@@ -207,21 +208,13 @@ function addToDashboard() {
       <div class="buttons-bar">
         <div class="chart-select-container">
           <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
-            <el-select
+            <ChartPopover
+              :chartTypeList="chartTypeList"
+              :chartType="chartType"
+              :title="t('chat.type')"
+              @typeChange="onTypeChange"
               v-if="chartTypeList.length > 0"
-              v-model="chartType"
-              class="chart-select"
-              :class="{ 'chart-active': currentChartType !== 'table' }"
-              @change="onTypeChange"
-            >
-              <el-option v-for="type in chartTypeList" :key="type.value" :value="type.value">
-                <el-icon size="16">
-                  <component :is="type.icon" />
-                </el-icon>
-                {{ type.name }}
-                &nbsp;
-              </el-option>
-            </el-select>
+            ></ChartPopover>
           </el-tooltip>
 
           <el-tooltip effect="dark" :content="t('chat.chart_type.table')" placement="top">
