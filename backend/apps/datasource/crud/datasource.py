@@ -407,4 +407,4 @@ def filter_list(list_a, list_b):
 
 
 def is_normal_user(current_user: CurrentUser):
-    return current_user.id != 1 and (current_user.weight is not None and current_user.weight != 1)
+    return current_user.id != 1
