@@ -225,6 +225,7 @@
     "confirm": "确定",
     "copy": "复制",
     "the_original_one": "确认恢复为初始密码吗？",
+    "incorrect_email_format": "邮箱格式不对",
     "enabled_status": "启用状态",
     "custom_notes": "自定义备注",
     "field_type": "字段类型",

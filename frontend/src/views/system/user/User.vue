@@ -457,6 +457,12 @@ const rules = {
       message: t('datasource.please_enter') + t('common.empty') + t('user.email'),
       trigger: 'blur',
     },
+    {
+      required: true,
+      pattern: /^[a-zA-Z0-9_._-]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$/,
+      message: t('datasource.incorrect_email_format'),
+      trigger: 'blur',
+    },
   ],
 }
 
@@ -739,7 +745,7 @@ const editTerm = () => {
   })
 }
 
-const duplicateName = async () => {
+const duplicateName = () => {
   if (state.form.id) {
     editTerm()
   } else {
