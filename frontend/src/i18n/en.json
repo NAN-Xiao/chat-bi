@@ -463,6 +463,7 @@
     "duplicate_name": "Duplicate name",
     "duplicate_name_": "Duplicate name",
     "duplicate_account": "Duplicate account",
+    "repeating_parameters": "Repeating Parameters",
     "duplicate_email": "Duplicate email",
     "interface_credentials": "Interface credentials",
     "no_credentials_yet": "No credentials yet",

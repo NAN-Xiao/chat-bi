@@ -69,6 +69,35 @@ const defaultModelListWithSearch = computed(() => {
   })
 })
 
+const duplicateName = async (item: any) => {
+  const res = await modelApi.queryAll()
+  const names = res.filter((ele: any) => ele.id !== item.id).map((ele: any) => ele.name)
+  if (names.includes(item.name)) {
+    ElMessage.error(t('embedded.duplicate_name'))
+    return
+  }
+
+  if (!item.id) {
+    modelApi.add(item).then(() => {
+      beforeClose()
+      search()
+      ElMessage({
+        type: 'success',
+        message: t('workspace.add_successfully'),
+      })
+    })
+    return
+  }
+  modelApi.edit(item).then(() => {
+    beforeClose()
+    search()
+    ElMessage({
+      type: 'success',
+      message: t('common.save_success'),
+    })
+  })
+}
+
 const handleDefaultModelChange = (item: any) => {
   const current_default_node = modelList.value.find((ele: Model) => ele.default_model)
   if (current_default_node?.id === item.id) {
@@ -185,25 +214,7 @@ const search = () => {
 search()
 
 const submit = (item: any) => {
-  if (!item.id) {
-    modelApi.add(item).then(() => {
-      beforeClose()
-      search()
-      ElMessage({
-        type: 'success',
-        message: t('workspace.add_successfully'),
-      })
-    })
-    return
-  }
-  modelApi.edit(item).then(() => {
-    beforeClose()
-    search()
-    ElMessage({
-      type: 'success',
-      message: t('common.save_success'),
-    })
-  })
+  duplicateName(item)
 }
 </script>
 

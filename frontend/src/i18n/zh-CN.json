@@ -469,6 +469,7 @@
     "duplicate_name_": "重复姓名",
     "duplicate_account": "重复账号",
     "duplicate_email": "重复邮箱",
+    "repeating_parameters": "重复参数",
     "interface_credentials": "接口凭证",
     "no_credentials_yet": "暂无凭证",
     "intelligent_customer_service": "SQLBot 智能客服",
