@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { datasourceApi } from '@/api/datasource'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
@@ -67,11 +67,32 @@ const currentTable = ref<any>({})
 const ds = ref<any>({})
 const btnSelect = ref('d')
 
+const pageInfo = reactive({
+  currentPage: 1,
+  pageSize: 10,
+  total: 0,
+})
+
+const handleSizeChange = (val: number) => {
+  pageInfo.currentPage = 1
+  pageInfo.pageSize = val
+}
+const handleCurrentChange = (val: number) => {
+  pageInfo.currentPage = val
+}
+
+const fieldListComputed = computed(() => {
+  const { currentPage, pageSize } = pageInfo
+  return fieldList.value.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+})
+
 const init = () => {
   initLoading.value = true
   datasourceApi.getDs(props.info.id).then((res) => {
     ds.value = res
     fieldList.value = []
+    pageInfo.total = 0
+    pageInfo.currentPage = 1
     datasourceApi.tableList(props.info.id).then((res) => {
       tableList.value = res
       initLoading.value = false
@@ -104,6 +125,8 @@ const clickTable = (table: any) => {
     .fieldList(table.id)
     .then((res) => {
       fieldList.value = res
+      pageInfo.total = res.length
+      pageInfo.currentPage = 1
       datasourceApi.previewData(props.info.id, buildData()).then((res) => {
         previewData.value = res
       })
@@ -191,6 +214,8 @@ const btnSelectClick = (val: any) => {
       .fieldList(currentTable.value.id)
       .then((res) => {
         fieldList.value = res
+        pageInfo.total = res.length
+        pageInfo.currentPage = 1
       })
       .finally(() => {
         loading.value = false
@@ -308,41 +333,66 @@ const btnSelectClick = (val: any) => {
           </div>
 
           <div class="preview-or-schema">
-            <el-table v-if="btnSelect === 'd'" :data="fieldList" style="width: 100%">
-              <el-table-column prop="field_name" :label="t('datasource.field_name')" width="180" />
-              <el-table-column prop="field_type" :label="t('datasource.field_type')" width="180" />
-              <el-table-column prop="field_comment" :label="t('datasource.field_original_notes')" />
-              <el-table-column :label="t('datasource.field_notes_1')">
-                <template #default="scope">
-                  <div class="field-comment">
-                    <span :title="scope.row.custom_comment" class="notes-in_table">{{
-                      scope.row.custom_comment
-                    }}</span>
-                    <el-tooltip
-                      :offset="14"
-                      effect="dark"
-                      :content="$t('datasource.edit')"
-                      placement="top"
-                    >
-                      <el-icon class="action-btn" size="16" @click="editField(scope.row)">
-                        <edit></edit>
-                      </el-icon>
-                    </el-tooltip>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column :label="t('datasource.enabled_status')" width="180">
-                <template #default="scope">
-                  <div style="display: flex; align-items: center">
-                    <el-switch
-                      v-model="scope.row.checked"
-                      size="small"
-                      @change="changeStatus(scope.row)"
-                    />
-                  </div>
-                </template>
-              </el-table-column>
-            </el-table>
+            <div class="table-content_preview">
+              <el-table v-if="btnSelect === 'd'" :data="fieldListComputed" style="width: 100%">
+                <el-table-column
+                  prop="field_name"
+                  :label="t('datasource.field_name')"
+                  width="180"
+                />
+                <el-table-column
+                  prop="field_type"
+                  :label="t('datasource.field_type')"
+                  width="180"
+                />
+                <el-table-column
+                  prop="field_comment"
+                  :label="t('datasource.field_original_notes')"
+                />
+                <el-table-column :label="t('datasource.field_notes_1')">
+                  <template #default="scope">
+                    <div class="field-comment">
+                      <span :title="scope.row.custom_comment" class="notes-in_table">{{
+                        scope.row.custom_comment
+                      }}</span>
+                      <el-tooltip
+                        :offset="14"
+                        effect="dark"
+                        :content="$t('datasource.edit')"
+                        placement="top"
+                      >
+                        <el-icon class="action-btn" size="16" @click="editField(scope.row)">
+                          <edit></edit>
+                        </el-icon>
+                      </el-tooltip>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column :label="t('datasource.enabled_status')" width="180">
+                  <template #default="scope">
+                    <div style="display: flex; align-items: center">
+                      <el-switch
+                        v-model="scope.row.checked"
+                        size="small"
+                        @change="changeStatus(scope.row)"
+                      />
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+            <div v-if="fieldList.length" class="pagination-container">
+              <el-pagination
+                v-model:current-page="pageInfo.currentPage"
+                v-model:page-size="pageInfo.pageSize"
+                :page-sizes="[10, 20, 30]"
+                :background="true"
+                layout="total, sizes, prev, pager, next, jumper"
+                :total="pageInfo.total"
+                @size-change="handleSizeChange"
+                @current-change="handleCurrentChange"
+              />
+            </div>
             <template v-else>
               <div class="preview-num">
                 {{ t('ds.pieces_in_total', { msg: total, ms: showNum }) }}
@@ -588,7 +638,17 @@ const btnSelectClick = (val: any) => {
         .preview-or-schema {
           margin-top: 16px;
           height: calc(100% - 50px);
-          overflow-y: auto;
+
+          .table-content_preview {
+            max-height: calc(100% - 50px);
+            overflow-y: auto;
+            margin-bottom: 16px;
+          }
+
+          .pagination-container {
+            display: flex;
+            justify-content: flex-end;
+          }
 
           .field-comment {
             display: flex;
