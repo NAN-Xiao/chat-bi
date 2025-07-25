@@ -130,7 +130,7 @@ const filteredAndGroupedData = computed(() => {
           "
           class="no-data"
         >
-          {{ t('dashboard.no_chat') }}
+          {{ t('dashboard.no_data') }}
         </div>
       </div>
     </el-scrollbar>
@@ -217,6 +217,7 @@ const filteredAndGroupedData = computed(() => {
   .no-data {
     text-align: center;
     padding: 16px;
+    margin-top: 140px;
     color: var(--ed-text-color-placeholder);
     font-size: 14px;
   }

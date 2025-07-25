@@ -138,6 +138,10 @@ const addChatChart = (views: any) => {
   views.forEach((view: any) => {
     emits('addComponent', 'SQView', cloneDeep(view))
   })
+  ElMessage({
+    type: 'success',
+    message: t('dashboard.add_success'),
+  })
 }
 
 const previewInner = () => {

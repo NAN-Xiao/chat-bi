@@ -99,7 +99,12 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
   chartInfoList.value = []
   if (chatInfo && chatInfo.records) {
     chatInfo.records.forEach((record: any) => {
-      if (record?.chart && record.data) {
+      if (
+        (record?.analysis_record_id === undefined || record?.analysis_record_id === null) &&
+        (record?.predict_record_id === undefined || record?.predict_record_id === null) &&
+        record?.chart &&
+        record.data
+      ) {
         const recordeInfo = { id: chatInfo.id + '_' + record.id, data: record.data, chart: {} }
         const chartBaseInfo = JSON.parse(record.chart)
         recordeInfo['chart'] = {
