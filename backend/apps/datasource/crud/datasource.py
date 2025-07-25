@@ -278,8 +278,8 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
                 ).first()
                 if obj is not None:
                     res.append(transRecord2DTO(session, permission))
-        wheres = transFilterTree(session, res, ds)
-        where = (' where ' + wheres) if wheres is not None and wheres != '' else ''
+        where_str = transFilterTree(session, res, ds)
+        where = (' where ' + where_str) if where_str is not None and where_str != '' else ''
 
     fields = [f.field_name for f in f_list]
     if fields is None or len(fields) == 0:

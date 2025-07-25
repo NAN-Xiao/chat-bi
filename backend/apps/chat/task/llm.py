@@ -536,8 +536,8 @@ class LLMService:
                     ).first()
                     if obj is not None:
                         res.append(transRecord2DTO(self.session, permission))
-            wheres = transFilterTree(self.session, res, self.ds)
-            filters.append({"table": table.table_name, "filter": wheres})
+            where_str = transFilterTree(self.session, res, self.ds)
+            filters.append({"table": table.table_name, "filter": where_str})
 
         filter = json.dumps(filters, ensure_ascii=False)
 
