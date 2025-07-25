@@ -118,7 +118,8 @@
     "earlier": "Earlier",
     "no_time": "No Time",
     "rename_conversation_title": "Rename conversation title",
-    "conversation_title": "Conversation title"
+    "conversation_title": "Conversation title",
+    "copied": "Copied"
   },
   "ds": {
     "title": "Data Source",
