@@ -254,20 +254,17 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
 
 
 def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str):
-    session = get_session(ds)
-    result = session.execute(text(sql))
-    try:
-        columns = result.keys()._keys
-        res = result.fetchall()
-        result_list = [
-            {columns[i]: float(value) if isinstance(value, Decimal) else value for i, value in enumerate(tuple_item)}
-            for tuple_item in res
-        ]
-        return {"fields": columns, "data": result_list, "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
-    except Exception as ex:
-        raise ex
-    finally:
-        if result is not None:
-            result.close()
-        if session is not None:
-            session.close()
+    with get_session(ds) as session:
+        with session.execute(text(sql)) as result:
+            try:
+                columns = result.keys()._keys
+                res = result.fetchall()
+                result_list = [
+                    {columns[i]: float(value) if isinstance(value, Decimal) else value for i, value in
+                     enumerate(tuple_item)}
+                    for tuple_item in res
+                ]
+                return {"fields": columns, "data": result_list,
+                        "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+            except Exception as ex:
+                raise ex
