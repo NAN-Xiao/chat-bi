@@ -23,12 +23,12 @@
           </template>
           {{ $t('user.filter') }}
         </el-button>
-        <el-button secondary @click="handleUserImport">
+        <!-- <el-button secondary @click="handleUserImport">
           <template #icon>
             <ccmUpload></ccmUpload>
           </template>
           {{ $t('user.batch_import') }}
-        </el-button>
+        </el-button> -->
         <el-button type="primary" @click="editHandler(null)">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
@@ -573,20 +573,14 @@ const deleteHandler = (row: any) => {
     customClass: 'confirm-no_icon',
     autofocus: false,
   }).then(() => {
-    multipleSelectionAll.value = multipleSelectionAll.value.filter((ele) => ele.id !== row.id)
-    ElMessage({
-      type: 'success',
-      message: t('dashboard.delete_success'),
+    userApi.delete(row.id).then(() => {
+      multipleSelectionAll.value = multipleSelectionAll.value.filter((ele) => ele.id !== row.id)
+      ElMessage({
+        type: 'success',
+        message: t('dashboard.delete_success'),
+      })
+      search()
     })
-    search()
-    // userApi.delete(row.id).then(() => {
-    //   multipleSelectionAll.value = multipleSelectionAll.value.filter((ele) => ele.id !== row.id)
-    //   ElMessage({
-    //     type: 'success',
-    //     message: t('dashboard.delete_success'),
-    //   })
-    //   search()
-    // })
   })
 }
 
