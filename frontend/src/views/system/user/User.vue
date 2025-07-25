@@ -116,7 +116,7 @@
                       setButtonRef(el, scope.row)
                     }
                   "
-                  v-click-outside="onClickOutside(scope.row)"
+                  v-click-outside="() => onClickOutside(scope.row)"
                   class="action-btn"
                   size="16"
                 >
