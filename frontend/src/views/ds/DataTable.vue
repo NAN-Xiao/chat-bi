@@ -121,6 +121,9 @@ const handleSelectTableList = () => {
 const clickTable = (table: any) => {
   loading.value = true
   currentTable.value = table
+  fieldList.value = []
+  pageInfo.total = 0
+  previewData.value = []
   datasourceApi
     .fieldList(table.id)
     .then((res) => {
@@ -332,9 +335,9 @@ const btnSelectClick = (val: any) => {
             </el-button>
           </div>
 
-          <div class="preview-or-schema">
-            <div class="table-content_preview">
-              <el-table v-if="btnSelect === 'd'" :data="fieldListComputed" style="width: 100%">
+          <div class="preview-or-schema" v-if="!loading">
+            <div v-if="btnSelect === 'd'" class="table-content_preview">
+              <el-table :data="fieldListComputed" style="width: 100%">
                 <el-table-column
                   prop="field_name"
                   :label="t('datasource.field_name')"
@@ -381,7 +384,7 @@ const btnSelectClick = (val: any) => {
                 </el-table-column>
               </el-table>
             </div>
-            <div v-if="fieldList.length" class="pagination-container">
+            <div v-if="fieldList.length && btnSelect === 'd'" class="pagination-container">
               <el-pagination
                 v-model:current-page="pageInfo.currentPage"
                 v-model:page-size="pageInfo.pageSize"
@@ -393,7 +396,7 @@ const btnSelectClick = (val: any) => {
                 @current-change="handleCurrentChange"
               />
             </div>
-            <template v-else>
+            <template v-if="btnSelect === 'q'">
               <div class="preview-num">
                 {{ t('ds.pieces_in_total', { msg: total, ms: showNum }) }}
               </div>
