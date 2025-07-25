@@ -10,6 +10,7 @@ from common.utils.locale import I18n
 from common.utils.utils import SQLBotLogUtil
 from ..models.user import UserModel
 from common.core.security import verify_md5pwd
+import re
 
 def get_db_user(*, session: Session, user_id: int) -> UserModel:
     db_user = session.get(UserModel, user_id)
@@ -75,3 +76,22 @@ def check_account_exists(*, session: Session, account: str) -> bool:
     session.exec(select(func.count()).select_from(UserModel).where(UserModel.account == account)).one() > 0
 def check_email_exists(*, session: Session, email: str) -> bool:
     return session.exec(select(func.count()).select_from(UserModel).where(UserModel.email == email)).one() > 0
+
+
+# 预编译正则表达式，提高效率
+EMAIL_REGEX = re.compile(
+    r"^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*@"
+    r"([a-zA-Z0-9]+(-[a-zA-Z0-9]+)*\.)+"
+    r"[a-zA-Z]{2,}$"
+)
+
+PWD_REGEX = re.compile(
+    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)"
+    r"(?=.*[~!@#$%^&*()_+\-={}|:\"<>?`\[\];',./])"
+    r"[A-Za-z\d~!@#$%^&*()_+\-={}|:\"<>?`\[\];',./]{8,20}$"
+)
+def check_email_format(email: str) -> bool:
+    return bool(EMAIL_REGEX.fullmatch(email))
+
+def check_pwd_format(pwd: str) -> bool:
+    return bool(PWD_REGEX.fullmatch(pwd))

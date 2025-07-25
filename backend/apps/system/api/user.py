@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import func, or_, select, delete as sqlmodel_delete
-from apps.system.crud.user import check_account_exists, check_email_exists, get_db_user, single_delete, user_ws_options
+from apps.system.crud.user import check_account_exists, check_email_exists, check_email_format, check_pwd_format, get_db_user, single_delete, user_ws_options
 from apps.system.models.system_model import UserWsModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -120,6 +120,8 @@ async def create(session: SessionDep, creator: UserCreator):
         raise Exception(f"Account [{creator.account}] already exists!")
     if check_email_exists(session=session, email=creator.email):
         raise Exception(f"Email [{creator.email}] already exists!")
+    if not check_email_format(creator.email):
+        raise Exception(f"Email [{creator.email}] format is invalid!")
     data = creator.model_dump(exclude_unset=True)
     user_model = UserModel.model_validate(data)
     #user_model.create_time = get_timestamp()
@@ -150,6 +152,8 @@ async def update(session: SessionDep, editor: UserEditor):
         raise Exception(f"account cannot be changed!")
     if editor.email != user_model.email and check_email_exists(session=session, account=editor.email):
         raise Exception(f"Email [{editor.email}] already exists!")
+    if not check_email_format(editor.email):
+        raise Exception(f"Email [{editor.email}] format is invalid!")
     origin_oid: int = user_model.oid
     del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == editor.id)
     session.exec(del_stmt)
@@ -206,9 +210,12 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
 @router.put("/pwd")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
 async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdEditor):
+    new_pwd = editor.new_pwd
+    if not check_pwd_format(new_pwd):
+        raise Exception("Password format is invalid!")
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     if not verify_md5pwd(editor.pwd, db_user.password):
-        raise HTTPException("pwd error")
-    db_user.password = md5pwd(editor.new_pwd)
+        raise Exception(f"pwd [{editor.pwd}] error")
+    db_user.password = md5pwd(new_pwd)
     session.add(db_user)
     session.commit()
