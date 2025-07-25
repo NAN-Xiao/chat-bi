@@ -72,4 +72,6 @@ async def clean_user_cache(id: int):
 
 
 def check_account_exists(*, session: Session, account: str) -> bool:
-    return session.exec(select(func.count()).select_from(UserModel).where(UserModel.account == account)).one()
+    session.exec(select(func.count()).select_from(UserModel).where(UserModel.account == account)).one() > 0
+def check_email_exists(*, session: Session, email: str) -> bool:
+    return session.exec(select(func.count()).select_from(UserModel).where(UserModel.email == email)).one() > 0
