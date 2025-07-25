@@ -227,7 +227,11 @@
           multiple
           :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('user.workspace')"
         >
-          <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id" />
+          <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id">
+            <div class="ellipsis" :title="item.name" style="max-width: 500px; padding-right: 30px">
+              {{ item.name }}
+            </div>
+          </el-option>
         </el-select>
       </el-form-item>
       <el-form-item :label="$t('user.user_status')">

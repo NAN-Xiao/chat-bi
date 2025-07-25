@@ -73,9 +73,9 @@ const logout = () => {
 <template>
   <el-popover trigger="click" popper-class="system-person" :placement="collapse ? 'right' : 'top'">
     <template #reference>
-      <button class="person" :class="collapse && 'collapse'">
+      <button class="person" :title="name" :class="collapse && 'collapse'">
         <img class="default-avatar" :src="Default_avatar" width="32px" height="32px" />
-        <span v-if="!collapse" class="name ellipsis" :title="name">{{ name }}</span>
+        <span v-if="!collapse" class="name ellipsis">{{ name }}</span>
       </button></template
     >
     <div class="popover">
