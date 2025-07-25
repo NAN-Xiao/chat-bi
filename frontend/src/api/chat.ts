@@ -180,6 +180,7 @@ export class ChatInfo extends Chat {
     chat_type: string,
     datasource: number,
     engine_type: string,
+    ds_type: string,
     datasource_name: string,
     datasource_exists: boolean,
     records: Array<ChatRecord>
@@ -192,6 +193,7 @@ export class ChatInfo extends Chat {
     chat_type?: string,
     datasource?: number,
     engine_type?: string,
+    ds_type?: string,
     datasource_name?: string,
     datasource_exists: boolean = true,
     records: Array<ChatRecord> = []
@@ -206,6 +208,7 @@ export class ChatInfo extends Chat {
         this.chat_type = param1.chat_type
         this.datasource = param1.datasource
         this.engine_type = param1.engine_type
+        this.ds_type = param1.ds_type
       } else {
         this.id = param1
         this.create_time = getDate(create_time)
@@ -214,6 +217,7 @@ export class ChatInfo extends Chat {
         this.chat_type = chat_type
         this.datasource = datasource
         this.engine_type = engine_type
+        this.ds_type = ds_type
       }
     }
     this.datasource_name = datasource_name
@@ -275,6 +279,7 @@ export const chatApi = {
       data.chat_type,
       data.datasource,
       data.engine_type,
+      data.ds_type,
       data.datasource_name,
       data.datasource_exists,
       toChatRecordList(data.records)
