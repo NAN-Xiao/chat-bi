@@ -21,6 +21,8 @@ def local_login(
     
     if not user.oid or user.oid == 0:
         raise HTTPException(status_code=400, detail="No associated workspace, Please contact the administrator")
+    if user.status != 1:
+        raise HTTPException(status_code=400, detail="User is disabled, Please contact the administrator")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     user_dict = user.to_dict()
     return Token(access_token=create_access_token(
