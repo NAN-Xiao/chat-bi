@@ -662,6 +662,16 @@ class LLMService:
         if data['type'] and data['type'] != 'error':
             # todo type check
             chart = data
+            if chart.get('columns'):
+                for v in chart.get('columns'):
+                    v['value'] = v.get('value').lower()
+            if chart.get('axis'):
+                if chart.get('axis').get('x'):
+                    chart.get('axis').get('x')['value'] = chart.get('axis').get('x').get('value').lower()
+                if chart.get('axis').get('y'):
+                    chart.get('axis').get('y')['value'] = chart.get('axis').get('y').get('value').lower()
+                if chart.get('axis').get('series'):
+                    chart.get('axis').get('series')['value'] = chart.get('axis').get('series').get('value').lower()
         elif data['type'] == 'error':
             message = data['reason']
             error = True

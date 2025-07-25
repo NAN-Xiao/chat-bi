@@ -134,7 +134,7 @@ def getTables(session: SessionDep, id: int):
 
 
 def getTablesByDs(session: SessionDep, ds: CoreDatasource):
-    check_status(session, ds, True)
+    # check_status(session, ds, True)
     tables = get_tables(ds)
     return tables
 
@@ -241,7 +241,7 @@ def updateField(session: SessionDep, field: CoreField):
 
 def preview(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
-    check_status(session, ds, True)
+    # check_status(session, ds, True)
 
     if data.fields is None or len(data.fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
