@@ -259,7 +259,7 @@
         v-if="computedMessages.length > 0 || (isAssistant && currentChatId)"
         class="chat-footer"
       >
-        <div class="input-wrapper">
+        <div class="input-wrapper" @click="clickInput">
           <div class="datasource">
             <template v-if="currentChat.datasource && currentChat.datasource_name">
               {{ t('qa.selected_datasource') }}:
