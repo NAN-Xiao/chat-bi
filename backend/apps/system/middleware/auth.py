@@ -62,7 +62,13 @@ class TokenMiddleware(BaseHTTPMiddleware):
         try: 
             with Session(engine) as session:
                 session_user = await get_user_info(session = session, user_id = token_data.id)
+                if not session_user:
+                    raise Exception(f"User not found with id: {token_data.id}")
                 session_user = UserInfoDTO.model_validate(session_user)
+                if session_user.status != 1:
+                    raise Exception(f"User is not active!")
+                if not session_user.oid or session_user.oid == 0:
+                    raise Exception(f"User default space is not set!")
                 """ if token_data.oid != session_user.oid:
                     raise HTTPException(
                         status_code=401,
