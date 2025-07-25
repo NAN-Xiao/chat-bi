@@ -21,6 +21,7 @@
                 v-model="loginForm.password"
                 placeholder="Password"
                 type="password"
+                show-password
                 :prefix-icon="Lock"
                 size="large"
               ></el-input>
