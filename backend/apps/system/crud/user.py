@@ -1,6 +1,6 @@
 
 from typing import Optional
-from sqlmodel import Session, select, delete as sqlmodel_delete
+from sqlmodel import Session, func, select, delete as sqlmodel_delete
 from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import BaseUserDTO, UserInfoDTO, UserWs
@@ -69,3 +69,7 @@ async def single_delete(session: SessionDep, id: int):
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")    
 async def clean_user_cache(id: int):
     SQLBotLogUtil.info(f"User cache for [{id}] has been cleaned")
+
+
+def check_account_exists(*, session: Session, account: str) -> bool:
+    return session.exec(select(func.count()).select_from(UserModel).where(UserModel.account == account)).one()

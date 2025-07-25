@@ -19,6 +19,7 @@ class BaseUser(BaseModel):
 class BaseUserDTO(BaseUser, BaseCreatorDTO):
     language: str
     password: str
+    status: int = 1
     def to_dict(self):
         return {
             "id": self.id,
