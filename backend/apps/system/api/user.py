@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import func, or_, select, delete as sqlmodel_delete
-from apps.system.crud.user import check_account_exists, get_db_user, single_delete, user_ws_options
+from apps.system.crud.user import check_account_exists, check_email_exists, get_db_user, single_delete, user_ws_options
 from apps.system.models.system_model import UserWsModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -116,9 +116,10 @@ async def query(session: SessionDep, trans: Trans, id: int) -> UserEditor:
 
 @router.post("")
 async def create(session: SessionDep, creator: UserCreator):
-    count = check_account_exists(session=session, account=creator.account)
-    if count > 0:
+    if check_account_exists(session=session, account=creator.account):
         raise Exception(f"Account [{creator.account}] already exists!")
+    if check_email_exists(session=session, email=creator.email):
+        raise Exception(f"Email [{creator.email}] already exists!")
     data = creator.model_dump(exclude_unset=True)
     user_model = UserModel.model_validate(data)
     #user_model.create_time = get_timestamp()
@@ -147,6 +148,8 @@ async def update(session: SessionDep, editor: UserEditor):
         raise Exception(f"User with id [{editor.id}] not found!")
     if editor.account != user_model.account:
         raise Exception(f"account cannot be changed!")
+    if editor.email != user_model.email and check_email_exists(session=session, account=editor.email):
+        raise Exception(f"Email [{editor.email}] already exists!")
     origin_oid: int = user_model.oid
     del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == editor.id)
     session.exec(del_stmt)
