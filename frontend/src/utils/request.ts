@@ -168,9 +168,21 @@ class HttpService {
           errorMessage = 'Invalid request parameters'
           break
         case 401:
-          errorMessage = 'Unauthorized, please login again'
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          errorMessage = error.response?.data?.data?.msg || 'Unauthorized, please login again'
           // Redirect to login page if needed
-          break
+          ElMessage({
+            message: errorMessage,
+            type: 'error',
+            showClose: true,
+          })
+          setTimeout(() => {
+            wsCache.delete('user.token')
+            window.location.reload()
+          }, 1000)
+          return
+        // break
         case 403:
           errorMessage = 'Access denied'
           break

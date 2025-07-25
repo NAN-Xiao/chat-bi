@@ -15,6 +15,7 @@ import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
 import icon_window_max_outlined from '@/assets/svg/icon_window-max_outlined.svg'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
+import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import SQLComponent from '@/views/chat/component/SQLComponent.vue'
 
@@ -189,6 +190,13 @@ function showSql() {
 function addToDashboard() {
   console.log('todo')
 }
+
+function copy() {
+  if (props.message?.record?.sql) {
+    navigator.clipboard.writeText(props.message.record.sql)
+    ElMessage.info(t('qa.copied'))
+  }
+}
 </script>
 
 <template>
@@ -318,12 +326,17 @@ function addToDashboard() {
       direction="rtl"
       body-class="chart-sql-drawer-body"
     >
-      <div>
+      <div class="sql-block">
         <SQLComponent
           v-if="message.record?.sql"
           :sql="message.record?.sql"
           style="margin-top: 12px"
         />
+        <el-button v-if="message.record?.sql" circle class="input-icon" @click="copy">
+          <el-icon size="16">
+            <icon_copy_outlined />
+          </el-icon>
+        </el-button>
       </div>
     </el-drawer>
   </div>
@@ -488,6 +501,20 @@ function addToDashboard() {
     width: 100%;
 
     margin-top: 16px;
+  }
+}
+
+.sql-block {
+  position: relative;
+
+  .input-icon {
+    min-width: unset;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+
+    border-color: #dee0e3;
+    box-shadow: 0px 4px 8px 0px #1f23291a;
   }
 }
 </style>
