@@ -18,6 +18,11 @@ from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, Core
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 path = "/opt/sqlbot/data/excel"
 
+@router.get("/ws/{oid}", include_in_schema=False)
+async def query_by_oid(session: SessionDep, user: CurrentUser, oid: int) -> List[CoreDatasource]:
+    if not user.isAdmin:
+        raise Exception("no permission to execute")
+    return get_datasource_list(session=session, user=user, oid=oid)
 
 @router.get("/list")
 async def datasource_list(session: SessionDep, user: CurrentUser):

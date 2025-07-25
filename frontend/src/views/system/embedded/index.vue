@@ -14,8 +14,7 @@ import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
 import Card from './Card.vue'
 import { workspaceList } from '@/api/workspace'
 import DsCard from './DsCard.vue'
-import { datasourceApi } from '@/api/datasource'
-import { getList, updateAssistant, saveAssistant, delOne } from '@/api/embedded'
+import { getList, updateAssistant, saveAssistant, delOne, dsApi } from '@/api/embedded'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 
@@ -49,7 +48,7 @@ const currentEmbedded = reactive<any>(cloneDeep(defaultEmbedded))
 
 const isCreate = ref(false)
 const defaultForm = {
-  oid: '',
+  oid: 1,
   private_list: [] as any,
 }
 const dsForm = reactive(cloneDeep(defaultForm))
@@ -107,9 +106,13 @@ const handleAddEmbedded = (val: any) => {
     handleAdvancedEmbedded(null)
   }
 }
-
+const wsChanged = (val: any) => {
+  dsForm.private_list = []
+  dsForm.oid = val
+  getDsList()
+}
 const getDsList = () => {
-  datasourceApi.list().then((res: any) => {
+  dsApi(dsForm.oid).then((res: any) => {
     dsListOptions.value = res || []
     if (!currentEmbedded.id) {
       dsForm.private_list = dsListOptions.value.map((ele) => ele.id)
@@ -119,10 +122,10 @@ const getDsList = () => {
 const handleBaseEmbedded = (row: any) => {
   advancedApplication.value = false
   initWorkspace()
-  getDsList()
   if (row) {
     Object.assign(dsForm, JSON.parse(row.configuration))
   }
+  getDsList()
   ruleConfigvVisible.value = true
   dialogTitle.value = row?.id
     ? t('embedded.edit_basic_applications')
@@ -697,6 +700,7 @@ const saveHandler = () => {
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
               "
+              @change="wsChanged"
             >
               <el-option
                 v-for="item in workspaces"

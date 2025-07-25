@@ -1,6 +1,6 @@
 import datetime
 import json
-from typing import List
+from typing import List, Optional
 
 from fastapi import HTTPException
 from sqlalchemy import and_, text, cast, or_, func
@@ -25,10 +25,13 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
     DatasourceConf, TableAndFields
 
 
-def get_datasource_list(session: SessionDep, user: CurrentUser):
-    oid = user.oid if user.oid is not None else 1
-    return session.query(CoreDatasource).filter(CoreDatasource.oid == oid).order_by(
-        func.convert_to(CoreDatasource.name, 'gbk')).all()
+def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
+    current_oid = user.oid if user.oid is not None else 1
+    if user.isAdmin and oid:
+        current_oid = oid
+    return session.exec(select(CoreDatasource).where(CoreDatasource.oid == current_oid).order_by(
+        func.convert_to(CoreDatasource.name, 'gbk'))).all()
+    
 
 
 def get_ds(session: SessionDep, id: int):
