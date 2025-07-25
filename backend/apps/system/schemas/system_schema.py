@@ -139,7 +139,7 @@ class AssistantOutDsSchema(AssistantOutDsBase):
     dataBase: Optional[str] = None
     user: Optional[str] = None
     password: Optional[str] = None
-    schema: Optional[str] = None
+    db_schema: Optional[str] = None
     extraParams: Optional[str] = None
     tables: Optional[list[AssistantTableSchema]] = None
     

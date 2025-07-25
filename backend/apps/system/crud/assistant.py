@@ -131,7 +131,7 @@ class AssistantOutDs:
     def get_db_schema(self, ds_id: int) -> str:
         ds = self.get_ds(ds_id)
         schema_str = ""
-        db_name = ds.schema
+        db_name = ds.db_schema
         schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
         for table in ds.tables:
             schema_str += f"# Table: {db_name}.{table.name}"
@@ -159,7 +159,9 @@ class AssistantOutDs:
             if attr in ds_dict:
                 id_marker += str(ds_dict.get(attr, '')) + '--sqlbot--'
         id = string_to_numeric_hash(id_marker)
-        return AssistantOutDsSchema(**{**ds_dict, "id": id})
+        db_schema = ds_dict.get('schema', ds_dict.get('db_schema', ''))
+        ds_dict.pop("schema", None)
+        return AssistantOutDsSchema(**{**ds_dict, "id": id, "db_schema": db_schema})
     
 class AssistantOutDsFactory:
     @staticmethod
@@ -177,12 +179,12 @@ def get_ds_engine(ds: AssistantOutDsSchema) -> Engine:
         database=ds.dataBase,
         driver='',
         extraJdbc=ds.extraParams,
-        dbSchema=ds.schema or ''
+        dbSchema=ds.db_schema or ''
     )
     from apps.db.db import get_uri_from_config
     uri = get_uri_from_config(ds.type, conf)
-    if ds.type == "pg" and ds.schema:
-        connect_args.update({"options": f"-c search_path={ds.schema}"})
+    if ds.type == "pg" and ds.db_schema:
+        connect_args.update({"options": f"-c search_path={ds.db_schema}"})
     engine = create_engine(uri, connect_args=connect_args, pool_timeout=timeout, pool_size=20, max_overflow=10)
     return engine
     
