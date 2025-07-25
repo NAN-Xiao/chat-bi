@@ -97,6 +97,26 @@ const init = () => {
     }
   })
 }
+
+const duplicateName = async () => {
+  const res = await workspaceList()
+  const names = res.filter((ele: any) => ele.id !== workspaceForm.id).map((ele: any) => ele.name)
+  if (names.includes(workspaceForm.name)) {
+    ElMessage.error(t('embedded.duplicate_name'))
+    return
+  }
+
+  const req = workspaceForm.id ? workspaceUpdate : workspaceCreate
+  req(workspaceForm).then(() => {
+    ElMessage({
+      type: 'success',
+      message: t('common.save_success'),
+    })
+    init()
+    fieldDialog.value = false
+  })
+}
+
 onMounted(() => {
   init()
 })
@@ -224,15 +244,7 @@ const closeField = () => {
 const saveField = () => {
   workspaceFormRef.value.validate((res: any) => {
     if (res) {
-      const req = workspaceForm.id ? workspaceUpdate : workspaceCreate
-      req(workspaceForm).then(() => {
-        ElMessage({
-          type: 'success',
-          message: t('common.save_success'),
-        })
-        init()
-        fieldDialog.value = false
-      })
+      duplicateName()
     }
   })
 }
