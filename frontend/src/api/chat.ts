@@ -134,6 +134,7 @@ export class Chat {
   chat_type?: string
   datasource?: number
   engine_type?: string
+  ds_type?: string
 
   constructor()
   constructor(

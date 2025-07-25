@@ -259,29 +259,35 @@
         v-if="computedMessages.length > 0 || (isAssistant && currentChatId)"
         class="chat-footer"
       >
-        <div class="input-container" @click="clickInput">
+        <div class="input-wrapper">
           <div class="datasource">
             <template v-if="currentChat.datasource && currentChat.datasource_name">
-              {{ t('qa.selected_datasource') }}：
+              {{ t('qa.selected_datasource') }}:
+              <img
+                style="margin-left: 4px; margin-right: 4px"
+                :src="currentChatEngineType"
+                width="16px"
+                height="16px"
+                alt=""
+              />
               <span class="name">
                 {{ currentChat.datasource_name }}
               </span>
             </template>
           </div>
-          <div class="input-wrapper">
-            <el-input
-              ref="inputRef"
-              v-model="inputMessage"
-              :disabled="isTyping"
-              class="input-area"
-              type="textarea"
-              :rows="1"
-              :autosize="{ minRows: 1, maxRows: 8 }"
-              :placeholder="t('qa.question_placeholder')"
-              @keydown.enter.exact.prevent="sendMessage"
-              @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
-            />
-          </div>
+          <el-input
+            ref="inputRef"
+            v-model="inputMessage"
+            :disabled="isTyping"
+            class="input-area"
+            type="textarea"
+            :rows="1"
+            :autosize="{ minRows: 1, maxRows: 8.583 }"
+            :placeholder="t('qa.question_placeholder')"
+            @keydown.enter.exact.prevent="sendMessage"
+            @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
+          />
+
           <el-button
             circle
             type="primary"
@@ -315,6 +321,7 @@ import RecommendQuestion from './RecommendQuestion.vue'
 import ChatListContainer from './ChatListContainer.vue'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
 import ChatToolBar from './ChatToolBar.vue'
+import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import { useI18n } from 'vue-i18n'
 import { find } from 'lodash-es'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
@@ -431,6 +438,13 @@ function onClickHistory(chat: Chat) {
   scrollToBottom()
   console.debug('click history', chat)
 }
+
+const currentChatEngineType = computed(() => {
+  return (
+    dsTypeWithImg.find((ele) => currentChat.value.ds_type === ele.type || ele.type === 'excel') ||
+    {}
+  ).img
+})
 
 function toAssistantHistory(chat: Chat) {
   currentChat.value = new ChatInfo(chat)
@@ -852,20 +866,45 @@ onMounted(() => {
     flex-direction: column;
     align-items: center;
 
-    .input-container {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+    .input-wrapper {
       width: 100%;
-      max-width: 800px;
-      border-radius: 16px;
-      border: 1px solid rgba(217, 220, 223, 1);
-      background: rgba(248, 249, 250, 1);
-      padding: 12px;
-      gap: 8px;
-
       position: relative;
+
+      .datasource {
+        width: calc(100% - 2px);
+        position: absolute;
+        margin-left: 1px;
+        margin-top: 1px;
+        left: 0;
+        top: 0;
+        padding-top: 12px;
+        padding-left: 12px;
+        z-index: 10;
+        background: #f8f9fa;
+        line-height: 22px;
+        font-size: 14px;
+        font-weight: 400;
+        border-top-right-radius: 16px;
+        border-top-left-radius: 16px;
+        color: rgba(100, 106, 115, 1);
+        display: flex;
+        align-items: center;
+
+        .name {
+          color: rgba(31, 35, 41, 1);
+        }
+      }
+
+      .input-area {
+        border-color: #d9dcdf;
+
+        :deep(.ed-textarea__inner) {
+          padding: 42px 12px 52px 12px;
+          background: #f8f9fa;
+          border-radius: 16px;
+          line-height: 24px;
+        }
+      }
 
       .input-icon {
         min-width: unset;
@@ -878,39 +917,6 @@ onMounted(() => {
         &.is-disabled {
           background: rgba(187, 191, 196, 1);
           border-color: unset;
-        }
-      }
-
-      &:hover {
-        border-color: rgba(28, 186, 144, 1);
-      }
-    }
-
-    .datasource {
-      width: 100%;
-
-      line-height: 22px;
-      font-size: 14px;
-      font-weight: 400;
-      color: rgba(100, 106, 115, 1);
-
-      .name {
-        color: rgba(31, 35, 41, 1);
-      }
-    }
-
-    .input-wrapper {
-      width: 100%;
-      flex: 1;
-
-      .input-area {
-        height: 100%;
-
-        :deep(.ed-textarea__inner) {
-          height: 100% !important;
-          background: transparent;
-          box-shadow: unset;
-          padding: unset;
         }
       }
     }
