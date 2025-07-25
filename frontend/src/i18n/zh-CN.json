@@ -336,7 +336,8 @@
       "title": "修改密码",
       "old_pwd": "旧密码",
       "new_pwd": "新密码",
-      "confirm_pwd": "确认密码"
+      "confirm_pwd": "确认密码",
+      "two_pwd_not_match": "两次输入的密码不一致"
     }
   },
   "workspace": {
