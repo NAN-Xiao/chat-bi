@@ -214,7 +214,11 @@ function onChatRenamed(chat: Chat) {
       />
     </el-header>
     <el-main class="chat-list">
+      <div v-if="!computedChatList.length" class="empty-search">
+        {{ !!search ? $t('datasource.relevant_content_found') : $t('dashboard.no_chat') }}
+      </div>
       <ChatList
+        v-else
         v-model:loading="_loading"
         :current-chat-id="_currentChatId"
         :chat-list="computedChatList"
@@ -294,6 +298,16 @@ function onChatRenamed(chat: Chat) {
 
   .chat-list {
     padding: 0 0 20px 0;
+
+    .empty-search {
+      width: 100%;
+      text-align: center;
+      margin-top: 80px;
+      color: #646a73;
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 22px;
+    }
   }
 }
 </style>

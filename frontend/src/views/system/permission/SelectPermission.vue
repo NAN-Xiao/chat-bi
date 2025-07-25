@@ -120,7 +120,7 @@ const open = async (user: any) => {
   checkAll.value = false
   isIndeterminate.value = false
   const systemWorkspaceList = await workspaceUserList({}, 1, 1000)
-  workspace.value = systemWorkspaceList.items.filter((ele: any) => ele.weight !== 1) as any
+  workspace.value = systemWorkspaceList.items as any
   if (user?.length) {
     checkedWorkspace.value = workspace.value.filter((ele) => user.includes(ele.id))
     handleCheckedWorkspaceChange(checkedWorkspace.value)

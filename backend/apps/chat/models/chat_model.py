@@ -89,6 +89,7 @@ class ChatInfo(BaseModel):
     chat_type: str = "chat"
     datasource: Optional[int] = None
     engine_type: str = ''
+    ds_type: str = ''
     datasource_name: str = ''
     datasource_exists: bool = True
     records: List[ChatRecord | dict] = []

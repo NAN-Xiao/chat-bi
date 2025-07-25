@@ -85,6 +85,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     else:
         chat_info.datasource_exists = True
         chat_info.datasource_name = ds.name
+        chat_info.ds_type = ds.type
 
     record_list = session.query(ChatRecord).options(
         load_only(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,

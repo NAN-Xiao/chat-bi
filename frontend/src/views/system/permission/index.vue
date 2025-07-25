@@ -219,6 +219,7 @@ const handleInitDsIdChange = (val: any) => {
     activeTable.value = null
     fieldListOptions.value = []
     columnForm.permissions = []
+    authTreeRef.value.init({})
   })
 }
 

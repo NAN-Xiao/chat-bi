@@ -758,6 +758,10 @@ onMounted(() => {
     width: 100%;
     max-height: calc(100vh - 150px);
     overflow-y: auto;
+
+    :deep(.ed-popper.is-dark) {
+      max-width: 400px;
+    }
     :deep(.ed-table) {
       --el-table-header-bg-color: #f5f7fa;
       --el-table-border-color: #ebeef5;
