@@ -246,7 +246,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     if data.fields is None or len(data.fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
-    where = None
+    where = ''
     f_list = [f for f in data.fields if f.checked]
     if is_normal_user(current_user):
         # column is checked, and, column permission for data.fields
@@ -294,7 +294,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     elif ds.type == "sqlServer":
         sql = f"""SELECT [{"], [".join(fields)}] FROM [{conf.dbSchema}].[{data.table.table_name}]
             {where} 
-            ORDER BY [{data.fields[0].field_name}]
+            ORDER BY [{fields[0]}]
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     elif ds.type == "pg" or ds.type == "excel":
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}" 
@@ -303,7 +303,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     elif ds.type == "oracle":
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}"
             {where} 
-            ORDER BY "{data.fields[0].field_name}"
+            ORDER BY "{fields[0]}"
             OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
     return exec_sql(ds, sql)
 
