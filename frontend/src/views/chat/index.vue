@@ -268,6 +268,7 @@
                 :src="currentChatEngineType"
                 width="16px"
                 height="16px"
+                v-if="currentChatEngineType"
                 alt=""
               />
               <span class="name">
@@ -440,10 +441,7 @@ function onClickHistory(chat: Chat) {
 }
 
 const currentChatEngineType = computed(() => {
-  return (
-    dsTypeWithImg.find((ele) => currentChat.value.ds_type === ele.type || ele.type === 'excel') ||
-    {}
-  ).img
+  return (dsTypeWithImg.find((ele) => currentChat.value.ds_type === ele.type) || {}).img
 })
 
 function toAssistantHistory(chat: Chat) {
