@@ -209,11 +209,11 @@ function addToDashboard() {
         <div class="chart-select-container">
           <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
             <ChartPopover
-              :chartTypeList="chartTypeList"
-              :chartType="chartType"
-              :title="t('chat.type')"
-              @typeChange="onTypeChange"
               v-if="chartTypeList.length > 0"
+              :chart-type-list="chartTypeList"
+              :chart-type="chartType"
+              :title="t('chat.type')"
+              @type-change="onTypeChange"
             ></ChartPopover>
           </el-tooltip>
 

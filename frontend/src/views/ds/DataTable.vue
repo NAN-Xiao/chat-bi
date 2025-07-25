@@ -335,7 +335,7 @@ const btnSelectClick = (val: any) => {
             </el-button>
           </div>
 
-          <div class="preview-or-schema" v-if="!loading">
+          <div v-if="!loading" class="preview-or-schema">
             <div v-if="btnSelect === 'd'" class="table-content_preview">
               <el-table :data="fieldListComputed" style="width: 100%">
                 <el-table-column

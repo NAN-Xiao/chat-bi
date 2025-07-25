@@ -458,6 +458,9 @@
     "add_interface_credentials": "Add interface credentials",
     "edit_interface_credentials": "Edit interface credentials",
     "duplicate_name": "Duplicate name",
+    "duplicate_name_": "Duplicate name",
+    "duplicate_account": "Duplicate account",
+    "duplicate_email": "Duplicate email",
     "interface_credentials": "Interface credentials",
     "no_credentials_yet": "No credentials yet",
     "intelligent_customer_service": "SQLBot Intelligent Customer Service"

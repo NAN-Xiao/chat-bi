@@ -312,7 +312,7 @@ import IconLock from '@/assets/svg/icon-key_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
-import ccmUpload from '@/assets/svg/icon_ccm-upload_outlined.svg'
+// import ccmUpload from '@/assets/svg/icon_ccm-upload_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { userApi } from '@/api/user'
 import { workspaceList } from '@/api/workspace'
@@ -451,9 +451,9 @@ const handleEditPassword = (id: any) => {
   })
 }
 
-const handleUserImport = () => {
-  userImportRef.value.showDialog()
-}
+// const handleUserImport = () => {
+//   userImportRef.value.showDialog()
+// }
 
 const handleConfirmPassword = () => {
   passwordRef.value.validate((val: any) => {
@@ -661,14 +661,39 @@ const editTerm = () => {
     })
   })
 }
+
+const duplicateName = async () => {
+  const res = await userApi.pager({}, 1, 1000)
+  const arr = res.filter((ele: any) => ele.id !== state.form.id)
+  const names = arr.map((ele: any) => ele.name)
+  const accounts = arr.map((ele: any) => ele.account)
+  const emails = arr.map((ele: any) => ele.email)
+  if (names.includes(state.form.name)) {
+    ElMessage.error(t('embedded.duplicate_name_'))
+    return
+  }
+
+  if (accounts.includes(state.form.account)) {
+    ElMessage.error(t('embedded.duplicate_account'))
+    return
+  }
+
+  if (emails.includes(state.form.email)) {
+    ElMessage.error(t('embedded.duplicate_email'))
+    return
+  }
+
+  if (state.form.id) {
+    editTerm()
+  } else {
+    addTerm()
+  }
+}
+
 const saveHandler = () => {
   termFormRef.value.validate((res: any) => {
     if (res) {
-      if (state.form.id) {
-        editTerm()
-      } else {
-        addTerm()
-      }
+      duplicateName()
     }
   })
 }
