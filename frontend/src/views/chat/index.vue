@@ -34,6 +34,7 @@
           </el-button>
         </template>
         <ChatListContainer
+          ref="floatPopoverRef"
           v-model:chat-list="chatList"
           v-model:current-chat-id="currentChatId"
           v-model:current-chat="currentChat"
@@ -339,12 +340,13 @@ import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import logo_fold from '@/assets/LOGO-fold.svg'
 import logo from '@/assets/LOGO.svg'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
-
 import { useAssistantStore } from '@/stores/assistant'
+import { onClickOutside } from '@vueuse/core'
 
 const props = defineProps<{
   startChatDsId?: number
 }>()
+const floatPopoverRef = ref()
 const floatPopoverVisible = ref(false)
 const assistantStore = useAssistantStore()
 const defaultFloatPopoverStyle = ref({
@@ -779,6 +781,11 @@ const assistantPrepareInit = () => {
     inset: '0px auto auto 0px',
   })
   goEmpty()
+  onClickOutside(floatPopoverRef, () => {
+    if (floatPopoverVisible.value) {
+      floatPopoverVisible.value = false
+    }
+  })
 }
 defineExpose({
   createNewChat,
