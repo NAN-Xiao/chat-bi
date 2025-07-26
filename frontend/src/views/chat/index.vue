@@ -419,22 +419,12 @@ const createNewChatSimple = async () => {
   currentChatId.value = undefined
   await createNewChat()
 }
-const isAssistantRepeatEmpty = () => {
-  return (
-    isAssistant.value &&
-    (currentChatId.value === null || typeof currentChatId.value === 'undefined')
-  )
-}
+
 const createNewChat = async () => {
   goEmpty()
-  if (isAssistantRepeatEmpty()) {
-    return
-  }
   if (isAssistant.value) {
-    const assistantChat = await assistantStore.setChat()
-    if (assistantChat) {
-      onChatCreatedQuick(assistantChat as any)
-    }
+    currentChat.value = new ChatInfo()
+    currentChatId.value = undefined
     return
   }
   chatCreatorRef.value?.showDs()

@@ -7,13 +7,8 @@
       <img :src="LOGO" class="logo" width="30px" height="30px" alt="" />
       <span class="tite">{{ $t('embedded.intelligent_customer_service') }}</span>
 
-      <el-tooltip
-        effect="dark"
-        :content="$t('embedded.new_conversation')"
-        placement="top"
-        @click="createChat"
-      >
-        <el-icon class="new-chat" size="20">
+      <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
+        <el-icon class="new-chat" size="20" @click="createChat">
           <icon_new_chat_outlined></icon_new_chat_outlined>
         </el-icon>
       </el-tooltip>
