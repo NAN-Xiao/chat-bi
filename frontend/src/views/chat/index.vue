@@ -15,15 +15,16 @@
         @on-click-side-bar-btn="hideSideBar"
       />
     </el-aside>
-    <div v-if="!isAssistant && !chatListSideBarShow" class="hidden-sidebar-btn">
+    <div
+      v-if="isAssistant || !chatListSideBarShow"
+      class="hidden-sidebar-btn"
+      :class="{ 'assistant-popover-sidebar': isAssistant }"
+    >
       <el-popover
+        :visible="isAssistant ? floatPopoverVisible : null"
         :width="280"
         placement="bottom-start"
-        popper-style="padding: 0;
-                      height: 654px;
-                      border: 1px solid rgba(222, 224, 227, 1);
-                      border-radius: 6px;
-                      "
+        :popper-style="{ ...defaultFloatPopoverStyle }"
       >
         <template #reference>
           <el-button link type="primary" class="icon-btn" @click="showSideBar">
@@ -264,11 +265,11 @@
             <template v-if="currentChat.datasource && currentChat.datasource_name">
               {{ t('qa.selected_datasource') }}:
               <img
+                v-if="currentChatEngineType"
                 style="margin-left: 4px; margin-right: 4px"
                 :src="currentChatEngineType"
                 width="16px"
                 height="16px"
-                v-if="currentChatEngineType"
                 alt=""
               />
               <span class="name">
@@ -339,8 +340,14 @@ import { useAssistantStore } from '@/stores/assistant'
 const props = defineProps<{
   startChatDsId?: number
 }>()
-
+const floatPopoverVisible = ref(false)
 const assistantStore = useAssistantStore()
+const defaultFloatPopoverStyle = ref({
+  padding: '0',
+  height: '654px',
+  border: '1px solid rgba(222, 224, 227, 1)',
+  borderRadius: '6px',
+})
 
 const isAssistant = computed(() => assistantStore.getAssistant)
 
@@ -444,26 +451,6 @@ const currentChatEngineType = computed(() => {
   return (dsTypeWithImg.find((ele) => currentChat.value.ds_type === ele.type) || {}).img
 })
 
-function toAssistantHistory(chat: Chat) {
-  currentChat.value = new ChatInfo(chat)
-  if (chat !== undefined && chat.id !== undefined && !loading.value) {
-    currentChatId.value = chat.id
-    loading.value = true
-    chatApi
-      .get(chat.id)
-      .then((res) => {
-        const info = chatApi.toChatInfo(res)
-        if (info) {
-          currentChat.value = info
-          onClickHistory(info)
-        }
-      })
-      .finally(() => {
-        loading.value = false
-      })
-  }
-}
-
 function onChatDeleted(id: number) {
   console.log('deleted', id)
 }
@@ -474,6 +461,10 @@ function onChatRenamed(chat: Chat) {
 
 const chatListSideBarShow = ref<boolean>(true)
 function hideSideBar() {
+  if (isAssistant.value) {
+    floatPopoverVisible.value = false
+    return
+  }
   chatListSideBarShow.value = false
 }
 
@@ -714,13 +705,6 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   })
 }
 
-const getHistoryList = () => {
-  return chatList.value
-}
-const getCurrentChatId = () => {
-  return currentChatId.value
-}
-
 const inputRef = ref()
 
 function clickInput() {
@@ -768,12 +752,24 @@ function stop(func?: (...p: any[]) => void, ...param: any[]) {
     func(...param)
   }
 }
-
+const showFloatPopover = () => {
+  if (isAssistant.value && !floatPopoverVisible.value) {
+    floatPopoverVisible.value = true
+  }
+}
+const assistantPrepareInit = () => {
+  if (!isAssistant.value) {
+    return
+  }
+  Object.assign(defaultFloatPopoverStyle.value, {
+    height: '100% !important',
+    inset: '0px auto auto 0px',
+  })
+  goEmpty()
+}
 defineExpose({
-  getHistoryList,
-  toAssistantHistory,
-  getCurrentChatId,
   createNewChat,
+  showFloatPopover,
 })
 
 const hiddenChatCreatorRef = ref()
@@ -791,6 +787,7 @@ function jumpCreatChat() {
 
 onMounted(() => {
   getChatList(jumpCreatChat)
+  assistantPrepareInit()
 })
 </script>
 
@@ -800,7 +797,11 @@ onMounted(() => {
   position: relative;
 
   border-radius: 12px;
-
+  .assistant-popover-sidebar {
+    button {
+      display: none;
+    }
+  }
   .hidden-sidebar-btn {
     z-index: 1;
     position: absolute;

@@ -426,9 +426,9 @@ const saveHandler = () => {
         <el-button :class="[btnSelect === 'd' && 'is-active']" text @click="btnSelect = 'd'">
           {{ t('embedded.embedded_assistant') }}
         </el-button>
-        <el-button :class="[btnSelect === 'q' && 'is-active']" text @click="btnSelect = 'q'">
+        <!-- <el-button :class="[btnSelect === 'q' && 'is-active']" text @click="btnSelect = 'q'">
           {{ t('embedded.embedded_page') }}
-        </el-button>
+        </el-button> -->
       </div>
       <div>
         <el-input
