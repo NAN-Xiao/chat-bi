@@ -69,6 +69,17 @@ const defaultModelListWithSearch = computed(() => {
   })
 })
 
+const modelCheckHandler = (item: any) => {
+  setTimeout(() => {
+    modelApi.check(item).catch((err: any) => {
+      if (err.response?.data?.msg) {
+        ElMessage.error(t('model.check_failed', { msg: err.response.data.msg || '' }))
+      } else {
+        ElMessage.error(t('model.check_failed', { msg: err.message || '' }))
+      }
+    })
+  }, 1000)
+}
 const duplicateName = async (item: any) => {
   const res = await modelApi.queryAll()
   const names = res.filter((ele: any) => ele.id !== item.id).map((ele: any) => ele.name)
@@ -85,6 +96,7 @@ const duplicateName = async (item: any) => {
         type: 'success',
         message: t('workspace.add_successfully'),
       })
+      modelCheckHandler(item)
     })
     return
   }
@@ -95,6 +107,7 @@ const duplicateName = async (item: any) => {
       type: 'success',
       message: t('common.save_success'),
     })
+    modelCheckHandler(item)
   })
 }
 
