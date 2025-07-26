@@ -58,14 +58,31 @@ const communicationCb = async (event: any) => {
       const certificate = event.data['certificate']
       assistantStore.setType(1)
       assistantStore.setCertificate(certificate)
-      // store certificate to pinia
+    }
+    if (event.data?.busi == 'setOnline') {
+      setFormatOnline(event.data.online)
     }
   }
+}
+const setFormatOnline = (text?: any) => {
+  if (text === null || typeof text === 'undefined') {
+    assistantStore.setOnline(false)
+    return
+  }
+  if (typeof text === 'boolean') {
+    assistantStore.setOnline(text)
+    return
+  }
+  if (typeof text === 'string') {
+    assistantStore.setOnline(text.toLowerCase() === 'true')
+    return
+  }
+  assistantStore.setOnline(false)
 }
 onBeforeMount(async () => {
   const assistantId = route.query.id
   const online = route.query.online
-  console.log(online)
+  setFormatOnline(online)
   const now = Date.now()
   assistantStore.setFlag(now)
   const param = {

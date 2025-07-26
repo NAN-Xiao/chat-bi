@@ -80,6 +80,9 @@ class HttpService {
               encodeURIComponent(assistantStore.getCertificate)
             )
           }
+          if (!assistantStore.getType) {
+            config.headers['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
+          }
         }
         const locale = getLocale()
         if (locale) {
@@ -260,6 +263,9 @@ class HttpService {
         heads['X-SQLBOT-ASSISTANT-CERTIFICATE'] = btoa(
           encodeURIComponent(assistantStore.getCertificate)
         )
+      }
+      if (!assistantStore.getType) {
+        heads['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
       }
     }
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment

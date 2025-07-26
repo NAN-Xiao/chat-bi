@@ -35,9 +35,10 @@ def get_assistant_ds(llm_service) -> list[dict]:
             config: dict[any] = json.loads(configuration)
             oid: str = config['oid']
             stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(CoreDatasource.oid == oid)
-            private_list:list[int] = config.get('private_list') or None
-            if private_list:
-                stmt.where(~CoreDatasource.id.in_(private_list))
+            if not assistant.online:
+                private_list:list[int] = config.get('private_list') or None
+                if private_list:
+                    stmt = stmt.where(~CoreDatasource.id.in_(private_list))
         db_ds_list = session.exec(stmt)
         
         result_list = [

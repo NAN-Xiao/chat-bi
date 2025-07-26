@@ -1,4 +1,5 @@
 ;(function () {
+  window.sqlbot_assistant_handler = window.sqlbot_assistant_handler || {}
   const defaultData = {
     id: '1',
     show_guide: false,
@@ -67,7 +68,7 @@
   const getChatContainerHtml = (data) => {
     return `
 <div id="sqlbot-assistant-chat-container">
-  <iframe id="sqlbot-assistant-chat-iframe-${data.id}" allow="microphone" src="${data.domain_url}/#/assistant?id=${data.id}"></iframe>
+  <iframe id="sqlbot-assistant-chat-iframe-${data.id}" allow="microphone" src="${data.domain_url}/#/assistant?id=${data.id}&online=${!!data.online}"></iframe>
   <div class="sqlbot-assistant-operate">
   <div class="sqlbot-assistant-closeviewport sqlbot-assistant-viewportnone">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -440,6 +441,7 @@
   }
   function loadScript(src, id) {
     const domain_url = getDomain(src)
+    const online = getParam(src, 'online')
     let url = `${domain_url}/api/v1/system/assistant/info/${id}`
     if (domain_url.includes('5173')) {
       url = url.replace('5173', '8000')
@@ -455,6 +457,7 @@
           Object.assign(tempData, config)
           tempData = Object.assign(tempData, config)
         }
+        tempData['online'] = online && online.toString().toLowerCase() == 'true'
         initsqlbot_assistant(tempData)
         if (data.type == 1) {
           registerMessageEvent(id, tempData)
@@ -471,13 +474,90 @@
     const src_list = scriptsArray.map((script) => script.src)
     src_list.forEach((src) => {
       const id = getParam(src, 'id')
+      window.sqlbot_assistant_handler[id] = window.sqlbot_assistant_handler[id] || {}
+      window.sqlbot_assistant_handler[id]['id'] = id
       const propName = script_id_prefix + id + '-state'
       if (window[propName]) {
         return true
       }
       window[propName] = true
       loadScript(src, id)
+      expposeGlobalMethods(id)
     })
   }
-  window.addEventListener('load', init)
+  function updateOnlineParam(target_url, newValue) {
+    try {
+      const url = new URL(target_url)
+      const [hashPath, hashQuery] = url.hash.split('?')
+      let searchParams
+      if (hashQuery) {
+        searchParams = new URLSearchParams(hashQuery)
+      } else {
+        searchParams = url.searchParams
+      }
+      searchParams.set('online', newValue)
+      if (hashQuery) {
+        url.hash = `${hashPath}?${searchParams.toString()}`
+      } else {
+        url.search = searchParams.toString()
+      }
+      return url.toString()
+    } catch (e) {
+      console.error('Invalid URL:', target_url)
+      return target_url
+    }
+  }
+  function expposeGlobalMethods(id) {
+    window.sqlbot_assistant_handler[id]['setOnline'] = (online) => {
+      if (online != null && typeof online != 'boolean') {
+        throw new Error('The parameter can only be of type boolean')
+      }
+      const iframe = document.getElementById(`sqlbot-assistant-chat-iframe-${id}`)
+      if (iframe) {
+        const url = iframe.src
+        const eventName = 'sqlbot_assistant_event'
+        const params = {
+          busi: 'setOnline',
+          online,
+          eventName,
+          messageId: id,
+        }
+        const contentWindow = iframe.contentWindow
+        contentWindow.postMessage(params, url)
+      }
+    }
+    window.sqlbot_assistant_handler[id]['refresh'] = (online) => {
+      if (online != null && typeof online != 'boolean') {
+        throw new Error('The parameter can only be of type boolean')
+      }
+      const iframe = document.getElementById(`sqlbot-assistant-chat-iframe-${id}`)
+      if (iframe) {
+        const url = iframe.src
+        let new_url = `${url}&t=${Date.now()}`
+        if (online != null) {
+          new_url = updateOnlineParam(new_url, online)
+        }
+        iframe.src = new_url
+      }
+    }
+  }
+  // window.addEventListener('load', init)
+  const executeWhenReady = (fn) => {
+    if (
+      document.readyState === 'complete' ||
+      (document.readyState !== 'loading' && !document.documentElement.doScroll)
+    ) {
+      setTimeout(fn, 0)
+    } else {
+      const onReady = () => {
+        document.removeEventListener('DOMContentLoaded', onReady)
+        window.removeEventListener('load', onReady)
+        fn()
+      }
+      document.addEventListener('DOMContentLoaded', onReady)
+      window.addEventListener('load', onReady)
+    }
+  }
+
+  executeWhenReady(init)
 })()

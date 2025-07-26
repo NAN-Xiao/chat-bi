@@ -11,6 +11,7 @@ interface AssistantState {
   flag: number
   type: number
   certificate: string
+  online: boolean
 }
 
 export const AssistantStore = defineStore('assistant', {
@@ -21,6 +22,7 @@ export const AssistantStore = defineStore('assistant', {
       flag: 0,
       type: 0,
       certificate: '',
+      online: false,
     }
   },
   getters: {
@@ -38,6 +40,9 @@ export const AssistantStore = defineStore('assistant', {
     },
     getType(): number {
       return this.type
+    },
+    getOnline(): boolean {
+      return this.online
     },
   },
   actions: {
@@ -60,6 +65,9 @@ export const AssistantStore = defineStore('assistant', {
         this.flag = flag
         wsCache.set(flagKey, flag)
       }
+    },
+    setOnline(online: boolean) {
+      this.online = !!online
     },
     async setChat() {
       if (!this.assistant) {
