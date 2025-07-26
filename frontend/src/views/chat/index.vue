@@ -560,7 +560,7 @@ const sendMessage = async () => {
 
   loading.value = true
   isTyping.value = true
-  assistantPrepareSend()
+  await assistantPrepareSend()
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
   currentRecord.chat_id = currentChatId.value
