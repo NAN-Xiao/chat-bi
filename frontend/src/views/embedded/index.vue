@@ -18,7 +18,9 @@
         </el-icon>
       </el-tooltip>
     </div>
-    <chat-component v-if="!loading" ref="chatRef" class="sqlbot-chat-container" />
+    <div class="sqlbot-chat-container">
+      <chat-component v-if="!loading" ref="chatRef" />
+    </div>
     <div class="drawer-assistant" @click="openHistory"></div>
   </div>
 </template>

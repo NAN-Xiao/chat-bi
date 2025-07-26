@@ -114,9 +114,17 @@ function goEmpty(func?: (...p: any[]) => void, ...params: any[]) {
 const createNewChat = async () => {
   goEmpty(doCreateNewChat)
 }
-
+const isAssistantRepeatEmpty = () => {
+  return (
+    isAssistant.value &&
+    (_currentChatId.value === null || typeof _currentChatId.value === 'undefined')
+  )
+}
 async function doCreateNewChat() {
   if (isAssistant.value) {
+    if (isAssistantRepeatEmpty()) {
+      return
+    }
     const assistantChat = await assistantStore.setChat()
     if (assistantChat) {
       onChatCreated(assistantChat)

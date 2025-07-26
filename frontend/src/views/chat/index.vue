@@ -58,7 +58,10 @@
     <el-container :loading="loading">
       <el-main
         class="chat-record-list"
-        :class="{ 'hide-sidebar': !isAssistant && !chatListSideBarShow }"
+        :class="{
+          'hide-sidebar': !isAssistant && !chatListSideBarShow,
+          'assistant-chat-main': isAssistant,
+        }"
       >
         <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
           <div class="welcome-content">
@@ -66,11 +69,16 @@
               <el-icon size="32">
                 <logo_fold />
               </el-icon>
-              {{ t('qa.greeting') }}
+              {{ isAssistant ? t('embedded.i_am_sqlbot') : t('qa.greeting') }}
             </div>
-            <div class="sub">{{ t('qa.hint_description') }}</div>
+            <div class="sub">
+              {{ isAssistant ? t('embedded.predict_data_etc') : t('qa.hint_description') }}
+            </div>
+            <div v-if="isAssistant" class="sub assistant-sub">
+              {{ t('embedded.intelligent_data_query') }}
+            </div>
             <el-button
-              v-if="currentChatId === undefined"
+              v-if="!isAssistant && currentChatId === undefined"
               size="large"
               type="primary"
               class="greeting-btn"
@@ -256,12 +264,9 @@
           </div>
         </el-scrollbar>
       </el-main>
-      <el-footer
-        v-if="computedMessages.length > 0 || (isAssistant && currentChatId)"
-        class="chat-footer"
-      >
+      <el-footer v-if="computedMessages.length > 0 || isAssistant" class="chat-footer">
         <div class="input-wrapper" @click="clickInput">
-          <div class="datasource">
+          <div v-if="!isAssistant" class="datasource">
             <template v-if="currentChat.datasource && currentChat.datasource_name">
               {{ t('qa.selected_datasource') }}:
               <img
@@ -414,9 +419,17 @@ const createNewChatSimple = async () => {
   currentChatId.value = undefined
   await createNewChat()
 }
-
+const isAssistantRepeatEmpty = () => {
+  return (
+    isAssistant.value &&
+    (currentChatId.value === null || typeof currentChatId.value === 'undefined')
+  )
+}
 const createNewChat = async () => {
   goEmpty()
+  if (isAssistantRepeatEmpty()) {
+    return
+  }
   if (isAssistant.value) {
     const assistantChat = await assistantStore.setChat()
     if (assistantChat) {
@@ -531,13 +544,23 @@ function onChatStop() {
   isTyping.value = false
   console.debug('onChatStop')
 }
-
+const assistantPrepareSend = async () => {
+  if (
+    isAssistant.value &&
+    (currentChatId.value == null || typeof currentChatId.value == 'undefined')
+  ) {
+    const assistantChat = await assistantStore.setChat()
+    if (assistantChat) {
+      onChatCreatedQuick(assistantChat as any)
+    }
+  }
+}
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
 
   loading.value = true
   isTyping.value = true
-
+  assistantPrepareSend()
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
   currentRecord.chat_id = currentChatId.value
@@ -839,6 +862,9 @@ onMounted(() => {
     &.hide-sidebar {
       border-radius: 12px;
     }
+  }
+  .assistant-chat-main {
+    padding: 0 0 20px 0;
   }
 
   .chat-scroll {
