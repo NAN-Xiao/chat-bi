@@ -6,14 +6,14 @@ from fastapi import APIRouter, Query
 from sqlmodel import func, select, update
 
 from apps.system.models.system_model import AiModelDetail
-from common.core.deps import SessionDep
+from common.core.deps import SessionDep, Trans
 from common.utils.time import get_timestamp
 from common.utils.utils import SQLBotLogUtil
 
 router = APIRouter(tags=["system/aimodel"], prefix="/system/aimodel")
 
 @router.post("/status")
-async def check_llm(info: AiModelCreator):
+async def check_llm(info: AiModelCreator, trans: Trans):
     try:
         additional_params = {item.key: item.val for item in info.config_list}
         config = LLMConfig(
@@ -28,7 +28,7 @@ async def check_llm(info: AiModelCreator):
         SQLBotLogUtil.info(f"check_llm result: {result}")
     except Exception as e:
         SQLBotLogUtil.error(f"Error checking LLM: {e}")
-        raise e
+        raise Exception(trans('i18n_llm.validate_error', msg = str(e)))
 
 @router.get("", response_model=list[AiModelGridItem])
 async def query(
@@ -102,11 +102,12 @@ async def update_model(
 @router.delete("/{id}")
 async def delete_model(
         session: SessionDep,
+        trans: Trans,
         id: int
 ):
     item = session.get(AiModelDetail, id)
     if item.default_model:
-        raise RuntimeError(f"Can not delete [${item.name}], because it is default model!")
+        raise Exception(trans('i18n_llm.delete_default_error', key = item.name))
     session.delete(item)
     session.commit()
     

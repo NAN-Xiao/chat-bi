@@ -1,16 +1,15 @@
 from pathlib import Path
 import json
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from fastapi import Request
 
 class I18n:
     def __init__(self, locale_dir: str = "locales"):
         self.locale_dir = Path(locale_dir)
-        self.translations: Dict[str, Dict[str, str]] = {}
+        self.translations: Dict[str, Dict[str, Any]] = {}
         self.load_translations()
 
     def load_translations(self):
-       
         if not self.locale_dir.exists():
             self.locale_dir.mkdir()
             return
@@ -34,9 +33,21 @@ class I18nHelper:
         self.request = request
         self.lang = i18n.get_language(request)
 
+    def _get_nested_translation(self, data: Dict[str, Any], key_path: str) -> str:
+        keys = key_path.split('.')
+        current = data
+        
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                return key_path  # 如果找不到，返回原键
+        
+        return current if isinstance(current, str) else key_path
+
     def __call__(self, key: str, **kwargs) -> str:
         lang_data = self.i18n.translations.get(self.lang, {})
-        text = lang_data.get(key, key)  # 找不到则返回原key
+        text = self._get_nested_translation(lang_data, key)
         
         if kwargs:
             try:

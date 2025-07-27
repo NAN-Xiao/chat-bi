@@ -99,7 +99,7 @@ async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Tran
 async def ws_change(session: SessionDep, current_user: CurrentUser, oid: int):
     ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
     if not any(x.id == oid for x in ws_list):
-        raise HTTPException(f"oid [{oid}] is invalid!")
+        raise Exception(f"oid [{oid}] is invalid!")
     user_model: UserModel = get_db_user(session = session, user_id = current_user.id)
     user_model.oid = oid
     session.add(user_model)
@@ -115,13 +115,13 @@ async def query(session: SessionDep, trans: Trans, id: int) -> UserEditor:
     return result
 
 @router.post("")
-async def create(session: SessionDep, creator: UserCreator):
+async def create(session: SessionDep, creator: UserCreator, trans: Trans):
     if check_account_exists(session=session, account=creator.account):
-        raise Exception(f"Account [{creator.account}] already exists!")
+        raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.account') [{creator.account}]}"))
     if check_email_exists(session=session, email=creator.email):
-        raise Exception(f"Email [{creator.email}] already exists!")
+        raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.email') [{creator.email}]}"))
     if not check_email_format(creator.email):
-        raise Exception(f"Email [{creator.email}] format is invalid!")
+        raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email') [{creator.email}]}"))
     data = creator.model_dump(exclude_unset=True)
     user_model = UserModel.model_validate(data)
     #user_model.create_time = get_timestamp()
@@ -144,16 +144,16 @@ async def create(session: SessionDep, creator: UserCreator):
     
 @router.put("")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
-async def update(session: SessionDep, editor: UserEditor):
+async def update(session: SessionDep, editor: UserEditor, trans: Trans):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
     if not user_model:
         raise Exception(f"User with id [{editor.id}] not found!")
     if editor.account != user_model.account:
         raise Exception(f"account cannot be changed!")
     if editor.email != user_model.email and check_email_exists(session=session, account=editor.email):
-        raise Exception(f"Email [{editor.email}] already exists!")
+        raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.email') [{editor.email}]}"))
     if not check_email_format(editor.email):
-        raise Exception(f"Email [{editor.email}] format is invalid!")
+        raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email') [{editor.email}]}"))
     origin_oid: int = user_model.oid
     del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == editor.id)
     session.exec(del_stmt)
@@ -188,10 +188,10 @@ async def batch_del(session: SessionDep, id_list: list[int]):
     
 @router.put("/language")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
-async def langChange(session: SessionDep, current_user: CurrentUser, language: UserLanguage):
+async def langChange(session: SessionDep, current_user: CurrentUser, trans: Trans, language: UserLanguage):
     lang = language.language
     if lang not in ["zh-CN", "en"]:
-        return {"message": "Language not supported"}
+        raise Exception(trans('i18n_user.language_not_support', key = lang))
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     db_user.language = lang
     session.add(db_user)
@@ -199,9 +199,9 @@ async def langChange(session: SessionDep, current_user: CurrentUser, language: U
     
 @router.patch("/pwd/{id}")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
-async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
+async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans, id: int):
     if not current_user.isAdmin:
-        raise HTTPException('only for admin')
+        raise Exception(trans('i18n_permission.no_permission', url = " patch[/user/pwd/id],", msg = trans('i18n_permission.only_admin')))
     db_user: UserModel = get_db_user(session=session, user_id=id)
     db_user.password = default_md5_pwd()
     session.add(db_user)
@@ -209,22 +209,22 @@ async def pwdReset(session: SessionDep, current_user: CurrentUser, id: int):
 
 @router.put("/pwd")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
-async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdEditor):
+async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans, editor: PwdEditor):
     new_pwd = editor.new_pwd
     if not check_pwd_format(new_pwd):
-        raise Exception("Password format is invalid!")
+        raise Exception(trans('i18n_format_invalid', key = trans('i18n_user.password')))
     db_user: UserModel = get_db_user(session=session, user_id=current_user.id)
     if not verify_md5pwd(editor.pwd, db_user.password):
-        raise Exception(f"pwd [{editor.pwd}] error")
+        raise Exception(trans('i18n_error', key = trans('i18n_user.password')))
     db_user.password = md5pwd(new_pwd)
     session.add(db_user)
     session.commit()
     
 @router.patch("/status")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="statusDto.id")
-async def langChange(session: SessionDep, current_user: CurrentUser, statusDto: UserStatus):
+async def langChange(session: SessionDep, current_user: CurrentUser, trans: Trans, statusDto: UserStatus):
     if not current_user.isAdmin:
-        raise Exception("no permission to execute")
+        raise Exception(trans('i18n_permission.no_permission', url = ", ", msg = trans('i18n_permission.only_admin')))
     status = statusDto.status
     if status not in [0, 1]:
         return {"message": "status not supported"}
