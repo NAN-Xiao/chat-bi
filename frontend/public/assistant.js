@@ -485,7 +485,7 @@
       expposeGlobalMethods(id)
     })
   }
-  function updateOnlineParam(target_url, newValue) {
+  function updateParam(target_url, key, newValue) {
     try {
       const url = new URL(target_url)
       const [hashPath, hashQuery] = url.hash.split('?')
@@ -495,7 +495,7 @@
       } else {
         searchParams = url.searchParams
       }
-      searchParams.set('online', newValue)
+      searchParams.set(key, newValue)
       if (hashQuery) {
         url.hash = `${hashPath}?${searchParams.toString()}`
       } else {
@@ -533,11 +533,14 @@
       const iframe = document.getElementById(`sqlbot-assistant-chat-iframe-${id}`)
       if (iframe) {
         const url = iframe.src
-        let new_url = `${url}&t=${Date.now()}`
+        let new_url = updateParam(url, 't', Date.now())
         if (online != null) {
-          new_url = updateOnlineParam(new_url, online)
+          new_url = updateParam(new_url, 'online', online)
         }
-        iframe.src = new_url
+        iframe.src = 'about:blank'
+        setTimeout(() => {
+          iframe.src = new_url
+        }, 500)
       }
     }
   }
