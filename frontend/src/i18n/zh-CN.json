@@ -31,7 +31,8 @@
     "re_upload": "重新上传",
     "not_exceed_50mb": "支持 XLS、XLSX、CSV 格式，文件大小不超过 50MB",
     "reset_password": "重置密码",
-    "password_reset_successful": "重置密码成功"
+    "password_reset_successful": "重置密码成功",
+    "or": "或者"
   },
   "dashboard": {
     "add_success": "添加成功",

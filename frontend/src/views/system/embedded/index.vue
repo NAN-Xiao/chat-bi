@@ -353,6 +353,7 @@ const btnSelect = ref('d')
 
 const dialogVisible = ref(false)
 const scriptElement = ref('')
+const jsCodeElement = ref('')
 const handleEmbedded = (row: any) => {
   dialogVisible.value = true
   const { origin, pathname } = window.location
@@ -363,6 +364,25 @@ const handleEmbedded = (row: any) => {
   src="${origin + pathname}assistant.js?id=${row.id}"k-*g-#/scriptk-*`
     .replaceAll('g-#', '<')
     .replaceAll('k-*', '>')
+
+  jsCodeElement.value = `(function(){
+    const script = document.createElement('script');
+    script.defer = true;
+    script.async = true;
+    script.src = "${origin + pathname}assistant.js?id=${row.id}";
+    script.id = "sqlbot-assistant-float-script-${row.id}";
+    document.head.appendChild(script);
+  })()`
+}
+const copyJsCode = () => {
+  navigator.clipboard
+    .writeText(jsCodeElement.value)
+    .then(function () {
+      ElMessage.success(t('embedded.copy_successful'))
+    })
+    .catch(function () {
+      ElMessage.error(t('embedded.copy_successful'))
+    })
 }
 const copyCode = () => {
   navigator.clipboard
@@ -772,6 +792,19 @@ const saveHandler = () => {
 
         <div class="script">
           {{ scriptElement }}
+        </div>
+      </div>
+
+      <div class="code">
+        <div class="copy">
+          {{ $t('common.or') }}
+          <el-icon size="16" @click="copyJsCode">
+            <icon_copy_outlined></icon_copy_outlined>
+          </el-icon>
+        </div>
+
+        <div class="script">
+          {{ jsCodeElement }}
         </div>
       </div>
     </div>
