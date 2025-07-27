@@ -14,9 +14,9 @@ PWD_REGEX = re.compile(
     r"(?=.*[~!@#$%^&*()_+\-={}|:\"<>?`\[\];',./])"
     r"[A-Za-z\d~!@#$%^&*()_+\-={}|:\"<>?`\[\];',./]{8,20}$"
 )
-class model_status(BaseModel):
-    status: bool
-    ids: list[int]
+class UserStatus(BaseCreatorDTO):
+    status: int = 1
+    
     
 
 class UserLanguage(BaseModel):

@@ -124,17 +124,17 @@
                 </el-icon>
               </el-tooltip>
               <el-popover
+                :ref="
+                  (el: any) => {
+                    setPopoverRef(el, scope.row)
+                  }
+                "
                 placement="right"
                 virtual-triggering
                 :width="300"
                 :virtual-ref="scope.row.buttonRef"
                 trigger="click"
                 show-arrow
-                :ref="
-                  (el: any) => {
-                    setPopoverRef(el, scope.row)
-                  }
-                "
               >
                 <div class="reset-pwd-confirm">
                   <div class="confirm-header">
@@ -147,7 +147,7 @@
                   </div>
                   <div class="confirm-content">
                     <span>SQLBot@123456</span>
-                    <el-button @click="copyText" style="margin-left: 4px" text>{{
+                    <el-button style="margin-left: 4px" text @click="copyText">{{
                       t('datasource.copy')
                     }}</el-button>
                   </div>
@@ -620,8 +620,13 @@ const editHandler = (row: any) => {
 }
 
 const statusHandler = (row: any) => {
-  state.form = { ...row }
-  editTerm()
+  /* state.form = { ...row }
+  editTerm() */
+  const param = {
+    id: row.id,
+    status: row.status,
+  }
+  userApi.status(param)
 }
 
 const cancelDelete = () => {

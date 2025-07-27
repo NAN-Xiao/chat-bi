@@ -5,7 +5,7 @@ from apps.system.crud.user import check_account_exists, check_email_exists, chec
 from apps.system.models.system_model import UserWsModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage, UserWs
+from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage, UserStatus, UserWs
 from common.core.deps import CurrentUser, SessionDep, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
@@ -217,5 +217,18 @@ async def pwdUpdate(session: SessionDep, current_user: CurrentUser, editor: PwdE
     if not verify_md5pwd(editor.pwd, db_user.password):
         raise Exception(f"pwd [{editor.pwd}] error")
     db_user.password = md5pwd(new_pwd)
+    session.add(db_user)
+    session.commit()
+    
+@router.patch("/status")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="statusDto.id")
+async def langChange(session: SessionDep, current_user: CurrentUser, statusDto: UserStatus):
+    if not current_user.isAdmin:
+        raise Exception("no permission to execute")
+    status = statusDto.status
+    if status not in [0, 1]:
+        return {"message": "status not supported"}
+    db_user: UserModel = get_db_user(session=session, user_id=statusDto.id)
+    db_user.status = status
     session.add(db_user)
     session.commit()

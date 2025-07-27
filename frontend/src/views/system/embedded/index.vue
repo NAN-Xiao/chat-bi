@@ -359,7 +359,7 @@ const handleEmbedded = (row: any) => {
   scriptElement.value = `g-#script
   async
   defer
-  id="${row.id}"
+  id="sqlbot-assistant-float-script-${row.id}"
   src="${origin + pathname}assistant.js?id=${row.id}"k-*g-#/scriptk-*`
     .replaceAll('g-#', '<')
     .replaceAll('k-*', '>')
