@@ -56,6 +56,15 @@ TBD
 - Backend：[Python / Django](https://www.djangoproject.com/)
 - Database：[PostgreSQL + pgvector](https://www.postgresql.org/)
 
+## 飞致云的其他明星项目
+
+- [DataEase](https://github.com/dataease/dataease/) - 人人可用的开源 BI 工具
+- [1Panel](https://github.com/1panel-dev/1panel/) - 现代化、开源的 Linux 服务器运维管理面板
+- [MaxKB](https://github.com/1panel-dev/MaxKB/) - 基于 LLM 大语言模型的开源知识库问答系统
+- [JumpServer](https://github.com/jumpserver/jumpserver/) - 广受欢迎的开源堡垒机
+- [Halo](https://github.com/halo-dev/halo/) - 强大易用的开源建站工具
+- [MeterSphere](https://github.com/metersphere/metersphere/) - 新一代的开源持续测试工具
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=1Panel-dev/SQLBot&type=Date)](https://star-history.com/#1Panel-dev/SQLBot&Date)
