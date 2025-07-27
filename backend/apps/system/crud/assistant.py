@@ -33,7 +33,7 @@ def get_assistant_ds(llm_service) -> list[dict]:
         configuration = assistant.configuration
         if configuration:
             config: dict[any] = json.loads(configuration)
-            oid: str = config['oid']
+            oid: int = int(config['oid'])
             stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(CoreDatasource.oid == oid)
             if not assistant.online:
                 private_list:list[int] = config.get('private_list') or None
