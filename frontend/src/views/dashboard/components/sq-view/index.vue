@@ -2,7 +2,7 @@
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
-defineProps({
+const props = defineProps({
   viewInfo: {
     type: Object,
     required: true,
@@ -14,19 +14,79 @@ defineProps({
   },
 })
 
-import { ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
+import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
+import ICON_COLUMN from '@/assets/svg/chart/icon_dashboard_outlined.svg'
+import ICON_BAR from '@/assets/svg/chart/icon_bar_outlined.svg'
+import ICON_LINE from '@/assets/svg/chart/icon_chart-line.svg'
+import ICON_PIE from '@/assets/svg/chart/icon_pie_outlined.svg'
+import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
 const { t } = useI18n()
 const chartRef = ref(null)
+const currentChartType = ref<ChartTypes | undefined>(undefined)
+
 const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
   // eslint-disable-next-line @typescript-eslint/no-unused-expressions
   chartRef.value?.renderChart
 }
+
 const enlargeDialogVisible = ref(false)
 
 const enlargeView = () => {
   enlargeDialogVisible.value = true
+}
+
+const chartTypeList = computed(() => {
+  const _list = []
+  if (props.viewInfo.chart) {
+    switch (props.viewInfo.chart.type) {
+      case 'table':
+        break
+      case 'column':
+      case 'bar':
+      case 'line':
+        _list.push({
+          value: 'column',
+          name: t('chat.chart_type.column'),
+          icon: ICON_COLUMN,
+        })
+        _list.push({
+          value: 'bar',
+          name: t('chat.chart_type.bar'),
+          icon: ICON_BAR,
+        })
+        _list.push({
+          value: 'line',
+          name: t('chat.chart_type.line'),
+          icon: ICON_LINE,
+        })
+        break
+      case 'pie':
+        _list.push({
+          value: 'pie',
+          name: t('chat.chart_type.pie'),
+          icon: ICON_PIE,
+        })
+    }
+  }
+
+  return _list
+})
+
+function changeTable() {
+  onTypeChange('table')
+}
+
+function onTypeChange(val: any) {
+  // eslint-disable-next-line vue/no-mutating-props
+  props.viewInfo.chart.type = val
+  nextTick(() => {
+    //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    chartRef.value?.renderChart()
+  })
 }
 defineExpose({
   renderChart,
@@ -39,6 +99,32 @@ defineExpose({
     <div class="header-bar">
       <div class="title">
         {{ viewInfo.chart.title }}
+      </div>
+      <div class="buttons-bar">
+        <div class="chart-select-container">
+          <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
+            <ChartPopover
+              v-if="chartTypeList.length > 0"
+              :chart-type-list="chartTypeList"
+              :chart-type="viewInfo.chartType"
+              :title="t('chat.type')"
+              @type-change="onTypeChange"
+            ></ChartPopover>
+          </el-tooltip>
+          <el-tooltip effect="dark" :content="t('chat.chart_type.table')" placement="top">
+            <el-button
+              class="tool-btn"
+              :class="{ 'chart-active': currentChartType === 'table' }"
+              text
+              @click="changeTable"
+            >
+              <el-icon size="16">
+                <ICON_TABLE />
+              </el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+        <div class="divider" />
       </div>
     </div>
     <div class="chart-show-area">
@@ -109,6 +195,7 @@ defineExpose({
   .header-bar {
     height: 32px;
     display: flex;
+    margin-bottom: 16px;
 
     align-items: center;
     flex-direction: row;
@@ -172,9 +259,8 @@ defineExpose({
       display: flex;
       flex-direction: row;
       align-items: center;
-
       gap: 16px;
-
+      margin-right: 36px;
       .divider {
         width: 1px;
         height: 16px;
@@ -220,5 +306,52 @@ defineExpose({
 .chart-show-area {
   width: 100%;
   height: calc(100% - 32px);
+}
+
+.buttons-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+
+  gap: 16px;
+
+  .divider {
+    width: 1px;
+    height: 16px;
+    border-left: 1px solid rgba(31, 35, 41, 0.15);
+  }
+}
+
+.chart-select-container {
+  padding: 3px;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  border-radius: 6px;
+
+  border: 1px solid rgba(217, 220, 223, 1);
+
+  .chart-select {
+    min-width: 40px;
+    width: 40px;
+    height: 24px;
+
+    :deep(.ed-select__wrapper) {
+      padding: 4px;
+      min-height: 24px;
+      box-shadow: unset;
+      border-radius: 6px;
+
+      &:hover {
+        background: rgba(31, 35, 41, 0.1);
+      }
+      &:active {
+        background: rgba(31, 35, 41, 0.1);
+      }
+    }
+    :deep(.ed-select__caret) {
+      font-size: 12px !important;
+    }
+  }
 }
 </style>
