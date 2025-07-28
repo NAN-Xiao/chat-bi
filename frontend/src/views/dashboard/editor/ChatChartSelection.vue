@@ -63,6 +63,7 @@ import { useI18n } from 'vue-i18n'
 import { Chat, chatApi, ChatInfo } from '@/api/chat.ts'
 import DashboardChatList from '@/views/dashboard/editor/DashboardChatList.vue'
 import ChartSelection from '@/views/dashboard/editor/ChartSelection.vue'
+import { concat } from 'lodash-es'
 
 const dialogShow = ref(false)
 const { t } = useI18n()
@@ -95,17 +96,55 @@ function selectChange(value: boolean, viewInfo: any) {
   }
 }
 
+const getData = (record: any) => {
+  if (record?.predict_record_id !== undefined && record?.predict_record_id !== null) {
+    let _list = []
+    if (record?.predict_data && typeof record?.predict_data === 'string') {
+      if (
+        record?.predict_data.length > 0 &&
+        record?.predict_data.trim().startsWith('[') &&
+        record?.predict_data.trim().endsWith(']')
+      ) {
+        try {
+          _list = JSON.parse(record?.predict_data)
+        } catch (e) {
+          console.error(e)
+        }
+      }
+    } else {
+      if (record?.predict_data.length > 0) {
+        _list = record?.predict_data
+      }
+    }
+
+    if (_list.length == 0) {
+      return _list
+    }
+
+    if (record.data && record.data.length > 0) {
+      return concat(record.data, _list)
+    }
+
+    return _list
+  } else {
+    return record.data
+  }
+}
+
 function adaptorChartInfoList(chatInfo: ChatInfo) {
   chartInfoList.value = []
   if (chatInfo && chatInfo.records) {
     chatInfo.records.forEach((record: any) => {
+      const data = getData(record)
       if (
-        (record?.analysis_record_id === undefined || record?.analysis_record_id === null) &&
-        (record?.predict_record_id === undefined || record?.predict_record_id === null) &&
-        record?.chart &&
-        record.data
+        ((record?.analysis_record_id === undefined || record?.analysis_record_id === null) &&
+          (record?.predict_record_id === undefined || record?.predict_record_id === null) &&
+          (record?.sql || record?.chart)) ||
+        (record?.predict_record_id !== undefined &&
+          record?.predict_record_id !== null &&
+          data.length > 0)
       ) {
-        const recordeInfo = { id: chatInfo.id + '_' + record.id, data: record.data, chart: {} }
+        const recordeInfo = { id: chatInfo.id + '_' + record.id, data: data, chart: {} }
         const chartBaseInfo = JSON.parse(record.chart)
         recordeInfo['chart'] = {
           type: chartBaseInfo.type,
