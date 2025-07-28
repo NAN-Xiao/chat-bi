@@ -162,5 +162,5 @@ class ChatMcp(ChatQuestion):
 
 
 class ChatStart(BaseModel):
-    username: str = ''
-    password: str = ''
+    username: str
+    password: str
