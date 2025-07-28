@@ -3,6 +3,7 @@
     "i18n_ds_name_exist": "Name already exists",
     "i18n_concat_admin": "Please contact administrator!",
     "i18n_exist": "{msg} already exists!",
+    "i18n_not_exist": "{msg} not exists",
     "i18n_error": "{key} error!",
     "i18n_miss_args": "Missing {key} parameter!",
     "i18n_format_invalid": "{key} format is incorrect!",
@@ -15,7 +16,11 @@
         "account": "Account",
         "email": "Email",
         "password": "Password",
-        "language_not_support": "System does not support [{key}] language!"
+        "language_not_support": "System does not support [{key}] language!",
+        "user_ws_miss:": "The current user is not in the workspace [{msg}]!"
+    },
+    "i18n_ws": {
+        "title": "Workspace"
     },
     "i18n_permission": {
         "only_admin": "Only administrators can call this!",

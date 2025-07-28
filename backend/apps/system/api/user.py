@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import func, or_, select, delete as sqlmodel_delete
 from apps.system.crud.user import check_account_exists, check_email_exists, check_email_format, check_pwd_format, get_db_user, single_delete, user_ws_options
-from apps.system.models.system_model import UserWsModel
+from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserLanguage, UserStatus, UserWs
@@ -96,10 +96,13 @@ async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Tran
 
 @router.put("/ws/{oid}")
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
-async def ws_change(session: SessionDep, current_user: CurrentUser, oid: int):
+async def ws_change(session: SessionDep, current_user: CurrentUser, trans:Trans, oid: int):
     ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
     if not any(x.id == oid for x in ws_list):
-        raise Exception(f"oid [{oid}] is invalid!")
+        db_ws = session.get(WorkspaceModel, oid)
+        if db_ws:
+            raise Exception(trans('i18n_user.user_ws_miss', msg = db_ws.name))
+        raise Exception(trans('i18n_not_exist', msg = f"{trans('i18n_ws.title')}[{oid}]"))
     user_model: UserModel = get_db_user(session = session, user_id = current_user.id)
     user_model.oid = oid
     session.add(user_model)
