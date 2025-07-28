@@ -159,6 +159,7 @@ const supplierChang = (supplier: any) => {
   modelForm.api_domain = config.api_domain
   modelForm.base_model = ''
 }
+let curId = +new Date()
 const initForm = (item?: any) => {
   modelForm.id = ''
   modelRef.value.clearValidate()
@@ -166,6 +167,12 @@ const initForm = (item?: any) => {
     Object.assign(modelForm, { ...item })
     if (item?.config_list?.length) {
       advancedSetting.value = item.config_list
+      advancedSetting.value.forEach((ele: any) => {
+        if (!ele.id) {
+          ele.id = curId
+          curId += 1
+        }
+      })
     }
   }
 }
