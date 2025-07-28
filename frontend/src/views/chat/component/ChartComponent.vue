@@ -48,11 +48,11 @@ let chartInstance: BaseChart | undefined
 
 function renderChart() {
   chartInstance = getChartInstance(params.type, chartId.value)
-  console.log(chartInstance)
   if (chartInstance) {
     chartInstance.init(axis.value, params.data)
     chartInstance.render()
   }
+  console.debug(chartInstance)
 }
 
 function destroyChart() {
