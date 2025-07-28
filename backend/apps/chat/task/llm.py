@@ -99,7 +99,7 @@ class LLMService:
                                                                                  chart_id=chat_id))))
         self.change_title = len(history_records) == 0
 
-        chat_question.lang = current_user.language
+        chat_question.lang = get_lang_name(current_user.language)
 
         self.ds = (ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
         self.chat_question = chat_question
@@ -1044,3 +1044,8 @@ def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = {}):
             token_usage['total_tokens'] = chunk.usage_metadata.get('total_tokens')
     except Exception:
         pass
+
+def get_lang_name(lang: str):
+    if lang and lang == 'en':
+        return '英文'
+    return '简体中文'
