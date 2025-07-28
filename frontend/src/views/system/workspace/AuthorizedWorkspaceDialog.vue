@@ -28,7 +28,6 @@
         </el-input>
         <div class="mt-8 max-height_workspace">
           <el-checkbox
-            v-if="!search"
             v-model="checkAll"
             class="mb-8"
             :indeterminate="isIndeterminate"
@@ -65,14 +64,14 @@
       <div class="p-16 w-full">
         <div class="flex-between mb-16">
           <span class="lighter">
-            {{ $t('workspace.selected_2_people', { msg: checkedWorkspace.length }) }}
+            {{ $t('workspace.selected_2_people', { msg: checkTableList.length }) }}
           </span>
 
           <el-button text @click="clearWorkspaceAll">
             {{ $t('workspace.clear') }}
           </el-button>
         </div>
-        <div v-for="ele in checkedWorkspace" :key="ele.name" class="flex-between align-center">
+        <div v-for="ele in checkTableList" :key="ele.name" class="flex-between align-center">
           <div
             :title="`${ele.name}(${ele.account})`"
             class="flex align-center ellipsis"
@@ -106,7 +105,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { workspaceOptionUserList, workspaceUwsCreate } from '@/api/workspace'
 import avatar_personal from '@/assets/svg/avatar_personal.svg'
 import Close from '@/assets/svg/icon_close_outlined_w.svg'
@@ -120,23 +119,51 @@ const listType = ref(0)
 const search = ref('')
 const loading = ref(false)
 const centerDialogVisible = ref(false)
+const checkTableList = ref([] as any[])
 
 const workspaceWithKeywords = computed(() => {
   return workspace.value.filter((ele: any) =>
     (ele.name.toLowerCase() as string).includes(search.value.toLowerCase())
   )
 })
+watch(search, () => {
+  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
+  checkedWorkspace.value = checkTableList.value.filter((ele) => tableNameArr.includes(ele.name))
+  const checkedCount = checkedWorkspace.value.length
+  checkAll.value = checkedCount === workspaceWithKeywords.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
+})
 const handleCheckAllChange = (val: CheckboxValueType) => {
-  checkedWorkspace.value = val ? workspace.value : []
+  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
+  checkedWorkspace.value = val
+    ? [
+        ...new Set([
+          ...workspaceWithKeywords.value,
+          ...checkedWorkspace.value.filter((ele) => !tableNameArr.includes(ele.name)),
+        ]),
+      ]
+    : []
   isIndeterminate.value = false
-  if (!val) {
-    clearWorkspaceAll()
-  }
+  checkTableList.value = val
+    ? [
+        ...new Set([
+          ...workspaceWithKeywords.value,
+          ...checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name)),
+        ]),
+      ]
+    : checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name))
 }
 const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   const checkedCount = value.length
-  checkAll.value = checkedCount === workspace.value.length
-  isIndeterminate.value = checkedCount > 0 && checkedCount < workspace.value.length
+  checkAll.value = checkedCount === workspaceWithKeywords.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
+  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
+  checkTableList.value = [
+    ...new Set([
+      ...checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name)),
+      ...value,
+    ]),
+  ]
 }
 let oid: any = null
 
@@ -145,6 +172,7 @@ const open = async (id: any) => {
   search.value = ''
   oid = id
   checkedWorkspace.value = []
+  checkTableList.value = []
   checkAll.value = false
   isIndeterminate.value = false
   const systemWorkspaceList = await workspaceOptionUserList({ oid }, 1, 1000)
