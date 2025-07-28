@@ -178,6 +178,9 @@ onMounted(() => {
   border: none !important;
   margin: 2px;
   cursor: text;
+  p {
+    word-break: break-all;
+  }
 
   ol {
     list-style-type: decimal;
