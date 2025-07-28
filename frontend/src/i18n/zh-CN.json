@@ -6,6 +6,9 @@
     "AI Model Configuration": "模型配置"
   },
   "common": {
+    "enter_your_password": "请输入密码",
+    "your_account_email_address": "请输入账号/邮箱",
+    "the_correct_password": "请输入正确的密码",
     "input_content": "请输入内容",
     "may_not_exist": "暂无结果，用户可能不存在",
     "empty": "",

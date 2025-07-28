@@ -7,22 +7,26 @@
       <div class="login-right">
         <div class="login-form">
           <h2 class="title">Login</h2>
-          <el-form ref="loginFormRef" :model="loginForm" :rules="rules" @keyup.enter="submitForm">
+          <el-form
+            ref="loginFormRef"
+            class="form-content_error"
+            :model="loginForm"
+            :rules="rules"
+            @keyup.enter="submitForm"
+          >
             <el-form-item prop="username">
               <el-input
                 v-model="loginForm.username"
-                placeholder="Account"
-                :prefix-icon="User"
+                :placeholder="$t('common.your_account_email_address')"
                 size="large"
               ></el-input>
             </el-form-item>
             <el-form-item prop="password">
               <el-input
                 v-model="loginForm.password"
-                placeholder="Password"
+                :placeholder="$t('common.enter_your_password')"
                 type="password"
                 show-password
-                :prefix-icon="Lock"
                 size="large"
               ></el-input>
             </el-form-item>
@@ -40,10 +44,11 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { User, Lock } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
 const userStore = useUserStore()
+const { t } = useI18n()
 
 const loginForm = ref({
   username: '',
@@ -51,8 +56,8 @@ const loginForm = ref({
 })
 
 const rules = {
-  username: [{ required: true, message: 'Please input account', trigger: 'blur' }],
-  password: [{ required: true, message: 'Please input password', trigger: 'blur' }],
+  username: [{ required: true, message: t('common.your_account_email_address'), trigger: 'blur' }],
+  password: [{ required: true, message: t('common.the_correct_password'), trigger: 'blur' }],
 }
 
 const loginFormRef = ref()
@@ -109,10 +114,24 @@ const submitForm = () => {
       padding: 40px;
       display: flex;
       align-items: center;
+      position: relative;
+      height: 361px;
 
       .login-form {
         width: 100%;
         padding: 0 40px;
+        position: absolute;
+        top: 40px;
+        left: 0;
+
+        .form-content_error {
+          .ed-form-item--default {
+            margin-bottom: 24px;
+            &.is-error {
+              margin-bottom: 48px;
+            }
+          }
+        }
 
         .title {
           font-size: 28px;
@@ -126,7 +145,6 @@ const submitForm = () => {
           height: 45px;
           font-size: 16px;
           border-radius: 4px;
-          margin-top: 20px;
         }
 
         .agreement {

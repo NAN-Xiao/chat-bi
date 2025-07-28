@@ -205,7 +205,6 @@ const handleCheckAllChange = (val: any) => {
   }
 }
 
-
 const handleToggleRowSelection = (check: boolean = true) => {
   let i = 0
   const ids = multipleSelectionAll.value.map((ele: any) => ele.id)

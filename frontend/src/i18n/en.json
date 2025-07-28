@@ -6,6 +6,9 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
+    "enter_your_password": "Please enter your password",
+    "your_account_email_address": "Please enter your account/email address",
+    "the_correct_password": "Please enter the correct password",
     "input_content": "Please Input Content",
     "empty": " ",
     "may_not_exist": "No results yet, the user may not exist",

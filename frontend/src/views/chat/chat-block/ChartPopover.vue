@@ -43,9 +43,9 @@ const handleDefaultChatChange = (val: any) => {
   <el-popover trigger="click" popper-class="chat-type_select" placement="bottom">
     <template #reference>
       <div
-        @click="firstItem"
         class="chat-select_type"
         :class="chartType && chartType !== 'table' && 'active'"
+        @click="firstItem"
       >
         <component :is="currentIcon" />
         <el-icon style="transform: scale(0.75)" class="expand" size="16">
