@@ -366,7 +366,6 @@ import { workspaceList } from '@/api/workspace'
 import { formatTimestamp } from '@/utils/date'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
-import { cloneDeep } from 'lodash'
 
 const { t } = useI18n()
 const keyword = ref('')
