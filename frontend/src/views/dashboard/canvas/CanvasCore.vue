@@ -809,9 +809,15 @@ function checkStartMove() {
   if (cloneItem && nowItemNode) {
     const xGap = Math.abs(cloneItem.offsetLeft - nowItemNode.offsetLeft)
     const yGap = Math.abs(cloneItem.offsetTop - nowItemNode.offsetTop)
-    return xGap > offsetX || yGap > offsetY
+    return {
+      xMove: xGap > offsetX,
+      yMove: yGap > offsetY,
+    }
   }
-  return false
+  return {
+    xMove: false,
+    yMove: false,
+  }
 }
 
 function startMove(e: MouseEvent, item: CanvasItem, index: number) {
@@ -933,13 +939,10 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       //If the current canvas is locked, no component movement will be performed
       if (canvasLocked.value) return
-      if (!checkStartMove()) {
-        return
-      }
-
+      const { xMove, yMove } = checkStartMove()
       // Adjust the accuracy of moving coordinate changes
-      let newX = Math.round(nowCloneItemX / cellWidth.value)
-      let newY = Math.round(nowCloneItemY / cellHeight.value)
+      let newX = xMove ? Math.round(nowCloneItemX / cellWidth.value) : infoBox.value.oldX
+      let newY = yMove ? Math.round(nowCloneItemY / cellHeight.value) : infoBox.value.oldY
       newX = newX > 0 ? newX : 1
       newY = newY > 0 ? newY : 1
       debounce(() => {
