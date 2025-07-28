@@ -69,7 +69,7 @@ const handleEmbedded = () => {
 
 <style lang="less" scoped>
 .card {
-  width: 371px;
+  width: 400px;
   height: 168px;
   border: 1px solid #dee0e3;
   padding: 16px;

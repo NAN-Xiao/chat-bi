@@ -294,7 +294,7 @@
     "filter": "Filter",
     "batch_import": "Batch import",
     "add_users": "Add users",
-    "selected_2_users": "Do you want to delete the selected 2 users?",
+    "selected_2_users": "Do you want to delete the selected {msg} users?",
     "filter_conditions": "Filter conditions",
     "enable": "Enable",
     "disable": "Disable",
