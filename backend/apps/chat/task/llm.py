@@ -430,9 +430,9 @@ class LLMService:
         _datasource: int | None = None
         _engine_type: str | None = None
         try:
-            data = orjson.loads(json_str)
+            data: dict = orjson.loads(json_str)
 
-            if data['id'] and data['id'] != 0:
+            if data.get('id') and data.get('id') != 0:
                 _datasource = data['id']
                 _chat = self.session.get(Chat, self.record.chat_id)
                 _chat.datasource = _datasource
