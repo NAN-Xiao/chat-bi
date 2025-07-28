@@ -717,7 +717,7 @@ const search = () => {
 const addTerm = () => {
   const { account, email, name, oid, status } = state.form
   userApi.add({ account, email, name, oid, status }).then(() => {
-    dialogFormVisible.value = false
+    onFormClose()
     search()
     ElMessage({
       type: 'success',
@@ -731,7 +731,7 @@ const editTerm = () => {
   userApi
     .edit({ account, id, create_time, email, language, name, oid, oid_list, origin, status })
     .then(() => {
-      dialogFormVisible.value = false
+      onFormClose()
       search()
       ElMessage({
         type: 'success',
