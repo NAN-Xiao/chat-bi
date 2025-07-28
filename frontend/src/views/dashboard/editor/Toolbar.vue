@@ -136,7 +136,9 @@ const backToMain = () => {
 
 const addChatChart = (views: any) => {
   views.forEach((view: any) => {
-    emits('addComponent', 'SQView', cloneDeep(view))
+    const target = cloneDeep(view)
+    delete target.chart.sourceType
+    emits('addComponent', 'SQView', target)
   })
   ElMessage({
     type: 'success',

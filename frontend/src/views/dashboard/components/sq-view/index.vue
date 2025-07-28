@@ -2,6 +2,7 @@
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
+import _ from 'lodash'
 const props = defineProps({
   viewInfo: {
     type: Object,
@@ -19,7 +20,7 @@ const props = defineProps({
   },
 })
 
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
@@ -34,8 +35,9 @@ const currentChartType = ref<ChartTypes | undefined>(undefined)
 
 const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  chartRef.value?.renderChart
+  chartRef.value?.destroyChart()
+  //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  chartRef.value?.renderChart()
 }
 
 const enlargeDialogVisible = ref(false)
@@ -47,7 +49,7 @@ const enlargeView = () => {
 const chartTypeList = computed(() => {
   const _list = []
   if (props.viewInfo.chart) {
-    switch (props.viewInfo.chart.type) {
+    switch (props.viewInfo.chart['sourceType']) {
       case 'table':
         break
       case 'column':
@@ -85,14 +87,36 @@ function changeTable() {
   onTypeChange('table')
 }
 
+const chartType = computed<ChartTypes>({
+  get() {
+    if (currentChartType.value) {
+      return currentChartType.value
+    }
+    return props.viewInfo.chart['sourceType'] ?? 'table'
+  },
+  set(v) {
+    currentChartType.value = v
+  },
+})
+
 function onTypeChange(val: any) {
+  chartType.value = val
   // eslint-disable-next-line vue/no-mutating-props
   props.viewInfo.chart.type = val
   nextTick(() => {
     //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    chartRef.value?.destroyChart()
+    //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
     chartRef.value?.renderChart()
   })
 }
+
+onMounted(() => {
+  // eslint-disable-next-line vue/no-mutating-props
+  props.viewInfo.chart['sourceType'] =
+    props.viewInfo.chart['sourceType'] ?? props.viewInfo.chart.type
+})
+
 defineExpose({
   renderChart,
   enlargeView,
@@ -111,7 +135,7 @@ defineExpose({
             <ChartPopover
               v-if="chartTypeList.length > 0"
               :chart-type-list="chartTypeList"
-              :chart-type="viewInfo.chartType"
+              :chart-type="chartType"
               :title="t('chat.type')"
               @type-change="onTypeChange"
             ></ChartPopover>
@@ -137,7 +161,7 @@ defineExpose({
         v-if="viewInfo.id"
         :id="outerId || viewInfo.id"
         ref="chartRef"
-        :type="viewInfo.chart.type"
+        :type="chartType"
         :columns="viewInfo.chart.columns"
         :x="viewInfo.chart?.xAxis"
         :y="viewInfo.chart?.yAxis"
