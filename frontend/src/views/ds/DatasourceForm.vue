@@ -568,6 +568,8 @@ defineExpose({
               $t('datasource.please_enter') + $t('common.empty') + t('ds.form.description')
             "
             :rows="2"
+            show-word-limit
+            maxlength="200"
             type="textarea"
           />
         </el-form-item>
