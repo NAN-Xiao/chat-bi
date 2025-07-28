@@ -366,6 +366,7 @@ import { workspaceList } from '@/api/workspace'
 import { formatTimestamp } from '@/utils/date'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
+import { cloneDeep } from 'lodash'
 
 const { t } = useI18n()
 const keyword = ref('')
@@ -725,8 +726,9 @@ const search = () => {
     })
 }
 const addTerm = () => {
+  const { account, email, name, oid, status } = state.form
   userApi
-    .add(state.form)
+    .add({ account, email, name, oid, status })
     .then(() => {
       dialogFormVisible.value = false
       search()
@@ -740,14 +742,18 @@ const addTerm = () => {
     })
 }
 const editTerm = () => {
-  userApi.edit(state.form).then(() => {
-    dialogFormVisible.value = false
-    search()
-    ElMessage({
-      type: 'success',
-      message: t('common.save_success'),
+  const { account, id, create_time, email, language, name, oid, oid_list, origin, status } =
+    state.form
+  userApi
+    .edit({ account, id, create_time, email, language, name, oid, oid_list, origin, status })
+    .then(() => {
+      dialogFormVisible.value = false
+      search()
+      ElMessage({
+        type: 'success',
+        message: t('common.save_success'),
+      })
     })
-  })
 }
 
 const duplicateName = () => {
