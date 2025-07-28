@@ -129,7 +129,6 @@ const maxCell = ref(0)
 const positionBox = ref<Array<Array<{ el: boolean }>>>([])
 const coordinates = ref<CanvasCoord[]>([])
 const infoBox = ref()
-const historyPageX = ref<number | null>(null)
 
 // Position data (non-reactive)
 let lastTask: (() => void) | undefined = undefined
