@@ -440,7 +440,7 @@ const saveHandler = () => {
 </script>
 
 <template>
-  <div v-loading="searchLoading" class="permission">
+  <div v-loading="searchLoading" class="embedded">
     <div class="tool-left">
       <div class="btn-select">
         <el-button :class="[btnSelect === 'd' && 'is-active']" text @click="btnSelect = 'd'">
@@ -894,7 +894,8 @@ const saveHandler = () => {
 </template>
 
 <style lang="less" scoped>
-.permission {
+.embedded {
+  height: 100%;
   .ed-empty {
     padding-top: 200px;
     padding-bottom: 0;
