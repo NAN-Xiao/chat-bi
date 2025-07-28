@@ -287,7 +287,11 @@ defineExpose({
         </span>
       </div>
 
-      <div v-if="configExpand" class="params-table">
+      <div
+        v-if="configExpand"
+        class="params-table"
+        :class="!advancedSettingPagination.length && 'bottom-border'"
+      >
         <el-table :data="advancedSettingPagination" style="width: 100%">
           <el-table-column prop="key" :label="t('model.parameters')" width="280" />
           <el-table-column prop="name" :label="t('model.display_name')" width="280" />
@@ -451,6 +455,10 @@ defineExpose({
       border-top: none;
       border-bottom: none;
       overflow-y: auto;
+
+      &.bottom-border {
+        border-bottom: 1px solid #dee0e3;
+      }
       :deep(.ed-table .ed-table__cell) {
         padding: 7px 0;
       }
