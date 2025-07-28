@@ -14,7 +14,8 @@ class ResponseMiddleware(BaseHTTPMiddleware):
         
         if isinstance(response, JSONResponse) or request.url.path == f"{settings.API_V1_STR}/openapi.json":
             return response
-    
+        if response.status_code != 200:
+            return response
         if response.headers.get("content-type") == "application/json":
             try:
                 body = b""
@@ -51,11 +52,7 @@ class ResponseMiddleware(BaseHTTPMiddleware):
                 SQLBotLogUtil.error(f"Response processing error: {str(e)}", exc_info=True)
                 return JSONResponse(
                     status_code=500,
-                    content={
-                        "code": 500,
-                        "data": None,
-                        "msg": str(e)
-                    },
+                    content=str(e),
                     headers={
                         k: v for k, v in response.headers.items()
                         if k.lower() not in ("content-length", "content-type")
@@ -71,11 +68,7 @@ class exception_handler():
         SQLBotLogUtil.error(f"HTTP Exception: {exc.detail}", exc_info=True)
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "code": exc.status_code,
-                "msg": exc.detail,
-                "data": None
-            },
+            content=exc.detail,
             headers={"Access-Control-Allow-Origin": "*"}
         )
 
@@ -85,11 +78,7 @@ class exception_handler():
         SQLBotLogUtil.error(f"Unhandled Exception: {str(exc)}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={
-                "code": 500,
-                "msg": str(exc),
-                "data": None
-            },
+            content=str(exc),
             headers={"Access-Control-Allow-Origin": "*"}
         )
 
