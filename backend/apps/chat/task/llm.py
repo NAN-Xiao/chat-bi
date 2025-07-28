@@ -516,31 +516,9 @@ class LLMService:
                                                            [{'type': msg.type, 'content': msg.content} for msg in
                                                             self.sql_message]).decode())
 
-    def generate_filter(self, sql: str, tables: List):
-        table_list = self.session.query(CoreTable).filter(
-            and_(CoreTable.ds_id == self.ds.id, CoreTable.table_name.in_(tables))
-        ).all()
-
-        filters = []
-        for table in table_list:
-            row_permissions = self.session.query(DsPermission).filter(
-                and_(DsPermission.table_id == table.id, DsPermission.type == 'row')).all()
-            res: List[PermissionDTO] = []
-            if row_permissions is not None:
-                for permission in row_permissions:
-                    # check permission and user in same rules
-                    obj = self.session.query(DsRules).filter(
-                        and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
-                             or_(DsRules.user_list.op('@>')(cast([f'{self.current_user.id}'], JSONB)),
-                                 DsRules.user_list.op('@>')(cast([self.current_user.id], JSONB))))
-                    ).first()
-                    if obj is not None:
-                        res.append(transRecord2DTO(self.session, permission))
-            where_str = transFilterTree(self.session, res, self.ds)
-            filters.append({"table": table.table_name, "filter": where_str})
-
+    
+    def build_table_filter(self, sql: str, filters: list):
         filter = json.dumps(filters, ensure_ascii=False)
-
         self.chat_question.sql = sql
         self.chat_question.filter = filter
         msg: List[Union[BaseMessage, dict[str, Any]]] = []
@@ -588,7 +566,42 @@ class LLMService:
         #                                                                                analysis_msg]).decode())
         SQLBotLogUtil.info(full_filter_text)
         return full_filter_text
+        
+    def generate_filter(self, sql: str, tables: List):
+        table_list = self.session.query(CoreTable).filter(
+            and_(CoreTable.ds_id == self.ds.id, CoreTable.table_name.in_(tables))
+        ).all()
 
+        filters = []
+        for table in table_list:
+            row_permissions = self.session.query(DsPermission).filter(
+                and_(DsPermission.table_id == table.id, DsPermission.type == 'row')).all()
+            res: List[PermissionDTO] = []
+            if row_permissions is not None:
+                for permission in row_permissions:
+                    # check permission and user in same rules
+                    obj = self.session.query(DsRules).filter(
+                        and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
+                             or_(DsRules.user_list.op('@>')(cast([f'{self.current_user.id}'], JSONB)),
+                                 DsRules.user_list.op('@>')(cast([self.current_user.id], JSONB))))
+                    ).first()
+                    if obj is not None:
+                        res.append(transRecord2DTO(self.session, permission))
+            where_str = transFilterTree(self.session, res, self.ds)
+            filters.append({"table": table.table_name, "filter": where_str})
+
+        return self.build_table_filter(sql=sql, filters=filters)
+    
+    def generate_assistant_filter(self, sql, tables: List):
+        ds: AssistantOutDsSchema = self.ds
+        filters = []
+        for table in ds.tables:
+            if table.name in tables and table.rule:
+                filters.append({"table": table.name, "filter": table.rule})
+        if not filters:
+            return None
+        return self.build_table_filter(sql=sql, filters=filters)
+        
     def generate_chart(self):
         # append current question
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question()))
@@ -802,7 +815,7 @@ class LLMService:
             SQLBotLogUtil.info(full_sql_text)
 
             # todo row permission
-            if is_normal_user(self.current_user) and not self.current_assistant:
+            if is_normal_user(self.current_user) or (self.current_assistant and self.current_assistant.type == 1):
                 sql_json_str = extract_nested_json(full_sql_text)
                 data = orjson.loads(sql_json_str)
 
@@ -819,9 +832,16 @@ class LLMService:
                 if sql.strip() == '':
                     raise Exception("SQL query is empty")
 
-                sql_result = self.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
-                SQLBotLogUtil.info(sql_result)
-                sql = self.check_save_sql(res=sql_result)
+                if self.current_assistant:
+                    sql_result = self.generate_assistant_filter(data.get('sql'), data.get('tables'))
+                else:
+                    sql_result = self.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
+                
+                if sql_result:
+                    SQLBotLogUtil.info(sql_result)
+                    sql = self.check_save_sql(res=sql_result)
+                else:
+                    sql = self.check_save_sql(res=full_sql_text)
             else:
                 sql = self.check_save_sql(res=full_sql_text)
 
