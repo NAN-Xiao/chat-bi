@@ -801,6 +801,19 @@ function getNowPosition(addSizeX: number, addSizeY: number, moveXSize: number, m
   return { nowSizeX, nowSizeY, nowX, nowY, nowOriginWidth, nowOriginHeight, nowOriginX, nowOriginY }
 }
 
+function checkStartMove() {
+  const cloneItem = infoBox.value.cloneItem
+  const nowItemNode = infoBox.value.nowItemNode
+  const offsetX = cellWidth.value * 2
+  const offsetY = cellHeight.value * 2
+  if (cloneItem && nowItemNode) {
+    const xGap = Math.abs(cloneItem.offsetLeft - nowItemNode.offsetLeft)
+    const yGap = Math.abs(cloneItem.offsetTop - nowItemNode.offsetTop)
+    return xGap > offsetX || yGap > offsetY
+  }
+  return false
+}
+
 function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   canvasLocked.value = false // Reset canvas lock status
   if (!draggable.value) return
@@ -920,9 +933,13 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       //If the current canvas is locked, no component movement will be performed
       if (canvasLocked.value) return
+      if (!checkStartMove()) {
+        return
+      }
+
       // Adjust the accuracy of moving coordinate changes
-      let newX = Math.floor(nowCloneItemX / cellWidth.value)
-      let newY = Math.floor(nowCloneItemY / cellHeight.value)
+      let newX = Math.round(nowCloneItemX / cellWidth.value)
+      let newY = Math.round(nowCloneItemY / cellHeight.value)
       newX = newX > 0 ? newX : 1
       newY = newY > 0 ? newY : 1
       debounce(() => {
