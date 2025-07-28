@@ -132,14 +132,24 @@ class AssistantOutDs:
     def get_db_schema(self, ds_id: int) -> str:
         ds = self.get_ds(ds_id)
         schema_str = ""
-        db_name = ds.db_schema
+        #db_name = ds.db_schema
+        db_name = ds.db_schema if ds.db_schema is not None and ds.db_schema != "" else ds.dataBase
         schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
         for table in ds.tables:
-            schema_str += f"# Table: {db_name}.{table.name}"
-            schema_str += f", {table.comment}\n[\n"
+            schema_str += f"# Table: {db_name}.{table.name}" if ds.type != "mysql" else f"# Table: {table.name}"
+            table_comment = table.comment
+            if table_comment == '':
+                schema_str += '\n[\n'
+            else:
+                schema_str += f", {table_comment}\n[\n"
+                
             field_list = []
             for field in table.fields:
-                field_list.append(f"({field.name}:{field.type}, {field.comment})")
+                field_comment = field.comment
+                if field_comment == '':
+                    field_list.append(f"({field.name}:{field.type})")
+                else:
+                    field_list.append(f"({field.name}:{field.type}, {field_comment})")
             schema_str += ",\n".join(field_list)
             schema_str += '\n]\n'
         return schema_str

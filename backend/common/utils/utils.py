@@ -76,7 +76,9 @@ def extract_nested_json(text):
 
 def string_to_numeric_hash(text: str, bits: Optional[int] = 64) -> int:
     hash_bytes = hashlib.sha256(text.encode()).digest()
-    return int.from_bytes(hash_bytes[:bits//8], byteorder='big')
+    hash_num = int.from_bytes(hash_bytes, byteorder='big')
+    max_bigint = 2**63 - 1
+    return hash_num % max_bigint
 
 
 def setup_logging():
