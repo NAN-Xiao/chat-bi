@@ -716,8 +716,8 @@ const search = () => {
     })
 }
 const addTerm = () => {
-  const { account, email, name, oid, status } = state.form
-  userApi.add({ account, email, name, oid, status }).then(() => {
+  const { account, email, name, oid, status, oid_list } = state.form
+  userApi.add({ account, email, name, oid, status, oid_list }).then(() => {
     onFormClose()
     search()
     ElMessage({
