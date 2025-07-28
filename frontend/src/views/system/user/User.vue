@@ -581,6 +581,7 @@ const handleToggleRowSelection = (check: boolean = true) => {
   selectionLoading.value = false
 }
 const handleSearch = () => {
+  state.pageInfo.currentPage = 1
   search()
 }
 const fillFilterText = () => {
