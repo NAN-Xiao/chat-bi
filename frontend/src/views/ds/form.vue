@@ -34,10 +34,10 @@
         @submit.prevent
       >
         <el-form-item :label="t('ds.form.name')" prop="name">
-          <el-input v-model="form.name" />
+          <el-input v-model="form.name" clearable />
         </el-form-item>
         <el-form-item :label="t('ds.form.description')">
-          <el-input v-model="form.description" :rows="2" type="textarea" />
+          <el-input v-model="form.description" clearable :rows="2" type="textarea" />
         </el-form-item>
         <el-form-item :label="t('ds.type')" prop="type">
           <el-select v-model="form.type" placeholder="Select Type" :disabled="!isCreate">
@@ -68,19 +68,19 @@
         </div>
         <div v-else>
           <el-form-item :label="t('ds.form.host')" prop="host">
-            <el-input v-model="form.host" />
+            <el-input v-model="form.host" clearable />
           </el-form-item>
           <el-form-item :label="t('ds.form.port')" prop="port">
-            <el-input v-model="form.port" />
+            <el-input v-model="form.port" clearable />
           </el-form-item>
           <el-form-item :label="t('ds.form.username')">
-            <el-input v-model="form.username" />
+            <el-input v-model="form.username" clearable />
           </el-form-item>
           <el-form-item :label="t('ds.form.password')">
-            <el-input v-model="form.password" type="password" show-password />
+            <el-input v-model="form.password" clearable type="password" show-password />
           </el-form-item>
           <el-form-item :label="t('ds.form.database')" prop="database">
-            <el-input v-model="form.database" />
+            <el-input v-model="form.database" clearable />
           </el-form-item>
           <el-form-item
             v-if="form.type === 'oracle'"
@@ -93,18 +93,24 @@
             </el-radio-group>
           </el-form-item>
           <el-form-item :label="t('ds.form.extra_jdbc')">
-            <el-input v-model="form.extraJdbc" />
+            <el-input v-model="form.extraJdbc" clearable />
           </el-form-item>
           <el-form-item
             v-if="haveSchema.includes(form.type)"
             :label="t('ds.form.schema')"
             prop="dbSchema"
           >
-            <el-input v-model="form.dbSchema" />
+            <el-input v-model="form.dbSchema" clearable />
             <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
           </el-form-item>
           <el-form-item :label="t('ds.form.timeout')" prop="timeout">
-            <el-input-number v-model="form.timeout" :min="0" :max="300" controls-position="right" />
+            <el-input-number
+              v-model="form.timeout"
+              clearable
+              :min="0"
+              :max="300"
+              controls-position="right"
+            />
           </el-form-item>
           <span>
             <span>{{ t('ds.form.support_version') }}:&nbsp;</span>

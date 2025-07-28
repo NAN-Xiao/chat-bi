@@ -38,6 +38,7 @@ const textareaVal = ref('')
           v-model="textareaVal"
           :autosize="{ minRows: 1, maxRows: 8.5848 }"
           type="textarea"
+          clearable
           :placeholder="$t('embedded.enter_a_question')"
         />
         <el-tooltip :offset="10" effect="dark" :content="$t('embedded.send')" placement="top">

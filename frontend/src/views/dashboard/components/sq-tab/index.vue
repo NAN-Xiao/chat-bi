@@ -264,7 +264,12 @@ defineExpose({
       :close-on-click-modal="false"
       center
     >
-      <el-input v-model="state.textarea" maxlength="50" :placeholder="t('common.input_content')" />
+      <el-input
+        v-model="state.textarea"
+        maxlength="50"
+        clearable
+        :placeholder="t('common.input_content')"
+      />
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="state.dialogVisible = false">{{ t('common.cancel') }}</el-button>

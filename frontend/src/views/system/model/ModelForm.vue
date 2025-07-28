@@ -219,6 +219,7 @@ defineExpose({
           </template>
           <el-input
             v-model="modelForm.name"
+            clearable
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + $t('model.model_name')
             "
@@ -253,6 +254,7 @@ defineExpose({
         <el-form-item prop="api_domain" :label="t('model.api_domain_name')">
           <el-input
             v-model="modelForm.api_domain"
+            clearable
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
             "
@@ -261,6 +263,7 @@ defineExpose({
         <el-form-item prop="api_key" label="API Key">
           <el-input
             v-model="modelForm.api_key"
+            clearable
             :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
             type="password"
             show-password
@@ -287,7 +290,11 @@ defineExpose({
         </span>
       </div>
 
-      <div v-if="configExpand" class="params-table">
+      <div
+        v-if="configExpand"
+        class="params-table"
+        :class="!advancedSettingPagination.length && 'bottom-border'"
+      >
         <el-table :data="advancedSettingPagination" style="width: 100%">
           <el-table-column prop="key" :label="t('model.parameters')" width="280" />
           <el-table-column prop="name" :label="t('model.display_name')" width="280" />
@@ -451,6 +458,10 @@ defineExpose({
       border-top: none;
       border-bottom: none;
       overflow-y: auto;
+
+      &.bottom-border {
+        border-bottom: 1px solid #dee0e3;
+      }
       :deep(.ed-table .ed-table__cell) {
         padding: 7px 0;
       }

@@ -6,6 +6,7 @@
           v-model="keyword"
           class="sqlbot-search"
           placeholder="Search"
+          clearable
           prefix-icon="el-icon-search"
           @keyup.enter="handleSearch"
         >
@@ -68,10 +69,10 @@
       @submit.prevent
     >
       <el-form-item label="Term name">
-        <el-input v-model="state.form.term" autocomplete="off" />
+        <el-input v-model="state.form.term" clearable autocomplete="off" />
       </el-form-item>
       <el-form-item label="Definition">
-        <el-input v-model="state.form.definition" type="textarea" />
+        <el-input v-model="state.form.definition" clearable type="textarea" />
       </el-form-item>
       <el-form-item label="Domain">
         <el-select v-model="state.form.domain" placeholder="Please select a domain">

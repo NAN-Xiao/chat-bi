@@ -153,7 +153,7 @@ async def update(session: SessionDep, editor: UserEditor, trans: Trans):
         raise Exception(f"User with id [{editor.id}] not found!")
     if editor.account != user_model.account:
         raise Exception(f"account cannot be changed!")
-    if editor.email != user_model.email and check_email_exists(session=session, account=editor.email):
+    if editor.email != user_model.email and check_email_exists(session=session, email=editor.email):
         raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.email')} [{editor.email}]"))
     if not check_email_format(editor.email):
         raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email')} [{editor.email}]"))

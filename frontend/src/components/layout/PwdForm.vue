@@ -85,6 +85,7 @@ defineExpose({
           v-model="pwdForm.pwd"
           :placeholder="t('common.please_input', { msg: t('user.upgrade_pwd.old_pwd') })"
           type="password"
+          clearable
           show-password
         />
       </el-form-item>
@@ -94,6 +95,7 @@ defineExpose({
           :placeholder="t('common.please_input', { msg: t('user.upgrade_pwd.new_pwd') })"
           type="password"
           show-password
+          clearable
         />
       </el-form-item>
       <el-form-item prop="confirm_pwd" :label="t('user.upgrade_pwd.confirm_pwd')">
@@ -102,6 +104,7 @@ defineExpose({
           :placeholder="t('common.please_input', { msg: t('user.upgrade_pwd.confirm_pwd') })"
           type="password"
           show-password
+          clearable
         />
       </el-form-item>
     </el-form>

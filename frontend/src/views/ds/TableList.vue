@@ -14,6 +14,7 @@
         </div>
         <el-input
           v-model="searchValue"
+          clearable
           style="margin: 16px 0"
           :placeholder="t('ds.Search Datasource')"
         />
@@ -105,7 +106,7 @@
       @closed="closeTable"
     >
       <div>{{ t('ds.edit.table_comment_label') }}</div>
-      <el-input v-model="tableComment" :rows="3" type="textarea" />
+      <el-input v-model="tableComment" clearable :rows="3" type="textarea" />
       <div style="display: flex; justify-content: flex-end; margin-top: 20px">
         <el-button @click="closeTable">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="saveTable">{{ t('common.confirm') }}</el-button>
@@ -121,7 +122,7 @@
       @closed="closeField"
     >
       <div>{{ t('ds.edit.field_comment_label') }}</div>
-      <el-input v-model="fieldComment" :rows="3" type="textarea" />
+      <el-input v-model="fieldComment" clearable :rows="3" type="textarea" />
       <div style="display: flex; justify-content: flex-end; margin-top: 20px">
         <el-button @click="closeField">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="saveField">{{ t('common.confirm') }}</el-button>

@@ -290,6 +290,7 @@
             ref="inputRef"
             v-model="inputMessage"
             :disabled="isTyping"
+            clearable
             class="input-area"
             type="textarea"
             :rows="1"
@@ -590,7 +591,7 @@ function getChatPredictData(recordId?: number) {
   chatApi.get_chart_predict_data(recordId).then((response) => {
     currentChat.value.records.forEach((record) => {
       if (record.id === recordId) {
-        record.predict_data = response.data ?? []
+        record.predict_data = response ?? []
       }
     })
   })

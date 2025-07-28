@@ -18,7 +18,6 @@
         </el-input>
         <div class="mt-8 max-height_workspace">
           <el-checkbox
-            v-if="!search"
             v-model="checkAll"
             class="mb-8"
             :indeterminate="isIndeterminate"
@@ -55,14 +54,14 @@
       <div class="p-16 w-full">
         <div class="flex-between mb-16">
           <span class="lighter">
-            {{ $t('workspace.selected_2_people', { msg: checkedWorkspace.length }) }}
+            {{ $t('workspace.selected_2_people', { msg: checkTableList.length }) }}
           </span>
 
           <el-button text @click="clearWorkspaceAll">
             {{ $t('workspace.clear') }}
           </el-button>
         </div>
-        <div v-for="ele in checkedWorkspace" :key="ele.name" class="flex-between">
+        <div v-for="ele in checkTableList" :key="ele.name" class="flex-between">
           <div class="flex align-center ellipsis" style="width: 100%">
             <el-icon size="28">
               <avatar_personal></avatar_personal>
@@ -84,7 +83,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { workspaceUserList } from '@/api/workspace'
 import avatar_personal from '@/assets/svg/avatar_personal.svg'
 import Close from '@/assets/svg/icon_close_outlined_w.svg'
@@ -97,32 +96,63 @@ const workspace = ref<any[]>([])
 const search = ref('')
 const loading = ref(false)
 const centerDialogVisible = ref(false)
+const checkTableList = ref([] as any[])
 
 const workspaceWithKeywords = computed(() => {
   return workspace.value.filter((ele: any) => (ele.name as string).includes(search.value))
 })
+
+watch(search, () => {
+  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
+  checkedWorkspace.value = checkTableList.value.filter((ele) => tableNameArr.includes(ele.name))
+  const checkedCount = checkedWorkspace.value.length
+  checkAll.value = checkedCount === workspaceWithKeywords.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
+})
 const handleCheckAllChange = (val: CheckboxValueType) => {
-  checkedWorkspace.value = val ? workspace.value : []
+  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
+  checkedWorkspace.value = val
+    ? [
+        ...new Set([
+          ...workspaceWithKeywords.value,
+          ...checkedWorkspace.value.filter((ele) => !tableNameArr.includes(ele.name)),
+        ]),
+      ]
+    : []
   isIndeterminate.value = false
-  if (!val) {
-    clearWorkspaceAll()
-  }
+  checkTableList.value = val
+    ? [
+        ...new Set([
+          ...workspaceWithKeywords.value,
+          ...checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name)),
+        ]),
+      ]
+    : checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name))
 }
 const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   const checkedCount = value.length
-  checkAll.value = checkedCount === workspace.value.length
-  isIndeterminate.value = checkedCount > 0 && checkedCount < workspace.value.length
+  checkAll.value = checkedCount === workspaceWithKeywords.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
+  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
+  checkTableList.value = [
+    ...new Set([
+      ...checkTableList.value.filter((ele) => !tableNameArr.includes(ele.name)),
+      ...value,
+    ]),
+  ]
 }
 
 const open = async (user: any) => {
   loading.value = true
   checkedWorkspace.value = []
   checkAll.value = false
+  checkTableList.value = []
   isIndeterminate.value = false
   const systemWorkspaceList = await workspaceUserList({}, 1, 1000)
   workspace.value = systemWorkspaceList.items as any
   if (user?.length) {
     checkedWorkspace.value = workspace.value.filter((ele) => user.includes(ele.id))
+    checkTableList.value = [...checkedWorkspace.value]
     handleCheckedWorkspaceChange(checkedWorkspace.value)
   }
   loading.value = false
@@ -174,7 +204,7 @@ defineExpose({
     .ed-checkbox,
     .ed-checkbox__label,
     .flex {
-      width: 100%;
+      width: 96%;
       height: 44px;
     }
 

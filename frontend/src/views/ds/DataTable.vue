@@ -431,6 +431,7 @@ const btnSelectClick = (val: any) => {
       :placeholder="$t('datasource.please_enter')"
       :rows="3"
       type="textarea"
+      clearable
     />
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="closeTable">{{ t('common.cancel') }}</el-button>
@@ -450,6 +451,7 @@ const btnSelectClick = (val: any) => {
       v-model="fieldComment"
       :placeholder="$t('datasource.please_enter')"
       :rows="3"
+      clearable
       type="textarea"
     />
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
