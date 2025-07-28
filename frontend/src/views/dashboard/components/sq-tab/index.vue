@@ -298,6 +298,10 @@ defineExpose({
   width: 100%;
   height: 100%;
   margin: 2px !important; // border size
+  div::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+  }
 }
 
 .tab-dashboard-preview {
