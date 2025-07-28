@@ -294,7 +294,6 @@
             class="input-area"
             :class="isAssistant && 'is-assistant'"
             type="textarea"
-            :rows="1"
             :autosize="{ minRows: 1, maxRows: 8.583 }"
             :placeholder="t('qa.question_placeholder')"
             @keydown.enter.exact.prevent="sendMessage"
