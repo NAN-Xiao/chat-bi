@@ -292,8 +292,8 @@
             :disabled="isTyping"
             clearable
             class="input-area"
+            :class="isAssistant && 'is-assistant'"
             type="textarea"
-            :rows="1"
             :autosize="{ minRows: 1, maxRows: 8.583 }"
             :placeholder="t('qa.question_placeholder')"
             @keydown.enter.exact.prevent="sendMessage"
@@ -934,6 +934,20 @@ onMounted(() => {
           background: #f8f9fa;
           border-radius: 16px;
           line-height: 24px;
+        }
+
+        &.is-assistant {
+          :deep(.ed-textarea__inner) {
+            padding: 12px 12px 52px 12px;
+            font-weight: 400;
+            font-size: 16px;
+            line-height: 24px;
+            border-radius: 16px;
+
+            &::placeholder {
+              color: #8f959e;
+            }
+          }
         }
       }
 
