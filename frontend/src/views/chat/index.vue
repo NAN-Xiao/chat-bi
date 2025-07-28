@@ -98,7 +98,10 @@
           <logo />
         </div>
         <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef">
-          <div class="chat-scroll" :class="{ 'no-sidebar': !isAssistant && !chatListSideBarShow }">
+          <div
+            class="chat-scroll"
+            :class="{ 'no-sidebar': !isAssistant && !chatListSideBarShow, pad16: isAssistant }"
+          >
             <template v-for="(message, _index) in computedMessages" :key="_index">
               <ChatRow :current-chat="currentChat" :msg="message" :hide-avatar="message.first_chat">
                 <RecommendQuestion
@@ -874,6 +877,11 @@ onMounted(() => {
 
     &.no-sidebar {
       padding-left: 96px;
+    }
+
+    &.pad16 {
+      padding-left: 16px;
+      padding-right: 16px;
     }
   }
 

@@ -112,7 +112,7 @@ onBeforeUnmount(() => {
 
 <style lang="less" scoped>
 .sqlbot-assistant-container {
-  height: 100%;
+  height: 100vh;
   width: 100%;
   color: rgb(31, 35, 41);
   .header {
@@ -170,6 +170,7 @@ onBeforeUnmount(() => {
   }
   .sqlbot-chat-container {
     padding-top: 56px;
+    height: 100%;
     :deep(.ed-aside) {
       display: none;
     }
