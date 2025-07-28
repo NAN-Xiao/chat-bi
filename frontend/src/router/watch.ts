@@ -19,7 +19,7 @@ export const watchRouter = (router: any) => {
       return
     }
     if (!token) {
-      ElMessage.error('Please login first')
+      // ElMessage.error('Please login first')
       next('/login')
       return
     }

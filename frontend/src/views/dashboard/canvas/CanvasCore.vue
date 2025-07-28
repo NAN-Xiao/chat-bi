@@ -921,25 +921,10 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       //If the current canvas is locked, no component movement will be performed
       if (canvasLocked.value) return
       // Adjust the accuracy of moving coordinate changes
-      const newX = Math.max(
-        Math.floor(
-          (nowCloneItemX - 20 + infoBox.value.cloneItem.offsetWidth / 96 - baseMarginLeft.value) /
-            cellWidth.value +
-            1
-        ),
-        1
-      )
-      // temp adjust board
-
-      // Adjust the accuracy of moving coordinate changes
-      const newY = Math.max(
-        Math.floor(
-          (nowCloneItemY + infoBox.value.cloneItem.offsetHeight / 96 - baseMarginTop.value) /
-            cellHeight.value +
-            1
-        ),
-        1
-      )
+      let newX = Math.floor(nowCloneItemX / cellWidth.value)
+      let newY = Math.floor(nowCloneItemY / cellHeight.value)
+      newX = newX > 0 ? newX : 1
+      newY = newY > 0 ? newY : 1
       debounce(() => {
         if (newX !== infoBox.value.oldX || newY !== infoBox.value.oldY) {
           movePlayer(moveItem, { x: newX, y: newY })

@@ -274,15 +274,15 @@ const save = async (formEl: FormInstance | undefined) => {
         }
       } else {
         requestObj.tables = list
-        const a = datasourceApi
-          .add(requestObj)
-          .then(() => {
-            close()
-            emit('refresh')
-          })
-          .finally(() => {
-            saveLoading.value = false
-          })
+        // const a = datasourceApi
+        //   .add(requestObj)
+        //   .then(() => {
+        //     close()
+        //     emit('refresh')
+        //   })
+        //   .finally(() => {
+        //     saveLoading.value = false
+        //   })
       }
     }
   })
