@@ -6,6 +6,10 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
+    "limited_to_30": "The number of data tables is limited to 30",
+    "enter_your_password": "Please enter your password",
+    "your_account_email_address": "Please enter your account/email address",
+    "the_correct_password": "Please enter the correct password",
     "input_content": "Please Input Content",
     "empty": " ",
     "may_not_exist": "No results yet, the user may not exist",
@@ -118,7 +122,8 @@
     "earlier": "Earlier",
     "no_time": "No Time",
     "rename_conversation_title": "Rename conversation title",
-    "conversation_title": "Conversation title"
+    "conversation_title": "Conversation title",
+    "copied": "Copied"
   },
   "ds": {
     "title": "Data Source",
@@ -224,6 +229,9 @@
     "custom_notes": "Custom notes",
     "field_type": "Field type",
     "field_name": "Field name",
+    "copy": "Copy",
+    "incorrect_email_format": "Incorrect email format",
+    "the_original_one": "Are you sure you want to restore the password to the original one?",
     "relevant_content_found": "No relevant content found",
     "please_enter": "Please enter",
     "Please_select": "Please select",
@@ -458,6 +466,10 @@
     "add_interface_credentials": "Add interface credentials",
     "edit_interface_credentials": "Edit interface credentials",
     "duplicate_name": "Duplicate name",
+    "duplicate_name_": "Duplicate name",
+    "duplicate_account": "Duplicate account",
+    "repeating_parameters": "Repeating Parameters",
+    "duplicate_email": "Duplicate email",
     "interface_credentials": "Interface credentials",
     "no_credentials_yet": "No credentials yet",
     "intelligent_customer_service": "SQLBot Intelligent Customer Service"

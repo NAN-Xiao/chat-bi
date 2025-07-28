@@ -76,7 +76,7 @@ const advancedSettingPagination = computed(() => {
   return advancedSetting.value.slice(currentPage.value * 5 - 5, currentPage.value * 5)
 })
 
-const handelCurrentChange = (val: any) => {
+const handleCurrentChange = (val: any) => {
   currentPage.value = val
 }
 
@@ -116,9 +116,22 @@ const addParams = () => {
   paramsFormRef.value.submit()
 }
 
-const submit = (item: any) => {
+const duplicateName = async (item: any) => {
+  const arr = advancedSetting.value.filter((ele: any) => ele.id !== item.id)
+  const names = arr.map((ele: any) => ele.name)
+  const keys = arr.map((ele: any) => ele.key)
+  if (names.includes(item.name)) {
+    ElMessage.error(t('embedded.duplicate_name'))
+    return
+  }
+
+  if (keys.includes(item.key)) {
+    ElMessage.error(t('embedded.repeating_parameters'))
+    return
+  }
+
   if (isCreate.value) {
-    advancedSetting.value.push({ ...item })
+    advancedSetting.value.push({ ...item, id: +new Date() })
     beforeClose()
     return
   }
@@ -132,6 +145,10 @@ const submit = (item: any) => {
   beforeClose()
 }
 
+const submit = (item: any) => {
+  duplicateName(item)
+}
+
 const beforeClose = () => {
   paramsFormRef.value.close()
   paramsFormDrawer.value = false
@@ -142,6 +159,7 @@ const supplierChang = (supplier: any) => {
   modelForm.api_domain = config.api_domain
   modelForm.base_model = ''
 }
+let curId = +new Date()
 const initForm = (item?: any) => {
   modelForm.id = ''
   modelRef.value.clearValidate()
@@ -149,6 +167,12 @@ const initForm = (item?: any) => {
     Object.assign(modelForm, { ...item })
     if (item?.config_list?.length) {
       advancedSetting.value = item.config_list
+      advancedSetting.value.forEach((ele: any) => {
+        if (!ele.id) {
+          ele.id = curId
+          curId += 1
+        }
+      })
     }
   }
 }
@@ -294,7 +318,7 @@ defineExpose({
           :default-page-size="5"
           layout="prev, pager, next"
           :total="advancedSetting.length"
-          @current-change="handelCurrentChange"
+          @current-change="handleCurrentChange"
         />
       </div>
     </div>

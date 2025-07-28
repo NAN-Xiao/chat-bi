@@ -14,8 +14,7 @@ import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
 import Card from './Card.vue'
 import { workspaceList } from '@/api/workspace'
 import DsCard from './DsCard.vue'
-import { datasourceApi } from '@/api/datasource'
-import { getList, updateAssistant, saveAssistant, delOne } from '@/api/embedded'
+import { getList, updateAssistant, saveAssistant, delOne, dsApi } from '@/api/embedded'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 
@@ -49,7 +48,7 @@ const currentEmbedded = reactive<any>(cloneDeep(defaultEmbedded))
 
 const isCreate = ref(false)
 const defaultForm = {
-  oid: '',
+  oid: 1,
   private_list: [] as any,
 }
 const dsForm = reactive(cloneDeep(defaultForm))
@@ -107,9 +106,13 @@ const handleAddEmbedded = (val: any) => {
     handleAdvancedEmbedded(null)
   }
 }
-
+const wsChanged = (val: any) => {
+  dsForm.private_list = []
+  dsForm.oid = val
+  getDsList()
+}
 const getDsList = () => {
-  datasourceApi.list().then((res: any) => {
+  dsApi(dsForm.oid).then((res: any) => {
     dsListOptions.value = res || []
     if (!currentEmbedded.id) {
       dsForm.private_list = dsListOptions.value.map((ele) => ele.id)
@@ -119,10 +122,10 @@ const getDsList = () => {
 const handleBaseEmbedded = (row: any) => {
   advancedApplication.value = false
   initWorkspace()
-  getDsList()
   if (row) {
     Object.assign(dsForm, JSON.parse(row.configuration))
   }
+  getDsList()
   ruleConfigvVisible.value = true
   dialogTitle.value = row?.id
     ? t('embedded.edit_basic_applications')
@@ -350,16 +353,36 @@ const btnSelect = ref('d')
 
 const dialogVisible = ref(false)
 const scriptElement = ref('')
+const jsCodeElement = ref('')
 const handleEmbedded = (row: any) => {
   dialogVisible.value = true
   const { origin, pathname } = window.location
   scriptElement.value = `g-#script
   async
   defer
-  id="${row.id}"
+  id="sqlbot-assistant-float-script-${row.id}"
   src="${origin + pathname}assistant.js?id=${row.id}"k-*g-#/scriptk-*`
     .replaceAll('g-#', '<')
     .replaceAll('k-*', '>')
+
+  jsCodeElement.value = `(function(){
+    const script = document.createElement('script');
+    script.defer = true;
+    script.async = true;
+    script.src = "${origin + pathname}assistant.js?id=${row.id}";
+    script.id = "sqlbot-assistant-float-script-${row.id}";
+    document.head.appendChild(script);
+  })()`
+}
+const copyJsCode = () => {
+  navigator.clipboard
+    .writeText(jsCodeElement.value)
+    .then(function () {
+      ElMessage.success(t('embedded.copy_successful'))
+    })
+    .catch(function () {
+      ElMessage.error(t('embedded.copy_successful'))
+    })
 }
 const copyCode = () => {
   navigator.clipboard
@@ -417,15 +440,15 @@ const saveHandler = () => {
 </script>
 
 <template>
-  <div v-loading="searchLoading" class="permission">
+  <div v-loading="searchLoading" class="embedded">
     <div class="tool-left">
       <div class="btn-select">
         <el-button :class="[btnSelect === 'd' && 'is-active']" text @click="btnSelect = 'd'">
           {{ t('embedded.embedded_assistant') }}
         </el-button>
-        <el-button :class="[btnSelect === 'q' && 'is-active']" text @click="btnSelect = 'q'">
+        <!-- <el-button :class="[btnSelect === 'q' && 'is-active']" text @click="btnSelect = 'q'">
           {{ t('embedded.embedded_page') }}
-        </el-button>
+        </el-button> -->
       </div>
       <div>
         <el-input
@@ -697,6 +720,7 @@ const saveHandler = () => {
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
               "
+              @change="wsChanged"
             >
               <el-option
                 v-for="item in workspaces"
@@ -768,6 +792,19 @@ const saveHandler = () => {
 
         <div class="script">
           {{ scriptElement }}
+        </div>
+      </div>
+
+      <div class="code">
+        <div class="copy">
+          {{ $t('common.or') }}
+          <el-icon size="16" @click="copyJsCode">
+            <icon_copy_outlined></icon_copy_outlined>
+          </el-icon>
+        </div>
+
+        <div class="script">
+          {{ jsCodeElement }}
         </div>
       </div>
     </div>
@@ -857,7 +894,8 @@ const saveHandler = () => {
 </template>
 
 <style lang="less" scoped>
-.permission {
+.embedded {
+  height: 100%;
   .ed-empty {
     padding-top: 200px;
     padding-bottom: 0;

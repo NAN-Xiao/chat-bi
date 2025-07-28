@@ -69,6 +69,48 @@ const defaultModelListWithSearch = computed(() => {
   })
 })
 
+const modelCheckHandler = (item: any) => {
+  setTimeout(() => {
+    modelApi.check(item).catch((err: any) => {
+      if (err.response?.data?.msg) {
+        ElMessage.error(t('model.check_failed', { msg: err.response.data.msg || '' }))
+      } else {
+        ElMessage.error(t('model.check_failed', { msg: err.message || '' }))
+      }
+    })
+  }, 1000)
+}
+const duplicateName = async (item: any) => {
+  const res = await modelApi.queryAll()
+  const names = res.filter((ele: any) => ele.id !== item.id).map((ele: any) => ele.name)
+  if (names.includes(item.name)) {
+    ElMessage.error(t('embedded.duplicate_name'))
+    return
+  }
+
+  if (!item.id) {
+    modelApi.add(item).then(() => {
+      beforeClose()
+      search()
+      ElMessage({
+        type: 'success',
+        message: t('workspace.add_successfully'),
+      })
+      modelCheckHandler(item)
+    })
+    return
+  }
+  modelApi.edit(item).then(() => {
+    beforeClose()
+    search()
+    ElMessage({
+      type: 'success',
+      message: t('common.save_success'),
+    })
+    modelCheckHandler(item)
+  })
+}
+
 const handleDefaultModelChange = (item: any) => {
   const current_default_node = modelList.value.find((ele: Model) => ele.default_model)
   if (current_default_node?.id === item.id) {
@@ -185,25 +227,7 @@ const search = () => {
 search()
 
 const submit = (item: any) => {
-  if (!item.id) {
-    modelApi.add(item).then(() => {
-      beforeClose()
-      search()
-      ElMessage({
-        type: 'success',
-        message: t('workspace.add_successfully'),
-      })
-    })
-    return
-  }
-  modelApi.edit(item).then(() => {
-    beforeClose()
-    search()
-    ElMessage({
-      type: 'success',
-      message: t('common.save_success'),
-    })
-  })
+  duplicateName(item)
 }
 </script>
 

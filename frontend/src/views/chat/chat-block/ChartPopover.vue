@@ -17,9 +17,22 @@ const props = defineProps({
   },
 })
 const currentIcon = computed(() => {
-  return props.chartTypeList.find((ele) => ele.value === props.chartType || ele.value === 'table')
-    .icon
+  if (props.chartType === 'table') {
+    const [ele] = props.chartTypeList || []
+    if (ele.icon) {
+      return ele.icon
+    }
+    return null
+  }
+  return props.chartTypeList.find((ele) => ele.value === props.chartType).icon
 })
+
+const firstItem = () => {
+  if (props.chartType === 'table') {
+    const [ele] = props.chartTypeList || []
+    handleDefaultChatChange(ele || {})
+  }
+}
 const emits = defineEmits(['typeChange'])
 const handleDefaultChatChange = (val: any) => {
   emits('typeChange', val.value)
@@ -29,7 +42,11 @@ const handleDefaultChatChange = (val: any) => {
 <template>
   <el-popover trigger="click" popper-class="chat-type_select" placement="bottom">
     <template #reference>
-      <div class="chat-select_type" :class="chartType && chartType !== 'table' && 'active'">
+      <div
+        class="chat-select_type"
+        :class="chartType && chartType !== 'table' && 'active'"
+        @click="firstItem"
+      >
         <component :is="currentIcon" />
         <el-icon style="transform: scale(0.75)" class="expand" size="16">
           <icon_expand_down_filled></icon_expand_down_filled>

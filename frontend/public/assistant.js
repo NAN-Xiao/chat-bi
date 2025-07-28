@@ -1,4 +1,5 @@
 ;(function () {
+  window.sqlbot_assistant_handler = window.sqlbot_assistant_handler || {}
   const defaultData = {
     id: '1',
     show_guide: false,
@@ -34,14 +35,41 @@
 
   const chatButtonHtml = (data) => `
 <div class="sqlbot-assistant-chat-button">
-  <img style="height:100%;width:100%;" src="${data.float_icon}">
+  <img style="height:100%;width:100%;display:none;" src="${data.float_icon}">
+  <svg style="display:none;margin-right: 20px;" data-v-39a51454="" xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="none">
+    <path fill="#149CC5" d="M28.333 13.669h-.231c.138.758.207 1.527.206 2.298.005.946-.107 1.89-.335 2.808h.65a1.05 1.05 0 0 0 1.05-1.05V15.01a1.343 1.343 0 0 0-1.34-1.341"></path>
+    <path fill="#69CAA4" d="M1.692 15.967c0-.77.068-1.54.206-2.298h-.23a1.34 1.34 0 0 0-1.342 1.34v2.716a1.05 1.05 0 0 0 1.05 1.05h.651a11.4 11.4 0 0 1-.335-2.808"></path>
+    <path fill="url(#a)" d="M15 3.795c-6.89 0-12.474 5.282-12.474 12.171 0 6.89 5.585 10.239 12.474 10.239s12.474-3.35 12.474-10.238c0-6.89-5.585-12.172-12.474-12.172m3.026 17.33h-6.052a6 6 0 0 1-2.484-.535c-.564-.256-2.208.282-2.663-.127-.551-.495.117-1.969-.221-2.636a6.014 6.014 0 0 1 5.368-8.73h6.052a6.014 6.014 0 0 1 0 12.029"></path>
+    <path fill="url(#b)" d="M15 3.795c-6.89 0-12.474 5.282-12.474 12.171 0 6.89 5.585 10.239 12.474 10.239s12.474-3.35 12.474-10.238c0-6.89-5.585-12.172-12.474-12.172m3.026 17.33h-6.052a6 6 0 0 1-2.484-.535c-.564-.256-2.208.282-2.663-.127-.551-.495.117-1.969-.221-2.636a6.014 6.014 0 0 1 5.368-8.73h6.052a6.014 6.014 0 0 1 0 12.029"></path>
+    <path fill="#75CCCC" d="M10.546 14.915h-1.78v3.88h1.78zM14.12 13.193h-1.78v5.602h1.78zM17.694 15.438h-1.78v3.357h1.78zM21.233 12.452h-1.779v6.343h1.78z"></path>
+    <defs>
+      <linearGradient id="a" x1="6.65" x2="25.099" y1="4.441" y2="29.249" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#B2F288"></stop>
+        <stop offset=".181" stop-color="#80D79C"></stop>
+        <stop offset=".371" stop-color="#52BEAD"></stop>
+        <stop offset=".554" stop-color="#2FAABB"></stop>
+        <stop offset=".724" stop-color="#159CC5"></stop>
+        <stop offset=".878" stop-color="#0594CB"></stop>
+        <stop offset="1" stop-color="#0091CD"></stop>
+      </linearGradient>
+      <linearGradient id="b" x1="6.65" x2="25.099" y1="4.441" y2="29.249" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#B2F288"></stop>
+        <stop offset=".181" stop-color="#80D79C"></stop>
+        <stop offset=".371" stop-color="#52BEAD"></stop>
+        <stop offset=".554" stop-color="#2FAABB"></stop>
+        <stop offset=".724" stop-color="#159CC5"></stop>
+        <stop offset=".878" stop-color="#0594CB"></stop>
+        <stop offset="1" stop-color="#0091CD"></stop>
+      </linearGradient>
+    </defs>
+  </svg>
 </div>`
 
   const getChatContainerHtml = (data) => {
     return `
 <div id="sqlbot-assistant-chat-container">
-  <iframe id="sqlbot-assistant-chat-iframe-${data.id}" allow="microphone" src="${data.domain_url}/#/assistant?id=${data.id}"></iframe>
-<div class="sqlbot-assistant-operate">
+  <iframe id="sqlbot-assistant-chat-iframe-${data.id}" allow="microphone" src="${data.domain_url}/#/assistant?id=${data.id}&online=${!!data.online}"></iframe>
+  <div class="sqlbot-assistant-operate">
   <div class="sqlbot-assistant-closeviewport sqlbot-assistant-viewportnone">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
       <path d="M7.507 11.6645C7.73712 11.6645 7.94545 11.7578 8.09625 11.9086C8.24706 12.0594 8.34033 12.2677 8.34033 12.4978V16.7976C8.34033 17.0277 8.15378 17.2143 7.92366 17.2143H7.09033C6.86021 17.2143 6.67366 17.0277 6.67366 16.7976V14.5812L3.41075 17.843C3.24803 18.0057 2.98421 18.0057 2.82149 17.843L2.23224 17.2537C2.06952 17.091 2.06952 16.8272 2.23224 16.6645L5.56668 13.3311H3.19634C2.96622 13.3311 2.77967 13.1446 2.77967 12.9145V12.0811C2.77967 11.851 2.96622 11.6645 3.19634 11.6645H7.507ZM16.5991 2.1572C16.7619 1.99448 17.0257 1.99448 17.1884 2.1572L17.7777 2.74645C17.9404 2.90917 17.9404 3.17299 17.7777 3.33571L14.4432 6.66904H16.8136C17.0437 6.66904 17.2302 6.85559 17.2302 7.08571V7.91904C17.2302 8.14916 17.0437 8.33571 16.8136 8.33571H12.5029C12.2728 8.33571 12.0644 8.24243 11.9136 8.09163C11.7628 7.94082 11.6696 7.73249 11.6696 7.50237V3.20257C11.6696 2.97245 11.8561 2.7859 12.0862 2.7859H12.9196C13.1497 2.7859 13.3362 2.97245 13.3362 3.20257V5.419L16.5991 2.1572Z" fill="${data.header_font_color}"/>
@@ -83,7 +111,11 @@
     root.insertAdjacentHTML('beforeend', getChatContainerHtml(data))
     // 按钮元素
     const chat_button = root.querySelector('.sqlbot-assistant-chat-button')
-    const chat_button_img = root.querySelector('.sqlbot-assistant-chat-button > img')
+    let chat_button_img = root.querySelector('.sqlbot-assistant-chat-button > svg')
+    if (data.float_icon) {
+      chat_button_img = root.querySelector('.sqlbot-assistant-chat-button > img')
+    }
+    chat_button_img.style.display = 'block'
     //  对话框元素
     const chat_container = root.querySelector('#sqlbot-assistant-chat-container')
     // 引导层
@@ -260,8 +292,8 @@
   
   }
   #sqlbot-assistant-chat-container {
-        width: 450px;
-        height: 600px;
+        width: 460px;
+        height: 640px;
         display:none;
       }
   @media only screen and (max-width: 768px) {
@@ -282,7 +314,7 @@
     #sqlbot-assistant #sqlbot-assistant-chat-container{
         z-index:10000;position: relative;
               border-radius: 8px;
-              border: 1px solid #ffffff;
+              //border: 1px solid #ffffff;
               background: linear-gradient(188deg, rgba(235, 241, 255, 0.20) 39.6%, rgba(231, 249, 255, 0.20) 94.3%), #EFF0F1;
               box-shadow: 0px 4px 8px 0px rgba(31, 35, 41, 0.10);
               position: fixed;bottom: 16px;right: 16px;overflow: hidden;
@@ -409,6 +441,7 @@
   }
   function loadScript(src, id) {
     const domain_url = getDomain(src)
+    const online = getParam(src, 'online')
     let url = `${domain_url}/api/v1/system/assistant/info/${id}`
     if (domain_url.includes('5173')) {
       url = url.replace('5173', '8000')
@@ -424,6 +457,7 @@
           Object.assign(tempData, config)
           tempData = Object.assign(tempData, config)
         }
+        tempData['online'] = online && online.toString().toLowerCase() == 'true'
         initsqlbot_assistant(tempData)
         if (data.type == 1) {
           registerMessageEvent(id, tempData)
@@ -440,13 +474,93 @@
     const src_list = scriptsArray.map((script) => script.src)
     src_list.forEach((src) => {
       const id = getParam(src, 'id')
+      window.sqlbot_assistant_handler[id] = window.sqlbot_assistant_handler[id] || {}
+      window.sqlbot_assistant_handler[id]['id'] = id
       const propName = script_id_prefix + id + '-state'
       if (window[propName]) {
         return true
       }
       window[propName] = true
       loadScript(src, id)
+      expposeGlobalMethods(id)
     })
   }
-  window.addEventListener('load', init)
+  function updateParam(target_url, key, newValue) {
+    try {
+      const url = new URL(target_url)
+      const [hashPath, hashQuery] = url.hash.split('?')
+      let searchParams
+      if (hashQuery) {
+        searchParams = new URLSearchParams(hashQuery)
+      } else {
+        searchParams = url.searchParams
+      }
+      searchParams.set(key, newValue)
+      if (hashQuery) {
+        url.hash = `${hashPath}?${searchParams.toString()}`
+      } else {
+        url.search = searchParams.toString()
+      }
+      return url.toString()
+    } catch (e) {
+      console.error('Invalid URL:', target_url)
+      return target_url
+    }
+  }
+  function expposeGlobalMethods(id) {
+    window.sqlbot_assistant_handler[id]['setOnline'] = (online) => {
+      if (online != null && typeof online != 'boolean') {
+        throw new Error('The parameter can only be of type boolean')
+      }
+      const iframe = document.getElementById(`sqlbot-assistant-chat-iframe-${id}`)
+      if (iframe) {
+        const url = iframe.src
+        const eventName = 'sqlbot_assistant_event'
+        const params = {
+          busi: 'setOnline',
+          online,
+          eventName,
+          messageId: id,
+        }
+        const contentWindow = iframe.contentWindow
+        contentWindow.postMessage(params, url)
+      }
+    }
+    window.sqlbot_assistant_handler[id]['refresh'] = (online) => {
+      if (online != null && typeof online != 'boolean') {
+        throw new Error('The parameter can only be of type boolean')
+      }
+      const iframe = document.getElementById(`sqlbot-assistant-chat-iframe-${id}`)
+      if (iframe) {
+        const url = iframe.src
+        let new_url = updateParam(url, 't', Date.now())
+        if (online != null) {
+          new_url = updateParam(new_url, 'online', online)
+        }
+        iframe.src = 'about:blank'
+        setTimeout(() => {
+          iframe.src = new_url
+        }, 500)
+      }
+    }
+  }
+  // window.addEventListener('load', init)
+  const executeWhenReady = (fn) => {
+    if (
+      document.readyState === 'complete' ||
+      (document.readyState !== 'loading' && !document.documentElement.doScroll)
+    ) {
+      setTimeout(fn, 0)
+    } else {
+      const onReady = () => {
+        document.removeEventListener('DOMContentLoaded', onReady)
+        window.removeEventListener('load', onReady)
+        fn()
+      }
+      document.addEventListener('DOMContentLoaded', onReady)
+      window.addEventListener('load', onReady)
+    }
+  }
+
+  executeWhenReady(init)
 })()

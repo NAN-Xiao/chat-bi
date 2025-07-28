@@ -103,25 +103,28 @@ onMounted(async () => {
         </template>
       </el-input>
       <div class="popover-content">
-        <div
-          v-for="ele in defaultWorkspaceListWithSearch"
-          :key="ele.name"
-          class="popover-item"
-          :class="currentWorkspace.id === ele.id && 'isActive'"
-          @click="handleDefaultWorkspaceChange(ele)"
-        >
-          <el-icon size="16">
-            <icon_moments_categories_outlined></icon_moments_categories_outlined>
-          </el-icon>
+        <el-scrollbar max-height="400px">
           <div
-            :title="ele.name"
-            class="datasource-name ellipsis"
-            v-html="formatKeywords(ele.name)"
-          ></div>
-          <el-icon size="16" class="done">
-            <icon_done_outlined></icon_done_outlined>
-          </el-icon>
-        </div>
+            v-for="ele in defaultWorkspaceListWithSearch"
+            :key="ele.name"
+            class="popover-item"
+            :class="currentWorkspace.id === ele.id && 'isActive'"
+            @click="handleDefaultWorkspaceChange(ele)"
+          >
+            <el-icon size="16">
+              <icon_moments_categories_outlined></icon_moments_categories_outlined>
+            </el-icon>
+            <div
+              :title="ele.name"
+              class="datasource-name ellipsis"
+              v-html="formatKeywords(ele.name)"
+            ></div>
+            <el-icon size="16" class="done">
+              <icon_done_outlined></icon_done_outlined>
+            </el-icon>
+          </div>
+        </el-scrollbar>
+
         <div v-if="!defaultWorkspaceListWithSearch.length" class="popover-item empty">
           {{ $t('model.relevant_results_found') }}
         </div>

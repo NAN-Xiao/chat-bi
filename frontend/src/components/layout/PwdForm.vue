@@ -10,6 +10,30 @@ const pwdForm = reactive({
   confirm_pwd: '',
 })
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+const validatePass = (rule: any, value: any, callback: any) => {
+  if (value === '') {
+    callback(new Error(t('common.please_input', { msg: t('user.upgrade_pwd.new_pwd') })))
+  } else {
+    if (pwdForm.confirm_pwd !== '') {
+      if (!pwdRef.value) return
+      pwdRef.value.validateField('confirm_pwd')
+    }
+    callback()
+  }
+}
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+const validatePass2 = (rule: any, value: any, callback: any) => {
+  if (value === '') {
+    callback(new Error(t('common.please_input', { msg: t('user.upgrade_pwd.confirm_pwd') })))
+  } else if (value !== pwdForm.new_pwd) {
+    callback(new Error(t('user.upgrade_pwd.two_pwd_not_match')))
+  } else {
+    callback()
+  }
+}
 const rules = {
   pwd: [
     {
@@ -18,27 +42,8 @@ const rules = {
       trigger: 'blur',
     },
   ],
-  new_pwd: [
-    {
-      required: true,
-      message: t('common.please_input', { msg: t('user.upgrade_pwd.new_pwd') }),
-      trigger: 'blur',
-    },
-  ],
-  confirm_pwd: [
-    {
-      required: true,
-      message: t('common.please_input', { msg: t('user.upgrade_pwd.confirm_pwd') }),
-      trigger: 'blur',
-    },
-  ],
-}
-
-const initForm = (item: any) => {
-  if (item) {
-    Object.assign(pwdForm, { ...item })
-  }
-  pwdRef.value.clearValidate()
+  new_pwd: [{ validator: validatePass, trigger: 'blur' }],
+  confirm_pwd: [{ validator: validatePass2, trigger: 'blur' }],
 }
 
 const emits = defineEmits(['pwdSaved'])
@@ -61,7 +66,6 @@ const submit = () => {
   })
 }
 defineExpose({
-  initForm,
   submit,
 })
 </script>

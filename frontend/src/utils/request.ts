@@ -80,6 +80,9 @@ class HttpService {
               encodeURIComponent(assistantStore.getCertificate)
             )
           }
+          if (!assistantStore.getType) {
+            config.headers['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
+          }
         }
         const locale = getLocale()
         if (locale) {
@@ -168,9 +171,21 @@ class HttpService {
           errorMessage = 'Invalid request parameters'
           break
         case 401:
-          errorMessage = 'Unauthorized, please login again'
+          errorMessage = error.response?.data
+            ? error.response.data.toString()
+            : 'Unauthorized, please login again'
           // Redirect to login page if needed
-          break
+          ElMessage({
+            message: errorMessage,
+            type: 'error',
+            showClose: true,
+          })
+          setTimeout(() => {
+            wsCache.delete('user.token')
+            window.location.reload()
+          }, 1000)
+          return
+        // break
         case 403:
           errorMessage = 'Access denied'
           break
@@ -184,10 +199,7 @@ class HttpService {
           errorMessage = `Server responded with error: ${error.response.status}`
       }
       if (error?.response?.data) {
-        const msgData: any = error.response.data
-        if (msgData?.msg) {
-          errorMessage = msgData.msg
-        }
+        errorMessage = error.response.data.toString()
       }
     } else if (error.request) {
       errorMessage = 'No response from server'
@@ -248,6 +260,9 @@ class HttpService {
         heads['X-SQLBOT-ASSISTANT-CERTIFICATE'] = btoa(
           encodeURIComponent(assistantStore.getCertificate)
         )
+      }
+      if (!assistantStore.getType) {
+        heads['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
       }
     }
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment

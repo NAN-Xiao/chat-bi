@@ -61,7 +61,13 @@ export class Line extends BaseG2Chart {
           },
           labels: [
             {
-              text: (data: any) => `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
+              text: (data: any) => {
+                const value = data[y[0].value]
+                if (value === undefined || value === null) {
+                  return ''
+                }
+                return `${value}${_data.isPercent ? '%' : ''}`
+              },
               style: {
                 dx: -10,
                 dy: -12,

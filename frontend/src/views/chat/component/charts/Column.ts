@@ -95,7 +95,13 @@ export class Column extends BaseG2Chart {
       },
       labels: [
         {
-          text: (data: any) => `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
+          text: (data: any) => {
+            const value = data[y[0].value]
+            if (value === undefined || value === null) {
+              return ''
+            }
+            return `${value}${_data.isPercent ? '%' : ''}`
+          },
           position: 'top',
           transform: [
             { type: 'contrastReverse' },

@@ -17,15 +17,16 @@ router = APIRouter(tags=["system/workspace"], prefix="/system/workspace")
 async def option_pager(
     session: SessionDep,
     current_user: CurrentUser,
+    trans: Trans,
     pageNum: int,
     pageSize: int,
     oid: int = Query(description="空间ID"),
     keyword: Optional[str] = Query(None, description="搜索关键字(可选)"),
 ):
     if not current_user.isAdmin:
-        raise RuntimeError('only for admin')
+        raise Exception(trans('i18n_permission.no_permission', url = ", ", msg = trans('i18n_permission.only_admin')))
     if not oid:
-        raise RuntimeError('oid miss error')
+        raise Exception(trans('i18n_miss_args', key = '[oid]'))
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
     stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
@@ -50,12 +51,13 @@ async def option_pager(
 async def option_user(
     session: SessionDep, 
     current_user: CurrentUser,
+    trans: Trans,
     keyword: str = Query(description="搜索关键字")
     ):
     if not keyword:
-        raise HTTPException("keyword is required")
+        raise Exception(trans('i18n_miss_args', key = '[keyword]'))
     if (not current_user.isAdmin) and current_user.weight == 0:
-        raise RuntimeError("no permission to execute this api")
+        raise Exception(trans('i18n_permission.no_permission', url = '', msg = ''))
     oid = current_user.oid
     
     stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
@@ -76,13 +78,14 @@ async def option_user(
 async def pager(
     session: SessionDep,
     current_user: CurrentUser,
+    trans: Trans,
     pageNum: int,
     pageSize: int,
     keyword: Optional[str] = Query(None, description="搜索关键字(可选)"),
     oid: Optional[int] = Query(None, description="空间ID(仅admin用户生效)"),
 ):
     if not current_user.isAdmin and current_user.weight == 0:
-        raise HTTPException("no permission to execute")
+        raise Exception(trans('i18n_permission.no_permission', url = '', msg = ''))
     if current_user.isAdmin:
         workspace_id = oid if oid else current_user.oid
     else:
@@ -112,9 +115,9 @@ async def pager(
     
 
 @router.post("/uws")     
-async def create(session: SessionDep, current_user: CurrentUser, creator: UserWsDTO):
+async def create(session: SessionDep, current_user: CurrentUser, trans: Trans, creator: UserWsDTO):
     if not current_user.isAdmin and current_user.weight == 0:
-        raise HTTPException("no permission to execute")
+        raise Exception(trans('i18n_permission.no_permission', url = '', msg = ''))
     oid: int = creator.oid if (current_user.isAdmin and creator.oid) else current_user.oid
     weight = creator.weight if (current_user.isAdmin and creator.weight) else 0
     # 判断uid_list以及oid合法性
@@ -134,9 +137,9 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserWs
     session.commit()
 
 @router.put("/uws")     
-async def edit(session: SessionDep, editor: UserWsEditor):
+async def edit(session: SessionDep, trans: Trans, editor: UserWsEditor):
     if not editor.oid or not editor.uid:
-        raise HTTPException("param [oid, uid] miss")
+        raise Exception(trans('i18n_miss_args', key = '[oid, uid]'))
     db_model = session.exec(select(UserWsModel).where(UserWsModel.uid == editor.uid, UserWsModel.oid == editor.oid)).first()
     if not db_model:
         raise HTTPException("uws not exist")
@@ -150,9 +153,9 @@ async def edit(session: SessionDep, editor: UserWsEditor):
     session.commit()
 
 @router.delete("/uws")     
-async def delete(session: SessionDep, current_user: CurrentUser, dto: UserWsBase):
+async def delete(session: SessionDep, current_user: CurrentUser, trans: Trans, dto: UserWsBase):
     if not current_user.isAdmin and current_user.weight == 0:
-        raise HTTPException("no permission to execute")
+        raise Exception(trans('i18n_permission.no_permission', url = '', msg = ''))
     oid: int = dto.oid if (current_user.isAdmin and dto.oid) else current_user.oid
     db_model_list: list[UserWsModel] = session.exec(select(UserWsModel).where(UserWsModel.uid.in_(dto.uid_list), UserWsModel.oid == oid)).all()
     if not db_model_list:

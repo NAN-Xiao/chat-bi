@@ -219,7 +219,9 @@ const handleInitDsIdChange = (val: any) => {
     activeTable.value = null
     fieldListOptions.value = []
     columnForm.permissions = []
-    authTreeRef.value.init({})
+    if (authTreeRef.value) {
+      authTreeRef.value.init({})
+    }
   })
 }
 
@@ -375,6 +377,13 @@ const closeForm = () => {
 const authTreeRef = ref()
 const saveHandler = () => {
   columnFormRef.value.validate((res: any) => {
+    const names = currentPermission.permissions
+      .filter((ele: any) => ele.id !== columnForm.id)
+      .map((ele: any) => ele.name)
+    if (names.includes(columnForm.name)) {
+      ElMessage.error(t('embedded.duplicate_name'))
+      return
+    }
     if (res) {
       if (columnForm.type === 'row') {
         authTreeRef.value.submit()

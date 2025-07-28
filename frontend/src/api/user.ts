@@ -25,4 +25,5 @@ export const userApi = {
   deleteBatch: (data: any) => request.delete(`/user`, { data }),
   get: (key: string) => request.get(`/user/${key}`),
   pwd: (id: any) => request.patch(`/user/pwd/${id}`),
+  status: (data: any) => request.patch('/user/status', data),
 }

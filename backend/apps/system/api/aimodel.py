@@ -1,14 +1,34 @@
 import json
 from typing import List, Union
+from apps.ai_model.model_factory import LLMConfig, LLMFactory
 from apps.system.schemas.ai_model_schema import AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem
 from fastapi import APIRouter, Query
 from sqlmodel import func, select, update
 
 from apps.system.models.system_model import AiModelDetail
-from common.core.deps import SessionDep
+from common.core.deps import SessionDep, Trans
 from common.utils.time import get_timestamp
+from common.utils.utils import SQLBotLogUtil
 
 router = APIRouter(tags=["system/aimodel"], prefix="/system/aimodel")
+
+@router.post("/status")
+async def check_llm(info: AiModelCreator, trans: Trans):
+    try:
+        additional_params = {item.key: item.val for item in info.config_list}
+        config = LLMConfig(
+            model_type="openai",
+            model_name=info.base_model,
+            api_key=info.api_key,
+            api_base_url=info.api_domain,
+            additional_params=additional_params,
+        )
+        llm_instance = LLMFactory.create_llm(config)
+        result = llm_instance.llm.invoke("who are you?")
+        SQLBotLogUtil.info(f"check_llm result: {result}")
+    except Exception as e:
+        SQLBotLogUtil.error(f"Error checking LLM: {e}")
+        raise Exception(trans('i18n_llm.validate_error', msg = str(e)))
 
 @router.get("", response_model=list[AiModelGridItem])
 async def query(
@@ -74,19 +94,20 @@ async def update_model(
     data["config"] = json.dumps([item.model_dump(exclude_unset=True) for item in editor.config_list])
     data.pop("config_list", None)
     db_model = session.get(AiModelDetail, id)
-    update_data = AiModelDetail.model_validate(data)
-    db_model.sqlmodel_update(update_data)
+    #update_data = AiModelDetail.model_validate(data)
+    db_model.sqlmodel_update(data)
     session.add(db_model)
     session.commit()
 
 @router.delete("/{id}")
 async def delete_model(
         session: SessionDep,
+        trans: Trans,
         id: int
 ):
     item = session.get(AiModelDetail, id)
     if item.default_model:
-        raise RuntimeError(f"Can not delete [${item.name}], because it is default model!")
+        raise Exception(trans('i18n_llm.delete_default_error', key = item.name))
     session.delete(item)
     session.commit()
     

@@ -15,15 +15,16 @@
         @on-click-side-bar-btn="hideSideBar"
       />
     </el-aside>
-    <div v-if="!isAssistant && !chatListSideBarShow" class="hidden-sidebar-btn">
+    <div
+      v-if="isAssistant || !chatListSideBarShow"
+      class="hidden-sidebar-btn"
+      :class="{ 'assistant-popover-sidebar': isAssistant }"
+    >
       <el-popover
+        :visible="isAssistant ? floatPopoverVisible : null"
         :width="280"
         placement="bottom-start"
-        popper-style="padding: 0;
-                      height: 654px;
-                      border: 1px solid rgba(222, 224, 227, 1);
-                      border-radius: 6px;
-                      "
+        :popper-style="{ ...defaultFloatPopoverStyle }"
       >
         <template #reference>
           <el-button link type="primary" class="icon-btn" @click="showSideBar">
@@ -33,6 +34,7 @@
           </el-button>
         </template>
         <ChatListContainer
+          ref="floatPopoverRef"
           v-model:chat-list="chatList"
           v-model:current-chat-id="currentChatId"
           v-model:current-chat="currentChat"
@@ -57,7 +59,10 @@
     <el-container :loading="loading">
       <el-main
         class="chat-record-list"
-        :class="{ 'hide-sidebar': !isAssistant && !chatListSideBarShow }"
+        :class="{
+          'hide-sidebar': !isAssistant && !chatListSideBarShow,
+          'assistant-chat-main': isAssistant,
+        }"
       >
         <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
           <div class="welcome-content">
@@ -65,11 +70,16 @@
               <el-icon size="32">
                 <logo_fold />
               </el-icon>
-              {{ t('qa.greeting') }}
+              {{ isAssistant ? t('embedded.i_am_sqlbot') : t('qa.greeting') }}
             </div>
-            <div class="sub">{{ t('qa.hint_description') }}</div>
+            <div class="sub">
+              {{ isAssistant ? t('embedded.predict_data_etc') : t('qa.hint_description') }}
+            </div>
+            <div v-if="isAssistant" class="sub assistant-sub">
+              {{ t('embedded.intelligent_data_query') }}
+            </div>
             <el-button
-              v-if="currentChatId === undefined"
+              v-if="!isAssistant && currentChatId === undefined"
               size="large"
               type="primary"
               class="greeting-btn"
@@ -255,15 +265,13 @@
           </div>
         </el-scrollbar>
       </el-main>
-      <el-footer
-        v-if="computedMessages.length > 0 || (isAssistant && currentChatId)"
-        class="chat-footer"
-      >
+      <el-footer v-if="computedMessages.length > 0 || isAssistant" class="chat-footer">
         <div class="input-wrapper" @click="clickInput">
-          <div class="datasource">
+          <div v-if="!isAssistant" class="datasource">
             <template v-if="currentChat.datasource && currentChat.datasource_name">
               {{ t('qa.selected_datasource') }}:
               <img
+                v-if="currentChatEngineType"
                 style="margin-left: 4px; margin-right: 4px"
                 :src="currentChatEngineType"
                 width="16px"
@@ -332,14 +340,21 @@ import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import logo_fold from '@/assets/LOGO-fold.svg'
 import logo from '@/assets/LOGO.svg'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
-
 import { useAssistantStore } from '@/stores/assistant'
+import { onClickOutside } from '@vueuse/core'
 
 const props = defineProps<{
   startChatDsId?: number
 }>()
-
+const floatPopoverRef = ref()
+const floatPopoverVisible = ref(false)
 const assistantStore = useAssistantStore()
+const defaultFloatPopoverStyle = ref({
+  padding: '0',
+  height: '654px',
+  border: '1px solid rgba(222, 224, 227, 1)',
+  borderRadius: '6px',
+})
 
 const isAssistant = computed(() => assistantStore.getAssistant)
 
@@ -410,10 +425,8 @@ const createNewChatSimple = async () => {
 const createNewChat = async () => {
   goEmpty()
   if (isAssistant.value) {
-    const assistantChat = await assistantStore.setChat()
-    if (assistantChat) {
-      onChatCreatedQuick(assistantChat as any)
-    }
+    currentChat.value = new ChatInfo()
+    currentChatId.value = undefined
     return
   }
   chatCreatorRef.value?.showDs()
@@ -440,31 +453,8 @@ function onClickHistory(chat: Chat) {
 }
 
 const currentChatEngineType = computed(() => {
-  return (
-    dsTypeWithImg.find((ele) => currentChat.value.ds_type === ele.type || ele.type === 'excel') ||
-    {}
-  ).img
+  return (dsTypeWithImg.find((ele) => currentChat.value.ds_type === ele.type) || {}).img
 })
-
-function toAssistantHistory(chat: Chat) {
-  currentChat.value = new ChatInfo(chat)
-  if (chat !== undefined && chat.id !== undefined && !loading.value) {
-    currentChatId.value = chat.id
-    loading.value = true
-    chatApi
-      .get(chat.id)
-      .then((res) => {
-        const info = chatApi.toChatInfo(res)
-        if (info) {
-          currentChat.value = info
-          onClickHistory(info)
-        }
-      })
-      .finally(() => {
-        loading.value = false
-      })
-  }
-}
 
 function onChatDeleted(id: number) {
   console.log('deleted', id)
@@ -476,6 +466,10 @@ function onChatRenamed(chat: Chat) {
 
 const chatListSideBarShow = ref<boolean>(true)
 function hideSideBar() {
+  if (isAssistant.value) {
+    floatPopoverVisible.value = false
+    return
+  }
   chatListSideBarShow.value = false
 }
 
@@ -542,13 +536,23 @@ function onChatStop() {
   isTyping.value = false
   console.debug('onChatStop')
 }
-
+const assistantPrepareSend = async () => {
+  if (
+    isAssistant.value &&
+    (currentChatId.value == null || typeof currentChatId.value == 'undefined')
+  ) {
+    const assistantChat = await assistantStore.setChat()
+    if (assistantChat) {
+      onChatCreatedQuick(assistantChat as any)
+    }
+  }
+}
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
 
   loading.value = true
   isTyping.value = true
-
+  await assistantPrepareSend()
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
   currentRecord.chat_id = currentChatId.value
@@ -716,13 +720,6 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   })
 }
 
-const getHistoryList = () => {
-  return chatList.value
-}
-const getCurrentChatId = () => {
-  return currentChatId.value
-}
-
 const inputRef = ref()
 
 function clickInput() {
@@ -770,12 +767,29 @@ function stop(func?: (...p: any[]) => void, ...param: any[]) {
     func(...param)
   }
 }
-
+const showFloatPopover = () => {
+  if (isAssistant.value && !floatPopoverVisible.value) {
+    floatPopoverVisible.value = true
+  }
+}
+const assistantPrepareInit = () => {
+  if (!isAssistant.value) {
+    return
+  }
+  Object.assign(defaultFloatPopoverStyle.value, {
+    height: '100% !important',
+    inset: '0px auto auto 0px',
+  })
+  goEmpty()
+  onClickOutside(floatPopoverRef, () => {
+    if (floatPopoverVisible.value) {
+      floatPopoverVisible.value = false
+    }
+  })
+}
 defineExpose({
-  getHistoryList,
-  toAssistantHistory,
-  getCurrentChatId,
   createNewChat,
+  showFloatPopover,
 })
 
 const hiddenChatCreatorRef = ref()
@@ -793,6 +807,7 @@ function jumpCreatChat() {
 
 onMounted(() => {
   getChatList(jumpCreatChat)
+  assistantPrepareInit()
 })
 </script>
 
@@ -802,7 +817,11 @@ onMounted(() => {
   position: relative;
 
   border-radius: 12px;
-
+  .assistant-popover-sidebar {
+    button {
+      display: none;
+    }
+  }
   .hidden-sidebar-btn {
     z-index: 1;
     position: absolute;
@@ -840,6 +859,9 @@ onMounted(() => {
     &.hide-sidebar {
       border-radius: 12px;
     }
+  }
+  .assistant-chat-main {
+    padding: 0 0 20px 0;
   }
 
   .chat-scroll {

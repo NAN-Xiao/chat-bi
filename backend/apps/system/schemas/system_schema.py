@@ -1,11 +1,22 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from common.core.schemas import BaseCreatorDTO
+import re
 
-class model_status(BaseModel):
-    status: bool
-    ids: list[int]
+EMAIL_REGEX = re.compile(
+    r"^[a-zA-Z0-9]+([._-][a-zA-Z0-9]+)*@"
+    r"([a-zA-Z0-9]+(-[a-zA-Z0-9]+)*\.)+"
+    r"[a-zA-Z]{2,}$"
+)
+PWD_REGEX = re.compile(
+    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)"
+    r"(?=.*[~!@#$%^&*()_+\-={}|:\"<>?`\[\];',./])"
+    r"[A-Za-z\d~!@#$%^&*()_+\-={}|:\"<>?`\[\];',./]{8,20}$"
+)
+class UserStatus(BaseCreatorDTO):
+    status: int = 1
+    
     
 
 class UserLanguage(BaseModel):
@@ -13,24 +24,36 @@ class UserLanguage(BaseModel):
     
 
 class BaseUser(BaseModel):
-    account: str
+    account: str = Field(min_length=1, max_length=100, description="用户账号")
     oid: int
-
+    
 class BaseUserDTO(BaseUser, BaseCreatorDTO):
-    language: str
+    language: str = Field(pattern=r"^(zh-CN|en)$", default="zh-CN", description="用户语言")
     password: str
+    status: int = 1
     def to_dict(self):
         return {
             "id": self.id,
             "account": self.account,
             "oid": self.oid
         }
+    @field_validator("language")
+    def validate_language(cls, lang: str) -> str:
+        if not re.fullmatch(r"^(zh-CN|en)$", lang):
+            raise ValueError("Language must be 'zh-CN' or 'en'")
+        return lang
 
 class UserCreator(BaseUser):
-    name: str
-    email: str
+    name: str = Field(min_length=1, max_length=100, description="用户名")
+    email: str = Field(min_length=1, max_length=100, description="用户邮箱")
     status: int = 1
     oid_list: Optional[list[int]] = None 
+    
+    """ @field_validator("email")
+    def validate_email(cls, lang: str) -> str:
+        if not re.fullmatch(EMAIL_REGEX, lang):
+            raise ValueError("Email format is invalid!")
+        return lang """
 
 class UserEditor(UserCreator, BaseCreatorDTO):
    pass
@@ -139,7 +162,7 @@ class AssistantOutDsSchema(AssistantOutDsBase):
     dataBase: Optional[str] = None
     user: Optional[str] = None
     password: Optional[str] = None
-    schema: Optional[str] = None
+    db_schema: Optional[str] = None
     extraParams: Optional[str] = None
     tables: Optional[list[AssistantTableSchema]] = None
     

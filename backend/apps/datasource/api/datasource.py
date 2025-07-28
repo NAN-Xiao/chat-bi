@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from apps.db.engine import create_table, get_data_engine, insert_data
 from common.core.deps import SessionDep, CurrentUser, Trans
+from common.utils.utils import SQLBotLogUtil
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum
 from ..crud.field import get_fields_by_table_id
@@ -17,6 +18,11 @@ from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, Core
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 path = "/opt/sqlbot/data/excel"
 
+@router.get("/ws/{oid}", include_in_schema=False)
+async def query_by_oid(session: SessionDep, user: CurrentUser, oid: int) -> List[CoreDatasource]:
+    if not user.isAdmin:
+        raise Exception("no permission to execute")
+    return get_datasource_list(session=session, user=user, oid=oid)
 
 @router.get("/list")
 async def datasource_list(session: SessionDep, user: CurrentUser):
@@ -60,7 +66,11 @@ async def get_tables(session: SessionDep, id: int):
 
 @router.post("/getTablesByConf")
 async def get_tables_by_conf(session: SessionDep, ds: CoreDatasource):
-    return getTablesByDs(session, ds)
+    try:
+        return getTablesByDs(session, ds)
+    except Exception as e:
+        SQLBotLogUtil.error(f"get table failed: {e}")
+        raise HTTPException(status_code=500, detail=f'Get table Failed: {e.args}')
 
 
 @router.post("/getFields/{id}/{table_name}")
@@ -100,7 +110,11 @@ async def edit_field(session: SessionDep, field: CoreField):
 
 @router.post("/previewData/{id}")
 async def edit_local(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
-    return preview(session, current_user, id, data)
+    try:
+        return preview(session, current_user, id, data)
+    except Exception as e:
+        SQLBotLogUtil.error(f"Preview failed: {e}")
+        raise HTTPException(status_code=500, detail=f'Preview Failed: {e.args}')
 
 
 @router.post("/fieldEnum/{id}")

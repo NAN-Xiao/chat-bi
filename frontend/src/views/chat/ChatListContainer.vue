@@ -117,14 +117,9 @@ const createNewChat = async () => {
 
 async function doCreateNewChat() {
   if (isAssistant.value) {
-    const assistantChat = await assistantStore.setChat()
-    if (assistantChat) {
-      onChatCreated(assistantChat)
-    }
     return
-  } else {
-    chatCreatorRef.value?.showDs()
   }
+  chatCreatorRef.value?.showDs()
 }
 
 function onClickHistory(chat: Chat) {

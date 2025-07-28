@@ -6,6 +6,10 @@
     "AI Model Configuration": "模型配置"
   },
   "common": {
+    "limited_to_30": "数据表数量限制30",
+    "enter_your_password": "请输入密码",
+    "your_account_email_address": "请输入账号/邮箱",
+    "the_correct_password": "请输入正确的密码",
     "input_content": "请输入内容",
     "may_not_exist": "暂无结果，用户可能不存在",
     "empty": "",
@@ -31,7 +35,8 @@
     "re_upload": "重新上传",
     "not_exceed_50mb": "支持 XLS、XLSX、CSV 格式，文件大小不超过 50MB",
     "reset_password": "重置密码",
-    "password_reset_successful": "重置密码成功"
+    "password_reset_successful": "重置密码成功",
+    "or": "或者"
   },
   "dashboard": {
     "add_success": "添加成功",
@@ -121,7 +126,8 @@
     "earlier": "更早以前",
     "no_time": "没有时间",
     "rename_conversation_title": "重命名对话标题",
-    "conversation_title": "对话标题"
+    "conversation_title": "对话标题",
+    "copied": "已复制"
   },
   "ds": {
     "title": "数据源",
@@ -223,6 +229,9 @@
     "edit": "编辑",
     "source_connection_failed": "数据源连接失败",
     "confirm": "确定",
+    "copy": "复制",
+    "the_original_one": "确认恢复为初始密码吗？",
+    "incorrect_email_format": "邮箱格式不对",
     "enabled_status": "启用状态",
     "custom_notes": "自定义备注",
     "field_type": "字段类型",
@@ -275,7 +284,8 @@
     "verification_successful": "校验成功",
     "del_default_tip": "无法删除模型: {msg}",
     "del_default_warn": "该模型为系统默认模型，请先设置其他模型为系统默认模型，再删除此模型。",
-    "del_warn_tip": "是否删除模型: {msg}？"
+    "del_warn_tip": "是否删除模型: {msg}？",
+    "check_failed": "模型无效【{msg}】"
   },
   "user": {
     "workspace": "工作空间",
@@ -332,7 +342,8 @@
       "title": "修改密码",
       "old_pwd": "旧密码",
       "new_pwd": "新密码",
-      "confirm_pwd": "确认密码"
+      "confirm_pwd": "确认密码",
+      "two_pwd_not_match": "两次输入的密码不一致"
     }
   },
   "workspace": {
@@ -463,6 +474,10 @@
     "add_interface_credentials": "添加接口凭证",
     "edit_interface_credentials": "编辑接口凭证",
     "duplicate_name": "重复名称",
+    "duplicate_name_": "重复姓名",
+    "duplicate_account": "重复账号",
+    "duplicate_email": "重复邮箱",
+    "repeating_parameters": "重复参数",
     "interface_credentials": "接口凭证",
     "no_credentials_yet": "暂无凭证",
     "intelligent_customer_service": "SQLBot 智能客服",

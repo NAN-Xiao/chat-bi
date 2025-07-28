@@ -38,7 +38,7 @@ const handleEmbedded = () => {
   <div class="card">
     <div class="name-icon">
       <img :src="Lock" width="32px" height="32px" />
-      <span class="name">{{ name }}</span>
+      <span class="name ellipsis" :title="name">{{ name }}</span>
       <span class="default" :class="isBase && 'is-base'">{{
         isBase ? $t('embedded.basic_application') : $t('embedded.advanced_application')
       }}</span>
@@ -88,6 +88,7 @@ const handleEmbedded = () => {
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
+      max-width: 200px;
     }
 
     .default {

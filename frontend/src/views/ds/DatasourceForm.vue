@@ -233,7 +233,6 @@ const save = async (formEl: FormInstance | undefined) => {
   if (!formEl) return
   await formEl.validate((valid) => {
     if (valid) {
-      saveLoading.value = true
       const list = tableList.value
         .filter((ele: any) => {
           return checkList.value.includes(ele.tableName)
@@ -241,6 +240,12 @@ const save = async (formEl: FormInstance | undefined) => {
         .map((ele: any) => {
           return { table_name: ele.tableName, table_comment: ele.tableComment }
         })
+
+      if (checkList.value.length > 30) {
+        ElMessage.error(t('common.limited_to_30'))
+        return
+      }
+      saveLoading.value = true
 
       const requestObj = buildConf()
       if (form.value.id) {
@@ -278,8 +283,6 @@ const save = async (formEl: FormInstance | undefined) => {
           .finally(() => {
             saveLoading.value = false
           })
-
-        console.log(a, 'datasourceApi')
       }
     }
   })
@@ -510,12 +513,12 @@ defineExpose({
                 <div class="name">{{ form.filename }}</div>
                 <div class="size">{{ form.filename.split('.')[1] }} - {{ fileSize }}</div>
               </div>
-              <el-icon class="action-btn" size="16" @click="clearFile">
+              <el-icon v-if="!form.id" class="action-btn" size="16" @click="clearFile">
                 <IconOpeDelete></IconOpeDelete>
               </el-icon>
             </div>
             <el-upload
-              v-if="form.filename"
+              v-if="form.filename && !form.id"
               class="upload-user"
               accept=".xlsx,.xls,.csv"
               :headers="headers"
@@ -531,7 +534,7 @@ defineExpose({
               </el-button>
             </el-upload>
             <el-upload
-              v-else
+              v-else-if="!form.id"
               class="upload-user"
               accept=".xlsx,.xls,.csv"
               :headers="headers"
