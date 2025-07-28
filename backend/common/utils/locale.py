@@ -45,9 +45,9 @@ class I18nHelper:
         
         return current if isinstance(current, str) else key_path
 
-    def __call__(self, key: str, **kwargs) -> str:
+    def __call__(self, arg_key: str, **kwargs) -> str:
         lang_data = self.i18n.translations.get(self.lang, {})
-        text = self._get_nested_translation(lang_data, key)
+        text = self._get_nested_translation(lang_data, arg_key)
         
         if kwargs:
             try:
