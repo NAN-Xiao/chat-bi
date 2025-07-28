@@ -58,6 +58,7 @@ const communicationCb = async (event: any) => {
       const certificate = event.data['certificate']
       assistantStore.setType(1)
       assistantStore.setCertificate(certificate)
+      assistantStore.resolveCertificate(certificate)
     }
     if (event.data?.busi == 'setOnline') {
       setFormatOnline(event.data.online)
@@ -85,6 +86,7 @@ onBeforeMount(async () => {
   setFormatOnline(online)
   const now = Date.now()
   assistantStore.setFlag(now)
+  assistantStore.setId(assistantId?.toString() || '')
   const param = {
     id: assistantId,
     virtual: assistantStore.getFlag,
