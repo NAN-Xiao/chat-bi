@@ -510,12 +510,12 @@ defineExpose({
                 <div class="name">{{ form.filename }}</div>
                 <div class="size">{{ form.filename.split('.')[1] }} - {{ fileSize }}</div>
               </div>
-              <el-icon class="action-btn" size="16" @click="clearFile">
+              <el-icon v-if="!form.id" class="action-btn" size="16" @click="clearFile">
                 <IconOpeDelete></IconOpeDelete>
               </el-icon>
             </div>
             <el-upload
-              v-if="form.filename"
+              v-if="form.filename && !form.id"
               class="upload-user"
               accept=".xlsx,.xls,.csv"
               :headers="headers"
@@ -531,7 +531,7 @@ defineExpose({
               </el-button>
             </el-upload>
             <el-upload
-              v-else
+              v-else-if="!form.id"
               class="upload-user"
               accept=".xlsx,.xls,.csv"
               :headers="headers"
