@@ -60,7 +60,7 @@ def get_chat_predict_data(session: SessionDep, chart_record_id: int):
     res = session.query(ChatRecord).options(load_only(ChatRecord.predict_data)).get(chart_record_id)
     if res:
         try:
-            return orjson.loads(res.data)
+            return orjson.loads(res.predict_data)
         except Exception:
             pass
     return ''
