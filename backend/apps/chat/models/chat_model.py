@@ -105,52 +105,52 @@ class AiModelQuestion(BaseModel):
     rule: str = ""
     fields: str = ""
     data: str = ""
-    lang: str = "zh-CN"
+    lang: str = "简体中文"
     filter: str = []
 
     def sql_sys_question(self):
-        return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question)
+        return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question, lang=self.lang)
 
     def sql_user_question(self):
         return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question,
-                                                 rule=self.rule, lang=self.lang)
+                                                 rule=self.rule)
 
     def chart_sys_question(self):
-        return get_chart_template()['system'].format(sql=self.sql, question=self.question)
+        return get_chart_template()['system'].format(sql=self.sql, question=self.question, lang=self.lang)
 
     def chart_user_question(self):
-        return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule, lang=self.lang)
+        return get_chart_template()['user'].format(sql=self.sql, question=self.question, rule=self.rule)
 
     def analysis_sys_question(self):
-        return get_analysis_template()['system']
+        return get_analysis_template()['system'].format(lang=self.lang)
 
     def analysis_user_question(self):
-        return get_analysis_template()['user'].format(fields=self.fields, data=self.data, lang=self.lang)
+        return get_analysis_template()['user'].format(fields=self.fields, data=self.data)
 
     def predict_sys_question(self):
-        return get_predict_template()['system']
+        return get_predict_template()['system'].format(lang=self.lang)
 
     def predict_user_question(self):
-        return get_predict_template()['user'].format(fields=self.fields, data=self.data, lang=self.lang)
+        return get_predict_template()['user'].format(fields=self.fields, data=self.data)
 
     def datasource_sys_question(self):
-        return get_datasource_template()['system']
+        return get_datasource_template()['system'].format(lang=self.lang)
 
     def datasource_user_question(self, datasource_list: str = "[]"):
-        return get_datasource_template()['user'].format(question=self.question, data=datasource_list, lang=self.lang)
+        return get_datasource_template()['user'].format(question=self.question, data=datasource_list)
 
     def guess_sys_question(self):
-        return get_guess_question_template()['system']
+        return get_guess_question_template()['system'].format(lang=self.lang)
 
     def guess_user_question(self, old_questions: str = "[]"):
         return get_guess_question_template()['user'].format(question=self.question, schema=self.db_schema,
-                                                            old_questions=old_questions, lang=self.lang)
+                                                            old_questions=old_questions)
 
     def filter_sys_question(self):
-        return get_permissions_template()['system']
+        return get_permissions_template()['system'].format(lang=self.lang)
 
     def filter_user_question(self):
-        return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter, lang=self.lang)
+        return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter)
 
 
 class ChatQuestion(AiModelQuestion):
