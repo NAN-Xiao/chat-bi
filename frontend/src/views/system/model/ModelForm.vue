@@ -76,7 +76,7 @@ const advancedSettingPagination = computed(() => {
   return advancedSetting.value.slice(currentPage.value * 5 - 5, currentPage.value * 5)
 })
 
-const handelCurrentChange = (val: any) => {
+const handleCurrentChange = (val: any) => {
   currentPage.value = val
 }
 
@@ -318,7 +318,7 @@ defineExpose({
           :default-page-size="5"
           layout="prev, pager, next"
           :total="advancedSetting.length"
-          @current-change="handelCurrentChange"
+          @current-change="handleCurrentChange"
         />
       </div>
     </div>

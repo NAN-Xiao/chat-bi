@@ -171,9 +171,9 @@ class HttpService {
           errorMessage = 'Invalid request parameters'
           break
         case 401:
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-ignore
-          errorMessage = error.response?.data?.data?.msg || 'Unauthorized, please login again'
+          errorMessage = error.response?.data
+            ? error.response.data.toString()
+            : 'Unauthorized, please login again'
           // Redirect to login page if needed
           ElMessage({
             message: errorMessage,
@@ -199,10 +199,7 @@ class HttpService {
           errorMessage = `Server responded with error: ${error.response.status}`
       }
       if (error?.response?.data) {
-        const msgData: any = error.response.data
-        if (msgData?.msg) {
-          errorMessage = msgData.msg
-        }
+        errorMessage = error.response.data.toString()
       }
     } else if (error.request) {
       errorMessage = 'No response from server'
