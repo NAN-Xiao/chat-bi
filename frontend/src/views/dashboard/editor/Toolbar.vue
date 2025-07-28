@@ -55,7 +55,7 @@ const saveCanvasWithCheck = () => {
       opt: 'updateLeaf',
       id: dashboardInfo.value.id,
       name: dashboardInfo.value.name,
-      pid: dashboardInfo.value.pid,
+      pid: 'root',
     }
     saveDashboardResource(updateParams, function () {
       ElMessage({

@@ -18,11 +18,13 @@ from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, Core
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 path = "/opt/sqlbot/data/excel"
 
+
 @router.get("/ws/{oid}", include_in_schema=False)
 async def query_by_oid(session: SessionDep, user: CurrentUser, oid: int) -> List[CoreDatasource]:
     if not user.isAdmin:
         raise Exception("no permission to execute")
     return get_datasource_list(session=session, user=user, oid=oid)
+
 
 @router.get("/list")
 async def datasource_list(session: SessionDep, user: CurrentUser):
@@ -134,32 +136,11 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
     with open(save_path, "wb") as f:
         f.write(await file.read())
 
-    conn = get_data_engine()
     sheets = []
-    if filename.endswith(".csv"):
-        df = pd.read_csv(save_path)
-        tableName = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
-        sheets.append({"tableName": tableName, "tableComment": ""})
-        column_len = len(df.dtypes)
-        fields = []
-        for i in range(column_len):
-            # build fields
-            fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
-        # create table
-        create_table(conn, tableName, fields)
-
-        data = [
-            {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
-             for i in range(len(row))}
-            for row in df.values
-        ]
-        # insert data
-        insert_data(conn, tableName, fields, data)
-    else:
-        df_sheets = pd.read_excel(save_path, sheet_name=None)
-        # build columns and data to insert db
-        for sheet_name, df in df_sheets.items():
-            tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+    with get_data_engine() as conn:
+        if filename.endswith(".csv"):
+            df = pd.read_csv(save_path)
+            tableName = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
             sheets.append({"tableName": tableName, "tableComment": ""})
             column_len = len(df.dtypes)
             fields = []
@@ -176,7 +157,27 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
             ]
             # insert data
             insert_data(conn, tableName, fields, data)
-    conn.close()
+        else:
+            df_sheets = pd.read_excel(save_path, sheet_name=None)
+            # build columns and data to insert db
+            for sheet_name, df in df_sheets.items():
+                tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+                sheets.append({"tableName": tableName, "tableComment": ""})
+                column_len = len(df.dtypes)
+                fields = []
+                for i in range(column_len):
+                    # build fields
+                    fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
+                # create table
+                create_table(conn, tableName, fields)
+
+                data = [
+                    {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
+                     for i in range(len(row))}
+                    for row in df.values
+                ]
+                # insert data
+                insert_data(conn, tableName, fields, data)
 
     os.remove(save_path)
     return {"filename": filename, "sheets": sheets}
