@@ -1,17 +1,18 @@
 from datetime import datetime
 from typing import List, Optional
 
+from fastapi import Body
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, Text, BigInteger, DateTime, Identity, Boolean
 from sqlmodel import SQLModel, Field
 
+from apps.template.filter.generator import get_permissions_template
 from apps.template.generate_analysis.generator import get_analysis_template
 from apps.template.generate_chart.generator import get_chart_template
 from apps.template.generate_guess_question.generator import get_guess_question_template
 from apps.template.generate_predict.generator import get_predict_template
 from apps.template.generate_sql.generator import get_sql_template
 from apps.template.select_datasource.generator import get_datasource_template
-from apps.template.filter.generator import get_permissions_template
 
 
 class Chat(SQLModel, table=True):
@@ -153,14 +154,14 @@ class AiModelQuestion(BaseModel):
 
 
 class ChatQuestion(AiModelQuestion):
-    question: str
-    chat_id: int
+    question: str = Body(description='用户提问')
+    chat_id: int = Body(description='会话ID')
 
 
 class ChatMcp(ChatQuestion):
-    token: str
+    token: str = Body(description='token')
 
 
 class ChatStart(BaseModel):
-    username: str
-    password: str
+    username: str = Body(description='用户名')
+    password: str = Body(description='密码')
