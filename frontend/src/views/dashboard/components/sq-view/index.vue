@@ -12,6 +12,11 @@ const props = defineProps({
     required: false,
     default: null,
   },
+  showPosition: {
+    type: String,
+    required: false,
+    default: 'default',
+  },
 })
 
 import { computed, nextTick, ref } from 'vue'
@@ -100,7 +105,7 @@ defineExpose({
       <div class="title">
         {{ viewInfo.chart.title }}
       </div>
-      <div class="buttons-bar">
+      <div v-if="showPosition === 'multiplexing'" class="buttons-bar">
         <div class="chart-select-container">
           <el-tooltip effect="dark" :content="t('chat.type')" placement="top">
             <ChartPopover
