@@ -6,6 +6,7 @@
     "AI Model Configuration": "模型配置"
   },
   "common": {
+    "limited_to_30": "数据表数量限制30",
     "enter_your_password": "请输入密码",
     "your_account_email_address": "请输入账号/邮箱",
     "the_correct_password": "请输入正确的密码",

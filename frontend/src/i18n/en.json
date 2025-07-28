@@ -6,6 +6,7 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
+    "limited_to_30": "The number of data tables is limited to 30",
     "enter_your_password": "Please enter your password",
     "your_account_email_address": "Please enter your account/email address",
     "the_correct_password": "Please enter the correct password",
