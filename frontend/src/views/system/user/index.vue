@@ -7,6 +7,7 @@
           class="sqlbot-search"
           placeholder="Search"
           prefix-icon="el-icon-search"
+          clearable
           @keyup.enter="handleSearch"
         >
           <template #prefix>
@@ -97,10 +98,10 @@
       @submit.prevent
     >
       <el-form-item label="Account">
-        <el-input v-model="state.form.term" autocomplete="off" />
+        <el-input v-model="state.form.term" clearable autocomplete="off" />
       </el-form-item>
       <el-form-item label="Definition">
-        <el-input v-model="state.form.definition" type="textarea" />
+        <el-input v-model="state.form.definition" clearable type="textarea" />
       </el-form-item>
       <el-form-item label="Domain">
         <el-select v-model="state.form.domain" placeholder="Please select a domain">

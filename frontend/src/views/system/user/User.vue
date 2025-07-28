@@ -7,6 +7,7 @@
           v-model="keyword"
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('user.name_account_email')"
+          clearable
           @keyup.enter="handleSearch"
           @blur="handleSearch"
         >
@@ -240,6 +241,7 @@
           :placeholder="$t('datasource.please_enter') + $t('common.empty') + $t('user.name')"
           autocomplete="off"
           maxlength="50"
+          clearable
         />
       </el-form-item>
       <el-form-item prop="account" :label="t('user.account')">
@@ -249,6 +251,7 @@
           :placeholder="$t('datasource.please_enter') + $t('common.empty') + $t('user.account')"
           autocomplete="off"
           maxlength="50"
+          clearable
         />
       </el-form-item>
       <el-form-item prop="email" :label="$t('user.email')">
@@ -256,6 +259,7 @@
           v-model="state.form.email"
           :placeholder="$t('datasource.please_enter') + $t('common.empty') + $t('user.email')"
           autocomplete="off"
+          clearable
         />
       </el-form-item>
       <!-- <el-form-item :label="$t('user.phone_number')">
@@ -316,6 +320,7 @@
             $t('datasource.please_enter') + $t('common.empty') + $t('user.new_password')
           "
           autocomplete="off"
+          clearable
         />
       </el-form-item>
       <el-form-item prop="old" :label="t('user.confirm_password')">
@@ -325,6 +330,7 @@
             $t('datasource.please_enter') + $t('common.empty') + $t('user.confirm_password')
           "
           autocomplete="off"
+          clearable
         />
       </el-form-item>
     </el-form>

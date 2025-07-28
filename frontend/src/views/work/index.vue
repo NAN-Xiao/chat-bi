@@ -55,7 +55,12 @@ const dialogVisible = ref(false)
     modal-class="select-datasource_dialog"
   >
     <div class="search-datasource">
-      <el-input v-model="datasourceName" style="width: 240px" placeholder="Please input" />
+      <el-input
+        v-model="datasourceName"
+        clearable
+        style="width: 240px"
+        placeholder="Please input"
+      />
     </div>
     <div class="datasource-content">
       <DatasourceCard

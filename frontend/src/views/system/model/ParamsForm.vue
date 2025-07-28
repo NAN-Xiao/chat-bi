@@ -81,12 +81,14 @@ defineExpose({
       <el-form-item prop="key" :label="$t('model.parameters')">
         <el-input
           v-model="paramsForm.key"
+          clearable
           :placeholder="$t('datasource.please_enter') + $t('common.empty') + $t('model.parameters')"
         />
       </el-form-item>
       <el-form-item prop="name" :label="$t('model.display_name')">
         <el-input
           v-model="paramsForm.name"
+          clearable
           :placeholder="
             $t('datasource.please_enter') + $t('common.empty') + $t('model.display_name')
           "
@@ -95,6 +97,7 @@ defineExpose({
       <el-form-item prop="val" :label="$t('model.parameter_value')">
         <el-input
           v-model="paramsForm.val"
+          clearable
           :placeholder="
             $t('datasource.please_enter') + $t('common.empty') + $t('model.parameter_value')
           "

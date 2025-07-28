@@ -17,6 +17,7 @@
             <el-form-item prop="username">
               <el-input
                 v-model="loginForm.username"
+                clearable
                 :placeholder="$t('common.your_account_email_address')"
                 size="large"
               ></el-input>
@@ -27,6 +28,7 @@
                 :placeholder="$t('common.enter_your_password')"
                 type="password"
                 show-password
+                clearable
                 size="large"
               ></el-input>
             </el-form-item>

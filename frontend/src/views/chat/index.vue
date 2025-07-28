@@ -290,6 +290,7 @@
             ref="inputRef"
             v-model="inputMessage"
             :disabled="isTyping"
+            clearable
             class="input-area"
             type="textarea"
             :rows="1"

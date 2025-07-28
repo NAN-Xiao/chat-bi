@@ -592,6 +592,7 @@ const saveHandler = () => {
                 $t('common.empty') +
                 $t('embedded.basic_information')
               "
+              clearable
               autocomplete="off"
             />
           </el-form-item>
@@ -603,6 +604,7 @@ const saveHandler = () => {
               type="textarea"
               maxlength="200"
               show-word-limit
+              clearable
               :placeholder="$t('datasource.please_enter')"
               autocomplete="off"
             />
@@ -611,6 +613,7 @@ const saveHandler = () => {
           <el-form-item prop="domain" :label="t('embedded.cross_domain_settings')">
             <el-input
               v-model="currentEmbedded.domain"
+              clearable
               :placeholder="$t('embedded.third_party_address')"
               autocomplete="off"
             />
@@ -634,6 +637,7 @@ const saveHandler = () => {
           <el-form-item prop="endpoint" :label="t('embedded.interface_url')">
             <el-input
               v-model="urlForm.endpoint"
+              clearable
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + $t('embedded.interface_url')
               "
@@ -827,6 +831,7 @@ const saveHandler = () => {
       <el-form-item prop="source" :label="t('embedded.credential_name')">
         <el-input
           v-model="certificateForm.source"
+          clearable
           :placeholder="
             $t('datasource.please_enter') + $t('common.empty') + $t('embedded.credential_name')
           "
@@ -849,6 +854,7 @@ const saveHandler = () => {
       <el-form-item prop="target_key" :label="t('embedded.target_credential_name')">
         <el-input
           v-model="certificateForm.target_key"
+          clearable
           :placeholder="
             $t('datasource.please_enter') +
             $t('common.empty') +
@@ -873,6 +879,7 @@ const saveHandler = () => {
       <el-form-item prop="target_val" :label="t('embedded.target_credential')">
         <el-input
           v-model="certificateForm.target_val"
+          clearable
           :placeholder="
             $t('datasource.please_enter') + $t('common.empty') + $t('embedded.target_credential')
           "

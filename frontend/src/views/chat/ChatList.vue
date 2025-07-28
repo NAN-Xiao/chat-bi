@@ -264,6 +264,7 @@ const handleConfirmPassword = () => {
           :placeholder="
             $t('datasource.please_enter') + $t('common.empty') + $t('qa.conversation_title')
           "
+          clearable
           autocomplete="off"
         />
       </el-form-item>

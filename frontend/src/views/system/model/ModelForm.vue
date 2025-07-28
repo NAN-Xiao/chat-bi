@@ -219,6 +219,7 @@ defineExpose({
           </template>
           <el-input
             v-model="modelForm.name"
+            clearable
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + $t('model.model_name')
             "
@@ -253,6 +254,7 @@ defineExpose({
         <el-form-item prop="api_domain" :label="t('model.api_domain_name')">
           <el-input
             v-model="modelForm.api_domain"
+            clearable
             :placeholder="
               $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
             "
@@ -261,6 +263,7 @@ defineExpose({
         <el-form-item prop="api_key" label="API Key">
           <el-input
             v-model="modelForm.api_key"
+            clearable
             :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
             type="password"
             show-password

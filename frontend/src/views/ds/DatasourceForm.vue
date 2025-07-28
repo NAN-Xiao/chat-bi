@@ -558,6 +558,7 @@ defineExpose({
         <el-form-item :label="t('ds.form.name')" prop="name">
           <el-input
             v-model="form.name"
+            clearable
             :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.name')"
           />
         </el-form-item>
@@ -570,6 +571,7 @@ defineExpose({
             :rows="2"
             show-word-limit
             maxlength="200"
+            clearable
             type="textarea"
           />
         </el-form-item>
@@ -577,18 +579,21 @@ defineExpose({
           <el-form-item :label="t('ds.form.host')" prop="host">
             <el-input
               v-model="form.host"
+              clearable
               :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.host')"
             />
           </el-form-item>
           <el-form-item :label="t('ds.form.port')" prop="port">
             <el-input
               v-model="form.port"
+              clearable
               :placeholder="$t('datasource.please_enter') + $t('common.empty') + t('ds.form.port')"
             />
           </el-form-item>
           <el-form-item :label="t('ds.form.username')">
             <el-input
               v-model="form.username"
+              clearable
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.username')
               "
@@ -597,6 +602,7 @@ defineExpose({
           <el-form-item :label="t('ds.form.password')">
             <el-input
               v-model="form.password"
+              clearable
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.password')
               "
@@ -607,6 +613,7 @@ defineExpose({
           <el-form-item :label="t('ds.form.database')" prop="database">
             <el-input
               v-model="form.database"
+              clearable
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.database')
               "
@@ -625,6 +632,7 @@ defineExpose({
           <el-form-item :label="t('ds.form.extra_jdbc')">
             <el-input
               v-model="form.extraJdbc"
+              clearable
               :placeholder="
                 $t('datasource.please_enter') + $t('common.empty') + t('ds.form.extra_jdbc')
               "
@@ -633,12 +641,19 @@ defineExpose({
           <el-form-item v-if="haveSchema.includes(form.type)" label="Schema" prop="dbSchema">
             <el-input
               v-model="form.dbSchema"
+              clearable
               :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'Schema'"
             />
             <el-button v-if="false" link type="primary" :icon="Plus">Get Schema</el-button>
           </el-form-item>
           <el-form-item :label="t('ds.form.timeout')" prop="timeout">
-            <el-input-number v-model="form.timeout" :min="0" :max="300" controls-position="right" />
+            <el-input-number
+              v-model="form.timeout"
+              clearable
+              :min="0"
+              :max="300"
+              controls-position="right"
+            />
           </el-form-item>
         </div>
       </el-form>

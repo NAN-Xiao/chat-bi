@@ -185,6 +185,7 @@ defineExpose({
         <el-input
           v-model="resourceForm.name"
           :placeholder="state.placeholder"
+          clearable
           @keydown.stop
           @keyup.stop
         />

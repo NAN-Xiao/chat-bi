@@ -172,6 +172,7 @@ const emits = defineEmits(['update:item', 'del'])
           style="max-width: 280px; margin-left: 8px"
           :placeholder="$t('datasource.please_enter')"
           class="input-with-select"
+          clearable
         >
           <template #prepend>
             <el-select
