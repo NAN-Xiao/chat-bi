@@ -3,6 +3,7 @@
     "i18n_ds_name_exist": "名称已存在",
     "i18n_concat_admin": "请联系管理员！",
     "i18n_exist": "{msg}已存在！",
+    "i18n_not_exist": "{msg}不存在！",
     "i18n_error": "{key}错误！",
     "i18n_miss_args": "缺失{key}参数！",
     "i18n_format_invalid": "{key}格式不正确！",
@@ -15,7 +16,11 @@
         "account": "账号",
         "email": "邮箱",
         "password": "密码",
-        "language_not_support": "系统不支持[{key}]语言！"
+        "language_not_support": "系统不支持[{key}]语言！",
+        "ws_miss": "当前用户不在工作空间[{ws}]中！"
+    },
+    "i18n_ws": {
+        "title": "工作空间"
     },
     "i18n_permission": {
         "only_admin": "仅支持管理员调用！",
