@@ -101,7 +101,7 @@ async def ws_change(session: SessionDep, current_user: CurrentUser, trans:Trans,
     if not any(x.id == oid for x in ws_list):
         db_ws = session.get(WorkspaceModel, oid)
         if db_ws:
-            raise Exception(trans('i18n_user.user_ws_miss', msg = db_ws.name))
+            raise Exception(trans('i18n_user.ws_miss', ws = db_ws.name))
         raise Exception(trans('i18n_not_exist', msg = f"{trans('i18n_ws.title')}[{oid}]"))
     user_model: UserModel = get_db_user(session = session, user_id = current_user.id)
     user_model.oid = oid

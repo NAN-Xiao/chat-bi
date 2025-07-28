@@ -17,7 +17,7 @@
         "email": "邮箱",
         "password": "密码",
         "language_not_support": "系统不支持[{key}]语言！",
-        "user_ws_miss:": "当前用户不在工作空间[{msg}]中！"
+        "ws_miss": "当前用户不在工作空间[{ws}]中！"
     },
     "i18n_ws": {
         "title": "工作空间"
