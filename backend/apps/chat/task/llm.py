@@ -802,7 +802,7 @@ class LLMService:
             SQLBotLogUtil.info(full_sql_text)
 
             # todo row permission
-            if is_normal_user(self.current_user):
+            if is_normal_user(self.current_user) and not self.current_assistant:
                 sql_json_str = extract_nested_json(full_sql_text)
                 data = orjson.loads(sql_json_str)
 

@@ -192,6 +192,7 @@ def get_ds_engine(ds: AssistantOutDsSchema) -> Engine:
         extraJdbc=ds.extraParams,
         dbSchema=ds.db_schema or ''
     )
+    conf.extraJdbc = ''
     from apps.db.db import get_uri_from_config
     uri = get_uri_from_config(ds.type, conf)
     if ds.type == "pg" and ds.db_schema:
