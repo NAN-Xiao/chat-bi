@@ -737,7 +737,9 @@ const saveHandler = () => {
             <template #label>
               <div class="private-list">
                 {{ t('embedded.set_data_source') }}
-                <span class="open-the_query">{{ $t('embedded.open_the_query') }} </span>
+                <span :title="$t('embedded.open_the_query')" class="open-the_query ellipsis"
+                  >{{ $t('embedded.open_the_query') }}
+                </span>
               </div>
             </template>
             <div class="card-ds_content">
@@ -971,6 +973,7 @@ const saveHandler = () => {
     .open-the_query {
       color: #ff8800;
       margin-left: 4px;
+      max-width: 650px;
     }
   }
 
@@ -1069,7 +1072,7 @@ const saveHandler = () => {
       position: relative;
     }
     .popover-item {
-      height: 98px;
+      min-height: 98px;
       display: flex;
       padding-left: 8px;
       padding-right: 8px;

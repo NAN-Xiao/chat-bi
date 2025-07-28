@@ -328,7 +328,7 @@ const back = () => {
             : $t('datasource.new_data_source')
         }}</span>
         <div v-if="!editDatasource" class="flex-center" style="width: 100%">
-          <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
+          <el-steps custom style="max-width: 800px; flex: 1" :active="activeStep" align-center>
             <el-step>
               <template #title> {{ $t('qa.select_datasource') }} </template>
             </el-step>

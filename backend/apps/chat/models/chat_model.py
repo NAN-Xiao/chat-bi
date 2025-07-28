@@ -24,7 +24,8 @@ class Chat(SQLModel, table=True):
     chat_type: str = Field(max_length=20, default="chat")  # chat, datasource
     datasource: int = Field(sa_column=Column(BigInteger, nullable=True))
     engine_type: str = Field(max_length=64)
-    origin: Optional[int] = Field(sa_column=Column(Integer, nullable=False, default=0))  # 0: default, 1: mcp, 2: assistant
+    origin: Optional[int] = Field(
+        sa_column=Column(Integer, nullable=False, default=0))  # 0: default, 1: mcp, 2: assistant
 
 
 class ChatRecord(SQLModel, table=True):
@@ -152,11 +153,12 @@ class AiModelQuestion(BaseModel):
 
 
 class ChatQuestion(AiModelQuestion):
-    question: str = ''
-    chat_id: int = 0
+    question: str
+    chat_id: int
+
 
 class ChatMcp(ChatQuestion):
-    token: str = ''
+    token: str
 
 
 class ChatStart(BaseModel):
