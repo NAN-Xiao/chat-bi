@@ -204,7 +204,7 @@ defineExpose({
     .ed-checkbox,
     .ed-checkbox__label,
     .flex {
-      width: 100%;
+      width: 96%;
       height: 44px;
     }
 
