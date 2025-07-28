@@ -456,8 +456,6 @@ const saveHandler = () => {
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('dashboard.search')"
           clearable
-          @keyup.enter="handleSearch"
-          @blur="handleSearch"
         >
           <template #prefix>
             <el-icon>
