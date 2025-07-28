@@ -673,21 +673,11 @@ const deleteHandler = (row: any) => {
   })
 }
 
-/* const openDialog = () => {
-  dialogFormVisible.value = true
-} */
-const resetForm = () => {
-  if (!termFormRef.value) return
-  Object.keys(state.form).forEach((key) => {
-    state.form[key as keyof typeof state.form] = ''
-  })
-}
-
 const closeForm = () => {
   dialogFormVisible.value = false
 }
 const onFormClose = () => {
-  resetForm()
+  state.form = { ...defaultForm }
   dialogFormVisible.value = false
 }
 
@@ -727,19 +717,14 @@ const search = () => {
 }
 const addTerm = () => {
   const { account, email, name, oid, status } = state.form
-  userApi
-    .add({ account, email, name, oid, status })
-    .then(() => {
-      dialogFormVisible.value = false
-      search()
-      ElMessage({
-        type: 'success',
-        message: t('common.save_success'),
-      })
+  userApi.add({ account, email, name, oid, status }).then(() => {
+    dialogFormVisible.value = false
+    search()
+    ElMessage({
+      type: 'success',
+      message: t('common.save_success'),
     })
-    .finally(() => {
-      state.form = { ...defaultForm }
-    })
+  })
 }
 const editTerm = () => {
   const { account, id, create_time, email, language, name, oid, oid_list, origin, status } =
