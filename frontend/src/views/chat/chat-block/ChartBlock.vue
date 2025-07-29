@@ -19,6 +19,7 @@ import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import SQLComponent from '@/views/chat/component/SQLComponent.vue'
 import { useAssistantStore } from '@/stores/assistant'
+import AddViewDashboard from '@/views/dashboard/common/AddViewDashboard.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -35,7 +36,7 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
-
+const addViewRef = ref(null)
 const emits = defineEmits(['exitFullScreen'])
 
 const dataObject = computed<{
@@ -191,7 +192,8 @@ function showSql() {
 }
 
 function addToDashboard() {
-  console.log('todo')
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  addViewRef.value?.optInit()
 }
 
 function copy() {
@@ -303,6 +305,7 @@ function copy() {
       />
     </div>
 
+    <AddViewDashboard ref="addViewRef"></AddViewDashboard>
     <el-dialog
       v-if="!enlarge"
       v-model="dialogVisible"
