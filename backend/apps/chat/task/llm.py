@@ -386,51 +386,56 @@ class LLMService:
             ]
             """ _ds_list = self.session.exec(select(CoreDatasource).options(
                 load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all() """
-        _ds_list_dict = []
-        for _ds in _ds_list:
-            _ds_list_dict.append(_ds)
-        datasource_msg.append(
-            HumanMessage(self.chat_question.datasource_user_question(orjson.dumps(_ds_list_dict).decode())))
+        
+        ignore_auto_select = _ds_list and len(_ds_list) == 1
+        # ignore auto select ds
+        
+        if not ignore_auto_select:
+            _ds_list_dict = []
+            for _ds in _ds_list:
+                _ds_list_dict.append(_ds)
+            datasource_msg.append(
+                HumanMessage(self.chat_question.datasource_user_question(orjson.dumps(_ds_list_dict).decode())))
 
-        history_msg = []
-        if self.record.full_select_datasource_message and self.record.full_select_datasource_message.strip() != '':
-            history_msg = orjson.loads(self.record.full_select_datasource_message)
+            history_msg = []
+            if self.record.full_select_datasource_message and self.record.full_select_datasource_message.strip() != '':
+                history_msg = orjson.loads(self.record.full_select_datasource_message)
 
-        self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                     answer='',
-                                                                     full_message=orjson.dumps(history_msg +
-                                                                                               [{'type': msg.type,
-                                                                                                 'content': msg.content}
-                                                                                                for msg
-                                                                                                in
-                                                                                                datasource_msg]).decode())
-        full_thinking_text = ''
-        full_text = ''
-        token_usage = {}
-        res = self.llm.stream(datasource_msg)
-        for chunk in res:
-            SQLBotLogUtil.info(chunk)
-            reasoning_content_chunk = ''
-            if 'reasoning_content' in chunk.additional_kwargs:
-                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
-            # else:
-            #     reasoning_content_chunk = chunk.get('reasoning_content')
-            if reasoning_content_chunk is None:
+            self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
+                                                                        answer='',
+                                                                        full_message=orjson.dumps(history_msg +
+                                                                                                [{'type': msg.type,
+                                                                                                    'content': msg.content}
+                                                                                                    for msg
+                                                                                                    in
+                                                                                                    datasource_msg]).decode())
+            full_thinking_text = ''
+            full_text = ''
+            token_usage = {}
+            res = self.llm.stream(datasource_msg)
+            for chunk in res:
+                SQLBotLogUtil.info(chunk)
                 reasoning_content_chunk = ''
-            full_thinking_text += reasoning_content_chunk
+                if 'reasoning_content' in chunk.additional_kwargs:
+                    reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+                # else:
+                #     reasoning_content_chunk = chunk.get('reasoning_content')
+                if reasoning_content_chunk is None:
+                    reasoning_content_chunk = ''
+                full_thinking_text += reasoning_content_chunk
 
-            full_text += chunk.content
-            yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
-            get_token_usage(chunk, token_usage)
-        datasource_msg.append(AIMessage(full_text))
+                full_text += chunk.content
+                yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
+                get_token_usage(chunk, token_usage)
+            datasource_msg.append(AIMessage(full_text))
 
-        json_str = extract_nested_json(full_text)
+            json_str = extract_nested_json(full_text)
 
         _error: Exception | None = None
         _datasource: int | None = None
         _engine_type: str | None = None
         try:
-            data: dict = orjson.loads(json_str)
+            data: dict = _ds_list[0] if ignore_auto_select else orjson.loads(json_str)
 
             if data.get('id') and data.get('id') != 0:
                 _datasource = data['id']
@@ -465,17 +470,18 @@ class LLMService:
         except Exception as e:
             _error = e
 
-        self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                     answer=orjson.dumps({'content': full_text,
-                                                                                          'reasoning_content': full_thinking_text}).decode(),
-                                                                     datasource=_datasource,
-                                                                     engine_type=_engine_type,
-                                                                     full_message=orjson.dumps(history_msg +
-                                                                                               [{'type': msg.type,
-                                                                                                 'content': msg.content}
-                                                                                                for msg
-                                                                                                in
-                                                                                                datasource_msg]).decode())
+        if not ignore_auto_select:
+            self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
+                                                                        answer=orjson.dumps({'content': full_text,
+                                                                                            'reasoning_content': full_thinking_text}).decode(),
+                                                                        datasource=_datasource,
+                                                                        engine_type=_engine_type,
+                                                                        full_message=orjson.dumps(history_msg +
+                                                                                                [{'type': msg.type,
+                                                                                                    'content': msg.content}
+                                                                                                    for msg
+                                                                                                    in
+                                                                                                    datasource_msg]).decode())
         self.init_messages()
 
         if _error:
@@ -815,7 +821,7 @@ class LLMService:
             SQLBotLogUtil.info(full_sql_text)
 
             # todo row permission
-            if is_normal_user(self.current_user) or (self.current_assistant and self.current_assistant.type == 1):
+            if (not self.current_assistant and is_normal_user(self.current_user)) or (self.current_assistant and self.current_assistant.type == 1):
                 sql_json_str = extract_nested_json(full_sql_text)
                 data = orjson.loads(sql_json_str)
 
