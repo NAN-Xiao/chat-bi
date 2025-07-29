@@ -86,6 +86,8 @@ const saveResourcePrepare = () => {
           component['id'] = newComponentId
           component['y'] = bottomPosition + 1
           canvasDataResult.push(component)
+          // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          state.viewInfo.chart['id'] = newComponentId
           canvasViewInfoPreview[newComponentId] = state.viewInfo
           const commonParams = {
             componentData: canvasDataResult,

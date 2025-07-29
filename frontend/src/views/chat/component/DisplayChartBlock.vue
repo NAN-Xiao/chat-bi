@@ -54,9 +54,22 @@ function onTypeChange() {
     chartRef.value?.renderChart()
   })
 }
-
+function getViewInfo() {
+  return {
+    chart: {
+      columns: chartObject.value?.columns,
+      type: props.chartType,
+      xAxis: xAxis.value,
+      yAxis: yAxis.value,
+      series: series.value,
+      title: chartObject.value.title,
+    },
+    data: { data: props.data },
+  }
+}
 defineExpose({
   onTypeChange,
+  getViewInfo,
 })
 </script>
 

@@ -192,8 +192,9 @@ function showSql() {
 }
 
 function addToDashboard() {
+  const viewInfo = chartRef.value?.getViewInfo()
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  addViewRef.value?.optInit()
+  addViewRef.value?.optInit(viewInfo)
 }
 
 function copy() {
