@@ -99,8 +99,7 @@ class HttpService {
           // Skip auth for xpack_static requests
           return config
         }
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
+
         const request_key = LicenseGenerator.generate()
         config.headers['X-SQLBOT-KEY'] = request_key
 
@@ -266,8 +265,6 @@ class HttpService {
         heads['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
       }
     }
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
     const request_key = LicenseGenerator.generate()
     heads['X-SQLBOT-KEY'] = request_key
 
