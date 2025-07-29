@@ -71,7 +71,7 @@ class LLMService:
         engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
         session_maker = sessionmaker(bind=engine)
         self.session = session_maker()
-
+        self.session.exec = self.session.exec if hasattr(self.session, "exec") else self.session.execute
         self.current_user = current_user
         self.current_assistant = current_assistant
         # chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
