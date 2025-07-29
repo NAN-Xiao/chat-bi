@@ -107,7 +107,7 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser, ch
             )
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
 
-        llm_service = LLMService(session, current_user, request_question, current_assistant)
+        llm_service = LLMService(current_user, request_question, current_assistant)
         llm_service.set_record(record)
         llm_service.run_recommend_questions_task_async()
     except Exception as e:
@@ -135,7 +135,7 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     """
 
     try:
-        llm_service = LLMService(session, current_user, request_question, current_assistant)
+        llm_service = LLMService(current_user, request_question, current_assistant)
         llm_service.init_record()
         llm_service.run_task_async()
     except Exception as e:
@@ -173,7 +173,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
     request_question = ChatQuestion(chat_id=record.chat_id, question='')
 
     try:
-        llm_service = LLMService(session, current_user, request_question, current_assistant)
+        llm_service = LLMService(current_user, request_question, current_assistant)
         llm_service.run_analysis_or_predict_task_async(action_type, record)
     except Exception as e:
         traceback.print_exc()

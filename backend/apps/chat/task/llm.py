@@ -16,9 +16,11 @@ from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AI
 from sqlalchemy import and_, cast, or_
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import sessionmaker
 from sqlbot_xpack.permissions.api.permission import transRecord2DTO
 from sqlbot_xpack.permissions.models.ds_permission import DsPermission, PermissionDTO
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
+from sqlmodel import create_engine, Session
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
 from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer, save_sql, \
@@ -35,7 +37,7 @@ from apps.db.db import exec_sql
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
-from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
+from common.core.deps import CurrentAssistant, CurrentUser
 from common.utils.utils import SQLBotLogUtil, extract_nested_json
 
 warnings.filterwarnings("ignore")
@@ -54,7 +56,7 @@ class LLMService:
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
     history_records: List[ChatRecord] = []
-    session: SessionDep
+    session: Session
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
     out_ds_instance: Optional[AssistantOutDs] = None
@@ -63,15 +65,18 @@ class LLMService:
     chunk_list: List[str] = []
     future: Future
 
-    def __init__(self, session: SessionDep, current_user: CurrentUser, chat_question: ChatQuestion,
+    def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None):
         self.chunk_list = []
-        self.session = session
+        engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
+        session_maker = sessionmaker(bind=engine)
+        self.session = session_maker()
+
         self.current_user = current_user
         self.current_assistant = current_assistant
         # chat = self.session.query(Chat).filter(Chat.id == chat_question.chat_id).first()
         chat_id = chat_question.chat_id
-        chat: Chat = self.session.get(Chat, chat_id)
+        chat: Chat | None = self.session.get(Chat, chat_id)
         if not chat:
             raise Exception(f"Chat with id {chat_id} not found")
         ds: CoreDatasource | AssistantOutDsSchema | None = None
@@ -375,10 +380,10 @@ class LLMService:
             ]
             """ _ds_list = self.session.exec(select(CoreDatasource).options(
                 load_only(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description))).all() """
-        
+
         ignore_auto_select = _ds_list and len(_ds_list) == 1
         # ignore auto select ds
-        
+
         if not ignore_auto_select:
             _ds_list_dict = []
             for _ds in _ds_list:
@@ -391,10 +396,10 @@ class LLMService:
                 history_msg = orjson.loads(self.record.full_select_datasource_message)
 
             self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                        answer='',
-                                                                        full_message=orjson.dumps(history_msg +
-                                                                                                [{'type': msg.type,
-                                                                                                    'content': msg.content}
+                                                                         answer='',
+                                                                         full_message=orjson.dumps(history_msg +
+                                                                                                   [{'type': msg.type,
+                                                                                                     'content': msg.content}
                                                                                                     for msg
                                                                                                     in
                                                                                                     datasource_msg]).decode())
@@ -461,13 +466,13 @@ class LLMService:
 
         if not ignore_auto_select:
             self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                        answer=orjson.dumps({'content': full_text,
-                                                                                            'reasoning_content': full_thinking_text}).decode(),
-                                                                        datasource=_datasource,
-                                                                        engine_type=_engine_type,
-                                                                        full_message=orjson.dumps(history_msg +
-                                                                                                [{'type': msg.type,
-                                                                                                    'content': msg.content}
+                                                                         answer=orjson.dumps({'content': full_text,
+                                                                                              'reasoning_content': full_thinking_text}).decode(),
+                                                                         datasource=_datasource,
+                                                                         engine_type=_engine_type,
+                                                                         full_message=orjson.dumps(history_msg +
+                                                                                                   [{'type': msg.type,
+                                                                                                     'content': msg.content}
                                                                                                     for msg
                                                                                                     in
                                                                                                     datasource_msg]).decode())
@@ -511,7 +516,6 @@ class LLMService:
                                                            [{'type': msg.type, 'content': msg.content} for msg in
                                                             self.sql_message]).decode())
 
-    
     def build_table_filter(self, sql: str, filters: list):
         filter = json.dumps(filters, ensure_ascii=False)
         self.chat_question.sql = sql
@@ -561,7 +565,7 @@ class LLMService:
         #                                                                                analysis_msg]).decode())
         SQLBotLogUtil.info(full_filter_text)
         return full_filter_text
-        
+
     def generate_filter(self, sql: str, tables: List):
         table_list = self.session.query(CoreTable).filter(
             and_(CoreTable.ds_id == self.ds.id, CoreTable.table_name.in_(tables))
@@ -586,7 +590,7 @@ class LLMService:
             filters.append({"table": table.table_name, "filter": where_str})
 
         return self.build_table_filter(sql=sql, filters=filters)
-    
+
     def generate_assistant_filter(self, sql, tables: List):
         ds: AssistantOutDsSchema = self.ds
         filters = []
@@ -596,7 +600,7 @@ class LLMService:
         if not filters:
             return None
         return self.build_table_filter(sql=sql, filters=filters)
-        
+
     def generate_chart(self):
         # append current question
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question()))
@@ -810,7 +814,8 @@ class LLMService:
             SQLBotLogUtil.info(full_sql_text)
 
             # todo row permission
-            if (not self.current_assistant and is_normal_user(self.current_user)) or (self.current_assistant and self.current_assistant.type == 1):
+            if (not self.current_assistant and is_normal_user(self.current_user)) or (
+                    self.current_assistant and self.current_assistant.type == 1):
                 sql_json_str = extract_nested_json(full_sql_text)
                 data = orjson.loads(sql_json_str)
 
@@ -831,7 +836,7 @@ class LLMService:
                     sql_result = self.generate_assistant_filter(data.get('sql'), data.get('tables'))
                 else:
                     sql_result = self.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
-                
+
                 if sql_result:
                     SQLBotLogUtil.info(sql_result)
                     sql = self.check_save_sql(res=sql_result)
@@ -1059,6 +1064,7 @@ def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = {}):
             token_usage['total_tokens'] = chunk.usage_metadata.get('total_tokens')
     except Exception:
         pass
+
 
 def get_lang_name(lang: str):
     if lang and lang == 'en':
