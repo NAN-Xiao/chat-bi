@@ -113,6 +113,12 @@ export class Bar extends BaseG2Chart {
             }
             return `${value}${_data.isPercent ? '%' : ''}`
           },
+          position: (data: any) => {
+            if (data[y[0].value] < 0) {
+              return 'left'
+            }
+            return 'right'
+          },
           transform: [
             { type: 'contrastReverse' },
             { type: 'exceedAdjust' },

@@ -23,7 +23,7 @@ function clickPredict() {
     <span v-else-if="message?.record?.predict_record_id" class="prefix-title" @click="clickPredict">
       {{ t('qa.data_predict') }}
     </span>
-    <span>{{ message?.content }}</span>
+    <span style="width: 100%">{{ message?.content }}</span>
   </div>
 </template>
 

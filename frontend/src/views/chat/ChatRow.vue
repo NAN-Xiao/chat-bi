@@ -22,7 +22,7 @@ withDefaults(
           <logo_fold v-if="!hideAvatar" />
         </el-icon>
       </div>
-      <div :class="{ 'row-full': msg.role === 'assistant' }">
+      <div style="width: 100%" :class="{ 'row-full': msg.role === 'assistant' }">
         <slot></slot>
       </div>
     </div>
