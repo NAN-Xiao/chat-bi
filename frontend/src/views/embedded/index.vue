@@ -191,3 +191,10 @@ onBeforeUnmount(() => {
   }
 }
 </style>
+
+<style lang="less">
+.ed-overlay-dialog,
+.ed-drawer {
+  margin-top: 50px;
+}
+</style>
