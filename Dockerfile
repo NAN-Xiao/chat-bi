@@ -1,5 +1,5 @@
-# Build stage
-FROM registry.cn-qingdao.aliyuncs.com/dataease/python:3.11-slim-bookworm AS builder
+# Build sqlbot
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-builder
 
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
@@ -17,11 +17,9 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 WORKDIR ${APP_HOME}
 
-# Install uv tool
-COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
+COPY frontend /tmp/frontend
 
-# COPY ../frontend/dist /opt/sqlbot/frontend/dist
-COPY frontend/dist ${UI_HOME}/dist
+RUN cd /tmp/frontend; npm install; npm run build; mv dist ${UI_HOME}/dist
 
 # Install dependencies
 RUN test -f "./uv.lock" && \
@@ -36,8 +34,18 @@ COPY ./backend ${APP_HOME}
 RUN --mount=type=cache,target=/root/.cache/uv \
    uv sync
 
+# Build g2-ssr
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS ssr-builder
+
+WORKDIR /app
+
+COPY g2-ssr/app.js g2-ssr/package.json /app/
+COPY g2-ssr/charts/* /app/charts/
+
+RUN npm install
+
 # Runtime stage
-FROM registry.cn-qingdao.aliyuncs.com/dataease/python:3.11-slim-bookworm
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
 
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
@@ -45,19 +53,20 @@ ENV SQLBOT_HOME=/opt/sqlbot
 ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy necessary files from builder
-COPY --from=builder ${SQLBOT_HOME} ${SQLBOT_HOME}
+COPY start.sh /opt/sqlbot/app/start.sh
+COPY g2-ssr/*.ttf /usr/share/fonts/truetype/liberation/
+COPY --from=sqlbot-builder ${SQLBOT_HOME} ${SQLBOT_HOME}
+COPY --from=ssr-builder /app /opt/sqlbot/g2-ssr
 
 WORKDIR ${SQLBOT_HOME}/app
+
+RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
+
+EXPOSE 3000 8000
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000 || exit 1
 
-# Run with uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers"]
+ENTRYPOINT ["sh", "start.sh"]
