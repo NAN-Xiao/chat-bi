@@ -25,9 +25,7 @@ def get_engine_conn():
     db_url = get_engine_uri(conf)
     engine = create_engine(db_url,
                            connect_args={"options": f"-c search_path={conf.dbSchema}", "connect_timeout": conf.timeout},
-                           pool_timeout=conf.timeout,
-                           pool_size=20,
-                           max_overflow=10)
+                           pool_timeout=conf.timeout)
     return engine
 
 

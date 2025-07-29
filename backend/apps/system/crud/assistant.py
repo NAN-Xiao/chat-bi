@@ -213,18 +213,12 @@ def get_ds_engine(ds: AssistantOutDsSchema) -> Engine:
         engine = create_engine(uri,
                                connect_args={"options": f"-c search_path={urllib.parse.quote(ds.db_schema)}",
                                              "connect_timeout": timeout},
-                               pool_timeout=timeout, pool_size=20, max_overflow=10)
+                               pool_timeout=timeout)
     elif ds.type == 'sqlServer':
-        engine = create_engine(uri, pool_timeout=timeout,
-                               pool_size=20,
-                               max_overflow=10)
+        engine = create_engine(uri, pool_timeout=timeout)
     elif ds.type == 'oracle':
         engine = create_engine(uri,
-                               pool_timeout=timeout,
-                               pool_size=20,
-                               max_overflow=10)
+                               pool_timeout=timeout)
     else:
-        engine = create_engine(uri, connect_args={"connect_timeout": timeout}, pool_timeout=timeout,
-                               pool_size=20,
-                               max_overflow=10)
+        engine = create_engine(uri, connect_args={"connect_timeout": timeout}, pool_timeout=timeout)
     return engine
