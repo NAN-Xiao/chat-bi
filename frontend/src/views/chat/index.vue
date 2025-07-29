@@ -296,7 +296,7 @@
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 8.583 }"
             :placeholder="t('qa.question_placeholder')"
-            @keydown.enter.exact.prevent="sendMessage"
+            @keydown.enter.exact.prevent="($event: any) => sendMessage($event)"
             @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
 
@@ -551,7 +551,10 @@ const assistantPrepareSend = async () => {
     }
   }
 }
-const sendMessage = async () => {
+const sendMessage = async ($event: any = {}) => {
+  if ($event?.isComposing) {
+    return
+  }
   if (!inputMessage.value.trim()) return
 
   loading.value = true

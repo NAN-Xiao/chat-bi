@@ -18,6 +18,7 @@ import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.sv
 import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import SQLComponent from '@/views/chat/component/SQLComponent.vue'
+import { useAssistantStore } from '@/stores/assistant'
 import AddViewDashboard from '@/views/dashboard/common/AddViewDashboard.vue'
 
 const props = withDefaults(
@@ -51,6 +52,8 @@ const dataObject = computed<{
   }
   return {}
 })
+const assistantStore = useAssistantStore()
+const isAssistant = computed(() => assistantStore.getAssistant)
 
 const data = computed(() => {
   if (props.isPredict) {
@@ -325,7 +328,7 @@ function copy() {
 
     <el-drawer
       v-model="sqlShow"
-      size="600"
+      :size="isAssistant ? '100%' : '600px'"
       :title="t('chat.show_sql')"
       direction="rtl"
       body-class="chart-sql-drawer-body"

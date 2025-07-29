@@ -41,7 +41,7 @@ def get_ds(session: SessionDep, id: int):
 
 
 def check_status(session: SessionDep, ds: CoreDatasource, is_raise: bool = False):
-    conn = get_engine(ds, 5)
+    conn = get_engine(ds, 10)
     try:
         with conn.connect() as connection:
             SQLBotLogUtil.info("success")
