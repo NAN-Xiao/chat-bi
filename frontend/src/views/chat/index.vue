@@ -485,6 +485,7 @@ function onChatCreatedQuick(chat: ChatInfo) {
   chatList.value.unshift(chat)
   currentChatId.value = chat.id
   currentChat.value = chat
+  console.log(chat)
   onChatCreated(chat)
 }
 

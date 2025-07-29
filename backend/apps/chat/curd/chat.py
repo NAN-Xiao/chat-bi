@@ -189,6 +189,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
     if ds:
         chat_info.datasource_exists = True
         chat_info.datasource_name = ds.name
+        chat_info.ds_type = ds.type
 
     if require_datasource and ds:
         # generate first empty record
