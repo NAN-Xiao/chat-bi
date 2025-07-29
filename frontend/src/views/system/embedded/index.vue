@@ -245,6 +245,11 @@ const rules = {
         t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings'),
       trigger: 'blur',
     },
+    {
+      pattern: /^(https?:\/\/)?([\w-]+\.)*[\w-]+(:\d+)?$/,
+      message: t('embedded.origin_format_error'),
+      trigger: 'blur',
+    },
   ],
 }
 

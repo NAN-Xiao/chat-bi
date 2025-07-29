@@ -147,7 +147,7 @@ class AiModelQuestion(BaseModel):
                                                             old_questions=old_questions)
 
     def filter_sys_question(self):
-        return get_permissions_template()['system'].format(lang=self.lang)
+        return get_permissions_template()['system'].format(lang=self.lang, engine=self.engine)
 
     def filter_user_question(self):
         return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter)
