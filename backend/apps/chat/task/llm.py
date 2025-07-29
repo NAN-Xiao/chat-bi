@@ -365,7 +365,7 @@ class LLMService:
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemMessage(self.chat_question.datasource_sys_question()))
         if self.current_assistant:
-            _ds_list = get_assistant_ds(llm_service=self)
+            _ds_list = get_assistant_ds(session=self.session, llm_service=self)
         else:
             oid: str = self.current_user.oid
             stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(
