@@ -253,7 +253,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str):
     with get_session(ds) as session:
         with session.execute(text(sql)) as result:
             try:
-                columns = result.keys()._keys
+                columns = [item.lower() for item in result.keys()._keys]
                 res = result.fetchall()
                 result_list = [
                     {columns[i]: float(value) if isinstance(value, Decimal) else value for i, value in

@@ -36,6 +36,8 @@
     "password_reset_successful": "Password reset successful"
   },
   "dashboard": {
+    "add_dashboard_name_tips": "Please Input Dashboard Name",
+    "existing_dashboard": "Existing Dashboard",
     "add_success": "Add Success",
     "no_data": "No Relevant Content Found",
     "new_tab": "New Tab",

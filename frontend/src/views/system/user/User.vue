@@ -51,8 +51,13 @@
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="55" />
-        <el-table-column prop="name" :label="$t('user.name')" width="280" />
-        <el-table-column prop="account" :label="$t('user.account')" width="280" />
+        <el-table-column prop="name" show-overflow-tooltip :label="$t('user.name')" width="280" />
+        <el-table-column
+          prop="account"
+          show-overflow-tooltip
+          :label="$t('user.account')"
+          width="280"
+        />
         <el-table-column prop="status" :label="$t('user.user_status')" width="180">
           <template #default="scope">
             <div class="user-status-container" :class="[scope.row.status ? 'active' : 'disabled']">
