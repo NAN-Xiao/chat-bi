@@ -145,16 +145,10 @@ class LLMService:
         count_limit = 0 - base_message_count_limit
 
         self.sql_message = []
-        if last_sql_messages is None or len(last_sql_messages) == 0:
-            # add sys prompt
-            self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
-        else:
+        # add sys prompt
+        self.sql_message.append(SystemMessage(content=self.chat_question.sql_sys_question()))
+        if last_sql_messages is not None and len(last_sql_messages) > 0:
             # limit count
-            for last_sql_message in last_sql_messages:
-                if last_sql_message['type'] == 'system':
-                    _msg = SystemMessage(content=last_sql_message['content'])
-                    self.sql_message.append(_msg)
-                    break
             for last_sql_message in last_sql_messages[count_limit:]:
                 _msg: BaseMessage
                 if last_sql_message['type'] == 'human':
@@ -167,16 +161,11 @@ class LLMService:
         last_chart_messages: List[dict[str, Any]] = orjson.loads(last_chart_message_str)
 
         self.chart_message = []
-        if last_chart_messages is None or len(last_chart_messages) == 0:
-            # add sys prompt
-            self.chart_message.append(SystemMessage(content=self.chat_question.chart_sys_question()))
-        else:
+        # add sys prompt
+        self.chart_message.append(SystemMessage(content=self.chat_question.chart_sys_question()))
+
+        if last_chart_messages is not None and len(last_chart_messages) > 0:
             # limit count
-            for last_chart_message in last_chart_messages:
-                if last_chart_message['type'] == 'system':
-                    _msg = SystemMessage(content=last_chart_message['content'])
-                    self.chart_message.append(_msg)
-                    break
             for last_chart_message in last_chart_messages:
                 _msg: BaseMessage
                 if last_chart_message['type'] == 'human':
