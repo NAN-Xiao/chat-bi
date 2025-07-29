@@ -1,4 +1,4 @@
-; (function () {
+;(function () {
   window.sqlbot_assistant_handler = window.sqlbot_assistant_handler || {}
   const defaultData = {
     id: '1',
@@ -461,8 +461,10 @@
         let tempData = Object.assign(defaultData, { id, domain_url })
         if (config_json) {
           const config = JSON.parse(config_json)
-          Object.assign(tempData, config)
-          tempData = Object.assign(tempData, config)
+          if (config) {
+            delete config.id
+            tempData = Object.assign(tempData, config)
+          }
         }
         tempData['online'] = online && online.toString().toLowerCase() == 'true'
         initsqlbot_assistant(tempData)
