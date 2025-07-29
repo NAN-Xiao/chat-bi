@@ -43,8 +43,6 @@ const excelUploadSuccess = ref(false)
 const tableListLoading = ref(false)
 const token = wsCache.get('user.token')
 const request_key = computed(() => {
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-expect-error
   // eslint-disable-next-line no-undef
   return LicenseGenerator.generate()
 })
