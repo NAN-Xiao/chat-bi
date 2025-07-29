@@ -22,10 +22,7 @@ withDefaults(
           <logo_fold v-if="!hideAvatar" />
         </el-icon>
       </div>
-      <div
-        :style="{ width: msg.role === 'assistant' ? 0 : '100%' }"
-        :class="{ 'row-full': msg.role === 'assistant' }"
-      >
+      <div :class="{ 'row-full': msg.role === 'assistant', 'width-auto': msg.role === 'user' }">
         <slot></slot>
       </div>
     </div>
@@ -57,6 +54,11 @@ withDefaults(
     .row-full {
       flex: 1;
       width: 0;
+    }
+
+    .width-auto {
+      width: auto;
+      max-width: 100%;
     }
 
     .ai-avatar {
