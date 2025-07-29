@@ -38,7 +38,7 @@ from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, ge
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, CurrentUser
-from common.utils.utils import SQLBotLogUtil, extract_nested_json
+from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
 
 warnings.filterwarnings("ignore")
 
@@ -716,6 +716,10 @@ class LLMService:
         return save_error_message(session=self.session, record_id=self.record.id, message=message)
 
     def save_sql_data(self, data_obj: Dict[str, Any]):
+        data_result = data_obj.get('data')
+        if data_result:
+            data_result = prepare_for_orjson(data_result)
+            data_obj['data'] = data_result
         return save_sql_exec_data(session=self.session, record_id=self.record.id,
                                   data=orjson.dumps(data_obj).decode())
 
