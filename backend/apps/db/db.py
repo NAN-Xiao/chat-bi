@@ -52,10 +52,10 @@ def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
     return db_url
 
 
-def get_engine(ds: CoreDatasource) -> Engine:
+def get_engine(ds: CoreDatasource, timeout: int = 30) -> Engine:
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     if conf.timeout is None:
-        conf.timeout = 30
+        conf.timeout = timeout
     if ds.type == "pg" and (conf.dbSchema is not None and conf.dbSchema != ""):
         engine = create_engine(get_uri(ds),
                                connect_args={"options": f"-c search_path={urllib.parse.quote(conf.dbSchema)}",
