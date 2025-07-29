@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
     init_sqlbot_cache()
     init_dynamic_cors(app)
     SQLBotLogUtil.info("✅ SQLBot 初始化完成")
+    await sqlbot_xpack.core.clean_xpack_cache()
     yield
     SQLBotLogUtil.info("SQLBot 应用关闭")
 

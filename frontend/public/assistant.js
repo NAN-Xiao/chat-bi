@@ -320,6 +320,13 @@
               position: fixed;bottom: 16px;right: 16px;overflow: hidden;
     }
 
+      .ed-overlay-dialog {
+        margin-top: 50px;
+      }
+      .ed-drawer {
+        margin-top: 50px;
+      }
+
      #sqlbot-assistant #sqlbot-assistant-chat-container .sqlbot-assistant-operate{
      top: 18px;
      right: 15px;

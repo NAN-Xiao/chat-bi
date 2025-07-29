@@ -50,12 +50,10 @@ const loadXpackStatic = () => {
   if (document.getElementById('sqlbot_xpack_static')) {
     return Promise.resolve()
   }
-  const url = '/xpack_static/license-generator.umd.js'
+  const url = `/xpack_static/license-generator.umd.js?t=${Date.now()}`
   return new Promise((resolve, reject) => {
     request
       .loadRemoteScript(url, 'sqlbot_xpack_static', () => {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
         LicenseGenerator?.init(import.meta.env.VITE_API_BASE_URL).then(() => {
           resolve(true)
         })

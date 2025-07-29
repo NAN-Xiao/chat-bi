@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.deps import SessionDep, Trans
+from common.utils.crypto import sqlbot_decrypt
 from ..crud.user import authenticate
 from common.core.security import create_access_token
 from datetime import timedelta
@@ -11,12 +12,14 @@ from common.core.schemas import Token
 router = APIRouter(tags=["login"], prefix="/login")
 
 @router.post("/access-token")
-def local_login(
+async def local_login(
     session: SessionDep,
     trans: Trans,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ) -> Token:
-    user: BaseUserDTO = authenticate(session=session, account=form_data.username, password=form_data.password)
+    origin_account = await sqlbot_decrypt(form_data.username)
+    origin_pwd = await sqlbot_decrypt(form_data.password)
+    user: BaseUserDTO = authenticate(session=session, account=origin_account, password=origin_pwd)
     if not user:
         raise HTTPException(status_code=400, detail=trans('i18n_login.account_pwd_error'))
     if not user.oid or user.oid == 0:
