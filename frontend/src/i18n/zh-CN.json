@@ -39,6 +39,8 @@
     "or": "或者"
   },
   "dashboard": {
+    "add_dashboard_name_tips": "请输入仪表板名称",
+    "existing_dashboard": "存量仪表板",
     "add_success": "添加成功",
     "no_data": "没找到相关内容",
     "new_tab": "新建Tab",

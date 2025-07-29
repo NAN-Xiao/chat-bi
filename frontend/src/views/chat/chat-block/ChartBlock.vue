@@ -192,9 +192,25 @@ function showSql() {
 }
 
 function addToDashboard() {
-  const viewInfo = chartRef.value?.getViewInfo()
+  const recordeInfo = {
+    id: '1-1',
+    data: {
+      data: data.value,
+    },
+    chart: {},
+  }
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  addViewRef.value?.optInit(viewInfo)
+  const chartBaseInfo = JSON.parse(props.message?.record?.chart)
+  recordeInfo['chart'] = {
+    type: chartBaseInfo.type,
+    title: chartBaseInfo.title,
+    columns: chartBaseInfo.columns,
+    xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
+    yAxis: chartBaseInfo.axis?.y ? [chartBaseInfo.axis.y] : [],
+    series: chartBaseInfo.axis?.series ? [chartBaseInfo.axis.series] : [],
+  }
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  addViewRef.value?.optInit(recordeInfo)
 }
 
 function copy() {
@@ -264,7 +280,7 @@ function copy() {
             </el-button>
           </el-tooltip>
         </div>
-        <div v-if="false">
+        <div>
           <!--    todo      -->
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">

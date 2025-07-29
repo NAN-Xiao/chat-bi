@@ -68,6 +68,10 @@ const saveResourcePrepare = () => {
     if (result) {
       const component = cloneDeep(findNewComponentFromList('SQView'))
       const newComponentId = guid()
+      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      state.viewInfo.chart['id'] = newComponentId
+      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      state.viewInfo['id'] = newComponentId
       if (resourceForm.addType === 'history' && component) {
         findNextComponentIndex({ id: resourceForm.dashboardId }, (result: any) => {
           const {
@@ -84,10 +88,8 @@ const saveResourcePrepare = () => {
             name: dashboardInfo.name,
           }
           component['id'] = newComponentId
-          component['y'] = bottomPosition + 1
+          component['y'] = bottomPosition
           canvasDataResult.push(component)
-          // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          state.viewInfo.chart['id'] = newComponentId
           canvasViewInfoPreview[newComponentId] = state.viewInfo
           const commonParams = {
             componentData: canvasDataResult,
@@ -97,12 +99,22 @@ const saveResourcePrepare = () => {
           saveResource(params, commonParams)
         })
       } else if (resourceForm.addType === 'new' && component) {
-        const params = { opt: 'newLeaf', pid: 'root', name: resourceForm.dashboardName }
+        const params = {
+          opt: 'newLeaf',
+          pid: 'root',
+          name: resourceForm.dashboardName,
+          level: 1,
+          node_type: 'leaf',
+          type: 'dashboard',
+        }
         component['id'] = newComponentId
+        const canvasViewInfo = {}
+        // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        canvasViewInfo[newComponentId] = state.viewInfo
         const commonParams = {
           componentData: [component],
           canvasStyleData: {},
-          canvasViewInfo: { newComponentId: state.viewInfo },
+          canvasViewInfo: canvasViewInfo,
         }
         saveResource(params, commonParams)
       }
@@ -112,7 +124,7 @@ const saveResourcePrepare = () => {
 
 const saveResource = (params: any, commonParams: any) => {
   saveDashboardResourceTarget(params, commonParams, function () {
-    const messageTips = t('common.save_success')
+    const messageTips = t('dashboard.add_success')
     ElMessage({
       type: 'success',
       message: messageTips,
@@ -142,7 +154,7 @@ defineExpose({
   <el-dialog
     v-model="resourceDialogShow"
     class="create-dialog"
-    title="添加到仪表板"
+    :title="t('chat.add_to_dashboard')"
     width="420px"
     :before-close="resetForm"
     append-to-body
@@ -157,33 +169,36 @@ defineExpose({
       :rules="resourceForm.addType === 'new' ? resourceFormRulesNew : resourceFormRulesHistory"
       @submit.prevent
     >
-      <el-form-item label="仪表板名称" required prop="addType">
+      <el-form-item :label="t('dashboard.dashboard_name')" required prop="addType">
         <el-radio-group v-model="resourceForm.addType">
-          <el-radio value="history">存量仪表板</el-radio>
-          <el-radio value="new">新建仪表板</el-radio>
+          <el-radio value="history">{{ t('dashboard.existing_dashboard') }}</el-radio>
+          <el-radio value="new">{{ t('dashboard.new_dashboard') }}</el-radio>
         </el-radio-group>
       </el-form-item>
       <el-form-item
         v-if="resourceForm.addType === 'new'"
-        label="仪表板"
+        :label="t('dashboard.dashboard')"
         required
         prop="dashboardName"
       >
         <el-input
           v-model="resourceForm.dashboardName"
           clearable
-          placeholder="请输入仪表板名称"
+          :placeholder="t('dashboard.add_dashboard_name_tips')"
           @keydown.stop
           @keyup.stop
         />
       </el-form-item>
       <el-form-item
         v-if="resourceForm.addType === 'history'"
-        label="仪表板"
+        :label="t('dashboard.dashboard')"
         required
         prop="dashboardId"
       >
-        <el-select v-model="resourceForm.dashboardId" placeholder="请选择仪表板">
+        <el-select
+          v-model="resourceForm.dashboardId"
+          :placeholder="t('dashboard.select_dashboard')"
+        >
           <el-option
             v-for="item in state.dashboardList"
             :key="item.id"
