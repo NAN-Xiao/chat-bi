@@ -2,7 +2,6 @@
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
-import _ from 'lodash'
 const props = defineProps({
   viewInfo: {
     type: Object,
