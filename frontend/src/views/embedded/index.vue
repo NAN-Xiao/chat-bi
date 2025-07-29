@@ -20,7 +20,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { onBeforeMount, onBeforeUnmount, ref } from 'vue'
+import { onBeforeMount, onBeforeUnmount, ref, onMounted } from 'vue'
 import ChatComponent from '@/views/chat/index.vue'
 import LOGO from '@/assets/embedded/LOGO.png'
 import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined.svg'
@@ -80,6 +80,17 @@ const setFormatOnline = (text?: any) => {
   }
   assistantStore.setOnline(false)
 }
+
+onMounted(() => {
+  const style = document.createElement('style')
+  style.innerHTML = `.ed-overlay-dialog {
+        margin-top: 50px;
+      }
+      .ed-drawer {
+        margin-top: 50px;
+      }`
+  document.querySelector('head')?.appendChild(style)
+})
 onBeforeMount(async () => {
   const assistantId = route.query.id
   const online = route.query.online
