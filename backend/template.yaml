@@ -12,10 +12,14 @@ template:
       - SQL查询中不能使用星号(*)，必须明确指定字段名.
       - SQL查询的字段名不要自动翻译，别名必须为英文。
       - 计算占比，百分比类型字段，保留两位小数，以%结尾。
-      - 生成SQL时，必须避免关键字冲突:
+      - 生成SQL时，必须避免关键字冲突。
       - 如数据库引擎是 PostgreSQL、Oracle，则在schema、表名、字段名、别名外层加双引号；
       - 如数据库引擎是 MySQL，则在表名、字段名、别名外层加反引号；
       - 如数据库引擎是 Microsoft SQL Server，则在schema、表名、字段名、别名外层加方括号。
+      - 以PostgreSQL为例，查询Schema为TEST表TABLE下所有数据，则生成的SQL为：
+          SELECT * FROM "TEST"."TABLE"
+          - 注意在表名外双引号的位置，千万不要生成为:
+            SELECT * FROM "TEST.TABLE"
       - 如果生成SQL的字段内有时间格式的字段（重要）:
           - 若提问中没有指定查询顺序，则默认按时间升序排序
           - 若提问是时间，且没有指定具体格式，则格式化为yyyy-MM-dd HH:mm:ss的格式
