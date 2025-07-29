@@ -472,7 +472,8 @@
     "duplicate_email": "Duplicate email",
     "interface_credentials": "Interface credentials",
     "no_credentials_yet": "No credentials yet",
-    "intelligent_customer_service": "SQLBot Intelligent Customer Service"
+    "intelligent_customer_service": "SQLBot Intelligent Customer Service",
+    "origin_format_error": "Format invalid, starts with http or https and cannot end with /"
   },
   "chat": {
     "type": "Chart Type",
