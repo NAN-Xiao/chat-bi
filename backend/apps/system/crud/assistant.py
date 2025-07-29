@@ -101,13 +101,15 @@ class AssistantOutDs:
         certificateList: list[any] = json.loads(self.certificate)
         header = {}
         cookies = {}
+        param = {}
         for item in certificateList:
             if item['target'] == 'header':
                 header[item['key']] = item['value']
             if item['target'] == 'cookie':
                 cookies[item['key']] = item['value']
-        
-        res = requests.get(url=endpoint, headers=header, cookies=cookies, timeout=10)
+            if item['target'] == 'param':
+                param[item['key']] = item['value']
+        res = requests.get(url=endpoint, params=param, headers=header, cookies=cookies, timeout=10)
         if res.status_code == 200:
             result_json: dict[any] = json.loads(res.text)
             if result_json.get('code') == 0:
