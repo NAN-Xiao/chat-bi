@@ -15,7 +15,9 @@ from common.core.config import settings
 router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
 
 @router.get("/info/{id}") 
-async def info(request: Request, response: Response, session: SessionDep, id: int) -> dict:
+async def info(request: Request, response: Response, session: SessionDep, id: int) -> AssistantModel:
+    if not id:
+        raise Exception('miss assistant id')
     db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         raise RuntimeError(f"assistant application not exist")
@@ -23,12 +25,15 @@ async def info(request: Request, response: Response, session: SessionDep, id: in
     response.headers["Access-Control-Allow-Origin"] = db_model.domain
     origin = request.headers.get("origin") or request.headers.get("referer")
     origin = origin.rstrip('/')
-    """ if origin != db_model.domain:
-        raise RuntimeError("invalid domain [{origin}]") """
-    return db_model.model_dump()
+    if origin != db_model.domain:
+        raise RuntimeError("invalid domain [{origin}]")
+    return db_model
 
 @router.get("/validator", response_model=AssistantValidator) 
-async def info(session: SessionDep, id: str, virtual: Optional[int] = Query(None), online: Optional[bool] = Query(default=False)):
+async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query(None)):
+    if not id:
+        raise Exception('miss assistant id')
+    
     db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         return AssistantValidator()
