@@ -54,13 +54,13 @@ template:
       ]
       ```
       
+      ### 提供表结构如下:
+      {schema}
+      
       ### 响应, 请直接返回JSON结果:
       ```json
 
     user: |
-      ### 提供表结构如下:
-      {schema}
-      
       ### 问题:
       {question}
       

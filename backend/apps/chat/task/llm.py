@@ -439,6 +439,7 @@ class LLMService:
                     _ds = self.out_ds_instance.get_ds(data['id'])
                     self.ds = _ds
                     self.chat_question.engine = _ds.type
+                    self.chat_question.db_schema = self.out_ds_instance.get_db_schema(ds.id)
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type
                 else:
@@ -448,6 +449,7 @@ class LLMService:
                         raise Exception(f"Datasource configuration with id {_datasource} not found")
                     self.ds = CoreDatasource(**_ds.model_dump())
                     self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
+                    self.chat_question.db_schema = get_table_schema(session=self.session, current_user=self.current_user, ds=self.ds)
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
                 # save chat
