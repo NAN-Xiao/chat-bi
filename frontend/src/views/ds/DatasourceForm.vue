@@ -43,6 +43,7 @@ const tableList = ref<any>([])
 const excelUploadSuccess = ref(false)
 const tableListLoading = ref(false)
 const token = wsCache.get('user.token')
+const checkLoading = ref(false)
 const request_key = computed(() => {
   // eslint-disable-next-line no-undef
   return LicenseGenerator.generate()
@@ -350,23 +351,30 @@ const next = debounce(async (formEl: FormInstance | undefined) => {
           emit('changeActiveStep', props.activeStep + 1)
         }
       } else {
+        if (checkLoading.value) return
         // check status if success do next
         const requestObj = buildConf()
-        datasourceApi.check(requestObj).then((res: boolean) => {
-          if (res) {
-            emit('changeActiveStep', props.activeStep + 1)
-            // request tables
-            datasourceApi.getTablesByConf(requestObj).then((res: any) => {
-              tableList.value = res
-            })
-          } else {
-            ElMessage({
-              message: t('ds.form.connect.failed'),
-              type: 'error',
-              showClose: true,
-            })
-          }
-        })
+        checkLoading.value = true
+        datasourceApi
+          .check(requestObj)
+          .then((res: boolean) => {
+            if (res) {
+              emit('changeActiveStep', props.activeStep + 1)
+              // request tables
+              datasourceApi.getTablesByConf(requestObj).then((res: any) => {
+                tableList.value = res
+              })
+            } else {
+              ElMessage({
+                message: t('ds.form.connect.failed'),
+                type: 'error',
+                showClose: true,
+              })
+            }
+          })
+          .finally(() => {
+            checkLoading.value = false
+          })
       }
     }
   })
@@ -480,7 +488,7 @@ defineExpose({
 
 <template>
   <div
-    v-loading="uploadLoading || saveLoading"
+    v-loading="uploadLoading || saveLoading || checkLoading"
     class="model-form"
     :class="(!isCreate || activeStep === 2) && 'edit-form'"
   >
