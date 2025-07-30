@@ -1032,7 +1032,7 @@ class LLMService:
     def validate_history_ds(self):
         _ds = self.ds
         if not self.current_assistant:
-            current_ds = self.session.exec(CoreDatasource, _ds.id)
+            current_ds = self.session.get(CoreDatasource, _ds.id)
             if not current_ds:
                 raise Exception('ds is invalid')
         else:
