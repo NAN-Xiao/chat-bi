@@ -1030,7 +1030,12 @@ class LLMService:
     def validate_history_ds(self):
         _invalid_ds = False
         _ds = self.ds
-        _assistant = self.current_assistant
+        if not self.current_assistant:
+            current_ds = self.session.exec(CoreDatasource, _ds.id)
+            _invalid_ds = not current_ds
+        else:
+            _ds_list: list[dict] = get_assistant_ds(session=self.session, llm_service=self)
+            _invalid_ds = any(item.get("id") == _ds.id for item in _ds_list)
         if _invalid_ds:
             yield orjson.dumps({'content': 'ds is invalid', 'type': 'error'}).decode() + '\n\n'
 
