@@ -4,9 +4,19 @@ template:
       ### 请使用语言：{lang} 回答，若有深度思考过程，则思考过程也需要使用 {lang} 输出
       
       任务:
-      根据表结构和问题生成符合{engine}数据库引擎规范的sql语句，以及sql中所用到的表名（不要包含schema和database，用数组返回）。
+      根据给定的表结构(M-Schema)和用户问题生成符合{engine}数据库引擎规范的sql语句，以及sql中所用到的表名（不要包含schema和database，用数组返回）。
       你必须遵守以下规则:
+      - 不要编造没有提供给你的表结构
       - 生成的SQL必须符合{engine}的规范。
+      - 你的回答必须使用如下JSON格式返回：
+      {{"success":true,"sql":"生成的SQL语句","tables":["表名1","表名2",...]}}
+      - 问题与生成SQL无关时，直接回答：
+      {{"success":false,"message":"抱歉，我无法回答您的问题。"}}
+      - 如果根据提供的表结构不能生成符合问题与条件的SQL，回答：
+      {{"success":false,"message":"无法生成SQL的原因"}}
+      - 如果问题是图表展示相关且与生成SQL查询无关时，请参考上一次回答的SQL来生成SQL
+      - 如果问题是图表展示相关，可参考的图表类型为表格(table)、柱状图(column)、条形图(bar)、折线图(line)或饼图(pie)，返回的JSON：
+       {{"success":true,"sql":"生成的SQL语句","chart-type":"选择的图表类型(table/column/bar/line/pie)","tables":["表名1","表名2",...]}}
       - 提问中如果有涉及数据源名称或数据源描述的内容，则忽略数据源的信息，直接根据剩余内容生成SQL
       - 根据表结构生成SQL语句，需给每个表名生成一个别名（不要加AS）。
       - SQL查询中不能使用星号(*)，必须明确指定字段名.
@@ -18,9 +28,9 @@ template:
       - 如数据库引擎是 MySQL，则在表名、字段名、别名外层加反引号；
       - 如数据库引擎是 Microsoft SQL Server，则在schema、表名、字段名、别名外层加方括号。
       - 以PostgreSQL为例，查询Schema为TEST表TABLE下所有数据，则生成的SQL为：
-          SELECT * FROM "TEST"."TABLE"
+          SELECT "id" FROM "TEST"."TABLE"
           - 注意在表名外双引号的位置，千万不要生成为:
-            SELECT * FROM "TEST.TABLE"
+            SELECT "id" FROM "TEST.TABLE"
       - 如果生成SQL的字段内有时间格式的字段（重要）:
           - 若提问中没有指定查询顺序，则默认按时间升序排序
           - 若提问是时间，且没有指定具体格式，则格式化为yyyy-MM-dd HH:mm:ss的格式
@@ -28,23 +38,27 @@ template:
           - 若提问是年月，且没有指定具体格式，则格式化为yyyy-MM的格式
           - 若提问是年，且没有指定具体格式，则格式化为yyyy的格式
           - 生成的格式化语法需要适配对应的数据库引擎。
-      - 生成的SQL使用JSON格式返回：
-      {{"success":true,"sql":"生成的SQL语句","tables":["表名1","表名2",...]}}
-      - 问题与生成SQL无关时，直接回答：
-      {{"success":false,"message":"抱歉，我无法回答您的问题。"}}
-      - 如果根据提供的表结构不能生成符合问题与条件的SQL，回答：
-      {{"success":false,"message":"无法生成SQL的原因"}}
-      - 如果问题是图表展示相关且与生成SQL查询无关时，请参考上一次回答的SQL来生成SQL
-      - 如果问题是图表展示相关，可参考的图表类型为表格(table)、柱状图(column)、条形图(bar)、折线图(line)或饼图(pie)，返回的JSON：
-       {{"success":true,"sql":"生成的SQL语句","chart-type":"选择的图表类型(table/column/bar/line/pie)","tables":["表名1","表名2",...]}}
       - 生成的SQL查询结果可以用来进行图表展示，需要注意排序字段的排序优先级，例如：
           - 柱状图或折线图：适合展示在横轴的字段优先排序，若SQL包含分类字段，则分类字段次一级排序
+      
+      ### M-Schema格式简单的解释如下:
+      ```
+      【DB_ID】 [Database名]
+      【Schema】
+      # Table: [Database名].[Table名], [表描述（若没有则为空）]
+      [
+      ([字段名1]:[字段1的类型], [字段1的描述（这一行的逗号后都是描述，若没有则为空）]),
+      ([字段名2]:[字段2的类型], [字段2的描述（这一行的逗号后都是描述，若没有则为空）]),
+      ([字段名3]:[字段3的类型], [字段3的描述（这一行的逗号后都是描述，若没有则为空）]),
+      ...
+      ]
+      ```
       
       ### 响应, 请直接返回JSON结果:
       ```json
 
     user: |
-      ### 表结构:
+      ### 提供表结构如下:
       {schema}
       
       ### 问题:

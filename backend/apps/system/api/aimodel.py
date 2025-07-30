@@ -1,5 +1,7 @@
 import json
 from typing import List, Union
+
+from fastapi.responses import StreamingResponse
 from apps.ai_model.model_factory import LLMConfig, LLMFactory
 from apps.system.schemas.ai_model_schema import AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem
 from fastapi import APIRouter, Query
@@ -14,21 +16,31 @@ router = APIRouter(tags=["system/aimodel"], prefix="/system/aimodel")
 
 @router.post("/status")
 async def check_llm(info: AiModelCreator, trans: Trans):
-    try:
-        additional_params = {item.key: item.val for item in info.config_list}
-        config = LLMConfig(
-            model_type="openai",
-            model_name=info.base_model,
-            api_key=info.api_key,
-            api_base_url=info.api_domain,
-            additional_params=additional_params,
-        )
-        llm_instance = LLMFactory.create_llm(config)
-        result = llm_instance.llm.invoke("who are you?")
-        SQLBotLogUtil.info(f"check_llm result: {result}")
-    except Exception as e:
-        SQLBotLogUtil.error(f"Error checking LLM: {e}")
-        raise Exception(trans('i18n_llm.validate_error', msg = str(e)))
+    async def generate():
+        try:
+            additional_params = {item.key: item.val for item in info.config_list}
+            config = LLMConfig(
+                model_type="openai",
+                model_name=info.base_model,
+                api_key=info.api_key,
+                api_base_url=info.api_domain,
+                additional_params=additional_params,
+            )
+            llm_instance = LLMFactory.create_llm(config)
+            
+            res = llm_instance.llm.stream("who are you?")
+            
+            for chunk in res:
+                if chunk and chunk.content:
+                    SQLBotLogUtil.info(chunk)
+                    yield json.dumps({"content": chunk.content}) + "\n"
+        
+        except Exception as e:
+            SQLBotLogUtil.error(f"Error checking LLM: {e}")
+            error_msg = trans('i18n_llm.validate_error', msg=str(e))
+            yield json.dumps({"error": error_msg}) + "\n"
+    
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
 
 @router.get("", response_model=list[AiModelGridItem])
 async def query(
