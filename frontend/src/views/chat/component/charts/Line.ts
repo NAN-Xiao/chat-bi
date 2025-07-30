@@ -95,6 +95,9 @@ export class Line extends BaseG2Chart {
           style: {
             fill: 'white',
           },
+          encode: {
+            size: 1.5,
+          },
           tooltip: false,
         },
       ],
