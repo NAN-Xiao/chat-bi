@@ -27,7 +27,7 @@ const COMPONENT_LIST = [
     collisionActive: false,
     moveInActive: false,
     moveOutActive: false,
-    activeTabName: 'tab',
+    activeTabName: null,
     propValue: [
       {
         name: 'tab',

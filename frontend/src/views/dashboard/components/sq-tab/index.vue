@@ -161,9 +161,8 @@ const titleStyle = (itemName: string) => {
 
 onMounted(() => {
   currentInstance = getCurrentInstance()
-  if (configItem.value.propValue.length > 0) {
+  if (configItem.value.propValue.length > 0 && !configItem.value.activeTabName) {
     configItem.value.activeTabName = configItem.value.propValue[0].name
-    console.log('test1')
   }
 })
 
