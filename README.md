@@ -1,10 +1,9 @@
 <p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/sqlbot/sqlbot.png" alt="SQLBot" width="300" /></p>
 <h3 align="center">基于大模型和 RAG 的智能问数系统</h3>
 <p align="center">
-  <a href="https://www.gnu.org/licenses/gpl-3.0.html#license-text"><img src="https://img.shields.io/github/license/1Panel-dev/SQLBot?color=%231890FF" alt="License: GPL v3"></a>
-  <a href="https://github.com/1Panel-dev/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/1Panel-dev/SQLBot" alt="Latest release"></a>
-  <a href="https://github.com/1Panel-dev/SQLBot"><img src="https://img.shields.io/github/stars/1Panel-dev/SQLBot?color=%231890FF&style=flat-square" alt="Stars"></a>    
-  <a href="https://hub.docker.com/r/1panel/SQLbot"><img src="https://img.shields.io/docker/pulls/1panel/SQLBot?label=downloads" alt="Download"></a><br/>
+  <a href="https://github.com/dataease/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/SQLBot" alt="Latest release"></a>
+  <a href="https://github.com/dataease/SQLBot"><img src="https://img.shields.io/github/stars/dataease/SQLBot?color=%231890FF&style=flat-square" alt="Stars"></a>    
+  <a href="https://hub.docker.com/r/dataease/SQLbot"><img src="https://img.shields.io/docker/pulls/dataease/SQLBot?label=downloads" alt="Download"></a><br/>
 </p>
 <hr/>
 
@@ -29,7 +28,7 @@ docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/
 
 如你有更多问题，可以加入我们的技术交流群与我们交流。
 
-TBD
+TBD: 交流群二维码
 
 ## UI 展示
 
