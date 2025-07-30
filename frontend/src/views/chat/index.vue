@@ -461,11 +461,11 @@ const currentChatEngineType = computed(() => {
 })
 
 function onChatDeleted(id: number) {
-  console.log('deleted', id)
+  console.info('deleted', id)
 }
 
 function onChatRenamed(chat: Chat) {
-  console.log('renamed', chat)
+  console.info('renamed', chat)
 }
 
 const chatListSideBarShow = ref<boolean>(true)

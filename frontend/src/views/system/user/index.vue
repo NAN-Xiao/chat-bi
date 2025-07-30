@@ -152,10 +152,10 @@ const state = reactive({
   },
 })
 const handleSearch = (e: any) => {
-  console.log('search', e)
+  console.info('search', e)
 }
 const editHandler = (id: any) => {
-  console.log('editHandler', id)
+  console.info('editHandler', id)
   /* userApi.query(id).then((res: any) => {
     console.log('term detail', res)
     state.form = res
@@ -163,7 +163,7 @@ const editHandler = (id: any) => {
   }) */
 }
 const deleteHandler = (id: any) => {
-  console.log('deleteHandler', id)
+  console.info('deleteHandler', id)
   ElMessageBox.confirm('Are you sure to delete?', 'Warning', {
     confirmButtonText: 'OK',
     cancelButtonText: 'Cancel',
@@ -222,7 +222,7 @@ const addTerm = () => {
 }
 const editTerm = () => {
   userApi.edit(state.form).then((res: any) => {
-    console.log('edit term', res)
+    console.info('edit term', res)
     dialogFormVisible.value = false
     search()
     ElMessage({

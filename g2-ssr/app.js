@@ -17,7 +17,7 @@ http.createServer((req, res) => {
         toPost(req, res);
     }
 }).listen(port, () => {
-    console.log(`Server listening on: http://localhost:${port}`);
+    console.info(`Server listening on: http://localhost:${port}`);
 });
 
 function getOptions(type, axis, data) {
@@ -50,9 +50,7 @@ function getOptions(type, axis, data) {
 
 // 创建 Chart 和配置
 async function GenerateCharts(obj) {
-    console.log(obj)
     const options = getOptions(obj.type, JSON.parse(obj.axis), JSON.parse(obj.data));
-    console.log(options);
     const chart = await createChart(options);
 
     // 导出
@@ -69,7 +67,6 @@ async function GenerateCharts(obj) {
 function toGet(req, res) {
     let data = 'GET请求内容：\n' + util.inspect(url.parse(req.url));
     res.end(data);
-    console.log(data);
 }
 
 //获取POST请求内容、cookie

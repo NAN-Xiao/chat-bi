@@ -7,8 +7,8 @@ import path from 'path'
 import svgLoader from 'vite-svg-loader'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
-  console.log(mode)
-  console.log(env)
+  console.info(mode)
+  console.info(env)
   return {
     base: './',
     plugins: [

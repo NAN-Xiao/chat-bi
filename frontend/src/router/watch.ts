@@ -31,7 +31,7 @@ export const watchRouter = (router: any) => {
       return
     }
     if (to.path === '/login') {
-      console.log(from)
+      console.info(from)
       next('/chat')
     } else {
       next()

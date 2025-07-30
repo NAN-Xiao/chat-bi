@@ -133,9 +133,6 @@ const sendMessage = async () => {
           _list.push(line)
         }
       }
-
-      // console.log(_list)
-
       for (const str of _list) {
         let data
         try {
@@ -160,7 +157,7 @@ const sendMessage = async () => {
             _currentChat.value.records[index.value].id = data.id
             break
           case 'info':
-            console.log(data.msg)
+            console.info(data.msg)
             break
           case 'error':
             currentRecord.error = data.content

@@ -31,7 +31,7 @@ import Professional from './Professional.vue'
 const activeName = ref('0')
 
 const handleClick = (tab: any, event: MouseEvent) => {
-  console.log(tab, event)
+  console.info(tab, event)
 }
 </script>
 

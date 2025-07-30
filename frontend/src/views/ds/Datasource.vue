@@ -122,11 +122,11 @@ const refreshData = () => {
 }
 
 const panelClick = () => {
-  console.log('panelClick')
+  console.info('panelClick')
 }
 
 const smartClick = () => {
-  console.log('smartClick')
+  console.info('smartClick')
 }
 
 const deleteHandler = (item: any) => {

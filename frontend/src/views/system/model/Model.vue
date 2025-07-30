@@ -170,7 +170,7 @@ const deleteHandler = (item: any) => {
       customClass: 'confirm-no_icon',
       autofocus: false,
       callback: (val: string) => {
-        console.log(val)
+        console.info(val)
       },
     })
     return

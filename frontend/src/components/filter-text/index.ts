@@ -58,8 +58,6 @@ const valueText = (field: string, val: string, options: any[]) => {
   return val
 }
 export const convertFilterText = (conditions: any[], options: any[]) => {
-  console.log('conditions', conditions, options)
-
   const result: any[] = []
   conditions.forEach((condition) => {
     const field = condition.field

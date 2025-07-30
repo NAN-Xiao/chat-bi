@@ -114,11 +114,10 @@ const state = reactive({
   },
 })
 const handleSearch = (e: any) => {
-  console.log('search', e)
+  console.info('search', e)
 }
 const editHandler = (id: any) => {
   termApi.query(id).then((res: any) => {
-    console.log('term detail', res)
     state.form = res
     dialogFormVisible.value = true
   })
@@ -181,7 +180,7 @@ const addTerm = () => {
 }
 const editTerm = () => {
   termApi.edit(state.form).then((res: any) => {
-    console.log('edit term', res)
+    console.info('edit term', res)
     dialogFormVisible.value = false
     search()
     ElMessage({
