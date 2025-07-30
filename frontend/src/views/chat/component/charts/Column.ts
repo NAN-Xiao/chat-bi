@@ -93,28 +93,28 @@ export class Column extends BaseG2Chart {
           return { name: y[0].name, value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}` }
         }
       },
-      labels: [
-        {
-          text: (data: any) => {
-            const value = data[y[0].value]
-            if (value === undefined || value === null) {
-              return ''
-            }
-            return `${value}${_data.isPercent ? '%' : ''}`
-          },
-          position: (data: any) => {
-            if (data[y[0].value] < 0) {
-              return 'bottom'
-            }
-            return 'top'
-          },
-          transform: [
-            { type: 'contrastReverse' },
-            { type: 'exceedAdjust' },
-            { type: 'overlapHide' },
-          ],
-        },
-      ],
+      // labels: [
+      //   {
+      //     text: (data: any) => {
+      //       const value = data[y[0].value]
+      //       if (value === undefined || value === null) {
+      //         return ''
+      //       }
+      //       return `${value}${_data.isPercent ? '%' : ''}`
+      //     },
+      //     position: (data: any) => {
+      //       if (data[y[0].value] < 0) {
+      //         return 'bottom'
+      //       }
+      //       return 'top'
+      //     },
+      //     transform: [
+      //       { type: 'contrastReverse' },
+      //       { type: 'exceedAdjust' },
+      //       { type: 'overlapHide' },
+      //     ],
+      //   },
+      // ],
     } as G2Spec
 
     if (series.length > 0) {
