@@ -672,6 +672,8 @@ class LLMService:
                                                               self.chart_message]).decode())
     def check_sql(self, res: str) -> tuple[any]:
         json_str = extract_nested_json(res)
+        if json_str is None:
+            raise Exception("Cannot parse sql from answer")
         data: dict = orjson.loads(json_str)
         sql = ''
         message = ''
