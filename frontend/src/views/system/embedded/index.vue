@@ -438,6 +438,11 @@ const saveHandler = () => {
         urlForm.certificate.push({ ...cloneDeep(certificateForm), id: +new Date() })
       }
 
+      ElMessage({
+        type: 'success',
+        message: t('common.save_success'),
+      })
+
       certificateBeforeClose()
     }
   })
