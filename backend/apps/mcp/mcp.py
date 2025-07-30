@@ -106,7 +106,7 @@ async def mcp_question(session: SessionDep, chat: ChatMcp):
         raise HTTPException(status_code=400, detail="Inactive user")
 
     # ask
-    llm_service = LLMService(session, session_user, chat)
+    llm_service = LLMService(session_user, chat)
     llm_service.init_record()
 
     return StreamingResponse(llm_service.run_task(False), media_type="text/event-stream")
