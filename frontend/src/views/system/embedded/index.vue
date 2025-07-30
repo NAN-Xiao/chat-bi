@@ -760,6 +760,7 @@ const saveHandler = () => {
                 :name="ele.name"
                 :type="ele.type"
                 :type-name="ele.type_name"
+                :description="ele.description"
                 :is-private="dsForm.private_list.includes(ele.id)"
                 :num="ele.num"
                 @active="handleActive(ele)"
