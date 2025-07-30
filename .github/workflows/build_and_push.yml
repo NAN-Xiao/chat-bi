@@ -49,7 +49,7 @@ jobs:
       - name: Prepare
         id: prepare
         run: |
-          DOCKER_IMAGE=${{ secrets.ALIYUN_REGISTRY_HOST }}/maxkb/maxkb
+          DOCKER_IMAGE=${{ secrets.ALIYUN_REGISTRY_HOST }}/dataease/sqlbot
           DOCKER_PLATFORMS=${{ github.event.inputs.architecture }}
           TAG_NAME=${{ github.event.inputs.dockerImageTag }}
           TAG_NAME_WITH_LATEST=${{ github.event.inputs.dockerImageTagWithLatest }}
