@@ -700,6 +700,8 @@ class LLMService:
     def check_save_chart(self, res: str) -> Dict[str, Any]:
 
         json_str = extract_nested_json(res)
+        if json_str is None:
+            raise Exception("Cannot parse chart config from answer")
         data = orjson.loads(json_str)
 
         chart: Dict[str, Any] = {}
