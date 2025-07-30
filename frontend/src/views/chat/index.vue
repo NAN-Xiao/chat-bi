@@ -97,7 +97,7 @@
         <div v-else-if="computedMessages.length == 0 && loading" class="welcome-content-block">
           <logo />
         </div>
-        <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef">
+        <el-scrollbar class="no-horizontal" v-if="computedMessages.length > 0" ref="chatListRef">
           <div
             class="chat-scroll"
             :class="{ 'no-sidebar': !isAssistant && !chatListSideBarShow, pad16: isAssistant }"
@@ -859,9 +859,15 @@ onMounted(() => {
     background: rgba(245, 246, 247, 1);
   }
 
-  .chat-record-list {
+  :deep(.chat-record-list) {
     padding: 0 0 20px 0;
     border-radius: 0 12px 12px 0;
+
+    .no-horizontal.ed-scrollbar {
+      .ed-scrollbar__bar.is-horizontal {
+        display: none;
+      }
+    }
 
     &.hide-sidebar {
       border-radius: 12px;
