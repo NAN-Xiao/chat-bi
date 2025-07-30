@@ -35,7 +35,7 @@ const activeName = ref('')
 const activeType = ref('')
 const modelFormRef = ref()
 const cardRefs = ref<any[]>([])
-const showCardError = ref(true)
+const showCardError = ref(true) // if you don`t want card mask error, just change this to false
 reactive({
   form: {
     id: '',
