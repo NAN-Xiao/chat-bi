@@ -1,4 +1,4 @@
-const {filter, endsWith, replace} = require("lodash-es");
+const {filter, endsWith, replace} = require("lodash");
 
 function checkIsPercent(valueAxis, data) {
     const result = {

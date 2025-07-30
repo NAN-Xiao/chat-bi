@@ -93,6 +93,12 @@ function getBarOptions(baseOptions, axis, data) {
                     }
                     return `${value}${_data.isPercent ? '%' : ''}`
                 },
+                position: (data) => {
+                    if (data[y[0].value] < 0) {
+                        return 'bottom'
+                    }
+                    return 'top'
+                },
                 transform: [
                     {type: 'contrastReverse'},
                     {type: 'exceedAdjust'},

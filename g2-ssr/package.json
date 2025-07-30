@@ -6,7 +6,6 @@
     "@antv/g2": "^5.3.3",
     "@antv/g2-ssr": "^0.1.0",
     "@rollup/plugin-json": "^6.1.0",
-    "lodash-es": "^4.17.21",
     "nan": "^2.22.2",
     "node-canvas": "^2.9.0",
     "nprogress": "^0.2.0"
