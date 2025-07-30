@@ -516,6 +516,41 @@ class LLMService:
                                                            [{'type': msg.type, 'content': msg.content} for msg in
                                                             self.sql_message]).decode())
 
+    def generate_with_sub_sql(self, sql, sub_mappings: list):
+        sub_query = json.dumps(sub_mappings, ensure_ascii=False)
+        self.chat_question.sql = sql
+        self.chat_question.sub_query = sub_query
+        msg: List[Union[BaseMessage, dict[str, Any]]] = []
+        msg.append(SystemMessage(content=self.chat_question.dynamic_sys_question()))
+        msg.append(HumanMessage(content=self.chat_question.dynamic_user_question()))
+        full_thinking_text = ''
+        full_dynamic_text = ''
+        res = self.llm.stream(msg)
+        token_usage = {}
+        for chunk in res:
+            SQLBotLogUtil.info(chunk)
+            reasoning_content_chunk = ''
+            if 'reasoning_content' in chunk.additional_kwargs:
+                reasoning_content_chunk = chunk.additional_kwargs.get('reasoning_content', '')
+            if reasoning_content_chunk is None:
+                reasoning_content_chunk = ''
+            full_thinking_text += reasoning_content_chunk
+            full_dynamic_text += chunk.content
+            get_token_usage(chunk, token_usage)
+
+        SQLBotLogUtil.info(full_dynamic_text)
+        return full_dynamic_text
+    
+    def generate_assistant_dynamic_sql(self, sql, tables: List):
+        ds: AssistantOutDsSchema = self.ds
+        sub_query = []
+        for table in ds.tables:
+            if table.name in tables and table.sql:
+                sub_query.append({"table": table.name, "query": table.sql})
+        if not sub_query:
+            return None
+        return self.generate_with_sub_sql(sql=sql, sub_mappings=sub_query)
+        
     def build_table_filter(self, sql: str, filters: list):
         filter = json.dumps(filters, ensure_ascii=False)
         self.chat_question.sql = sql
@@ -635,27 +670,23 @@ class LLMService:
                                                          full_message=orjson.dumps(
                                                              [{'type': msg.type, 'content': msg.content} for msg in
                                                               self.chart_message]).decode())
-
-    def check_save_sql(self, res: str) -> str:
-
+    def check_sql(self, res: str) -> tuple[any]:
         json_str = extract_nested_json(res)
-        data = orjson.loads(json_str)
-
+        data: dict = orjson.loads(json_str)
         sql = ''
         message = ''
-        error = False
-
         if data['success']:
             sql = data['sql']
         else:
             message = data['message']
-            error = True
-
-        if error:
             raise Exception(message)
+        
         if sql.strip() == '':
             raise Exception("SQL query is empty")
-
+        return sql, data.get('tables')
+        
+    def check_save_sql(self, res: str) -> str:
+        sql, *_ = self.check_sql(res=res)
         save_sql(session=self.session, sql=sql, record_id=self.record.id)
 
         self.chat_question.sql = sql
@@ -816,34 +847,27 @@ class LLMService:
 
             # filter sql
             SQLBotLogUtil.info(full_sql_text)
+            use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type == 1
 
             # todo row permission
-            if (not self.current_assistant and is_normal_user(self.current_user)) or (
-                    self.current_assistant and self.current_assistant.type == 1):
-                sql_json_str = extract_nested_json(full_sql_text)
-                data = orjson.loads(sql_json_str)
-
-                sql = ''
-                message = ''
-                error = False
-                if data['success']:
-                    sql = data['sql']
-                else:
-                    message = data['message']
-                    error = True
-                if error:
-                    raise Exception(message)
-                if sql.strip() == '':
-                    raise Exception("SQL query is empty")
+            if (not self.current_assistant and is_normal_user(self.current_user)) or use_dynamic_ds:
+                sql, tables = self.check_sql(res=full_sql_text)
 
                 if self.current_assistant:
-                    sql_result = self.generate_assistant_filter(data.get('sql'), data.get('tables'))
+                    dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
+                    if dynamic_sql_result:
+                        SQLBotLogUtil.info(dynamic_sql_result)
+                        sql, *_ = self.check_sql(res=dynamic_sql_result)
+                        
+                    sql_result = self.generate_assistant_filter(sql, tables)
                 else:
-                    sql_result = self.generate_filter(data.get('sql'), data.get('tables'))  # maybe no sql and tables
+                    sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
 
                 if sql_result:
                     SQLBotLogUtil.info(sql_result)
                     sql = self.check_save_sql(res=sql_result)
+                elif dynamic_sql_result:
+                    sql = self.check_save_sql(res=dynamic_sql_result)
                 else:
                     sql = self.check_save_sql(res=full_sql_text)
             else:

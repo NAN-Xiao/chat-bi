@@ -9,6 +9,7 @@ from sqlmodel import SQLModel, Field
 from apps.template.filter.generator import get_permissions_template
 from apps.template.generate_analysis.generator import get_analysis_template
 from apps.template.generate_chart.generator import get_chart_template
+from apps.template.generate_dynamic.generator import get_dynamic_template
 from apps.template.generate_guess_question.generator import get_guess_question_template
 from apps.template.generate_predict.generator import get_predict_template
 from apps.template.generate_sql.generator import get_sql_template
@@ -107,6 +108,7 @@ class AiModelQuestion(BaseModel):
     data: str = ""
     lang: str = "简体中文"
     filter: str = []
+    sub_query: Optional[list[dict]] = None
 
     def sql_sys_question(self):
         return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question, lang=self.lang)
@@ -151,7 +153,12 @@ class AiModelQuestion(BaseModel):
 
     def filter_user_question(self):
         return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter)
-
+    
+    def dynamic_sys_question(self): 
+        return get_dynamic_template()['system'].format(lang=self.lang, engine=self.engine)
+    
+    def dynamic_user_question(self): 
+        return get_dynamic_template()['user'].format(sql=self.sql, sub_query=self.sub_query)
 
 class ChatQuestion(AiModelQuestion):
     question: str = Body(description='用户提问')
