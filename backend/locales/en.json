@@ -24,7 +24,8 @@
     },
     "i18n_permission": {
         "only_admin": "Only administrators can call this!",
-        "no_permission": "No permission to access {url}{msg}"
+        "no_permission": "No permission to access {url}{msg}",
+        "authenticate_invalid": "Authenticate invalid [{msg}]"
     },
     "i18n_llm": {
         "validate_error": "Validation failed [{msg}]",

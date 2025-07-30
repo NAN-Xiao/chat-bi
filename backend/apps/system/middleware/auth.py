@@ -13,9 +13,11 @@ from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core import security
 from common.core.config import settings
 from common.core.schemas import TokenPayload
+from common.utils.locale import I18n
 from common.utils.utils import SQLBotLogUtil
 from common.utils.whitelist import whiteUtils
 from fastapi.security.utils import get_authorization_scheme_param
+from common.core.deps import get_i18n
 class TokenMiddleware(BaseHTTPMiddleware):
     
     
@@ -29,6 +31,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         assistantTokenKey = settings.ASSISTANT_TOKEN_KEY
         assistantToken = request.headers.get(assistantTokenKey)
+        trans = await get_i18n(request)
         #if assistantToken and assistantToken.lower().startswith("assistant "):
         if assistantToken:
             validator: tuple[any] = await self.validateAssistant(assistantToken)
@@ -36,20 +39,23 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 request.state.current_user = validator[1]
                 request.state.assistant = validator[2]
                 return await call_next(request)
-            return JSONResponse(f"Unauthorized:[{validator[1]}]", status_code=401, headers={"Access-Control-Allow-Origin": "*"})
+            message = trans('i18n_permission.authenticate_invalid', msg = validator[1])
+            return JSONResponse(message, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
         #validate pass
         tokenkey = settings.TOKEN_KEY
         token = request.headers.get(tokenkey)
-        validate_pass, data = await self.validateToken(token)
+        validate_pass, data = await self.validateToken(token, trans)
         if validate_pass:
             request.state.current_user = data
             return await call_next(request)
-        return JSONResponse(f"Unauthorized:[{data}]", status_code=401, headers={"Access-Control-Allow-Origin": "*"})
+        
+        message = trans('i18n_permission.authenticate_invalid', msg = data)
+        return JSONResponse(message, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
     
     def is_options(self, request: Request):
         return request.method == "OPTIONS"
     
-    async def validateToken(self, token: Optional[str]):
+    async def validateToken(self, token: Optional[str], trans: I18n):
         if not token:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(token)
@@ -63,17 +69,15 @@ class TokenMiddleware(BaseHTTPMiddleware):
             with Session(engine) as session:
                 session_user = await get_user_info(session = session, user_id = token_data.id)
                 if not session_user:
-                    raise Exception(f"User not found with id: {token_data.id}")
+                    message = trans('i18n_not_exist', msg = trans('i18n_user.account'))
+                    raise Exception(message)
                 session_user = UserInfoDTO.model_validate(session_user)
                 if session_user.status != 1:
-                    raise Exception(f"User is not active!")
+                    message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
+                    raise Exception(message)
                 if not session_user.oid or session_user.oid == 0:
-                    raise Exception(f"User default space is not set!")
-                """ if token_data.oid != session_user.oid:
-                    raise HTTPException(
-                        status_code=401,
-                        detail="Default space has been changed, please login again!"
-                    ) """
+                    message = trans('i18n_login.no_associated_ws', msg = trans('i18n_concat_admin'))
+                    raise Exception(message)
                 return True, session_user
         except Exception as e:
             SQLBotLogUtil.exception(f"Token validation error: {str(e)}")

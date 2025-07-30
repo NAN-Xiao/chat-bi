@@ -24,7 +24,8 @@
     },
     "i18n_permission": {
         "only_admin": "仅支持管理员调用！",
-        "no_permission": "无权调用{url}{msg}"
+        "no_permission": "无权调用{url}{msg}",
+        "authenticate_invalid": "认证无效【{msg}】"
         
     },
     "i18n_llm": {

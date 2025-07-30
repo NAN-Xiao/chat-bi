@@ -32,16 +32,9 @@ TBD: 交流群二维码
 
 ## UI 展示
 
-<table style="border-collapse: collapse; border: 1px solid black;">
   <tr>
-    <td style="padding: 5px;background-color:#fff;"><img src= "TBD" alt="SQLBot Demo1"   /></td>
-    <td style="padding: 5px;background-color:#fff;"><img src= "TBD" alt="SQLBot Demo2"   /></td>
+    <img alt="q&a" src="https://github.com/user-attachments/assets/55526514-52f3-4cfe-98ec-08a986259280"   />
   </tr>
-  <tr>
-    <td style="padding: 5px;background-color:#fff;"><img src= "TBD" alt="SQLBot Demo3"   /></td>
-    <td style="padding: 5px;background-color:#fff;"><img src= "TBD" alt="SQLBot Demo4"   /></td>
-  </tr>
-</table>
 
 ## Star History
 

@@ -77,6 +77,10 @@ const handleDefaultDatasourceChange = (item: any) => {
   }
 }
 
+const changeActiveStep = (val: number) => {
+  activeStep.value = val > 2 ? 2 : val
+}
+
 const formatKeywords = (item: string) => {
   if (!defaultDatasourceKeywords.value) return item
   return item.replaceAll(
@@ -359,7 +363,7 @@ const back = () => {
         :active-type="activeType"
         @refresh="refresh"
         @close="beforeClose"
-        @change-active-step="(val: number) => (activeStep = val)"
+        @change-active-step="changeActiveStep"
       ></DatasourceForm>
     </el-drawer>
   </div>

@@ -9,6 +9,7 @@ import { ElMessage } from 'element-plus-secondary'
 import type { FormInstance, FormRules } from 'element-plus-secondary'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import FixedSizeList from 'element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs'
+import { debounce } from 'lodash-es'
 import { Plus } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
 import { haveSchema } from '@/views/ds/js/ds-type'
@@ -42,6 +43,7 @@ const tableList = ref<any>([])
 const excelUploadSuccess = ref(false)
 const tableListLoading = ref(false)
 const token = wsCache.get('user.token')
+const checkLoading = ref(false)
 const request_key = computed(() => {
   // eslint-disable-next-line no-undef
   return LicenseGenerator.generate()
@@ -339,7 +341,7 @@ const check = () => {
 
 onBeforeUnmount(() => (saveLoading.value = false))
 
-const next = async (formEl: FormInstance | undefined) => {
+const next = debounce(async (formEl: FormInstance | undefined) => {
   if (!formEl) return
   await formEl.validate((valid) => {
     if (valid) {
@@ -349,31 +351,38 @@ const next = async (formEl: FormInstance | undefined) => {
           emit('changeActiveStep', props.activeStep + 1)
         }
       } else {
+        if (checkLoading.value) return
         // check status if success do next
         const requestObj = buildConf()
-        datasourceApi.check(requestObj).then((res: boolean) => {
-          if (res) {
-            emit('changeActiveStep', props.activeStep + 1)
-            // request tables
-            datasourceApi.getTablesByConf(requestObj).then((res: any) => {
-              tableList.value = res
-            })
-          } else {
-            ElMessage({
-              message: t('ds.form.connect.failed'),
-              type: 'error',
-              showClose: true,
-            })
-          }
-        })
+        checkLoading.value = true
+        datasourceApi
+          .check(requestObj)
+          .then((res: boolean) => {
+            if (res) {
+              emit('changeActiveStep', props.activeStep + 1)
+              // request tables
+              datasourceApi.getTablesByConf(requestObj).then((res: any) => {
+                tableList.value = res
+              })
+            } else {
+              ElMessage({
+                message: t('ds.form.connect.failed'),
+                type: 'error',
+                showClose: true,
+              })
+            }
+          })
+          .finally(() => {
+            checkLoading.value = false
+          })
       }
     }
   })
-}
+}, 300)
 
-const preview = () => {
+const preview = debounce(() => {
   emit('changeActiveStep', props.activeStep - 1)
-}
+}, 200)
 
 const beforeUpload = (rawFile: any) => {
   setFile(rawFile)
@@ -479,7 +488,7 @@ defineExpose({
 
 <template>
   <div
-    v-loading="uploadLoading || saveLoading"
+    v-loading="uploadLoading || saveLoading || checkLoading"
     class="model-form"
     :class="(!isCreate || activeStep === 2) && 'edit-form'"
   >
