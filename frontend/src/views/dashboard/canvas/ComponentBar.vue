@@ -96,6 +96,7 @@ const doDeleteComponent = (e: MouseEvent) => {
   background: rgba(255, 255, 255, 1);
   border: 1px solid rgba(217, 220, 223, 1);
   padding: 8px;
+  z-index: 10;
   &:hover {
     background-color: rgba(245, 246, 247, 1);
   }
