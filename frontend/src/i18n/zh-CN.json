@@ -6,6 +6,8 @@
     "AI Model Configuration": "模型配置"
   },
   "common": {
+    "proceed_with_caution": "删除后无法恢复，请谨慎操作。",
+    "sales_in_2024": "是否删除对话：{msg}？",
     "limited_to_30": "数据表数量限制30",
     "enter_your_password": "请输入密码",
     "your_account_email_address": "请输入账号/邮箱",

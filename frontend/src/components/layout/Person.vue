@@ -52,7 +52,9 @@ const changeLanguage = (lang: string) => {
   const param = {
     language: lang,
   }
-  userApi.language(param)
+  userApi.language(param).then(() => {
+    window.location.reload()
+  })
 }
 
 const openPwd = () => {

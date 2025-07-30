@@ -112,18 +112,21 @@ function handleCommand(command: string | number | object, chat: Chat) {
         dialogVisiblePassword.value = true
         break
       case 'delete':
-        ElMessageBox.confirm('This action will permanently delete the chat. Continue?', 'Warning', {
-          confirmButtonText: 'OK',
-          cancelButtonText: 'Cancel',
-          type: 'warning',
+        ElMessageBox.confirm(t('common.sales_in_2024', { msg: chat.brief }), {
+          confirmButtonType: 'danger',
+          tip: t('common.proceed_with_caution'),
+          confirmButtonText: t('dashboard.delete'),
+          cancelButtonText: t('common.cancel'),
+          customClass: 'confirm-no_icon',
+          autofocus: false,
         }).then(() => {
           _loading.value = true
           chatApi
             .deleteChat(chat.id)
-            .then((res) => {
+            .then(() => {
               ElMessage({
                 type: 'success',
-                message: res,
+                message: t('dashboard.delete_success'),
               })
               emits('chatDeleted', chat.id)
             })
