@@ -2,7 +2,7 @@
 import delIcon from '@/assets/svg/icon_delete.svg'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { get_supplier } from '@/entity/supplier'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 const props = withDefaults(
   defineProps<{
     name: string
@@ -21,12 +21,22 @@ const props = withDefaults(
     supplier: 0,
   }
 )
+const errorMsg = ref('')
 const current_supplier = computed(() => {
   if (!props.supplier) {
     return null
   }
   return get_supplier(props.supplier)
 })
+const showErrorMask = (msg?: string) => {
+  if (!msg) {
+    return
+  }
+  errorMsg.value = msg
+  setTimeout(() => {
+    errorMsg.value = ''
+  }, 3000)
+}
 const emits = defineEmits(['edit', 'del'])
 
 const handleEdit = () => {
@@ -36,10 +46,17 @@ const handleEdit = () => {
 const handleDel = () => {
   emits('del', { id: props.id, name: props.name, default_model: props.isDefault })
 }
+
+defineExpose({ showErrorMask })
 </script>
 
 <template>
-  <div class="card">
+  <div
+    v-loading="!!errorMsg"
+    class="card"
+    :element-loading-text="errorMsg"
+    element-loading-custom-class="model-card-loading"
+  >
     <div class="name-icon">
       <img :src="current_supplier?.icon" width="32px" height="32px" />
       <span :title="name" class="name ellipsis">{{ name }}</span>
@@ -161,6 +178,30 @@ const handleDel = () => {
   &:hover {
     .methods {
       display: flex;
+    }
+  }
+  :deep(.model-card-loading) {
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: end;
+    background-color: rgb(122 122 122 / 87%);
+    .ed-loading-spinner {
+      top: auto;
+      margin: 8px 4px;
+      display: flex;
+      position: relative;
+      justify-content: flex-end;
+      align-items: center;
+      width: calc(100% - 8px);
+    }
+    svg {
+      display: none;
+    }
+    p {
+      text-align: left;
+      color: var(--ed-color-danger);
     }
   }
 }

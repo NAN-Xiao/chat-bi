@@ -8,6 +8,5 @@ export const modelApi = {
   delete: (id: number) => request.delete(`/system/aimodel/${id}`),
   query: (id: number) => request.get(`/system/aimodel/${id}`),
   setDefault: (id: number) => request.put(`/system/aimodel/default/${id}`),
-  check: (data: any) =>
-    request.post('/system/aimodel/status', data, { requestOptions: { silent: true } }),
+  check: (data: any) => request.fetchStream('/system/aimodel/status', data),
 }

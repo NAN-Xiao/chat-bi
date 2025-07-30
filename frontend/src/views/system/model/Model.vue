@@ -34,7 +34,8 @@ const activeStep = ref(0)
 const activeName = ref('')
 const activeType = ref('')
 const modelFormRef = ref()
-
+const cardRefs = ref<any[]>([])
+const showCardError = ref(true)
 reactive({
   form: {
     id: '',
@@ -69,16 +70,46 @@ const defaultModelListWithSearch = computed(() => {
   })
 })
 
-const modelCheckHandler = (item: any) => {
+const modelCheckHandler = async (item: any) => {
+  const response = await modelApi.check(item)
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let checkTimeout = false
   setTimeout(() => {
-    modelApi.check(item).catch((err: any) => {
-      if (err.response?.data?.msg) {
-        ElMessage.error(t('model.check_failed', { msg: err.response.data.msg || '' }))
-      } else {
-        ElMessage.error(t('model.check_failed', { msg: err.message || '' }))
+    checkTimeout = true
+  }, 9000)
+  let checkMsg = ''
+  while (true) {
+    if (checkTimeout) {
+      break
+    }
+    const { done, value } = await reader.read()
+    if (done) break
+    const lines = decoder.decode(value).trim().split('\n')
+    for (const line of lines) {
+      const data = JSON.parse(line)
+      if (data.error) {
+        checkMsg += data.error
+      } else if (data.content) {
+        console.debug(data.content)
       }
-    })
-  }, 1000)
+    }
+  }
+  if (!checkMsg) {
+    return
+  }
+  console.error(checkMsg)
+  if (!showCardError.value) {
+    ElMessage.error(checkMsg)
+    return
+  }
+  nextTick(() => {
+    const index = modelListWithSearch.value.findIndex((el: any) => el.id === item.id)
+    if (index > -1) {
+      const currentRef = cardRefs.value[index]
+      currentRef?.showErrorMask(checkMsg)
+    }
+  })
 }
 const duplicateName = async (item: any) => {
   const res = await modelApi.queryAll()
@@ -218,7 +249,11 @@ const preStep = () => {
 const saveModel = () => {
   modelFormRef.value.submitModel()
 }
-
+const setCardRef = (el: any, index: number) => {
+  if (el) {
+    cardRefs.value[index] = el
+  }
+}
 const search = () => {
   modelApi.queryAll().then((res: any) => {
     modelList.value = res
@@ -308,8 +343,9 @@ const submit = (item: any) => {
 
     <div v-else class="card-content">
       <card
-        v-for="ele in modelListWithSearch"
+        v-for="(ele, index) in modelListWithSearch"
         :id="ele.id"
+        :ref="(el: any) => setCardRef(el, index)"
         :key="ele.id"
         :name="ele.name"
         :supplier="ele.supplier"
