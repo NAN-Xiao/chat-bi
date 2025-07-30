@@ -376,13 +376,14 @@ const submit = (item: any) => {
 <style lang="less" scoped>
 .model-config {
   height: calc(100% - 16px);
-  padding: 16px 8px 16px 24px;
+  padding: 16px 0 16px 8px;
+  margin-right: 24px;
   .model-methods {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
-    padding-right: 24px;
+    padding-left: 24px;
     .title {
       font-weight: 500;
       font-size: 20px;
