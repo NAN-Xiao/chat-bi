@@ -9,6 +9,7 @@ import { ElMessage } from 'element-plus-secondary'
 import type { FormInstance, FormRules } from 'element-plus-secondary'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import FixedSizeList from 'element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs'
+import { debounce } from 'lodash-es'
 import { Plus } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
 import { haveSchema } from '@/views/ds/js/ds-type'
@@ -339,7 +340,7 @@ const check = () => {
 
 onBeforeUnmount(() => (saveLoading.value = false))
 
-const next = async (formEl: FormInstance | undefined) => {
+const next = debounce(async (formEl: FormInstance | undefined) => {
   if (!formEl) return
   await formEl.validate((valid) => {
     if (valid) {
@@ -369,11 +370,11 @@ const next = async (formEl: FormInstance | undefined) => {
       }
     }
   })
-}
+}, 300)
 
-const preview = () => {
+const preview = debounce(() => {
   emit('changeActiveStep', props.activeStep - 1)
-}
+}, 200)
 
 const beforeUpload = (rawFile: any) => {
   setFile(rawFile)
