@@ -21,7 +21,6 @@
       :class="{ 'assistant-popover-sidebar': isAssistant }"
     >
       <el-popover
-        :visible="isAssistant ? floatPopoverVisible : null"
         :width="280"
         placement="bottom-start"
         :popper-style="{ ...defaultFloatPopoverStyle }"
@@ -48,6 +47,31 @@
           @on-click-side-bar-btn="hideSideBar"
         />
       </el-popover>
+
+      <el-drawer
+        v-model="floatPopoverVisible"
+        :with-header="false"
+        direction="ltr"
+        size="278"
+        modal-class="assistant-popover_sidebar"
+        :before-close="hideSideBar"
+      >
+        <ChatListContainer
+          ref="floatPopoverRef"
+          v-model:chat-list="chatList"
+          v-model:current-chat-id="currentChatId"
+          v-model:current-chat="currentChat"
+          v-model:loading="loading"
+          :in-popover="false"
+          @go-empty="goEmpty"
+          @on-chat-created="onChatCreated"
+          @on-click-history="onClickHistory"
+          @on-chat-deleted="onChatDeleted"
+          @on-chat-renamed="onChatRenamed"
+          @on-click-side-bar-btn="hideSideBar"
+        />
+      </el-drawer>
+
       <el-tooltip effect="dark" :content="t('qa.new_chat')" placement="bottom">
         <el-button link type="primary" class="icon-btn" @click="createNewChatSimple">
           <el-icon>
@@ -1089,6 +1113,18 @@ onMounted(() => {
       --ed-button-active-bg-color: rgba(28, 186, 144, 0.2);
       --ed-button-active-border-color: rgba(28, 186, 144, 1);
     }
+  }
+}
+</style>
+
+<style lang="less">
+.assistant-popover_sidebar {
+  .ed-drawer {
+    height: 100% !important;
+    margin-top: 0 !important;
+  }
+  .ed-drawer__body {
+    padding: 0;
   }
 }
 </style>
