@@ -71,6 +71,8 @@ const defaultModelListWithSearch = computed(() => {
 })
 
 const modelCheckHandler = async (item: any) => {
+  console.log(item)
+  /**
   const response = await modelApi.check(item)
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -110,6 +112,7 @@ const modelCheckHandler = async (item: any) => {
       currentRef?.showErrorMask(checkMsg)
     }
   })
+    */
 }
 const duplicateName = async (item: any) => {
   const res = await modelApi.queryAll()

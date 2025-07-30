@@ -836,7 +836,8 @@ class LLMService:
                     self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session,
                                                                               current_user=self.current_user,
                                                                               ds=self.ds)
-
+            else:
+                self.validate_history_ds()
             # generate sql
             sql_res = self.generate_sql()
             full_sql_text = ''
@@ -1025,7 +1026,13 @@ class LLMService:
         finally:
             # end
             pass
-
+    
+    def validate_history_ds(self):
+        _invalid_ds = False
+        _ds = self.ds
+        _assistant = self.current_assistant
+        if _invalid_ds:
+            yield orjson.dumps({'content': 'ds is invalid', 'type': 'error'}).decode() + '\n\n'
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
     """Execute SQL query using SQLDatabase
