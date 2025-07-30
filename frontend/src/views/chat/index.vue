@@ -97,7 +97,7 @@
         <div v-else-if="computedMessages.length == 0 && loading" class="welcome-content-block">
           <logo />
         </div>
-        <el-scrollbar class="no-horizontal" v-if="computedMessages.length > 0" ref="chatListRef">
+        <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef" class="no-horizontal">
           <div
             class="chat-scroll"
             :class="{ 'no-sidebar': !isAssistant && !chatListSideBarShow, pad16: isAssistant }"

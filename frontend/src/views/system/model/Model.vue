@@ -232,7 +232,7 @@ const submit = (item: any) => {
 </script>
 
 <template>
-  <div class="model-config">
+  <div class="model-config no-padding">
     <div class="model-methods">
       <span class="title">{{ t('model.ai_model_configuration') }}</span>
       <div class="button-input">
@@ -376,11 +376,13 @@ const submit = (item: any) => {
 <style lang="less" scoped>
 .model-config {
   height: calc(100% - 16px);
+  padding: 16px 8px 16px 24px;
   .model-methods {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
+    padding-right: 24px;
     .title {
       font-weight: 500;
       font-size: 20px;
