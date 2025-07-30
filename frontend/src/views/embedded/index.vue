@@ -85,9 +85,11 @@ onMounted(() => {
   const style = document.createElement('style')
   style.innerHTML = `.ed-overlay-dialog {
         margin-top: 50px;
+        height: calc(100vh - 50px);
       }
       .ed-drawer {
         margin-top: 50px;
+        height: calc(100vh - 50px);
       }`
   document.querySelector('head')?.appendChild(style)
 })
