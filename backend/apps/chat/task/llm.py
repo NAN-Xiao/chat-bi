@@ -439,7 +439,7 @@ class LLMService:
                     _ds = self.out_ds_instance.get_ds(data['id'])
                     self.ds = _ds
                     self.chat_question.engine = _ds.type
-                    self.chat_question.db_schema = self.out_ds_instance.get_db_schema(ds.id)
+                    self.chat_question.db_schema = self.out_ds_instance.get_db_schema(self.ds.id)
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type
                 else:
