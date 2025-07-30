@@ -15,7 +15,6 @@ import DragHandle from '@/views/dashboard/canvas/DragHandle.vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import DashboardEditor from '@/views/dashboard/editor/DashboardEditor.vue'
 
-const editableTabsValue = ref(null)
 const showTabTitleFlag = ref(true)
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 let currentInstance
@@ -54,7 +53,6 @@ const props = defineProps({
 const { configItem } = toRefs(props)
 
 const state = reactive({
-  activeTabName: '',
   curItem: { title: '' },
   textarea: '',
   dialogVisible: false,
@@ -75,7 +73,7 @@ function addTab() {
   }
   configItem.value.propValue.push(newTab)
   configItem.value.activeSubTabIndex = configItem.value.propValue.length - 1
-  editableTabsValue.value = newTab.name
+  configItem.value.activeTabName = newTab.name
 }
 
 function deleteCur(param: any) {
@@ -86,7 +84,7 @@ function deleteCur(param: any) {
       configItem.value.propValue.splice(len, 1)
       const activeIndex =
         (len - 1 + configItem.value.propValue.length) % configItem.value.propValue.length
-      editableTabsValue.value = configItem.value.propValue[activeIndex].name
+      configItem.value.activeTabName = configItem.value.propValue[activeIndex].name
       configItem.value.activeSubTabIndex = configItem.value.propValue.length - 1
       state.tabShow = false
       nextTick(() => {
@@ -97,7 +95,7 @@ function deleteCur(param: any) {
 }
 
 function editCurTitle(param: any) {
-  state.activeTabName = param.name
+  configItem.value.activeTabName = param.name
   state.curItem = param
   state.textarea = param.title
   state.dialogVisible = true
@@ -149,7 +147,7 @@ const titleValid = computed(() => {
 
 const titleStyle = (itemName: string) => {
   let style = {}
-  if (editableTabsValue.value === itemName) {
+  if (configItem.value.activeTabName === itemName) {
     style = {
       fontSize: '16px',
     }
@@ -164,7 +162,8 @@ const titleStyle = (itemName: string) => {
 onMounted(() => {
   currentInstance = getCurrentInstance()
   if (configItem.value.propValue.length > 0) {
-    editableTabsValue.value = configItem.value.propValue[0].name
+    configItem.value.activeTabName = configItem.value.propValue[0].name
+    console.log('test1')
   }
 })
 
@@ -177,7 +176,7 @@ defineExpose({
   <div :class="{ 'tab-moveout': configItem.moveOutActive }">
     <drag-handle></drag-handle>
     <custom-tab
-      v-model="editableTabsValue"
+      v-model="configItem.activeTabName"
       :addable="isEditMode"
       :font-color="state.headFontColor"
       :active-color="state.headFontActiveColor"
@@ -230,7 +229,7 @@ defineExpose({
         v-for="(tabItem, index) in configItem.propValue"
         :key="tabItem.name + '-content'"
         class="tab-content-custom"
-        :class="{ 'switch-hidden': editableTabsValue !== tabItem.name }"
+        :class="{ 'switch-hidden': configItem.activeTabName !== tabItem.name }"
       >
         <SQPreview
           v-if="showPosition === 'preview'"
