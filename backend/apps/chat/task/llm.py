@@ -1028,16 +1028,23 @@ class LLMService:
             pass
     
     def validate_history_ds(self):
-        _invalid_ds = False
         _ds = self.ds
         if not self.current_assistant:
             current_ds = self.session.exec(CoreDatasource, _ds.id)
-            _invalid_ds = not current_ds
+            if not current_ds:
+                raise Exception('ds is invalid')
         else:
-            _ds_list: list[dict] = get_assistant_ds(session=self.session, llm_service=self)
-            _invalid_ds = any(item.get("id") == _ds.id for item in _ds_list)
-        if _invalid_ds:
-            yield orjson.dumps({'content': 'ds is invalid', 'type': 'error'}).decode() + '\n\n'
+            try:
+                _ds_list: list[dict] = get_assistant_ds(session=self.session, llm_service=self)
+                match_ds = any(item.get("id") == _ds.id for item in _ds_list)
+                if not match_ds:
+                    type = self.current_assistant.type
+                    msg = f"ds is invalid [please check ds list and public ds list]" if type == 0 else f"ds is invalid [please check ds api]"
+                    raise Exception(msg)
+            except Exception as e:
+                raise Exception(f"ds is invalid [{str(e)}]")
+           
+            
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
     """Execute SQL query using SQLDatabase
