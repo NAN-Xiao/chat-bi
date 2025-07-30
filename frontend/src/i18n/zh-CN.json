@@ -374,7 +374,7 @@
     "2_dashboards": "{msg} 个仪表板",
     "smart_data_centers": "{msg} 个智能问数",
     "confirm_to_delete": "数据源删除后，相关的问数不可继续提问，仪表板中的图表无法正常显示，请谨慎操作！",
-    "id_account_to_add": "搜索用户ID/账号添加",
+    "id_account_to_add": "搜索用户名称/账号添加",
     "find_user": "查找用户",
     "add_successfully": "添加成功",
     "member_management": "成员管理",
