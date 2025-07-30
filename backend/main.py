@@ -1,5 +1,4 @@
 from fastapi.concurrency import asynccontextmanager
-import sentry_sdk
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
@@ -37,9 +36,6 @@ def custom_generate_unique_id(route: APIRoute) -> str:
     tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
     return f"{tag}-{route.name}"
 
-
-if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
-    sentry_sdk.init(dsn=str(settings.SENTRY_DSN), enable_tracing=True)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
