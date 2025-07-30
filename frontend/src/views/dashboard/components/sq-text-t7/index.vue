@@ -52,7 +52,7 @@ const initOptions = {
 }
 const handleInit = (editor: any) => {
   editorRef.value = editor
-  console.log('TinyMCE 初始化完成', editor)
+  console.info('TinyMCE 初始化完成', editor)
 }
 </script>
 

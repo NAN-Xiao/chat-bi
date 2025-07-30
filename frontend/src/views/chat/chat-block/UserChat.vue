@@ -8,10 +8,10 @@ const props = defineProps<{
 const { t } = useI18n()
 
 function clickAnalysis() {
-  console.log('analysis_record_id: ' + props.message?.record?.analysis_record_id)
+  console.info('analysis_record_id: ' + props.message?.record?.analysis_record_id)
 }
 function clickPredict() {
-  console.log('predict_record_id: ' + props.message?.record?.predict_record_id)
+  console.info('predict_record_id: ' + props.message?.record?.predict_record_id)
 }
 </script>
 

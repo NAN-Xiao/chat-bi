@@ -439,6 +439,7 @@ class LLMService:
                     _ds = self.out_ds_instance.get_ds(data['id'])
                     self.ds = _ds
                     self.chat_question.engine = _ds.type
+                    self.chat_question.db_schema = self.out_ds_instance.get_db_schema(self.ds.id)
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type
                 else:
@@ -448,6 +449,7 @@ class LLMService:
                         raise Exception(f"Datasource configuration with id {_datasource} not found")
                     self.ds = CoreDatasource(**_ds.model_dump())
                     self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
+                    self.chat_question.db_schema = get_table_schema(session=self.session, current_user=self.current_user, ds=self.ds)
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
                 # save chat
@@ -834,7 +836,8 @@ class LLMService:
                     self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session,
                                                                               current_user=self.current_user,
                                                                               ds=self.ds)
-
+            else:
+                self.validate_history_ds()
             # generate sql
             sql_res = self.generate_sql()
             full_sql_text = ''
@@ -1023,7 +1026,13 @@ class LLMService:
         finally:
             # end
             pass
-
+    
+    def validate_history_ds(self):
+        _invalid_ds = False
+        _ds = self.ds
+        _assistant = self.current_assistant
+        if _invalid_ds:
+            yield orjson.dumps({'content': 'ds is invalid', 'type': 'error'}).decode() + '\n\n'
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
     """Execute SQL query using SQLDatabase

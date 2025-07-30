@@ -93,7 +93,7 @@ const filterTypeChange = () => {
   initEnumOptions()
 }
 const initEnumOptions = () => {
-  console.log('initEnumOptions')
+  console.info('initEnumOptions')
 }
 
 const selectItem = ({ field_name, id }: any) => {

@@ -552,7 +552,7 @@ const handleEditPassword = (id: any) => {
 const handleConfirmPassword = () => {
   passwordRef.value.validate((val: any) => {
     if (val) {
-      console.log(val)
+      console.info(val)
     }
   })
   dialogVisiblePassword.value = false

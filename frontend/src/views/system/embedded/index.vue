@@ -164,7 +164,7 @@ const beforeClose = () => {
 }
 
 const handleActive = (row: any) => {
-  console.log('row', row)
+  console.info('row', row)
 }
 
 const handlePrivate = (row: any) => {
