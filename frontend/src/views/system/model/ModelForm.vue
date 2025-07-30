@@ -173,6 +173,8 @@ const initForm = (item?: any) => {
           curId += 1
         }
       })
+    } else {
+      advancedSetting.value = []
     }
   }
 }
