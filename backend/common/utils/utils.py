@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import inspect
 import logging
@@ -215,6 +216,20 @@ class SQLBotLogUtil:
         logger = SQLBotLogUtil._get_logger()
         if logger.isEnabledFor(logging.CRITICAL):
             logger._log(logging.CRITICAL, msg, args, **kwargs)
+            
+def prepare_for_orjson(data):
+    if not data:
+        return data
+    if isinstance(data, bytes):
+        return base64.b64encode(data).decode('utf-8')
+    elif isinstance(data, dict):
+        return {k: prepare_for_orjson(v) for k, v in data.items()}
+    elif isinstance(data, (list, tuple)):
+        return [prepare_for_orjson(item) for item in data]
+    else:
+        return data
+        
+    
 
 
 

@@ -29,9 +29,8 @@ def get_assistant_user(*, id: int):
                        email="sqlbot-inner-assistant@sqlbot.com")
 
 
-def get_assistant_ds(llm_service) -> list[dict]:
+def get_assistant_ds(session: Session, llm_service) -> list[dict]:
     assistant: AssistantHeader = llm_service.current_assistant
-    session: Session = llm_service.session
     type = assistant.type
     if type == 0:
         configuration = assistant.configuration

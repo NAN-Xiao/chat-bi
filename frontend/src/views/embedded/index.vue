@@ -93,6 +93,10 @@ onMounted(() => {
 })
 onBeforeMount(async () => {
   const assistantId = route.query.id
+  if (!assistantId) {
+    ElMessage.error('Miss assistant id, please check assistant url')
+    return
+  }
   const online = route.query.online
   setFormatOnline(online)
   const now = Date.now()
