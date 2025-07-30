@@ -1,10 +1,9 @@
 <p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/sqlbot/sqlbot.png" alt="SQLBot" width="300" /></p>
 <h3 align="center">基于大模型和 RAG 的智能问数系统</h3>
 <p align="center">
-  <a href="https://www.gnu.org/licenses/gpl-3.0.html#license-text"><img src="https://img.shields.io/github/license/1Panel-dev/SQLBot?color=%231890FF" alt="License: GPL v3"></a>
-  <a href="https://github.com/1Panel-dev/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/1Panel-dev/SQLBot" alt="Latest release"></a>
-  <a href="https://github.com/1Panel-dev/SQLBot"><img src="https://img.shields.io/github/stars/1Panel-dev/SQLBot?color=%231890FF&style=flat-square" alt="Stars"></a>    
-  <a href="https://hub.docker.com/r/1panel/SQLbot"><img src="https://img.shields.io/docker/pulls/1panel/SQLBot?label=downloads" alt="Download"></a><br/>
+  <a href="https://github.com/dataease/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/SQLBot" alt="Latest release"></a>
+  <a href="https://github.com/dataease/SQLBot"><img src="https://img.shields.io/github/stars/dataease/SQLBot?color=%231890FF&style=flat-square" alt="Stars"></a>    
+  <a href="https://hub.docker.com/r/dataease/SQLbot"><img src="https://img.shields.io/docker/pulls/dataease/SQLBot?label=downloads" alt="Download"></a><br/>
 </p>
 <hr/>
 
@@ -29,7 +28,7 @@ docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/
 
 如你有更多问题，可以加入我们的技术交流群与我们交流。
 
-TBD
+TBD: 交流群二维码
 
 ## UI 展示
 
@@ -44,7 +43,11 @@ TBD
   </tr>
 </table>
 
-## 飞致云的其他明星项目
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=dataease/SQLBot&type=Date)](https://star-history.com/#dataease/SQLBot&Date)
+
+## 飞致云旗下的其他明星项目
 
 - [DataEase](https://github.com/dataease/dataease/) - 人人可用的开源 BI 工具
 - [1Panel](https://github.com/1panel-dev/1panel/) - 现代化、开源的 Linux 服务器运维管理面板
@@ -52,10 +55,6 @@ TBD
 - [JumpServer](https://github.com/jumpserver/jumpserver/) - 广受欢迎的开源堡垒机
 - [Halo](https://github.com/halo-dev/halo/) - 强大易用的开源建站工具
 - [MeterSphere](https://github.com/metersphere/metersphere/) - 新一代的开源持续测试工具
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=1Panel-dev/SQLBot&type=Date)](https://star-history.com/#1Panel-dev/SQLBot&Date)
 
 ## License
 
