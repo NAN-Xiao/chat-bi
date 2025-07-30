@@ -182,7 +182,7 @@ class HttpService {
           setTimeout(() => {
             wsCache.delete('user.token')
             window.location.reload()
-          }, 1000)
+          }, 2000)
           return
         // break
         case 403:
