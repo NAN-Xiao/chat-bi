@@ -80,7 +80,7 @@ const doDeleteComponent = (e: MouseEvent) => {
   right: 12px;
   top: 12px;
   display: flex;
-  z-index: 1;
+  z-index: 11;
   cursor: pointer !important;
 }
 
