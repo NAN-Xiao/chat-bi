@@ -97,6 +97,7 @@ function selectChange(value: boolean, viewInfo: any) {
 }
 
 const getData = (record: any) => {
+  const recordData = record.data
   if (record?.predict_record_id !== undefined && record?.predict_record_id !== null) {
     let _list = []
     if (record?.predict_data && typeof record?.predict_data === 'string') {
@@ -121,13 +122,15 @@ const getData = (record: any) => {
       return _list
     }
 
-    if (record.data && record.data.length > 0) {
-      return concat(record.data, _list)
+    if (recordData.data && recordData.data.length > 0) {
+      recordData.data = concat(recordData.data, _list)
+    } else {
+      recordData.data = _list
     }
 
-    return _list
+    return recordData
   } else {
-    return record.data
+    return recordData
   }
 }
 
@@ -142,7 +145,7 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
           (record?.sql || record?.chart)) ||
         (record?.predict_record_id !== undefined &&
           record?.predict_record_id !== null &&
-          data.length > 0)
+          data.data.length > 0)
       ) {
         const recordeInfo = { id: chatInfo.id + '_' + record.id, data: data, chart: {} }
         const chartBaseInfo = JSON.parse(record.chart)
