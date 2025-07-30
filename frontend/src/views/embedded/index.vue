@@ -88,7 +88,7 @@ onMounted(() => {
       }
       .ed-drawer {
         margin-top: 50px;
-        height: calc(100vh - 50px);
+        calc(100vh - 50px) !important;
       }`
   document.querySelector('head')?.appendChild(style)
 })
