@@ -88,7 +88,7 @@ defineExpose({ showErrorMask })
 
 <style lang="less" scoped>
 .card {
-  width: 404px;
+  width: calc(33% - 14px);
   height: 160px;
   border: 1px solid #dee0e3;
   padding: 16px;
@@ -107,7 +107,7 @@ defineExpose({ showErrorMask })
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
-      max-width: 280px;
+      max-width: calc(100% - 115px);
     }
     .default {
       margin-left: auto;

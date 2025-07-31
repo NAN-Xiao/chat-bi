@@ -450,7 +450,7 @@ const saveHandler = () => {
 </script>
 
 <template>
-  <div v-loading="searchLoading" class="embedded">
+  <div v-loading="searchLoading" class="embedded no-padding">
     <div class="tool-left">
       <div class="btn-select">
         <el-button :class="[btnSelect === 'd' && 'is-active']" text @click="btnSelect = 'd'">
@@ -914,6 +914,8 @@ const saveHandler = () => {
 <style lang="less" scoped>
 .embedded {
   height: 100%;
+  padding: 24px 24px 24px 8px;
+
   .ed-empty {
     padding-top: 200px;
     padding-bottom: 0;
@@ -923,6 +925,7 @@ const saveHandler = () => {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
+    padding-left: 24px;
 
     .btn-select {
       height: 32px;
@@ -958,6 +961,7 @@ const saveHandler = () => {
     flex-wrap: wrap;
     max-height: calc(100% - 40px);
     overflow-y: auto;
+    justify-content: space-between;
   }
 }
 </style>

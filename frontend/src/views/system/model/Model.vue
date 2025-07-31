@@ -415,8 +415,7 @@ const submit = (item: any) => {
 <style lang="less" scoped>
 .model-config {
   height: calc(100% - 16px);
-  padding: 16px 0 16px 8px;
-  margin-right: 24px;
+  padding: 24px 24px 24px 8px;
   .model-methods {
     display: flex;
     align-items: center;
@@ -435,6 +434,7 @@ const submit = (item: any) => {
     flex-wrap: wrap;
     max-height: calc(100% - 40px);
     overflow-y: auto;
+    justify-content: space-between;
   }
 }
 </style>

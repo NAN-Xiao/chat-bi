@@ -69,12 +69,12 @@ const handleEmbedded = () => {
 
 <style lang="less" scoped>
 .card {
-  width: 400px;
+  width: calc(33% - 14px);
   height: 168px;
   border: 1px solid #dee0e3;
   padding: 16px;
   border-radius: 12px;
-  margin: 0 16px 16px 0;
+  margin: 0 0 16px 16px;
   &:hover {
     box-shadow: 0px 6px 24px 0px #1f232914;
   }
@@ -88,7 +88,7 @@ const handleEmbedded = () => {
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
-      max-width: 200px;
+      max-width: calc(100% - 115px);
     }
 
     .default {

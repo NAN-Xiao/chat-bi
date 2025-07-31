@@ -210,7 +210,7 @@ const back = () => {
 </script>
 
 <template>
-  <div v-show="!currentDataTable" class="datasource-config">
+  <div v-show="!currentDataTable" class="datasource-config no-padding">
     <div class="datasource-methods">
       <span class="title">{{ $t('ds.title') }}</span>
       <div class="button-input">
@@ -378,11 +378,13 @@ const back = () => {
 <style lang="less" scoped>
 .datasource-config {
   height: calc(100% - 16px);
+  padding: 24px 24px 24px 8px;
   .datasource-methods {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
+    padding-left: 16px;
     .title {
       font-weight: 500;
       font-size: 20px;
@@ -395,6 +397,7 @@ const back = () => {
     flex-wrap: wrap;
     max-height: calc(100% - 40px);
     overflow-y: auto;
+    justify-content: space-between;
   }
 
   .datasource-yet {
