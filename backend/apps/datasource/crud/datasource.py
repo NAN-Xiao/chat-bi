@@ -31,7 +31,6 @@ def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[in
         current_oid = oid
     return session.exec(select(CoreDatasource).where(CoreDatasource.oid == current_oid).order_by(
         func.convert_to(CoreDatasource.name, 'gbk'))).all()
-    
 
 
 def get_ds(session: SessionDep, id: int):
@@ -40,7 +39,7 @@ def get_ds(session: SessionDep, id: int):
     return datasource
 
 
-def check_status(session: SessionDep, ds: CoreDatasource, is_raise: bool = False):
+def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise: bool = False):
     conn = get_engine(ds, 10)
     try:
         with conn.connect() as connection:
@@ -49,7 +48,7 @@ def check_status(session: SessionDep, ds: CoreDatasource, is_raise: bool = False
     except Exception as e:
         SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
         if is_raise:
-            raise HTTPException(status_code=500, detail=f'Connect Failed: {e.args}')
+            raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
         return False
 
 
@@ -89,9 +88,9 @@ def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: C
     return ds
 
 
-def chooseTables(session: SessionDep, id: int, tables: List[CoreTable]):
+def chooseTables(session: SessionDep, trans: Trans, id: int, tables: List[CoreTable]):
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
-    check_status(session, ds, True)
+    check_status(session, trans, ds, True)
     sync_table(session, ds, tables)
     updateNum(session, ds)
 
@@ -99,7 +98,7 @@ def chooseTables(session: SessionDep, id: int, tables: List[CoreTable]):
 def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     ds.id = int(ds.id)
     check_name(session, trans, user, ds)
-    status = check_status(session, ds)
+    status = check_status(session, trans, ds)
     ds.status = "Success" if status is True else "Fail"
     record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()
     update_data = ds.model_dump(exclude_unset=True)

@@ -38,9 +38,9 @@ async def get_datasource(session: SessionDep, id: int):
 
 
 @router.post("/check")
-async def check(session: SessionDep, ds: CoreDatasource):
+async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
     def inner():
-        return check_status(session, ds, True)
+        return check_status(session, trans, ds, True)
 
     return await asyncio.to_thread(inner)
 
@@ -54,9 +54,9 @@ async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDa
 
 
 @router.post("/chooseTables/{id}")
-async def choose_tables(session: SessionDep, id: int, tables: List[CoreTable]):
+async def choose_tables(session: SessionDep, trans: Trans, id: int, tables: List[CoreTable]):
     def inner():
-        chooseTables(session, id, tables)
+        chooseTables(session, trans, id, tables)
 
     await asyncio.to_thread(inner)
 
@@ -80,12 +80,18 @@ async def get_tables(session: SessionDep, id: int):
 
 
 @router.post("/getTablesByConf")
-async def get_tables_by_conf(session: SessionDep, ds: CoreDatasource):
+async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
     try:
         return getTablesByDs(session, ds)
     except Exception as e:
-        SQLBotLogUtil.error(f"get table failed: {e}")
-        raise HTTPException(status_code=500, detail=f'Get table Failed: {e.args}')
+        # check ds status
+        def inner():
+            return check_status(session, trans, ds, True)
+
+        status = await asyncio.to_thread(inner)
+        if status:
+            SQLBotLogUtil.error(f"get table failed: {e}")
+            raise HTTPException(status_code=500, detail=f'Get table Failed: {e.args}')
 
 
 @router.post("/getFields/{id}/{table_name}")
@@ -127,13 +133,17 @@ async def edit_field(session: SessionDep, field: CoreField):
 
 
 @router.post("/previewData/{id}")
-async def preview_data(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
+async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, id: int, data: TableObj):
     def inner():
         try:
             return preview(session, current_user, id, data)
         except Exception as e:
-            SQLBotLogUtil.error(f"Preview failed: {e}")
-            raise HTTPException(status_code=500, detail=f'Preview Failed: {e.args}')
+            ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+            # check ds status
+            status = check_status(session, trans, ds, True)
+            if status:
+                SQLBotLogUtil.error(f"Preview failed: {e}")
+                raise HTTPException(status_code=500, detail=f'Preview Failed: {e.args}')
 
     return await asyncio.to_thread(inner)
 
@@ -195,7 +205,8 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
                     create_table(conn, tableName, fields)
 
                     data = [
-                        {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
+                        {df.columns[i]: None if pd.isna(row[i]) else (
+                            int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
                          for i in range(len(row))}
                         for row in df.values
                     ]

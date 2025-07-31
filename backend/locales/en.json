@@ -31,5 +31,6 @@
         "validate_error": "Validation failed [{msg}]",
         "delete_default_error": "Cannot delete default model [{key}]!",
         "miss_default": "The default large language model has not been configured"
-    }
+    },
+    "i18n_ds_invalid": "Datasource Invalid"
 }

@@ -26,11 +26,12 @@
         "only_admin": "仅支持管理员调用！",
         "no_permission": "无权调用{url}{msg}",
         "authenticate_invalid": "认证无效【{msg}】"
-        
+
     },
     "i18n_llm": {
         "validate_error": "校验失败[{msg}]",
         "delete_default_error": "无法删除默认模型[{key}]！",
         "miss_default": "尚未配置默认大语言模型"
-    }
+    },
+    "i18n_ds_invalid": "数据源连接无效"
 }
