@@ -231,7 +231,7 @@ const initForm = (item: any, editTable: boolean = false) => {
 
 const save = async (formEl: FormInstance | undefined) => {
   if (!formEl) return
-  await formEl.validate((valid) => {
+  await formEl.validate(async (valid) => {
     if (valid) {
       const list = tableList.value
         .filter((ele: any) => {
@@ -242,8 +242,17 @@ const save = async (formEl: FormInstance | undefined) => {
         })
 
       if (checkList.value.length > 30) {
-        ElMessage.error(t('common.limited_to_30'))
-        return
+        const excessive = await ElMessageBox.confirm(t('common.excessive_tables_selected'), {
+          tip: t('common.to_continue_saving', { msg: checkList.value.length }),
+          confirmButtonText: t('common.save'),
+          cancelButtonText: t('common.cancel'),
+          confirmButtonType: 'primary',
+          type: 'warning',
+          customClass: 'confirm-with_icon',
+          autofocus: false,
+        })
+
+        if (excessive !== 'confirm') return
       }
       saveLoading.value = true
 

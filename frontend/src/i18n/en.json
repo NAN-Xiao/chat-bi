@@ -6,6 +6,8 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
+    "excessive_tables_selected": "Excessive tables selected",
+    "to_continue_saving": "The number of selected tables is 67, exceeding {msg}. This may cause the operation to time out or become unresponsive. Do you want to continue saving?",
     "proceed_with_caution": "Deletion is irreversible, so proceed with caution.",
     "sales_in_2024": "Delete conversation: {msg}?",
     "limited_to_30": "The number of data tables is limited to 30",
