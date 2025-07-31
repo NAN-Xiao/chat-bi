@@ -945,6 +945,7 @@ onMounted(() => {
     .input-wrapper {
       width: 100%;
       position: relative;
+      max-width: 800px;
 
       .datasource {
         width: calc(100% - 2px);
