@@ -1,6 +1,7 @@
 import icon_alybl_colorful from '@/assets/model/icon_alybl_colorful.png'
 import icon_bdyzn_colorful from '@/assets/model/icon_bdyzn_colorful.png'
 import icon_deepseek_colorful from '@/assets/model/icon_deepseek_colorful.png'
+import icon_txy_colorful from '@/assets/model/icon_txy_colorful.png'
 type ModelConfig = Record<number, { api_domain: string; model_options: string[] }>
 
 export const supplierList: Array<{
@@ -39,6 +40,24 @@ export const supplierList: Array<{
       0: {
         api_domain: 'https://api.deepseek.com',
         model_options: ['deepseek-chat', 'deepseek-reasoner'],
+      },
+    },
+  },
+  {
+    id: 4,
+    name: '腾讯云',
+    icon: icon_txy_colorful,
+    model_config: {
+      0: {
+        api_domain: 'https://api.hunyuan.cloud.tencent.com/v1/',
+        model_options: [
+          'hunyuan-turbos-latest',
+          'hunyuan-turbos-longtext-128k-20250325',
+          'hunyuan-large',
+          'hunyuan-standard-256K',
+          'hunyuan-standard',
+          'hunyuan-lite',
+        ],
       },
     },
   },
