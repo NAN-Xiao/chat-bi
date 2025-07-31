@@ -30,6 +30,7 @@
     },
     "i18n_llm": {
         "validate_error": "校验失败[{msg}]",
-        "delete_default_error": "无法删除默认模型[{key}]！"
+        "delete_default_error": "无法删除默认模型[{key}]！",
+        "miss_default": "尚未配置默认大语言模型"
     }
 }

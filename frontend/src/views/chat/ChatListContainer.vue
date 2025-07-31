@@ -9,7 +9,9 @@ import ChatCreator from '@/views/chat/ChatCreator.vue'
 import { useAssistantStore } from '@/stores/assistant'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
-
+import { useUserStore } from '@/stores/user'
+import router from '@/router'
+const userStore = useUserStore()
 const props = withDefaults(
   defineProps<{
     inPopover?: boolean
@@ -112,6 +114,33 @@ function goEmpty(func?: (...p: any[]) => void, ...params: any[]) {
 }
 
 const createNewChat = async () => {
+  try {
+    await chatApi.checkLLMModel()
+  } catch (error: any) {
+    console.error(error)
+    let errorMsg = t('model.default_miss')
+    let confirm_text = t('datasource.got_it')
+    if (userStore.isAdmin) {
+      errorMsg = t('model.default_miss_admin')
+      confirm_text = t('model.to_config')
+    }
+    ElMessageBox.confirm(t('qa.ask_failed'), {
+      confirmButtonType: 'primary',
+      tip: errorMsg,
+      showCancelButton: userStore.isAdmin,
+      confirmButtonText: confirm_text,
+      cancelButtonText: t('common.cancel'),
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+      showClose: false,
+      callback: (val: string) => {
+        if (userStore.isAdmin && val === 'confirm') {
+          router.push('/system/model')
+        }
+      },
+    })
+    return
+  }
   goEmpty(doCreateNewChat)
 }
 

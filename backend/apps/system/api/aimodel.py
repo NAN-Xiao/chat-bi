@@ -38,6 +38,33 @@ async def check_llm(info: AiModelCreator, trans: Trans):
     
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 
+@router.get("/default")
+async def check_default(session: SessionDep, trans: Trans):
+    db_model = session.exec(
+        select(AiModelDetail).where(AiModelDetail.default_model == True)
+    ).first()
+    if not db_model:
+        raise Exception(trans('i18n_llm.miss_default'))
+    
+@router.put("/default/{id}")
+async def set_default(session: SessionDep, id: int):
+    db_model = session.get(AiModelDetail, id)
+    if not db_model:
+        raise ValueError(f"AiModelDetail with id {id} not found")
+    if db_model.default_model:
+        return
+
+    try:
+        session.exec(
+            update(AiModelDetail).values(default_model=False)
+        )
+        db_model.default_model = True
+        session.add(db_model)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise e
+
 @router.get("", response_model=list[AiModelGridItem])
 async def query(
         session: SessionDep,
@@ -119,22 +146,5 @@ async def delete_model(
     session.delete(item)
     session.commit()
     
-@router.put("/default/{id}")
-async def set_default(session: SessionDep, id: int):
-    db_model = session.get(AiModelDetail, id)
-    if not db_model:
-        raise ValueError(f"AiModelDetail with id {id} not found")
-    if db_model.default_model:
-        return
 
-    try:
-        session.exec(
-            update(AiModelDetail).values(default_model=False)
-        )
-        db_model.default_model = True
-        session.add(db_model)
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise e
     

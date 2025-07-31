@@ -110,7 +110,7 @@ def get_default_config() -> LLMConfig:
             select(AiModelDetail).where(AiModelDetail.default_model == True)
         ).first()
         if not db_model:
-            raise ValueError("The system default model has not been set")
+            raise Exception("The system default model has not been set")
 
         additional_params = {}
         if db_model.config:

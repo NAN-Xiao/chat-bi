@@ -328,4 +328,5 @@ export const chatApi = {
   recommendQuestions: (record_id: number | undefined, controller?: AbortController) => {
     return request.fetchStream(`/chat/recommend_questions/${record_id}`, {}, controller)
   },
+  checkLLMModel: () => request.get('/system/aimodel/default', { requestOptions: { silent: true } }),
 }

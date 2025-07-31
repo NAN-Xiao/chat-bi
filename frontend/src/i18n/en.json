@@ -133,7 +133,8 @@
     "no_time": "No Time",
     "rename_conversation_title": "Rename conversation title",
     "conversation_title": "Conversation title",
-    "copied": "Copied"
+    "copied": "Copied",
+    "ask_failed": "Q&A failed"
   },
   "ds": {
     "title": "Data Sources",
@@ -291,7 +292,10 @@
     "del_default_tip": "Unable to delete the model: {msg}",
     "del_default_warn": "This model is the system default model. Please set another model as the system default before deleting this model.",
     "del_warn_tip": "Would you like to remove the model: {msg}？",
-    "check_failed": "Model is invalid [{msg}]"
+    "check_failed": "Model is invalid [{msg}]",
+    "default_miss": "The default llm has not been configured yet, so the q&a feature cannot be enabled, Please contact the administrator to configure it.",
+    "default_miss_admin": "The default llm has not been configured yet, so the q&a feature cannot be enabled.",
+    "to_config": "Go to configuration"
   },
   "user": {
     "workspace": "Workspace",

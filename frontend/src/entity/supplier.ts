@@ -22,7 +22,7 @@ export const supplierList: Array<{
   },
   {
     id: 2,
-    name: '千帆大模型I',
+    name: '千帆大模型',
     icon: icon_bdyzn_colorful,
     model_config: {
       0: {

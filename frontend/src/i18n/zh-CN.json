@@ -133,7 +133,8 @@
     "no_time": "没有时间",
     "rename_conversation_title": "重命名对话标题",
     "conversation_title": "对话标题",
-    "copied": "已复制"
+    "copied": "已复制",
+    "ask_failed": "问数失败"
   },
   "ds": {
     "title": "数据源",
@@ -291,7 +292,10 @@
     "del_default_tip": "无法删除模型: {msg}",
     "del_default_warn": "该模型为系统默认模型，请先设置其他模型为系统默认模型，再删除此模型。",
     "del_warn_tip": "是否删除模型: {msg}？",
-    "check_failed": "模型无效【{msg}】"
+    "check_failed": "模型无效【{msg}】",
+    "default_miss": "尚未配置默认大语言大模型，因此无法开启问数，请联系管理员配置。",
+    "default_miss_admin": "尚未配置默认大语言大模型，因此无法开启问数。",
+    "to_config": "去配置"
   },
   "user": {
     "workspace": "工作空间",

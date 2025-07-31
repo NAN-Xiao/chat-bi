@@ -356,7 +356,9 @@ import logo from '@/assets/LOGO.svg'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import { useAssistantStore } from '@/stores/assistant'
 import { onClickOutside } from '@vueuse/core'
-
+import { useUserStore } from '@/stores/user'
+import router from '@/router'
+const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
 }>()
@@ -437,6 +439,33 @@ const createNewChatSimple = async () => {
 }
 
 const createNewChat = async () => {
+  try {
+    await chatApi.checkLLMModel()
+  } catch (error: any) {
+    console.error(error)
+    let errorMsg = t('model.default_miss')
+    let confirm_text = t('datasource.got_it')
+    if (userStore.isAdmin) {
+      errorMsg = t('model.default_miss_admin')
+      confirm_text = t('model.to_config')
+    }
+    ElMessageBox.confirm(t('qa.ask_failed'), {
+      confirmButtonType: 'primary',
+      tip: errorMsg,
+      showCancelButton: userStore.isAdmin,
+      confirmButtonText: confirm_text,
+      cancelButtonText: t('common.cancel'),
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+      showClose: false,
+      callback: (val: string) => {
+        if (userStore.isAdmin && val === 'confirm') {
+          router.push('/system/model')
+        }
+      },
+    })
+    return
+  }
   goEmpty()
   if (isAssistant.value) {
     currentChat.value = new ChatInfo()
