@@ -343,21 +343,32 @@ const submit = (item: any) => {
       :description="$t('datasource.relevant_content_found')"
       img-type="tree"
     />
-
     <div v-else class="card-content">
-      <card
-        v-for="(ele, index) in modelListWithSearch"
-        :id="ele.id"
-        :ref="(el: any) => setCardRef(el, index)"
-        :key="ele.id"
-        :name="ele.name"
-        :supplier="ele.supplier"
-        :model-type="getModelTypeName(ele['model_type'])"
-        :base-model="ele['base_model']"
-        :is-default="ele['default_model']"
-        @edit="handleEditModel(ele)"
-        @del="deleteHandler"
-      ></card>
+      <el-row :gutter="16" class="w-full">
+        <el-col
+          v-for="(ele, index) in modelListWithSearch"
+          :key="ele.id"
+          :xs="24"
+          :sm="12"
+          :md="12"
+          :lg="8"
+          :xl="6"
+          class="mb-16"
+        >
+          <card
+            :id="ele.id"
+            :ref="(el: any) => setCardRef(el, index)"
+            :key="ele.id"
+            :name="ele.name"
+            :supplier="ele.supplier"
+            :model-type="getModelTypeName(ele['model_type'])"
+            :base-model="ele['base_model']"
+            :is-default="ele['default_model']"
+            @edit="handleEditModel(ele)"
+            @del="deleteHandler"
+          ></card>
+        </el-col>
+      </el-row>
     </div>
     <el-drawer
       v-model="modelConfigvVisible"
@@ -415,13 +426,13 @@ const submit = (item: any) => {
 <style lang="less" scoped>
 .model-config {
   height: calc(100% - 16px);
-  padding: 24px 24px 24px 8px;
+  padding: 16px 0 16px 0;
   .model-methods {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
-    padding-left: 24px;
+    padding: 0 24px 0 24px;
     .title {
       font-weight: 500;
       font-size: 20px;
@@ -430,11 +441,17 @@ const submit = (item: any) => {
   }
 
   .card-content {
-    display: flex;
-    flex-wrap: wrap;
     max-height: calc(100% - 40px);
     overflow-y: auto;
-    justify-content: space-between;
+    padding: 0 8px 0 24px;
+
+    .w-full {
+      width: 100%;
+    }
+
+    .mb-16 {
+      margin-bottom: 16px;
+    }
   }
 }
 </style>

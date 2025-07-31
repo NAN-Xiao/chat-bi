@@ -508,19 +508,30 @@ const saveHandler = () => {
       :description="$t('datasource.relevant_content_found')"
       img-type="tree"
     />
-
     <div v-else class="card-content">
-      <Card
-        v-for="ele in embeddedListWithSearch"
-        :id="ele.id"
-        :key="ele.id"
-        :name="ele.name"
-        :is-base="ele.type === 0"
-        :description="ele.description"
-        @embedded="handleEmbedded(ele)"
-        @edit="handleEditRule(ele)"
-        @del="deleteHandler(ele)"
-      ></Card>
+      <el-row :gutter="16" class="w-full">
+        <el-col
+          v-for="ele in embeddedListWithSearch"
+          :key="ele.id"
+          :xs="24"
+          :sm="12"
+          :md="12"
+          :lg="8"
+          :xl="6"
+          class="mb-16"
+        >
+          <Card
+            :id="ele.id"
+            :key="ele.id"
+            :name="ele.name"
+            :is-base="ele.type === 0"
+            :description="ele.description"
+            @embedded="handleEmbedded(ele)"
+            @edit="handleEditRule(ele)"
+            @del="deleteHandler(ele)"
+          ></Card>
+        </el-col>
+      </el-row>
     </div>
     <template v-if="!keywords && !embeddedListWithSearch.length && !searchLoading">
       <EmptyBackground :description="$t('embedded.no_application')" img-type="noneWhite" />
@@ -914,7 +925,7 @@ const saveHandler = () => {
 <style lang="less" scoped>
 .embedded {
   height: 100%;
-  padding: 24px 24px 24px 8px;
+  padding: 16px 0 16px 0;
 
   .ed-empty {
     padding-top: 200px;
@@ -925,7 +936,7 @@ const saveHandler = () => {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
-    padding-left: 24px;
+    padding: 0 24px 0 24px;
 
     .btn-select {
       height: 32px;
@@ -957,11 +968,17 @@ const saveHandler = () => {
   }
 
   .card-content {
-    display: flex;
-    flex-wrap: wrap;
     max-height: calc(100% - 40px);
     overflow-y: auto;
-    justify-content: space-between;
+    padding: 0 8px 0 24px;
+
+    .w-full {
+      width: 100%;
+    }
+
+    .mb-16 {
+      margin-bottom: 16px;
+    }
   }
 }
 </style>
