@@ -43,10 +43,10 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan
 )
-# mcp server, images path
-app.mount("/images", StaticFiles(directory=settings.MCP_IMAGE_PATH), name="images")
 
 mcp_app = FastAPI()
+# mcp server, images path
+mcp_app.mount("/images", StaticFiles(directory=settings.MCP_IMAGE_PATH), name="images")
 
 mcp = FastApiMCP(
     app,
