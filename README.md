@@ -15,16 +15,32 @@ SQLBot 是一款基于大模型和 RAG 的智能问数系统。SQLBot 的优势�
 
 ## 快速开始
 
-准备一台 Linux 机器，执行一键安装脚本：
+### 安装部署
 
-```
-docker run -d --name=sqlbot --restart=always -p 8080:8080 -v ~/.sqlbot:/var/lib/postgresql/data -v ~/.python-packages:/opt/sqlbot/app/sandbox/python-packages registry.fit2cloud.com/sqlbot/sqlbot
+准备一台 Linux 服务器，执行以下一键安装脚本。  
+在运行 SQLBot 前，请确保已安装好 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)。
 
-# 用户名: admin
-# 密码: SQLBot@123..
+```bash
+# 创建目录
+mkdir -p /opt/sqlbot
+cd /opt/sqlbot
+
+# 下载 docker-compose.yaml
+curl -o docker-compose.yaml https://raw.githubusercontent.com/dataease/SQLBot/main/docker-compose.yaml
+
+# 启动服务
+docker compose up -d
 ```
 
 你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot；
+
+### 访问方式
+
+- 在浏览器中打开: http://<你的服务器IP>:8000/
+- 用户名: admin
+- 密码: SQLBot@123456
+
+### 联系我们
 
 如你有更多问题，可以加入我们的技术交流群与我们交流。
 
