@@ -395,6 +395,7 @@
     "238_people": "{msg} 人",
     "no_permission_rule": "暂无权限规则",
     "set_permission_rule": "设置权限规则",
+    "basic_information": "基础信息",
     "rule_group_name": "规则组名称",
     "rule_name": "规则名称",
     "type": "类型",
@@ -433,7 +434,14 @@
     "filter_like": "包含",
     "filter_not_like": "不包含",
     "filter_in": "属于",
-    "filter_not_in": "不属于"
+    "filter_not_in": "不属于",
+    "enter_a_question": "请输入问题",
+    "new_conversation": "新会话",
+    "send": "发送",
+    "stop_replying": "停止回复",
+    "i_am_sqlbot": "你好，我是SQLBot",
+    "predict_data_etc": "我可以查询数据、生成图表、分析数据、预测数据等。",
+    "intelligent_data_query": "赶快开启智能问数吧～"
   },
   "embedded": {
     "embedded_management": "嵌入式管理",
