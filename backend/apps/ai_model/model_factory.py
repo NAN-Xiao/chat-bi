@@ -1,3 +1,4 @@
+from functools import lru_cache
 import json
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, Type
@@ -21,6 +22,18 @@ class LLMConfig(BaseModel):
     api_key: Optional[str] = None
     api_base_url: Optional[str] = None
     additional_params: Dict[str, Any] = {}
+    class Config:
+        frozen = True
+
+    def __hash__(self):
+        return hash((
+            self.model_id,
+            self.model_type,
+            self.model_name,
+            self.api_key,
+            self.api_base_url,
+            frozenset(self.additional_params.items())
+        ))
 
 
 class BaseLLM(ABC):
@@ -66,6 +79,7 @@ class LLMFactory:
     }
 
     @classmethod
+    @lru_cache(maxsize=32)
     def create_llm(cls, config: LLMConfig) -> BaseLLM:
         llm_class = cls._llm_types.get(config.model_type)
         if not llm_class:

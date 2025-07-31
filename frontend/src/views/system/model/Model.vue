@@ -35,7 +35,7 @@ const activeName = ref('')
 const activeType = ref('')
 const modelFormRef = ref()
 const cardRefs = ref<any[]>([])
-// const showCardError = ref(true) // if you don`t want card mask error, just change this to false
+const showCardError = ref(false) // if you don`t want card mask error, just change this to false
 reactive({
   form: {
     id: '',
@@ -71,8 +71,6 @@ const defaultModelListWithSearch = computed(() => {
 })
 
 const modelCheckHandler = async (item: any) => {
-  console.log(item)
-  /**
   const response = await modelApi.check(item)
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -112,7 +110,6 @@ const modelCheckHandler = async (item: any) => {
       currentRef?.showErrorMask(checkMsg)
     }
   })
-    */
 }
 const duplicateName = async (item: any) => {
   const res = await modelApi.queryAll()

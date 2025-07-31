@@ -27,12 +27,8 @@ async def check_llm(info: AiModelCreator, trans: Trans):
                 additional_params=additional_params,
             )
             llm_instance = LLMFactory.create_llm(config)
-            
-            res = llm_instance.llm.stream("who are you?")
-            
-            for chunk in res:
+            async for chunk in llm_instance.llm.astream("1+1=?"):
                 if chunk and chunk.content:
-                    SQLBotLogUtil.info(chunk)
                     yield json.dumps({"content": chunk.content}) + "\n"
         
         except Exception as e:

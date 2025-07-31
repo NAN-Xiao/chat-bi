@@ -1,7 +1,7 @@
 {
   "menu": {
     "Data Q&A": "Data Q&A",
-    "Data Connections": "Data Connections",
+    "Data Connections": "Data Sources",
     "Dashboard": "Dashboard",
     "AI Model Configuration": "AI Model Configuration"
   },
@@ -98,8 +98,8 @@
   },
   "qa": {
     "new_chat": "New Chat",
-    "start_sqlbot": "Start SQLBot",
-    "title": "Smart Data Query",
+    "start_sqlbot": "New Chat",
+    "title": "Data Q&A",
     "placeholder": "Please enter your question",
     "ask": "Ask",
     "loading": "Loading...",
@@ -111,7 +111,7 @@
     "select_datasource": "Select Data Source",
     "view_more": "View More",
     "selected_datasource": "Selected Data Source",
-    "empty_datasource": "No data sources available. Please create one before starting Smart Data Query!",
+    "empty_datasource": "No data sources available. Please create one before starting Data Q&A!",
     "datasource_not_exist": "Data source does not exist",
     "guess_u_ask": "You might want to ask:",
     "continue_to_ask": "Continue asking:",
@@ -130,7 +130,7 @@
     "copied": "Copied"
   },
   "ds": {
-    "title": "Data Source",
+    "title": "Data Sources",
     "add": "Add Data Source",
     "delete": "Delete Data Source",
     "name": "Data Source Name",
@@ -225,7 +225,7 @@
     "search": "Search",
     "all_types": "All types",
     "new_data_source": "New data source",
-    "open_query": "Open query",
+    "open_query": "New Chat",
     "edit": "Edit",
     "source_connection_failed": "Data source connection failed",
     "confirm": "Confirm",
@@ -365,7 +365,7 @@
     "add_successfully": "Add successfully",
     "member_management": "Member management",
     "permission_configuration": "Permission configuration",
-    "set": "Set",
+    "set": "Settings",
     "operate_with_caution": "After deletion, the users under the workspace will be removed and all resources will be deleted. Please operate with caution."
   },
   "permission": {
