@@ -51,7 +51,6 @@
       <el-drawer
         v-model="floatPopoverVisible"
         :with-header="false"
-        :close-on-click-modal="false"
         :modal="false"
         direction="ltr"
         size="278"
@@ -814,8 +813,9 @@ const assistantPrepareInit = () => {
     inset: '0px auto auto 0px',
   })
   goEmpty()
-  onClickOutside(floatPopoverRef, () => {
+  onClickOutside(floatPopoverRef, (event) => {
     if (floatPopoverVisible.value) {
+      console.log('event', event)
       floatPopoverVisible.value = false
     }
   })
