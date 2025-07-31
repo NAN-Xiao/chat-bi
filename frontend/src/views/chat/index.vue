@@ -813,9 +813,19 @@ const assistantPrepareInit = () => {
     inset: '0px auto auto 0px',
   })
   goEmpty()
-  onClickOutside(floatPopoverRef, (event) => {
+  onClickOutside(floatPopoverRef, (event: any) => {
     if (floatPopoverVisible.value) {
-      console.log('event', event)
+      let parentElement: any = event.target
+      let isEdOverlay = false
+      while (!!parentElement) {
+        if (parentElement.className.includes('ed-overlay')) {
+          isEdOverlay = true
+          break
+        } else {
+          parentElement = parentElement.parentElement
+        }
+      }
+      if (isEdOverlay) return
       floatPopoverVisible.value = false
     }
   })
