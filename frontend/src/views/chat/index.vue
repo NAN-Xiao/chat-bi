@@ -51,6 +51,8 @@
       <el-drawer
         v-model="floatPopoverVisible"
         :with-header="false"
+        :close-on-click-modal="false"
+        :modal="false"
         direction="ltr"
         size="278"
         modal-class="assistant-popover_sidebar"
