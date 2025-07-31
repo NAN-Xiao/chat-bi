@@ -22,7 +22,10 @@ export default defineConfig(({ mode }) => {
       Components({
         resolvers: [ElementPlusResolver()],
       }),
-      svgLoader(),
+      svgLoader({
+        svgo: false,
+        defaultImport: 'component', // or 'raw'
+      }),
     ],
     resolve: {
       alias: {
