@@ -1232,7 +1232,7 @@ defineExpose({
         <component
           :is="findComponent(item.component)"
           :ref="'shape_component_' + item.id"
-          class="sq-component slot-component dragHandle"
+          class="sq-component slot-component"
           :class="{ 'sq-component-hidden': item.component !== 'SQTab' }"
           :config-item="item"
           :view-info="canvasViewInfo[item.id]"

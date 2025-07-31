@@ -237,6 +237,7 @@ defineExpose({
           :component-data="tabItem.componentData"
           :canvas-view-info="canvasViewInfo"
           :base-matrix-count="tabBaseMatrixCount"
+          :canvas-id="tabItem.name"
         ></SQPreview>
         <DashboardEditor
           v-else

@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from sqlmodel import select
 
 from apps.chat.api.chat import create_chat
-from apps.chat.models.chat_model import ChatMcp, CreateChat, ChatStart
+from apps.chat.models.chat_model import ChatMcp, CreateChat, ChatStart, McpQuestion
 from apps.chat.task.llm import LLMService
 from apps.system.crud.user import authenticate
 from apps.system.crud.user import get_db_user
@@ -76,7 +76,7 @@ async def mcp_start(session: SessionDep, chat: ChatStart):
 
 
 @router.post("/mcp_question", operation_id="mcp_question")
-async def mcp_question(session: SessionDep, chat: ChatMcp):
+async def mcp_question(session: SessionDep, chat: McpQuestion):
     try:
         payload = jwt.decode(
             chat.token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
@@ -105,8 +105,9 @@ async def mcp_question(session: SessionDep, chat: ChatMcp):
     if session_user.status != 1:
         raise HTTPException(status_code=400, detail="Inactive user")
 
+    mcp_chat = ChatMcp(token=chat.token, chat_id=chat.chat_id, question=chat.question)
     # ask
-    llm_service = LLMService(session_user, chat)
+    llm_service = LLMService(session_user, mcp_chat)
     llm_service.init_record()
 
     return StreamingResponse(llm_service.run_task(False), media_type="text/event-stream")

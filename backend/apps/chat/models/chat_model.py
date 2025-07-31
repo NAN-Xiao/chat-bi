@@ -111,7 +111,8 @@ class AiModelQuestion(BaseModel):
     sub_query: Optional[list[dict]] = None
 
     def sql_sys_question(self):
-        return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question, lang=self.lang)
+        return get_sql_template()['system'].format(engine=self.engine, schema=self.db_schema, question=self.question,
+                                                   lang=self.lang)
 
     def sql_user_question(self):
         return get_sql_template()['user'].format(engine=self.engine, schema=self.db_schema, question=self.question,
@@ -153,22 +154,29 @@ class AiModelQuestion(BaseModel):
 
     def filter_user_question(self):
         return get_permissions_template()['user'].format(sql=self.sql, filter=self.filter)
-    
-    def dynamic_sys_question(self): 
+
+    def dynamic_sys_question(self):
         return get_dynamic_template()['system'].format(lang=self.lang, engine=self.engine)
-    
-    def dynamic_user_question(self): 
+
+    def dynamic_user_question(self):
         return get_dynamic_template()['user'].format(sql=self.sql, sub_query=self.sub_query)
 
+
 class ChatQuestion(AiModelQuestion):
-    question: str = Body(description='用户提问')
-    chat_id: int = Body(description='会话ID')
+    question: str
+    chat_id: int
 
 
 class ChatMcp(ChatQuestion):
-    token: str = Body(description='token')
+    token: str
 
 
 class ChatStart(BaseModel):
     username: str = Body(description='用户名')
     password: str = Body(description='密码')
+
+
+class McpQuestion(BaseModel):
+    question: str = Body(description='用户提问')
+    chat_id: int = Body(description='会话ID')
+    token: str = Body(description='token')

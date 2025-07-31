@@ -86,6 +86,9 @@ function getLineOptions(baseOptions, axis, data) {
                 style: {
                     fill: 'white',
                 },
+                encode: {
+                    size: 1.5,
+                },
                 tooltip: false,
             },
         ],
