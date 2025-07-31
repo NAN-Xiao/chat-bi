@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import os
 import uuid
@@ -38,22 +39,34 @@ async def get_datasource(session: SessionDep, id: int):
 
 @router.post("/check")
 async def check(session: SessionDep, ds: CoreDatasource):
-    return check_status(session, ds, True)
+    def inner():
+        return check_status(session, ds, True)
+
+    return await asyncio.to_thread(inner)
 
 
 @router.post("/add", response_model=CoreDatasource)
 async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDatasource):
-    return create_ds(session, trans, user, ds)
+    def inner():
+        return create_ds(session, trans, user, ds)
+
+    return await asyncio.to_thread(inner)
 
 
 @router.post("/chooseTables/{id}")
 async def choose_tables(session: SessionDep, id: int, tables: List[CoreTable]):
-    chooseTables(session, id, tables)
+    def inner():
+        chooseTables(session, id, tables)
+
+    await asyncio.to_thread(inner)
 
 
 @router.post("/update", response_model=CoreDatasource)
 async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
-    return update_ds(session, trans, user, ds)
+    def inner():
+        return update_ds(session, trans, user, ds)
+
+    return await asyncio.to_thread(inner)
 
 
 @router.post("/delete/{id}", response_model=CoreDatasource)
@@ -82,7 +95,10 @@ async def get_fields(session: SessionDep, id: int, table_name: str):
 
 @router.post("/execSql/{id}/{sql}")
 async def exec_sql(session: SessionDep, id: int, sql: str):
-    return execSql(session, id, sql)
+    def inner():
+        return execSql(session, id, sql)
+
+    return await asyncio.to_thread(inner)
 
 
 @router.post("/tableList/{id}")
@@ -111,17 +127,23 @@ async def edit_field(session: SessionDep, field: CoreField):
 
 
 @router.post("/previewData/{id}")
-async def edit_local(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
-    try:
-        return preview(session, current_user, id, data)
-    except Exception as e:
-        SQLBotLogUtil.error(f"Preview failed: {e}")
-        raise HTTPException(status_code=500, detail=f'Preview Failed: {e.args}')
+async def preview_data(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
+    def inner():
+        try:
+            return preview(session, current_user, id, data)
+        except Exception as e:
+            SQLBotLogUtil.error(f"Preview failed: {e}")
+            raise HTTPException(status_code=500, detail=f'Preview Failed: {e.args}')
+
+    return await asyncio.to_thread(inner)
 
 
 @router.post("/fieldEnum/{id}")
 async def field_enum(session: SessionDep, id: int):
-    return fieldEnum(session, id)
+    def inner():
+        return fieldEnum(session, id)
+
+    return await asyncio.to_thread(inner)
 
 
 @router.post("/uploadExcel")
@@ -136,32 +158,12 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
     with open(save_path, "wb") as f:
         f.write(await file.read())
 
-    sheets = []
-    with get_data_engine() as conn:
-        if filename.endswith(".csv"):
-            df = pd.read_csv(save_path)
-            tableName = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
-            sheets.append({"tableName": tableName, "tableComment": ""})
-            column_len = len(df.dtypes)
-            fields = []
-            for i in range(column_len):
-                # build fields
-                fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
-            # create table
-            create_table(conn, tableName, fields)
-
-            data = [
-                {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
-                 for i in range(len(row))}
-                for row in df.values
-            ]
-            # insert data
-            insert_data(conn, tableName, fields, data)
-        else:
-            df_sheets = pd.read_excel(save_path, sheet_name=None)
-            # build columns and data to insert db
-            for sheet_name, df in df_sheets.items():
-                tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+    def inner():
+        sheets = []
+        with get_data_engine() as conn:
+            if filename.endswith(".csv"):
+                df = pd.read_csv(save_path)
+                tableName = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
                 sheets.append({"tableName": tableName, "tableComment": ""})
                 column_len = len(df.dtypes)
                 fields = []
@@ -178,6 +180,29 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
                 ]
                 # insert data
                 insert_data(conn, tableName, fields, data)
+            else:
+                df_sheets = pd.read_excel(save_path, sheet_name=None)
+                # build columns and data to insert db
+                for sheet_name, df in df_sheets.items():
+                    tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+                    sheets.append({"tableName": tableName, "tableComment": ""})
+                    column_len = len(df.dtypes)
+                    fields = []
+                    for i in range(column_len):
+                        # build fields
+                        fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
+                    # create table
+                    create_table(conn, tableName, fields)
 
-    os.remove(save_path)
-    return {"filename": filename, "sheets": sheets}
+                    data = [
+                        {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
+                         for i in range(len(row))}
+                        for row in df.values
+                    ]
+                    # insert data
+                    insert_data(conn, tableName, fields, data)
+
+        os.remove(save_path)
+        return {"filename": filename, "sheets": sheets}
+
+    return await asyncio.to_thread(inner)
