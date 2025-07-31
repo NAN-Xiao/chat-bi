@@ -391,8 +391,8 @@
     "add_rule_group": "Add rule group",
     "permission_rule": "Permission rules",
     "restricted_user": "Restricted user",
-    "set_rule": "Setup rule",
-    "set_user": "Setup user",
+    "set_rule": "Set rule",
+    "set_user": "Set user",
     "2": "{msg}",
     "238_people": "{msg} people",
     "no_permission_rule": "No permission rule",
@@ -525,7 +525,10 @@
     "inference_process": "Thought Process",
     "thinking": "Thinking",
     "data_analysis": "Data Analysis",
-    "data_predict": "Data Prediction"
+    "data_predict": "Data Prediction",
+    "ds_is_invalid": "Datasource is invalid",
+    "error": "Error",
+    "show_error_detail": "Show error info"
   },
   "about": {
     "title": "About",

@@ -38,6 +38,7 @@ from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, ge
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, CurrentUser
+from common.error import SingleMessageError
 from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
 
 warnings.filterwarnings("ignore")
@@ -78,7 +79,7 @@ class LLMService:
         chat_id = chat_question.chat_id
         chat: Chat | None = self.session.get(Chat, chat_id)
         if not chat:
-            raise Exception(f"Chat with id {chat_id} not found")
+            raise SingleMessageError(f"Chat with id {chat_id} not found")
         ds: CoreDatasource | AssistantOutDsSchema | None = None
         if chat.datasource:
             # Get available datasource
@@ -87,13 +88,13 @@ class LLMService:
                 self.out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
                 ds = self.out_ds_instance.get_ds(chat.datasource)
                 if not ds:
-                    raise Exception("No available datasource configuration found")
+                    raise SingleMessageError("No available datasource configuration found")
                 chat_question.engine = ds.type
                 chat_question.db_schema = self.out_ds_instance.get_db_schema(ds.id)
             else:
                 ds = self.session.get(CoreDatasource, chat.datasource)
                 if not ds:
-                    raise Exception("No available datasource configuration found")
+                    raise SingleMessageError("No available datasource configuration found")
                 chat_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
                 chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds)
 
@@ -446,10 +447,11 @@ class LLMService:
                     _ds = self.session.get(CoreDatasource, _datasource)
                     if not _ds:
                         _datasource = None
-                        raise Exception(f"Datasource configuration with id {_datasource} not found")
+                        raise SingleMessageError(f"Datasource configuration with id {_datasource} not found")
                     self.ds = CoreDatasource(**_ds.model_dump())
                     self.chat_question.engine = _ds.type_name if _ds.type != 'excel' else 'PostgreSQL'
-                    self.chat_question.db_schema = get_table_schema(session=self.session, current_user=self.current_user, ds=self.ds)
+                    self.chat_question.db_schema = get_table_schema(session=self.session,
+                                                                    current_user=self.current_user, ds=self.ds)
                     _engine_type = self.chat_question.engine
                     _chat.engine_type = _ds.type_name
                 # save chat
@@ -459,9 +461,9 @@ class LLMService:
                 self.session.commit()
 
             elif data['fail']:
-                raise Exception(data['fail'])
+                raise SingleMessageError(data['fail'])
             else:
-                raise Exception('No available datasource configuration found')
+                raise SingleMessageError('No available datasource configuration found')
 
         except Exception as e:
             _error = e
@@ -542,7 +544,7 @@ class LLMService:
 
         SQLBotLogUtil.info(full_dynamic_text)
         return full_dynamic_text
-    
+
     def generate_assistant_dynamic_sql(self, sql, tables: List):
         ds: AssistantOutDsSchema = self.ds
         sub_query = []
@@ -552,7 +554,7 @@ class LLMService:
         if not sub_query:
             return None
         return self.generate_with_sub_sql(sql=sql, sub_mappings=sub_query)
-        
+
     def build_table_filter(self, sql: str, filters: list):
         filter = json.dumps(filters, ensure_ascii=False)
         self.chat_question.sql = sql
@@ -672,10 +674,12 @@ class LLMService:
                                                          full_message=orjson.dumps(
                                                              [{'type': msg.type, 'content': msg.content} for msg in
                                                               self.chart_message]).decode())
+
     def check_sql(self, res: str) -> tuple[any]:
         json_str = extract_nested_json(res)
         if json_str is None:
-            raise Exception("Cannot parse sql from answer")
+            raise SingleMessageError(orjson.dumps({'message': 'Cannot parse sql from answer',
+                                                   'traceback': "Cannot parse sql from answer:\n" + res}).decode())
         data: dict = orjson.loads(json_str)
         sql = ''
         message = ''
@@ -683,12 +687,12 @@ class LLMService:
             sql = data['sql']
         else:
             message = data['message']
-            raise Exception(message)
-        
+            raise SingleMessageError(message)
+
         if sql.strip() == '':
-            raise Exception("SQL query is empty")
+            raise SingleMessageError("SQL query is empty")
         return sql, data.get('tables')
-        
+
     def check_save_sql(self, res: str) -> str:
         sql, *_ = self.check_sql(res=res)
         save_sql(session=self.session, sql=sql, record_id=self.record.id)
@@ -701,7 +705,8 @@ class LLMService:
 
         json_str = extract_nested_json(res)
         if json_str is None:
-            raise Exception("Cannot parse chart config from answer")
+            raise SingleMessageError(orjson.dumps({'message': 'Cannot parse chart config from answer',
+                                                   'traceback': "Cannot parse chart config from answer:\n" + res}).decode())
         data = orjson.loads(json_str)
 
         chart: Dict[str, Any] = {}
@@ -729,7 +734,7 @@ class LLMService:
             error = True
 
         if error:
-            raise Exception(message)
+            raise SingleMessageError(message)
 
         save_chart(session=self.session, chart=orjson.dumps(chart).decode(), record_id=self.record.id)
 
@@ -865,7 +870,7 @@ class LLMService:
                     if dynamic_sql_result:
                         SQLBotLogUtil.info(dynamic_sql_result)
                         sql, *_ = self.check_sql(res=dynamic_sql_result)
-                        
+
                     sql_result = self.generate_assistant_filter(sql, tables)
                 else:
                     sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
@@ -951,12 +956,16 @@ class LLMService:
                     SQLBotLogUtil.info(image_url)
                     yield f'![{chart["type"]}]({image_url})'
         except Exception as e:
-            traceback.print_exc()
-            self.save_error(message=str(e))
-            if in_chat:
-                yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
+            error_msg: str
+            if isinstance(e, SingleMessageError):
+                error_msg = str(e)
             else:
-                yield f'> &#x274c; **ERROR**\n\n> \n\n> {str(e)}。'
+                error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
+            self.save_error(message=error_msg)
+            if in_chat:
+                yield orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
+            else:
+                yield f'> &#x274c; **ERROR**\n\n> \n\n> {error_msg}。'
 
     def run_recommend_questions_task_async(self):
         self.future = executor.submit(self.run_recommend_questions_task_cache)
@@ -1022,19 +1031,26 @@ class LLMService:
 
             self.finish()
         except Exception as e:
-            traceback.print_exc()
-            self.save_error(message=str(e))
-            yield orjson.dumps({'content': str(e), 'type': 'error'}).decode() + '\n\n'
+            error_msg: str
+            if isinstance(e, SingleMessageError):
+                error_msg = str(e)
+            else:
+                error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
+            self.save_error(message=error_msg)
+            yield orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
         finally:
             # end
             pass
-    
+
     def validate_history_ds(self):
         _ds = self.ds
         if not self.current_assistant:
-            current_ds = self.session.get(CoreDatasource, _ds.id)
-            if not current_ds:
-                raise Exception('ds is invalid')
+            try:
+                current_ds = self.session.get(CoreDatasource, _ds.id)
+                if not current_ds:
+                    raise SingleMessageError('chat.ds_is_invalid')
+            except Exception as e:
+                raise SingleMessageError("chat.ds_is_invalid")
         else:
             try:
                 _ds_list: list[dict] = get_assistant_ds(session=self.session, llm_service=self)
@@ -1042,11 +1058,10 @@ class LLMService:
                 if not match_ds:
                     type = self.current_assistant.type
                     msg = f"ds is invalid [please check ds list and public ds list]" if type == 0 else f"ds is invalid [please check ds api]"
-                    raise Exception(msg)
+                    raise SingleMessageError(msg)
             except Exception as e:
-                raise Exception(f"ds is invalid [{str(e)}]")
-           
-            
+                raise SingleMessageError(f"ds is invalid [{str(e)}]")
+
 
 def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
     """Execute SQL query using SQLDatabase

@@ -161,13 +161,7 @@
                     @stop="onChatStop"
                   >
                     <ChartBlock style="margin-top: 12px" :message="message" />
-                    <div
-                      v-if="message.record?.error && message.record?.error?.trim().length > 0"
-                      class="error-container"
-                    >
-                      {{ message.record?.error }}
-                    </div>
-
+                    <ErrorInfo :error="message.record?.error" class="error-container" />
                     <template #tool>
                       <ChatToolBar v-if="!message.isTyping" :message="message">
                         <div class="tool-btns">
@@ -251,12 +245,7 @@
                     @error="onAnalysisAnswerError"
                     @stop="onChatStop"
                   >
-                    <div
-                      v-if="message.record?.error && message.record?.error?.trim().length > 0"
-                      class="error-container"
-                    >
-                      {{ message.record?.error }}
-                    </div>
+                    <ErrorInfo :error="message.record?.error" class="error-container" />
                     <template #tool>
                       <ChatToolBar v-if="!message.isTyping" :message="message" />
                     </template>
@@ -277,12 +266,7 @@
                     @stop="onChatStop"
                   >
                     <ChartBlock style="margin-top: 12px" :message="message" is-predict />
-                    <div
-                      v-if="message.record?.error && message.record?.error?.trim().length > 0"
-                      class="error-container"
-                    >
-                      {{ message.record?.error }}
-                    </div>
+                    <ErrorInfo :error="message.record?.error" class="error-container" />
                     <template #tool>
                       <ChatToolBar v-if="!message.isTyping" :message="message" />
                     </template>
@@ -357,6 +341,7 @@ import ChartBlock from './chat-block/ChartBlock.vue'
 import RecommendQuestion from './RecommendQuestion.vue'
 import ChatListContainer from './ChatListContainer.vue'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
+import ErrorInfo from './ErrorInfo.vue'
 import ChatToolBar from './ChatToolBar.vue'
 import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import { useI18n } from 'vue-i18n'
@@ -1020,10 +1005,6 @@ onMounted(() => {
 
 .error-container {
   margin-top: 12px;
-  font-weight: 400;
-  font-size: 16px;
-  line-height: 24px;
-  color: rgba(31, 35, 41, 1);
 }
 
 .tool-btns {
