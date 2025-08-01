@@ -6,10 +6,7 @@ import type { F2CLicense } from './index.ts'
 import { licenseApi } from '@/api/license'
 import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
-//import { useUserStore } from '@/stores/user'
-import { useCache } from '@/utils/useCache'
 const dialogVisible = ref(false)
-const { wsCache } = useCache()
 const { t } = useI18n()
 //const userStore = useUserStore()
 const license: F2CLicense = reactive({
@@ -43,12 +40,6 @@ const initVersion = () => {
 const beforeUpload = (file: any) => {
   importLic(file)
   return false
-}
-
-const support = () => {
-  const url = 'https://support.fit2cloud.com/'
-  const openType = wsCache.get('open-backend') === '1' ? '_self' : '_blank'
-  window.open(url, openType)
 }
 
 const getLicenseInfo = () => {
@@ -222,7 +213,7 @@ defineExpose({
     line-height: 22px;
     text-align: center;
     margin-top: 16px;
-    color: #8F959E;
+    color: #8f959e;
   }
 
   .content {

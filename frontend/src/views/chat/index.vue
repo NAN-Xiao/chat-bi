@@ -831,7 +831,7 @@ const assistantPrepareInit = () => {
     if (floatPopoverVisible.value) {
       let parentElement: any = event.target
       let isEdOverlay = false
-      while (!!parentElement) {
+      while (parentElement) {
         if (parentElement.className.includes('ed-overlay')) {
           isEdOverlay = true
           break
