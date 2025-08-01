@@ -516,7 +516,7 @@ const columnRules = {
 </script>
 
 <template>
-  <div v-loading="searchLoading" class="permission">
+  <div v-loading="searchLoading" class="permission no-padding">
     <div class="tool-left">
       <span class="page-title">{{ $t('workspace.permission_configuration') }}</span>
       <div>
@@ -549,17 +549,29 @@ const columnRules = {
     />
 
     <div v-else class="card-content">
-      <Card
-        v-for="ele in ruleListWithSearch"
-        :id="ele.id"
-        :key="ele.id"
-        :name="ele.name"
-        :type="ele.users.length"
-        :num="ele.permissions.length"
-        @edit="handleEditRule(ele)"
-        @del="deleteHandler(ele)"
-        @set-user="setUser(ele)"
-      ></Card>
+      <el-row :gutter="16" class="w-full">
+        <el-col
+          v-for="ele in ruleListWithSearch"
+          :key="ele.id"
+          :xs="24"
+          :sm="12"
+          :md="12"
+          :lg="8"
+          :xl="6"
+          class="mb-16"
+        >
+          <Card
+            :id="ele.id"
+            :key="ele.id"
+            :name="ele.name"
+            :type="ele.users.length"
+            :num="ele.permissions.length"
+            @edit="handleEditRule(ele)"
+            @del="deleteHandler(ele)"
+            @set-user="setUser(ele)"
+          ></Card>
+        </el-col>
+      </el-row>
     </div>
     <template v-if="!keywords && !ruleListWithSearch.length && !searchLoading">
       <EmptyBackground
@@ -857,6 +869,8 @@ const columnRules = {
 .permission {
   height: 100%;
   width: 100%;
+  padding: 16px 0 16px 0;
+
   .ed-empty_200 {
     padding-top: 200px;
     padding-bottom: 0;
@@ -867,6 +881,7 @@ const columnRules = {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
+    padding: 0 24px 0 24px;
 
     .page-title {
       font-weight: 500;
@@ -876,10 +891,17 @@ const columnRules = {
   }
 
   .card-content {
-    display: flex;
-    flex-wrap: wrap;
     max-height: calc(100% - 40px);
     overflow-y: auto;
+    padding: 0 8px 0 24px;
+
+    .w-full {
+      width: 100%;
+    }
+
+    .mb-16 {
+      margin-bottom: 16px;
+    }
   }
 }
 </style>

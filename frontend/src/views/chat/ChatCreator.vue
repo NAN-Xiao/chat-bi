@@ -142,18 +142,30 @@ defineExpose({
       </el-icon>
     </template>
     <div v-if="datasourceListWithSearch.length" class="card-content">
-      <Card
-        v-for="ele in datasourceListWithSearch"
-        :id="ele.id"
-        :key="ele.id"
-        :name="ele.name"
-        :type="ele.type"
-        :type-name="ele.type_name"
-        :num="ele.num"
-        :is-selected="ele.id === innerDs"
-        :description="ele.description"
-        @select-ds="selectDsInDialog(ele)"
-      ></Card>
+      <el-row :gutter="16" class="w-full">
+        <el-col
+          v-for="ele in datasourceListWithSearch"
+          :key="ele.id"
+          :xs="24"
+          :sm="12"
+          :md="12"
+          :lg="8"
+          :xl="6"
+          class="mb-16"
+        >
+          <Card
+            :id="ele.id"
+            :key="ele.id"
+            :name="ele.name"
+            :type="ele.type"
+            :type-name="ele.type_name"
+            :num="ele.num"
+            :is-selected="ele.id === innerDs"
+            :description="ele.description"
+            @select-ds="selectDsInDialog(ele)"
+          ></Card>
+        </el-col>
+      </el-row>
     </div>
     <template v-if="!keywords && !datasourceListWithSearch.length && !searchLoading">
       <EmptyBackground
@@ -196,11 +208,21 @@ defineExpose({
 
 <style lang="less">
 .datasource-drawer-chat {
+  .ed-drawer__body {
+    padding: 16px 0 16px 0;
+  }
   .card-content {
-    display: flex;
-    flex-wrap: wrap;
-    max-height: 100%;
+    max-height: calc(100% - 40px);
     overflow-y: auto;
+    padding: 0 8px 0 24px;
+
+    .w-full {
+      width: 100%;
+    }
+
+    .mb-16 {
+      margin-bottom: 16px;
+    }
   }
 
   .datasource-yet {

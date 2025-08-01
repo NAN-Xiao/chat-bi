@@ -76,12 +76,11 @@ const setUser = () => {
 
 <style lang="less" scoped>
 .card {
-  width: 371px;
+  width: 100%;
   height: 176px;
   border: 1px solid #dee0e3;
   padding: 16px;
   border-radius: 12px;
-  margin: 0 16px 16px 0;
   &:hover {
     box-shadow: 0px 6px 24px 0px #1f232914;
   }
