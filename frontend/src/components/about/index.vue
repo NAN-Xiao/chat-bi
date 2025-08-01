@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import logo from '@/assets/svg/logo.svg'
-import aboutBg from '@/assets/img/about-bg.png'
+import aboutBg from '@/assets/embedded/LOGO-about.png'
+
 import { ref, reactive, onMounted } from 'vue'
 import type { F2CLicense } from './index.ts'
 import { licenseApi } from '@/api/license'
@@ -138,16 +138,13 @@ defineExpose({
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :append-to-body="true"
     :title="t('about.title')"
     width="840px"
-    class="about-dialog"
+    modal-class="about-dialog"
   >
-    <img width="792" height="180" :src="aboutBg" />
-    <div class="color-overlay"></div>
-    <el-icon class="logo">
-      <icon name="logo"><logo class="svg-icon" /></icon>
-    </el-icon>
+    <div class="color-overlay flex-center">
+      <img width="368" height="84" :src="aboutBg" />
+    </div>
     <div class="content">
       <div class="item">
         <div class="label">{{ $t('about.auth_to') }}</div>
@@ -161,12 +158,6 @@ defineExpose({
         <div class="label">{{ $t('about.expiration_time') }}</div>
         <div class="value" :class="{ 'expired-mark': license.status === 'expired' }">
           {{ license.expired }}
-        </div>
-      </div>
-      <div class="item">
-        <div class="label">{{ $t('about.auth_num') }}</div>
-        <div class="value">
-          {{ license.status === 'valid' ? `${license.count} ${tipsSuffix}` : '' }}
         </div>
       </div>
       <div class="item">
@@ -208,63 +199,59 @@ defineExpose({
         >
           <el-button plain> {{ $t('about.update_license') }} </el-button>
         </el-upload>
-        <el-button plain @click="support"> {{ $t('about.support') }} </el-button>
       </div>
     </div>
+    <div class="name">2014-2025 版权所有 © 杭州飞致云信息科技有限公司</div>
   </el-dialog>
 </template>
 
 <style lang="less">
 .about-dialog {
-  img {
-    border-radius: 4px;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
   .color-overlay {
-    position: absolute;
-    border-radius: 4px;
-    width: 792px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    background: #1cba901a;
+    border: 1px solid #dee0e3;
+    border-bottom: 0;
     height: 180px;
-    top: 72px;
-    background-color: #7394f0;
-    mix-blend-mode: multiply;
   }
-  .logo {
-    font-size: 400px;
-    position: absolute;
-    top: -40px;
-    left: 228px;
-    color: #fff;
+
+  .name {
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 22px;
+    text-align: center;
+    margin-top: 16px;
+    color: #8F959E;
   }
 
   .content {
-    border-radius: 4px;
+    border-radius: 6px;
     border: 1px solid #dee0e3;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
+    border-top: 0;
     padding: 24px 40px;
-    margin-top: -7px;
 
     .item {
-      font-family: var(--de-custom_font, 'PingFang');
       font-size: 16px;
       font-style: normal;
       font-weight: 400;
       line-height: 24px;
       margin-bottom: 16px;
       display: flex;
+      font-weight: 400;
       .expired-mark {
         color: red;
       }
       .label {
         color: #646a73;
-        width: 300px;
+        width: 240px;
       }
 
       .value {
         margin-left: 24px;
-        max-width: 388px;
+        max-width: 448px;
       }
     }
   }
