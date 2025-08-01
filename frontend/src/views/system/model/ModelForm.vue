@@ -236,7 +236,7 @@ const getModelDefaultArgs = () => {
     common_args.push(...modelArgs)
   }
   const argMap = common_args.reduce((acc: any, item: any) => {
-    acc.set(item.key, item)
+    acc.set(item.key, { ...item, name: item.key })
     return acc
   }, new Map())
   return argMap

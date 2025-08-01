@@ -57,6 +57,7 @@ export const supplierList: Array<{
     model_config: {
       0: {
         api_domain: 'https://api.hunyuan.cloud.tencent.com/v1/',
+        common_args: [{ key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' }],
         model_options: [
           { name: 'hunyuan-turbos-latest' },
           { name: 'hunyuan-turbos-longtext-128k-20250325' },
