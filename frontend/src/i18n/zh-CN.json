@@ -7,7 +7,7 @@
   },
   "common": {
     "excessive_tables_selected": "选择数据表过量",
-    "to_continue_saving": "选择的数据表数量为: {msg},已超出30,可能会导致操作超时或者无响应,是否继续保存?",
+    "to_continue_saving": "选择的数据表数量为：{msg}，已超出30，可能会导致操作超时或者无响应，是否继续保存？",
     "proceed_with_caution": "删除后无法恢复，请谨慎操作。",
     "sales_in_2024": "是否删除对话：{msg}？",
     "limited_to_30": "数据表数量限制30",
