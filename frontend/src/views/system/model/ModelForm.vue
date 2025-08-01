@@ -7,7 +7,7 @@ import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import ParamsForm from './ParamsForm.vue'
 import { modelTypeOptions } from '@/entity/CommonEntity.ts'
-import { base_model_options } from '@/entity/supplier'
+import { base_model_options, get_supplier } from '@/entity/supplier'
 import { useI18n } from 'vue-i18n'
 
 withDefaults(
@@ -44,8 +44,18 @@ const modelRef = ref()
 const paramsFormRef = ref()
 const advancedSetting = ref([] as ParamsFormData[])
 const paramsFormDrawer = ref(false)
-const configExpand = ref(false)
+const configExpand = ref(true)
+let tempConfigMap = new Map<string, Array<any>>()
 
+const modelSelected = computed(() => {
+  return !!modelForm.base_model
+})
+const currentSupplier = computed(() => {
+  if (!modelForm.supplier) {
+    return null
+  }
+  return get_supplier(modelForm.supplier)
+})
 const modelList = computed(() => {
   if (!modelForm.supplier) {
     return []
@@ -133,6 +143,7 @@ const duplicateName = async (item: any) => {
   if (isCreate.value) {
     advancedSetting.value.push({ ...item, id: +new Date() })
     beforeClose()
+    tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
     return
   }
   for (const key in advancedSetting.value) {
@@ -141,7 +152,7 @@ const duplicateName = async (item: any) => {
       Object.assign(element, { ...item })
     }
   }
-
+  tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
   beforeClose()
 }
 
@@ -158,11 +169,13 @@ const supplierChang = (supplier: any) => {
   const config = supplier.model_config[modelForm.model_type || 0]
   modelForm.api_domain = config.api_domain
   modelForm.base_model = ''
+  advancedSetting.value = []
 }
 let curId = +new Date()
 const initForm = (item?: any) => {
   modelForm.id = ''
   modelRef.value.clearValidate()
+  tempConfigMap = new Map<string, Array<any>>()
   if (item) {
     Object.assign(modelForm, { ...item })
     if (item?.config_list?.length) {
@@ -176,7 +189,57 @@ const initForm = (item?: any) => {
     } else {
       advancedSetting.value = []
     }
+    tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
   }
+}
+const formatAdvancedSetting = (list: Array<any>) => {
+  const setting_list = [
+    ...list.map((item) => {
+      return { id: ++curId, name: item.name, key: item.key, val: item.val } as any
+    }),
+  ]
+  advancedSetting.value = setting_list
+}
+const baseModelChange = (val: string) => {
+  if (!val || !modelForm.supplier || !modelList.value?.length) {
+    return
+  }
+  const current_model = modelList.value?.find((model: any) => model.name == val)
+  if (current_model) {
+    modelForm.api_domain = current_model.api_domain || getSupplierDomain() || ''
+  }
+  const current_config_list = tempConfigMap.get(`${modelForm.supplier}-${modelForm.base_model}`)
+  if (current_config_list) {
+    formatAdvancedSetting(current_config_list)
+    return
+  }
+  const defaultArgs = getModelDefaultArgs()
+  if (defaultArgs?.size) {
+    const defaultArgsList = [...defaultArgs.values()]
+    formatAdvancedSetting(defaultArgsList)
+    tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
+  }
+}
+const getSupplierDomain = () => {
+  return currentSupplier.value?.model_config[modelForm.model_type || 0].api_domain
+}
+const getModelDefaultArgs = () => {
+  if (!modelForm.supplier || !modelForm.base_model) {
+    return null
+  }
+  const model_config = currentSupplier.value?.model_config[modelForm.model_type || 0]
+  const common_args = model_config?.common_args || []
+  const current_model = modelList.value?.find((model: any) => model.name == modelForm.base_model)
+
+  if (current_model?.args?.length) {
+    const modelArgs = current_model.args
+    common_args.push(...modelArgs)
+  }
+  const argMap = common_args.reduce((acc: any, item: any) => {
+    acc.set(item.key, item)
+    return acc
+  }, new Map())
+  return argMap
 }
 const emits = defineEmits(['submit'])
 
@@ -185,7 +248,11 @@ const submitModel = () => {
     if (res) {
       emits('submit', {
         ...modelForm,
-        config_list: [...advancedSetting.value],
+        config_list: [
+          ...advancedSetting.value.map((item) => {
+            return { key: item.key, name: item.name, val: item.val }
+          }),
+        ],
       })
     }
   })
@@ -249,11 +316,17 @@ defineExpose({
             allow-create
             default-first-option
             :reserve-keyword="false"
+            @change="baseModelChange"
           >
-            <el-option v-for="item in modelList" :key="item" :label="item" :value="item" />
+            <el-option
+              v-for="item in modelList"
+              :key="item.name"
+              :label="item.name"
+              :value="item.name"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item prop="api_domain" :label="t('model.api_domain_name')">
+        <el-form-item v-if="modelSelected" prop="api_domain" :label="t('model.api_domain_name')">
           <el-input
             v-model="modelForm.api_domain"
             clearable
@@ -262,7 +335,7 @@ defineExpose({
             "
           />
         </el-form-item>
-        <el-form-item prop="api_key" label="API Key">
+        <el-form-item v-if="modelSelected" prop="api_key" label="API Key">
           <el-input
             v-model="modelForm.api_key"
             clearable
@@ -273,6 +346,7 @@ defineExpose({
         </el-form-item>
       </el-form>
       <div
+        v-if="modelSelected"
         class="advance-setting"
         :class="configExpand && 'expand'"
         @click="configExpand = !configExpand"
@@ -282,7 +356,7 @@ defineExpose({
           <arrow_down></arrow_down>
         </el-icon>
       </div>
-      <div v-if="configExpand" class="model-params">
+      <div v-if="modelSelected && configExpand" class="model-params">
         {{ t('model.model_parameters') }}
         <span class="add" @click="handleParamsCreate">
           <el-icon size="16">
@@ -293,7 +367,7 @@ defineExpose({
       </div>
 
       <div
-        v-if="configExpand"
+        v-if="modelSelected && configExpand"
         class="params-table"
         :class="!advancedSettingPagination.length && 'bottom-border'"
       >
@@ -322,7 +396,10 @@ defineExpose({
           </el-table-column>
         </el-table>
       </div>
-      <div v-if="advancedSetting.length > 5 && configExpand" class="params-table_pagination">
+      <div
+        v-if="modelSelected && advancedSetting.length > 5 && configExpand"
+        class="params-table_pagination"
+      >
         <el-pagination
           :default-page-size="5"
           layout="prev, pager, next"
