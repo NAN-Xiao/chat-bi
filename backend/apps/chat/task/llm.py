@@ -13,13 +13,8 @@ import sqlparse
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
-from sqlalchemy import and_, cast, or_
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import sessionmaker
-from sqlbot_xpack.permissions.api.permission import transRecord2DTO
-from sqlbot_xpack.permissions.models.ds_permission import DsPermission, PermissionDTO
-from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import create_engine, Session
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
@@ -30,9 +25,8 @@ from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_
     get_old_questions, save_analysis_predict_record, list_base_records, rename_chat
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat
 from apps.datasource.crud.datasource import get_table_schema
-from apps.datasource.crud.datasource import is_normal_user
-from apps.datasource.crud.row_permission import transFilterTree
-from apps.datasource.models.datasource import CoreDatasource, CoreTable
+from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
+from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
@@ -606,28 +600,9 @@ class LLMService:
         return full_filter_text
 
     def generate_filter(self, sql: str, tables: List):
-        table_list = self.session.query(CoreTable).filter(
-            and_(CoreTable.ds_id == self.ds.id, CoreTable.table_name.in_(tables))
-        ).all()
-
-        filters = []
-        for table in table_list:
-            row_permissions = self.session.query(DsPermission).filter(
-                and_(DsPermission.table_id == table.id, DsPermission.type == 'row')).all()
-            res: List[PermissionDTO] = []
-            if row_permissions is not None:
-                for permission in row_permissions:
-                    # check permission and user in same rules
-                    obj = self.session.query(DsRules).filter(
-                        and_(DsRules.permission_list.op('@>')(cast([permission.id], JSONB)),
-                             or_(DsRules.user_list.op('@>')(cast([f'{self.current_user.id}'], JSONB)),
-                                 DsRules.user_list.op('@>')(cast([self.current_user.id], JSONB))))
-                    ).first()
-                    if obj is not None:
-                        res.append(transRecord2DTO(self.session, permission))
-            where_str = transFilterTree(self.session, res, self.ds)
-            filters.append({"table": table.table_name, "filter": where_str})
-
+        filters = get_row_permission_filters(session=self.session, current_user=self.current_user, ds=self.ds, tables=tables)
+        if not filters:
+            return None
         return self.build_table_filter(sql=sql, filters=filters)
 
     def generate_assistant_filter(self, sql, tables: List):
@@ -864,7 +839,8 @@ class LLMService:
             # todo row permission
             if (not self.current_assistant and is_normal_user(self.current_user)) or use_dynamic_ds:
                 sql, tables = self.check_sql(res=full_sql_text)
-
+                sql_result = None
+                dynamic_sql_result = None
                 if self.current_assistant:
                     dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
                     if dynamic_sql_result:

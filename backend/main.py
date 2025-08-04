@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from apps.api import api_router
+
 from apps.system.crud.assistant import init_dynamic_cors
 from apps.system.middleware.auth import TokenMiddleware
 from common.core.config import settings
@@ -13,9 +13,9 @@ from alembic import command
 from fastapi_mcp import FastApiMCP
 from fastapi.staticfiles import StaticFiles
 import sqlbot_xpack
-
 from common.utils.utils import SQLBotLogUtil
 from common.core.sqlbot_cache import init_sqlbot_cache
+from apps.api import api_router
 
 def run_migrations():
     alembic_cfg = Config("alembic.ini")

@@ -2,15 +2,12 @@
 # Date: 2025/6/25
 
 from typing import List, Dict
-
-from sqlbot_xpack.permissions.models.ds_permission import PermissionTree, PermissionDTO
-
 from apps.datasource.models.datasource import CoreField, CoreDatasource
 from apps.db.constant import DB
 from common.core.deps import SessionDep
 
 
-def transFilterTree(session: SessionDep, tree_list: List[PermissionDTO], ds: CoreDatasource) -> str | None:
+def transFilterTree(session: SessionDep, tree_list: List[any], ds: CoreDatasource) -> str | None:
     if tree_list is None:
         return None
     res: List[str] = []
@@ -24,7 +21,7 @@ def transFilterTree(session: SessionDep, tree_list: List[PermissionDTO], ds: Cor
     return " AND ".join(res)
 
 
-def transTreeToWhere(session: SessionDep, tree: PermissionTree, ds: CoreDatasource) -> str | None:
+def transTreeToWhere(session: SessionDep, tree: any, ds: CoreDatasource) -> str | None:
     if tree is None:
         return None
     logic = tree['logic']
