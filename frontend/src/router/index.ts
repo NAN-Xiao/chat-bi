@@ -168,5 +168,5 @@ const router = createRouter({
     },
   ],
 })
-watchRouter(router)
+await watchRouter(router)
 export default router
