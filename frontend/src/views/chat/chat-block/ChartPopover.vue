@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import icon_expand_down_filled from '@/assets/svg/icon_down_outlined.svg'
 const props = defineProps({
   chartTypeList: {
@@ -34,13 +34,15 @@ const firstItem = () => {
   }
 }
 const emits = defineEmits(['typeChange'])
+const selectRef = ref()
 const handleDefaultChatChange = (val: any) => {
   emits('typeChange', val.value)
+  selectRef.value?.hide()
 }
 </script>
 
 <template>
-  <el-popover trigger="click" popper-class="chat-type_select" placement="bottom">
+  <el-popover ref="selectRef" trigger="click" popper-class="chat-type_select" placement="bottom">
     <template #reference>
       <div
         class="chat-select_type"

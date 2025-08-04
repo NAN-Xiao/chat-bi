@@ -180,3 +180,15 @@ class McpQuestion(BaseModel):
     question: str = Body(description='用户提问')
     chat_id: int = Body(description='会话ID')
     token: str = Body(description='token')
+
+
+class AxisObj(BaseModel):
+    name: str = ''
+    value: str = ''
+    type: str | None = None
+
+
+class ExcelData(BaseModel):
+    axis: list[AxisObj] = []
+    data: list[dict] = []
+    name: str = 'Excel'

@@ -67,9 +67,14 @@ function getViewInfo() {
     data: { data: props.data },
   }
 }
+function getExcelData() {
+  return chartRef.value?.getExcelData()
+}
+
 defineExpose({
   onTypeChange,
   getViewInfo,
+  getExcelData,
 })
 </script>
 

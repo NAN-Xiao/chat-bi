@@ -79,8 +79,10 @@ class Settings(BaseSettings):
         )
 
     MCP_IMAGE_PATH: str = '/opt/sqlbot/images'
+    EXCEL_PATH: str
     MCP_IMAGE_HOST: str = 'http://localhost:3000'
     SERVER_IMAGE_HOST: str
+    SERVER_EXCEL_HOST: str
 
 settings = Settings()  # type: ignore
 print(settings)

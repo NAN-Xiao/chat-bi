@@ -1,12 +1,16 @@
+import datetime
 import traceback
 
+import numpy as np
+import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
     delete_chat, get_chat_chart_data, get_chat_predict_data
-from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion
+from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, ExcelData
 from apps.chat.task.llm import LLMService
+from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
@@ -183,3 +187,27 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         )
 
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
+
+
+@router.post("/excel/export")
+async def export_excel(excel_data: ExcelData):
+    _fields_list = []
+    data = []
+    for _data in excel_data.data:
+        _row = []
+        for field in excel_data.axis:
+            _row.append(_data.get(field.value))
+        data.append(_row)
+    for field in excel_data.axis:
+        _fields_list.append(field.name)
+    df = pd.DataFrame(np.array(data), columns=_fields_list)
+
+    file_name = f"{excel_data.name}-{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+
+    file_path = f'{(settings.EXCEL_PATH if settings.EXCEL_PATH[-1] == "/" else (settings.EXCEL_PATH + "/"))}{file_name}'
+
+    file_download_path = f'{(settings.SERVER_EXCEL_HOST if settings.SERVER_EXCEL_HOST[-1] == "/" else (settings.SERVER_EXCEL_HOST + "/"))}{file_name}'
+
+    df.to_excel(file_path, index=False)
+
+    return file_download_path

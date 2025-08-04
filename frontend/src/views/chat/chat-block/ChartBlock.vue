@@ -12,7 +12,9 @@ import ICON_PIE from '@/assets/svg/chart/icon_pie_outlined.svg'
 import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
 import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
-// import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
+import icon_file_image_colorful from '@/assets/svg/icon_file-image_colorful.svg'
+import icon_file_excel_colorful from '@/assets/svg/icon_file-excel_colorful.svg'
+import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
 import icon_window_max_outlined from '@/assets/svg/icon_window-max_outlined.svg'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
@@ -20,6 +22,8 @@ import { useI18n } from 'vue-i18n'
 import SQLComponent from '@/views/chat/component/SQLComponent.vue'
 import { useAssistantStore } from '@/stores/assistant'
 import AddViewDashboard from '@/views/dashboard/common/AddViewDashboard.vue'
+import html2canvas from 'html2canvas'
+import { chatApi } from '@/api/chat'
 
 const props = withDefaults(
   defineProps<{
@@ -54,6 +58,8 @@ const dataObject = computed<{
 })
 const assistantStore = useAssistantStore()
 const isAssistant = computed(() => assistantStore.getAssistant)
+
+const chartId = computed(() => props.message?.record?.id + (props.enlarge ? '-fullscreen' : ''))
 
 const data = computed(() => {
   if (props.isPredict) {
@@ -191,33 +197,64 @@ function showSql() {
   sqlShow.value = true
 }
 
-// function addToDashboard() {
-//   const recordeInfo = {
-//     id: '1-1',
-//     data: {
-//       data: data.value,
-//     },
-//     chart: {},
-//   }
-//   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-//   const chartBaseInfo = JSON.parse(props.message?.record?.chart)
-//   recordeInfo['chart'] = {
-//     type: chartBaseInfo.type,
-//     title: chartBaseInfo.title,
-//     columns: chartBaseInfo.columns,
-//     xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
-//     yAxis: chartBaseInfo.axis?.y ? [chartBaseInfo.axis.y] : [],
-//     series: chartBaseInfo.axis?.series ? [chartBaseInfo.axis.series] : [],
-//   }
-//   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-//   addViewRef.value?.optInit(recordeInfo)
-// }
+function addToDashboard() {
+  const recordeInfo = {
+    id: '1-1',
+    data: {
+      data: data.value,
+    },
+    chart: {},
+  }
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  const chartBaseInfo = JSON.parse(props.message?.record?.chart)
+  recordeInfo['chart'] = {
+    type: chartBaseInfo.type,
+    title: chartBaseInfo.title,
+    columns: chartBaseInfo.columns,
+    xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
+    yAxis: chartBaseInfo.axis?.y ? [chartBaseInfo.axis.y] : [],
+    series: chartBaseInfo.axis?.series ? [chartBaseInfo.axis.series] : [],
+  }
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  addViewRef.value?.optInit(recordeInfo)
+}
 
 function copy() {
   if (props.message?.record?.sql) {
     navigator.clipboard.writeText(props.message.record.sql)
     ElMessage.info(t('qa.copied'))
   }
+}
+
+const exportRef = ref()
+
+function exportToExcel() {
+  chatApi
+    .export2Excel({ ...chartRef.value?.getExcelData(), name: chartObject.value.title })
+    .then((res) => {
+      console.log('download_path: ' + res)
+      //todo download
+    })
+  exportRef.value?.hide()
+}
+function exportToImage() {
+  const obj = document.getElementById('chart-component-' + chartId.value)
+  if (obj) {
+    html2canvas(obj).then((canvas) => {
+      canvas.toBlob(function (blob) {
+        if (blob) {
+          const link = document.createElement('a')
+          link.download = (chartObject.value.title ?? 'chart') + '.png' // Specify filename
+          link.href = URL.createObjectURL(blob)
+          document.body.appendChild(link) // Append to body to make it clickable
+          link.click() // Programmatically click the link
+          document.body.removeChild(link) // Clean up
+          URL.revokeObjectURL(link.href) // Release the object URL
+        }
+      }, 'image/png')
+    })
+  }
+  exportRef.value?.hide()
 }
 </script>
 
@@ -270,17 +307,48 @@ function copy() {
             </el-button>
           </el-tooltip>
         </div>
-        <div v-if="false">
-          <!--    todo      -->
-          <el-tooltip effect="dark" :content="t('chat.export_to')" placement="top">
-            <el-button class="tool-btn" text>
-              <el-icon size="16">
-                <icon_export_outlined />
-              </el-icon>
-            </el-button>
-          </el-tooltip>
+        <div>
+          <el-popover
+            ref="exportRef"
+            trigger="click"
+            popper-class="export_to_select"
+            placement="bottom"
+          >
+            <template #reference>
+              <div>
+                <el-tooltip effect="dark" :content="t('chat.export_to')" placement="top">
+                  <el-button class="tool-btn" text>
+                    <el-icon size="16">
+                      <icon_export_outlined />
+                    </el-icon>
+                  </el-button>
+                </el-tooltip>
+              </div>
+            </template>
+            <div class="popover">
+              <div class="popover-content">
+                <div class="title">{{ t('chat.export_to') }}</div>
+                <div class="popover-item" @click="exportToExcel">
+                  <el-icon size="16">
+                    <icon_file_excel_colorful />
+                  </el-icon>
+                  <div class="model-name">{{ t('chat.excel') }}</div>
+                </div>
+                <div
+                  v-if="currentChartType !== 'table'"
+                  class="popover-item"
+                  @click="exportToImage"
+                >
+                  <el-icon size="16">
+                    <icon_file_image_colorful />
+                  </el-icon>
+                  <div class="model-name">{{ t('chat.picture') }}</div>
+                </div>
+              </div>
+            </div>
+          </el-popover>
         </div>
-        <!-- <div>
+        <div>
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">
@@ -288,7 +356,7 @@ function copy() {
               </el-icon>
             </el-button>
           </el-tooltip>
-        </div> -->
+        </div>
         <div class="divider" />
         <div v-if="!enlarge">
           <el-tooltip effect="dark" :content="t('chat.full_screen')" placement="top">
@@ -313,7 +381,7 @@ function copy() {
 
     <div v-if="message?.record?.chart" class="chart-block">
       <DisplayChartBlock
-        :id="message.record.id + (enlarge ? '-fullscreen' : '')"
+        :id="chartId"
         ref="chartRef"
         :chart-type="chartType"
         :message="message"
@@ -376,6 +444,70 @@ function copy() {
 }
 .chart-sql-drawer-body {
   padding: 24px;
+}
+
+.export_to_select.export_to_select {
+  padding: 4px 0;
+  width: 120px !important;
+  min-width: 120px !important;
+  box-shadow: 0px 4px 8px 0px #1f23291a;
+  border: 1px solid #dee0e3;
+
+  .popover {
+    .popover-content {
+      padding: 0 4px;
+      max-height: 300px;
+      overflow-y: auto;
+
+      .title {
+        width: 100%;
+        height: 32px;
+        margin-bottom: 2px;
+        display: flex;
+        align-items: center;
+        padding-left: 8px;
+        color: #8f959e;
+      }
+    }
+    .popover-item {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding-left: 12px;
+      padding-right: 8px;
+      margin-bottom: 2px;
+      position: relative;
+      border-radius: 4px;
+      cursor: pointer;
+      &:last-child {
+        margin-bottom: 0;
+      }
+      &:hover {
+        background: #1f23291a;
+      }
+
+      .model-name {
+        margin-left: 8px;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+        max-width: 220px;
+      }
+
+      .done {
+        margin-left: auto;
+        display: none;
+      }
+
+      &.isActive {
+        color: var(--ed-color-primary);
+
+        .done {
+          display: block;
+        }
+      }
+    }
+  }
 }
 </style>
 <style scoped lang="less">

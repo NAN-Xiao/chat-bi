@@ -62,6 +62,13 @@ function destroyChart() {
   }
 }
 
+function getExcelData() {
+  return {
+    axis: axis.value,
+    data: params.data,
+  }
+}
+
 useEmitt({
   name: 'view-render-all',
   callback: renderChart,
@@ -75,6 +82,7 @@ useEmitt({
 defineExpose({
   renderChart,
   destroyChart,
+  getExcelData,
 })
 
 onMounted(() => {
