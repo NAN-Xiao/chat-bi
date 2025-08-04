@@ -23,8 +23,8 @@ def upgrade():
                existing_type=sa.INTEGER(),
                type_=sa.BigInteger(),
                existing_nullable=False,
-               autoincrement=True,
-               existing_server_default=sa.Identity(always=True, start=1, increment=1, minvalue=1, maxvalue=2147483647, cycle=False, cache=1))
+               autoincrement=True
+               )
     op.alter_column('chat', 'datasource',
                existing_type=sa.INTEGER(),
                type_=sa.BigInteger(),
@@ -33,8 +33,7 @@ def upgrade():
                existing_type=sa.INTEGER(),
                type_=sa.BigInteger(),
                existing_nullable=False,
-               autoincrement=True,
-               existing_server_default=sa.Identity(always=True, start=1, increment=1, minvalue=1, maxvalue=2147483647, cycle=False, cache=1))
+               autoincrement=True)
     op.alter_column('chat_record', 'chat_id',
                existing_type=sa.INTEGER(),
                type_=sa.BigInteger(),
@@ -68,8 +67,7 @@ def downgrade():
                existing_type=sa.BigInteger(),
                type_=sa.INTEGER(),
                existing_nullable=False,
-               autoincrement=True,
-               existing_server_default=sa.Identity(always=True, start=1, increment=1, minvalue=1, maxvalue=2147483647, cycle=False, cache=1))
+               autoincrement=True)
     op.alter_column('chat', 'datasource',
                existing_type=sa.BigInteger(),
                type_=sa.INTEGER(),
@@ -78,6 +76,5 @@ def downgrade():
                existing_type=sa.BigInteger(),
                type_=sa.INTEGER(),
                existing_nullable=False,
-               autoincrement=True,
-               existing_server_default=sa.Identity(always=True, start=1, increment=1, minvalue=1, maxvalue=2147483647, cycle=False, cache=1))
+               autoincrement=True)
     # ### end Alembic commands ###

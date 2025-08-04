@@ -44,11 +44,13 @@ class Settings(BaseSettings):
             self.FRONTEND_HOST
         ]
 
-    POSTGRES_SERVER: str
+    POSTGRES_SERVER: str = 'localhost'
     POSTGRES_PORT: int = 5432
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str = ""
-    POSTGRES_DB: str = ""
+    POSTGRES_USER: str = 'root'
+    POSTGRES_PASSWORD: str = "123456"
+    POSTGRES_DB: str = "sqlbot"
+    SQLBOT_DB_URL: str = ''
+    #SQLBOT_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/sqlbot'
     
     TOKEN_KEY: str =  "X-SQLBOT-TOKEN"
     DEFAULT_PWD: str = "SQLBot@123456"
@@ -64,7 +66,9 @@ class Settings(BaseSettings):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn:
+    def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn | str:
+        if self.SQLBOT_DB_URL:
+            return self.SQLBOT_DB_URL
         return MultiHostUrl.build(
             scheme="postgresql+psycopg",
             username=self.POSTGRES_USER,
