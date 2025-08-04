@@ -6,6 +6,7 @@
     "AI Model Configuration": "模型配置"
   },
   "common": {
+    "confirm2": "确定",
     "excessive_tables_selected": "选择数据表过量",
     "to_continue_saving": "选择的数据表数量为：{msg}，已超出30，可能会导致操作超时或者无响应，是否继续保存？",
     "proceed_with_caution": "删除后无法恢复，请谨慎操作。",

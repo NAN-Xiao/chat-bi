@@ -6,6 +6,7 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
+    "confirm2": "Confirm",
     "excessive_tables_selected": "Excessive tables selected",
     "to_continue_saving": "The number of selected tables is 67, exceeding {msg}. This may cause the operation to time out or become unresponsive. Do you want to continue saving?",
     "proceed_with_caution": "Deletion is irreversible, so proceed with caution.",

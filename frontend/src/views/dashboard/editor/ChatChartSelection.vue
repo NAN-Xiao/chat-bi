@@ -50,7 +50,7 @@
           :disabled="!selectComponentCount"
           class="confirm-button"
           @click="saveMultiplexing"
-          >{{ t('common.save') }}
+          >{{ t('common.confirm2') }}
         </el-button>
       </el-row>
     </template>
