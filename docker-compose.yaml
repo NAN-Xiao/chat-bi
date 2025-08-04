@@ -19,19 +19,13 @@ services:
       PROJECT_NAME: "SQLBot"
       DEFAULT_PWD: "SQLBot@123456"
       # MCP settings
-      MCP_IMAGE_PATH: /opt/sqlbot/images
-      MCP_IMAGE_HOST: http://localhost:3000
-      SERVER_IMAGE_HOST: https://sqlbot.fit2cloud.cn/images/
+      SERVER_IMAGE_HOST: https://YOUR_SERVE_IP:MCP_PORT/images/
       # Auth & Security
-      TOKEN_KEY: "X-SQLBOT-TOKEN"
-      ASSISTANT_TOKEN_KEY: "X-SQLBOT-ASSISTANT-TOKEN"
       SECRET_KEY: y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s
       # CORS settings
       BACKEND_CORS_ORIGINS: "http://localhost,http://localhost:5173,https://localhost,https://localhost:5173"
       # Logging
       LOG_LEVEL: "INFO"
-      LOG_DIR: "/opt/sqlbot/logs"
-      LOG_FORMAT: "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
       SQL_DEBUG: False
     volumes:
       - ./data/sqlbot/excel:/opt/sqlbot/data/excel
