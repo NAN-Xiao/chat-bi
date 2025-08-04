@@ -74,8 +74,9 @@ class Settings(BaseSettings):
             path=self.POSTGRES_DB,
         )
 
-    MCP_IMAGE_PATH: str
-    MCP_IMAGE_HOST: str
+    MCP_IMAGE_PATH: str = '/opt/sqlbot/images'
+    MCP_IMAGE_HOST: str = 'http://localhost:3000'
     SERVER_IMAGE_HOST: str
 
 settings = Settings()  # type: ignore
+print(settings)
