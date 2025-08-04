@@ -6,10 +6,10 @@ const userStore = useUserStore()
 const { wsCache } = useCache()
 const whiteList = ['/login']
 const assistantWhiteList = ['/assistant']
-export const watchRouter = async (router: any) => {
-  await loadXpackStatic()
-  LicenseGenerator.generateRouters(router)
+export const watchRouter = (router: any) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
+    await loadXpackStatic()
+    LicenseGenerator.generateRouters(router)
     if (assistantWhiteList.includes(to.path)) {
       next()
       return
