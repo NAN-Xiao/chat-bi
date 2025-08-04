@@ -347,6 +347,7 @@ const handleCurrentChange = (val: number) => {
     <el-input
       v-model="workspaceForm.name"
       clearable
+      :class="workspaceForm.name && 'value-input'"
       :placeholder="$t('workspace.id_account_to_add')"
     >
       <template #append>
@@ -451,8 +452,8 @@ const handleCurrentChange = (val: number) => {
   .bottom-select {
     position: absolute;
     height: 64px;
-    width: 100%;
-    left: 0;
+    width: calc(100% + 48px);
+    left: -24px;
     bottom: 0;
     border-top: 1px solid #1f232926;
     display: flex;
@@ -490,6 +491,28 @@ const handleCurrentChange = (val: number) => {
   .ed-input-group__append {
     background-color: #fff;
     padding: 0 12px;
+  }
+
+  .value-input {
+    .ed-input-group__append {
+      color: #1f2329;
+      position: relative;
+      &:hover {
+        &::after {
+          content: '';
+          position: absolute;
+          left: -1px;
+          top: 0;
+          width: calc(100% - 1px);
+          height: calc(100% - 2px);
+          background: #1cba901a;
+          border: 1px solid #1cba90;
+          border-bottom-right-radius: 6px;
+          border-top-right-radius: 6px;
+          pointer-events: none;
+        }
+      }
+    }
   }
   .user {
     height: 126px;
