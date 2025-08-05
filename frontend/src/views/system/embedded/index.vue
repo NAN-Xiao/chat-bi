@@ -180,7 +180,7 @@ const handleSearch = () => {
   searchLoading.value = true
   getList()
     .then((res: any) => {
-      // embeddedList.value = res || []
+      embeddedList.value = res || []
     })
     .finally(() => {
       searchLoading.value = false
@@ -507,6 +507,7 @@ const saveHandler = () => {
       v-if="!!keywords && !embeddedListWithSearch.length"
       :description="$t('datasource.relevant_content_found')"
       img-type="tree"
+      class="ed-empty_pd0"
     />
     <div v-else class="card-content">
       <el-row :gutter="16" class="w-full">

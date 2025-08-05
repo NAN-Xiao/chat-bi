@@ -59,7 +59,8 @@ const getAssetsFile = {
 
 <style lang="less" scoped>
 .empty-info {
-  height: 100%;
+  height: 90%;
+  padding-top: 0;
 }
 :deep(.ed-empty__description) {
   margin-top: 8px;
