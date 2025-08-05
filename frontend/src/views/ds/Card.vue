@@ -3,14 +3,11 @@ import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_chat_outlined from '@/assets/svg/icon_chat_outlined.svg'
-import { ref, unref, computed } from 'vue'
-import { ClickOutside as vClickOutside, ElMessage } from 'element-plus-secondary'
+import { computed, ref, unref } from 'vue'
+import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { datasourceApi } from '@/api/datasource.ts'
-import { encrypted } from '@/views/ds/js/aes.ts'
-import { useI18n } from 'vue-i18n'
-const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -133,6 +130,7 @@ const onClickOutside = () => {
   padding: 16px;
   border-radius: 12px;
   cursor: pointer;
+
   &:hover {
     box-shadow: 0px 6px 24px 0px #1f232914;
   }
@@ -145,12 +143,14 @@ const onClickOutside = () => {
     .info {
       margin-left: 12px;
       max-width: calc(100% - 50px);
+
       .name {
         font-weight: 500;
         font-size: 16px;
         line-height: 24px;
         max-width: 100%;
       }
+
       .type {
         font-weight: 400;
         font-size: 12px;
@@ -228,6 +228,7 @@ const onClickOutside = () => {
       }
     }
   }
+
   &:hover {
     .methods {
       display: flex;
@@ -244,8 +245,10 @@ const onClickOutside = () => {
   width: 120px !important;
   min-width: 120px !important;
   padding: 0;
+
   .content {
     position: relative;
+
     &::after {
       position: absolute;
       content: '';
@@ -255,6 +258,7 @@ const onClickOutside = () => {
       height: 1px;
       background: #dee0e3;
     }
+
     .item {
       position: relative;
       padding-left: 12px;
@@ -262,10 +266,12 @@ const onClickOutside = () => {
       display: flex;
       align-items: center;
       cursor: pointer;
+
       .ed-icon {
         margin-right: 8px;
         color: #646a73;
       }
+
       &:hover {
         &::after {
           display: block;
