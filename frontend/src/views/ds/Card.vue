@@ -4,9 +4,13 @@ import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_chat_outlined from '@/assets/svg/icon_chat_outlined.svg'
 import { ref, unref, computed } from 'vue'
-import { ClickOutside as vClickOutside } from 'element-plus-secondary'
+import { ClickOutside as vClickOutside, ElMessage } from 'element-plus-secondary'
 import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
+import { datasourceApi } from '@/api/datasource.ts'
+import { encrypted } from '@/views/ds/js/aes.ts'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 
 const props = withDefaults(
   defineProps<{
@@ -39,7 +43,12 @@ const handleDel = () => {
 }
 
 const handleQuestion = () => {
-  emits('question', props.id)
+  //check first
+  datasourceApi.check_by_id(props.id).then((res: any) => {
+    if (res) {
+      emits('question', props.id)
+    }
+  })
 }
 
 const dataTableDetail = () => {

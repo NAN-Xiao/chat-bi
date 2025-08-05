@@ -12,7 +12,8 @@ from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.utils import SQLBotLogUtil
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
-    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum
+    execSql, update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum, \
+    check_status_by_id
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField
@@ -42,6 +43,14 @@ async def get_datasource(session: SessionDep, id: int):
 async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
     def inner():
         return check_status(session, trans, ds, True)
+
+    return await asyncio.to_thread(inner)
+
+
+@router.get("/check/{ds_id}")
+async def check_by_id(session: SessionDep, trans: Trans, ds_id: int):
+    def inner():
+        return check_status_by_id(session, trans, ds_id, True)
 
     return await asyncio.to_thread(inner)
 
