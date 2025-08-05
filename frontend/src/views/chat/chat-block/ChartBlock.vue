@@ -39,6 +39,7 @@ const props = withDefaults(
   }
 )
 
+const loading = ref<boolean>(false)
 const { t } = useI18n()
 const addViewRef = ref(null)
 const emits = defineEmits(['exitFullScreen'])
@@ -231,20 +232,26 @@ function copy() {
 const exportRef = ref()
 
 function exportToExcel() {
-  chatApi
-    .export2Excel({ ...chartRef.value?.getExcelData(), name: chartObject.value.title })
-    .then((res) => {
-      const blob = new Blob([res], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  if (chartRef.value) {
+    loading.value = true
+    chatApi
+      .export2Excel({ ...chartRef.value?.getExcelData(), name: chartObject.value.title })
+      .then((res) => {
+        const blob = new Blob([res], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        })
+        const link = document.createElement('a')
+        link.href = URL.createObjectURL(blob)
+        link.download = `${chartObject.value.title ?? 'Excel'}.xlsx`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
       })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = `${chartObject.value.title ?? 'Excel'}.xlsx`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    })
-  exportRef.value?.hide()
+      .finally(() => {
+        loading.value = false
+      })
+    exportRef.value?.hide()
+  }
 }
 
 function exportToImage() {
@@ -284,6 +291,7 @@ watch(
       ((!isPredict && (message?.record?.sql || message?.record?.chart)) ||
         (isPredict && message?.record?.chart && data.length > 0))
     "
+    v-loading.fullscreen.lock="loading"
     class="chart-component-container"
     :class="{ 'full-screen': enlarge }"
   >

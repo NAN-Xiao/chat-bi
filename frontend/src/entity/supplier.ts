@@ -6,6 +6,8 @@ import icon_xfhx_colorful from '@/assets/model/icon_xfhx_colorful.png'
 import icon_gemini_colorful from '@/assets/model/icon_gemini_colorful.png'
 import icon_openai_colorful from '@/assets/model/icon_openai_colorful.png'
 import icon_kimi_colorful from '@/assets/model/icon_kimi_colorful.png'
+import icon_txhy_colorful from '@/assets/model/icon_txhy_colorful.png'
+import icon_hsyq_colorful from '@/assets/model/icon_hsyq_colorful.png'
 
 type ModelArg = { key: string; val?: string | number; type: string; range?: string }
 type ModelOption = { name: string; api_domain?: string; args?: ModelArg[] }
@@ -78,7 +80,7 @@ export const supplierList: Array<{
   {
     id: 4,
     name: '腾讯混元',
-    icon: icon_txy_colorful,
+    icon: icon_txhy_colorful,
     model_config: {
       0: {
         api_domain: 'https://api.hunyuan.cloud.tencent.com/v1/',
@@ -211,6 +213,42 @@ export const supplierList: Array<{
           { name: 'moonshot-v1-32k-vision-preview' },
           { name: 'moonshot-v1-128k-vision-preview' },
           { name: 'kimi-thinking-preview' },
+        ],
+      },
+    },
+  },
+  {
+    id: 9,
+    name: '腾讯云',
+    icon: icon_txy_colorful,
+    model_config: {
+      0: {
+        api_domain: 'https://api.lkeap.cloud.tencent.com/v1',
+        common_args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+        model_options: [
+          { name: 'deepseek-r1' },
+          { name: 'deepseek-r1-0528' },
+          { name: 'deepseek-v3' },
+          { name: 'deepseek-v3-0324' },
+        ],
+      },
+    },
+  },
+  {
+    id: 10,
+    name: '火山引擎',
+    icon: icon_hsyq_colorful,
+    model_config: {
+      0: {
+        api_domain: 'https://ark.cn-beijing.volces.com/api/v3',
+        common_args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+        model_options: [
+          { name: 'doubao-seed-1-6-250615' },
+          { name: 'doubao-seed-1-6-flash-250715' },
+          { name: 'doubao-1-5-pro-32k-character-250715' },
+          { name: 'kimi-k2-250711' },
+          { name: 'deepseek-v3-250324' },
+          { name: 'deepseek-r1' },
         ],
       },
     },
