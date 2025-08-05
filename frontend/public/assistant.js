@@ -455,6 +455,9 @@
     fetch(url)
       .then((response) => response.json())
       .then((res) => {
+        if (!res.data) {
+          throw new Error(res)
+        }
         const data = res.data
         const config_json = data.configuration
         let tempData = Object.assign(defaultData, { id, domain_url })
@@ -471,6 +474,9 @@
           registerMessageEvent(id, tempData)
           // postMessage the certificate to iframe
         }
+      })
+      .catch((e) => {
+        showMsg('嵌入失败', e.message)
       })
   }
   function getDomain(src) {
@@ -493,6 +499,109 @@
       expposeGlobalMethods(id)
     })
   }
+
+  function showMsg(title, content) {
+    // 检查并创建容器（如果不存在）
+    let container = document.getElementById('messageContainer')
+    if (!container) {
+      container = document.createElement('div')
+      container.id = 'messageContainer'
+      container.style.position = 'fixed'
+      container.style.bottom = '20px'
+      container.style.right = '20px'
+      container.style.zIndex = '1000'
+      document.body.appendChild(container)
+    } else {
+      // 如果容器已存在，先移除旧弹窗
+      const oldMessage = container.querySelector('div')
+      if (oldMessage) {
+        oldMessage.style.transform = 'translateX(120%)'
+        oldMessage.style.opacity = '0'
+        setTimeout(() => {
+          container.removeChild(oldMessage)
+        }, 300)
+      }
+    }
+
+    // 创建弹窗元素
+    const messageBox = document.createElement('div')
+    messageBox.style.width = '240px'
+    messageBox.style.minHeight = '100px'
+    messageBox.style.background = 'linear-gradient(135deg, #ff6b6b, #ff8e8e)'
+    messageBox.style.borderRadius = '8px'
+    messageBox.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)'
+    messageBox.style.padding = '15px'
+    messageBox.style.color = 'white'
+    messageBox.style.fontFamily = 'Arial, sans-serif'
+    messageBox.style.display = 'flex'
+    messageBox.style.flexDirection = 'column'
+    messageBox.style.transform = 'translateX(120%)'
+    messageBox.style.transition = 'transform 0.3s ease-out'
+    messageBox.style.opacity = '0'
+    messageBox.style.transition = 'opacity 0.3s ease, transform 0.3s ease'
+    messageBox.style.overflow = 'hidden'
+
+    // 创建标题元素
+    const titleElement = document.createElement('div')
+    titleElement.style.fontSize = '18px'
+    titleElement.style.fontWeight = 'bold'
+    titleElement.style.marginBottom = '10px'
+    titleElement.style.borderBottom = '1px solid rgba(255, 255, 255, 0.3)'
+    titleElement.style.paddingBottom = '8px'
+    titleElement.textContent = title
+
+    // 创建内容元素
+    const contentElement = document.createElement('div')
+    contentElement.style.fontSize = '14px'
+    contentElement.style.flexGrow = '1'
+    contentElement.style.overflow = 'auto'
+    contentElement.textContent = content
+
+    // 组装元素
+    messageBox.appendChild(titleElement)
+    messageBox.appendChild(contentElement)
+
+    // 添加到容器
+    container.appendChild(messageBox)
+
+    // 触发显示动画
+    setTimeout(() => {
+      messageBox.style.transform = 'translateX(0)'
+      messageBox.style.opacity = '1'
+    }, 10)
+
+    // 3秒后自动隐藏
+    setTimeout(() => {
+      messageBox.style.transform = 'translateX(120%)'
+      messageBox.style.opacity = '0'
+      setTimeout(() => {
+        container.removeChild(messageBox)
+        // 如果容器是空的，也移除容器
+        if (container.children.length === 0) {
+          document.body.removeChild(container)
+        }
+      }, 300)
+    }, 5000)
+  }
+
+  /* function hideMsg() {
+    const container = document.getElementById('messageContainer');
+    if (container) {
+        const messageBox = container.querySelector('div');
+        if (messageBox) {
+            messageBox.style.transform = 'translateX(120%)';
+            messageBox.style.opacity = '0';
+            setTimeout(() => {
+                container.removeChild(messageBox);
+                // 如果容器是空的，也移除容器
+                if (container.children.length === 0) {
+                    document.body.removeChild(container);
+                }
+            }, 300);
+        }
+    }
+  } */
+
   function updateParam(target_url, key, newValue) {
     try {
       const url = new URL(target_url)

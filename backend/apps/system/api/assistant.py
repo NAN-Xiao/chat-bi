@@ -6,7 +6,7 @@ from apps.system.crud.assistant import get_assistant_info
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantValidator
-from common.core.deps import SessionDep
+from common.core.deps import SessionDep, Trans
 from common.core.security import create_access_token
 from common.core.sqlbot_cache import clear_cache
 from common.utils.time import get_timestamp
@@ -15,7 +15,7 @@ from common.core.config import settings
 router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
 
 @router.get("/info/{id}") 
-async def info(request: Request, response: Response, session: SessionDep, id: int) -> AssistantModel:
+async def info(request: Request, response: Response, session: SessionDep, trans: Trans, id: int) -> AssistantModel:
     if not id:
         raise Exception('miss assistant id')
     db_model = await get_assistant_info(session=session, assistant_id=id)
@@ -26,7 +26,7 @@ async def info(request: Request, response: Response, session: SessionDep, id: in
     origin = request.headers.get("origin") or request.headers.get("referer")
     origin = origin.rstrip('/')
     if origin != db_model.domain:
-        raise RuntimeError("invalid domain [{origin}]")
+        raise RuntimeError(trans('i18n_embedded.invalid_origin', origin = origin or ''))
     return db_model
 
 @router.get("/validator", response_model=AssistantValidator) 
