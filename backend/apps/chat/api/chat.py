@@ -206,12 +206,9 @@ async def export_excel(excel_data: ExcelData):
         _fields_list.append(field.name)
     df = pd.DataFrame(np.array(data), columns=_fields_list)
 
-    file_name = f"{excel_data.name}-{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.xlsx"
-
-    file_path = f'{(settings.EXCEL_PATH if settings.EXCEL_PATH[-1] == "/" else (settings.EXCEL_PATH + "/"))}{file_name}'
-
     buffer = io.BytesIO()
     df.to_excel(buffer, index=False)
     buffer.seek(0)
 
-    return StreamingResponse(io.BytesIO(buffer.getvalue()))
+    return StreamingResponse(io.BytesIO(buffer.getvalue()),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

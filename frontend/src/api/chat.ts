@@ -329,5 +329,5 @@ export const chatApi = {
     return request.fetchStream(`/chat/recommend_questions/${record_id}`, {}, controller)
   },
   checkLLMModel: () => request.get('/system/aimodel/default', { requestOptions: { silent: true } }),
-  export2Excel: (data: any) => request.post('/chat/excel/export', data),
+  export2Excel: (data: any) => request.post('/chat/excel/export', data, { responseType: 'blob' }),
 }
