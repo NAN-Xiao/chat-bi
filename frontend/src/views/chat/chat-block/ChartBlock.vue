@@ -117,7 +117,9 @@ const chartObject = computed<{
   return {}
 })
 
-const currentChartType = ref<ChartTypes | undefined>(undefined)
+const currentChartType = ref<ChartTypes | undefined>(
+  props.chatType ?? chartObject.value.type ?? 'table'
+)
 
 const chartType = computed<ChartTypes>({
   get() {
