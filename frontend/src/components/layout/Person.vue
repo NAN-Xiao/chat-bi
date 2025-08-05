@@ -61,6 +61,10 @@ const changeLanguage = (lang: string) => {
   })
 }
 
+const openHelp = () => {
+  window.open('https://dataease.cn/sqlbot/', '_blank')
+}
+
 const openPwd = () => {
   dialogVisible.value = true
 }
@@ -140,7 +144,7 @@ const logout = () => {
           </el-icon>
           <div class="datasource-name">{{ $t('about.title') }}</div>
         </div>
-        <div class="popover-item">
+        <div @click="openHelp" class="popover-item">
           <el-icon size="16">
             <icon_maybe_outlined></icon_maybe_outlined>
           </el-icon>
