@@ -1,10 +1,9 @@
 import datetime
-import sqlparse
 from typing import List
 
 import orjson
-from sqlalchemy import and_
-from sqlalchemy.orm import load_only
+import sqlparse
+from sqlalchemy import and_, select
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion
 from apps.datasource.models.datasource import CoreDatasource
@@ -47,26 +46,29 @@ def delete_chat(session, chart_id) -> str:
 
 
 def get_chat_chart_data(session: SessionDep, chart_record_id: int):
-    res = session.query(ChatRecord).options(load_only(ChatRecord.data)).get(chart_record_id)
-    if res:
+    stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chart_record_id))
+    res = session.execute(stmt)
+    for row in res:
         try:
-            return orjson.loads(res.data)
+            return orjson.loads(row.data)
         except Exception:
             pass
     return {}
 
 
 def get_chat_predict_data(session: SessionDep, chart_record_id: int):
-    res = session.query(ChatRecord).options(load_only(ChatRecord.predict_data)).get(chart_record_id)
-    if res:
+    stmt = select(ChatRecord.predict_data).where(and_(ChatRecord.id == chart_record_id))
+    res = session.execute(stmt)
+    for row in res:
         try:
-            return orjson.loads(res.predict_data)
+            return orjson.loads(row.predict_data)
         except Exception:
             pass
-    return ''
+    return {}
 
 
-def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser, current_assistant: CurrentAssistant) -> ChatInfo:
+def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser,
+                          current_assistant: CurrentAssistant) -> ChatInfo:
     chat = session.get(Chat, chart_id)
     if not chat:
         raise Exception(f"Chat with id {chart_id} not found")
@@ -78,7 +80,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         ds = out_ds_instance.get_ds(chat.datasource)
     else:
         ds = session.get(CoreDatasource, chat.datasource) if chat.datasource else None
-    
+
     if not ds:
         chat_info.datasource_exists = False
         chat_info.datasource_name = 'Datasource not exist'
@@ -87,14 +89,25 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         chat_info.datasource_name = ds.name
         chat_info.ds_type = ds.type
 
-    record_list = session.query(ChatRecord).options(
-        load_only(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
-                  ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql, ChatRecord.data,
+    stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
+                  ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
                   ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                   ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                   ChatRecord.recommended_question, ChatRecord.first_chat,
-                  ChatRecord.predict_data, ChatRecord.finish, ChatRecord.error)).filter(
-        and_(Chat.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time).all()
+                  ChatRecord.finish, ChatRecord.error).where(
+        and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time)
+    result = session.execute(stmt).all()
+    record_list: list[ChatRecord] = []
+    for row in result:
+        record_list.append(
+            ChatRecord(id=row.id, chat_id=row.chat_id, create_time=row.create_time, finish_time=row.finish_time,
+                       question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                       chart_answer=row.chart_answer, chart=row.chart,
+                       analysis=row.analysis, predict=row.predict,
+                       datasource_select_answer=row.datasource_select_answer,
+                       analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
+                       recommended_question=row.recommended_question, first_chat=row.first_chat,
+                       finish=row.finish, error=row.error))
 
     result = list(map(format_record, record_list))
 

@@ -160,7 +160,6 @@
                     @error="onChartAnswerError"
                     @stop="onChatStop"
                   >
-                    <ChartBlock style="margin-top: 12px" :message="message" />
                     <ErrorInfo :error="message.record?.error" class="error-container" />
                     <template #tool>
                       <ChatToolBar v-if="!message.isTyping" :message="message">
@@ -265,7 +264,6 @@
                     @error="onPredictAnswerError"
                     @stop="onChatStop"
                   >
-                    <ChartBlock style="margin-top: 12px" :message="message" is-predict />
                     <ErrorInfo :error="message.record?.error" class="error-container" />
                     <template #tool>
                       <ChatToolBar v-if="!message.isTyping" :message="message" />
@@ -337,7 +335,6 @@ import ChartAnswer from './answer/ChartAnswer.vue'
 import AnalysisAnswer from './answer/AnalysisAnswer.vue'
 import PredictAnswer from './answer/PredictAnswer.vue'
 import UserChat from './chat-block/UserChat.vue'
-import ChartBlock from './chat-block/ChartBlock.vue'
 import RecommendQuestion from './RecommendQuestion.vue'
 import ChatListContainer from './ChatListContainer.vue'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
@@ -345,7 +342,7 @@ import ErrorInfo from './ErrorInfo.vue'
 import ChatToolBar from './ChatToolBar.vue'
 import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import { useI18n } from 'vue-i18n'
-import { find } from 'lodash-es'
+import { find, forEach } from 'lodash-es'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
@@ -490,9 +487,14 @@ function getChatList(callback?: () => void) {
     })
 }
 
-function onClickHistory(chat: Chat) {
+function onClickHistory(chat: ChatInfo) {
   scrollToBottom()
-  console.debug('click history', chat)
+  forEach(chat?.records, (record: ChatRecord) => {
+    // getChatData(record.id)
+    if (record.predict_record_id) {
+      // getChatPredictData(record.id)
+    }
+  })
 }
 
 const currentChatEngineType = computed(() => {
@@ -629,16 +631,6 @@ const sendMessage = async ($event: any = {}) => {
   })
 }
 
-function getChatPredictData(recordId?: number) {
-  chatApi.get_chart_predict_data(recordId).then((response) => {
-    currentChat.value.records.forEach((record) => {
-      if (record.id === recordId) {
-        record.predict_data = response ?? []
-      }
-    })
-  })
-}
-
 const analysisAnswerRef = ref()
 
 async function onAnalysisAnswerFinish(id: number) {
@@ -704,7 +696,7 @@ const predictAnswerRef = ref()
 async function onPredictAnswerFinish(id: number) {
   loading.value = false
   isTyping.value = false
-  getChatPredictData(id)
+  console.debug('onPredictAnswerFinish: ', id)
   //await getRecommendQuestions(id)
 }
 function onPredictAnswerError() {

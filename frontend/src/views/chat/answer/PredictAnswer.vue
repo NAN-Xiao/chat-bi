@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat.ts'
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
+import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 const props = withDefaults(
   defineProps<{
     chatList?: Array<ChatInfo>
@@ -174,6 +175,7 @@ const sendMessage = async () => {
             break
           case 'predict-success':
             //currentChat.value.records[_index].predict_data = data.content
+            getChatPredictData(_currentChat.value.records[index.value].id)
             emits('finish', currentRecord.id)
             break
           case 'predict_finish':
@@ -198,6 +200,33 @@ const sendMessage = async () => {
   }
 }
 
+const chartBlockRef = ref()
+
+function getChatPredictData(recordId?: number) {
+  chatApi.get_chart_predict_data(recordId).then((response) => {
+    _currentChat.value.records.forEach((record) => {
+      if (record.id === recordId) {
+        record.predict_data = response ?? []
+
+        if (record.predict_data.length > 1) {
+          getChatData(recordId)
+        }
+      }
+    })
+  })
+}
+
+function getChatData(recordId?: number) {
+  chatApi.get_chart_data(recordId).then((response) => {
+    _currentChat.value.records.forEach((record) => {
+      if (record.id === recordId) {
+        record.data = response
+        console.log(record.data)
+      }
+    })
+  })
+}
+
 function stop() {
   stopFlag.value = true
   _loading.value = false
@@ -208,12 +237,25 @@ onBeforeUnmount(() => {
   stop()
 })
 
+onMounted(() => {
+  if (props.message?.record?.id && props.message?.record?.finish) {
+    getChatPredictData(props.message.record.id)
+  }
+})
+
 defineExpose({ sendMessage, index: () => index.value, chatList: () => _chatList, stop })
 </script>
 
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="['predict']" :loading="_loading">
     <MdComponent :message="message.record?.predict_content" style="margin-top: 12px" />
+    <ChartBlock
+      v-if="message.record?.predict_data?.length > 0 && message.record?.data"
+      ref="chartBlockRef"
+      style="margin-top: 12px"
+      :message="message"
+      is-predict
+    />
     <slot></slot>
     <template #tool>
       <slot name="tool"></slot>

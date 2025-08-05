@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import BaseAnswer from './BaseAnswer.vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat.ts'
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
 const props = withDefaults(
   defineProps<{
     chatList?: Array<ChatInfo>
@@ -234,11 +235,18 @@ onBeforeUnmount(() => {
   stop()
 })
 
+onMounted(() => {
+  if (props.message?.record?.id && props.message?.record?.finish) {
+    getChatData(props.message.record.id)
+  }
+})
+
 defineExpose({ sendMessage, index: () => index.value, stop })
 </script>
 
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
+    <ChartBlock style="margin-top: 12px" :message="message" />
     <slot></slot>
     <template #tool>
       <slot name="tool"></slot>
