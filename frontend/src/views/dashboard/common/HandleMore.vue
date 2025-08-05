@@ -1,5 +1,4 @@
 <script lang="ts" setup>
-import { Icon } from '@/components/icon-custom'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import type { Placement } from 'element-plus-secondary'
 
@@ -43,18 +42,14 @@ const emit = defineEmits(['handleCommand'])
     @command="handleCommand"
   >
     <el-icon class="hover-icon" :class="inTable && 'hover-icon-in-table'" @click.stop>
-      <Icon>
-        <component :is="iconName || icon_more_outlined" class="svg-icon"></component>
-      </Icon>
+      <component :is="iconName || icon_more_outlined" class="svg-icon"></component>
     </el-icon>
     <template #dropdown>
       <el-dropdown-menu :persistent="false">
         <template v-for="ele in menuList" :key="ele">
           <el-dropdown-item :divided="ele.divided" :command="ele.command" :disabled="ele.disabled">
             <el-icon v-if="ele.svgName" class="handle-icon" :style="{ fontSize: iconSize }">
-              <Icon>
-                <component :is="ele.svgName" class="svg-icon"></component>
-              </Icon>
+              <component :is="ele.svgName"></component>
             </el-icon>
             {{ ele.label }}
           </el-dropdown-item>
@@ -66,10 +61,47 @@ const emit = defineEmits(['handleCommand'])
 
 <style lang="less">
 .menu-more_popper {
-  margin-top: -2px !important;
+  box-shadow: 0px 4px 8px 0px #1f23291a !important;
+  border-radius: 4px;
+  border: 1px solid #dee0e3 !important;
+  width: 120px !important;
+  min-width: 120px !important;
+  padding: 0 !important;
 
   .handle-icon {
     color: #646a73;
+    margin-right: 8px;
+  }
+
+  .ed-dropdown-menu__item--divided {
+    margin: 4px 0;
+  }
+
+  .ed-dropdown-menu__item {
+    position: relative;
+    padding-left: 12px;
+    background: none;
+    color: #1f2329;
+    &:focus {
+      background: none;
+      color: #1f2329;
+    }
+    &:hover {
+      background: none;
+      color: #1f2329;
+
+      &::after {
+        content: '';
+        width: 112px;
+        height: 32px;
+        border-radius: 4px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #1f23291a;
+      }
+    }
   }
 }
 </style>

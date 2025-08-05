@@ -438,7 +438,7 @@ defineExpose({
               <HandleMore
                 :menu-list="state.menuList"
                 :icon-name="icon_more_outlined"
-                placement="bottom-start"
+                placement="bottom-end"
                 @handle-command="(opt: string) => operation(opt, data)"
               ></HandleMore>
             </div>
