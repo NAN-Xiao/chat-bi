@@ -1,5 +1,8 @@
 import datetime
+import hashlib
+import io
 import traceback
+import uuid
 
 import numpy as np
 import pandas as pd
@@ -12,6 +15,7 @@ from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat
 from apps.chat.task.llm import LLMService
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
+from starlette.responses import FileResponse
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
@@ -202,12 +206,12 @@ async def export_excel(excel_data: ExcelData):
         _fields_list.append(field.name)
     df = pd.DataFrame(np.array(data), columns=_fields_list)
 
-    file_name = f"{excel_data.name}-{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+    file_name = f"{excel_data.name}-{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.xlsx"
 
     file_path = f'{(settings.EXCEL_PATH if settings.EXCEL_PATH[-1] == "/" else (settings.EXCEL_PATH + "/"))}{file_name}'
 
-    file_download_path = f'{(settings.SERVER_EXCEL_HOST if settings.SERVER_EXCEL_HOST[-1] == "/" else (settings.SERVER_EXCEL_HOST + "/"))}{file_name}'
+    buffer = io.BytesIO()
+    df.to_excel(buffer, index=False)
+    buffer.seek(0)
 
-    df.to_excel(file_path, index=False)
-
-    return file_download_path
+    return StreamingResponse(io.BytesIO(buffer.getvalue()))

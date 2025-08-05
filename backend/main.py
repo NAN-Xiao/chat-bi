@@ -1,21 +1,22 @@
-from fastapi.concurrency import asynccontextmanager
+import sqlbot_xpack
+from alembic.config import Config
 from fastapi import FastAPI
+from fastapi.concurrency import asynccontextmanager
 from fastapi.routing import APIRoute
-from starlette.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi_mcp import FastApiMCP
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.cors import CORSMiddleware
 
+from alembic import command
+from apps.api import api_router
 from apps.system.crud.assistant import init_dynamic_cors
 from apps.system.middleware.auth import TokenMiddleware
 from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
-from alembic.config import Config
-from alembic import command
-from fastapi_mcp import FastApiMCP
-from fastapi.staticfiles import StaticFiles
-import sqlbot_xpack
-from common.utils.utils import SQLBotLogUtil
 from common.core.sqlbot_cache import init_sqlbot_cache
-from apps.api import api_router
+from common.utils.utils import SQLBotLogUtil
+
 
 def run_migrations():
     alembic_cfg = Config("alembic.ini")
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     yield
     SQLBotLogUtil.info("SQLBot 应用关闭")
 
+
 def custom_generate_unique_id(route: APIRoute) -> str:
     tag = route.tags[0] if route.tags and len(route.tags) > 0 else ""
     return f"{tag}-{route.name}"
@@ -43,9 +45,6 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan
 )
-
-app.mount("/excel", StaticFiles(directory=settings.EXCEL_PATH), name="excel")
-
 
 mcp_app = FastAPI()
 # mcp server, images path

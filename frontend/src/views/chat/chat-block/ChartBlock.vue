@@ -232,8 +232,13 @@ function exportToExcel() {
   chatApi
     .export2Excel({ ...chartRef.value?.getExcelData(), name: chartObject.value.title })
     .then((res) => {
-      console.log('download_path: ' + res)
-      //todo download
+      const blob = new Blob([res.data])
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `${chartObject.value.title ?? 'Excel'}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
     })
   exportRef.value?.hide()
 }

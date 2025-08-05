@@ -8,6 +8,7 @@ import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from apps.db.engine import create_table, get_data_engine, insert_data
+from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.utils import SQLBotLogUtil
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
@@ -17,7 +18,7 @@ from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
-path = "/opt/sqlbot/data/excel"
+path = settings.EXCEL_PATH
 
 
 @router.get("/ws/{oid}", include_in_schema=False)
