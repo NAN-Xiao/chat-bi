@@ -5,6 +5,7 @@ import icon_txy_colorful from '@/assets/model/icon_txy_colorful.png'
 import icon_xfhx_colorful from '@/assets/model/icon_xfhx_colorful.png'
 import icon_gemini_colorful from '@/assets/model/icon_gemini_colorful.png'
 import icon_openai_colorful from '@/assets/model/icon_openai_colorful.png'
+import icon_kimi_colorful from '@/assets/model/icon_kimi_colorful.png'
 
 type ModelArg = { key: string; val?: string | number; type: string; range?: string }
 type ModelOption = { name: string; api_domain?: string; args?: ModelArg[] }
@@ -180,6 +181,36 @@ export const supplierList: Array<{
           { name: 'o1' },
           { name: 'o1-pro' },
           { name: 'o1-mini' },
+        ],
+      },
+    },
+  },
+  {
+    id: 8,
+    name: 'Kimi',
+    icon: icon_kimi_colorful,
+    model_config: {
+      0: {
+        api_domain: 'https://api.moonshot.cn/v1',
+        common_args: [{ key: 'temperature', val: 0.3, type: 'number', range: '[0, 1]' }],
+        model_options: [
+          {
+            name: 'kimi-k2-0711-preview',
+            args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+          },
+          {
+            name: 'kimi-k2-turbo-preview',
+            args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+          },
+          { name: 'moonshot-v1-8k' },
+          { name: 'moonshot-v1-32k' },
+          { name: 'moonshot-v1-128k' },
+          { name: 'moonshot-v1-auto' },
+          { name: 'kimi-latest' },
+          { name: 'moonshot-v1-8k-vision-preview' },
+          { name: 'moonshot-v1-32k-vision-preview' },
+          { name: 'moonshot-v1-128k-vision-preview' },
+          { name: 'kimi-thinking-preview' },
         ],
       },
     },
