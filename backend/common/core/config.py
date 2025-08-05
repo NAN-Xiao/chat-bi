@@ -85,4 +85,3 @@ class Settings(BaseSettings):
     SERVER_EXCEL_HOST: str
 
 settings = Settings()  # type: ignore
-print(settings)

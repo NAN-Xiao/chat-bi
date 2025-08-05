@@ -25,8 +25,8 @@ def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[in
     current_oid = user.oid if user.oid is not None else 1
     if user.isAdmin and oid:
         current_oid = oid
-    return session.exec(select(CoreDatasource).where(CoreDatasource.oid == current_oid).order_by(
-        func.convert_to(CoreDatasource.name, 'gbk'))).all()
+    return session.exec(
+        select(CoreDatasource).where(CoreDatasource.oid == current_oid).order_by(CoreDatasource.name)).all()
 
 
 def get_ds(session: SessionDep, id: int):
