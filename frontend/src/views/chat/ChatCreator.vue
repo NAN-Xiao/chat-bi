@@ -51,6 +51,7 @@ function listDs() {
 const innerDs = ref()
 
 const loading = ref(false)
+const statusLoading = ref(false)
 
 function showDs() {
   listDs()
@@ -68,12 +69,18 @@ function selectDsInDialog(ds: any) {
 
 function confirmSelectDs() {
   if (innerDs.value) {
+    statusLoading.value = true
     //check first
-    datasourceApi.check_by_id(innerDs.value).then((res: any) => {
-      if (res) {
-        createChat(innerDs.value)
-      }
-    })
+    datasourceApi
+      .check_by_id(innerDs.value)
+      .then((res: any) => {
+        if (res) {
+          createChat(innerDs.value)
+        }
+      })
+      .finally(() => {
+        statusLoading.value = false
+      })
   }
 }
 
@@ -117,98 +124,100 @@ defineExpose({
 </script>
 
 <template>
-  <el-drawer
-    v-model="datasourceConfigvVisible"
-    :close-on-click-modal="false"
-    size="calc(100% - 100px)"
-    modal-class="datasource-drawer-chat"
-    direction="btt"
-    :before-close="beforeClose"
-    :show-close="false"
-  >
-    <template #header="{ close }">
-      <span style="white-space: nowrap">{{ $t('qa.select_datasource') }}</span>
-      <div class="flex-center" style="width: 100%">
-        <el-input
-          v-model="keywords"
-          clearable
-          style="width: 320px"
-          :placeholder="$t('datasource.search')"
-        >
-          <template #prefix>
-            <el-icon>
-              <icon_searchOutline_outlined />
-            </el-icon>
-          </template>
-        </el-input>
-      </div>
-      <el-icon style="cursor: pointer" @click="close">
-        <icon_close_outlined></icon_close_outlined>
-      </el-icon>
-    </template>
-    <div v-if="datasourceListWithSearch.length" class="card-content">
-      <el-row :gutter="16" class="w-full">
-        <el-col
-          v-for="ele in datasourceListWithSearch"
-          :key="ele.id"
-          :xs="24"
-          :sm="12"
-          :md="12"
-          :lg="8"
-          :xl="6"
-          class="mb-16"
-        >
-          <Card
-            :id="ele.id"
+  <div v-loading.body.fullscreen.lock="loading || statusLoading">
+    <el-drawer
+      v-model="datasourceConfigvVisible"
+      :close-on-click-modal="false"
+      size="calc(100% - 100px)"
+      modal-class="datasource-drawer-chat"
+      direction="btt"
+      :before-close="beforeClose"
+      :show-close="false"
+    >
+      <template #header="{ close }">
+        <span style="white-space: nowrap">{{ $t('qa.select_datasource') }}</span>
+        <div class="flex-center" style="width: 100%">
+          <el-input
+            v-model="keywords"
+            clearable
+            style="width: 320px"
+            :placeholder="$t('datasource.search')"
+          >
+            <template #prefix>
+              <el-icon>
+                <icon_searchOutline_outlined />
+              </el-icon>
+            </template>
+          </el-input>
+        </div>
+        <el-icon style="cursor: pointer" @click="close">
+          <icon_close_outlined></icon_close_outlined>
+        </el-icon>
+      </template>
+      <div v-if="datasourceListWithSearch.length" class="card-content">
+        <el-row :gutter="16" class="w-full">
+          <el-col
+            v-for="ele in datasourceListWithSearch"
             :key="ele.id"
-            :name="ele.name"
-            :type="ele.type"
-            :type-name="ele.type_name"
-            :num="ele.num"
-            :is-selected="ele.id === innerDs"
-            :description="ele.description"
-            @select-ds="selectDsInDialog(ele)"
-          ></Card>
-        </el-col>
-      </el-row>
-    </div>
-    <template v-if="!keywords && !datasourceListWithSearch.length && !searchLoading">
-      <EmptyBackground
-        class="datasource-yet_btn"
-        :description="$t('datasource.data_source_yet')"
-        img-type="noneWhite"
-      />
+            :xs="24"
+            :sm="12"
+            :md="12"
+            :lg="8"
+            :xl="6"
+            class="mb-16"
+          >
+            <Card
+              :id="ele.id"
+              :key="ele.id"
+              :name="ele.name"
+              :type="ele.type"
+              :type-name="ele.type_name"
+              :num="ele.num"
+              :is-selected="ele.id === innerDs"
+              :description="ele.description"
+              @select-ds="selectDsInDialog(ele)"
+            ></Card>
+          </el-col>
+        </el-row>
+      </div>
+      <template v-if="!keywords && !datasourceListWithSearch.length && !searchLoading">
+        <EmptyBackground
+          class="datasource-yet_btn"
+          :description="$t('datasource.data_source_yet')"
+          img-type="noneWhite"
+        />
 
-      <div style="text-align: center; margin-top: -10px">
-        <el-button type="primary" @click="handleAddDatasource">
-          <template #icon>
-            <icon_add_outlined></icon_add_outlined>
-          </template>
-          {{ $t('datasource.new_data_source') }}
-        </el-button>
-      </div>
-    </template>
-    <EmptyBackground
-      v-if="!!keywords && !datasourceListWithSearch.length"
-      :description="$t('datasource.relevant_content_found')"
-      class="datasource-yet"
-      img-type="tree"
-    />
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button secondary :disabled="loading" @click="hideDs">{{
-          $t('common.cancel')
-        }}</el-button>
-        <el-button
-          :type="loading || innerDs === undefined ? 'info' : 'primary'"
-          :disabled="loading || innerDs === undefined"
-          @click="confirmSelectDs"
-        >
-          {{ $t('datasource.confirm') }}
-        </el-button>
-      </div>
-    </template>
-  </el-drawer>
+        <div style="text-align: center; margin-top: -10px">
+          <el-button type="primary" @click="handleAddDatasource">
+            <template #icon>
+              <icon_add_outlined></icon_add_outlined>
+            </template>
+            {{ $t('datasource.new_data_source') }}
+          </el-button>
+        </div>
+      </template>
+      <EmptyBackground
+        v-if="!!keywords && !datasourceListWithSearch.length"
+        :description="$t('datasource.relevant_content_found')"
+        class="datasource-yet"
+        img-type="tree"
+      />
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button secondary :disabled="loading" @click="hideDs">{{
+            $t('common.cancel')
+          }}</el-button>
+          <el-button
+            :type="loading || statusLoading || innerDs === undefined ? 'info' : 'primary'"
+            :disabled="loading || statusLoading || innerDs === undefined"
+            @click="confirmSelectDs"
+          >
+            {{ $t('datasource.confirm') }}
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
+  </div>
 </template>
 
 <style lang="less">
