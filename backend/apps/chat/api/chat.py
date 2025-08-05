@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import hashlib
 import io
@@ -195,20 +196,21 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 
 @router.post("/excel/export")
 async def export_excel(excel_data: ExcelData):
-    _fields_list = []
-    data = []
-    for _data in excel_data.data:
-        _row = []
+    def inner():
+        _fields_list = []
+        data = []
+        for _data in excel_data.data:
+            _row = []
+            for field in excel_data.axis:
+                _row.append(_data.get(field.value))
+            data.append(_row)
         for field in excel_data.axis:
-            _row.append(_data.get(field.value))
-        data.append(_row)
-    for field in excel_data.axis:
-        _fields_list.append(field.name)
-    df = pd.DataFrame(np.array(data), columns=_fields_list)
+            _fields_list.append(field.name)
+        df = pd.DataFrame(np.array(data), columns=_fields_list)
 
-    buffer = io.BytesIO()
-    df.to_excel(buffer, index=False)
-    buffer.seek(0)
-
-    return StreamingResponse(io.BytesIO(buffer.getvalue()),
-                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False)
+        buffer.seek(0)
+        return io.BytesIO(buffer.getvalue())
+    result = await asyncio.to_thread(inner)
+    return StreamingResponse(result, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
