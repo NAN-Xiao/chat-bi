@@ -10,7 +10,7 @@ from sqlmodel import func, select, update
 from apps.system.models.system_model import AiModelDetail
 from common.core.deps import SessionDep, Trans
 from common.utils.time import get_timestamp
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import SQLBotLogUtil, prepare_model_arg
 
 router = APIRouter(tags=["system/aimodel"], prefix="/system/aimodel")
 
@@ -18,7 +18,7 @@ router = APIRouter(tags=["system/aimodel"], prefix="/system/aimodel")
 async def check_llm(info: AiModelCreator, trans: Trans):
     async def generate():
         try:
-            additional_params = {item.key: item.val for item in info.config_list}
+            additional_params = {item.key: prepare_model_arg(item.val) for item in info.config_list if item.key and item.val}
             config = LLMConfig(
                 model_type="openai",
                 model_name=info.base_model,

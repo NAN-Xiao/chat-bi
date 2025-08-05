@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import inspect
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
@@ -230,6 +231,13 @@ def prepare_for_orjson(data):
         return data
         
     
-
-
+def prepare_model_arg(origin_arg: str):
+    if not isinstance(origin_arg, str):
+        return origin_arg
+    if not origin_arg.strip()[0] in {'{', '['}:
+        return origin_arg
+    try:
+        return json.loads(origin_arg)
+    except:
+        return origin_arg
 

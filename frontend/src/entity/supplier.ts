@@ -3,6 +3,7 @@ import icon_bdyzn_colorful from '@/assets/model/icon_bdyzn_colorful.png'
 import icon_deepseek_colorful from '@/assets/model/icon_deepseek_colorful.png'
 import icon_txy_colorful from '@/assets/model/icon_txy_colorful.png'
 import icon_xfhx_colorful from '@/assets/model/icon_xfhx_colorful.png'
+import icon_gemini_colorful from '@/assets/model/icon_gemini_colorful.png'
 
 type ModelArg = { key: string; val?: string | number; type: string; range?: string }
 type ModelOption = { name: string; api_domain?: string; args?: ModelArg[] }
@@ -24,7 +25,29 @@ export const supplierList: Array<{
     model_config: {
       0: {
         api_domain: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-        model_options: [{ name: 'qwen-plus' }],
+        common_args: [
+          { key: 'temperature', val: 1.0, type: 'number', range: '[0, 2)' },
+          { key: 'extra_body', val: '{"enable_thinking": true}', type: 'json' },
+        ],
+        model_options: [
+          { name: 'qwen-plus' },
+          { name: 'qwen-plus-latest' },
+          { name: 'qwen-max' },
+          { name: 'qwen-max-latest' },
+          { name: 'qwen-turbo' },
+          { name: 'qwen-turbo-latest' },
+          { name: 'qwq-plus' },
+          { name: 'qwq-plus-latest' },
+          { name: 'qwen-long' },
+          { name: 'qwen-long-latest' },
+          { name: 'qwen-omni-turbo' },
+          { name: 'qwen-omni-turbo-realtime' },
+          { name: 'qwen-omni-turbo-realtime-latest' },
+          { name: 'qvq-max' },
+          { name: 'qvq-max-latest' },
+          { name: 'qvq-plus' },
+          { name: 'qvq-plus-latest' },
+        ],
       },
     },
   },
@@ -110,6 +133,24 @@ export const supplierList: Array<{
             ],
             api_domain: 'https://spark-api-open.xf-yun.com/v2/',
           },
+        ],
+      },
+    },
+  },
+  {
+    id: 6,
+    name: 'Gemini',
+    icon: icon_gemini_colorful,
+    model_config: {
+      0: {
+        api_domain: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        common_args: [{ key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' }],
+        model_options: [
+          { name: 'gemini-2.5-pro' },
+          { name: 'gemini-2.5-flash' },
+          { name: 'gemini-2.5-flash-lite' },
+          { name: 'gemini-2.0-flash' },
+          { name: 'gemini-2.0-flash-lite' },
         ],
       },
     },

@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from apps.ai_model.openai.llm import BaseChatOpenAI
 from apps.system.models.system_model import AiModelDetail
 from common.core.db import engine
+from common.utils.utils import prepare_model_arg
 
 
 # from langchain_community.llms import Tongyi, VLLM
@@ -26,13 +27,19 @@ class LLMConfig(BaseModel):
         frozen = True
 
     def __hash__(self):
+        if hasattr(self, 'additional_params') and isinstance(self.additional_params, dict):
+            hashable_params = frozenset((k, tuple(v) if isinstance(v, (list, dict)) else v) 
+                            for k, v in self.additional_params.items())
+        else:
+            hashable_params = None
+        
         return hash((
             self.model_id,
             self.model_type,
             self.model_name,
             self.api_key,
             self.api_base_url,
-            frozenset(self.additional_params.items())
+            hashable_params
         ))
 
 
@@ -62,7 +69,6 @@ class OpenAILLM(BaseLLM):
             base_url=self.config.api_base_url,
             stream_usage=True,
             **self.config.additional_params,
-            extra_body={"enable_thinking": True},
         )
 
     def generate(self, prompt: str) -> str:
@@ -116,7 +122,7 @@ def get_default_config() -> LLMConfig:
         if db_model.config:
             try:
                 config_raw = json.loads(db_model.config)
-                additional_params = {item["key"]: item["val"] for item in config_raw if "key" in item and "val" in item}
+                additional_params = {item["key"]: prepare_model_arg(item.get('val')) for item in config_raw if "key" in item and "val" in item}
             except Exception:
                 pass
 
