@@ -40,6 +40,7 @@ dependencies = [
     "fastapi-cache2>=0.2.2",
     "sqlparse>=0.5.3",
     "redis>=6.2.0",
+    "xlsxwriter>=3.2.5",
 ]
 [[tool.uv.index]]
 name = "default"

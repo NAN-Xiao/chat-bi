@@ -1,9 +1,6 @@
 import asyncio
-import datetime
-import hashlib
 import io
 import traceback
-import uuid
 
 import numpy as np
 import pandas as pd
@@ -14,9 +11,7 @@ from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, 
     delete_chat, get_chat_chart_data, get_chat_predict_data
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, ExcelData
 from apps.chat.task.llm import LLMService
-from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
-from starlette.responses import FileResponse
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
@@ -209,8 +204,12 @@ async def export_excel(excel_data: ExcelData):
         df = pd.DataFrame(np.array(data), columns=_fields_list)
 
         buffer = io.BytesIO()
-        df.to_excel(buffer, index=False)
+
+        with pd.ExcelWriter(buffer, engine='xlsxwriter', engine_kwargs={'options': {'strings_to_numbers': True}}) as writer:
+            df.to_excel(writer, sheet_name='Sheet1', index=False)
+
         buffer.seek(0)
         return io.BytesIO(buffer.getvalue())
+
     result = await asyncio.to_thread(inner)
     return StreamingResponse(result, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
