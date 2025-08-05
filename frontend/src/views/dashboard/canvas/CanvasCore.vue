@@ -251,9 +251,7 @@ function removeItemFromPositionBox(item: CanvasItem) {
  */
 function recomputeCellWidth() {
   if (!containerRef.value) return
-  maxCell.value = isMainCanvas(props.canvasId)
-    ? Math.floor(containerRef.value.offsetWidth / cellWidth.value)
-    : Math.round(containerRef.value.offsetWidth / cellWidth.value)
+  maxCell.value = Math.floor(containerRef.value.offsetWidth / cellWidth.value)
 }
 
 function sizeInit() {

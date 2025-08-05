@@ -93,7 +93,6 @@ const baseParams = computed(() => {
 
 <style scoped lang="less">
 .editor-content {
-  padding: 8px;
   width: 100vw;
   height: 100vh;
   background: #fff;
@@ -104,10 +103,8 @@ const baseParams = computed(() => {
   padding: 0 !important;
 }
 .editor-main {
-  border-radius: 12px;
   position: relative;
   background: #f5f6f7;
-  box-shadow: 4px 4px 8px 4px rgba(31, 35, 41, 0.2);
   overflow: hidden;
   width: 100%;
   height: 100%;
