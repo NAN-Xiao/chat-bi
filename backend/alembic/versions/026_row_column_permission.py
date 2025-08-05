@@ -38,8 +38,8 @@ def upgrade():
                     sa.Column('enable', sa.Boolean(), nullable=False),
                     sa.Column('name', sqlmodel.sql.sqltypes.AutoString(length=128), nullable=False),
                     sa.Column('description', sqlmodel.sql.sqltypes.AutoString(length=512), nullable=True),
-                    sa.Column('permission_list', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-                    sa.Column('user_list', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+                    sa.Column('permission_list', sa.Text(), nullable=True),
+                    sa.Column('user_list', sa.Text(), nullable=True),
                     sa.Column('white_list_user', sa.Text(), nullable=True),
                     sa.Column('create_time', sa.DateTime(), nullable=True),
                     sa.PrimaryKeyConstraint('id')
