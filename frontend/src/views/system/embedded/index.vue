@@ -109,12 +109,12 @@ const handleAddEmbedded = (val: any) => {
 const wsChanged = (val: any) => {
   dsForm.private_list = []
   dsForm.oid = val
-  getDsList()
+  getDsList(true)
 }
-const getDsList = () => {
+const getDsList = (change: boolean = false) => {
   dsApi(dsForm.oid).then((res: any) => {
     dsListOptions.value = res || []
-    if (!currentEmbedded.id) {
+    if (change || !currentEmbedded.id) {
       dsForm.private_list = dsListOptions.value.map((ele) => ele.id)
     }
   })
@@ -125,7 +125,7 @@ const handleBaseEmbedded = (row: any) => {
   if (row) {
     Object.assign(dsForm, JSON.parse(row.configuration))
   }
-  getDsList()
+  getDsList(false)
   ruleConfigvVisible.value = true
   dialogTitle.value = row?.id
     ? t('embedded.edit_basic_applications')
