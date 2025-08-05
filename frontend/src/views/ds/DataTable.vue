@@ -312,9 +312,12 @@ const btnSelectClick = (val: any) => {
             <span :title="currentTable.custom_comment" class="field-notes">{{
               currentTable.custom_comment || '-'
             }}</span>
-            <el-icon style="margin-left: 8px; cursor: pointer" size="16" @click="editTable">
-              <edit></edit>
-            </el-icon>
+
+            <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">
+              <el-icon style="margin-left: 8px; cursor: pointer" size="16" @click="editTable">
+                <edit></edit>
+              </el-icon>
+            </el-tooltip>
           </div>
         </div>
         <div class="table-content">
@@ -341,7 +344,11 @@ const btnSelectClick = (val: any) => {
             :class="btnSelect === 'q' && 'overflow-preview'"
           >
             <div v-if="btnSelect === 'd'" class="table-content_preview">
-              <el-table :data="fieldListComputed" style="width: 100%">
+              <el-table
+                row-class-name="hover-icon_edit"
+                :data="fieldListComputed"
+                style="width: 100%"
+              >
                 <el-table-column
                   prop="field_name"
                   :label="t('datasource.field_name')"
@@ -594,6 +601,32 @@ const btnSelectClick = (val: any) => {
           line-height: 24px;
         }
 
+        .ed-icon {
+          position: relative;
+          cursor: pointer;
+          margin-top: 4px;
+          margin-left: 8px;
+
+          &::after {
+            content: '';
+            background-color: #1f23291a;
+            position: absolute;
+            border-radius: 6px;
+            width: 24px;
+            height: 24px;
+            transform: translate(-50%, -50%);
+            top: 50%;
+            left: 50%;
+            display: none;
+          }
+
+          &:hover {
+            &::after {
+              display: block;
+            }
+          }
+        }
+
         .notes {
           font-weight: 400;
           font-size: 14px;
@@ -663,6 +696,12 @@ const btnSelectClick = (val: any) => {
             justify-content: flex-end;
           }
 
+          .hover-icon_edit:hover {
+            .ed-icon {
+              display: block;
+            }
+          }
+
           .field-comment {
             display: flex;
             align-items: center;
@@ -676,17 +715,13 @@ const btnSelectClick = (val: any) => {
               overflow: hidden;
               text-overflow: ellipsis;
             }
-            &:hover {
-              .ed-icon {
-                display: block;
-              }
-            }
+
             .ed-icon {
               position: relative;
               cursor: pointer;
-              margin-top: 4px;
               margin-left: 8px;
               display: none;
+              color: #646a73;
 
               &::after {
                 content: '';

@@ -7,7 +7,9 @@ import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_down_outlined from '@/assets/svg/icon_down_outlined.svg'
+import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
 import Card from './Card.vue'
+import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import SelectPermission from './SelectPermission.vue'
 import AuthTree from './auth-tree/RowAuth.vue'
 import { getList, savePermissions, delPermissions } from '@/api/permissions'
@@ -209,6 +211,10 @@ const handleColumnPermission = (row: any) => {
   dialogTitle.value = row?.id
     ? t('permission.edit_column_permission')
     : t('permission.add_column_permission')
+}
+
+const icon = (item: any) => {
+  return (dsTypeWithImg.find((ele) => item.type === ele.type) || {}).img
 }
 
 const handleInitDsIdChange = (val: any) => {
@@ -800,7 +806,12 @@ const columnRules = {
               :key="item.id"
               :label="item.name"
               :value="item"
-            />
+            >
+              <div style="display: flex; align-items: center">
+                <img :src="icon(item)" width="24" height="24" style="margin-right: 8px" />
+                {{ item.name }}
+              </div>
+            </el-option>
           </el-select>
           <el-select
             v-model="activeTable"
@@ -818,7 +829,14 @@ const columnRules = {
               :key="item.id"
               :label="item.table_name"
               :value="item"
-            />
+            >
+              <div style="display: flex; align-items: center">
+                <el-icon size="16" style="margin-right: 8px; color: #646a73">
+                  <ICON_TABLE />
+                </el-icon>
+                {{ item.table_name }}
+              </div>
+            </el-option>
           </el-select>
         </el-form-item>
         <el-form-item :label="$t('permission.set_rule')">

@@ -284,7 +284,7 @@ const submit = (item: any) => {
           </template>
         </el-input>
 
-        <el-popover popper-class="system-default_model" placement="bottom">
+        <el-popover popper-class="system-default_model" placement="bottom-end">
           <template #reference>
             <el-button secondary>
               <template #icon>

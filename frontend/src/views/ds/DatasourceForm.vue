@@ -738,7 +738,7 @@ defineExpose({
     </div>
     <div class="draw-foot">
       <el-button secondary @click="close">{{ t('common.cancel') }}</el-button>
-      <el-button v-show="form.type !== 'excel' && !isDataTable" @click="check">
+      <el-button v-show="form.type !== 'excel' && !isDataTable" secondary @click="check">
         {{ t('ds.check') }}
       </el-button>
       <el-button v-show="activeStep !== 0 && isCreate" secondary @click="preview">

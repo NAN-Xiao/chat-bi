@@ -356,7 +356,7 @@ defineExpose({
         placement="bottom-end"
         @command="handleSortTypeChange"
       >
-        <el-icon class="filter-icon-span">
+        <el-icon class="filter-icon-span" :class="state.curSortType !== 'name_asc' && 'active'">
           <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
             <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc" class="opt-icon"
               ><dv_sort_asc class="svg-icon opt-icon"
@@ -451,11 +451,11 @@ defineExpose({
 </template>
 <style lang="less" scoped>
 .filter-icon-span {
-  border: 1px solid #bbbfc4;
+  border: 1px solid #d9dcdf;
   width: 32px;
   height: 32px;
   border-radius: 4px;
-  color: var(--ed-color-primary);
+  color: #1f2329;
   padding: 8px;
   margin-left: 8px;
   font-size: 16px;
@@ -465,12 +465,27 @@ defineExpose({
     outline: none !important;
   }
 
-  &:hover {
+  &:hover,
+  &:focus {
     background: #f5f6f7;
   }
 
   &:active {
     background: #eff0f1;
+  }
+
+  &.active {
+    border: 1px solid #1cba90;
+    color: #1cba90;
+
+    &:hover,
+    &:focus {
+      background: #d2f1e9;
+    }
+
+    &:active {
+      background: #a4e3d3;
+    }
   }
 }
 

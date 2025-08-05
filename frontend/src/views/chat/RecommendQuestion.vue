@@ -197,9 +197,9 @@ defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })
     font-weight: 400;
     cursor: pointer;
     background: rgba(245, 246, 247, 1);
-    min-height: 46px;
+    min-height: 32px;
     border-radius: 6px;
-    padding: 12px;
+    padding: 5px 12px;
     line-height: 22px;
     &:hover {
       background: rgba(31, 35, 41, 0.1);

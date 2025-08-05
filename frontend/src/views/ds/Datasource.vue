@@ -13,7 +13,6 @@ import DatasourceList from './DatasourceList.vue'
 import DatasourceListSide from './DatasourceListSide.vue'
 import DatasourceForm from './DatasourceForm.vue'
 import { datasourceApi } from '@/api/datasource'
-import { useEmitt } from '@/utils/useEmitt'
 import Card from './Card.vue'
 import DelMessageBox from './DelMessageBox.vue'
 import { dsTypeWithImg } from './js/ds-type'
@@ -229,7 +228,6 @@ search()
 
 const currentDataTable = ref()
 const dataTableDetail = (ele: any) => {
-  useEmitt().emitter.emit('collapse-change')
   currentDataTable.value = ele
 }
 
@@ -256,7 +254,7 @@ const back = () => {
           </template>
         </el-input>
 
-        <el-popover popper-class="system-default_datasource" placement="bottom">
+        <el-popover popper-class="system-default_datasource" placement="bottom-end">
           <template #reference>
             <el-button secondary>
               {{ currentDefaultDatasource || $t('datasource.all_types') }}
