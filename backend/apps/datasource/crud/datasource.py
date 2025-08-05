@@ -3,7 +3,7 @@ import json
 from typing import List, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import and_, text, func
+from sqlalchemy import and_, text
 from sqlmodel import select
 
 from apps.datasource.crud.permission import get_column_permission_fields, get_row_permission_filters, is_normal_user
@@ -33,6 +33,15 @@ def get_ds(session: SessionDep, id: int):
     statement = select(CoreDatasource).where(CoreDatasource.id == id)
     datasource = session.exec(statement).first()
     return datasource
+
+
+def check_status_by_id(session: SessionDep, trans: Trans, ds_id: int, is_raise: bool = False):
+    ds = session.get(CoreDatasource, ds_id)
+    if ds is None:
+        if is_raise:
+            raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid'))
+        return False
+    return check_status(session, trans, ds, is_raise)
 
 
 def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise: bool = False):

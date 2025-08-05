@@ -68,7 +68,12 @@ function selectDsInDialog(ds: any) {
 
 function confirmSelectDs() {
   if (innerDs.value) {
-    createChat(innerDs.value)
+    //check first
+    datasourceApi.check_by_id(innerDs.value).then((res: any) => {
+      if (res) {
+        createChat(innerDs.value)
+      }
+    })
   }
 }
 
