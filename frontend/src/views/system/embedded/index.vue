@@ -180,7 +180,7 @@ const handleSearch = () => {
   searchLoading.value = true
   getList()
     .then((res: any) => {
-      embeddedList.value = res || []
+      // embeddedList.value = res || []
     })
     .finally(() => {
       searchLoading.value = false
@@ -534,7 +534,11 @@ const saveHandler = () => {
       </el-row>
     </div>
     <template v-if="!keywords && !embeddedListWithSearch.length && !searchLoading">
-      <EmptyBackground :description="$t('embedded.no_application')" img-type="noneWhite" />
+      <EmptyBackground
+        class="ed-empty_custom"
+        :description="$t('embedded.no_application')"
+        img-type="noneWhite"
+      />
 
       <div style="text-align: center; margin-top: -10px">
         <el-popover popper-class="system-embedded_user" placement="bottom">
@@ -927,9 +931,10 @@ const saveHandler = () => {
   height: 100%;
   padding: 16px 0 16px 0;
 
-  .ed-empty {
+  .ed-empty_custom {
     padding-top: 200px;
     padding-bottom: 0;
+    height: auto;
   }
   .tool-left {
     display: flex;
