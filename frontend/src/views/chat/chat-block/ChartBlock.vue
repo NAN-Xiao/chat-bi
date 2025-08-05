@@ -232,7 +232,9 @@ function exportToExcel() {
   chatApi
     .export2Excel({ ...chartRef.value?.getExcelData(), name: chartObject.value.title })
     .then((res) => {
-      const blob = new Blob([res.data])
+      const blob = new Blob([res], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
       link.download = `${chartObject.value.title ?? 'Excel'}.xlsx`
