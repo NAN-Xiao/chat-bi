@@ -268,7 +268,7 @@ function exportToImage() {
 }
 
 watch(
-  () => chartObject.value.type,
+  () => chartObject.value?.type,
   (val) => {
     if (val) {
       currentChartType.value = val
@@ -326,7 +326,7 @@ watch(
             </el-button>
           </el-tooltip>
         </div>
-        <div v-if="message?.record?.sql && data.length > 0 && message?.record?.chart">
+        <div v-if="message?.record?.chart">
           <el-popover
             ref="exportRef"
             trigger="click"
@@ -367,7 +367,7 @@ watch(
             </div>
           </el-popover>
         </div>
-        <div v-if="message?.record?.sql && data.length > 0 && message?.record?.chart">
+        <div v-if="message?.record?.chart">
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">
