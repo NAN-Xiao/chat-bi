@@ -6,9 +6,10 @@ import type { F2CLicense } from './index.ts'
 import { licenseApi } from '@/api/license'
 import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
+import { useUserStore } from '@/stores/user.ts'
 const dialogVisible = ref(false)
 const { t } = useI18n()
-//const userStore = useUserStore()
+const userStore = useUserStore()
 const license: F2CLicense = reactive({
   status: '',
   corporation: '',
@@ -22,12 +23,12 @@ const license: F2CLicense = reactive({
 })
 const tipsSuffix = ref('')
 const build = ref('')
-const isAdmin = ref(true)
+const isAdmin = ref(false)
 const fileList = reactive([])
 const dynamicCardClass = ref('')
 const loading = ref(false)
 onMounted(() => {
-  // isAdmin.value = userStore.getUid === '1'
+  isAdmin.value = userStore.getUid === '1'
   initVersion()
   getLicenseInfo()
 })

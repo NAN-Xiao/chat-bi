@@ -1,6 +1,7 @@
+from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
-from sqlmodel import func, or_, select, delete as sqlmodel_delete
+from sqlmodel import SQLModel, func, or_, select, delete as sqlmodel_delete
 from apps.system.crud.user import check_account_exists, check_email_exists, check_email_format, check_pwd_format, get_db_user, single_delete, user_ws_options
 from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.models.user import UserModel
@@ -11,6 +12,7 @@ from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
 from common.core.security import default_md5_pwd, md5pwd, verify_md5pwd
 from common.core.sqlbot_cache import clear_cache
+
 router = APIRouter(tags=["user"], prefix="/user")
 
 @router.get("/info")
@@ -30,43 +32,15 @@ async def pager(
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
     filters = {}
-        
-    stmt = (
-        select(
-            UserModel,
-            func.coalesce(
-                func.array_remove(
-                    func.array_agg(UserWsModel.oid),
-                    None
-                ),
-                []
-            ).label("oid_list")
-            #func.coalesce(func.string_agg(WorkspaceModel.name, ','), '').label("space_name")
-        )
-        .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
-        #.join(WorkspaceModel, UserWsModel.oid == WorkspaceModel.id, isouter=True)
-        .where(UserModel.id != 1)
-        .group_by(UserModel.id)
-        .order_by(UserModel.create_time)
-    )
-    if status is not None:
-        stmt = stmt.where(UserModel.status == status)
     
+    origin_stmt = select(UserModel.id).join(UserWsModel, UserModel.id == UserWsModel.uid).where(UserModel.id != 1).distinct()
     if oidlist:
-        user_filter = (
-            select(UserModel.id)
-            .join(UserWsModel, UserModel.id == UserWsModel.uid)
-            .where(UserWsModel.oid.in_(oidlist))
-            .distinct()
-        )
-        stmt = stmt.where(UserModel.id.in_(user_filter))
-    
-    """ if origins is not None:
-        stmt = stmt.where(UserModel.origin == origins) """
-    
+        origin_stmt = origin_stmt.where(UserWsModel.oid.in_(oidlist))
+    if status is not None:
+        origin_stmt = origin_stmt.where(UserModel.status == status)        
     if keyword:
         keyword_pattern = f"%{keyword}%"
-        stmt = stmt.where(
+        origin_stmt = origin_stmt.where(
             or_(
                 UserModel.account.ilike(keyword_pattern),
                 UserModel.name.ilike(keyword_pattern),
@@ -75,21 +49,47 @@ async def pager(
         )
         
     user_page = await paginator.get_paginated_response(
-        stmt=stmt,
+        stmt=origin_stmt,
         pagination=pagination,
         **filters)
-    
-    """ for item in user_page.items:
-        space_name: str = item['space_name']
-        if space_name and 'i18n_default_workspace' in space_name:
-            parts = list(map(
-                lambda x: trans(x) if x == "i18n_default_workspace" else x,
-                space_name.split(',')
-            ))
-            output_str = ','.join(parts)
-            item['space_name'] = output_str """
+    uid_list = [item.get('id') for item in user_page.items]
+    if not uid_list:
+        return user_page
+    stmt = (
+        select(UserModel, UserWsModel.oid.label('ws_oid'))
+        .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
+        .where(UserModel.id.in_(uid_list))
+        .order_by(UserModel.create_time)
+    )
+    user_workspaces = session.exec(stmt).all()
+    merged = defaultdict(list)
+    extra_attrs = {}
+
+    for (user, ws_oid) in user_workspaces:
+        item = {}
+        item.update(user.model_dump())
+        user_id = item['id']
+        merged[user_id].append(ws_oid)
+        if user_id not in extra_attrs:
+            extra_attrs[user_id] = {k: v for k, v in item.items() if k != "ws_oid"}
+
+    # 组合结果
+    result = [
+        {**extra_attrs[user_id], "oid_list": oid_list} 
+        for user_id, oid_list in merged.items()
+    ]
+    user_page.items = result
     return user_page
 
+def format_user_dict(row) -> dict:
+    result_dict = {}
+    for item, key in zip(row, row._fields):
+        if isinstance(item, SQLModel):
+            result_dict.update(item.model_dump())
+        else:
+            result_dict[key] = item
+    
+    return result_dict
 @router.get("/ws")
 async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Trans) -> list[UserWs]:
     return await user_ws_options(session, current_user.id, trans)

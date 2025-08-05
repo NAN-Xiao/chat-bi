@@ -12,6 +12,8 @@ class Paginator:
         self.session = session
     def _process_result_row(self, row: Row) -> Dict[str, Any]:
         result_dict = {}
+        if isinstance(row, int):
+            return {'id': row}
         for item, key in zip(row, row._fields):
             if isinstance(item, SQLModel):
                 result_dict.update(item.model_dump())

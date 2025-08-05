@@ -4,10 +4,9 @@ from typing import List, Optional
 
 from fastapi import HTTPException
 from sqlalchemy import and_, text, func
-
 from sqlmodel import select
 
-
+from apps.datasource.crud.permission import get_column_permission_fields, get_row_permission_filters, is_normal_user
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
 from apps.db.db import get_engine, get_tables, get_fields, exec_sql
@@ -20,7 +19,7 @@ from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
 from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj, \
     DatasourceConf, TableAndFields
-from apps.datasource.crud.permission import get_column_permission_fields, get_row_permission_filters, is_normal_user
+
 
 def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
     current_oid = user.oid if user.oid is not None else 1
@@ -249,11 +248,13 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     f_list = [f for f in data.fields if f.checked]
     if is_normal_user(current_user):
         # column is checked, and, column permission for data.fields
-        f_list = get_column_permission_fields(session=session, current_user=current_user, table=data.table, fields=f_list) or f_list
+        f_list = get_column_permission_fields(session=session, current_user=current_user, table=data.table,
+                                              fields=f_list) or f_list
 
         # row permission tree
         where_str = ''
-        filter_mapping = get_row_permission_filters(session=session, current_user=current_user, ds=ds, tables=None, single_table=data.table)
+        filter_mapping = get_row_permission_filters(session=session, current_user=current_user, ds=ds, tables=None,
+                                                    single_table=data.table)
         if filter_mapping:
             mapping_dict = filter_mapping[0]
             where_str = mapping_dict.get('filter')
@@ -325,12 +326,11 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
         fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
 
         # do column permissions, filter fields
-        fields = get_column_permission_fields(session=session, current_user=current_user, table=table, fields=fields) or fields
+        fields = get_column_permission_fields(session=session, current_user=current_user, table=table,
+                                              fields=fields) or fields
         _list.append(TableAndFields(schema=schema, table=table, fields=fields))
     return _list
 
-
-    
 
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> str:
     schema_str = ""
@@ -360,4 +360,5 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                 field_list.append(f"({field.field_name}:{field.field_type}, {field_comment})")
         schema_str += ",\n".join(field_list)
         schema_str += '\n]\n'
+    # todo 外键
     return schema_str

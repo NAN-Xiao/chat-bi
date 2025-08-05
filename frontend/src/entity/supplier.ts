@@ -52,7 +52,7 @@ export const supplierList: Array<{
   },
   {
     id: 4,
-    name: '腾讯云',
+    name: '腾讯混元',
     icon: icon_txy_colorful,
     model_config: {
       0: {

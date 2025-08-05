@@ -44,6 +44,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.mount("/excel", StaticFiles(directory=settings.EXCEL_PATH), name="excel")
+
+
 mcp_app = FastAPI()
 # mcp server, images path
 mcp_app.mount("/images", StaticFiles(directory=settings.MCP_IMAGE_PATH), name="images")
