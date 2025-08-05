@@ -1,6 +1,6 @@
 services:
   sqlbot:
-    image: registry.cn-qingdao.aliyuncs.com/dataease/sqlbot:v0.9.5
+    image: registry.cn-qingdao.aliyuncs.com/dataease/sqlbot:SQLBOT_TAG
     container_name: sqlbot
     restart: always
     networks:
