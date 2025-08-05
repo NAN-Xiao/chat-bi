@@ -367,7 +367,7 @@ watch(
             </div>
           </el-popover>
         </div>
-        <div v-if="message?.record?.chart">
+        <!-- <div v-if="message?.record?.chart">
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">
@@ -375,7 +375,7 @@ watch(
               </el-icon>
             </el-button>
           </el-tooltip>
-        </div>
+        </div> -->
         <div class="divider" />
         <div v-if="!enlarge">
           <el-tooltip effect="dark" :content="t('chat.full_screen')" placement="top">
