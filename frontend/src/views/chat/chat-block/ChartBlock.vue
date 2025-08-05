@@ -2,7 +2,7 @@
 import type { ChatMessage } from '@/api/chat.ts'
 import DisplayChartBlock from '@/views/chat/component/DisplayChartBlock.vue'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { concat } from 'lodash-es'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import ICON_BAR from '@/assets/svg/chart/icon_bar_outlined.svg'
@@ -246,6 +246,7 @@ function exportToExcel() {
     })
   exportRef.value?.hide()
 }
+
 function exportToImage() {
   const obj = document.getElementById('chart-component-' + chartId.value)
   if (obj) {
@@ -265,6 +266,15 @@ function exportToImage() {
   }
   exportRef.value?.hide()
 }
+
+watch(
+  () => chartObject.value.type,
+  (val) => {
+    if (val) {
+      currentChartType.value = val
+    }
+  }
+)
 </script>
 
 <template>
@@ -316,7 +326,7 @@ function exportToImage() {
             </el-button>
           </el-tooltip>
         </div>
-        <div>
+        <div v-if="message?.record?.sql && data.length > 0 && message?.record?.chart">
           <el-popover
             ref="exportRef"
             trigger="click"
@@ -357,7 +367,7 @@ function exportToImage() {
             </div>
           </el-popover>
         </div>
-        <div>
+        <div v-if="message?.record?.sql && data.length > 0 && message?.record?.chart">
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">
@@ -445,12 +455,15 @@ function exportToImage() {
 .chart-fullscreen-dialog {
   padding: 0;
 }
+
 .chart-fullscreen-dialog-header {
   display: none;
 }
+
 .chart-fullscreen-dialog-body {
   padding: 0;
 }
+
 .chart-sql-drawer-body {
   padding: 24px;
 }
@@ -478,6 +491,7 @@ function exportToImage() {
         color: #8f959e;
       }
     }
+
     .popover-item {
       height: 32px;
       display: flex;
@@ -488,9 +502,11 @@ function exportToImage() {
       position: relative;
       border-radius: 4px;
       cursor: pointer;
+
       &:last-child {
         margin-bottom: 0;
       }
+
       &:hover {
         background: #1f23291a;
       }
@@ -575,6 +591,7 @@ function exportToImage() {
       &:hover {
         background: rgba(31, 35, 41, 0.1);
       }
+
       &:active {
         background: rgba(31, 35, 41, 0.1);
       }
@@ -588,12 +605,15 @@ function exportToImage() {
       :deep(.ed-select__wrapper) {
         background: transparent;
       }
+
       :deep(.ed-select__input) {
         color: rgba(28, 186, 144, 1);
       }
+
       :deep(.ed-select__placeholder) {
         color: rgba(28, 186, 144, 1);
       }
+
       :deep(.ed-select__caret) {
         color: rgba(28, 186, 144, 1);
       }
@@ -648,10 +668,12 @@ function exportToImage() {
           &:hover {
             background: rgba(31, 35, 41, 0.1);
           }
+
           &:active {
             background: rgba(31, 35, 41, 0.1);
           }
         }
+
         :deep(.ed-select__caret) {
           font-size: 12px !important;
         }
@@ -681,6 +703,7 @@ function exportToImage() {
 
     border-color: #dee0e3;
     box-shadow: 0px 4px 8px 0px #1f23291a;
+
     &:hover,
     &:focus {
       color: #1cba90;
@@ -690,6 +713,7 @@ function exportToImage() {
       color: #189e7a;
     }
   }
+
   &:hover {
     .input-icon {
       display: flex;
