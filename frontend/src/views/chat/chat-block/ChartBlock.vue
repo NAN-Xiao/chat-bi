@@ -673,9 +673,25 @@ function exportToImage() {
     position: absolute;
     top: 12px;
     right: 12px;
+    color: #1f2329;
+    display: none;
+    background-color: transparent !important;
 
     border-color: #dee0e3;
     box-shadow: 0px 4px 8px 0px #1f23291a;
+    &:hover,
+    &:focus {
+      color: #1cba90;
+    }
+
+    &:active {
+      color: #189e7a;
+    }
+  }
+  &:hover {
+    .input-icon {
+      display: flex;
+    }
   }
 }
 </style>

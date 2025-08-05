@@ -50,7 +50,7 @@ const handleDefaultChatChange = (val: any) => {
         @click="firstItem"
       >
         <component :is="currentIcon" />
-        <el-icon style="transform: scale(0.75)" class="expand" size="16">
+        <el-icon style="color: #646a73" class="expand" size="12">
           <icon_expand_down_filled></icon_expand_down_filled>
         </el-icon>
       </div>
@@ -65,7 +65,7 @@ const handleDefaultChatChange = (val: any) => {
           :class="chartType === ele.value && 'isActive'"
           @click="handleDefaultChatChange(ele)"
         >
-          <el-icon size="16">
+          <el-icon style="color: #646a73" size="16">
             <component :is="ele.icon" />
           </el-icon>
           <div class="model-name">{{ ele.name }}</div>
