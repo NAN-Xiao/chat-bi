@@ -1,4 +1,5 @@
 
+from collections import defaultdict
 from typing import Optional
 from sqlmodel import Session, func, select, update
 
@@ -25,17 +26,10 @@ async def reset_user_oid(session: Session, oid: int):
         select(
             UserModel.id,
             UserModel.oid,
-            func.coalesce(
-                func.array_remove(
-                    func.array_agg(UserWsModel.oid),
-                    None
-                ),
-                []
-            ).label("oid_list")
+            UserWsModel.oid.label("associated_oid")
         )
         .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
         .where(UserModel.id != 1)
-        .group_by(UserModel.id)
     )
     
     user_filter = (
@@ -46,17 +40,30 @@ async def reset_user_oid(session: Session, oid: int):
     )
     stmt = stmt.where(UserModel.id.in_(user_filter))
     
-    result_user_list = session.exec(stmt)
-    for row in result_user_list:
-        result_dict = {}
-        for item, key in zip(row, row._fields):
-            result_dict[key] = item
-                
-        origin_oid = result_dict['oid']
-        oid_list: list = list(filter(lambda x: x != oid, result_dict['oid_list']))
+    result_user_list = session.exec(stmt).all()
+    if not result_user_list:
+        return
+    
+    merged = defaultdict(list)
+    extra_attrs = {}
+
+    for (id, oid, associated_oid) in result_user_list:
+        item = {"id": id, "oid": oid}
+        merged[id].append(associated_oid)
+        if id not in extra_attrs:
+            extra_attrs[id] = {k: v for k, v in item.items()}
+
+    # 组合结果
+    result = [
+        {**extra_attrs[user_id], "oid_list": oid_list} 
+        for user_id, oid_list in merged.items()
+    ]
+    
+    for row in result:
+        origin_oid = row['oid']
+        oid_list: list = list(filter(lambda x: x != oid, row['oid_list']))
         if origin_oid not in oid_list:
-            result_dict['oid'] = oid_list[0] if oid_list else 0
-            if result_dict['oid'] != origin_oid:
-                result_dict.pop("oid_list", None)
-                update_stmt = update(UserModel).where(UserModel.id == result_dict['id']).values(oid=result_dict['oid'])
+            row['oid'] = oid_list[0] if oid_list else 0
+            if row['oid'] != origin_oid:
+                update_stmt = update(UserModel).where(UserModel.id == row['id']).values(oid=row['oid'])
                 session.exec(update_stmt)
