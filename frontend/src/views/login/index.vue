@@ -1,12 +1,14 @@
 <template>
   <div class="login-container">
+    <div class="login-left">
+      <img :src="login_image" alt="" />
+    </div>
     <div class="login-content">
-      <div class="login-left">
-        <div class="illustration"></div>
-      </div>
       <div class="login-right">
+        <img width="227" height="52" :src="aboutBg" alt="" />
+        <div class="welcome">{{ $t('common.intelligent_questioning_platform') }}</div>
         <div class="login-form">
-          <h2 class="title">Login</h2>
+          <h2 class="title">{{ $t('common.login') }}</h2>
           <el-form
             ref="loginFormRef"
             class="form-content_error"
@@ -33,7 +35,9 @@
               ></el-input>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" class="login-btn" @click="submitForm">Login</el-button>
+              <el-button type="primary" class="login-btn" @click="submitForm">{{
+                $t('common.login_')
+              }}</el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -47,6 +51,8 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
+import aboutBg from '@/assets/embedded/LOGO-about.png'
+import login_image from '@/assets/embedded/login_image.png'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -79,52 +85,45 @@ const submitForm = () => {
 .login-container {
   height: 100vh;
   width: 100vw;
-  background-color: #f0f6f7;
+  background-color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
 
+  .login-left {
+    display: flex;
+    height: 100%;
+    img {
+      height: 100%;
+    }
+  }
+
   .login-content {
     display: flex;
-    width: 1000px;
-    // height: 600px;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
-    overflow: hidden;
-
-    .login-left {
-      flex: 1;
-      background: linear-gradient(135deg, #28c76f 0%, #81fbb8 100%);
-      // padding: 40px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-
-      .illustration {
-        flex: 1;
-        width: 100%;
-        background-image: url('@/assets/login-bg-sqlbot.jpg');
-        background-size: contain;
-        background-position: center;
-        background-repeat: no-repeat;
-      }
-    }
+    align-items: center;
+    justify-content: center;
+    flex: 1;
 
     .login-right {
-      flex: 1;
-      padding: 40px;
       display: flex;
       align-items: center;
+      flex-direction: column;
       position: relative;
-      height: 361px;
+      .welcome {
+        margin: 8px 0 40px 0;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 20px;
+        color: #646a73;
+      }
 
       .login-form {
-        width: 100%;
-        padding: 0 40px;
-        position: absolute;
-        top: 40px;
-        left: 0;
+        border: 1px solid #dee0e3;
+        padding: 40px;
+        width: 480px;
+        min-height: 392px;
+        border-radius: 12px;
+        box-shadow: 0px 6px 24px 0px #1f232914;
 
         .form-content_error {
           .ed-form-item--default {
@@ -136,10 +135,11 @@ const submitForm = () => {
         }
 
         .title {
-          font-size: 28px;
-          color: #1a1a1a;
-          margin-bottom: 40px;
-          text-align: center;
+          font-weight: 500;
+          font-style: Medium;
+          font-size: 20px;
+          line-height: 28px;
+          margin-bottom: 24px;
         }
 
         .login-btn {

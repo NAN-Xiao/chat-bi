@@ -144,7 +144,7 @@ const logout = () => {
           </el-icon>
           <div class="datasource-name">{{ $t('about.title') }}</div>
         </div>
-        <div @click="openHelp" class="popover-item">
+        <div class="popover-item" @click="openHelp">
           <el-icon size="16">
             <icon_maybe_outlined></icon_maybe_outlined>
           </el-icon>

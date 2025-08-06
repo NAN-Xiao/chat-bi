@@ -47,8 +47,8 @@ const doDeleteComponent = (e: MouseEvent) => {
   <div class="component-bar-main" :class="{ 'bar-hidden': !active }">
     <div>
       <el-dropdown
-        popper-class="bar-main_popper"
         ref="curDropdown"
+        popper-class="bar-main_popper"
         trigger="click"
         placement="bottom-end"
       >

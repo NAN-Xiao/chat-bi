@@ -6,6 +6,9 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
+    "intelligent_questioning_platform": "Welcome to the SQLBot Intelligent Questioning Platform",
+    "login": "Login",
+    "login_": "Login",
     "confirm2": "Confirm",
     "excessive_tables_selected": "Excessive tables selected",
     "to_continue_saving": "The number of selected tables is 67, exceeding {msg}. This may cause the operation to time out or become unresponsive. Do you want to continue saving?",

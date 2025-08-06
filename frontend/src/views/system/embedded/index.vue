@@ -450,7 +450,7 @@ const saveHandler = () => {
 </script>
 
 <template>
-  <div v-loading="searchLoading" class="embedded no-padding">
+  <div v-loading="searchLoading" class="embedded-index no-padding">
     <div class="tool-left">
       <div class="btn-select">
         <el-button :class="[btnSelect === 'd' && 'is-active']" text @click="btnSelect = 'd'">
@@ -474,7 +474,7 @@ const saveHandler = () => {
           </template>
         </el-input>
 
-        <el-popover popper-class="system-embedded_user" placement="bottom">
+        <el-popover popper-class="system-embedded_user" placement="bottom-end">
           <template #reference>
             <el-button type="primary">
               <template #icon>
@@ -928,7 +928,7 @@ const saveHandler = () => {
 </template>
 
 <style lang="less" scoped>
-.embedded {
+.embedded-index {
   height: 100%;
   padding: 16px 0 16px 0;
 
