@@ -81,19 +81,17 @@ const data = computed(() => {
         }
       }
     } else {
-      if (props.message?.record?.predict_data.length > 0) {
+      if (props.message?.record?.predict_data?.length > 0) {
         _list = props.message?.record?.predict_data
       }
     }
-
     if (_list.length == 0) {
       return _list
     }
 
-    if (dataObject.value.data && dataObject.value.data.length > 0) {
+    if (dataObject.value.data && dataObject.value.data?.length > 0) {
       return concat(dataObject.value.data, _list)
     }
-
     return _list
   } else {
     return dataObject.value.data
@@ -177,6 +175,10 @@ function changeTable() {
 
 function onTypeChange(val: any) {
   chartType.value = val
+  chartRef.value?.onTypeChange()
+}
+
+function reloadChart() {
   chartRef.value?.onTypeChange()
 }
 
@@ -273,6 +275,10 @@ function exportToImage() {
   }
   exportRef.value?.hide()
 }
+
+defineExpose({
+  reloadChart,
+})
 
 watch(
   () => chartObject.value?.type,

@@ -655,14 +655,21 @@ class LLMService:
         if json_str is None:
             raise SingleMessageError(orjson.dumps({'message': 'Cannot parse sql from answer',
                                                    'traceback': "Cannot parse sql from answer:\n" + res}).decode())
-        data: dict = orjson.loads(json_str)
-        sql = ''
-        message = ''
-        if data['success']:
-            sql = data['sql']
-        else:
-            message = data['message']
-            raise SingleMessageError(message)
+        sql: str
+        data: dict
+        try:
+            data = orjson.loads(json_str)
+
+            if data['success']:
+                sql = data['sql']
+            else:
+                message = data['message']
+                raise SingleMessageError(message)
+        except SingleMessageError as e:
+            raise e
+        except Exception:
+            raise SingleMessageError(orjson.dumps({'message': 'Cannot parse sql from answer',
+                                                   'traceback': "Cannot parse sql from answer:\n" + res}).decode())
 
         if sql.strip() == '':
             raise SingleMessageError("SQL query is empty")
@@ -682,31 +689,36 @@ class LLMService:
         if json_str is None:
             raise SingleMessageError(orjson.dumps({'message': 'Cannot parse chart config from answer',
                                                    'traceback': "Cannot parse chart config from answer:\n" + res}).decode())
-        data = orjson.loads(json_str)
+        data: dict
 
         chart: Dict[str, Any] = {}
         message = ''
         error = False
 
-        if data['type'] and data['type'] != 'error':
-            # todo type check
-            chart = data
-            if chart.get('columns'):
-                for v in chart.get('columns'):
-                    v['value'] = v.get('value').lower()
-            if chart.get('axis'):
-                if chart.get('axis').get('x'):
-                    chart.get('axis').get('x')['value'] = chart.get('axis').get('x').get('value').lower()
-                if chart.get('axis').get('y'):
-                    chart.get('axis').get('y')['value'] = chart.get('axis').get('y').get('value').lower()
-                if chart.get('axis').get('series'):
-                    chart.get('axis').get('series')['value'] = chart.get('axis').get('series').get('value').lower()
-        elif data['type'] == 'error':
-            message = data['reason']
+        try:
+            data = orjson.loads(json_str)
+            if data['type'] and data['type'] != 'error':
+                # todo type check
+                chart = data
+                if chart.get('columns'):
+                    for v in chart.get('columns'):
+                        v['value'] = v.get('value').lower()
+                if chart.get('axis'):
+                    if chart.get('axis').get('x'):
+                        chart.get('axis').get('x')['value'] = chart.get('axis').get('x').get('value').lower()
+                    if chart.get('axis').get('y'):
+                        chart.get('axis').get('y')['value'] = chart.get('axis').get('y').get('value').lower()
+                    if chart.get('axis').get('series'):
+                        chart.get('axis').get('series')['value'] = chart.get('axis').get('series').get('value').lower()
+            elif data['type'] == 'error':
+                message = data['reason']
+                error = True
+            else:
+                raise Exception('Chart is empty')
+        except Exception:
             error = True
-        else:
-            message = 'Chart is empty'
-            error = True
+            message = orjson.dumps({'message': 'Cannot parse chart config from answer',
+                                                   'traceback': "Cannot parse chart config from answer:\n" + res}).decode()
 
         if error:
             raise SingleMessageError(message)
