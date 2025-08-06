@@ -191,6 +191,26 @@ const handleEditModel = (row: any) => {
   })
 }
 
+const handleDefault = (row: any) => {
+  if (row.default_model) return
+  ElMessageBox.confirm(t('model.system_default_model', { msg: row.name }), {
+    confirmButtonType: 'primary',
+    tip: t('model.operate_with_caution'),
+    confirmButtonText: t('datasource.confirm'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+    callback: (val: string) => {
+      if (val === 'confirm') {
+        modelApi.setDefault(row.id).then(() => {
+          ElMessage.success(t('model.set_successfully'))
+          search()
+        })
+      }
+    },
+  })
+}
+
 const deleteHandler = (item: any) => {
   if (item.default_model) {
     ElMessageBox.confirm(t('model.del_default_tip', { msg: item.name }), {
@@ -370,6 +390,7 @@ const submit = (item: any) => {
             :is-default="ele['default_model']"
             @edit="handleEditModel(ele)"
             @del="deleteHandler"
+            @default="handleDefault(ele)"
           ></card>
         </el-col>
       </el-row>

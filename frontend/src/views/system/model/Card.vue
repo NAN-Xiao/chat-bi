@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import delIcon from '@/assets/svg/icon_delete.svg'
+import icon_embedded_outlined from '@/assets/svg/icon-setting.svg'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { get_supplier } from '@/entity/supplier'
 import { computed, ref } from 'vue'
@@ -37,14 +38,18 @@ const showErrorMask = (msg?: string) => {
     errorMsg.value = ''
   }, 3000)
 }
-const emits = defineEmits(['edit', 'del'])
+const emits = defineEmits(['edit', 'del', 'default'])
 
-const handleEdit = () => {
-  emits('edit')
+const handleDefault = () => {
+  emits('default')
 }
 
 const handleDel = () => {
   emits('del', { id: props.id, name: props.name, default_model: props.isDefault })
+}
+
+const handleEdit = () => {
+  emits('edit')
 }
 
 defineExpose({ showErrorMask })
@@ -71,17 +76,24 @@ defineExpose({ showErrorMask })
       <span class="value"> {{ baseModel }}</span>
     </div>
     <div class="methods">
-      <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">
-        <el-icon size="16" @click="handleEdit">
+      <el-button secondary @click="handleDefault">
+        <el-icon style="margin-right: 4px" size="16">
+          <icon_embedded_outlined></icon_embedded_outlined>
+        </el-icon>
+        {{ $t('common.as_default_model') }}
+      </el-button>
+      <el-button secondary @click="handleEdit">
+        <el-icon style="margin-right: 4px" size="16">
           <edit></edit>
         </el-icon>
-      </el-tooltip>
-      <span class="divide"></span>
-      <el-tooltip :offset="14" effect="dark" :content="$t('dashboard.delete')" placement="top">
-        <el-icon size="16" @click="handleDel">
+        {{ $t('dashboard.edit') }}
+      </el-button>
+      <el-button secondary @click="handleDel">
+        <el-icon style="margin-right: 4px" size="16">
           <delIcon></delIcon>
         </el-icon>
-      </el-tooltip>
+        {{ $t('dashboard.delete') }}
+      </el-button>
     </div>
   </div>
 </template>
@@ -89,7 +101,7 @@ defineExpose({ showErrorMask })
 <style lang="less" scoped>
 .card {
   width: 100%;
-  height: 160px;
+  height: 176px;
   border: 1px solid #dee0e3;
   padding: 16px;
   border-radius: 12px;
@@ -139,32 +151,7 @@ defineExpose({ showErrorMask })
   .methods {
     margin-top: 16px;
     align-items: center;
-    justify-content: flex-end;
     display: none;
-
-    .ed-icon {
-      position: relative;
-      cursor: pointer;
-
-      &::after {
-        content: '';
-        background-color: #1f23291a;
-        position: absolute;
-        border-radius: 6px;
-        width: 24px;
-        height: 24px;
-        transform: translate(-50%, -50%);
-        top: 50%;
-        left: 50%;
-        display: none;
-      }
-
-      &:hover {
-        &::after {
-          display: block;
-        }
-      }
-    }
 
     .divide {
       height: 14px;

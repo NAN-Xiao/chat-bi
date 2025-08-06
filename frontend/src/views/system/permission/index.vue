@@ -447,7 +447,7 @@ const next = () => {
     }
   })
 }
-
+const saveLoading = ref(false)
 const save = () => {
   const { id, name, permissions, users } = cloneDeep(currentPermission)
 
@@ -481,14 +481,20 @@ const save = () => {
   if (!id) {
     delete obj.id
   }
-  savePermissions(obj).then(() => {
-    ElMessage({
-      type: 'success',
-      message: t('common.save_success'),
+  if (saveLoading.value) return
+  saveLoading.value = true
+  savePermissions(obj)
+    .then(() => {
+      ElMessage({
+        type: 'success',
+        message: t('common.save_success'),
+      })
+      beforeClose()
+      handleSearch()
     })
-    beforeClose()
-    handleSearch()
-  })
+    .finally(() => {
+      saveLoading.value = false
+    })
 }
 const savePermission = () => {
   if (!isCreate.value && activeStep.value === 0) {

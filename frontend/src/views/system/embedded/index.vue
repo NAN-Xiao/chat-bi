@@ -588,7 +588,13 @@ const saveHandler = () => {
               <template #title> {{ $t('embedded.basic_information') }} </template>
             </el-step>
             <el-step>
-              <template #title> {{ $t('embedded.set_data_source') }} </template>
+              <template #title>
+                {{
+                  currentEmbedded.type === 1
+                    ? $t('embedded.configure_interface')
+                    : $t('embedded.set_data_source')
+                }}
+              </template>
             </el-step>
           </el-steps>
         </div>

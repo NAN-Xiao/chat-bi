@@ -83,6 +83,9 @@ const setUser = () => {
   border-radius: 12px;
   &:hover {
     box-shadow: 0px 6px 24px 0px #1f232914;
+    .methods {
+      display: block;
+    }
   }
 
   .name-icon {
@@ -116,6 +119,7 @@ const setUser = () => {
 
   .methods {
     margin-top: 16px;
+    display: none;
   }
 }
 </style>

@@ -66,7 +66,7 @@ const deleteBatchUser = () => {
     }).then(() => {
       ElMessage({
         type: 'success',
-        message: t('dashboard.delete_success'),
+        message: t('workspace.removed_successfully'),
       })
       multipleSelectionAll.value = []
       search()
@@ -85,9 +85,10 @@ const deleteHandler = (row: any) => {
     workspaceUwsDelete({
       uid_list: [row.id],
     }).then(() => {
+      multipleSelectionAll.value = multipleSelectionAll.value.filter((ele) => row.id !== ele.id)
       ElMessage({
         type: 'success',
-        message: t('workspace.remove'),
+        message: t('workspace.removed_successfully'),
       })
       search()
     })
