@@ -59,7 +59,7 @@ async def pager(
         select(UserModel, UserWsModel.oid.label('ws_oid'))
         .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
         .where(UserModel.id.in_(uid_list))
-        .order_by(UserModel.create_time)
+        .order_by(UserModel.account, UserModel.create_time)
     )
     user_workspaces = session.exec(stmt).all()
     merged = defaultdict(list)

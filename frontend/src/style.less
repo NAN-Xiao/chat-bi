@@ -230,3 +230,62 @@ strong {
     height: 1px !important;
   }
 }
+
+.sq-message-success {
+  border: 1px solid #34c724 !important;
+  background: #f0fbef !important;
+
+  .ed-message__icon {
+    color: #34c724
+  }
+}
+
+
+.sq-message-export {
+  min-width: 20px !important;
+  padding: 16px 20px !important;
+  display: flex;
+  align-items: center;
+  box-shadow: 0px 4px 8px 0px #1f23291a;
+
+  & > p {
+    font-family: var(--de-custom_font, 'PingFang');
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 22px;
+    letter-spacing: 0px;
+    text-align: left;
+    color: #1f2329;
+    display: flex;
+    align-items: center;
+    padding-right: 24px;
+  }
+
+  .m50-export {
+    max-width: 200px;
+  }
+
+  .btn-text {
+    padding: 2px 4px;
+
+    &:hover {
+      background: var(--primary10, #3370ff1a);
+    }
+  }
+
+  .ed-message__closeBtn {
+    margin-left: 28px;
+    position: relative;
+    margin-right: 0;
+    top: 0;
+    right: 0;
+    transform: translateY(0);
+    color: #646a73;
+  }
+
+  .ed-message__icon {
+    height: 16px;
+    width: 16px;
+    margin-right: 8px;
+  }
+}

@@ -169,7 +169,7 @@ function onClickHistory(chat: Chat) {
     currentChatId.value = chat.id
     loading.value = true
     chatApi
-      .get(chat.id)
+      .get_with_Data(chat.id)
       .then((res) => {
         const info = chatApi.toChatInfo(res)
         if (info) {

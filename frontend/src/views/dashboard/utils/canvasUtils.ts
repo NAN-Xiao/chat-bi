@@ -116,8 +116,8 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
           canvas_style_data: JSON.stringify(commonParams.canvasStyleData),
           canvas_view_info: JSON.stringify(commonParams.canvasViewInfo),
         }
-        dashboardApi.update_canvas(requestParams).then(() => {
-          callBack()
+        dashboardApi.update_canvas(requestParams).then((res: any) => {
+          callBack(res)
         })
       }
     } else {

@@ -48,6 +48,7 @@
     "or": "Or"
   },
   "dashboard": {
+    "open_dashboard": "Open Dashboard",
     "add_dashboard_name_tips": "Please Input Dashboard Name",
     "existing_dashboard": "Existing Dashboard",
     "add_success": "Add Success",
@@ -537,6 +538,7 @@
     "data_predict": "Data Prediction",
     "ds_is_invalid": "Datasource is invalid",
     "error": "Error",
+    "no_data": "No Data",
     "show_error_detail": "Show error info"
   },
   "about": {

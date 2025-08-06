@@ -35,7 +35,7 @@ export const supplierList: Array<{
         ],
         model_options: [
           { name: 'qwen-plus' },
-          { name: 'qwen-plus-latest' },
+          /* { name: 'qwen-plus-latest' }, */
           { name: 'qwen-max' },
           { name: 'qwen-max-latest' },
           { name: 'qwen-turbo' },
@@ -47,10 +47,10 @@ export const supplierList: Array<{
           { name: 'qwen-omni-turbo' },
           /* { name: 'qwen-omni-turbo-realtime' },
           { name: 'qwen-omni-turbo-realtime-latest' }, */
-          { name: 'qvq-max' },
+          /* { name: 'qvq-max' },
           { name: 'qvq-max-latest' },
           { name: 'qvq-plus' },
-          { name: 'qvq-plus-latest' },
+          { name: 'qvq-plus-latest' }, */
         ],
       },
     },
@@ -73,7 +73,10 @@ export const supplierList: Array<{
     model_config: {
       0: {
         api_domain: 'https://api.deepseek.com',
-        model_options: [{ name: 'deepseek-chat' }, { name: 'deepseek-reasoner' }],
+        model_options: [
+          { name: 'deepseek-chat' },
+          /* { name: 'deepseek-reasoner' } */
+        ],
       },
     },
   },
@@ -87,11 +90,11 @@ export const supplierList: Array<{
         common_args: [{ key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' }],
         model_options: [
           { name: 'hunyuan-turbos-latest' },
-          { name: 'hunyuan-turbos-longtext-128k-20250325' },
-          { name: 'hunyuan-large' },
+          /* { name: 'hunyuan-turbos-longtext-128k-20250325' },
+          { name: 'hunyuan-large' }, */
           { name: 'hunyuan-standard-256K' },
           { name: 'hunyuan-standard' },
-          { name: 'hunyuan-lite' },
+          /* { name: 'hunyuan-lite' }, */
         ],
       },
     },
@@ -103,13 +106,16 @@ export const supplierList: Array<{
     model_config: {
       0: {
         api_domain: 'https://spark-api-open.xf-yun.com/v1/',
-        common_args: [{ key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' }],
+        common_args: [
+          { key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' },
+          { key: 'max_tokens', val: 4096, type: 'number', range: '[1, 32768]' },
+        ],
         model_options: [
           {
             name: '4.0Ultra',
             args: [{ key: 'max_tokens', val: 32768, type: 'number', range: '[1, 32768]' }],
           },
-          {
+          /* {
             name: 'generalv3.5',
             args: [{ key: 'max_tokens', val: 4096, type: 'number', range: '[1, 8192]' }],
           },
@@ -128,7 +134,7 @@ export const supplierList: Array<{
           {
             name: 'lite',
             args: [{ key: 'max_tokens', val: 4096, type: 'number', range: '[1, 4096]' }],
-          },
+          }, */
           {
             name: 'x1',
             args: [

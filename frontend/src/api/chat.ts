@@ -301,6 +301,9 @@ export const chatApi = {
   get: (id: number): Promise<ChatInfo> => {
     return request.get(`/chat/get/${id}`)
   },
+  get_with_Data: (id: number): Promise<ChatInfo> => {
+    return request.get(`/chat/get/with_data/${id}`)
+  },
   get_chart_data: (record_id?: number): Promise<any> => {
     return request.get(`/chat/record/get/${record_id}/data`)
   },

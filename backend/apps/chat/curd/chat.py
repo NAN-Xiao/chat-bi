@@ -67,8 +67,13 @@ def get_chat_predict_data(session: SessionDep, chart_record_id: int):
     return {}
 
 
+def get_chat_with_records_with_data(session: SessionDep, chart_id: int, current_user: CurrentUser,
+                                    current_assistant: CurrentAssistant) -> ChatInfo:
+    return get_chat_with_records(session, chart_id, current_user, current_assistant, True)
+
+
 def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser,
-                          current_assistant: CurrentAssistant) -> ChatInfo:
+                          current_assistant: CurrentAssistant, with_data: bool = False) -> ChatInfo:
     chat = session.get(Chat, chart_id)
     if not chat:
         raise Exception(f"Chat with id {chart_id} not found")
@@ -96,18 +101,39 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                   ChatRecord.recommended_question, ChatRecord.first_chat,
                   ChatRecord.finish, ChatRecord.error).where(
         and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(ChatRecord.create_time)
+    if with_data:
+        stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
+                      ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,
+                      ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
+                      ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
+                      ChatRecord.recommended_question, ChatRecord.first_chat,
+                      ChatRecord.finish, ChatRecord.error, ChatRecord.data, ChatRecord.predict_data).where(
+            and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(
+            ChatRecord.create_time)
+
     result = session.execute(stmt).all()
     record_list: list[ChatRecord] = []
     for row in result:
-        record_list.append(
-            ChatRecord(id=row.id, chat_id=row.chat_id, create_time=row.create_time, finish_time=row.finish_time,
-                       question=row.question, sql_answer=row.sql_answer, sql=row.sql,
-                       chart_answer=row.chart_answer, chart=row.chart,
-                       analysis=row.analysis, predict=row.predict,
-                       datasource_select_answer=row.datasource_select_answer,
-                       analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
-                       recommended_question=row.recommended_question, first_chat=row.first_chat,
-                       finish=row.finish, error=row.error))
+        if not with_data:
+            record_list.append(
+                ChatRecord(id=row.id, chat_id=row.chat_id, create_time=row.create_time, finish_time=row.finish_time,
+                           question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                           chart_answer=row.chart_answer, chart=row.chart,
+                           analysis=row.analysis, predict=row.predict,
+                           datasource_select_answer=row.datasource_select_answer,
+                           analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
+                           recommended_question=row.recommended_question, first_chat=row.first_chat,
+                           finish=row.finish, error=row.error))
+        else:
+            record_list.append(
+                ChatRecord(id=row.id, chat_id=row.chat_id, create_time=row.create_time, finish_time=row.finish_time,
+                           question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                           chart_answer=row.chart_answer, chart=row.chart,
+                           analysis=row.analysis, predict=row.predict,
+                           datasource_select_answer=row.datasource_select_answer,
+                           analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
+                           recommended_question=row.recommended_question, first_chat=row.first_chat,
+                           finish=row.finish, error=row.error, data=row.data, predict_data=row.predict_data))
 
     result = list(map(format_record, record_list))
 
