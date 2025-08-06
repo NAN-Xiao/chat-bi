@@ -367,7 +367,7 @@ const submit = (item: any) => {
         </el-col>
       </el-row>
     </div>
-    <template v-if="!keywords && !modelListWithSearch.length && !searchLoading">
+    <template v-if="!keywords && !modelListWithSearch.length">
       <EmptyBackground
         class="datasource-yet"
         :description="$t('common.no_model_yet')"
