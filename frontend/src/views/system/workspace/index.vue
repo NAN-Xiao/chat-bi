@@ -84,7 +84,7 @@ const fieldListWithSearch = computed(() => {
     ele.name.toLowerCase().includes(keywordsMember.value.toLowerCase())
   )
 })
-const currentTable = ref<any>({})
+const currentTable = ref<any>({ id: 1, name: '' })
 const init = () => {
   workspaceList().then((res) => {
     tableList.value = res

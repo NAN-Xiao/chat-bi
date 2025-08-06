@@ -29,6 +29,7 @@ const { t } = useI18n()
 const keywords = ref('')
 const defaultModelKeywords = ref('')
 const modelConfigvVisible = ref(false)
+const searchLoading = ref(false)
 const editModel = ref(false)
 const activeStep = ref(0)
 const activeName = ref('')
@@ -255,9 +256,15 @@ const setCardRef = (el: any, index: number) => {
   }
 }
 const search = () => {
-  modelApi.queryAll().then((res: any) => {
-    modelList.value = res
-  })
+  searchLoading.value = true
+  modelApi
+    .queryAll()
+    .then((res: any) => {
+      modelList.value = res
+    })
+    .finally(() => {
+      searchLoading.value = false
+    })
 }
 search()
 
@@ -367,7 +374,7 @@ const submit = (item: any) => {
         </el-col>
       </el-row>
     </div>
-    <template v-if="!keywords && !modelListWithSearch.length">
+    <template v-if="!keywords && !modelListWithSearch.length && !searchLoading">
       <EmptyBackground
         class="datasource-yet"
         :description="$t('common.no_model_yet')"

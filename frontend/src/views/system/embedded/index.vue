@@ -10,6 +10,7 @@ import floating_window from '@/assets/embedded/window.png'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
+import { useClipboard } from '@vueuse/core'
 
 import Card from './Card.vue'
 import { workspaceList } from '@/api/workspace'
@@ -19,6 +20,8 @@ import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 
 const { t } = useI18n()
+const { copy } = useClipboard()
+
 const keywords = ref('')
 const activeStep = ref(0)
 const ruleConfigvVisible = ref(false)
@@ -380,8 +383,7 @@ const handleEmbedded = (row: any) => {
   })()`
 }
 const copyJsCode = () => {
-  navigator.clipboard
-    .writeText(jsCodeElement.value)
+  copy(jsCodeElement.value)
     .then(function () {
       ElMessage.success(t('embedded.copy_successful'))
     })
@@ -390,8 +392,7 @@ const copyJsCode = () => {
     })
 }
 const copyCode = () => {
-  navigator.clipboard
-    .writeText(scriptElement.value)
+  copy(scriptElement.value)
     .then(function () {
       ElMessage.success(t('embedded.copy_successful'))
     })

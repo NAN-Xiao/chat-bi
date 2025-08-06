@@ -3,6 +3,7 @@ import type { ChatMessage } from '@/api/chat.ts'
 import DisplayChartBlock from '@/views/chat/component/DisplayChartBlock.vue'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import { computed, ref, watch } from 'vue'
+import { useClipboard } from '@vueuse/core'
 import { concat } from 'lodash-es'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import ICON_BAR from '@/assets/svg/chart/icon_bar_outlined.svg'
@@ -39,6 +40,7 @@ const props = withDefaults(
   }
 )
 
+const { copy } = useClipboard()
 const loading = ref<boolean>(false)
 const { t } = useI18n()
 const addViewRef = ref(null)
@@ -224,10 +226,11 @@ function showSql() {
 //   addViewRef.value?.optInit(recordeInfo)
 // }
 
-function copy() {
+function copyText() {
   if (props.message?.record?.sql) {
-    navigator.clipboard.writeText(props.message.record.sql)
-    ElMessage.success(t('embedded.copy_successful'))
+    copy(props.message.record.sql).then(() => {
+      ElMessage.success(t('embedded.copy_successful'))
+    })
   }
 }
 
@@ -455,7 +458,7 @@ watch(
           :sql="message.record?.sql"
           style="margin-top: 12px"
         />
-        <el-button v-if="message.record?.sql" circle class="input-icon" @click="copy">
+        <el-button v-if="message.record?.sql" circle class="input-icon" @click="copyText">
           <el-icon size="16">
             <icon_copy_outlined />
           </el-icon>

@@ -377,6 +377,9 @@ import { workspaceList } from '@/api/workspace'
 import { formatTimestamp } from '@/utils/date'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
+import { useClipboard } from '@vueuse/core'
+
+const { copy } = useClipboard()
 
 const { t } = useI18n()
 const keyword = ref('')
@@ -503,8 +506,7 @@ const setPopoverRef = (el: any, row: any) => {
 }
 
 const copyText = () => {
-  navigator.clipboard
-    .writeText('SQLBot@123456')
+  copy('SQLBot@123456')
     .then(function () {
       ElMessage.success(t('embedded.copy_successful'))
     })
