@@ -28,7 +28,8 @@ wlist = [
     "/images/*",
     "/sse",
     "/system/assistant/validator*",
-    "/system/assistant/info/*"
+    "/system/assistant/info/*",
+    "/datasource/uploadExcel"
 ]
 
 class WhitelistChecker:

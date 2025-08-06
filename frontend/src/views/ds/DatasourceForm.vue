@@ -11,7 +11,6 @@ import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import FixedSizeList from 'element-plus-secondary/es/components/virtual-list/src/components/fixed-size-list.mjs'
 import { debounce } from 'lodash-es'
 import { Plus } from '@element-plus/icons-vue'
-import { useCache } from '@/utils/useCache'
 import { haveSchema } from '@/views/ds/js/ds-type'
 import { setSize } from '@/utils/utils'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
@@ -33,7 +32,6 @@ const props = withDefaults(
   }
 )
 
-const { wsCache } = useCache()
 const dsFormRef = ref<FormInstance>()
 const emit = defineEmits(['refresh', 'changeActiveStep', 'close'])
 const isCreate = ref(true)
@@ -42,13 +40,7 @@ const checkList = ref<any>([])
 const tableList = ref<any>([])
 const excelUploadSuccess = ref(false)
 const tableListLoading = ref(false)
-const token = wsCache.get('user.token')
 const checkLoading = ref(false)
-const request_key = computed(() => {
-  // eslint-disable-next-line no-undef
-  return LicenseGenerator.generate()
-})
-const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}`, 'X-SQLBOT-KEY': request_key })
 const dialogTitle = ref('')
 const getUploadURL = import.meta.env.VITE_API_BASE_URL + '/datasource/uploadExcel'
 const saveLoading = ref<boolean>(false)
@@ -537,7 +529,6 @@ defineExpose({
               v-if="form.filename && !form.id"
               class="upload-user"
               accept=".xlsx,.xls,.csv"
-              :headers="headers"
               :action="getUploadURL"
               :before-upload="beforeUpload"
               :on-error="onError"
@@ -553,7 +544,6 @@ defineExpose({
               v-else-if="!form.id"
               class="upload-user"
               accept=".xlsx,.xls,.csv"
-              :headers="headers"
               :action="getUploadURL"
               :before-upload="beforeUpload"
               :on-success="onSuccess"
