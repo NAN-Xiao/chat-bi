@@ -3,6 +3,7 @@ import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type { ChatMessage } from '@/api/chat.ts'
 import { computed, nextTick, ref } from 'vue'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   id?: number | string
@@ -10,6 +11,8 @@ const props = defineProps<{
   message: ChatMessage
   data: Array<{ [key: string]: any }>
 }>()
+
+const { t } = useI18n()
 
 const chartObject = computed<{
   type: ChartTypes
@@ -91,7 +94,7 @@ defineExpose({
       :series="series"
       :data="data"
     />
-    <el-empty v-else description="No Data" />
+    <el-empty v-else :description="t('chat.no_data')" />
   </div>
 </template>
 

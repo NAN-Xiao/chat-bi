@@ -537,6 +537,7 @@
     "data_predict": "Data Prediction",
     "ds_is_invalid": "Datasource is invalid",
     "error": "Error",
+    "no_data": "No Data",
     "show_error_detail": "Show error info"
   },
   "about": {

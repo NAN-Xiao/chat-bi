@@ -537,6 +537,7 @@
     "data_predict": "数据预测",
     "ds_is_invalid": "数据源无效",
     "error": "错误",
+    "no_data": "暂无数据",
     "show_error_detail": "查看具体信息"
   },
   "about": {
