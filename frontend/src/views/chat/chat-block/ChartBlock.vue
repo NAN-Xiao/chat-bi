@@ -227,7 +227,7 @@ function showSql() {
 function copy() {
   if (props.message?.record?.sql) {
     navigator.clipboard.writeText(props.message.record.sql)
-    ElMessage.info(t('qa.copied'))
+    ElMessage.success(t('embedded.copy_successful'))
   }
 }
 

@@ -402,7 +402,7 @@ const submit = (item: any) => {
         @click-model="supplierChang"
       ></ModelListSide>
       <ModelForm
-        v-if="activeStep === 1"
+        v-if="activeStep === 1 && modelConfigvVisible"
         ref="modelFormRef"
         :active-name="activeName"
         :active-type="activeType"
