@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, reactive, ref, h } from 'vue'
+import { reactive, ref, h } from 'vue'
 import { ElButton, ElMessage } from 'element-plus-secondary'
 import {
   findNextComponentIndex,
@@ -16,6 +16,7 @@ const { t } = useI18n()
 const resource = ref(null)
 
 const optInit = (viewInfo: any) => {
+  initDashboardList()
   resourceDialogShow.value = true
   state.viewInfo = viewInfo
 }
@@ -180,10 +181,6 @@ const initDashboardList = () => {
     state.dashboardList = res || []
   })
 }
-
-onMounted(() => {
-  initDashboardList()
-})
 
 defineExpose({
   optInit,
