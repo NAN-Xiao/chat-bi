@@ -106,7 +106,10 @@ export const supplierList: Array<{
     model_config: {
       0: {
         api_domain: 'https://spark-api-open.xf-yun.com/v1/',
-        common_args: [{ key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' }],
+        common_args: [
+          { key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' },
+          { key: 'max_tokens', val: 4096, type: 'number', range: '[1, 32768]' },
+        ],
         model_options: [
           {
             name: '4.0Ultra',
