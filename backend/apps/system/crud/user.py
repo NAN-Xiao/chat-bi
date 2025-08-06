@@ -46,13 +46,13 @@ def authenticate(*, session: Session, account: str, password: str) -> BaseUserDT
 
 async def user_ws_options(session: Session, uid: int, trans: Optional[I18n] = None) -> list[UserWs]:
     if uid == 1:
-        stmt = select(WorkspaceModel.id, WorkspaceModel.name).order_by(WorkspaceModel.create_time)
+        stmt = select(WorkspaceModel.id, WorkspaceModel.name).order_by(WorkspaceModel.name, WorkspaceModel.create_time)
     else:
         stmt = select(WorkspaceModel.id, WorkspaceModel.name).join(
             UserWsModel, UserWsModel.oid == WorkspaceModel.id
         ).where(
             UserWsModel.uid == uid,
-        ).order_by(WorkspaceModel.create_time)
+        ).order_by(WorkspaceModel.name, WorkspaceModel.create_time)
     result = session.exec(stmt)
     if not trans:
         return result.all()

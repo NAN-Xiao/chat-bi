@@ -78,7 +78,7 @@ async def query(
                        AiModelDetail.default_model)
     if keyword is not None:
         statement = statement.where(AiModelDetail.name.like(f"%{keyword}%"))
-    statement = statement.order_by(AiModelDetail.create_time.asc())
+    statement = statement.order_by(AiModelDetail.default_model.desc(), AiModelDetail.name, AiModelDetail.create_time)
     items = session.exec(statement).all()
     return items
 

@@ -50,7 +50,7 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
 
 @router.get("", response_model=list[AssistantModel])
 async def query(session: SessionDep):
-    list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time.asc())).all()
+    list_result = session.exec(select(AssistantModel).order_by(AssistantModel.name, AssistantModel.create_time)).all()
     return list_result
 
 @router.post("")

@@ -367,6 +367,22 @@ const submit = (item: any) => {
         </el-col>
       </el-row>
     </div>
+    <template v-if="!keywords && !modelListWithSearch.length">
+      <EmptyBackground
+        class="datasource-yet"
+        :description="$t('common.no_model_yet')"
+        img-type="noneWhite"
+      />
+
+      <div style="text-align: center; margin-top: -10px">
+        <el-button type="primary" @click="handleAddModel">
+          <template #icon>
+            <icon_add_outlined></icon_add_outlined>
+          </template>
+          {{ t('model.add_model') }}
+        </el-button>
+      </div>
+    </template>
     <el-drawer
       v-model="modelConfigvVisible"
       :close-on-click-modal="false"
@@ -424,6 +440,12 @@ const submit = (item: any) => {
 .model-config {
   height: calc(100% - 16px);
   padding: 16px 0 16px 0;
+
+  .datasource-yet {
+    padding-bottom: 0;
+    height: auto;
+    padding-top: 200px;
+  }
   .model-methods {
     display: flex;
     align-items: center;

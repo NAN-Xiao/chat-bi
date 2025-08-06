@@ -32,7 +32,7 @@ async def option_pager(
     stmt = select(UserModel.id, UserModel.account, UserModel.name).where(
         ~exists().where(UserWsModel.uid == UserModel.id, UserWsModel.oid == oid),
         UserModel.id != 1
-    ).order_by(UserModel.create_time.asc())
+    ).order_by(UserModel.account, UserModel.create_time)
     
     if keyword:
         keyword_pattern = f"%{keyword}%"
@@ -97,7 +97,7 @@ async def pager(
     ).where(
         UserWsModel.oid == workspace_id,
         UserModel.id != 1
-    ).order_by(UserModel.create_time.asc())
+    ).order_by(UserModel.account, UserModel.create_time)
     
     if keyword:
         keyword_pattern = f"%{keyword}%"
