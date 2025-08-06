@@ -61,11 +61,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
         schema, param = get_authorization_scheme_param(token)
         if schema.lower() != "bearer":
             return False, f"Token schema error!"
-        payload = jwt.decode(
-            param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
-        )
-        token_data = TokenPayload(**payload)
         try: 
+            payload = jwt.decode(
+                param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            )
+            token_data = TokenPayload(**payload)
             with Session(engine) as session:
                 session_user = await get_user_info(session = session, user_id = token_data.id)
                 if not session_user:
@@ -80,7 +80,10 @@ class TokenMiddleware(BaseHTTPMiddleware):
                     raise Exception(message)
                 return True, session_user
         except Exception as e:
-            SQLBotLogUtil.exception(f"Token validation error: {str(e)}")
+            msg = str(e)
+            SQLBotLogUtil.exception(f"Token validation error: {msg}")
+            if 'expired' in msg:
+                return False, jwt.ExpiredSignatureError(trans('i18n_permission.token_expired')) 
             return False, e
             
     
@@ -90,13 +93,14 @@ class TokenMiddleware(BaseHTTPMiddleware):
         schema, param = get_authorization_scheme_param(assistantToken)
         if schema.lower() != "assistant":
             return False, f"Token schema error!"
-        payload = jwt.decode(
-            param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
-        )
-        token_data = TokenPayload(**payload)
-        if not payload['assistant_id']:
-            return False, f"Miss assistant payload error!"
+        
         try: 
+            payload = jwt.decode(
+                param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            )
+            token_data = TokenPayload(**payload)
+            if not payload['assistant_id']:
+                return False, f"Miss assistant payload error!"
             with Session(engine) as session:
                 """ session_user = await get_user_info(session = session, user_id = token_data.id)
                 session_user = UserInfoDTO.model_validate(session_user) """
