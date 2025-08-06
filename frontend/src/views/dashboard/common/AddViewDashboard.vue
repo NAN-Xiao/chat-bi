@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, h } from 'vue'
+import { ElButton, ElMessage } from 'element-plus-secondary'
 import {
   findNextComponentIndex,
   saveDashboardResourceTarget,
@@ -18,7 +19,7 @@ const optInit = (viewInfo: any) => {
   resourceDialogShow.value = true
   state.viewInfo = viewInfo
 }
-
+const curOptDashboardId = ref(null)
 const state = reactive({
   dashboardList: [] as SQTreeNode[],
   viewInfo: null,
@@ -123,13 +124,52 @@ const saveResourcePrepare = () => {
 }
 
 const saveResource = (params: any, commonParams: any) => {
-  saveDashboardResourceTarget(params, commonParams, function () {
+  saveDashboardResourceTarget(params, commonParams, (res: any) => {
     const messageTips = t('dashboard.add_success')
-    ElMessage({
-      type: 'success',
-      message: messageTips,
-    })
+    curOptDashboardId.value = res?.id
+    openMessageLoading(messageTips, 'success', callbackExportSuc)
     resetForm()
+  })
+}
+
+const callbackExportSuc = () => {
+  // do open dashboard
+  const url = `#/canvas?resourceId=${curOptDashboardId.value}`
+  window.open(url, '_self')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+const openMessageLoading = (text: string, type = 'success', cb: Function) => {
+  // success error loading
+  const customClass = `sq-message-${type || 'success'} sq-message-export`
+  ElMessage({
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    message: h('p', null, [
+      h(
+        'span',
+        {
+          title: t(text),
+          class: 'ellipsis m50-export',
+        },
+        t(text)
+      ),
+      h(
+        ElButton,
+        {
+          text: true,
+          size: 'small',
+          class: 'btn-text',
+          onClick: () => {
+            cb()
+          },
+        },
+        t('dashboard.open_dashboard')
+      ),
+    ]),
+    type,
+    showClose: true,
+    duration: 0,
+    customClass,
   })
 }
 

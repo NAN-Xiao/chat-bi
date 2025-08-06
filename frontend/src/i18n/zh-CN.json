@@ -44,6 +44,7 @@
     "or": "或者"
   },
   "dashboard": {
+    "open_dashboard": "打开仪表板",
     "add_dashboard_name_tips": "请输入仪表板名称",
     "existing_dashboard": "存量仪表板",
     "add_success": "添加成功",
