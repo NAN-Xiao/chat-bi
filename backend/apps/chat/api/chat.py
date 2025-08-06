@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from apps.chat.curd.chat import list_chats, get_chat_with_records, create_chat, rename_chat, \
-    delete_chat, get_chat_chart_data, get_chat_predict_data
+    delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, ExcelData
 from apps.chat.task.llm import LLMService
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser
@@ -26,6 +26,18 @@ async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int
     try:
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user,
                                      current_assistant=current_assistant)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@router.get("/get/with_data/{chart_id}")
+async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant):
+    try:
+        return get_chat_with_records_with_data(chart_id=chart_id, session=session, current_user=current_user,
+                                               current_assistant=current_assistant)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -205,7 +217,8 @@ async def export_excel(excel_data: ExcelData):
 
         buffer = io.BytesIO()
 
-        with pd.ExcelWriter(buffer, engine='xlsxwriter', engine_kwargs={'options': {'strings_to_numbers': True}}) as writer:
+        with pd.ExcelWriter(buffer, engine='xlsxwriter',
+                            engine_kwargs={'options': {'strings_to_numbers': True}}) as writer:
             df.to_excel(writer, sheet_name='Sheet1', index=False)
 
         buffer.seek(0)
