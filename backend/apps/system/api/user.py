@@ -33,7 +33,7 @@ async def pager(
     paginator = Paginator(session)
     filters = {}
     
-    origin_stmt = select(UserModel.id).join(UserWsModel, UserModel.id == UserWsModel.uid).where(UserModel.id != 1).distinct()
+    origin_stmt = select(UserModel.id).join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True).where(UserModel.id != 1).distinct()
     if oidlist:
         origin_stmt = origin_stmt.where(UserWsModel.oid.in_(oidlist))
     if status is not None:
@@ -75,7 +75,7 @@ async def pager(
 
     # 组合结果
     result = [
-        {**extra_attrs[user_id], "oid_list": oid_list} 
+        {**extra_attrs[user_id], "oid_list": list(filter(None, oid_list))} 
         for user_id, oid_list in merged.items()
     ]
     user_page.items = result
