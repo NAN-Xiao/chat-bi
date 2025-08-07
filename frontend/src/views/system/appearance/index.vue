@@ -231,6 +231,7 @@ interface ConfigItem {
 }
 const showAbout = ref(true)
 const showDoc = ref(true)
+const input = ref('')
 const COLOR_PANEL = [
   '#FF4500',
   '#FF8C00',
