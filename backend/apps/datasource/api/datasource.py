@@ -273,7 +273,9 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
             for sheet_name in sheet_names:
                 tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
                 sheets.append({"tableName": tableName, "tableComment": ""})
-                df = pd.read_excel(save_path, sheet_name=sheet_name, engine='calamine')
+                df_temp = pd.read_excel(path, nrows=5)
+                non_empty_cols = df_temp.columns[df_temp.notna().any()].tolist()
+                df = pd.read_excel(save_path, sheet_name=sheet_name, engine='calamine', usecols=non_empty_cols)
                 insert_pg(df, tableName, engine)
 
         # os.remove(save_path)
