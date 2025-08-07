@@ -567,5 +567,36 @@
   "license": {
     "error_tips": "Do you want to refresh the page?",
     "offline_tips": "The service has been offline, please contact the administrator to restart the service!"
+  },
+  "system": {
+    "system_settings": "System Settings",
+    "appearance_settings": "Appearance Settings",
+    "platform_display_theme": "Platform Display Theme",
+    "default_turquoise": "Default (Turquoise)",
+    "tech_blue": "Tech Blue",
+    "custom": "Custom",
+    "platform_login_settings": "Platform Login Settings",
+    "page_preview": "Page Preview",
+    "restore_default": "Restore Default",
+    "website_logo": "Website Logo",
+    "tab": "Tab",
+    "replace_image": "Replace Image",
+    "larger_than_200kb": "Logo displayed at the top of the website: Recommended size: 48 x 48 pixels, supports JPG, PNG, and SVG, and no larger than 200KB",
+    "login_logo": "Login Logo",
+    "larger_than_200kb_de": "Logo on the right side of the login page: Recommended size: 204 x 52 pixels, supports JPG, PNG, and SVG, and no larger than 200KB",
+    "login_background_image": "Login Background Image",
+    "larger_than_5mb": "Background image on the left: Recommended size: 576 x 900 for vector images, 1152 x 1800 for bitmap images, supports JPG, PNG, and SVG, and no larger than 5MB",
+    "website_name": "Website Name",
+    "on_webpage_tabs": "Platform name displayed on webpage tabs",
+    "welcome_message": "Welcome Message",
+    "the_product_logo": "Welcome Message below the product logo",
+    "screen_customization_supported": "Defaults to the SQLBot login screen; customization supported",
+    "platform_settings": "Platform Settings",
+    "help_documentation": "Help Documentation",
+    "show_about": "Show About",
+    "abort_update": "Abort Update",
+    "save_and_apply": "Save and Apply",
+    "setting_successfully": "Setting Successfully",
+    "customize_theme_color": "Customize theme color"
   }
 }

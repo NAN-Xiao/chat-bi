@@ -4,6 +4,7 @@ import { ElMenu } from 'element-plus-secondary'
 import { useRoute, useRouter } from 'vue-router'
 import MenuItem from './MenuItem.vue'
 import { useUserStore } from '@/stores/user'
+import { routes } from '@/router'
 const userStore = useUserStore()
 const router = useRouter()
 defineProps({
@@ -21,9 +22,25 @@ const showSysmenu = computed(() => {
   return route.path.includes('/system')
 })
 
+const formatRoute = (arr: any, parentPath = '') => {
+  return arr.map((element: any) => {
+    let children: any = []
+    const path = `${parentPath ? parentPath + '/' : ''}${element.path}`
+    if (element.children?.length) {
+      children = formatRoute(element.children, path)
+    }
+    return {
+      ...element,
+      path,
+      children,
+    }
+  })
+}
+
 const routerList = computed(() => {
   if (showSysmenu.value) {
-    return router.getRoutes().filter((route) => route.path.includes('/system') && !route.redirect)
+    const [sysRouter] = formatRoute(routes.filter((route) => route.path.includes('/system')))
+    return sysRouter.children
   }
   const list = router.getRoutes().filter((route) => {
     return (
@@ -71,7 +88,7 @@ const routerList = computed(() => {
 
   .ed-sub-menu.is-active {
     .ed-sub-menu__title {
-      color: #1cba90 !important;
+      color: var(--ed-color-primary) !important;
     }
   }
 

@@ -1,7 +1,10 @@
 import { ElMessage } from 'element-plus-secondary'
 import { useCache } from '@/utils/useCache'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useUserStore } from '@/stores/user'
 import { request } from '@/utils/request'
+
+const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
 const { wsCache } = useCache()
 const whiteList = ['/login']
@@ -9,6 +12,7 @@ const assistantWhiteList = ['/assistant']
 export const watchRouter = (router: any) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
     await loadXpackStatic()
+    await appearanceStore.setAppearance()
     LicenseGenerator.generateRouters(router)
     if (assistantWhiteList.includes(to.path)) {
       next()

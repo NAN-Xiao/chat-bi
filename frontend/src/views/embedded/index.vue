@@ -140,7 +140,7 @@ onBeforeUnmount(() => {
     z-index: 100;
     height: 56px;
     line-height: 56px;
-    background: #1cba9014;
+    background: var(--ed-color-primary-14, #1cba9014);
     height: 56px;
     padding: 0 16px;
     display: flex;

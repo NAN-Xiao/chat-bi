@@ -239,9 +239,9 @@ const del = (index: any, child: any) => {
       padding: 0 10px;
       margin-right: 10px;
       font-size: 14px;
-      color: #1cba90;
+      color: var(--ed-color-primary);
       background: #fff;
-      border: 1px solid #1cba90;
+      border: 1px solid var(--ed-color-primary);
       border-radius: 6px;
     }
   }

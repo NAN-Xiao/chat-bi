@@ -506,8 +506,8 @@ const handleCurrentChange = (val: number) => {
           top: 0;
           width: calc(100% - 1px);
           height: calc(100% - 2px);
-          background: #1cba901a;
-          border: 1px solid #1cba90;
+          background: var(--ed-color-primary-1a, #1cba901a);
+          border: 1px solid var(--ed-color-primary);
           border-bottom-right-radius: 6px;
           border-top-right-radius: 6px;
           pointer-events: none;

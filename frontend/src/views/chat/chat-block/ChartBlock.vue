@@ -723,11 +723,11 @@ watch(
 
     &:hover,
     &:focus {
-      color: #1cba90;
+      color: var(--ed-color-primary);
     }
 
     &:active {
-      color: #189e7a;
+      color: var(--ed-color-primary-dark-2);
     }
   }
 

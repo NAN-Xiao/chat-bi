@@ -962,7 +962,7 @@ const saveHandler = () => {
       border-radius: 6px;
 
       .is-active {
-        background: #1cba901a;
+        background: var(--ed-color-primary-1a, #1cba901a);
       }
 
       .ed-button:not(.is-active) {

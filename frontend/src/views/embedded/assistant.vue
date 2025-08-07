@@ -73,7 +73,7 @@ const textareaVal = ref('')
   background-color: #fff;
   position: relative;
   .header {
-    background: #1cba9014;
+    background: var(--ed-color-primary-14, #1cba9014);
     height: 56px;
     padding: 0 16px;
     display: flex;

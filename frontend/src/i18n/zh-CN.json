@@ -567,5 +567,36 @@
   "license": {
     "error_tips": "是否刷新页面？",
     "offline_tips": "服务已经下线，请联系管理员重启服务！"
+  },  
+  "system": {
+    "system_settings": "系统设置",
+    "appearance_settings": "外观设置",
+    "platform_display_theme": "平台显示主题",
+    "default_turquoise": "默认 (松石绿)",
+    "tech_blue": "科技蓝",
+    "custom": "自定义",
+    "platform_login_settings": "平台登录设置",
+    "page_preview": "页面预览",
+    "restore_default": "恢复默认",
+    "website_logo": "网站 Logo",
+    "tab": "页签",
+    "replace_image": "替换图片",
+    "larger_than_200kb": "顶部网站显示的 Logo，建议尺寸 48 x 48，支持 JPG、PNG、SVG，大小不超过 200KB",
+    "login_logo": "登录 Logo",
+    "larger_than_200kb_de": "登录页面右侧 Logo，建议尺寸 204*52，支持 JPG、PNG、SVG，大小不超过 200KB",
+    "login_background_image": "登录背景图",
+    "larger_than_5mb": "左侧背景图，矢量图建议尺寸 576*900，位图建议尺寸 1152*1800；支持 JPG、PNG、SVG，大小不超过 5M",
+    "website_name": "网站名称",
+    "on_webpage_tabs": "显示在网页 Tab 的平台名称",
+    "welcome_message": "欢迎语",
+    "the_product_logo": "产品 Logo 下的 欢迎语",
+    "screen_customization_supported": "默认为 SQLBot 登录界面，支持自定义设置",
+    "platform_settings": "平台设置",
+    "help_documentation": "帮助文档",
+    "show_about": "显示关于",
+    "abort_update": "放弃更新",
+    "save_and_apply": "保存并应用",
+    "setting_successfully": "设置成功",
+    "customize_theme_color": "自定义主题色"
   }
 }

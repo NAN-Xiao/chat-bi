@@ -118,7 +118,7 @@ const logout = () => {
                 <icon_translate_outlined></icon_translate_outlined>
               </el-icon>
               <div class="datasource-name">{{ $t('common.language') }}</div>
-              <el-icon style="transform: scale(1.33)" class="right" size="16">
+              <el-icon class="right" size="16">
                 <icon_right_outlined></icon_right_outlined>
               </el-icon>
             </div>

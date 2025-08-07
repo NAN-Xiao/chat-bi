@@ -104,8 +104,8 @@ const handleEmbedded = () => {
       color: #d97400;
 
       &.is-base {
-        background: #1cba9033;
-        color: #189e7a;
+        background: var(--ed-color-primary-33, #1cba9033);
+        color: var(--ed-color-primary-dark-2);
       }
     }
   }

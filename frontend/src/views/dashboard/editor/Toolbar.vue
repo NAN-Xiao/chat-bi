@@ -291,7 +291,7 @@ const previewInner = () => {
         background-color: #f5f6f7;
         outline: none;
         font-size: 16px;
-        border: 1px solid #1cba90;
+        border: 1px solid var(--ed-color-primary);
         border-radius: 4px;
         padding-left: 4px;
         height: 100%;

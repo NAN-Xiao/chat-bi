@@ -97,7 +97,7 @@ const handleModelClick = (item: any) => {
       }
 
       &.isActive {
-        background: #1cba901a;
+        background: var(--ed-color-primary-1a, #1cba901a);
         color: var(--ed-color-primary);
       }
     }

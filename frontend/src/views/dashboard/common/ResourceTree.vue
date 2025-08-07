@@ -475,8 +475,8 @@ defineExpose({
   }
 
   &.active {
-    border: 1px solid #1cba90;
-    color: #1cba90;
+    border: 1px solid var(--ed-color-primary);
+    color: var(--ed-color-primary);
 
     &:hover,
     &:focus {
