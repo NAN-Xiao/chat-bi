@@ -12,6 +12,7 @@ from common.core.sqlbot_cache import clear_cache
 from common.utils.time import get_timestamp
 from starlette.middleware.cors import CORSMiddleware
 from common.core.config import settings
+from common.utils.utils import get_origin_from_referer
 router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
 
 @router.get("/info/{id}") 
@@ -23,7 +24,7 @@ async def info(request: Request, response: Response, session: SessionDep, trans:
         raise RuntimeError(f"assistant application not exist")
     db_model = AssistantModel.model_validate(db_model)
     response.headers["Access-Control-Allow-Origin"] = db_model.domain
-    origin = request.headers.get("origin") or request.headers.get("referer")
+    origin = request.headers.get("origin") or get_origin_from_referer(request)
     origin = origin.rstrip('/')
     if origin != db_model.domain:
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin = origin or ''))

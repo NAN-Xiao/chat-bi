@@ -6,6 +6,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from urllib.parse import urlparse
+
+from fastapi import Request
 from common.core.config import settings
 from typing import Optional
 
@@ -240,4 +243,24 @@ def prepare_model_arg(origin_arg: str):
         return json.loads(origin_arg)
     except:
         return origin_arg
+    
+def get_origin_from_referer(request: Request):
+    referer = request.headers.get("referer")
+    if not referer:
+        return None
+    
+    try:
+        parsed = urlparse(referer)
+        if not parsed.scheme or not parsed.hostname:
+            return None
+        port = parsed.port
+        if port:
+            if (parsed.scheme == "http" and port != 80) or \
+               (parsed.scheme == "https" and port != 443):
+                return f"{parsed.scheme}://{parsed.hostname}:{port}"
+        
+        return f"{parsed.scheme}://{parsed.hostname}"
+    except Exception as e:
+        SQLBotLogUtil.error(f"解析 Referer 出错: {e}")
+        return referer
 
