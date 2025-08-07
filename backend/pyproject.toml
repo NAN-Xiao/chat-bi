@@ -41,6 +41,7 @@ dependencies = [
     "sqlparse>=0.5.3",
     "redis>=6.2.0",
     "xlsxwriter>=3.2.5",
+    "python-calamine>=0.4.0",
 ]
 [[tool.uv.index]]
 name = "default"

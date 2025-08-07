@@ -3,13 +3,14 @@ import hashlib
 import os
 import traceback
 import uuid
+from io import StringIO
 from typing import List
 
 import orjson
 import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
-from apps.db.engine import create_table, get_data_engine, insert_data
+from apps.db.engine import get_engine_conn
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.utils import SQLBotLogUtil
@@ -183,6 +184,70 @@ async def field_enum(session: SessionDep, id: int):
     return await asyncio.to_thread(inner)
 
 
+# @router.post("/uploadExcel")
+# async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
+#     ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
+#     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
+#         raise HTTPException(400, "Only support .xlsx/.xls/.csv")
+#
+#     os.makedirs(path, exist_ok=True)
+#     filename = f"{file.filename.split('.')[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.{file.filename.split('.')[1]}"
+#     save_path = os.path.join(path, filename)
+#     with open(save_path, "wb") as f:
+#         f.write(await file.read())
+#
+#     def inner():
+#         sheets = []
+#         with get_data_engine() as conn:
+#             if filename.endswith(".csv"):
+#                 df = pd.read_csv(save_path, engine='c')
+#                 tableName = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+#                 sheets.append({"tableName": tableName, "tableComment": ""})
+#                 column_len = len(df.dtypes)
+#                 fields = []
+#                 for i in range(column_len):
+#                     # build fields
+#                     fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
+#                 # create table
+#                 create_table(conn, tableName, fields)
+#
+#                 data = [
+#                     {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
+#                      for i in range(len(row))}
+#                     for row in df.values
+#                 ]
+#                 # insert data
+#                 insert_data(conn, tableName, fields, data)
+#             else:
+#                 excel_engine = 'xlrd' if filename.endswith(".xls") else 'openpyxl'
+#                 df_sheets = pd.read_excel(save_path, sheet_name=None, engine=excel_engine)
+#                 # build columns and data to insert db
+#                 for sheet_name, df in df_sheets.items():
+#                     tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+#                     sheets.append({"tableName": tableName, "tableComment": ""})
+#                     column_len = len(df.dtypes)
+#                     fields = []
+#                     for i in range(column_len):
+#                         # build fields
+#                         fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
+#                     # create table
+#                     create_table(conn, tableName, fields)
+#
+#                     data = [
+#                         {df.columns[i]: None if pd.isna(row[i]) else (
+#                             int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
+#                          for i in range(len(row))}
+#                         for row in df.values
+#                     ]
+#                     # insert data
+#                     insert_data(conn, tableName, fields, data)
+#
+#         os.remove(save_path)
+#         return {"filename": filename, "sheets": sheets}
+#
+#     return await asyncio.to_thread(inner)
+
+
 @router.post("/uploadExcel")
 async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
     ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
@@ -197,50 +262,49 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
 
     def inner():
         sheets = []
-        with get_data_engine() as conn:
-            if filename.endswith(".csv"):
-                df = pd.read_csv(save_path)
-                tableName = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+        engine = get_engine_conn()
+        if filename.endswith(".csv"):
+            df = pd.read_csv(save_path, engine='c')
+            tableName = f"sheet1_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
+            sheets.append({"tableName": tableName, "tableComment": ""})
+            insert_pg(df, tableName, engine)
+        else:
+            sheet_names = pd.ExcelFile(save_path).sheet_names
+            for sheet_name in sheet_names:
+                tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
                 sheets.append({"tableName": tableName, "tableComment": ""})
-                column_len = len(df.dtypes)
-                fields = []
-                for i in range(column_len):
-                    # build fields
-                    fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
-                # create table
-                create_table(conn, tableName, fields)
+                df = pd.read_excel(save_path, sheet_name=sheet_name, engine='calamine')
+                insert_pg(df, tableName, engine)
 
-                data = [
-                    {df.columns[i]: None if pd.isna(row[i]) else (int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
-                     for i in range(len(row))}
-                    for row in df.values
-                ]
-                # insert data
-                insert_data(conn, tableName, fields, data)
-            else:
-                df_sheets = pd.read_excel(save_path, sheet_name=None)
-                # build columns and data to insert db
-                for sheet_name, df in df_sheets.items():
-                    tableName = f"{sheet_name}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
-                    sheets.append({"tableName": tableName, "tableComment": ""})
-                    column_len = len(df.dtypes)
-                    fields = []
-                    for i in range(column_len):
-                        # build fields
-                        fields.append({"name": df.columns[i], "type": str(df.dtypes[i]), "relType": ""})
-                    # create table
-                    create_table(conn, tableName, fields)
-
-                    data = [
-                        {df.columns[i]: None if pd.isna(row[i]) else (
-                            int(row[i]) if "int" in str(df.dtypes[i]) else row[i])
-                         for i in range(len(row))}
-                        for row in df.values
-                    ]
-                    # insert data
-                    insert_data(conn, tableName, fields, data)
-
-        os.remove(save_path)
+        # os.remove(save_path)
         return {"filename": filename, "sheets": sheets}
 
     return await asyncio.to_thread(inner)
+
+
+def insert_pg(df, tableName, engine):
+    conn = engine.raw_connection()
+    cursor = conn.cursor()
+    try:
+        df.to_sql(
+            tableName,
+            engine,
+            if_exists='replace',
+            index=False
+        )
+        # trans csv
+        output = StringIO()
+        df.to_csv(output, sep='\t', header=False, index=False)
+        # output.seek(0)
+
+        # pg copy
+        cursor.copy_expert(
+            sql=f"""COPY "{tableName}" FROM STDIN WITH CSV DELIMITER E'\t'""",
+            file=output
+        )
+        conn.commit()
+    except Exception as e:
+        pass
+    finally:
+        cursor.close()
+        conn.close()
