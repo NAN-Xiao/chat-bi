@@ -46,7 +46,8 @@
     "not_exceed_50mb": "Supports XLS, XLSX, CSV formats, file size does not exceed 50MB",
     "reset_password": "Reset password",
     "password_reset_successful": "Password reset successful",
-    "or": "Or"
+    "or": "Or",
+    "refresh": "Refresh"
   },
   "dashboard": {
     "open_dashboard": "Open Dashboard",
@@ -562,5 +563,9 @@
     "remark": "Remark",
     "back_community": "Restore to Community Edition",
     "confirm_tips": "Are you sure to restore to Community Edition?"
+  },
+  "license": {
+    "error_tips": "Do you want to refresh the page?",
+    "offline_tips": "The service has been offline, please contact the administrator to restart the service!"
   }
 }

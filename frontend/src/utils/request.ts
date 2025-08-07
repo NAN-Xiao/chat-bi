@@ -11,6 +11,8 @@ import axios, {
 import { useCache } from '@/utils/useCache'
 import { getLocale } from './utils'
 import { useAssistantStore } from '@/stores/assistant'
+import { i18n } from '@/i18n'
+const t = i18n.global.t
 const assistantStore = useAssistantStore()
 const { wsCache } = useCache()
 // Response data structure
@@ -63,6 +65,11 @@ class HttpService {
     this.setupInterceptors()
   }
 
+  private cancelCurrentRequest(message: string) {
+    this.cancelTokenSource.cancel(message)
+    this.cancelTokenSource = axios.CancelToken.source()
+  }
+
   private setupInterceptors() {
     // Request interceptor
     this.instance.interceptors.request.use(
@@ -100,8 +107,15 @@ class HttpService {
           return config
         }
 
-        const request_key = LicenseGenerator.generate()
-        config.headers['X-SQLBOT-KEY'] = request_key
+        try {
+          const request_key = LicenseGenerator.generate()
+          config.headers['X-SQLBOT-KEY'] = request_key
+        } catch (e: any) {
+          if (e?.message?.includes('offline')) {
+            this.cancelCurrentRequest('license-key error detected')
+            showLicenseKeyError()
+          }
+        }
 
         // Request logging
         // console.log(`[Request] ${config.method?.toUpperCase()} ${config.url}`)
@@ -211,6 +225,9 @@ class HttpService {
 
     // Show error using UI library (e.g., Element Plus, Ant Design)
     console.error(errorMessage)
+    /* if (errorMessage?.includes('Invalid license key salt')) {
+      showLicenseKeyError()
+    } */
     // ElMessage.error(errorMessage)
     ElMessage({
       message: errorMessage,
@@ -265,8 +282,16 @@ class HttpService {
         heads['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
       }
     }
-    const request_key = LicenseGenerator.generate()
-    heads['X-SQLBOT-KEY'] = request_key
+
+    try {
+      const request_key = LicenseGenerator.generate()
+      heads['X-SQLBOT-KEY'] = request_key
+    } catch (e: any) {
+      if (e?.message?.includes('offline')) {
+        controller?.abort('license-key error detected')
+        showLicenseKeyError()
+      }
+    }
 
     const real_url = import.meta.env.VITE_API_BASE_URL
     return fetch(real_url + url, {
@@ -387,3 +412,19 @@ class HttpService {
 export const request = new HttpService({
   baseURL: import.meta.env.VITE_API_BASE_URL,
 })
+
+const showLicenseKeyError = (msg?: string) => {
+  ElMessageBox.confirm(t('license.error_tips'), {
+    confirmButtonType: 'primary',
+    tip: msg || t('license.offline_tips'),
+    confirmButtonText: t('common.refresh'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+    callback: (value: string) => {
+      if (value === 'confirm') {
+        window.location.reload()
+      }
+    },
+  })
+}

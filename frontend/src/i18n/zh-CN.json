@@ -46,7 +46,8 @@
     "not_exceed_50mb": "支持 XLS、XLSX、CSV 格式，文件大小不超过 50MB",
     "reset_password": "重置密码",
     "password_reset_successful": "重置密码成功",
-    "or": "或者"
+    "or": "或者",
+    "refresh": "刷新"
   },
   "dashboard": {
     "open_dashboard": "打开仪表板",
@@ -562,5 +563,9 @@
     "remark": "备注",
     "back_community": "还原至社区版",
     "confirm_tips": "确定还原至社区版？"
+  },
+  "license": {
+    "error_tips": "是否刷新页面？",
+    "offline_tips": "服务已经下线，请联系管理员重启服务！"
   }
 }
