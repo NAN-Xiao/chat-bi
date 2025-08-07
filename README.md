@@ -56,7 +56,7 @@ docker compose up -d
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=dataease/SQLBot&type=Date)](https://www.star-history.com/#dataease/SQLBot&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=dataease/sqlbot&type=Date)](https://www.star-history.com/#dataease/sqlbot&Date)
 
 ## 飞致云旗下的其他明星项目
 
