@@ -14,6 +14,10 @@ export const watchRouter = (router: any) => {
     await loadXpackStatic()
     await appearanceStore.setAppearance()
     LicenseGenerator.generateRouters(router)
+    if (to.path.startsWith('/login') && userStore.getUid) {
+      next('/')
+      return
+    }
     if (assistantWhiteList.includes(to.path)) {
       next()
       return
