@@ -216,10 +216,14 @@ const handleColumnPermission = (row: any) => {
 const icon = (item: any) => {
   return (dsTypeWithImg.find((ele) => item.type === ele.type) || {}).img
 }
-
+let time: any
 const handleInitDsIdChange = (val: any) => {
   columnForm.ds_id = val.id
   columnForm.ds_name = val.name
+  time = setTimeout(() => {
+    clearTimeout(time)
+    columnFormRef.value.clearValidate('table_id')
+  }, 0)
   datasourceApi.tableList(val.id).then((res: any) => {
     tableListOptions.value = res || []
     activeTable.value = null
