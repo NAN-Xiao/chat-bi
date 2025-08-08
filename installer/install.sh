@@ -32,7 +32,7 @@ function check_and_prepare_env_params() {
         # 获取已安装的 SQLBOT 的运行目录
         SQLBOT_BASE=$(grep "^SQLBOT_BASE=" /usr/bin/sctl | cut -d'=' -f2)
         SQLBOT_BASE_OLD=${SQLBOT_BASE}
-        sed -i -e "s#SQLBOT_BASE=.*#SQLBOT_BASE_BASE=${SQLBOT_BASE}#g" sctl
+        sed -i -e "s#SQLBOT_BASE=.*#SQLBOT_BASE=${SQLBOT_BASE}#g" sctl
         \cp sctl /usr/local/bin && chmod +x /usr/local/bin/sctl
 
         log_content "停止 SQLBot 服务"
