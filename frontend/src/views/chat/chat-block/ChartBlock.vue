@@ -395,7 +395,11 @@ watch(
         </div> -->
         <div class="divider" />
         <div v-if="!enlarge">
-          <el-tooltip effect="dark" :content="t('chat.full_screen')" placement="top">
+          <el-tooltip
+            effect="dark"
+            :content="isAssistant ? $t('common.zoom_in') : t('chat.full_screen')"
+            placement="top"
+          >
             <el-button class="tool-btn" text @click="openFullScreen">
               <el-icon size="16">
                 <icon_window_max_outlined />
@@ -404,7 +408,11 @@ watch(
           </el-tooltip>
         </div>
         <div v-else>
-          <el-tooltip effect="dark" :content="t('chat.exit_full_screen')" placement="top">
+          <el-tooltip
+            effect="dark"
+            :content="isAssistant ? $t('common.zoom_out') : t('chat.exit_full_screen')"
+            placement="top"
+          >
             <el-button class="tool-btn" text @click="closeFullScreen">
               <el-icon size="16">
                 <icon_window_mini_outlined />
