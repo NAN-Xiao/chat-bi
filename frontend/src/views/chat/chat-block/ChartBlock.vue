@@ -49,6 +49,7 @@ const emits = defineEmits(['exitFullScreen'])
 const dataObject = computed<{
   fields: Array<string>
   data: Array<{ [key: string]: any }>
+  limit: number | undefined
 }>(() => {
   if (props.message?.record?.data) {
     if (typeof props.message?.record?.data === 'string') {
@@ -423,15 +424,20 @@ watch(
       </div>
     </div>
 
-    <div v-if="message?.record?.chart" class="chart-block">
-      <DisplayChartBlock
-        :id="chartId"
-        ref="chartRef"
-        :chart-type="chartType"
-        :message="message"
-        :data="data"
-      />
-    </div>
+    <template v-if="message?.record?.chart">
+      <div class="chart-block">
+        <DisplayChartBlock
+          :id="chartId"
+          ref="chartRef"
+          :chart-type="chartType"
+          :message="message"
+          :data="data"
+        />
+      </div>
+      <div v-if="dataObject.limit" class="over-limit-hint">
+        {{ t('chat.data_over_limit', [dataObject.limit]) }}
+      </div>
+    </template>
 
     <AddViewDashboard ref="addViewRef"></AddViewDashboard>
     <el-dialog
@@ -711,6 +717,11 @@ watch(
     width: 100%;
 
     margin-top: 16px;
+  }
+  .over-limit-hint {
+    min-height: 24px;
+    line-height: 24px;
+    font-size: 14px;
   }
 }
 

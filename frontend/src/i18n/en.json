@@ -541,6 +541,7 @@
     "thinking": "Thinking",
     "data_analysis": "Data Analysis",
     "data_predict": "Data Prediction",
+    "data_over_limit": "The data is too large, only the first {0} entries are displayed.",
     "ds_is_invalid": "Datasource is invalid",
     "error": "Error",
     "no_data": "No Data",

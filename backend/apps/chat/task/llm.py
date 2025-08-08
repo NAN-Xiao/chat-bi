@@ -744,9 +744,14 @@ class LLMService:
     def save_sql_data(self, data_obj: Dict[str, Any]):
         try:
             data_result = data_obj.get('data')
+            limit = 1000
             if data_result:
                 data_result = prepare_for_orjson(data_result)
-                data_obj['data'] = data_result
+                if data_result and len(data_result) > limit:
+                    data_obj['data'] = data_result[:limit]
+                    data_obj['limit'] = limit
+                else:
+                    data_obj['data'] = data_result
             return save_sql_exec_data(session=self.session, record_id=self.record.id,
                                       data=orjson.dumps(data_obj).decode())
         except Exception as e:
