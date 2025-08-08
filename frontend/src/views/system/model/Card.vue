@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import delIcon from '@/assets/svg/icon_delete.svg'
-import icon_embedded_outlined from '@/assets/svg/icon-setting.svg'
+import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { get_supplier } from '@/entity/supplier'
 import { computed, ref } from 'vue'
@@ -76,9 +76,23 @@ defineExpose({ showErrorMask })
       <span class="value"> {{ baseModel }}</span>
     </div>
     <div class="methods">
-      <el-button secondary @click="handleDefault">
+      <el-tooltip
+        v-if="isDefault"
+        effect="dark"
+        :content="$t('common.the_default_model')"
+        placement="top"
+      >
+        <el-button secondary disabled>
+          <el-icon style="margin-right: 4px" size="16">
+            <icon_admin_outlined></icon_admin_outlined>
+          </el-icon>
+          {{ $t('common.as_default_model') }}
+        </el-button>
+      </el-tooltip>
+
+      <el-button v-else secondary @click="handleDefault">
         <el-icon style="margin-right: 4px" size="16">
-          <icon_embedded_outlined></icon_embedded_outlined>
+          <icon_admin_outlined></icon_admin_outlined>
         </el-icon>
         {{ $t('common.as_default_model') }}
       </el-button>

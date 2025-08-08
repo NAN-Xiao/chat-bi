@@ -6,6 +6,9 @@
     "AI Model Configuration": "模型配置"
   },
   "common": {
+    "zoom_in": "放大",
+    "zoom_out": "缩小",
+    "the_default_model": "已是默认模型",
     "as_default_model": "设为默认模型",
     "no_model_yet": "暂无模型",
     "intelligent_questioning_platform": "欢迎使用 SQLBot 智能问数平台",
@@ -567,7 +570,7 @@
   "license": {
     "error_tips": "是否刷新页面？",
     "offline_tips": "服务已经下线，请联系管理员重启服务！"
-  },  
+  },
   "system": {
     "system_settings": "系统设置",
     "appearance_settings": "外观设置",

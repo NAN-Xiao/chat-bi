@@ -617,13 +617,11 @@ const saveHandler = () => {
           class="form-content_error"
           @submit.prevent
         >
-          <el-form-item prop="name" :label="t('embedded.basic_information')">
+          <el-form-item prop="name" :label="t('embedded.application_name')">
             <el-input
               v-model="currentEmbedded.name"
               :placeholder="
-                $t('datasource.please_enter') +
-                $t('common.empty') +
-                $t('embedded.basic_information')
+                $t('datasource.please_enter') + $t('common.empty') + $t('embedded.application_name')
               "
               clearable
               autocomplete="off"

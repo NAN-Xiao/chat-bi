@@ -6,6 +6,9 @@
     "AI Model Configuration": "AI Model Configuration"
   },
   "common": {
+    "zoom_in": "Zoom in",
+    "zoom_out": "Zoom out",
+    "the_default_model": "Already the default model",
     "as_default_model": "Set as Default Model",
     "no_model_yet": "No model yet",
     "intelligent_questioning_platform": "Welcome to the SQLBot Intelligent Questioning Platform",
