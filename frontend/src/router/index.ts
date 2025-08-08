@@ -161,9 +161,10 @@ export const routes = [
         },
       },
       {
-        path: 'set',
+        path: 'setting',
         meta: { title: t('system.system_settings'), iconActive: 'set', iconDeActive: 'noSet' },
-        redirect: 'set/appearance',
+        redirect: 'system_/appearance',
+        name: 'setting',
         children: [
           {
             path: 'appearance',
