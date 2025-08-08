@@ -5,7 +5,7 @@
         <icon_sidebar_outlined></icon_sidebar_outlined>
       </el-icon>
       <img :src="LOGO" class="logo" width="30px" height="30px" alt="" />
-      <span class="tite">{{ $t('embedded.intelligent_customer_service') }}</span>
+      <span class="tite">{{ assistantName || $t('embedded.intelligent_customer_service') }}</span>
 
       <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
         <el-icon class="new-chat" size="20" @click="createChat">
@@ -31,7 +31,7 @@ import { useAssistantStore } from '@/stores/assistant'
 
 const assistantStore = useAssistantStore()
 const route = useRoute()
-
+const assistantName = ref('')
 const chatRef = ref()
 
 const createChat = () => {
@@ -100,6 +100,11 @@ onBeforeMount(async () => {
   }
   const online = route.query.online
   setFormatOnline(online)
+
+  let name = route.query.name
+  if (name) {
+    assistantName.value = decodeURIComponent(name.toString())
+  }
   const now = Date.now()
   assistantStore.setFlag(now)
   assistantStore.setId(assistantId?.toString() || '')

@@ -68,7 +68,7 @@
   const getChatContainerHtml = (data) => {
     return `
 <div id="sqlbot-assistant-chat-container">
-  <iframe id="sqlbot-assistant-chat-iframe-${data.id}" allow="microphone;clipboard-read 'src'; clipboard-write 'src'" src="${data.domain_url}/#/assistant?id=${data.id}&online=${!!data.online}"></iframe>
+  <iframe id="sqlbot-assistant-chat-iframe-${data.id}" allow="microphone;clipboard-read 'src'; clipboard-write 'src'" src="${data.domain_url}/#/assistant?id=${data.id}&online=${!!data.online}&name=${encodeURIComponent(data.name)}"></iframe>
   <div class="sqlbot-assistant-operate">
   <div class="sqlbot-assistant-closeviewport sqlbot-assistant-viewportnone">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -460,7 +460,7 @@
         }
         const data = res.data
         const config_json = data.configuration
-        let tempData = Object.assign(defaultData, { id, domain_url })
+        let tempData = Object.assign(defaultData, { id, domain_url, name: data.name })
         if (config_json) {
           const config = JSON.parse(config_json)
           if (config) {
