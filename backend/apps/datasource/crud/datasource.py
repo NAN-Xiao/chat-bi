@@ -204,7 +204,7 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
 
 def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, fields: List[ColumnSchema]):
     id_list = []
-    for item in fields:
+    for index, item in enumerate(fields):
         statement = select(CoreField).where(
             and_(CoreField.table_id == table.id, CoreField.field_name == item.fieldName))
         record = session.exec(statement).first()
@@ -213,12 +213,13 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
             id_list.append(record.id)
 
             record.field_comment = item.fieldComment
+            record.field_index = index
             session.add(record)
             session.commit()
         else:
             field = CoreField(ds_id=ds.id, table_id=table.id, checked=True, field_name=item.fieldName,
                               field_type=item.fieldType, field_comment=item.fieldComment,
-                              custom_comment=item.fieldComment)
+                              custom_comment=item.fieldComment, field_index=index)
             session.add(field)
             session.flush()
             session.refresh(field)

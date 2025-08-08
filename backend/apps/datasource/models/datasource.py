@@ -41,6 +41,7 @@ class CoreField(SQLModel, table=True):
     field_type: str = Field(max_length=128, nullable=True)
     field_comment: str = Field(sa_column=Column(Text))
     custom_comment: str = Field(sa_column=Column(Text))
+    field_index: int = Field(sa_column=Column(BigInteger()))
 
 
 # datasource create obj
