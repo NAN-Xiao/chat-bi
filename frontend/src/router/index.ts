@@ -11,6 +11,7 @@ import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Model from '@/views/system/model/Model.vue'
 import Embedded from '@/views/system/embedded/index.vue'
+import assistantTest from '@/views/system/embedded/Test.vue'
 import assistant from '@/views/embedded/index.vue'
 import Member from '@/views/system/member/index.vue'
 import Appearance from '@/views/system/appearance/index.vue'
@@ -179,6 +180,12 @@ export const routes = [
     path: '/assistant',
     name: 'assistant',
     component: assistant,
+  },
+
+  {
+    path: '/assistantTest',
+    name: 'assistantTest',
+    component: assistantTest,
   },
 ]
 const router = createRouter({
