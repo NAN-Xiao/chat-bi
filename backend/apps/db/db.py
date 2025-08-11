@@ -2,9 +2,8 @@ import base64
 import json
 import urllib.parse
 from decimal import Decimal
-from typing import Any
 
-from sqlalchemy import create_engine, text, Result, Engine
+from sqlalchemy import create_engine, text, Engine
 from sqlalchemy.orm import sessionmaker
 
 from apps.datasource.models.datasource import DatasourceConf, CoreDatasource, TableSchema, ColumnSchema
@@ -82,10 +81,8 @@ def get_session(ds: CoreDatasource | AssistantOutDsSchema):
 
 def get_tables(ds: CoreDatasource):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
-    session = get_session(ds)
-    result: Result[Any]
-    sql: str = ''
-    try:
+    with get_session(ds) as session:
+        sql: str = ''
         if ds.type == "mysql":
             sql = f"""
                     SELECT 
@@ -147,24 +144,16 @@ def get_tables(ds: CoreDatasource):
                         AND c.OWNER = '{conf.dbSchema}'   
                     ORDER BY t.TABLE_NAME
                     """
-
-        result = session.execute(text(sql))
-        res = result.fetchall()
-        res_list = [TableSchema(*item) for item in res]
-        return res_list
-    finally:
-        if result is not None:
-            result.close()
-        if session is not None:
-            session.close()
+        with session.execute(text(sql)) as result:
+            res = result.fetchall()
+            res_list = [TableSchema(*item) for item in res]
+            return res_list
 
 
 def get_fields(ds: CoreDatasource, table_name: str = None):
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
-    session = get_session(ds)
-    result: Result[Any]
-    sql: str = ''
-    try:
+    with get_session(ds) as session:
+        sql: str = ''
         if ds.type == "mysql":
             sql1 = f"""
                     SELECT 
@@ -238,15 +227,10 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             sql2 = f" AND col.TABLE_NAME = '{table_name}'" if table_name is not None and table_name != "" else ""
             sql = sql1 + sql2
 
-        result = session.execute(text(sql))
-        res = result.fetchall()
-        res_list = [ColumnSchema(*item) for item in res]
-        return res_list
-    finally:
-        if result is not None:
-            result.close()
-        if session is not None:
-            session.close()
+        with session.execute(text(sql)) as result:
+            res = result.fetchall()
+            res_list = [ColumnSchema(*item) for item in res]
+            return res_list
 
 
 def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str):
