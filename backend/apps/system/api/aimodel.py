@@ -20,7 +20,7 @@ async def check_llm(info: AiModelCreator, trans: Trans):
         try:
             additional_params = {item.key: prepare_model_arg(item.val) for item in info.config_list if item.key and item.val}
             config = LLMConfig(
-                model_type="openai",
+                model_type="openai" if info.protocol == 1 else "vllm",
                 model_name=info.base_model,
                 api_key=info.api_key,
                 api_base_url=info.api_domain,
@@ -74,7 +74,8 @@ async def query(
                        AiModelDetail.name, 
                        AiModelDetail.model_type, 
                        AiModelDetail.base_model, 
-                       AiModelDetail.supplier, 
+                       AiModelDetail.supplier,
+                       AiModelDetail.protocol, 
                        AiModelDetail.default_model)
     if keyword is not None:
         statement = statement.where(AiModelDetail.name.like(f"%{keyword}%"))

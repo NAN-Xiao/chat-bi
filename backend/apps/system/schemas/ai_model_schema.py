@@ -9,6 +9,7 @@ class AiModelItem(BaseModel):
     model_type: int
     base_model: str
     supplier: int
+    protocol: int
     default_model: bool = False
 
 class AiModelGridItem(AiModelItem, BaseCreatorDTO):
