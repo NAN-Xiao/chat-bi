@@ -379,7 +379,7 @@ import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
 import { useClipboard } from '@vueuse/core'
 
-const { copy } = useClipboard()
+const { copy } = useClipboard({ legacy: true })
 
 const { t } = useI18n()
 const keyword = ref('')

@@ -20,7 +20,7 @@ import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 
 const { t } = useI18n()
-const { copy } = useClipboard()
+const { copy } = useClipboard({ legacy: true })
 
 const keywords = ref('')
 const activeStep = ref(0)
