@@ -357,7 +357,7 @@ const saveEmbedded = () => {
     }
   })
 }
-const btnSelect = ref('d')
+// const btnSelect = ref('d')
 
 const dialogVisible = ref(false)
 const scriptElement = ref('')
@@ -453,14 +453,15 @@ const saveHandler = () => {
 <template>
   <div v-loading="searchLoading" class="embedded-index no-padding">
     <div class="tool-left">
-      <div class="btn-select">
+      <div class="title">{{ t('embedded.embedded_assistant') }}</div>
+      <!-- <div class="btn-select">
         <el-button :class="[btnSelect === 'd' && 'is-active']" text @click="btnSelect = 'd'">
           {{ t('embedded.embedded_assistant') }}
         </el-button>
-        <!-- <el-button :class="[btnSelect === 'q' && 'is-active']" text @click="btnSelect = 'q'">
+        <el-button :class="[btnSelect === 'q' && 'is-active']" text @click="btnSelect = 'q'">
           {{ t('embedded.embedded_page') }}
-        </el-button> -->
-      </div>
+        </el-button>
+      </div> -->
       <div>
         <el-input
           v-model="keywords"
@@ -734,7 +735,7 @@ const saveHandler = () => {
       </div>
       <div v-if="activeStep === 1 && !advancedApplication" class="drawer-content">
         <div class="title">
-          {{ $t('embedded.configure_interface') }}
+          {{ $t('embedded.set_data_source') }}
         </div>
 
         <el-form
@@ -949,33 +950,39 @@ const saveHandler = () => {
     margin-bottom: 16px;
     padding: 0 24px 0 24px;
 
-    .btn-select {
-      height: 32px;
-      padding-left: 4px;
-      padding-right: 4px;
-      display: inline-flex;
-      background: #ffffff;
-      align-items: center;
-      border: 1px solid #d9dcdf;
-      border-radius: 6px;
-
-      .is-active {
-        background: var(--ed-color-primary-1a, #1cba901a);
-      }
-
-      .ed-button:not(.is-active) {
-        color: #1f2329;
-      }
-      .ed-button.is-text {
-        height: 24px;
-        width: auto;
-        padding: 0 8px;
-        line-height: 24px;
-      }
-      .ed-button + .ed-button {
-        margin-left: 4px;
-      }
+    .title {
+      font-weight: 500;
+      font-size: 20px;
+      line-height: 28px;
     }
+
+    // .btn-select {
+    //   height: 32px;
+    //   padding-left: 4px;
+    //   padding-right: 4px;
+    //   display: inline-flex;
+    //   background: #ffffff;
+    //   align-items: center;
+    //   border: 1px solid #d9dcdf;
+    //   border-radius: 6px;
+
+    //   .is-active {
+    //     background: var(--ed-color-primary-1a, #1cba901a);
+    //   }
+
+    //   .ed-button:not(.is-active) {
+    //     color: #1f2329;
+    //   }
+    //   .ed-button.is-text {
+    //     height: 24px;
+    //     width: auto;
+    //     padding: 0 8px;
+    //     line-height: 24px;
+    //   }
+    //   .ed-button + .ed-button {
+    //     margin-left: 4px;
+    //   }
+    // }
   }
 
   .card-content {
@@ -1183,6 +1190,20 @@ const saveHandler = () => {
 
         .ed-icon {
           cursor: pointer;
+          position: relative;
+          &:hover {
+            &::after {
+              content: '';
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              background: #1f23291a;
+              width: 24px;
+              height: 24px;
+              border-radius: 6px;
+            }
+          }
         }
       }
 

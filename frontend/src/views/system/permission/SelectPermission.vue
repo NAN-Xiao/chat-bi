@@ -73,7 +73,7 @@
               >({{ ele.account }})</span
             >
           </div>
-          <el-button text>
+          <el-button class="close-btn" text>
             <el-icon size="16" @click="clearWorkspace(ele)"><Close /></el-icon>
           </el-button>
         </div>
@@ -161,6 +161,7 @@ const open = async (user: any) => {
 
 const clearWorkspace = (val: any) => {
   checkedWorkspace.value = checkedWorkspace.value.filter((ele: any) => ele.id !== val.id)
+  handleCheckedWorkspaceChange(checkedWorkspace.value)
 }
 
 const clearWorkspaceAll = () => {
@@ -226,6 +227,14 @@ defineExpose({
 
     .flex-between {
       height: 44px;
+    }
+  }
+
+  .close-btn {
+    &:hover,
+    &:active,
+    &:focus {
+      background: #1f23291a !important;
     }
   }
 
