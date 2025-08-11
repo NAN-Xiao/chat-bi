@@ -15,9 +15,9 @@
                 {{ $t('system.default_turquoise') }}
               </el-button>
               <el-button
-                :class="[themeColor === 'b' && 'is-active']"
+                :class="[themeColor === 'technologyBlue' && 'is-active']"
                 text
-                @click="themeColorChange('b')"
+                @click="themeColorChange('technologyBlue')"
               >
                 {{ $t('system.tech_blue') }}
               </el-button>
@@ -66,6 +66,7 @@
                   :web="web"
                   :bg="bg"
                   :login="login"
+                  :is-blue="isBlue"
                   :height="navigateHeight"
                   :foot="loginForm.foot"
                   :foot-content="loginForm.footContent"
@@ -153,10 +154,23 @@
                         :src="navigate.startsWith('blob') ? navigate : baseUrl + navigate"
                         alt=""
                       />
+
+                      <img
+                        v-else-if="isBlue"
+                        width="131"
+                        height="30"
+                        class="logo"
+                        :src="logoBlue"
+                        alt=""
+                      />
                       <logo v-else></logo>
                     </div>
                     <div class="bottom-sql">
-                      <Person :show-about="showAbout" :show-doc="showDoc"></Person>
+                      <Person
+                        :is-blue="isBlue"
+                        :show-about="showAbout"
+                        :show-doc="showDoc"
+                      ></Person>
                       <el-icon size="20" class="fold">
                         <icon_side_fold_outlined></icon_side_fold_outlined>
                       </el-icon>
@@ -200,19 +214,22 @@
 
 <script lang="ts" setup>
 import logo from '@/assets/LOGO.svg'
-import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import {
   type FormInstance,
   type FormRules,
   type UploadUserFile,
   ElMessage,
 } from 'element-plus-secondary'
+import logoBlue from '@/assets/blue/LOGO-blue.png'
 import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import LoginPreview from './LoginPreview.vue'
 import Person from './Person.vue'
+import colorFunctions from 'less/lib/less/functions/color.js'
+import colorTree from 'less/lib/less/tree/color.js'
 // import TinymceEditor from '@/components/rich-text/TinymceEditor.vue'
 import { cloneDeep } from 'lodash-es'
 const appearanceStore = useAppearanceStoreWithOut()
@@ -314,7 +331,9 @@ const defaultTopForm = reactive<{
   showDoc: '0',
   showAbout: '0',
 })
-
+const isBlue = computed(() => {
+  return themeColor.value === 'technologyBlue'
+})
 const configList = [
   {
     logo: t('system.website_logo'),
@@ -479,6 +498,8 @@ const themeColorChange = (val: any) => {
   addChangeArray('themeColor', val)
   if (themeColor.value === 'custom') {
     setPageCustomColor(customColor.value)
+  } else if (isBlue.value) {
+    setPageCustomColor('#3370FF')
   } else {
     setPageCustomColor('#1CBA90')
   }
@@ -488,9 +509,26 @@ const customColorChange = (val: any) => {
   setPageCustomColor(val)
 }
 const setPageCustomColor = (val: any) => {
-  ;(
-    document.getElementsByClassName('appearance-table__content')[0] as HTMLElement
-  )?.style.setProperty('--ed-color-primary', val)
+  const ele = document.getElementsByClassName('appearance-table__content')[0] as HTMLElement
+
+  ele.style.setProperty('--ed-color-primary', val)
+  ele.style.setProperty('--van-blue', val)
+  ele.style.setProperty(
+    '--ed-color-primary-light-5',
+    colorFunctions.mix(new colorTree('ffffff'), new colorTree(val.substr(1)), { value: 40 }).toRGB()
+  )
+  ele.style.setProperty(
+    '--ed-color-primary-light-3',
+    colorFunctions.mix(new colorTree('ffffff'), new colorTree(val.substr(1)), { value: 15 }).toRGB()
+  )
+  ele.style.setProperty('--ed-color-primary-1a', `${val}1a`)
+  ele.style.setProperty('--ed-color-primary-14', `${val}14`)
+  ele.style.setProperty('--ed-color-primary-33', `${val}33`)
+  ele.style.setProperty('--ed-color-primary-99', `${val}99`)
+  ele.style.setProperty(
+    '--ed-color-primary-dark-2',
+    colorFunctions.mix(new colorTree('000000'), new colorTree(val.substr(1)), { value: 15 }).toRGB()
+  )
 }
 const resetLoginForm = (reset2Default?: boolean) => {
   for (const key in loginForm) {

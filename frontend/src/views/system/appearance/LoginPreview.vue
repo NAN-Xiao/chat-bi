@@ -93,12 +93,13 @@
 import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
 import login_image from '@/assets/embedded/login_image.png'
 import aboutBg from '@/assets/embedded/LOGO-about.png'
+import logoHeader from '@/assets/blue/LOGO-head_blue.png'
+import logo from '@/assets/blue/LOGO-blue.png'
+import loginImage from '@/assets/blue/login-image_blue.png'
 import { propTypes } from '@/utils/propTypes'
 import { useI18n } from 'vue-i18n'
 import { computed, ref, onMounted, nextTick } from 'vue'
 import elementResizeDetectorMaker from 'element-resize-detector'
-import colorFunctions from 'less/lib/less/functions/color.js'
-import colorTree from 'less/lib/less/tree/color.js'
 const basePath = import.meta.env.VITE_API_BASEPATH
 const baseUrl = basePath + '/appearance/image/'
 const { t } = useI18n()
@@ -113,21 +114,36 @@ const props = defineProps({
   height: propTypes.number.def(425),
   foot: propTypes.string.def(''),
   footContent: propTypes.string.def(''),
+  isBlue: propTypes.bool.def(false),
 })
 const appLoginView = ref()
 const loginContainerWidth = ref(0)
 const pageWeb = computed(() => {
   return !props.web
-    ? '/LOGO-fold.svg'
+    ? props.isBlue
+      ? logoHeader
+      : '/LOGO-fold.svg'
     : props.web.startsWith('blob')
       ? props.web
       : baseUrl + props.web
 })
 const pageLogin = computed(() =>
-  !props.login ? aboutBg : props.login.startsWith('blob') ? props.login : baseUrl + props.login
+  !props.login
+    ? props.isBlue
+      ? logo
+      : aboutBg
+    : props.login.startsWith('blob')
+      ? props.login
+      : baseUrl + props.login
 )
 const pageBg = computed(() =>
-  !props.bg ? null : props.bg.startsWith('blob') ? props.bg : baseUrl + props.bg
+  !props.bg
+    ? props.isBlue
+      ? loginImage
+      : null
+    : props.bg.startsWith('blob')
+      ? props.bg
+      : baseUrl + props.bg
 )
 const pageName = computed(() => props.name)
 const pageSlogan = computed(() => props.slogan)
@@ -135,22 +151,10 @@ const showFoot = computed(() => props.foot && props.foot === 'true')
 const pageFootContent = computed(() =>
   props.foot && props.foot === 'true' ? props.footContent : null
 )
-const pageThemeColor = computed(() => props.themeColor)
-const pageCustomColor = computed(() => props.customColor)
 const customStyle = computed(() => {
   const result = { height: `${props.height + 23}px` } as {
     [key: string]: any
   }
-  if (pageThemeColor.value === 'custom') {
-    result['--ed-color-primary'] = pageCustomColor.value
-  } else {
-    result['--ed-color-primary'] = '#1CBA90'
-  }
-  result['--ed-color-primary-light-5'] = colorFunctions
-    .mix(new colorTree('ffffff'), new colorTree(result['--ed-color-primary'].substring(1)), {
-      value: 40,
-    })
-    .toRGB()
   return result
 })
 const showLoginImage = computed<boolean>(() => {

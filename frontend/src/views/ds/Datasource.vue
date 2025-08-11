@@ -14,6 +14,7 @@ import DatasourceListSide from './DatasourceListSide.vue'
 import DatasourceForm from './DatasourceForm.vue'
 import { datasourceApi } from '@/api/datasource'
 import Card from './Card.vue'
+import { useEmitt } from '@/utils/useEmitt'
 import DelMessageBox from './DelMessageBox.vue'
 import { dsTypeWithImg } from './js/ds-type'
 import { useI18n } from 'vue-i18n'
@@ -234,6 +235,11 @@ const dataTableDetail = (ele: any) => {
 const back = () => {
   currentDataTable.value = null
 }
+
+useEmitt({
+  name: 'ds-index-click',
+  callback: back,
+})
 </script>
 
 <template>

@@ -9,10 +9,12 @@ import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
 import icon_logout_outlined from '@/assets/svg/icon_logout_outlined.svg'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import { useUserStore } from '@/stores/user'
+import DefaultAvatarBlue from '@/assets/blue/Default-avatar_blue.png'
 
 defineProps({
   showDoc: { type: [Boolean], required: true },
   showAbout: { type: [Boolean], required: true },
+  isBlue: { type: [Boolean], required: true },
 })
 const userStore = useUserStore()
 const name = computed(() => userStore.getName)
@@ -22,14 +24,19 @@ const account = computed(() => userStore.getAccount)
 <template>
   <div style="position: relative">
     <button class="person" :title="name">
-      <img class="default-avatar" :src="Default_avatar" width="32px" height="32px" />
+      <img
+        class="default-avatar"
+        :src="isBlue ? DefaultAvatarBlue : Default_avatar"
+        width="32px"
+        height="32px"
+      />
       <span class="name ellipsis">{{ name }}</span>
     </button>
-    <div class="ed-popper is-light ed-popover system-person">
+    <div class="ed-popper is-light ed-popover system-person_style">
       <div class="popover">
         <div class="popover-content">
           <div class="info">
-            <img :src="Default_avatar" width="40px" height="40px" />
+            <img :src="isBlue ? DefaultAvatarBlue : Default_avatar" width="40px" height="40px" />
             <div :title="name" class="top ellipsis">{{ name }}</div>
             <div :title="account" class="bottom ellipsis">{{ account }}</div>
           </div>
@@ -89,21 +96,7 @@ const account = computed(() => userStore.getAccount)
   border: none;
   background-color: transparent;
   position: relative;
-
-  &.collapse {
-    min-width: 48px;
-    margin-left: -4px;
-    position: relative;
-    margin-top: -6px;
-    margin-bottom: 16px;
-
-    .default-avatar {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-    }
-  }
+  pointer-events: none;
 
   .name {
     font-weight: 400;
@@ -122,31 +115,20 @@ const account = computed(() => userStore.getAccount)
     width: 100%;
     height: 100%;
     border-radius: 6px;
-  }
-
-  &:hover,
-  &:focus {
-    &::after {
-      background: #1f23291a;
-    }
-  }
-
-  &:active {
-    &::after {
-      background: #1f232926;
-    }
+    background: #1f23291a;
   }
 }
 </style>
 
 <style lang="less">
-.system-person.system-person {
+.system-person_style.system-person_style {
   padding: 0;
   width: 200px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border: 1px solid #dee0e3;
   position: absolute;
-  bottom: 40px;
+  bottom: 44px;
+  pointer-events: none;
 
   &::after {
     content: '';

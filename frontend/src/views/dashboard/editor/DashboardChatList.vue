@@ -175,6 +175,7 @@ const filteredAndGroupedData = computed(() => {
     cursor: pointer;
     border-radius: 6px;
     line-height: 1em;
+    margin-bottom: 2px;
 
     display: flex;
     align-items: center;

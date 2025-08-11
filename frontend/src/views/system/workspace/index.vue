@@ -662,6 +662,7 @@ const handleCurrentChange = (val: number) => {
         border-radius: 4px;
         cursor: pointer;
         padding-right: 8px;
+        margin-bottom: 2px;
 
         .name {
           margin-left: 8px;

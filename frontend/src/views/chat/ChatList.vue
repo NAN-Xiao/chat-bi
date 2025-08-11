@@ -324,6 +324,7 @@ const handleConfirmPassword = () => {
     line-height: 22px;
     font-size: 14px;
     font-weight: 400;
+    margin-bottom: 2px;
 
     display: flex;
     align-items: center;

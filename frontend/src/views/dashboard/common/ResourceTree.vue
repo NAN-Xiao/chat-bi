@@ -573,6 +573,9 @@ defineExpose({
 .custom-tree {
   height: calc(100vh - 148px);
   padding: 0 8px;
+  :deep(.ed-tree-node) {
+    margin-bottom: 2px;
+  }
 }
 
 .custom-tree-node {

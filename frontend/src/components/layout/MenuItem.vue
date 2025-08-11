@@ -5,6 +5,7 @@ import { useRouter, useRoute } from 'vue-router'
 import chat from '@/assets/svg/menu/icon_chat_filled.svg'
 import noChat from '@/assets/svg/menu/icon_chat_outlined.svg'
 import dashboard from '@/assets/svg/menu/icon_dashboard_filled.svg'
+import { useEmitt } from '@/utils/useEmitt'
 import noDashboard from '@/assets/svg/menu/icon_dashboard_outlined.svg'
 import ds from '@/assets/svg/menu/icon_database_filled.svg'
 import noDs from '@/assets/svg/menu/icon_database_outlined.svg'
@@ -58,6 +59,9 @@ const MenuItem = defineComponent({
     }
 
     const handleMenuClick = (e: any) => {
+      if (e.index === '/ds/index') {
+        useEmitt().emitter.emit('ds-index-click')
+      }
       if (e.index) {
         router.push(e.redirect || e.index)
       }

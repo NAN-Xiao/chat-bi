@@ -76,6 +76,7 @@ const routerList = computed(() => {
   .ed-menu-item {
     height: 40px !important;
     border-radius: 6px !important;
+    margin-bottom: 2px;
     &.is-active {
       background-color: #fff !important;
       border-radius: 6px;
