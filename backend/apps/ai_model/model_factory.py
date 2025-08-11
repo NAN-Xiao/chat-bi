@@ -66,13 +66,14 @@ class OpenAIvLLM(BaseLLM):
             openai_api_key=self.config.api_key or 'Empty',
             openai_api_base=self.config.api_base_url,
             model_name=self.config.model_name,
+            streaming=True,
             **self.config.additional_params,
         )
 class OpenAILLM(BaseLLM):
     def _init_llm(self) -> BaseChatModel:
         return BaseChatOpenAI(
             model=self.config.model_name,
-            api_key=self.config.api_key,
+            api_key=self.config.api_key or 'Empty',
             base_url=self.config.api_base_url,
             stream_usage=True,
             **self.config.additional_params,

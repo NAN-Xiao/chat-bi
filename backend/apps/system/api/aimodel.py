@@ -28,7 +28,10 @@ async def check_llm(info: AiModelCreator, trans: Trans):
             )
             llm_instance = LLMFactory.create_llm(config)
             async for chunk in llm_instance.llm.astream("1+1=?"):
-                if chunk and chunk.content:
+                SQLBotLogUtil.info(chunk)
+                if chunk and isinstance(chunk, str):
+                    yield json.dumps({"content": chunk}) + "\n"
+                if chunk and isinstance(chunk, dict) and chunk.content:
                     yield json.dumps({"content": chunk.content}) + "\n"
         
         except Exception as e:
