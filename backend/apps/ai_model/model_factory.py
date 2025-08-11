@@ -11,7 +11,7 @@ from apps.ai_model.openai.llm import BaseChatOpenAI
 from apps.system.models.system_model import AiModelDetail
 from common.core.db import engine
 from common.utils.utils import prepare_model_arg
-
+from langchain_community.llms import VLLMOpenAI
 
 # from langchain_community.llms import Tongyi, VLLM
 
@@ -60,7 +60,14 @@ class BaseLLM(ABC):
         """Return the langchain LLM instance"""
         return self._llm
 
-
+class OpenAIvLLM(BaseLLM):
+    def _init_llm(self) -> VLLMOpenAI:
+        return VLLMOpenAI(
+            openai_api_key=self.config.api_key or 'Empty',
+            openai_api_base=self.config.api_base_url,
+            model_name=self.config.model_name,
+            **self.config.additional_params,
+        )
 class OpenAILLM(BaseLLM):
     def _init_llm(self) -> BaseChatModel:
         return BaseChatOpenAI(
@@ -81,7 +88,7 @@ class LLMFactory:
     _llm_types: Dict[str, Type[BaseLLM]] = {
         "openai": OpenAILLM,
         "tongyi": OpenAILLM,
-        "vllm": OpenAILLM
+        "vllm": OpenAIvLLM
     }
 
     @classmethod
@@ -129,7 +136,7 @@ def get_default_config() -> LLMConfig:
         # 构造 LLMConfig
         return LLMConfig(
             model_id=db_model.id,
-            model_type="openai",
+            model_type="openai" if db_model.protocol == 1 else "vllm",
             model_name=db_model.base_model,
             api_key=db_model.api_key,
             api_base_url=db_model.api_domain,

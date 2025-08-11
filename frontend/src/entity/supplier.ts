@@ -8,18 +8,25 @@ import icon_openai_colorful from '@/assets/model/icon_openai_colorful.png'
 import icon_kimi_colorful from '@/assets/model/icon_kimi_colorful.png'
 import icon_txhy_colorful from '@/assets/model/icon_txhy_colorful.png'
 import icon_hsyq_colorful from '@/assets/model/icon_hsyq_colorful.png'
+import icon_vllm_colorful from '@/assets/model/icon_vllm_colorful.png'
 
 type ModelArg = { key: string; val?: string | number; type: string; range?: string }
 type ModelOption = { name: string; api_domain?: string; args?: ModelArg[] }
 type ModelConfig = Record<
   number,
-  { api_domain: string; common_args?: ModelArg[]; model_options: ModelOption[] }
+  {
+    api_domain: string
+    common_args?: ModelArg[]
+    model_options: ModelOption[]
+  }
 >
 
 export const supplierList: Array<{
   id: number
   name: string
   icon: any
+  type?: string
+  is_private?: boolean
   model_config: ModelConfig
 }> = [
   {
@@ -256,6 +263,20 @@ export const supplierList: Array<{
           { name: 'deepseek-v3-250324' },
           { name: 'deepseek-r1' },
         ],
+      },
+    },
+  },
+  {
+    id: 11,
+    name: 'vLLM',
+    icon: icon_vllm_colorful,
+    type: 'vllm',
+    is_private: true,
+    model_config: {
+      0: {
+        api_domain: 'http://127.0.0.1:8000/v1',
+        common_args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
+        model_options: [],
       },
     },
   },

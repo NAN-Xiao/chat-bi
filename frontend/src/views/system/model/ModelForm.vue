@@ -38,6 +38,7 @@ const modelForm = reactive({
   api_key: '',
   api_domain: '',
   config_list: [],
+  protocol: 1,
 })
 const isCreate = ref(false)
 const modelRef = ref()
@@ -90,7 +91,7 @@ const handleCurrentChange = (val: any) => {
   currentPage.value = val
 }
 
-const rules = {
+const rules = computed(() => ({
   model_type: [
     {
       required: true,
@@ -109,12 +110,12 @@ const rules = {
   name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
   api_key: [
     {
-      required: true,
+      required: !currentSupplier.value?.is_private,
       message: t('datasource.please_enter') + t('common.empty') + 'API Key',
       trigger: 'blur',
     },
   ],
-}
+}))
 
 onMounted(() => {
   setTimeout(() => {
@@ -169,6 +170,7 @@ const supplierChang = (supplier: any) => {
   const config = supplier.model_config[modelForm.model_type || 0]
   modelForm.api_domain = config.api_domain
   modelForm.base_model = ''
+  modelForm.protocol = supplier.type === 'vllm' ? 2 : 1
   advancedSetting.value = []
 }
 let curId = +new Date()
@@ -201,7 +203,7 @@ const formatAdvancedSetting = (list: Array<any>) => {
   advancedSetting.value = setting_list
 }
 const baseModelChange = (val: string) => {
-  if (!val || !modelForm.supplier || !modelList.value?.length) {
+  if (!val || !modelForm.supplier) {
     return
   }
   const current_model = modelList.value?.find((model: any) => model.name == val)
