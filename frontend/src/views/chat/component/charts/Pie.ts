@@ -36,12 +36,25 @@ export class Pie extends BaseG2Chart {
       labels: [
         {
           position: 'outside',
-          text: (data: any) =>
-            `${data[series[0].value]}: ${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
+          text: (data: any) => {
+            console.log(
+              `${data[series[0].value]}: ${data[y[0].value]}${_data.isPercent ? '%' : ''}`
+            )
+            return `${data[series[0].value]}: ${data[y[0].value]}${_data.isPercent ? '%' : ''}`
+          },
+          transform: [{ type: 'exceedAdjust' }, { type: 'overlapHide' }],
         },
       ],
-      tooltip: (data) => {
-        return { name: y[0].name, value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}` }
+      tooltip: {
+        title: (data: any) => data[series[0].value],
+        items: [
+          (data: any) => {
+            return {
+              name: y[0].name,
+              value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
+            }
+          },
+        ],
       },
     }
 

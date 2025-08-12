@@ -29,10 +29,22 @@ function getPieOptions(baseOptions, axis, data) {
                 position: 'outside',
                 text: (data) =>
                     `${data[series[0].value]}: ${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
+                transform: [
+                    { type: 'exceedAdjust' },
+                    { type: 'overlapHide' },
+                ],
             },
         ],
-        tooltip: (data) => {
-            return {name: y[0].name, value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}`}
+        tooltip: {
+            title: (data) => data[series[0].value],
+            items: [
+                (data) => {
+                    return {
+                        name: y[0].name,
+                        value: `${data[y[0].value]}${_data.isPercent ? '%' : ''}`,
+                    }
+                },
+            ],
         },
     }
 
