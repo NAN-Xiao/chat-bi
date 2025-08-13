@@ -431,12 +431,13 @@ const btnSelectClick = (val: any) => {
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
+    modal-class="notes-dialog"
     @closed="closeTable"
   >
     <el-input
       v-model="tableComment"
       :placeholder="$t('datasource.please_enter')"
-      :rows="3"
+      :autosize="{ minRows: 3.64, maxRows: 11.095 }"
       type="textarea"
       clearable
     />
@@ -452,12 +453,13 @@ const btnSelectClick = (val: any) => {
     width="600"
     :destroy-on-close="true"
     :close-on-click-modal="false"
+    modal-class="notes-dialog"
     @closed="closeField"
   >
     <el-input
       v-model="fieldComment"
       :placeholder="$t('datasource.please_enter')"
-      :rows="3"
+      :autosize="{ minRows: 3.64, maxRows: 11.095 }"
       clearable
       type="textarea"
     />
@@ -754,6 +756,14 @@ const btnSelectClick = (val: any) => {
         }
       }
     }
+  }
+}
+</style>
+
+<style lang="less">
+.notes-dialog {
+  .ed-textarea__inner {
+    line-height: 22px;
   }
 }
 </style>
