@@ -442,7 +442,7 @@ const btnSelectClick = (val: any) => {
     />
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="closeTable">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="saveTable">{{ t('common.confirm') }}</el-button>
+      <el-button type="primary" @click="saveTable">{{ t('common.save') }}</el-button>
     </div>
   </el-dialog>
 
@@ -463,7 +463,7 @@ const btnSelectClick = (val: any) => {
     />
     <div style="display: flex; justify-content: flex-end; margin-top: 20px">
       <el-button @click="closeField">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="saveField">{{ t('common.confirm') }}</el-button>
+      <el-button type="primary" @click="saveField">{{ t('common.save') }}</el-button>
     </div>
   </el-dialog>
   <ParamsForm ref="paramsFormRef" @refresh="refresh"></ParamsForm>

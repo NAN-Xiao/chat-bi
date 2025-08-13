@@ -345,7 +345,7 @@ const handleCurrentChange = (val: number) => {
                 <el-icon size="16">
                   <rename></rename>
                 </el-icon>
-                {{ $t('datasource.edit') }}
+                {{ $t('dashboard.rename') }}
               </div>
               <div class="item" @click.stop="delWorkspace(ele)">
                 <el-icon size="16">
