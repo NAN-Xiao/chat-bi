@@ -766,7 +766,7 @@ onUnmounted(() => {
           align-items: center;
           justify-content: center;
           background: #ffffff;
-          border: 1px solid #bbbfc4;
+          border: 1px solid var(--ed-border-color);
           border-radius: 6px;
 
           .is-active {
