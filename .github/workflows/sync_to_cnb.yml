@@ -1,7 +1,6 @@
 name: Sync to CNB
 
 on:
-  push:
   workflow_dispatch:
 jobs:
   sync:
