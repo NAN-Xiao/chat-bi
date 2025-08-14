@@ -963,7 +963,7 @@ onMounted(() => {
         padding-top: 12px;
         padding-left: 12px;
         z-index: 10;
-        background: #f8f9fa;
+        background: transparent;
         line-height: 22px;
         font-size: 14px;
         font-weight: 400;
@@ -1103,7 +1103,7 @@ onMounted(() => {
     .greeting-btn {
       width: 100%;
       height: 88px;
-
+      border-radius: 16px;
       border-style: dashed;
 
       .inner-icon {

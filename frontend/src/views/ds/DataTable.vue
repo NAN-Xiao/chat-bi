@@ -709,7 +709,7 @@ const btnSelectClick = (val: any) => {
             align-items: center;
             min-height: 24px;
             .notes-in_table {
-              max-width: 192px;
+              max-width: 100%;
               display: -webkit-box;
               max-height: 66px;
               -webkit-box-orient: vertical;

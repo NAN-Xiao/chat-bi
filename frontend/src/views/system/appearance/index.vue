@@ -179,7 +179,7 @@
                 </div>
                 <div class="tips-page">
                   {{
-                    t('system.screen_customization_supported', { msg: loginForm.name || 'SQLBot' })
+                    t('system.screen_customization_settings', { msg: loginForm.name || 'SQLBot' })
                   }}
                 </div>
               </div>
