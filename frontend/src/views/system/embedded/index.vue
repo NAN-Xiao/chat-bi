@@ -822,9 +822,11 @@ const saveHandler = () => {
       <div class="code">
         <div class="copy">
           {{ $t('embedded.code_to_embed') }}
-          <el-icon size="16" @click="copyCode">
-            <icon_copy_outlined></icon_copy_outlined>
-          </el-icon>
+          <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+            <el-icon size="16" @click="copyCode">
+              <icon_copy_outlined></icon_copy_outlined>
+            </el-icon>
+          </el-tooltip>
         </div>
 
         <div class="script">
@@ -835,9 +837,11 @@ const saveHandler = () => {
       <div class="code">
         <div class="copy">
           {{ $t('common.or') }}
-          <el-icon size="16" @click="copyJsCode">
-            <icon_copy_outlined></icon_copy_outlined>
-          </el-icon>
+          <el-tooltip effect="dark" :content="t('datasource.copy')" placement="top">
+            <el-icon size="16" @click="copyJsCode">
+              <icon_copy_outlined></icon_copy_outlined>
+            </el-icon>
+          </el-tooltip>
         </div>
 
         <div class="script">
