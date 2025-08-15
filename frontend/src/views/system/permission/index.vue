@@ -948,7 +948,8 @@ const columnRules = {
   .drawer-content {
     width: 800px;
     margin: 0 auto;
-    height: calc(100% - 8px);
+    height: 100%;
+    padding-bottom: 24px;
     overflow-y: auto;
   }
 

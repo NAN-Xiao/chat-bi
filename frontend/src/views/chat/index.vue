@@ -23,6 +23,7 @@
       <el-popover
         :width="280"
         placement="bottom-start"
+        popper-class="popover-chat_history"
         :popper-style="{ ...defaultFloatPopoverStyle }"
       >
         <template #reference>
@@ -1141,5 +1142,11 @@ onMounted(() => {
   .ed-drawer__body {
     padding: 0;
   }
+}
+
+.popover-chat_history {
+  box-shadow: 0px 4px 8px 0px #1f23291a !important;
+  border-radius: 12px !important;
+  overflow: hidden;
 }
 </style>
