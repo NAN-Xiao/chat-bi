@@ -521,6 +521,7 @@ const btnSelectClick = (val: any) => {
         align-items: center;
         justify-content: space-between;
         padding: 8px;
+        font-weight: 500;
 
         .ed-icon {
           cursor: pointer;

@@ -322,7 +322,12 @@ defineExpose({
     <div class="tree-header">
       <div class="icon-methods">
         <span class="title">{{ t('dashboard.dashboard') }} </span>
-        <el-tooltip :content="t('dashboard.new_dashboard')" placement="top" effect="dark">
+        <el-tooltip
+          :offset="12"
+          :content="t('dashboard.new_dashboard')"
+          placement="top"
+          effect="dark"
+        >
           <el-icon
             class="custom-icon btn hover-icon_with_bg"
             @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"

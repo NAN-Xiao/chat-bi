@@ -821,6 +821,10 @@ onUnmounted(() => {
           justify-content: space-between;
           .page-content {
             width: calc(100% - 378px);
+
+            .tips-page {
+              margin-top: 8px;
+            }
             .navigate-preview {
               height: calc(100% - 28px);
               background-color: #fff;
