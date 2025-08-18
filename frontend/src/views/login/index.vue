@@ -1,12 +1,14 @@
 <template>
   <div class="login-container">
     <div class="login-left">
-      <img :src="login_image" alt="" />
+      <img :src="appearanceStore.getBg || login_image" alt="" />
     </div>
     <div class="login-content">
       <div class="login-right">
-        <img width="227" height="52" :src="aboutBg" alt="" />
-        <div class="welcome">{{ $t('common.intelligent_questioning_platform') }}</div>
+        <img width="227" height="52" :src="appearanceStore.getLogin || aboutBg" alt="" />
+        <div class="welcome">
+          {{ appearanceStore.slogan || $t('common.intelligent_questioning_platform') }}
+        </div>
         <div class="login-form">
           <h2 class="title">{{ $t('common.login') }}</h2>
           <el-form
@@ -53,9 +55,11 @@ import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 import aboutBg from '@/assets/embedded/LOGO-about.png'
 import login_image from '@/assets/embedded/login_image.png'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 
 const router = useRouter()
 const userStore = useUserStore()
+const appearanceStore = useAppearanceStoreWithOut()
 const { t } = useI18n()
 
 const loginForm = ref({
@@ -93,8 +97,10 @@ const submitForm = () => {
   .login-left {
     display: flex;
     height: 100%;
+    max-width: 50vh;
     img {
       height: 100%;
+      max-width: 100%;
     }
   }
 

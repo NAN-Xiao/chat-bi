@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia'
 import { store } from '@/stores/index'
 // import { defaultFont, list } from '@/api/font'
-// import { uiLoadApi } from '@/api/login'
+import { request } from '@/utils/request'
 import colorFunctions from 'less/lib/less/functions/color.js'
 import colorTree from 'less/lib/less/tree/color.js'
 import { setTitle } from '@/utils/utils'
 
-const basePath = import.meta.env.VITE_API_BASEPATH
-const baseUrl = basePath + '/appearance/image/'
+const basePath = import.meta.env.VITE_API_BASE_URL
+const baseUrl = basePath + '/system/appearance/picture/'
 import { isBtnShow } from '@/utils/utils'
 import type { LinkHTMLAttributes } from 'vue'
 interface AppearanceState {
@@ -248,17 +248,15 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       // if (!isDataEaseBi) {
       //   document.title = ''
       // }
-      // const res = await uiLoadApi()
-      const res = { data: [] }
+      const resData = await request.get('/system/appearance')
       this.loaded = true
-      const resData = res.data
-      // if (!resData?.length) {
-      //   if (!isDataEaseBi) {
-      //     document.title = 'SQLBot'
-      //     setLinkIcon()
-      //   }
-      //   return
-      // }
+      if (!resData?.length) {
+        if (!isDataEaseBi) {
+          document.title = 'SQLBot'
+          setLinkIcon()
+        }
+        return
+      }
       const data: AppearanceState = { loaded: false, community: true }
       let isCommunity = false
       resData.forEach((item: KeyValue) => {

@@ -100,8 +100,9 @@ import { propTypes } from '@/utils/propTypes'
 import { useI18n } from 'vue-i18n'
 import { computed, ref, onMounted, nextTick } from 'vue'
 import elementResizeDetectorMaker from 'element-resize-detector'
-const basePath = import.meta.env.VITE_API_BASEPATH
-const baseUrl = basePath + '/appearance/image/'
+const basePath = import.meta.env.VITE_API_BASE_URL
+const baseUrl = basePath + '/system/appearance/picture/'
+
 const { t } = useI18n()
 const props = defineProps({
   web: propTypes.string.def(''),

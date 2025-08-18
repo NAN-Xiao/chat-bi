@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import Default_avatar from '@/assets/workspace/default_avatar.png'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
-
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import icon_maybe_outlined from '@/assets/svg/icon-maybe_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
@@ -18,6 +18,7 @@ import { useUserStore } from '@/stores/user'
 import { userApi } from '@/api/auth'
 
 const router = useRouter()
+const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
 const pwdFormRef = ref()
 const { t, locale } = useI18n()
@@ -62,7 +63,7 @@ const changeLanguage = (lang: string) => {
 }
 
 const openHelp = () => {
-  window.open('https://dataease.cn/sqlbot/', '_blank')
+  window.open(appearanceStore.getHelp || 'https://dataease.cn/sqlbot/', '_blank')
 }
 
 const openPwd = () => {
@@ -138,13 +139,13 @@ const logout = () => {
             </div>
           </div>
         </el-popover>
-        <div class="popover-item" @click="toAbout">
+        <div v-if="appearanceStore.getShowAbout" class="popover-item" @click="toAbout">
           <el-icon size="16">
             <icon_info_outlined_1></icon_info_outlined_1>
           </el-icon>
           <div class="datasource-name">{{ $t('about.title') }}</div>
         </div>
-        <div class="popover-item" @click="openHelp">
+        <div v-if="appearanceStore.getShowDoc" class="popover-item" @click="openHelp">
           <el-icon size="16">
             <icon_maybe_outlined></icon_maybe_outlined>
           </el-icon>
