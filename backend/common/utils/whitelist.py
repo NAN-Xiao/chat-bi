@@ -27,8 +27,10 @@ wlist = [
     "/system/config/key",
     "/images/*",
     "/sse",
+    "/system/appearance*"
     "/system/assistant/validator*",
     "/system/assistant/info/*",
+    "/system/assistant/picture/*",
     "/datasource/uploadExcel"
 ]
 

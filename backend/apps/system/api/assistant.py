@@ -1,11 +1,14 @@
 from datetime import timedelta
-from typing import Optional
-from fastapi import APIRouter, FastAPI, Query, Request, Response
+import json
+import os
+from typing import List, Optional
+from fastapi import APIRouter, FastAPI, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 from apps.system.crud.assistant import get_assistant_info
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantValidator
+from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantUiSchema, AssistantValidator
 from common.core.deps import SessionDep, Trans
 from common.core.security import create_access_token
 from common.core.sqlbot_cache import clear_cache
@@ -13,6 +16,7 @@ from common.utils.time import get_timestamp
 from starlette.middleware.cors import CORSMiddleware
 from common.core.config import settings
 from common.utils.utils import get_origin_from_referer
+from sqlbot_xpack.file_utils import SQLBotFileUtils
 router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
 
 @router.get("/info/{id}") 
@@ -48,6 +52,55 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     )
     return AssistantValidator(True, True, True, access_token)
         
+@router.get('/picture/{file_id}')
+async def picture(file_id: str):
+    file_path = SQLBotFileUtils.get_file_path(file_id=file_id)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    if file_id.lower().endswith(".svg"):
+        media_type = "image/svg+xml"
+    else:
+        media_type = "image/jpeg"
+    
+    def iterfile():
+        with open(file_path, mode="rb") as f:
+            yield from f
+    
+    return StreamingResponse(iterfile(), media_type=media_type)
+
+@router.patch('/ui')
+async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = []):
+    json_data = json.loads(data)
+    uiSchema = AssistantUiSchema(**json_data)
+    id = uiSchema.id
+    db_model = session.get(AssistantModel, id)
+    if not db_model:
+        raise ValueError(f"AssistantModel with id {id} not found")
+    configuration = db_model.configuration
+    config_obj = json.loads(configuration) if configuration else {}
+    
+    ui_schema_dict = uiSchema.model_dump(exclude_none=True, exclude_unset=True)
+    if files:
+        for file in files:
+            origin_file_name = file.filename
+            file_name, flag_name = SQLBotFileUtils.split_filename_and_flag(origin_file_name)
+            file.filename = file_name
+            if flag_name == 'logo' or flag_name == 'float_icon':
+                SQLBotFileUtils.check_file(file=file, file_types=[".jpg", ".jpeg", ".png", ".svg"], limit_file_size=(10 * 1024 * 1024))
+                SQLBotFileUtils.detete_file(config_obj.get(flag_name))
+                file_id = await SQLBotFileUtils.upload(file)
+                ui_schema_dict[flag_name] = file_id
+            else:
+                raise ValueError(f"Unsupported file flag: {flag_name}")
+    
+    for attr, value in ui_schema_dict.items():
+        if attr != 'id' and not attr.startswith("__"):
+            config_obj[attr] = value
+    
+    db_model.configuration = json.dumps(config_obj, ensure_ascii=False)
+    session.add(db_model)
+    session.commit()
 
 @router.get("", response_model=list[AssistantModel])
 async def query(session: SessionDep):
