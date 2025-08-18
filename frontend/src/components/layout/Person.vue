@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { ref, computed } from 'vue'
 import Default_avatar from '@/assets/workspace/default_avatar.png'
+import Default_avatar_blue from '@/assets/blue/Default-avatar_blue.png'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
@@ -89,14 +90,23 @@ const logout = () => {
   <el-popover trigger="click" popper-class="system-person" :placement="collapse ? 'right' : 'top'">
     <template #reference>
       <button class="person" :title="name" :class="collapse && 'collapse'">
-        <img class="default-avatar" :src="Default_avatar" width="32px" height="32px" />
+        <img
+          class="default-avatar"
+          :src="appearanceStore.isBlue ? Default_avatar_blue : Default_avatar"
+          width="32px"
+          height="32px"
+        />
         <span v-if="!collapse" class="name ellipsis">{{ name }}</span>
       </button></template
     >
     <div class="popover">
       <div class="popover-content">
         <div class="info">
-          <img :src="Default_avatar" width="40px" height="40px" />
+          <img
+            :src="appearanceStore.isBlue ? Default_avatar_blue : Default_avatar"
+            width="40px"
+            height="40px"
+          />
           <div :title="name" class="top ellipsis">{{ name }}</div>
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>

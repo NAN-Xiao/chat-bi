@@ -94,6 +94,9 @@ export const useAppearanceStore = defineStore('appearanceStore', {
     getThemeColor(): string {
       return this.themeColor!
     },
+    isBlue(): boolean {
+      return this.themeColor! === 'blue'
+    },
     getCustomColor(): string {
       return this.customColor!
     },
@@ -290,7 +293,11 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       this.themeColor = data.themeColor
       this.customColor = data.customColor
       const currentColor =
-        this.themeColor === 'custom' && this.customColor ? this.customColor : '#1CBA90'
+        this.themeColor === 'custom' && this.customColor
+          ? this.customColor
+          : this.isBlue
+            ? '#3370ff'
+            : '#1CBA90'
       document.documentElement.style.setProperty('--ed-color-primary', currentColor)
       document.documentElement.style.setProperty('--van-blue', currentColor)
       document.documentElement.style.setProperty(
@@ -303,6 +310,20 @@ export const useAppearanceStore = defineStore('appearanceStore', {
         '--ed-color-primary-light-3',
         colorFunctions
           .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 15 })
+          .toRGB()
+      )
+
+      document.documentElement.style.setProperty(
+        '--ed-color-primary-60',
+        colorFunctions
+          .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 60 })
+          .toRGB()
+      )
+
+      document.documentElement.style.setProperty(
+        '--ed-color-primary-80',
+        colorFunctions
+          .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 80 })
           .toRGB()
       )
       document.documentElement.style.setProperty('--ed-color-primary-1a', `${currentColor}1a`)
