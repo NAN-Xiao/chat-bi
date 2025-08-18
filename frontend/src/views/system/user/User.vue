@@ -42,7 +42,7 @@
       class="sqlbot-table"
       :class="[
         state.filterTexts.length && 'is-filter',
-        multipleSelectionAll.length && 'show-pagenation_height',
+        multipleSelectionAll.length && 'show-pagination_height',
       ]"
     >
       <filter-text
@@ -860,7 +860,7 @@ onMounted(() => {
     max-height: calc(100vh - 150px);
     overflow-y: auto;
 
-    &.show-pagenation_height {
+    &.show-pagination_height {
       max-height: calc(100vh - 215px);
     }
 

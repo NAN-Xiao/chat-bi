@@ -395,7 +395,7 @@ const handleCurrentChange = (val: number) => {
           </el-input>
         </div>
       </div>
-      <div class="table-content" :class="multipleSelectionAll.length && 'show-pagenation_height'">
+      <div class="table-content" :class="multipleSelectionAll.length && 'show-pagination_height'">
         <div class="preview-or-schema">
           <el-table
             ref="multipleTableRef"
@@ -732,7 +732,7 @@ const handleCurrentChange = (val: number) => {
       height: calc(100% - 168px);
       overflow-y: auto;
 
-      &.show-pagenation_height {
+      &.show-pagination_height {
         height: calc(100% - 220px);
       }
 
