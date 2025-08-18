@@ -15,7 +15,7 @@ import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import icon_file_image_colorful from '@/assets/svg/icon_file-image_colorful.svg'
 import icon_file_excel_colorful from '@/assets/svg/icon_file-excel_colorful.svg'
-// import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
+import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
 import icon_window_max_outlined from '@/assets/svg/icon_window-max_outlined.svg'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
@@ -205,27 +205,27 @@ function showSql() {
   sqlShow.value = true
 }
 
-// function addToDashboard() {
-//   const recordeInfo = {
-//     id: '1-1',
-//     data: {
-//       data: data.value,
-//     },
-//     chart: {},
-//   }
-//   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-//   const chartBaseInfo = JSON.parse(props.message?.record?.chart)
-//   recordeInfo['chart'] = {
-//     type: chartBaseInfo.type,
-//     title: chartBaseInfo.title,
-//     columns: chartBaseInfo.columns,
-//     xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
-//     yAxis: chartBaseInfo.axis?.y ? [chartBaseInfo.axis.y] : [],
-//     series: chartBaseInfo.axis?.series ? [chartBaseInfo.axis.series] : [],
-//   }
-//   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-//   addViewRef.value?.optInit(recordeInfo)
-// }
+function addToDashboard() {
+  const recordeInfo = {
+    id: '1-1',
+    data: {
+      data: data.value,
+    },
+    chart: {},
+  }
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  const chartBaseInfo = JSON.parse(props.message?.record?.chart)
+  recordeInfo['chart'] = {
+    type: chartBaseInfo.type,
+    title: chartBaseInfo.title,
+    columns: chartBaseInfo.columns,
+    xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
+    yAxis: chartBaseInfo.axis?.y ? [chartBaseInfo.axis.y] : [],
+    series: chartBaseInfo.axis?.series ? [chartBaseInfo.axis.series] : [],
+  }
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  addViewRef.value?.optInit(recordeInfo)
+}
 
 function copyText() {
   if (props.message?.record?.sql) {
@@ -395,7 +395,7 @@ watch(
             </div>
           </el-popover>
         </div>
-        <!-- <div v-if="message?.record?.chart">
+        <div v-if="message?.record?.chart">
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">
@@ -403,7 +403,7 @@ watch(
               </el-icon>
             </el-button>
           </el-tooltip>
-        </div> -->
+        </div>
         <div class="divider" />
         <div v-if="!enlarge">
           <el-tooltip
