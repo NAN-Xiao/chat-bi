@@ -1,8 +1,10 @@
 import datetime
 import json
+import platform
 from typing import List, Optional
 
-import dmPython
+if platform.system() != "Darwin":
+    import dmPython
 from fastapi import HTTPException
 from sqlalchemy import and_, text
 from sqlmodel import select

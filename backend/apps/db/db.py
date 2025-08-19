@@ -1,9 +1,11 @@
 import base64
 import json
+import platform
 import urllib.parse
 from decimal import Decimal
 
-import dmPython
+if platform.system() != "Darwin":
+    import dmPython
 from sqlalchemy import create_engine, text, Engine
 from sqlalchemy.orm import sessionmaker
 
