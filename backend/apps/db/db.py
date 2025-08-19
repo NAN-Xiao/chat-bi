@@ -300,6 +300,9 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
 
 
 def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
+    while sql.endswith(';'):
+        sql = sql[:-1]
+
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
         with get_session(ds) as session:
