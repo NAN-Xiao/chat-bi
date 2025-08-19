@@ -616,7 +616,7 @@ defineExpose({
               show-password
             />
           </el-form-item>
-          <el-form-item :label="t('ds.form.database')" prop="database">
+          <el-form-item v-if="form.type !== 'dm'" :label="t('ds.form.database')" prop="database">
             <el-input
               v-model="form.database"
               clearable

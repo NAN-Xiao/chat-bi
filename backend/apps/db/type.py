@@ -10,5 +10,6 @@ def db_type_relation() -> Dict:
         "pg": "PostgreSQL",
         "excel": "Excel/CSV",
         "oracle": "Oracle",
-        "ck": "ClickHouse"
+        "ck": "ClickHouse",
+        "dm": "达梦"
     }

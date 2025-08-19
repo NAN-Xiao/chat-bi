@@ -4,6 +4,7 @@ import oracle from '@/assets/datasource/icon_oracle.png'
 import pg from '@/assets/datasource/icon_PostgreSQL.png'
 import sqlServer from '@/assets/datasource/icon_SQL_Server.png'
 import ck from '@/assets/datasource/icon_ck.png'
+import dm from '@/assets/datasource/icon_dm.png'
 import { i18n } from '@/i18n'
 
 const t = i18n.global.t
@@ -14,6 +15,7 @@ export const dsType = [
   { label: 'PostgreSQL', value: 'pg' },
   { label: 'SQL Server', value: 'sqlServer' },
   { label: 'ClickHouse', value: 'ck' },
+  { label: '达梦', value: 'dm' },
 ]
 
 export const dsTypeWithImg = [
@@ -23,6 +25,7 @@ export const dsTypeWithImg = [
   { name: 'PostgreSQL', type: 'pg', img: pg },
   { name: 'SQL Server', type: 'sqlServer', img: sqlServer },
   { name: 'ClickHouse', type: 'ck', img: ck },
+  { name: '达梦', type: 'dm', img: dm },
 ]
 
-export const haveSchema = ['sqlServer', 'pg', 'oracle']
+export const haveSchema = ['sqlServer', 'pg', 'oracle', 'dm']
