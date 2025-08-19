@@ -270,7 +270,8 @@
     "field_original_notes": "Field original notes",
     "field_notes_1": "Field notes",
     "no_table": "No Table",
-    "go_add": "Add"
+    "go_add": "Add",
+    "get_schema": "Get Schema"
   },
   "model": {
     "default_model": "Default model",
