@@ -11,7 +11,7 @@ import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
 import { useClipboard } from '@vueuse/core'
-
+import SetUi from './SetUi.vue'
 import Card from './Card.vue'
 import { workspaceList } from '@/api/workspace'
 import DsCard from './DsCard.vue'
@@ -231,6 +231,10 @@ const deleteHandler = (row: any) => {
       handleSearch()
     })
   })
+}
+const setUiRef = ref()
+const handleSetUi = (row: any) => {
+  setUiRef.value.open(row)
 }
 
 const rules = {
@@ -532,6 +536,7 @@ const saveHandler = () => {
             @embedded="handleEmbedded(ele)"
             @edit="handleEditRule(ele)"
             @del="deleteHandler(ele)"
+            @ui="handleSetUi(ele)"
           ></Card>
         </el-col>
       </el-row>
@@ -936,6 +941,7 @@ const saveHandler = () => {
       </div>
     </template>
   </el-drawer>
+  <SetUi ref="setUiRef"></SetUi>
 </template>
 
 <style lang="less" scoped>

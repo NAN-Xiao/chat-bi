@@ -251,6 +251,8 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       // if (!isDataEaseBi) {
       //   document.title = ''
       // }
+      const obj = LicenseGenerator.getLicense()
+      if (obj?.status !== 'valid') return
       const resData = await request.get('/system/appearance')
       this.loaded = true
       if (!resData?.length) {

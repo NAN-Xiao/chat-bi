@@ -517,7 +517,21 @@
     "i_am_sqlbot": "你好，我是 SQLBot",
     "predict_data_etc": "我可以查询数据、生成图表、检测数据异常、预测数据等",
     "intelligent_data_query": "赶快开启智能问数吧～",
-    "origin_format_error": "格式错误，http或https开头，不能以 / 结尾"
+    "origin_format_error": "格式错误，http或https开头，不能以 / 结尾",
+    "display_settings": "显示设置",
+    "header_text_color": "头部文本颜色",
+    "app_logo": "应用 Logo",
+    "maximum_size_10mb": "建议尺寸 32 x 32，支持 JPG、PNG、SVG，大小不超过 10MB",
+    "replace": "替换",
+    "default_icon_position": "图标默认位置",
+    "draggable_position": "可拖拽位置",
+    "up": "上",
+    "down": "下",
+    "left": "左",
+    "right": "右",
+    "welcome_description": "欢迎语描述",
+    "data_analysis_now": "我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～",
+    "window_entrance_icon": "浮窗入口图标"
   },
   "chat": {
     "type": "图表类型",

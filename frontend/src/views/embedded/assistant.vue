@@ -3,10 +3,9 @@ import { ref } from 'vue'
 import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined.svg'
 import icon_new_chat_outlined from '@/assets/embedded/icon_new-chat_outlined.svg'
 import LOGO from '@/assets/embedded/LOGO.png'
-import answer from '@/assets/embedded/answer.png'
 import disable_answer from '@/assets/embedded/disable.png'
-import loading_answer from '@/assets/embedded/loading.png'
-import send_answer from '@/assets/embedded/send.png'
+import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
+import icon_magnify_outlined from '@/assets/svg/icon_magnify_outlined.svg'
 
 const textareaVal = ref('')
 </script>
@@ -25,6 +24,14 @@ const textareaVal = ref('')
           <icon_new_chat_outlined></icon_new_chat_outlined>
         </el-icon>
       </el-tooltip>
+
+      <el-icon class="new-chat" style="right: 52px" size="20">
+        <icon_magnify_outlined></icon_magnify_outlined>
+      </el-icon>
+
+      <el-icon class="new-chat" style="right: 16px" size="20">
+        <icon_close_outlined></icon_close_outlined>
+      </el-icon>
     </div>
     <div class="center">
       <img :src="LOGO" class="logo" width="30px" height="30px" alt="" />
@@ -45,7 +52,7 @@ const textareaVal = ref('')
           <img :src="disable_answer" width="32px" height="32px" alt="" />
         </el-tooltip>
 
-        <el-tooltip
+        <!-- <el-tooltip
           :offset="10"
           effect="dark"
           :content="$t('embedded.stop_replying')"
@@ -55,7 +62,7 @@ const textareaVal = ref('')
         </el-tooltip>
 
         <img :src="loading_answer" width="32px" height="32px" alt="" />
-        <img :src="send_answer" width="32px" height="32px" alt="" />
+        <img :src="send_answer" width="32px" height="32px" alt="" /> -->
       </div>
     </div>
 
@@ -66,14 +73,15 @@ const textareaVal = ref('')
 <style lang="less" scoped>
 .assistant-window {
   width: 460px;
-  height: 640px;
+  height: 100%;
   border-radius: 12px;
   border: 1px solid #dee0e3;
   box-shadow: 0px 6px 24px 0px #1f232914;
   background-color: #fff;
   position: relative;
+  overflow: hidden;
   .header {
-    background: var(--ed-color-primary-14, #1cba9014);
+    background: var(--ed-color-primary-1a, #1cba901a);
     height: 56px;
     padding: 0 16px;
     display: flex;
