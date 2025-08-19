@@ -2,10 +2,11 @@ from datetime import timedelta
 import json
 import os
 from typing import List, Optional
-from fastapi import APIRouter, FastAPI, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session, select
+from sqlmodel import select
 from apps.system.crud.assistant import get_assistant_info
+from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantUiSchema, AssistantValidator
@@ -13,10 +14,11 @@ from common.core.deps import SessionDep, Trans
 from common.core.security import create_access_token
 from common.core.sqlbot_cache import clear_cache
 from common.utils.time import get_timestamp
-from starlette.middleware.cors import CORSMiddleware
+
 from common.core.config import settings
 from common.utils.utils import get_origin_from_referer
 from sqlbot_xpack.file_utils import SQLBotFileUtils
+
 router = APIRouter(tags=["system/assistant"], prefix="/system/assistant")
 
 @router.get("/info/{id}") 
@@ -104,16 +106,12 @@ async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = 
 
 @router.get("", response_model=list[AssistantModel])
 async def query(session: SessionDep):
-    list_result = session.exec(select(AssistantModel).order_by(AssistantModel.name, AssistantModel.create_time)).all()
+    list_result = session.exec(select(AssistantModel).where(AssistantModel.type.in_([0, 1])).order_by(AssistantModel.name, AssistantModel.create_time)).all()
     return list_result
 
 @router.post("")
 async def add(request: Request, session: SessionDep, creator: AssistantBase):
-    db_model = AssistantModel.model_validate(creator)
-    db_model.create_time = get_timestamp()
-    session.add(db_model)
-    session.commit()
-    dynamic_upgrade_cors(request=request, session=session)
+    save(request, session, creator)
 
     
 @router.put("")
@@ -147,26 +145,7 @@ async def delete(request: Request, session: SessionDep, id: int):
     session.commit()
     dynamic_upgrade_cors(request=request, session=session)
 
-def dynamic_upgrade_cors(request: Request, session: Session):
-    list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time)).all()
-    seen = set()
-    unique_domains = []
-    for item in list_result:
-        if item.domain:
-            for domain in item.domain.split(','):
-                domain = domain.strip()
-                if domain and domain not in seen:
-                    seen.add(domain)
-                    unique_domains.append(domain)
-    app: FastAPI = request.app
-    cors_middleware = None
-    for middleware in app.user_middleware:
-        if middleware.cls == CORSMiddleware:
-            cors_middleware = middleware
-            break
-    if cors_middleware:
-        updated_origins = list(set(settings.all_cors_origins + unique_domains))
-        cors_middleware.kwargs['allow_origins'] = updated_origins
+
 
 
         
