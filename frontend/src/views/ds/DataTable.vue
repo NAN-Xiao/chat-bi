@@ -208,6 +208,22 @@ const back = () => {
   emits('back')
 }
 
+const renderHeader = ({ column }: any) => {
+  //创建一个元素用于存放表头信息
+  const span = document.createElement('span')
+  // 将表头信息渲染到元素上
+  span.innerText = column.label
+  // 在界面中添加该元素
+  document.body.appendChild(span)
+  //获取该元素的宽度（包含内外边距等信息）
+  const spanWidth = span.getBoundingClientRect().width + 20 //渲染后的 div 内左右 padding 都是 10，所以 +20
+  //判断是否小于element的最小宽度，两者取最大值
+  column.minWidth = column.minWidth > spanWidth ? column.minWidth : spanWidth
+  // 计算完成后，删除该元素
+  document.body.removeChild(span)
+  return column.label
+}
+
 const btnSelectClick = (val: any) => {
   btnSelect.value = val
   loading.value = true
@@ -417,6 +433,7 @@ const btnSelectClick = (val: any) => {
                   :key="index"
                   :prop="c"
                   :label="c"
+                  :render-header="renderHeader"
                 />
               </el-table>
             </template>
