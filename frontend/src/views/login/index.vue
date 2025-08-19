@@ -70,11 +70,11 @@ const loginForm = ref({
 })
 
 const bg = computed(() => {
-  return appearanceStore.isBlue ? loginImage : appearanceStore.getBg || login_image
+  return appearanceStore.getBg || (appearanceStore.isBlue ? loginImage : login_image)
 })
 
 const loginBg = computed(() => {
-  return appearanceStore.isBlue ? logo : appearanceStore.getLogin || aboutBg
+  return appearanceStore.getLogin || (appearanceStore.isBlue ? logo : aboutBg)
 })
 
 const rules = {
