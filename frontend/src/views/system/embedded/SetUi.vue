@@ -307,12 +307,7 @@ defineExpose({
           </div>
           <div class="position-set_input">
             <div class="x">
-              <el-input-number
-                v-model="sqlBotForm.x_val"
-                :min="0"
-                controls-position="right"
-                @change="handleChange"
-              >
+              <el-input-number v-model="sqlBotForm.x_val" :min="0" controls-position="right">
                 <template #prefix>
                   <el-select v-model="sqlBotForm.x_type" style="width: 51px">
                     <el-option
@@ -326,12 +321,7 @@ defineExpose({
               >px
             </div>
             <div class="y">
-              <el-input-number
-                v-model="sqlBotForm.y_val"
-                :min="0"
-                controls-position="right"
-                @change="handleChange"
-              >
+              <el-input-number v-model="sqlBotForm.y_val" :min="0" controls-position="right">
                 <template #prefix>
                   <el-select v-model="sqlBotForm.y_type" style="width: 51px">
                     <el-option
