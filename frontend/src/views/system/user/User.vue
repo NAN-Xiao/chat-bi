@@ -302,7 +302,7 @@
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="closeForm">{{ $t('common.cancel') }}</el-button>
+        <el-button secondary @click="closeForm">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" @click="saveHandler">
           {{ state.form.id ? $t('common.save') : $t('model.add') }}
         </el-button>

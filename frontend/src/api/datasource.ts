@@ -22,5 +22,5 @@ export const datasourceApi = {
   saveField: (data: any) => request.post('/datasource/editField', data),
   getDs: (id: number) => request.post(`/datasource/get/${id}`),
   cancelRequests: () => request.cancelRequests(),
-  getSchema: (data: any) => request.post('/datasource/getSchemaByConf', data)
+  getSchema: (data: any) => request.post('/datasource/getSchemaByConf', data),
 }

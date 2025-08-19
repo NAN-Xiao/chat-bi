@@ -103,6 +103,7 @@ const onClickOutside = () => {
           v-click-outside="onClickOutside"
           class="more"
           size="16"
+          style="color: #646a73"
           @click.stop
         >
           <icon_more_outlined></icon_more_outlined>

@@ -111,7 +111,7 @@ const logout = () => {
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
         <div v-if="isAdmin && !inSysmenu" class="popover-item" @click="toSystem">
-          <el-icon size="16">
+          <el-icon style="color: #646a73" size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('common.system_manage') }}</div>
@@ -175,7 +175,7 @@ const logout = () => {
     <pwd-form v-if="dialogVisible" ref="pwdFormRef" @pwd-saved="closePwd" />
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="closePwd">{{ t('common.cancel') }}</el-button>
+        <el-button secondary @click="closePwd">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="savePwdHandler">{{ t('common.save') }}</el-button>
       </div>
     </template>
@@ -276,6 +276,7 @@ const logout = () => {
     .info {
       height: 62px;
       padding: 8px;
+      margin-bottom: 4px;
 
       img {
         float: left;
@@ -302,10 +303,12 @@ const logout = () => {
       height: 32px;
       display: flex;
       align-items: center;
-      padding-left: 12px;
-      padding-right: 8px;
+      padding-left: 8px;
+      padding-right: 4px;
       position: relative;
       cursor: pointer;
+      margin: 0 4px;
+      border-radius: 4px;
       &:hover {
         background-color: #1f23291a;
       }

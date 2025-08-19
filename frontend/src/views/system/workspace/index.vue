@@ -336,7 +336,7 @@ const handleCurrentChange = (val: number) => {
             placement="bottom"
           >
             <template #reference>
-              <el-icon class="more" size="16" style="margin-left: auto" @click.stop>
+              <el-icon class="more" size="16" style="margin-left: auto; color: #646a73" @click.stop>
                 <icon_more_outlined></icon_more_outlined>
               </el-icon>
             </template>
