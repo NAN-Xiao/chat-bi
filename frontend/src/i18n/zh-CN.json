@@ -270,7 +270,8 @@
     "field_original_notes": "字段原始备注",
     "field_notes_1": "字段备注",
     "no_table": "暂无数据表",
-    "go_add": "去添加"
+    "go_add": "去添加",
+    "get_schema": "获取Schema"
   },
   "model": {
     "default_model": "默认模型",
