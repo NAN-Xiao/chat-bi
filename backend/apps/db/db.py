@@ -64,11 +64,16 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
         conf.timeout = timeout
     if timeout > 0:
         conf.timeout = timeout
-    if ds.type == "pg" and (conf.dbSchema is not None and conf.dbSchema != ""):
-        engine = create_engine(get_uri(ds),
-                               connect_args={"options": f"-c search_path={urllib.parse.quote(conf.dbSchema)}",
-                                             "connect_timeout": conf.timeout},
-                               pool_timeout=conf.timeout)
+    if ds.type == "pg":
+        if conf.dbSchema is not None and conf.dbSchema != "":
+            engine = create_engine(get_uri(ds),
+                                   connect_args={"options": f"-c search_path={urllib.parse.quote(conf.dbSchema)}",
+                                                 "connect_timeout": conf.timeout},
+                                   pool_timeout=conf.timeout)
+        else:
+            engine = create_engine(get_uri(ds),
+                                   connect_args={"connect_timeout": conf.timeout},
+                                   pool_timeout=conf.timeout)
     elif ds.type == 'sqlServer':
         engine = create_engine(get_uri(ds), pool_timeout=conf.timeout)
     elif ds.type == 'oracle':
@@ -84,6 +89,32 @@ def get_session(ds: CoreDatasource | AssistantOutDsSchema):
     session_maker = sessionmaker(bind=engine)
     session = session_maker()
     return session
+
+
+def get_schema(ds: CoreDatasource):
+    conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+    db = DB.get_db(ds.type)
+    if db.connect_type == ConnectType.sqlalchemy:
+        with get_session(ds) as session:
+            sql: str = ''
+            if ds.type == "sqlServer":
+                sql = f"""select name from sys.schemas"""
+            elif ds.type == "pg" or ds.type == "excel":
+                sql = """SELECT nspname FROM pg_namespace"""
+            elif ds.type == "oracle":
+                sql = f"""select * from all_users"""
+            with session.execute(text(sql)) as result:
+                res = result.fetchall()
+                res_list = [item[0] for item in res]
+                return res_list
+    else:
+        if ds.type == 'dm':
+            with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
+                                  port=conf.port) as conn, conn.cursor() as cursor:
+                cursor.execute(f"""select OBJECT_NAME from dba_objects where object_type='SCH'""")
+                res = cursor.fetchall()
+                res_list = [item[0] for item in res]
+                return res_list
 
 
 def get_tables(ds: CoreDatasource):
