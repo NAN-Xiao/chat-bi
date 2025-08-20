@@ -11,6 +11,7 @@ import { cloneDeep } from 'lodash-es'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const { t } = useI18n()
+const currentId = ref()
 interface SqlBotForm {
   name: string
   theme: string
@@ -132,7 +133,7 @@ const buildParam = () => {
       formData.append('files', newfile)
     })
   }
-  formData.append('data', JSON.stringify(unref(sqlBotForm)))
+  formData.append('data', JSON.stringify({ ...unref(sqlBotForm), id: currentId.value }))
   return formData
 }
 
@@ -223,6 +224,7 @@ const open = (row: any) => {
   console.log(JSON.parse(row.configuration))
   // rawData = JSON.parse(row.configuration)
   // init()
+  currentId.value = row.id
   dialogVisible.value = true
 }
 defineExpose({

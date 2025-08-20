@@ -44,6 +44,7 @@ const routerList = computed(() => {
   }
   const list = router.getRoutes().filter((route) => {
     return (
+      !route.path.includes('embeddedPage') &&
       !route.path.includes('assistant') &&
       !route.path.includes('embeddedPage') &&
       !route.path.includes('canvas') &&
