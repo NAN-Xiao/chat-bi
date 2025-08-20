@@ -4,9 +4,8 @@ import { ref, unref, reactive, nextTick } from 'vue'
 import { type UploadUserFile, ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
+import { setCurrentColor } from '@/utils/utils'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
-import colorFunctions from 'less/lib/less/functions/color.js'
-import colorTree from 'less/lib/less/tree/color.js'
 import { cloneDeep } from 'lodash-es'
 
 const appearanceStore = useAppearanceStoreWithOut()
@@ -145,26 +144,8 @@ const customColorChange = (val: any) => {
 }
 
 const setPageCustomColor = (val: any) => {
-  const ele = document.getElementsByClassName('ui-main')[0] as HTMLElement
-
-  ele.style.setProperty('--ed-color-primary', val)
-  ele.style.setProperty('--van-blue', val)
-  ele.style.setProperty(
-    '--ed-color-primary-light-5',
-    colorFunctions.mix(new colorTree('ffffff'), new colorTree(val.substr(1)), { value: 40 }).toRGB()
-  )
-  ele.style.setProperty(
-    '--ed-color-primary-light-3',
-    colorFunctions.mix(new colorTree('ffffff'), new colorTree(val.substr(1)), { value: 15 }).toRGB()
-  )
-  ele.style.setProperty('--ed-color-primary-1a', `${val}1a`)
-  ele.style.setProperty('--ed-color-primary-14', `${val}14`)
-  ele.style.setProperty('--ed-color-primary-33', `${val}33`)
-  ele.style.setProperty('--ed-color-primary-99', `${val}99`)
-  ele.style.setProperty(
-    '--ed-color-primary-dark-2',
-    colorFunctions.mix(new colorTree('000000'), new colorTree(val.substr(1)), { value: 15 }).toRGB()
-  )
+  const ele = document.querySelector('.ui-main') as HTMLElement
+  setCurrentColor(val, ele)
 }
 
 const setPageHeaderFontColor = (val: any) => {
@@ -224,6 +205,9 @@ const open = (row: any) => {
   // rawData = JSON.parse(row.configuration)
   // init()
   dialogVisible.value = true
+  nextTick(() => {
+    setPageCustomColor('#1CBA90')
+  })
 }
 defineExpose({
   open,
@@ -239,7 +223,12 @@ defineExpose({
   >
     <div class="ui-main">
       <div class="left-preview">
-        <assistant></assistant>
+        <assistant
+          :welcome-desc="sqlBotForm.welcome_desc"
+          :welcome="sqlBotForm.welcome"
+          :name="sqlBotForm.name"
+          :logo="logo"
+        ></assistant>
       </div>
       <div class="right-form">
         <div style="display: flex; align-items: center; justify-content: space-between">
