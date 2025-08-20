@@ -115,7 +115,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
         sql2 = f" AND C.TABLE_NAME = '{table_name}'" if table_name is not None and table_name != "" else ""
         return sql1 + sql2
     elif ds.type == "pg" or ds.type == "excel":
-        sql1 = """
+        sql1 = f"""
                SELECT a.attname                                       AS COLUMN_NAME,
                       pg_catalog.format_type(a.atttypid, a.atttypmod) AS DATA_TYPE,
                       col_description(c.oid, a.attnum)                AS COLUMN_COMMENT
@@ -124,7 +124,7 @@ def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = No
                     pg_catalog.pg_class c ON a.attrelid = c.oid
                         JOIN
                     pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-               WHERE n.nspname = current_schema()
+               WHERE n.nspname = '{conf.dbSchema}'
                  AND a.attnum > 0
                  AND NOT a.attisdropped \
                """
