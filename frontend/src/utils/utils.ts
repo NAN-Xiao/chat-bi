@@ -136,6 +136,13 @@ export const setCurrentColor = (currentColor: any) => {
       .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 80 })
       .toRGB()
   )
+
+  document.documentElement.style.setProperty(
+    '--ed-color-primary-15-d',
+    colorFunctions
+      .mix(new colorTree('000000'), new colorTree(currentColor.substr(1)), { value: 15 })
+      .toRGB()
+  )
   document.documentElement.style.setProperty('--ed-color-primary-1a', `${currentColor}1a`)
   document.documentElement.style.setProperty('--ed-color-primary-14', `${currentColor}14`)
   document.documentElement.style.setProperty('--ed-color-primary-33', `${currentColor}33`)

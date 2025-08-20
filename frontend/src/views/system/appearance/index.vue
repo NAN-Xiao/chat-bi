@@ -751,6 +751,7 @@ onUnmounted(() => {
 
           .is-active {
             background: var(--ed-color-primary-1a, #1cba901a);
+            font-weight: 500;
           }
 
           .ed-button:not(.is-active) {
