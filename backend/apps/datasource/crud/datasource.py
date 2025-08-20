@@ -67,7 +67,7 @@ def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise
             with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                   port=conf.port) as conn, conn.cursor() as cursor:
                 try:
-                    cursor.execute('select 1').fetchall()
+                    cursor.execute('select 1', timeout=10).fetchall()
                     SQLBotLogUtil.info("success")
                     return True
                 except Exception as e:

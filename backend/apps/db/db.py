@@ -113,7 +113,7 @@ def get_schema(ds: CoreDatasource):
         if ds.type == 'dm':
             with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                   port=conf.port) as conn, conn.cursor() as cursor:
-                cursor.execute(f"""select OBJECT_NAME from dba_objects where object_type='SCH'""")
+                cursor.execute(f"""select OBJECT_NAME from dba_objects where object_type='SCH'""", timeout=conf.timeout)
                 res = cursor.fetchall()
                 res_list = [item[0] for item in res]
                 return res_list
@@ -206,7 +206,7 @@ def get_tables(ds: CoreDatasource):
                                     from all_tab_comments 
                                     where owner='{conf.dbSchema}'
                                     AND (table_type = 'TABLE' or table_type = 'VIEW')
-                                """)
+                                """, timeout=conf.timeout)
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
@@ -326,7 +326,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
                                     c.OWNER = '{conf.dbSchema}'
                                 """
                 sql2 = f" AND c.TABLE_NAME = '{table_name}'" if table_name is not None and table_name != "" else ""
-                cursor.execute(sql1 + sql2)
+                cursor.execute(sql1 + sql2, timeout=conf.timeout)
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
@@ -358,7 +358,7 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
             with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                   port=conf.port) as conn, conn.cursor() as cursor:
                 try:
-                    cursor.execute(sql)
+                    cursor.execute(sql, timeout=conf.timeout)
                     res = cursor.fetchall()
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in
