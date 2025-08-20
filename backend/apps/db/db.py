@@ -8,6 +8,7 @@ from apps.db.db_sql import get_table_sql, get_field_sql
 
 if platform.system() != "Darwin":
     import dmPython
+import pymysql
 from sqlalchemy import create_engine, text, Engine
 from sqlalchemy.orm import sessionmaker
 
@@ -125,6 +126,19 @@ def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
                     if is_raise:
                         raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                     return False
+        elif ds.type == 'doris':
+            with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
+                                 port=conf.port, db=conf.database, connect_timeout=10,
+                                 read_timeout=10) as conn, conn.cursor() as cursor:
+                try:
+                    cursor.execute('select 1')
+                    SQLBotLogUtil.info("success")
+                    return True
+                except Exception as e:
+                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                    if is_raise:
+                        raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
+                    return False
 
 
 def get_schema(ds: CoreDatasource):
@@ -171,6 +185,14 @@ def get_tables(ds: CoreDatasource):
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
+        elif ds.type == 'doris':
+            with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
+                                 port=conf.port, db=conf.database, connect_timeout=conf.timeout,
+                                 read_timeout=conf.timeout) as conn, conn.cursor() as cursor:
+                cursor.execute(sql)
+                res = cursor.fetchall()
+                res_list = [TableSchema(*item) for item in res]
+                return res_list
 
 
 def get_fields(ds: CoreDatasource, table_name: str = None):
@@ -188,6 +210,14 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                   port=conf.port) as conn, conn.cursor() as cursor:
                 cursor.execute(sql, timeout=conf.timeout)
+                res = cursor.fetchall()
+                res_list = [ColumnSchema(*item) for item in res]
+                return res_list
+        elif ds.type == 'doris':
+            with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
+                                 port=conf.port, db=conf.database, connect_timeout=conf.timeout,
+                                 read_timeout=conf.timeout) as conn, conn.cursor() as cursor:
+                cursor.execute(sql)
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
@@ -220,6 +250,25 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                                   port=conf.port) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql, timeout=conf.timeout)
+                    res = cursor.fetchall()
+                    columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
+                                                                                                field in
+                                                                                                cursor.description]
+                    result_list = [
+                        {str(columns[i]): float(value) if isinstance(value, Decimal) else value for i, value in
+                         enumerate(tuple_item)}
+                        for tuple_item in res
+                    ]
+                    return {"fields": columns, "data": result_list,
+                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                except Exception as ex:
+                    raise ex
+        elif ds.type == 'doris':
+            with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
+                                 port=conf.port, db=conf.database, connect_timeout=conf.timeout,
+                                 read_timeout=conf.timeout) as conn, conn.cursor() as cursor:
+                try:
+                    cursor.execute(sql)
                     res = cursor.fetchall()
                     columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
                                                                                                 field in

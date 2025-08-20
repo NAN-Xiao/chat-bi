@@ -11,5 +11,6 @@ def db_type_relation() -> Dict:
         "excel": "Excel/CSV",
         "oracle": "Oracle",
         "ck": "ClickHouse",
-        "dm": "达梦"
+        "dm": "达梦",
+        "doris": "Apache Doris"
     }

@@ -90,7 +90,8 @@ async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = 
             file.filename = file_name
             if flag_name == 'logo' or flag_name == 'float_icon':
                 SQLBotFileUtils.check_file(file=file, file_types=[".jpg", ".jpeg", ".png", ".svg"], limit_file_size=(10 * 1024 * 1024))
-                SQLBotFileUtils.detete_file(config_obj.get(flag_name))
+                if config_obj.get(flag_name):
+                    SQLBotFileUtils.detete_file(config_obj.get(flag_name))
                 file_id = await SQLBotFileUtils.upload(file)
                 ui_schema_dict[flag_name] = file_id
             else:
