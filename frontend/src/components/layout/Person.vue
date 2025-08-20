@@ -1,7 +1,6 @@
 <script lang="ts" setup>
 import { ref, computed } from 'vue'
-import Default_avatar from '@/assets/workspace/default_avatar.png'
-import Default_avatar_blue from '@/assets/blue/Default-avatar_blue.png'
+import Default_avatar_custom from '@/assets/img/Default-avatar.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
@@ -90,23 +89,18 @@ const logout = () => {
   <el-popover trigger="click" popper-class="system-person" :placement="collapse ? 'right' : 'top'">
     <template #reference>
       <button class="person" :title="name" :class="collapse && 'collapse'">
-        <img
-          class="default-avatar"
-          :src="appearanceStore.isBlue ? Default_avatar_blue : Default_avatar"
-          width="32px"
-          height="32px"
-        />
+        <el-icon size="32">
+          <Default_avatar_custom></Default_avatar_custom>
+        </el-icon>
         <span v-if="!collapse" class="name ellipsis">{{ name }}</span>
       </button></template
     >
     <div class="popover">
       <div class="popover-content">
         <div class="info">
-          <img
-            :src="appearanceStore.isBlue ? Default_avatar_blue : Default_avatar"
-            width="40px"
-            height="40px"
-          />
+          <el-icon class="avatar-custom" size="40">
+            <Default_avatar_custom></Default_avatar_custom>
+          </el-icon>
           <div :title="name" class="top ellipsis">{{ name }}</div>
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
@@ -278,7 +272,7 @@ const logout = () => {
       padding: 8px;
       margin-bottom: 4px;
 
-      img {
+      .avatar-custom {
         float: left;
         margin: 3px 8px 0 7px;
       }

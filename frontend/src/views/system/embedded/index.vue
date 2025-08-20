@@ -941,7 +941,7 @@ const saveHandler = () => {
       </div>
     </template>
   </el-drawer>
-  <SetUi ref="setUiRef"></SetUi>
+  <SetUi ref="setUiRef" @refresh="handleSearch"></SetUi>
 </template>
 
 <style lang="less" scoped>

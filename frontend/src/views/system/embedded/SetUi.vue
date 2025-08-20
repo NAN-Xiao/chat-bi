@@ -5,10 +5,8 @@ import { type UploadUserFile, ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
 import { setCurrentColor } from '@/utils/utils'
-import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { cloneDeep } from 'lodash-es'
 
-const appearanceStore = useAppearanceStoreWithOut()
 const { t } = useI18n()
 const currentId = ref()
 interface SqlBotForm {
@@ -86,7 +84,7 @@ const init = () => {
   floatIcon.value = rawData.float_icon
 
   for (const key in sqlBotForm) {
-    if (Object.prototype.hasOwnProperty.call(sqlBotForm, key)) {
+    if (Object.prototype.hasOwnProperty.call(sqlBotForm, key) && rawData[key]) {
       sqlBotForm[key] = rawData[key]
     }
   }
@@ -100,7 +98,8 @@ const giveUp = () => {
   resetSqlBotForm(false)
   init()
 }
-const showSaveButton = ref(true)
+
+const emits = defineEmits(['refresh'])
 const saveHandler = () => {
   const param = buildParam()
   const url = '/system/assistant/ui'
@@ -113,12 +112,8 @@ const saveHandler = () => {
     .then((res) => {
       if (!res) {
         ElMessage.success(t('system.setting_successfully'))
-        appearanceStore.setLoaded(false)
-        appearanceStore.setAppearance()
-        showSaveButton.value = false
-        nextTick(() => {
-          showSaveButton.value = true
-        })
+        dialogVisible.value = false
+        emits('refresh')
       }
     })
 }
@@ -159,6 +154,10 @@ const resetSqlBotForm = (reset2Default?: boolean) => {
   if (reset2Default) {
     logo.value = ''
     floatIcon.value = ''
+    nextTick(() => {
+      setPageCustomColor(sqlBotForm.theme)
+      setPageHeaderFontColor(sqlBotForm.header_font_color)
+    })
   }
 }
 
@@ -203,13 +202,10 @@ const clearFiles = (array?: string[]) => {
 
 const open = (row: any) => {
   console.log(JSON.parse(row.configuration))
-  // rawData = JSON.parse(row.configuration)
-  // init()
+  rawData = JSON.parse(row.configuration)
   currentId.value = row.id
   dialogVisible.value = true
-  nextTick(() => {
-    setPageCustomColor('#1CBA90')
-  })
+  init()
 }
 defineExpose({
   open,
