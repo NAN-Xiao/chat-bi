@@ -814,7 +814,7 @@ onMounted(() => {
     width: calc(100% + 48px);
     left: -24px;
     background-color: #fff;
-    bottom: 0;
+    bottom: -16px;
     border-top: 1px solid #1f232926;
     display: flex;
     align-items: center;
