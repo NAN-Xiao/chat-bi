@@ -92,18 +92,24 @@
       >
         <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
           <div class="welcome-content">
-            <div class="greeting">
-              <el-icon size="32">
-                <logo_fold />
-              </el-icon>
-              {{ isAssistant ? t('embedded.i_am_sqlbot') : t('qa.greeting') }}
+            <template v-if="!isAssistant">
+              <div class="greeting">
+                <el-icon size="32">
+                  <logo_fold />
+                </el-icon>
+                {{ t('qa.greeting') }}
+              </div>
+              <div class="sub">
+                {{ t('qa.hint_description') }}
+              </div>
+            </template>
+
+            <div v-else class="assistant-desc">
+              <img :src="logoAssistant" class="logo" width="30px" height="30px" alt="" />
+              <div class="i-am">{{ welcome }}</div>
+              <div class="i-can">{{ welcomeDesc }}</div>
             </div>
-            <div class="sub">
-              {{ isAssistant ? t('embedded.predict_data_etc') : t('qa.hint_description') }}
-            </div>
-            <div v-if="isAssistant" class="sub assistant-sub">
-              {{ t('embedded.intelligent_data_query') }}
-            </div>
+
             <el-button
               v-if="!isAssistant && currentChatId === undefined"
               size="large"
@@ -364,6 +370,9 @@ import router from '@/router'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
+  welcomeDesc?: string
+  logoAssistant?: string
+  welcome?: string
 }>()
 const floatPopoverRef = ref()
 const floatPopoverVisible = ref(false)
@@ -1089,6 +1098,30 @@ onMounted(() => {
     gap: 16px;
     align-items: center;
     flex-direction: column;
+
+    .assistant-desc {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+
+      .i-am {
+        font-weight: 600;
+        font-size: 24px;
+        line-height: 32px;
+        margin: 16px 0;
+      }
+
+      .i-can {
+        margin-bottom: 4px;
+        max-width: 350px;
+        text-align: center;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 24px;
+        color: #646a73;
+      }
+    }
 
     .greeting {
       display: flex;

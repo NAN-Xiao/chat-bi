@@ -4,8 +4,8 @@
       <el-icon size="20" @click="openHistory">
         <icon_sidebar_outlined></icon_sidebar_outlined>
       </el-icon>
-      <img :src="LOGO" class="logo" width="30px" height="30px" alt="" />
-      <span class="tite">{{ assistantName || $t('embedded.intelligent_customer_service') }}</span>
+      <img :src="logo || LOGO" class="logo" width="30px" height="30px" alt="" />
+      <span class="title">{{ customSet.name || $t('embedded.intelligent_customer_service') }}</span>
 
       <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
         <el-icon class="new-chat" size="20" @click="createChat">
@@ -14,24 +14,31 @@
       </el-tooltip>
     </div>
     <div class="sqlbot-chat-container">
-      <chat-component v-if="!loading" ref="chatRef" />
+      <chat-component
+        v-if="!loading"
+        ref="chatRef"
+        :welcome="customSet.welcome"
+        :welcome-desc="customSet.welcome_desc"
+        :logo-assistant="logo"
+      />
     </div>
     <div class="drawer-assistant" @click="openHistory"></div>
   </div>
 </template>
 <script setup lang="ts">
-import { onBeforeMount, onBeforeUnmount, ref, onMounted } from 'vue'
+import { onBeforeMount, nextTick, onBeforeUnmount, ref, onMounted, reactive } from 'vue'
 import ChatComponent from '@/views/chat/index.vue'
+import { request } from '@/utils/request'
 import LOGO from '@/assets/embedded/LOGO.png'
 import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import { useRoute } from 'vue-router'
 import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
+import { setCurrentColor } from '@/utils/utils'
 
 const assistantStore = useAssistantStore()
 const route = useRoute()
-const assistantName = ref('')
 const chatRef = ref()
 
 const createChat = () => {
@@ -92,19 +99,51 @@ onMounted(() => {
       }`
   document.querySelector('head')?.appendChild(style)
 })
+const customSet = reactive({
+  name: '',
+  welcome: '',
+  welcome_desc: '',
+  theme: '#1CBA90',
+  header_font_color: '#1F2329',
+}) as { [key: string]: any }
+const logo = ref()
+const basePath = import.meta.env.VITE_API_BASE_URL
+const baseUrl = basePath + '/system/assistant/picture/'
+const setPageCustomColor = (val: any) => {
+  const ele = document.querySelector('.sqlbot-assistant-container') as HTMLElement
+  setCurrentColor(val, ele)
+}
+
+const setPageHeaderFontColor = (val: any) => {
+  const ele = document.querySelector('.sqlbot-assistant-container') as HTMLElement
+  ele.style.setProperty('--ed-text-color-primary', val)
+}
 onBeforeMount(async () => {
   const assistantId = route.query.id
   if (!assistantId) {
     ElMessage.error('Miss assistant id, please check assistant url')
     return
   }
+  request.get(`/system/assistant/info/${assistantId}`).then((res) => {
+    if (res?.configuration) {
+      const rawData = JSON.parse(res?.configuration)
+      logo.value = baseUrl + rawData.logo
+
+      for (const key in customSet) {
+        if (Object.prototype.hasOwnProperty.call(customSet, key) && rawData[key]) {
+          customSet[key] = rawData[key]
+        }
+      }
+
+      nextTick(() => {
+        setPageCustomColor(customSet.theme)
+        setPageHeaderFontColor(customSet.header_font_color)
+      })
+    }
+  })
   const online = route.query.online
   setFormatOnline(online)
 
-  let name = route.query.name
-  if (name) {
-    assistantName.value = decodeURIComponent(name.toString())
-  }
   const now = Date.now()
   assistantStore.setFlag(now)
   assistantStore.setId(assistantId?.toString() || '')
@@ -145,7 +184,7 @@ onBeforeUnmount(() => {
     z-index: 100;
     height: 56px;
     line-height: 56px;
-    background: var(--ed-color-primary-14, #1cba9014);
+    background: var(--ed-color-primary-1a, #1cba901a);
     height: 56px;
     padding: 0 16px;
     display: flex;
@@ -159,6 +198,7 @@ onBeforeUnmount(() => {
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
+      color: var(--ed-text-color-primary);
     }
 
     .ed-icon {
