@@ -4,7 +4,7 @@ from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
 
 
 def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
-    if ds.type == "mysql":
+    if ds.type == "mysql" or ds.type == "doris":
         return f"""
                 SELECT 
                     TABLE_NAME, 
@@ -31,7 +31,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
                     AND t.TABLE_SCHEMA = '{conf.dbSchema}'
                 """
     elif ds.type == "pg" or ds.type == "excel":
-        return """
+        return f"""
               SELECT c.relname                                       AS TABLE_NAME,
                      COALESCE(d.description, obj_description(c.oid)) AS TABLE_COMMENT
               FROM pg_class c
@@ -39,7 +39,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
                    pg_namespace n ON n.oid = c.relnamespace
                        LEFT JOIN
                    pg_description d ON d.objoid = c.oid AND d.objsubid = 0
-              WHERE n.nspname = current_schema()
+              WHERE n.nspname = '{conf.dbSchema}'
                 AND c.relkind IN ('r', 'v', 'p', 'm')
                 AND c.relname NOT LIKE 'pg_%'
                 AND c.relname NOT LIKE 'sql_%'
@@ -83,7 +83,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf):
 
 
 def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = None):
-    if ds.type == "mysql":
+    if ds.type == "mysql" or ds.type == "doris":
         sql1 = f"""
                 SELECT 
                     COLUMN_NAME,
