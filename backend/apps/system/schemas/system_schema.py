@@ -175,7 +175,7 @@ class AssistantUiSchema(BaseCreatorDTO):
     x_type: Optional[str] = 'right'
     x_val: Optional[int] = 0
     y_type: Optional[str] = 'bottom'
-    y_val: Optional[str] = 33
+    y_val: Optional[int] = 33
     name: Optional[str] = None
     welcome: Optional[str] = None
     welcome_desc: Optional[str] = None
