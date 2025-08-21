@@ -462,6 +462,13 @@
     "intelligent_data_query": "赶快开启智能问数吧～"
   },
   "embedded": {
+    "delete_10_apps": "是否删除 {msg} 个应用？",
+    "click_to_show": "点击显示",
+    "click_to_hide": "点击隐藏",
+    "your_app_secret": "确定更新 APP Secret 吗？",
+    "proceed_with_caution": "重置后现有的 App Secret 将会失效，请谨慎操作。",
+    "password_length": "密码长度",
+    "edit_app": "编辑应用",
     "embedded_management": "嵌入式管理",
     "embedded_assistant": "小助手嵌入",
     "embedded_page": "页面嵌入",

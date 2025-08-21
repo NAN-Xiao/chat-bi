@@ -462,6 +462,13 @@
     "intelligent_data_query": "Hurry up and start intelligent data query~"
   },
   "embedded": {
+    "delete_10_apps": "Do you want to delete {msg} apps?",
+    "click_to_show": "Click to show",
+    "click_to_hide": "Click to hide",
+    "your_app_secret": "Are you sure you want to update your App Secret?",
+    "proceed_with_caution": "Resetting your existing App Secret will invalidate it. Please proceed with caution.",
+    "password_length": "Password length",
+    "edit_app": "Edit app",
     "embedded_management": "Embedded management",
     "embedded_assistant": "Embedded assistant",
     "embedded_page": "Embedded page",
