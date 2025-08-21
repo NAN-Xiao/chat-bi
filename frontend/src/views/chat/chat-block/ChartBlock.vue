@@ -61,7 +61,7 @@ const dataObject = computed<{
   return {}
 })
 const assistantStore = useAssistantStore()
-const isAssistant = computed(() => assistantStore.getAssistant)
+const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
 
 const chartId = computed(() => props.message?.record?.id + (props.enlarge ? '-fullscreen' : ''))
 
@@ -409,7 +409,7 @@ watch(
           <el-tooltip
             effect="dark"
             :offset="8"
-            :content="isAssistant ? $t('common.zoom_in') : t('chat.full_screen')"
+            :content="!isCompletePage ? $t('common.zoom_in') : t('chat.full_screen')"
             placement="top"
           >
             <el-button class="tool-btn" text @click="openFullScreen">
@@ -423,7 +423,7 @@ watch(
           <el-tooltip
             effect="dark"
             :offset="8"
-            :content="isAssistant ? $t('common.zoom_out') : t('chat.exit_full_screen')"
+            :content="!isCompletePage ? $t('common.zoom_out') : t('chat.exit_full_screen')"
             placement="top"
           >
             <el-button class="tool-btn" text @click="closeFullScreen">
@@ -473,7 +473,7 @@ watch(
 
     <el-drawer
       v-model="sqlShow"
-      :size="isAssistant ? '100%' : '600px'"
+      :size="!isCompletePage ? '100%' : '600px'"
       :title="t('chat.show_sql')"
       direction="rtl"
       body-class="chart-sql-drawer-body"

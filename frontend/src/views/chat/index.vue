@@ -1,6 +1,6 @@
 <template>
   <el-container class="chat-container no-padding">
-    <el-aside v-if="!isAssistant && chatListSideBarShow" class="chat-container-left">
+    <el-aside v-if="isCompletePage && chatListSideBarShow" class="chat-container-left">
       <ChatListContainer
         v-model:chat-list="chatList"
         v-model:current-chat-id="currentChatId"
@@ -16,9 +16,9 @@
       />
     </el-aside>
     <div
-      v-if="isAssistant || !chatListSideBarShow"
+      v-if="!isCompletePage || !chatListSideBarShow"
       class="hidden-sidebar-btn"
-      :class="{ 'assistant-popover-sidebar': isAssistant }"
+      :class="{ 'assistant-popover-sidebar': !isCompletePage }"
     >
       <el-popover
         :width="280"
@@ -86,13 +86,13 @@
       <el-main
         class="chat-record-list"
         :class="{
-          'hide-sidebar': !isAssistant && !chatListSideBarShow,
-          'assistant-chat-main': isAssistant,
+          'hide-sidebar': isCompletePage && !chatListSideBarShow,
+          'assistant-chat-main': !isCompletePage,
         }"
       >
         <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
           <div class="welcome-content">
-            <template v-if="!isAssistant">
+            <template v-if="isCompletePage">
               <div class="greeting">
                 <el-icon size="32">
                   <logo_fold />
@@ -111,7 +111,7 @@
             </div>
 
             <el-button
-              v-if="!isAssistant && currentChatId === undefined"
+              v-if="isCompletePage && currentChatId === undefined"
               size="large"
               type="primary"
               class="greeting-btn"
@@ -132,7 +132,10 @@
         <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef" class="no-horizontal">
           <div
             class="chat-scroll"
-            :class="{ 'no-sidebar': !isAssistant && !chatListSideBarShow, pad16: isAssistant }"
+            :class="{
+              'no-sidebar': isCompletePage && !chatListSideBarShow,
+              pad16: !isCompletePage,
+            }"
           >
             <template v-for="(message, _index) in computedMessages" :key="_index">
               <ChatRow :current-chat="currentChat" :msg="message" :hide-avatar="message.first_chat">
@@ -287,9 +290,9 @@
           </div>
         </el-scrollbar>
       </el-main>
-      <el-footer v-if="computedMessages.length > 0 || isAssistant" class="chat-footer">
+      <el-footer v-if="computedMessages.length > 0 || !isCompletePage" class="chat-footer">
         <div class="input-wrapper" @click="clickInput">
-          <div v-if="!isAssistant" class="datasource">
+          <div v-if="isCompletePage" class="datasource">
             <template v-if="currentChat.datasource && currentChat.datasource_name">
               {{ t('qa.selected_datasource') }}:
               <img
@@ -311,7 +314,7 @@
             :disabled="isTyping"
             clearable
             class="input-area"
-            :class="isAssistant && 'is-assistant'"
+            :class="!isCompletePage && 'is-assistant'"
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 8.583 }"
             :placeholder="t('qa.question_placeholder')"
@@ -334,7 +337,7 @@
       </el-footer>
     </el-container>
 
-    <ChatCreator v-if="!isAssistant" ref="chatCreatorRef" @on-chat-created="onChatCreatedQuick" />
+    <ChatCreator v-if="isCompletePage" ref="chatCreatorRef" @on-chat-created="onChatCreatedQuick" />
     <ChatCreator ref="hiddenChatCreatorRef" hidden @on-chat-created="onChatCreatedQuick" />
   </el-container>
 </template>
@@ -384,7 +387,7 @@ const defaultFloatPopoverStyle = ref({
   borderRadius: '6px',
 })
 
-const isAssistant = computed(() => assistantStore.getAssistant)
+const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
 
 const { t } = useI18n()
 
@@ -479,7 +482,7 @@ const createNewChat = async () => {
     return
   }
   goEmpty()
-  if (isAssistant.value) {
+  if (!isCompletePage.value) {
     currentChat.value = new ChatInfo()
     currentChatId.value = undefined
     return
@@ -526,7 +529,7 @@ function onChatRenamed(chat: Chat) {
 
 const chatListSideBarShow = ref<boolean>(true)
 function hideSideBar() {
-  if (isAssistant.value) {
+  if (!isCompletePage.value) {
     floatPopoverVisible.value = false
     return
   }
@@ -598,7 +601,7 @@ function onChatStop() {
 }
 const assistantPrepareSend = async () => {
   if (
-    isAssistant.value &&
+    !isCompletePage.value &&
     (currentChatId.value == null || typeof currentChatId.value == 'undefined')
   ) {
     const assistantChat = await assistantStore.setChat()
@@ -821,12 +824,12 @@ function stop(func?: (...p: any[]) => void, ...param: any[]) {
   }
 }
 const showFloatPopover = () => {
-  if (isAssistant.value && !floatPopoverVisible.value) {
+  if (!isCompletePage.value && !floatPopoverVisible.value) {
     floatPopoverVisible.value = true
   }
 }
 const assistantPrepareInit = () => {
-  if (!isAssistant.value) {
+  if (isCompletePage.value) {
     return
   }
   Object.assign(defaultFloatPopoverStyle.value, {

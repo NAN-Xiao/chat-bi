@@ -42,6 +42,7 @@ base_message_count_limit = 5
 
 executor = ThreadPoolExecutor(max_workers=200)
 
+dynamic_ds_types = [1, 3]
 
 class LLMService:
     ds: CoreDatasource
@@ -79,7 +80,7 @@ class LLMService:
         if chat.datasource:
             # Get available datasource
             # ds = self.session.query(CoreDatasource).filter(CoreDatasource.id == chat.datasource).first()
-            if current_assistant and current_assistant.type == 1:
+            if current_assistant and current_assistant.type in dynamic_ds_types:
                 self.out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
                 ds = self.out_ds_instance.get_ds(chat.datasource)
                 if not ds:
@@ -355,7 +356,7 @@ class LLMService:
     def select_datasource(self):
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemMessage(self.chat_question.datasource_sys_question()))
-        if self.current_assistant:
+        if self.current_assistant and self.current_assistant.type != 4:
             _ds_list = get_assistant_ds(session=self.session, llm_service=self)
         else:
             oid: str = self.current_user.oid
@@ -426,7 +427,7 @@ class LLMService:
                 _datasource = data['id']
                 _chat = self.session.get(Chat, self.record.chat_id)
                 _chat.datasource = _datasource
-                if self.current_assistant and self.current_assistant.type == 1:
+                if self.current_assistant and self.current_assistant.type in dynamic_ds_types:
                     _ds = self.out_ds_instance.get_ds(data['id'])
                     self.ds = _ds
                     self.chat_question.engine = _ds.type
@@ -851,7 +852,7 @@ class LLMService:
 
             # filter sql
             SQLBotLogUtil.info(full_sql_text)
-            use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type == 1
+            use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
 
             # todo row permission
             if (not self.current_assistant and is_normal_user(self.current_user)) or use_dynamic_ds:
@@ -1037,7 +1038,7 @@ class LLMService:
 
     def validate_history_ds(self):
         _ds = self.ds
-        if not self.current_assistant:
+        if not self.current_assistant or self.current_assistant.type == 4:
             try:
                 current_ds = self.session.get(CoreDatasource, _ds.id)
                 if not current_ds:
