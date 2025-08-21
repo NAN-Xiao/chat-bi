@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { ref, computed } from 'vue'
-import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined.svg'
-import icon_new_chat_outlined from '@/assets/embedded/icon_new-chat_outlined.svg'
+import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined_nofill.svg'
+import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import LOGO from '@/assets/embedded/LOGO.png'
 import disable_answer from '@/assets/embedded/disable.png'
 import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
@@ -99,6 +99,7 @@ const pageLogo = computed(() => {
     display: flex;
     align-items: center;
     position: relative;
+    color: var(--ed-text-color-primary);
     .logo {
       margin: 0 8px 0 16px;
     }
