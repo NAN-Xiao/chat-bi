@@ -104,6 +104,11 @@ async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = 
     db_model.configuration = json.dumps(config_obj, ensure_ascii=False)
     session.add(db_model)
     session.commit()
+    await clear_ui_cache(db_model.id)
+
+@clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")  
+async def clear_ui_cache(id: int):
+    pass
 
 @router.get("", response_model=list[AssistantModel])
 async def query(session: SessionDep):
@@ -112,7 +117,7 @@ async def query(session: SessionDep):
 
 @router.post("")
 async def add(request: Request, session: SessionDep, creator: AssistantBase):
-    save(request, session, creator)
+    await save(request, session, creator)
 
     
 @router.put("")

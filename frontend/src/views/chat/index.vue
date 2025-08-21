@@ -105,7 +105,17 @@
             </template>
 
             <div v-else class="assistant-desc">
-              <img :src="logoAssistant" class="logo" width="30px" height="30px" alt="" />
+              <img
+                v-if="logoAssistant"
+                :src="logoAssistant"
+                class="logo"
+                width="30px"
+                height="30px"
+                alt=""
+              />
+              <el-icon v-else size="32">
+                <logo_fold />
+              </el-icon>
               <div class="i-am">{{ welcome }}</div>
               <div class="i-can">{{ welcomeDesc }}</div>
             </div>
