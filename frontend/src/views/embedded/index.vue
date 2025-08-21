@@ -1,6 +1,6 @@
 <template>
   <div class="sqlbot-assistant-container">
-    <div class="header">
+    <div class="header" :style="{ color: customSet.header_font_color }">
       <el-icon size="20" @click="openHistory">
         <icon_sidebar_outlined></icon_sidebar_outlined>
       </el-icon>
@@ -30,13 +30,14 @@ import { onBeforeMount, nextTick, onBeforeUnmount, ref, onMounted, reactive } fr
 import ChatComponent from '@/views/chat/index.vue'
 import { request } from '@/utils/request'
 import LOGO from '@/assets/embedded/LOGO.png'
-import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined.svg'
+import icon_sidebar_outlined from '@/assets/embedded/icon_sidebar_outlined_nofill.svg'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import { useRoute } from 'vue-router'
 import { assistantApi } from '@/api/assistant'
 import { useAssistantStore } from '@/stores/assistant'
 import { setCurrentColor } from '@/utils/utils'
-
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 const assistantStore = useAssistantStore()
 const route = useRoute()
 const chatRef = ref()
@@ -101,8 +102,8 @@ onMounted(() => {
 })
 const customSet = reactive({
   name: '',
-  welcome: '',
-  welcome_desc: '',
+  welcome: t('embedded.i_am_sqlbot'),
+  welcome_desc: t('embedded.data_analysis_now'),
   theme: '#1CBA90',
   header_font_color: '#1F2329',
 }) as { [key: string]: any }
@@ -124,23 +125,7 @@ onBeforeMount(async () => {
     ElMessage.error('Miss assistant id, please check assistant url')
     return
   }
-  request.get(`/system/assistant/info/${assistantId}`).then((res) => {
-    if (res?.configuration) {
-      const rawData = JSON.parse(res?.configuration)
-      logo.value = baseUrl + rawData.logo
 
-      for (const key in customSet) {
-        if (Object.prototype.hasOwnProperty.call(customSet, key) && rawData[key]) {
-          customSet[key] = rawData[key]
-        }
-      }
-
-      nextTick(() => {
-        setPageCustomColor(customSet.theme)
-        setPageHeaderFontColor(customSet.header_font_color)
-      })
-    }
-  })
   const online = route.query.online
   setFormatOnline(online)
 
@@ -165,6 +150,26 @@ onBeforeMount(async () => {
     messageId: assistantId,
   }
   window.parent.postMessage(readyData, '*')
+
+  request.get(`/system/assistant/${assistantId}`).then((res) => {
+    if (res?.configuration) {
+      const rawData = JSON.parse(res?.configuration)
+      if (rawData.logo) {
+        logo.value = baseUrl + rawData.logo
+      }
+
+      for (const key in customSet) {
+        if (Object.prototype.hasOwnProperty.call(customSet, key) && rawData[key]) {
+          customSet[key] = rawData[key]
+        }
+      }
+
+      nextTick(() => {
+        setPageCustomColor(customSet.theme)
+        setPageHeaderFontColor(customSet.header_font_color)
+      })
+    }
+  })
 })
 
 onBeforeUnmount(() => {
