@@ -546,6 +546,8 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
     session.commit()
 
     record = get_chat_record_by_id(session, record_id)
+    record.recommended_question_answer = recommended_question_answer
+    record.recommended_question = recommended_question
 
     return record
 

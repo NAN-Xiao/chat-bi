@@ -1029,10 +1029,10 @@ class LLMService:
 
         for chunk in res:
             if chunk.get('recommended_question'):
-                yield orjson.dumps(
+                yield 'data:' + orjson.dumps(
                     {'content': chunk.get('recommended_question'), 'type': 'recommended_question'}).decode() + '\n\n'
             else:
-                yield orjson.dumps(
+                yield 'data:' + orjson.dumps(
                     {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                      'type': 'recommended_question_result'}).decode() + '\n\n'
 
