@@ -18,13 +18,13 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import create_engine, Session
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
-from apps.chat.curd.chat import save_question, save_full_sql_message, save_full_sql_message_and_answer, save_sql, \
-    save_error_message, save_sql_exec_data, save_full_chart_message, save_full_chart_message_and_answer, save_chart, \
-    finish_record, save_full_analysis_message_and_answer, save_full_predict_message_and_answer, save_predict_data, \
-    save_full_select_datasource_message_and_answer, save_full_recommend_question_message_and_answer, \
-    get_old_questions, save_analysis_predict_record, list_base_records, rename_chat, get_chart_config, \
-    get_chat_chart_data
-from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat
+from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
+    save_error_message, save_sql_exec_data, save_chart_answer, save_chart, \
+    finish_record, save_analysis_answer, save_predict_answer, save_predict_data, \
+    save_select_datasource_answer, save_recommend_question_answer, \
+    get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
+    get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log
+from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.models.datasource import CoreDatasource
@@ -38,11 +38,12 @@ from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_o
 
 warnings.filterwarnings("ignore")
 
-base_message_count_limit = 5
+base_message_count_limit = 6
 
 executor = ThreadPoolExecutor(max_workers=200)
 
 dynamic_ds_types = [1, 3]
+
 
 class LLMService:
     ds: CoreDatasource
@@ -52,12 +53,17 @@ class LLMService:
     llm: BaseChatModel
     sql_message: List[Union[BaseMessage, dict[str, Any]]] = []
     chart_message: List[Union[BaseMessage, dict[str, Any]]] = []
-    history_records: List[ChatRecord] = []
+
     session: Session
     current_user: CurrentUser
     current_assistant: Optional[CurrentAssistant] = None
     out_ds_instance: Optional[AssistantOutDs] = None
     change_title: bool = False
+
+    generate_sql_logs: List[ChatLog] = []
+    generate_chart_logs: List[ChatLog] = []
+
+    current_logs: dict[OperationEnum, ChatLog] = {}
 
     chunk_list: List[str] = []
     future: Future
@@ -94,12 +100,10 @@ class LLMService:
                 chat_question.engine = ds.type_name if ds.type != 'excel' else 'PostgreSQL'
                 chat_question.db_schema = get_table_schema(session=self.session, current_user=current_user, ds=ds)
 
-        history_records: List[ChatRecord] = list(
-            map(lambda x: ChatRecord(**x.model_dump()), filter(lambda r: True if r.first_chat != True else False,
-                                                               list_base_records(session=self.session,
-                                                                                 current_user=current_user,
-                                                                                 chart_id=chat_id))))
-        self.change_title = len(history_records) == 0
+        self.generate_sql_logs = list_generate_sql_logs(session=self.session, chart_id=chat_id)
+        self.generate_chart_logs = list_generate_chart_logs(session=self.session, chart_id=chat_id)
+
+        self.change_title = len(self.generate_sql_logs) == 0
 
         chat_question.lang = get_lang_name(current_user.language)
 
@@ -114,12 +118,11 @@ class LLMService:
                         del self.config.additional_params['extra_body']['enable_thinking']
 
         self.chat_question.ai_modal_id = self.config.model_id
+        self.chat_question.ai_modal_name = self.config.model_name
 
         # Create LLM instance through factory
         llm_instance = LLMFactory.create_llm(self.config)
         self.llm = llm_instance.llm
-
-        self.history_records = history_records
 
         self.init_messages()
 
@@ -134,21 +137,8 @@ class LLMService:
             return True
 
     def init_messages(self):
-        # self.agent_executor = create_react_agent(self.llm)
-        last_sql_messages = list(
-            filter(lambda r: True if r.full_sql_message is not None and r.full_sql_message.strip() != '' else False,
-                   self.history_records))
-        last_sql_message_str = "[]" if last_sql_messages is None or len(last_sql_messages) == 0 else last_sql_messages[
-            -1].full_sql_message
-
-        last_chart_messages = list(
-            filter(
-                lambda r: True if r.full_chart_message is not None and r.full_chart_message.strip() != '' else False,
-                self.history_records))
-        last_chart_message_str = "[]" if last_chart_messages is None or len(last_chart_messages) == 0 else \
-            last_chart_messages[-1].full_chart_message
-
-        last_sql_messages: List[dict[str, Any]] = orjson.loads(last_sql_message_str)
+        last_sql_messages: List[dict[str, Any]] = self.generate_sql_logs[-1].messages if len(
+            self.generate_sql_logs) > 0 else []
 
         # todo maybe can configure
         count_limit = 0 - base_message_count_limit
@@ -167,7 +157,8 @@ class LLMService:
                     _msg = AIMessage(content=last_sql_message['content'])
                     self.sql_message.append(_msg)
 
-        last_chart_messages: List[dict[str, Any]] = orjson.loads(last_chart_message_str)
+        last_chart_messages: List[dict[str, Any]] = self.generate_chart_logs[-1].messages if len(
+            self.generate_chart_logs) > 0 else []
 
         self.chart_message = []
         # add sys prompt
@@ -177,11 +168,11 @@ class LLMService:
             # limit count
             for last_chart_message in last_chart_messages:
                 _msg: BaseMessage
-                if last_chart_message['type'] == 'human':
-                    _msg = HumanMessage(content=last_chart_message['content'])
+                if last_chart_message.get('type') == 'human':
+                    _msg = HumanMessage(content=last_chart_message.get('content'))
                     self.chart_message.append(_msg)
-                elif last_chart_message['type'] == 'ai':
-                    _msg = AIMessage(content=last_chart_message['content'])
+                elif last_chart_message.get('type') == 'ai':
+                    _msg = AIMessage(content=last_chart_message.get('content'))
                     self.chart_message.append(_msg)
 
     def init_record(self) -> ChatRecord:
@@ -222,11 +213,16 @@ class LLMService:
         analysis_msg.append(SystemMessage(content=self.chat_question.analysis_sys_question()))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
 
-        self.record = save_full_analysis_message_and_answer(session=self.session, record_id=self.record.id, answer='',
-                                                            full_message=orjson.dumps([{'type': msg.type,
-                                                                                        'content': msg.content} for msg
-                                                                                       in
-                                                                                       analysis_msg]).decode())
+        self.current_logs[OperationEnum.ANALYSIS] = start_log(session=self.session,
+                                                              ai_modal_id=self.chat_question.ai_modal_id,
+                                                              ai_modal_name=self.chat_question.ai_modal_name,
+                                                              operate=OperationEnum.ANALYSIS,
+                                                              record_id=self.record.id,
+                                                              full_message=[
+                                                                  {'type': msg.type,
+                                                                   'content': msg.content} for
+                                                                  msg
+                                                                  in analysis_msg])
         full_thinking_text = ''
         full_analysis_text = ''
         res = self.llm.stream(analysis_msg)
@@ -247,14 +243,18 @@ class LLMService:
             get_token_usage(chunk, token_usage)
 
         analysis_msg.append(AIMessage(full_analysis_text))
-        self.record = save_full_analysis_message_and_answer(session=self.session, record_id=self.record.id,
-                                                            token_usage=token_usage,
-                                                            answer=orjson.dumps({'content': full_analysis_text,
-                                                                                 'reasoning_content': full_thinking_text}).decode(),
-                                                            full_message=orjson.dumps([{'type': msg.type,
-                                                                                        'content': msg.content} for msg
-                                                                                       in
-                                                                                       analysis_msg]).decode())
+
+        self.current_logs[OperationEnum.ANALYSIS] = end_log(session=self.session,
+                                                            log=self.current_logs[
+                                                                OperationEnum.ANALYSIS],
+                                                            full_message=[
+                                                                {'type': msg.type,
+                                                                 'content': msg.content}
+                                                                for msg in analysis_msg],
+                                                            reasoning_content=full_thinking_text,
+                                                            token_usage=token_usage)
+        self.record = save_analysis_answer(session=self.session, record_id=self.record.id,
+                                           answer=orjson.dumps({'content': full_analysis_text}).decode())
 
     def generate_predict(self):
         fields = self.get_fields_from_chart()
@@ -265,12 +265,16 @@ class LLMService:
         predict_msg.append(SystemMessage(content=self.chat_question.predict_sys_question()))
         predict_msg.append(HumanMessage(content=self.chat_question.predict_user_question()))
 
-        self.record = save_full_predict_message_and_answer(session=self.session, record_id=self.record.id, answer='',
-                                                           data='',
-                                                           full_message=orjson.dumps([{'type': msg.type,
-                                                                                       'content': msg.content} for msg
-                                                                                      in
-                                                                                      predict_msg]).decode())
+        self.current_logs[OperationEnum.PREDICT_DATA] = start_log(session=self.session,
+                                                                  ai_modal_id=self.chat_question.ai_modal_id,
+                                                                  ai_modal_name=self.chat_question.ai_modal_name,
+                                                                  operate=OperationEnum.PREDICT_DATA,
+                                                                  record_id=self.record.id,
+                                                                  full_message=[
+                                                                      {'type': msg.type,
+                                                                       'content': msg.content} for
+                                                                      msg
+                                                                      in predict_msg])
         full_thinking_text = ''
         full_predict_text = ''
         res = self.llm.stream(predict_msg)
@@ -291,15 +295,17 @@ class LLMService:
             get_token_usage(chunk, token_usage)
 
         predict_msg.append(AIMessage(full_predict_text))
-        self.record = save_full_predict_message_and_answer(session=self.session, record_id=self.record.id,
-                                                           token_usage=token_usage,
-                                                           answer=orjson.dumps({'content': full_predict_text,
-                                                                                'reasoning_content': full_thinking_text}).decode(),
-                                                           data='',
-                                                           full_message=orjson.dumps([{'type': msg.type,
-                                                                                       'content': msg.content} for msg
-                                                                                      in
-                                                                                      predict_msg]).decode())
+        self.record = save_predict_answer(session=self.session, record_id=self.record.id,
+                                          answer=orjson.dumps({'content': full_predict_text}).decode())
+        self.current_logs[OperationEnum.PREDICT_DATA] = end_log(session=self.session,
+                                                                log=self.current_logs[
+                                                                    OperationEnum.PREDICT_DATA],
+                                                                full_message=[
+                                                                    {'type': msg.type,
+                                                                     'content': msg.content}
+                                                                    for msg in predict_msg],
+                                                                reasoning_content=full_thinking_text,
+                                                                token_usage=token_usage)
 
     def generate_recommend_questions_task(self):
 
@@ -316,12 +322,16 @@ class LLMService:
         guess_msg.append(
             HumanMessage(content=self.chat_question.guess_user_question(orjson.dumps(old_questions).decode())))
 
-        self.record = save_full_recommend_question_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                      full_message=orjson.dumps([{'type': msg.type,
-                                                                                                  'content': msg.content}
-                                                                                                 for msg
-                                                                                                 in
-                                                                                                 guess_msg]).decode())
+        self.current_logs[OperationEnum.GENERATE_RECOMMENDED_QUESTIONS] = start_log(session=self.session,
+                                                                                    ai_modal_id=self.chat_question.ai_modal_id,
+                                                                                    ai_modal_name=self.chat_question.ai_modal_name,
+                                                                                    operate=OperationEnum.GENERATE_RECOMMENDED_QUESTIONS,
+                                                                                    record_id=self.record.id,
+                                                                                    full_message=[
+                                                                                        {'type': msg.type,
+                                                                                         'content': msg.content} for
+                                                                                        msg
+                                                                                        in guess_msg])
         full_thinking_text = ''
         full_guess_text = ''
         token_usage = {}
@@ -342,15 +352,19 @@ class LLMService:
             get_token_usage(chunk, token_usage)
 
         guess_msg.append(AIMessage(full_guess_text))
-        self.record = save_full_recommend_question_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                      token_usage=token_usage,
-                                                                      answer={'content': full_guess_text,
-                                                                              'reasoning_content': full_thinking_text},
-                                                                      full_message=orjson.dumps([{'type': msg.type,
-                                                                                                  'content': msg.content}
-                                                                                                 for msg
-                                                                                                 in
-                                                                                                 guess_msg]).decode())
+
+        self.current_logs[OperationEnum.GENERATE_RECOMMENDED_QUESTIONS] = end_log(session=self.session,
+                                                                                  log=self.current_logs[
+                                                                                      OperationEnum.GENERATE_RECOMMENDED_QUESTIONS],
+                                                                                  full_message=[
+                                                                                      {'type': msg.type,
+                                                                                       'content': msg.content}
+                                                                                      for msg in guess_msg],
+                                                                                  reasoning_content=full_thinking_text,
+                                                                                  token_usage=token_usage)
+        self.record = save_recommend_question_answer(session=self.session, record_id=self.record.id,
+                                                     answer={'content': full_guess_text})
+
         yield {'recommended_question': self.record.recommended_question}
 
     def select_datasource(self):
@@ -376,6 +390,9 @@ class LLMService:
         ignore_auto_select = _ds_list and len(_ds_list) == 1
         # ignore auto select ds
 
+        full_thinking_text = ''
+        full_text = ''
+
         if not ignore_auto_select:
             _ds_list_dict = []
             for _ds in _ds_list:
@@ -383,20 +400,15 @@ class LLMService:
             datasource_msg.append(
                 HumanMessage(self.chat_question.datasource_user_question(orjson.dumps(_ds_list_dict).decode())))
 
-            history_msg = []
-            if self.record.full_select_datasource_message and self.record.full_select_datasource_message.strip() != '':
-                history_msg = orjson.loads(self.record.full_select_datasource_message)
+            self.current_logs[OperationEnum.CHOOSE_DATASOURCE] = start_log(session=self.session,
+                                                                           ai_modal_id=self.chat_question.ai_modal_id,
+                                                                           ai_modal_name=self.chat_question.ai_modal_name,
+                                                                           operate=OperationEnum.CHOOSE_DATASOURCE,
+                                                                           record_id=self.record.id,
+                                                                           full_message=[{'type': msg.type,
+                                                                                          'content': msg.content} for
+                                                                                         msg in datasource_msg])
 
-            self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                         answer='',
-                                                                         full_message=orjson.dumps(history_msg +
-                                                                                                   [{'type': msg.type,
-                                                                                                     'content': msg.content}
-                                                                                                    for msg
-                                                                                                    in
-                                                                                                    datasource_msg]).decode())
-            full_thinking_text = ''
-            full_text = ''
             token_usage = {}
             res = self.llm.stream(datasource_msg)
             for chunk in res:
@@ -414,6 +426,15 @@ class LLMService:
                 yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
                 get_token_usage(chunk, token_usage)
             datasource_msg.append(AIMessage(full_text))
+
+            self.current_logs[OperationEnum.CHOOSE_DATASOURCE] = end_log(session=self.session,
+                                                                         log=self.current_logs[
+                                                                             OperationEnum.CHOOSE_DATASOURCE],
+                                                                         full_message=[
+                                                                             {'type': msg.type, 'content': msg.content}
+                                                                             for msg in datasource_msg],
+                                                                         reasoning_content=full_thinking_text,
+                                                                         token_usage=token_usage)
 
             json_str = extract_nested_json(full_text)
 
@@ -460,17 +481,10 @@ class LLMService:
             _error = e
 
         if not ignore_auto_select:
-            self.record = save_full_select_datasource_message_and_answer(session=self.session, record_id=self.record.id,
-                                                                         answer=orjson.dumps({'content': full_text,
-                                                                                              'reasoning_content': full_thinking_text}).decode(),
-                                                                         datasource=_datasource,
-                                                                         engine_type=_engine_type,
-                                                                         full_message=orjson.dumps(history_msg +
-                                                                                                   [{'type': msg.type,
-                                                                                                     'content': msg.content}
-                                                                                                    for msg
-                                                                                                    in
-                                                                                                    datasource_msg]).decode())
+            self.record = save_select_datasource_answer(session=self.session, record_id=self.record.id,
+                                                        answer=orjson.dumps({'content': full_text}).decode(),
+                                                        datasource=_datasource,
+                                                        engine_type=_engine_type)
         self.init_messages()
 
         if _error:
@@ -479,10 +493,15 @@ class LLMService:
     def generate_sql(self):
         # append current question
         self.sql_message.append(HumanMessage(self.chat_question.sql_user_question()))
-        self.record = save_full_sql_message(session=self.session, record_id=self.record.id,
-                                            full_message=orjson.dumps(
-                                                [{'type': msg.type, 'content': msg.content} for msg in
-                                                 self.sql_message]).decode())
+
+        self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=self.session,
+                                                                  ai_modal_id=self.chat_question.ai_modal_id,
+                                                                  ai_modal_name=self.chat_question.ai_modal_name,
+                                                                  operate=OperationEnum.GENERATE_SQL,
+                                                                  record_id=self.record.id,
+                                                                  full_message=[
+                                                                      {'type': msg.type, 'content': msg.content} for msg
+                                                                      in self.sql_message])
         full_thinking_text = ''
         full_sql_text = ''
         token_usage = {}
@@ -503,24 +522,37 @@ class LLMService:
             get_token_usage(chunk, token_usage)
 
         self.sql_message.append(AIMessage(full_sql_text))
-        self.record = save_full_sql_message_and_answer(session=self.session, record_id=self.record.id,
-                                                       token_usage=token_usage,
-                                                       answer=orjson.dumps({'content': full_sql_text,
-                                                                            'reasoning_content': full_thinking_text}).decode(),
-                                                       full_message=orjson.dumps(
-                                                           [{'type': msg.type, 'content': msg.content} for msg in
-                                                            self.sql_message]).decode())
+
+        self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=self.session,
+                                                                log=self.current_logs[OperationEnum.GENERATE_SQL],
+                                                                full_message=[{'type': msg.type, 'content': msg.content}
+                                                                              for msg in self.sql_message],
+                                                                reasoning_content=full_thinking_text,
+                                                                token_usage=token_usage)
+        self.record = save_sql_answer(session=self.session, record_id=self.record.id,
+                                      answer=orjson.dumps({'content': full_sql_text}).decode())
 
     def generate_with_sub_sql(self, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
         self.chat_question.sql = sql
         self.chat_question.sub_query = sub_query
-        msg: List[Union[BaseMessage, dict[str, Any]]] = []
-        msg.append(SystemMessage(content=self.chat_question.dynamic_sys_question()))
-        msg.append(HumanMessage(content=self.chat_question.dynamic_user_question()))
+        dynamic_sql_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+        dynamic_sql_msg.append(SystemMessage(content=self.chat_question.dynamic_sys_question()))
+        dynamic_sql_msg.append(HumanMessage(content=self.chat_question.dynamic_user_question()))
+
+        self.current_logs[OperationEnum.GENERATE_DYNAMIC_SQL] = start_log(session=self.session,
+                                                                          ai_modal_id=self.chat_question.ai_modal_id,
+                                                                          ai_modal_name=self.chat_question.ai_modal_name,
+                                                                          operate=OperationEnum.GENERATE_DYNAMIC_SQL,
+                                                                          record_id=self.record.id,
+                                                                          full_message=[{'type': msg.type,
+                                                                                         'content': msg.content}
+                                                                                        for
+                                                                                        msg in dynamic_sql_msg])
+
         full_thinking_text = ''
         full_dynamic_text = ''
-        res = self.llm.stream(msg)
+        res = self.llm.stream(dynamic_sql_msg)
         token_usage = {}
         for chunk in res:
             SQLBotLogUtil.info(chunk)
@@ -532,6 +564,18 @@ class LLMService:
             full_thinking_text += reasoning_content_chunk
             full_dynamic_text += chunk.content
             get_token_usage(chunk, token_usage)
+
+        dynamic_sql_msg.append(AIMessage(full_dynamic_text))
+
+        self.current_logs[OperationEnum.GENERATE_DYNAMIC_SQL] = end_log(session=self.session,
+                                                                        log=self.current_logs[
+                                                                            OperationEnum.GENERATE_DYNAMIC_SQL],
+                                                                        full_message=[
+                                                                            {'type': msg.type,
+                                                                             'content': msg.content}
+                                                                            for msg in dynamic_sql_msg],
+                                                                        reasoning_content=full_thinking_text,
+                                                                        token_usage=token_usage)
 
         SQLBotLogUtil.info(full_dynamic_text)
         return full_dynamic_text
@@ -550,23 +594,23 @@ class LLMService:
         filter = json.dumps(filters, ensure_ascii=False)
         self.chat_question.sql = sql
         self.chat_question.filter = filter
-        msg: List[Union[BaseMessage, dict[str, Any]]] = []
-        msg.append(SystemMessage(content=self.chat_question.filter_sys_question()))
-        msg.append(HumanMessage(content=self.chat_question.filter_user_question()))
+        permission_sql_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+        permission_sql_msg.append(SystemMessage(content=self.chat_question.filter_sys_question()))
+        permission_sql_msg.append(HumanMessage(content=self.chat_question.filter_user_question()))
 
-        history_msg = []
-        # if self.record.full_analysis_message and self.record.full_analysis_message.strip() != '':
-        #     history_msg = orjson.loads(self.record.full_analysis_message)
-
-        # self.record = save_full_analysis_message_and_answer(session=self.session, record_id=self.record.id, answer='',
-        #                                                     full_message=orjson.dumps(history_msg +
-        #                                                                               [{'type': msg.type,
-        #                                                                                 'content': msg.content} for msg
-        #                                                                                in
-        #                                                                                msg]).decode())
+        self.current_logs[OperationEnum.GENERATE_SQL_WITH_PERMISSIONS] = start_log(session=self.session,
+                                                                                   ai_modal_id=self.chat_question.ai_modal_id,
+                                                                                   ai_modal_name=self.chat_question.ai_modal_name,
+                                                                                   operate=OperationEnum.GENERATE_SQL_WITH_PERMISSIONS,
+                                                                                   record_id=self.record.id,
+                                                                                   full_message=[
+                                                                                       {'type': msg.type,
+                                                                                        'content': msg.content} for
+                                                                                       msg
+                                                                                       in permission_sql_msg])
         full_thinking_text = ''
         full_filter_text = ''
-        res = self.llm.stream(msg)
+        res = self.llm.stream(permission_sql_msg)
         token_usage = {}
         for chunk in res:
             SQLBotLogUtil.info(chunk)
@@ -583,16 +627,18 @@ class LLMService:
             # yield {'content': chunk.content, 'reasoning_content': reasoning_content_chunk}
             get_token_usage(chunk, token_usage)
 
-        msg.append(AIMessage(full_filter_text))
-        # self.record = save_full_analysis_message_and_answer(session=self.session, record_id=self.record.id,
-        #                                                     token_usage=token_usage,
-        #                                                     answer=orjson.dumps({'content': full_analysis_text,
-        #                                                                          'reasoning_content': full_thinking_text}).decode(),
-        #                                                     full_message=orjson.dumps(history_msg +
-        #                                                                               [{'type': msg.type,
-        #                                                                                 'content': msg.content} for msg
-        #                                                                                in
-        #                                                                                analysis_msg]).decode())
+        permission_sql_msg.append(AIMessage(full_filter_text))
+
+        self.current_logs[OperationEnum.GENERATE_SQL_WITH_PERMISSIONS] = end_log(session=self.session,
+                                                                                 log=self.current_logs[
+                                                                                     OperationEnum.GENERATE_SQL_WITH_PERMISSIONS],
+                                                                                 full_message=[
+                                                                                     {'type': msg.type,
+                                                                                      'content': msg.content}
+                                                                                     for msg in permission_sql_msg],
+                                                                                 reasoning_content=full_thinking_text,
+                                                                                 token_usage=token_usage)
+
         SQLBotLogUtil.info(full_filter_text)
         return full_filter_text
 
@@ -616,10 +662,16 @@ class LLMService:
     def generate_chart(self):
         # append current question
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question()))
-        self.record = save_full_chart_message(session=self.session, record_id=self.record.id,
-                                              full_message=orjson.dumps(
-                                                  [{'type': msg.type, 'content': msg.content} for msg in
-                                                   self.chart_message]).decode())
+
+        self.current_logs[OperationEnum.GENERATE_CHART] = start_log(session=self.session,
+                                                                    ai_modal_id=self.chat_question.ai_modal_id,
+                                                                    ai_modal_name=self.chat_question.ai_modal_name,
+                                                                    operate=OperationEnum.GENERATE_CHART,
+                                                                    record_id=self.record.id,
+                                                                    full_message=[
+                                                                        {'type': msg.type, 'content': msg.content} for
+                                                                        msg
+                                                                        in self.chart_message])
         full_thinking_text = ''
         full_chart_text = ''
         token_usage = {}
@@ -640,13 +692,16 @@ class LLMService:
             get_token_usage(chunk, token_usage)
 
         self.chart_message.append(AIMessage(full_chart_text))
-        self.record = save_full_chart_message_and_answer(session=self.session, record_id=self.record.id,
-                                                         token_usage=token_usage,
-                                                         answer=orjson.dumps({'content': full_chart_text,
-                                                                              'reasoning_content': full_thinking_text}).decode(),
-                                                         full_message=orjson.dumps(
-                                                             [{'type': msg.type, 'content': msg.content} for msg in
-                                                              self.chart_message]).decode())
+
+        self.record = save_chart_answer(session=self.session, record_id=self.record.id,
+                                        answer=orjson.dumps({'content': full_chart_text}).decode())
+        self.current_logs[OperationEnum.GENERATE_CHART] = end_log(session=self.session,
+                                                                  log=self.current_logs[OperationEnum.GENERATE_CHART],
+                                                                  full_message=[
+                                                                      {'type': msg.type, 'content': msg.content}
+                                                                      for msg in self.chart_message],
+                                                                  reasoning_content=full_thinking_text,
+                                                                  token_usage=token_usage)
 
     def check_sql(self, res: str) -> tuple[any]:
         json_str = extract_nested_json(res)
@@ -829,8 +884,8 @@ class LLMService:
                              'type': 'datasource-result'}).decode() + '\n\n'
                 if in_chat:
                     yield 'data:' + orjson.dumps({'id': self.ds.id, 'datasource_name': self.ds.name,
-                                        'engine_type': self.ds.type_name or self.ds.type,
-                                        'type': 'datasource'}).decode() + '\n\n'
+                                                  'engine_type': self.ds.type_name or self.ds.type,
+                                                  'type': 'datasource'}).decode() + '\n\n'
 
                 self.chat_question.db_schema = self.out_ds_instance.get_db_schema(
                     self.ds.id) if self.out_ds_instance else get_table_schema(session=self.session,
@@ -909,7 +964,8 @@ class LLMService:
             chart = self.check_save_chart(res=full_chart_text)
             SQLBotLogUtil.info(chart)
             if in_chat:
-                yield 'data:' + orjson.dumps({'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
+                yield 'data:' + orjson.dumps(
+                    {'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
             else:
                 data = []
                 _fields = {}
