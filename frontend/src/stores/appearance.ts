@@ -252,7 +252,7 @@ export const useAppearanceStore = defineStore('appearanceStore', {
         setLinkIcon()
         return
       }
-      const resData = await request.get('/system/appearance')
+      const resData = await request.get('/system/appearance/ui')
       this.loaded = true
       if (!resData?.length) {
         return

@@ -22,15 +22,22 @@ const validator = ref({
   token: '',
 })
 const loading = ref(true)
-const eventName = 'sqlbot_assistant_event'
+const eventName = 'sqlbot_embedded_event'
 const communicationCb = async (event: any) => {
   if (event.data?.eventName === eventName) {
     if (event.data?.messageId !== route.query.id) {
       return
     }
     if (event.data?.busi == 'certificate') {
+      const type = parseInt(event.data['type'])
       const certificate = event.data['certificate']
-      assistantStore.setType(1)
+      assistantStore.setType(type || 3)
+      if (type === 4) {
+        assistantStore.setToken(certificate)
+        assistantStore.setAssistant(true)
+        loading.value = false
+        return
+      }
       assistantStore.setCertificate(certificate)
       assistantStore.resolveCertificate(certificate)
     }
@@ -55,12 +62,28 @@ const setFormatOnline = (text?: any) => {
   assistantStore.setOnline(false)
 }
 
+const registerReady = (assistantId: any) => {
+  window.addEventListener('message', communicationCb)
+  const readyData = {
+    eventName: 'sqlbot_embedded_event',
+    busi: 'ready',
+    ready: true,
+    messageId: assistantId,
+  }
+  window.parent.postMessage(readyData, '*')
+}
+
 onBeforeMount(async () => {
-  debugger
   const assistantId = route.query.id
   if (!assistantId) {
     ElMessage.error('Miss embedded id, please check embedded url')
     return
+  }
+  const typeParam = route.query.type
+  let assistantType = 2
+  if (typeParam) {
+    assistantType = parseInt(typeParam.toString())
+    assistantStore.setType(assistantType)
   }
   const online = route.query.online
   setFormatOnline(online)
@@ -72,6 +95,11 @@ onBeforeMount(async () => {
   const now = Date.now()
   assistantStore.setFlag(now)
   assistantStore.setId(assistantId?.toString() || '')
+  if (assistantType === 4) {
+    assistantStore.setAssistant(true)
+    registerReady(assistantId)
+    return
+  }
   const param = {
     id: assistantId,
     virtual: assistantStore.getFlag,
@@ -82,14 +110,7 @@ onBeforeMount(async () => {
   assistantStore.setAssistant(true)
   loading.value = false
 
-  window.addEventListener('message', communicationCb)
-  const readyData = {
-    eventName: 'sqlbot_embedded_event',
-    busi: 'ready',
-    ready: true,
-    messageId: assistantId,
-  }
-  window.parent.postMessage(readyData, '*')
+  registerReady(assistantId)
 })
 
 onBeforeUnmount(() => {

@@ -402,7 +402,7 @@ const buildParam = () => {
   return formData
 }
 const init = () => {
-  const url = '/system/appearance'
+  const url = '/system/appearance/ui'
   changedItemArray.value = []
   fileList.value = []
   request
