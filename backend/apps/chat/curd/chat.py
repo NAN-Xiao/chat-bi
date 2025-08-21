@@ -95,7 +95,7 @@ def get_chat_with_records_with_data(session: SessionDep, chart_id: int, current_
                                     current_assistant: CurrentAssistant) -> ChatInfo:
     return get_chat_with_records(session, chart_id, current_user, current_assistant, True)
 
-
+dynamic_ds_types = [1, 3]
 def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser,
                           current_assistant: CurrentAssistant, with_data: bool = False) -> ChatInfo:
     chat = session.get(Chat, chart_id)
@@ -104,7 +104,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
     chat_info = ChatInfo(**chat.model_dump())
 
-    if current_assistant and current_assistant.type == 1:
+    if current_assistant and current_assistant.type in dynamic_ds_types:
         out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
         ds = out_ds_instance.get_ds(chat.datasource)
     else:
