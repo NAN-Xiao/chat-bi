@@ -439,7 +439,7 @@ const copyCode = (row: any, key: any = 'app_secret') => {
           <el-table-column
             prop="domain"
             :label="$t('embedded.cross_domain_settings')"
-            width="204"
+            show-overflow-tooltip
           />
           <el-table-column fixed="right" width="80" :label="t('ds.actions')">
             <template #default="scope">
