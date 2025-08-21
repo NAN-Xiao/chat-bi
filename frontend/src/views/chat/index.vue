@@ -129,8 +129,14 @@
         <div v-else-if="computedMessages.length == 0 && loading" class="welcome-content-block">
           <logo />
         </div>
-        <el-scrollbar v-if="computedMessages.length > 0" ref="chatListRef" class="no-horizontal">
+        <el-scrollbar
+          v-if="computedMessages.length > 0"
+          ref="chatListRef"
+          class="no-horizontal"
+          @scroll="handleScroll"
+        >
           <div
+            ref="innerRef"
             class="chat-scroll"
             :class="{ 'no-sidebar': !isAssistant && !chatListSideBarShow, pad16: isAssistant }"
           >
@@ -391,6 +397,7 @@ const { t } = useI18n()
 const inputMessage = ref('')
 
 const chatListRef = ref()
+const innerRef = ref()
 const chatCreatorRef = ref()
 
 function scrollToBottom() {
@@ -442,6 +449,47 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
 const goEmpty = (func?: (...p: any[]) => void, ...param: any[]) => {
   inputMessage.value = ''
   stop(func, ...param)
+}
+
+let scrollTime: any
+let scrollingTime: any
+let scrollTopVal = 0
+let scrolling = false
+const scrollBottom = () => {
+  if (scrolling) return
+  if (!isTyping.value) {
+    clearInterval(scrollTime)
+  }
+  chatListRef.value!.setScrollTop(innerRef.value!.clientHeight)
+}
+
+const handleScroll = (val: any) => {
+  scrollTopVal = val.scrollTop
+  scrolling = true
+  clearTimeout(scrollingTime)
+  scrollingTime = setTimeout(() => {
+    scrolling = false
+  }, 400)
+  if (
+    scrollTopVal + 200 <
+    innerRef.value!.clientHeight - (document.querySelector('.chat-record-list')!.clientHeight - 20)
+  ) {
+    clearInterval(scrollTime)
+    scrollTime = null
+    return
+  }
+
+  if (
+    !scrollTime &&
+    isTyping.value &&
+    scrollTopVal + 30 <
+      innerRef.value!.clientHeight -
+        (document.querySelector('.chat-record-list')!.clientHeight - 20)
+  ) {
+    scrollTime = setInterval(() => {
+      scrollBottom()
+    }, 300)
+  }
 }
 
 const createNewChatSimple = async () => {
@@ -615,6 +663,10 @@ const sendMessage = async ($event: any = {}) => {
 
   loading.value = true
   isTyping.value = true
+  scrollTopVal = innerRef.value!.clientHeight
+  scrollTime = setInterval(() => {
+    scrollBottom()
+  }, 300)
   await assistantPrepareSend()
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
@@ -1164,7 +1216,7 @@ onMounted(() => {
       --ed-button-hover-bg-color: var(--ed-color-primary-1a, #1cba901a);
       --ed-button-border-color: rgba(217, 220, 223, 1);
       --ed-button-hover-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-active-bg-color: rgba(28, 186, 144, 0.2);
+      --ed-button-active-bg-color: var(--ed-color-primary-33, #1cba9033);
       --ed-button-active-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
     }
   }
