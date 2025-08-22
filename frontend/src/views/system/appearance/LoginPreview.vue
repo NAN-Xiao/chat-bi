@@ -33,7 +33,7 @@
     </div>
     <div class="login-container">
       <div v-if="showLoginImage" class="left-img">
-        <el-image class="login-image" fit="cover" :src="pageBg || login_image" />
+        <el-image class="login-image" :src="pageBg || login_image" />
       </div>
       <div class="right-container">
         <div class="login-form-center">
