@@ -107,7 +107,7 @@ const submitForm = () => {
   .login-left {
     display: flex;
     height: 100%;
-    max-width: 50vh;
+    width: 40%;
     img {
       height: 100%;
       max-width: 100%;
