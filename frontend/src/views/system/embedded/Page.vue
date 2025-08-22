@@ -557,16 +557,6 @@ const copyCode = (row: any, key: any = 'app_secret') => {
           clearable
         />
       </el-form-item>
-      <el-form-item prop="email" :label="$t('embedded.password_length')">
-        <el-input
-          v-model="pageForm.email"
-          :placeholder="
-            $t('datasource.please_enter') + $t('common.empty') + $t('embedded.password_length')
-          "
-          autocomplete="off"
-          clearable
-        />
-      </el-form-item>
     </el-form>
     <template #footer>
       <div class="dialog-footer">
