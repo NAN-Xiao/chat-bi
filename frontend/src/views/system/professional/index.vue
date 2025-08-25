@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted, reactive, unref, nextTick } from 'vue'
+import { nextTick, onMounted, reactive, ref, unref } from 'vue'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import { professionalApi } from '@/api/professional'
 import { formatTimestamp } from '@/utils/date'
@@ -72,7 +72,7 @@ const exportBatchUser = () => {
       cancelButtonText: t('common.cancel'),
       customClass: 'confirm-no_icon',
       autofocus: false,
-    }
+    },
   ).then(() => {
     professionalApi.deleteEmbedded(multipleSelectionAll.value.map((ele) => ele.id)).then(() => {
       ElMessage({
@@ -112,7 +112,7 @@ const deleteBatchUser = () => {
       cancelButtonText: t('common.cancel'),
       customClass: 'confirm-no_icon',
       autofocus: false,
-    }
+    },
   ).then(() => {
     professionalApi.deleteEmbedded(multipleSelectionAll.value.map((ele) => ele.id)).then(() => {
       ElMessage({
@@ -297,19 +297,20 @@ const deleteHandlerItem = (idx: number) => {
             </el-icon>
           </template>
         </el-input>
-        <el-button secondary @click="exportAllUser">
-          <template #icon>
-            <icon_export_outlined />
-          </template>
-          {{ $t('professional.export_all') }}
-        </el-button>
-        <el-button secondary @click="editHandler(null)">
-          <template #icon>
-            <ccmUpload></ccmUpload>
-          </template>
-          {{ $t('user.batch_import') }}
-        </el-button>
-
+        <template v-if="false">
+          <el-button secondary @click="exportAllUser">
+            <template #icon>
+              <icon_export_outlined />
+            </template>
+            {{ $t('professional.export_all') }}
+          </el-button>
+          <el-button secondary @click="editHandler(null)">
+            <template #icon>
+              <ccmUpload></ccmUpload>
+            </template>
+            {{ $t('user.batch_import') }}
+          </el-button>
+        </template>
         <el-button type="primary" @click="editHandler(null)">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
@@ -434,8 +435,8 @@ const deleteHandlerItem = (idx: number) => {
       <button class="danger-button" @click="deleteBatchUser">{{ $t('dashboard.delete') }}</button>
 
       <span class="selected">{{
-        $t('user.selected_2_items', { msg: multipleSelectionAll.length })
-      }}</span>
+          $t('user.selected_2_items', { msg: multipleSelectionAll.length })
+        }}</span>
 
       <el-button text @click="cancelDelete">
         {{ $t('common.cancel') }}
@@ -577,23 +578,27 @@ const deleteHandlerItem = (idx: number) => {
     height: auto;
     padding-top: 200px;
   }
+
   .tool-left {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
+
     .page-title {
       font-weight: 500;
       font-size: 20px;
       line-height: 28px;
     }
   }
+
   .pagination-container {
     display: flex;
     justify-content: end;
     align-items: center;
     margin-top: 16px;
   }
+
   .table-content {
     max-height: calc(100% - 104px);
     overflow-y: auto;
@@ -606,6 +611,7 @@ const deleteHandlerItem = (idx: number) => {
       .ed-icon {
         color: #646a73;
       }
+
       .user-status-container {
         display: flex;
         align-items: center;
@@ -618,8 +624,10 @@ const deleteHandlerItem = (idx: number) => {
           margin-left: 8px;
         }
       }
+
       .field-comment {
         height: 24px;
+
         .ed-icon {
           position: relative;
           cursor: pointer;
@@ -716,9 +724,11 @@ const deleteHandlerItem = (idx: number) => {
   .ed-form-item--label-top .ed-form-item__label {
     margin-bottom: 4px;
   }
+
   .ed-form-item__label {
     color: #646a73;
   }
+
   .content {
     width: 100%;
     line-height: 22px;
@@ -761,6 +771,7 @@ const deleteHandlerItem = (idx: number) => {
     border-radius: 6px;
     margin-right: -4px;
     cursor: pointer;
+
     &:hover {
       background-color: #1f23291a;
     }

@@ -2,7 +2,6 @@ import datetime
 from typing import List, Optional
 
 from sqlalchemy import and_, or_, select, func, delete, update
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 
 from apps.terminology.models.terminology_model import Terminology, TerminologyInfo
@@ -25,7 +24,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         # 步骤1：先找到所有匹配的节点ID（无论是父节点还是子节点）
         matched_ids_subquery = (
             select(Terminology.id)
-            .where(Terminology.name.like(keyword_pattern))  # LIKE查询条件
+            .where(Terminology.word.like(keyword_pattern))  # LIKE查询条件
             .subquery()
         )
 
@@ -60,7 +59,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         children_subquery = (
             select(
                 child.pid,
-                func.jsonb_agg(child.name).order_by(child.create_time.desc()).label('children_names')
+                func.jsonb_agg(child.word).filter(child.word.isnot(None)).label('other_words')
             )
             .where(child.pid.isnot(None))
             .group_by(child.pid)
@@ -74,10 +73,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
                 Terminology.word,
                 Terminology.create_time,
                 Terminology.description,
-                func.coalesce(
-                    children_subquery.c.children_names,
-                    func.cast('[]', JSONB)
-                ).label('other_words')
+                children_subquery.c.other_words
             )
             .outerjoin(
                 children_subquery,
@@ -110,10 +106,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
                 Terminology.word,
                 Terminology.create_time,
                 Terminology.description,
-                func.coalesce(
-                    func.jsonb_agg(child.word),
-                    func.cast('[]', JSONB)
-                ).label('other_words')
+                func.jsonb_agg(child.word).filter(child.word.isnot(None)).label('other_words')
             )
             .outerjoin(child, and_(Terminology.id == child.pid))
             .where(Terminology.id.in_(paginated_parent_ids))
@@ -130,7 +123,7 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
             word=row.word,
             create_time=row.create_time,
             description=row.description,
-            other_words=row.other_words,
+            other_words=row.other_words if row.other_words else [],
         ))
 
     return current_page, page_size, total_count, total_pages, _list
@@ -153,7 +146,7 @@ def create_terminology(session: SessionDep, info: TerminologyInfo):
     if info.other_words:
         for other_word in info.other_words:
             _list.append(
-                Terminology(pid=result.id, word=other_word, create_time=create_time, description=info.description))
+                Terminology(pid=result.id, word=other_word, create_time=create_time))
     session.bulk_save_objects(_list)
     session.flush()
     session.commit()
@@ -180,7 +173,7 @@ def update_terminology(session: SessionDep, info: TerminologyInfo):
     if info.other_words:
         for other_word in info.other_words:
             _list.append(
-                Terminology(pid=info.id, word=other_word, create_time=create_time, description=info.description))
+                Terminology(pid=info.id, word=other_word, create_time=create_time))
     session.bulk_save_objects(_list)
     session.flush()
     session.commit()
