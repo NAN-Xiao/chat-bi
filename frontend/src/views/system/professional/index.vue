@@ -187,8 +187,8 @@ const search = () => {
     .getList(pageInfo.currentPage, pageInfo.pageSize, { word: keywords.value })
     .then((res) => {
       toggleRowLoading.value = true
-      fieldList.value = res.items
-      pageInfo.total = res.total
+      fieldList.value = res.data
+      pageInfo.total = res.total_count
       nextTick(() => {
         handleToggleRowSelection()
       })
