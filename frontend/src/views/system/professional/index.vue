@@ -22,7 +22,8 @@ defineProps({
 interface Form {
   id?: string | null
   word: string | null
-  other_words?: string[] | null
+  other_words: string[]
+  description: string | null
 }
 
 const { t } = useI18n()
@@ -51,6 +52,7 @@ const dialogTitle = ref('')
 const defaultForm = {
   id: null,
   word: null,
+  description: null,
   other_words: [],
 }
 const pageForm = ref<Form>(cloneDeep(defaultForm))
@@ -537,13 +539,7 @@ const deleteHandlerItem = (idx: number) => {
     :before-close="onRowFormClose"
     modal-class="professional-term_drawer"
   >
-    <el-form
-      :model="rowInfo"
-      label-width="180px"
-      label-position="top"
-      class="form-content_error"
-      @submit.prevent
-    >
+    <el-form label-width="180px" label-position="top" class="form-content_error" @submit.prevent>
       <el-form-item :label="t('professional.business_term')">
         <div class="content">
           {{ pageForm.word }}
