@@ -50,6 +50,7 @@ const pageInfo = reactive({
 })
 
 const dialogTitle = ref('')
+const updateLoading = ref(false)
 const defaultForm = {
   id: null,
   word: null,
@@ -225,14 +226,20 @@ const saveHandler = () => {
       if (!obj.id) {
         delete obj.id
       }
-      professionalApi.updateEmbedded(obj).then(() => {
-        ElMessage({
-          type: 'success',
-          message: t('common.save_success'),
+      updateLoading.value = true
+      professionalApi
+        .updateEmbedded(obj)
+        .then(() => {
+          ElMessage({
+            type: 'success',
+            message: t('common.save_success'),
+          })
+          search()
+          onFormClose()
         })
-        search()
-        onFormClose()
-      })
+        .finally(() => {
+          updateLoading.value = false
+        })
     }
   })
 }
@@ -526,7 +533,7 @@ const deleteHandlerItem = (idx: number) => {
       </el-form-item>
     </el-form>
     <template #footer>
-      <div class="dialog-footer">
+      <div v-loading="updateLoading" class="dialog-footer">
         <el-button secondary @click="onFormClose">{{ $t('common.cancel') }}</el-button>
         <el-button type="primary" @click="saveHandler">
           {{ $t('common.save') }}
