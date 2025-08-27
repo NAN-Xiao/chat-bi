@@ -10,6 +10,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from alembic import command
 from apps.api import api_router
+from apps.system.crud.aimodel_manage import async_model_info
 from apps.system.crud.assistant import init_dynamic_cors
 from apps.system.middleware.auth import TokenMiddleware
 from apps.terminology.curd.terminology import fill_empty_embeddings
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     init_embedding_data()
     SQLBotLogUtil.info("✅ SQLBot 初始化完成")
     await sqlbot_xpack.core.clean_xpack_cache()
+    await async_model_info()  # 异步加密已有模型的密钥和地址
     yield
     SQLBotLogUtil.info("SQLBot 应用关闭")
 

@@ -70,7 +70,7 @@ class LLMService:
     future: Future
 
     def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
-                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False):
+                 current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False, config: LLMConfig = None):
         self.chunk_list = []
         engine = create_engine(str(settings.SQLALCHEMY_DATABASE_URI))
         session_maker = sessionmaker(bind=engine)
@@ -110,7 +110,7 @@ class LLMService:
 
         self.ds = (ds if isinstance(ds, AssistantOutDsSchema) else CoreDatasource(**ds.model_dump())) if ds else None
         self.chat_question = chat_question
-        self.config = get_default_config()
+        self.config = config
         if no_reasoning:
             # only work while using qwen
             if self.config.additional_params:
@@ -124,6 +124,14 @@ class LLMService:
         # Create LLM instance through factory
         llm_instance = LLMFactory.create_llm(self.config)
         self.llm = llm_instance.llm
+
+        self.init_messages()
+    
+    @classmethod
+    async def create(cls, *args, **kwargs):
+        config: LLMConfig = await get_default_config()
+        instance = cls(*args, **kwargs, config=config)
+        return instance
 
     def is_running(self, timeout=0.5):
         try:
