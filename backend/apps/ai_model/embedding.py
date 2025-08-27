@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 from common.core.config import settings
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 
 class EmbeddingModelInfo(BaseModel):
     folder: str
@@ -49,7 +51,6 @@ class EmbeddingModelCache:
     @staticmethod
     def get_model(key: str = settings.DEFAULT_EMBEDDING_MODEL,
                   config: EmbeddingModelInfo = local_embedding_model) -> Embeddings:
-        global _embedding_model
         model_instance = _embedding_model.get(key)
         if model_instance is None:
             lock = EmbeddingModelCache._get_lock(key)
