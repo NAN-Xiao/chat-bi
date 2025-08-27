@@ -186,7 +186,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             detail=f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it"
         )
 
-    request_question = ChatQuestion(chat_id=record.chat_id, question='')
+    request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
 
     try:
         llm_service = LLMService(current_user, request_question, current_assistant)

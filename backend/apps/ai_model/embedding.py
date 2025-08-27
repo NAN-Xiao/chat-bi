@@ -1,3 +1,4 @@
+import os.path
 import threading
 from typing import Optional
 
@@ -14,7 +15,9 @@ class EmbeddingModelInfo(BaseModel):
     device: str = 'cpu'
 
 
-local_embedding_model = EmbeddingModelInfo(folder=settings.LOCAL_MODEL_PATH, name=settings.DEFAULT_EMBEDDING_MODEL)
+local_embedding_model = EmbeddingModelInfo(folder=settings.LOCAL_MODEL_PATH,
+                                           name=os.path.join(settings.LOCAL_MODEL_PATH, 'embedding',
+                                                             "shibing624_text2vec-base-chinese"))
 
 _lock = threading.Lock()
 locks = {}

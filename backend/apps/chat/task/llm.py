@@ -31,6 +31,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
+from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, CurrentUser
 from common.error import SingleMessageError
@@ -124,8 +125,6 @@ class LLMService:
         llm_instance = LLMFactory.create_llm(self.config)
         self.llm = llm_instance.llm
 
-        self.init_messages()
-
     def is_running(self, timeout=0.5):
         try:
             r = concurrent.futures.wait([self.future], timeout)
@@ -210,6 +209,9 @@ class LLMService:
         data = get_chat_chart_data(self.session, self.record.id)
         self.chat_question.data = orjson.dumps(data.get('data')).decode()
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
+
+        self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question)
+
         analysis_msg.append(SystemMessage(content=self.chat_question.analysis_sys_question()))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
 
@@ -860,6 +862,9 @@ class LLMService:
 
     def run_task(self, in_chat: bool = True):
         try:
+            self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question)
+            self.init_messages()
+
             # return id
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
