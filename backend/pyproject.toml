@@ -50,6 +50,25 @@ dependencies = [
     "dicttoxml>=1.7.16",
     "dmpython>=2.5.22; platform_system != 'Darwin'",
 ]
+
+[project.optional-dependencies]
+cpu = [
+    "torch>=2.7.0",
+]
+cu128 = [
+    "torch>=2.7.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
 [[tool.uv.index]]
 name = "default"
 url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
@@ -62,8 +81,18 @@ explicit = true
 
 [tool.uv.sources]
 sqlbot-xpack = { index = "testpypi" }
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu128", extra = "cu128" },
+]
 
 [tool.uv]
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cu128" },
+    ],
+]
 dev-dependencies = [
     "pytest<8.0.0,>=7.4.3",
     "mypy<2.0.0,>=1.8.0",
