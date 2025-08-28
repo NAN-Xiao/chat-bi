@@ -540,6 +540,7 @@ const deleteHandlerItem = (idx: number) => {
                 <el-icon
                   class="hover-icon_with_bg"
                   size="16"
+                  style="color: #646a73"
                   @click.stop="deleteHandlerItem(index)"
                 >
                   <IconOpeDelete></IconOpeDelete>
