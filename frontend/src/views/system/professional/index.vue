@@ -642,9 +642,10 @@ const deleteHandlerItem = (idx: number) => {
         display: -webkit-box;
         max-height: 66px;
         -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2; /* 限制行数为3 */
+        -webkit-line-clamp: 3; /* 限制行数为3 */
         overflow: hidden;
         text-overflow: ellipsis;
+        word-break: break-word;
       }
       .ed-icon {
         color: #646a73;
