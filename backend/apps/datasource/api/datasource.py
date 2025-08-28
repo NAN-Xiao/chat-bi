@@ -301,6 +301,11 @@ async def upload_excel(session: SessionDep, file: UploadFile = File(...)):
 
 
 def insert_pg(df, tableName, engine):
+    # fix field type
+    for i in range(len(df.dtypes)):
+        if str(df.dtypes[i]) == 'uint64':
+            df[str(df.columns[i])] = df[str(df.columns[i])].astype('string')
+
     conn = engine.raw_connection()
     cursor = conn.cursor()
     try:
