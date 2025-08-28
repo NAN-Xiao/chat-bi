@@ -59,6 +59,10 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         total_count = session.execute(count_stmt).scalar()
         total_pages = (total_count + page_size - 1) // page_size
 
+        if current_page > total_pages:
+            current_page = 1
+
+
         # 步骤3：获取分页后的父节点ID
         paginated_parent_ids = (
             parent_ids_subquery
@@ -103,6 +107,9 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
         count_stmt = select(func.count()).select_from(parent_ids_subquery.subquery())
         total_count = session.execute(count_stmt).scalar()
         total_pages = (total_count + page_size - 1) // page_size
+
+        if current_page > total_pages:
+            current_page = 1
 
         paginated_parent_ids = (
             parent_ids_subquery
