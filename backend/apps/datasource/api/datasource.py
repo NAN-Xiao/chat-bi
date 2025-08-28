@@ -10,6 +10,7 @@ import orjson
 import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
+from apps.db.db import get_schema
 from apps.db.engine import get_engine_conn
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
@@ -20,7 +21,6 @@ from ..crud.datasource import get_datasource_list, check_status, create_ds, upda
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField
-from apps.db.db import get_schema
 
 router = APIRouter(tags=["datasource"], prefix="/datasource")
 path = settings.EXCEL_PATH
@@ -327,7 +327,8 @@ def insert_pg(df, tableName, engine):
         )
         conn.commit()
     except Exception as e:
-        pass
+        traceback.print_exc()
+        raise HTTPException(400, str(e))
     finally:
         cursor.close()
         conn.close()
