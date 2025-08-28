@@ -205,6 +205,7 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
 
             record.field_comment = item.fieldComment
             record.field_index = index
+            record.field_type = item.fieldType
             session.add(record)
             session.commit()
         else:
