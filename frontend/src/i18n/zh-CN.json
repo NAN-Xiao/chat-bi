@@ -634,7 +634,7 @@
     "larger_than_5mb": "左侧背景图，矢量图建议尺寸 576*900，位图建议尺寸 1152*1800；支持 JPG、PNG、SVG，大小不超过 5M",
     "website_name": "网站名称",
     "on_webpage_tabs": "显示在网页 Tab 的平台名称",
-    "welcome_message": "欢迎语",
+    "welcome_message": "显示欢迎语",
     "the_product_logo": "产品 Logo 下的 欢迎语",
     "screen_customization_supported": "默认为 SQLBot 登录界面，支持自定义设置",
     "screen_customization_settings": "默认为 SQLBot 平台界面，支持自定义设置",
