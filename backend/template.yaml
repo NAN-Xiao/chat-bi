@@ -198,7 +198,7 @@ template:
               <background-infos>
               <user-question>查询今年中国大陆的GDP</user-question>
             </input>
-                {{"success":true,"sql":"SELECT \"country\" AS \"country_name\", \"gdp\" AS \"gdp\" FROM \"Sample_Database\".\"sample_country_gdp\" WHERE \"year\" = '2025' AND \"国家\" = '中国' LIMIT 1000","tables":["sample_country_gdp"],"chart-type":"table"}}
+                {{"success":true,"sql":"SELECT \"country\" AS \"country_name\", \"gdp\" AS \"gdp\" FROM \"Sample_Database\".\"sample_country_gdp\" WHERE \"year\" = '2025' AND \"country\" = '中国' LIMIT 1000","tables":["sample_country_gdp"],"chart-type":"table"}}
             <output>
             </output>
           </example>
