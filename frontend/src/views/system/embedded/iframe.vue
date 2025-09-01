@@ -674,6 +674,7 @@ const saveHandler = () => {
                 $t('datasource.please_enter') + $t('common.empty') + $t('embedded.application_name')
               "
               clearable
+              maxlength="50"
               autocomplete="off"
             />
           </el-form-item>
