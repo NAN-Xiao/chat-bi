@@ -767,7 +767,7 @@ const saveHandler = () => {
             <template #label>
               <div class="title-content">
                 <span class="title-form">{{ t('embedded.interface_credentials') }}</span>
-                <span class="add" @click="initCertificate(null)">
+                <span class="add btn" @click="initCertificate(null)">
                   <el-icon size="16">
                     <icon_add_outlined></icon_add_outlined>
                   </el-icon>
@@ -1215,11 +1215,18 @@ const saveHandler = () => {
       margin-left: 2px;
     }
 
-    .add {
+    .btn {
+      height: 26px;
       display: flex;
       align-items: center;
       justify-content: center;
+      padding: 0 4px;
+      border-radius: 6px;
       cursor: pointer;
+
+      &:hover {
+        background-color: #1f23291a;
+      }
     }
   }
 

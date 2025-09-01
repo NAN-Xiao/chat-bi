@@ -6,8 +6,10 @@ import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
 import { setCurrentColor } from '@/utils/utils'
 import { cloneDeep } from 'lodash-es'
+import { useAppearanceStoreWithOut } from '@/stores/appearance'
 
 const { t } = useI18n()
+const appearanceStore = useAppearanceStoreWithOut()
 const currentId = ref()
 interface SqlBotForm {
   name: string
@@ -85,9 +87,20 @@ const init = () => {
   floatIcon.value = rawData.float_icon
 
   for (const key in sqlBotForm) {
-    if (Object.prototype.hasOwnProperty.call(sqlBotForm, key) && rawData[key]) {
+    if (Object.prototype.hasOwnProperty.call(sqlBotForm, key)) {
       sqlBotForm[key] = rawData[key]
     }
+  }
+
+  if (!rawData.theme) {
+    const { customColor, themeColor } = appearanceStore
+    const currentColor =
+      themeColor === 'custom' && customColor
+        ? customColor
+        : themeColor === 'blue'
+          ? '#3370ff'
+          : '#1CBA90'
+    sqlBotForm.theme = currentColor || sqlBotForm.theme
   }
 
   nextTick(() => {
