@@ -12,7 +12,6 @@ const { t } = useI18n()
 const appearanceStore = useAppearanceStoreWithOut()
 const currentId = ref()
 interface SqlBotForm {
-  name: string
   theme: string
   header_font_color: string
   // logo?: string
@@ -65,7 +64,6 @@ const logo = ref('')
 const floatIcon = ref('')
 
 const defaultSqlBotForm = reactive<SqlBotForm>({
-  name: t('embedded.intelligent_customer_service'),
   x_type: 'right',
   y_type: 'bottom',
   x_val: 30,
@@ -214,10 +212,11 @@ const clearFiles = (array?: string[]) => {
     }
   }
 }
-
+const appName = ref('')
 const open = (row: any) => {
   rawData = JSON.parse(row.configuration)
   currentId.value = row.id
+  appName.value = row.name
   dialogVisible.value = true
   init()
 }
@@ -238,7 +237,7 @@ defineExpose({
         <assistant
           :welcome-desc="sqlBotForm.welcome_desc"
           :welcome="sqlBotForm.welcome"
-          :name="sqlBotForm.name"
+          :name="appName"
           :logo="logo"
         ></assistant>
       </div>
@@ -343,15 +342,6 @@ defineExpose({
           label-width="120px"
           class="page-Form"
         >
-          <el-form-item :label="t('embedded.application_name')">
-            <el-input
-              v-model="sqlBotForm.name"
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('embedded.application_name')
-              "
-              maxlength="20"
-            />
-          </el-form-item>
           <el-form-item :label="$t('system.welcome_message')">
             <el-input
               v-model="sqlBotForm.welcome"

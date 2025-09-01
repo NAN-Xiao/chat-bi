@@ -8,7 +8,7 @@
         <LOGO></LOGO>
       </el-icon>
       <img v-else :src="logo" class="logo" width="30px" height="30px" alt="" />
-      <span class="title">{{ customSet.name || $t('embedded.intelligent_customer_service') }}</span>
+      <span class="title">{{ appName || $t('embedded.intelligent_customer_service') }}</span>
 
       <el-tooltip effect="dark" :content="$t('embedded.new_conversation')" placement="top">
         <el-icon class="new-chat" size="20" @click="createChat">
@@ -61,6 +61,7 @@ const validator = ref({
   id_match: false,
   token: '',
 })
+const appName = ref('')
 const loading = ref(true)
 const eventName = 'sqlbot_assistant_event'
 const communicationCb = async (event: any) => {
@@ -156,6 +157,11 @@ onBeforeMount(async () => {
     messageId: assistantId,
   }
   window.parent.postMessage(readyData, '*')
+  assistantApi.query(assistantId as any).then((res) => {
+    if (res.name) {
+      appName.value = res.name
+    }
+  })
 
   request.get(`/system/assistant/${assistantId}`).then((res) => {
     if (res?.configuration) {
