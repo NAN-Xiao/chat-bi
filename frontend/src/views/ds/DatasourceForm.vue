@@ -912,7 +912,7 @@ defineExpose({
     .container {
       border: 1px solid #dee0e3;
       border-radius: 4px;
-      overflow-y: auto;
+      overflow: hidden;
 
       .select-all {
         background: #f5f6f7;
