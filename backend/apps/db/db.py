@@ -106,6 +106,8 @@ def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
         conn = get_engine(ds, 10)
         try:
             with conn.connect() as connection:
+                if ds.type == 'mysql':
+                    connection.execute(text('select 1')).fetchall()
                 SQLBotLogUtil.info("success")
                 return True
         except Exception as e:
@@ -158,7 +160,8 @@ def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
 def get_version(ds: CoreDatasource | AssistantOutDsSchema):
     conf = None
     if isinstance(ds, CoreDatasource):
-        conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
+        conf = DatasourceConf(
+            **json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     if isinstance(ds, AssistantOutDsSchema):
         conf = DatasourceConf()
         conf.host = ds.host
