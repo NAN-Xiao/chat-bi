@@ -122,7 +122,11 @@ export const supplierList: Array<{
         model_options: [
           {
             name: '4.0Ultra',
-            args: [{ key: 'max_tokens', val: 32768, type: 'number', range: '[1, 32768]' }],
+            args: [
+              { key: 'temperature', val: 0.5, type: 'number', range: '[0, 1]' },
+              { key: 'max_tokens', val: 8192, type: 'number', range: '[1, 8192]' },
+            ],
+            api_domain: 'https://spark-api-open.xf-yun.com/v1/',
           },
           /* {
             name: 'generalv3.5',
