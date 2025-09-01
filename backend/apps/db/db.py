@@ -106,8 +106,6 @@ def check_connection(trans: Trans, ds: CoreDatasource, is_raise: bool = False):
         conn = get_engine(ds, 10)
         try:
             with conn.connect() as connection:
-                if ds.type == 'mysql':
-                    connection.execute(text('select 1')).fetchall()
                 SQLBotLogUtil.info("success")
                 return True
         except Exception as e:
