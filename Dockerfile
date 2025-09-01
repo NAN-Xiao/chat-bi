@@ -45,6 +45,13 @@ COPY g2-ssr/charts/* /app/charts/
 
 RUN npm install
 
+FROM registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6
+ENV PG_PATH=/var/lib/postgresql/data
+ENV PG_SH=/usr/local/bin
+RUN mkdir -p ${PG_PATH}
+COPY --from=registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6 ${PG_PATH} ${PG_PATH}
+COPY --from=registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6 ${PG_SH} ${PG_SH}
+
 # Runtime stage
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
 
