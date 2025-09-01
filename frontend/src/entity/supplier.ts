@@ -167,7 +167,7 @@ export const supplierList: Array<{
     model_config: {
       0: {
         api_domain: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-        common_args: [{ key: 'temperature', val: 1.0, type: 'number', range: '[0, 2]' }],
+        common_args: [{ key: 'temperature', val: 0.7, type: 'number', range: '(0, 1]' }],
         model_options: [
           { name: 'gemini-2.5-pro' },
           { name: 'gemini-2.5-flash' },
