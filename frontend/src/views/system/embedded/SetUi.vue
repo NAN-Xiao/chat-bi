@@ -79,6 +79,7 @@ const defaultSqlBotForm = reactive<SqlBotForm>({
 const sqlBotForm = reactive<SqlBotForm>(cloneDeep(defaultSqlBotForm)) as { [key: string]: any }
 let rawData = {} as { [key: string]: any }
 const init = () => {
+  Object.assign(sqlBotForm, cloneDeep(defaultSqlBotForm))
   fileList.value = []
   logo.value = rawData.logo
   floatIcon.value = rawData.float_icon
