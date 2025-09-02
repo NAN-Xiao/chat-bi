@@ -577,6 +577,7 @@ const saveHandler = () => {
             :name="ele.name"
             :is-base="ele.type === 0"
             :description="ele.description"
+            :logo="JSON.parse(ele.configuration).logo"
             @embedded="handleEmbedded(ele)"
             @edit="handleEditRule(ele)"
             @del="deleteHandler(ele)"
