@@ -386,7 +386,8 @@
       "old_pwd": "旧密码",
       "new_pwd": "新密码",
       "confirm_pwd": "确认密码",
-      "two_pwd_not_match": "两次输入的密码不一致"
+      "two_pwd_not_match": "两次输入的密码不一致",
+      "pwd_format_error": "8-20位且至少一位大写字母、小写字母、数字、特殊字符"
     }
   },
   "workspace": {
