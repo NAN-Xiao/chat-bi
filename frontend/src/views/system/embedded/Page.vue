@@ -233,11 +233,11 @@ const saveHandler = () => {
 const editHandler = (row: any) => {
   pageForm.value.id = null
   if (row) {
-    for (const key in defaultForm) {
-      if (Object.prototype.hasOwnProperty.call(defaultForm, key)) {
-        pageForm.value[key] = row[key]
-      }
-    }
+    const { id, name, domain, type } = row
+    pageForm.value.id = id
+    pageForm.value.name = name
+    pageForm.value.domain = domain
+    pageForm.value.type = type
   }
   dialogTitle.value = row?.id ? t('embedded.edit_app') : t('embedded.create_application')
   dialogFormVisible.value = true
