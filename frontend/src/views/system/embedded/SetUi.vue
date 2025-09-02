@@ -14,16 +14,15 @@ const currentId = ref()
 interface SqlBotForm {
   theme: string
   header_font_color: string
-  // logo?: string
+  logo?: string
   x_type: string
   y_type: string
   welcome_desc: string
-  // float_icon?: string
+  float_icon?: string
   welcome: string
   float_icon_drag: boolean
   x_val: number
   y_val: number
-  restoreDefaults: boolean
 }
 
 const optionsY = [
@@ -74,9 +73,8 @@ const defaultSqlBotForm = reactive<SqlBotForm>({
   welcome_desc: t('embedded.data_analysis_now'),
   theme: '#1CBA90',
   header_font_color: '#1F2329',
-  restoreDefaults: false,
-  // logo: '',
-  // float_icon: '',
+  logo: '',
+  float_icon: '',
 })
 const sqlBotForm = reactive<SqlBotForm>(cloneDeep(defaultSqlBotForm)) as { [key: string]: any }
 let rawData = {} as { [key: string]: any }
