@@ -250,7 +250,23 @@ const setUiRef = ref()
 const handleSetUi = (row: any) => {
   setUiRef.value.open(row)
 }
-
+const validateUrl = (_: any, value: any, callback: any) => {
+  if (value === '') {
+    callback(
+      new Error(
+        t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings')
+      )
+    )
+  } else {
+    var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    var objExp = new RegExp(Expression)
+    if (objExp.test(value) && !value.endsWith('/')) {
+      callback()
+    } else {
+      callback(t('embedded.format_is_incorrect'))
+    }
+  }
+}
 const rules = {
   name: [
     {
@@ -262,13 +278,7 @@ const rules = {
   domain: [
     {
       required: true,
-      message:
-        t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings'),
-      trigger: 'blur',
-    },
-    {
-      pattern: /^(https?:\/\/)?([\w-]+\.)*[\w-]+(:\d+)?$/,
-      message: t('embedded.origin_format_error'),
+      validator: validateUrl,
       trigger: 'blur',
     },
   ],
@@ -283,20 +293,42 @@ const dsRules = {
     },
   ],
 }
+const validatePass = (_: any, value: any, callback: any) => {
+  if (value === '') {
+    callback(
+      new Error(t('datasource.please_enter') + t('common.empty') + t('embedded.interface_url'))
+    )
+  } else {
+    var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    var objExp = new RegExp(Expression)
+    if (objExp.test(value) && value.startsWith(currentEmbedded.domain)) {
+      callback()
+    } else {
+      callback(t('embedded.format_is_incorrect'))
+    }
+  }
+}
+
+const validateCertificate = (_: any, value: any, callback: any) => {
+  if (!value.length) {
+    callback(new Error(t('menu.add_interface_credentials')))
+  } else {
+    callback()
+  }
+}
 
 const urlRules = {
   endpoint: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('embedded.interface_url'),
+      validator: validatePass,
       trigger: 'blur',
     },
   ],
   certificate: [
     {
       required: true,
-      message:
-        t('datasource.Please_select') + t('common.empty') + t('embedded.system_credential_type'),
+      validator: validateCertificate,
       trigger: 'change',
     },
   ],
@@ -767,7 +799,7 @@ const saveHandler = () => {
               autocomplete="off"
             />
           </el-form-item>
-          <el-form-item class="certificate-table_form" prop="type">
+          <el-form-item class="certificate-table_form" prop="certificate">
             <template #label>
               <div class="title-content">
                 <span class="title-form">{{ t('embedded.interface_credentials') }}</span>
@@ -824,10 +856,7 @@ const saveHandler = () => {
           </el-form-item>
         </el-form>
       </div>
-      <div
-        v-if="activeStep === 1 && !advancedApplication"
-        class="drawer-content drawer-content_scroll"
-      >
+      <div v-if="activeStep === 1 && !advancedApplication" class="drawer-content">
         <div class="title">
           {{ $t('embedded.set_data_source') }}
         </div>
@@ -869,23 +898,21 @@ const saveHandler = () => {
               </div>
             </template>
             <div class="card-ds_content">
-              <el-scrollbar>
-                <DsCard
-                  v-for="(ele, index) in dsListOptions"
-                  :id="ele.id"
-                  :key="ele.id"
-                  :class="[0, 1].includes(index) && 'no-margin_top'"
-                  :name="ele.name"
-                  :type="ele.type"
-                  :type-name="ele.type_name"
-                  :description="ele.description"
-                  :is-private="!dsForm.public_list.includes(ele.id)"
-                  :num="ele.num"
-                  @active="handleActive(ele)"
-                  @private="handlePrivate(ele)"
-                  @public="handlePublic(ele)"
-                ></DsCard>
-              </el-scrollbar>
+              <DsCard
+                v-for="(ele, index) in dsListOptions"
+                :id="ele.id"
+                :key="ele.id"
+                :class="[0, 1].includes(index) && 'no-margin_top'"
+                :name="ele.name"
+                :type="ele.type"
+                :type-name="ele.type_name"
+                :description="ele.description"
+                :is-private="!dsForm.public_list.includes(ele.id)"
+                :num="ele.num"
+                @active="handleActive(ele)"
+                @private="handlePrivate(ele)"
+                @public="handlePublic(ele)"
+              ></DsCard>
             </div>
           </el-form-item>
         </el-form>

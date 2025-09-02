@@ -1,5 +1,6 @@
 {
   "menu": {
+    "add_interface_credentials": "Please add interface credentials",
     "Data Q&A": "Data Q&A",
     "Data Connections": "Data Sources",
     "Dashboard": "Dashboard",
@@ -516,6 +517,7 @@
     "creating_advanced_applications": "Creating Advanced Applications",
     "configure_interface": "Configure interface",
     "interface_url": "Interface URL",
+    "format_is_incorrect": "format is incorrect",
     "aes_enable": "Enable AES encryption",
     "aes_enable_tips": "The fields (host, user, password, dataBase, schema) are all encrypted using the AES-CBC-PKCS5Padding encryption method",
     "bit": "bit",
