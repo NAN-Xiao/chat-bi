@@ -277,7 +277,7 @@ defineExpose({
             <el-upload
               name="logo"
               :show-file-list="false"
-              accept=".jpeg,.jpg,.png,.gif,.svg"
+              accept=".jpg,.png,.gif,.svg"
               :before-upload="(e: any) => beforeUpload(e, 'logo')"
               :http-request="uploadImg"
             >
@@ -293,7 +293,7 @@ defineExpose({
             <el-upload
               name="float_icon"
               :show-file-list="false"
-              accept=".jpeg,.jpg,.png,.gif,.svg"
+              accept=".jpg,.png,.gif,.svg"
               :before-upload="(e: any) => beforeUpload(e, 'float_icon')"
               :http-request="uploadImg"
             >
@@ -403,8 +403,11 @@ defineExpose({
 
     .left-preview {
       width: 460px;
-      pointer-events: none;
       height: 100%;
+
+      .content {
+        pointer-events: none;
+      }
     }
 
     .right-form {

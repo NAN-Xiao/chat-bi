@@ -63,7 +63,7 @@ const currentEmbedded = reactive<any>(cloneDeep(defaultEmbedded))
 const isCreate = ref(false)
 const defaultForm = {
   oid: 1,
-  private_list: [] as any,
+  public_list: [] as any,
 }
 const dsForm = reactive(cloneDeep(defaultForm))
 
@@ -124,7 +124,7 @@ const handleAddEmbedded = (val: any) => {
   }
 }
 const wsChanged = (val: any) => {
-  dsForm.private_list = []
+  dsForm.public_list = []
   dsForm.oid = val
   getDsList(true)
 }
@@ -132,7 +132,7 @@ const getDsList = (change: boolean = false) => {
   dsApi(dsForm.oid).then((res: any) => {
     dsListOptions.value = res || []
     if (change || !currentEmbedded.id) {
-      dsForm.private_list = dsListOptions.value.map((ele: any) => ele.id)
+      dsForm.public_list = dsListOptions.value.map((ele: any) => ele.id)
     }
   })
 }
@@ -185,11 +185,11 @@ const handleActive = (row: any) => {
 }
 
 const handlePrivate = (row: any) => {
-  dsForm.private_list.push(row.id)
+  dsForm.public_list = dsForm.public_list.filter((ele: any) => ele !== row.id)
 }
 
 const handlePublic = (row: any) => {
-  dsForm.private_list = dsForm.private_list.filter((ele: any) => ele !== row.id)
+  dsForm.public_list.push(row.id)
 }
 
 const searchLoading = ref(false)
@@ -822,7 +822,10 @@ const saveHandler = () => {
           </el-form-item>
         </el-form>
       </div>
-      <div v-if="activeStep === 1 && !advancedApplication" class="drawer-content">
+      <div
+        v-if="activeStep === 1 && !advancedApplication"
+        class="drawer-content drawer-content_scroll"
+      >
         <div class="title">
           {{ $t('embedded.set_data_source') }}
         </div>
@@ -864,21 +867,23 @@ const saveHandler = () => {
               </div>
             </template>
             <div class="card-ds_content">
-              <DsCard
-                v-for="(ele, index) in dsListOptions"
-                :id="ele.id"
-                :key="ele.id"
-                :class="[0, 1].includes(index) && 'no-margin_top'"
-                :name="ele.name"
-                :type="ele.type"
-                :type-name="ele.type_name"
-                :description="ele.description"
-                :is-private="dsForm.private_list.includes(ele.id)"
-                :num="ele.num"
-                @active="handleActive(ele)"
-                @private="handlePrivate(ele)"
-                @public="handlePublic(ele)"
-              ></DsCard>
+              <el-scrollbar>
+                <DsCard
+                  v-for="(ele, index) in dsListOptions"
+                  :id="ele.id"
+                  :key="ele.id"
+                  :class="[0, 1].includes(index) && 'no-margin_top'"
+                  :name="ele.name"
+                  :type="ele.type"
+                  :type-name="ele.type_name"
+                  :description="ele.description"
+                  :is-private="!dsForm.public_list.includes(ele.id)"
+                  :num="ele.num"
+                  @active="handleActive(ele)"
+                  @private="handlePrivate(ele)"
+                  @public="handlePublic(ele)"
+                ></DsCard>
+              </el-scrollbar>
             </div>
           </el-form-item>
         </el-form>
@@ -1192,6 +1197,10 @@ const saveHandler = () => {
         margin-left: 8px;
       }
     }
+  }
+
+  .drawer-content_scroll {
+    overflow: hidden;
   }
 
   .certificate-table_form {
