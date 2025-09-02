@@ -15,6 +15,7 @@ from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import create_engine, Session
 
@@ -1058,6 +1059,13 @@ class LLMService:
             error_msg: str
             if isinstance(e, SingleMessageError):
                 error_msg = str(e)
+            elif isinstance(e, ConnectionError):
+                error_msg = orjson.dumps(
+                    {'message': str(e), 'traceback': traceback.format_exc(limit=1),
+                     'type': 'db-connection-err'}).decode()
+            elif isinstance(e, DBAPIError):
+                error_msg = orjson.dumps(
+                    {'message': str(e), 'traceback': traceback.format_exc(limit=1), 'type': 'exec-sql-err'}).decode()
             else:
                 error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
             self.save_error(message=error_msg)

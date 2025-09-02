@@ -594,6 +594,7 @@
     "data_over_limit": "The data is too large, only the first {0} entries are displayed.",
     "ds_is_invalid": "Datasource is invalid",
     "error": "Error",
+    "exec-sql-err": "Execute SQL failed",
     "no_data": "No Data",
     "show_error_detail": "Show error info"
   },
