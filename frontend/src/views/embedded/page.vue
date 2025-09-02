@@ -184,7 +184,7 @@ onBeforeUnmount(() => {
 <style lang="less" scoped>
 .sqlbot--embedded-page {
   width: 100%;
-  height: 100%;
+  height: 100vh;
   position: relative;
   background: #f7f8fa;
 }
