@@ -132,7 +132,7 @@ const getDsList = (change: boolean = false) => {
   dsApi(dsForm.oid).then((res: any) => {
     dsListOptions.value = res || []
     if (change || !currentEmbedded.id) {
-      dsForm.private_list = dsListOptions.value.map((ele) => ele.id)
+      dsForm.private_list = dsListOptions.value.map((ele: any) => ele.id)
     }
   })
 }
