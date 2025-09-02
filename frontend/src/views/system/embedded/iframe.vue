@@ -1190,7 +1190,7 @@ const saveHandler = () => {
   }
 
   .card-ds_content {
-    width: 100%;
+    width: 800px;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
