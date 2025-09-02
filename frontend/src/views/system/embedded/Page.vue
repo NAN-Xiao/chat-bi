@@ -63,8 +63,8 @@ const defaultForm = {
   name: null,
   domain: null,
   type: 4,
-  // configuration: null,
-  // description: null,
+  configuration: null,
+  description: null,
 }
 const pageForm = ref<Form>(cloneDeep(defaultForm))
 
@@ -218,7 +218,8 @@ const saveHandler = () => {
       if (obj.id === '') {
         delete obj.id
       }
-      embeddedApi.addEmbedded(obj).then(() => {
+      const req = obj.id ? embeddedApi.updateEmbedded : embeddedApi.addEmbedded
+      req(obj).then(() => {
         ElMessage({
           type: 'success',
           message: t('common.save_success'),
@@ -233,11 +234,13 @@ const saveHandler = () => {
 const editHandler = (row: any) => {
   pageForm.value.id = null
   if (row) {
-    const { id, name, domain, type } = row
+    const { id, name, domain, type, configuration, description } = row
     pageForm.value.id = id
     pageForm.value.name = name
     pageForm.value.domain = domain
     pageForm.value.type = type
+    pageForm.value.configuration = configuration
+    pageForm.value.description = description
   }
   dialogTitle.value = row?.id ? t('embedded.edit_app') : t('embedded.create_application')
   dialogFormVisible.value = true
