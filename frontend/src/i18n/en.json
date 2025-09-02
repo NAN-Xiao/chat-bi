@@ -308,6 +308,7 @@
     "select_supplier": "Select supplier",
     "the_basic_model": "Please set a name for the basic model",
     "the_basic_model_de": "Please select the basic model",
+    "length_max_error": "{msg} is limited to {max} characters",
     "model_name": "Model name",
     "custom_model_name": "Custom model name",
     "enter_to_add": "For models not listed in the list, just enter the model name and press Enter to add",

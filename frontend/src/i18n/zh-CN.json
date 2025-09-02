@@ -308,6 +308,7 @@
     "select_supplier": "选择供应商",
     "the_basic_model": "请给基础模型设置一个名称",
     "the_basic_model_de": "请选择基础模型",
+    "length_max_error": "{msg}长度不能超过{max}个字符",
     "model_name": "模型名称",
     "custom_model_name": "自定义的模型名称",
     "enter_to_add": "列表中未列出的模型，直接输入模型名称，回车即可添加",

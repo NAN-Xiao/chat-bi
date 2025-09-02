@@ -107,7 +107,14 @@ const rules = computed(() => ({
     },
   ],
   base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'blur' }],
-  name: [{ required: true, message: t('model.the_basic_model'), trigger: 'blur' }],
+  name: [
+    { required: true, message: t('model.the_basic_model'), trigger: 'blur' },
+    {
+      max: 100,
+      message: t('model.length_max_error', { msg: t('model.model_name'), max: 100 }),
+      trigger: 'blur',
+    },
+  ],
   api_key: [
     {
       required: !currentSupplier.value?.is_private,
