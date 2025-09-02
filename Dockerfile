@@ -56,9 +56,6 @@ COPY --from=python-builder /usr/local /usr/local
 RUN ln -sf python3.11 /usr/local/bin/python && \
     ln -sf pip /usr/local/bin/pip3
 
-ENV PYTHONPATH=/usr/local/lib/python3.11:$PYTHONPATH
-ENV PATH=/usr/local/bin:$PATH
-
 RUN python --version && pip --version
 
 # Install uv tool
