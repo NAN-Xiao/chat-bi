@@ -407,11 +407,13 @@ const handleEmbedded = (row: any) => {
     script.src = "${origin + pathname}xpack_static/sqlbot-embedded-dynamic.umd.js";
     document.head.appendChild(script);
   })()
-  
-  sqlbot_embedded_handler.mounted('.copilot', {
-    "embeddedId": "${row.id}",
-    "online": true
-})`
+  let sqlbot_embedded_timer = setInterval(() => {
+    if (sqlbot_embedded_handler?.mounted) {
+      sqlbot_embedded_handler.mounted('.copilot', { "embeddedId": "${row.id}" })
+      clearInterval(sqlbot_embedded_timer)
+    }
+  }, 1000)
+  `
 }
 const copyJsCode = () => {
   copy(jsCodeElement.value)
