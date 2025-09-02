@@ -48,7 +48,7 @@ RUN npm install
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS python-builder
 # Runtime stage
 # FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
-FROM registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6
+FROM pgvector/pgvector:pg17
 
 # python environment
 COPY --from=python-builder /usr/local /usr/local
