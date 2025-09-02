@@ -85,7 +85,10 @@ const init = () => {
   floatIcon.value = rawData.float_icon
 
   for (const key in sqlBotForm) {
-    if (Object.prototype.hasOwnProperty.call(sqlBotForm, key)) {
+    if (
+      Object.prototype.hasOwnProperty.call(sqlBotForm, key) &&
+      ![null, undefined].includes(rawData[key])
+    ) {
       sqlBotForm[key] = rawData[key]
     }
   }

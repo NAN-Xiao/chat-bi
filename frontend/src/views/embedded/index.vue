@@ -171,7 +171,10 @@ onBeforeMount(async () => {
       }
 
       for (const key in customSet) {
-        if (Object.prototype.hasOwnProperty.call(customSet, key)) {
+        if (
+          Object.prototype.hasOwnProperty.call(customSet, key) &&
+          ![null, undefined].includes(rawData[key])
+        ) {
           customSet[key] = rawData[key]
         }
       }
