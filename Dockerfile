@@ -59,9 +59,7 @@ RUN python --version && pip --version
 COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
 
 ARG DEPENDENCIES="                \
-    vim                           \
     wait-for-it                   \
-    postgresql-17-pgvector        \
     build-essential               \
     curl                          \
     gnupg                         \
