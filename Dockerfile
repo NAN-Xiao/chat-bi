@@ -58,28 +58,28 @@ RUN python --version && pip --version
 # Install uv tool
 COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    gnupg \
-    gcc \
-    g++ \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
+ARG DEPENDENCIES="                \
+    vim                           \
+    wait-for-it                   \
+    postgresql-17-pgvector        \
+    build-essential               \
+    curl                          \
+    gnupg                         \
+    gcc                           \
+    g++                           \
+    libcairo2-dev                 \
+    libpango1.0-dev               \
+    libjpeg-dev                   \
+    libgif-dev                    \
+    librsvg2-dev"
+
+RUN apt-get update && apt-get install -y --no-install-recommends $DEPENDENCIES \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && chmod g-xr /usr/local/bin/* /usr/bin/* /bin/* /usr/sbin/* /sbin/* /usr/lib/postgresql/17/bin/* \
     && chmod g+xr /usr/bin/ld.so \
     && chmod g+x /usr/local/bin/python*
-
-ARG DEPENDENCIES="                \
-    vim                           \
-    wait-for-it                   \
-    postgresql-17-pgvector"
 
 # ENV PGDATA=/var/lib/postgresql/data \
 #     POSTGRES_USER=root \
