@@ -115,7 +115,7 @@ const handleSelectionChange = (val: any[]) => {
   const arr = fieldList.value.filter(selectable)
   const ids = arr.map((ele: any) => ele.id)
   multipleSelectionAll.value = [
-    ...multipleSelectionAll.value.filter((ele) => !ids.includes(ele.id)),
+    ...multipleSelectionAll.value.filter((ele: any) => !ids.includes(ele.id)),
     ...val,
   ]
   isIndeterminate.value = !(val.length === 0 || val.length === arr.length)
@@ -233,7 +233,11 @@ const saveHandler = () => {
 const editHandler = (row: any) => {
   pageForm.value.id = null
   if (row) {
-    pageForm.value = cloneDeep(row)
+    for (const key in defaultForm) {
+      if (Object.prototype.hasOwnProperty.call(defaultForm, key)) {
+        pageForm.value[key] = row[key]
+      }
+    }
   }
   dialogTitle.value = row?.id ? t('embedded.edit_app') : t('embedded.create_application')
   dialogFormVisible.value = true
