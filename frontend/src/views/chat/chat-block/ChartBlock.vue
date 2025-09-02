@@ -216,7 +216,7 @@ function addToDashboard() {
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   const chartBaseInfo = JSON.parse(props.message?.record?.chart)
   recordeInfo['chart'] = {
-    type: chartBaseInfo.type,
+    type: currentChartType.value,
     title: chartBaseInfo.title,
     columns: chartBaseInfo.columns,
     xAxis: chartBaseInfo.axis?.x ? [chartBaseInfo.axis.x] : [],
