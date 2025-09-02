@@ -17,7 +17,7 @@ const showBlock = computed(() => {
 })
 
 const errorMessage = computed(() => {
-  const obj = { message: props.error, showMore: false, traceback: '', type: '' }
+  const obj = { message: props.error, showMore: false, traceback: '', type: undefined }
   if (showBlock.value && props.error?.trim().startsWith('{') && props.error?.trim().endsWith('}')) {
     try {
       const json = JSON.parse(props.error?.trim())
@@ -44,7 +44,7 @@ function showTraceBack() {
 <template>
   <div v-if="showBlock">
     <div
-      v-if="!errorMessage.showMore"
+      v-if="!errorMessage.showMore && errorMessage.type == undefined"
       v-dompurify-html="errorMessage.message"
       class="error-container"
     ></div>
@@ -58,7 +58,9 @@ function showTraceBack() {
       <template v-else>
         {{ t('chat.error') }}
       </template>
-      <el-button text @click="showTraceBack">{{ t('chat.show_error_detail') }}</el-button>
+      <el-button v-if="errorMessage.showMore" text @click="showTraceBack">
+        {{ t('chat.show_error_detail') }}
+      </el-button>
     </div>
 
     <el-drawer
