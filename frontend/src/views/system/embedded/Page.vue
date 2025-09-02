@@ -169,10 +169,15 @@ const cancelRefresh = (row: any) => {
 }
 
 const refresh = (row: any) => {
-  embeddedApi.secret(row.id).then(() => {
-    ElMessage.success(t('common.update_success'))
-  })
-  cancelRefresh(row)
+  embeddedApi
+    .secret(row.id)
+    .then(() => {
+      ElMessage.success(t('common.update_success'))
+    })
+    .finally(() => {
+      cancelRefresh(row)
+      search()
+    })
 }
 
 const search = () => {
@@ -373,11 +378,11 @@ const copyCode = (row: any, key: any = 'app_secret') => {
             <template #default="scope">
               <div class="user-status-container">
                 <div
-                  :title="scope.row.showPwd ? scope.row.app_id : pwd"
+                  :title="scope.row.showPwd ? scope.row.app_secret : pwd"
                   class="ellipsis"
                   style="max-width: 133px"
                 >
-                  {{ scope.row.showPwd ? scope.row.app_id : pwd }}
+                  {{ scope.row.showPwd ? scope.row.app_secret : pwd }}
                 </div>
                 <el-tooltip
                   :offset="12"

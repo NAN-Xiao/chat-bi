@@ -23,6 +23,7 @@ interface SqlBotForm {
   float_icon_drag: boolean
   x_val: number
   y_val: number
+  restoreDefaults: boolean
 }
 
 const optionsY = [
@@ -73,6 +74,7 @@ const defaultSqlBotForm = reactive<SqlBotForm>({
   welcome_desc: t('embedded.data_analysis_now'),
   theme: '#1CBA90',
   header_font_color: '#1F2329',
+  restoreDefaults: false,
   // logo: '',
   // float_icon: '',
 })
@@ -170,6 +172,7 @@ const resetSqlBotForm = (reset2Default?: boolean) => {
   if (reset2Default) {
     logo.value = ''
     floatIcon.value = ''
+    sqlBotForm.restoreDefaults = true
     nextTick(() => {
       setPageCustomColor(sqlBotForm.theme)
       setPageHeaderFontColor(sqlBotForm.header_font_color)
