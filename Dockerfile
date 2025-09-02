@@ -72,9 +72,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/* \
-    chmod g-xr /usr/local/bin/* /usr/bin/* /bin/* /usr/sbin/* /sbin/* /usr/lib/postgresql/17/bin/* && \
-    chmod g+xr /usr/bin/ld.so && \
-    chmod g+x /usr/local/bin/python*
+    && chmod g-xr /usr/local/bin/* /usr/bin/* /bin/* /usr/sbin/* /sbin/* /usr/lib/postgresql/17/bin/* \
+    && chmod g+xr /usr/bin/ld.so \
+    && chmod g+x /usr/local/bin/python*
 
 ARG DEPENDENCIES="                \
     vim                           \
