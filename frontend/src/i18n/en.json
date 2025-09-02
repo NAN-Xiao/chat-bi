@@ -386,7 +386,8 @@
       "old_pwd": "Old password",
       "new_pwd": "New password",
       "confirm_pwd": "Confirm password",
-      "two_pwd_not_match": "The two passwords do not match"
+      "two_pwd_not_match": "The two passwords do not match",
+      "pwd_format_error": "8-20 characters including uppercase, lowercase, number, and special character"
     }
   },
   "workspace": {
