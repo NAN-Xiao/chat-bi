@@ -35,6 +35,7 @@ const emits = defineEmits(['btnSelectChange'])
 const { t } = useI18n()
 const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
+const oldKeywords = ref('')
 const searchLoading = ref(false)
 
 const selectable = () => {
@@ -187,6 +188,7 @@ const search = () => {
       })
     })
     .finally(() => {
+      oldKeywords.value = keywords.value
       searchLoading.value = false
     })
 }
@@ -290,7 +292,6 @@ const copyCode = (row: any, key: any = 'app_secret') => {
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('dashboard.search')"
           clearable
-          @keyup.enter="search"
           @blur="search"
         >
           <template #prefix>
@@ -313,7 +314,7 @@ const copyCode = (row: any, key: any = 'app_secret') => {
       class="table-content"
       :class="multipleSelectionAll.length && 'show-pagination_height'"
     >
-      <template v-if="!keywords && !fieldList.length">
+      <template v-if="!oldKeywords && !fieldList.length">
         <EmptyBackground
           class="datasource-yet"
           :description="$t('embedded.no_application')"
@@ -486,13 +487,13 @@ const copyCode = (row: any, key: any = 'app_secret') => {
           </el-table-column>
           <template #empty>
             <EmptyBackground
-              v-if="!keywords && !fieldList.length"
+              v-if="!oldKeywords && !fieldList.length"
               :description="$t('embedded.no_application')"
               img-type="noneWhite"
             />
 
             <EmptyBackground
-              v-if="!!keywords && !fieldList.length"
+              v-if="!!oldKeywords && !fieldList.length"
               :description="$t('datasource.relevant_content_found')"
               img-type="tree"
             />
