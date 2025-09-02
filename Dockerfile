@@ -71,7 +71,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     librsvg2-dev \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
-    && curl -L --connect-timeout 60 -m 1800 https://fit2cloud-support.oss-cn-beijing.aliyuncs.com/xpack-license/get-validator-linux | sh \
     && rm -rf /var/lib/apt/lists/* \
     chmod g-xr /usr/local/bin/* /usr/bin/* /bin/* /usr/sbin/* /sbin/* /usr/lib/postgresql/17/bin/* && \
     chmod g+xr /usr/bin/ld.so && \
