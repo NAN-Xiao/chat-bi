@@ -53,9 +53,6 @@ FROM registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6
 # python environment
 COPY --from=python-builder /usr/local /usr/local
 
-RUN ln -sf python3.11 /usr/local/bin/python && \
-    ln -sf pip /usr/local/bin/pip3
-
 RUN python --version && pip --version
 
 # Install uv tool
