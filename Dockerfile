@@ -48,7 +48,7 @@ RUN npm install
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS python-builder
 # Runtime stage
 # FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
-FROM pgvector/pgvector:pg17
+FROM registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6
 
 # python environment
 COPY --from=python-builder /usr/local /usr/local
@@ -78,6 +78,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ARG DEPENDENCIES="                \
     vim                           \
+    wait-for-it                   \
     postgresql-17-pgvector"
 
 # ENV PGDATA=/var/lib/postgresql/data \
@@ -108,5 +109,4 @@ EXPOSE 3000 8000 8001 5432
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000 || exit 1
 
-CMD ["/usr/local/bin/docker-entrypoint.sh"]
 ENTRYPOINT ["sh", "start.sh"]
