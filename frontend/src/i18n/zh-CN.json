@@ -594,6 +594,7 @@
     "data_over_limit": "数据量过大，仅展示前{0}条数据",
     "ds_is_invalid": "数据源无效",
     "error": "错误",
+    "exec-sql-err": "执行SQL失败",
     "no_data": "暂无数据",
     "show_error_detail": "查看具体信息"
   },
