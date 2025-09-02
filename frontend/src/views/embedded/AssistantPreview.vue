@@ -115,7 +115,7 @@ const pageLogo = computed(() => {
       font-size: 16px;
       line-height: 24px;
       color: var(--ed-text-color-primary);
-      width: 200px;
+      width: 242px;
     }
 
     .ed-icon:not(.logo) {

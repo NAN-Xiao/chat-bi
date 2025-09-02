@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
       font-size: 16px;
       line-height: 24px;
       color: var(--ed-text-color-primary);
-      max-width: calc(100% - 180px);
+      max-width: calc(100% - 172px);
     }
 
     .ed-icon:not(.logo) {
