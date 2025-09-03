@@ -44,7 +44,7 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
                 if public_list:
                     stmt = stmt.where(CoreDatasource.id.in_(public_list))
                 else:
-                    raise RuntimeError('no public datasource valid')
+                    return []
                 """ private_list: list[int] = config.get('private_list') or None
                 if private_list:
                     stmt = stmt.where(~CoreDatasource.id.in_(private_list)) """
