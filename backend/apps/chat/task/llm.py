@@ -15,7 +15,6 @@ from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import select
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import create_engine, Session
 
@@ -30,13 +29,13 @@ from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameCh
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import exec_sql, get_version
+from apps.db.db import exec_sql, get_version, check_connection
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, CurrentUser
-from common.error import SingleMessageError
+from common.error import SingleMessageError, SQLBotDBError, ParseSQLResultError, SQLBotDBConnectionError
 from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
 
 warnings.filterwarnings("ignore")
@@ -868,7 +867,14 @@ class LLMService:
             Query results
         """
         SQLBotLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
-        return exec_sql(self.ds, sql)
+        try:
+            return exec_sql(self.ds, sql)
+        except Exception as e:
+            if isinstance(e, ParseSQLResultError):
+                raise e
+            else:
+                err = traceback.format_exc(limit=1, chain=True)
+                raise SQLBotDBError(err)
 
     def pop_chunk(self):
         try:
@@ -940,6 +946,12 @@ class LLMService:
                                                                               ds=self.ds)
             else:
                 self.validate_history_ds()
+
+            # check connection
+            connected = check_connection(ds=self.ds, trans=None)
+            if not connected:
+                raise SQLBotDBConnectionError('Connect DB failed')
+
             # generate sql
             sql_res = self.generate_sql()
             full_sql_text = ''
@@ -1059,13 +1071,12 @@ class LLMService:
             error_msg: str
             if isinstance(e, SingleMessageError):
                 error_msg = str(e)
-            elif isinstance(e, ConnectionError):
+            elif isinstance(e, SQLBotDBConnectionError):
                 error_msg = orjson.dumps(
-                    {'message': str(e), 'traceback': traceback.format_exc(limit=1),
-                     'type': 'db-connection-err'}).decode()
-            elif isinstance(e, DBAPIError):
+                    {'message': str(e), 'type': 'db-connection-err'}).decode()
+            elif isinstance(e, SQLBotDBError):
                 error_msg = orjson.dumps(
-                    {'message': str(e), 'traceback': traceback.format_exc(limit=1), 'type': 'exec-sql-err'}).decode()
+                    {'message': 'Execute SQL Failed', 'traceback': str(e), 'type': 'exec-sql-err'}).decode()
             else:
                 error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
             self.save_error(message=error_msg)

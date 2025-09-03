@@ -199,7 +199,24 @@ const search = () => {
 }
 
 const termFormRef = ref()
-
+const validateUrl = (_: any, value: any, callback: any) => {
+  if (value === '') {
+    callback(
+      new Error(
+        t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings')
+      )
+    )
+  } else {
+    // var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    var Expression = /^https?:\/\/[^\s/?#]+(:\d+)?/i
+    var objExp = new RegExp(Expression)
+    if (objExp.test(value) && !value.endsWith('/')) {
+      callback()
+    } else {
+      callback(t('embedded.format_is_incorrect'))
+    }
+  }
+}
 const rules = {
   name: [
     {
@@ -210,8 +227,8 @@ const rules = {
   domain: [
     {
       required: true,
-      message:
-        t('datasource.please_enter') + t('common.empty') + t('embedded.cross_domain_settings'),
+      validator: validateUrl,
+      trigger: 'blur',
     },
   ],
 }
