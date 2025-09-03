@@ -168,6 +168,8 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                 raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
             return False
 
+    return False
+
 
 def get_version(ds: CoreDatasource | AssistantOutDsSchema):
     version = ''
