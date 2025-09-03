@@ -9,20 +9,18 @@ RUN python --version && pip --version
 # Install uv tool
 COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
 
-ARG DEPENDENCIES="                \
-    wait-for-it                   \
-    build-essential               \
-    curl                          \
-    gnupg                         \
-    gcc                           \
-    g++                           \
-    libcairo2-dev                 \
-    libpango1.0-dev               \
-    libjpeg-dev                   \
-    libgif-dev                    \
-    librsvg2-dev"
-
-RUN apt-get update && apt-get install -y --no-install-recommends $DEPENDENCIES \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wait-for-it \
+    build-essential \
+    curl \
+    gnupg \
+    gcc \
+    g++ \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && curl -L --connect-timeout 60 -m 1800 https://fit2cloud-support.oss-cn-beijing.aliyuncs.com/xpack-license/get-validator-linux | sh \
