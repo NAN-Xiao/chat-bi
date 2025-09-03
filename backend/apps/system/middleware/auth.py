@@ -115,13 +115,13 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
                 if assistant_info and assistant_info.type == 0:
                     if payload['oid']:
-                        session_user.oid = payload['oid']
+                        session_user.oid = int(payload['oid'])
                     else:
                         assistant_oid = 1
                         configuration = assistant_info.configuration
                         config_obj = json.loads(configuration) if configuration else {}
                         assistant_oid = config_obj.get('oid', 1)
-                        session_user.oid = assistant_oid
+                        session_user.oid = int(assistant_oid)
                         
                 return True, session_user, assistant_info
         except Exception as e:
