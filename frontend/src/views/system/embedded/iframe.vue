@@ -857,65 +857,67 @@ const saveHandler = () => {
         </el-form>
       </div>
       <div v-if="activeStep === 1 && !advancedApplication" class="drawer-content">
-        <div class="title">
-          {{ $t('embedded.set_data_source') }}
-        </div>
+        <el-scrollbar>
+          <div class="title">
+            {{ $t('embedded.set_data_source') }}
+          </div>
 
-        <el-form
-          ref="dsFormRef"
-          :model="dsForm"
-          label-width="180px"
-          label-position="top"
-          :rules="dsRules"
-          class="form-content_error"
-          @submit.prevent
-        >
-          <el-form-item prop="oid" :label="t('user.workspace')">
-            <el-select
-              v-model="dsForm.oid"
-              filterable
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
-              "
-              @change="wsChanged"
-            >
-              <el-option
-                v-for="item in workspaces"
-                :key="item.id"
-                :label="item.name"
-                :value="item.id"
-              />
-            </el-select>
-          </el-form-item>
+          <el-form
+            ref="dsFormRef"
+            :model="dsForm"
+            label-width="180px"
+            label-position="top"
+            :rules="dsRules"
+            class="form-content_error"
+            @submit.prevent
+          >
+            <el-form-item prop="oid" :label="t('user.workspace')">
+              <el-select
+                v-model="dsForm.oid"
+                filterable
+                :placeholder="
+                  $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
+                "
+                @change="wsChanged"
+              >
+                <el-option
+                  v-for="item in workspaces"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
 
-          <el-form-item class="private-list_form">
-            <template #label>
-              <div class="private-list">
-                {{ t('embedded.set_data_source') }}
-                <span :title="$t('embedded.open_the_query')" class="open-the_query ellipsis"
-                  >{{ $t('embedded.open_the_query') }}
-                </span>
+            <el-form-item class="private-list_form">
+              <template #label>
+                <div class="private-list">
+                  {{ t('embedded.set_data_source') }}
+                  <span :title="$t('embedded.open_the_query')" class="open-the_query ellipsis"
+                    >{{ $t('embedded.open_the_query') }}
+                  </span>
+                </div>
+              </template>
+              <div class="card-ds_content">
+                <DsCard
+                  v-for="(ele, index) in dsListOptions"
+                  :id="ele.id"
+                  :key="ele.id"
+                  :class="[0, 1].includes(index) && 'no-margin_top'"
+                  :name="ele.name"
+                  :type="ele.type"
+                  :type-name="ele.type_name"
+                  :description="ele.description"
+                  :is-private="!dsForm.public_list.includes(ele.id)"
+                  :num="ele.num"
+                  @active="handleActive(ele)"
+                  @private="handlePrivate(ele)"
+                  @public="handlePublic(ele)"
+                ></DsCard>
               </div>
-            </template>
-            <div class="card-ds_content">
-              <DsCard
-                v-for="(ele, index) in dsListOptions"
-                :id="ele.id"
-                :key="ele.id"
-                :class="[0, 1].includes(index) && 'no-margin_top'"
-                :name="ele.name"
-                :type="ele.type"
-                :type-name="ele.type_name"
-                :description="ele.description"
-                :is-private="!dsForm.public_list.includes(ele.id)"
-                :num="ele.num"
-                @active="handleActive(ele)"
-                @private="handlePrivate(ele)"
-                @public="handlePublic(ele)"
-              ></DsCard>
-            </div>
-          </el-form-item>
-        </el-form>
+            </el-form-item>
+          </el-form>
+        </el-scrollbar>
       </div>
 
       <template #footer>
