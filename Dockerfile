@@ -1,6 +1,6 @@
 # Build sqlbot
 FROM ghcr.io/1panel-dev/maxkb-vector-model:v1.0.1 AS vector-model
-FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest AS sqlbot-builder
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-builder
 
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
    uv sync --extra cpu
 
 # Build g2-ssr
-FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest AS ssr-builder
+FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS ssr-builder
 
 WORKDIR /app
 
