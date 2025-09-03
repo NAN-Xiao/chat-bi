@@ -79,7 +79,7 @@ const certificateForm = reactive(cloneDeep(defaultCertificateForm))
 
 const defaultUrlForm = {
   endpoint: '',
-  encrypt: true,
+  encrypt: false,
   aes_key: '',
   aes_iv: '',
   certificate: [] as any,
