@@ -297,7 +297,8 @@ const validatePass = (_: any, value: any, callback: any) => {
       new Error(t('datasource.please_enter') + t('common.empty') + t('embedded.interface_url'))
     )
   } else {
-    var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    // var Expression = /(https?:\/\/)?([\da-z\.-]+)\.([a-z]{2,6})(:\d{1,5})?([\/\w\.-]*)*\/?(#[\S]+)?/ // eslint-disable-line
+    var Expression = /^https?:\/\/[^\s/?#]+(:\d+)?/i
     var objExp = new RegExp(Expression)
     if (objExp.test(value) && value.startsWith(currentEmbedded.domain)) {
       callback()
