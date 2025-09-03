@@ -54,6 +54,12 @@ ENV SQLBOT_HOME=/opt/sqlbot
 ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 
+ENV SQLBOT_DB_HOST=localhost
+ENV SQLBOT_DB_PORT=5432
+ENV SQLBOT_DB_DB=sqlbot
+ENV SQLBOT_DB_USER=root
+ENV SQLBOT_DB_PASSWORD=Password123@pg
+
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh
 COPY g2-ssr/*.ttf /usr/share/fonts/truetype/liberation/
