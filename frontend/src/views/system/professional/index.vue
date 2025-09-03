@@ -301,7 +301,6 @@ const deleteHandlerItem = (idx: number) => {
           style="width: 240px; margin-right: 12px"
           :placeholder="$t('professional.search_term')"
           clearable
-          @keyup.enter="search"
           @blur="search"
         >
           <template #prefix>
