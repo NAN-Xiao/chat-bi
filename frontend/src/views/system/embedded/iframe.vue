@@ -269,7 +269,7 @@ const rules = {
   name: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('embedded.basic_information'),
+      message: t('datasource.please_enter') + t('common.empty') + t('embedded.application_name'),
       trigger: 'blur',
     },
   ],
