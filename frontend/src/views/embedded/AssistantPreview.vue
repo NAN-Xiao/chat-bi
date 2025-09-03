@@ -120,6 +120,7 @@ const pageLogo = computed(() => {
 
     .ed-icon:not(.logo) {
       cursor: pointer;
+      color: #1f2329;
 
       &::after {
         content: '';
@@ -162,6 +163,9 @@ const pageLogo = computed(() => {
       font-size: 24px;
       line-height: 32px;
       margin: 16px 0;
+      max-width: 100%;
+      word-break: break-all;
+      padding: 0 20px;
     }
 
     .i-can {
@@ -172,6 +176,9 @@ const pageLogo = computed(() => {
       font-size: 14px;
       line-height: 24px;
       color: #646a73;
+      max-width: 88%;
+      word-break: break-all;
+      padding: 0 20px;
     }
   }
   .content {

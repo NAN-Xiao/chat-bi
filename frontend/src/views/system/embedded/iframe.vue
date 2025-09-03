@@ -90,7 +90,7 @@ const dsListOptions = ref<any[]>([])
 
 const embeddedListWithSearch = computed(() => {
   if (!keywords.value) return embeddedList.value
-  return embeddedList.value.filter((ele) =>
+  return embeddedList.value.filter((ele: any) =>
     ele.name.toLowerCase().includes(keywords.value.toLowerCase())
   )
 })
@@ -126,14 +126,11 @@ const handleAddEmbedded = (val: any) => {
 const wsChanged = (val: any) => {
   dsForm.public_list = []
   dsForm.oid = val
-  getDsList(true)
+  getDsList()
 }
-const getDsList = (change: boolean = false) => {
+const getDsList = () => {
   dsApi(dsForm.oid).then((res: any) => {
     dsListOptions.value = res || []
-    if (change || !currentEmbedded.id) {
-      dsForm.public_list = dsListOptions.value.map((ele: any) => ele.id)
-    }
   })
 }
 const handleBaseEmbedded = (row: any) => {
@@ -142,7 +139,7 @@ const handleBaseEmbedded = (row: any) => {
   if (row) {
     Object.assign(dsForm, JSON.parse(row.configuration))
   }
-  getDsList(false)
+  getDsList()
   ruleConfigvVisible.value = true
   dialogTitle.value = row?.id
     ? t('embedded.edit_basic_applications')
@@ -519,7 +516,7 @@ const saveHandler = () => {
         type: 'success',
         message: t('common.save_success'),
       })
-
+      urlFormRef.value.validate('certificate')
       certificateBeforeClose()
     }
   })
