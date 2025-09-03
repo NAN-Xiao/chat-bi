@@ -239,7 +239,6 @@ onBeforeUnmount(() => {
 
     .ed-icon:not(.logo) {
       cursor: pointer;
-      color: #1F2329;
 
       &::after {
         content: '';

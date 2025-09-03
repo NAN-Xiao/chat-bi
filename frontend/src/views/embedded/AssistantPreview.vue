@@ -120,7 +120,6 @@ const pageLogo = computed(() => {
 
     .ed-icon:not(.logo) {
       cursor: pointer;
-      color: #1f2329;
 
       &::after {
         content: '';
