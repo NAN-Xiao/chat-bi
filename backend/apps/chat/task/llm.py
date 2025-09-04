@@ -24,7 +24,8 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     finish_record, save_analysis_answer, save_predict_answer, save_predict_data, \
     save_select_datasource_answer, save_recommend_question_answer, \
     get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
-    get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log
+    get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
+    get_last_execute_sql_error
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
@@ -69,6 +70,8 @@ class LLMService:
 
     chunk_list: List[str] = []
     future: Future
+
+    last_execute_sql_error: str = None
 
     def __init__(self, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
@@ -126,6 +129,15 @@ class LLMService:
         # Create LLM instance through factory
         llm_instance = LLMFactory.create_llm(self.config)
         self.llm = llm_instance.llm
+
+        # get last_execute_sql_error
+        last_execute_sql_error = get_last_execute_sql_error(self.session, self.chat_question.chat_id)
+        if last_execute_sql_error:
+            self.chat_question.error_msg = f'''<error-msg>
+{last_execute_sql_error}
+</error-msg>'''
+        else:
+            self.chat_question.error_msg = ''
 
         self.init_messages()
 
