@@ -177,7 +177,7 @@ class AssistantOutDs:
     def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
         id_marker: str = ''
         attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema']
-        if config.get('encrypt', True):
+        if config.get('encrypt', False):
             key = config.get('aes_key', None)
             iv = config.get('aes_iv', None)
             aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema']
