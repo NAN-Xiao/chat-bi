@@ -54,11 +54,9 @@ ENV SQLBOT_HOME=/opt/sqlbot
 ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 
-# ENV POSTGRES_SERVER=localhost
-# ENV POSTGRES_PORT=5432
-# ENV POSTGRES_DB=sqlbot
-# ENV POSTGRES_USER=root
-# ENV POSTGRES_PASSWORD=Password123@pg
+ENV POSTGRES_DB=sqlbot
+ENV POSTGRES_USER=root
+ENV POSTGRES_PASSWORD=Password123@pg
 
 # Copy necessary files from builder
 COPY start.sh /opt/sqlbot/app/start.sh
