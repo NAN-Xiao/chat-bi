@@ -48,6 +48,9 @@ RUN npm install
 # Runtime stage
 FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
 
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
 ENV SQLBOT_HOME=/opt/sqlbot
