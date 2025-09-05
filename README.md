@@ -59,8 +59,8 @@ docker run -d \
 
 ## Roadmap
 
-- 术语库：开发中...
 - SQL 示例库：开发中...
+- 自定义提示词：开发中...
 
 ## Star History
 
