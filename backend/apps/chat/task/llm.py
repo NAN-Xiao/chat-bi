@@ -1,6 +1,8 @@
 import concurrent
 import json
+import os
 import traceback
+import urllib.parse
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
@@ -1255,8 +1257,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
         axis.append({'name': series.get('name'), 'value': series.get('value'), 'type': 'series'})
 
     request_obj = {
-        "path": (settings.MCP_IMAGE_PATH if settings.MCP_IMAGE_PATH[-1] == '/' else (
-                settings.MCP_IMAGE_PATH + '/')) + file_name,
+        "path": os.path.join(settings.MCP_IMAGE_PATH, file_name),
         "type": chart['type'],
         "data": orjson.dumps(data.get('data') if data.get('data') else []).decode(),
         "axis": orjson.dumps(axis).decode(),
@@ -1264,7 +1265,9 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
     requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj)
 
-    return f'{(settings.SERVER_IMAGE_HOST if settings.SERVER_IMAGE_HOST[-1] == "/" else (settings.SERVER_IMAGE_HOST + "/"))}{file_name}.png'
+    request_path = urllib.parse.urljoin(settings.MCP_IMAGE_HOST, f"{file_name}.png")
+
+    return request_path
 
 
 def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = {}):
