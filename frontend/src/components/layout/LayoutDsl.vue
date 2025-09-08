@@ -162,6 +162,17 @@ const showSysmenu = computed(() => {
         .fold {
           cursor: pointer;
           margin-left: auto;
+          border-radius: 6px;
+          width: 40px;
+          height: 40px;
+          &:hover,
+          &:focus {
+            background: #1f23291a;
+          }
+
+          &:active {
+            background: #1f232933;
+          }
         }
       }
     }
