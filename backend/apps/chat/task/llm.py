@@ -46,7 +46,7 @@ base_message_count_limit = 6
 executor = ThreadPoolExecutor(max_workers=200)
 
 dynamic_ds_types = [1, 3]
-
+dynamic_subsql_prefix = 'select * from sqlbot_dynamic_temp_table_'
 
 class LLMService:
     ds: CoreDatasource
@@ -615,12 +615,17 @@ class LLMService:
     def generate_assistant_dynamic_sql(self, sql, tables: List):
         ds: AssistantOutDsSchema = self.ds
         sub_query = []
+        result_dict = {}
         for table in ds.tables:
             if table.name in tables and table.sql:
-                sub_query.append({"table": table.name, "query": table.sql})
+                #sub_query.append({"table": table.name, "query": table.sql})
+                result_dict[table.name] = table.sql
+                sub_query.append({"table": table.name, "query": f'{dynamic_subsql_prefix}{table.name}'})
         if not sub_query:
             return None
-        return self.generate_with_sub_sql(sql=sql, sub_mappings=sub_query)
+        temp_sql_text = self.generate_with_sub_sql(sql=sql, sub_mappings=sub_query)
+        result_dict['sqlbot_temp_sql_text'] = temp_sql_text
+        return result_dict
 
     def build_table_filter(self, sql: str, filters: list):
         filter = json.dumps(filters, ensure_ascii=False)
@@ -983,27 +988,27 @@ class LLMService:
             chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
 
             use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
-
+            is_page_embedded: bool = self.current_assistant and self.current_assistant.type == 4
+            dynamic_sql_result = None
+            sqlbot_temp_sql_text = None
+            assistant_dynamic_sql = None
             # todo row permission
-            if (not self.current_assistant and is_normal_user(self.current_user)) or use_dynamic_ds:
+            if ((not self.current_assistant or is_page_embedded) and is_normal_user(self.current_user)) or use_dynamic_ds:
                 sql, tables = self.check_sql(res=full_sql_text)
                 sql_result = None
-                dynamic_sql_result = None
-                if self.current_assistant:
+                
+                if use_dynamic_ds:
                     dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
-                    if dynamic_sql_result:
-                        SQLBotLogUtil.info(dynamic_sql_result)
-                        sql, *_ = self.check_sql(res=dynamic_sql_result)
-
-                    sql_result = self.generate_assistant_filter(sql, tables)
+                    sqlbot_temp_sql_text = dynamic_sql_result.get('sqlbot_temp_sql_text') if dynamic_sql_result else None
+                    #sql_result = self.generate_assistant_filter(sql, tables)
                 else:
                     sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
 
                 if sql_result:
                     SQLBotLogUtil.info(sql_result)
                     sql = self.check_save_sql(res=sql_result)
-                elif dynamic_sql_result:
-                    sql = self.check_save_sql(res=dynamic_sql_result)
+                elif dynamic_sql_result and sqlbot_temp_sql_text:
+                    assistant_dynamic_sql = self.check_save_sql(res=sqlbot_temp_sql_text)
                 else:
                     sql = self.check_save_sql(res=full_sql_text)
             else:
@@ -1017,7 +1022,14 @@ class LLMService:
                 yield f'```sql\n{format_sql}\n```\n\n'
 
             # execute sql
-            result = self.execute_sql(sql=sql)
+            real_execute_sql = sql
+            if sqlbot_temp_sql_text and assistant_dynamic_sql:
+                dynamic_sql_result.pop('sqlbot_temp_sql_text')
+                for origin_table, subsql in dynamic_sql_result.items():
+                    assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}', subsql)
+                real_execute_sql = assistant_dynamic_sql
+                
+            result = self.execute_sql(sql=real_execute_sql)
             self.save_sql_data(data_obj=result)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
