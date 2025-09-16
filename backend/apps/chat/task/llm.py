@@ -1000,26 +1000,26 @@ class LLMService:
             sqlbot_temp_sql_text = None
             assistant_dynamic_sql = None
             # todo row permission
-            if ((not self.current_assistant or is_page_embedded) and is_normal_user(
-                    self.current_user)) or use_dynamic_ds:
+            if (not self.current_assistant or is_page_embedded) or use_dynamic_ds:
                 sql, tables = self.check_sql(res=full_sql_text)
                 sql_result = None
 
-                if use_dynamic_ds:
-                    dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
-                    sqlbot_temp_sql_text = dynamic_sql_result.get(
-                        'sqlbot_temp_sql_text') if dynamic_sql_result else None
-                    # sql_result = self.generate_assistant_filter(sql, tables)
-                else:
-                    sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
+                if is_normal_user(self.current_user):
+                    if use_dynamic_ds:
+                        dynamic_sql_result = self.generate_assistant_dynamic_sql(sql, tables)
+                        sqlbot_temp_sql_text = dynamic_sql_result.get(
+                            'sqlbot_temp_sql_text') if dynamic_sql_result else None
+                        # sql_result = self.generate_assistant_filter(sql, tables)
+                    else:
+                        sql_result = self.generate_filter(sql, tables)  # maybe no sql and tables
 
-                if sql_result:
-                    SQLBotLogUtil.info(sql_result)
-                    sql = self.check_save_sql(res=sql_result)
-                elif dynamic_sql_result and sqlbot_temp_sql_text:
-                    assistant_dynamic_sql = self.check_save_sql(res=sqlbot_temp_sql_text)
-                else:
-                    sql = self.check_save_sql(res=full_sql_text)
+                    if sql_result:
+                        SQLBotLogUtil.info(sql_result)
+                        sql = self.check_save_sql(res=sql_result)
+                    elif dynamic_sql_result and sqlbot_temp_sql_text:
+                        assistant_dynamic_sql = self.check_save_sql(res=sqlbot_temp_sql_text)
+                    else:
+                        sql = self.check_save_sql(res=full_sql_text)
             else:
                 sql = self.check_save_sql(res=full_sql_text)
                 tables = []
