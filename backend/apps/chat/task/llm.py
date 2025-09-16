@@ -1040,6 +1040,7 @@ class LLMService:
                                                                           subsql)
                 real_execute_sql = assistant_dynamic_sql
 
+            print(tables)
             result = self.execute_sql(sql=real_execute_sql, tables=tables)
             print(result)
             self.save_sql_data(data_obj=result)
