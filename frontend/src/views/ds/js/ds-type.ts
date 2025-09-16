@@ -21,7 +21,7 @@ export const dsType = [
   { label: '达梦', value: 'dm' },
   { label: 'Apache Doris', value: 'doris' },
   { label: 'AWS Redshift', value: 'redshift' },
-  { label: 'Elasticsearch', value: 'es' },
+  // { label: 'Elasticsearch', value: 'es' },
 ]
 
 export const dsTypeWithImg = [
