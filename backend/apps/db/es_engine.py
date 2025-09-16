@@ -24,15 +24,16 @@ def get_es_index(conf: DatasourceConf):
     es_client = get_es_connect(conf)
     indices = es_client.cat.indices(format="json")
     res = []
-    for idx in indices:
-        index_name = idx.get('index')
-        desc = ''
-        # get mapping
-        mapping = es_client.indices.get_mapping(index=index_name)
-        mappings = mapping.get(index_name).get("mappings")
-        if mappings.get('_meta'):
-            desc = mappings.get('_meta').get('description')
-        res.append((index_name, desc))
+    if indices is not None:
+        for idx in indices:
+            index_name = idx.get('index')
+            desc = ''
+            # get mapping
+            mapping = es_client.indices.get_mapping(index=index_name)
+            mappings = mapping.get(index_name).get("mappings")
+            if mappings.get('_meta'):
+                desc = mappings.get('_meta').get('description')
+            res.append((index_name, desc))
     return res
 
 
@@ -43,17 +44,18 @@ def get_es_fields(conf: DatasourceConf, table_name: str):
     mapping = es_client.indices.get_mapping(index=index_name)
     properties = mapping.get(index_name).get("mappings").get("properties")
     res = []
-    for field, config in properties.items():
-        field_type = config.get("type")
-        desc = ''
-        if config.get("_meta"):
-            desc = config.get("_meta").get('description')
+    if properties is not None:
+        for field, config in properties.items():
+            field_type = config.get("type")
+            desc = ''
+            if config.get("_meta"):
+                desc = config.get("_meta").get('description')
 
-        if field_type:
-            res.append((field, field_type, desc))
-        else:
-            # object、nested...
-            res.append((field, ','.join(list(config.keys())), desc))
+            if field_type:
+                res.append((field, field_type, desc))
+            else:
+                # object、nested...
+                res.append((field, ','.join(list(config.keys())), desc))
     return res
 
 
