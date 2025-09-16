@@ -434,4 +434,4 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                     return {"fields": columns, "data": result_list,
                             "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
             except Exception as ex:
-                raise ParseSQLResultError(str(ex))
+                raise Exception(str(ex))

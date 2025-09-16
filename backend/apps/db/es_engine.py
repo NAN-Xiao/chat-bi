@@ -63,7 +63,7 @@ def get_es_fields(conf: DatasourceConf, table_name: str):
 def get_es_data(conf: DatasourceConf, sql: str, table_name: str):
     r = requests.post(f"{conf.host}/_sql/translate", json={"query": sql})
     if r.json().get('error'):
-        raise BaseException(f'{json.dumps(r.json())}')
+        print(json.dumps(r.json()))
 
     es_client = get_es_connect(conf)
     response = es_client.search(
