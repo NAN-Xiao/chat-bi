@@ -1041,6 +1041,7 @@ class LLMService:
                 real_execute_sql = assistant_dynamic_sql
 
             result = self.execute_sql(sql=real_execute_sql, tables=tables)
+            print(result)
             self.save_sql_data(data_obj=result)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
