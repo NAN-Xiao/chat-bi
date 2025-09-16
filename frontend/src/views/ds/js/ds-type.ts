@@ -7,7 +7,7 @@ import ck from '@/assets/datasource/icon_ck.png'
 import dm from '@/assets/datasource/icon_dm.png'
 import doris from '@/assets/datasource/icon_doris.png'
 import redshift from '@/assets/datasource/icon_redshift.png'
-import es from '@/assets/datasource/icon_es.png'
+// import es from '@/assets/datasource/icon_es.png'
 import { i18n } from '@/i18n'
 
 const t = i18n.global.t
