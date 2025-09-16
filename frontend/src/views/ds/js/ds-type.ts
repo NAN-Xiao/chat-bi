@@ -34,7 +34,7 @@ export const dsTypeWithImg = [
   { name: '达梦', type: 'dm', img: dm },
   { name: 'Apache Doris', type: 'doris', img: doris },
   { name: 'AWS Redshift', type: 'redshift', img: redshift },
-  { name: 'Elasticsearch', type: 'es', img: es },
+  // { name: 'Elasticsearch', type: 'es', img: es },
 ]
 
 export const haveSchema = ['sqlServer', 'pg', 'oracle', 'dm', 'redshift']
