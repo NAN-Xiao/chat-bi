@@ -1274,7 +1274,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
 
     requests.post(url=settings.MCP_IMAGE_HOST, json=request_obj)
 
-    request_path = urllib.parse.urljoin(settings.MCP_IMAGE_HOST, f"{file_name}.png")
+    request_path = urllib.parse.urljoin(settings.SERVER_IMAGE_HOST, f"{file_name}.png")
 
     return request_path
 
