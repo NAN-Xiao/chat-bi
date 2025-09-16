@@ -191,6 +191,7 @@ const pageLogo = computed(() => {
       line-height: 20px;
       background: #ff880033;
       color: #d97400;
+      margin-top: -18px;
 
       &.is-base {
         background: var(--ed-color-primary-33, #1cba9033);
