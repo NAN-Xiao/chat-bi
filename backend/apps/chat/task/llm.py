@@ -881,7 +881,7 @@ class LLMService:
     def finish(self):
         return finish_record(session=self.session, record_id=self.record.id)
 
-    def execute_sql(self, sql: str, tables):
+    def execute_sql(self, sql: str):
         """Execute SQL query
 
         Args:
@@ -893,7 +893,7 @@ class LLMService:
         """
         SQLBotLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
-            return exec_sql(ds=self.ds, sql=sql, origin_column=False, table_name=tables)
+            return exec_sql(ds=self.ds, sql=sql, origin_column=False)
         except Exception as e:
             if isinstance(e, ParseSQLResultError):
                 raise e
@@ -1022,7 +1022,6 @@ class LLMService:
                     sql = self.check_save_sql(res=full_sql_text)
             else:
                 sql = self.check_save_sql(res=full_sql_text)
-                tables = []
 
             SQLBotLogUtil.info(sql)
             format_sql = sqlparse.format(sql, reindent=True)
@@ -1040,7 +1039,7 @@ class LLMService:
                                                                           subsql)
                 real_execute_sql = assistant_dynamic_sql
 
-            result = self.execute_sql(sql=real_execute_sql, tables=tables)
+            result = self.execute_sql(sql=real_execute_sql)
             self.save_sql_data(data_obj=result)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
