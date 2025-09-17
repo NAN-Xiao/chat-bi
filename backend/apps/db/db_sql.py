@@ -143,7 +143,7 @@ def get_table_sql(ds: CoreDatasource, conf: DatasourceConf, db_version: str = ''
 
 
 def get_field_sql(ds: CoreDatasource, conf: DatasourceConf, table_name: str = None):
-    if ds.type == "mysql" or ds.type == "doris":
+    if ds.type == "mysql":
         sql1 = """
                 SELECT 
                     COLUMN_NAME,
