@@ -283,7 +283,7 @@ def get_tables(ds: CoreDatasource):
             with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
                                  port=conf.port, db=conf.database, connect_timeout=conf.timeout,
                                  read_timeout=conf.timeout) as conn, conn.cursor() as cursor:
-                cursor.execute(sql, {"param": sql_param})
+                cursor.execute(sql, (sql_param,))
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
@@ -291,7 +291,7 @@ def get_tables(ds: CoreDatasource):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                             password=conf.password,
                                             timeout=conf.timeout) as conn, conn.cursor() as cursor:
-                cursor.execute(sql, {"param": sql_param})
+                cursor.execute(sql, (sql_param,))
                 res = cursor.fetchall()
                 res_list = [TableSchema(*item) for item in res]
                 return res_list
@@ -323,7 +323,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
                                  port=conf.port, db=conf.database, connect_timeout=conf.timeout,
                                  read_timeout=conf.timeout) as conn, conn.cursor() as cursor:
-                cursor.execute(sql, {"param1": p1, "param2": p2})
+                cursor.execute(sql, (p1, p2))
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
@@ -331,7 +331,7 @@ def get_fields(ds: CoreDatasource, table_name: str = None):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                             password=conf.password,
                                             timeout=conf.timeout) as conn, conn.cursor() as cursor:
-                cursor.execute(sql, {"param1": p1, "param2": p2})
+                cursor.execute(sql, (p1, p2))
                 res = cursor.fetchall()
                 res_list = [ColumnSchema(*item) for item in res]
                 return res_list
