@@ -91,7 +91,7 @@ def get_es_fields(conf: DatasourceConf, table_name: str):
 def get_es_data_by_http(conf: DatasourceConf, sql: str):
     url = conf.host
     while url.endswith('/'):
-        url = sql[:-1]
+        url = url[:-1]
 
     host = f'{url}/_sql?format=json'
     username = f"{conf.username}"
