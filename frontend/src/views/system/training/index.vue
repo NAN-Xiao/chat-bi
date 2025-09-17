@@ -19,6 +19,7 @@ interface Form {
   id?: string | null
   question: string | null
   datasource: string | null
+  datasource_name: string | null
   description: string | null
 }
 
@@ -55,6 +56,7 @@ const defaultForm = {
   question: null,
   description: null,
   datasource: null,
+  datasource_name: null,
 }
 const pageForm = ref<Form>(cloneDeep(defaultForm))
 const copyCode = () => {
@@ -498,6 +500,7 @@ const onRowFormClose = () => {
       <el-form-item prop="datasource" :label="t('ds.title')">
         <el-select
           v-model="pageForm.datasource"
+          filterable
           :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('ds.title')"
           style="width: 100%"
         >
@@ -542,7 +545,7 @@ const onRowFormClose = () => {
       </el-form-item>
       <el-form-item :label="t('ds.title')">
         <div class="content">
-          {{ pageForm.datasource }}
+          {{ pageForm.datasource_name }}
         </div>
       </el-form-item>
     </el-form>

@@ -94,7 +94,8 @@ def create_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
 
     exists = session.query(
         session.query(DataTraining).filter(
-            and_(DataTraining.question == info.question, DataTraining.oid == oid)).exists()).scalar()
+            and_(DataTraining.question == info.question, DataTraining.oid == oid,
+                 DataTraining.datasource == info.datasource)).exists()).scalar()
     if exists:
         raise Exception(trans("i18n_data_training.exists_in_db"))
 
@@ -114,8 +115,10 @@ def create_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
 
 
 def update_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans: Trans):
+    if info.datasource is None:
+        raise Exception(trans("i18n_data_training.datasource_cannot_be_none"))
+
     count = session.query(DataTraining).filter(
-        DataTraining.oid == oid,
         DataTraining.id == info.id
     ).count()
     if count == 0:
@@ -124,6 +127,7 @@ def update_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
     exists = session.query(
         session.query(DataTraining).filter(
             and_(DataTraining.question == info.question, DataTraining.oid == oid,
+                 DataTraining.datasource == info.datasource,
                  DataTraining.id != info.id)).exists()).scalar()
     if exists:
         raise Exception(trans("i18n_data_training.exists_in_db"))
@@ -131,6 +135,7 @@ def update_training(session: SessionDep, info: DataTrainingInfo, oid: int, trans
     stmt = update(DataTraining).where(and_(DataTraining.id == info.id)).values(
         question=info.question,
         description=info.description,
+        datasource=info.datasource,
     )
     session.execute(stmt)
     session.commit()
