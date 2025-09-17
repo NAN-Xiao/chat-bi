@@ -29,6 +29,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum
+from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.models.datasource import CoreDatasource
@@ -935,6 +936,9 @@ class LLMService:
                 self.chat_question.terminologies = get_terminology_template(self.session, self.chat_question.question,
                                                                             self.ds.oid if isinstance(self.ds,
                                                                                                       CoreDatasource) else 1)
+            self.chat_question.data_training = get_training_template(self.session, self.chat_question.question,
+                                                                     self.ds.id, self.ds.oid)
+
             self.init_messages()
 
             # return id

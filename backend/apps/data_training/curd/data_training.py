@@ -204,7 +204,7 @@ LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
 """
 
 
-def select_terminology_by_question(session: SessionDep, question: str, oid: int, datasource: int):
+def select_training_by_question(session: SessionDep, question: str, oid: int, datasource: int):
     if question.strip() == "":
         return []
 
@@ -303,7 +303,7 @@ def get_training_template(session: SessionDep, question: str, datasource: int, o
         oid = 1
     if not datasource:
         return ''
-    _results = select_terminology_by_question(session, question, oid, datasource)
+    _results = select_training_by_question(session, question, oid, datasource)
     if _results and len(_results) > 0:
         data_training = to_xml_string(_results)
         template = get_base_data_training_template().format(data_training=data_training)
