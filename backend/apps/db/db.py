@@ -233,12 +233,12 @@ def get_schema(ds: CoreDatasource):
         with get_session(ds) as session:
             sql: str = ''
             if ds.type == "sqlServer":
-                sql = f"""select name from sys.schemas"""
+                sql = """select name from sys.schemas"""
             elif ds.type == "pg" or ds.type == "excel":
                 sql = """SELECT nspname
                          FROM pg_namespace"""
             elif ds.type == "oracle":
-                sql = f"""select * from all_users"""
+                sql = """select * from all_users"""
             with session.execute(text(sql)) as result:
                 res = result.fetchall()
                 res_list = [item[0] for item in res]
@@ -247,7 +247,7 @@ def get_schema(ds: CoreDatasource):
         if ds.type == 'dm':
             with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                   port=conf.port) as conn, conn.cursor() as cursor:
-                cursor.execute(f"""select OBJECT_NAME from dba_objects where object_type='SCH'""", timeout=conf.timeout)
+                cursor.execute("""select OBJECT_NAME from dba_objects where object_type='SCH'""", timeout=conf.timeout)
                 res = cursor.fetchall()
                 res_list = [item[0] for item in res]
                 return res_list
@@ -255,7 +255,7 @@ def get_schema(ds: CoreDatasource):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                             password=conf.password,
                                             timeout=conf.timeout) as conn, conn.cursor() as cursor:
-                cursor.execute(f"""SELECT nspname FROM pg_namespace""")
+                cursor.execute("""SELECT nspname FROM pg_namespace""")
                 res = cursor.fetchall()
                 res_list = [item[0] for item in res]
                 return res_list

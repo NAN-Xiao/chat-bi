@@ -5,27 +5,27 @@ from apps.datasource.models.datasource import CoreDatasource, DatasourceConf
 
 def get_version_sql(ds: CoreDatasource, conf: DatasourceConf):
     if ds.type == "mysql" or ds.type == "doris":
-        return f"""
+        return """
                 SELECT VERSION()
                 """
     elif ds.type == "sqlServer":
-        return f"""
+        return """
                 select SERVERPROPERTY('ProductVersion')
                 """
     elif ds.type == "pg" or ds.type == "excel":
-        return f"""
+        return """
               SELECT current_setting('server_version')
               """
     elif ds.type == "oracle":
-        return f"""
+        return """
                 SELECT version FROM v$instance
                 """
     elif ds.type == "ck":
-        return f"""
+        return """
                 select  version()
                 """
     elif ds.type == 'dm':
-        return f"""
+        return """
                 SELECT * FROM v$version
                 """
     elif ds.type == 'redshift':
