@@ -198,7 +198,7 @@ FROM
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM data_training AS child
 ) TEMP
-WHERE similarity > {settings.EMBEDDING_SIMILARITY} and oid = :oid and datasource = :datasource
+WHERE similarity > {settings.EMBEDDING_DATA_TRAINING_SIMILARITY} and oid = :oid and datasource = :datasource
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
 """
