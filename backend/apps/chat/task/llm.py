@@ -432,6 +432,7 @@ class LLMService:
         if not ignore_auto_select:
             if settings.EMBEDDING_ENABLED:
                 ds = get_ds_embedding(self.session, self.current_user, _ds_list, self.chat_question.question)
+                yield {'content': '{"id":' + ds.id + '}'}
             else:
                 _ds_list_dict = []
                 for _ds in _ds_list:
