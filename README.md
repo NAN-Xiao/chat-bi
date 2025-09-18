@@ -30,7 +30,7 @@ docker run -d \
   --restart unless-stopped \
   -p 8000:8000 \
   -p 8001:8001 \
-  -v ./data/sqlbot/data:/opt/sqlbot/data \
+  -v ./data/sqlbot/excel:/opt/sqlbot/excel \
   -v ./data/sqlbot/images:/opt/sqlbot/images \
   -v ./data/sqlbot/logs:/opt/sqlbot/app/logs \
   -v ./data/postgresql:/var/lib/postgresql/data \
