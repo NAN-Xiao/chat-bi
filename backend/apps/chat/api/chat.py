@@ -106,7 +106,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser):
 async def recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
                               current_assistant: CurrentAssistant):
     def _return_empty():
-        yield 'data:' + orjson.dumps( {'content': [], 'type': 'recommended_question'}).decode() + '\n\n'
+        yield 'data:' + orjson.dumps( {'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
 
     try:
         record = get_chat_record_by_id(session, chat_record_id)
