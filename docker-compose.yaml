@@ -3,6 +3,7 @@ services:
     image: dataease/sqlbot
     container_name: sqlbot
     restart: always
+    privileged: true
     networks:
       - sqlbot-network
     ports:
