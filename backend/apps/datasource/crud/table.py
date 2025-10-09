@@ -38,7 +38,6 @@ def run_fill_empty_table_embedding(session: Session):
     SQLBotLogUtil.info('get tables')
     stmt = select(CoreTable.id).where(and_(CoreTable.embedding.is_(None)))
     results = session.execute(stmt).scalars().all()
-    SQLBotLogUtil.info(json.dumps(results))
 
     save_table_embedding(session, results)
 
