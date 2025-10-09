@@ -81,7 +81,7 @@ def save_table_embedding(session: Session, ids: List[int]):
             # table_schema.append(schema_table)
             emb = json.dumps(model.embed_query(schema_table))
 
-            stmt = update(CoreTable).where(and_(CoreTable.id == id)).values(embedding=emb)
+            stmt = update(CoreTable).where(and_(CoreTable.id == _id)).values(embedding=emb)
             session.execute(stmt)
             session.commit()
 
