@@ -38,7 +38,7 @@ def run_fill_empty_table_embedding(session: Session):
     SQLBotLogUtil.info('get tables')
     stmt = select(CoreTable.id).where(and_(CoreTable.embedding.is_(None)))
     results = session.execute(stmt).scalars().all()
-    SQLBotLogUtil.info(results)
+    SQLBotLogUtil.info(json.dumps(results))
 
     save_table_embedding(session, results)
 
@@ -53,8 +53,8 @@ def save_table_embedding(session: Session, ids: List[int]):
         SQLBotLogUtil.info('start table embedding')
         start_time = time.time()
         model = EmbeddingModelCache.get_model()
-        for id in ids:
-            table = session.query(CoreTable).filter(CoreTable.id == id).first()
+        for _id in ids:
+            table = session.query(CoreTable).filter(CoreTable.id == _id).first()
             fields = session.query(CoreField).filter(CoreField.table_id == table.id).all()
 
             schema_table = ''
@@ -82,7 +82,7 @@ def save_table_embedding(session: Session, ids: List[int]):
             # table_schema.append(schema_table)
             emb = model.embed_query(schema_table)
 
-            stmt = update(CoreTable).where(and_(CoreTable.id == id)).values(embedding=emb)
+            stmt = update(CoreTable).where(and_(CoreTable.id == id)).values(embedding=json.dumps(emb))
             session.execute(stmt)
             session.commit()
 

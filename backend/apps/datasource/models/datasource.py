@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pgvector.sqlalchemy import VECTOR
 from pydantic import BaseModel
 from sqlalchemy import Column, Text, BigInteger, DateTime, Identity
 from sqlalchemy.dialects.postgresql import JSONB
@@ -32,7 +31,7 @@ class CoreTable(SQLModel, table=True):
     table_name: str = Field(sa_column=Column(Text))
     table_comment: str = Field(sa_column=Column(Text))
     custom_comment: str = Field(sa_column=Column(Text))
-    embedding: Optional[List[float]] = Field(sa_column=Column(VECTOR(), nullable=True))
+    embedding: str = Field(sa_column=Column(Text, nullable=True))
 
 
 class CoreField(SQLModel, table=True):

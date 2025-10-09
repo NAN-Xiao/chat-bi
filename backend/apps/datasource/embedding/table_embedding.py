@@ -56,12 +56,13 @@ def calc_table_embedding(tables: list[dict], question: str):
             # results = model.embed_documents(text)
             # end_time = time.time()
             # SQLBotLogUtil.info(str(end_time - start_time))
-            results = [item.get('embedding') if item.get('embedding') else ' ' for item in _list]
+            results = [item.get('embedding') for item in _list]
 
             q_embedding = model.embed_query(question)
             for index in range(len(results)):
                 item = results[index]
-                _list[index]['cosine_similarity'] = cosine_similarity(q_embedding, item)
+                if item:
+                    _list[index]['cosine_similarity'] = cosine_similarity(q_embedding, json.loads(item))
 
             _list.sort(key=lambda x: x['cosine_similarity'], reverse=True)
             _list = _list[:settings.TABLE_EMBEDDING_COUNT]
