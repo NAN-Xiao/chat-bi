@@ -56,7 +56,7 @@ def calc_table_embedding(tables: list[dict], question: str):
             # results = model.embed_documents(text)
             # end_time = time.time()
             # SQLBotLogUtil.info(str(end_time - start_time))
-            results = [item.get('embedding') for item in _list]
+            results = [item.get('embedding') if item.get('embedding') else ' ' for item in _list]
 
             q_embedding = model.embed_query(question)
             for index in range(len(results)):

@@ -1,3 +1,5 @@
+import json
+import time
 import traceback
 from typing import List
 
@@ -6,6 +8,7 @@ from sqlalchemy import and_, select, update
 from apps.ai_model.embedding import EmbeddingModelCache
 from common.core.config import settings
 from common.core.deps import SessionDep
+from common.utils.utils import SQLBotLogUtil
 from ..models.datasource import CoreTable, CoreField
 
 
@@ -33,6 +36,7 @@ def run_fill_empty_table_embedding(session: SessionDep):
 
     stmt = select(CoreTable.id).where(and_(CoreTable.embedding.is_(None)))
     results = session.execute(stmt).scalars().all()
+    SQLBotLogUtil.info(json.dumps(results))
 
     save_table_embedding(session, results)
 
@@ -77,7 +81,12 @@ def save_table_embedding(session: SessionDep, ids: List[int]):
 
         model = EmbeddingModelCache.get_model()
 
+        SQLBotLogUtil.info(json.dumps(table_schema))
+        SQLBotLogUtil.info('start table embedding')
+        start_time = time.time()
         results = model.embed_documents(table_schema)
+        end_time = time.time()
+        SQLBotLogUtil.info('table embedding finished in:' + str(end_time - start_time) + 'seconds')
 
         for index in range(len(results)):
             item = results[index]
