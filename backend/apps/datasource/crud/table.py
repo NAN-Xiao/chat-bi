@@ -4,6 +4,7 @@ import traceback
 from typing import List
 
 from sqlalchemy import and_, select, update
+from sqlalchemy.orm.session import Session
 
 from apps.ai_model.embedding import EmbeddingModelCache
 from common.core.config import settings
@@ -30,10 +31,11 @@ def update_table(session: SessionDep, item: CoreTable):
     session.commit()
 
 
-def run_fill_empty_table_embedding(session: SessionDep):
+def run_fill_empty_table_embedding(session: Session):
     if not settings.EMBEDDING_ENABLED:
         return
 
+    SQLBotLogUtil.info('get tables')
     stmt = select(CoreTable.id).where(and_(CoreTable.embedding.is_(None)))
     results = session.execute(stmt).scalars().all()
     SQLBotLogUtil.info(json.dumps(results))
@@ -41,7 +43,7 @@ def run_fill_empty_table_embedding(session: SessionDep):
     save_table_embedding(session, results)
 
 
-def save_table_embedding(session: SessionDep, ids: List[int]):
+def save_table_embedding(session: Session, ids: List[int]):
     if not settings.EMBEDDING_ENABLED:
         return
 
