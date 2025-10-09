@@ -18,7 +18,8 @@ from apps.system.middleware.auth import TokenMiddleware
 from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
 from common.core.sqlbot_cache import init_sqlbot_cache
-from common.utils.embedding_threads import fill_empty_terminology_embeddings, fill_empty_data_training_embeddings
+from common.utils.embedding_threads import fill_empty_terminology_embeddings, fill_empty_data_training_embeddings, \
+    fill_empty_table_embeddings
 from common.utils.utils import SQLBotLogUtil
 
 
@@ -35,6 +36,10 @@ def init_data_training_embedding_data():
     fill_empty_data_training_embeddings()
 
 
+def init_table_embedding():
+    fill_empty_table_embeddings()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
@@ -42,6 +47,7 @@ async def lifespan(app: FastAPI):
     init_dynamic_cors(app)
     init_terminology_embedding_data()
     init_data_training_embedding_data()
+    init_table_embedding()
     SQLBotLogUtil.info("✅ SQLBot 初始化完成")
     await sqlbot_xpack.core.clean_xpack_cache()
     await async_model_info()  # 异步加密已有模型的密钥和地址
