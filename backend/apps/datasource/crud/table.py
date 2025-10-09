@@ -48,18 +48,18 @@ def save_table_embedding(session: SessionDep, ids: List[int]):
     if not ids or len(ids) == 0:
         return
     try:
-
-        _list = session.query(CoreTable).filter(and_(CoreTable.id.in_(ids))).all()
-
-        table_schema = []
-        for item in _list:
-            fields = session.query(CoreField).filter(CoreField.table_id == item.id).all()
+        SQLBotLogUtil.info('start table embedding')
+        start_time = time.time()
+        model = EmbeddingModelCache.get_model()
+        for id in ids:
+            table = session.query(CoreTable).filter(CoreTable.id == id).first()
+            fields = session.query(CoreField).filter(CoreField.table_id == table.id).all()
 
             schema_table = ''
-            schema_table += f"# Table: {item.table_name}"
+            schema_table += f"# Table: {table.table_name}"
             table_comment = ''
-            if item.custom_comment:
-                table_comment = item.custom_comment.strip()
+            if table.custom_comment:
+                table_comment = table.custom_comment.strip()
             if table_comment == '':
                 schema_table += '\n[\n'
             else:
@@ -77,22 +77,14 @@ def save_table_embedding(session: SessionDep, ids: List[int]):
                         field_list.append(f"({field.field_name}:{field.field_type}, {field_comment})")
                 schema_table += ",\n".join(field_list)
             schema_table += '\n]\n'
-            table_schema.append(schema_table)
+            # table_schema.append(schema_table)
+            emb = model.embed_query(schema_table)
 
-        model = EmbeddingModelCache.get_model()
-
-        SQLBotLogUtil.info(json.dumps(table_schema))
-        SQLBotLogUtil.info('start table embedding')
-        start_time = time.time()
-        results = model.embed_documents(table_schema)
-        end_time = time.time()
-        SQLBotLogUtil.info('table embedding finished in:' + str(end_time - start_time) + 'seconds')
-
-        for index in range(len(results)):
-            item = results[index]
-            stmt = update(CoreTable).where(and_(CoreTable.id == _list[index].id)).values(embedding=item)
+            stmt = update(CoreTable).where(and_(CoreTable.id == id)).values(embedding=emb)
             session.execute(stmt)
             session.commit()
 
+        end_time = time.time()
+        SQLBotLogUtil.info('table embedding finished in:' + str(end_time - start_time) + 'seconds')
     except Exception:
         traceback.print_exc()
