@@ -99,7 +99,7 @@ async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
         def inner():
             return getTablesByDs(session, ds)
 
-        await asyncio.to_thread(inner)
+        return await asyncio.to_thread(inner)
     except Exception as e:
         # check ds status
         def inner():
@@ -117,7 +117,7 @@ async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
         def inner():
             return get_schema(ds)
 
-        await asyncio.to_thread(inner)
+        return await asyncio.to_thread(inner)
     except Exception as e:
         # check ds status
         def inner():
