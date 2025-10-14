@@ -5,7 +5,7 @@ APP_PATH=/opt/sqlbot/app
 sleep 5
 wait-for-it 127.0.0.1:5432 --timeout=120 --strict -- echo -e "\033[1;32mPostgreSQL started.\033[0m"
 
-nohup node $SSR_PATH/app.js &
+nohup pm2 start $SSR_PATH/app.js &
 
 nohup uvicorn main:mcp_app --host 0.0.0.0 --port 8001 &
 
