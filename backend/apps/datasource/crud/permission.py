@@ -1,3 +1,4 @@
+import datetime
 import json
 from typing import List, Optional
 
@@ -7,8 +8,41 @@ from sqlbot_xpack.permissions.models.ds_permission import DsPermission, Permissi
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
 
 from apps.datasource.crud.row_permission import transFilterTree
-from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
+from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable
 from common.core.deps import CurrentUser, SessionDep
+
+
+def list_datasource_user_ids(session: SessionDep, datasource_id: int) -> list[int]:
+    rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource_id).all()
+    return [int(row.user_id) for row in rows]
+
+
+def update_datasource_users(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource: CoreDatasource,
+        user_ids: list[int]
+) -> list[int]:
+    next_user_ids = {int(user_id) for user_id in user_ids if int(user_id) != 1}
+    current_rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource.id).all()
+    current_user_ids = {int(row.user_id) for row in current_rows}
+
+    for row in current_rows:
+        if int(row.user_id) not in next_user_ids:
+            session.delete(row)
+
+    add_user_ids = next_user_ids - current_user_ids
+    for user_id in add_user_ids:
+        session.add(CoreDatasourceUser(
+            ds_id=datasource.id,
+            user_id=user_id,
+            oid=datasource.oid if datasource.oid is not None else 1,
+            create_by=current_user.id,
+            create_time=datetime.datetime.now()
+        ))
+
+    session.flush()
+    return sorted(next_user_ids)
 
 
 def _parse_json_list(value) -> list:
@@ -39,28 +73,12 @@ def get_accessible_datasource_ids(session: SessionDep, current_user: CurrentUser
     if _is_datasource_scope_admin(current_user):
         return None
 
-    oid = current_user.oid if current_user.oid is not None else 1
-    rules_query = session.query(DsRules).filter(DsRules.enable.is_(True))
-    if hasattr(DsRules, "oid"):
-        rules_query = rules_query.filter(or_(DsRules.oid == oid, DsRules.oid.is_(None)))
-
-    permission_ids: set[int] = set()
-    for rule in rules_query.all():
-        if not _rule_contains_user(rule, current_user):
-            continue
-        for permission_id in _parse_json_list(rule.permission_list):
-            try:
-                permission_ids.add(int(permission_id))
-            except (TypeError, ValueError):
-                continue
-
-    if not permission_ids:
-        return set()
-
-    permissions = session.query(DsPermission).filter(
-        and_(DsPermission.enable.is_(True), DsPermission.id.in_(permission_ids))
+    project_users = session.query(CoreDatasourceUser).join(
+        CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id
+    ).filter(
+        CoreDatasourceUser.user_id == current_user.id
     ).all()
-    return {int(permission.ds_id) for permission in permissions if permission.ds_id}
+    return {int(project_user.ds_id) for project_user in project_users if project_user.ds_id}
 
 
 def has_datasource_access(session: SessionDep, current_user: CurrentUser, datasource_ids) -> bool:
@@ -94,18 +112,19 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
 
     filters = []
     if is_normal_user(current_user):
-        contain_rules = session.query(DsRules).all()
+        contain_rules = get_user_permission_rules(session, current_user, ds.id)
         for table in table_list:
             row_permissions = session.query(DsPermission).filter(
-                and_(DsPermission.table_id == table.id, DsPermission.type == 'row')).all()
+                and_(DsPermission.ds_id == ds.id, DsPermission.table_id == table.id, DsPermission.type == 'row')
+            ).all()
             res: List[PermissionDTO] = []
             if row_permissions is not None:
                 for permission in row_permissions:
                     # check permission and user in same rules
                     flag = False
                     for r in contain_rules:
-                        p_list = json.loads(r.permission_list)
-                        u_list = json.loads(r.user_list)
+                        p_list = _parse_json_list(r.permission_list)
+                        u_list = _parse_json_list(r.user_list)
                         if p_list is not None and u_list is not None and permission.id in p_list and (
                                 current_user.id in u_list or f'{current_user.id}' in u_list):
                             flag = True
@@ -122,7 +141,8 @@ def get_column_permission_fields(session: SessionDep, current_user: CurrentUser,
                                  fields: list[CoreField], contain_rules: list[DsRules]):
     if is_normal_user(current_user):
         column_permissions = session.query(DsPermission).filter(
-            and_(DsPermission.table_id == table.id, DsPermission.type == 'column')).all()
+            and_(DsPermission.ds_id == table.ds_id, DsPermission.table_id == table.id, DsPermission.type == 'column')
+        ).all()
         if column_permissions is not None:
             for permission in column_permissions:
                 # check permission and user in same rules
@@ -133,8 +153,8 @@ def get_column_permission_fields(session: SessionDep, current_user: CurrentUser,
                 # ).first()
                 flag = False
                 for r in contain_rules:
-                    p_list = json.loads(r.permission_list)
-                    u_list = json.loads(r.user_list)
+                    p_list = _parse_json_list(r.permission_list)
+                    u_list = _parse_json_list(r.user_list)
                     if p_list is not None and u_list is not None and permission.id in p_list and (
                             current_user.id in u_list or f'{current_user.id}' in u_list):
                         flag = True
@@ -146,7 +166,46 @@ def get_column_permission_fields(session: SessionDep, current_user: CurrentUser,
 
 
 def is_normal_user(current_user: CurrentUser):
-    return current_user.id != 1
+    return not _is_datasource_scope_admin(current_user)
+
+
+def get_user_permission_rules(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: Optional[int] = None
+) -> list[DsRules]:
+    if not is_normal_user(current_user):
+        return []
+
+    oid = current_user.oid if current_user.oid is not None else 1
+    rules_query = session.query(DsRules).filter(DsRules.enable.is_(True))
+    if hasattr(DsRules, "oid"):
+        rules_query = rules_query.filter(or_(DsRules.oid == oid, DsRules.oid.is_(None)))
+
+    if datasource_id is None:
+        return [rule for rule in rules_query.all() if _rule_contains_user(rule, current_user)]
+
+    permission_ids = {
+        int(permission.id) for permission in session.query(DsPermission).filter(
+            and_(DsPermission.enable.is_(True), DsPermission.ds_id == datasource_id)
+        ).all()
+    }
+    if not permission_ids:
+        return []
+
+    user_rules = []
+    for rule in rules_query.all():
+        if not _rule_contains_user(rule, current_user):
+            continue
+        rule_permission_ids = set()
+        for permission_id in _parse_json_list(rule.permission_list):
+            try:
+                rule_permission_ids.add(int(permission_id))
+            except (TypeError, ValueError):
+                continue
+        if rule_permission_ids & permission_ids:
+            user_rules.append(rule)
+    return user_rules
 
 
 def filter_list(list_a, list_b):

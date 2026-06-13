@@ -37,6 +37,15 @@ async def check_ws_permission(current_user: UserInfoDTO, type, resource) -> bool
     if not resource or (isinstance(resource, list) and len(resource) == 0):
         return True
 
+    if type == 'ds' or type == 'datasource':
+        from apps.datasource.crud.permission import has_datasource_access
+
+        with Session(engine) as session:
+            if not has_datasource_access(session, current_user, resource):
+                return False
+            if not (current_user.isAdmin or current_user.weight > 0):
+                return True
+
     oid = current_user.oid
     resource_id_list = await get_ws_resource(oid, type)
     if not resource_id_list:
@@ -51,11 +60,6 @@ async def check_ws_permission(current_user: UserInfoDTO, type, resource) -> bool
     if not workspace_allowed:
         return False
 
-    if type == 'ds' or type == 'datasource':
-        from apps.datasource.crud.permission import has_datasource_access
-
-        with Session(engine) as session:
-            return has_datasource_access(session, current_user, resource)
     return True
         
  

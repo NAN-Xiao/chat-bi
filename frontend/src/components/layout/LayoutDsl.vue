@@ -78,139 +78,149 @@ onBeforeMount(() => {
 <template>
   <div class="system-layout">
     <div class="left-side" :class="collapse && 'left-side-collapse'">
-      <template v-if="showSysmenu">
-        <div class="sys-management" @click="toUserIndex">
-          <img
-            v-if="loginBg"
-            :style="{ marginLeft: collapse ? '5px' : 0 }"
-            height="30"
-            width="30"
-            :src="loginBg"
-            :class="!collapse && 'collapse-icon'"
-            alt=""
-            @click="toChatIndex"
-          />
-          <custom_small
-            v-else-if="appearanceStore.themeColor !== 'default'"
-            :style="{ marginLeft: collapse ? '5px' : 0 }"
-            :class="!collapse && 'collapse-icon'"
-          ></custom_small>
-          <LOGO_fold
-            v-else
-            :style="{ marginLeft: collapse ? '5px' : 0 }"
-            :class="!collapse && 'collapse-icon'"
-          ></LOGO_fold>
-          <span v-if="!collapse">{{ $t('training.system_management') }}</span>
-        </div>
-      </template>
-      <template v-else>
-        <template v-if="appearanceStore.isBlue">
-          <img
-            v-if="loginBg && collapse"
-            style="margin: 0 0 6px 5px; cursor: pointer"
-            height="30"
-            width="30"
-            :src="loginBg"
-            alt=""
-            @click="toChatIndex"
-          />
-          <div v-else-if="loginBg && !collapse" class="default-sqlbot">
-            <img
-              height="30"
-              width="30"
-              :src="loginBg"
-              alt=""
-              class="collapse-icon"
-              @click="toChatIndex"
-            />
-            <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
-              appearanceStore.name
-            }}</span>
-          </div>
-          <custom_small
-            v-else-if="collapse"
-            :style="{ marginLeft: collapse ? '5px' : 0 }"
-            :class="!collapse && 'collapse-icon'"
-          ></custom_small>
+      <div class="side-header">
+        <div class="side-brand">
+          <template v-if="showSysmenu">
+            <div class="sys-management" @click="toUserIndex">
+              <img
+                v-if="loginBg"
+                :style="{ marginLeft: collapse ? '5px' : 0 }"
+                height="30"
+                width="30"
+                :src="loginBg"
+                :class="!collapse && 'collapse-icon'"
+                alt=""
+                @click="toChatIndex"
+              />
+              <custom_small
+                v-else-if="appearanceStore.themeColor !== 'default'"
+                :style="{ marginLeft: collapse ? '5px' : 0 }"
+                :class="!collapse && 'collapse-icon'"
+              ></custom_small>
+              <LOGO_fold
+                v-else
+                :style="{ marginLeft: collapse ? '5px' : 0 }"
+                :class="!collapse && 'collapse-icon'"
+              ></LOGO_fold>
+              <span v-if="!collapse">{{ $t('training.system_management') }}</span>
+            </div>
+          </template>
+          <template v-else>
+            <template v-if="appearanceStore.isBlue">
+              <img
+                v-if="loginBg && collapse"
+                style="margin: 0 0 6px 5px; cursor: pointer"
+                height="30"
+                width="30"
+                :src="loginBg"
+                alt=""
+                @click="toChatIndex"
+              />
+              <div v-else-if="loginBg && !collapse" class="default-sqlbot">
+                <img
+                  height="30"
+                  width="30"
+                  :src="loginBg"
+                  alt=""
+                  class="collapse-icon"
+                  @click="toChatIndex"
+                />
+                <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
+                  appearanceStore.name
+                }}</span>
+              </div>
+              <custom_small
+                v-else-if="collapse"
+                :style="{ marginLeft: collapse ? '5px' : 0 }"
+                :class="!collapse && 'collapse-icon'"
+              ></custom_small>
 
-          <div v-else class="default-sqlbot">
-            <custom_small class="collapse-icon"></custom_small>
-            <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
-              appearanceStore.name
-            }}</span>
-          </div>
-        </template>
-        <template v-else-if="appearanceStore.themeColor === 'custom'">
-          <img
-            v-if="loginBg && collapse"
-            style="margin: 0 0 6px 5px; cursor: pointer"
-            height="30"
-            width="30"
-            :src="loginBg"
-            alt=""
-            @click="toChatIndex"
-          />
-          <div v-else-if="loginBg && !collapse" class="default-sqlbot">
-            <img
-              height="30"
-              width="30"
-              :src="loginBg"
-              alt=""
-              class="collapse-icon"
-              @click="toChatIndex"
-            />
-            <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
-              appearanceStore.name
-            }}</span>
-          </div>
-          <custom_small
-            v-else-if="collapse"
-            style="margin: 0 0 6px 5px; cursor: pointer"
-            @click="toChatIndex"
-          ></custom_small>
-          <div v-else class="default-sqlbot">
-            <custom_small class="collapse-icon"></custom_small>
-            <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
-              appearanceStore.name
-            }}</span>
-          </div>
-        </template>
-        <template v-else>
-          <img
-            v-if="loginBg && collapse"
-            style="margin: 0 0 6px 5px; cursor: pointer"
-            height="30"
-            width="30"
-            :src="loginBg"
-            alt=""
-            @click="toChatIndex"
-          />
-          <div v-else-if="loginBg && !collapse" class="default-sqlbot">
-            <img
-              height="30"
-              width="30"
-              :src="loginBg"
-              alt=""
-              class="collapse-icon"
-              @click="toChatIndex"
-            />
-            <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
-              appearanceStore.name
-            }}</span>
-          </div>
-          <LOGO_fold
-            v-else-if="collapse"
-            style="margin: 0 0 6px 5px; cursor: pointer"
-            @click="toChatIndex"
-          ></LOGO_fold>
-          <div v-else class="default-sqlbot">
-            <LOGO_fold class="collapse-icon" @click="toChatIndex"></LOGO_fold>
-            <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
-              appearanceStore.name
-            }}</span>
-          </div>
-        </template>
-      </template>
+              <div v-else class="default-sqlbot">
+                <custom_small class="collapse-icon"></custom_small>
+                <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
+                  appearanceStore.name
+                }}</span>
+              </div>
+            </template>
+            <template v-else-if="appearanceStore.themeColor === 'custom'">
+              <img
+                v-if="loginBg && collapse"
+                style="margin: 0 0 6px 5px; cursor: pointer"
+                height="30"
+                width="30"
+                :src="loginBg"
+                alt=""
+                @click="toChatIndex"
+              />
+              <div v-else-if="loginBg && !collapse" class="default-sqlbot">
+                <img
+                  height="30"
+                  width="30"
+                  :src="loginBg"
+                  alt=""
+                  class="collapse-icon"
+                  @click="toChatIndex"
+                />
+                <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
+                  appearanceStore.name
+                }}</span>
+              </div>
+              <custom_small
+                v-else-if="collapse"
+                style="margin: 0 0 6px 5px; cursor: pointer"
+                @click="toChatIndex"
+              ></custom_small>
+              <div v-else class="default-sqlbot">
+                <custom_small class="collapse-icon"></custom_small>
+                <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
+                  appearanceStore.name
+                }}</span>
+              </div>
+            </template>
+            <template v-else>
+              <img
+                v-if="loginBg && collapse"
+                style="margin: 0 0 6px 5px; cursor: pointer"
+                height="30"
+                width="30"
+                :src="loginBg"
+                alt=""
+                @click="toChatIndex"
+              />
+              <div v-else-if="loginBg && !collapse" class="default-sqlbot">
+                <img
+                  height="30"
+                  width="30"
+                  :src="loginBg"
+                  alt=""
+                  class="collapse-icon"
+                  @click="toChatIndex"
+                />
+                <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
+                  appearanceStore.name
+                }}</span>
+              </div>
+              <LOGO_fold
+                v-else-if="collapse"
+                style="margin: 0 0 6px 5px; cursor: pointer"
+                @click="toChatIndex"
+              ></LOGO_fold>
+              <div v-else class="default-sqlbot">
+                <LOGO_fold class="collapse-icon" @click="toChatIndex"></LOGO_fold>
+                <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
+                  appearanceStore.name
+                }}</span>
+              </div>
+            </template>
+          </template>
+        </div>
+        <button type="button" class="fold" @click.stop="handleFoldExpand">
+          <el-icon size="20">
+            <icon_side_expand_outlined v-if="collapse"></icon_side_expand_outlined>
+            <icon_side_fold_outlined v-else></icon_side_fold_outlined>
+          </el-icon>
+        </button>
+      </div>
       <Workspace v-if="!showSysmenu" :collapse="collapse"></Workspace>
       <Menu :collapse="collapseCopy"></Menu>
       <div class="bottom">
@@ -227,10 +237,6 @@ onBeforeMount(() => {
         </div>
         <div class="personal-info">
           <Person :collapse="collapse" :in-sysmenu="showSysmenu"></Person>
-          <el-icon size="20" class="fold" @click="handleFoldExpand">
-            <icon_side_expand_outlined v-if="collapse"></icon_side_expand_outlined>
-            <icon_side_fold_outlined v-else></icon_side_fold_outlined>
-          </el-icon>
         </div>
       </div>
     </div>
@@ -268,6 +274,47 @@ onBeforeMount(() => {
     padding: 16px;
     position: relative;
     min-width: 240px;
+
+    .side-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+
+      .side-brand {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .default-sqlbot,
+      .sys-management {
+        margin-bottom: 0;
+      }
+
+      .fold {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 40px;
+        width: 40px;
+        height: 32px;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        color: #1f2329;
+        background: transparent;
+        cursor: pointer;
+
+        &:hover,
+        &:focus {
+          background: #1f23291a;
+        }
+
+        &:active {
+          background: #1f232933;
+        }
+      }
+    }
 
     .default-sqlbot {
       display: flex;
@@ -328,22 +375,6 @@ onBeforeMount(() => {
         display: flex;
         align-items: center;
         margin-top: 16px;
-
-        .fold {
-          cursor: pointer;
-          margin-left: auto;
-          border-radius: 6px;
-          width: 40px;
-          height: 40px;
-          &:hover,
-          &:focus {
-            background: #1f23291a;
-          }
-
-          &:active {
-            background: #1f232933;
-          }
-        }
       }
     }
 
@@ -352,6 +383,11 @@ onBeforeMount(() => {
       min-width: 64px;
       padding: 16px 12px;
       // animation: rotate 0.1s ease-in-out;
+
+      .side-header {
+        flex-direction: column;
+        gap: 6px;
+      }
 
       .ed-menu--collapse {
         --ed-menu-icon-width: 32px;
@@ -371,10 +407,6 @@ onBeforeMount(() => {
 
         .default-avatar {
           margin: 0 0 26px 4px;
-        }
-
-        .fold {
-          margin: 0 auto;
         }
       }
     }

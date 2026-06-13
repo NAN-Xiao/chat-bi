@@ -4,11 +4,10 @@ from typing import List, Optional
 
 from fastapi import HTTPException
 from sqlalchemy import and_, text
-from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import select
 
 from apps.datasource.crud.permission import get_accessible_datasource_ids, get_column_permission_fields, \
-    get_row_permission_filters, is_normal_user
+    get_row_permission_filters, get_user_permission_rules, is_normal_user
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
@@ -24,19 +23,24 @@ from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
 from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, CoreField, ColumnSchema, TableObj, \
-    DatasourceConf, TableAndFields
+    CoreDatasourceUser, DatasourceConf, TableAndFields
 
 
 def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
+    accessible_ids = get_accessible_datasource_ids(session, user)
+    if accessible_ids is not None:
+        if not accessible_ids:
+            return []
+        return session.exec(
+            select(CoreDatasource).where(CoreDatasource.id.in_(accessible_ids)).order_by(CoreDatasource.name)
+        ).all()
+
     current_oid = user.oid if user.oid is not None else 1
     if user.isAdmin and oid:
         current_oid = oid
-    datasource_list = session.exec(
-        select(CoreDatasource).where(CoreDatasource.oid == int(current_oid)).order_by(CoreDatasource.name)).all()
-    accessible_ids = get_accessible_datasource_ids(session, user)
-    if accessible_ids is None:
-        return datasource_list
-    return [datasource for datasource in datasource_list if int(datasource.id) in accessible_ids]
+    return session.exec(
+        select(CoreDatasource).where(CoreDatasource.oid == int(current_oid)).order_by(CoreDatasource.name)
+    ).all()
 
 
 def get_ds(session: SessionDep, id: int):
@@ -136,6 +140,7 @@ async def delete_ds(session: SessionDep, id: int):
                 conn.execute(text(f'DROP TABLE IF EXISTS "{sheet["tableName"]}"'))
             conn.commit()
 
+    session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == id).delete(synchronize_session=False)
     session.delete(term)
     session.commit()
     delete_table_by_ds_id(session, id)
@@ -143,7 +148,7 @@ async def delete_ds(session: SessionDep, id: int):
     if term:
         await clear_ws_ds_cache(term.oid)
     return {
-        "message": f"Datasource with ID {id} deleted successfully."
+        "message": f"项目 {id} 已删除。"
     }
 
 
@@ -316,7 +321,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     f_list = [f for f in fields if f.checked]
     if is_normal_user(current_user):
         # column is checked, and, column permission for data.fields
-        contain_rules = session.query(DsRules).all()
+        contain_rules = get_user_permission_rules(session, current_user, ds.id)
         f_list = get_column_permission_fields(session=session, current_user=current_user, table=data.table,
                                               fields=f_list, contain_rules=contain_rules)
 
@@ -425,7 +430,7 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
         else:
             fields_dict[field.table_id] = [field]
 
-    contain_rules = session.query(DsRules).all()
+    contain_rules = get_user_permission_rules(session, current_user, ds.id)
     for table in tables:
         # fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
         fields = fields_dict.get(table.id)

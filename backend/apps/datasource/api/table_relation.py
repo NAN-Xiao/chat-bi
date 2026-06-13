@@ -23,7 +23,7 @@ async def save_relation(session: SessionDep, relation: List[dict],
         ds.table_relation = relation
         session.commit()
     else:
-        raise Exception("no datasource")
+        raise Exception("项目不存在")
     return True
 
 

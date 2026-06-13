@@ -7,16 +7,17 @@ import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlin
 import { chatApi, ChatInfo } from '@/api/chat.ts'
 import { datasourceApi } from '@/api/datasource.ts'
 import Card from '@/views/ds/ChatCard.vue'
-import AddDrawer from '@/views/ds/AddDrawer.vue'
 import { useUserStore } from '@/stores/user'
 import { useAssistantStore } from '@/stores/assistant'
 import { request } from '@/utils/request'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useRouter } from 'vue-router'
 const assistantStore = useAssistantStore()
 const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
+const router = useRouter()
 
-const isWsAdmin = computed(() => userStore.isAdmin || userStore.isSpaceAdmin)
+const canCreateProject = computed(() => userStore.isAdmin)
 const selectAssistantDs = computed(
   () => assistantStore.getAssistant && !assistantStore.getEmbedded && !assistantStore.getAutoDs
 )
@@ -29,7 +30,6 @@ const props = withDefaults(
   }
 )
 
-const addDrawerRef = ref()
 const searchLoading = ref(false)
 const datasourceConfigVisible = ref(false)
 const keywords = ref('')
@@ -156,7 +156,8 @@ onBeforeUnmount(() => {
 })
 
 const handleAddDatasource = () => {
-  addDrawerRef.value.handleAddDatasource()
+  hideDs()
+  router.push('/system/project')
 }
 
 defineExpose({
@@ -231,7 +232,7 @@ defineExpose({
           img-type="noneWhite"
         />
 
-        <div v-if="isWsAdmin" style="text-align: center; margin-top: -10px">
+        <div v-if="canCreateProject" style="text-align: center; margin-top: -10px">
           <el-button type="primary" @click="handleAddDatasource">
             <template #icon>
               <icon_add_outlined></icon_add_outlined>
@@ -261,7 +262,6 @@ defineExpose({
         </div>
       </template>
     </el-drawer>
-    <AddDrawer ref="addDrawerRef" @search="listDs"></AddDrawer>
   </div>
 </template>
 

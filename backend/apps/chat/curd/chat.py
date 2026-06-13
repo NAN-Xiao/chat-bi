@@ -258,7 +258,7 @@ def get_chart_data_ds(session: SessionDep,ds_id,sql):
         datasource = get_ds(session,ds_id)
         if datasource is None:
             json_result['status'] = 'failed'
-            json_result['message'] = 'Datasource not found'
+            json_result['message'] = '项目不存在'
             return json_result
         else:
             result = exec_sql(ds=datasource,sql=sql, origin_column=False)
@@ -324,7 +324,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     if chat.create_by != current_user.id:
         raise Exception(f"Chat with id {chart_id} not Owned by the current user")
     if chat.datasource and not has_datasource_access(session, current_user, chat.datasource):
-        raise Exception(f"No permission to access datasource with id {chat.datasource}")
+        raise Exception(f"当前用户无权访问项目 {chat.datasource}")
     chat_info = ChatInfo(**chat.model_dump())
 
     if current_assistant and current_assistant.type in dynamic_ds_types:
@@ -335,7 +335,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
     if not ds:
         chat_info.datasource_exists = False
-        chat_info.datasource_name = 'Datasource not exist'
+        chat_info.datasource_name = '项目不存在'
     else:
         chat_info.datasource_exists = True
         chat_info.datasource_name = ds.name
@@ -712,7 +712,7 @@ def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog
 def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat,
                 require_datasource: bool = True, current_assistant: CurrentAssistant = None) -> ChatInfo:
     if not create_chat_obj.datasource and require_datasource:
-        raise Exception("Datasource cannot be None")
+        raise Exception("项目不能为空")
 
     if not create_chat_obj.question or create_chat_obj.question.strip() == '':
         create_chat_obj.question = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -731,11 +731,13 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
             ds.type_name = DB.get_db(ds.type)
         else:
             ds = session.get(CoreDatasource, create_chat_obj.datasource)
-            if ds.oid != current_user.oid:
-                raise Exception(f"Datasource with id {create_chat_obj.datasource} does not belong to current workspace")
+            if not ds:
+                raise Exception(f"项目 {create_chat_obj.datasource} 不存在")
+            if not has_datasource_access(session, current_user, ds.id):
+                raise Exception(f"当前用户无权访问项目 {create_chat_obj.datasource}")
 
         if not ds:
-            raise Exception(f"Datasource with id {create_chat_obj.datasource} not found")
+            raise Exception(f"项目 {create_chat_obj.datasource} 不存在")
 
         chat.engine_type = ds.type_name
     else:

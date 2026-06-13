@@ -94,7 +94,7 @@ const pageContext = computed(() => {
   const title = route.meta?.title
   const page = title ? `当前页面：${title}` : `当前路径：${route.path}`
   const datasource = analysisContext.datasourceName
-    ? `当前数据源：${analysisContext.datasourceName}`
+    ? `当前项目：${analysisContext.datasourceName}`
     : ''
   return [page, datasource].filter(Boolean).join('\n')
 })

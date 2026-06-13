@@ -12,13 +12,17 @@ from urllib.parse import quote
 import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException, Path
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from psycopg2 import sql
 from sqlalchemy import and_
+from sqlmodel import select
 
 from apps.db.db import get_schema
 from apps.db.engine import get_engine_conn
+from apps.datasource.crud.permission import list_datasource_user_ids, update_datasource_users
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.models.user import UserModel
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.config import settings
@@ -47,6 +51,53 @@ async def query_by_oid(session: SessionDep, user: CurrentUser, oid: int) -> List
             description=f"{PLACEHOLDER_PREFIX}ds_list_description")
 async def datasource_list(session: SessionDep, user: CurrentUser):
     return get_datasource_list(session=session, user=user)
+
+
+class DatasourceUserUpdate(BaseModel):
+    user_ids: List[int] = []
+
+
+@router.get("/{id}/users", include_in_schema=False)
+@require_permissions(permission=SqlbotPermission(role=['ws_admin'], keyExpression="id", type='ds'))
+async def datasource_users(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    user_ids = list_datasource_user_ids(session, id)
+    users = []
+    if user_ids:
+        rows = session.exec(
+            select(UserModel.id, UserModel.name, UserModel.account, UserModel.email, UserModel.status)
+            .where(UserModel.id.in_(user_ids))
+            .order_by(UserModel.account, UserModel.create_time)
+        ).all()
+        users = [
+            {
+                "id": row.id,
+                "name": row.name,
+                "account": row.account,
+                "email": row.email,
+                "status": row.status,
+            }
+            for row in rows
+        ]
+    return {"user_ids": user_ids, "users": users}
+
+
+@router.put("/{id}/users", include_in_schema=False)
+@require_permissions(permission=SqlbotPermission(role=['ws_admin'], keyExpression="id", type='ds'))
+async def update_datasource_user_api(
+        session: SessionDep,
+        user: CurrentUser,
+        data: DatasourceUserUpdate,
+        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")
+):
+    datasource = get_ds(session, id)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    valid_user_ids = []
+    if data.user_ids:
+        valid_user_ids = session.exec(
+            select(UserModel.id).where(UserModel.id.in_(data.user_ids), UserModel.id != 1)
+        ).all()
+    return {"user_ids": update_datasource_users(session, user, datasource, list(valid_user_ids))}
 
 
 @router.post("/get/{id}", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_get")
@@ -167,9 +218,6 @@ async def get_fields(session: SessionDep,
 async def sync_fields(session: SessionDep, trans: Trans,
                       id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
     return sync_single_fields(session, trans, id)
-
-
-from pydantic import BaseModel
 
 
 class TestObj(BaseModel):

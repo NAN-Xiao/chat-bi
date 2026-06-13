@@ -7,6 +7,7 @@ import { computed, ref, unref } from 'vue'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
+import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import icon_recommended_problem from '@/assets/svg/icon_recommended_problem.svg'
 import { datasourceApi } from '@/api/datasource.ts'
 
@@ -35,6 +36,7 @@ const emits = defineEmits([
   'dataTableDetail',
   'showTable',
   'recommendation',
+  'members',
   'startChecking',
   'endChecking',
 ])
@@ -47,6 +49,10 @@ const handleEdit = () => {
 
 const handleRecommendation = () => {
   emits('recommendation')
+}
+
+const handleMembers = () => {
+  emits('members')
 }
 
 const handleDel = () => {
@@ -149,6 +155,12 @@ const onClickOutside = () => {
                 <icon_recommended_problem></icon_recommended_problem>
               </el-icon>
               {{ $t('datasource.recommended_problem_configuration') }}
+            </div>
+            <div class="item" @click.stop="handleMembers">
+              <el-icon size="16">
+                <icon_member_outlined></icon_member_outlined>
+              </el-icon>
+              {{ $t('datasource.project_authorization') }}
             </div>
             <div class="item" @click.stop="handleDel">
               <el-icon size="16">
@@ -295,7 +307,7 @@ const onClickOutside = () => {
     &::after {
       position: absolute;
       content: '';
-      top: 80px !important;
+      top: 120px !important;
       left: 0;
       width: 100%;
       height: 1px;

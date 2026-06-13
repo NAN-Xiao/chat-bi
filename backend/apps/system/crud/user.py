@@ -1,6 +1,7 @@
 
 from typing import Optional
 from sqlmodel import Session, func, select, delete as sqlmodel_delete
+from apps.datasource.models.datasource import CoreDatasourceUser
 from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import EMAIL_REGEX, PWD_REGEX, BaseUserDTO, UserInfoDTO, UserWs
@@ -67,6 +68,8 @@ async def user_ws_options(session: Session, uid: int, trans: Optional[I18n] = No
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def single_delete(session: SessionDep, id: int):
     user_model: UserModel = get_db_user(session = session, user_id = id)
+    ds_user_del_stmt = sqlmodel_delete(CoreDatasourceUser).where(CoreDatasourceUser.user_id == id)
+    session.exec(ds_user_del_stmt)
     del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == id)
     session.exec(del_stmt)
     if user_model and user_model.origin and user_model.origin != 0:

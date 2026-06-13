@@ -136,12 +136,9 @@ class LLMService:
         if not chat.datasource and chat_question.datasource_id:
             _ds = session.get(CoreDatasource, chat_question.datasource_id)
             if _ds:
-                if _ds.oid != current_user.oid:
-                    raise SingleMessageError(
-                        f"Datasource with id {chat_question.datasource_id} does not belong to current workspace")
                 if not has_datasource_access(session, current_user, _ds.id):
                     raise SingleMessageError(
-                        f"No permission to access datasource with id {chat_question.datasource_id}")
+                        f"当前用户无权访问项目 {chat_question.datasource_id}")
                 chat.datasource = _ds.id
                 chat.engine_type = _ds.type_name
                 # save chat
@@ -152,18 +149,18 @@ class LLMService:
 
         if chat.datasource:
             if not current_assistant and not has_datasource_access(session, current_user, chat.datasource):
-                raise SingleMessageError(f"No permission to access datasource with id {chat.datasource}")
+                raise SingleMessageError(f"当前用户无权访问项目 {chat.datasource}")
             # Get available datasource
             if current_assistant and current_assistant.type in dynamic_ds_types:
                 self.out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
                 ds = self.out_ds_instance.get_ds(chat.datasource)
                 if not ds:
-                    raise SingleMessageError("No available datasource configuration found")
+                    raise SingleMessageError("当前没有可用项目，请联系管理员创建或分配项目")
                 chat_question.engine = ds.type + get_version(ds)
             else:
                 ds = session.get(CoreDatasource, chat.datasource)
                 if not ds:
-                    raise SingleMessageError("No available datasource configuration found")
+                    raise SingleMessageError("当前没有可用项目，请联系管理员创建或分配项目")
                 chat_question.engine = (ds.type_name if ds.type != 'excel' else 'PostgreSQL') + get_version(ds)
 
         self.generate_sql_logs = list_generate_sql_logs(session=session, chart_id=chat_id)
@@ -624,7 +621,7 @@ class LLMService:
                 for ds in datasource_list
             ]
         if not _ds_list:
-            raise SingleMessageError('No available datasource configuration found')
+            raise SingleMessageError('当前没有可用项目，请联系管理员创建或分配项目')
         ignore_auto_select = _ds_list and len(_ds_list) == 1
         # ignore auto select ds
 
@@ -681,7 +678,7 @@ class LLMService:
 
             json_str = extract_nested_json(full_text)
             if json_str is None:
-                raise SingleMessageError(f'Cannot parse datasource from answer: {full_text}')
+                raise SingleMessageError(f'无法从模型返回中识别项目：{full_text}')
             ds = orjson.loads(json_str)
 
         _error: Exception | None = None
@@ -704,8 +701,9 @@ class LLMService:
                 else:
                     _ds = _session.get(CoreDatasource, _datasource)
                     if not _ds:
+                        missing_datasource = _datasource
                         _datasource = None
-                        raise SingleMessageError(f"Datasource configuration with id {_datasource} not found")
+                        raise SingleMessageError(f"项目 {missing_datasource} 不存在或连接配置不可用")
                     self.ds = CoreDatasource(**_ds.model_dump())
                     self.chat_question.engine = (_ds.type_name if _ds.type != 'excel' else 'PostgreSQL') + get_version(
                         self.ds)
@@ -727,7 +725,7 @@ class LLMService:
             elif data['fail']:
                 raise SingleMessageError(data['fail'])
             else:
-                raise SingleMessageError('No available datasource configuration found')
+                raise SingleMessageError('当前没有可用项目，请联系管理员创建或分配项目')
 
         except Exception as e:
             _error = e

@@ -8,6 +8,8 @@ import chat from '@/views/chat/index.vue'
 import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
+import Access from '@/views/access/index.vue'
+import Datasource from '@/views/ds/Datasource.vue'
 import Model from '@/views/system/model/Model.vue'
 // import Embedded from '@/views/system/embedded/index.vue'
 // import SetAssistant from '@/views/system/embedded/iframe.vue'
@@ -18,7 +20,6 @@ import assistantTest from '@/views/system/embedded/Test.vue'
 import assistant from '@/views/embedded/index.vue'
 import EmbeddedPage from '@/views/embedded/page.vue'
 import EmbeddedCommon from '@/views/embedded/common.vue'
-import Member from '@/views/system/member/index.vue'
 import Professional from '@/views/system/professional/index.vue'
 import Training from '@/views/system/training/index.vue'
 import Prompt from '@/views/system/prompt/index.vue'
@@ -71,20 +72,6 @@ export const routes = [
       },
     ],
   },
-  /* {
-    path: '/ds',
-    component: LayoutDsl,
-    name: 'ds-menu',
-    redirect: '/ds/index',
-    children: [
-      {
-        path: 'index',
-        name: 'ds',
-        component: Datasource,
-        meta: { title: t('menu.Data Connections'), iconActive: 'ds', iconDeActive: 'noDs' },
-      },
-    ],
-  }, */
   {
     path: '/dashboard',
     component: LayoutDsl,
@@ -103,49 +90,46 @@ export const routes = [
     ],
   },
   {
-    path: '/set',
-    name: 'set',
+    path: '/access',
     component: LayoutDsl,
-    redirect: '/set/member',
-    meta: { title: t('workspace.set'), iconActive: 'set', iconDeActive: 'noSet' },
+    redirect: '/access/index',
     children: [
       {
-        path: '/set/member',
-        name: 'member',
-        component: Member,
-        meta: { title: t('workspace.member_management') },
-      },
-      {
-        path: '/set/permission',
-        name: 'permission',
-        component: Permission,
-        meta: { title: t('workspace.permission_configuration') },
-      },
-      /* {
-        path: '/set/assistant',
-        name: 'setAssistant',
-        component: SetAssistant,
-        meta: { title: t('embedded.assistant_app') },
-      }, */
-      {
-        path: '/set/professional',
-        name: 'professional',
-        component: Professional,
-        meta: { title: t('professional.professional_terminology') },
-      },
-      {
-        path: '/set/training',
-        name: 'training',
-        component: Training,
-        meta: { title: t('training.data_training') },
-      },
-      {
-        path: '/set/prompt',
-        name: 'prompt',
-        component: Prompt,
-        meta: { title: t('prompt.customize_prompt_words') },
+        path: 'index',
+        name: 'access',
+        component: Access,
+        meta: {
+          title: t('access.my_permissions'),
+          iconActive: 'user',
+          iconDeActive: 'noUser',
+        },
       },
     ],
+  },
+  {
+    path: '/set/permission',
+    redirect: '/system/setting/permission',
+    hidden: true,
+  },
+  {
+    path: '/set/professional',
+    redirect: '/system/setting/professional',
+    hidden: true,
+  },
+  {
+    path: '/set/training',
+    redirect: '/system/setting/training',
+    hidden: true,
+  },
+  {
+    path: '/set/prompt',
+    redirect: '/system/setting/prompt',
+    hidden: true,
+  },
+  {
+    path: '/set',
+    redirect: '/system/setting/permission',
+    hidden: true,
   },
   {
     path: '/canvas',
@@ -173,9 +157,16 @@ export const routes = [
         meta: { title: t('user.user_management'), iconActive: 'user', iconDeActive: 'noUser' },
       },
       {
+        path: 'project',
+        name: 'project',
+        component: Datasource,
+        meta: { title: t('ds.title'), iconActive: 'ds', iconDeActive: 'noDs' },
+      },
+      {
         path: 'workspace',
         name: 'workspace',
         component: Workspace,
+        hidden: true,
         meta: {
           title: t('user.workspace'),
           iconActive: 'workspace',
@@ -205,7 +196,7 @@ export const routes = [
       {
         path: 'setting',
         meta: { title: t('system.system_settings'), iconActive: 'set', iconDeActive: 'noSet' },
-        redirect: 'system_/appearance',
+        redirect: '/system/setting/appearance',
         name: 'setting',
         children: [
           {
@@ -213,6 +204,30 @@ export const routes = [
             name: 'appearance',
             component: Appearance,
             meta: { title: t('system.appearance_settings') },
+          },
+          {
+            path: 'permission',
+            name: 'permission',
+            component: Permission,
+            meta: { title: t('workspace.permission_configuration') },
+          },
+          {
+            path: 'professional',
+            name: 'professional',
+            component: Professional,
+            meta: { title: t('professional.professional_terminology') },
+          },
+          {
+            path: 'training',
+            name: 'training',
+            component: Training,
+            meta: { title: t('training.data_training') },
+          },
+          {
+            path: 'prompt',
+            name: 'prompt',
+            component: Prompt,
+            meta: { title: t('prompt.customize_prompt_words') },
           },
           {
             path: 'parameter',

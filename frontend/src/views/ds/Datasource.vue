@@ -11,8 +11,8 @@ import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import { datasourceApi } from '@/api/datasource'
 import AddDrawer from '@/views/ds/AddDrawer.vue'
 import Card from './Card.vue'
-import { useEmitt } from '@/utils/useEmitt'
 import DelMessageBox from './DelMessageBox.vue'
+import ProjectUserDialog from './ProjectUserDialog.vue'
 import { dsTypeWithImg } from './js/ds-type'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
@@ -38,6 +38,7 @@ const { t } = useI18n()
 const keywords = ref('')
 const defaultDatasourceKeywords = ref('')
 const addDrawerRef = ref()
+const projectUserDialogRef = ref()
 const searchLoading = ref(false)
 
 const datasourceList = shallowRef([] as Datasource[])
@@ -81,6 +82,10 @@ const handleEditDatasource = (res: any) => {
 
 const handleRecommendation = (res: Datasource) => {
   recommendedProblemConfigRef.value?.init(res)
+}
+
+const handleProjectUsers = (res: Datasource) => {
+  projectUserDialogRef.value?.open(res)
 }
 
 const handleQuestion = async (id: string) => {
@@ -207,10 +212,6 @@ function endLoading() {
   loading.value = false
 }
 
-useEmitt({
-  name: 'ds-index-click',
-  callback: back,
-})
 </script>
 
 <template>
@@ -313,6 +314,7 @@ useEmitt({
             @question="handleQuestion"
             @edit="handleEditDatasource(ele)"
             @recommendation="handleRecommendation(ele)"
+            @members="handleProjectUsers(ele)"
             @del="deleteHandler(ele)"
             @data-table-detail="dataTableDetail(ele)"
           ></Card>
@@ -339,6 +341,7 @@ useEmitt({
       ref="recommendedProblemConfigRef"
       @recommended-problem-change="search"
     ></RecommendedProblemConfigDialog>
+    <ProjectUserDialog ref="projectUserDialogRef" @refresh="search"></ProjectUserDialog>
     <AddDrawer ref="addDrawerRef" @search="search"></AddDrawer>
   </div>
   <DataTable

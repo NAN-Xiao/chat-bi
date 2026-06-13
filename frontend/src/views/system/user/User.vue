@@ -123,17 +123,6 @@
             <span>{{ formatUserOrigin(scope.row.origin) }}</span>
           </template>
         </el-table-column>
-        <el-table-column
-          show-overflow-tooltip
-          prop="oid_list"
-          :label="$t('user.workspace')"
-          width="280"
-        >
-          <template #default="scope">
-            <span>{{ formatSpaceName(scope.row.oid_list) }}</span>
-          </template>
-        </el-table-column>
-
         <el-table-column prop="create_time" width="180" sortable :label="$t('user.creation_time')">
           <template #default="scope">
             <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
@@ -342,19 +331,6 @@
         />
       </el-form-item> -->
 
-      <el-form-item :label="$t('user.workspace')">
-        <el-select
-          v-model="state.form.oid_list"
-          multiple
-          :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('user.workspace')"
-        >
-          <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id">
-            <div class="ellipsis" :title="item.name" style="max-width: 500px; padding-right: 30px">
-              {{ item.name }}
-            </div>
-          </el-option>
-        </el-select>
-      </el-form-item>
       <el-form-item>
         <template #label>
           <div style="display: flex; align-items: center; height: 22px">
@@ -562,7 +538,6 @@ import field_text from '@/assets/svg/field_text.svg'
 import field_time from '@/assets/svg/field_time.svg'
 import field_value from '@/assets/svg/field_value.svg'
 import { request } from '@/utils/request'
-import { workspaceList } from '@/api/workspace'
 import { variablesApi } from '@/api/variables'
 import { formatTimestamp } from '@/utils/date'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
@@ -618,14 +593,6 @@ const filterOption = ref<any[]>([
     title: t('user.user_source'),
     operate: 'in',
   },
-  {
-    type: 'select',
-    option: [],
-    field: 'oidlist',
-    title: t('user.workspace'),
-    operate: 'in',
-    property: { placeholder: t('common.empty') + t('user.workspace') },
-  },
 ])
 
 const defaultForm = {
@@ -639,7 +606,6 @@ const defaultForm = {
   oid_list: [],
   system_variables: [],
 }
-const options = ref<any[]>([])
 const variables = shallowRef<any[]>([])
 const variableValueMap = shallowRef<any>({})
 const state = reactive<any>({
@@ -1146,16 +1112,6 @@ const handleCurrentChange = (val: number) => {
   state.pageInfo.currentPage = val
   search()
 }
-const formatSpaceName = (row_oid_list: Array<any>) => {
-  if (!row_oid_list?.length) {
-    return '-'
-  }
-  const wsMap: Record<string, string> = {}
-  options.value.forEach((option: any) => {
-    wsMap[option.id] = option.name
-  })
-  return row_oid_list.map((id: any) => wsMap[id]).join(',')
-}
 const loadDefaultPwd = () => {
   userApi.defaultPwd().then((res) => {
     if (res) {
@@ -1192,10 +1148,6 @@ onMounted(() => {
     platformType.value = []
   }
 
-  workspaceList().then((res) => {
-    options.value = res || []
-    filterOption.value[2].option = [...options.value]
-  })
   handleCurrentChange(1)
 
   loadDefaultPwd()

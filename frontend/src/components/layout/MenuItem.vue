@@ -68,9 +68,6 @@ const MenuItem = defineComponent({
         useEmitt().emitter.emit('analysis-assistant-toggle')
         return
       }
-      if (index === '/ds/index') {
-        useEmitt().emitter.emit('ds-index-click')
-      }
       if (index) {
         router.push(e.redirect || index)
       }

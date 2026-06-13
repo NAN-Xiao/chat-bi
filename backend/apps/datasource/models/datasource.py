@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Text, BigInteger, DateTime, Identity
+from sqlalchemy import Column, Text, BigInteger, DateTime, Identity, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
 
@@ -23,6 +23,22 @@ class CoreDatasource(SQLModel, table=True):
     table_relation: List = Field(sa_column=Column(JSONB, nullable=True))
     embedding: str = Field(sa_column=Column(Text, nullable=True))
     recommended_config: int = Field(sa_column=Column(BigInteger()))
+
+
+class CoreDatasourceUser(SQLModel, table=True):
+    __tablename__ = "core_datasource_user"
+    __table_args__ = (
+        UniqueConstraint("ds_id", "user_id", name="uq_core_datasource_user_ds_user"),
+        Index("idx_core_datasource_user_user_id", "user_id"),
+        Index("idx_core_datasource_user_ds_id", "ds_id"),
+    )
+
+    id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
+    ds_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    user_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    oid: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    create_by: int = Field(sa_column=Column(BigInteger(), nullable=True))
+    create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
 
 
 class CoreTable(SQLModel, table=True):

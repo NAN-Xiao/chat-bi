@@ -87,7 +87,7 @@ defineExpose({
       <div v-if="!editDatasource" class="flex-center" style="width: 100%">
         <el-steps custom style="max-width: 800px; flex: 1" :active="activeStep" align-center>
           <el-step>
-            <template #title> {{ $t('qa.select_datasource') }} </template>
+            <template #title> {{ $t('ds.form.choose_database_type') }} </template>
           </el-step>
           <el-step>
             <template #title> {{ $t('datasource.configuration_information') }} </template>

@@ -27,7 +27,7 @@ const handleModelClick = (item: any) => {
 
 <template>
   <div class="datasouce-list">
-    <div class="title">{{ $t('qa.select_datasource') }}</div>
+    <div class="title">{{ $t('ds.form.choose_database_type') }}</div>
     <el-input
       v-model="keywords"
       clearable

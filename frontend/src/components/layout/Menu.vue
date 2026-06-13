@@ -3,9 +3,7 @@ import { computed } from 'vue'
 import { ElMenu } from 'element-plus-secondary'
 import { useRoute, useRouter } from 'vue-router'
 import MenuItem from './MenuItem.vue'
-import { useUserStore } from '@/stores/user'
 // import { routes } from '@/router'
-const userStore = useUserStore()
 const router = useRouter()
 defineProps({
   collapse: Boolean,
@@ -63,7 +61,7 @@ const routerList = computed(() => {
       route.path !== '/admin-login' &&
       route.path !== '/chatPreview' &&
       !route.path.includes('/system') &&
-      ((route.path.includes('set') && userStore.isSpaceAdmin) || !route.redirect) &&
+      !route.redirect &&
       route.path !== '/:pathMatch(.*)*' &&
       !route.path.includes('dsTable')
     )
