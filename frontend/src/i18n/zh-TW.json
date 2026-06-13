@@ -761,7 +761,13 @@
       "bar": "橫條圖",
       "column": "柱狀圖",
       "line": "折線圖",
-      "pie": "圓餅圖"
+      "pie": "圓餅圖",
+      "metric": "指標卡",
+      "funnel": "漏斗圖",
+      "heatmap": "熱力圖",
+      "scatter": "散點圖",
+      "sankey": "桑基圖",
+      "treemap": "矩形樹圖"
     },
     "hide_label": "隱藏標籤",
     "show_label": "顯示標籤",

@@ -149,6 +149,13 @@ const chartType = computed<ChartTypes>({
 
 const chartTypeList = computed(() => {
   const _list = []
+  const pushChartType = (value: ChartTypes, icon: any) => {
+    _list.push({
+      value,
+      name: t(`chat.chart_type.${value}`),
+      icon,
+    })
+  }
   if (chartObject.value) {
     switch (chartObject.value.type) {
       case 'table':
@@ -173,11 +180,26 @@ const chartTypeList = computed(() => {
         })
         break
       case 'pie':
-        _list.push({
-          value: 'pie',
-          name: t('chat.chart_type.pie'),
-          icon: ICON_PIE,
-        })
+        pushChartType('pie', ICON_PIE)
+        break
+      case 'metric':
+        pushChartType('metric', ICON_TABLE)
+        break
+      case 'funnel':
+        pushChartType('funnel', ICON_BAR)
+        break
+      case 'heatmap':
+        pushChartType('heatmap', ICON_COLUMN)
+        break
+      case 'scatter':
+        pushChartType('scatter', ICON_LINE)
+        break
+      case 'sankey':
+        pushChartType('sankey', ICON_COLUMN)
+        break
+      case 'treemap':
+        pushChartType('treemap', ICON_PIE)
+        break
     }
   }
 
@@ -412,7 +434,10 @@ watch(
           </el-tooltip>
         </div>
 
-        <div v-if="currentChartType !== 'table'" class="chart-select-container">
+        <div
+          v-if="currentChartType !== 'table' && currentChartType !== 'metric'"
+          class="chart-select-container"
+        >
           <el-tooltip
             effect="dark"
             :offset="8"

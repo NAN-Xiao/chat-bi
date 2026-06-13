@@ -34,6 +34,21 @@ export function formatNumber(value: any): string | number {
   return sign + formattedInt + decPart
 }
 
+export function toNumber(value: any): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+  if (typeof value !== 'string') {
+    return 0
+  }
+  const normalized = value.trim().replace(/,/g, '').replace(/%$/, '')
+  if (!normalized) {
+    return 0
+  }
+  const numValue = Number(normalized)
+  return Number.isFinite(numValue) ? numValue : 0
+}
+
 interface CheckedData {
   isPercent: boolean
   data: Array<ChartData>

@@ -10,7 +10,18 @@ export interface ChartData {
   [key: string]: any
 }
 
-export type ChartTypes = 'table' | 'bar' | 'column' | 'line' | 'pie'
+export type ChartTypes =
+  | 'table'
+  | 'bar'
+  | 'column'
+  | 'line'
+  | 'pie'
+  | 'metric'
+  | 'funnel'
+  | 'heatmap'
+  | 'scatter'
+  | 'sankey'
+  | 'treemap'
 
 export abstract class BaseChart {
   id: string

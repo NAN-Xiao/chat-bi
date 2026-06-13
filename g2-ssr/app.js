@@ -7,6 +7,12 @@ const { getPieOptions } = require('./charts/pie.js');
 const { getLineOptions } = require('./charts/line.js');
 const { getColumnOptions } = require('./charts/column.js');
 const { getBarOptions } = require('./charts/bar.js');
+const { getMetricOptions } = require('./charts/metric.js');
+const { getFunnelOptions } = require('./charts/funnel.js');
+const { getHeatmapOptions } = require('./charts/heatmap.js');
+const { getScatterOptions } = require('./charts/scatter.js');
+const { getSankeyOptions } = require('./charts/sankey.js');
+const { getTreemapOptions } = require('./charts/treemap.js');
 
 http.createServer((req, res) => {
     res.statusCode = 200,
@@ -42,6 +48,18 @@ function getOptions(type, axis, data) {
             return getLineOptions(base_options, axis, data);
         case 'pie':
             return getPieOptions(base_options, axis, data);
+        case 'metric':
+            return getMetricOptions(base_options, axis, data);
+        case 'funnel':
+            return getFunnelOptions(base_options, axis, data);
+        case 'heatmap':
+            return getHeatmapOptions(base_options, axis, data);
+        case 'scatter':
+            return getScatterOptions(base_options, axis, data);
+        case 'sankey':
+            return getSankeyOptions(base_options, axis, data);
+        case 'treemap':
+            return getTreemapOptions(base_options, axis, data);
     }
 
     return base_options

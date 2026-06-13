@@ -761,7 +761,13 @@
       "bar": "条形图",
       "column": "柱状图",
       "line": "折线图",
-      "pie": "饼图"
+      "pie": "饼图",
+      "metric": "指标卡",
+      "funnel": "漏斗图",
+      "heatmap": "热力图",
+      "scatter": "散点图",
+      "sankey": "桑基图",
+      "treemap": "矩形树图"
     },
     "hide_label": "隐藏标签",
     "show_label": "显示标签",

@@ -87,7 +87,7 @@ const MenuItem = defineComponent({
         const icon = route.path.startsWith(path) ? iconActive : iconDeActive
         return h(
           ElSubMenu,
-          { index: path, onClick: () => handleMenuClick(props.menu) },
+          { index: path },
           {
             title: () => titleWithIcon({ title, icon }),
             default: () => [

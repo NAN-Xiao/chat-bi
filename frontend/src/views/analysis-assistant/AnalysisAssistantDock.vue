@@ -215,11 +215,36 @@ const getChartYAxis = (chart?: AnalysisChartConfig) => {
   return Array.isArray(y) ? y : [y]
 }
 
-const getChartSeries = (chart?: AnalysisChartConfig) => (chart?.axis?.series ? [chart.axis.series] : [])
+const getChartSeries = (chart?: AnalysisChartConfig) => {
+  if (chart?.axis?.series) return [chart.axis.series]
+  if (chart?.type === 'pie' && chart.axis?.x) return [chart.axis.x]
+  return []
+}
 
 const getMultiQuotaName = (chart?: AnalysisChartConfig) => chart?.axis?.['multi-quota']?.name
 
 const getPreviewRows = (block: AnalysisBlock) => (block.data || []).slice(0, 6)
+
+const isTableChart = (block: AnalysisBlock) => block.chart?.type === 'table'
+
+const getTableRows = (block: AnalysisBlock) => block.data || []
+
+const getChartTypeLabel = (type?: ChartTypes) => {
+  const labels: Record<ChartTypes, string> = {
+    table: '数据表',
+    bar: '条形图',
+    column: '柱图',
+    line: '折线图',
+    pie: '饼图',
+    metric: '指标卡',
+    funnel: '漏斗图',
+    heatmap: '热力图',
+    scatter: '散点图',
+    sankey: '桑基图',
+    treemap: '矩形树图',
+  }
+  return type ? labels[type] || type : ''
+}
 
 const getDisplayFields = (block: AnalysisBlock) => {
   if (block.fields?.length) return block.fields
@@ -491,15 +516,32 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                       <div class="block-title">{{ block.title }}</div>
                       <div v-if="block.purpose" class="block-purpose">{{ block.purpose }}</div>
                     </div>
-                    <span v-if="block.chart" class="chart-type">{{ block.chart.type }}</span>
+                    <span v-if="block.chart" class="chart-type">{{ getChartTypeLabel(block.chart.type) }}</span>
                   </header>
 
                   <div
                     v-if="block.chart && block.data?.length"
                     class="chart-frame"
-                    :class="{ table: block.chart.type === 'table' }"
+                    :class="{ table: isTableChart(block) }"
                   >
+                    <div v-if="isTableChart(block)" class="chart-table-wrap">
+                      <table class="preview-table">
+                        <thead>
+                          <tr>
+                            <th v-for="field in getDisplayFields(block)" :key="field">{{ field }}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="(row, rowIndex) in getTableRows(block)" :key="rowIndex">
+                            <td v-for="field in getDisplayFields(block)" :key="field">
+                              {{ formatCell(row[field]) }}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                     <ChartComponent
+                      v-else
                       :id="`analysis-${message.id}-${block.id}-${block.chart.type}`"
                       :type="block.chart.type"
                       :columns="block.chart.columns || []"
@@ -519,7 +561,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                     <pre>{{ block.sql }}</pre>
                   </details>
 
-                  <details v-if="block.data?.length" class="block-details">
+                  <details v-if="block.data?.length && !isTableChart(block)" class="block-details">
                     <summary>数据预览</summary>
                     <div class="preview-table-wrap">
                       <table class="preview-table">
@@ -943,6 +985,11 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     height: 280px;
     min-height: 280px;
   }
+}
+
+.chart-table-wrap {
+  height: 100%;
+  overflow: auto;
 }
 
 .empty-data {

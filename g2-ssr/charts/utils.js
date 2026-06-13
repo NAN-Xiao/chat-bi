@@ -33,6 +33,21 @@ function formatNumber(value) {
   return sign + formattedInt + decPart
 }
 
+function toNumber(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0
+  }
+  if (typeof value !== 'string') {
+    return 0
+  }
+  const normalized = value.trim().replace(/,/g, '').replace(/%$/, '')
+  if (!normalized) {
+    return 0
+  }
+  const numValue = Number(normalized)
+  return Number.isFinite(numValue) ? numValue : 0
+}
+
 function getAxesWithFilter(axes) {
   const groups = {
     x: [],
@@ -148,4 +163,4 @@ function checkIsPercent(valueAxes, data) {
   return result
 }
 
-module.exports = { checkIsPercent, formatNumber, getAxesWithFilter, processMultiQuotaData }
+module.exports = { checkIsPercent, formatNumber, getAxesWithFilter, processMultiQuotaData, toNumber }

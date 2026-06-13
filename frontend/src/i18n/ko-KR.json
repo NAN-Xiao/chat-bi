@@ -761,7 +761,13 @@
       "bar": "막대 차트",
       "column": "세로 막대 차트",
       "line": "선 차트",
-      "pie": "원형 차트"
+      "pie": "원형 차트",
+      "metric": "지표 카드",
+      "funnel": "퍼널 차트",
+      "heatmap": "히트맵",
+      "scatter": "산점도",
+      "sankey": "샌키 차트",
+      "treemap": "트리맵"
     },
     "hide_label": "라벨 숨기기",
     "show_label": "라벨 표시",

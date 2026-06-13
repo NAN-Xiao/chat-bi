@@ -148,6 +148,32 @@ TABLE_DESCRIPTIONS = {
     "meta_data_dictionary": "数据字典表。",
 }
 
+TABLE_EXAMPLE_SQL = {
+    "fact_sessions": """
+with cohorts as (
+  select player_id, install_date, channel, device_tier from dim_player
+), active_days as (
+  select distinct player_id, session_start::date active_date from fact_sessions
+), max_day as (
+  select max(session_start::date) max_date from fact_sessions
+)
+select c.channel, c.device_tier, d.lifecycle_day,
+       count(*) eligible_users,
+       count(*) filter(where a.player_id is not null) retained_users,
+       round(count(*) filter(where a.player_id is not null)::numeric / nullif(count(*),0) * 100, 2) retention_pct
+from cohorts c
+cross join (values (1),(2),(3),(7),(14),(30)) d(lifecycle_day)
+cross join max_day m
+left join active_days a on a.player_id = c.player_id
+                       and a.active_date = c.install_date + d.lifecycle_day
+where c.install_date + d.lifecycle_day <= m.max_date
+group by c.channel, c.device_tier, d.lifecycle_day
+order by c.channel, c.device_tier, d.lifecycle_day;
+""".strip(),
+    "fact_payments": "select payment_status, count(*) orders, round(sum(net_revenue_usd),2) net_revenue from fact_payments group by payment_status;",
+    "fact_events": "select event_date, event_name, count(*) events, count(distinct player_id) users from fact_events group by 1,2 order by 1,3 desc;",
+}
+
 COLUMN_DESCRIPTIONS = {
     "fact_events": {
         "event_uid": "全局事件唯一ID，生产埋点主键，所有明细表通过它回溯原始事件。",
@@ -868,7 +894,7 @@ def apply_data_dictionary(conn: psycopg.Connection) -> None:
 
     rows: list[tuple[str, str, str, str, str]] = []
     for table_name, description in TABLE_DESCRIPTIONS.items():
-        rows.append((table_name, "", "table", description, f"select * from {table_name} limit 20;"))
+        rows.append((table_name, "", "table", description, TABLE_EXAMPLE_SQL.get(table_name, f"select * from {table_name} limit 20;")))
     for table_name, column_name in columns:
         description = (
             COLUMN_DESCRIPTIONS.get(table_name, {}).get(column_name)

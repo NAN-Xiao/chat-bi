@@ -24,7 +24,7 @@ const currentIcon = computed(() => {
     }
     return null
   }
-  return props.chartTypeList.find((ele) => ele.value === props.chartType).icon
+  return props.chartTypeList.find((ele) => ele.value === props.chartType)?.icon ?? null
 })
 
 const firstItem = () => {

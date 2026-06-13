@@ -761,7 +761,13 @@
       "bar": "Bar",
       "column": "Column",
       "line": "Line",
-      "pie": "Pie"
+      "pie": "Pie",
+      "metric": "Metric Card",
+      "funnel": "Funnel",
+      "heatmap": "Heatmap",
+      "scatter": "Scatter",
+      "sankey": "Sankey",
+      "treemap": "Treemap"
     },
     "hide_label": "Hide Label",
     "show_label": "Show Label",
