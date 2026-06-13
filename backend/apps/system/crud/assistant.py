@@ -16,7 +16,6 @@ from apps.system.schemas.system_schema import AssistantHeader, AssistantOutDsSch
 from common.core.config import settings
 from common.core.db import engine
 from common.core.sqlbot_cache import cache
-from common.utils.aes_crypto import simple_aes_decrypt
 from common.utils.utils import SQLBotLogUtil, get_domain_list, string_to_numeric_hash
 from common.core.deps import Trans
 from common.core.response_middleware import ResponseMiddleware
@@ -240,6 +239,8 @@ class AssistantOutDs:
         id_marker: str = ''
         attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema', 'mode']
         if config.get('encrypt', False):
+            from common.utils.aes_crypto import simple_aes_decrypt
+
             key = config.get('aes_key', None)
             iv = config.get('aes_iv', None)
             aes_attrs = ['host', 'user', 'password', 'dataBase', 'db_schema', 'schema', 'mode']

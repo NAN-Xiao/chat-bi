@@ -4,6 +4,7 @@ import Menu from './Menu.vue'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
 import Workspace from './Workspace.vue'
 import Person from './Person.vue'
+import AnalysisAssistantDock from '@/views/analysis-assistant/AnalysisAssistantDock.vue'
 import LOGO_fold from '@/assets/LOGO-fold.svg'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
@@ -20,6 +21,7 @@ const isPhone = computed(() => {
 const router = useRouter()
 const collapse = ref(false)
 const collapseCopy = ref(false)
+const analysisAssistantExpanded = ref(false)
 const appearanceStore = useAppearanceStoreWithOut()
 let time: any
 onUnmounted(() => {
@@ -38,6 +40,13 @@ const handleCollapseChange = (val: any = true) => {
 useEmitt({
   name: 'collapse-change',
   callback: handleCollapseChange,
+})
+useEmitt({
+  name: 'analysis-assistant-toggle',
+  callback: (expanded?: boolean) => {
+    analysisAssistantExpanded.value =
+      typeof expanded === 'boolean' ? expanded : !analysisAssistantExpanded.value
+  },
 })
 const handleFoldExpand = () => {
   handleCollapseChange(!collapse.value)
@@ -230,6 +239,10 @@ onBeforeMount(() => {
         <router-view />
       </div>
     </div>
+    <AnalysisAssistantDock
+      v-if="!showSysmenu && !isPhone"
+      v-model:expanded="analysisAssistantExpanded"
+    />
   </div>
 </template>
 
@@ -368,12 +381,14 @@ onBeforeMount(() => {
   }
 
   .right-main {
-    width: calc(100% - 240px);
+    flex: 1;
+    min-width: 0;
+    width: auto;
     padding: 8px 8px 8px 0;
     max-height: 100vh;
 
     &.right-side-collapse {
-      width: calc(100% - 64px);
+      width: auto;
     }
 
     .content {

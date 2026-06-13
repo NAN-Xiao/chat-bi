@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Dict, Any
 
 import sqlbot_xpack
@@ -76,6 +77,9 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None
 )
+xpack_static_path = Path(sqlbot_xpack.__file__).resolve().parent / "static"
+if xpack_static_path.exists():
+    app.mount("/xpack_static", StaticFiles(directory=str(xpack_static_path)), name="xpack_static")
 
 # cache docs for different text
 _openapi_cache: Dict[str, Dict[str, Any]] = {}

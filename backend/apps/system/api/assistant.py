@@ -5,13 +5,20 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Form, HTTPException, Path, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
+
+
+async def get_assistant_info(**kwargs):
+    from apps.system.crud.assistant import get_assistant_info as get_cached_assistant_info
+
+    return await get_cached_assistant_info(**kwargs)
+
+
 from sqlbot_xpack.file_utils import SQLBotFileUtils
 from sqlmodel import select
 
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_info
 from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -193,7 +200,9 @@ async def ds(session: SessionDep, current_assistant: CurrentAssistant):
             }
             for ds in db_ds_list]
     if current_assistant.type == 1:
-        out_ds_instance: AssistantOutDs = AssistantOutDsFactory.get_instance(current_assistant)
+        from apps.system.crud.assistant import AssistantOutDsFactory
+
+        out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
         return [
             {
                 "id": str(ds.id),

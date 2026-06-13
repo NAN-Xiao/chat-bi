@@ -1,7 +1,7 @@
 import LayoutDsl from '@/components/layout/LayoutDsl.vue'
 
 import Datasource from '@/views/ds/Datasource.vue'
-import SetAssistant from '@/views/system/embedded/iframe.vue'
+import AnalysisAssistantEntry from '@/views/analysis-assistant/Entry.vue'
 import { i18n } from '@/i18n'
 import { useUserStore } from '@/stores/user'
 import type { Router } from 'vue-router'
@@ -32,11 +32,12 @@ const dynamicRouterList = [
       {
         path: 'index',
         name: 'as',
-        component: SetAssistant,
+        component: AnalysisAssistantEntry,
         meta: {
           title: t('embedded.assistant_app'),
           iconActive: 'embedded',
           iconDeActive: 'noEmbedded',
+          action: 'analysis-assistant',
         },
       },
     ],

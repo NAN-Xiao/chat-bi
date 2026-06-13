@@ -63,11 +63,16 @@ const MenuItem = defineComponent({
     }
 
     const handleMenuClick = (e: any) => {
-      if (e.index === '/ds/index') {
+      const index = e.index || e.path
+      if (e.meta?.action === 'analysis-assistant') {
+        useEmitt().emitter.emit('analysis-assistant-toggle')
+        return
+      }
+      if (index === '/ds/index') {
         useEmitt().emitter.emit('ds-index-click')
       }
-      if (e.index) {
-        router.push(e.redirect || e.index)
+      if (index) {
+        router.push(e.redirect || index)
       }
     }
 
@@ -98,7 +103,7 @@ const MenuItem = defineComponent({
       const iconCom: any = iconMap[icon] ? ElIcon : null
       return h(
         ElMenuItem,
-        { index: path, onClick: (e: any) => handleMenuClick(e) },
+        { index: path, onClick: () => handleMenuClick(props.menu) },
         {
           default: () => [
             h(
