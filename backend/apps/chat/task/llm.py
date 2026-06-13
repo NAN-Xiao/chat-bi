@@ -38,8 +38,8 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
     ChatFinishStep, AxisObj, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
 from apps.data_training.curd.data_training import get_training_template
-from apps.datasource.crud.datasource import get_table_schema, get_tables_sample_data
-from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
+from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
+from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection, get_sqlglot_dialect
@@ -139,6 +139,9 @@ class LLMService:
                 if _ds.oid != current_user.oid:
                     raise SingleMessageError(
                         f"Datasource with id {chat_question.datasource_id} does not belong to current workspace")
+                if not has_datasource_access(session, current_user, _ds.id):
+                    raise SingleMessageError(
+                        f"No permission to access datasource with id {chat_question.datasource_id}")
                 chat.datasource = _ds.id
                 chat.engine_type = _ds.type_name
                 # save chat
@@ -148,6 +151,8 @@ class LLMService:
                 session.commit()
 
         if chat.datasource:
+            if not current_assistant and not has_datasource_access(session, current_user, chat.datasource):
+                raise SingleMessageError(f"No permission to access datasource with id {chat.datasource}")
             # Get available datasource
             if current_assistant and current_assistant.type in dynamic_ds_types:
                 self.out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
@@ -609,15 +614,14 @@ class LLMService:
         if self.current_assistant and self.current_assistant.type != 4:
             _ds_list = get_assistant_ds(session=_session, llm_service=self)
         else:
-            stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(
-                and_(CoreDatasource.oid == self.current_user.oid))
+            datasource_list = get_datasource_list(session=_session, user=self.current_user)
             _ds_list = [
                 {
                     "id": ds.id,
                     "name": ds.name,
                     "description": ds.description
                 }
-                for ds in _session.exec(stmt)
+                for ds in datasource_list
             ]
         if not _ds_list:
             raise SingleMessageError('No available datasource configuration found')

@@ -449,7 +449,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat'
 import ChatRow from './ChatRow.vue'
 import ChartAnswer from './answer/ChartAnswer.vue'
@@ -483,6 +483,7 @@ import { isMobile } from '@/utils/utils'
 import router from '@/router'
 import QuickQuestion from '@/views/chat/QuickQuestion.vue'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -517,6 +518,7 @@ const customName = computed(() => {
 const { t } = useI18n()
 
 const chatConfig = useChatConfigStore()
+const datasourceContext = useDatasourceContextStore()
 
 const isPhone = computed(() => {
   return isMobile()
@@ -677,7 +679,7 @@ const createNewChat = async () => {
 function getChatList(callback?: () => void) {
   loading.value = true
   chatApi
-    .list()
+    .list(datasourceContext.datasourceId)
     .then((res) => {
       chatList.value = chatApi.toChatInfoList(res)
     })
@@ -734,6 +736,20 @@ function onChatCreatedQuick(chat: ChatInfo) {
   currentChat.value = chat
   onChatCreated(chat)
 }
+
+watch(
+  () => datasourceContext.datasourceId,
+  (value, oldValue) => {
+    if (!oldValue || value === oldValue) {
+      return
+    }
+    stop()
+    currentChat.value = new ChatInfo()
+    currentChatId.value = undefined
+    chatList.value = []
+    getChatList()
+  }
+)
 
 const recommendQuestionRef = ref()
 const quickQuestionRef = ref()
@@ -1117,6 +1133,15 @@ const hiddenChatCreatorRef = ref()
 function jumpCreatChat() {
   if (props.startChatDsId) {
     const _id = props.startChatDsId
+    const datasource = datasourceContext.datasources.find((item) => Number(item.id) === Number(_id))
+    if (datasource) {
+      datasourceContext.setDatasource(
+        Number(_id),
+        datasource.name,
+        datasource.type || '',
+        datasource.type_name || ''
+      )
+    }
     nextTick(() => {
       hiddenChatCreatorRef.value?.createChat(_id)
     })
@@ -1125,7 +1150,7 @@ function jumpCreatChat() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   chatConfig.fetchGlobalConfig()
   if (isPhone.value) {
     chatListSideBarShow.value = false
@@ -1133,6 +1158,7 @@ onMounted(() => {
       registerClickOutside()
     }
   }
+  await datasourceContext.loadDatasources().catch((e) => console.error(e))
   getChatList(jumpCreatChat)
   assistantPrepareInit()
 })

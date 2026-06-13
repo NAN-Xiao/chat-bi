@@ -7,7 +7,8 @@ from sqlalchemy import and_, text
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from sqlmodel import select
 
-from apps.datasource.crud.permission import get_column_permission_fields, get_row_permission_filters, is_normal_user
+from apps.datasource.crud.permission import get_accessible_datasource_ids, get_column_permission_fields, \
+    get_row_permission_filters, is_normal_user
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
@@ -30,8 +31,12 @@ def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[in
     current_oid = user.oid if user.oid is not None else 1
     if user.isAdmin and oid:
         current_oid = oid
-    return session.exec(
+    datasource_list = session.exec(
         select(CoreDatasource).where(CoreDatasource.oid == int(current_oid)).order_by(CoreDatasource.name)).all()
+    accessible_ids = get_accessible_datasource_ids(session, user)
+    if accessible_ids is None:
+        return datasource_list
+    return [datasource for datasource in datasource_list if int(datasource.id) in accessible_ids]
 
 
 def get_ds(session: SessionDep, id: int):

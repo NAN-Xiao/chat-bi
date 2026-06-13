@@ -1,3 +1,4 @@
+import json
 import re
 import traceback
 from datetime import datetime
@@ -12,12 +13,17 @@ from sqlmodel import select
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.data_training.curd.data_training import get_training_template
-from apps.datasource.crud.datasource import get_table_schema, get_tables_sample_data
+from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
+from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import exec_sql
+from apps.db.db import exec_sql, get_sqlglot_dialect
+from apps.template.filter.generator import get_permissions_template
 from apps.terminology.curd.terminology import get_terminology_template
+from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.utils import extract_nested_json
+import sqlglot
+from sqlglot import exp
 
 router = APIRouter(tags=["analysis_assistant"], prefix="/analysis-assistant")
 
@@ -319,14 +325,110 @@ def _normalise_sql(sql: str) -> str:
 def _get_datasource(
     session: SessionDep, current_user: CurrentUser, datasource_id: int | None
 ) -> CoreDatasource:
-    oid = current_user.oid if current_user.oid is not None else 1
-    stmt = select(CoreDatasource).where(CoreDatasource.oid == oid)
     if datasource_id:
-        stmt = stmt.where(CoreDatasource.id == datasource_id)
-    datasource = session.exec(stmt.order_by(CoreDatasource.id)).first()
-    if not datasource:
+        oid = current_user.oid if current_user.oid is not None else 1
+        datasource = session.exec(
+            select(CoreDatasource).where(CoreDatasource.oid == oid, CoreDatasource.id == datasource_id)
+        ).first()
+        if not datasource:
+            raise RuntimeError("当前用户无权访问该数据源，或数据源不存在")
+        return datasource
+
+    datasource_list = get_datasource_list(session=session, user=current_user)
+    if not datasource_list:
         raise RuntimeError("当前工作空间没有可用数据源")
+    if len(datasource_list) > 1:
+        raise RuntimeError("当前工作空间有多个数据源，请先选择本次综合分析要使用的数据源")
+    datasource = datasource_list[0]
     return datasource
+
+
+def _extract_tables_from_sql(sql: str, ds_type: str | None = None) -> set[str]:
+    tables: set[str] = set()
+    dialect = get_sqlglot_dialect(ds_type)
+    try:
+        statements = sqlglot.parse(sql, dialect=dialect)
+        for stmt in statements:
+            if not stmt:
+                continue
+            cte_names = {cte.alias_or_name for cte in stmt.find_all(exp.CTE) if cte.alias_or_name}
+            for table in stmt.find_all(exp.Table):
+                if table.name and table.name not in cte_names:
+                    tables.add(table.name)
+    except Exception:
+        pass
+    return tables
+
+
+def _validate_sql_tables(sql: str, datasource: CoreDatasource, allowed_tables: list[str]) -> list[str]:
+    actual_tables = _extract_tables_from_sql(sql, datasource.type)
+    if not actual_tables:
+        raise ValueError("SQL 解析失败，无法确认查询表范围")
+    unauthorized_tables = actual_tables - set(allowed_tables)
+    if unauthorized_tables:
+        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
+    return sorted(actual_tables)
+
+
+def _apply_row_permissions(
+    llm,
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource,
+    sql: str,
+    tables: list[str],
+) -> str:
+    if not is_normal_user(current_user):
+        return sql
+    filters = get_row_permission_filters(
+        session=session,
+        current_user=current_user,
+        ds=datasource,
+        tables=tables,
+    )
+    if not filters:
+        return sql
+
+    template = get_permissions_template()
+    engine = datasource.type_name or datasource.type
+    messages = [
+        SystemMessage(
+            content=template["system"].format(
+                lang="zh-CN",
+                engine=engine,
+                sqlbot_name="SQLBot",
+            )
+        ),
+        HumanMessage(
+            content=template["user"].format(
+                sql=sql,
+                filter=json.dumps(filters, ensure_ascii=False),
+            )
+        ),
+    ]
+    text = _llm_text(llm, messages)
+    try:
+        data = _extract_json_object(text)
+    except Exception:
+        data = {"success": True, "sql": text}
+    if data.get("success") is False:
+        raise ValueError(str(data.get("message") or "行权限过滤条件应用失败"))
+    return _normalise_sql(str(data.get("sql") or sql))
+
+
+def _prepare_sql_for_execution(
+    llm,
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource,
+    raw_sql: str,
+    allowed_tables: list[str],
+) -> str:
+    sql = _normalise_sql(raw_sql)
+    tables = _validate_sql_tables(sql, datasource, allowed_tables)
+    sql = _apply_row_permissions(llm, session, current_user, datasource, sql, tables)
+    _validate_sql_tables(sql, datasource, allowed_tables)
+    return sql
 
 
 def _collect_metric_knowledge(
@@ -1341,6 +1443,7 @@ def _build_forecast_plan(
 
 
 @router.post("/chat", include_in_schema=False)
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="request.datasource_id"))
 async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, session: SessionDep):
     if not current_user:
         raise RuntimeError("Unauthorized")
@@ -1364,9 +1467,11 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             yield _trace("正在确认本次分析使用的业务口径。")
             datasource = _get_datasource(session, current_user, request.datasource_id)
             yield _trace("正在结合当前业务数据，梳理可分析的关键维度。")
-            schema, _tables = get_table_schema(session, current_user, datasource, question, embedding=False)
-            sample_data = get_tables_sample_data(session, current_user, datasource)
-            data_profile = _get_data_profile(datasource, schema)
+            schema, allowed_tables = get_table_schema(session, current_user, datasource, question, embedding=False)
+            if not allowed_tables:
+                raise RuntimeError("当前用户在该数据源下没有可分析的数据表权限")
+            sample_data = "" if is_normal_user(current_user) else get_tables_sample_data(session, current_user, datasource)
+            data_profile = "" if is_normal_user(current_user) else _get_data_profile(datasource, schema)
             oid = current_user.oid if current_user.oid is not None else 1
             knowledge = _collect_metric_knowledge(session, oid, datasource.id, question)
             if knowledge.strip():
@@ -1410,21 +1515,29 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 }
                 try:
                     raw_query["_user_question"] = question
-                    sql = _normalise_sql(str(raw_query.get("sql") or ""))
+                    sql = _prepare_sql_for_execution(
+                        llm, session, current_user, datasource, str(raw_query.get("sql") or ""), allowed_tables
+                    )
                     block["sql"] = sql
                     raw_query["sql"] = sql
                     try:
                         result = exec_sql(datasource, sql, origin_column=False)
                     except Exception as first_error:
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
-                        sql = _repair_sql(llm, question, raw_query, sql, first_error, schema, sample_data, data_profile, knowledge)
+                        repaired_sql = _repair_sql(llm, question, raw_query, sql, first_error, schema, sample_data, data_profile, knowledge)
+                        sql = _prepare_sql_for_execution(
+                            llm, session, current_user, datasource, repaired_sql, allowed_tables
+                        )
                         block["sql"] = sql
                         raw_query["sql"] = sql
                         result = exec_sql(datasource, sql, origin_column=False)
                     semantic_error = _semantic_validation_error(raw_query, result)
                     if semantic_error:
                         yield _trace("这个角度的累计口径不一致，正在按同 cohort 口径重新校准。", block_id=block_id)
-                        sql = _repair_sql(llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data, data_profile, knowledge)
+                        repaired_sql = _repair_sql(llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data, data_profile, knowledge)
+                        sql = _prepare_sql_for_execution(
+                            llm, session, current_user, datasource, repaired_sql, allowed_tables
+                        )
                         block["sql"] = sql
                         raw_query["sql"] = sql
                         result = exec_sql(datasource, sql, origin_column=False)

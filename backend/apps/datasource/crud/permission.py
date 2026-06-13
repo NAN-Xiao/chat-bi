@@ -1,7 +1,7 @@
 import json
 from typing import List, Optional
 
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlbot_xpack.permissions.api.permission import transRecord2DTO
 from sqlbot_xpack.permissions.models.ds_permission import DsPermission, PermissionDTO
 from sqlbot_xpack.permissions.models.ds_rules import DsRules
@@ -9,6 +9,78 @@ from sqlbot_xpack.permissions.models.ds_rules import DsRules
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreField, CoreTable
 from common.core.deps import CurrentUser, SessionDep
+
+
+def _parse_json_list(value) -> list:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        parsed = json.loads(value)
+    except Exception:
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _same_id(left, right) -> bool:
+    return str(left) == str(right)
+
+
+def _rule_contains_user(rule: DsRules, current_user: CurrentUser) -> bool:
+    return any(_same_id(user_id, current_user.id) for user_id in _parse_json_list(rule.user_list))
+
+
+def _is_datasource_scope_admin(current_user: CurrentUser) -> bool:
+    return bool(current_user.isAdmin or current_user.weight > 0)
+
+
+def get_accessible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
+    if _is_datasource_scope_admin(current_user):
+        return None
+
+    oid = current_user.oid if current_user.oid is not None else 1
+    rules_query = session.query(DsRules).filter(DsRules.enable.is_(True))
+    if hasattr(DsRules, "oid"):
+        rules_query = rules_query.filter(or_(DsRules.oid == oid, DsRules.oid.is_(None)))
+
+    permission_ids: set[int] = set()
+    for rule in rules_query.all():
+        if not _rule_contains_user(rule, current_user):
+            continue
+        for permission_id in _parse_json_list(rule.permission_list):
+            try:
+                permission_ids.add(int(permission_id))
+            except (TypeError, ValueError):
+                continue
+
+    if not permission_ids:
+        return set()
+
+    permissions = session.query(DsPermission).filter(
+        and_(DsPermission.enable.is_(True), DsPermission.id.in_(permission_ids))
+    ).all()
+    return {int(permission.ds_id) for permission in permissions if permission.ds_id}
+
+
+def has_datasource_access(session: SessionDep, current_user: CurrentUser, datasource_ids) -> bool:
+    if datasource_ids is None or datasource_ids == "":
+        return True
+
+    allowed_ids = get_accessible_datasource_ids(session, current_user)
+    if allowed_ids is None:
+        return True
+
+    if isinstance(datasource_ids, list):
+        requested_ids = datasource_ids
+    else:
+        requested_ids = [datasource_ids]
+
+    try:
+        requested_set = {int(datasource_id) for datasource_id in requested_ids}
+    except (TypeError, ValueError):
+        return False
+    return requested_set.issubset(allowed_ids)
 
 
 def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource,

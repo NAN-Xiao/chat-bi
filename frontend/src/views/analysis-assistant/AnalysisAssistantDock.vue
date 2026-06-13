@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
@@ -13,6 +13,7 @@ import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 
 interface DockMessage extends AnalysisAssistantMessage {
   id: number
@@ -67,6 +68,7 @@ const emits = defineEmits<{
 }>()
 
 const route = useRoute()
+const analysisContext = useDatasourceContextStore()
 const messages = ref<DockMessage[]>([])
 const inputMessage = ref('')
 const scrollRef = ref()
@@ -90,7 +92,11 @@ const dockStyle = computed(() => (props.expanded ? { width: `${dockWidth.value}p
 
 const pageContext = computed(() => {
   const title = route.meta?.title
-  return title ? `当前页面：${title}` : `当前路径：${route.path}`
+  const page = title ? `当前页面：${title}` : `当前路径：${route.path}`
+  const datasource = analysisContext.datasourceName
+    ? `当前数据源：${analysisContext.datasourceName}`
+    : ''
+  return [page, datasource].filter(Boolean).join('\n')
 })
 
 const setExpanded = (value: boolean) => {
@@ -129,6 +135,10 @@ const startResize = (event: PointerEvent) => {
 
 onBeforeUnmount(() => {
   stopResize()
+})
+
+onMounted(() => {
+  analysisContext.loadDatasources().catch((e) => console.error(e))
 })
 
 const scrollToBottom = () => {
@@ -336,6 +346,12 @@ const sendMessage = async ($event: any = {}) => {
     return
   }
 
+  try {
+    await analysisContext.loadDatasources()
+  } catch (e) {
+    console.error(e)
+  }
+
   inputMessage.value = ''
   pushMessage('user', question)
   const assistantMessage = pushMessage('assistant', '', true)
@@ -349,6 +365,7 @@ const sendMessage = async ($event: any = {}) => {
     const response = await analysisAssistantApi.chat(
       requestMessages(),
       pageContext.value,
+      analysisContext.datasourceId,
       streamController.value
     )
     if (!response.ok) {
@@ -410,6 +427,15 @@ const clearMessages = () => {
   inputMessage.value = ''
 }
 
+watch(
+  () => analysisContext.datasourceId,
+  (value, oldValue) => {
+    if (oldValue && value !== oldValue) {
+      clearMessages()
+    }
+  }
+)
+
 const handleCtrlEnter = (e: KeyboardEvent) => {
   const textarea = e.target as HTMLTextAreaElement
   const start = textarea.selectionStart
@@ -440,7 +466,12 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
         @pointerdown="startResize"
       />
       <header class="dock-header">
-        <div class="dock-title">综合分析助手</div>
+        <div class="dock-heading">
+          <div class="dock-title">综合分析助手</div>
+          <div v-if="analysisContext.datasourceName" class="datasource-pill">
+            {{ analysisContext.datasourceName }}
+          </div>
+        </div>
         <div class="dock-actions">
           <el-tooltip effect="dark" content="新对话" placement="bottom">
             <el-button link class="icon-btn" :disabled="isStreaming" @click="clearMessages">
@@ -717,18 +748,41 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 }
 
 .dock-header {
-  height: 52px;
-  min-height: 52px;
-  padding: 0 12px 0 16px;
+  min-height: 58px;
+  padding: 8px 12px 8px 16px;
   border-bottom: 1px solid #eff0f1;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+
+  .dock-heading {
+    min-width: 0;
+    flex: 1;
+  }
 
   .dock-title {
     font-size: 15px;
     font-weight: 600;
     color: #1f2329;
+    line-height: 22px;
+  }
+
+  .datasource-pill {
+    display: inline-flex;
+    align-items: center;
+    max-width: 220px;
+    height: 22px;
+    margin-top: 4px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: #f5f6f7;
+    color: #646a73;
+    font-size: 12px;
+    line-height: 22px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .dock-actions {

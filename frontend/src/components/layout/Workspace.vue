@@ -4,25 +4,25 @@ import icon_expand_down_filled from '@/assets/svg/icon_expand-down_filled.svg'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-import { userApi } from '@/api/auth'
 import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { useUserStore } from '@/stores/user'
 import { highlightKeyword } from '@/utils/xss'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useEmitt } from '@/utils/useEmitt'
 
-const userStore = useUserStore()
+const datasourceContext = useDatasourceContextStore()
 const { t } = useI18n()
 defineProps({
   collapse: { type: [Boolean], required: true },
 })
 
 const router = useRouter()
-const currentWorkspace = ref({
-  id: '',
-  name: '',
-})
-const defaultDatasourceList = ref([] as any[])
+const currentWorkspace = computed(() => ({
+  id: datasourceContext.datasourceId,
+  name: datasourceContext.datasourceName,
+}))
+const defaultDatasourceList = computed(() => datasourceContext.datasources)
 const workspaceKeywords = ref('')
 const defaultWorkspaceListWithSearch = computed(() => {
   if (!workspaceKeywords.value) return defaultDatasourceList.value
@@ -38,33 +38,26 @@ const formatKeywords = (item: string) => {
 const emit = defineEmits(['selectWorkspace'])
 
 const handleDefaultWorkspaceChange = (item: any) => {
-  if (currentWorkspace.value?.id && item.id.toString() === currentWorkspace.value.id.toString()) {
+  if (
+    currentWorkspace.value?.id &&
+    item.id.toString() === currentWorkspace.value.id.toString()
+  ) {
     return
   }
-  currentWorkspace.value = { id: item.id, name: item.name }
-  userApi.ws_change(item.id).then(() => {
-    ElMessage.success(t('common.switch_success'))
-    router.push('/chat/index')
-    setTimeout(() => {
-      location.reload()
-    }, 300)
-  })
+  datasourceContext.setDatasource(
+    Number(item.id),
+    item.name,
+    item.type || '',
+    item.type_name || ''
+  )
+  ElMessage.success(t('common.switch_success'))
+  router.push('/chat/index')
+  useEmitt().emitter.emit('datasource-context-change', item)
   emit('selectWorkspace', item)
 }
 
-const init_ws_data = async () => {
-  defaultDatasourceList.value = await userApi.ws_options()
-}
-
-const init_current_ws = () => {
-  const oid = userStore.getOid
-  currentWorkspace.value = defaultDatasourceList.value.find(
-    (item) => item.id.toString() === oid.toString()
-  )
-}
 onMounted(async () => {
-  await init_ws_data()
-  init_current_ws()
+  await datasourceContext.loadDatasources()
 })
 </script>
 
@@ -105,7 +98,7 @@ onMounted(async () => {
             v-for="ele in defaultWorkspaceListWithSearch"
             :key="ele.name"
             class="popover-item"
-            :class="currentWorkspace?.id === ele.id && 'isActive'"
+            :class="currentWorkspace?.id?.toString() === ele.id?.toString() && 'isActive'"
             @click="handleDefaultWorkspaceChange(ele)"
           >
             <el-icon size="16">

@@ -11,8 +11,10 @@ import AddDrawer from '@/views/ds/AddDrawer.vue'
 import { useUserStore } from '@/stores/user'
 import { useAssistantStore } from '@/stores/assistant'
 import { request } from '@/utils/request'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 const assistantStore = useAssistantStore()
 const userStore = useUserStore()
+const datasourceContext = useDatasourceContextStore()
 
 const isWsAdmin = computed(() => userStore.isAdmin || userStore.isSpaceAdmin)
 const selectAssistantDs = computed(
@@ -61,7 +63,12 @@ const innerDs = ref()
 const loading = ref(false)
 const statusLoading = ref(false)
 
-function showDs() {
+async function showDs() {
+  await datasourceContext.loadDatasources().catch((e) => console.error(e))
+  if (!selectAssistantDs.value && datasourceContext.datasourceId) {
+    createChat(datasourceContext.datasourceId)
+    return
+  }
   listDs()
   datasourceConfigVisible.value = true
 }

@@ -8,7 +8,6 @@ import re
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
 from apps.chat.models.chat_model import Chat
-from apps.datasource.crud.datasource import get_ws_ds
 from apps.datasource.models.datasource import CoreDatasource
 from common.core.db import engine
 from apps.system.schemas.system_schema import UserInfoDTO
@@ -25,7 +24,7 @@ async def get_ws_resource(oid, type) -> list:
     with Session(engine) as session:
         stmt = None
         if type == 'ds' or type == 'datasource':
-            return await get_ws_ds(session, oid)
+            stmt = select(CoreDatasource.id).distinct().where(CoreDatasource.oid == oid)
         if type == 'chat':
             stmt = select(Chat.id).where(Chat.oid == oid) 
         if stmt is not None:
@@ -34,16 +33,30 @@ async def get_ws_resource(oid, type) -> list:
         return []     
             
 
-async def check_ws_permission(oid, type, resource) -> bool:
+async def check_ws_permission(current_user: UserInfoDTO, type, resource) -> bool:
     if not resource or (isinstance(resource, list) and len(resource) == 0):
         return True
-    
+
+    oid = current_user.oid
     resource_id_list = await get_ws_resource(oid, type)
     if not resource_id_list:
         return False
-    if isinstance(resource, list):
-        return set(resource).issubset(set(resource_id_list))
-    return resource in resource_id_list
+    try:
+        if isinstance(resource, list):
+            workspace_allowed = set(map(int, resource)).issubset(set(map(int, resource_id_list)))
+        else:
+            workspace_allowed = int(resource) in set(map(int, resource_id_list))
+    except (TypeError, ValueError):
+        return False
+    if not workspace_allowed:
+        return False
+
+    if type == 'ds' or type == 'datasource':
+        from apps.datasource.crud.permission import has_datasource_access
+
+        with Session(engine) as session:
+            return has_datasource_access(session, current_user, resource)
+    return True
         
  
 def require_permissions(permission: SqlbotPermission):
@@ -58,8 +71,6 @@ def require_permissions(permission: SqlbotPermission):
                     status_code=401,
                     detail="用户未认证"
                 )
-            current_oid = current_user.oid
-            
             trans = i18n(request)
             
             if current_user.isAdmin and not permission.type:
@@ -86,7 +97,7 @@ def require_permissions(permission: SqlbotPermission):
                     if match := re.match(r"args\[(\d+)\]", keyExpression):
                         index = int(match.group(1))
                         value = bound_args.args[index]
-                        if await check_ws_permission(current_oid, resource_type, value):
+                        if await check_ws_permission(current_user, resource_type, value):
                             return await func(*args, **kwargs)
                         #raise Exception('no permission to execute or resource do not exist!')
                         raise Exception(trans('i18n_permission.permission_resource_limit'))
@@ -97,7 +108,7 @@ def require_permissions(permission: SqlbotPermission):
                 value = bound_args.arguments[parts[0]]
                 for part in parts[1:]:
                     value = getattr(value, part)
-                if await check_ws_permission(current_oid, resource_type, value):
+                if await check_ws_permission(current_user, resource_type, value):
                     return await func(*args, **kwargs)
                 raise Exception(trans('i18n_permission.permission_resource_limit'))
             

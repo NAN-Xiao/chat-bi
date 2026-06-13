@@ -443,8 +443,10 @@ export const chatApi = {
       toChatLogHistoryItemList(data.steps)
     )
   },
-  list: (): Promise<Array<ChatInfo>> => {
-    return request.get('/chat/list')
+  list: (datasourceId?: number): Promise<Array<ChatInfo>> => {
+    return request.get(
+      datasourceId ? `/chat/list?datasource_id=${encodeURIComponent(datasourceId)}` : '/chat/list'
+    )
   },
   get: (id: number): Promise<ChatInfo> => {
     return request.get(`/chat/${id}`)

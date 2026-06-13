@@ -5,7 +5,7 @@ from typing import Optional, List
 
 import orjson
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, select
 from starlette.responses import JSONResponse
@@ -30,8 +30,10 @@ router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
 
 @router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
-async def chats(session: SessionDep, current_user: CurrentUser):
-    return list_chats(session, current_user)
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="datasource_id"))
+async def chats(session: SessionDep, current_user: CurrentUser,
+                datasource_id: Optional[int] = Query(None, description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    return list_chats(session, current_user, datasource_id)
 
 
 @router.get("/{chart_id}", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}get_chat")
@@ -200,6 +202,7 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 
 
 @router.post("/assistant/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}assistant_start_chat")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="create_chat_obj.datasource"))
 @system_log(LogConfig(
     operation_type=OperationType.CREATE,
     module=OperationModules.CHAT,

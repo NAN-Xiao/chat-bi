@@ -11,6 +11,7 @@ from sqlalchemy.orm import aliased
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
 from apps.datasource.crud.datasource import get_ds
+from apps.datasource.crud.permission import get_accessible_datasource_ids, has_datasource_access
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
@@ -41,10 +42,18 @@ def get_chat(session: SessionDep, chat_id: int) -> Chat:
     return chat
 
 
-def list_chats(session: SessionDep, current_user: CurrentUser) -> List[Chat]:
+def list_chats(session: SessionDep, current_user: CurrentUser, datasource_id: Optional[int] = None) -> List[Chat]:
     oid = current_user.oid if current_user.oid is not None else 1
-    chart_list = session.query(Chat).filter(and_(Chat.create_by == current_user.id, Chat.oid == oid)).order_by(
-        Chat.create_time.desc()).all()
+    filters = [Chat.create_by == current_user.id, Chat.oid == oid]
+    if datasource_id:
+        filters.append(Chat.datasource == datasource_id)
+    else:
+        accessible_ids = get_accessible_datasource_ids(session, current_user)
+        if accessible_ids is not None:
+            if not accessible_ids:
+                return []
+            filters.append(Chat.datasource.in_(accessible_ids))
+    chart_list = session.query(Chat).filter(and_(*filters)).order_by(Chat.create_time.desc()).all()
     return chart_list
 
 
@@ -314,6 +323,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         raise Exception(f"Chat with id {chart_id} not found")
     if chat.create_by != current_user.id:
         raise Exception(f"Chat with id {chart_id} not Owned by the current user")
+    if chat.datasource and not has_datasource_access(session, current_user, chat.datasource):
+        raise Exception(f"No permission to access datasource with id {chat.datasource}")
     chat_info = ChatInfo(**chat.model_dump())
 
     if current_assistant and current_assistant.type in dynamic_ds_types:
