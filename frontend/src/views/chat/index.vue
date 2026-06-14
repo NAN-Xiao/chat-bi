@@ -250,7 +250,7 @@
                               </el-icon>
                             </el-button>
                           </el-tooltip>
-                          <template v-if="message.record?.chart">
+                          <template v-if="showChartAnalysisPredictActions && message.record?.chart">
                             <div class="divider"></div>
                             <div>
                               <el-button
@@ -499,6 +499,7 @@ const customName = computed(() => {
   return ''
 })
 const { t } = useI18n()
+const showChartAnalysisPredictActions = false
 
 const chatConfig = useChatConfigStore()
 const datasourceContext = useDatasourceContextStore()
