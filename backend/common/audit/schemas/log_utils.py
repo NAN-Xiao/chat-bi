@@ -1,19 +1,16 @@
 from sqlalchemy import select, func
 from sqlalchemy.sql import Select
-from sqlalchemy import String, union_all
+from sqlalchemy import String, column, table, union_all
 
 from apps.chat.models.chat_model import Chat
 from apps.dashboard.models.dashboard_model import CoreDashboard
 from apps.data_training.models.data_training_model import DataTraining
 from apps.datasource.models.datasource import CoreDatasource
-from apps.system.models.system_model import WorkspaceModel, AiModelDetail, ApiKeyModel
+from apps.system.models.system_model import AiModelDetail, ApiKeyModel
 from apps.system.models.user import UserModel
 from apps.terminology.models.terminology_model import Terminology
 from apps.system.models.system_model import AssistantModel
 
-from sqlbot_xpack.permissions.models.ds_rules import DsRules
-from sqlbot_xpack.custom_prompt.models.custom_prompt_model import CustomPrompt
-from sqlbot_xpack.permissions.models.ds_permission import DsPermission
 from sqlalchemy import literal_column
 
 
@@ -53,11 +50,16 @@ def build_resource_union_query() -> Select:
     ).select_from(CoreDatasource)
 
     # custom_prompt 表查询
+    custom_prompt_table = table(
+        "custom_prompt",
+        column("id"),
+        column("name"),
+    )
     custom_prompt_query = select(
-        func.cast(CustomPrompt.id, String).label("id"),
-        CustomPrompt.name.label("name"),
+        func.cast(custom_prompt_table.c.id, String).label("id"),
+        custom_prompt_table.c.name.label("name"),
         literal_column("'prompt_words'").label("module")
-    ).select_from(CustomPrompt)
+    ).select_from(custom_prompt_table)
 
     # data_training 表查询（使用question作为name）
     data_training_query = select(
@@ -66,19 +68,30 @@ def build_resource_union_query() -> Select:
         literal_column("'data_training'").label("module")
     ).select_from(DataTraining)
 
+    ds_permission_table = table(
+        "ds_permission",
+        column("id"),
+        column("name"),
+    )
+    ds_rules_table = table(
+        "ds_rules",
+        column("id"),
+        column("name"),
+    )
+
     # ds_permission 表查询
     ds_permission_query = select(
-        func.cast(DsPermission.id, String).label("id"),
-        DsPermission.name.label("name"),
+        func.cast(ds_permission_table.c.id, String).label("id"),
+        ds_permission_table.c.name.label("name"),
         literal_column("'permission'").label("module")
-    ).select_from(DsPermission)
+    ).select_from(ds_permission_table)
 
     # ds_rules 表查询
     ds_rules_query = select(
-        func.cast(DsRules.id, String).label("id"),
-        DsRules.name.label("name"),
+        func.cast(ds_rules_table.c.id, String).label("id"),
+        ds_rules_table.c.name.label("name"),
         literal_column("'rules'").label("module")
-    ).select_from(DsRules)
+    ).select_from(ds_rules_table)
 
     # sys_user 表查询
     user_query = select(
@@ -93,13 +106,6 @@ def build_resource_union_query() -> Select:
         UserModel.name.label("name"),
         literal_column("'member'").label("module")
     ).select_from(UserModel)
-
-    # sys_workspace 表查询
-    sys_workspace_query = select(
-        func.cast(WorkspaceModel.id, String).label("id"),
-        WorkspaceModel.name.label("name"),
-        literal_column("'workspace'").label("module")
-    ).select_from(WorkspaceModel)
 
     # terminology 表查询（使用word作为name）
     terminology_query = select(
@@ -134,7 +140,6 @@ def build_resource_union_query() -> Select:
         ds_rules_query,
         user_query,
         member_query,
-        sys_workspace_query,
         terminology_query,
         sys_assistant_query,
         sys_apikey_query

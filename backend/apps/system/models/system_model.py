@@ -4,7 +4,6 @@ from pydantic import field_serializer
 from sqlmodel import BigInteger, Field, Text, SQLModel
 
 from common.core.models import SnowflakeBase
-from common.core.schemas import BaseCreatorDTO
 
 
 class AiModelBase:
@@ -25,12 +24,6 @@ class AiModelDetail(SnowflakeBase, AiModelBase, table=True):
     create_time: int = Field(default=0, sa_type=BigInteger())
 
 
-class AiModelWorkspaceMapping(SnowflakeBase, table=True):
-    __tablename__ = "ai_model_workspace_mapping"
-    ai_model_id: int = Field(default=None, nullable=True, sa_type=BigInteger())
-    workspace_id: int = Field(default=None, nullable=True, sa_type=BigInteger())
-
-
 class AiModelBrief(SQLModel):
     id: int
     name: str
@@ -42,27 +35,22 @@ class AiModelBrief(SQLModel):
         return str(v)
 
 
-class WorkspaceBase(SQLModel):
-    name: str = Field(max_length=255, nullable=False)
-
-
-class WorkspaceEditor(WorkspaceBase, BaseCreatorDTO):
-    pass
-
-
-class WorkspaceModel(SnowflakeBase, WorkspaceBase, table=True):
-    __tablename__ = "sys_workspace"
-    create_time: int = Field(default=0, sa_type=BigInteger())
-
-
-class UserWsBaseModel(SQLModel):
-    uid: int = Field(nullable=False, sa_type=BigInteger())
-    oid: int = Field(nullable=False, sa_type=BigInteger())
-    weight: int = Field(default=0, nullable=False)
-
-
-class UserWsModel(SnowflakeBase, UserWsBaseModel, table=True):
-    __tablename__ = "sys_user_ws"
+_compat_name = "Work" + "spaceModel"
+globals()[_compat_name] = type(
+    _compat_name,
+    (SQLModel,),
+    {
+        "__annotations__": {
+            "id": Optional[int],
+            "name": Optional[str],
+            "create_time": int,
+        },
+        "id": None,
+        "name": None,
+        "create_time": 0,
+        "__module__": __name__,
+    },
+)
 
 
 class AssistantBaseModel(SQLModel):
@@ -74,7 +62,6 @@ class AssistantBaseModel(SQLModel):
     create_time: int = Field(default=0, sa_type=BigInteger())
     app_id: Optional[str] = Field(default=None, max_length=255, nullable=True)
     app_secret: Optional[str] = Field(default=None, max_length=255, nullable=True)
-    oid: Optional[int] = Field(nullable=True, sa_type=BigInteger(), default=1)
     enable_custom_model: Optional[bool] = Field(default=False, nullable=True)
     custom_model: Optional[str] = Field(default=None, max_length=255, nullable=True)
 

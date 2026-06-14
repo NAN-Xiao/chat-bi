@@ -48,10 +48,17 @@ async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int
 
 @router.get("/{chart_id}/with_data", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}get_chat_with_data")
 async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, chart_id: int,
-                             current_assistant: CurrentAssistant):
+                             current_assistant: CurrentAssistant,
+                             datasource_id: Optional[int] = Query(None, description=f"{PLACEHOLDER_PREFIX}ds_id")):
     def inner():
-        return get_chat_with_records_with_data(chart_id=chart_id, session=session, current_user=current_user,
-                                               current_assistant=current_assistant)
+        chat_info = get_chat_with_records_with_data(chart_id=chart_id, session=session, current_user=current_user,
+                                                    current_assistant=current_assistant)
+        if datasource_id and int(chat_info.datasource or 0) != int(datasource_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Chat does not belong to current project"
+            )
+        return chat_info
 
     return await asyncio.to_thread(inner)
 

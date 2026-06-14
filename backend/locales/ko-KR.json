@@ -1,5 +1,4 @@
 {
-  "i18n_default_workspace": "기본 작업 공간",
   "i18n_ds_name_exist": "이름이 이미 존재합니다",
   "i18n_concat_admin": "관리자에게 문의하세요!",
   "i18n_exist": "{msg}이(가) 이미 존재합니다!",
@@ -10,7 +9,6 @@
   "i18n_format_invalid": "{key} 형식이 올바르지 않습니다!",
   "i18n_login": {
     "account_pwd_error": "계정 또는 비밀번호가 잘못되었습니다!",
-    "no_associated_ws": "연결된 작업 공간이 없습니다, {msg}",
     "user_disable": "계정이 비활성화되었습니다, {msg}",
     "origin_error": "잘못된 로그인 방식입니다",
     "prohibit_auto_create": "사용자 자동 생성이 금지되어 있습니다. 먼저 사용자를 동기화해 주세요",
@@ -21,11 +19,10 @@
     "email": "이메일",
     "password": "비밀번호",
     "language_not_support": "시스템이 [{key}] 언어를 지원하지 않습니다!",
-    "ws_miss": "현재 사용자가 [{ws}] 작업 공간에 속해 있지 않습니다!",
     "name": "성명",
     "status": "사용자 상태",
     "origin": "사용자 출처",
-    "workspace": "작업 공간",
+    "project": "프로젝트",
     "role": "역할",
     "platform_user_id": "외부 사용자 고유 식별자",
     "administrator": "관리자",
@@ -34,15 +31,12 @@
     "status_disabled": "비활성화됨",
     "local_creation": "로컬 생성"
   },
-  "i18n_ws": {
-    "title": "작업 공간"
-  },
   "i18n_permission": {
     "only_admin": "관리자만 호출할 수 있습니다!",
     "no_permission": "{url}{msg} 호출 권한이 없습니다",
     "authenticate_invalid": "인증 무효 【{msg}】",
     "token_expired": "토큰이 만료됨",
-    "only_ws_admin": "워크스페이스 관리자만 사용 가능합니다!",
+    "only_project_admin": "프로젝트 관리자만 사용 가능합니다!",
     "permission_resource_limit": "권한이 없거나 리소스를 찾을 수 없습니다!"
   },
   "i18n_llm": {
@@ -147,7 +141,7 @@
     "operation_type_name": "작업 유형",
     "operation_detail_info": "작업 상세",
     "user_name": "작업자",
-    "oid_name": "작업 공간",
+    "project_name": "프로젝트",
     "operation_status_name": "작업 상태",
     "error_message": "오류 메시지",
     "ip_address": "IP 주소",
@@ -161,7 +155,7 @@
     "data_training": "SQL 예제 라이브러리",
     "prompt_words": "프롬프트 단어",
     "user": "사용자",
-    "workspace": "작업 공간",
+    "project": "프로젝트",
     "ai_model": "AI 모델",
     "application": "애플리케이션",
     "theme": "외관 설정",

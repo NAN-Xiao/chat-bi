@@ -2,6 +2,7 @@
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import { useI18n } from 'vue-i18n'
+import { computed } from 'vue'
 const { t } = useI18n()
 
 const preview = () => {
@@ -16,6 +17,7 @@ const props = defineProps({
     required: true,
   },
 })
+const canEdit = computed(() => props.dashboardInfo?.canEdit === true)
 </script>
 
 <template>
@@ -30,7 +32,7 @@ const props = defineProps({
         </template>
         {{ t('dashboard.preview') }}
       </el-button>
-      <el-button class="custom-button" type="primary" @click="edit">
+      <el-button v-if="canEdit" class="custom-button" type="primary" @click="edit">
         <template #icon>
           <Icon name="icon_edit_outlined">
             <icon_edit_outlined class="svg-icon" />

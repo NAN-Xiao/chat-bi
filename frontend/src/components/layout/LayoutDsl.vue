@@ -2,7 +2,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import Menu from './Menu.vue'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
-import Workspace from './Workspace.vue'
+import ProjectSelector from './ProjectSelector.vue'
 import Person from './Person.vue'
 import AnalysisAssistantDock from '@/views/analysis-assistant/AnalysisAssistantDock.vue'
 import LOGO_fold from '@/assets/LOGO-fold.svg'
@@ -52,8 +52,8 @@ const handleFoldExpand = () => {
   handleCollapseChange(!collapse.value)
 }
 
-const toWorkspace = () => {
-  router.push('/')
+const toProjectList = () => {
+  router.push('/chat/index')
 }
 
 const toChatIndex = () => {
@@ -221,19 +221,19 @@ onBeforeMount(() => {
           </el-icon>
         </button>
       </div>
-      <Workspace v-if="!showSysmenu" :collapse="collapse"></Workspace>
+      <ProjectSelector v-if="!showSysmenu" :collapse="collapse"></ProjectSelector>
       <Menu :collapse="collapseCopy"></Menu>
       <div class="bottom">
         <div
           v-if="showSysmenu"
-          class="back-to_workspace"
+          class="back-to-project"
           :class="collapse && 'collapse'"
-          @click="toWorkspace"
+          @click="toProjectList"
         >
           <el-icon size="18">
             <icon_moments_categories_outlined></icon_moments_categories_outlined>
           </el-icon>
-          {{ collapse ? '' : $t('workspace.return_to_workspace') }}
+          {{ collapse ? '' : $t('project.return_to_project') }}
         </div>
         <div class="personal-info">
           <Person :collapse="collapse" :in-sysmenu="showSysmenu"></Person>
@@ -348,7 +348,7 @@ onBeforeMount(() => {
       font-size: 14px;
       line-height: 22px;
       width: calc(100% - 32px);
-      .back-to_workspace {
+      .back-to-project {
         display: flex;
         align-items: center;
         justify-content: center;

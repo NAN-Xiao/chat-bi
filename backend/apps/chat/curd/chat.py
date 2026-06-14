@@ -43,8 +43,7 @@ def get_chat(session: SessionDep, chat_id: int) -> Chat:
 
 
 def list_chats(session: SessionDep, current_user: CurrentUser, datasource_id: Optional[int] = None) -> List[Chat]:
-    oid = current_user.oid if current_user.oid is not None else 1
-    filters = [Chat.create_by == current_user.id, Chat.oid == oid]
+    filters = [Chat.create_by == current_user.id]
     if datasource_id:
         filters.append(Chat.datasource == datasource_id)
     else:
@@ -253,7 +252,7 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
     return get_chart_data_ds(session,row.datasource, row.sql)
 
 def get_chart_data_ds(session: SessionDep,ds_id,sql):
-    json_result: Dict[str, Any] = {'status': 'success','data':[],'message':''}
+    json_result: Dict[str, Any] = {'status': 'success','fields':[],'data':[],'message':''}
     try:
         datasource = get_ds(session,ds_id)
         if datasource is None:
@@ -264,6 +263,7 @@ def get_chart_data_ds(session: SessionDep,ds_id,sql):
             result = exec_sql(ds=datasource,sql=sql, origin_column=False)
             _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
             _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
+            json_result['fields'] = list(_data[0].keys()) if _data else result.get('fields', [])
             json_result['data'] = _data
             return json_result
     except Exception as e:
@@ -719,7 +719,6 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
 
     chat = Chat(create_time=datetime.datetime.now(),
                 create_by=current_user.id,
-                oid=current_user.oid if current_user.oid is not None else 1,
                 brief=create_chat_obj.question.strip()[:20],
                 origin=create_chat_obj.origin if create_chat_obj.origin is not None else 0)
     ds: CoreDatasource | AssistantOutDsSchema | None = None

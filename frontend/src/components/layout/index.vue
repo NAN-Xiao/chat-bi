@@ -4,32 +4,7 @@
       class="main-menu"
       :class="{ 'main-menu-sidebar': !topLayout, 'main-menu-topbar': topLayout }"
     >
-      <div class="logo">SQLBot</div>
-
-      <!-- <div v-if="!topLayout || !showSubmenu"
-           :class="{ 'workspace-area': !topLayout, 'topbar-workspace-area': topLayout }">
-        <el-select
-            v-model="workspace"
-            placeholder="Select"
-            class="workspace-select"
-            style="width: 240px"
-        >
-          <template #label="{ label }">
-            <div class="workspace-label">
-              <el-icon>
-                <folder/>
-              </el-icon>
-              <span>{{ label }}</span>
-            </div>
-          </template>
-          <el-option
-              v-for="item in options"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-          />
-        </el-select>
-      </div> -->
+      <div class="logo">星通智数</div>
       <el-menu
         v-if="!topLayout || !showSubmenu"
         :default-active="activeMenu"
@@ -208,12 +183,6 @@ const sysRouterList = computed(() => {
 const showSubmenu = computed(() => {
   return route.path.includes('/system')
 })
-// const workspace = ref('1')
-/* const options = [
-  {value: '1', label: 'Default workspace'},
-  {value: '2', label: 'Workspace 2'},
-  {value: '3', label: 'Workspace 3'}
-] */
 const currentPageTitle = computed(() => {
   if (route.path.includes('/system')) {
     return 'System Settings'
@@ -269,37 +238,6 @@ onMounted(() => {
 
   .main-menu {
     display: flex;
-
-    .workspace-area {
-      margin: 8px 16px;
-      width: 208px;
-      overflow: hidden;
-
-      .workspace-select {
-        width: 100% !important;
-
-        :deep(.ed-select__wrapper) {
-          border-radius: 8px;
-          box-shadow: none !important;
-          background-color: #f1f3f4;
-          line-height: 32px;
-          min-height: 48px;
-
-          .ed-select__selected-item {
-            height: 32px;
-          }
-
-          .workspace-label {
-            color: #2d2e31;
-            font-weight: 600;
-            display: flex;
-            column-gap: 8px;
-            align-items: center;
-            height: 32px;
-          }
-        }
-      }
-    }
 
     .logo {
       height: 68px;
@@ -395,34 +333,6 @@ onMounted(() => {
       .top-back-area {
         align-items: center;
         display: flex;
-      }
-    }
-
-    .topbar-workspace-area {
-      margin: 0 32px;
-      height: auto;
-      width: 208px;
-      line-height: 54px;
-
-      .workspace-select {
-        width: 100% !important;
-
-        :deep(.ed-select__wrapper) {
-          border-radius: 8px;
-          box-shadow: none !important;
-          background-color: #f1f3f4;
-          line-height: 24px;
-          min-height: 32px;
-
-          .workspace-label {
-            color: #2d2e31;
-            font-weight: 600;
-            display: flex;
-            column-gap: 8px;
-            align-items: center;
-            height: 32px;
-          }
-        }
       }
     }
 

@@ -108,7 +108,7 @@ function confirmSelectDs() {
   }
 }
 
-function createChat(datasource: number) {
+async function createChat(datasource: number) {
   loading.value = true
   const param = {
     datasource: datasource,
@@ -118,21 +118,20 @@ function createChat(datasource: number) {
     param['origin'] = 2
     method = chatApi.startAssistantChat
   }
-  method(param)
-    .then((res) => {
-      const chat: ChatInfo | undefined = chatApi.toChatInfo(res)
-      if (chat == undefined) {
-        throw Error('chat is undefined')
-      }
-      emits('onChatCreated', chat)
-      hideDs()
-    })
-    .catch((e) => {
-      console.error(e)
-    })
-    .finally(() => {
-      loading.value = false
-    })
+  try {
+    const res = await method(param)
+    const chat: ChatInfo | undefined = chatApi.toChatInfo(res)
+    if (chat == undefined) {
+      throw Error('chat is undefined')
+    }
+    emits('onChatCreated', chat)
+    hideDs()
+    return chat
+  } catch (e) {
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
 }
 
 const drawerHeight = ref(0)

@@ -10,9 +10,11 @@ import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import router from '@/router'
 import { initCanvasData } from '@/views/dashboard/utils/canvasUtils.ts'
 import { useI18n } from 'vue-i18n'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
+const datasourceContext = useDatasourceContextStore()
 const { componentData, canvasViewInfo, fullscreenFlag, baseMatrixCount } =
   storeToRefs(dashboardStore)
 
@@ -21,6 +23,7 @@ const state = reactive({
   routerPid: null,
   resourceId: null,
   opt: null,
+  datasource: null as number | string | null | undefined,
 })
 
 const dashboardEditorInnerRef = ref(null)
@@ -74,18 +77,23 @@ const maxYComponentCount = () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await datasourceContext.loadDatasources()
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.opt = router.currentRoute.value.query.opt
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.resourceId = router.currentRoute.value.query.resourceId
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   state.routerPid = router.currentRoute.value.query.pid
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  state.datasource = router.currentRoute.value.query.datasource || datasourceContext.datasourceId
   if (state.opt === 'create') {
     dashboardStore.updateDashboardInfo({
       dataState: 'prepare',
       name: t('dashboard.new_dashboard'),
       pid: state.routerPid,
+      datasource: state.datasource,
+      canEdit: true,
     })
   } else if (state.resourceId) {
     dataInitState.value = false
@@ -100,6 +108,7 @@ const baseParams = computed(() => {
     opt: state.opt,
     resourceId: state.resourceId,
     pid: state.routerPid,
+    datasource: state.datasource,
   }
 })
 const findPositionX = (width: number) => {

@@ -11,18 +11,21 @@ import type { SQTreeNode } from '@/views/dashboard/utils/treeNode.ts'
 import cloneDeep from 'lodash/cloneDeep'
 import { findNewComponentFromList } from '@/views/dashboard/components/component-list.ts'
 import { guid } from '@/utils/canvas.ts'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 
 const { t } = useI18n()
+const datasourceContext = useDatasourceContextStore()
 const resource = ref(null)
 
 const optInit = (viewInfo: any) => {
+  state.viewInfo = viewInfo
   initDashboardList()
   resourceDialogShow.value = true
-  state.viewInfo = viewInfo
 }
 const state = reactive({
   dashboardList: [] as SQTreeNode[],
   viewInfo: null,
+  datasource: null as number | string | null | undefined,
 })
 
 const resourceDialogShow = ref(false)
@@ -87,6 +90,7 @@ const saveResourcePrepare = () => {
             pid: 'root',
             id: resourceForm.dashboardId,
             name: dashboardInfo.name,
+            datasource: dashboardInfo.datasource || state.datasource || datasourceContext.datasourceId,
           }
           component['id'] = newComponentId
           component['y'] = bottomPosition
@@ -104,6 +108,7 @@ const saveResourcePrepare = () => {
           opt: 'newLeaf',
           pid: 'root',
           name: resourceForm.dashboardName,
+          datasource: state.datasource || datasourceContext.datasourceId,
           level: 1,
           node_type: 'leaf',
           type: 'dashboard',
@@ -172,9 +177,13 @@ const openMessageLoading = (text: string, type = 'success', dvId: any, cb: Funct
   })
 }
 
-const initDashboardList = () => {
+const initDashboardList = async () => {
+  await datasourceContext.loadDatasources()
   state.dashboardList = []
-  const params = {}
+  state.datasource =
+    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    state.viewInfo?.datasource || datasourceContext.datasourceId
+  const params = { datasource: state.datasource }
   dashboardApi.list_resource(params).then((res: SQTreeNode[]) => {
     state.dashboardList = res || []
   })

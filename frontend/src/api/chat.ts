@@ -451,8 +451,12 @@ export const chatApi = {
   get: (id: number): Promise<ChatInfo> => {
     return request.get(`/chat/${id}`)
   },
-  get_with_Data: (id: number): Promise<ChatInfo> => {
-    return request.get(`/chat/${id}/with_data`)
+  get_with_Data: (id: number, datasourceId?: number): Promise<ChatInfo> => {
+    return request.get(
+      datasourceId
+        ? `/chat/${id}/with_data?datasource_id=${encodeURIComponent(datasourceId)}`
+        : `/chat/${id}/with_data`
+    )
   },
   get_chart_data: (record_id?: number): Promise<any> => {
     return request.get(`/chat/record/${record_id}/data`)

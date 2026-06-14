@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, toRefs, type PropType, onMounted, getCurrentInstance } from 'vue'
+import { computed, ref, nextTick, toRefs, type PropType, onMounted, getCurrentInstance } from 'vue'
 import _ from 'lodash'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { type CanvasCoord, type CanvasItem } from '@/utils/canvas.ts'
@@ -11,6 +11,7 @@ import html2canvas from 'html2canvas'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackgroundSvgMain.vue'
 import { useI18n } from 'vue-i18n'
 import { isMainCanvas } from '@/views/dashboard/utils/canvasUtils.ts'
+import DashboardSqlEditor from '@/views/dashboard/common/DashboardSqlEditor.vue'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -108,6 +109,24 @@ const props = defineProps({
     },
   },
 })
+
+const sqlEditorVisible = ref(false)
+const editingViewId = ref<string | null>(null)
+const editingViewInfo = computed(() => {
+  if (!editingViewId.value) {
+    return null
+  }
+  return props.canvasViewInfo?.[editingViewId.value] || null
+})
+
+const editSql = (id: string) => {
+  editingViewId.value = id
+  sqlEditorVisible.value = true
+}
+
+const onSqlApplied = () => {
+  useEmitt().emitter.emit('view-render-all')
+}
 
 const {
   canvasComponentData,
@@ -1274,6 +1293,7 @@ defineExpose({
         :canvas-id="canvasId"
         :style="nowItemStyle(item)"
         @enlarge-view="() => enlargeView(item.id)"
+        @edit-sql="() => editSql(item.id)"
       >
         <component
           :is="findComponent(item.component)"
@@ -1290,6 +1310,11 @@ defineExpose({
         </component>
       </CanvasShape>
     </template>
+    <DashboardSqlEditor
+      v-model="sqlEditorVisible"
+      :view-info="editingViewInfo"
+      @applied="onSqlApplied"
+    />
   </div>
 </template>
 

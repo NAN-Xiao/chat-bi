@@ -1,6 +1,6 @@
 import datetime
 import json
-from typing import List, Optional
+from typing import List
 
 from fastapi import HTTPException
 from sqlalchemy import and_, text
@@ -26,7 +26,7 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
     CoreDatasourceUser, DatasourceConf, TableAndFields
 
 
-def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[int] = None) -> List[CoreDatasource]:
+def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreDatasource]:
     accessible_ids = get_accessible_datasource_ids(session, user)
     if accessible_ids is not None:
         if not accessible_ids:
@@ -35,12 +35,7 @@ def get_datasource_list(session: SessionDep, user: CurrentUser, oid: Optional[in
             select(CoreDatasource).where(CoreDatasource.id.in_(accessible_ids)).order_by(CoreDatasource.name)
         ).all()
 
-    current_oid = user.oid if user.oid is not None else 1
-    if user.isAdmin and oid:
-        current_oid = oid
-    return session.exec(
-        select(CoreDatasource).where(CoreDatasource.oid == int(current_oid)).order_by(CoreDatasource.name)
-    ).all()
+    return session.exec(select(CoreDatasource).order_by(CoreDatasource.name)).all()
 
 
 def get_ds(session: SessionDep, id: int):
@@ -65,17 +60,17 @@ def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise
 def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
     if ds.id is not None:
         ds_list = session.query(CoreDatasource).filter(
-            and_(CoreDatasource.name == ds.name, CoreDatasource.id != ds.id, CoreDatasource.oid == user.oid)).all()
+            and_(CoreDatasource.name == ds.name, CoreDatasource.id != ds.id)).all()
         if ds_list is not None and len(ds_list) > 0:
             raise HTTPException(status_code=500, detail=trans('i18n_ds_name_exist'))
     else:
         ds_list = session.query(CoreDatasource).filter(
-            and_(CoreDatasource.name == ds.name, CoreDatasource.oid == user.oid)).all()
+            CoreDatasource.name == ds.name).all()
         if ds_list is not None and len(ds_list) > 0:
             raise HTTPException(status_code=500, detail=trans('i18n_ds_name_exist'))
 
 
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.oid")
+@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.id")
 async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: CreateDatasource):
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
@@ -83,7 +78,6 @@ async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create
     ds.create_time = datetime.datetime.now()
     # status = check_status(session, ds)
     ds.create_by = user.id
-    ds.oid = user.oid if user.oid is not None else 1
     ds.status = "Success"
     ds.type_name = DB.get_db(ds.type).db_name
     record = CoreDatasource(**ds.model_dump())
@@ -145,8 +139,6 @@ async def delete_ds(session: SessionDep, id: int):
     session.commit()
     delete_table_by_ds_id(session, id)
     delete_field_by_ds_id(session, id)
-    if term:
-        await clear_ws_ds_cache(term.oid)
     return {
         "message": f"项目 {id} 已删除。"
     }
@@ -624,13 +616,3 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     return schema_str, table_name_list
 
 
-@cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="oid")
-async def get_ws_ds(session, oid) -> list:
-    stmt = select(CoreDatasource.id).distinct().where(CoreDatasource.oid == oid)
-    db_list = session.exec(stmt).all()
-    return db_list
-
-
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="oid")
-async def clear_ws_ds_cache(oid):
-    SQLBotLogUtil.info(f"ds cache for ws [{oid}] has been cleaned")

@@ -18,29 +18,29 @@ defineProps({
 })
 
 const router = useRouter()
-const currentWorkspace = computed(() => ({
+const currentProject = computed(() => ({
   id: datasourceContext.datasourceId,
   name: datasourceContext.datasourceName,
 }))
 const defaultDatasourceList = computed(() => datasourceContext.datasources)
-const workspaceKeywords = ref('')
-const defaultWorkspaceListWithSearch = computed(() => {
-  if (!workspaceKeywords.value) return defaultDatasourceList.value
+const projectKeywords = ref('')
+const defaultProjectListWithSearch = computed(() => {
+  if (!projectKeywords.value) return defaultDatasourceList.value
   return defaultDatasourceList.value.filter((ele) =>
-    ele.name.toLowerCase().includes(workspaceKeywords.value.toLowerCase())
+    ele.name.toLowerCase().includes(projectKeywords.value.toLowerCase())
   )
 })
 const formatKeywords = (item: string) => {
   // Use XSS-safe highlight function
-  return highlightKeyword(item, workspaceKeywords.value, 'isSearch')
+  return highlightKeyword(item, projectKeywords.value, 'isSearch')
 }
 
-const emit = defineEmits(['selectWorkspace'])
+const emit = defineEmits(['selectProject'])
 
-const handleDefaultWorkspaceChange = (item: any) => {
+const handleDefaultProjectChange = (item: any) => {
   if (
-    currentWorkspace.value?.id &&
-    item.id.toString() === currentWorkspace.value.id.toString()
+    currentProject.value?.id &&
+    item.id.toString() === currentProject.value.id.toString()
   ) {
     return
   }
@@ -53,7 +53,7 @@ const handleDefaultWorkspaceChange = (item: any) => {
   ElMessage.success(t('common.switch_success'))
   router.push('/chat/index')
   useEmitt().emitter.emit('datasource-context-change', item)
-  emit('selectWorkspace', item)
+  emit('selectProject', item)
 }
 
 onMounted(async () => {
@@ -64,16 +64,16 @@ onMounted(async () => {
 <template>
   <el-popover
     trigger="click"
-    popper-class="system-workspace"
+    popper-class="system-project"
     :placement="collapse ? 'right' : 'bottom'"
   >
     <template #reference>
-      <button class="workspace" :class="collapse && 'collapse'">
+      <button class="project-selector" :class="collapse && 'collapse'">
         <el-icon size="18">
           <icon_moments_categories_outlined></icon_moments_categories_outlined>
         </el-icon>
-        <span v-if="!collapse" :title="currentWorkspace?.name || ''" class="name ellipsis">{{
-          currentWorkspace?.name || ''
+        <span v-if="!collapse" :title="currentProject?.name || ''" class="name ellipsis">{{
+          currentProject?.name || ''
         }}</span>
         <el-icon v-if="!collapse" style="transform: scale(0.5)" class="expand" size="24">
           <icon_expand_down_filled></icon_expand_down_filled>
@@ -81,7 +81,7 @@ onMounted(async () => {
     ></template>
     <div class="popover">
       <el-input
-        v-model="workspaceKeywords"
+        v-model="projectKeywords"
         clearable
         style="width: 100%; margin-right: 12px"
         :placeholder="$t('datasource.search_by_name')"
@@ -95,11 +95,11 @@ onMounted(async () => {
       <div class="popover-content">
         <el-scrollbar max-height="400px">
           <div
-            v-for="ele in defaultWorkspaceListWithSearch"
+            v-for="ele in defaultProjectListWithSearch"
             :key="ele.name"
             class="popover-item"
-            :class="currentWorkspace?.id?.toString() === ele.id?.toString() && 'isActive'"
-            @click="handleDefaultWorkspaceChange(ele)"
+            :class="currentProject?.id?.toString() === ele.id?.toString() && 'isActive'"
+            @click="handleDefaultProjectChange(ele)"
           >
             <el-icon size="16">
               <icon_moments_categories_outlined></icon_moments_categories_outlined>
@@ -115,7 +115,7 @@ onMounted(async () => {
           </div>
         </el-scrollbar>
 
-        <div v-if="!defaultWorkspaceListWithSearch.length" class="popover-item empty">
+        <div v-if="!defaultProjectListWithSearch.length" class="popover-item empty">
           {{ $t('model.relevant_results_found') }}
         </div>
       </div>
@@ -124,7 +124,7 @@ onMounted(async () => {
 </template>
 
 <style lang="less" scoped>
-.workspace {
+.project-selector {
   background: #1f23290a;
   border-radius: 6px;
   border: 1px solid #1f23291a;
@@ -165,7 +165,7 @@ onMounted(async () => {
 </style>
 
 <style lang="less">
-.system-workspace.system-workspace {
+.system-project.system-project {
   --ed-popover-border-radius: 6px;
   padding: 4px 0;
   width: 280px !important;

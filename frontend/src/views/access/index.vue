@@ -14,13 +14,6 @@ const accessLevel = computed(() => {
       description: t('access.full_description'),
     }
   }
-  if (userStore.isSpaceAdmin) {
-    return {
-      label: t('access.limited_management'),
-      type: 'warning',
-      description: t('access.limited_management_description'),
-    }
-  }
   return {
     label: t('access.limited'),
     type: 'warning',

@@ -10,7 +10,6 @@ from sqlmodel import SQLModel, Field
 class DataTraining(SQLModel, table=True):
     __tablename__ = "data_training"
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
-    oid: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True, default=1))
     datasource: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True))
     create_time: Optional[datetime] = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     question: Optional[str] = Field(max_length=255)
@@ -22,7 +21,6 @@ class DataTraining(SQLModel, table=True):
 
 class DataTrainingInfo(BaseModel):
     id: Optional[int] = None
-    oid: Optional[int] = None
     datasource: Optional[int] = None
     datasource_name: Optional[str] = None
     create_time: Optional[datetime] = None
@@ -35,7 +33,6 @@ class DataTrainingInfo(BaseModel):
 
 class DataTrainingInfoResult(BaseModel):
     id: Optional[str] = None
-    oid: Optional[str] = None
     datasource: Optional[int] = None
     datasource_name: Optional[str] = None
     create_time: Optional[datetime] = None

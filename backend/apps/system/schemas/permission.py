@@ -8,7 +8,6 @@ import re
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
 from apps.chat.models.chat_model import Chat
-from apps.datasource.models.datasource import CoreDatasource
 from common.core.db import engine
 from apps.system.schemas.system_schema import UserInfoDTO
 
@@ -20,45 +19,46 @@ class SqlbotPermission(BaseModel):
     type: Optional[str] = None
     keyExpression: Optional[str] = None
 
-async def get_ws_resource(oid, type) -> list:
-    with Session(engine) as session:
-        stmt = None
-        if type == 'ds' or type == 'datasource':
-            stmt = select(CoreDatasource.id).distinct().where(CoreDatasource.oid == oid)
-        if type == 'chat':
-            stmt = select(Chat.id).where(Chat.oid == oid) 
-        if stmt is not None:
-            db_list = session.exec(stmt).all()
-            return db_list
-        return []     
-            
+def _required_project_role(role_list: Optional[list[str]]) -> Optional[str]:
+    if not role_list:
+        return None
+    for role in ("project_admin", "project_editor", "project_viewer"):
+        if role in role_list:
+            return role
+    return None
 
-async def check_ws_permission(current_user: UserInfoDTO, type, resource) -> bool:
+
+async def check_project_permission(
+        current_user: UserInfoDTO,
+        type,
+        resource,
+        role_list: Optional[list[str]] = None,
+) -> bool:
     if not resource or (isinstance(resource, list) and len(resource) == 0):
         return True
 
     if type == 'ds' or type == 'datasource':
-        from apps.datasource.crud.permission import has_datasource_access
+        from apps.datasource.crud.permission import has_datasource_access, has_datasource_role
 
         with Session(engine) as session:
-            if not has_datasource_access(session, current_user, resource):
-                return False
-            if not (current_user.isAdmin or current_user.weight > 0):
-                return True
+            required_role = _required_project_role(role_list)
+            if required_role:
+                return has_datasource_role(session, current_user, resource, required_role)
+            return has_datasource_access(session, current_user, resource)
 
-    oid = current_user.oid
-    resource_id_list = await get_ws_resource(oid, type)
-    if not resource_id_list:
-        return False
-    try:
-        if isinstance(resource, list):
-            workspace_allowed = set(map(int, resource)).issubset(set(map(int, resource_id_list)))
-        else:
-            workspace_allowed = int(resource) in set(map(int, resource_id_list))
-    except (TypeError, ValueError):
-        return False
-    if not workspace_allowed:
-        return False
+    if type == 'chat':
+        try:
+            requested_ids = resource if isinstance(resource, list) else [resource]
+            chat_ids = {int(item) for item in requested_ids}
+        except (TypeError, ValueError):
+            return False
+        if current_user.isAdmin:
+            return True
+        with Session(engine) as session:
+            owned_count = session.exec(
+                select(Chat.id).where(Chat.id.in_(chat_ids), Chat.create_by == current_user.id)
+            ).all()
+            return chat_ids.issubset({int(item) for item in owned_count})
 
     return True
         
@@ -87,9 +87,12 @@ def require_permissions(permission: SqlbotPermission):
                 if 'admin' in role_list and not current_user.isAdmin:
                     #raise Exception('no permission to execute, only for admin')
                     raise Exception(trans('i18n_permission.only_admin'))
-                if 'ws_admin' in role_list and current_user.weight == 0 and not current_user.isAdmin:
-                    #raise Exception('no permission to execute, only for workspace admin')
-                    raise Exception(trans('i18n_permission.only_ws_admin'))
+                if (
+                    any(role in role_list for role in ('project_admin', 'project_editor', 'project_viewer'))
+                    and not resource_type
+                    and not current_user.isAdmin
+                ):
+                    raise Exception(trans('i18n_permission.only_project_admin'))
             if not resource_type:
                 return await func(*args, **kwargs)
             if keyExpression:
@@ -101,7 +104,7 @@ def require_permissions(permission: SqlbotPermission):
                     if match := re.match(r"args\[(\d+)\]", keyExpression):
                         index = int(match.group(1))
                         value = bound_args.args[index]
-                        if await check_ws_permission(current_user, resource_type, value):
+                        if await check_project_permission(current_user, resource_type, value, role_list):
                             return await func(*args, **kwargs)
                         #raise Exception('no permission to execute or resource do not exist!')
                         raise Exception(trans('i18n_permission.permission_resource_limit'))
@@ -112,7 +115,7 @@ def require_permissions(permission: SqlbotPermission):
                 value = bound_args.arguments[parts[0]]
                 for part in parts[1:]:
                     value = getattr(value, part)
-                if await check_ws_permission(current_user, resource_type, value):
+                if await check_project_permission(current_user, resource_type, value, role_list):
                     return await func(*args, **kwargs)
                 raise Exception(trans('i18n_permission.permission_resource_limit'))
             
@@ -128,26 +131,4 @@ class RequestContext:
     def set_request(cls, request: Request):
         return cls._current_request.set(request)
     
-    @classmethod
-    def get_request(cls) -> Request:
-        try:
-            return cls._current_request.get()
-        except LookupError:
-            raise RuntimeError(
-                "No request context found. "
-                "Make sure RequestContextMiddleware is installed."
-            )
-    
-    @classmethod
-    def reset(cls, token):
-        cls._current_request.reset(token)
-
-class RequestContextMiddleware(BaseHTTPMiddleware):
-    
-    async def dispatch(self, request: Request, call_next):
-        token = RequestContext.set_request(request)
-        try:
-            response = await call_next(request)
-            return response
-        finally:
-            RequestContext.reset(token)
+    @classmetho

@@ -24,10 +24,14 @@ import HandleMore from '@/views/dashboard/common/HandleMore.vue'
 import { useI18n } from 'vue-i18n'
 import treeSort from '@/views/dashboard/utils/treeSortUtils.ts'
 import { useCache } from '@/utils/useCache.ts'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useUserStore } from '@/stores/user'
 const { wsCache } = useCache()
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
+const datasourceContext = useDatasourceContextStore()
+const userStore = useUserStore()
 const resourceGroupOptRef = ref(null)
 
 defineProps({
@@ -131,8 +135,14 @@ const nodeClick = (data: SQTreeNode, node: any) => {
 }
 
 const getTree = async () => {
+  await datasourceContext.loadDatasources()
   state.originResourceTree = []
-  const params = {}
+  if (!datasourceContext.datasourceId) {
+    state.resourceTree = []
+    afterTreeInit()
+    return
+  }
+  const params = { datasource: datasourceContext.datasourceId }
   dashboardApi.list_resource(params).then((res: SQTreeNode[]) => {
     state.originResourceTree = res || []
     state.resourceTree = _.cloneDeep(state.originResourceTree)
@@ -142,6 +152,7 @@ const getTree = async () => {
 }
 
 const hasData = computed<boolean>(() => state.resourceTree.length > 0)
+const canManageDashboard = computed<boolean>(() => userStore.isAdmin)
 
 const afterTreeInit = () => {
   mounted.value = true
@@ -164,6 +175,7 @@ const copyLoading = ref(false)
 const emit = defineEmits(['nodeClick', 'deleteCurResource'])
 
 function createNewObject() {
+  if (!canManageDashboard.value) return
   addOperation({ opt: 'newLeaf' })
 }
 
@@ -209,9 +221,24 @@ onMounted(() => {
   getTree()
 })
 
+watch(
+  () => datasourceContext.datasourceId,
+  () => {
+    selectedNodeKey.value = null
+    dashboardStore.canvasDataInit()
+    emit('deleteCurResource')
+    getTree()
+  }
+)
+
 const addOperation = (params: any) => {
+  if (!canManageDashboard.value) return
   if (params.opt === 'newLeaf') {
-    const newCanvasUrl = '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '')
+    const datasourceQuery = datasourceContext.datasourceId
+      ? `&datasource=${datasourceContext.datasourceId}`
+      : ''
+    const newCanvasUrl =
+      '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '') + datasourceQuery
     window.open(newCanvasUrl, '_self')
     dashboardStore.canvasDataInit()
   } else {
@@ -329,6 +356,7 @@ defineExpose({
           effect="dark"
         >
           <el-icon
+            v-if="canManageDashboard"
             class="custom-icon btn hover-icon_with_bg primary-icon"
             @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
           >
@@ -430,7 +458,7 @@ defineExpose({
             </span>
             <div class="icon-more">
               <el-icon
-                v-if="data.node_type !== 'leaf'"
+                v-if="data.node_type !== 'leaf' && canManageDashboard"
                 class="hover-icon"
                 @click.stop
                 @click="addOperation({ opt: 'newLeaf', type: 'dashboard', id: data.id })"
@@ -438,6 +466,7 @@ defineExpose({
                 <Icon><icon_add_outlined class="svg-icon" /></Icon>
               </el-icon>
               <HandleMore
+                v-if="canManageDashboard"
                 :menu-list="state.menuList"
                 :icon-name="icon_more_outlined"
                 placement="bottom-end"

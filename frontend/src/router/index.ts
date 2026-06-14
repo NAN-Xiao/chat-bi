@@ -30,7 +30,6 @@ import Authentication from '@/views/system/authentication/index.vue'
 import Platform from '@/views/system/platform/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import User from '@/views/system/user/User.vue'
-import Workspace from '@/views/system/workspace/index.vue'
 import Page401 from '@/views/error/index.vue'
 import ChatPreview from '@/views/chat/preview.vue'
 
@@ -163,17 +162,6 @@ export const routes = [
         meta: { title: t('ds.title'), iconActive: 'ds', iconDeActive: 'noDs' },
       },
       {
-        path: 'workspace',
-        name: 'workspace',
-        component: Workspace,
-        hidden: true,
-        meta: {
-          title: t('user.workspace'),
-          iconActive: 'workspace',
-          iconDeActive: 'noWorkspace',
-        },
-      },
-      {
         path: 'model',
         name: 'model',
         component: Model,
@@ -209,7 +197,7 @@ export const routes = [
             path: 'permission',
             name: 'permission',
             component: Permission,
-            meta: { title: t('workspace.permission_configuration') },
+            meta: { title: t('project.permission_configuration') },
           },
           {
             path: 'professional',

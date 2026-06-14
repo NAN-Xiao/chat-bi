@@ -21,7 +21,7 @@ export const dashboardStore = defineStore('dashboard', {
         id: null,
         name: null,
         pid: null,
-        workspaceId: null,
+        datasource: null,
         status: null,
         dataState: null,
         createName: null,
@@ -30,6 +30,7 @@ export const dashboardStore = defineStore('dashboard', {
         updateTime: null,
         contentId: null,
         type: null,
+        canEdit: false,
       },
     }
   },
@@ -90,7 +91,7 @@ export const dashboardStore = defineStore('dashboard', {
         id: null,
         name: null,
         pid: null,
-        workspaceId: null,
+        datasource: null,
         status: null,
         dataState: null,
         createName: null,
@@ -99,6 +100,7 @@ export const dashboardStore = defineStore('dashboard', {
         updateTime: null,
         contentId: null,
         type: null,
+        canEdit: false,
       }
     },
   },

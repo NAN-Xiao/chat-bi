@@ -9,7 +9,7 @@ const { t } = useI18n()
 
 const state = reactive({
   parameterForm: reactive<any>({
-    'chat.sqlbot_name': 'SQLBot',
+    'chat.sqlbot_name': '星通智数',
     'chat.expand_thinking_block': false,
     'chat.limit_rows': false,
     'chat.show_sql': false,

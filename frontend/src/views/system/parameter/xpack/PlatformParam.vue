@@ -11,56 +11,6 @@
         <el-switch v-model="formData['platform.auto_create']" />
       </div>
     </div>
-    <div class="card-item">
-      <div class="label">
-        {{ t('parameter.platform_user_organization') }}
-        <span class="require"></span>
-        <el-tooltip
-          effect="dark"
-          :content="t('parameter.and_platform_integration')"
-          placement="top"
-        >
-          <el-icon size="16">
-            <icon_info_outlined_1></icon_info_outlined_1>
-          </el-icon>
-        </el-tooltip>
-      </div>
-      <div class="value">
-        <el-select v-model="formData['platform.oid']" filterable>
-          <el-option
-            v-for="item in organizations"
-            :key="item.id"
-            :label="item.name"
-            :value="item.id"
-          />
-        </el-select>
-      </div>
-    </div>
-    <div class="card-item" style="margin-left: 16px">
-      <div class="label">
-        {{ t('workspace.member_type') }}
-        <span class="require"></span>
-        <el-tooltip
-          effect="dark"
-          :content="t('parameter.and_platform_integration')"
-          placement="top"
-        >
-          <el-icon size="16">
-            <icon_info_outlined_1></icon_info_outlined_1>
-          </el-icon>
-        </el-tooltip>
-      </div>
-      <div class="value">
-        <el-select v-model="formData['platform.rid']" filterable>
-          <el-option
-            v-for="item in roles"
-            :key="item.value"
-            :label="item.name"
-            :value="item.value"
-          />
-        </el-select>
-      </div>
-    </div>
   </div>
 
   <div v-if="anyPlatformEnable" class="card">
@@ -85,17 +35,13 @@
 <script setup lang="ts">
 import { inject, onMounted, reactive, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { workspaceList } from '@/api/workspace'
 import { request } from '@/utils/request'
-import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
 
 const { t } = useI18n()
 
 const anyPlatformEnable = ref(false)
 const defaultForm = reactive<Record<string, any>>({
   'platform.auto_create': false,
-  'platform.oid': 1,
-  'platform.rid': 1,
   'login.default_login': 0,
 })
 
@@ -105,17 +51,6 @@ const formData = inject<Record<string, any>>('parameterForm', {})
 
 const xpackValid = ref(false)
 
-const organizations = shallowRef<any[]>([])
-const roles = [
-  {
-    name: t('workspace.administrator'),
-    value: 1,
-  },
-  {
-    name: t('workspace.ordinary_member'),
-    value: 0,
-  },
-]
 const platformMapping = {
   cas: { value: 1, label: 'CAS' },
   oidc: { value: 2, label: 'OIDC' },
@@ -141,8 +76,6 @@ onMounted(async () => {
     xpackValid.value = false
     return
   }
-  const wsRes: any = await workspaceList()
-  organizations.value = wsRes
   const platformStatusRes: any = await queryCategoryStatus()
   platformStatusRes.forEach((item: any) => {
     if (item.enable && platformMapping[item.name]) {

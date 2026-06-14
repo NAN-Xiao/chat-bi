@@ -28,7 +28,7 @@ async def get_assistant_info(*, session: Session, assistant_id: int) -> Assistan
 
 
 def get_assistant_user(*, id: int):
-    return UserInfoDTO(id=id, account="sqlbot-inner-assistant", oid=1, name="sqlbot-inner-assistant",
+    return UserInfoDTO(id=id, account="sqlbot-inner-assistant", name="sqlbot-inner-assistant",
                        email="sqlbot-inner-assistant@sqlbot.com")
 
 
@@ -39,9 +39,7 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
         configuration = assistant.configuration
         if configuration:
             config: dict[any] = json.loads(configuration)
-            oid: int = int(config['oid'])
-            stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description).where(
-                CoreDatasource.oid == oid)
+            stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description)
             if not assistant.online:
                 public_list: list[int] = config.get('public_list') or None
                 if public_list:

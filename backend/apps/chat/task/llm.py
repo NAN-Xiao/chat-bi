@@ -21,8 +21,6 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMe
 from sqlalchemy import and_, select
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlbot_xpack.config.model import SysArgModel
-from sqlbot_xpack.custom_prompt.curd.custom_prompt import find_custom_prompts
-from sqlbot_xpack.custom_prompt.models.custom_prompt_model import CustomPromptTypeEnum
 from sqlbot_xpack.license.license_manage import SQLBotLicenseUtil
 from sqlmodel import Session
 
@@ -35,6 +33,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error, format_json_data, format_chart_fields, get_chat_brief_generate, get_chat_predict_data, \
     get_chat_chart_config, trigger_log_error
+from apps.chat.curd.custom_prompt import CustomPromptTypeEnum, find_custom_prompts
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
     ChatFinishStep, AxisObj, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
 from apps.data_training.curd.data_training import get_training_template
@@ -43,7 +42,7 @@ from apps.datasource.crud.permission import get_row_permission_filters, has_data
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection, get_sqlglot_dialect
-from apps.system.crud.aimodel_manage import get_ai_model_list_by_workspace
+from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
 from apps.system.schemas.system_schema import AssistantOutDsSchema
@@ -77,8 +76,13 @@ def extract_tables_from_sql(sql: str, ds_type: str = None) -> set:
         statements = sqlglot.parse(sql, dialect=dialect)
         for stmt in statements:
             if stmt:
+                cte_names = {
+                    cte.alias_or_name.lower()
+                    for cte in stmt.find_all(exp.CTE)
+                    if cte.alias_or_name
+                }
                 for table in stmt.find_all(exp.Table):
-                    if table.name:
+                    if table.name and table.name.lower() not in cte_names:
                         tables.add(table.name)
     except Exception:
         pass
@@ -204,8 +208,7 @@ class LLMService:
         _ai_model_list = []
         if args[3]:
             if args[1]:
-                ws_id = args[1].oid
-                _ai_model_list = get_ai_model_list_by_workspace(args[0], ws_id)
+                _ai_model_list = get_ai_model_list(args[0], False)
             if args[3].enable_custom_model:
                 if args[3].custom_model:
                     if any(str(model.id) == str(args[3].custom_model) for model in _ai_model_list):
@@ -341,11 +344,9 @@ class LLMService:
         chart_info = get_chart_config(_session, self.record.id)
         return format_chart_fields(chart_info)
 
-    def filter_terminology_template(self, _session: Session, oid: int = None, ds_id: int = None):
-        calculate_oid = oid
+    def filter_terminology_template(self, _session: Session, ds_id: int = None):
         calculate_ds_id = ds_id
         if self.current_assistant:
-            calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
             if self.current_assistant.type == 1:
                 calculate_ds_id = None
         self.current_logs[OperationEnum.FILTER_TERMS] = start_log(session=_session,
@@ -353,18 +354,15 @@ class LLMService:
                                                                   record_id=self.record.id, local_operation=True)
 
         self.chat_question.terminologies, term_list = get_terminology_template(_session, self.chat_question.question,
-                                                                               calculate_oid, calculate_ds_id)
+                                                                               calculate_ds_id)
         self.current_logs[OperationEnum.FILTER_TERMS] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.FILTER_TERMS],
                                                                 full_message=term_list)
 
-    def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, oid: int = None,
-                              ds_id: int = None):
+    def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, ds_id: int = None):
         if SQLBotLicenseUtil.valid():
-            calculate_oid = oid
             calculate_ds_id = ds_id
             if self.current_assistant:
-                calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
                 if self.current_assistant.type == 1:
                     calculate_ds_id = None
             self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(session=_session,
@@ -372,33 +370,28 @@ class LLMService:
                                                                               record_id=self.record.id,
                                                                               local_operation=True)
             self.chat_question.custom_prompt, prompt_list = find_custom_prompts(_session, custom_prompt_type,
-                                                                                calculate_oid,
                                                                                 calculate_ds_id)
             self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
                                                                             log=self.current_logs[
                                                                                 OperationEnum.FILTER_CUSTOM_PROMPT],
                                                                             full_message=prompt_list)
 
-    def filter_training_template(self, _session: Session, oid: int = None, ds_id: int = None):
+    def filter_training_template(self, _session: Session, ds_id: int = None):
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,
                                                                         operate=OperationEnum.FILTER_SQL_EXAMPLE,
                                                                         record_id=self.record.id,
                                                                         local_operation=True)
-        calculate_oid = oid
         calculate_ds_id = ds_id
         if self.current_assistant:
-            calculate_oid = self.current_assistant.oid if self.current_assistant.type != 4 else self.current_user.oid
             if self.current_assistant.type == 1:
                 calculate_ds_id = None
         if self.current_assistant and self.current_assistant.type == 1:
             self.chat_question.data_training, example_list = get_training_template(_session,
                                                                                    self.chat_question.question,
-                                                                                   calculate_oid,
                                                                                    None, self.current_assistant.id)
         else:
             self.chat_question.data_training, example_list = get_training_template(_session,
                                                                                    self.chat_question.question,
-                                                                                   calculate_oid,
                                                                                    calculate_ds_id)
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = end_log(session=_session,
                                                                       log=self.current_logs[
@@ -439,9 +432,9 @@ class LLMService:
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-        self.filter_terminology_template(_session, self.current_user.oid, ds_id)
+        self.filter_terminology_template(_session, ds_id)
 
-        self.filter_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS, self.current_user.oid, ds_id)
+        self.filter_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS, ds_id)
 
         analysis_msg.append(SystemPromptMessage(content=self.chat_question.analysis_sys_question()))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
@@ -492,7 +485,7 @@ class LLMService:
         self.chat_question.data = orjson.dumps(data.get('data')).decode()
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
-        self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, self.current_user.oid, ds_id)
+        self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, ds_id)
 
         predict_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         predict_msg.append(SystemPromptMessage(content=self.chat_question.predict_sys_question()))
@@ -736,14 +729,13 @@ class LLMService:
                                                         datasource=_datasource,
                                                         engine_type=_engine_type)
         if self.ds:
-            oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
             ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-            self.filter_terminology_template(_session, oid, ds_id)
+            self.filter_terminology_template(_session, ds_id)
 
-            self.filter_training_template(_session, oid, ds_id)
+            self.filter_training_template(_session, ds_id)
 
-            self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)
+            self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
 
             self.init_messages(_session)
 
@@ -1202,14 +1194,13 @@ class LLMService:
         try:
             _session = session_maker()
             if self.ds:
-                oid = self.ds.oid if isinstance(self.ds, CoreDatasource) else 1
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-                self.filter_terminology_template(_session, oid, ds_id)
+                self.filter_terminology_template(_session, ds_id)
 
-                self.filter_training_template(_session, oid, ds_id)
+                self.filter_training_template(_session, ds_id)
 
-                self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, oid, ds_id)
+                self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
 
                 self.init_messages(_session)
 

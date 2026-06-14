@@ -104,9 +104,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if session_user.status != 1:
                     message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
                     raise Exception(message)
-                if not session_user.oid or session_user.oid == 0:
-                    message = trans('i18n_login.no_associated_ws', msg = trans('i18n_concat_admin'))
-                    raise Exception(message)
                 return True, session_user
         except Exception as e:
             msg = str(e)
@@ -134,9 +131,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 session_user = UserInfoDTO.model_validate(session_user)
                 if session_user.status != 1:
                     message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
-                    raise Exception(message)
-                if not session_user.oid or session_user.oid == 0:
-                    message = trans('i18n_login.no_associated_ws', msg = trans('i18n_concat_admin'))
                     raise Exception(message)
                 return True, session_user
         except Exception as e:
@@ -171,7 +165,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 assistant_info = await get_assistant_info(session=session, assistant_id=payload['assistant_id'])
                 assistant_info = AssistantModel.model_validate(assistant_info)
                 assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
-                session_user.oid = int(assistant_info.oid)
                         
                 return True, session_user, assistant_info
         except Exception as e:
@@ -215,11 +208,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if session_user.status != 1:
                     message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
                     raise Exception(message)
-                if not session_user.oid or session_user.oid == 0:
-                    message = trans('i18n_login.no_associated_ws', msg = trans('i18n_concat_admin'))
-                    raise Exception(message)
-                if session_user.oid:
-                    assistant_info.oid = int(session_user.oid)
                 return True, session_user, assistant_info
         except Exception as e:
             SQLBotLogUtil.exception(f"Embedded validation error: {str(e)}")

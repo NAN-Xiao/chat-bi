@@ -18,10 +18,9 @@ class CoreDashboard(SQLModel, table=True):
         max_length=50,
         sa_column=Column(String(50), nullable=True)
     )
-    workspace_id: str = Field(
+    datasource: Optional[int] = Field(
         default=None,
-        max_length=50,
-        sa_column=Column(String(50), nullable=True)
+        sa_column=Column(BigInteger, nullable=True)
     )
     org_id: str = Field(
         default=None,
@@ -130,11 +129,13 @@ class DashboardBaseResponse(BaseModel):
     id: Optional[str] = None
     name: Optional[str] = None
     pid: Optional[str] = None
+    datasource: Optional[int] = None
     node_type: Optional[str] = None
     leaf: Optional[bool] = False
     type: Optional[str] = None
     create_time: Optional[int] = None
     update_time: Optional[int] = None
+    can_edit: Optional[bool] = False
     children: List['DashboardBaseResponse'] = []
 
 class DashboardResponse(CoreDashboard):
@@ -145,7 +146,7 @@ class BaseDashboard(BaseModel):
     id: str = ''
     name: str = ''
     pid: str = ''
-    workspace_id: str = ''
+    datasource: Optional[int] = None
     org_id: str = ''
     type: str = ''
     node_type: str = ''
@@ -162,3 +163,8 @@ class CreateDashboard(QueryDashboard):
     component_data: str = ''
     canvas_view_info: str = ''
     description: str = ''
+
+
+class DashboardSqlPreview(BaseModel):
+    datasource: int
+    sql: str = ''

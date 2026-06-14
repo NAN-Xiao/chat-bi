@@ -15,8 +15,6 @@ import embedded from '@/assets/svg/menu/icon_embedded_filled.svg'
 import noEmbedded from '@/assets/svg/menu/icon_embedded_outlined.svg'
 import user from '@/assets/svg/menu/icon_member_filled.svg'
 import noUser from '@/assets/svg/menu/icon_member_outlined.svg'
-import workspace from '@/assets/svg/menu/icon_moments-categories_filled.svg'
-import noWorkspace from '@/assets/svg/menu/icon_moments-categories_outlined.svg'
 import set from '@/assets/svg/menu/icon_setting_filled.svg'
 import noSet from '@/assets/svg/menu/icon-setting.svg'
 import log from '@/assets/svg/menu/icon_log_filled.svg'
@@ -29,8 +27,6 @@ const iconMap = {
   noDs,
   dashboard,
   noDashboard,
-  workspace,
-  noWorkspace,
   set,
   noSet,
   user,

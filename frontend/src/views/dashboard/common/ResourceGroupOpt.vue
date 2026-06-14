@@ -5,8 +5,10 @@ import { reactive, ref } from 'vue'
 import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { useI18n } from 'vue-i18n'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 
 const { t } = useI18n()
+const datasourceContext = useDatasourceContextStore()
 const emits = defineEmits(['finish'])
 const resource = ref(null)
 const state = reactive({
@@ -22,6 +24,7 @@ const state = reactive({
   nameList: [],
   targetInfo: null,
   attachParams: null,
+  datasource: null as number | string | null | undefined,
 })
 
 const getTitle = (opt: string) => {
@@ -49,7 +52,8 @@ const getResourceNewName = (opt: string) => {
 }
 
 const getTree = async () => {
-  const params = { node_type: 'folder' }
+  await datasourceContext.loadDatasources()
+  const params = { node_type: 'folder', datasource: state.datasource || datasourceContext.datasourceId }
   dashboardApi.list_resource(params).then((res) => {
     state.tData = res || []
     state.tDataSource = [...state.tData]
@@ -64,6 +68,7 @@ const optInit = (params: any) => {
   state.parentSelect = params.parentSelect
   state.targetInfo = params.data
   state.nodeType = params.nodeType || 'folder'
+  state.datasource = params.datasource || datasourceContext.datasourceId
   resourceDialogShow.value = true
   resourceForm.name = params.name || getResourceNewName(params.opt)
   resourceForm.pid = params.pid || 'root'
@@ -127,6 +132,7 @@ const saveResource = () => {
         name: resourceForm.name,
         opt: state.opt,
         pid: resourceForm.pid,
+        datasource: state.datasource || datasourceContext.datasourceId,
         type: 'dashboard',
         level: state.nodeType === 'folder' ? 0 : 1,
       }

@@ -120,7 +120,7 @@
                   ><custom_small v-if="appearanceStore.themeColor !== 'default'"></custom_small>
                   <LOGO_fold v-else></LOGO_fold
                 ></el-icon>
-                {{ appearanceStore.pc_welcome ?? '你好，我是 SQLBot' }}
+                {{ appearanceStore.pc_welcome ?? '你好，我是星通智数' }}
               </div>
               <div class="sub">
                 {{
@@ -146,20 +146,6 @@
               <div class="i-can">{{ welcomeDesc }}</div>
             </div>
 
-            <el-button
-              v-if="(isCompletePage || selectAssistantDs) && currentChatId === undefined"
-              size="large"
-              type="primary"
-              class="greeting-btn"
-              @click="createNewChatSimple"
-            >
-              <span class="inner-icon">
-                <el-icon>
-                  <icon_new_chat_outlined />
-                </el-icon>
-              </span>
-              {{ t('qa.start_sqlbot') }}
-            </el-button>
           </div>
         </div>
         <div v-else-if="computedMessages.length == 0 && loading" class="welcome-content-block">
@@ -376,13 +362,10 @@
           </div>
         </el-scrollbar>
       </el-main>
-      <el-footer
-        v-if="computedMessages.length > 0 || (!isCompletePage && !selectAssistantDs)"
-        class="chat-footer"
-      >
+      <el-footer v-if="showChatFooter" class="chat-footer">
         <div class="input-wrapper" @click="clickInput">
           <div v-if="isCompletePage || selectAssistantDs" class="datasource">
-            <template v-if="currentChat.datasource && currentChat.datasource_name">
+            <template v-if="footerDatasource">
               {{ t('qa.selected_datasource') }}:
               <img
                 v-if="currentChatEngineType"
@@ -393,7 +376,7 @@
                 alt=""
               />
               <span class="name">
-                {{ currentChat.datasource_name }}
+                {{ footerDatasource.name }}
               </span>
             </template>
           </div>
@@ -579,6 +562,33 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
   return messages
 })
 
+const showChatFooter = computed(() => {
+  return (
+    computedMessages.value.length > 0 ||
+    currentChat.value.records.length === 0 ||
+    (!isCompletePage.value && !selectAssistantDs.value) ||
+    currentChatId.value === undefined
+  )
+})
+
+const footerDatasource = computed(() => {
+  if (currentChat.value.datasource && currentChat.value.datasource_name) {
+    return {
+      id: currentChat.value.datasource,
+      name: currentChat.value.datasource_name,
+      type: currentChat.value.ds_type,
+    }
+  }
+  if (datasourceContext.datasourceId && datasourceContext.datasourceName) {
+    return {
+      id: datasourceContext.datasourceId,
+      name: datasourceContext.datasourceName,
+      type: datasourceContext.datasourceType,
+    }
+  }
+  return undefined
+})
+
 const goEmpty = (func?: (...p: any[]) => void, ...param: any[]) => {
   inputMessage.value = ''
   stop(func, ...param)
@@ -702,7 +712,7 @@ function onClickHistory(chat: ChatInfo) {
 }
 
 const currentChatEngineType = computed(() => {
-  return (dsTypeWithImg.find((ele) => currentChat.value.ds_type === ele.type) || {}).img
+  return (dsTypeWithImg.find((ele) => footerDatasource.value?.type === ele.type) || {}).img
 })
 
 function onChatDeleted(id: number) {
@@ -819,8 +829,30 @@ const assistantPrepareSend = async () => {
     const assistantChat = await assistantStore.setChat()
     if (assistantChat) {
       onChatCreatedQuick(assistantChat as any)
+      return true
     }
+    return false
   }
+  return true
+}
+
+const ensureChatReadyForSend = async () => {
+  if (currentChatId.value !== undefined) {
+    return true
+  }
+
+  if (!isCompletePage.value && !selectAssistantDs.value) {
+    return assistantPrepareSend()
+  }
+
+  await datasourceContext.loadDatasources().catch((e) => console.error(e))
+  if (!selectAssistantDs.value && datasourceContext.datasourceId) {
+    const chat = await hiddenChatCreatorRef.value?.createChat(datasourceContext.datasourceId)
+    return !!chat && currentChatId.value !== undefined
+  }
+
+  chatCreatorRef.value?.showDs()
+  return false
 }
 const sendMessage = async (
   regenerate_record_id: number | undefined = undefined,
@@ -831,6 +863,10 @@ const sendMessage = async (
   }
   if (!inputMessage.value.trim()) return
 
+  if (!(await ensureChatReadyForSend())) {
+    return
+  }
+
   loading.value = true
   isTyping.value = true
   if (isCompletePage.value && innerRef.value) {
@@ -839,7 +875,6 @@ const sendMessage = async (
       scrollBottom()
     }, 300)
   }
-  await assistantPrepareSend()
   const currentRecord = new ChatRecord()
   currentRecord.create_time = new Date()
   currentRecord.chat_id = currentChatId.value
@@ -1467,34 +1502,6 @@ onMounted(async () => {
       line-height: 24px;
     }
 
-    .greeting-btn {
-      width: 100%;
-      height: 88px;
-      border-radius: 16px;
-      border-style: dashed;
-
-      .inner-icon {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-
-        margin-right: 6px;
-      }
-
-      font-size: 16px;
-      line-height: 24px;
-      font-weight: 500;
-
-      --ed-button-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-hover-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-active-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-bg-color: rgba(248, 249, 250, 1);
-      --ed-button-hover-bg-color: var(--ed-color-primary-1a, #1cba901a);
-      --ed-button-border-color: rgba(217, 220, 223, 1);
-      --ed-button-hover-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-active-bg-color: var(--ed-color-primary-33, #1cba9033);
-      --ed-button-active-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-    }
   }
 }
 </style>

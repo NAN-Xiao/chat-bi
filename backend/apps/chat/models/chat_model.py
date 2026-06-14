@@ -85,7 +85,6 @@ class ChatLog(SQLModel, table=True):
 class Chat(SQLModel, table=True):
     __tablename__ = "chat"
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
-    oid: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True, default=1))
     create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
     brief: str = Field(max_length=64, nullable=True)
@@ -230,7 +229,7 @@ class AiModelQuestion(BaseModel):
     error_msg: str = ""
     regenerate_record_id: Optional[int] = None
     sample_data: str = ""
-    sqlbot_name: str = "SQLBot"
+    sqlbot_name: str = "星通智数"
 
     def sql_sys_question(self, db_type: Union[str, DB], enable_query_limit: bool = True):
         templates: dict[str, str] = {}
@@ -350,7 +349,6 @@ class ChatMcp(ChatQuestion):
 
 class McpDs(BaseModel):
     token: str = Body(description='用户token')
-    oid: Optional[str] = Body(description='组织ID，如果不传则为最后一次登录SQLBot时所使用的组织ID', default=None)
 
 
 class ChatStart(BaseModel):
@@ -368,8 +366,6 @@ class McpQuestion(ChatQuestionBase):
     stream: Optional[bool] = Body(description='是否流式输出，默认为true开启, 关闭false则返回JSON对象', default=True)
     lang: Optional[str] = Body(description='语言：zh-CN|zh-TW|en|ko-KR', default='zh-CN')
     datasource_id: Optional[int | str] = Body(description='数据源ID，仅当当前对话没有确定数据源时有效', default=None)
-    oid: Optional[str] = Body(
-        description='组织ID，仅当数据源ID为空时有效，如果不传则为最后一次登录SQLBot时所使用的组织ID', default=None)
     return_img: Optional[bool] = Body(description='是否返回图表，默认为true开启, 关闭false则仅返回数据', default=True)
 
 

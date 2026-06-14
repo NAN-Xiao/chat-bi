@@ -8,7 +8,6 @@ from datetime import datetime
 from pydantic import BaseModel
 from sqlmodel import Session, select
 import traceback
-from sqlbot_xpack.audit.curd.audit import build_resource_union_query
 from common.audit.models.log_model import OperationType, OperationStatus, SystemLog, SystemLogsResource
 from common.audit.schemas.request_context import RequestContext
 from apps.system.crud.user import get_user_by_account
@@ -19,6 +18,8 @@ from common.core.db import engine
 
 
 def get_resource_name_by_id_and_module(session, resource_id: Any, module: str) -> List[Dict[str, str]]:
+    from common.audit.schemas.log_utils import build_resource_union_query
+
     resource_union_query = build_resource_union_query()
     resource_alias = resource_union_query.alias("resource")
 
@@ -382,7 +383,6 @@ class SystemLogger:
             resource_name: Optional[str] = None,
             request: Optional[Request] = None,
             remark: Optional[str] = None,
-            oid: int = -1,
             opt_type_ref : OperationType = None,
             resource_info_list : Optional[List] = None,
     ) -> Optional[SystemLog]:
@@ -409,7 +409,6 @@ class SystemLogger:
                 operation_detail=config.operation_detail,
                 user_id=user_id,
                 user_name=user_name,
-                oid=user_info.oid if user_info else oid,
                 operation_status=status,
                 ip_address=client_info.get("ip_address"),
                 user_agent=client_info.get("user_agent"),
@@ -490,7 +489,6 @@ def system_log(config: Union[LogConfig, Dict]):
             resource_id = None
             resource_name = None
             remark = None
-            oid = -1
             opt_type_ref = None
             resource_info_list = None
             result = None
@@ -530,10 +528,8 @@ def system_log(config: Union[LogConfig, Dict]):
                         if userInfo is not None:
                             resource_id = userInfo.id
                             resource_name = userInfo.name
-                            oid = userInfo.oid
                         else:
                             resource_id = -1
-                            oid = -1
                             resource_name = input_account
                 if config.operation_type == OperationType.DELETE:
                     with Session(engine) as session:
@@ -586,7 +582,6 @@ def system_log(config: Union[LogConfig, Dict]):
                         resource_name=resource_name,
                         remark=remark,
                         request=request,
-                        oid=oid,
                         opt_type_ref=opt_type_ref,
                         resource_info_list=resource_info_list
                     )

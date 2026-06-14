@@ -6,7 +6,7 @@ import dvTab from '@/assets/svg/dv-tab.svg'
 import dvText from '@/assets/svg/dv-text.svg'
 import dvView from '@/assets/svg/dv-view.svg'
 import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { snapshotStoreWithOut } from '@/stores/dashboard/snapshot.ts'
 import icon_undo_outlined from '@/assets/svg/icon_undo_outlined.svg'
@@ -15,9 +15,11 @@ import icon_arrow_left_outlined from '@/assets/svg/icon_arrow-left_outlined.svg'
 import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 import ChatChartSelection from '@/views/dashboard/editor/ChatChartSelection.vue'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 const fullScreeRef = ref(null)
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
+const datasourceContext = useDatasourceContextStore()
 const { dashboardInfo, fullscreenFlag } = storeToRefs(dashboardStore)
 
 const snapshotStore = snapshotStoreWithOut()
@@ -40,10 +42,16 @@ let nameInput = ref(null)
 const onDvNameChange = () => {}
 
 const saveCanvasWithCheck = () => {
+  if (!canEditDashboard.value) {
+    ElMessage.warning(t('login.permission_invalid'))
+    return
+  }
   if (dashboardInfo.value.dataState === 'prepare') {
     const createParams = {
       name: dashboardInfo.value.name,
       pid: props.baseParams?.pid,
+      datasource:
+        dashboardInfo.value.datasource || props.baseParams?.datasource || datasourceContext.datasourceId,
       opt: 'newLeaf',
       nodeType: 'leaf',
       parentSelect: true,
@@ -55,6 +63,8 @@ const saveCanvasWithCheck = () => {
       opt: 'updateLeaf',
       id: dashboardInfo.value.id,
       name: dashboardInfo.value.name,
+      datasource:
+        dashboardInfo.value.datasource || props.baseParams?.datasource || datasourceContext.datasourceId,
       pid: 'root',
     }
     saveDashboardResource(updateParams, function () {
@@ -74,6 +84,8 @@ const props = defineProps({
   },
 })
 
+const canEditDashboard = computed(() => dashboardInfo.value.canEdit !== false)
+
 const groupOptFinish = (result: any) => {
   let url = window.location.href
   url = url.replace(/(#\/[^?]*)(?:\?[^#]*)?/, `$1?resourceId=${result.resourceId}`)
@@ -83,6 +95,7 @@ const groupOptFinish = (result: any) => {
 const chartSelectionFinish = () => {}
 
 const editCanvasName = () => {
+  if (!canEditDashboard.value) return
   nameEdit.value = true
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   inputName.value = dashboardInfo.value.name
@@ -201,6 +214,7 @@ const previewInner = () => {
     </div>
     <div class="core-toolbar">
       <component-button-label
+        v-if="canEditDashboard"
         :icon-name="dvView"
         :title="t('dashboard.add_view')"
         themes="light"
@@ -209,6 +223,7 @@ const previewInner = () => {
         @custom-click="openViewDialog"
       ></component-button-label>
       <component-button-label
+        v-if="canEditDashboard"
         :icon-name="dvText"
         :title="t('dashboard.text')"
         themes="light"
@@ -216,6 +231,7 @@ const previewInner = () => {
         @custom-click="() => emits('addComponents', 'SQText')"
       ></component-button-label>
       <component-button-label
+        v-if="canEditDashboard"
         :icon-name="dvTab"
         title="Tab"
         themes="light"
@@ -234,6 +250,7 @@ const previewInner = () => {
         {{ t('dashboard.preview') }}
       </el-button>
       <el-button
+        v-if="canEditDashboard"
         style="float: right; margin-right: 12px"
         type="primary"
         @click="saveCanvasWithCheck()"

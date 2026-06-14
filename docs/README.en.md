@@ -16,7 +16,7 @@
 </p>
 <hr/>
 
-SQLBot is an intelligent data query system based on large language models and RAG, meticulously crafted by the DataEase open-source project team. With SQLBot, users can perform conversational data analysis (ChatBI), quickly extracting the necessary data information and visualizations, and supporting further intelligent analysis.
+星通智数 is an intelligent data query system based on large language models and RAG. With 星通智数, users can perform conversational data analysis (ChatBI), quickly extracting the necessary data information and visualizations, and supporting further intelligent analysis.
 
 ## How It Works
 
@@ -68,9 +68,9 @@ docker run -d \
   dataease/sqlbot
 ```
 
-You can also quickly deploy SQLBot through the [1Panel app store](https://apps.fit2cloud.com/1panel).
+You can also quickly deploy 星通智数 through the [1Panel app store](https://apps.fit2cloud.com/1panel).
 
-If you are in an intranet environment, you can deploy SQLBot via the [offline installation package](https://community.fit2cloud.com/#/products/sqlbot/downloads).
+If you are in an intranet environment, you can deploy 星通智数 via the [offline installation package](https://community.fit2cloud.com/#/products/sqlbot/downloads).
 
 
 ### Access methods
@@ -106,9 +106,9 @@ If you are in an intranet environment, you can deploy SQLBot via the [offline in
 
 This repository is licensed under the [FIT2CLOUD Open Source License](LICENSE), which is essentially GPLv3 but with some additional restrictions.
 
-You may conduct secondary development based on the SQLBot source code, but you must adhere to the following:
+You may conduct secondary development based on the 星通智数 source code, but you must adhere to the following:
 
-- You cannot replace or modify the SQLBot logo and copyright information;
+- You cannot replace or modify the 星通智数 logo and copyright information;
 
 - Derivative works resulting from secondary development must comply with the open-source obligations of GPL v3.
 

@@ -1,4 +1,11 @@
-const { checkIsPercent, formatNumber, getAxesWithFilter, processMultiQuotaData } = require('./utils')
+const {
+  buildMixedUnitComboOptions,
+  buildMixedUnitData,
+  checkIsPercent,
+  formatNumber,
+  getAxesWithFilter,
+  processMultiQuotaData,
+} = require('./utils')
 
 function getColumnOptions(baseOptions, axis, data) {
 
@@ -13,11 +20,18 @@ function getColumnOptions(baseOptions, axis, data) {
     y: axes.y,
     series: axes.series,
   }
-  if (axes.multiQuota.length > 0) {
+
+  const mixedUnitData = buildMixedUnitData(axes.x, axes.y, config.data)
+  if (mixedUnitData) {
+    return buildMixedUnitComboOptions(baseOptions, axes.x[0], mixedUnitData, true)
+  }
+
+  const multiQuota = axes.multiQuota.length > 0 ? axes.multiQuota : axes.y.map((item) => item.value)
+  if (axes.series.length === 0 && multiQuota.length > 1) {
     config = processMultiQuotaData(
       axes.x,
       config.y,
-      axes.multiQuota,
+      multiQuota,
       axes.multiQuotaName,
       config.data,
     )

@@ -1,14 +1,15 @@
 from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, File, Path, Query, UploadFile
-from sqlmodel import SQLModel, or_, select, delete as sqlmodel_delete
-from apps.system.crud.user import check_account_exists, check_email_exists, check_email_format, check_pwd_format, get_db_user, single_delete, user_ws_options
+from sqlmodel import SQLModel, or_, select
+from apps.datasource.crud.permission import list_user_datasource_ids, update_user_datasources
+from apps.datasource.models.datasource import CoreDatasourceUser
+from apps.system.crud.user import check_account_exists, check_email_exists, check_email_format, check_pwd_format, get_db_user, single_delete
 from apps.system.crud.user_excel import batchUpload, downTemplate, download_error_file
-from apps.system.models.system_model import UserWsModel, WorkspaceModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
-from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserInfoDTO, UserLanguage, UserStatus, UserWs
+from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserInfoDTO, UserLanguage, UserStatus
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import CurrentUser, SessionDep, Trans
@@ -57,7 +58,6 @@ async def pager(
     keyword: Optional[str] = Query(None, description=f"{PLACEHOLDER_PREFIX}keyword"),
     status: Optional[int] = Query(None, description=f"{PLACEHOLDER_PREFIX}status"),
     origins: Optional[list[int]] = Query(None, description=f"{PLACEHOLDER_PREFIX}origin"),
-    oidlist: Optional[list[int]] = Query(None, description=f"{PLACEHOLDER_PREFIX}oid"),
 ):
     pagination = PaginationParams(page=pageNum, size=pageSize)
     paginator = Paginator(session)
@@ -65,14 +65,11 @@ async def pager(
     
     origin_stmt = (
         select(UserModel.id, UserModel.account)
-        .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
         .where(UserModel.id != 1)
         .distinct()
         .order_by(UserModel.account)
     )
     
-    if oidlist:
-        origin_stmt = origin_stmt.where(UserWsModel.oid.in_(oidlist))
     if origins:
         origin_stmt = origin_stmt.where(UserModel.origin.in_(origins))
     if status is not None:
@@ -94,29 +91,23 @@ async def pager(
     uid_list = [item.get('id') for item in user_page.items]
     if not uid_list:
         return user_page
-    stmt = (
-        select(UserModel, UserWsModel.oid.label('ws_oid'))
-        .join(UserWsModel, UserModel.id == UserWsModel.uid, isouter=True)
-        .where(UserModel.id.in_(uid_list))
-        .order_by(UserModel.account, UserModel.create_time)
-    )
-    user_workspaces = session.exec(stmt).all()
-    merged = defaultdict(list)
-    extra_attrs = {}
-
-    for (user, ws_oid) in user_workspaces:
-        item = {}
-        item.update(user.model_dump())
-        user_id = item['id']
-        merged[user_id].append(ws_oid)
-        if user_id not in extra_attrs:
-            extra_attrs[user_id] = {k: v for k, v in item.items() if k != "ws_oid"}
-
-    # 组合结果
-    result = [
-        {**extra_attrs[user_id], "oid_list": list(filter(None, oid_list))} 
-        for user_id, oid_list in merged.items()
-    ]
+    users = session.exec(
+        select(UserModel).where(UserModel.id.in_(uid_list)).order_by(UserModel.account, UserModel.create_time)
+    ).all()
+    result = []
+    for user in users:
+        item = user.model_dump()
+        result.append(item)
+    project_rows = session.exec(
+        select(CoreDatasourceUser.user_id, CoreDatasourceUser.ds_id).where(
+            CoreDatasourceUser.user_id.in_(uid_list)
+        )
+    ).all()
+    project_map = defaultdict(list)
+    for user_id, ds_id in project_rows:
+        project_map[int(user_id)].append(int(ds_id))
+    for item in result:
+        item["project_ids"] = project_map.get(int(item["id"]), [])
     user_page.items = result
     return user_page
 
@@ -130,36 +121,12 @@ def format_user_dict(row) -> dict:
     
     return result_dict
 
-@router.get("/ws", include_in_schema=False)
-async def ws_options(session: SessionDep, current_user: CurrentUser, trans: Trans) -> list[UserWs]:
-    return await user_ws_options(session, current_user.id, trans)
-
-@router.put("/ws/{oid}", summary=f"{PLACEHOLDER_PREFIX}switch_oid_api", description=f"{PLACEHOLDER_PREFIX}switch_oid_api")
-@clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="current_user.id")
-@system_log(LogConfig(
-    operation_type=OperationType.UPDATE,
-    module=OperationModules.USER,
-    resource_id_expr="editor.id"
-))
-async def ws_change(session: SessionDep, current_user: CurrentUser, trans:Trans, oid: int = Path(description=f"{PLACEHOLDER_PREFIX}oid")):
-    ws_list: list[UserWs] = await user_ws_options(session, current_user.id)
-    if not any(x.id == oid for x in ws_list):
-        db_ws = session.get(WorkspaceModel, oid)
-        if db_ws:
-            raise Exception(trans('i18n_user.ws_miss', ws = db_ws.name))
-        raise Exception(trans('i18n_not_exist', msg = f"{trans('i18n_ws.title')}[{oid}]"))
-    user_model: UserModel = get_db_user(session = session, user_id = current_user.id)
-    user_model.oid = oid
-    session.add(user_model)
-
 @router.get("/{id}", response_model=UserEditor, summary=f"{PLACEHOLDER_PREFIX}user_detail_api", description=f"{PLACEHOLDER_PREFIX}user_detail_api")
 @require_permissions(permission=SqlbotPermission(role=['admin']))
 async def query(session: SessionDep, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")) -> UserEditor:
     db_user: UserModel = get_db_user(session = session, user_id = id)
-    u_ws_options = await user_ws_options(session, id, trans)
     result = UserEditor.model_validate(db_user.model_dump())
-    if u_ws_options:
-        result.oid_list = [item.id for item in u_ws_options]
+    result.project_ids = list_user_datasource_ids(session, id)
     return result
 
 
@@ -170,10 +137,10 @@ async def query(session: SessionDep, trans: Trans, id: int = Path(description=f"
     module=OperationModules.USER,
     result_id_expr="id"
 ))
-async def user_create(session: SessionDep, creator: UserCreator, trans: Trans):
-    return await create(session=session, creator=creator, trans=trans)
+async def user_create(session: SessionDep, current_user: CurrentUser, creator: UserCreator, trans: Trans):
+    return await create(session=session, current_user=current_user, creator=creator, trans=trans)
     
-async def create(session: SessionDep, creator: UserCreator, trans: Trans):
+async def create(session: SessionDep, current_user: CurrentUser, creator: UserCreator, trans: Trans):
     if check_account_exists(session=session, account=creator.account):
         raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.account')} [{creator.account}]"))
     """ if check_email_exists(session=session, email=creator.email):
@@ -185,20 +152,10 @@ async def create(session: SessionDep, creator: UserCreator, trans: Trans):
     user_model = UserModel.model_validate(data)
     #user_model.create_time = get_timestamp()
     user_model.language = "zh-CN"
-    user_model.oid = 0
-    if creator.oid_list:
-        # need to validate oid_list
-        db_model_list = [
-            UserWsModel.model_validate({
-                "oid": oid,
-                "uid": user_model.id,
-                "weight": 0
-            })
-            for oid in creator.oid_list
-        ]
-        session.add_all(db_model_list)
-        user_model.oid = creator.oid_list[0]   
     session.add(user_model)
+    session.flush()
+    if creator.project_ids is not None:
+        update_user_datasources(session, current_user, user_model.id, creator.project_ids)
     return user_model
 
     
@@ -210,7 +167,7 @@ async def create(session: SessionDep, creator: UserCreator, trans: Trans):
     module=OperationModules.USER,
     resource_id_expr="editor.id"
 ))
-async def update(session: SessionDep, editor: UserEditor, trans: Trans):
+async def update(session: SessionDep, current_user: CurrentUser, editor: UserEditor, trans: Trans):
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
     if not user_model:
         raise Exception(f"User with id [{editor.id}] not found!")
@@ -220,37 +177,11 @@ async def update(session: SessionDep, editor: UserEditor, trans: Trans):
         raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.email')} [{editor.email}]")) """
     if not check_email_format(editor.email):
         raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email')} [{editor.email}]"))
-    origin_oid: int = user_model.oid
-    
-    uws_list_stmt = select(UserWsModel).where(UserWsModel.uid == editor.id)
-    uws_list = session.exec(uws_list_stmt).all()
-    
-    existing_oids = {uws.oid for uws in uws_list}
-    new_oid_set = set(editor.oid_list) if editor.oid_list else set()
-    oids_to_remove = existing_oids - new_oid_set
-    oids_to_add = new_oid_set - existing_oids
-    
-    if oids_to_remove:
-        del_stmt = sqlmodel_delete(UserWsModel).where(UserWsModel.uid == editor.id, UserWsModel.oid.in_(oids_to_remove))
-        session.exec(del_stmt)
-    
     data = editor.model_dump(exclude_unset=True)
     user_model.sqlmodel_update(data)
-    
-    user_model.oid = 0
-    if editor.oid_list:
-        user_model.oid = origin_oid if origin_oid in editor.oid_list else  editor.oid_list[0]
-        if oids_to_add:
-            db_uws_model_list = [
-                UserWsModel.model_validate({
-                    "oid": oid,
-                    "uid": user_model.id,
-                    "weight": 0
-                })
-                for oid in oids_to_add
-            ]
-            session.add_all(db_uws_model_list)
     session.add(user_model)
+    if editor.project_ids is not None:
+        update_user_datasources(session, current_user, user_model.id, editor.project_ids)
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}user_del_api", description=f"{PLACEHOLDER_PREFIX}user_del_api")
 @require_permissions(permission=SqlbotPermission(role=['admin']))

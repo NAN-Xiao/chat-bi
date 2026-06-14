@@ -1,6 +1,6 @@
-from sqlmodel import Session, select, or_
+from sqlmodel import Session, select
 
-from apps.system.models.system_model import AiModelDetail, AiModelBrief, AiModelWorkspaceMapping
+from apps.system.models.system_model import AiModelDetail, AiModelBrief
 from common.core.db import engine
 from common.utils.crypto import sqlbot_encrypt
 from common.utils.utils import SQLBotLogUtil
@@ -31,19 +31,10 @@ async def async_model_info():
             SQLBotLogUtil.info("✅ 异步加密已有模型的密钥和地址完成")
 
 
-def get_ai_model_list_by_workspace(session: Session, workspace_id: int, with_default: bool = True):
-    sub_stmt = (
-        select(AiModelWorkspaceMapping.ai_model_id)
-        .where(AiModelWorkspaceMapping.workspace_id == workspace_id)
-        .distinct()
-    )
-
-    # 查询：关联的模型 + default_model 为 True 的模型，默认模型排第一
-    base_condition = AiModelDetail.id.in_(sub_stmt)
+def get_ai_model_list(session: Session, with_default: bool = True):
+    where_condition = True
     if with_default:
-        where_condition = or_(base_condition, AiModelDetail.default_model == True)
-    else:
-        where_condition = base_condition
+        where_condition = AiModelDetail.default_model == True
     stmt = (
         select(
             AiModelDetail.id,
@@ -51,9 +42,10 @@ def get_ai_model_list_by_workspace(session: Session, workspace_id: int, with_def
             AiModelDetail.default_model,
             AiModelDetail.supplier,
         )
-        .where(where_condition)
         .order_by(AiModelDetail.default_model.desc())
     )
+    if with_default:
+        stmt = stmt.where(where_condition)
     rows = session.exec(stmt).all()
 
     return [

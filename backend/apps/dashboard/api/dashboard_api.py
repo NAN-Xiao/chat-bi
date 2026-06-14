@@ -3,9 +3,10 @@ from typing import List
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
-    create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas
-from apps.dashboard.models.dashboard_model import CreateDashboard, BaseDashboard, QueryDashboard
+    create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas, preview_sql
+from apps.dashboard.models.dashboard_model import CreateDashboard, BaseDashboard, QueryDashboard, DashboardSqlPreview
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import SessionDep, CurrentUser
@@ -20,14 +21,7 @@ async def list_resource_api(session: SessionDep, dashboard: QueryDashboard, curr
 
 @router.post("/load_resource", summary=f"{PLACEHOLDER_PREFIX}load_resource_api")
 async def load_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
-    resource_dict = load_resource(session=session, dashboard=dashboard)
-    if resource_dict and resource_dict.get("create_by") != str(current_user.id):
-        raise HTTPException(
-            status_code=403,
-            detail="You do not have permission to access this resource"
-        )
-
-    return resource_dict
+    return load_resource(session=session, dashboard=dashboard, current_user=current_user)
 
 
 @router.post("/create_resource", response_model=BaseDashboard, summary=f"{PLACEHOLDER_PREFIX}create_resource_api")
@@ -79,3 +73,9 @@ async def update_canvas_api(session: SessionDep, user: CurrentUser, dashboard: C
 @router.post("/check_name", summary=f"{PLACEHOLDER_PREFIX}check_name_api")
 async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: QueryDashboard):
     return validate_name(session, user, dashboard)
+
+
+@router.post("/sql_preview", summary=f"{PLACEHOLDER_PREFIX}dashboard_sql_preview")
+@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="request.datasource"))
+async def sql_preview_api(session: SessionDep, request: DashboardSqlPreview):
+    return preview_sql(session=session, request=request)

@@ -269,7 +269,7 @@
     :title="dialogTitle"
     destroy-on-close
     modal-class="user-add-class"
-    size="600px"
+    size="780px"
     :before-close="onFormClose"
   >
     <div style="margin-bottom: 12px" class="down-template">
@@ -320,6 +320,131 @@
           autocomplete="off"
           clearable
         />
+      </el-form-item>
+      <el-form-item :label="$t('user.project_permission_config')">
+        <div class="project-permission-panel">
+          <div class="project-permission-toolbar">
+            <el-select
+              v-model="state.form.project_ids"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              style="width: 420px"
+              :placeholder="$t('user.select_accessible_projects')"
+              @change="handleProjectIdsChange"
+            >
+              <el-option
+                v-for="item in projectOptions"
+                :key="item.id"
+                :label="item.name"
+                :value="Number(item.id)"
+              />
+            </el-select>
+            <span class="project-permission-count">
+              {{ $t('user.selected_project_count', { msg: selectedProjectRows.length }) }}
+            </span>
+          </div>
+
+          <el-table
+            :data="selectedProjectRows"
+            :empty-text="$t('user.no_project_permission')"
+            class="project-permission-table"
+            style="width: 100%"
+          >
+            <el-table-column :label="$t('permission.data_source')" min-width="150">
+              <template #default="scope">
+                <div class="project-cell">
+                  <div class="project-name ellipsis" :title="scope.row.name">
+                    {{ scope.row.name }}
+                  </div>
+                  <div class="project-type ellipsis" :title="scope.row.type_name || scope.row.type">
+                    {{ scope.row.type_name || scope.row.type || '-' }}
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column :label="$t('user.database_scope')" min-width="150">
+              <template #default="scope">
+                <span class="database-label" :title="formatProjectDatabase(scope.row)">
+                  {{ formatProjectDatabase(scope.row) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="$t('user.permission_strategy')" min-width="220">
+              <template #default="scope">
+                <el-select
+                  v-model="state.form.project_permission_map[Number(scope.row.id)]"
+                  multiple
+                  filterable
+                  collapse-tags
+                  collapse-tags-tooltip
+                  style="width: 100%"
+                  :placeholder="$t('user.select_permission_strategy')"
+                >
+                  <el-option
+                    v-for="item in getPermissionStrategiesByProject(scope.row.id)"
+                    :key="item.id"
+                    :label="item.name"
+                    :value="Number(item.id)"
+                  >
+                    <div class="permission-option">
+                      <span class="permission-option-name ellipsis" :title="item.name">
+                        {{ item.name }}
+                      </span>
+                      <span class="permission-option-summary">
+                        {{ formatRuleGroupSummary(item, scope.row.id) }}
+                      </span>
+                    </div>
+                  </el-option>
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column :label="$t('user.permission_summary')" min-width="170">
+              <template #default="scope">
+                <div class="permission-summary">
+                  <template v-if="getSelectedStrategiesByProject(scope.row.id).length">
+                    <el-tag
+                      v-for="item in getSelectedStrategiesByProject(scope.row.id).slice(0, 2)"
+                      :key="item.id"
+                      size="small"
+                    >
+                      {{ formatRuleGroupSummary(item, scope.row.id) }}
+                    </el-tag>
+                    <span
+                      v-if="getSelectedStrategiesByProject(scope.row.id).length > 2"
+                      class="more-strategy"
+                    >
+                      +{{ getSelectedStrategiesByProject(scope.row.id).length - 2 }}
+                    </span>
+                  </template>
+                  <span v-else class="muted">{{ $t('user.project_access_only') }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column :label="$t('user.user_status')" width="96">
+              <template #default="scope">
+                <el-tag
+                  size="small"
+                  :type="getSelectedStrategiesByProject(scope.row.id).length ? 'success' : 'info'"
+                >
+                  {{
+                    getSelectedStrategiesByProject(scope.row.id).length
+                      ? $t('user.strategy_configured')
+                      : $t('user.no_strategy')
+                  }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column :label="$t('ds.actions')" width="76" fixed="right">
+              <template #default="scope">
+                <el-button text @click="removeProjectAccess(scope.row.id)">
+                  {{ $t('project.remove') }}
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </el-form-item>
       <!-- <el-form-item :label="$t('user.phone_number')">
         <el-input
@@ -514,7 +639,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, unref, reactive, onMounted, nextTick, h, shallowRef } from 'vue'
+import { computed, ref, unref, reactive, onMounted, nextTick, h, shallowRef } from 'vue'
 import UserImport from './UserImport.vue'
 import SuccessFilled from '@/assets/svg/gou_icon.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
@@ -534,6 +659,9 @@ import logo_lark from '@/assets/img/lark.png'
 import logo_wechat_work from '@/assets/img/wechat.png'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { userApi } from '@/api/user'
+import { datasourceApi } from '@/api/datasource'
+import { getList as getPermissionList, savePermissions } from '@/api/permissions'
+import { decrypted } from '@/views/ds/js/aes'
 import field_text from '@/assets/svg/field_text.svg'
 import field_time from '@/assets/svg/field_time.svg'
 import field_value from '@/assets/svg/field_value.svg'
@@ -599,15 +727,17 @@ const defaultForm = {
   id: '',
   name: '',
   account: '',
-  oid: 0,
   email: '',
   status: 1,
   phoneNumber: '',
-  oid_list: [],
+  project_ids: [],
+  project_permission_map: {},
   system_variables: [],
 }
 const variables = shallowRef<any[]>([])
 const variableValueMap = shallowRef<any>({})
+const projectOptions = shallowRef<any[]>([])
+const permissionRuleGroups = shallowRef<any[]>([])
 const state = reactive<any>({
   tableData: [],
   filterTexts: [],
@@ -619,6 +749,173 @@ const state = reactive<any>({
     total: 0,
   },
 })
+
+const toNumberList = (value: any): number[] => {
+  if (!value) return []
+  if (Array.isArray(value)) {
+    return value.map((item: any) => Number(item)).filter((item: number) => !Number.isNaN(item))
+  }
+  try {
+    const parsed = JSON.parse(value)
+    return toNumberList(parsed)
+  } catch (e) {
+    return []
+  }
+}
+
+const parseJsonValue = (value: any, fallback: any) => {
+  if (!value) return fallback
+  if (typeof value === 'object') return value
+  try {
+    return JSON.parse(value)
+  } catch (e) {
+    return fallback
+  }
+}
+
+const getProjectIdsFromRule = (rule: any): number[] => {
+  const ids = (rule.permissions || [])
+    .map((item: any) => Number(item.ds_id))
+    .filter((item: number) => !Number.isNaN(item))
+  return Array.from(new Set<number>(ids))
+}
+
+const getPermissionStrategiesByProject = (projectId: any) => {
+  const id = Number(projectId)
+  return permissionRuleGroups.value.filter((rule: any) => getProjectIdsFromRule(rule).includes(id))
+}
+
+const getSelectedStrategiesByProject = (projectId: any) => {
+  const id = Number(projectId)
+  const selectedIds = toNumberList(state.form.project_permission_map?.[id])
+  return getPermissionStrategiesByProject(id).filter((rule: any) =>
+    selectedIds.includes(Number(rule.id))
+  )
+}
+
+const formatRuleGroupSummary = (rule: any, projectId?: any) => {
+  const id = Number(projectId)
+  const permissions = projectId
+    ? (rule.permissions || []).filter((item: any) => Number(item.ds_id) === id)
+    : rule.permissions || []
+  const rowCount = permissions.filter((item: any) => item.type === 'row').length
+  const columnCount = permissions.filter((item: any) => item.type !== 'row').length
+  const parts = []
+  if (rowCount) {
+    parts.push(t('user.row_rule_count', { msg: rowCount }))
+  }
+  if (columnCount) {
+    parts.push(t('user.column_rule_count', { msg: columnCount }))
+  }
+  return parts.length ? parts.join(' / ') : t('permission.no_rule')
+}
+
+const selectedProjectRows = computed(() => {
+  const ids = toNumberList(state.form.project_ids)
+  return projectOptions.value.filter((item: any) => ids.includes(Number(item.id)))
+})
+
+const formatProjectDatabase = (project: any) => {
+  if (!project?.configuration) {
+    return project?.type_name || project?.type || '-'
+  }
+  try {
+    const conf = JSON.parse(decrypted(project.configuration) || '{}')
+    const database = conf.database || conf.dataBase || conf.filename || project.name
+    const schema = conf.dbSchema || conf.schema
+    const host = conf.host && conf.port ? `${conf.host}:${conf.port}` : conf.host
+    return [database, schema, host].filter(Boolean).join(' / ') || project.name
+  } catch (e) {
+    return project?.name || '-'
+  }
+}
+
+const handleProjectIdsChange = (value: any[]) => {
+  const ids = toNumberList(value)
+  state.form.project_ids = ids
+  const nextMap: any = {}
+  ids.forEach((id: number) => {
+    nextMap[id] = toNumberList(state.form.project_permission_map?.[id])
+  })
+  state.form.project_permission_map = nextMap
+}
+
+const removeProjectAccess = (projectId: any) => {
+  const id = Number(projectId)
+  state.form.project_ids = toNumberList(state.form.project_ids).filter((item: number) => item !== id)
+  const nextMap = { ...(state.form.project_permission_map || {}) }
+  delete nextMap[id]
+  state.form.project_permission_map = nextMap
+}
+
+const buildUserProjectPermissionMap = (userId: any, projectIds: number[]) => {
+  const result: any = {}
+  projectIds.forEach((id: number) => {
+    result[id] = []
+  })
+  if (!userId) return result
+
+  permissionRuleGroups.value.forEach((rule: any) => {
+    const users = toNumberList(rule.users || rule.user_list)
+    if (!users.includes(Number(userId))) return
+    getProjectIdsFromRule(rule).forEach((projectId: number) => {
+      if (!projectIds.includes(projectId)) return
+      result[projectId] = Array.from(new Set<number>([...(result[projectId] || []), Number(rule.id)]))
+    })
+  })
+  return result
+}
+
+const serializePermissionRule = (rule: any, users: number[]) => {
+  return {
+    id: rule.id,
+    name: rule.name,
+    permissions: (rule.permissions || []).map((item: any) => ({
+      ...item,
+      permissions:
+        item.type !== 'row'
+          ? typeof item.permissions === 'object'
+            ? JSON.stringify(item.permissions || [])
+            : item.permissions || JSON.stringify(item.permission_list || [])
+          : JSON.stringify([]),
+      permission_list: [],
+      expression_tree:
+        item.type === 'row'
+          ? typeof item.expression_tree === 'object'
+            ? JSON.stringify(item.expression_tree || item.tree || {})
+            : item.expression_tree || JSON.stringify(parseJsonValue(item.tree, {}))
+          : JSON.stringify({}),
+    })),
+    users,
+  }
+}
+
+const syncUserPermissionStrategies = (userId: any): Promise<void> => {
+  if (!userId || !permissionRuleGroups.value.length) return Promise.resolve()
+  const selectedRuleIds = new Set(
+    Object.values(state.form.project_permission_map || {})
+      .flatMap((item: any) => toNumberList(item))
+      .map((item: number) => Number(item))
+  )
+  const requests: Promise<any>[] = []
+
+  permissionRuleGroups.value.forEach((rule: any) => {
+    if (!getProjectIdsFromRule(rule).length) return
+    const currentUsers = toNumberList(rule.users || rule.user_list)
+    const shouldInclude = selectedRuleIds.has(Number(rule.id))
+    const nextUsers = shouldInclude
+      ? Array.from(new Set<number>([...currentUsers, Number(userId)]))
+      : currentUsers.filter((item: number) => item !== Number(userId))
+    const changed =
+      nextUsers.length !== currentUsers.length ||
+      nextUsers.some((item: number) => !currentUsers.includes(item))
+    if (!changed) return
+    rule.users = nextUsers
+    requests.push(savePermissions(serializePermissionRule(rule, nextUsers)))
+  })
+
+  return Promise.all(requests).then(() => undefined)
+}
 
 const currentPlatform = ref<any>({})
 const rules = {
@@ -853,10 +1150,11 @@ const drawerMainClose = () => {
   drawerMainRef.value.close()
 }
 const editHandler = (row: any) => {
-  variablesApi
-    .listAll()
-    .then((res: any) => {
-      variables.value = res.filter((ele: any) => ele.type === 'custom')
+  Promise.all([variablesApi.listAll(), datasourceApi.list(), getPermissionList()])
+    .then(([variableRes, projectRes, permissionRes]: any[]) => {
+      projectOptions.value = projectRes || []
+      permissionRuleGroups.value = permissionRes || []
+      variables.value = variableRes.filter((ele: any) => ele.type === 'custom')
       variableValueMap.value = variables.value.reduce((pre, next) => {
         pre[next.id] = {
           value: next.value,
@@ -867,12 +1165,22 @@ const editHandler = (row: any) => {
       }, {})
 
       if (row) {
+        const projectIds = (row.project_ids || []).map((id: any) => Number(id))
         state.form = {
           ...row,
+          project_ids: projectIds,
+          project_permission_map: buildUserProjectPermissionMap(row.id, projectIds),
           system_variables: (row.system_variables || []).map((ele: any) => ({
             ...ele,
             variableValue: ele.variableValues[0],
           })),
+        }
+      } else {
+        state.form = {
+          ...defaultForm,
+          project_ids: [],
+          project_permission_map: {},
+          system_variables: [],
         }
       }
     })
@@ -951,7 +1259,12 @@ const closeForm = () => {
   dialogFormVisible.value = false
 }
 const onFormClose = () => {
-  state.form = { ...defaultForm }
+  state.form = {
+    ...defaultForm,
+    project_ids: [],
+    project_permission_map: {},
+    system_variables: [],
+  }
   dialogFormVisible.value = false
 }
 
@@ -1001,9 +1314,17 @@ const formatVariableValues = () => {
 }
 
 const addTerm = () => {
-  const { account, email, name, oid, status, oid_list } = state.form
+  const { account, email, name, status, project_ids } = state.form
   userApi
-    .add({ account, email, name, oid, status, oid_list, system_variables: formatVariableValues() })
+    .add({
+      account,
+      email,
+      name,
+      status,
+      project_ids,
+      system_variables: formatVariableValues(),
+    })
+    .then((res: any) => syncUserPermissionStrategies(res?.id).then(() => res))
     .then(() => {
       onFormClose()
       handleCurrentChange(1)
@@ -1015,7 +1336,7 @@ const addTerm = () => {
     })
 }
 const editTerm = () => {
-  const { account, id, create_time, email, language, name, oid, oid_list, origin, status } =
+  const { account, id, create_time, email, language, name, project_ids, origin, status } =
     state.form
   userApi
     .edit({
@@ -1025,12 +1346,12 @@ const editTerm = () => {
       email,
       language,
       name,
-      oid,
-      oid_list,
+      project_ids,
       origin,
       status,
       system_variables: formatVariableValues(),
     })
+    .then(() => syncUserPermissionStrategies(id))
     .then(() => {
       onFormClose()
       handleCurrentChange(1)
@@ -1487,6 +1808,94 @@ const showTips = (successCount: any, errorCount: any, dataKey: any) => {
     width: 100%;
     margin-bottom: 8px;
   }
+  .project-permission-panel {
+    width: 100%;
+    border: 1px solid #dee0e3;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+
+    .project-permission-toolbar {
+      min-height: 48px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid #dee0e3;
+      background: #f8f9fa;
+    }
+
+    .project-permission-count {
+      color: #646a73;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .project-permission-table {
+      .ed-table__cell {
+        vertical-align: top;
+      }
+    }
+
+    .project-cell {
+      min-width: 0;
+    }
+
+    .project-name {
+      font-weight: 500;
+      color: #1f2329;
+      line-height: 22px;
+    }
+
+    .project-type,
+    .database-label,
+    .muted {
+      color: #8f959e;
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .database-label {
+      display: inline-block;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .permission-summary {
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .more-strategy {
+      color: #646a73;
+      font-size: 12px;
+    }
+  }
+
+  .permission-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    .permission-option-name {
+      max-width: 150px;
+    }
+
+    .permission-option-summary {
+      color: #8f959e;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+  }
+
   .value-list {
     width: 100%;
     padding: 16px;

@@ -13,11 +13,9 @@ interface UserState {
   uid: string
   account: string
   name: string
-  oid: string
   language: string
   exp: number
   time: number
-  weight: number
   origin: number
   platformInfo: any | null
   [key: string]: string | number | any | null
@@ -30,11 +28,9 @@ export const UserStore = defineStore('user', {
       uid: '',
       account: '',
       name: '',
-      oid: '',
       language: 'zh-CN',
       exp: 0,
       time: 0,
-      weight: 0,
       origin: 0,
       platformInfo: null,
     }
@@ -52,9 +48,6 @@ export const UserStore = defineStore('user', {
     getName(): string {
       return this.name
     },
-    getOid(): string {
-      return this.oid
-    },
     getLanguage(): string {
       return this.language
     },
@@ -67,14 +60,8 @@ export const UserStore = defineStore('user', {
     isAdmin(): boolean {
       return this.uid === '1'
     },
-    getWeight(): number {
-      return this.weight
-    },
     getOrigin(): number {
       return this.origin
-    },
-    isSpaceAdmin(): boolean {
-      return this.uid === '1' || !!this.weight
     },
     getPlatformInfo(): any | null {
       return this.platformInfo
@@ -122,18 +109,16 @@ export const UserStore = defineStore('user', {
         'uid',
         'account',
         'name',
-        'oid',
         'language',
         'exp',
         'time',
-        'weight',
         'origin',
       ] as const
 
       keys.forEach((key) => {
         const dkey = key === 'uid' ? 'id' : key
         const value = res_data[dkey]
-        if (key === 'exp' || key === 'time' || key === 'weight' || key === 'origin') {
+        if (key === 'exp' || key === 'time' || key === 'origin') {
           this[key] = Number(value)
         } else {
           this[key] = String(value)
@@ -168,10 +153,6 @@ export const UserStore = defineStore('user', {
       wsCache.set('user.name', name)
       this.name = name
     },
-    setOid(oid: string) {
-      wsCache.set('user.oid', oid)
-      this.oid = oid
-    },
     setLanguage(language: string) {
       if (!language) {
         language = 'zh-CN'
@@ -189,10 +170,6 @@ export const UserStore = defineStore('user', {
       locale.value = language */
       // locale.setLang(language)
     },
-    setWeight(weight: number) {
-      wsCache.set('user.weight', weight)
-      this.weight = weight
-    },
     setOrigin(origin: number) {
       wsCache.set('user.origin', origin)
       this.origin = origin
@@ -207,11 +184,9 @@ export const UserStore = defineStore('user', {
         'uid',
         'account',
         'name',
-        'oid',
         'language',
         'exp',
         'time',
-        'weight',
         'origin',
         'platformInfo',
       ]

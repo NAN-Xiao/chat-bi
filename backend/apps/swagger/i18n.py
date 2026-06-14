@@ -58,10 +58,6 @@ tags_metadata = [
         "description": f"{PLACEHOLDER_PREFIX}system_user_api"
     },
     {
-        "name": "system_ws",
-        "description": f"{PLACEHOLDER_PREFIX}system_ws_api"
-    },
-    {
         "name": "system_model",
         "description": f"{PLACEHOLDER_PREFIX}system_model_api"
     },

@@ -27,7 +27,7 @@ async def delete_variable(session: SessionDep, ids: List[int]):
 
 
 @router.post("/listAll",response_model=None, summary=f"{PLACEHOLDER_PREFIX}variable_list")
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def list_all_data(session: SessionDep, trans: Trans, variable: SystemVariable = None):
     return list_all(session, trans, variable)
 

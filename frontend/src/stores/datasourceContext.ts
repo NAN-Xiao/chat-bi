@@ -37,12 +37,12 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
   actions: {
     cacheKey() {
       const userStore = useUserStore()
-      return `datasource.current.${userStore.getOid || 'default'}`
+      return `datasource.current.${userStore.getUid || 'default'}`
     },
 
     legacyCacheKey() {
       const userStore = useUserStore()
-      return `analysisAssistant.datasource.${userStore.getOid || 'default'}`
+      return `analysisAssistant.datasource.${userStore.getUid || 'default'}`
     },
 
     async loadDatasources(force = false) {

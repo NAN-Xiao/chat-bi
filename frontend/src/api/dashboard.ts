@@ -8,6 +8,7 @@ export const dashboardApi = {
   create_canvas: (params: any) => request.post('/dashboard/create_canvas', params),
   update_canvas: (params: any) => request.post('/dashboard/update_canvas', params),
   check_name: (params: any) => request.post('/dashboard/check_name', params),
+  preview_sql: (params: any) => request.post('/dashboard/sql_preview', params),
   delete_resource: (params: any) =>
     request.delete(`/dashboard/delete_resource/${params.id}/${params.name}`, params),
   move_resource: (params: any) => request.delete(`/dashboard/move_resource/${params.id}`, params),

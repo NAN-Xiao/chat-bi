@@ -16,11 +16,8 @@ import { getModelTypeName } from '@/entity/CommonEntity.ts'
 import { useI18n } from 'vue-i18n'
 import { get_supplier } from '@/entity/supplier'
 import { highlightKeyword } from '@/utils/xss'
-import AuthorizedWorkspaceDialogForModel from '@/views/system/workspace/AuthorizedWorkspaceDialogForModel.vue'
-import AuthorizedWorkspaceDraw from '@/views/system/workspace/AuthorizedWorkspaceDraw.vue'
 
 interface Model {
-  ws_mapping_count: number | undefined
   name: string
   model_type: string
   base_model: string
@@ -133,7 +130,7 @@ const duplicateName = async (item: any) => {
       search()
       ElMessage({
         type: 'success',
-        message: t('workspace.add_successfully'),
+        message: t('project.add_successfully'),
       })
       modelCheckHandler(item)
     })
@@ -250,16 +247,6 @@ const deleteHandler = (item: any) => {
       }
     },
   })
-}
-
-const AuthorizedWorkspaceDialogForModelRef = ref()
-const AuthorizedWorkspaceDrawRef = ref()
-
-const handleAuthorizedSpace = (item: any) => {
-  AuthorizedWorkspaceDialogForModelRef.value.open(item.id)
-}
-const handleEditWorkspaceList = (item: any) => {
-  AuthorizedWorkspaceDrawRef.value.open(item.id)
 }
 
 const clickModel = (ele: any) => {
@@ -400,7 +387,6 @@ const submit = (item: any) => {
             :ref="(el: any) => setCardRef(el, index)"
             :key="ele.id"
             :name="ele.name"
-            :num="ele.ws_mapping_count"
             :supplier="ele.supplier"
             :model-type="getModelTypeName(ele['model_type'])"
             :base-model="ele['base_model']"
@@ -408,8 +394,6 @@ const submit = (item: any) => {
             @edit="handleEditModel(ele)"
             @del="deleteHandler"
             @default="handleDefault(ele)"
-            @authorized-space="handleAuthorizedSpace(ele)"
-            @edit-workspace-list="handleEditWorkspaceList(ele)"
           ></card>
         </el-col>
       </el-row>
@@ -484,8 +468,6 @@ const submit = (item: any) => {
       </template>
     </el-drawer>
   </div>
-  <AuthorizedWorkspaceDialogForModel ref="AuthorizedWorkspaceDialogForModelRef" @refresh="search" />
-  <AuthorizedWorkspaceDraw ref="AuthorizedWorkspaceDrawRef" @refresh="search" />
 </template>
 
 <style lang="less" scoped>

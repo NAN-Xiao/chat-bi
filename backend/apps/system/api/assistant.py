@@ -83,15 +83,10 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     if not db_model:
         return AssistantValidator()
     db_model = AssistantModel.model_validate(db_model)
-    assistant_oid = 1
-    if (db_model.type == 0):
-        configuration = db_model.configuration
-        config_obj = json.loads(configuration) if configuration else {}
-        assistant_oid = config_obj.get('oid', 1)
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     assistantDict = {
-        "id": virtual, "account": 'sqlbot-inner-assistant', "oid": assistant_oid, "assistant_id": id
+        "id": virtual, "account": 'sqlbot-inner-assistant', "assistant_id": id
     }
     access_token = create_access_token(
         assistantDict, expires_delta=access_token_expires
@@ -179,9 +174,7 @@ async def ds(session: SessionDep, current_assistant: CurrentAssistant):
         online = current_assistant.online
         configuration = current_assistant.configuration
         config: dict[any] = json.loads(configuration)
-        oid: int = int(config['oid'])
-        stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description, CoreDatasource.type, CoreDatasource.type_name, CoreDatasource.num).where(
-            CoreDatasource.oid == oid)
+        stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description, CoreDatasource.type, CoreDatasource.type_name, CoreDatasource.num)
         if not online:
             public_list: list[int] = config.get('public_list') or None
             if public_list:
@@ -227,9 +220,9 @@ def get_db_type(type):
 
 
 @router.get("", response_model=list[AssistantModel], summary=f"{PLACEHOLDER_PREFIX}assistant_grid_api", description=f"{PLACEHOLDER_PREFIX}assistant_grid_api")
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def query(session: SessionDep, current_user: CurrentUser):
-    list_result = session.exec(select(AssistantModel).where(AssistantModel.oid == current_user.oid, AssistantModel.type != 4).order_by(AssistantModel.name,
+    list_result = session.exec(select(AssistantModel).where(AssistantModel.type != 4).order_by(AssistantModel.name,
                                                                                                AssistantModel.create_time)).all()
     for model in list_result:
         model.enable_custom_model = model.enable_custom_model or False
@@ -237,23 +230,22 @@ async def query(session: SessionDep, current_user: CurrentUser):
 
 
 @router.get("/advanced_application", response_model=list[AssistantModel], include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def query_advanced_application(session: SessionDep, current_user: CurrentUser):
-    list_result = session.exec(select(AssistantModel).where(AssistantModel.type == 1, AssistantModel.oid == current_user.oid).order_by(AssistantModel.name,
+    list_result = session.exec(select(AssistantModel).where(AssistantModel.type == 1).order_by(AssistantModel.name,
                                                                                                AssistantModel.create_time)).all()
     return list_result
 
 
 @router.post("", summary=f"{PLACEHOLDER_PREFIX}assistant_create_api", description=f"{PLACEHOLDER_PREFIX}assistant_create_api")
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.APPLICATION, result_id_expr="id"))
 async def add(request: Request, session: SessionDep, current_user: CurrentUser, creator: AssistantBase):
-    oid = current_user.oid if creator.type != 4 else 1
-    return await save(request, session, creator, oid)
+    return await save(request, session, creator)
 
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}assistant_update_api", description=f"{PLACEHOLDER_PREFIX}assistant_update_api")
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="editor.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, resource_id_expr="editor.id"))
 async def update(request: Request, session: SessionDep, editor: AssistantDTO):
@@ -278,7 +270,7 @@ async def get_one(session: SessionDep, id: int = Path(description="ID")):
 
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}assistant_del_api", description=f"{PLACEHOLDER_PREFIX}assistant_del_api")
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.APPLICATION, resource_id_expr="id"))
 async def delete(request: Request, session: SessionDep, id: int = Path(description="ID")):

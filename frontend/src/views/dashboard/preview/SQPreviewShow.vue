@@ -10,8 +10,10 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import EmptyBackgroundSvg from '@/views/dashboard/common/EmptyBackgroundSvg.vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { useI18n } from 'vue-i18n'
+import { useUserStore } from '@/stores/user'
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
+const userStore = useUserStore()
 const previewCanvasContainer = ref(null)
 const dashboardPreview = ref(null)
 const slideShow = ref(true)
@@ -83,6 +85,7 @@ const resourceNodeClick = (prams: any) => {
 
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
+const canManageDashboard = computed(() => userStore.isAdmin)
 
 onBeforeMount(() => {
   if (showPosition.value === 'preview') {
@@ -135,7 +138,7 @@ defineExpose({
       </template>
       <template v-else-if="mounted">
         <EmptyBackground :description="t('dashboard.no_dashboard_info')" img-type="none">
-          <el-button type="primary" @click="createNew">
+          <el-button v-if="canManageDashboard" type="primary" @click="createNew">
             <template #icon>
               <Icon name="icon_add_outlined">
                 <icon_add_outlined class="svg-icon" />

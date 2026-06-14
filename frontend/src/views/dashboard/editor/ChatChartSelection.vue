@@ -64,9 +64,11 @@ import { Chat, chatApi, ChatInfo } from '@/api/chat.ts'
 import DashboardChatList from '@/views/dashboard/editor/DashboardChatList.vue'
 import ChartSelection from '@/views/dashboard/editor/ChartSelection.vue'
 import { concat } from 'lodash-es'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 
 const dialogShow = ref(false)
 const { t } = useI18n()
+const datasourceContext = useDatasourceContextStore()
 const selectComponentCount = computed(() => state.curMultiplexingComponents.length)
 const state = reactive({
   curMultiplexingComponents: [],
@@ -192,7 +194,7 @@ function onClickHistory(chat: Chat) {
     currentChatId.value = chat.id
     loading.value = true
     chatApi
-      .get_with_Data(chat.id)
+      .get_with_Data(chat.id, datasourceContext.datasourceId)
       .then((res) => {
         const info = chatApi.toChatInfo(res)
         if (info) {
@@ -209,10 +211,17 @@ function onClickHistory(chat: Chat) {
 
 function getChatList() {
   loading.value = true
-  chatApi
-    .list()
+  datasourceContext
+    .loadDatasources()
+    .then(() => {
+      if (!datasourceContext.datasourceId) {
+        chatList.value = []
+        return []
+      }
+      return chatApi.list(datasourceContext.datasourceId)
+    })
     .then((res) => {
-      chatList.value = chatApi.toChatInfoList(res)
+      chatList.value = chatApi.toChatInfoList(res || [])
     })
     .finally(() => {
       loading.value = false

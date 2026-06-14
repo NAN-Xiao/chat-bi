@@ -1,5 +1,4 @@
 {
-  "i18n_default_workspace": "Default Workspace",
   "i18n_ds_name_exist": "Name already exists",
   "i18n_concat_admin": "Please contact the administrator!",
   "i18n_exist": "{msg} already exists!",
@@ -10,7 +9,6 @@
   "i18n_format_invalid": "{key} format is incorrect!",
   "i18n_login": {
     "account_pwd_error": "Incorrect account or password!",
-    "no_associated_ws": "No associated workspace, {msg}",
     "user_disable": "Account is disabled, {msg}",
     "origin_error": "Invalid login method",
     "prohibit_auto_create": "Automatically creating users is prohibited. Please synchronize users first",
@@ -21,11 +19,10 @@
     "email": "Email",
     "password": "Password",
     "language_not_support": "The system does not support [{key}] language!",
-    "ws_miss": "Current user is not in the workspace [{ws}]!",
     "name": "Name",
     "status": "User Status",
     "origin": "User Source",
-    "workspace": "Workspace",
+    "project": "Project",
     "role": "Role",
     "platform_user_id": "External User Unique Identifier",
     "administrator": "Administrator",
@@ -34,15 +31,12 @@
     "status_disabled": "Disabled",
     "local_creation": "Local"
   },
-  "i18n_ws": {
-    "title": "Workspace"
-  },
   "i18n_permission": {
     "only_admin": "Only administrators are allowed to call!",
     "no_permission": "No permission to call {url}{msg}",
     "authenticate_invalid": "Authentication invalid【{msg}】",
     "token_expired": "Token expired",
-    "only_ws_admin": "Workspace administrator access required!",
+    "only_project_admin": "Project administrator access required!",
     "permission_resource_limit": "Access denied or resource not found!"
   },
   "i18n_llm": {
@@ -147,7 +141,7 @@
     "operation_type_name": "Operation Type",
     "operation_detail_info": "Operation Details",
     "user_name": "Operator",
-    "oid_name": "Workspace",
+    "project_name": "Project",
     "operation_status_name": "Operation Status",
     "error_message": "Error Message",
     "ip_address": "IP Address",
@@ -161,7 +155,7 @@
     "data_training": "SQL Examples",
     "prompt_words": "Prompt Words",
     "user": "User",
-    "workspace": "Workspace",
+    "project": "Project",
     "ai_model": "AI Model",
     "application": "Application",
     "theme": "Appearance Settings",

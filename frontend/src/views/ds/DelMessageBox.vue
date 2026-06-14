@@ -25,7 +25,7 @@ defineProps({
       {{ t('datasource.data_source', { msg: name }) }}
     </div>
     <div class="use-panel">
-      {{ t('workspace.confirm_to_delete') }}
+      {{ t('project.confirm_to_delete') }}
     </div>
   </div>
 </template>

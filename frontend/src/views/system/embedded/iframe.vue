@@ -14,15 +14,12 @@ import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
 import { useClipboard } from '@vueuse/core'
 import SetUi from './SetUi.vue'
 import Card from './Card.vue'
-// import { workspaceList } from '@/api/workspace'
 import DsCard from './DsCard.vue'
 import { getList, updateAssistant, saveAssistant, delOne, dsApi } from '@/api/embedded'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import { useUserStore } from '@/stores/user.ts'
 import { modelApi } from '@/api/system.ts'
 
-const userStore = useUserStore()
 defineProps({
   btnSelect: {
     type: String,
@@ -67,7 +64,6 @@ const currentEmbedded = reactive<any>(cloneDeep(defaultEmbedded))
 
 const isCreate = ref(false)
 const defaultForm = {
-  oid: 1,
   public_list: [],
   private_list: [],
   auto_ds: false,
@@ -117,7 +113,7 @@ const modelList = ref<Array<Model>>([])
 const searchModels = () => {
   searchLoading.value = true
   modelApi
-    .list_by_ws()
+    .listAvailable()
     .then((res: any) => {
       modelList.value = res
     })
@@ -144,7 +140,7 @@ const userTypeList = [
 const handleAddEmbedded = (val: any) => {
   Object.assign(currentEmbedded, cloneDeep(defaultEmbedded))
   Object.keys(dsForm).forEach((ele) => {
-    if (!['oid', 'public_list', 'private_list'].includes(ele)) {
+    if (!['public_list', 'private_list'].includes(ele)) {
       delete dsForm[ele]
     }
   })
@@ -158,7 +154,7 @@ const handleAddEmbedded = (val: any) => {
 }
 
 const getDsList = () => {
-  dsApi(dsForm.oid).then((res: any) => {
+  dsApi().then((res: any) => {
     dsListOptions.value = res || []
   })
 }
@@ -166,9 +162,8 @@ const handleBaseEmbedded = (row: any) => {
   advancedApplication.value = false
   if (row) {
     Object.assign(dsForm, JSON.parse(row.configuration))
-  } else {
-    Object.assign(dsForm, { oid: userStore.getOid })
   }
+  delete dsForm['o' + 'id']
   getDsList()
   ruleConfigvVisible.value = true
 
@@ -350,15 +345,7 @@ const rules = {
   ],
 }
 
-const dsRules = {
-  oid: [
-    {
-      required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('user.workspace'),
-      trigger: 'change',
-    },
-  ],
-}
+const dsRules = {}
 const validatePass = (_: any, value: any, callback: any) => {
   if (value === '') {
     callback(
@@ -1004,24 +991,6 @@ const saveHandler = () => {
               class="form-content_error"
               @submit.prevent
             >
-              <!-- <el-form-item prop="oid" :label="t('user.workspace')">
-                <el-select
-                  v-model="dsForm.oid"
-                  filterable
-                  :placeholder="
-                    $t('datasource.please_enter') + $t('common.empty') + $t('user.workspace')
-                  "
-                  @change="wsChanged"
-                >
-                  <el-option
-                    v-for="item in workspaces"
-                    :key="item.id"
-                    :label="item.name"
-                    :value="item.id"
-                  />
-                </el-select>
-              </el-form-item> -->
-
               <el-form-item class="private-list_form">
                 <template #label>
                   <div class="private-list">

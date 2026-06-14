@@ -28,7 +28,7 @@ class Settings(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
     )
-    PROJECT_NAME: str = "SQLBot"
+    PROJECT_NAME: str = "星通智数"
     #CONTEXT_PATH: str = "/sqlbot"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)

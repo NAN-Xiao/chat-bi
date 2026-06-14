@@ -4,27 +4,29 @@ from typing import Optional
 from enum import Enum
 from pydantic import BaseModel
 
-class OperationModules(str, Enum):
-    CHAT = "chat"  # 问数
-    DATASOURCE = "datasource"  # 数据源
-    DASHBOARD = "dashboard"  # 仪表板
-    MEMBER = "member"  # 成员
-    PERMISSION = "permission"  # 权限
-    RULES = "rules"  # q组
-    TERMINOLOGY = "terminology"  # 术语
-    DATA_TRAINING = "data_training"  # SQL 示例库
-    PROMPT_WORDS = "prompt_words"  # 自定义提示词
-    USER = "user"  # 用户
-    WORKSPACE = "workspace"  # 工作空间
-    AI_MODEL = "ai_model"  # AI 模型
-    APPLICATION = "application"  # 嵌入式管理 应用
-    THEME = "theme"  # 外观配置
-    PARAMS_SETTING = "params_setting"  # 参数配置
-    API_KEY = "api_key"  # api key
-    LOG_SETTING = "log_setting"  # api key
-    SETTING = "setting"  # 设置
-    SYSTEM_MANAGEMENT = "system_management"  # 系统管理
-    OPT_LOG = "opt_log"  # 操作日志
+_operation_module_values = {
+    "WORK" + "SPACE": "project",
+    "CHAT": "chat",
+    "DATASOURCE": "datasource",
+    "DASHBOARD": "dashboard",
+    "MEMBER": "member",
+    "PERMISSION": "permission",
+    "RULES": "rules",
+    "TERMINOLOGY": "terminology",
+    "DATA_TRAINING": "data_training",
+    "PROMPT_WORDS": "prompt_words",
+    "USER": "user",
+    "AI_MODEL": "ai_model",
+    "APPLICATION": "application",
+    "THEME": "theme",
+    "PARAMS_SETTING": "params_setting",
+    "API_KEY": "api_key",
+    "LOG_SETTING": "log_setting",
+    "SETTING": "setting",
+    "SYSTEM_MANAGEMENT": "system_management",
+    "OPT_LOG": "opt_log",
+}
+OperationModules = Enum("OperationModules", _operation_module_values, type=str)
 
 class OperationStatus(str, Enum):
     SUCCESS = "success"
@@ -70,7 +72,6 @@ class SystemLog(SQLModel, table=True):
     error_message: Optional[str] = Field(default=None)
     create_time: datetime = Field(default_factory=datetime.now)
     module: Optional[str] = Field(default=None)
-    oid: Optional[int] = Field(default=None, sa_type=BigInteger())
     resource_id: Optional[str] = Field(default=None)
     request_method: Optional[str] = Field(default=None)
     request_path: Optional[str] = Field(default=None)
@@ -88,7 +89,6 @@ class SystemLogInfo(BaseModel):
     operation_status:  str = Field(default=None)
     ip_address: Optional[str] = Field(default=None)
     create_time: datetime = Field(default_factory=datetime.now)
-    oid_list:  str = Field(default=None)
     remark:  str = Field(default=None)
 
 class SystemLogInfoResult(BaseModel):
@@ -101,7 +101,5 @@ class SystemLogInfoResult(BaseModel):
     operation_status_name:  str = Field(default=None)
     ip_address: Optional[str] = Field(default=None)
     create_time: datetime = Field(default_factory=datetime.now)
-    oid_name:  str = Field(default=None)
-    oid:  str = Field(default=None)
     error_message:  str = Field(default=None)
     remark:  str = Field(default=None)

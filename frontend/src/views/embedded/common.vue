@@ -31,7 +31,7 @@ const eventName = 'sqlbot_embedded_event'
 const busiFlag = ref('ds')
 
 const isWsAdmin = computed(() => {
-  return userStore.isAdmin || userStore.isSpaceAdmin
+  return userStore.isAdmin
 })
 const communicationCb = async (event: any) => {
   if (event.data?.eventName === eventName) {

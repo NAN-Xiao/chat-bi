@@ -2,6 +2,8 @@ import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
+  buildMixedUnitComboOptions,
+  buildMixedUnitData,
   checkIsPercent,
   formatNumber,
   getAxesWithFilter,
@@ -28,11 +30,25 @@ export class Line extends BaseG2Chart {
       y: axes.y,
       series: axes.series,
     }
-    if (axes.multiQuota.length > 0) {
+
+    const mixedUnitData = buildMixedUnitData(axes.x, axes.y, config.data)
+    if (mixedUnitData) {
+      const options = buildMixedUnitComboOptions(
+        this.chart.options(),
+        axes.x[0],
+        mixedUnitData,
+        this.showLabel
+      )
+      this.chart.options(options)
+      return
+    }
+
+    const multiQuota = axes.multiQuota.length > 0 ? axes.multiQuota : axes.y.map((item) => item.value)
+    if (axes.series.length === 0 && multiQuota.length > 1) {
       config = processMultiQuotaData(
         axes.x,
         config.y,
-        axes.multiQuota,
+        multiQuota,
         axes.multiQuotaName,
         config.data
       )

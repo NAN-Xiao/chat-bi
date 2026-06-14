@@ -10,7 +10,6 @@ from typing import Generic, TypeVar, Optional
 class TokenPayload(BaseModel):
     account: str | None = None
     id: int | None = None
-    oid: int | None = None
     
 class Token(SQLModel):
     access_token: str

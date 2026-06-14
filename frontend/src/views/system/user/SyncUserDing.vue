@@ -25,7 +25,7 @@
           </template>
         </el-input>
         <div
-          class="max-height_workspace"
+          class="max-height-project"
           :class="{ 'mt-8': !isLazy }"
           :style="isLazy ? { maxHeight: '100%' } : {}"
         >
@@ -70,11 +70,11 @@
       <div class="p-16 w-full">
         <div class="flex-between mb-16" style="margin: 0 16px">
           <span class="lighter">
-            {{ $t('workspace.selected_2_people', { msg: checkTableList.length }) }}
+            {{ $t('project.selected_2_people', { msg: checkTableList.length }) }}
           </span>
 
-          <el-button text @click="clearWorkspaceAll">
-            {{ $t('workspace.clear') }}
+          <el-button text @click="clearProjectAll">
+            {{ $t('project.clear') }}
           </el-button>
         </div>
         <div
@@ -99,7 +99,7 @@
             >
           </div>
           <el-button class="close-btn" text>
-            <el-icon size="16" @click="clearWorkspace(ele)"><Close /></el-icon>
+            <el-icon size="16" @click="clearProject(ele)"><Close /></el-icon>
           </el-button>
         </div>
       </div>
@@ -135,8 +135,8 @@ import { computed, nextTick, ref, watch } from 'vue'
 const checkAll = ref(false)
 const existingUser = ref(false)
 const isIndeterminate = ref(false)
-const checkedWorkspace = ref<any[]>([])
-const workspace = ref<any[]>([])
+const checkedProject = ref<any[]>([])
+const project = ref<any[]>([])
 const search = ref('')
 const dialogTitle = ref('')
 const organizationUserRef = ref()
@@ -156,8 +156,8 @@ const isLazy = ref(true)
 const treeKey = ref(0)
 const wecomDeptCache = ref(new Map<string, any[]>())
 
-const workspaceWithKeywords = computed(() => {
-  return workspace.value.filter((ele: any) =>
+const projectWithKeywords = computed(() => {
+  return project.value.filter((ele: any) =>
     (ele.name.toLowerCase() as string).includes(search.value.toLowerCase())
   )
 })
@@ -203,15 +203,15 @@ watch(search, () => {
 watch(isLazy, async () => {
   search.value = ''
   checkTableList.value = []
-  checkedWorkspace.value = []
+  checkedProject.value = []
   defaultCheckedKeys.value = []
   wecomDeptCache.value.clear()
   loading.value = true
-  const systemWorkspaceList = await modelApi.platform(oid, isLazy.value ? 1 : 0)
+  const platformUserTree = await modelApi.platform(platformOriginId, isLazy.value ? 1 : 0)
   organizationUserList.value = isLazy.value
-    ? stripDeptChildren(systemWorkspaceList.tree || [])
-    : systemWorkspaceList.tree || []
-  rawTree = cloneDeep(systemWorkspaceList.tree)
+    ? stripDeptChildren(platformUserTree.tree || [])
+    : platformUserTree.tree || []
+  rawTree = cloneDeep(platformUserTree.tree)
   loading.value = false
 })
 
@@ -245,11 +245,11 @@ const handleCheck = () => {
   })
 }
 
-const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
+const handleCheckedProjectChange = (value: CheckboxValueType[]) => {
   const checkedCount = value.length
-  checkAll.value = checkedCount === workspaceWithKeywords.value.length
-  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
-  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
+  checkAll.value = checkedCount === projectWithKeywords.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < projectWithKeywords.value.length
+  const tableNameArr = projectWithKeywords.value.map((ele: any) => ele.name)
   checkTableList.value = [
     ...new Set([
       ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
@@ -258,7 +258,7 @@ const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
   ]
   organizationUserRef.value.setCheckedKeys(checkTableList.value.map((ele: any) => ele.id))
 }
-let oid: any = null
+let platformOriginId: any = null
 
 const buildWecomDeptCache = (tree: any[]) => {
   const cache = new Map<string, any[]>()
@@ -289,14 +289,14 @@ const stripDeptChildren = (nodes: any[]) => {
 
 const loadNode = (node: any, resolve: any) => {
   if (node.level === 0) {
-    modelApi.platform(oid, 1).then((res: any) => {
+    modelApi.platform(platformOriginId, 1).then((res: any) => {
       resolve(stripDeptChildren(res.tree || []))
     })
     return
   }
-  if (oid === 6) {
+  if (platformOriginId === 6) {
     const deptChildren = wecomDeptCache.value.get(node.data.id) || []
-    modelApi.platform(oid, 1, node.data.id).then((res: any) => {
+    modelApi.platform(platformOriginId, 1, node.data.id).then((res: any) => {
       resolve(stripDeptChildren([...(res.tree || []), ...deptChildren]))
       nextTick(() => {
         organizationUserRef.value?.setChecked(node.data.id, false, true)
@@ -304,7 +304,7 @@ const loadNode = (node: any, resolve: any) => {
     })
     return
   }
-  modelApi.platform(oid, 1, node.data.id).then((res: any) => {
+  modelApi.platform(platformOriginId, 1, node.data.id).then((res: any) => {
     resolve(stripDeptChildren(res.tree || []))
     nextTick(() => {
       organizationUserRef.value?.setChecked(node.data.id, false, true)
@@ -318,22 +318,22 @@ const open = async (id: any, title: any) => {
   dialogTitle.value = title
   loading.value = true
   search.value = ''
-  oid = id
-  checkedWorkspace.value = []
+  platformOriginId = id
+  checkedProject.value = []
   checkTableList.value = []
   checkAll.value = false
   isIndeterminate.value = false
   const loadingInstance = ElLoading.service({ fullscreen: true })
-  const systemWorkspaceList = await modelApi.platform(id, isLazy.value ? 1 : 0)
+  const platformUserTree = await modelApi.platform(id, isLazy.value ? 1 : 0)
   if (isLazy.value && id === 6) {
-    buildWecomDeptCache(systemWorkspaceList.tree)
-    organizationUserList.value = stripDeptChildren(systemWorkspaceList.tree || [])
+    buildWecomDeptCache(platformUserTree.tree)
+    organizationUserList.value = stripDeptChildren(platformUserTree.tree || [])
   } else {
     organizationUserList.value = isLazy.value
-      ? stripDeptChildren(systemWorkspaceList.tree || [])
-      : systemWorkspaceList.tree || []
+      ? stripDeptChildren(platformUserTree.tree || [])
+      : platformUserTree.tree || []
   }
-  rawTree = cloneDeep(systemWorkspaceList.tree)
+  rawTree = cloneDeep(platformUserTree.tree)
   loadingInstance?.close()
   loading.value = false
   centerDialogVisible.value = true
@@ -347,7 +347,7 @@ const handleConfirm = () => {
         name: ele.name,
         email: ele.options.email || '',
       })),
-      origin: oid,
+      origin: platformOriginId,
       cover: existingUser.value,
     })
     .then((res: any) => {
@@ -356,16 +356,16 @@ const handleConfirm = () => {
     })
 }
 
-const clearWorkspace = (val: any) => {
-  checkedWorkspace.value = checkedWorkspace.value.filter((ele: any) => ele.id !== val.id)
+const clearProject = (val: any) => {
+  checkedProject.value = checkedProject.value.filter((ele: any) => ele.id !== val.id)
   checkTableList.value = checkTableList.value.filter((ele: any) => ele.id !== val.id)
-  handleCheckedWorkspaceChange(checkedWorkspace.value)
+  handleCheckedProjectChange(checkedProject.value)
 }
 
-const clearWorkspaceAll = () => {
-  checkedWorkspace.value = []
+const clearProjectAll = () => {
+  checkedProject.value = []
   checkTableList.value = []
-  handleCheckedWorkspaceChange([])
+  handleCheckedProjectChange([])
 }
 
 defineExpose({
@@ -486,7 +486,7 @@ defineExpose({
     margin-top: 8px;
   }
 
-  .max-height_workspace {
+  .max-height-project {
     max-height: calc(100% - 24px);
     overflow-y: auto;
   }

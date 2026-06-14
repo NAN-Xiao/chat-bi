@@ -17,7 +17,7 @@ from common.core.deps import SessionDep, Trans
 from common.utils.embedding_threads import run_save_terminology_embeddings
 
 
-def get_terminology_base_query(oid: int, name: Optional[str] = None):
+def get_terminology_base_query(name: Optional[str] = None):
     """
     获取术语查询的基础查询结构
     """
@@ -28,7 +28,7 @@ def get_terminology_base_query(oid: int, name: Optional[str] = None):
         # 步骤1：先找到所有匹配的节点ID（无论是父节点还是子节点）
         matched_ids_subquery = (
             select(Terminology.id)
-            .where(and_(Terminology.word.ilike(keyword_pattern), Terminology.oid == oid))
+            .where(Terminology.word.ilike(keyword_pattern))
             .subquery()
         )
 
@@ -48,19 +48,19 @@ def get_terminology_base_query(oid: int, name: Optional[str] = None):
     else:
         parent_ids_subquery = (
             select(Terminology.id)
-            .where(and_(Terminology.pid.is_(None), Terminology.oid == oid))
+            .where(Terminology.pid.is_(None))
         )
 
     return parent_ids_subquery, child
 
 
-def build_terminology_query(session: SessionDep, oid: int, name: Optional[str] = None,
+def build_terminology_query(session: SessionDep, name: Optional[str] = None,
                             paginate: bool = True, current_page: int = 1, page_size: int = 10,
                             dslist: Optional[list[int]] = None):
     """
     构建术语查询的通用方法
     """
-    parent_ids_subquery, child = get_terminology_base_query(oid, name)
+    parent_ids_subquery, child = get_terminology_base_query(name)
 
     # 添加数据源筛选条件
     if dslist is not None and len(dslist) > 0:
@@ -155,7 +155,7 @@ def build_terminology_query(session: SessionDep, oid: int, name: Optional[str] =
             CoreDatasource,
             CoreDatasource.id == datasource_names_subquery.c.ds_id
         )
-        .where(and_(Terminology.id.in_(paginated_parent_ids), Terminology.oid == oid))
+        .where(Terminology.id.in_(paginated_parent_ids))
         .group_by(
             Terminology.id,
             Terminology.word,
@@ -196,31 +196,31 @@ def execute_terminology_query(session: SessionDep, stmt) -> List[TerminologyInfo
 
 
 def page_terminology(session: SessionDep, current_page: int = 1, page_size: int = 10,
-                     name: Optional[str] = None, oid: Optional[int] = 1, dslist: Optional[list[int]] = None):
+                     name: Optional[str] = None, dslist: Optional[list[int]] = None):
     """
     分页查询术语（原方法保持不变）
     """
     stmt, total_count, total_pages, current_page, page_size = build_terminology_query(
-        session, oid, name, True, current_page, page_size, dslist
+        session, name, True, current_page, page_size, dslist
     )
     _list = execute_terminology_query(session, stmt)
 
     return current_page, page_size, total_count, total_pages, _list
 
 
-def get_all_terminology(session: SessionDep, name: Optional[str] = None, oid: Optional[int] = 1):
+def get_all_terminology(session: SessionDep, name: Optional[str] = None):
     """
     获取所有术语（不分页）
     """
     stmt, total_count, total_pages, current_page, page_size = build_terminology_query(
-        session, oid, name, False
+        session, name, False
     )
     _list = execute_terminology_query(session, stmt)
 
     return _list
 
 
-def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int, trans: Trans,
+def create_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans,
                        skip_embedding: bool = False):
     """
     创建单个术语记录
@@ -247,7 +247,6 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int, tra
         word=info.word.strip(),
         create_time=create_time,
         description=info.description.strip(),
-        oid=oid,
         specific_ds=specific_ds,
         enabled=info.enabled,
         datasource_ids=datasource_ids
@@ -264,10 +263,9 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int, tra
         else:
             words.append(child_word.strip())
 
-    # 基础查询条件（word 和 oid 必须满足）
+    # 基础查询条件
     base_query = and_(
-        Terminology.word.in_(words),
-        Terminology.oid == oid
+        Terminology.word.in_(words)
     )
 
     # 构建查询
@@ -313,7 +311,6 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int, tra
                     pid=parent.id,
                     word=other_word.strip(),
                     create_time=create_time,
-                    oid=oid,
                     enabled=info.enabled,
                     specific_ds=specific_ds,
                     datasource_ids=datasource_ids
@@ -333,7 +330,7 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, oid: int, tra
     return parent.id
 
 
-def batch_create_terminology(session: SessionDep, info_list: List[TerminologyInfo], oid: int, trans: Trans):
+def batch_create_terminology(session: SessionDep, info_list: List[TerminologyInfo], trans: Trans):
     """
     批量创建术语记录（复用单条插入逻辑）
     """
@@ -391,7 +388,7 @@ def batch_create_terminology(session: SessionDep, info_list: List[TerminologyInf
 
     # 预加载数据源名称到ID的映射
     datasource_name_to_id = {}
-    datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.oid == oid)
+    datasource_stmt = select(CoreDatasource.id, CoreDatasource.name)
     datasource_result = session.execute(datasource_stmt).all()
     for ds in datasource_result:
         datasource_name_to_id[ds.name.strip()] = ds.id
@@ -470,7 +467,7 @@ def batch_create_terminology(session: SessionDep, info_list: List[TerminologyInf
         for info in valid_records:
             try:
                 # 直接复用create_terminology方法，跳过embedding处理
-                terminology_id = create_terminology(session, info, oid, trans, skip_embedding=True)
+                terminology_id = create_terminology(session, info, trans, skip_embedding=True)
                 inserted_ids.append(terminology_id)
                 success_count += 1
 
@@ -500,9 +497,8 @@ def batch_create_terminology(session: SessionDep, info_list: List[TerminologyInf
     }
 
 
-def update_terminology(session: SessionDep, info: TerminologyInfo, oid: int, trans: Trans):
+def update_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans):
     count = session.query(Terminology).filter(
-        Terminology.oid == oid,
         Terminology.id == info.id
     ).count()
     if count == 0:
@@ -522,10 +518,9 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, oid: int, tra
         else:
             words.append(child.strip())
 
-    # 基础查询条件（word 和 oid 必须满足）
+    # 基础查询条件
     base_query = and_(
         Terminology.word.in_(words),
-        Terminology.oid == oid,
         or_(
             Terminology.pid != info.id,
             and_(Terminology.pid.is_(None), Terminology.id != info.id)
@@ -587,7 +582,6 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, oid: int, tra
                     pid=info.id,
                     word=other_word.strip(),
                     create_time=create_time,
-                    oid=oid,
                     enabled=info.enabled,
                     specific_ds=specific_ds,
                     datasource_ids=datasource_ids
@@ -684,11 +678,11 @@ def save_embeddings(session_maker, ids: List[int]):
 embedding_sql = f"""
 SELECT id, pid, word, similarity
 FROM
-(SELECT id, pid, word, oid, specific_ds, datasource_ids, enabled,
+(SELECT id, pid, word, specific_ds, datasource_ids, enabled,
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM terminology AS child
 ) TEMP
-WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} AND oid = :oid AND enabled = true
+WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} AND enabled = true
 AND (specific_ds = false OR specific_ds IS NULL)
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
@@ -697,11 +691,11 @@ LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
 embedding_sql_with_datasource = f"""
 SELECT id, pid, word, similarity
 FROM
-(SELECT id, pid, word, oid, specific_ds, datasource_ids, enabled,
+(SELECT id, pid, word, specific_ds, datasource_ids, enabled,
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM terminology AS child
 ) TEMP
-WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} AND oid = :oid AND enabled = true
+WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} AND enabled = true
 AND (
     (specific_ds = false OR specific_ds IS NULL)
      OR
@@ -712,7 +706,7 @@ LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
 """
 
 
-def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasource: int = None):
+def select_terminology_by_word(session: SessionDep, word: str, datasource: int = None):
     if word.strip() == "":
         return []
 
@@ -725,7 +719,7 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
             Terminology.word,
         )
         .where(
-            and_(text(":sentence ILIKE '%' || word || '%'"), Terminology.oid == oid, Terminology.enabled == True)
+            and_(text(":sentence ILIKE '%' || word || '%'"), Terminology.enabled == True)
         )
     )
 
@@ -762,11 +756,10 @@ def select_terminology_by_word(session: SessionDep, word: str, oid: int, datasou
 
                 if datasource is not None:
                     results = session.execute(text(embedding_sql_with_datasource),
-                                              {'embedding_array': str(embedding), 'oid': oid,
-                                               'datasource': datasource}).fetchall()
+                                              {'embedding_array': str(embedding), 'datasource': datasource}).fetchall()
                 else:
                     results = session.execute(text(embedding_sql),
-                                              {'embedding_array': str(embedding), 'oid': oid}).fetchall()
+                                              {'embedding_array': str(embedding)}).fetchall()
 
                 for row in results:
                     _list.append(Terminology(id=row.id, word=row.word, pid=row.pid))
@@ -845,11 +838,9 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'terminologies') -> str:
     return pretty_xml
 
 
-def get_terminology_template(session: SessionDep, question: str, oid: Optional[int] = 1,
+def get_terminology_template(session: SessionDep, question: str,
                              datasource: Optional[int] = None) -> tuple[str, list[dict]]:
-    if not oid:
-        oid = 1
-    _results = select_terminology_by_word(session, question, oid, datasource)
+    _results = select_terminology_by_word(session, question, datasource)
     if _results and len(_results) > 0:
         terminology = to_xml_string(_results)
         template = get_base_terminology_template().format(terminologies=terminology)

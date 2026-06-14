@@ -1,11 +1,12 @@
 import { dashboardApi } from '@/api/dashboard.ts'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { storeToRefs } from 'pinia'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 
 const dashboardStore = dashboardStoreWithOut()
+const datasourceContext = useDatasourceContextStore()
 const { componentData, canvasStyleData, canvasViewInfo } = storeToRefs(dashboardStore)
 
-const workspace_id = 'default' // temp
 export const load_resource_prepare = (params: any, callBack: (obj: any) => void) => {
   dashboardApi
     .load_resource(params)
@@ -14,7 +15,7 @@ export const load_resource_prepare = (params: any, callBack: (obj: any) => void)
         id: canvasInfo.id,
         name: canvasInfo.name,
         pid: canvasInfo.pid,
-        workspaceId: canvasInfo.workspace_id,
+        datasource: canvasInfo.datasource,
         status: canvasInfo.status,
         type: canvasInfo.type,
         createName: canvasInfo.create_name,
@@ -22,6 +23,7 @@ export const load_resource_prepare = (params: any, callBack: (obj: any) => void)
         createTime: canvasInfo.create_time,
         updateTime: canvasInfo.update_time,
         contentId: canvasInfo.content_id,
+        canEdit: canvasInfo.can_edit,
       }
       const canvasDataResult = JSON.parse(canvasInfo.component_data)
       const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)
@@ -81,13 +83,17 @@ export const saveDashboardResource = (params: any, callBack: Function) => {
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 export const saveDashboardResourceTarget = (params: any, commonParams: any, callBack: Function) => {
-  params['workspace_id'] = workspace_id
-  dashboardApi.check_name(params).then((resCheck: any) => {
+  const requestBaseParams = {
+    ...params,
+    datasource:
+      params.datasource || dashboardStore.dashboardInfo.datasource || datasourceContext.datasourceId,
+  }
+  dashboardApi.check_name(requestBaseParams).then((resCheck: any) => {
     if (resCheck) {
-      if (params.opt === 'newLeaf') {
+      if (requestBaseParams.opt === 'newLeaf') {
         // create canvas
         const requestParams = {
-          ...params,
+          ...requestBaseParams,
           component_data: JSON.stringify(commonParams.componentData),
           canvas_style_data: JSON.stringify(commonParams.canvasStyleData),
           canvas_view_info: JSON.stringify(commonParams.canvasViewInfo),
@@ -95,23 +101,25 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
         dashboardApi.create_canvas(requestParams).then((res: any) => {
           dashboardStore.updateDashboardInfo({
             id: res.id,
-            pid: params.pid,
-            name: params.name,
+            pid: requestBaseParams.pid,
+            datasource: requestBaseParams.datasource,
+            name: requestBaseParams.name,
             dataState: 'ready',
+            canEdit: true,
           })
           callBack(res)
         })
-      } else if (params.opt === 'newFolder') {
-        dashboardApi.create_resource(params).then((res: any) => {
+      } else if (requestBaseParams.opt === 'newFolder') {
+        dashboardApi.create_resource(requestBaseParams).then((res: any) => {
           callBack(res)
         })
-      } else if (params.opt === 'rename') {
-        dashboardApi.update_resource(params).then((res: any) => {
+      } else if (requestBaseParams.opt === 'rename') {
+        dashboardApi.update_resource(requestBaseParams).then((res: any) => {
           callBack(res)
         })
-      } else if (params.opt === 'updateLeaf') {
+      } else if (requestBaseParams.opt === 'updateLeaf') {
         const requestParams = {
-          ...params,
+          ...requestBaseParams,
           component_data: JSON.stringify(commonParams.componentData),
           canvas_style_data: JSON.stringify(commonParams.canvasStyleData),
           canvas_view_info: JSON.stringify(commonParams.canvasViewInfo),

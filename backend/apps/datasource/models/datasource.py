@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Column, Text, BigInteger, DateTime, Identity, Index, UniqueConstraint
+from sqlalchemy import Column, Text, BigInteger, DateTime, Identity, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
 
@@ -19,7 +19,6 @@ class CoreDatasource(SQLModel, table=True):
     create_by: int = Field(sa_column=Column(BigInteger()))
     status: str = Field(max_length=64, nullable=True)
     num: str = Field(max_length=256, nullable=True)
-    oid: int = Field(sa_column=Column(BigInteger()))
     table_relation: List = Field(sa_column=Column(JSONB, nullable=True))
     embedding: str = Field(sa_column=Column(Text, nullable=True))
     recommended_config: int = Field(sa_column=Column(BigInteger()))
@@ -36,7 +35,7 @@ class CoreDatasourceUser(SQLModel, table=True):
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
     ds_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
     user_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
-    oid: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    role: str = Field(default="viewer", sa_column=Column(String(32), nullable=False, server_default="viewer"))
     create_by: int = Field(sa_column=Column(BigInteger(), nullable=True))
     create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
 
@@ -87,7 +86,6 @@ class CreateDatasource(BaseModel):
     create_by: int = 0
     status: str = ''
     num: str = ''
-    oid: int = 1
     tables: List[CoreTable] = []
     recommended_config: int = 1
 

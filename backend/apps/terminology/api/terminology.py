@@ -26,12 +26,12 @@ router = APIRouter(tags=["Terminology"], prefix="/system/terminology")
 
 
 @router.get("/page/{current_page}/{page_size}", summary=f"{PLACEHOLDER_PREFIX}get_term_page")
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
-                word: Optional[str] = Query(None, description="搜索术语(可选)"),
+    word: Optional[str] = Query(None, description="搜索术语(可选)"),
                 dslist: Optional[list[int]] = Query(None, description="数据集ID集合(可选)")):
     current_page, page_size, total_count, total_pages, _list = page_terminology(session, current_page, page_size, word,
-                                                                                current_user.oid, dslist)
+                                                                                dslist)
 
     return {
         "current_page": current_page,
@@ -43,26 +43,25 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
 
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}create_or_update_term")
-@require_permissions(permission=SqlbotPermission(role=['ws_admin'], type='ds', keyExpression="info.datasource_ids"))
+@require_permissions(permission=SqlbotPermission(role=['project_admin'], type='ds', keyExpression="info.datasource_ids"))
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.TERMINOLOGY,resource_id_expr='info.id', result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, trans: Trans, info: TerminologyInfo):
-    oid = current_user.oid
     if info.id:
-        return update_terminology(session, info, oid, trans)
+        return update_terminology(session, info, trans)
     else:
-        return create_terminology(session, info, oid, trans)
+        return create_terminology(session, info, trans)
 
 
 @router.delete("", summary=f"{PLACEHOLDER_PREFIX}delete_term")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.TERMINOLOGY,resource_id_expr='id_list'))
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def delete(session: SessionDep, id_list: list[int]):
     delete_terminology(session, id_list)
 
 
 @router.get("/{id}/enable/{enabled}", summary=f"{PLACEHOLDER_PREFIX}enable_term")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.TERMINOLOGY,resource_id_expr='id'))
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def enable(session: SessionDep, id: int, enabled: bool, trans: Trans):
     enable_terminology(session, id, enabled, trans)
 
@@ -72,7 +71,7 @@ async def enable(session: SessionDep, id: int, enabled: bool, trans: Trans):
 async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
                        word: Optional[str] = Query(None, description="搜索术语(可选)")):
     def inner():
-        _list = get_all_terminology(session, word, oid=current_user.oid)
+        _list = get_all_terminology(session, word)
 
         data_list = []
         for obj in _list:
@@ -165,7 +164,7 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 
 @router.post("/uploadExcel", summary=f"{PLACEHOLDER_PREFIX}upload_term")
 @system_log(LogConfig(operation_type=OperationType.IMPORT, module=OperationModules.TERMINOLOGY))
-@require_permissions(permission=SqlbotPermission(role=['ws_admin']))
+@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile = File(...)):
     ALLOWED_EXTENSIONS = {"xlsx", "xls"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
@@ -177,8 +176,6 @@ async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile
     save_path = os.path.join(path, filename)
     with open(save_path, "wb") as f:
         f.write(await file.read())
-
-    oid = current_user.oid
 
     use_cols = [0, 1, 2, 3, 4]
 
@@ -221,7 +218,7 @@ async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile
                 import_data.append(TerminologyInfo(word=word, description=description, other_words=other_words,
                                                    datasource_names=datasource_names, specific_ds=specific_ds))
 
-        res = batch_create_terminology(session, import_data, oid, trans)
+        res = batch_create_terminology(session, import_data, trans)
 
         failed_records = res['failed_records']
 

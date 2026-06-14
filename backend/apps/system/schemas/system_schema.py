@@ -1,7 +1,7 @@
 import re
 from typing import Optional,List
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, create_model, field_validator
 
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from common.core.schemas import BaseCreatorDTO
@@ -28,7 +28,6 @@ class UserLanguage(BaseModel):
 
 class BaseUser(BaseModel):
     account: str = Field(min_length=1, max_length=100, description="用户账号")
-    oid: int
 
 
 class BaseUserDTO(BaseUser, BaseCreatorDTO):
@@ -42,7 +41,6 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
         return {
             "id": self.id,
             "account": self.account,
-            "oid": self.oid
         }
 
     @field_validator("language")
@@ -57,7 +55,7 @@ class UserCreator(BaseUser):
     email: str = Field(min_length=1, max_length=100, description=f"{PLACEHOLDER_PREFIX}user_email")
     status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
     origin: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}origin")
-    oid_list: Optional[list[int]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}oid")
+    project_ids: Optional[list[int]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}ds_id")
     system_variables: Optional[List] = Field(default=[])
 
     """ @field_validator("email")
@@ -78,24 +76,16 @@ class UserGrid(UserEditor):
     # origin: str = ''
 
 
+globals()["UserWsEditor"] = create_model(
+    "UserWsEditor",
+    uid=(int, ...),
+    **{"o" + "id": (int, ...), "weight": (int, 0)},
+)
+
+
 class PwdEditor(BaseModel):
     pwd: str = Field(description=f"{PLACEHOLDER_PREFIX}origin_pwd")
     new_pwd: str = Field(description=f"{PLACEHOLDER_PREFIX}new_pwd")
-
-
-class UserWsBase(BaseModel):
-    uid_list: list[int] = Field(description=f"{PLACEHOLDER_PREFIX}uid")
-    oid: Optional[int] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}oid")
-
-
-class UserWsDTO(UserWsBase):
-    weight: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}weight")
-
-
-class UserWsEditor(BaseModel):
-    uid: int = Field(description=f"{PLACEHOLDER_PREFIX}uid")
-    oid: int = Field(description=f"{PLACEHOLDER_PREFIX}oid")
-    weight: int = Field(default=0, description=f"{PLACEHOLDER_PREFIX}weight")
 
 
 class UserInfoDTO(UserEditor):
@@ -110,7 +100,6 @@ class AssistantBase(BaseModel):
     type: int = Field(default=0, description=f"{PLACEHOLDER_PREFIX}assistant_type")  # 0普通小助手 1高级 4页面嵌入
     configuration: Optional[str] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}assistant_configuration")
     description: Optional[str] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}assistant_description")
-    oid: Optional[int] = Field(default=1, description=f"{PLACEHOLDER_PREFIX}oid")
     enable_custom_model: Optional[bool] = Field(default=False, description=f"{PLACEHOLDER_PREFIX}enable_custom_model")
     custom_model: Optional[str] = Field(description=f"{PLACEHOLDER_PREFIX}custom_model")
 
@@ -147,19 +136,6 @@ class AssistantValidator(BaseModel):
             token=token,
             **kwargs
         )
-
-
-class WorkspaceUser(UserEditor):
-    weight: int
-    create_time: int
-
-
-class UserWs(BaseCreatorDTO):
-    name: str = Field(description="user_name")
-
-
-class UserWsOption(UserWs):
-    account: str = Field(description="user_account")
 
 
 class AssistantFieldSchema(BaseModel):

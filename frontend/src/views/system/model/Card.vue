@@ -1,9 +1,7 @@
 <script lang="ts" setup>
 import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
-import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
-import icon_describe_outlined from '@/assets/svg/icon_describe_outlined.svg'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { get_supplier } from '@/entity/supplier'
 import { computed, ref, unref } from 'vue'
@@ -15,7 +13,6 @@ const props = withDefaults(
     id?: string
     isDefault?: boolean
     supplier?: number
-    num?: number
   }>(),
   {
     name: '-',
@@ -24,7 +21,6 @@ const props = withDefaults(
     id: '-',
     isDefault: false,
     supplier: 0,
-    num: 0,
   }
 )
 const errorMsg = ref('')
@@ -43,7 +39,7 @@ const showErrorMask = (msg?: string) => {
     errorMsg.value = ''
   }, 3000)
 }
-const emits = defineEmits(['edit', 'del', 'default', 'authorizedSpace', 'editWorkspaceList'])
+const emits = defineEmits(['edit', 'del', 'default'])
 
 const handleDefault = () => {
   emits('default')
@@ -57,12 +53,6 @@ const handleEdit = () => {
   emits('edit')
 }
 
-const handleEditWorkspaceList = () => {
-  emits('editWorkspaceList')
-}
-const handleAuthorizedSpace = () => {
-  emits('editWorkspaceList')
-}
 const buttonRef = ref()
 const popoverRef = ref()
 const onClickOutside = () => {
@@ -93,27 +83,6 @@ defineExpose({ showErrorMask })
     <div class="type-value">
       <span class="type">{{ $t('model.basic_model') }}</span>
       <span class="value"> {{ baseModel }}</span>
-    </div>
-    <div class="type-value">
-      <span class="type">{{ $t('authorized_space.authorized_space') }}</span>
-      <span class="value" style="display: flex; align-items: center">
-        {{ $t('permission.2', { msg: num }) }}
-        <el-tooltip
-          effect="dark"
-          :content="$t('authorized_space.authorized_space_list')"
-          placement="top"
-          offset="12"
-        >
-          <el-icon
-            class="hover-icon_with_bg"
-            style="cursor: pointer; margin-left: 8px"
-            size="16"
-            @click="handleEditWorkspaceList"
-          >
-            <icon_describe_outlined></icon_describe_outlined>
-          </el-icon>
-        </el-tooltip>
-      </span>
     </div>
     <div class="methods">
       <el-tooltip
@@ -159,16 +128,10 @@ defineExpose({ showErrorMask })
         virtual-triggering
         trigger="click"
         :teleported="false"
-        popper-class="popover-card_workspace"
+        popper-class="popover-card-project"
         placement="bottom-start"
       >
         <div class="content">
-          <div class="item" @click.stop="handleAuthorizedSpace">
-            <el-icon size="16">
-              <icon_moments_categories_outlined></icon_moments_categories_outlined>
-            </el-icon>
-            {{ $t('authorized_space.authorized_space') }}
-          </div>
           <div class="item" @click.stop="handleDel">
             <el-icon size="16">
               <delIcon></delIcon>
@@ -308,7 +271,7 @@ defineExpose({ showErrorMask })
 </style>
 
 <style lang="less">
-.popover-card_workspace.popover-card_workspace.popover-card_workspace {
+.popover-card-project.popover-card-project {
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border-radius: 6px;
   border: 1px solid #dee0e3;
@@ -318,16 +281,6 @@ defineExpose({ showErrorMask })
 
   .content {
     position: relative;
-
-    &::after {
-      position: absolute;
-      content: '';
-      top: 39px !important;
-      left: 0;
-      width: 100%;
-      height: 1px;
-      background: #dee0e3;
-    }
 
     .item {
       position: relative;

@@ -4,7 +4,7 @@ import { ref, toRefs, type PropType, computed } from 'vue'
 import ResizeHandle from '@/views/dashboard/canvas/ResizeHandle.vue'
 import DragHandle from '@/views/dashboard/canvas/DragHandle.vue'
 import ComponentBar from '@/views/dashboard/canvas/ComponentBar.vue'
-const emits = defineEmits(['enlargeView'])
+const emits = defineEmits(['enlargeView', 'editSql'])
 const shapeRef = ref(null)
 // Props
 const props = defineProps({
@@ -79,6 +79,7 @@ const dragDandleValue = computed(() => props.canEdit && !props.configItem.editin
       :show-position="'canvas'"
       :canvas-id="canvasId"
       @enlarge-view="() => emits('enlargeView')"
+      @edit-sql="() => emits('editSql')"
     ></component-bar>
     <template v-if="dragDandleValue">
       <drag-handle></drag-handle>

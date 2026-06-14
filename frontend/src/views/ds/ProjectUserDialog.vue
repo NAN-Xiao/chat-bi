@@ -64,11 +64,11 @@
       <div class="p-16 w-full">
         <div class="flex-between mb-16" style="margin: 0 16px">
           <span class="lighter">
-            {{ $t('workspace.selected_2_people', { msg: selectedUsers.length }) }}
+            {{ $t('project.selected_2_people', { msg: selectedUsers.length }) }}
           </span>
 
           <el-button text @click="clearAll">
-            {{ $t('workspace.clear') }}
+            {{ $t('project.clear') }}
           </el-button>
         </div>
         <div

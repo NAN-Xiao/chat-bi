@@ -19,6 +19,7 @@ import { cloneDeep } from 'lodash-es'
 
 const { t } = useI18n()
 const keywords = ref('')
+const projectFilter = ref('')
 const activeStep = ref(0)
 const dialogFormVisible = ref(false)
 const ruleConfigvVisible = ref(false)
@@ -57,11 +58,44 @@ const selectPermissionRef = ref()
 const tableListOptions = ref<any[]>([])
 const fieldListOptions = ref<any[]>([])
 const dsListOptions = ref<any[]>([])
+const permissionProjectIds = (row: any) => {
+  const ids = (row.permissions || [])
+    .map((item: any) => Number(item.ds_id))
+    .filter((item: number) => !Number.isNaN(item))
+  return [...new Set(ids)]
+}
+const permissionProjectNames = (row: any) => {
+  const projectMap = new Map<number, string>()
+  ;(row.permissions || []).forEach((item: any) => {
+    const id = Number(item.ds_id)
+    if (Number.isNaN(id)) return
+    projectMap.set(id, item.ds_name || `ID ${id}`)
+  })
+  return [...projectMap.values()]
+}
+const formatPermissionProjectSummary = (row: any) => {
+  const names = permissionProjectNames(row)
+  return names.length ? names.join('、') : t('permission.no_project_bound')
+}
+const permissionProjectOptions = computed(() => {
+  const projectMap = new Map<number, string>()
+  ruleList.value.forEach((rule: any) => {
+    ;(rule.permissions || []).forEach((item: any) => {
+      const id = Number(item.ds_id)
+      if (Number.isNaN(id)) return
+      projectMap.set(id, item.ds_name || `ID ${id}`)
+    })
+  })
+  return [...projectMap.entries()].map(([id, name]) => ({ id, name }))
+})
 const ruleListWithSearch = computed(() => {
-  if (!keywords.value) return ruleList.value
-  return ruleList.value.filter((ele) =>
-    ele.name.toLowerCase().includes(keywords.value.toLowerCase())
-  )
+  return ruleList.value.filter((ele) => {
+    const matchedKeyword =
+      !keywords.value || ele.name.toLowerCase().includes(keywords.value.toLowerCase())
+    const matchedProject =
+      !projectFilter.value || permissionProjectIds(ele).includes(Number(projectFilter.value))
+    return matchedKeyword && matchedProject
+  })
 })
 const tableColumnData = computed<any[]>(() => {
   if (!searchColumn.value) return columnForm.permissions
@@ -534,8 +568,22 @@ const columnRules = {
 <template>
   <div v-loading="searchLoading" class="permission no-padding">
     <div class="tool-left">
-      <span class="page-title">{{ $t('workspace.permission_configuration') }}</span>
+      <span class="page-title">{{ $t('project.permission_configuration') }}</span>
       <div>
+        <el-select
+          v-model="projectFilter"
+          clearable
+          filterable
+          style="width: 220px; margin-right: 12px"
+          :placeholder="$t('permission.filter_project')"
+        >
+          <el-option
+            v-for="item in permissionProjectOptions"
+            :key="item.id"
+            :label="item.name"
+            :value="item.id"
+          />
+        </el-select>
         <el-input
           v-model="keywords"
           clearable
@@ -559,7 +607,7 @@ const columnRules = {
     </div>
 
     <EmptyBackground
-      v-if="!!keywords && !ruleListWithSearch.length"
+      v-if="(!!keywords || !!projectFilter) && !ruleListWithSearch.length"
       :description="$t('datasource.relevant_content_found')"
       img-type="tree"
     />
@@ -582,6 +630,7 @@ const columnRules = {
             :name="ele.name"
             :type="ele.users.length"
             :num="ele.permissions.length"
+            :project-summary="formatPermissionProjectSummary(ele)"
             @edit="handleEditRule(ele)"
             @del="deleteHandler(ele)"
             @set-user="setUser(ele)"
@@ -589,7 +638,7 @@ const columnRules = {
         </el-col>
       </el-row>
     </div>
-    <template v-if="!keywords && !ruleListWithSearch.length && !searchLoading">
+    <template v-if="!keywords && !projectFilter && !ruleListWithSearch.length && !searchLoading">
       <EmptyBackground
         class="ed-empty_200"
         :description="$t('permission.no_permission_rule')"

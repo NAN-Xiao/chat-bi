@@ -1,5 +1,4 @@
 {
-  "i18n_default_workspace": "默認工作空間",
   "i18n_ds_name_exist": "名稱已存在",
   "i18n_concat_admin": "請聯繫管理員！",
   "i18n_exist": "{msg}已存在！",
@@ -10,7 +9,6 @@
   "i18n_format_invalid": "{key}格式不正確！",
   "i18n_login": {
     "account_pwd_error": "帳號或密碼錯誤！",
-    "no_associated_ws": "沒有關聯的工作空間，{msg}",
     "user_disable": "帳號已禁用，{msg}",
     "origin_error": "登入方式錯誤",
     "prohibit_auto_create": "禁止自動建立用戶，請先同步用戶",
@@ -21,11 +19,10 @@
     "email": "郵箱",
     "password": "密碼",
     "language_not_support": "系統不支援[{key}]語言！",
-    "ws_miss": "當前用戶不在工作空間[{ws}]中！",
     "name": "姓名",
     "status": "用戶狀態",
     "origin": "用戶來源",
-    "workspace": "工作空間",
+    "project": "專案",
     "role": "角色",
     "platform_user_id": "外部用戶唯一標識",
     "administrator": "管理員",
@@ -34,15 +31,12 @@
     "status_disabled": "已禁用",
     "local_creation": "本地建立"
   },
-  "i18n_ws": {
-    "title": "工作空間"
-  },
   "i18n_permission": {
     "only_admin": "僅支援管理員調用！",
     "no_permission": "無權調用{url}{msg}",
     "authenticate_invalid": "認證無效【{msg}】",
     "token_expired": "Token 已過期",
-    "only_ws_admin": "僅支援工作空間管理員調用！",
+    "only_project_admin": "僅支援專案管理員調用！",
     "permission_resource_limit": "沒有操作權限或資源不存在！"
   },
   "i18n_llm": {
@@ -147,7 +141,7 @@
     "operation_type_name": "操作類型",
     "operation_detail_info": "操作詳情",
     "user_name": "操作用戶",
-    "oid_name": "工作空間",
+    "project_name": "專案",
     "operation_status_name": "操作狀態",
     "error_message": "錯誤訊息",
     "ip_address": "IP 地址",
@@ -161,7 +155,7 @@
     "data_training": "SQL 範例庫",
     "prompt_words": "提示詞",
     "user": "用戶",
-    "workspace": "工作空間",
+    "project": "專案",
     "ai_model": "AI 模型",
     "application": "應用",
     "theme": "外觀配置",

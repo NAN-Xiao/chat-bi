@@ -16,7 +16,7 @@
             </el-icon>
           </template>
         </el-input>
-        <div class="mt-8 max-height_workspace">
+        <div class="mt-8 max-height-project">
           <el-checkbox
             v-model="checkAll"
             class="mb-8"
@@ -27,12 +27,12 @@
             {{ $t('datasource.select_all') }}
           </el-checkbox>
           <el-checkbox-group
-            v-model="checkedWorkspace"
+            v-model="checkedProject"
             class="checkbox-group-block"
-            @change="handleCheckedWorkspaceChange"
+            @change="handleCheckedProjectChange"
           >
             <el-checkbox
-              v-for="space in workspaceWithKeywords"
+              v-for="space in projectWithKeywords"
               :key="space.id"
               :label="space.name"
               :value="space"
@@ -56,11 +56,11 @@
       <div class="p-16 w-full">
         <div class="flex-between mb-16" style="margin: 0 16px">
           <span class="lighter">
-            {{ $t('workspace.selected_2_people', { msg: checkTableList.length }) }}
+            {{ $t('project.selected_2_people', { msg: checkTableList.length }) }}
           </span>
 
-          <el-button text @click="clearWorkspaceAll">
-            {{ $t('workspace.clear') }}
+          <el-button text @click="clearProjectAll">
+            {{ $t('project.clear') }}
           </el-button>
         </div>
         <div
@@ -81,7 +81,7 @@
             >
           </div>
           <el-button class="close-btn" text>
-            <el-icon size="16" @click="clearWorkspace(ele)"><Close /></el-icon>
+            <el-icon size="16" @click="clearProject(ele)"><Close /></el-icon>
           </el-button>
         </div>
       </div>
@@ -91,40 +91,40 @@
 
 <script lang="ts" setup>
 import { ref, computed, watch } from 'vue'
-import { workspaceUserList } from '@/api/workspace'
+import { userApi } from '@/api/user'
 import avatar_personal from '@/assets/svg/avatar_personal.svg'
 import Close from '@/assets/svg/icon_close_outlined_w.svg'
 import Search from '@/assets/svg/icon_search-outline_outlined.svg'
 import type { CheckboxValueType } from 'element-plus-secondary'
 const checkAll = ref(false)
 const isIndeterminate = ref(false)
-const checkedWorkspace = ref<any[]>([])
-const workspace = ref<any[]>([])
+const checkedProject = ref<any[]>([])
+const project = ref<any[]>([])
 const search = ref('')
 const loading = ref(false)
 const centerDialogVisible = ref(false)
 const checkTableList = ref([] as any[])
 
-const workspaceWithKeywords = computed(() => {
-  return workspace.value.filter((ele: any) => (ele.name as string).includes(search.value))
+const projectWithKeywords = computed(() => {
+  return project.value.filter((ele: any) => (ele.name as string).includes(search.value))
 })
 
 watch(search, () => {
-  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
-  checkedWorkspace.value = checkTableList.value.filter((ele: any) =>
+  const tableNameArr = projectWithKeywords.value.map((ele: any) => ele.name)
+  checkedProject.value = checkTableList.value.filter((ele: any) =>
     tableNameArr.includes(ele.name)
   )
-  const checkedCount = checkedWorkspace.value.length
-  checkAll.value = checkedCount === workspaceWithKeywords.value.length
-  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
+  const checkedCount = checkedProject.value.length
+  checkAll.value = checkedCount === projectWithKeywords.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < projectWithKeywords.value.length
 })
 const handleCheckAllChange = (val: CheckboxValueType) => {
-  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
-  checkedWorkspace.value = val
+  const tableNameArr = projectWithKeywords.value.map((ele: any) => ele.name)
+  checkedProject.value = val
     ? [
         ...new Set([
-          ...workspaceWithKeywords.value,
-          ...checkedWorkspace.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
+          ...projectWithKeywords.value,
+          ...checkedProject.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
         ]),
       ]
     : []
@@ -132,17 +132,17 @@ const handleCheckAllChange = (val: CheckboxValueType) => {
   checkTableList.value = val
     ? [
         ...new Set([
-          ...workspaceWithKeywords.value,
+          ...projectWithKeywords.value,
           ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
         ]),
       ]
     : checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name))
 }
-const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
+const handleCheckedProjectChange = (value: CheckboxValueType[]) => {
   const checkedCount = value.length
-  checkAll.value = checkedCount === workspaceWithKeywords.value.length
-  isIndeterminate.value = checkedCount > 0 && checkedCount < workspaceWithKeywords.value.length
-  const tableNameArr = workspaceWithKeywords.value.map((ele: any) => ele.name)
+  checkAll.value = checkedCount === projectWithKeywords.value.length
+  isIndeterminate.value = checkedCount > 0 && checkedCount < projectWithKeywords.value.length
+  const tableNameArr = projectWithKeywords.value.map((ele: any) => ele.name)
   checkTableList.value = [
     ...new Set([
       ...checkTableList.value.filter((ele: any) => !tableNameArr.includes(ele.name)),
@@ -154,30 +154,32 @@ const handleCheckedWorkspaceChange = (value: CheckboxValueType[]) => {
 const open = async (user: any) => {
   loading.value = true
   search.value = ''
-  checkedWorkspace.value = []
+  checkedProject.value = []
   checkAll.value = false
   checkTableList.value = []
   isIndeterminate.value = false
-  const systemWorkspaceList = await workspaceUserList({}, 1, 1000)
-  workspace.value = JSON.parse(JSON.stringify(systemWorkspaceList.items as any))
+  const systemUserList = await userApi.pager('', 1, 1000)
+  project.value = JSON.parse(
+    JSON.stringify((systemUserList.items || []).filter((ele: any) => Number(ele.id) !== 1) as any)
+  )
   if (user?.length) {
-    checkedWorkspace.value = workspace.value.filter((ele: any) => user.includes(ele.id))
-    checkTableList.value = [...checkedWorkspace.value]
-    handleCheckedWorkspaceChange(checkedWorkspace.value)
+    checkedProject.value = project.value.filter((ele: any) => user.includes(ele.id))
+    checkTableList.value = [...checkedProject.value]
+    handleCheckedProjectChange(checkedProject.value)
   }
   loading.value = false
   centerDialogVisible.value = true
 }
 
-const clearWorkspace = (val: any) => {
-  checkedWorkspace.value = checkedWorkspace.value.filter((ele: any) => ele.id !== val.id)
+const clearProject = (val: any) => {
+  checkedProject.value = checkedProject.value.filter((ele: any) => ele.id !== val.id)
   checkTableList.value = checkTableList.value.filter((ele: any) => ele.id !== val.id)
-  handleCheckedWorkspaceChange(checkedWorkspace.value)
+  handleCheckedProjectChange(checkedProject.value)
 }
 
-const clearWorkspaceAll = () => {
-  checkedWorkspace.value = []
-  handleCheckedWorkspaceChange([])
+const clearProjectAll = () => {
+  checkedProject.value = []
+  handleCheckedProjectChange([])
 }
 
 defineExpose({
@@ -293,7 +295,7 @@ defineExpose({
     margin-top: 8px;
   }
 
-  .max-height_workspace {
+  .max-height-project {
     max-height: calc(100% - 24px);
     overflow-y: auto;
   }

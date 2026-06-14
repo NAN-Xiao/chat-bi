@@ -7,7 +7,7 @@ export const updateAssistant = (data: any) => request.put('/system/assistant', d
 export const saveAssistant = (data: any) => request.post('/system/assistant', data)
 export const getOne = (id: any) => request.get(`/system/assistant/${id}`)
 export const delOne = (id: any) => request.delete(`/system/assistant/${id}`)
-export const dsApi = (id: any) => request.get(`/datasource/ws/${id}`)
+export const dsApi = () => request.get('/datasource/list')
 
 export const embeddedApi = {
   getList: (pageNum: any, pageSize: any, params: any) =>

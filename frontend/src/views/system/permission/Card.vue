@@ -8,6 +8,7 @@ withDefaults(
     name: string
     type: string
     num: string
+    projectSummary?: string
     id?: string
   }>(),
   {
@@ -15,6 +16,7 @@ withDefaults(
     type: '-',
     id: '-',
     num: '-',
+    projectSummary: '-',
   }
 )
 
@@ -50,6 +52,12 @@ const setUser = () => {
       <span class="value"> {{ $t('permission.2', { msg: num }) }}</span>
     </div>
     <div class="type-value">
+      <span class="type">{{ $t('permission.project_database') }}</span>
+      <span class="value ellipsis project-summary" :title="projectSummary">
+        {{ projectSummary }}
+      </span>
+    </div>
+    <div class="type-value">
       <span class="type">{{ $t('permission.restricted_user') }}</span>
       <span class="value"> {{ $t('permission.238_people', { msg: type }) }}</span>
     </div>
@@ -79,7 +87,7 @@ const setUser = () => {
 <style lang="less" scoped>
 .card {
   width: 100%;
-  height: 176px;
+  height: 204px;
   border: 1px solid #dee0e3;
   padding: 16px;
   border-radius: 12px;
@@ -117,6 +125,10 @@ const setUser = () => {
 
     .value {
       margin-left: 16px;
+    }
+
+    .project-summary {
+      max-width: 180px;
     }
   }
 

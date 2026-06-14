@@ -8,7 +8,6 @@ import { convertFilterText, FilterText } from '@/components/filter-text'
 import { DrawerMain } from '@/components/drawer-main'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import { audit } from '@/api/audit.ts'
-import { workspaceList } from '@/api/workspace.ts'
 import { userApi } from '@/api/auth.ts'
 import icon_success from '@/assets/svg/icon_success.svg'
 import icon_error from '@/assets/svg/icon_error.svg'
@@ -23,7 +22,6 @@ const drawerMainRef = ref()
 
 onMounted(() => {
   search()
-  initWorkspace()
   initUsers()
   initOptions()
 })
@@ -172,14 +170,6 @@ const filterOption = ref<any[]>([
     property: { placeholder: t('common.empty') + t('audit.operation_user_name') },
   },
   {
-    type: 'select',
-    option: [],
-    field: 'oid_list',
-    title: t('audit.oid_name'),
-    operate: 'in',
-    property: { placeholder: t('common.empty') + t('audit.oid_name') },
-  },
-  {
     type: 'enum',
     option: [
       { id: 'success', name: t('audit.success') },
@@ -234,12 +224,6 @@ const drawerMainOpen = async () => {
 const drawerMainClose = () => {
   drawerMainRef.value.close()
 }
-const initWorkspace = () => {
-  workspaceList().then((res) => {
-    filterOption.value[2].option = [...res]
-  })
-}
-
 const initUsers = () => {
   userApi.pager(1, 10000).then((res: any) => {
     filterOption.value[1].option = [{ id: 1, name: 'Administrator' }, ...res.items]
@@ -297,11 +281,6 @@ const initOptions = () => {
           <el-table-column :label="$t('audit.operation_user_name')" min-width="120"
             ><template #default="scope">
               {{ scope.row.user_name }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="word" :label="$t('audit.oid_name')" width="120">
-            <template #default="scope">
-              {{ scope.row.oid_name === '-1' ? '-' : scope.row.oid_name }}
             </template>
           </el-table-column>
           <el-table-column prop="word" :label="$t('audit.operation_status')" width="100">

@@ -40,8 +40,6 @@ async def downTemplate(trans):
             trans('i18n_user.account'): ['sqlbot1', 'sqlbot2'],
             trans('i18n_user.name'): ['sqlbot_employee1', 'sqlbot_employee2'],
             trans('i18n_user.email'): ['employee1@sqlbot.com', 'employee2@sqlbot.com'],
-            trans('i18n_user.workspace'): [trans('i18n_default_workspace'), trans('i18n_default_workspace')],
-            trans('i18n_user.role'): [trans('i18n_user.administrator'), trans('i18n_user.ordinary_member')],
             trans('i18n_user.status'): [trans('i18n_user.status_enabled'), trans('i18n_user.status_disabled')],
             trans('i18n_user.origin'): [trans('i18n_user.local_creation'), trans('i18n_user.local_creation')],
             trans('i18n_user.platform_user_id'): [None, None],
@@ -139,8 +137,6 @@ def get_i18n_head_list():
         'i18n_user.account',
         'i18n_user.name',
         'i18n_user.email',
-        'i18n_user.workspace',
-        'i18n_user.role',
         'i18n_user.status',
         'i18n_user.origin',
         'i18n_user.platform_user_id',
@@ -278,10 +274,6 @@ def validate_name(value: str) -> CellValidator:
     return CellValidator(True, value, None)  
 def validate_email(value: str) -> CellValidator:
     return CellValidator(True, value, None)
-def validate_workspace(value: str) -> CellValidator:
-    return CellValidator(True, value, None)
-def validate_role(value: str) -> CellValidator:
-    return CellValidator(True, value, None)
 def validate_status(value: str) -> CellValidator:
     if value == '已启用': return CellValidator(True, 1, None)
     if value == '已禁用': return CellValidator(True, 0, None)
@@ -296,8 +288,6 @@ _method_cache = {
     'validate_account': validate_account,
     'validate_name': validate_name,
     'validate_email': validate_email,
-    'validate_workspace': validate_workspace,
-    'validate_role': validate_role,
     'validate_status': validate_status,
     'validate_origin': validate_origin,
     'validate_platform_user_id': validate_platform_id,   

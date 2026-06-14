@@ -9,15 +9,12 @@ from fastapi import HTTPException, status, APIRouter
 # from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
-from sqlmodel import select
-
 from apps.chat.api.chat import create_chat, question_answer_inner
 from apps.chat.models.chat_model import ChatMcp, CreateChat, ChatStart, McpQuestion, McpAssistant, ChatQuestion, \
     ChatFinishStep, McpDs
 from apps.datasource.crud.datasource import get_datasource_list
-from apps.system.crud.user import authenticate, user_ws_options
+from apps.system.crud.user import authenticate
 from apps.system.crud.user import get_db_user
-from apps.system.models.system_model import UserWsModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.system_schema import BaseUserDTO, AssistantHeader
 from apps.system.schemas.system_schema import UserInfoDTO
@@ -66,11 +63,6 @@ def get_user(session: SessionDep, token: str):
     session_user = UserInfoDTO.model_validate(db_user.model_dump())
     session_user.isAdmin = session_user.id == 1 and session_user.account == 'admin'
     session_user.language = 'zh-CN'
-    if session_user.isAdmin:
-        session_user = session_user
-    ws_model: UserWsModel = session.exec(
-        select(UserWsModel).where(UserWsModel.uid == session_user.id, UserWsModel.oid == session_user.oid)).first()
-    session_user.weight = ws_model.weight if ws_model else -1
 
     session_user = UserInfoDTO.model_validate(session_user)
     if not session_user:
@@ -87,8 +79,6 @@ async def mcp_start(session: SessionDep, chat: ChatStart):
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect account or password")
 
-    if not user.oid or user.oid == 0:
-        raise HTTPException(status_code=400, detail="No associated workspace, Please contact the administrator")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     user_dict = user.to_dict()
     t = Token(access_token=create_access_token(
@@ -98,22 +88,9 @@ async def mcp_start(session: SessionDep, chat: ChatStart):
     return {"access_token": t.access_token, "chat_id": c.id}
 
 
-@router.post("/mcp_ws_list", operation_id="mcp_ws_list")
-async def ws_list(session: SessionDep, trans: Trans, token: str):
-    session_user = get_user(session, token)
-    return await user_ws_options(session, session_user.id, trans)
-
-
 @router.post("/mcp_ds_list", operation_id="mcp_datasource_list")
 async def datasource_list(session: SessionDep, trans: Trans, mcp_ds: McpDs):
     session_user = get_user(session, mcp_ds.token)
-    if mcp_ds.oid:
-        w_list = await user_ws_options(session, session_user.id, trans)
-        oid_list = [item.id for item in w_list]
-        if int(mcp_ds.oid) not in oid_list:
-            raise HTTPException(status_code=400, detail="The current user is not in the selected workspace")
-
-        session_user.oid = int(mcp_ds.oid)
     ds_list = get_datasource_list(session=session, user=session_user)
     result = []
     for item in ds_list:
@@ -139,13 +116,6 @@ async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
     lang = chat.lang
     if lang in ["zh-CN", "zh-TW", "en", "ko-KR"]:
         session_user.language = lang
-    if chat.oid:
-        w_list = await user_ws_options(session, session_user.id, trans)
-        oid_list = [item.id for item in w_list]
-        if int(chat.oid) not in oid_list:
-            raise HTTPException(status_code=400, detail="The current user is not in the selected workspace")
-
-        session_user.oid = int(chat.oid)
     ds_id: Optional[int] = None
     if chat.datasource_id:
         if isinstance(chat.datasource_id, str):
@@ -171,10 +141,10 @@ async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
 @router.post("/mcp_assistant", operation_id="mcp_assistant")
 async def mcp_assistant(session: SessionDep, chat: McpAssistant):
     session_user = BaseUserDTO(**{
-        "id": -1, "account": 'sqlbot-mcp-assistant', "oid": 1, "assistant_id": -1, "password": '', "language": "zh-CN"
+        "id": -1, "account": 'sqlbot-mcp-assistant', "assistant_id": -1, "password": '', "language": "zh-CN",
+        "name": "sqlbot-mcp-assistant", "email": "sqlbot-mcp-assistant@sqlbot.com"
     })
     # session_user: UserModel = get_db_user(session=session, user_id=1)
-    # session_user.oid = 1
     c = create_chat(session, session_user, CreateChat(origin=1), False)
 
     # build assistant param
