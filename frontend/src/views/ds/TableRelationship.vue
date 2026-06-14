@@ -13,10 +13,12 @@ const props = withDefaults(
   defineProps<{
     id: number
     dragging: boolean
+    readonly?: boolean
   }>(),
   {
     id: 0,
     dragging: false,
+    readonly: false,
   }
 )
 
@@ -179,6 +181,7 @@ const initGraph = () => {
         },
       },
       validateEdge({ edge }: any) {
+        if (props.readonly) return false
         const obj = edge.store.data
         if (!obj.target.port || obj.target.cell === obj.source.cell) return false
         return true
@@ -238,6 +241,7 @@ const initGraph = () => {
   )
 
   graph.on('node:mouseenter', ({ node }: any) => {
+    if (props.readonly) return
     node.addTools({
       name: 'button',
       args: {
@@ -401,6 +405,7 @@ const clickTable = (table: any) => {
 }
 
 const drop = (e: any) => {
+  if (props.readonly) return
   const obj = JSON.parse(e.dataTransfer.getData('table') || '{}')
   if (!obj.id) return
   clickTable({
@@ -410,6 +415,7 @@ const drop = (e: any) => {
   })
 }
 const save = () => {
+  if (props.readonly) return
   datasourceApi.relationSave(props.id, graph ? graph.toJSON().cells : []).then(() => {
     ElMessage({
       type: 'success',
@@ -445,12 +451,12 @@ const save = () => {
   </div>
   <div v-else id="container" v-loading="loading"></div>
   <div
-    v-show="dragging"
+    v-show="dragging && !readonly"
     class="drag-mask"
     @dragover.prevent.stop="dragover"
     @drop.prevent.stop="drop"
   ></div>
-  <div class="save-btn">
+  <div v-if="!readonly" class="save-btn">
     <el-button type="primary" @click="save">
       {{ t('common.save') }}
     </el-button>

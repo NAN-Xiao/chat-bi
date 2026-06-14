@@ -1232,6 +1232,16 @@ onMounted(async () => {
     --ed-button-hover-text-color: var(--ed-button-text-color);
     --ed-button-active-text-color: var(--ed-button-text-color);
     --ed-button-hover-link-text-color: var(--ed-button-text-color);
+
+    :deep(.ed-icon),
+    :deep(svg) {
+      color: var(--ed-button-text-color);
+    }
+
+    :deep(svg path) {
+      fill: currentColor !important;
+    }
+
     &:hover {
       background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
     }

@@ -36,7 +36,7 @@
     "no_permission": "No permission to call {url}{msg}",
     "authenticate_invalid": "Authentication invalid【{msg}】",
     "token_expired": "Token expired",
-    "only_project_admin": "Project administrator access required!",
+    "only_project_role": "Project viewer or editor access required!",
     "permission_resource_limit": "Access denied or resource not found!"
   },
   "i18n_llm": {

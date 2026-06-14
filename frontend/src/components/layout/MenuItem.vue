@@ -46,6 +46,10 @@ const MenuItem = defineComponent({
       type: Object,
       required: true,
     },
+    level: {
+      type: Number,
+      default: 0,
+    },
   },
   setup(props) {
     const router = useRouter()
@@ -85,7 +89,7 @@ const MenuItem = defineComponent({
             title: () => titleWithIcon({ title, icon }),
             default: () => [
               h(MenuItem, { menu: { meta: { title } }, class: 'subTitleMenu' }),
-              children.map((ele: any) => h(MenuItem, { menu: ele })),
+              children.map((ele: any) => h(MenuItem, { menu: ele, level: props.level + 1 })),
             ],
           }
         )
@@ -96,7 +100,11 @@ const MenuItem = defineComponent({
       const iconCom: any = iconMap[icon] ? ElIcon : null
       return h(
         ElMenuItem,
-        { index: path, onClick: () => handleMenuClick(props.menu) },
+        {
+          index: path,
+          class: props.level > 0 ? `menu-level-${props.level}` : '',
+          onClick: () => handleMenuClick(props.menu),
+        },
         {
           default: () => [
             h(

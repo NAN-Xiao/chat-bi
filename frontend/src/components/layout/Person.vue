@@ -2,8 +2,6 @@
 import { ref, computed } from 'vue'
 import Default_avatar_custom from '@/assets/img/Default-avatar.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
-import { useAppearanceStoreWithOut } from '@/stores/appearance'
-import icon_maybe_outlined from '@/assets/svg/icon-maybe_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_api_key from '@/assets/svg/icon-api_key.svg'
 import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
@@ -21,7 +19,6 @@ import { useCache } from '@/utils/useCache'
 
 const { wsCache } = useCache()
 const router = useRouter()
-const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
 const pwdFormRef = ref()
 const { t, locale } = useI18n()
@@ -33,7 +30,7 @@ defineProps({
 const name = computed(() => userStore.getName)
 const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
-const isAdmin = computed(() => userStore.isAdmin)
+const isAdmin = computed(() => userStore.isSystemAdminUser)
 const isLocalUser = computed(() => !userStore.getOrigin)
 
 const isClient = computed(() => {
@@ -80,10 +77,6 @@ const changeLanguage = (lang: string) => {
   userApi.language(param).then(() => {
     window.location.reload()
   })
-}
-
-const openHelp = () => {
-  window.open(appearanceStore.getHelp || 'https://dataease.cn/sqlbot/', '_blank')
 }
 
 const openPwd = () => {
@@ -175,12 +168,6 @@ const logout = async () => {
             </div>
           </div>
         </el-popover>
-        <div v-if="appearanceStore.getShowDoc" class="popover-item" @click="openHelp">
-          <el-icon size="16">
-            <icon_maybe_outlined></icon_maybe_outlined>
-          </el-icon>
-          <div class="datasource-name">{{ $t('common.help') }}</div>
-        </div>
         <div style="height: 4px; width: 100%"></div>
         <div v-if="!isClient" class="popover-item mr4" @click="logout">
           <el-icon size="16">

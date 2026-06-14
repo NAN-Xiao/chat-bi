@@ -281,7 +281,11 @@
         />
       </el-form-item>
       <el-form-item :label="$t('user.system_role')">
-        <el-select v-model="state.form.system_role" style="width: 240px">
+        <el-select
+          v-model="state.form.system_role"
+          popper-class="user-light-select-popper"
+          style="width: 240px"
+        >
           <el-option
             v-for="item in systemRoleOptions"
             :key="item.value"
@@ -299,6 +303,7 @@
               filterable
               collapse-tags
               collapse-tags-tooltip
+              popper-class="user-light-select-popper"
               style="width: 420px"
               :placeholder="$t('user.select_accessible_projects')"
               @change="handleProjectIdsChange"
@@ -340,6 +345,22 @@
                 </span>
               </template>
             </el-table-column>
+            <el-table-column :label="$t('user.project_role')" width="132">
+              <template #default="scope">
+                <el-select
+                  v-model="state.form.project_role_map[Number(scope.row.id)]"
+                  popper-class="user-light-select-popper"
+                  style="width: 112px"
+                >
+                  <el-option
+                    v-for="item in projectRoleOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </template>
+            </el-table-column>
             <el-table-column :label="$t('user.permission_strategy')" min-width="220">
               <template #default="scope">
                 <el-select
@@ -348,6 +369,7 @@
                   filterable
                   collapse-tags
                   collapse-tags-tooltip
+                  popper-class="user-light-select-popper"
                   style="width: 100%"
                   :placeholder="$t('user.select_permission_strategy')"
                 >
@@ -373,19 +395,15 @@
               <template #default="scope">
                 <div class="permission-summary">
                   <template v-if="getSelectedStrategiesByProject(scope.row.id).length">
-                    <el-tag
-                      v-for="item in getSelectedStrategiesByProject(scope.row.id).slice(0, 2)"
-                      :key="item.id"
-                      size="small"
-                    >
-                      {{ formatRuleGroupSummary(item, scope.row.id) }}
-                    </el-tag>
-                    <span
-                      v-if="getSelectedStrategiesByProject(scope.row.id).length > 2"
-                      class="more-strategy"
-                    >
-                      +{{ getSelectedStrategiesByProject(scope.row.id).length - 2 }}
-                    </span>
+                    <div class="summary-line" :title="formatTableAccessSummary(scope.row.id)">
+                      {{ formatTableAccessSummary(scope.row.id) }}
+                    </div>
+                    <div class="summary-line" :title="formatFieldAccessSummary(scope.row.id)">
+                      {{ formatFieldAccessSummary(scope.row.id) }}
+                    </div>
+                    <div class="summary-line" :title="formatRowAccessSummary(scope.row.id)">
+                      {{ formatRowAccessSummary(scope.row.id) }}
+                    </div>
                   </template>
                   <span v-else class="muted">{{ $t('user.project_access_only') }}</span>
                 </div>
@@ -454,6 +472,7 @@
           <div v-for="(_, index) in state.form.system_variables" :key="index" class="item">
             <el-select
               v-model="state.form.system_variables[index].variableId"
+              popper-class="user-light-select-popper"
               style="width: 236px"
               :placeholder="$t('datasource.Please_select')"
             >
@@ -484,6 +503,7 @@
               v-if="!state.form.system_variables[index].variableId"
               v-model="state.form.system_variables[index].variableValues"
               multiple
+              popper-class="user-light-select-popper"
               style="width: 236px"
               :placeholder="$t('datasource.Please_select')"
             >
@@ -495,6 +515,7 @@
               "
               v-model="state.form.system_variables[index].variableValues"
               multiple
+              popper-class="user-light-select-popper"
               style="width: 236px"
               :placeholder="$t('datasource.Please_select')"
             >
@@ -692,6 +713,7 @@ const defaultForm = {
   system_role: 'viewer',
   phoneNumber: '',
   project_ids: [],
+  project_role_map: {},
   project_permission_map: {},
   system_variables: [],
 }
@@ -701,7 +723,10 @@ const projectOptions = shallowRef<any[]>([])
 const permissionRuleGroups = shallowRef<any[]>([])
 const systemRoleOptions = computed(() => [
   { value: 'viewer', label: t('user.system_role_viewer') },
-  { value: 'tenant_admin', label: t('user.system_role_tenant_admin') },
+])
+const projectRoleOptions = computed(() => [
+  { value: 'viewer', label: t('datasource.project_role_viewer') },
+  { value: 'editor', label: t('datasource.project_role_editor') },
 ])
 const state = reactive<any>({
   tableData: [],
@@ -736,6 +761,20 @@ const parseJsonValue = (value: any, fallback: any) => {
   } catch (e) {
     return fallback
   }
+}
+
+const normalizeProjectRole = (role: any) => {
+  const value = String(role || '').trim().toLowerCase()
+  return value === 'editor' ? 'editor' : 'viewer'
+}
+
+const buildProjectRoleMap = (projectIds: number[], value: any = {}) => {
+  const source = parseJsonValue(value, {})
+  const result: any = {}
+  projectIds.forEach((id: number) => {
+    result[id] = normalizeProjectRole(source?.[id] || source?.[String(id)])
+  })
+  return result
 }
 
 const getProjectIdsFromRule = (rule: any): number[] => {
@@ -779,6 +818,53 @@ const formatRuleGroupSummary = (rule: any, projectId?: any) => {
   return parts.length ? parts.join(' / ') : t('permission.no_rule')
 }
 
+const getRuleProjectPermissions = (rule: any, projectId: any) => {
+  const id = Number(projectId)
+  return (rule.permissions || []).filter((item: any) => Number(item.ds_id) === id)
+}
+
+const formatTableAccessSummary = (projectId: any) => {
+  const tableNames = new Set<string>()
+  getSelectedStrategiesByProject(projectId).forEach((rule: any) => {
+    getRuleProjectPermissions(rule, projectId).forEach((permission: any) => {
+      if (permission.table_name) {
+        tableNames.add(permission.table_name)
+      }
+    })
+  })
+  if (!tableNames.size) {
+    return t('user.all_project_tables')
+  }
+  const names = Array.from(tableNames)
+  return names.length > 3
+    ? t('user.allowed_table_summary_more', { msg: names.slice(0, 3).join('、'), count: names.length - 3 })
+    : t('user.allowed_table_summary', { msg: names.join('、') })
+}
+
+const formatFieldAccessSummary = (projectId: any) => {
+  let restrictedCount = 0
+  getSelectedStrategiesByProject(projectId).forEach((rule: any) => {
+    getRuleProjectPermissions(rule, projectId).forEach((permission: any) => {
+      if (permission.type !== 'column') return
+      const list = Array.isArray(permission.permission_list)
+        ? permission.permission_list
+        : parseJsonValue(permission.permissions, [])
+      restrictedCount += (list || []).filter((item: any) => item.enable === false).length
+    })
+  })
+  return restrictedCount
+    ? t('user.denied_field_summary', { msg: restrictedCount })
+    : t('user.no_field_restriction')
+}
+
+const formatRowAccessSummary = (projectId: any) => {
+  let rowCount = 0
+  getSelectedStrategiesByProject(projectId).forEach((rule: any) => {
+    rowCount += getRuleProjectPermissions(rule, projectId).filter((item: any) => item.type === 'row').length
+  })
+  return rowCount ? t('user.row_filter_summary', { msg: rowCount }) : t('user.no_row_filter')
+}
+
 const selectedProjectRows = computed(() => {
   const ids = toNumberList(state.form.project_ids)
   return projectOptions.value.filter((item: any) => ids.includes(Number(item.id)))
@@ -807,6 +893,7 @@ const handleProjectIdsChange = (value: any[]) => {
     nextMap[id] = toNumberList(state.form.project_permission_map?.[id])
   })
   state.form.project_permission_map = nextMap
+  state.form.project_role_map = buildProjectRoleMap(ids, state.form.project_role_map)
 }
 
 const removeProjectAccess = (projectId: any) => {
@@ -815,6 +902,9 @@ const removeProjectAccess = (projectId: any) => {
   const nextMap = { ...(state.form.project_permission_map || {}) }
   delete nextMap[id]
   state.form.project_permission_map = nextMap
+  const nextRoleMap = { ...(state.form.project_role_map || {}) }
+  delete nextRoleMap[id]
+  state.form.project_role_map = nextRoleMap
 }
 
 const buildUserProjectPermissionMap = (userId: any, projectIds: number[]) => {
@@ -1100,6 +1190,7 @@ const editHandler = (row: any) => {
           ...row,
           system_role: row.system_role || 'viewer',
           project_ids: projectIds,
+          project_role_map: buildProjectRoleMap(projectIds, row.project_role_map),
           project_permission_map: buildUserProjectPermissionMap(row.id, projectIds),
           system_variables: (row.system_variables || []).map((ele: any) => ({
             ...ele,
@@ -1111,6 +1202,7 @@ const editHandler = (row: any) => {
           ...defaultForm,
           system_role: 'viewer',
           project_ids: [],
+          project_role_map: {},
           project_permission_map: {},
           system_variables: [],
         }
@@ -1195,6 +1287,7 @@ const onFormClose = () => {
     ...defaultForm,
     system_role: 'viewer',
     project_ids: [],
+    project_role_map: {},
     project_permission_map: {},
     system_variables: [],
   }
@@ -1247,7 +1340,7 @@ const formatVariableValues = () => {
 }
 
 const addTerm = () => {
-  const { account, email, name, status, system_role, project_ids } = state.form
+  const { account, email, name, status, system_role, project_ids, project_role_map } = state.form
   userApi
     .add({
       account,
@@ -1256,6 +1349,7 @@ const addTerm = () => {
       status,
       system_role,
       project_ids,
+      project_role_map: buildProjectRoleMap(toNumberList(project_ids), project_role_map),
       system_variables: formatVariableValues(),
     })
     .then((res: any) => syncUserPermissionStrategies(res?.id).then(() => res))
@@ -1270,7 +1364,19 @@ const addTerm = () => {
     })
 }
 const editTerm = () => {
-  const { account, id, create_time, email, language, name, project_ids, origin, status, system_role } =
+  const {
+    account,
+    id,
+    create_time,
+    email,
+    language,
+    name,
+    project_ids,
+    project_role_map,
+    origin,
+    status,
+    system_role,
+  } =
     state.form
   userApi
     .edit({
@@ -1281,6 +1387,7 @@ const editTerm = () => {
       language,
       name,
       project_ids,
+      project_role_map: buildProjectRoleMap(toNumberList(project_ids), project_role_map),
       origin,
       status,
       system_role,
@@ -1591,6 +1698,103 @@ onMounted(() => {
   }
 }
 .user-add-class {
+  .ed-drawer,
+  .ed-drawer__header,
+  .ed-drawer__body,
+  .ed-drawer__footer {
+    background: #fff !important;
+    color: #1f2329 !important;
+  }
+
+  .ed-drawer__header {
+    border-bottom: 1px solid #dee0e3;
+    margin-bottom: 0;
+    padding-bottom: 16px;
+  }
+
+  .ed-drawer__body {
+    padding-top: 16px;
+  }
+
+  .ed-drawer__footer {
+    border-top: 1px solid #dee0e3;
+  }
+
+  .ed-form-item__label,
+  .ed-radio,
+  .ed-checkbox,
+  .ed-switch__label,
+  .value-list,
+  .project-permission-panel {
+    color: #1f2329 !important;
+  }
+
+  .ed-input__wrapper,
+  .ed-select__wrapper,
+  .ed-textarea__inner,
+  .ed-input-number,
+  .ed-date-editor {
+    background-color: #fff !important;
+    border-color: #d0d3d6 !important;
+    box-shadow: 0 0 0 1px #d0d3d6 inset !important;
+    color: #1f2329 !important;
+  }
+
+  .ed-input__inner,
+  .ed-select__placeholder,
+  .ed-select__selected-item,
+  .ed-textarea__inner {
+    color: #1f2329 !important;
+  }
+
+  .ed-input__inner::placeholder,
+  .ed-textarea__inner::placeholder {
+    color: #8f959e !important;
+  }
+
+  .ed-input.is-disabled .ed-input__wrapper,
+  .ed-select.is-disabled .ed-select__wrapper {
+    background-color: #f5f6f7 !important;
+    box-shadow: 0 0 0 1px #dee0e3 inset !important;
+  }
+
+  .ed-input.is-disabled .ed-input__inner,
+  .ed-select.is-disabled .ed-select__selected-item {
+    color: #8f959e !important;
+    -webkit-text-fill-color: #8f959e !important;
+  }
+
+  .ed-button.is-secondary {
+    background-color: #fff !important;
+    border-color: #d0d3d6 !important;
+    color: #1f2329 !important;
+  }
+
+  .ed-button.is-text {
+    color: #336df4 !important;
+  }
+
+  .ed-table,
+  .ed-table__body-wrapper,
+  .ed-table__inner-wrapper,
+  .ed-table tr,
+  .ed-table td.ed-table__cell {
+    background-color: #fff !important;
+    color: #1f2329 !important;
+    border-color: #dee0e3 !important;
+  }
+
+  .ed-table__header-wrapper,
+  .ed-table th.ed-table__cell {
+    background-color: #f5f6f7 !important;
+    color: #1f2329 !important;
+    border-color: #dee0e3 !important;
+  }
+
+  .ed-table--enable-row-hover .ed-table__body tr:hover > td.ed-table__cell {
+    background-color: #f5f6f7 !important;
+  }
+
   .ed-form-item__label:has(.btn) {
     padding-right: 0;
     width: 100%;
@@ -1655,9 +1859,19 @@ onMounted(() => {
     .permission-summary {
       min-height: 24px;
       display: flex;
-      align-items: center;
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: flex-start;
       gap: 4px;
+    }
+
+    .summary-line {
+      max-width: 100%;
+      color: #646a73;
+      font-size: 12px;
+      line-height: 18px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .more-strategy {
@@ -1759,6 +1973,164 @@ onMounted(() => {
         height: 40px;
       }
     }
+  }
+}
+
+:root[data-theme='dark'] {
+  .user-add-class {
+    color-scheme: light;
+
+    .ed-drawer,
+    .ed-drawer__header,
+    .ed-drawer__body,
+    .ed-drawer__footer,
+    .ed-form,
+    .project-permission-panel,
+    .project-permission-toolbar,
+    .value-list {
+      background-color: #fff !important;
+      color: #1f2329 !important;
+      border-color: #dee0e3 !important;
+    }
+
+    .ed-drawer__title,
+    .ed-form-item__label,
+    .ed-radio,
+    .ed-checkbox,
+    .ed-switch__label,
+    .value-list .title,
+    .value-list .item,
+    .project-name,
+    .ed-table,
+    .ed-table .cell,
+    .ed-table__empty-text {
+      color: #1f2329 !important;
+    }
+
+    .project-type,
+    .database-label,
+    .muted,
+    .summary-line,
+    .more-strategy,
+    .project-permission-count,
+    .permission-option-summary {
+      color: #646a73 !important;
+    }
+
+    .ed-input .ed-input__wrapper,
+    .ed-select .ed-select__wrapper,
+    .ed-textarea .ed-textarea__inner,
+    .ed-input-number,
+    .ed-date-editor {
+      background-color: #fff !important;
+      border-color: #d0d3d6 !important;
+      box-shadow: 0 0 0 1px #d0d3d6 inset !important;
+      color: #1f2329 !important;
+    }
+
+    .ed-input .ed-input__inner,
+    .ed-select .ed-select__placeholder,
+    .ed-select .ed-select__selected-item,
+    .ed-textarea .ed-textarea__inner,
+    .ed-input-number .ed-input__inner {
+      color: #1f2329 !important;
+      -webkit-text-fill-color: #1f2329 !important;
+    }
+
+    .ed-input .ed-input__inner::placeholder,
+    .ed-textarea .ed-textarea__inner::placeholder,
+    .ed-select .ed-select__placeholder {
+      color: #8f959e !important;
+      -webkit-text-fill-color: #8f959e !important;
+    }
+
+    .ed-input.is-disabled .ed-input__wrapper,
+    .ed-select.is-disabled .ed-select__wrapper {
+      background-color: #f5f6f7 !important;
+      box-shadow: 0 0 0 1px #dee0e3 inset !important;
+    }
+
+    .ed-input.is-disabled .ed-input__inner,
+    .ed-select.is-disabled .ed-select__placeholder,
+    .ed-select.is-disabled .ed-select__selected-item {
+      color: #8f959e !important;
+      -webkit-text-fill-color: #8f959e !important;
+    }
+
+    .ed-table,
+    .ed-table__header-wrapper,
+    .ed-table__body-wrapper,
+    .ed-table__inner-wrapper,
+    .ed-table__empty-block,
+    .ed-table tr,
+    .ed-table td.ed-table__cell {
+      background-color: #fff !important;
+      color: #1f2329 !important;
+      border-color: #dee0e3 !important;
+    }
+
+    .ed-table th.ed-table__cell,
+    .ed-table__header th,
+    .ed-table__header tr {
+      background-color: #f5f6f7 !important;
+      color: #1f2329 !important;
+      border-color: #dee0e3 !important;
+    }
+
+    .ed-table--enable-row-hover .ed-table__body tr:hover > td.ed-table__cell {
+      background-color: #f5f6f7 !important;
+      color: #1f2329 !important;
+    }
+
+    .ed-button.is-secondary,
+    .dialog-footer .ed-button:not(.ed-button--primary) {
+      background-color: #fff !important;
+      border-color: #d0d3d6 !important;
+      color: #646a73 !important;
+    }
+
+    .ed-button.is-text {
+      background-color: transparent !important;
+      color: #336df4 !important;
+    }
+  }
+
+  .user-light-select-popper,
+  .user-light-select-popper.ed-popper,
+  .user-light-select-popper .ed-select-dropdown,
+  .user-light-select-popper .ed-scrollbar,
+  .user-light-select-popper .ed-scrollbar__wrap,
+  .user-light-select-popper .ed-scrollbar__view {
+    color-scheme: light;
+    background-color: #fff !important;
+    color: #1f2329 !important;
+    border-color: #dee0e3 !important;
+  }
+
+  .user-light-select-popper .ed-select-dropdown__item {
+    background-color: #fff !important;
+    color: #1f2329 !important;
+  }
+
+  .user-light-select-popper .ed-select-dropdown__item.hover,
+  .user-light-select-popper .ed-select-dropdown__item:hover {
+    background-color: #f5f6f7 !important;
+    color: #1f2329 !important;
+  }
+
+  .user-light-select-popper .ed-select-dropdown__item.selected {
+    color: #336df4 !important;
+    background-color: #eef3ff !important;
+  }
+
+  .user-light-select-popper .ed-select-dropdown__item.is-disabled {
+    color: #b8bdc6 !important;
+    background-color: #fff !important;
+  }
+
+  .user-light-select-popper .ed-popper__arrow::before {
+    background-color: #fff !important;
+    border-color: #dee0e3 !important;
   }
 }
 </style>

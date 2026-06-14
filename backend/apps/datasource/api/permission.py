@@ -9,10 +9,30 @@ from apps.datasource.crud.permission_rules import (
     save_rule_dto,
 )
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.datasource.models.datasource import CoreDatasource, CoreTable
 from common.core.deps import CurrentUser, SessionDep
 
 
 router = APIRouter(tags=["permission"])
+
+
+def _validate_permission_rule_scope(session: SessionDep, rule_data: dict[str, Any]) -> None:
+    permissions = rule_data.get("permissions") or []
+    if not permissions:
+        raise HTTPException(status_code=400, detail="Permission rule must contain at least one datasource-scoped permission")
+
+    for permission in permissions:
+        try:
+            datasource_id = int(permission.get("ds_id"))
+            table_id = int(permission.get("table_id"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Permission rule must bind datasource and table")
+
+        if session.get(CoreDatasource, datasource_id) is None:
+            raise HTTPException(status_code=404, detail="Datasource not found")
+        table = session.get(CoreTable, table_id)
+        if table is None or int(table.ds_id) != datasource_id:
+            raise HTTPException(status_code=400, detail="Permission table does not belong to datasource")
 
 
 @router.post("/ds_permission/list")
@@ -33,6 +53,7 @@ async def get(session: SessionDep, id: int):
 @router.post("/ds_permission/save")
 @require_permissions(permission=SqlbotPermission(role=["admin"]))
 async def save_rule(session: SessionDep, user: CurrentUser, ruleDTO: dict[str, Any]):
+    _validate_permission_rule_scope(session, ruleDTO)
     return save_rule_dto(session, ruleDTO)
 
 

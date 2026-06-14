@@ -13,7 +13,7 @@
           </div>
           <div>
             <strong>{{ productName }}</strong>
-            <span>智能问数 · 数据分析 · 仪表盘洞察</span>
+            <span>智能问数 · 数据分析 · 数据看板洞察</span>
           </div>
         </div>
 
@@ -47,7 +47,7 @@
       <div class="product-login-card">
         <h2>{{ $t('common.login') }}</h2>
         <p class="product-login-desc">
-          使用你的账号进入 {{ productName }}，继续查询数据、管理仪表盘和分析业务问题。
+          使用你的账号进入 {{ productName }}，继续查询数据、管理数据看板和分析业务问题。
         </p>
         <div class="login-form">
           <div class="default-login-tabs">
@@ -147,7 +147,7 @@ const capabilities = [
   },
   {
     icon: '板',
-    title: '仪表盘洞察',
+    title: '数据看板洞察',
     desc: '围绕业务主题组织看板，持续跟踪核心数据变化。',
   },
   {
@@ -157,7 +157,7 @@ const capabilities = [
   },
 ]
 
-const statusChips = ['数据连接', '权限校验', '语义层', '图表分析', '仪表盘', '安全审计']
+const statusChips = ['数据连接', '权限校验', '语义层', '图表分析', '数据看板', '安全审计']
 
 const rules = {
   username: [{ required: true, message: t('common.your_account_email_address'), trigger: 'blur' }],

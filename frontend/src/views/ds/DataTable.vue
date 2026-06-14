@@ -14,6 +14,7 @@ import TableRelationship from '@/views/ds/TableRelationship.vue'
 import icon_mindnote_outlined from '@/assets/svg/icon_mindnote_outlined.svg'
 import { Refresh } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
+import { useUserStore } from '@/stores/user'
 
 interface Table {
   name: string
@@ -30,6 +31,7 @@ interface Table {
   timeout: string
   configuration: string
   id: number
+  can_manage_project?: boolean
 }
 
 const props = withDefaults(
@@ -52,10 +54,15 @@ const props = withDefaults(
       timeout: '-',
       configuration: '-',
       id: 0,
+      can_manage_project: false,
     }),
   }
 )
 const { t } = useI18n()
+const userStore = useUserStore()
+const canManageMetadata = computed(
+  () => userStore.isSystemAdminUser || props.info.can_manage_project === true
+)
 const paramsFormRef = ref()
 const tableList = ref([] as any[])
 const loading = ref(false)
@@ -86,6 +93,7 @@ const handleRelationship = () => {
   currentTable.value = {}
 }
 const singleDragStartD = (e: DragEvent, ele: any) => {
+  if (!canManageMetadata.value) return
   isDrag.value = true
   e.dataTransfer!.setData('table', JSON.stringify(ele))
 }
@@ -157,6 +165,7 @@ const buildData = () => {
 }
 
 const handleSelectTableList = () => {
+  if (!canManageMetadata.value) return
   paramsFormRef.value.open(props.info)
 }
 
@@ -187,10 +196,12 @@ const closeTable = () => {
   tableDialog.value = false
 }
 const editTable = () => {
+  if (!canManageMetadata.value) return
   tableComment.value = currentTable.value.custom_comment
   tableDialog.value = true
 }
 const changeChecked = () => {
+  if (!canManageMetadata.value) return
   datasourceApi.saveTable(currentTable.value).then(() => {
     ElMessage({
       message: t('common.save_success'),
@@ -200,6 +211,7 @@ const changeChecked = () => {
   })
 }
 const saveTable = () => {
+  if (!canManageMetadata.value) return
   currentTable.value.custom_comment = tableComment.value
   datasourceApi.saveTable(currentTable.value).then(() => {
     closeTable()
@@ -227,6 +239,7 @@ const refresh = () => {
 }
 
 const saveField = () => {
+  if (!canManageMetadata.value) return
   currentField.value.custom_comment = fieldComment.value
   datasourceApi.saveField(currentField.value).then(() => {
     closeField()
@@ -239,12 +252,14 @@ const saveField = () => {
 }
 
 const editField = (row: any) => {
+  if (!canManageMetadata.value) return
   currentField.value = row
   fieldComment.value = currentField.value.custom_comment
   fieldDialog.value = true
 }
 
 const changeStatus = (row: any) => {
+  if (!canManageMetadata.value) return
   currentField.value = row
   datasourceApi.saveField(currentField.value).then(() => {
     closeField()
@@ -257,6 +272,7 @@ const changeStatus = (row: any) => {
 }
 
 const syncFields = () => {
+  if (!canManageMetadata.value) return
   loading.value = true
   datasourceApi
     .syncFields(currentTable.value.id)
@@ -272,6 +288,7 @@ const syncFields = () => {
 }
 
 function downloadTemplate() {
+  if (!canManageMetadata.value) return
   datasourceApi
     .exportDsSchema(props.info.id)
     .then((res) => {
@@ -374,7 +391,10 @@ const btnSelectClick = (val: any) => {
         <icon_right_outlined></icon_right_outlined>
       </el-icon>
       <div class="name">{{ info.name }}</div>
-      <div class="export-remark">
+      <el-tag v-if="!canManageMetadata" class="readonly-tag" size="small" type="info">
+        {{ $t('datasource.readonly_metadata_hint') }}
+      </el-tag>
+      <div v-if="canManageMetadata" class="export-remark">
         <el-button style="margin-right: 12px" secondary @click="downloadTemplate">
           <template #icon>
             <icon_import_outlined></icon_import_outlined>
@@ -393,6 +413,7 @@ const btnSelectClick = (val: any) => {
           {{ $t('ds.tables') }}
 
           <el-tooltip
+            v-if="canManageMetadata"
             effect="dark"
             offset="10"
             :content="$t('ds.form.choose_tables')"
@@ -423,7 +444,7 @@ const btnSelectClick = (val: any) => {
             <div
               v-for="ele in tableListWithSearch"
               :key="ele.table_name"
-              :draggable="activeRelationship && !tableName.includes(ele.id)"
+              :draggable="canManageMetadata && activeRelationship && !tableName.includes(ele.id)"
               class="model"
               :class="[
                 currentTable.table_name === ele.table_name && 'isActive',
@@ -451,9 +472,17 @@ const btnSelectClick = (val: any) => {
               <div>
                 {{ $t('datasource.no_table') }}
               </div>
-              <el-button type="primary" link @click="handleSelectTableList">
+              <el-button
+                v-if="canManageMetadata"
+                type="primary"
+                link
+                @click="handleSelectTableList"
+              >
                 {{ $t('datasource.go_add') }}
               </el-button>
+              <div v-else class="readonly-empty-hint">
+                {{ $t('datasource.readonly_no_table_hint') }}
+              </div>
             </div>
           </div>
         </div>
@@ -473,6 +502,7 @@ const btnSelectClick = (val: any) => {
           <TableRelationship
             :id="info.id"
             :dragging="isDrag"
+            :readonly="!canManageMetadata"
             @get-table-name="getTableName"
           ></TableRelationship>
         </div>
@@ -487,6 +517,7 @@ const btnSelectClick = (val: any) => {
           <div class="name">
             {{ currentTable.table_name }}
             <div
+              v-if="canManageMetadata"
               style="
                 display: inline-flex;
                 align-items: center;
@@ -511,7 +542,13 @@ const btnSelectClick = (val: any) => {
               currentTable.custom_comment || '-'
             }}</span>
 
-            <el-tooltip :offset="14" effect="dark" :content="$t('datasource.edit')" placement="top">
+            <el-tooltip
+              v-if="canManageMetadata"
+              :offset="14"
+              effect="dark"
+              :content="$t('datasource.edit')"
+              placement="top"
+            >
               <el-icon style="margin-left: 8px; cursor: pointer" size="16" @click="editTable">
                 <edit></edit>
               </el-icon>
@@ -547,6 +584,7 @@ const btnSelectClick = (val: any) => {
             />
             <el-button
               v-if="ds.type !== 'excel'"
+              v-show="canManageMetadata"
               :icon="Refresh"
               secondary
               style="margin-left: 12px"
@@ -588,6 +626,7 @@ const btnSelectClick = (val: any) => {
                         scope.row.custom_comment
                       }}</span>
                       <el-tooltip
+                        v-if="canManageMetadata"
                         :offset="14"
                         effect="dark"
                         :content="$t('datasource.edit')"
@@ -600,7 +639,11 @@ const btnSelectClick = (val: any) => {
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column :label="t('datasource.enabled_status')" width="180">
+                <el-table-column
+                  v-if="canManageMetadata"
+                  :label="t('datasource.enabled_status')"
+                  width="180"
+                >
                   <template #default="scope">
                     <div style="display: flex; align-items: center">
                       <el-switch
@@ -735,6 +778,10 @@ const btnSelectClick = (val: any) => {
       color: #1f2329;
       margin-left: 4px;
     }
+
+    .readonly-tag {
+      margin-left: 12px;
+    }
   }
   .content {
     height: calc(100% - 56px);
@@ -864,6 +911,13 @@ const btnSelectClick = (val: any) => {
           color: var(--ed-text-color-secondary);
           font-size: var(--ed-font-size-base);
         }
+      }
+
+      .readonly-empty-hint {
+        margin-top: 8px;
+        color: #8f959e;
+        font-size: 12px;
+        line-height: 20px;
       }
     }
     .relationship-content {

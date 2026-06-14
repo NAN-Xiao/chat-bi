@@ -460,6 +460,11 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             raise Exception(
                 f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it")
 
+        current_data = get_chart_data_with_user(session, current_user, record.id)
+        if current_data.get("status") == "failed":
+            raise Exception(current_data.get("message") or "SQL 超出当前数据权限范围")
+        record.data = orjson.dumps(current_data).decode()
+
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
 
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant)

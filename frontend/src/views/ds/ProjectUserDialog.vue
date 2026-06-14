@@ -149,7 +149,6 @@ const isIndeterminate = ref(false)
 const roleOptions = [
   { label: t('datasource.project_role_viewer'), value: 'viewer' },
   { label: t('datasource.project_role_editor'), value: 'editor' },
-  { label: t('datasource.project_role_admin'), value: 'admin' },
 ]
 
 const usersWithKeywords = computed(() => {

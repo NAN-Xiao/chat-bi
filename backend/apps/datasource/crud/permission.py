@@ -19,16 +19,19 @@ from apps.system.models.user import UserModel
 
 PROJECT_ROLE_VIEWER = "viewer"
 PROJECT_ROLE_EDITOR = "editor"
-PROJECT_ROLE_ADMIN = "admin"
 PROJECT_ROLE_ORDER = {
     PROJECT_ROLE_VIEWER: 10,
     PROJECT_ROLE_EDITOR: 20,
-    PROJECT_ROLE_ADMIN: 30,
 }
 PROJECT_ROLE_ALIASES = {
     "project_viewer": PROJECT_ROLE_VIEWER,
     "project_editor": PROJECT_ROLE_EDITOR,
-    "project_admin": PROJECT_ROLE_ADMIN,
+    "project_admin": PROJECT_ROLE_EDITOR,
+    "admin": PROJECT_ROLE_EDITOR,
+}
+REQUIRED_PROJECT_ROLE_ALIASES = {
+    "project_viewer": PROJECT_ROLE_VIEWER,
+    "project_editor": PROJECT_ROLE_EDITOR,
 }
 
 
@@ -43,10 +46,20 @@ def project_role_rank(role: str | None) -> int:
     return PROJECT_ROLE_ORDER.get(normalize_project_role(role), 0)
 
 
+def required_project_role_rank(role: str | None) -> int:
+    if not role:
+        return PROJECT_ROLE_ORDER[PROJECT_ROLE_VIEWER]
+    normalized = REQUIRED_PROJECT_ROLE_ALIASES.get(str(role).strip().lower(), str(role).strip().lower())
+    return PROJECT_ROLE_ORDER.get(normalized, 0)
+
+
 def _can_satisfy_project_role(actual_role: str | None, required_role: str | None) -> bool:
     if actual_role is None:
         return False
-    return project_role_rank(actual_role) >= project_role_rank(required_role)
+    required_rank = required_project_role_rank(required_role)
+    if required_rank <= 0:
+        return False
+    return project_role_rank(actual_role) >= required_rank
 
 
 def _supports_user_system_role_filter(session: SessionDep) -> bool:
@@ -116,7 +129,9 @@ def get_datasource_ids_with_min_role(
         return None
 
     result: set[int] = set()
-    required_rank = project_role_rank(min_role)
+    required_rank = required_project_role_rank(min_role)
+    if required_rank <= 0:
+        return result
 
     membership_rows = session.query(CoreDatasourceUser).filter(
         CoreDatasourceUser.user_id == current_user.id
@@ -124,16 +139,6 @@ def get_datasource_ids_with_min_role(
     for row in membership_rows:
         if project_role_rank(getattr(row, "role", None)) >= required_rank:
             result.add(int(row.ds_id))
-
-    if project_role_rank(PROJECT_ROLE_ADMIN) >= required_rank:
-        created_rows = session.query(CoreDatasource.id).filter(
-            CoreDatasource.create_by == current_user.id
-        ).all()
-        result.update(
-            int(_first_column_value(row))
-            for row in created_rows
-            if _first_column_value(row) is not None
-        )
 
     return result
 
@@ -180,7 +185,8 @@ def update_user_datasources(
         session: SessionDep,
         current_user: CurrentUser,
         user_id: int,
-        datasource_ids: list[int]
+        datasource_ids: list[int],
+        datasource_roles: Optional[dict[int, str]] = None,
 ) -> list[int]:
     try:
         target_user_id = int(user_id)
@@ -199,12 +205,25 @@ def update_user_datasources(
     else:
         datasource_map = {}
 
+    should_update_roles = datasource_roles is not None
+    datasource_roles = datasource_roles or {}
+    normalized_roles = {}
+    for datasource_id, role in datasource_roles.items():
+        try:
+            normalized_roles[int(datasource_id)] = normalize_project_role(role)
+        except (TypeError, ValueError):
+            continue
+
     current_rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.user_id == target_user_id).all()
     current_datasource_ids = {int(row.ds_id) for row in current_rows}
 
     for row in current_rows:
-        if int(row.ds_id) not in next_datasource_ids:
+        datasource_id = int(row.ds_id)
+        if datasource_id not in next_datasource_ids:
             session.delete(row)
+        elif should_update_roles:
+            row.role = normalized_roles.get(datasource_id, PROJECT_ROLE_VIEWER)
+            session.add(row)
 
     add_datasource_ids = next_datasource_ids - current_datasource_ids
     for datasource_id in add_datasource_ids:
@@ -212,7 +231,7 @@ def update_user_datasources(
         session.add(CoreDatasourceUser(
             ds_id=datasource_id,
             user_id=target_user_id,
-            role=PROJECT_ROLE_VIEWER,
+            role=normalized_roles.get(datasource_id, PROJECT_ROLE_VIEWER),
             create_by=current_user.id if current_user else None,
             create_time=datetime.datetime.now()
         ))
@@ -250,15 +269,11 @@ def get_datasource_role(session: SessionDep, current_user: CurrentUser, datasour
     if datasource_id is None or datasource_id == "":
         return None
     if _is_datasource_scope_admin(current_user):
-        return PROJECT_ROLE_ADMIN
+        return PROJECT_ROLE_EDITOR
     try:
         datasource_id = int(datasource_id)
     except (TypeError, ValueError):
         return None
-
-    datasource = session.get(CoreDatasource, datasource_id)
-    if datasource and str(datasource.create_by) == str(current_user.id):
-        return PROJECT_ROLE_ADMIN
 
     row = session.query(CoreDatasourceUser).filter(
         CoreDatasourceUser.ds_id == datasource_id,
@@ -423,7 +438,7 @@ def get_user_scoped_table_ids(
         datasource_id,
     )
     if not contain_rules:
-        return None
+        return set()
 
     rule_permission_ids: set[int] = set()
     for rule in contain_rules:

@@ -136,11 +136,76 @@ const routerList = computed(() => {
   .ed-sub-menu .ed-icon {
     margin-right: 8px;
   }
+
+  .ed-menu-item,
+  .ed-sub-menu__title {
+    .ed-icon,
+    svg {
+      color: inherit !important;
+    }
+
+    svg path {
+      fill: currentColor !important;
+      stroke: currentColor !important;
+    }
+  }
+
+  &:not(.ed-menu--collapse) {
+    .ed-sub-menu .ed-menu {
+      padding: 2px 0 4px 0;
+    }
+
+    .ed-menu-item.menu-level-1 {
+      position: relative;
+      margin-left: 20px;
+      width: calc(100% - 20px);
+      padding-left: 22px !important;
+      color: var(--theme-text-secondary);
+
+      .ed-icon {
+        width: 0;
+        margin-right: 0;
+        opacity: 0;
+      }
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--theme-text-tertiary);
+        transform: translateY(-50%);
+        opacity: 0.72;
+      }
+
+      &:hover,
+      &:focus {
+        color: var(--theme-text-primary);
+
+        &::before {
+          background: var(--theme-text-secondary);
+          opacity: 1;
+        }
+      }
+
+      &.is-active {
+        color: var(--ed-color-primary, #2563eb) !important;
+
+        &::before {
+          background: var(--ed-color-primary, #2563eb);
+          opacity: 1;
+        }
+      }
+    }
+  }
 }
 .ed-popper.is-light:has(.ed-menu--popup) {
   border: 1px solid var(--theme-shell-border);
   border-radius: 10px;
-  box-shadow: var(--theme-card-shadow);
+  box-shadow: 0 4px 12px rgba(31, 35, 41, 0.1);
   background: var(--theme-shell-bg);
   overflow: hidden;
 }

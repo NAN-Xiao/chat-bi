@@ -56,7 +56,7 @@ export const watchRouter = (router: Router) => {
 const accessCrossPermission = (to: any) => {
   if (!to?.path) return false
   return (
-    (to.path.startsWith('/system') && !userStore.isAdmin) ||
-    (to.path.startsWith('/set') && !userStore.isAdmin)
+    (to.path.startsWith('/system') && !userStore.isSystemAdminUser) ||
+    (to.path.startsWith('/set') && !userStore.isSystemAdminUser)
   )
 }

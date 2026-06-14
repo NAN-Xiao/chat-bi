@@ -2,7 +2,11 @@ from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, File, Path, Query, UploadFile
 from sqlmodel import SQLModel, or_, select
-from apps.datasource.crud.permission import list_user_datasource_ids, update_user_datasources
+from apps.datasource.crud.permission import (
+    list_user_datasource_ids,
+    list_user_datasource_roles,
+    update_user_datasources,
+)
 from apps.datasource.models.datasource import CoreDatasourceUser
 from apps.system.crud.user import (
     SYSTEM_ROLE_SYSTEM_ADMIN,
@@ -109,15 +113,18 @@ async def pager(
         item = user.model_dump()
         result.append(item)
     project_rows = session.exec(
-        select(CoreDatasourceUser.user_id, CoreDatasourceUser.ds_id).where(
+        select(CoreDatasourceUser.user_id, CoreDatasourceUser.ds_id, CoreDatasourceUser.role).where(
             CoreDatasourceUser.user_id.in_(uid_list)
         )
     ).all()
     project_map = defaultdict(list)
-    for user_id, ds_id in project_rows:
+    project_role_map = defaultdict(dict)
+    for user_id, ds_id, role in project_rows:
         project_map[int(user_id)].append(int(ds_id))
+        project_role_map[int(user_id)][int(ds_id)] = role or "viewer"
     for item in result:
         item["project_ids"] = project_map.get(int(item["id"]), [])
+        item["project_role_map"] = project_role_map.get(int(item["id"]), {})
     user_page.items = result
     return user_page
 
@@ -139,6 +146,7 @@ async def query(session: SessionDep, trans: Trans, id: int = Path(description=f"
         raise Exception("System admin cannot be managed from the user list")
     result = UserEditor.model_validate(db_user.model_dump())
     result.project_ids = list_user_datasource_ids(session, id)
+    result.project_role_map = list_user_datasource_roles(session, id)
     return result
 
 
@@ -160,7 +168,7 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
     if not check_email_format(creator.email):
         raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email')} [{creator.email}]"))
     #data = creator.model_dump(exclude_unset=True)
-    data = creator.model_dump()
+    data = creator.model_dump(exclude={"project_ids", "project_role_map"})
     data["system_role"] = normalize_system_role(data.get("system_role"))
     user_model = UserModel.model_validate(data)
     #user_model.create_time = get_timestamp()
@@ -168,7 +176,13 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
     session.add(user_model)
     session.flush()
     if creator.project_ids is not None:
-        update_user_datasources(session, current_user, user_model.id, creator.project_ids)
+        update_user_datasources(
+            session,
+            current_user,
+            user_model.id,
+            creator.project_ids,
+            creator.project_role_map,
+        )
     return user_model
 
     
@@ -190,14 +204,20 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
         raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.email')} [{editor.email}]")) """
     if not check_email_format(editor.email):
         raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email')} [{editor.email}]"))
-    data = editor.model_dump(exclude_unset=True)
+    data = editor.model_dump(exclude_unset=True, exclude={"project_ids", "project_role_map"})
     data["system_role"] = normalize_system_role(data.get("system_role"))
     if is_system_admin(user_model) and data["system_role"] != SYSTEM_ROLE_SYSTEM_ADMIN:
         raise Exception("System admin role cannot be removed from this endpoint")
     user_model.sqlmodel_update(data)
     session.add(user_model)
     if editor.project_ids is not None:
-        update_user_datasources(session, current_user, user_model.id, editor.project_ids)
+        update_user_datasources(
+            session,
+            current_user,
+            user_model.id,
+            editor.project_ids,
+            editor.project_role_map,
+        )
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}user_del_api", description=f"{PLACEHOLDER_PREFIX}user_del_api")
 @require_permissions(permission=SqlbotPermission(role=['admin']))

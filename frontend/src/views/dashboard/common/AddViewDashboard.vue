@@ -54,7 +54,7 @@ const resourceFormRulesHistory = ref({
       required: true,
       min: 1,
       max: 64,
-      message: '请选择仪表板',
+      message: t('dashboard.select_dashboard'),
       trigger: 'change',
     },
   ],

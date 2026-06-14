@@ -94,7 +94,7 @@ def _engine_with_project_metadata_tables():
             INSERT INTO core_datasource_user (ds_id, user_id, role)
             VALUES
                 (1, 2, 'viewer'),
-                (2, 2, 'admin')
+                (2, 2, 'editor')
             """
         ))
         conn.execute(text(
@@ -156,35 +156,23 @@ def test_data_training_pager_rejects_unavailable_datasource(monkeypatch):
     assert exc.value.status_code == 403
 
 
-def test_data_training_maintenance_requires_project_admin(monkeypatch):
+def test_data_training_maintenance_requires_system_admin(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
-    monkeypatch.setattr(
-        data_training_api,
-        "has_datasource_role",
-        lambda session, user, datasource_id, role: datasource_id == 1 and role == "admin",
-    )
+    system_admin = SimpleNamespace(id=1, isAdmin=True)
+
+    with pytest.raises(HTTPException) as exc:
+        data_training_api._require_training_admin(
+            session=object(),
+            current_user=current_user,
+            info=DataTrainingInfo(datasource=1),
+        )
+    assert exc.value.status_code == 403
 
     data_training_api._require_training_admin(
         session=object(),
-        current_user=current_user,
+        current_user=system_admin,
         info=DataTrainingInfo(datasource=1),
     )
-
-    with pytest.raises(HTTPException) as exc:
-        data_training_api._require_training_admin(
-            session=object(),
-            current_user=current_user,
-            info=DataTrainingInfo(datasource=2),
-        )
-    assert exc.value.status_code == 403
-
-    with pytest.raises(HTTPException) as exc:
-        data_training_api._require_training_admin(
-            session=object(),
-            current_user=current_user,
-            info=DataTrainingInfo(datasource=None),
-        )
-    assert exc.value.status_code == 403
 
 
 def test_terminology_pager_uses_visible_datasource_scope(monkeypatch):
@@ -240,41 +228,22 @@ def test_terminology_pager_rejects_unavailable_datasource(monkeypatch):
     assert exc.value.status_code == 403
 
 
-def test_terminology_maintenance_separates_global_and_project_scopes(monkeypatch):
+def test_terminology_maintenance_requires_system_admin(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     system_admin = SimpleNamespace(id=1, isAdmin=True)
-    monkeypatch.setattr(
-        terminology_api,
-        "has_datasource_role",
-        lambda session, user, datasource_id, role: datasource_id == 1 and role == "admin",
-    )
-
-    terminology_api._require_term_scope_admin(
-        session=object(),
-        current_user=current_user,
-        term=TerminologyInfo(specific_ds=True, datasource_ids=[1]),
-    )
 
     with pytest.raises(HTTPException) as exc:
         terminology_api._require_term_scope_admin(
             session=object(),
             current_user=current_user,
-            term=TerminologyInfo(specific_ds=True, datasource_ids=[2]),
-        )
-    assert exc.value.status_code == 403
-
-    with pytest.raises(HTTPException) as exc:
-        terminology_api._require_term_scope_admin(
-            session=object(),
-            current_user=current_user,
-            term=TerminologyInfo(specific_ds=False, datasource_ids=[]),
+            term=TerminologyInfo(specific_ds=True, datasource_ids=[1]),
         )
     assert exc.value.status_code == 403
 
     terminology_api._require_term_scope_admin(
         session=object(),
         current_user=system_admin,
-        term=TerminologyInfo(specific_ds=False, datasource_ids=[]),
+        term=TerminologyInfo(specific_ds=True, datasource_ids=[1]),
     )
 
 
@@ -299,7 +268,7 @@ def test_table_and_field_permissions_resolve_to_owning_datasource(monkeypatch):
         current_user,
         "field",
         20,
-        ["project_admin"],
+        ["project_editor"],
     )) is True
     assert asyncio.run(permission_schema.check_project_permission(
         current_user,

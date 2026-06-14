@@ -169,12 +169,100 @@ defineExpose({
 
 <style lang="less">
 .drawer-main-container {
+  color-scheme: light;
+
+  .ed-drawer,
+  .ed-drawer__header,
+  .ed-drawer__body,
+  .ed-drawer__footer {
+    background: #fff !important;
+    color: #1f2329 !important;
+  }
+
+  .ed-drawer__header {
+    border-bottom: 1px solid #dee0e3;
+    margin-bottom: 0;
+    padding: 16px 24px;
+  }
+
+  .ed-drawer__title,
+  .draw-filter_enum > span,
+  .draw-filter_base > span,
+  .draw-filter_tree > span,
+  .draw-filter_time > span {
+    color: #1f2329 !important;
+  }
+
   .ed-drawer__body {
     padding: 16px 24px 80px !important;
   }
   .ed-drawer__footer {
+    background: #fff !important;
+    border-top: 1px solid #dee0e3;
     padding: 16px 24px;
     height: 64px;
+  }
+
+  .ed-drawer__close-btn,
+  .ed-drawer__close {
+    color: #646a73 !important;
+  }
+
+  .draw-filter_enum {
+    .filter-item {
+      .item,
+      .more {
+        background: #f5f6f7 !important;
+        color: #1f2329 !important;
+        border: 1px solid #dee0e3;
+      }
+
+      .item:hover,
+      .more:hover,
+      .active {
+        background: #eef3ff !important;
+        border-color: #bfd0ff;
+        color: #1456f0 !important;
+      }
+    }
+  }
+
+  .ed-input__wrapper,
+  .ed-select__wrapper,
+  .ed-textarea__inner,
+  .ed-date-editor {
+    background-color: #fff !important;
+    border-color: #d0d3d6 !important;
+    box-shadow: 0 0 0 1px #d0d3d6 inset !important;
+    color: #1f2329 !important;
+  }
+
+  .ed-input__inner,
+  .ed-select__placeholder,
+  .ed-select__selected-item,
+  .ed-date-editor .ed-range-input,
+  .ed-date-editor .ed-range-separator {
+    color: #1f2329 !important;
+    -webkit-text-fill-color: #1f2329 !important;
+  }
+
+  .ed-input__inner::placeholder,
+  .ed-date-editor .ed-range-input::placeholder,
+  .ed-select__placeholder {
+    color: #8f959e !important;
+    -webkit-text-fill-color: #8f959e !important;
+  }
+
+  .ed-tag {
+    background-color: #eef3ff !important;
+    border-color: #bfd0ff !important;
+    color: #1456f0 !important;
+  }
+
+  .ed-button.is-secondary {
+    background-color: #fff !important;
+    border-color: #d0d3d6 !important;
+    color: #646a73 !important;
   }
 }
 </style>

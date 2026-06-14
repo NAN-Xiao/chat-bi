@@ -280,6 +280,10 @@ onBeforeMount(() => {
     position: relative;
     min-width: 240px;
     color: var(--theme-text-primary);
+    --layout-fold-bg-hover: var(--theme-hover-bg);
+    --layout-fold-bg-active: var(--theme-active-bg);
+    --layout-fold-color: var(--theme-text-primary);
+    --layout-fold-color-hover: var(--theme-text-primary);
 
     .side-header {
       display: flex;
@@ -307,18 +311,34 @@ onBeforeMount(() => {
         padding: 0;
         border: none;
         border-radius: 6px;
-        color: var(--theme-text-secondary);
+        color: var(--layout-fold-color);
         background: transparent;
         cursor: pointer;
 
+        :deep(.ed-icon) {
+          color: inherit;
+        }
+
+        :deep(svg) {
+          color: inherit;
+        }
+
+        :deep(svg path) {
+          fill: currentColor !important;
+        }
+
         &:hover,
         &:focus {
-          background: var(--theme-hover-bg);
-          color: var(--theme-text-primary);
+          background: var(--layout-fold-bg-hover);
+          color: var(--layout-fold-color-hover);
+
+          :deep(svg) {
+            color: inherit;
+          }
         }
 
         &:active {
-          background: var(--theme-active-bg);
+          background: var(--layout-fold-bg-active);
         }
       }
     }

@@ -98,21 +98,21 @@ const handleQuestion = async (id: string) => {
     console.error(error)
     let errorMsg = t('model.default_miss')
     let confirm_text = t('datasource.got_it')
-    if (userStore.isAdmin) {
+    if (userStore.isSystemAdminUser) {
       errorMsg = t('model.default_miss_admin')
       confirm_text = t('model.to_config')
     }
     ElMessageBox.confirm(t('qa.ask_failed'), {
       confirmButtonType: 'primary',
       tip: errorMsg,
-      showCancelButton: userStore.isAdmin,
+      showCancelButton: userStore.isSystemAdminUser,
       confirmButtonText: confirm_text,
       cancelButtonText: t('common.cancel'),
       customClass: 'confirm-no_icon',
       autofocus: false,
       showClose: false,
       callback: (val: string) => {
-        if (userStore.isAdmin && val === 'confirm') {
+        if (userStore.isSystemAdminUser && val === 'confirm') {
           router.push('/system/model')
         }
       },
@@ -277,7 +277,7 @@ function endLoading() {
           </div>
         </el-popover>
 
-        <el-button v-if="userStore.isAdmin" type="primary" @click="handleAddDatasource">
+        <el-button v-if="userStore.isSystemAdminUser" type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -333,7 +333,7 @@ function endLoading() {
       />
 
       <div style="text-align: center; margin-top: -10px">
-        <el-button v-if="userStore.isAdmin" type="primary" @click="handleAddDatasource">
+        <el-button v-if="userStore.isSystemAdminUser" type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>

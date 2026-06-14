@@ -36,7 +36,7 @@
     "no_permission": "無權調用{url}{msg}",
     "authenticate_invalid": "認證無效【{msg}】",
     "token_expired": "Token 已過期",
-    "only_project_admin": "僅支援專案管理員調用！",
+    "only_project_role": "需要專案檢視者或編輯者權限！",
     "permission_resource_limit": "沒有操作權限或資源不存在！"
   },
   "i18n_llm": {
@@ -148,7 +148,7 @@
     "create_time": "操作時間",
     "chat": "智能問數",
     "datasource": "數據源",
-    "dashboard": "儀表板",
+    "dashboard": "資料看板",
     "member": "成員",
     "permission": "權限",
     "terminology": "術語",

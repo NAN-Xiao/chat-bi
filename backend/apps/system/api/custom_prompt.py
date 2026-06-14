@@ -24,7 +24,6 @@ from apps.chat.curd.custom_prompt_manage import (
 from apps.chat.models.chat_model import AxisObj
 from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo
 from apps.datasource.crud.permission import (
-    PROJECT_ROLE_ADMIN,
     get_datasource_ids_with_min_role,
     has_datasource_role,
 )
@@ -49,16 +48,8 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
 
 
 def _require_prompt_scope_admin(session: SessionDep, current_user: CurrentUser, prompt: CustomPromptInfo | CustomPrompt):
-    datasource_ids = getattr(prompt, "datasource_ids", None) or []
-    specific_ds = bool(getattr(prompt, "specific_ds", False))
-    if not specific_ds or not datasource_ids:
-        if not is_system_admin(current_user):
-            raise HTTPException(status_code=403, detail="Global prompt can only be maintained by system admins")
-        return
-
-    for datasource_id in datasource_ids:
-        if not has_datasource_role(session, current_user, datasource_id, PROJECT_ROLE_ADMIN):
-            raise HTTPException(status_code=403, detail="Project admin access is required")
+    if not is_system_admin(current_user):
+        raise HTTPException(status_code=403, detail="System admin access is required")
 
 
 def _require_prompt_admin(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):

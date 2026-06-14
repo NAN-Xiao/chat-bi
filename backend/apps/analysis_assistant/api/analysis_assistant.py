@@ -15,14 +15,12 @@ from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
+from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import exec_sql, get_sqlglot_dialect
-from apps.template.filter.generator import get_permissions_template
+from apps.db.db import exec_sql
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.utils import extract_nested_json
-import sqlglot
-from sqlglot import exp
 
 router = APIRouter(tags=["analysis_assistant"], prefix="/analysis-assistant")
 
@@ -311,37 +309,6 @@ def _get_datasource(
     return datasource
 
 
-def _extract_tables_from_sql(sql: str, ds_type: str | None = None) -> set[str]:
-    tables: set[str] = set()
-    dialect = get_sqlglot_dialect(ds_type)
-    try:
-        statements = sqlglot.parse(sql, dialect=dialect)
-        for stmt in statements:
-            if not stmt:
-                continue
-            cte_names = {
-                cte.alias_or_name.lower()
-                for cte in stmt.find_all(exp.CTE)
-                if cte.alias_or_name
-            }
-            for table in stmt.find_all(exp.Table):
-                if table.name and table.name.lower() not in cte_names:
-                    tables.add(table.name)
-    except Exception:
-        pass
-    return tables
-
-
-def _validate_sql_tables(sql: str, datasource: CoreDatasource, allowed_tables: list[str]) -> list[str]:
-    actual_tables = _extract_tables_from_sql(sql, datasource.type)
-    if not actual_tables:
-        raise ValueError("SQL 解析失败，无法确认查询表范围")
-    unauthorized_tables = actual_tables - set(allowed_tables)
-    if unauthorized_tables:
-        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
-    return sorted(actual_tables)
-
-
 def _apply_row_permissions(
     llm,
     session: SessionDep,
@@ -360,32 +327,7 @@ def _apply_row_permissions(
     )
     if not filters:
         return sql
-
-    template = get_permissions_template()
-    engine = datasource.type_name or datasource.type
-    messages = [
-        SystemMessage(
-            content=template["system"].format(
-                lang="zh-CN",
-                engine=engine,
-                sqlbot_name="星通智数",
-            )
-        ),
-        HumanMessage(
-            content=template["user"].format(
-                sql=sql,
-                filter=json.dumps(filters, ensure_ascii=False),
-            )
-        ),
-    ]
-    text = _llm_text(llm, messages)
-    try:
-        data = _extract_json_object(text)
-    except Exception:
-        data = {"success": True, "sql": text}
-    if data.get("success") is False:
-        raise ValueError(str(data.get("message") or "行权限过滤条件应用失败"))
-    return _normalise_sql(str(data.get("sql") or sql))
+    return _normalise_sql(apply_row_permission_filters(sql, datasource, filters))
 
 
 def _prepare_sql_for_execution(
@@ -397,19 +339,28 @@ def _prepare_sql_for_execution(
     allowed_tables: list[str],
 ) -> str:
     sql = _normalise_sql(raw_sql)
-    tables = _validate_sql_tables(sql, datasource, allowed_tables)
+    _statements, tables_set, _permission_scope = validate_sql_scope(session, current_user, datasource, sql)
+    tables = sorted(tables_set)
+    unauthorized_tables = tables_set - set(allowed_tables)
+    if unauthorized_tables:
+        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
     sql = _apply_row_permissions(llm, session, current_user, datasource, sql, tables)
-    _validate_sql_tables(sql, datasource, allowed_tables)
+    rewritten_tables = validate_sql_table_scope(session, current_user, datasource, sql)
+    unauthorized_tables = rewritten_tables - set(allowed_tables)
+    if unauthorized_tables:
+        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
     return sql
 
 
 def _collect_metric_knowledge(
-    session: SessionDep, datasource_id: int | None, question: str
+    session: SessionDep, datasource_id: int | None, question: str, current_user: CurrentUser | None = None
 ) -> str:
     """Reuse the project's existing semantic layer (术语 terminology + 数据训练 SQL 示例)
     so the assistant shares the SAME metric definitions as 智能问数, instead of letting
     the LLM re-invent 口径 every time."""
     parts: list[str] = []
+    if current_user is not None and is_normal_user(current_user):
+        return ""
     try:
         terminology_template, _terms = get_terminology_template(session, question, datasource_id)
         if terminology_template and terminology_template.strip():
@@ -492,83 +443,7 @@ def _collect_date_bounds(datasource: CoreDatasource, schema: str) -> str:
 
 
 def _get_data_profile(datasource: CoreDatasource, schema: str) -> str:
-    lowered = schema.lower()
-    parts: list[str] = []
-    if "fact_events" in lowered and "event_name" in lowered:
-        try:
-            result = exec_sql(
-                datasource,
-                """
-                select event_name, count(*) as events, count(distinct player_id) as users
-                from fact_events
-                group by event_name
-                order by events desc
-                limit 80
-                """,
-                origin_column=False,
-            )
-            text = _profile_result_as_text("fact_events 实际 event_name 枚举", result)
-            if text:
-                parts.append(text)
-        except Exception:
-            traceback.print_exc()
-        if "attributes" in lowered:
-            try:
-                result = exec_sql(
-                    datasource,
-                    """
-                    select
-                      min((attributes->>'step')::int) as min_step,
-                      max((attributes->>'step')::int) as max_step,
-                      count(distinct player_id) as users
-                    from fact_events
-                    where event_name = 'tutorial_step'
-                      and attributes ? 'step'
-                    """,
-                    origin_column=False,
-                )
-                text = _profile_result_as_text("tutorial_step 的实际 step 范围", result)
-                if text:
-                    parts.append(text)
-            except Exception:
-                traceback.print_exc()
-            try:
-                result = exec_sql(
-                    datasource,
-                    """
-                    select attributes->>'quest_type' as quest_type, count(*) as events, count(distinct player_id) as users
-                    from fact_events
-                    where event_name = 'quest_complete'
-                    group by attributes->>'quest_type'
-                    order by events desc
-                    """,
-                    origin_column=False,
-                )
-                text = _profile_result_as_text("quest_complete 的实际 quest_type 枚举", result)
-                if text:
-                    parts.append(text)
-            except Exception:
-                traceback.print_exc()
-    if "fact_payments" in lowered and "payment_status" in lowered:
-        try:
-            result = exec_sql(
-                datasource,
-                """
-                select payment_status, count(*) as orders, count(distinct player_id) as users
-                from fact_payments
-                group by payment_status
-                order by orders desc
-                """,
-                origin_column=False,
-            )
-            text = _profile_result_as_text("fact_payments 实际 payment_status 枚举", result)
-            if text:
-                parts.append(text)
-        except Exception:
-            traceback.print_exc()
-    date_bounds = _collect_date_bounds(datasource, schema)
-    combined = "\n\n".join(part for part in (date_bounds, "\n".join(parts)) if part.strip())
-    return combined[:12000]
+    return _collect_date_bounds(datasource, schema)[:12000]
 
 
 def _is_forecast_question(question: str) -> bool:
@@ -1403,7 +1278,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 raise RuntimeError("当前用户在该项目下没有可分析的数据表权限")
             sample_data = "" if is_normal_user(current_user) else get_tables_sample_data(session, current_user, datasource)
             data_profile = "" if is_normal_user(current_user) else _get_data_profile(datasource, schema)
-            knowledge = _collect_metric_knowledge(session, datasource.id, question)
+            knowledge = _collect_metric_knowledge(session, datasource.id, question, current_user)
             if knowledge.strip():
                 yield _trace("已加载本项目配置的统一业务口径（术语定义与标准 SQL 示例），将据此对齐指标算法。")
             forecast_requested = _is_forecast_question(question)

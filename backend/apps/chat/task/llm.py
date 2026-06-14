@@ -13,8 +13,6 @@ import orjson
 import pandas as pd
 import requests
 import sqlparse
-import sqlglot
-from sqlglot import exp
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
@@ -37,9 +35,10 @@ from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameCh
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
+from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import exec_sql, get_version, check_connection, get_sqlglot_dialect
+from apps.db.db import exec_sql, get_version, check_connection
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
@@ -65,27 +64,6 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 
 i18n = I18n()
 
-
-
-def extract_tables_from_sql(sql: str, ds_type: str = None) -> set:
-    """从 SQL 中提取表名（使用 sqlglot 解析，可信）"""
-    tables = set()
-    dialect = get_sqlglot_dialect(ds_type)
-    try:
-        statements = sqlglot.parse(sql, dialect=dialect)
-        for stmt in statements:
-            if stmt:
-                cte_names = {
-                    cte.alias_or_name.lower()
-                    for cte in stmt.find_all(exp.CTE)
-                    if cte.alias_or_name
-                }
-                for table in stmt.find_all(exp.Table):
-                    if table.name and table.name.lower() not in cte_names:
-                        tables.add(table.name)
-    except Exception:
-        pass
-    return tables
 
 
 class LLMService:
@@ -344,6 +322,10 @@ class LLMService:
         return format_chart_fields(chart_info)
 
     def filter_terminology_template(self, _session: Session, ds_id: int = None):
+        if is_normal_user(self.current_user):
+            self.chat_question.terminologies = ""
+            return
+
         calculate_ds_id = ds_id
         if self.current_assistant:
             if self.current_assistant.type == 1:
@@ -359,6 +341,10 @@ class LLMService:
                                                                 full_message=term_list)
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, ds_id: int = None):
+        if is_normal_user(self.current_user):
+            self.chat_question.custom_prompt = ""
+            return
+
         calculate_ds_id = ds_id
         if self.current_assistant:
             if self.current_assistant.type == 1:
@@ -375,6 +361,10 @@ class LLMService:
                                                                         full_message=prompt_list)
 
     def filter_training_template(self, _session: Session, ds_id: int = None):
+        if is_normal_user(self.current_user):
+            self.chat_question.data_training = ""
+            return
+
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,
                                                                         operate=OperationEnum.FILTER_SQL_EXAMPLE,
                                                                         record_id=self.record.id,
@@ -548,7 +538,11 @@ class LLMService:
         guess_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         guess_msg.append(SystemPromptMessage(content=self.chat_question.guess_sys_question(self.articles_number)))
 
-        old_questions = list(map(lambda q: q.strip(), get_old_questions(_session, self.record.datasource)))
+        old_questions = list(map(lambda q: q.strip(), get_old_questions(
+            _session,
+            self.record.datasource,
+            self.current_user,
+        )))
         guess_msg.append(
             HumanMessage(content=self.chat_question.guess_user_question(orjson.dumps(old_questions).decode())))
 
@@ -1035,6 +1029,11 @@ class LLMService:
 
         return sql
 
+    def save_checked_sql(self, session: Session, sql: str) -> str:
+        save_sql(session=session, sql=sql, record_id=self.record.id)
+        self.chat_question.sql = sql
+        return sql
+
     def check_save_chart(self, session: Session, res: str) -> Dict[str, Any]:
 
         json_str = extract_nested_json(res)
@@ -1281,21 +1280,6 @@ class LLMService:
             sql_operate = OperationEnum.GENERATE_SQL
             sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
 
-            # 表名安全检查：用 sqlglot 解析真实 SQL，不信任 AI 返回的 tables
-            actual_tables = extract_tables_from_sql(sql, ds_type=self.ds.type)
-            if not actual_tables:
-                raise SingleMessageError(
-                    "SQL parsing failed: unable to extract table names. "
-                    "This may indicate an unsupported SQL syntax or a security issue."
-                )
-            allowed_tables = set(self.table_name_list)
-            unauthorized_tables = actual_tables - allowed_tables
-            if unauthorized_tables:
-                raise SingleMessageError(
-                    f"SQL contains unauthorized tables: {', '.join(unauthorized_tables)}. "
-                    f"Allowed tables: {', '.join(allowed_tables)}"
-                )
-
             if ((not self.current_assistant or is_page_embedded) and is_normal_user(
                     self.current_user)) or use_dynamic_ds:
                 sql_result = None
@@ -1305,20 +1289,44 @@ class LLMService:
                     sqlbot_temp_sql_text = dynamic_sql_result.get(
                         'sqlbot_temp_sql_text') if dynamic_sql_result else None
                 else:
-                    sql_result = self.generate_filter(_session, sql, tables)  # maybe no sql and tables
+                    statements, actual_tables, _permission_scope = validate_sql_scope(
+                        _session,
+                        self.current_user,
+                        self.ds,
+                        sql,
+                    )
+                    if not actual_tables.issubset(set(self.table_name_list)):
+                        raise SingleMessageError(
+                            f"SQL contains unauthorized tables: {', '.join(sorted(actual_tables - set(self.table_name_list)))}. "
+                            f"Allowed tables: {', '.join(self.table_name_list)}"
+                        )
+                    row_filters = get_row_permission_filters(
+                        session=_session,
+                        current_user=self.current_user,
+                        ds=self.ds,
+                        tables=sorted(actual_tables),
+                    )
+                    if row_filters:
+                        sql_result = apply_row_permission_filters(sql, self.ds, row_filters)
 
                 if sql_result:
                     SQLBotLogUtil.info(sql_result)
                     sql_operate = OperationEnum.GENERATE_SQL_WITH_PERMISSIONS
-                    sql = self.check_save_sql(session=_session, res=sql_result, operate=sql_operate)
+                    sql = self.save_checked_sql(session=_session, sql=sql_result)
+                    if isinstance(self.ds, CoreDatasource):
+                        validate_sql_table_scope(_session, self.current_user, self.ds, sql)
                 elif dynamic_sql_result and sqlbot_temp_sql_text:
                     sql_operate = OperationEnum.GENERATE_DYNAMIC_SQL
                     assistant_dynamic_sql = self.check_save_sql(session=_session, res=sqlbot_temp_sql_text,
                                                                 operate=sql_operate)
                 else:
                     sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
+                    if isinstance(self.ds, CoreDatasource):
+                        validate_sql_scope(_session, self.current_user, self.ds, sql)
             else:
                 sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
+                if isinstance(self.ds, CoreDatasource):
+                    validate_sql_scope(_session, self.current_user, self.ds, sql)
 
             SQLBotLogUtil.info('sql: ' + sql)
 

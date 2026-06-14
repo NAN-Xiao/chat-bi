@@ -37,7 +37,7 @@ const searchLoading = ref(false)
 const { copy } = useClipboard({ legacy: true })
 const options = ref<any[]>([])
 const adv_options = ref<any[]>([])
-const canManageTraining = computed(() => userStore.isAdmin || datasourceContext.canManageProject)
+const canManageTraining = computed(() => userStore.isSystemAdminUser)
 const selectedDatasourceParams = computed(() =>
   datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}
 )
@@ -296,7 +296,7 @@ const rules = computed(() => {
 
 const list = () => {
   datasourceApi.list().then((res: any) => {
-    options.value = (res || []).filter((item: any) => item.can_manage_project === true)
+    options.value = res || []
   })
   getAdvancedApplicationList().then((res: any) => {
     adv_options.value = res || []

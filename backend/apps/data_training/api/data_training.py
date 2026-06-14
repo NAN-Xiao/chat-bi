@@ -15,9 +15,7 @@ from apps.chat.models.chat_model import AxisObj
 from apps.data_training.curd.data_training import page_data_training, create_training, update_training, delete_training, \
     enable_training, get_all_data_training, batch_create_training
 from apps.datasource.crud.permission import (
-    PROJECT_ROLE_ADMIN,
     get_datasource_ids_with_min_role,
-    has_datasource_role,
 )
 from apps.data_training.models.data_training_model import DataTraining
 from apps.data_training.models.data_training_model import DataTrainingInfo
@@ -38,39 +36,22 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
 
 
 def _require_training_admin(session: SessionDep, current_user: CurrentUser, info: DataTrainingInfo):
-    datasource_id = info.datasource
+    if not is_system_admin(current_user):
+        raise HTTPException(status_code=403, detail="System admin access is required")
     if info.id:
         existing = session.get(DataTraining, int(info.id))
         if not existing:
             raise HTTPException(status_code=404, detail="SQL example not found")
-        if existing.datasource is None:
-            if not is_system_admin(current_user):
-                raise HTTPException(status_code=403, detail="Datasource-scoped project admin access is required")
-        elif not has_datasource_role(session, current_user, existing.datasource, PROJECT_ROLE_ADMIN):
-            raise HTTPException(status_code=403, detail="Project admin access is required")
-
-    if datasource_id is None:
-        if not is_system_admin(current_user):
-            raise HTTPException(status_code=403, detail="Datasource-scoped project admin access is required")
-        return
-
-    if not has_datasource_role(session, current_user, datasource_id, PROJECT_ROLE_ADMIN):
-        raise HTTPException(status_code=403, detail="Project admin access is required")
 
 
 def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):
     if not ids:
         return
+    if not is_system_admin(current_user):
+        raise HTTPException(status_code=403, detail="System admin access is required")
     rows = session.exec(select(DataTraining.datasource).where(DataTraining.id.in_(ids))).all()
     if len(rows) != len(set(ids)):
         raise HTTPException(status_code=404, detail="SQL example not found")
-    for datasource_id in rows:
-        if datasource_id is None:
-            if not is_system_admin(current_user):
-                raise HTTPException(status_code=403, detail="Datasource-scoped project admin access is required")
-            continue
-        if not has_datasource_role(session, current_user, datasource_id, PROJECT_ROLE_ADMIN):
-            raise HTTPException(status_code=403, detail="Project admin access is required")
 
 
 @router.get("/page/{current_page}/{page_size}", summary=f"{PLACEHOLDER_PREFIX}get_dt_page")
@@ -216,12 +197,12 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 @router.post("/uploadExcel", summary=f"{PLACEHOLDER_PREFIX}upload_excel_dt")
 @system_log(LogConfig(operation_type=OperationType.IMPORT, module=OperationModules.DATA_TRAINING))
 async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
-                       datasource: Optional[int] = Query(None, description="数据源ID(可选)"),
+    datasource: Optional[int] = Query(None, description="数据源ID(可选)"),
                        file: UploadFile = File(...)):
     if datasource is None:
         raise HTTPException(status_code=400, detail="Datasource is required")
-    if not has_datasource_role(session, current_user, datasource, PROJECT_ROLE_ADMIN):
-        raise HTTPException(status_code=403, detail="Project admin access is required")
+    if not is_system_admin(current_user):
+        raise HTTPException(status_code=403, detail="System admin access is required")
     ALLOWED_EXTENSIONS = {"xlsx", "xls"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
         raise HTTPException(400, "Only support .xlsx/.xls")

@@ -504,6 +504,9 @@ def get_table_sample_data(ds: CoreDatasource, table_name: str, fields: list) -> 
 def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource,
                            table_list: list[str] = None) -> str:
     """Get sample data (3 rows) for all tables to help AI understand the data"""
+    if is_normal_user(current_user):
+        return ""
+
     table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
     if len(table_objs) == 0:
         return ""
@@ -519,6 +522,13 @@ def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: C
     return "\n".join(sample_data_parts)
 
 
+def _relation_id(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
                      embedding: bool = True, table_list: list[str] = None) -> tuple[str, list]:
     schema_str = ""
@@ -530,6 +540,10 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     tables = []
     all_tables = []  # temp save all tables
     table_name_list = []
+    visible_table_ids = set()
+    visible_field_ids = set()
+    table_dict = {}
+    field_dict = {}
     for obj in table_objs:
         # 如果传入了table_list，则只处理在列表中的表
         if table_list is not None and obj.table.table_name not in table_list:
@@ -559,7 +573,15 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
             schema_table += ",\n".join(field_list)
         schema_table += '\n]\n'
 
-        t_obj = {"id": obj.table.id, "table_name": obj.table.table_name, "schema_table": schema_table,
+        table_id = int(obj.table.id)
+        visible_table_ids.add(table_id)
+        table_dict[table_id] = obj.table.table_name
+        for field in obj.fields or []:
+            field_id = int(field.id)
+            visible_field_ids.add(field_id)
+            field_dict[field_id] = field.field_name
+
+        t_obj = {"id": table_id, "table_name": obj.table.table_name, "schema_table": schema_table,
                  "embedding": obj.table.embedding}
         tables.append(t_obj)
         all_tables.append(t_obj)
@@ -579,29 +601,43 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
 
     # field relation
     if tables and ds.table_relation:
-        relations = list(filter(lambda x: x.get('shape') == 'edge', ds.table_relation))
+        table_relation = ds.table_relation
+        if isinstance(table_relation, str):
+            try:
+                table_relation = json.loads(table_relation)
+            except Exception:
+                table_relation = []
+        relations = [
+            relation for relation in table_relation
+            if isinstance(relation, dict) and relation.get('shape') == 'edge'
+        ] if isinstance(table_relation, list) else []
         if relations:
-            # Complete the missing table
-            # get tables in relation, remove irrelevant relation
-            embedding_table_ids = [s.get('id') for s in tables]
-            all_relations = list(
-                filter(lambda x: x.get('source').get('cell') in embedding_table_ids or x.get('target').get(
-                    'cell') in embedding_table_ids, relations))
-
-            # get relation table ids, sub embedding table ids
-            relation_table_ids = []
-            for r in all_relations:
-                relation_table_ids.append(r.get('source').get('cell'))
-                relation_table_ids.append(r.get('target').get('cell'))
-            relation_table_ids = list(set(relation_table_ids))
-            # get table dict
-            table_records = session.query(CoreTable).filter(CoreTable.id.in_(list(map(int, relation_table_ids)))).all()
-            table_dict = {}
-            for ele in table_records:
-                table_dict[ele.id] = ele.table_name
+            embedding_table_ids = {int(s.get('id')) for s in tables}
+            all_relations = []
+            for relation in relations:
+                source = relation.get('source') or {}
+                target = relation.get('target') or {}
+                source_table_id = _relation_id(source.get('cell'))
+                source_field_id = _relation_id(source.get('port'))
+                target_table_id = _relation_id(target.get('cell'))
+                target_field_id = _relation_id(target.get('port'))
+                if None in (source_table_id, source_field_id, target_table_id, target_field_id):
+                    continue
+                if source_table_id not in visible_table_ids or target_table_id not in visible_table_ids:
+                    continue
+                if source_field_id not in visible_field_ids or target_field_id not in visible_field_ids:
+                    continue
+                if source_table_id not in embedding_table_ids and target_table_id not in embedding_table_ids:
+                    continue
+                all_relations.append((source_table_id, source_field_id, target_table_id, target_field_id))
 
             # get lost table ids
-            lost_table_ids = list(set(relation_table_ids) - set(embedding_table_ids))
+            relation_table_ids = {
+                table_id
+                for relation in all_relations
+                for table_id in (relation[0], relation[2])
+            }
+            lost_table_ids = list(relation_table_ids - embedding_table_ids)
             # get lost table schema and splice it
             lost_tables = list(filter(lambda x: x.get('id') in lost_table_ids, all_tables))
             if lost_tables:
@@ -609,21 +645,10 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                     schema_str += s.get('schema_table')
                     table_name_list.append(s.get('table_name'))
 
-            # get field dict
-            relation_field_ids = []
-            for relation in all_relations:
-                relation_field_ids.append(relation.get('source').get('port'))
-                relation_field_ids.append(relation.get('target').get('port'))
-            relation_field_ids = list(set(relation_field_ids))
-            field_records = session.query(CoreField).filter(CoreField.id.in_(list(map(int, relation_field_ids)))).all()
-            field_dict = {}
-            for ele in field_records:
-                field_dict[ele.id] = ele.field_name
-
             if all_relations:
                 schema_str += '【Foreign keys】\n'
-                for ele in all_relations:
-                    schema_str += f"{table_dict.get(int(ele.get('source').get('cell')))}.{field_dict.get(int(ele.get('source').get('port')))}={table_dict.get(int(ele.get('target').get('cell')))}.{field_dict.get(int(ele.get('target').get('port')))}\n"
+                for source_table_id, source_field_id, target_table_id, target_field_id in all_relations:
+                    schema_str += f"{table_dict.get(source_table_id)}.{field_dict.get(source_field_id)}={table_dict.get(target_table_id)}.{field_dict.get(target_field_id)}\n"
 
     return schema_str, table_name_list
 

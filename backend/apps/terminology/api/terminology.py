@@ -12,9 +12,7 @@ from sqlmodel import select
 
 from apps.chat.models.chat_model import AxisObj
 from apps.datasource.crud.permission import (
-    PROJECT_ROLE_ADMIN,
     get_datasource_ids_with_min_role,
-    has_datasource_role,
 )
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.user import is_system_admin
@@ -35,16 +33,8 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
 
 
 def _require_term_scope_admin(session: SessionDep, current_user: CurrentUser, term: TerminologyInfo | Terminology):
-    datasource_ids = getattr(term, "datasource_ids", None) or []
-    specific_ds = getattr(term, "specific_ds", False)
-    if not specific_ds or not datasource_ids:
-        if not is_system_admin(current_user):
-            raise HTTPException(status_code=403, detail="Global terminology can only be maintained by system admins")
-        return
-
-    for datasource_id in datasource_ids:
-        if not has_datasource_role(session, current_user, datasource_id, PROJECT_ROLE_ADMIN):
-            raise HTTPException(status_code=403, detail="Project admin access is required")
+    if not is_system_admin(current_user):
+        raise HTTPException(status_code=403, detail="System admin access is required")
 
 
 def _require_term_admin(session: SessionDep, current_user: CurrentUser, info: TerminologyInfo):
@@ -217,10 +207,8 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
                        datasource: Optional[int] = Query(None, description="数据源ID(可选)"),
                        file: UploadFile = File(...)):
-    if datasource is not None and not has_datasource_role(session, current_user, datasource, PROJECT_ROLE_ADMIN):
-        raise HTTPException(status_code=403, detail="Project admin access is required")
-    if datasource is None and not is_system_admin(current_user):
-        raise HTTPException(status_code=400, detail="Datasource is required")
+    if not is_system_admin(current_user):
+        raise HTTPException(status_code=403, detail="System admin access is required")
     ALLOWED_EXTENSIONS = {"xlsx", "xls"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
         raise HTTPException(400, "Only support .xlsx/.xls")

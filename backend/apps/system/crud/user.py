@@ -13,11 +13,9 @@ from common.core.security import verify_md5pwd
 import re
 
 SYSTEM_ROLE_SYSTEM_ADMIN = "system_admin"
-SYSTEM_ROLE_TENANT_ADMIN = "tenant_admin"
 SYSTEM_ROLE_VIEWER = "viewer"
 SYSTEM_ROLE_ORDER = {
     SYSTEM_ROLE_VIEWER: 10,
-    SYSTEM_ROLE_TENANT_ADMIN: 20,
     SYSTEM_ROLE_SYSTEM_ADMIN: 30,
 }
 

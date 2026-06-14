@@ -10,8 +10,10 @@ from sqlalchemy.orm import aliased
 
 from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, RenameChat, ChatQuestion, ChatLog, \
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
+from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
 from apps.datasource.crud.datasource import get_ds
-from apps.datasource.crud.permission import get_accessible_datasource_ids, has_datasource_access
+from apps.datasource.crud.permission import get_accessible_datasource_ids, has_datasource_access, is_normal_user
+from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
@@ -21,6 +23,107 @@ from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
 from common.utils.utils import extract_nested_json, SQLBotLogUtil
+
+_USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
+
+
+def _failed_permission_data(message: str = _USER_PERMISSION_DENIED_MESSAGE) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "fields": [],
+        "data": [],
+        "message": message,
+    }
+
+
+def _row_value(row, key: str):
+    try:
+        return getattr(row, key)
+    except AttributeError:
+        return None
+
+
+def _record_has_sensitive_artifacts(row) -> bool:
+    return any(
+        _row_value(row, key)
+        for key in (
+            "sql_answer",
+            "sql",
+            "chart_answer",
+            "chart",
+            "analysis",
+            "predict",
+            "data",
+            "predict_data",
+            "datasource_select_answer",
+        )
+    )
+
+
+def _record_allowed_by_current_permissions(session: SessionDep, current_user: CurrentUser, row) -> bool:
+    if not is_normal_user(current_user):
+        return True
+
+    datasource_id = _row_value(row, "datasource")
+    sql = _row_value(row, "sql")
+    if not datasource_id:
+        return True
+
+    if not sql:
+        source_record_id = _row_value(row, "analysis_record_id") or _row_value(row, "predict_record_id")
+        if source_record_id:
+            source_record = session.get(ChatRecord, source_record_id)
+            if source_record is None or source_record.create_by != current_user.id:
+                return False
+            datasource_id = source_record.datasource
+            sql = source_record.sql
+
+    if not sql:
+        return not _record_has_sensitive_artifacts(row)
+
+    try:
+        datasource = session.get(CoreDatasource, datasource_id)
+        if datasource is None or not has_datasource_access(session, current_user, datasource_id):
+            return False
+        validate_sql_scope(session, current_user, datasource, sql)
+        return True
+    except Exception as exc:
+        SQLBotLogUtil.error(f"Chat record permission validation failed: {exc}")
+        return False
+
+
+def _scrub_record_for_current_permissions(record: ChatRecordResult) -> ChatRecordResult:
+    record.sql_answer = None
+    record.sql = None
+    record.chart_answer = None
+    record.chart = None
+    record.analysis = None
+    record.predict = None
+    record.predict_data = None
+    record.recommended_question = None
+    record.datasource_select_answer = None
+    record.sql_reasoning_content = None
+    record.chart_reasoning_content = None
+    record.analysis_reasoning_content = None
+    record.predict_reasoning_content = None
+    record.error = _USER_PERMISSION_DENIED_MESSAGE
+    record.data = orjson.dumps(_failed_permission_data()).decode()
+    return record
+
+
+def _public_log_message(current_user: CurrentUser, log: ChatLog, message):
+    if not is_normal_user(current_user):
+        return message
+    raw_message = message
+    if log.operate == OperationEnum.EXECUTE_SQL:
+        if isinstance(raw_message, str):
+            try:
+                raw_message = orjson.loads(raw_message)
+            except Exception:
+                raw_message = None
+        if isinstance(raw_message, dict):
+            return {"count": raw_message.get("count")}
+    return None
 
 
 def get_chat_record_by_id(session: SessionDep, record_id: int):
@@ -237,9 +340,35 @@ def get_chat_chart_config(session: SessionDep, chat_record_id: int):
 
 
 def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
-    stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    stmt = select(
+        ChatRecord.datasource,
+        ChatRecord.sql,
+        ChatRecord.data,
+        ChatRecord.analysis_record_id,
+        ChatRecord.predict_record_id,
+    ).where(
+        and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id)
+    )
     res = session.execute(stmt)
     for row in res:
+        if row.datasource and row.sql:
+            return get_chart_data_with_user_live(
+                session=session,
+                current_user=current_user,
+                chat_record_id=chat_record_id,
+            )
+        source_record_id = row.analysis_record_id or row.predict_record_id
+        if row.datasource and source_record_id:
+            result = get_chart_data_with_user_live(
+                session=session,
+                current_user=current_user,
+                chat_record_id=source_record_id,
+            )
+            if result.get("status") == "failed":
+                return _failed_permission_data()
+            return result
+        if row.datasource and row.data and is_normal_user(current_user):
+            return _failed_permission_data()
         try:
             return orjson.loads(row.data)
         except Exception:
@@ -249,7 +378,9 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
 def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
     row = session.execute(stmt).first()
-    return get_chart_data_ds(session,row.datasource, row.sql)
+    if row is None or row.datasource is None or not row.sql:
+        return {'status': 'failed', 'fields': [], 'data': [], 'message': '记录不存在或没有可执行 SQL'}
+    return _execute_dashboard_chart_sql(session, current_user, row.datasource, row.sql)
 
 def get_chart_data_ds(session: SessionDep,ds_id,sql):
     json_result: Dict[str, Any] = {'status': 'success','fields':[],'data':[],'message':''}
@@ -285,10 +416,18 @@ def get_chat_chart_data(session: SessionDep, chat_record_id: int):
 
 
 def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
-    stmt = select(ChatRecord.predict_data).where(
+    stmt = select(ChatRecord.predict_data, ChatRecord.predict_record_id).where(
         and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
     res = session.execute(stmt)
     for row in res:
+        if row.predict_record_id:
+            base_result = get_chart_data_with_user_live(
+                session=session,
+                current_user=current_user,
+                chat_record_id=row.predict_record_id,
+            )
+            if base_result.get("status") == "failed":
+                return []
         try:
             return orjson.loads(row.predict_data)
         except Exception:
@@ -433,40 +572,60 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
         # 获取token总消耗
         total_tokens = token_usage_map.get(row.id, 0)
+        current_permission_allowed = _record_allowed_by_current_permissions(session, current_user, row)
 
+        data_value = _row_value(row, "data")
+        if row.datasource and (row.sql or row.analysis_record_id or row.predict_record_id):
+            data_value = orjson.dumps(get_chart_data_with_user(
+                session=session,
+                current_user=current_user,
+                chat_record_id=row.id,
+            )).decode()
+
+        record_result: ChatRecordResult
         if not with_data:
-            record_list.append(
-                ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
-                                 finish_time=row.finish_time,
-                                 duration=duration,
-                                 total_tokens=total_tokens,
-                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql, datasource=row.datasource,
-                                 chart_answer=row.chart_answer, chart=row.chart,
-                                 analysis=row.analysis, predict=row.predict,
-                                 datasource_select_answer=row.datasource_select_answer,
-                                 analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
-                                 regenerate_record_id=row.regenerate_record_id,
-                                 recommended_question=row.recommended_question, first_chat=row.first_chat,
-                                 finish=row.finish, error=row.error,
-                                 sql_reasoning_content=row.sql_reasoning_content,
-                                 chart_reasoning_content=row.chart_reasoning_content,
-                                 analysis_reasoning_content=row.analysis_reasoning_content,
-                                 predict_reasoning_content=row.predict_reasoning_content,
-                                 ))
+            record_result = ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
+                                             finish_time=row.finish_time,
+                                             duration=duration,
+                                             total_tokens=total_tokens,
+                                             question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                             datasource=row.datasource,
+                                             chart_answer=row.chart_answer, chart=row.chart,
+                                             analysis=row.analysis, predict=row.predict,
+                                             datasource_select_answer=row.datasource_select_answer,
+                                             analysis_record_id=row.analysis_record_id,
+                                             predict_record_id=row.predict_record_id,
+                                             regenerate_record_id=row.regenerate_record_id,
+                                             recommended_question=row.recommended_question, first_chat=row.first_chat,
+                                             finish=row.finish, error=row.error, data=data_value,
+                                             sql_reasoning_content=row.sql_reasoning_content,
+                                             chart_reasoning_content=row.chart_reasoning_content,
+                                             analysis_reasoning_content=row.analysis_reasoning_content,
+                                             predict_reasoning_content=row.predict_reasoning_content,
+                                             )
         else:
-            record_list.append(
-                ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
-                                 finish_time=row.finish_time,
-                                 duration=duration,
-                                 total_tokens=total_tokens,
-                                 question=row.question, sql_answer=row.sql_answer, sql=row.sql, datasource=row.datasource,
-                                 chart_answer=row.chart_answer, chart=row.chart,
-                                 analysis=row.analysis, predict=row.predict,
-                                 datasource_select_answer=row.datasource_select_answer,
-                                 analysis_record_id=row.analysis_record_id, predict_record_id=row.predict_record_id,
-                                 regenerate_record_id=row.regenerate_record_id,
-                                 recommended_question=row.recommended_question, first_chat=row.first_chat,
-                                 finish=row.finish, error=row.error, data=row.data, predict_data=row.predict_data))
+            predict_data_value = row.predict_data
+            if row.predict_record_id and not current_permission_allowed:
+                predict_data_value = None
+            record_result = ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
+                                             finish_time=row.finish_time,
+                                             duration=duration,
+                                             total_tokens=total_tokens,
+                                             question=row.question, sql_answer=row.sql_answer, sql=row.sql,
+                                             datasource=row.datasource,
+                                             chart_answer=row.chart_answer, chart=row.chart,
+                                             analysis=row.analysis, predict=row.predict,
+                                             datasource_select_answer=row.datasource_select_answer,
+                                             analysis_record_id=row.analysis_record_id,
+                                             predict_record_id=row.predict_record_id,
+                                             regenerate_record_id=row.regenerate_record_id,
+                                             recommended_question=row.recommended_question, first_chat=row.first_chat,
+                                             finish=row.finish, error=row.error, data=data_value,
+                                             predict_data=predict_data_value)
+
+        if not current_permission_allowed:
+            record_result = _scrub_record_for_current_permissions(record_result)
+        record_list.append(record_result)
 
     result = list(map(format_record, record_list))
 
@@ -639,6 +798,7 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
                             message = orjson.loads(log.messages)
                         except Exception:
                             pass
+                    message = _public_log_message(current_user, log, message)
 
             # 创建ChatLogHistoryItem
             history_item = ChatLogHistoryItem(
@@ -1171,13 +1331,18 @@ def finish_record(session: SessionDep, record_id: int) -> ChatRecord:
     return result
 
 
-def get_old_questions(session: SessionDep, datasource: int):
+def get_old_questions(session: SessionDep, datasource: int, current_user: CurrentUser = None):
     records = []
     if not datasource:
         return records
-    stmt = select(ChatRecord.question).where(
-        and_(ChatRecord.datasource == datasource, ChatRecord.question.isnot(None),
-             ChatRecord.error.is_(None))).order_by(
+    conditions = [
+        ChatRecord.datasource == datasource,
+        ChatRecord.question.isnot(None),
+        ChatRecord.error.is_(None),
+    ]
+    if current_user is not None:
+        conditions.append(ChatRecord.create_by == current_user.id)
+    stmt = select(ChatRecord.question).where(and_(*conditions)).order_by(
         ChatRecord.create_time.desc()).limit(20)
     result = session.execute(stmt)
     for r in result:

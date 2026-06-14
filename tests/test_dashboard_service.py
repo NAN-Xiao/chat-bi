@@ -751,8 +751,8 @@ def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
     chart = json.loads(resource["canvas_view_info"])["chart-1"]
     assert exec_calls == []
     assert chart["status"] == "failed"
-    assert "无权限表" in chart["message"]
-    assert "payments" in chart["message"]
+    assert chart["message"] == "SQL 超出当前数据权限范围"
+    assert "payments" not in chart["message"]
 
 
 def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch):
@@ -779,8 +779,8 @@ def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch)
 
     assert exec_calls == []
     assert result["status"] == "failed"
-    assert "无权限字段" in result["message"]
-    assert "amount" in result["message"]
+    assert result["message"] == "SQL 超出当前数据权限范围"
+    assert "amount" not in result["message"]
 
 
 def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
@@ -835,7 +835,7 @@ def test_dashboard_preview_denies_select_star_for_normal_user(monkeypatch):
 
     assert exec_calls == []
     assert result["status"] == "failed"
-    assert "SELECT *" in result["message"]
+    assert result["message"] == "SQL 超出当前数据权限范围"
 
 
 def test_user_name_unwraps_row_result():

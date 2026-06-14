@@ -23,7 +23,7 @@ class SqlbotPermission(BaseModel):
 def _required_project_role(role_list: Optional[list[str]]) -> Optional[str]:
     if not role_list:
         return None
-    for role in ("project_admin", "project_editor", "project_viewer"):
+    for role in ("project_editor", "project_viewer"):
         if role in role_list:
             return role
     return None
@@ -184,11 +184,11 @@ def require_permissions(permission: SqlbotPermission):
                 if 'admin' in role_list and not _is_system_admin(current_user):
                     raise HTTPException(status_code=403, detail=trans('i18n_permission.only_admin'))
                 if (
-                    any(role in role_list for role in ('project_admin', 'project_editor', 'project_viewer'))
+                    any(role in role_list for role in ('project_editor', 'project_viewer'))
                     and not resource_type
                     and not _is_system_admin(current_user)
                 ):
-                    raise HTTPException(status_code=403, detail=trans('i18n_permission.only_project_admin'))
+                    raise HTTPException(status_code=403, detail=trans('i18n_permission.only_project_role'))
             if not resource_type:
                 return await func(*args, **kwargs)
 

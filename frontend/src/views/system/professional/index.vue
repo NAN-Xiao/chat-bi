@@ -37,8 +37,8 @@ const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
 const drawerMainRef = ref()
-const canManageTerminology = computed(() => userStore.isAdmin || datasourceContext.canManageProject)
-const canManageGlobalTerminology = computed(() => userStore.isAdmin)
+const canManageTerminology = computed(() => userStore.isSystemAdminUser)
+const canManageGlobalTerminology = computed(() => userStore.isSystemAdminUser)
 const selectedDatasourceParams = computed(() =>
   datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}
 )
@@ -260,7 +260,7 @@ const search = ($event: any = {}) => {
   }
   searchLoading.value = true
   oldKeywords.value = keywords.value
-  if (!datasourceContext.datasourceId && !userStore.isAdmin) {
+  if (!datasourceContext.datasourceId && !userStore.isSystemAdminUser) {
     fieldList.value = []
     pageInfo.total = 0
     searchLoading.value = false
@@ -349,7 +349,7 @@ const saveHandler = () => {
 }
 const list = () => {
   datasourceApi.list().then((res) => {
-    allDsList.value = (res || []).filter((item: any) => item.can_manage_project === true)
+    allDsList.value = res || []
   })
 }
 const editHandler = (row: any) => {
@@ -360,10 +360,6 @@ const editHandler = (row: any) => {
     if (!pageForm.value.other_words.length) {
       pageForm.value.other_words = ['']
     }
-  } else if (!userStore.isAdmin && datasourceContext.datasourceId) {
-    pageForm.value.specific_ds = true
-    pageForm.value.datasource_ids = [Number(datasourceContext.datasourceId)]
-    pageForm.value.datasource_names = [datasourceContext.datasourceName]
   }
   dialogTitle.value = row?.id
     ? t('professional.editing_terminology')

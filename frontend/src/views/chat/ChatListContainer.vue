@@ -278,7 +278,16 @@ function onChatRenamed(chat: Chat) {
     width: 26px;
     height: 26px;
     font-size: 18px;
-    color: var(--workspace-text-secondary, var(--theme-text-secondary));
+    color: var(--workspace-text-primary, var(--theme-text-primary));
+
+    :deep(.ed-icon),
+    :deep(svg) {
+      color: inherit;
+    }
+
+    :deep(svg path) {
+      fill: currentColor !important;
+    }
 
     &:hover {
       background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
