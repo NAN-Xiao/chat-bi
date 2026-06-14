@@ -37,11 +37,14 @@ def get_data_training_base_query(name: Optional[str] = None):
 
 
 def build_data_training_query(session: SessionDep, name: Optional[str] = None,
-                              paginate: bool = True, current_page: int = 1, page_size: int = 10):
+                              paginate: bool = True, current_page: int = 1, page_size: int = 10,
+                              datasource_ids: Optional[set[int]] = None):
     """
     构建数据训练查询的通用方法
     """
     parent_ids_subquery = get_data_training_base_query(name)
+    if datasource_ids is not None:
+        parent_ids_subquery = parent_ids_subquery.where(DataTraining.datasource.in_(list(datasource_ids)))
 
     # 计算总数
     count_stmt = select(func.count()).select_from(parent_ids_subquery.subquery())
@@ -119,24 +122,25 @@ def execute_data_training_query(session: SessionDep, stmt) -> List[DataTrainingI
 
 
 def page_data_training(session: SessionDep, current_page: int = 1, page_size: int = 10,
-                       name: Optional[str] = None):
+                       name: Optional[str] = None, datasource_ids: Optional[set[int]] = None):
     """
     分页查询数据训练（原方法保持不变）
     """
     stmt, total_count, total_pages, current_page, page_size = build_data_training_query(
-        session, name, True, current_page, page_size
+        session, name, True, current_page, page_size, datasource_ids
     )
     _list = execute_data_training_query(session, stmt)
 
     return current_page, page_size, total_count, total_pages, _list
 
 
-def get_all_data_training(session: SessionDep, name: Optional[str] = None):
+def get_all_data_training(session: SessionDep, name: Optional[str] = None,
+                          datasource_ids: Optional[set[int]] = None):
     """
     获取所有数据训练（不分页）
     """
     stmt, total_count, total_pages, current_page, page_size = build_data_training_query(
-        session, name, False
+        session, name, False, datasource_ids=datasource_ids
     )
     _list = execute_data_training_query(session, stmt)
 
@@ -320,8 +324,8 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
             error_messages.append(trans("i18n_data_training.description_cannot_be_empty"))
 
         # 数据源验证和转换
-        datasource_id = None
-        if info.datasource_name and info.datasource_name.strip():
+        datasource_id = info.datasource
+        if datasource_id is None and info.datasource_name and info.datasource_name.strip():
             if info.datasource_name.strip() in datasource_name_to_id:
                 datasource_id = datasource_name_to_id[info.datasource_name.strip()]
             else:

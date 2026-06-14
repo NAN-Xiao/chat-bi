@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { nextTick, onMounted, reactive, ref, unref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, unref, watch } from 'vue'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import { professionalApi } from '@/api/professional'
 import { formatTimestamp } from '@/utils/date'
@@ -15,6 +15,8 @@ import { convertFilterText, FilterText } from '@/components/filter-text'
 import { DrawerMain } from '@/components/drawer-main'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import Uploader from '@/views/system/excel-upload/Uploader.vue'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useUserStore } from '@/stores/user'
 
 interface Form {
   id?: string | null
@@ -27,22 +29,38 @@ interface Form {
 }
 
 const { t } = useI18n()
+const datasourceContext = useDatasourceContextStore()
+const userStore = useUserStore()
 const multipleSelectionAll = ref<any[]>([])
 const allDsList = ref<any[]>([])
 const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
 const drawerMainRef = ref()
+const canManageTerminology = computed(() => userStore.isAdmin || datasourceContext.canManageProject)
+const canManageGlobalTerminology = computed(() => userStore.isAdmin)
+const selectedDatasourceParams = computed(() =>
+  datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}
+)
 
-const selectable = () => {
-  return true
-}
+const selectable = () => canManageTerminology.value
 onMounted(() => {
-  datasourceApi.list().then((res) => {
-    filterOption.value[0].option = [...res]
+  datasourceContext.loadDatasources().then(() => {
+    datasourceApi.list().then((res) => {
+      filterOption.value[0].option = [...res]
+    })
+    search()
   })
-  search()
 })
+
+watch(
+  () => datasourceContext.datasourceId,
+  () => {
+    pageInfo.currentPage = 1
+    multipleSelectionAll.value = []
+    search()
+  }
+)
 const dialogFormVisible = ref<boolean>(false)
 const multipleTableRef = ref()
 const isIndeterminate = ref(true)
@@ -89,7 +107,10 @@ const exportExcel = () => {
   }).then(() => {
     searchLoading.value = true
     professionalApi
-      .export2Excel(keywords.value ? { word: keywords.value } : {})
+      .export2Excel({
+        ...(keywords.value ? { word: keywords.value } : {}),
+        ...(datasourceContext.datasourceId ? { dslist: datasourceContext.datasourceId } : {}),
+      })
       .then((res) => {
         const blob = new Blob([res], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -133,6 +154,7 @@ const exportExcel = () => {
 }
 
 const deleteBatch = () => {
+  if (!canManageTerminology.value) return
   ElMessageBox.confirm(
     t('professional.selected_2_terms', { msg: multipleSelectionAll.value.length }),
     {
@@ -154,6 +176,7 @@ const deleteBatch = () => {
   })
 }
 const deleteHandler = (row: any) => {
+  if (!canManageTerminology.value) return
   ElMessageBox.confirm(t('professional.the_term_gmv', { msg: row.word }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -211,21 +234,24 @@ const handleToggleRowSelection = (check: boolean = true) => {
 }
 
 const configParams = () => {
-  let str = ''
+  const params = new URLSearchParams()
   if (keywords.value) {
-    str += `word=${keywords.value}`
+    params.append('word', keywords.value)
+  }
+
+  if (datasourceContext.datasourceId) {
+    params.append('dslist', String(datasourceContext.datasourceId))
   }
 
   state.conditions.forEach((ele: any) => {
+    if (ele.field === 'dslist' && datasourceContext.datasourceId) {
+      return
+    }
     ele.value.forEach((itx: any) => {
-      str += str ? `&${ele.field}=${itx}` : `${ele.field}=${itx}`
+      params.append(ele.field, String(itx))
     })
   })
-
-  if (str.length) {
-    str = `?${str}`
-  }
-  return str
+  return params
 }
 
 const search = ($event: any = {}) => {
@@ -234,6 +260,12 @@ const search = ($event: any = {}) => {
   }
   searchLoading.value = true
   oldKeywords.value = keywords.value
+  if (!datasourceContext.datasourceId && !userStore.isAdmin) {
+    fieldList.value = []
+    pageInfo.total = 0
+    searchLoading.value = false
+    return
+  }
   professionalApi
     .getList(pageInfo.currentPage, pageInfo.pageSize, configParams())
     .then((res) => {
@@ -287,6 +319,7 @@ const handleChange = () => {
 }
 
 const saveHandler = () => {
+  if (!canManageTerminology.value) return
   termFormRef.value.validate((res: any) => {
     if (res) {
       const arr = [...pageForm.value.other_words.filter((ele: any) => !!ele), pageForm.value.word]
@@ -316,16 +349,21 @@ const saveHandler = () => {
 }
 const list = () => {
   datasourceApi.list().then((res) => {
-    allDsList.value = res
+    allDsList.value = (res || []).filter((item: any) => item.can_manage_project === true)
   })
 }
 const editHandler = (row: any) => {
+  if (!canManageTerminology.value) return
   pageForm.value.id = null
   if (row) {
     pageForm.value = cloneDeep(row)
     if (!pageForm.value.other_words.length) {
       pageForm.value.other_words = ['']
     }
+  } else if (!userStore.isAdmin && datasourceContext.datasourceId) {
+    pageForm.value.specific_ds = true
+    pageForm.value.datasource_ids = [Number(datasourceContext.datasourceId)]
+    pageForm.value.datasource_names = [datasourceContext.datasourceName]
   }
   dialogTitle.value = row?.id
     ? t('professional.editing_terminology')
@@ -409,6 +447,10 @@ const drawerMainClose = () => {
 }
 
 const changeStatus = (id: any, val: any) => {
+  if (!canManageTerminology.value) {
+    search()
+    return
+  }
   professionalApi
     .enable(id, val + '')
     .then(() => {
@@ -448,9 +490,11 @@ const changeStatus = (id: any, val: any) => {
           {{ $t('professional.export_all') }}
         </el-button>
         <Uploader
+          v-if="canManageTerminology"
           upload-path="/system/terminology/uploadExcel"
           template-path="/system/terminology/template"
           :template-name="`${t('professional.professional_terminology')}.xlsx`"
+          :upload-params="selectedDatasourceParams"
           @upload-finished="search"
         />
         <el-button class="no-margin" secondary @click="drawerMainOpen">
@@ -459,7 +503,7 @@ const changeStatus = (id: any, val: any) => {
           </template>
           {{ $t('user.filter') }}
         </el-button>
-        <el-button class="no-margin" type="primary" @click="editHandler(null)">
+        <el-button v-if="canManageTerminology" class="no-margin" type="primary" @click="editHandler(null)">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -485,7 +529,7 @@ const changeStatus = (id: any, val: any) => {
           @row-click="handleRowClick"
           @selection-change="handleSelectionChange"
         >
-          <el-table-column :selectable="selectable" type="selection" width="55" />
+          <el-table-column v-if="canManageTerminology" :selectable="selectable" type="selection" width="55" />
           <el-table-column prop="word" :label="$t('professional.term_name')" width="280">
             <template #default="scope">
               {{ scope.row.word }}
@@ -521,6 +565,7 @@ const changeStatus = (id: any, val: any) => {
               <div style="display: flex; align-items: center" @click.stop>
                 <el-switch
                   v-model="scope.row.enabled"
+                  :disabled="!canManageTerminology"
                   size="small"
                   @change="(val: any) => changeStatus(scope.row.id, val)"
                 />
@@ -537,7 +582,7 @@ const changeStatus = (id: any, val: any) => {
               <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
             </template>
           </el-table-column>
-          <el-table-column fixed="right" width="80" :label="t('ds.actions')">
+          <el-table-column v-if="canManageTerminology" fixed="right" width="80" :label="t('ds.actions')">
             <template #default="scope">
               <div class="field-comment">
                 <el-tooltip
@@ -655,13 +700,17 @@ const changeStatus = (id: any, val: any) => {
         prop="datasource_ids"
         :label="t('training.effective_data_sources')"
       >
-        <el-radio-group v-model="pageForm.specific_ds">
+        <el-radio-group v-if="canManageGlobalTerminology" v-model="pageForm.specific_ds">
           <el-radio :value="false">{{ $t('training.all_data_sources') }}</el-radio>
           <el-radio :value="true">{{ $t('training.partial_data_sources') }}</el-radio>
         </el-radio-group>
+        <div v-else class="content">
+          {{ datasourceContext.datasourceName }}
+        </div>
         <el-select
           v-if="pageForm.specific_ds"
           v-model="pageForm.datasource_ids"
+          :disabled="!canManageGlobalTerminology"
           multiple
           filterable
           :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('ds.title')"

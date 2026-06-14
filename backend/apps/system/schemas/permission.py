@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
 from apps.chat.models.chat_model import Chat
 from common.core.db import engine
+from apps.system.crud.user import is_system_admin
 from apps.system.schemas.system_schema import UserInfoDTO
 
 from common.utils.locale import I18n
@@ -28,14 +29,80 @@ def _required_project_role(role_list: Optional[list[str]]) -> Optional[str]:
     return None
 
 
+def _is_system_admin(current_user: UserInfoDTO) -> bool:
+    return is_system_admin(current_user)
+
+
+def _resource_is_empty(resource) -> bool:
+    if resource is None or resource == "":
+        return True
+    if isinstance(resource, (list, tuple, set, dict)) and len(resource) == 0:
+        return True
+    return False
+
+
+def _deny_permission(trans):
+    raise HTTPException(
+        status_code=403,
+        detail=trans('i18n_permission.permission_resource_limit'),
+    )
+
+
+def _resolve_part(value, part: str):
+    if value is None:
+        raise ValueError("resource path contains null value")
+    if isinstance(value, dict):
+        if part not in value:
+            raise ValueError(f"resource path key not found: {part}")
+        return value[part]
+    if hasattr(value, part):
+        return getattr(value, part)
+    raise ValueError(f"resource path attribute not found: {part}")
+
+
+def _resolve_key_expression(func, args, kwargs, key_expression: str):
+    expression = (key_expression or "").strip()
+    if not expression:
+        raise ValueError("resource keyExpression is empty")
+
+    sig = signature(func)
+    bound_args = sig.bind_partial(*args, **kwargs)
+    bound_args.apply_defaults()
+
+    match = re.match(r"^args\[(\d+)\](?:\.(.+))?$", expression)
+    if match:
+        index = int(match.group(1))
+        if index >= len(bound_args.args):
+            raise ValueError("resource args index out of range")
+        value = bound_args.args[index]
+        remaining = match.group(2)
+        parts = remaining.split('.') if remaining else []
+    else:
+        parts = expression.split('.')
+        if not parts or parts[0] not in bound_args.arguments:
+            raise ValueError("resource base argument not found")
+        value = bound_args.arguments[parts[0]]
+        parts = parts[1:]
+
+    for part in parts:
+        if not part:
+            raise ValueError("resource path contains empty segment")
+        value = _resolve_part(value, part)
+
+    return value
+
+
 async def check_project_permission(
         current_user: UserInfoDTO,
         type,
         resource,
         role_list: Optional[list[str]] = None,
 ) -> bool:
-    if not resource or (isinstance(resource, list) and len(resource) == 0):
+    if _is_system_admin(current_user):
         return True
+
+    if _resource_is_empty(resource):
+        return False
 
     if type == 'ds' or type == 'datasource':
         from apps.datasource.crud.permission import has_datasource_access, has_datasource_role
@@ -46,13 +113,43 @@ async def check_project_permission(
                 return has_datasource_role(session, current_user, resource, required_role)
             return has_datasource_access(session, current_user, resource)
 
+    if type == 'table':
+        from apps.datasource.crud.permission import has_datasource_role
+        from apps.datasource.models.datasource import CoreTable
+
+        try:
+            table_id = int(resource)
+        except (TypeError, ValueError):
+            return False
+        with Session(engine) as session:
+            row = session.exec(select(CoreTable.ds_id).where(CoreTable.id == table_id)).first()
+            if row is None:
+                return False
+            required_role = _required_project_role(role_list) or "project_viewer"
+            return has_datasource_role(session, current_user, row, required_role)
+
+    if type == 'field':
+        from apps.datasource.crud.permission import has_datasource_role
+        from apps.datasource.models.datasource import CoreField
+
+        try:
+            field_id = int(resource)
+        except (TypeError, ValueError):
+            return False
+        with Session(engine) as session:
+            row = session.exec(select(CoreField.ds_id).where(CoreField.id == field_id)).first()
+            if row is None:
+                return False
+            required_role = _required_project_role(role_list) or "project_viewer"
+            return has_datasource_role(session, current_user, row, required_role)
+
     if type == 'chat':
         try:
             requested_ids = resource if isinstance(resource, list) else [resource]
             chat_ids = {int(item) for item in requested_ids}
         except (TypeError, ValueError):
             return False
-        if current_user.isAdmin:
+        if _is_system_admin(current_user):
             return True
         with Session(engine) as session:
             owned_count = session.exec(
@@ -60,7 +157,7 @@ async def check_project_permission(
             ).all()
             return chat_ids.issubset({int(item) for item in owned_count})
 
-    return True
+    return False
         
  
 def require_permissions(permission: SqlbotPermission):
@@ -77,49 +174,38 @@ def require_permissions(permission: SqlbotPermission):
                 )
             trans = i18n(request)
             
-            if current_user.isAdmin and not permission.type:
+            if _is_system_admin(current_user):
                 return await func(*args, **kwargs)
             role_list = permission.role
             keyExpression = permission.keyExpression
             resource_type = permission.type
             
             if role_list:
-                if 'admin' in role_list and not current_user.isAdmin:
-                    #raise Exception('no permission to execute, only for admin')
-                    raise Exception(trans('i18n_permission.only_admin'))
+                if 'admin' in role_list and not _is_system_admin(current_user):
+                    raise HTTPException(status_code=403, detail=trans('i18n_permission.only_admin'))
                 if (
                     any(role in role_list for role in ('project_admin', 'project_editor', 'project_viewer'))
                     and not resource_type
-                    and not current_user.isAdmin
+                    and not _is_system_admin(current_user)
                 ):
-                    raise Exception(trans('i18n_permission.only_project_admin'))
+                    raise HTTPException(status_code=403, detail=trans('i18n_permission.only_project_admin'))
             if not resource_type:
                 return await func(*args, **kwargs)
-            if keyExpression:
-                sig = signature(func)
-                bound_args = sig.bind_partial(*args, **kwargs)
-                bound_args.apply_defaults()
-                
-                if keyExpression.startswith("args["):
-                    if match := re.match(r"args\[(\d+)\]", keyExpression):
-                        index = int(match.group(1))
-                        value = bound_args.args[index]
-                        if await check_project_permission(current_user, resource_type, value, role_list):
-                            return await func(*args, **kwargs)
-                        #raise Exception('no permission to execute or resource do not exist!')
-                        raise Exception(trans('i18n_permission.permission_resource_limit'))
-                            
-                parts = keyExpression.split('.')
-                if not bound_args.arguments.get(parts[0]):
-                    return await func(*args, **kwargs)
-                value = bound_args.arguments[parts[0]]
-                for part in parts[1:]:
-                    value = getattr(value, part)
-                if await check_project_permission(current_user, resource_type, value, role_list):
-                    return await func(*args, **kwargs)
-                raise Exception(trans('i18n_permission.permission_resource_limit'))
-            
-            return await func(*args, **kwargs)
+
+            if not keyExpression:
+                _deny_permission(trans)
+
+            try:
+                value = _resolve_key_expression(func, args, kwargs, keyExpression)
+            except Exception:
+                _deny_permission(trans)
+
+            if _resource_is_empty(value):
+                _deny_permission(trans)
+
+            if await check_project_permission(current_user, resource_type, value, role_list):
+                return await func(*args, **kwargs)
+            _deny_permission(trans)
         
         return wrapper
     return decorator
@@ -131,4 +217,26 @@ class RequestContext:
     def set_request(cls, request: Request):
         return cls._current_request.set(request)
     
-    @classmetho
+    @classmethod
+    def get_request(cls) -> Request:
+        try:
+            return cls._current_request.get()
+        except LookupError:
+            raise RuntimeError(
+                "No request context found. "
+                "Make sure RequestContextMiddleware is installed."
+            )
+    
+    @classmethod
+    def reset(cls, token):
+        cls._current_request.reset(token)
+
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    
+    async def dispatch(self, request: Request, call_next):
+        token = RequestContext.set_request(request)
+        try:
+            response = await call_next(request)
+            return response
+        finally:
+            RequestContext.reset(token)

@@ -40,7 +40,7 @@ const loadCanvasData = (params: any) => {
 </script>
 
 <template>
-  <div id="sq-preview-content" ref="previewCanvasContainer" class="content">
+  <div id="sq-preview-content" ref="previewCanvasContainer" class="content dashboard-preview-content">
     <SQPreview
       v-if="state.canvasStylePreview && dataInitState"
       ref="dashboardPreview"

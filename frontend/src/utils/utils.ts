@@ -182,50 +182,46 @@ export const setCurrentColor = (color: any, element: HTMLElement = document.docu
     return
   }
   element.style.setProperty('--ed-color-primary', currentColor)
+  element.style.setProperty('--el-color-primary', currentColor)
+  element.style.setProperty('--primary-color', currentColor)
+  element.style.setProperty('--accent-color', currentColor)
+  element.style.setProperty('--user-msg-bg', currentColor)
   element.style.setProperty('--van-blue', currentColor)
-  element.style.setProperty(
-    '--ed-color-primary-light-5',
-    colorFunctions
-      .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 40 })
-      .toRGB()
-  )
-  element.style.setProperty(
-    '--ed-color-primary-light-3',
-    colorFunctions
-      .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 15 })
-      .toRGB()
-  )
+  const light3 = colorFunctions
+    .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 15 })
+    .toRGB()
+  const light5 = colorFunctions
+    .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 40 })
+    .toRGB()
+  const light60 = colorFunctions
+    .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 60 })
+    .toRGB()
+  const light80 = colorFunctions
+    .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 80 })
+    .toRGB()
+  const dark2 = colorFunctions
+    .mix(new colorTree('000000'), new colorTree(currentColor.substr(1)), { value: 15 })
+    .toRGB()
 
-  element.style.setProperty(
-    '--ed-color-primary-60',
-    colorFunctions
-      .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 60 })
-      .toRGB()
-  )
+  element.style.setProperty('--ed-color-primary-light-5', light5)
+  element.style.setProperty('--ed-color-primary-light-3', light3)
+  element.style.setProperty('--el-color-primary-light-3', light3)
+  element.style.setProperty('--el-color-primary-light-5', light5)
+  element.style.setProperty('--el-color-primary-light-7', light60)
+  element.style.setProperty('--el-color-primary-light-8', light80)
+  element.style.setProperty('--el-color-primary-light-9', `${currentColor}1a`)
+  element.style.setProperty('--el-color-primary-dark-2', dark2)
 
-  element.style.setProperty(
-    '--ed-color-primary-80',
-    colorFunctions
-      .mix(new colorTree('ffffff'), new colorTree(currentColor.substr(1)), { value: 80 })
-      .toRGB()
-  )
+  element.style.setProperty('--ed-color-primary-60', light60)
 
-  element.style.setProperty(
-    '--ed-color-primary-15-d',
-    colorFunctions
-      .mix(new colorTree('000000'), new colorTree(currentColor.substr(1)), { value: 15 })
-      .toRGB()
-  )
+  element.style.setProperty('--ed-color-primary-80', light80)
+
+  element.style.setProperty('--ed-color-primary-15-d', dark2)
   element.style.setProperty('--ed-color-primary-1a', `${currentColor}1a`)
   element.style.setProperty('--ed-color-primary-14', `${currentColor}14`)
   element.style.setProperty('--ed-color-primary-33', `${currentColor}33`)
   element.style.setProperty('--ed-color-primary-99', `${currentColor}99`)
-  element.style.setProperty(
-    '--ed-color-primary-dark-2',
-    colorFunctions
-      .mix(new colorTree('000000'), new colorTree(currentColor.substr(1)), { value: 15 })
-      .toRGB()
-  )
+  element.style.setProperty('--ed-color-primary-dark-2', dark2)
 }
 export const getQueryString = (name: string) => {
   const reg = new RegExp('(^|&)' + name + '=([^&]*)(&|$)', 'i')

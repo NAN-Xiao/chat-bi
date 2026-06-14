@@ -6,6 +6,8 @@ export interface SQTreeNode {
   weight: number
   type: string
   node_type: string
+  datasource?: number | string
+  can_edit?: boolean
   children?: SQTreeNode[]
 }
 

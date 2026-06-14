@@ -16,19 +16,15 @@ EXPECTED_COPY_SNIPPETS = {
     "frontend/index.html": ["<title>星通智数</title>"],
     "frontend/embedded.html": ["<title>星通智数</title>"],
     "frontend/src/stores/appearance.ts": [
-        "name: '星通智数'",
-        "document.title = '星通智数'",
-        "setTitle('星通智数')",
+        "const DEFAULT_BRAND_NAME = '星通智数'",
+        "name: DEFAULT_BRAND_NAME",
+        "document.title = DEFAULT_BRAND_NAME",
+        "setTitle(DEFAULT_BRAND_NAME)",
     ],
     "frontend/src/stores/chatConfig.ts": ["sqlbot_name: '星通智数'"],
     "frontend/src/components/layout/index.vue": ['<div class="logo">星通智数</div>'],
     "frontend/src/views/chat/index.vue": ["'你好，我是星通智数'"],
     "frontend/src/views/work/index.vue": ["Hello, I'm 星通智数, happy to serve you!"],
-    "frontend/src/views/system/appearance/LoginPreview.vue": ["'星通智数'"],
-    "frontend/src/views/system/appearance/index.vue": [
-        "loginForm.name || '星通智数'",
-        "name: '星通智数'",
-    ],
     "frontend/src/views/system/parameter/index.vue": ["'chat.sqlbot_name': '星通智数'"],
     "backend/common/core/config.py": ['PROJECT_NAME: str = "星通智数"'],
     "backend/main.py": [

@@ -2,7 +2,8 @@ import datetime
 import json
 from typing import Any, List, Optional
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, inspect, or_
+from sqlmodel import select
 
 from apps.datasource.crud.permission_rules import (
     list_permission_records,
@@ -13,6 +14,8 @@ from apps.datasource.crud.permission_rules import (
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable
 from common.core.deps import CurrentUser, SessionDep
+from apps.system.crud.user import SYSTEM_ROLE_SYSTEM_ADMIN, is_system_admin
+from apps.system.models.user import UserModel
 
 PROJECT_ROLE_VIEWER = "viewer"
 PROJECT_ROLE_EDITOR = "editor"
@@ -41,22 +44,56 @@ def project_role_rank(role: str | None) -> int:
 
 
 def _can_satisfy_project_role(actual_role: str | None, required_role: str | None) -> bool:
+    if actual_role is None:
+        return False
     return project_role_rank(actual_role) >= project_role_rank(required_role)
+
+
+def _supports_user_system_role_filter(session: SessionDep) -> bool:
+    try:
+        inspector = inspect(session.connection())
+        if not inspector.has_table(UserModel.__tablename__):
+            return False
+        return any(
+            column["name"] == "system_role"
+            for column in inspector.get_columns(UserModel.__tablename__)
+        )
+    except Exception:
+        return False
+
+
+def list_project_assignable_user_ids(session: SessionDep, user_ids) -> set[int]:
+    requested_ids = {int(user_id) for user_id in user_ids if user_id is not None}
+    if not requested_ids:
+        return set()
+    if not _supports_user_system_role_filter(session):
+        return requested_ids
+
+    rows = session.exec(
+        select(UserModel.id).where(
+            UserModel.id.in_(requested_ids),
+            UserModel.system_role != SYSTEM_ROLE_SYSTEM_ADMIN,
+        )
+    ).all()
+    return {int(_first_column_value(row)) for row in rows if _first_column_value(row) is not None}
 
 
 def list_datasource_user_ids(session: SessionDep, datasource_id: int) -> list[int]:
     rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource_id).all()
-    return [int(row.user_id) for row in rows]
+    assignable_ids = list_project_assignable_user_ids(session, [row.user_id for row in rows])
+    return [int(row.user_id) for row in rows if int(row.user_id) in assignable_ids]
 
 
 def list_datasource_users(session: SessionDep, datasource_id: int) -> list[dict[str, Any]]:
     rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource_id).all()
+    assignable_ids = list_project_assignable_user_ids(session, [row.user_id for row in rows])
     return [
         {
             "user_id": int(row.user_id),
             "role": normalize_project_role(getattr(row, "role", None)),
         }
         for row in rows
+        if int(row.user_id) in assignable_ids
     ]
 
 
@@ -70,6 +107,37 @@ def list_user_datasource_roles(session: SessionDep, user_id: int) -> dict[int, s
     return {int(row.ds_id): normalize_project_role(getattr(row, "role", None)) for row in rows}
 
 
+def get_datasource_ids_with_min_role(
+        session: SessionDep,
+        current_user: CurrentUser,
+        min_role: str = PROJECT_ROLE_VIEWER,
+) -> Optional[set[int]]:
+    if _is_datasource_scope_admin(current_user):
+        return None
+
+    result: set[int] = set()
+    required_rank = project_role_rank(min_role)
+
+    membership_rows = session.query(CoreDatasourceUser).filter(
+        CoreDatasourceUser.user_id == current_user.id
+    ).all()
+    for row in membership_rows:
+        if project_role_rank(getattr(row, "role", None)) >= required_rank:
+            result.add(int(row.ds_id))
+
+    if project_role_rank(PROJECT_ROLE_ADMIN) >= required_rank:
+        created_rows = session.query(CoreDatasource.id).filter(
+            CoreDatasource.create_by == current_user.id
+        ).all()
+        result.update(
+            int(_first_column_value(row))
+            for row in created_rows
+            if _first_column_value(row) is not None
+        )
+
+    return result
+
+
 def update_datasource_users(
         session: SessionDep,
         current_user: CurrentUser,
@@ -78,7 +146,7 @@ def update_datasource_users(
         user_roles: Optional[dict[int, str]] = None
 ) -> list[dict[str, Any]]:
     user_roles = user_roles or {}
-    next_user_ids = {int(user_id) for user_id in user_ids if int(user_id) != 1}
+    next_user_ids = list_project_assignable_user_ids(session, user_ids)
     current_rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource.id).all()
     current_rows_by_user = {int(row.user_id): row for row in current_rows}
 
@@ -114,7 +182,11 @@ def update_user_datasources(
         user_id: int,
         datasource_ids: list[int]
 ) -> list[int]:
-    if int(user_id) == 1:
+    try:
+        target_user_id = int(user_id)
+    except (TypeError, ValueError):
+        return []
+    if target_user_id not in list_project_assignable_user_ids(session, [target_user_id]):
         return []
 
     next_datasource_ids = {int(datasource_id) for datasource_id in datasource_ids}
@@ -127,7 +199,7 @@ def update_user_datasources(
     else:
         datasource_map = {}
 
-    current_rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.user_id == user_id).all()
+    current_rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.user_id == target_user_id).all()
     current_datasource_ids = {int(row.ds_id) for row in current_rows}
 
     for row in current_rows:
@@ -139,7 +211,7 @@ def update_user_datasources(
         datasource = datasource_map.get(datasource_id)
         session.add(CoreDatasourceUser(
             ds_id=datasource_id,
-            user_id=user_id,
+            user_id=target_user_id,
             role=PROJECT_ROLE_VIEWER,
             create_by=current_user.id if current_user else None,
             create_time=datetime.datetime.now()
@@ -162,7 +234,16 @@ def _rule_contains_permission(rule: Any, permission_id) -> bool:
 
 
 def _is_datasource_scope_admin(current_user: CurrentUser) -> bool:
-    return bool(current_user.isAdmin)
+    return is_system_admin(current_user)
+
+
+def _first_column_value(row):
+    if isinstance(row, tuple):
+        return row[0]
+    try:
+        return row[0]
+    except (TypeError, KeyError, IndexError):
+        return row
 
 
 def get_datasource_role(session: SessionDep, current_user: CurrentUser, datasource_id) -> str | None:
@@ -214,22 +295,7 @@ def has_datasource_role(
 
 
 def get_accessible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
-    if _is_datasource_scope_admin(current_user):
-        return None
-
-    project_ids = session.query(CoreDatasource.id).outerjoin(
-        CoreDatasourceUser,
-        and_(
-            CoreDatasource.id == CoreDatasourceUser.ds_id,
-            CoreDatasourceUser.user_id == current_user.id,
-        )
-    ).filter(
-        or_(
-            CoreDatasourceUser.user_id == current_user.id,
-            CoreDatasource.create_by == current_user.id,
-        )
-    ).all()
-    return {int(row[0] if isinstance(row, tuple) else row) for row in project_ids if row is not None}
+    return get_datasource_ids_with_min_role(session, current_user, PROJECT_ROLE_VIEWER)
 
 
 def has_datasource_access(session: SessionDep, current_user: CurrentUser, datasource_ids) -> bool:
@@ -340,6 +406,59 @@ def get_user_permission_rules(
         if rule_permission_ids & permission_ids:
             user_rules.append(rule)
     return user_rules
+
+
+def get_user_scoped_table_ids(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int,
+        contain_rules: Optional[list[Any]] = None,
+) -> Optional[set[int]]:
+    if not is_normal_user(current_user):
+        return None
+
+    contain_rules = contain_rules if contain_rules is not None else get_user_permission_rules(
+        session,
+        current_user,
+        datasource_id,
+    )
+    if not contain_rules:
+        return None
+
+    rule_permission_ids: set[int] = set()
+    for rule in contain_rules:
+        if not _rule_contains_user(rule, current_user):
+            continue
+        for permission_id in parse_json_list(rule.permission_list):
+            try:
+                rule_permission_ids.add(int(permission_id))
+            except (TypeError, ValueError):
+                continue
+    if not rule_permission_ids:
+        return set()
+
+    permissions = list_permission_records(
+        session,
+        ids=sorted(rule_permission_ids),
+        ds_id=datasource_id,
+        enable=True,
+    )
+    return {
+        int(permission.table_id)
+        for permission in permissions
+        if permission.table_id is not None
+    }
+
+
+def can_access_table(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int,
+        table_id: int,
+        contain_rules: Optional[list[Any]] = None,
+) -> bool:
+    scoped_table_ids = get_user_scoped_table_ids(session, current_user, datasource_id, contain_rules)
+    return scoped_table_ids is None or int(table_id) in scoped_table_ids
 
 
 def filter_list(list_a, list_b):

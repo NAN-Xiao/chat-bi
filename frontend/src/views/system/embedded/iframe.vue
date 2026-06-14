@@ -12,7 +12,6 @@ import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
 import { useClipboard } from '@vueuse/core'
-import SetUi from './SetUi.vue'
 import Card from './Card.vue'
 import DsCard from './DsCard.vue'
 import { getList, updateAssistant, saveAssistant, delOne, dsApi } from '@/api/embedded'
@@ -283,10 +282,6 @@ const deleteHandler = (row: any) => {
     })
   })
 }
-const setUiRef = ref()
-const handleSetUi = (row: any) => {
-  setUiRef.value.open(row)
-}
 const splitString = (str: string) => {
   if (typeof str !== 'string') {
     return []
@@ -510,15 +505,10 @@ const handleEmbedded = (row: any) => {
     const script = document.createElement('script');
     script.defer = true;
     script.async = true;
-    script.src = "${origin + pathname}xpack_static/sqlbot-embedded-dynamic.umd.js";
+    script.src = "${origin + pathname}assistant.js?id=${row.id}";
+    script.id = "sqlbot-assistant-page-script-${row.id}";
     document.head.appendChild(script);
   })()
-  let sqlbot_embedded_timer = setInterval(() => {
-    if (sqlbot_embedded_handler?.mounted) {
-      sqlbot_embedded_handler.mounted('.copilot', { "embeddedId": "${row.id}" })
-      clearInterval(sqlbot_embedded_timer)
-    }
-  }, 1000)
   `
 }
 const copyJsCode = () => {
@@ -690,7 +680,6 @@ const saveHandler = () => {
             @embedded="handleEmbedded(ele)"
             @edit="handleEditRule(ele)"
             @del="deleteHandler(ele)"
-            @ui="handleSetUi(ele)"
           ></Card>
         </el-col>
       </el-row>
@@ -1201,7 +1190,6 @@ const saveHandler = () => {
       </div>
     </template>
   </el-drawer>
-  <SetUi ref="setUiRef" @refresh="handleSearch"></SetUi>
 </template>
 
 <style lang="less" scoped>

@@ -1,12 +1,16 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import 'element-plus-secondary/theme-chalk/dark/css-vars.css'
 import './style.less'
 import App from './App.vue'
 import router from './router'
 import { i18n } from './i18n'
 import VueDOMPurifyHTML from 'vue-dompurify-html'
+import { applyInitialTheme } from '@/utils/theme'
 
 // import 'element-plus/dist/index.css'
+applyInitialTheme()
+
 const app = createApp(App)
 const pinia = createPinia()
 

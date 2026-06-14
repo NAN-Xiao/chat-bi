@@ -1,5 +1,5 @@
 import re
-from typing import Optional,List
+from typing import Literal, Optional,List
 
 from pydantic import BaseModel, Field, create_model, field_validator
 
@@ -36,6 +36,7 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
     status: int = 1
     origin: int = 0
     name: str
+    system_role: str = "viewer"
 
     def to_dict(self):
         return {
@@ -55,6 +56,7 @@ class UserCreator(BaseUser):
     email: str = Field(min_length=1, max_length=100, description=f"{PLACEHOLDER_PREFIX}user_email")
     status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
     origin: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}origin")
+    system_role: Literal["system_admin", "tenant_admin", "viewer"] = "viewer"
     project_ids: Optional[list[int]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}ds_id")
     system_variables: Optional[List] = Field(default=[])
 
@@ -175,20 +177,6 @@ class AssistantOutDsSchema(AssistantOutDsBase):
     mode: Optional[str] = None
     tables: Optional[list[AssistantTableSchema]] = None
 
-
-class AssistantUiSchema(BaseCreatorDTO):
-    theme: Optional[str] = None
-    header_font_color: Optional[str] = None
-    logo: Optional[str] = None
-    float_icon: Optional[str] = None
-    float_icon_drag: Optional[bool] = False
-    x_type: Optional[str] = 'right'
-    x_val: Optional[int] = 0
-    y_type: Optional[str] = 'bottom'
-    y_val: Optional[int] = 33
-    name: Optional[str] = None
-    welcome: Optional[str] = None
-    welcome_desc: Optional[str] = None
 
 class ApikeyStatus(BaseModel):
     id: int = Field(description=f"{PLACEHOLDER_PREFIX}id")

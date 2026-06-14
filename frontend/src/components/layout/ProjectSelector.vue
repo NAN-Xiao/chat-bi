@@ -48,7 +48,11 @@ const handleDefaultProjectChange = (item: any) => {
     Number(item.id),
     item.name,
     item.type || '',
-    item.type_name || ''
+    item.type_name || '',
+    item.project_role || '',
+    item.can_create_dashboard === true,
+    item.can_manage_dashboard === true,
+    item.can_manage_project === true
   )
   ElMessage.success(t('common.switch_success'))
   router.push('/chat/index')
@@ -125,9 +129,9 @@ onMounted(async () => {
 
 <style lang="less" scoped>
 .project-selector {
-  background: #1f23290a;
-  border-radius: 6px;
-  border: 1px solid #1f23291a;
+  background: var(--theme-control-bg);
+  border-radius: 8px;
+  border: 1px solid var(--theme-shell-border);
   padding: 0 12px;
   display: flex;
   align-items: center;
@@ -135,6 +139,7 @@ onMounted(async () => {
   width: 208px;
   height: 40px;
   margin-bottom: 12px;
+  color: var(--theme-text-secondary);
 
   &.collapse {
     width: 40px;
@@ -148,6 +153,7 @@ onMounted(async () => {
     line-height: 22px;
     margin-left: 8px;
     max-width: 120px;
+    color: var(--theme-text-primary);
   }
 
   .expand {
@@ -155,11 +161,11 @@ onMounted(async () => {
   }
 
   &:hover {
-    background: #1f23291a;
+    background: var(--theme-hover-bg);
   }
 
   &:active {
-    background: #1f232926;
+    background: var(--theme-active-bg);
   }
 }
 </style>
@@ -169,14 +175,22 @@ onMounted(async () => {
   --ed-popover-border-radius: 6px;
   padding: 4px 0;
   width: 280px !important;
-  box-shadow: 0 4px 8px 0 #1f23291a;
-  border: 1px solid #dee0e3;
+  box-shadow: var(--theme-card-shadow);
+  border: 1px solid var(--theme-shell-border);
+  background: var(--theme-panel-bg);
+  color: var(--theme-text-primary);
   .ed-input {
+    background: var(--theme-panel-bg);
     .ed-input__wrapper {
       box-shadow: none;
+      background: var(--theme-panel-bg);
     }
 
-    border-bottom: 1px solid #1f232926;
+    .ed-input__inner {
+      color: var(--theme-text-primary);
+    }
+
+    border-bottom: 1px solid var(--theme-shell-border);
   }
 
   .popover {
@@ -194,14 +208,14 @@ onMounted(async () => {
       border-radius: 6px;
       cursor: pointer;
       &:not(.empty):hover {
-        background: #1f23291a;
+        background: var(--theme-hover-bg);
       }
 
       &.empty {
         font-weight: 400;
         font-size: 14px;
         line-height: 22px;
-        color: #8f959e;
+        color: var(--theme-text-secondary);
         cursor: default;
       }
 

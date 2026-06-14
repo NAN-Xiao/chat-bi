@@ -80,7 +80,7 @@
           <div
             :title="`${user.name}(${user.account})`"
             class="flex align-center ellipsis"
-            style="width: 100%"
+            style="width: calc(100% - 148px)"
           >
             <el-icon size="28">
               <avatar_personal></avatar_personal>
@@ -92,6 +92,20 @@
               ({{ user.account }})
             </span>
           </div>
+          <el-select
+            v-model="user.role"
+            class="role-select"
+            size="small"
+            style="width: 112px"
+            @click.stop
+          >
+            <el-option
+              v-for="role in roleOptions"
+              :key="role.value"
+              :label="role.label"
+              :value="role.value"
+            />
+          </el-select>
           <el-button class="close-btn" text>
             <el-icon size="16" @click="removeUser(user)"><Close /></el-icon>
           </el-button>
@@ -132,6 +146,11 @@ const selectedUsers = ref<any[]>([])
 const checkedUsers = ref<any[]>([])
 const checkAll = ref(false)
 const isIndeterminate = ref(false)
+const roleOptions = [
+  { label: t('datasource.project_role_viewer'), value: 'viewer' },
+  { label: t('datasource.project_role_editor'), value: 'editor' },
+  { label: t('datasource.project_role_admin'), value: 'admin' },
+]
 
 const usersWithKeywords = computed(() => {
   const keyword = search.value.toLowerCase()
@@ -157,7 +176,12 @@ const handleCheckAllChange = (val: CheckboxValueType) => {
   const visibleIds = new Set(usersWithKeywords.value.map((user: any) => user.id))
   if (val) {
     const selectedMap = new Map(selectedUsers.value.map((user: any) => [user.id, user]))
-    usersWithKeywords.value.forEach((user: any) => selectedMap.set(user.id, user))
+    usersWithKeywords.value.forEach((user: any) =>
+      selectedMap.set(user.id, {
+        ...user,
+        role: selectedMap.get(user.id)?.role || user.role || 'viewer',
+      })
+    )
     selectedUsers.value = Array.from(selectedMap.values())
   } else {
     selectedUsers.value = selectedUsers.value.filter((user: any) => !visibleIds.has(user.id))
@@ -172,7 +196,12 @@ const handleCheckedUsersChange = (value: CheckboxValueType[]) => {
       .filter((user: any) => !visibleIds.has(user.id))
       .map((user: any) => [user.id, user])
   )
-  ;(value as any[]).forEach((user: any) => selectedMap.set(user.id, user))
+  ;(value as any[]).forEach((user: any) =>
+    selectedMap.set(user.id, {
+      ...user,
+      role: selectedMap.get(user.id)?.role || user.role || 'viewer',
+    })
+  )
   selectedUsers.value = Array.from(selectedMap.values())
   syncCheckedState()
 }
@@ -191,9 +220,21 @@ const open = async (row: any) => {
       userApi.pager('', 1, 1000),
       datasourceApi.users(row.id),
     ])
-    users.value = (userPage?.items || []).filter((user: any) => Number(user.id) !== 1)
-    const authorizedIds = new Set((projectUsers?.user_ids || []).map((id: any) => Number(id)))
-    selectedUsers.value = users.value.filter((user: any) => authorizedIds.has(Number(user.id)))
+    users.value = (userPage?.items || []).filter(
+      (user: any) => user.system_role !== 'system_admin'
+    )
+    const authorizedRoles = new Map(
+      (projectUsers?.users || []).map((user: any) => [Number(user.id), user.role || 'viewer'])
+    )
+    const authorizedIds = new Set(
+      (projectUsers?.user_ids || Array.from(authorizedRoles.keys())).map((id: any) => Number(id))
+    )
+    selectedUsers.value = users.value
+      .filter((user: any) => authorizedIds.has(Number(user.id)))
+      .map((user: any) => ({
+        ...user,
+        role: authorizedRoles.get(Number(user.id)) || 'viewer',
+      }))
     syncCheckedState()
   } finally {
     loading.value = false
@@ -218,6 +259,10 @@ const handleConfirm = () => {
   datasourceApi
     .updateUsers(project.value.id, {
       user_ids: selectedUsers.value.map((user: any) => Number(user.id)),
+      users: selectedUsers.value.map((user: any) => ({
+        id: Number(user.id),
+        role: user.role || 'viewer',
+      })),
     })
     .then(() => {
       ElMessage.success(t('common.save_success'))
@@ -320,6 +365,13 @@ defineExpose({
     &:focus {
       background: #1f23291a !important;
     }
+  }
+
+  .role-select {
+    position: relative;
+    z-index: 10;
+    margin: 0 8px;
+    flex-shrink: 0;
   }
 
   .border {

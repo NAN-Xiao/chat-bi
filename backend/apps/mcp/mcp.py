@@ -13,7 +13,7 @@ from apps.chat.api.chat import create_chat, question_answer_inner
 from apps.chat.models.chat_model import ChatMcp, CreateChat, ChatStart, McpQuestion, McpAssistant, ChatQuestion, \
     ChatFinishStep, McpDs
 from apps.datasource.crud.datasource import get_datasource_list
-from apps.system.crud.user import authenticate
+from apps.system.crud.user import apply_user_role_flags, authenticate
 from apps.system.crud.user import get_db_user
 from apps.system.models.user import UserModel
 from apps.system.schemas.system_schema import BaseUserDTO, AssistantHeader
@@ -61,7 +61,7 @@ def get_user(session: SessionDep, token: str):
 
     db_user: UserModel = get_db_user(session=session, user_id=token_data.id)
     session_user = UserInfoDTO.model_validate(db_user.model_dump())
-    session_user.isAdmin = session_user.id == 1 and session_user.account == 'admin'
+    session_user = apply_user_role_flags(session_user)
     session_user.language = 'zh-CN'
 
     session_user = UserInfoDTO.model_validate(session_user)

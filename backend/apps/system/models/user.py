@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from sqlalchemy import Column, BigInteger
+from sqlalchemy import Column, BigInteger, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
 
@@ -18,6 +18,7 @@ class BaseUserPO(SQLModel):
     origin: int = Field(nullable=False, default=0)
     create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
     language: str = Field(max_length=255, default="zh-CN")
+    system_role: str = Field(default="viewer", sa_column=Column(String(32), nullable=False, server_default="viewer"))
     #system_variables: List = Field(sa_column=Column(JSONB, nullable=True))
     system_variables: Optional[List] = Field(
         default=None,

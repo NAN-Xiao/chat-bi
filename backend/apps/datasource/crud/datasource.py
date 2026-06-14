@@ -6,8 +6,8 @@ from fastapi import HTTPException
 from sqlalchemy import and_, text
 from sqlmodel import select
 
-from apps.datasource.crud.permission import get_accessible_datasource_ids, get_column_permission_fields, \
-    get_row_permission_filters, get_user_permission_rules, is_normal_user
+from apps.datasource.crud.permission import can_access_table, get_accessible_datasource_ids, get_column_permission_fields, \
+    get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, is_normal_user
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt
 from apps.db.constant import DB
@@ -303,6 +303,16 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     if not data.table.id:
         return {"fields": [], "data": [], "sql": ''}
 
+    table = session.query(CoreTable).filter(
+        and_(CoreTable.id == data.table.id, CoreTable.ds_id == ds.id)
+    ).first()
+    if table is None:
+        return {"fields": [], "data": [], "sql": ''}
+
+    contain_rules = get_user_permission_rules(session, current_user, ds.id) if is_normal_user(current_user) else []
+    if not can_access_table(session, current_user, ds.id, table.id, contain_rules):
+        return {"fields": [], "data": [], "sql": ''}
+
     fields = session.query(CoreField).filter(CoreField.table_id == data.table.id).order_by(
         CoreField.field_index.asc()).all()
 
@@ -313,14 +323,13 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     f_list = [f for f in fields if f.checked]
     if is_normal_user(current_user):
         # column is checked, and, column permission for data.fields
-        contain_rules = get_user_permission_rules(session, current_user, ds.id)
-        f_list = get_column_permission_fields(session=session, current_user=current_user, table=data.table,
+        f_list = get_column_permission_fields(session=session, current_user=current_user, table=table,
                                               fields=f_list, contain_rules=contain_rules)
 
         # row permission tree
         where_str = ''
         filter_mapping = get_row_permission_filters(session=session, current_user=current_user, ds=ds, tables=None,
-                                                    single_table=data.table)
+                                                    single_table=table)
         if filter_mapping:
             mapping_dict = filter_mapping[0]
             where_str = mapping_dict.get('filter')
@@ -330,7 +339,6 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     if fields is None or len(fields) == 0:
         return {"fields": [], "data": [], "sql": ''}
 
-    table = session.query(CoreTable).filter(CoreTable.id == data.table.id).first()
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
     if ds.type == "mysql" or ds.type == "doris" or ds.type == "starrocks" or ds.type == "hive":
@@ -423,9 +431,13 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
             fields_dict[field.table_id] = [field]
 
     contain_rules = get_user_permission_rules(session, current_user, ds.id)
+    scoped_table_ids = get_user_scoped_table_ids(session, current_user, ds.id, contain_rules)
+    if scoped_table_ids is not None:
+        tables = [table for table in tables if int(table.id) in scoped_table_ids]
+
     for table in tables:
         # fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
-        fields = fields_dict.get(table.id)
+        fields = fields_dict.get(table.id) or []
 
         # do column permissions, filter fields
         fields = get_column_permission_fields(session=session, current_user=current_user, table=table, fields=fields,

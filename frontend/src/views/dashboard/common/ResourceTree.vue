@@ -25,13 +25,11 @@ import { useI18n } from 'vue-i18n'
 import treeSort from '@/views/dashboard/utils/treeSortUtils.ts'
 import { useCache } from '@/utils/useCache.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
-import { useUserStore } from '@/stores/user'
 const { wsCache } = useCache()
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
-const userStore = useUserStore()
 const resourceGroupOptRef = ref(null)
 
 defineProps({
@@ -152,7 +150,16 @@ const getTree = async () => {
 }
 
 const hasData = computed<boolean>(() => state.resourceTree.length > 0)
-const canManageDashboard = computed<boolean>(() => userStore.isAdmin)
+const canCreateDashboard = computed<boolean>(() => datasourceContext.canCreateDashboard)
+const canManageNode = (data: SQTreeNode) => data.can_edit === true
+const findTreeNode = (nodes: SQTreeNode[], id: string | number): SQTreeNode | undefined => {
+  for (const item of nodes) {
+    if (item.id === id) return item
+    const matched = findTreeNode(item.children || [], id)
+    if (matched) return matched
+  }
+  return undefined
+}
 
 const afterTreeInit = () => {
   mounted.value = true
@@ -175,7 +182,7 @@ const copyLoading = ref(false)
 const emit = defineEmits(['nodeClick', 'deleteCurResource'])
 
 function createNewObject() {
-  if (!canManageDashboard.value) return
+  if (!canCreateDashboard.value) return
   addOperation({ opt: 'newLeaf' })
 }
 
@@ -232,7 +239,11 @@ watch(
 )
 
 const addOperation = (params: any) => {
-  if (!canManageDashboard.value) return
+  if (!canCreateDashboard.value) return
+  if (params?.id) {
+    const folder = findTreeNode(state.originResourceTree, params.id)
+    if (!folder || !canManageNode(folder)) return
+  }
   if (params.opt === 'newLeaf') {
     const datasourceQuery = datasourceContext.datasourceId
       ? `&datasource=${datasourceContext.datasourceId}`
@@ -356,7 +367,7 @@ defineExpose({
           effect="dark"
         >
           <el-icon
-            v-if="canManageDashboard"
+            v-if="canCreateDashboard"
             class="custom-icon btn hover-icon_with_bg primary-icon"
             @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
           >
@@ -458,7 +469,7 @@ defineExpose({
             </span>
             <div class="icon-more">
               <el-icon
-                v-if="data.node_type !== 'leaf' && canManageDashboard"
+                v-if="data.node_type !== 'leaf' && canManageNode(data)"
                 class="hover-icon"
                 @click.stop
                 @click="addOperation({ opt: 'newLeaf', type: 'dashboard', id: data.id })"
@@ -466,7 +477,7 @@ defineExpose({
                 <Icon><icon_add_outlined class="svg-icon" /></Icon>
               </el-icon>
               <HandleMore
-                v-if="canManageDashboard"
+                v-if="canManageNode(data)"
                 :menu-list="state.menuList"
                 :icon-name="icon_more_outlined"
                 placement="bottom-end"
@@ -482,11 +493,12 @@ defineExpose({
 </template>
 <style lang="less" scoped>
 .filter-icon-span {
-  border: 1px solid #d9dcdf;
+  border: 1px solid var(--workspace-border, #d9dcdf);
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  color: #1f2329;
+  color: var(--workspace-text-primary, #1f2329);
+  background: var(--workspace-card-bg, #ffffff);
   padding: 8px;
   margin-left: 8px;
   font-size: 16px;
@@ -498,11 +510,11 @@ defineExpose({
 
   &:hover,
   &:focus {
-    background: #f5f6f7;
+    background: var(--workspace-control-hover-bg, #eef2f8);
   }
 
   &:active {
-    background: #eff0f1;
+    background: var(--workspace-border-soft, #eff0f1);
   }
 
   &.active {
@@ -511,7 +523,7 @@ defineExpose({
 
     &:hover,
     &:focus {
-      background: var(--ed-color-primary-80, #d2f1e9);
+      background: var(--workspace-primary-soft-bg, rgba(37, 99, 235, 0.1));
     }
 
     &:active {
@@ -521,11 +533,33 @@ defineExpose({
 }
 
 .resource-tree {
+  --ed-bg-color: var(--workspace-card-bg, #ffffff);
+  --ed-bg-color-page: var(--workspace-panel-bg, #f5f6f7);
+  --ed-bg-color-overlay: var(--workspace-card-bg, #ffffff);
+  --ed-fill-color: var(--workspace-control-hover-bg, #eef2f8);
+  --ed-fill-color-light: var(--workspace-control-hover-bg, #eef2f8);
+  --ed-fill-color-lighter: var(--workspace-control-bg, #f8f9fa);
+  --ed-fill-color-extra-light: var(--workspace-card-bg, #ffffff);
+  --ed-fill-color-blank: var(--workspace-card-bg, #ffffff);
+  --ed-text-color-primary: var(--workspace-text-primary, #1f2329);
+  --ed-text-color-regular: var(--workspace-text-primary, #1f2329);
+  --ed-text-color-secondary: var(--workspace-text-secondary, #646a73);
+  --ed-text-color-placeholder: var(--workspace-text-tertiary, #8f959e);
+  --ed-text-color-disabled: var(--workspace-text-tertiary, #8f959e);
+  --ed-border-color: var(--workspace-border, #d9dcdf);
+  --ed-border-color-light: var(--workspace-border, #d9dcdf);
+  --ed-border-color-lighter: var(--workspace-border-soft, #eff0f1);
+  --ed-color-primary-light-9: var(--workspace-primary-soft-bg, rgba(37, 99, 235, 0.1));
+  --ed-tree-node-hover-bg-color: var(--workspace-control-hover-bg, #eef2f8);
+  --ed-tree-text-color: var(--workspace-text-primary, #1f2329);
+
   padding: 16px 0 0;
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: var(--workspace-card-bg, #ffffff);
+  color: var(--workspace-text-primary, #1f2329);
 
   .tree-header {
     padding: 0 16px;
@@ -537,7 +571,7 @@ defineExpose({
     justify-content: space-between;
     font-size: 20px;
     font-weight: 500;
-    color: var(--TextPrimary, #1f2329);
+    color: var(--workspace-text-primary, var(--TextPrimary, #1f2329));
     padding-bottom: 16px;
 
     .title {
@@ -564,6 +598,23 @@ defineExpose({
   .search-bar {
     padding-bottom: 10px;
     width: calc(100% - 40px);
+
+    :deep(.ed-input__wrapper) {
+      background-color: var(--workspace-input-bg, #f8f9fa) !important;
+      box-shadow: 0 0 0 1px var(--workspace-border, #d9dcdf) inset !important;
+    }
+
+    :deep(.ed-input__inner) {
+      color: var(--workspace-text-primary, #1f2329) !important;
+    }
+
+    :deep(.ed-input__inner::placeholder) {
+      color: var(--workspace-text-tertiary, #8f959e) !important;
+    }
+
+    :deep(.ed-input__prefix-inner .ed-icon) {
+      color: var(--workspace-text-secondary, #646a73) !important;
+    }
   }
 }
 
@@ -604,6 +655,41 @@ defineExpose({
 .custom-tree {
   height: calc(100vh - 148px);
   padding: 0 8px;
+  background: var(--workspace-card-bg, #ffffff);
+  color: var(--workspace-text-primary, #1f2329);
+
+  :deep(.ed-scrollbar__view),
+  :deep(.ed-tree) {
+    background: var(--workspace-card-bg, #ffffff) !important;
+    color: var(--workspace-text-primary, #1f2329) !important;
+  }
+
+  :deep(.ed-tree__empty-text),
+  :deep(.ed-tree-node__label) {
+    color: inherit !important;
+  }
+
+  :deep(.ed-tree-node__content) {
+    color: var(--workspace-text-primary, #1f2329) !important;
+    background: transparent;
+  }
+
+  :deep(.ed-tree-node__content:hover),
+  :deep(.ed-tree-node:focus > .ed-tree-node__content) {
+    background: var(--workspace-control-hover-bg, #eef2f8) !important;
+  }
+
+  :deep(.ed-tree.is-menu .ed-tree-node.is-current > .ed-tree-node__content),
+  :deep(.ed-tree--highlight-current .ed-tree-node.is-current > .ed-tree-node__content) {
+    background: var(--workspace-primary-soft-bg, rgba(37, 99, 235, 0.1)) !important;
+    color: var(--ed-color-primary) !important;
+  }
+
+  :deep(.ed-tree.is-menu .ed-tree-node.is-current > .ed-tree-node__content .ed-tree-node__label),
+  :deep(.ed-tree--highlight-current .ed-tree-node.is-current > .ed-tree-node__content .ed-tree-node__label) {
+    color: var(--ed-color-primary) !important;
+  }
+
   :deep(.ed-tree-node) {
     margin-bottom: 2px;
   }
@@ -627,7 +713,7 @@ defineExpose({
   .icon-more {
     margin-left: auto;
     display: none;
-    color: #bbbfc4;
+    color: var(--workspace-text-tertiary, #bbbfc4);
   }
 
   &:hover {

@@ -4,6 +4,7 @@ import Menu from './Menu.vue'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
 import ProjectSelector from './ProjectSelector.vue'
 import Person from './Person.vue'
+import ThemeSwitcher from './ThemeSwitcher.vue'
 import AnalysisAssistantDock from '@/views/analysis-assistant/AnalysisAssistantDock.vue'
 import LOGO_fold from '@/assets/LOGO-fold.svg'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
@@ -237,6 +238,7 @@ onBeforeMount(() => {
         </div>
         <div class="personal-info">
           <Person :collapse="collapse" :in-sysmenu="showSysmenu"></Person>
+          <ThemeSwitcher :collapse="collapse"></ThemeSwitcher>
         </div>
       </div>
     </div>
@@ -256,7 +258,10 @@ onBeforeMount(() => {
 .system-layout {
   width: 100vw;
   height: 100vh;
-  background-color: #f1f4f3;
+  background:
+    linear-gradient(135deg, var(--theme-shell-gradient-a), transparent 32%),
+    linear-gradient(315deg, var(--theme-shell-gradient-b), transparent 34%),
+    var(--theme-shell-bg);
   display: flex;
 
   @keyframes rotate {
@@ -274,6 +279,7 @@ onBeforeMount(() => {
     padding: 16px;
     position: relative;
     min-width: 240px;
+    color: var(--theme-text-primary);
 
     .side-header {
       display: flex;
@@ -301,17 +307,18 @@ onBeforeMount(() => {
         padding: 0;
         border: none;
         border-radius: 6px;
-        color: #1f2329;
+        color: var(--theme-text-secondary);
         background: transparent;
         cursor: pointer;
 
         &:hover,
         &:focus {
-          background: #1f23291a;
+          background: var(--theme-hover-bg);
+          color: var(--theme-text-primary);
         }
 
         &:active {
-          background: #1f232933;
+          background: var(--theme-active-bg);
         }
       }
     }
@@ -352,19 +359,19 @@ onBeforeMount(() => {
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
+        border-radius: 8px;
         height: 40px;
         cursor: pointer;
 
         &:not(.collapse) {
-          background: #1f23290a;
-          border: 1px solid #d9dcdf;
+          background: var(--theme-control-bg);
+          border: 1px solid var(--theme-shell-border);
         }
         &:hover {
-          background-color: #1f23291a;
+          background-color: var(--theme-hover-bg);
         }
         &:active {
-          background-color: #1f232926;
+          background-color: var(--theme-active-bg);
         }
         .ed-icon {
           margin-right: 4.95px;
@@ -374,6 +381,8 @@ onBeforeMount(() => {
       .personal-info {
         display: flex;
         align-items: center;
+        justify-content: space-between;
+        gap: 8px;
         margin-top: 16px;
       }
     }
@@ -404,6 +413,8 @@ onBeforeMount(() => {
 
       .personal-info {
         flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
 
         .default-avatar {
           margin: 0 0 26px 4px;
@@ -427,9 +438,11 @@ onBeforeMount(() => {
       width: 100%;
       height: 100%;
       padding: 16px 24px;
-      background-color: #fff;
+      background-color: var(--workspace-shell-bg, var(--theme-panel-bg));
+      color: var(--workspace-text-primary, var(--theme-text-primary));
       border-radius: 12px;
-      box-shadow: 0px 2px 4px 0px #1f23291f;
+      border: 1px solid var(--workspace-border, var(--theme-shell-border));
+      box-shadow: var(--workspace-card-shadow, var(--theme-card-shadow));
       overflow-x: auto;
 
       &:has(.no-padding) {

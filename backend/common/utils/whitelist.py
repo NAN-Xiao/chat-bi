@@ -23,7 +23,6 @@ wlist = [
     "*.otf",
     "*.css.map",
     "/mcp*",
-    "/system/license",
     "/system/config/key",
     "/images/*",
     "/sse",
@@ -33,11 +32,6 @@ wlist = [
     "/system/assistant/info/*",
     "/system/assistant/app/*",
     "/system/assistant/picture/*",
-    "/system/authentication/platform/status",
-    "/system/authentication/login/*",
-    "/system/authentication/sso/*",
-    "/system/platform/sso/*",
-    "/system/platform/client/*",
     "/system/parameter/login"
 ]
 

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, nextTick, onMounted, reactive, ref, unref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, unref, watch } from 'vue'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import { trainingApi } from '@/api/training'
 import { formatTimestamp } from '@/utils/date'
@@ -15,6 +15,8 @@ import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { getAdvancedApplicationList } from '@/api/embedded.ts'
 import Uploader from '@/views/system/excel-upload/Uploader.vue'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useUserStore } from '@/stores/user'
 
 interface Form {
   id?: string | null
@@ -26,6 +28,8 @@ interface Form {
   description: string | null
 }
 const { t } = useI18n()
+const datasourceContext = useDatasourceContextStore()
+const userStore = useUserStore()
 const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
 const oldKeywords = ref('')
@@ -33,12 +37,23 @@ const searchLoading = ref(false)
 const { copy } = useClipboard({ legacy: true })
 const options = ref<any[]>([])
 const adv_options = ref<any[]>([])
-const selectable = () => {
-  return true
-}
+const canManageTraining = computed(() => userStore.isAdmin || datasourceContext.canManageProject)
+const selectedDatasourceParams = computed(() =>
+  datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}
+)
+const selectable = () => canManageTraining.value
 onMounted(() => {
-  search()
+  datasourceContext.loadDatasources().then(() => search())
 })
+
+watch(
+  () => datasourceContext.datasourceId,
+  () => {
+    pageInfo.currentPage = 1
+    multipleSelectionAll.value = []
+    search()
+  }
+)
 
 const dialogFormVisible = ref<boolean>(false)
 const multipleTableRef = ref()
@@ -89,7 +104,10 @@ const exportExcel = () => {
   }).then(() => {
     searchLoading.value = true
     trainingApi
-      .export2Excel(keywords.value ? { question: keywords.value } : {})
+      .export2Excel({
+        ...(keywords.value ? { question: keywords.value } : {}),
+        ...selectedDatasourceParams.value,
+      })
       .then((res) => {
         const blob = new Blob([res], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -133,6 +151,7 @@ const exportExcel = () => {
 }
 
 const deleteBatchUser = () => {
+  if (!canManageTraining.value) return
   ElMessageBox.confirm(
     t('training.training_data_items', { msg: multipleSelectionAll.value.length }),
     {
@@ -154,6 +173,7 @@ const deleteBatchUser = () => {
   })
 }
 const deleteHandler = (row: any) => {
+  if (!canManageTraining.value) return
   ElMessageBox.confirm(t('training.sales_this_year', { msg: row.question }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -216,11 +236,20 @@ const search = ($event: any = {}) => {
   }
   searchLoading.value = true
   oldKeywords.value = keywords.value
+  if (!datasourceContext.datasourceId) {
+    fieldList.value = []
+    pageInfo.total = 0
+    searchLoading.value = false
+    return
+  }
   trainingApi
     .getList(
       pageInfo.currentPage,
       pageInfo.pageSize,
-      keywords.value ? { question: keywords.value } : {}
+      {
+        ...(keywords.value ? { question: keywords.value } : {}),
+        ...selectedDatasourceParams.value,
+      }
     )
     .then((res) => {
       toggleRowLoading.value = true
@@ -267,7 +296,7 @@ const rules = computed(() => {
 
 const list = () => {
   datasourceApi.list().then((res: any) => {
-    options.value = res || []
+    options.value = (res || []).filter((item: any) => item.can_manage_project === true)
   })
   getAdvancedApplicationList().then((res: any) => {
     adv_options.value = res || []
@@ -275,9 +304,13 @@ const list = () => {
 }
 
 const saveHandler = () => {
+  if (!canManageTraining.value) return
   termFormRef.value.validate((res: any) => {
     if (res) {
       const obj = unref(pageForm)
+      if (!obj.datasource && datasourceContext.datasourceId) {
+        obj.datasource = String(datasourceContext.datasourceId)
+      }
       if (!obj.id) {
         delete obj.id
       }
@@ -300,9 +333,13 @@ const saveHandler = () => {
 }
 
 const editHandler = (row: any) => {
+  if (!canManageTraining.value) return
   pageForm.value.id = null
   if (row) {
     pageForm.value = cloneDeep(row)
+  } else if (datasourceContext.datasourceId) {
+    pageForm.value.datasource = String(datasourceContext.datasourceId)
+    pageForm.value.datasource_name = datasourceContext.datasourceName
   }
   list()
 
@@ -333,6 +370,10 @@ const handleRowClick = (row: any) => {
 }
 
 const changeStatus = (id: any, val: any) => {
+  if (!canManageTraining.value) {
+    search()
+    return
+  }
   trainingApi
     .enable(id, val + '')
     .then(() => {
@@ -377,12 +418,14 @@ const onRowFormClose = () => {
           {{ $t('professional.export_all') }}
         </el-button>
         <Uploader
+          v-if="canManageTraining"
           upload-path="/system/data-training/uploadExcel"
           template-path="/system/data-training/template"
           :template-name="`${t('training.data_training')}.xlsx`"
+          :upload-params="selectedDatasourceParams"
           @upload-finished="search"
         />
-        <el-button class="no-margin" type="primary" @click="editHandler(null)">
+        <el-button v-if="canManageTraining" class="no-margin" type="primary" @click="editHandler(null)">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -403,7 +446,7 @@ const onRowFormClose = () => {
           @row-click="handleRowClick"
           @selection-change="handleSelectionChange"
         >
-          <el-table-column :selectable="selectable" type="selection" width="55" />
+          <el-table-column v-if="canManageTraining" :selectable="selectable" type="selection" width="55" />
           <el-table-column prop="question" :label="$t('training.problem_description')" width="280">
           </el-table-column>
           <el-table-column prop="description" :label="$t('training.sample_sql')" min-width="240">
@@ -426,6 +469,7 @@ const onRowFormClose = () => {
               <div style="display: flex; align-items: center" @click.stop>
                 <el-switch
                   v-model="scope.row.enabled"
+                  :disabled="!canManageTraining"
                   size="small"
                   @change="(val: any) => changeStatus(scope.row.id, val)"
                 />
@@ -442,7 +486,7 @@ const onRowFormClose = () => {
               <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
             </template>
           </el-table-column>
-          <el-table-column fixed="right" width="80" :label="t('ds.actions')">
+          <el-table-column v-if="canManageTraining" fixed="right" width="80" :label="t('ds.actions')">
             <template #default="scope">
               <div class="field-comment">
                 <el-tooltip
@@ -477,7 +521,7 @@ const onRowFormClose = () => {
               />
 
               <div style="text-align: center; margin-top: -23px">
-                <el-button type="primary" @click="editHandler(null)">
+                <el-button v-if="canManageTraining" type="primary" @click="editHandler(null)">
                   <template #icon>
                     <icon_add_outlined></icon_add_outlined>
                   </template>

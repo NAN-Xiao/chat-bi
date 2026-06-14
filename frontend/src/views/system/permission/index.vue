@@ -58,6 +58,9 @@ const selectPermissionRef = ref()
 const tableListOptions = ref<any[]>([])
 const fieldListOptions = ref<any[]>([])
 const dsListOptions = ref<any[]>([])
+const ROW_PERMISSION_TYPE = 1
+const COLUMN_PERMISSION_TYPE = 0
+const TABLE_PERMISSION_TYPE = 2
 const permissionProjectIds = (row: any) => {
   const ids = (row.permissions || [])
     .map((item: any) => Number(item.ds_id))
@@ -100,7 +103,7 @@ const ruleListWithSearch = computed(() => {
 const tableColumnData = computed<any[]>(() => {
   if (!searchColumn.value) return columnForm.permissions
   return columnForm.permissions.filter((ele) =>
-    ele.field_name.toLowerCase().includes(searchColumn.value.toLowerCase())
+    (ele.field_name || '').toLowerCase().includes(searchColumn.value.toLowerCase())
   )
 })
 provide('filedList', fieldListOptions)
@@ -121,19 +124,30 @@ const setDrawerTitle = () => {
 const userTypeList = [
   {
     name: t('permission.row_permission'),
-    value: 1,
+    value: ROW_PERMISSION_TYPE,
   },
   {
     name: t('permission.column_permission'),
-    value: 0,
+    value: COLUMN_PERMISSION_TYPE,
+  },
+  {
+    name: t('permission.table_permission'),
+    value: TABLE_PERMISSION_TYPE,
   },
 ]
-const ruleType = ref(0)
+const ruleType = ref(COLUMN_PERMISSION_TYPE)
+const permissionTypeLabel = (type: string) => {
+  if (type === 'row') return t('permission.row_permission')
+  if (type === 'table') return t('permission.table_permission')
+  return t('permission.column_permission')
+}
 const handleAddPermission = (val: any) => {
   ruleType.value = val
   Object.assign(columnForm, cloneDeep(defaultForm))
-  if (val === 1) {
+  if (val === ROW_PERMISSION_TYPE) {
     handleRowPermission(null)
+  } else if (val === TABLE_PERMISSION_TYPE) {
+    handleTablePermission(null)
   } else {
     handleColumnPermission(null)
   }
@@ -203,7 +217,9 @@ const getDsList = (row: any) => {
 
   if (row) {
     handleDsIdChange({ id: row.ds_id, name: row.ds_name })
-    handleEditeTable(row.table_id)
+    if (row.type !== 'table') {
+      handleEditeTable(row.table_id)
+    }
   }
 }
 const handleRowPermission = (row: any) => {
@@ -246,6 +262,28 @@ const handleColumnPermission = (row: any) => {
     ? t('permission.edit_column_permission')
     : t('permission.add_column_permission')
 }
+const handleTablePermission = (row: any) => {
+  columnForm.type = 'table'
+  getDsList(row)
+  if (row) {
+    const { name, ds_id, table_id, id, ds_name, table_name } = row
+    Object.assign(columnForm, {
+      id,
+      name,
+      ds_id,
+      ds_name,
+      table_id,
+      table_name,
+      permissions: [],
+      permission_list: [],
+      expression_tree: {},
+    })
+  }
+  dialogFormVisible.value = true
+  dialogTitle.value = row?.id
+    ? t('permission.edit_table_permission')
+    : t('permission.add_table_permission')
+}
 
 const icon = (item: any) => {
   return (dsTypeWithImg.find((ele) => item.type === ele.type) || {}).img
@@ -286,6 +324,11 @@ const handleDsIdChange = (val: any) => {
 const handleTableIdChange = (val: any) => {
   columnForm.table_id = val.id
   columnForm.table_name = val.table_name
+  if (columnForm.type === 'table') {
+    fieldListOptions.value = []
+    columnForm.permissions = []
+    return
+  }
   datasourceApi.fieldList(val.id).then((res: any) => {
     fieldListOptions.value = res || []
     if (columnForm.type === 'row') return
@@ -297,6 +340,11 @@ const handleTableIdChange = (val: any) => {
 }
 
 const handleEditeTable = (val: any) => {
+  if (columnForm.type === 'table') {
+    fieldListOptions.value = []
+    columnForm.permissions = []
+    return
+  }
   datasourceApi
     .fieldList(val)
     .then((res: any) => {
@@ -347,10 +395,13 @@ const addHandler = () => {
 
 const editForm = (row: any) => {
   if (row.type === 'row') {
-    ruleType.value = 1
+    ruleType.value = ROW_PERMISSION_TYPE
     handleRowPermission(row)
+  } else if (row.type === 'table') {
+    ruleType.value = TABLE_PERMISSION_TYPE
+    handleTablePermission(row)
   } else {
-    ruleType.value = 0
+    ruleType.value = COLUMN_PERMISSION_TYPE
     handleColumnPermission(row)
   }
 }
@@ -760,11 +811,7 @@ const columnRules = {
                     <el-table-column prop="name" :label="$t('permission.rule_name')" />
                     <el-table-column prop="type" :label="$t('permission.type')">
                       <template #default="scope">
-                        {{
-                          scope.row.type === 'row'
-                            ? $t('permission.row_permission')
-                            : $t('permission.column_permission')
-                        }}
+                        {{ permissionTypeLabel(scope.row.type) }}
                       </template>
                     </el-table-column>
                     <el-table-column prop="ds_name" :label="$t('permission.data_source')" />
@@ -914,7 +961,7 @@ const columnRules = {
         </el-form-item>
         <el-form-item :label="$t('permission.set_rule')">
           <el-input
-            v-if="ruleType !== 1"
+            v-if="ruleType === COLUMN_PERMISSION_TYPE"
             v-model="searchColumn"
             :placeholder="$t('permission.search_field')"
             autocomplete="off"
@@ -924,12 +971,23 @@ const columnRules = {
                 <icon_searchOutline_outlined />
               </el-icon> </template
           ></el-input>
+          <div v-else-if="ruleType === TABLE_PERMISSION_TYPE" class="table-permission-summary">
+            <div class="summary-title">{{ $t('permission.table_access_enabled') }}</div>
+            <div class="summary-row">
+              <span>{{ $t('permission.data_source') }}</span>
+              <strong>{{ columnForm.ds_name || '-' }}</strong>
+            </div>
+            <div class="summary-row">
+              <span>{{ $t('permission.data_table') }}</span>
+              <strong>{{ columnForm.table_name || '-' }}</strong>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
-      <div v-if="ruleType === 1" class="auth-tree_content">
+      <div v-if="ruleType === ROW_PERMISSION_TYPE" class="auth-tree_content">
         <AuthTree ref="authTreeRef" @save="saveAuthTree"></AuthTree>
       </div>
-      <div v-else class="table-content">
+      <div v-else-if="ruleType === COLUMN_PERMISSION_TYPE" class="table-content">
         <el-table
           :empty-text="$t('permission.no_fields_yet')"
           :data="tableColumnData"
@@ -1122,12 +1180,48 @@ const columnRules = {
     overflow-y: auto;
     margin-top: -16px;
   }
+
+  .table-permission-summary {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #dee0e3;
+    border-radius: 6px;
+    background: #f5f6f7;
+    color: #1f2329;
+
+    .summary-title {
+      font-weight: 500;
+      line-height: 22px;
+      margin-bottom: 8px;
+    }
+
+    .summary-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 28px;
+
+      span {
+        color: #646a73;
+      }
+
+      strong {
+        max-width: 620px;
+        font-weight: 500;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+  }
 }
 
 .system-permission_user.system-permission_user {
   padding: 0;
-  width: 120px !important;
-  min-width: 120px !important;
+  width: 148px !important;
+  min-width: 148px !important;
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border: 1px solid #dee0e3;
 
@@ -1139,7 +1233,7 @@ const columnRules = {
         position: absolute;
         content: '';
         left: 0;
-        top: 40px;
+        top: 76px;
         width: 100%;
         height: 1px;
         background: #1f232926;
@@ -1158,7 +1252,8 @@ const columnRules = {
         background: #1f23291a;
       }
 
-      &:nth-child(2) {
+      &:nth-child(2),
+      &:nth-child(3) {
         margin: 9px 0 0 0;
       }
 

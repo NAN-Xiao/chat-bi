@@ -77,5 +77,5 @@ async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: Quer
 
 @router.post("/sql_preview", summary=f"{PLACEHOLDER_PREFIX}dashboard_sql_preview")
 @require_permissions(permission=SqlbotPermission(type='ds', keyExpression="request.datasource"))
-async def sql_preview_api(session: SessionDep, request: DashboardSqlPreview):
-    return preview_sql(session=session, request=request)
+async def sql_preview_api(session: SessionDep, current_user: CurrentUser, request: DashboardSqlPreview):
+    return preview_sql(session=session, current_user=current_user, request=request)

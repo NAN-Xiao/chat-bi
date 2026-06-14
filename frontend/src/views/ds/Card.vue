@@ -19,6 +19,7 @@ const props = withDefaults(
     num: string
     description?: string
     id?: string
+    canManageProject?: boolean
   }>(),
   {
     name: '-',
@@ -26,6 +27,7 @@ const props = withDefaults(
     description: '-',
     id: '-',
     typeName: '-',
+    canManageProject: false,
   }
 )
 
@@ -125,6 +127,7 @@ const onClickOutside = () => {
           {{ $t('datasource.open_query') }}
         </el-button>
         <el-icon
+          v-if="canManageProject"
           ref="buttonRef"
           v-click-outside="onClickOutside"
           class="more"

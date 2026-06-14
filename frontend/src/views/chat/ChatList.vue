@@ -224,7 +224,7 @@ const handleConfirmPassword = () => {
                 <el-icon
                   class="more"
                   size="16"
-                  style="margin-left: auto; color: #646a73"
+                  style="margin-left: auto"
                   @click.stop
                 >
                   <icon_more_outlined></icon_more_outlined>
@@ -291,12 +291,13 @@ const handleConfirmPassword = () => {
 
 <style scoped lang="less">
 .chat-list-inner {
-  --hover-color: var(--ed-color-primary-light-9);
-  --active-color: var(--hover-color);
+  --hover-color: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+  --active-color: var(--workspace-active-bg, var(--theme-control-bg));
 
   padding-left: 16px;
   padding-right: 16px;
   width: 100%;
+  color: var(--workspace-text-primary, var(--theme-text-primary));
 
   display: flex;
   flex-direction: column;
@@ -309,7 +310,7 @@ const handleConfirmPassword = () => {
 
     .group-title {
       padding: 0 8px;
-      color: rgba(100, 106, 115, 1);
+      color: var(--workspace-text-secondary, var(--theme-text-secondary));
       line-height: 20px;
       font-weight: 500;
       font-size: 12px;
@@ -335,6 +336,7 @@ const handleConfirmPassword = () => {
     display: flex;
     align-items: center;
     padding: 8px;
+    color: var(--workspace-text-primary, var(--theme-text-primary));
 
     overflow: hidden;
     text-overflow: ellipsis;
@@ -350,6 +352,7 @@ const handleConfirmPassword = () => {
 
     .more {
       display: none;
+      color: var(--workspace-text-secondary, var(--theme-text-secondary)) !important;
       &.ed-icon {
         position: relative;
         cursor: pointer;
@@ -357,7 +360,7 @@ const handleConfirmPassword = () => {
 
         &::after {
           content: '';
-          background-color: #1f23291a;
+          background-color: var(--workspace-control-hover-bg, var(--theme-hover-bg));
           position: absolute;
           border-radius: 6px;
           width: 24px;
@@ -377,7 +380,7 @@ const handleConfirmPassword = () => {
     }
 
     &:hover {
-      background-color: rgba(31, 35, 41, 0.1);
+      background-color: var(--hover-color);
 
       .more {
         display: block;
@@ -385,7 +388,8 @@ const handleConfirmPassword = () => {
     }
 
     &.active {
-      background-color: rgba(255, 255, 255, 1);
+      background-color: var(--active-color);
+      color: var(--workspace-text-primary, var(--theme-text-primary));
       font-weight: 500;
     }
 
@@ -398,9 +402,11 @@ const handleConfirmPassword = () => {
 
 <style lang="less">
 .popover-card_chat.popover-card_chat.popover-card_chat {
-  box-shadow: 0px 4px 8px 0px #1f23291a;
+  box-shadow: var(--workspace-card-shadow, var(--theme-card-shadow));
   border-radius: 6px;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border, var(--theme-shell-border));
+  background: var(--workspace-card-bg, var(--theme-panel-bg));
+  color: var(--workspace-text-primary, var(--theme-text-primary));
   width: fit-content !important;
   min-width: 120px !important;
   padding: 0;
@@ -413,7 +419,7 @@ const handleConfirmPassword = () => {
       left: 0;
       width: 100%;
       height: 1px;
-      background: #dee0e3;
+      background: var(--workspace-border, var(--theme-shell-border));
     }
     .item {
       position: relative;
@@ -424,7 +430,7 @@ const handleConfirmPassword = () => {
       cursor: pointer;
       .ed-icon {
         margin-right: 8px;
-        color: #646a73;
+        color: var(--workspace-text-secondary, var(--theme-text-secondary));
       }
       &:hover {
         &::after {
@@ -441,7 +447,7 @@ const handleConfirmPassword = () => {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
         display: none;
       }
     }

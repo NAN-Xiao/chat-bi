@@ -12,6 +12,37 @@ from ..models.user import UserModel, UserPlatformModel
 from common.core.security import verify_md5pwd
 import re
 
+SYSTEM_ROLE_SYSTEM_ADMIN = "system_admin"
+SYSTEM_ROLE_TENANT_ADMIN = "tenant_admin"
+SYSTEM_ROLE_VIEWER = "viewer"
+SYSTEM_ROLE_ORDER = {
+    SYSTEM_ROLE_VIEWER: 10,
+    SYSTEM_ROLE_TENANT_ADMIN: 20,
+    SYSTEM_ROLE_SYSTEM_ADMIN: 30,
+}
+
+
+def normalize_system_role(role: str | None) -> str:
+    if not role:
+        return SYSTEM_ROLE_VIEWER
+    normalized = str(role).strip().lower()
+    return normalized if normalized in SYSTEM_ROLE_ORDER else SYSTEM_ROLE_VIEWER
+
+
+def is_system_admin(user) -> bool:
+    if user is None:
+        return False
+    if hasattr(user, "system_role"):
+        return normalize_system_role(getattr(user, "system_role", None)) == SYSTEM_ROLE_SYSTEM_ADMIN
+    return bool(getattr(user, "isAdmin", False))
+
+
+def apply_user_role_flags(user_info: UserInfoDTO) -> UserInfoDTO:
+    user_info.system_role = normalize_system_role(getattr(user_info, "system_role", None))
+    user_info.isAdmin = is_system_admin(user_info)
+    return user_info
+
+
 def get_db_user(*, session: Session, user_id: int) -> UserModel:
     db_user = session.get(UserModel, user_id)
     return db_user
@@ -29,8 +60,7 @@ async def get_user_info(*, session: Session, user_id: int) -> UserInfoDTO | None
     if not db_user:
         return None
     userInfo = UserInfoDTO.model_validate(db_user.model_dump())
-    userInfo.isAdmin = userInfo.id == 1 and userInfo.account == 'admin'
-    return userInfo
+    return apply_user_role_flags(userInfo)
 
 def authenticate(*, session: Session, account: str, password: str) -> BaseUserDTO | None:
     db_user = get_user_by_account(session=session, account=account)

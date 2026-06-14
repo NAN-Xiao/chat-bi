@@ -93,3 +93,12 @@ class ApiKeyBaseModel(SQLModel):
 
 class ApiKeyModel(SnowflakeBase, ApiKeyBaseModel, table=True):
     __tablename__ = "sys_apikey"
+
+
+class SysArgModel(SnowflakeBase, table=True):
+    __tablename__ = "sys_arg"
+
+    pkey: str = Field(max_length=255, nullable=False)
+    pval: Optional[str] = Field(default=None, max_length=255, nullable=True)
+    ptype: str = Field(default="str", max_length=255, nullable=False)
+    sort_no: int = Field(default=1, nullable=False)

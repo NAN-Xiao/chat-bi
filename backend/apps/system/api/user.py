@@ -4,7 +4,17 @@ from fastapi import APIRouter, File, Path, Query, UploadFile
 from sqlmodel import SQLModel, or_, select
 from apps.datasource.crud.permission import list_user_datasource_ids, update_user_datasources
 from apps.datasource.models.datasource import CoreDatasourceUser
-from apps.system.crud.user import check_account_exists, check_email_exists, check_email_format, check_pwd_format, get_db_user, single_delete
+from apps.system.crud.user import (
+    SYSTEM_ROLE_SYSTEM_ADMIN,
+    check_account_exists,
+    check_email_exists,
+    check_email_format,
+    check_pwd_format,
+    get_db_user,
+    is_system_admin,
+    normalize_system_role,
+    single_delete,
+)
 from apps.system.crud.user_excel import batchUpload, downTemplate, download_error_file
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -65,7 +75,7 @@ async def pager(
     
     origin_stmt = (
         select(UserModel.id, UserModel.account)
-        .where(UserModel.id != 1)
+        .where(UserModel.system_role != SYSTEM_ROLE_SYSTEM_ADMIN)
         .distinct()
         .order_by(UserModel.account)
     )
@@ -125,6 +135,8 @@ def format_user_dict(row) -> dict:
 @require_permissions(permission=SqlbotPermission(role=['admin']))
 async def query(session: SessionDep, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")) -> UserEditor:
     db_user: UserModel = get_db_user(session = session, user_id = id)
+    if is_system_admin(db_user):
+        raise Exception("System admin cannot be managed from the user list")
     result = UserEditor.model_validate(db_user.model_dump())
     result.project_ids = list_user_datasource_ids(session, id)
     return result
@@ -149,6 +161,7 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
         raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email')} [{creator.email}]"))
     #data = creator.model_dump(exclude_unset=True)
     data = creator.model_dump()
+    data["system_role"] = normalize_system_role(data.get("system_role"))
     user_model = UserModel.model_validate(data)
     #user_model.create_time = get_timestamp()
     user_model.language = "zh-CN"
@@ -178,6 +191,9 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
     if not check_email_format(editor.email):
         raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email')} [{editor.email}]"))
     data = editor.model_dump(exclude_unset=True)
+    data["system_role"] = normalize_system_role(data.get("system_role"))
+    if is_system_admin(user_model) and data["system_role"] != SYSTEM_ROLE_SYSTEM_ADMIN:
+        raise Exception("System admin role cannot be removed from this endpoint")
     user_model.sqlmodel_update(data)
     session.add(user_model)
     if editor.project_ids is not None:
@@ -191,6 +207,9 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
     resource_id_expr="id"
 ))
 async def delete(session: SessionDep, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
+    user_model = get_db_user(session=session, user_id=id)
+    if is_system_admin(user_model):
+        raise Exception("System admin cannot be deleted")
     await single_delete(session, id)
 
 @router.delete("", summary=f"{PLACEHOLDER_PREFIX}user_batchdel_api", description=f"{PLACEHOLDER_PREFIX}user_batchdel_api")
@@ -198,6 +217,9 @@ async def delete(session: SessionDep, id: int = Path(description=f"{PLACEHOLDER_
 @system_log(LogConfig(operation_type=OperationType.DELETE,module=OperationModules.USER,resource_id_expr="id_list"))
 async def batch_del(session: SessionDep, id_list: list[int]):
     for id in id_list:
+        user_model = get_db_user(session=session, user_id=id)
+        if is_system_admin(user_model):
+            raise Exception("System admin cannot be deleted")
         await single_delete(session, id)
     
 @router.put("/language", summary=f"{PLACEHOLDER_PREFIX}language_change", description=f"{PLACEHOLDER_PREFIX}language_change")
@@ -216,7 +238,7 @@ async def langChange(session: SessionDep, current_user: CurrentUser, trans: Tran
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.RESET_PWD,module=OperationModules.USER,resource_id_expr="id"))
 async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
-    if not current_user.isAdmin:
+    if not is_system_admin(current_user):
         raise Exception(trans('i18n_permission.no_permission', url = " patch[/user/pwd/id],", msg = trans('i18n_permission.only_admin')))
     db_user: UserModel = get_db_user(session=session, user_id=id)
     db_user.password = default_md5_pwd()
@@ -242,11 +264,13 @@ async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="statusDto.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE_STATUS,module=OperationModules.USER, resource_id_expr="statusDto.id"))
 async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Trans, statusDto: UserStatus):
-    if not current_user.isAdmin:
+    if not is_system_admin(current_user):
         raise Exception(trans('i18n_permission.no_permission', url = ", ", msg = trans('i18n_permission.only_admin')))
     status = statusDto.status
     if status not in [0, 1]:
         return {"message": "status not supported"}
     db_user: UserModel = get_db_user(session=session, user_id=statusDto.id)
+    if is_system_admin(db_user) and status == 0:
+        raise Exception("System admin cannot be disabled")
     db_user.status = status
     session.add(db_user)

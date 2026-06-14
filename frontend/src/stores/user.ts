@@ -17,6 +17,8 @@ interface UserState {
   exp: number
   time: number
   origin: number
+  systemRole: string
+  isSystemAdmin: boolean
   platformInfo: any | null
   [key: string]: string | number | any | null
 }
@@ -32,6 +34,8 @@ export const UserStore = defineStore('user', {
       exp: 0,
       time: 0,
       origin: 0,
+      systemRole: 'viewer',
+      isSystemAdmin: false,
       platformInfo: null,
     }
   },
@@ -58,7 +62,7 @@ export const UserStore = defineStore('user', {
       return this.time
     },
     isAdmin(): boolean {
-      return this.uid === '1'
+      return this.isSystemAdmin || this.systemRole === 'system_admin'
     },
     getOrigin(): number {
       return this.origin
@@ -113,13 +117,18 @@ export const UserStore = defineStore('user', {
         'exp',
         'time',
         'origin',
+        'systemRole',
+        'isSystemAdmin',
       ] as const
 
       keys.forEach((key) => {
-        const dkey = key === 'uid' ? 'id' : key
+        const dkey =
+          key === 'uid' ? 'id' : key === 'systemRole' ? 'system_role' : key === 'isSystemAdmin' ? 'isAdmin' : key
         const value = res_data[dkey]
         if (key === 'exp' || key === 'time' || key === 'origin') {
           this[key] = Number(value)
+        } else if (key === 'isSystemAdmin') {
+          this[key] = Boolean(value)
         } else {
           this[key] = String(value)
         }
@@ -188,6 +197,8 @@ export const UserStore = defineStore('user', {
         'exp',
         'time',
         'origin',
+        'systemRole',
+        'isSystemAdmin',
         'platformInfo',
       ]
       keys.forEach((key) => wsCache.delete('user.' + key))

@@ -110,7 +110,7 @@ class SystemLogger:
                 resource_id=resource_id,
                 request_method=request_method,
                 request_path=request_path,
-                created_at=datetime.now(),
+                create_time=datetime.now(),
                 remark=remark
             )
             session.add(log)
@@ -418,7 +418,6 @@ class SystemLogger:
                 resource_id=str(resource_id),
                 request_method=request.method if request else None,
                 request_path=request.url.path if request else None,
-                request_params=request_params,
                 create_time=datetime.now(),
                 remark=remark
             )

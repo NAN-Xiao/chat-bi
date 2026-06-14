@@ -18,6 +18,7 @@ from apps.chat.curd.chat import delete_chat_with_user, get_chart_data_with_user,
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
     ChatInfo, Chat, ChatFinishStep, ChatQuestionBase
 from apps.chat.task.llm import LLMService
+from apps.datasource.crud.permission import has_datasource_access
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
@@ -30,9 +31,10 @@ router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
 
 @router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="datasource_id"))
 async def chats(session: SessionDep, current_user: CurrentUser,
                 datasource_id: Optional[int] = Query(None, description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    if datasource_id is not None and not has_datasource_access(session, current_user, datasource_id):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
     return list_chats(session, current_user, datasource_id)
 
 
@@ -209,7 +211,6 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 
 
 @router.post("/assistant/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}assistant_start_chat")
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="create_chat_obj.datasource"))
 @system_log(LogConfig(
     operation_type=OperationType.CREATE,
     module=OperationModules.CHAT,
@@ -218,8 +219,16 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 async def start_chat(session: SessionDep, current_user: CurrentUser, current_assistant: CurrentAssistant,
                      create_chat_obj: CreateChat = CreateChat(origin=2)):
     try:
+        if (
+            create_chat_obj
+            and create_chat_obj.datasource is not None
+            and not has_datasource_access(session, current_user, create_chat_obj.datasource)
+        ):
+            raise HTTPException(status_code=403, detail="Datasource access is required")
         return create_chat(session, current_user, create_chat_obj, create_chat_obj and create_chat_obj.datasource,
                            current_assistant)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

@@ -3,19 +3,24 @@ import hashlib
 import io
 import os
 import uuid
-from http.client import HTTPException
 from typing import Optional
 
 import pandas as pd
-from fastapi import APIRouter, File, UploadFile, Query
+from fastapi import APIRouter, File, HTTPException, UploadFile, Query
 from fastapi.responses import StreamingResponse
+from sqlmodel import select
 
 from apps.chat.models.chat_model import AxisObj
+from apps.datasource.crud.permission import (
+    PROJECT_ROLE_ADMIN,
+    get_datasource_ids_with_min_role,
+    has_datasource_role,
+)
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.crud.user import is_system_admin
 from apps.terminology.curd.terminology import page_terminology, create_terminology, update_terminology, \
     delete_terminology, enable_terminology, get_all_terminology, batch_create_terminology
-from apps.terminology.models.terminology_model import TerminologyInfo
+from apps.terminology.models.terminology_model import Terminology, TerminologyInfo
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
@@ -25,13 +30,52 @@ from common.audit.schemas.logger_decorator import LogConfig, system_log
 router = APIRouter(tags=["Terminology"], prefix="/system/terminology")
 
 
+def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
+    return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
+
+
+def _require_term_scope_admin(session: SessionDep, current_user: CurrentUser, term: TerminologyInfo | Terminology):
+    datasource_ids = getattr(term, "datasource_ids", None) or []
+    specific_ds = getattr(term, "specific_ds", False)
+    if not specific_ds or not datasource_ids:
+        if not is_system_admin(current_user):
+            raise HTTPException(status_code=403, detail="Global terminology can only be maintained by system admins")
+        return
+
+    for datasource_id in datasource_ids:
+        if not has_datasource_role(session, current_user, datasource_id, PROJECT_ROLE_ADMIN):
+            raise HTTPException(status_code=403, detail="Project admin access is required")
+
+
+def _require_term_admin(session: SessionDep, current_user: CurrentUser, info: TerminologyInfo):
+    if info.id:
+        existing = session.get(Terminology, int(info.id))
+        if not existing:
+            raise HTTPException(status_code=404, detail="Terminology not found")
+        _require_term_scope_admin(session, current_user, existing)
+    _require_term_scope_admin(session, current_user, info)
+
+
+def _require_term_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):
+    if not ids:
+        return
+    rows = session.exec(select(Terminology).where(Terminology.id.in_(ids))).all()
+    if len(rows) != len(set(ids)):
+        raise HTTPException(status_code=404, detail="Terminology not found")
+    for row in rows:
+        _require_term_scope_admin(session, current_user, row)
+
+
 @router.get("/page/{current_page}/{page_size}", summary=f"{PLACEHOLDER_PREFIX}get_term_page")
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
     word: Optional[str] = Query(None, description="搜索术语(可选)"),
                 dslist: Optional[list[int]] = Query(None, description="数据集ID集合(可选)")):
+    visible_ids = _visible_datasource_ids(session, current_user)
+    if dslist and visible_ids is not None and not set(dslist).issubset(visible_ids):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
     current_page, page_size, total_count, total_pages, _list = page_terminology(session, current_page, page_size, word,
-                                                                                dslist)
+                                                                                dslist, visible_ids,
+                                                                                is_system_admin(current_user))
 
     return {
         "current_page": current_page,
@@ -43,9 +87,9 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
 
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}create_or_update_term")
-@require_permissions(permission=SqlbotPermission(role=['project_admin'], type='ds', keyExpression="info.datasource_ids"))
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.TERMINOLOGY,resource_id_expr='info.id', result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, trans: Trans, info: TerminologyInfo):
+    _require_term_admin(session, current_user, info)
     if info.id:
         return update_terminology(session, info, trans)
     else:
@@ -54,24 +98,30 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, trans
 
 @router.delete("", summary=f"{PLACEHOLDER_PREFIX}delete_term")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.TERMINOLOGY,resource_id_expr='id_list'))
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
-async def delete(session: SessionDep, id_list: list[int]):
+async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
+    _require_term_ids_admin(session, current_user, id_list)
     delete_terminology(session, id_list)
 
 
 @router.get("/{id}/enable/{enabled}", summary=f"{PLACEHOLDER_PREFIX}enable_term")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.TERMINOLOGY,resource_id_expr='id'))
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
-async def enable(session: SessionDep, id: int, enabled: bool, trans: Trans):
+async def enable(session: SessionDep, current_user: CurrentUser, id: int, enabled: bool, trans: Trans):
+    _require_term_ids_admin(session, current_user, [id])
     enable_terminology(session, id, enabled, trans)
 
 
 @router.get("/export", summary=f"{PLACEHOLDER_PREFIX}export_term")
 @system_log(LogConfig(operation_type=OperationType.EXPORT, module=OperationModules.TERMINOLOGY))
 async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
-                       word: Optional[str] = Query(None, description="搜索术语(可选)")):
+                       word: Optional[str] = Query(None, description="搜索术语(可选)"),
+                       dslist: Optional[list[int]] = Query(None, description="数据集ID集合(可选)")):
+    visible_ids = _visible_datasource_ids(session, current_user)
+    if dslist and visible_ids is not None and not set(dslist).issubset(visible_ids):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
+
     def inner():
-        _list = get_all_terminology(session, word)
+        scoped_visible_ids = set(dslist) if dslist else visible_ids
+        _list = get_all_terminology(session, word, scoped_visible_ids, is_system_admin(current_user))
 
         data_list = []
         for obj in _list:
@@ -164,8 +214,13 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 
 @router.post("/uploadExcel", summary=f"{PLACEHOLDER_PREFIX}upload_term")
 @system_log(LogConfig(operation_type=OperationType.IMPORT, module=OperationModules.TERMINOLOGY))
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
-async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile = File(...)):
+async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
+                       datasource: Optional[int] = Query(None, description="数据源ID(可选)"),
+                       file: UploadFile = File(...)):
+    if datasource is not None and not has_datasource_role(session, current_user, datasource, PROJECT_ROLE_ADMIN):
+        raise HTTPException(status_code=403, detail="Project admin access is required")
+    if datasource is None and not is_system_admin(current_user):
+        raise HTTPException(status_code=400, detail="Datasource is required")
     ALLOWED_EXTENSIONS = {"xlsx", "xls"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
         raise HTTPException(400, "Only support .xlsx/.xls")
@@ -215,8 +270,17 @@ async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile
                 all_datasource = True if pd.notna(row[4]) and row[4].lower().strip() in ['y', 'yes', 'true'] else False
                 specific_ds = False if all_datasource else True
 
-                import_data.append(TerminologyInfo(word=word, description=description, other_words=other_words,
-                                                   datasource_names=datasource_names, specific_ds=specific_ds))
+                if datasource is not None:
+                    import_data.append(TerminologyInfo(
+                        word=word,
+                        description=description,
+                        other_words=other_words,
+                        datasource_ids=[datasource],
+                        specific_ds=True,
+                    ))
+                else:
+                    import_data.append(TerminologyInfo(word=word, description=description, other_words=other_words,
+                                                       datasource_names=datasource_names, specific_ds=specific_ds))
 
         res = batch_create_terminology(session, import_data, trans)
 

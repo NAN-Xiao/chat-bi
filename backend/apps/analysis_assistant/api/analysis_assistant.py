@@ -19,7 +19,6 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_sqlglot_dialect
 from apps.template.filter.generator import get_permissions_template
 from apps.terminology.curd.terminology import get_terminology_template
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.utils import extract_nested_json
 import sqlglot
@@ -297,7 +296,7 @@ def _normalise_sql(sql: str) -> str:
 def _get_datasource(
     session: SessionDep, current_user: CurrentUser, datasource_id: int | None
 ) -> CoreDatasource:
-    if datasource_id:
+    if datasource_id is not None:
         datasource = session.get(CoreDatasource, datasource_id)
         if not datasource or not has_datasource_access(session, current_user, datasource_id):
             raise RuntimeError("当前用户无权访问该项目，或项目不存在")
@@ -1376,7 +1375,6 @@ def _build_forecast_plan(
 
 
 @router.post("/chat", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="request.datasource_id"))
 async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, session: SessionDep):
     if not current_user:
         raise RuntimeError("Unauthorized")

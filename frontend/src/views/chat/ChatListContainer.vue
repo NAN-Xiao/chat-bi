@@ -269,18 +269,20 @@ function onChatRenamed(chat: Chat) {
 
 <style scoped lang="less">
 .chat-container-right-container {
-  background: rgba(245, 246, 247, 1);
-
   height: 100%;
+  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  color: var(--workspace-text-primary, var(--theme-text-primary));
 
   .icon-btn {
     min-width: unset;
     width: 26px;
     height: 26px;
     font-size: 18px;
+    color: var(--workspace-text-secondary, var(--theme-text-secondary));
 
     &:hover {
-      background: rgba(31, 35, 41, 0.1);
+      background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+      color: var(--workspace-text-primary, var(--theme-text-primary));
     }
   }
 
@@ -306,6 +308,7 @@ function onChatRenamed(chat: Chat) {
       align-items: center;
       justify-content: space-between;
       font-weight: 500;
+      color: var(--workspace-text-primary, var(--theme-text-primary));
     }
 
     .btn {
@@ -316,12 +319,12 @@ function onChatRenamed(chat: Chat) {
       font-weight: 500;
 
       --ed-button-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-bg-color: var(--ed-color-primary-1a, #1cba901a);
-      --ed-button-border-color: var(--ed-color-primary-60, #a4e3d3);
-      --ed-button-hover-bg-color: var(--ed-color-primary-80, #d2f1e9);
+      --ed-button-bg-color: var(--workspace-primary-soft-bg, var(--theme-primary-soft-bg, var(--ed-color-primary-1a, #1cba901a)));
+      --ed-button-border-color: var(--ed-color-primary-33, var(--ed-color-primary-60, #a4e3d3));
+      --ed-button-hover-bg-color: var(--workspace-control-hover-bg, var(--theme-hover-bg));
       --ed-button-hover-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
       --ed-button-hover-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-active-bg-color: var(--ed-color-primary-60, #a4e3d3);
+      --ed-button-active-bg-color: var(--workspace-active-bg, var(--theme-active-bg));
       --ed-button-active-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
     }
 
@@ -329,19 +332,29 @@ function onChatRenamed(chat: Chat) {
       height: 32px;
       width: 100%;
       :deep(.ed-input__wrapper) {
-        background-color: #f5f6f7;
+        background-color: var(--workspace-input-bg, var(--theme-input-bg));
+        box-shadow: 0 0 0 1px var(--workspace-border, var(--theme-input-border)) inset;
+      }
+
+      :deep(.ed-input__inner) {
+        color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+
+      :deep(.ed-input__inner::placeholder) {
+        color: var(--workspace-text-tertiary, var(--theme-text-tertiary));
       }
     }
   }
 
   .chat-list {
     padding: 0 0 20px 0;
+    background: var(--workspace-panel-bg, var(--theme-panel-bg));
 
     .empty-search {
       width: 100%;
       text-align: center;
       margin-top: 80px;
-      color: #646a73;
+      color: var(--workspace-text-secondary, var(--theme-text-secondary));
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;

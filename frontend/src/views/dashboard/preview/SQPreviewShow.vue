@@ -10,10 +10,10 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import EmptyBackgroundSvg from '@/views/dashboard/common/EmptyBackgroundSvg.vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { useI18n } from 'vue-i18n'
-import { useUserStore } from '@/stores/user'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
-const userStore = useUserStore()
+const datasourceContext = useDatasourceContextStore()
 const previewCanvasContainer = ref(null)
 const dashboardPreview = ref(null)
 const slideShow = ref(true)
@@ -85,7 +85,7 @@ const resourceNodeClick = (prams: any) => {
 
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
-const canManageDashboard = computed(() => userStore.isAdmin)
+const canCreateDashboard = computed(() => datasourceContext.canCreateDashboard)
 
 onBeforeMount(() => {
   if (showPosition.value === 'preview') {
@@ -138,7 +138,7 @@ defineExpose({
       </template>
       <template v-else-if="mounted">
         <EmptyBackground :description="t('dashboard.no_dashboard_info')" img-type="none">
-          <el-button v-if="canManageDashboard" type="primary" @click="createNew">
+          <el-button v-if="canCreateDashboard" type="primary" @click="createNew">
             <template #icon>
               <Icon name="icon_add_outlined">
                 <icon_add_outlined class="svg-icon" />
@@ -158,7 +158,8 @@ defineExpose({
   height: 100%;
   overflow: hidden;
   display: flex;
-  background: #ffffff;
+  background: var(--workspace-shell-bg, #ffffff);
+  color: var(--workspace-text-primary, #1f2329);
   position: relative;
   border-radius: 12px;
 
@@ -169,7 +170,9 @@ defineExpose({
     height: 100%;
     padding: 0;
 
-    box-shadow: 0 0 3px #d7d7d7;
+    background: var(--workspace-panel-bg, #f5f6f7);
+    color: var(--workspace-text-primary, #1f2329);
+    box-shadow: 0 0 3px var(--workspace-border, #d7d7d7);
     z-index: 1;
 
     overflow: visible;
@@ -189,7 +192,7 @@ defineExpose({
     //transition: 0.5s;
 
     &.no-data {
-      background-color: rgba(245, 246, 247, 1);
+      background-color: var(--workspace-panel-bg, #f5f6f7);
     }
 
     .content {
@@ -215,14 +218,14 @@ defineExpose({
   width: 16px;
   left: 0;
   top: calc(50% - 30px);
-  background-color: #ffffff;
+  background-color: var(--workspace-card-bg, #ffffff);
   border-radius: 0 4px 4px 0;
   cursor: pointer;
   z-index: 10;
   display: flex;
   align-items: center;
-  border-top: 1px solid #d7d7d7;
-  border-right: 1px solid #d7d7d7;
-  border-bottom: 1px solid #d7d7d7;
+  border-top: 1px solid var(--workspace-border, #d7d7d7);
+  border-right: 1px solid var(--workspace-border, #d7d7d7);
+  border-bottom: 1px solid var(--workspace-border, #d7d7d7);
 }
 </style>

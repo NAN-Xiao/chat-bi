@@ -3,19 +3,26 @@ import hashlib
 import io
 import os
 import uuid
-from http.client import HTTPException
+from fastapi import HTTPException
 from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, File, UploadFile, Query
 from fastapi.responses import StreamingResponse
+from sqlmodel import select
 
 from apps.chat.models.chat_model import AxisObj
 from apps.data_training.curd.data_training import page_data_training, create_training, update_training, delete_training, \
     enable_training, get_all_data_training, batch_create_training
+from apps.datasource.crud.permission import (
+    PROJECT_ROLE_ADMIN,
+    get_datasource_ids_with_min_role,
+    has_datasource_role,
+)
+from apps.data_training.models.data_training_model import DataTraining
 from apps.data_training.models.data_training_model import DataTrainingInfo
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.crud.user import is_system_admin
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
@@ -26,12 +33,57 @@ from common.audit.schemas.logger_decorator import LogConfig, system_log
 router = APIRouter(tags=["SQL Examples"], prefix="/system/data-training")
 
 
+def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
+    return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
+
+
+def _require_training_admin(session: SessionDep, current_user: CurrentUser, info: DataTrainingInfo):
+    datasource_id = info.datasource
+    if info.id:
+        existing = session.get(DataTraining, int(info.id))
+        if not existing:
+            raise HTTPException(status_code=404, detail="SQL example not found")
+        if existing.datasource is None:
+            if not is_system_admin(current_user):
+                raise HTTPException(status_code=403, detail="Datasource-scoped project admin access is required")
+        elif not has_datasource_role(session, current_user, existing.datasource, PROJECT_ROLE_ADMIN):
+            raise HTTPException(status_code=403, detail="Project admin access is required")
+
+    if datasource_id is None:
+        if not is_system_admin(current_user):
+            raise HTTPException(status_code=403, detail="Datasource-scoped project admin access is required")
+        return
+
+    if not has_datasource_role(session, current_user, datasource_id, PROJECT_ROLE_ADMIN):
+        raise HTTPException(status_code=403, detail="Project admin access is required")
+
+
+def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):
+    if not ids:
+        return
+    rows = session.exec(select(DataTraining.datasource).where(DataTraining.id.in_(ids))).all()
+    if len(rows) != len(set(ids)):
+        raise HTTPException(status_code=404, detail="SQL example not found")
+    for datasource_id in rows:
+        if datasource_id is None:
+            if not is_system_admin(current_user):
+                raise HTTPException(status_code=403, detail="Datasource-scoped project admin access is required")
+            continue
+        if not has_datasource_role(session, current_user, datasource_id, PROJECT_ROLE_ADMIN):
+            raise HTTPException(status_code=403, detail="Project admin access is required")
+
+
 @router.get("/page/{current_page}/{page_size}", summary=f"{PLACEHOLDER_PREFIX}get_dt_page")
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
-                question: Optional[str] = Query(None, description="搜索问题(可选)")):
+                question: Optional[str] = Query(None, description="搜索问题(可选)"),
+                datasource: Optional[int] = Query(None, description="数据源ID(可选)")):
+    datasource_ids = _visible_datasource_ids(session, current_user)
+    if datasource is not None:
+        if datasource_ids is not None and datasource not in datasource_ids:
+            raise HTTPException(status_code=403, detail="Datasource access is required")
+        datasource_ids = {datasource}
     current_page, page_size, total_count, total_pages, _list = page_data_training(session, current_page, page_size,
-                                                                                  question)
+                                                                                  question, datasource_ids)
 
     return {
         "current_page": current_page,
@@ -43,9 +95,9 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
 
 
 @router.put("", response_model=int, summary=f"{PLACEHOLDER_PREFIX}create_or_update_dt")
-@require_permissions(permission=SqlbotPermission(role=['project_admin'], type='ds', keyExpression="info.datasource"))
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.DATA_TRAINING,resource_id_expr='info.id', result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, trans: Trans, info: DataTrainingInfo):
+    _require_training_admin(session, current_user, info)
     if info.id:
         return update_training(session, info, trans)
     else:
@@ -54,24 +106,31 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, trans
 
 @router.delete("", summary=f"{PLACEHOLDER_PREFIX}delete_dt")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.DATA_TRAINING,resource_id_expr='id_list'))
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
-async def delete(session: SessionDep, id_list: list[int]):
+async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
+    _require_training_ids_admin(session, current_user, id_list)
     delete_training(session, id_list)
 
 
 @router.get("/{id}/enable/{enabled}", summary=f"{PLACEHOLDER_PREFIX}enable_dt")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.DATA_TRAINING,resource_id_expr='id'))
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
-async def enable(session: SessionDep, id: int, enabled: bool, trans: Trans):
+async def enable(session: SessionDep, current_user: CurrentUser, id: int, enabled: bool, trans: Trans):
+    _require_training_ids_admin(session, current_user, [id])
     enable_training(session, id, enabled, trans)
 
 
 @router.get("/export", summary=f"{PLACEHOLDER_PREFIX}export_dt")
 @system_log(LogConfig(operation_type=OperationType.EXPORT, module=OperationModules.DATA_TRAINING))
 async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
-                       question: Optional[str] = Query(None, description="搜索术语(可选)")):
+                       question: Optional[str] = Query(None, description="搜索术语(可选)"),
+                       datasource: Optional[int] = Query(None, description="数据源ID(可选)")):
+    datasource_ids = _visible_datasource_ids(session, current_user)
+    if datasource is not None:
+        if datasource_ids is not None and datasource not in datasource_ids:
+            raise HTTPException(status_code=403, detail="Datasource access is required")
+        datasource_ids = {datasource}
+
     def inner():
-        _list = get_all_data_training(session, question)
+        _list = get_all_data_training(session, question, datasource_ids)
 
         data_list = []
         for obj in _list:
@@ -156,8 +215,13 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 
 @router.post("/uploadExcel", summary=f"{PLACEHOLDER_PREFIX}upload_excel_dt")
 @system_log(LogConfig(operation_type=OperationType.IMPORT, module=OperationModules.DATA_TRAINING))
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
-async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile = File(...)):
+async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
+                       datasource: Optional[int] = Query(None, description="数据源ID(可选)"),
+                       file: UploadFile = File(...)):
+    if datasource is None:
+        raise HTTPException(status_code=400, detail="Datasource is required")
+    if not has_datasource_role(session, current_user, datasource, PROJECT_ROLE_ADMIN):
+        raise HTTPException(status_code=403, detail="Project admin access is required")
     ALLOWED_EXTENSIONS = {"xlsx", "xls"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
         raise HTTPException(400, "Only support .xlsx/.xls")
@@ -206,6 +270,7 @@ async def upload_excel(trans: Trans, current_user: CurrentUser, file: UploadFile
 
                 import_data.append(
                     DataTrainingInfo(question=question, description=description,
+                                     datasource=datasource,
                                      datasource_name=datasource_name,
                                      advanced_application_name=advanced_application_name))
 

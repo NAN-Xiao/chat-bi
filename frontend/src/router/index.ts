@@ -24,10 +24,7 @@ import Professional from '@/views/system/professional/index.vue'
 import Training from '@/views/system/training/index.vue'
 import Prompt from '@/views/system/prompt/index.vue'
 import Audit from '@/views/system/audit/index.vue'
-import Appearance from '@/views/system/appearance/index.vue'
 import Parameter from '@/views/system/parameter/index.vue'
-import Authentication from '@/views/system/authentication/index.vue'
-import Platform from '@/views/system/platform/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import User from '@/views/system/user/User.vue'
 import Page401 from '@/views/error/index.vue'
@@ -38,6 +35,10 @@ import { watchRouter } from './watch'
 
 const t = i18n.global.t
 export const routes = [
+  {
+    path: '/',
+    redirect: '/chat',
+  },
   {
     path: '/login',
     name: 'login',
@@ -107,6 +108,16 @@ export const routes = [
   },
   {
     path: '/set/permission',
+    redirect: '/system/setting/permission',
+    hidden: true,
+  },
+  {
+    path: '/set/appearance',
+    redirect: '/system/setting/permission',
+    hidden: true,
+  },
+  {
+    path: '/system/setting/appearance',
     redirect: '/system/setting/permission',
     hidden: true,
   },
@@ -184,15 +195,9 @@ export const routes = [
       {
         path: 'setting',
         meta: { title: t('system.system_settings'), iconActive: 'set', iconDeActive: 'noSet' },
-        redirect: '/system/setting/appearance',
+        redirect: '/system/setting/permission',
         name: 'setting',
         children: [
-          {
-            path: 'appearance',
-            name: 'appearance',
-            component: Appearance,
-            meta: { title: t('system.appearance_settings') },
-          },
           {
             path: 'permission',
             name: 'permission',
@@ -228,18 +233,6 @@ export const routes = [
             name: 'variables',
             component: Variables,
             meta: { title: t('variables.system_variables') },
-          },
-          {
-            path: 'authentication',
-            name: 'authentication',
-            component: Authentication,
-            meta: { title: t('system.authentication_settings') },
-          },
-          {
-            path: 'platform',
-            name: 'platform',
-            component: Platform,
-            meta: { title: t('platform.title') },
           },
         ],
       },

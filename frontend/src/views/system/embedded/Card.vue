@@ -11,7 +11,6 @@ import { ref, unref, computed } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
-import icon_style_set_outlined from '@/assets/svg/icon_style-set_outlined.svg'
 
 const props = withDefaults(
   defineProps<{
@@ -31,15 +30,11 @@ const props = withDefaults(
 )
 const { copy } = useClipboard({ legacy: true })
 const { t } = useI18n()
-const emits = defineEmits(['edit', 'del', 'embedded', 'ui'])
+const emits = defineEmits(['edit', 'del', 'embedded'])
 const appearanceStore = useAppearanceStoreWithOut()
 
 const handleEdit = () => {
   emits('edit')
-}
-
-const handleUi = () => {
-  emits('ui')
 }
 
 const handleDel = () => {
@@ -121,12 +116,6 @@ const pageLogo = computed(() => {
         placement="bottom-start"
       >
         <div class="content">
-          <div class="item" @click.stop="handleUi">
-            <el-icon size="16">
-              <icon_style_set_outlined></icon_style_set_outlined>
-            </el-icon>
-            {{ $t('embedded.display_settings') }}
-          </div>
           <div class="item" @click.stop="handleDel">
             <el-icon size="16">
               <delIcon></delIcon>
@@ -265,18 +254,6 @@ const pageLogo = computed(() => {
   padding: 0;
 
   .content {
-    position: relative;
-
-    &::after {
-      position: absolute;
-      content: '';
-      top: 40px;
-      left: 0;
-      width: 100%;
-      height: 1px;
-      background: #dee0e3;
-    }
-
     .item {
       position: relative;
       padding: 0 12px;

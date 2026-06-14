@@ -1,8 +1,6 @@
 import os
-from pathlib import Path
 from typing import Dict, Any
 
-import sqlbot_xpack
 from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.concurrency import asynccontextmanager
@@ -57,9 +55,7 @@ async def lifespan(app: FastAPI):
     init_data_training_embedding_data()
     init_table_and_ds_embedding()
     SQLBotLogUtil.info("✅ 星通智数 初始化完成")
-    await sqlbot_xpack.core.clean_xpack_cache()
     await async_model_info()  # 异步加密已有模型的密钥和地址
-    await sqlbot_xpack.core.monitor_app(app)
     yield
     SQLBotLogUtil.info("星通智数 应用关闭")
 
@@ -77,10 +73,6 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None
 )
-xpack_static_path = Path(sqlbot_xpack.__file__).resolve().parent / "static"
-if xpack_static_path.exists():
-    app.mount("/xpack_static", StaticFiles(directory=str(xpack_static_path)), name="xpack_static")
-
 # cache docs for different text
 _openapi_cache: Dict[str, Dict[str, Any]] = {}
 
@@ -214,16 +206,6 @@ app.add_exception_handler(StarletteHTTPException, exception_handler.http_excepti
 app.add_exception_handler(Exception, exception_handler.global_exception_handler)
 
 mcp.setup_server()
-
-sqlbot_xpack.init_fastapi_app(app)
-
-app.router.routes = [
-    route for route in app.router.routes
-    if not (
-        getattr(route, "path", "").startswith(f"{settings.API_V1_STR}/ds_permission")
-        and getattr(getattr(route, "endpoint", None), "__module__", "") == "sqlbot_xpack.permissions.api.permission"
-    )
-]
 
 if __name__ == "__main__":
     import uvicorn

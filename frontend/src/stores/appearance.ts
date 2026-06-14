@@ -1,13 +1,8 @@
 import { defineStore } from 'pinia'
 import { store } from '@/stores/index'
-// import { defaultFont, list } from '@/api/font'
-import { request } from '@/utils/request'
-
-import { setTitle, setCurrentColor } from '@/utils/utils'
-
-const basePath = import.meta.env.VITE_API_BASE_URL
-const baseUrl = basePath + '/system/appearance/picture/'
+import { setCurrentColor, setTitle } from '@/utils/utils'
 import { isBtnShow } from '@/utils/utils'
+
 interface AppearanceState {
   themeColor?: string
   customColor?: string
@@ -36,15 +31,13 @@ interface AppearanceState {
   fontList?: Array<{ name: string; id: string; isDefault: boolean }>
 }
 
-interface KeyValue {
-  pkey: string
-  pval: string
-}
-// const { wsCache } = useCache()
+const DEFAULT_BRAND_NAME = '星通智数'
+const DEFAULT_THEME_COLOR = '#2563EB'
+
 export const useAppearanceStore = defineStore('appearanceStore', {
   state: (): AppearanceState => {
     return {
-      themeColor: '',
+      themeColor: 'default',
       customColor: '',
       navigateBg: '',
       navigate: '',
@@ -60,7 +53,7 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       login: '',
       slogan: '',
       web: '',
-      name: '星通智数',
+      name: DEFAULT_BRAND_NAME,
       foot: 'false',
       footContent: '',
       loaded: false,
@@ -73,21 +66,12 @@ export const useAppearanceStore = defineStore('appearanceStore', {
   },
   getters: {
     getNavigate(): string {
-      if (this.navigate) {
-        return baseUrl + this.navigate
-      }
       return null!
     },
     getMobileLogin(): string {
-      if (this.mobileLogin) {
-        return baseUrl + this.mobileLogin
-      }
       return null!
     },
     getMobileLoginBg(): string {
-      if (this.mobileLoginBg) {
-        return baseUrl + this.mobileLoginBg
-      }
       return null!
     },
     getHelp(): string {
@@ -106,24 +90,15 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       return this.navigateBg!
     },
     getBg(): string {
-      if (this.bg) {
-        return baseUrl + this.bg
-      }
       return null!
     },
     getLogin(): string {
-      if (this.login) {
-        return baseUrl + this.login
-      }
       return null!
     },
     getSlogan(): string {
       return this.slogan!
     },
     getWeb(): string {
-      if (this.web) {
-        return baseUrl + this.web
-      }
       return null!
     },
     getName(): string {
@@ -167,31 +142,6 @@ export const useAppearanceStore = defineStore('appearanceStore', {
     setMobileLogin(data: string) {
       this.mobileLogin = data
     },
-    // async setFontList() {
-    //   const res = await list()
-    //   this.fontList = res || []
-    // },
-    // setCurrentFont(name) {
-    //   const currentFont = this.fontList.find(ele => ele.name === name)
-    //   if (currentFont) {
-    //     let fontStyleElement = document.querySelector(`#de-custom_font${name}`)
-    //     if (!fontStyleElement) {
-    //       fontStyleElement = document.createElement('style')
-    //       fontStyleElement.setAttribute('id', `de-custom_font${name}`)
-    //       document.querySelector('head').appendChild(fontStyleElement)
-    //     }
-    //     fontStyleElement.innerHTML = `@font-face {
-    //         font-family: '${name}';
-    //         src: url(${
-    //           embeddedStore.baseUrl
-    //             ? (embeddedStore.baseUrl + basePath).replace('/./', '/')
-    //             : basePath
-    //         }/typeface/download/${currentFont.fileTransName});
-    //         font-weight: normal;
-    //         font-style: normal;
-    //         }`
-    //   }
-    // },
     setMobileLoginBg(data: string) {
       this.mobileLoginBg = data
     },
@@ -211,112 +161,25 @@ export const useAppearanceStore = defineStore('appearanceStore', {
       this.loaded = data
     },
     async setAppearance() {
-      // const desktop = wsCache.get('app.desktop')
-      // if (desktop) {
-      //   this.loaded = true
-      //   this.community = true
-      // }
       if (this.loaded) {
         return
       }
-      // defaultFont().then(res => {
-      //   const [font] = res || []
-      //   setDefaultFont(
-      //     `${
-      //       embeddedStore.baseUrl
-      //         ? (embeddedStore.baseUrl + basePath).replace('/./', '/')
-      //         : basePath
-      //     }/typeface/download/${font?.fileTransName}`,
-      //     font?.name,
-      //     font?.fileTransName
-      //   )
-      //   function setDefaultFont(url, name, fileTransName) {
-      //     let fontStyleElement = document.querySelector('#de-custom_font')
-      //     if (!fontStyleElement) {
-      //       fontStyleElement = document.createElement('style')
-      //       fontStyleElement.setAttribute('id', 'de-custom_font')
-      //       document.querySelector('head').appendChild(fontStyleElement)
-      //     }
-      //     fontStyleElement.innerHTML =
-      //       name && fileTransName
-      //         ? `@font-face {
-      //           font-family: '${name}';
-      //           src: url(${url});
-      //           font-weight: normal;
-      //           font-style: normal;
-      //           }`
-      //         : ''
-      //     document.documentElement.style.setProperty('--de-custom_font', `${name}`)
-      //     document.documentElement.style.setProperty('--van-base-font', `${name}`)
-      //   }
-      // })
-      // if (!isDataEaseBi) {
-      //   document.title = ''
-      // }
-      const obj = LicenseGenerator.getLicense()
-      if (obj?.status !== 'valid') {
-        setCurrentColor('#1CBA90')
-        document.title = '星通智数'
-        setLinkIcon()
-        return
-      }
-      const resData = await request.get('/system/appearance/ui')
       this.loaded = true
-      if (!resData?.length) {
-        setCurrentColor('#1CBA90')
-        setLinkIcon()
-        return
-      }
-      const data: AppearanceState = { loaded: false }
-      resData.forEach((item: KeyValue) => {
-        ;(
-          data as {
-            [key: string]: any
-          }
-        )[item.pkey] = item.pval
-      })
-      this.navigate = data.navigate
-      this.help = data.help
-      this.showDoc = data.showDoc
-      this.showAbout = data.showAbout
-      this.navigateBg = data.navigateBg
-      this.themeColor = data.themeColor
-      this.customColor = data.customColor
-      this.pc_welcome = data.pc_welcome
-      this.pc_welcome_desc = data.pc_welcome_desc
-      const currentColor =
-        this.themeColor === 'custom' && this.customColor
-          ? this.customColor
-          : this.isBlue
-            ? '#3370ff'
-            : '#1CBA90'
-      setCurrentColor(currentColor)
-      this.bg = data.bg
-      this.login = data.login
-      this.slogan = data.slogan
-      this.showSlogan = data.showSlogan
-      this.web = data.web
-      this.name = data.name
-      if (this.name) {
-        document.title = this.name
-        setTitle(this.name)
-      } else {
-        document.title = '星通智数'
-        setTitle('星通智数')
-      }
-      setLinkIcon(this.web)
+      this.themeColor = 'default'
+      this.customColor = ''
+      this.name = DEFAULT_BRAND_NAME
+      setCurrentColor(DEFAULT_THEME_COLOR)
+      document.title = DEFAULT_BRAND_NAME
+      setTitle(DEFAULT_BRAND_NAME)
+      setLinkIcon()
     },
   },
 })
 
-const setLinkIcon = (linkWeb?: string) => {
+const setLinkIcon = () => {
   const link = document.querySelector('link[rel="icon"]') as HTMLLinkElement
   if (link) {
-    if (linkWeb) {
-      link['href'] = baseUrl + linkWeb
-    } else {
-      link['href'] = `${location.pathname}LOGO-fold.svg`
-    }
+    link.href = `${location.pathname}LOGO-fold.svg`
   }
 }
 

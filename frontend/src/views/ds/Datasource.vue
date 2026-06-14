@@ -31,6 +31,9 @@ export interface Datasource {
   description: string
   id?: string
   recommended_config?: string
+  project_role?: string
+  can_manage_dashboard?: boolean
+  can_manage_project?: boolean
 }
 
 const router = useRouter()
@@ -274,7 +277,7 @@ function endLoading() {
           </div>
         </el-popover>
 
-        <el-button type="primary" @click="handleAddDatasource">
+        <el-button v-if="userStore.isAdmin" type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -309,6 +312,7 @@ function endLoading() {
             :type-name="ele.type_name"
             :num="ele.num"
             :description="ele.description"
+            :can-manage-project="ele.can_manage_project === true"
             @start-checking="startLoading"
             @end-checking="endLoading"
             @question="handleQuestion"
@@ -329,7 +333,7 @@ function endLoading() {
       />
 
       <div style="text-align: center; margin-top: -10px">
-        <el-button type="primary" @click="handleAddDatasource">
+        <el-button v-if="userStore.isAdmin" type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>

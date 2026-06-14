@@ -160,7 +160,9 @@ const open = async (user: any) => {
   isIndeterminate.value = false
   const systemUserList = await userApi.pager('', 1, 1000)
   project.value = JSON.parse(
-    JSON.stringify((systemUserList.items || []).filter((ele: any) => Number(ele.id) !== 1) as any)
+    JSON.stringify(
+      (systemUserList.items || []).filter((ele: any) => ele.system_role !== 'system_admin') as any
+    )
   )
   if (user?.length) {
     checkedProject.value = project.value.filter((ele: any) => user.includes(ele.id))

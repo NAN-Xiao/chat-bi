@@ -20,6 +20,7 @@ const props = defineProps<{
   uploadPath: string
   templatePath: string
   templateName: string
+  uploadParams?: Record<string, string | number | undefined | null>
 }>()
 
 const uploadRef = ref<UploadInstance>()
@@ -29,7 +30,14 @@ const token = wsCache.get('user.token')
 const locale = getLocale()
 const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}`, 'Accept-Language': locale })
 const getUploadURL = () => {
-  return import.meta.env.VITE_API_BASE_URL + props.uploadPath
+  const params = new URLSearchParams()
+  Object.entries(props.uploadParams || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      params.set(key, String(value))
+    }
+  })
+  const query = params.toString()
+  return `${import.meta.env.VITE_API_BASE_URL}${props.uploadPath}${query ? `?${query}` : ''}`
 }
 
 function downloadTemplate() {

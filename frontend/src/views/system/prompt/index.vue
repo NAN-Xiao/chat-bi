@@ -377,21 +377,19 @@ const typeChange = (val: any) => {
 }
 
 const configParams = () => {
-  let str = ''
+  const params = new URLSearchParams()
   if (keywords.value) {
-    str += `name=${keywords.value}`
+    params.set('name', keywords.value)
   }
 
   state.conditions.forEach((ele: any) => {
     ele.value.forEach((itx: any) => {
-      str += str ? `_${itx}` : `${ele.field}=${itx}`
+      params.append(ele.field, String(itx))
     })
   })
 
-  if (str.length) {
-    str = `?${str}`
-  }
-  return str
+  const query = params.toString()
+  return query ? `?${query}` : ''
 }
 const filterOption = ref<any[]>([
   {

@@ -1,9 +1,54 @@
-from fastapi import Request
-from sqlbot_xpack.config.arg_manage import get_group_args, save_group_args
-from sqlbot_xpack.config.model import SysArgModel
 import json
+
+from fastapi import Request
+from sqlmodel import select
+
 from common.core.deps import SessionDep
-from sqlbot_xpack.file_utils import SQLBotFileUtils
+from common.utils.file_utils import SQLBotFileUtils
+from apps.system.models.system_model import SysArgModel
+
+
+async def get_group_args(session: SessionDep, flag: str | None = None) -> list[SysArgModel]:
+    stmt = select(SysArgModel).order_by(SysArgModel.sort_no, SysArgModel.pkey)
+    if flag:
+        stmt = stmt.where(SysArgModel.pkey.startswith(f"{flag}."))
+    return session.exec(stmt).all()
+
+
+async def save_group_args(
+    session: SessionDep,
+    sys_args: list[SysArgModel],
+    file_mapping: dict[str, str] | None = None,
+) -> None:
+    file_mapping = file_mapping or {}
+    keys = [item.pkey for item in sys_args if item.pkey]
+    if not keys:
+        return
+
+    existing_rows = session.exec(select(SysArgModel).where(SysArgModel.pkey.in_(keys))).all()
+    existing = {item.pkey: item for item in existing_rows}
+    for item in sys_args:
+        pkey = item.pkey
+        short_key = pkey.split(".", 1)[1] if "." in pkey else pkey
+        pval = file_mapping.get(short_key, item.pval)
+        if item.ptype == "file":
+            old = existing.get(pkey)
+            if old and old.pval and old.pval != pval:
+                SQLBotFileUtils.delete_file(old.pval)
+
+        if pkey in existing:
+            row = existing[pkey]
+            row.pval = None if pval is None else str(pval)
+            row.ptype = item.ptype or "str"
+            row.sort_no = item.sort_no or 1
+        else:
+            row = SysArgModel(
+                pkey=pkey,
+                pval=None if pval is None else str(pval),
+                ptype=item.ptype or "str",
+                sort_no=item.sort_no or 1,
+            )
+        session.add(row)
 
 async def get_parameter_args(session: SessionDep) -> list[SysArgModel]:
     group_args = await get_group_args(session=session)

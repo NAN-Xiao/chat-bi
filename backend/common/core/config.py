@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     FRONTEND_HOST: str = "http://localhost:5173"
+    LOCAL_DEV_FRONTEND_HOSTS: tuple[str, ...] = (
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    )
 
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
@@ -43,9 +47,12 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def all_cors_origins(self) -> list[str]:
-        return [str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS] + [
-            self.FRONTEND_HOST
+        origins = [
+            *[str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS],
+            self.FRONTEND_HOST,
+            *self.LOCAL_DEV_FRONTEND_HOSTS,
         ]
+        return list(dict.fromkeys(origin.rstrip("/") for origin in origins if origin))
 
     @computed_field  # type: ignore[prop-decorator]
     @property

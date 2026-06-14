@@ -24,47 +24,6 @@
           {{ $t('user.filter') }}
         </el-button>
 
-        <el-tooltip
-          v-if="!platformType.length && showSyncBtn"
-          effect="dark"
-          :content="$t('sync.integration')"
-          placement="left"
-        >
-          <el-button disabled secondary>
-            <template #icon>
-              <icon_replace_outlined />
-            </template>
-            {{ t('sync.sync_users') }}
-          </el-button>
-        </el-tooltip>
-
-        <el-popover
-          v-if="platformType.length && showSyncBtn"
-          popper-class="sync-platform"
-          placement="bottom-start"
-        >
-          <template #reference>
-            <el-button secondary>
-              <template #icon>
-                <icon_replace_outlined />
-              </template>
-              {{ t('sync.sync_users') }}
-            </el-button></template
-          >
-          <div class="popover">
-            <div class="popover-content">
-              <div
-                v-for="ele in platformType"
-                :key="ele.name"
-                class="popover-item"
-                @click="handleSyncUser(ele)"
-              >
-                <img height="24" width="24" :src="ele.icon" />
-                <div class="model-name">{{ $t(ele.name) }}</div>
-              </div>
-            </div>
-          </div>
-        </el-popover>
         <!--  <el-button secondary @click="handleUserImport">
           <template #icon>
             <ccmUpload></ccmUpload>
@@ -320,6 +279,16 @@
           autocomplete="off"
           clearable
         />
+      </el-form-item>
+      <el-form-item :label="$t('user.system_role')">
+        <el-select v-model="state.form.system_role" style="width: 240px">
+          <el-option
+            v-for="item in systemRoleOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
       </el-form-item>
       <el-form-item :label="$t('user.project_permission_config')">
         <div class="project-permission-panel">
@@ -635,28 +604,21 @@
     :filter-options="filterOption"
     @trigger-filter="searchCondition"
   />
-  <SyncUserDing ref="syncUserRef" @refresh="refresh"></SyncUserDing>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, unref, reactive, onMounted, nextTick, h, shallowRef } from 'vue'
+import { computed, ref, unref, reactive, onMounted, nextTick, shallowRef } from 'vue'
 import UserImport from './UserImport.vue'
 import SuccessFilled from '@/assets/svg/gou_icon.svg'
-import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
 import CircleCloseFilled from '@/assets/svg/icon_ban_filled.svg'
-import { ElButton } from 'element-plus-secondary'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { convertFilterText, FilterText } from '@/components/filter-text'
-import SyncUserDing from './SyncUserDing.vue'
 import IconLock from '@/assets/svg/icon-key_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
-import logo_dingtalk from '@/assets/img/dingtalk.png'
-import logo_lark from '@/assets/img/lark.png'
-import logo_wechat_work from '@/assets/img/wechat.png'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { userApi } from '@/api/user'
 import { datasourceApi } from '@/api/datasource'
@@ -665,7 +627,6 @@ import { decrypted } from '@/views/ds/js/aes'
 import field_text from '@/assets/svg/field_text.svg'
 import field_time from '@/assets/svg/field_time.svg'
 import field_value from '@/assets/svg/field_value.svg'
-import { request } from '@/utils/request'
 import { variablesApi } from '@/api/variables'
 import { formatTimestamp } from '@/utils/date'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
@@ -684,7 +645,6 @@ const dialogVisiblePassword = ref(false)
 const isIndeterminate = ref(true)
 const drawerMainRef = ref()
 const userImportRef = ref()
-const syncUserRef = ref()
 const selectionLoading = ref(false)
 
 const iconMap = {
@@ -729,6 +689,7 @@ const defaultForm = {
   account: '',
   email: '',
   status: 1,
+  system_role: 'viewer',
   phoneNumber: '',
   project_ids: [],
   project_permission_map: {},
@@ -738,6 +699,10 @@ const variables = shallowRef<any[]>([])
 const variableValueMap = shallowRef<any>({})
 const projectOptions = shallowRef<any[]>([])
 const permissionRuleGroups = shallowRef<any[]>([])
+const systemRoleOptions = computed(() => [
+  { value: 'viewer', label: t('user.system_role_viewer') },
+  { value: 'tenant_admin', label: t('user.system_role_tenant_admin') },
+])
 const state = reactive<any>({
   tableData: [],
   filterTexts: [],
@@ -799,8 +764,12 @@ const formatRuleGroupSummary = (rule: any, projectId?: any) => {
     ? (rule.permissions || []).filter((item: any) => Number(item.ds_id) === id)
     : rule.permissions || []
   const rowCount = permissions.filter((item: any) => item.type === 'row').length
-  const columnCount = permissions.filter((item: any) => item.type !== 'row').length
+  const tableCount = permissions.filter((item: any) => item.type === 'table').length
+  const columnCount = permissions.filter((item: any) => item.type === 'column').length
   const parts = []
+  if (tableCount) {
+    parts.push(t('user.table_rule_count', { msg: tableCount }))
+  }
   if (rowCount) {
     parts.push(t('user.row_rule_count', { msg: rowCount }))
   }
@@ -917,7 +886,6 @@ const syncUserPermissionStrategies = (userId: any): Promise<void> => {
   return Promise.all(requests).then(() => undefined)
 }
 
-const currentPlatform = ref<any>({})
 const rules = {
   name: [
     {
@@ -948,36 +916,6 @@ const rules = {
   ],
 }
 
-const platformType = ref<any[]>([
-  {
-    icon: logo_wechat_work,
-    value: 6,
-    name: 'sync.sync_wechat_users',
-  },
-  {
-    icon: logo_dingtalk,
-    value: 7,
-    name: 'sync.sync_dingtalk_users',
-  },
-  {
-    icon: logo_lark,
-    value: 8,
-    name: 'sync.sync_lark_users',
-  },
-])
-
-const refresh = (res: any) => {
-  showTips(res.successCount, res.errorCount, res.dataKey)
-  if (res.successCount) {
-    handleCurrentChange(1)
-  }
-}
-
-const handleSyncUser = (ele: any) => {
-  currentPlatform.value = ele
-  syncUserRef.value.open(ele.value, ele.name)
-}
-
 const passwordRules = {
   new: [
     {
@@ -1001,14 +939,6 @@ const closeResetInfo = (row: any) => {
 }
 const setPopoverRef = (el: any, row: any) => {
   row.popoverRef = el
-}
-
-const loadData = () => {
-  const url = '/system/platform'
-  request.get(url).then((res: any) => {
-    const idArr = res.filter((card: any) => card.valid && card.enable).map((ele: any) => ele.id)
-    platformType.value = platformType.value.filter((card: any) => idArr.includes(card.value))
-  })
 }
 
 const copyText = () => {
@@ -1168,6 +1098,7 @@ const editHandler = (row: any) => {
         const projectIds = (row.project_ids || []).map((id: any) => Number(id))
         state.form = {
           ...row,
+          system_role: row.system_role || 'viewer',
           project_ids: projectIds,
           project_permission_map: buildUserProjectPermissionMap(row.id, projectIds),
           system_variables: (row.system_variables || []).map((ele: any) => ({
@@ -1178,6 +1109,7 @@ const editHandler = (row: any) => {
       } else {
         state.form = {
           ...defaultForm,
+          system_role: 'viewer',
           project_ids: [],
           project_permission_map: {},
           system_variables: [],
@@ -1261,6 +1193,7 @@ const closeForm = () => {
 const onFormClose = () => {
   state.form = {
     ...defaultForm,
+    system_role: 'viewer',
     project_ids: [],
     project_permission_map: {},
     system_variables: [],
@@ -1314,13 +1247,14 @@ const formatVariableValues = () => {
 }
 
 const addTerm = () => {
-  const { account, email, name, status, project_ids } = state.form
+  const { account, email, name, status, system_role, project_ids } = state.form
   userApi
     .add({
       account,
       email,
       name,
       status,
+      system_role,
       project_ids,
       system_variables: formatVariableValues(),
     })
@@ -1336,7 +1270,7 @@ const addTerm = () => {
     })
 }
 const editTerm = () => {
-  const { account, id, create_time, email, language, name, project_ids, origin, status } =
+  const { account, id, create_time, email, language, name, project_ids, origin, status, system_role } =
     state.form
   userApi
     .edit({
@@ -1349,6 +1283,7 @@ const editTerm = () => {
       project_ids,
       origin,
       status,
+      system_role,
       system_variables: formatVariableValues(),
     })
     .then(() => syncUserPermissionStrategies(id))
@@ -1458,110 +1393,11 @@ const formatUserOrigin = (origin?: number) => {
   return originArray[origin - 1]
 }
 
-const showSyncBtn = ref(false)
 onMounted(() => {
-  // eslint-disable-next-line no-undef
-  const obj = LicenseGenerator.getLicense()
-  if (obj?.status === 'valid') {
-    showSyncBtn.value = true
-    loadData()
-  } else {
-    platformType.value = []
-  }
-
   handleCurrentChange(1)
 
   loadDefaultPwd()
 })
-const downErrorExcel = (dataKey: any) => {
-  userApi.errorRecord(dataKey).then((res: any) => {
-    const blob = new Blob([res], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
-    const link = document.createElement('a')
-    link.style.display = 'none'
-    link.href = URL.createObjectURL(blob)
-    link.download = 'error.xlsx'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  })
-}
-
-const showTips = (successCount: any, errorCount: any, dataKey: any) => {
-  let title = successCount ? t('sync.sync_complete') : t('sync.sync_failed')
-  const childrenDomList = [h('span', null, t('sync.synced_10_users', { num: successCount }))]
-  const contentDomList = h(
-    'div',
-    {
-      style: 'display: flex;align-items: center;',
-    },
-    childrenDomList
-  )
-  const headerDomList = [
-    h(
-      'div',
-      {
-        style: 'font-weight: 500;font-size: 16px;line-height: 24px;margin-bottom: 24px',
-      },
-      title
-    ),
-
-    contentDomList,
-  ]
-
-  if (successCount && errorCount) {
-    childrenDomList.pop()
-    const halfCountDom = h(
-      'span',
-      null,
-      t('sync.failed_3_users', { success: successCount, failed: errorCount })
-    )
-    childrenDomList.push(halfCountDom)
-  }
-
-  if (!successCount && errorCount) {
-    const errorCountDom = h('span', null, t('sync.failed_10_users', { num: errorCount }))
-    childrenDomList.pop()
-    childrenDomList.push(errorCountDom)
-  }
-
-  if (errorCount) {
-    const errorDom = h('div', { class: 'error-record-tip flex-align-center' }, [
-      h(
-        ElButton,
-        {
-          onClick: () => downErrorExcel(dataKey),
-          text: true,
-          class: 'down-button',
-        },
-        t('sync.download_failure_list')
-      ),
-    ])
-
-    childrenDomList.push(errorDom)
-  }
-  ElMessageBox.confirm('', {
-    confirmButtonType: 'primary',
-    autofocus: false,
-    dangerouslyUseHTMLString: true,
-    message: h(
-      'div',
-      { class: 'sync-tip-box' },
-
-      headerDomList
-    ),
-    cancelButtonText: t('sync.return_to_view'),
-    confirmButtonText: t('sync.continue_syncing'),
-  })
-    .then(() => {
-      const { value, name } = currentPlatform.value
-      syncUserRef.value.open(value, name)
-    })
-    .catch(() => {
-      currentPlatform.value = null
-    })
-}
 </script>
 
 <style lang="less" scoped>
@@ -1706,54 +1542,6 @@ const showTips = (successCount: any, errorCount: any, dataKey: any) => {
 </style>
 
 <style lang="less">
-.ed-message-box:has(.sync-tip-box) {
-  padding: 24px;
-}
-.sync-tip-box {
-  .error-record-tip {
-    display: inline-block;
-  }
-}
-.sync-platform.sync-platform {
-  padding: 4px 0;
-  width: 180px !important;
-  box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
-
-  .popover {
-    .popover-content {
-      padding: 4px;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-    .popover-item {
-      height: 32px;
-      display: flex;
-      align-items: center;
-      padding-left: 12px;
-      padding-right: 8px;
-      position: relative;
-      border-radius: 6px;
-      cursor: pointer;
-
-      &:not(:last-child) {
-        margin-bottom: 2px;
-      }
-
-      &:hover {
-        background: #1f23291a;
-      }
-
-      .model-name {
-        margin-left: 8px;
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
-        max-width: 220px;
-      }
-    }
-  }
-}
 .reset-pwd-confirm {
   padding: 5px 15px;
   .confirm-header {

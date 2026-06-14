@@ -1,13 +1,5 @@
 <template>
-  <div
-    v-if="showLoading"
-    v-loading="true"
-    :element-loading-text="t('qa.loading')"
-    class="xpack-login-handler-mask"
-    element-loading-background="#F5F6F7"
-  ></div>
-
-  <main class="login-container product-login-page" :class="{ 'hide-login-container': showLoading }">
+  <main class="login-container product-login-page">
     <section class="product-login-story">
       <img v-if="storyBg" class="product-login-bg" :src="storyBg" alt="" />
       <div class="product-login-story-main">
@@ -92,11 +84,6 @@
               </el-form-item>
             </el-form>
           </div>
-          <Handler
-            v-model:loading="showLoading"
-            jsname="L2NvbXBvbmVudC9sb2dpbi9IYW5kbGVy"
-            @switch-tab="switchTab"
-          />
         </div>
       </div>
     </section>
@@ -111,10 +98,8 @@ import { useI18n } from 'vue-i18n'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
 import LOGO_fold from '@/assets/LOGO-fold.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
-import Handler from './xpack/Handler.vue'
 import { toLoginSuccess } from '@/utils/utils'
 
-const showLoading = ref(true)
 const router = useRouter()
 const userStore = useUserStore()
 const appearanceStore = useAppearanceStoreWithOut()
@@ -123,8 +108,6 @@ const loginForm = ref({
   username: '',
   password: '',
 })
-const activeName = ref('simple')
-
 // const isLdap = computed(() => activeName.value == 'ldap')
 const storyBg = computed(() => appearanceStore.getBg || '')
 
@@ -192,9 +175,6 @@ const submitForm = () => {
     }
   })
 }
-const switchTab = (name: string) => {
-  activeName.value = name || 'simple'
-}
 </script>
 
 <style lang="less" scoped>
@@ -207,12 +187,12 @@ const switchTab = (name: string) => {
 .product-login-page {
   display: grid;
   grid-template-columns: minmax(0, 47fr) minmax(520px, 53fr);
-  color: #1d2939;
-  color-scheme: light;
+  color: var(--theme-text-primary);
+  color-scheme: var(--theme-color-scheme, light);
   background:
-    linear-gradient(135deg, rgba(37, 99, 235, 0.11), transparent 34%),
-    linear-gradient(315deg, rgba(5, 150, 105, 0.1), transparent 35%),
-    #eef2f7;
+    linear-gradient(135deg, var(--theme-shell-gradient-a), transparent 34%),
+    linear-gradient(315deg, var(--theme-shell-gradient-b), transparent 35%),
+    var(--theme-shell-bg);
 }
 
 .product-login-story {
@@ -393,27 +373,41 @@ const switchTab = (name: string) => {
 }
 
 .product-login-wrap {
+  --theme-panel-bg: #ffffff;
+  --theme-panel-bg-soft: #f5f7fb;
+  --theme-control-bg: #ffffff;
+  --theme-control-hover-bg: #ffffff;
+  --theme-hover-bg: #e8eef7;
+  --theme-active-bg: #dde7f4;
+  --theme-shell-border: #d7deea;
+  --theme-text-primary: #172033;
+  --theme-text-secondary: #53617a;
+  --theme-text-tertiary: #7a879d;
+  --theme-input-bg: #ffffff;
+  --theme-input-border: #cbd5e1;
+  --theme-card-shadow: 0 10px 28px rgba(16, 24, 40, 0.08);
+  color-scheme: light;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--theme-panel-bg-soft);
 }
 
 .product-login-card {
   width: 100%;
   max-width: 420px;
-  border: 1px solid rgba(208, 215, 226, 0.9);
+  border: 1px solid var(--theme-shell-border);
   border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 24px 70px rgba(16, 24, 40, 0.14);
+  background: var(--theme-panel-bg);
+  box-shadow: var(--theme-card-shadow);
   padding: 32px;
   transform: scale(1.2);
   transform-origin: center;
 
   h2 {
     margin: 0;
-    color: #101828;
+    color: var(--theme-text-primary);
     font-size: 22px;
     line-height: 1.3;
     text-align: center;
@@ -422,34 +416,62 @@ const switchTab = (name: string) => {
 
 .product-login-desc {
   margin: 8px 0 24px;
-  color: #667085;
+  color: var(--theme-text-secondary);
   font-size: 13px;
   line-height: 1.7;
   text-align: center;
 }
 
 .product-login-form {
+  color: var(--theme-text-primary);
+
   .product-login-field {
     margin-bottom: 15px;
+  }
+
+  :deep(.ed-form-item__content),
+  :deep(.el-form-item__content) {
+    color: var(--theme-text-primary);
   }
 
   :deep(.ed-form-item__label),
   :deep(.el-form-item__label) {
     margin-bottom: 7px;
-    color: #344054;
+    color: var(--theme-text-primary);
     font-size: 13px;
     font-weight: 700;
     line-height: 1.2;
   }
 
+  :deep(.ed-input),
+  :deep(.el-input) {
+    --ed-input-bg-color: var(--theme-input-bg);
+    --ed-input-border-color: var(--theme-input-border);
+    --ed-input-clear-hover-color: var(--theme-text-secondary);
+    --ed-input-focus-border-color: #2563eb;
+    --ed-input-hover-border-color: #2563eb;
+    --ed-input-icon-color: var(--theme-text-tertiary);
+    --ed-input-placeholder-color: var(--theme-text-tertiary);
+    --ed-input-text-color: var(--theme-text-primary);
+    --el-input-bg-color: var(--theme-input-bg);
+    --el-input-border-color: var(--theme-input-border);
+    --el-input-clear-hover-color: var(--theme-text-secondary);
+    --el-input-focus-border-color: #2563eb;
+    --el-input-hover-border-color: #2563eb;
+    --el-input-icon-color: var(--theme-text-tertiary);
+    --el-input-placeholder-color: var(--theme-text-tertiary);
+    --el-input-text-color: var(--theme-text-primary);
+    color: var(--theme-text-primary);
+  }
+
   :deep(.ed-input__wrapper),
   :deep(.el-input__wrapper) {
     height: 42px;
-    border: 1px solid #cbd5e1;
+    border: 1px solid var(--theme-input-border);
     border-radius: 7px;
     box-shadow: none;
     padding: 0 12px;
-    background: #ffffff;
+    background: var(--theme-input-bg);
     transition:
       border-color 150ms ease,
       box-shadow 150ms ease;
@@ -465,8 +487,39 @@ const switchTab = (name: string) => {
 
   :deep(.ed-input__inner),
   :deep(.el-input__inner) {
-    color: #1d2939;
+    background: var(--theme-input-bg);
+    color: var(--theme-text-primary);
     font-size: 14px;
+  }
+
+  :deep(.ed-input__inner:-webkit-autofill),
+  :deep(.ed-input__inner:-webkit-autofill:hover),
+  :deep(.ed-input__inner:-webkit-autofill:focus),
+  :deep(.ed-input__inner:-webkit-autofill:active),
+  :deep(.el-input__inner:-webkit-autofill),
+  :deep(.el-input__inner:-webkit-autofill:hover),
+  :deep(.el-input__inner:-webkit-autofill:focus),
+  :deep(.el-input__inner:-webkit-autofill:active) {
+    box-shadow: 0 0 0 1000px var(--theme-input-bg) inset;
+    -webkit-box-shadow: 0 0 0 1000px var(--theme-input-bg) inset;
+    -webkit-text-fill-color: var(--theme-text-primary);
+    caret-color: var(--theme-text-primary);
+  }
+
+  :deep(.ed-input__inner::placeholder),
+  :deep(.el-input__inner::placeholder) {
+    color: var(--theme-text-tertiary);
+  }
+
+  :deep(.ed-input__suffix),
+  :deep(.ed-input__suffix-inner),
+  :deep(.el-input__suffix),
+  :deep(.el-input__suffix-inner),
+  :deep(.ed-input__clear),
+  :deep(.el-input__clear),
+  :deep(.ed-input__password),
+  :deep(.el-input__password) {
+    color: var(--theme-text-tertiary);
   }
 
   :deep(.ed-form-item__error),
@@ -501,19 +554,6 @@ const switchTab = (name: string) => {
 
 :deep(.de-other-login-divider) {
   margin: 10px 0 12px;
-}
-
-.hide-login-container {
-  display: none;
-}
-
-.xpack-login-handler-mask {
-  position: fixed;
-  width: 100vw;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 999;
 }
 
 @media (max-width: 1180px) {

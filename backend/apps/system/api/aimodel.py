@@ -198,7 +198,6 @@ async def delete_model(
 
 @router.get("/list/available", response_model=List[AiModelBrief], summary=f"{PLACEHOLDER_PREFIX}system_model_list_available",
             description=f"{PLACEHOLDER_PREFIX}system_model_list_available")
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
 async def get_available_models(
         session: SessionDep,
         current_user: CurrentUser

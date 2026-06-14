@@ -56,11 +56,26 @@ def get_terminology_base_query(name: Optional[str] = None):
 
 def build_terminology_query(session: SessionDep, name: Optional[str] = None,
                             paginate: bool = True, current_page: int = 1, page_size: int = 10,
-                            dslist: Optional[list[int]] = None):
+                            dslist: Optional[list[int]] = None,
+                            accessible_datasource_ids: Optional[set[int]] = None,
+                            include_global: bool = True):
     """
     构建术语查询的通用方法
     """
     parent_ids_subquery, child = get_terminology_base_query(name)
+
+    if accessible_datasource_ids is not None:
+        access_conditions = []
+        for ds_id in accessible_datasource_ids:
+            access_conditions.append(Terminology.datasource_ids.contains([ds_id]))
+        if include_global:
+            access_conditions.append(Terminology.datasource_ids == [])
+            access_conditions.append(Terminology.specific_ds == False)
+            access_conditions.append(Terminology.specific_ds.is_(None))
+        if access_conditions:
+            parent_ids_subquery = parent_ids_subquery.where(or_(*access_conditions))
+        else:
+            parent_ids_subquery = parent_ids_subquery.where(False)
 
     # 添加数据源筛选条件
     if dslist is not None and len(dslist) > 0:
@@ -72,13 +87,12 @@ def build_terminology_query(session: SessionDep, name: Optional[str] = None,
                 Terminology.datasource_ids.contains([ds_id])
             )
 
-        # datasource_ids 为空数组
-        empty_array_condition = Terminology.datasource_ids == []
+        if include_global:
+            datasource_conditions.append(Terminology.datasource_ids == [])
+            datasource_conditions.append(Terminology.specific_ds == False)
+            datasource_conditions.append(Terminology.specific_ds.is_(None))
 
-        ds_filter_condition = or_(
-            *datasource_conditions,
-            empty_array_condition
-        )
+        ds_filter_condition = or_(*datasource_conditions) if datasource_conditions else False
         parent_ids_subquery = parent_ids_subquery.where(ds_filter_condition)
 
     # 计算总数
@@ -196,24 +210,28 @@ def execute_terminology_query(session: SessionDep, stmt) -> List[TerminologyInfo
 
 
 def page_terminology(session: SessionDep, current_page: int = 1, page_size: int = 10,
-                     name: Optional[str] = None, dslist: Optional[list[int]] = None):
+                     name: Optional[str] = None, dslist: Optional[list[int]] = None,
+                     accessible_datasource_ids: Optional[set[int]] = None,
+                     include_global: bool = True):
     """
     分页查询术语（原方法保持不变）
     """
     stmt, total_count, total_pages, current_page, page_size = build_terminology_query(
-        session, name, True, current_page, page_size, dslist
+        session, name, True, current_page, page_size, dslist, accessible_datasource_ids, include_global
     )
     _list = execute_terminology_query(session, stmt)
 
     return current_page, page_size, total_count, total_pages, _list
 
 
-def get_all_terminology(session: SessionDep, name: Optional[str] = None):
+def get_all_terminology(session: SessionDep, name: Optional[str] = None,
+                        accessible_datasource_ids: Optional[set[int]] = None,
+                        include_global: bool = True):
     """
     获取所有术语（不分页）
     """
     stmt, total_count, total_pages, current_page, page_size = build_terminology_query(
-        session, name, False
+        session, name, False, accessible_datasource_ids=accessible_datasource_ids, include_global=include_global
     )
     _list = execute_terminology_query(session, stmt)
 
@@ -407,11 +425,11 @@ def batch_create_terminology(session: SessionDep, info_list: List[TerminologyInf
 
         # 根据specific_ds决定是否验证数据源
         specific_ds = info.specific_ds if info.specific_ds is not None else False
-        datasource_ids = []
+        datasource_ids = list(info.datasource_ids or [])
 
         if specific_ds:
             # specific_ds为True时需要验证数据源
-            if info.datasource_names:
+            if not datasource_ids and info.datasource_names:
                 for ds_name in info.datasource_names:
                     if not ds_name or not ds_name.strip():
                         continue  # 跳过空的数据源名称

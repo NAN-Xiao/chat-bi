@@ -90,30 +90,45 @@ const routerList = computed(() => {
   border-right: none;
   .ed-menu-item {
     height: 40px !important;
-    border-radius: 6px !important;
+    border-radius: 8px !important;
     margin-bottom: 2px;
+    color: var(--theme-text-primary);
+
+    &:hover,
+    &:focus {
+      background: var(--theme-hover-bg) !important;
+    }
+
     &.is-active {
-      background-color: #fff !important;
-      border-radius: 6px;
+      background-color: var(--theme-panel-bg) !important;
+      border-radius: 8px;
+      color: var(--ed-color-primary, #2563eb) !important;
       font-weight: 500;
+      box-shadow: var(--theme-control-shadow);
     }
   }
 
   .ed-sub-menu .ed-sub-menu__title {
-    border-radius: 6px;
+    border-radius: 8px;
+
+    &:hover,
+    &:focus {
+      background: var(--theme-hover-bg) !important;
+    }
   }
 
   .ed-sub-menu.is-active:not(.is-opened) {
     .ed-sub-menu__title {
-      background-color: #fff !important;
-      color: var(--ed-color-primary) !important;
+      background-color: var(--theme-panel-bg) !important;
+      color: var(--ed-color-primary, #2563eb) !important;
       font-weight: 500;
+      box-shadow: var(--theme-control-shadow);
     }
   }
 
   .ed-sub-menu.is-active.is-opened {
     .ed-sub-menu__title {
-      color: var(--ed-color-primary) !important;
+      color: var(--ed-color-primary, #2563eb) !important;
       font-weight: 500;
     }
   }
@@ -123,22 +138,22 @@ const routerList = computed(() => {
   }
 }
 .ed-popper.is-light:has(.ed-menu--popup) {
-  border: 1px solid #dee0e3;
-  border-radius: 6px;
-  box-shadow: 0px 4px 8px 0px #1f23291a;
-  background: #eff1f0;
+  border: 1px solid var(--theme-shell-border);
+  border-radius: 10px;
+  box-shadow: var(--theme-card-shadow);
+  background: var(--theme-shell-bg);
   overflow: hidden;
 }
 .ed-menu--popup {
   padding: 8px;
-  background: #eff1f0;
+  background: var(--theme-shell-bg);
 
   .ed-menu-item {
     padding: 9px 16px;
     height: 40px !important;
-    border-radius: 6px;
+    border-radius: 8px;
     &.is-active {
-      background-color: #fff !important;
+      background-color: var(--theme-panel-bg) !important;
       font-weight: 500;
     }
   }
@@ -150,7 +165,7 @@ const routerList = computed(() => {
 }
 
 .ed-menu--popup-container .subTitleMenu {
-  color: #646a73 !important;
+  color: var(--theme-text-secondary) !important;
   pointer-events: none;
 }
 </style>

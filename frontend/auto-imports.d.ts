@@ -15,5 +15,4 @@ declare global {
   const ElRadio: typeof import('element-plus-secondary/es')['ElRadio']
   const ElRadioGroup: typeof import('element-plus-secondary/es')['ElRadioGroup']
   const ElSelect: typeof import('element-plus-secondary/es')['ElSelect']
-  const LicenseGenerator: any
 }

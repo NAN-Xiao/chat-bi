@@ -2,7 +2,6 @@
 import { ref, computed } from 'vue'
 import Default_avatar_custom from '@/assets/img/Default-avatar.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
-import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import icon_maybe_outlined from '@/assets/svg/icon-maybe_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
@@ -10,7 +9,6 @@ import icon_api_key from '@/assets/svg/icon-api_key.svg'
 import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
 import icon_logout_outlined from '@/assets/svg/icon_logout_outlined.svg'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
-import AboutDialog from '@/components/about/index.vue'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import PwdForm from './PwdForm.vue'
@@ -48,7 +46,6 @@ const platFlag = computed(() => {
 })
 const dialogVisible = ref(false)
 const apikeyDialogVisible = ref(false)
-const aboutRef = ref()
 const languageList = computed(() => [
   {
     name: 'English',
@@ -98,9 +95,6 @@ const closePwd = () => {
 const openApikey = () => {
   apikeyDialogVisible.value = true
 }
-const toAbout = () => {
-  aboutRef.value?.open()
-}
 const savePwdHandler = () => {
   pwdFormRef.value?.submit()
 }
@@ -137,7 +131,7 @@ const logout = async () => {
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
         <div v-if="isAdmin && !inSysmenu" class="popover-item" @click="toSystem">
-          <el-icon style="color: #646a73" size="16">
+          <el-icon style="color: var(--theme-text-secondary)" size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('common.system_manage') }}</div>
@@ -181,12 +175,6 @@ const logout = async () => {
             </div>
           </div>
         </el-popover>
-        <div v-if="appearanceStore.getShowAbout" class="popover-item" @click="toAbout">
-          <el-icon size="16">
-            <icon_info_outlined_1></icon_info_outlined_1>
-          </el-icon>
-          <div class="datasource-name">{{ $t('about.title') }}</div>
-        </div>
         <div v-if="appearanceStore.getShowDoc" class="popover-item" @click="openHelp">
           <el-icon size="16">
             <icon_maybe_outlined></icon_maybe_outlined>
@@ -213,10 +201,14 @@ const logout = async () => {
       </div>
     </template>
   </el-dialog>
-  <el-dialog v-model="apikeyDialogVisible" title="API Key" width="840">
+  <el-dialog
+    v-model="apikeyDialogVisible"
+    class="workspace-light-dialog api-key-dialog"
+    title="API Key"
+    width="840"
+  >
     <apikey v-if="apikeyDialogVisible" ref="apikeyRef" />
   </el-dialog>
-  <AboutDialog ref="aboutRef" />
 </template>
 
 <style lang="less" scoped>
@@ -225,18 +217,21 @@ const logout = async () => {
   display: flex;
   align-items: center;
   cursor: pointer;
-  width: 156px;
+  width: 152px;
   height: 40px;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background-color: transparent;
   position: relative;
 
   &.collapse {
-    min-width: 48px;
-    margin-left: -4px;
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+    margin-left: 0;
     position: relative;
-    margin-top: -6px;
-    margin-bottom: 16px;
+    margin-top: 0;
+    margin-bottom: 0;
 
     .default-avatar {
       position: absolute;
@@ -251,7 +246,8 @@ const logout = async () => {
     font-size: 14px;
     line-height: 22px;
     margin-left: 8px;
-    max-width: 85px;
+    max-width: 96px;
+    color: var(--theme-text-primary);
   }
 
   &::after {
@@ -262,19 +258,24 @@ const logout = async () => {
     transform: translate(-50%, -50%);
     width: 100%;
     height: 100%;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   &:hover,
   &:focus {
+    border-color: var(--theme-shell-border);
+    background: var(--theme-control-bg);
+
     &::after {
-      background: #1f23291a;
+      background: transparent;
     }
   }
 
   &:active {
+    background: var(--theme-active-bg);
+
     &::after {
-      background: #1f232926;
+      background: transparent;
     }
   }
 }
@@ -284,10 +285,12 @@ const logout = async () => {
 .system-person.system-person {
   padding: 0;
   width: 200px !important;
-  box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  box-shadow: var(--theme-card-shadow);
+  border: 1px solid var(--theme-shell-border);
+  background: var(--theme-panel-bg);
+  color: var(--theme-text-primary);
   position: relative;
-  border-radius: 6px;
+  border-radius: 10px;
 
   &::after {
     content: '';
@@ -296,7 +299,7 @@ const logout = async () => {
     left: 0;
     height: 1px;
     width: 100%;
-    background: #dee0e3;
+    background: var(--theme-shell-border);
   }
 
   &::before {
@@ -306,7 +309,7 @@ const logout = async () => {
     left: 0;
     height: 1px;
     width: 100%;
-    background: #dee0e3;
+    background: var(--theme-shell-border);
   }
 
   .popover {
@@ -334,6 +337,7 @@ const logout = async () => {
         font-size: 14px;
         line-height: 22px;
         width: calc(100% - 60px);
+        color: var(--theme-text-secondary);
       }
     }
     .popover-item {
@@ -345,12 +349,13 @@ const logout = async () => {
       position: relative;
       cursor: pointer;
       margin: 0 4px;
-      border-radius: 6px;
+      border-radius: 8px;
+      color: var(--theme-text-primary);
       &:hover {
-        background-color: #1f23291a;
+        background-color: var(--theme-hover-bg);
       }
       &:active {
-        background-color: #1f232926;
+        background-color: var(--theme-active-bg);
       }
       .datasource-name {
         margin-left: 8px;
@@ -370,8 +375,10 @@ const logout = async () => {
 .system-language.system-language {
   padding: 4px 4px 2px 4px;
   width: 240px !important;
-  box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  box-shadow: var(--theme-card-shadow);
+  border: 1px solid var(--theme-shell-border);
+  background: var(--theme-panel-bg);
+  color: var(--theme-text-primary);
 
   .language-popover {
     .popover-item_language {
@@ -385,7 +392,7 @@ const logout = async () => {
       border-radius: 6px;
       cursor: pointer;
       &:not(.empty):hover {
-        background: #1f23291a;
+        background: var(--theme-hover-bg);
       }
 
       .language-name {

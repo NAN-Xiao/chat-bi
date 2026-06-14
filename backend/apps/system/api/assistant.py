@@ -1,9 +1,9 @@
 import json
 import os
 from datetime import timedelta
-from typing import List, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Form, HTTPException, Path, Query, Request, Response, UploadFile
+from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 
@@ -13,7 +13,6 @@ async def get_assistant_info(**kwargs):
     return await get_cached_assistant_info(**kwargs)
 
 
-from sqlbot_xpack.file_utils import SQLBotFileUtils
 from sqlmodel import select
 
 from apps.datasource.models.datasource import CoreDatasource
@@ -23,11 +22,12 @@ from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
-from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantUiSchema, AssistantValidator
+from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantValidator
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, Trans, CurrentUser
 from common.core.security import create_access_token
 from common.core.sqlbot_cache import clear_cache
+from common.utils.file_utils import SQLBotFileUtils
 from common.utils.utils import get_origin_from_referer, origin_match_domain
 
 router = APIRouter(tags=["system_assistant"], prefix="/system/assistant")
@@ -112,58 +112,6 @@ async def picture(file_id: str = Path(description="file_id")):
     return StreamingResponse(iterfile(), media_type=media_type)
 
 
-@router.patch('/ui', summary=f"{PLACEHOLDER_PREFIX}assistant_ui_api", description=f"{PLACEHOLDER_PREFIX}assistant_ui_api")
-@system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, result_id_expr="id"))
-async def ui(session: SessionDep, data: str = Form(), files: List[UploadFile] = []):
-    json_data = json.loads(data)
-    uiSchema = AssistantUiSchema(**json_data)
-    id = uiSchema.id
-    db_model = session.get(AssistantModel, id)
-    if not db_model:
-        raise ValueError(f"AssistantModel with id {id} not found")
-    configuration = db_model.configuration
-    config_obj = json.loads(configuration) if configuration else {}
-
-    ui_schema_dict = uiSchema.model_dump(exclude_none=True, exclude_unset=True)
-    if files:
-        for file in files:
-            origin_file_name = file.filename
-            file_name, flag_name = SQLBotFileUtils.split_filename_and_flag(origin_file_name)
-            file.filename = file_name
-            if flag_name == 'logo' or flag_name == 'float_icon':
-                try:
-                    SQLBotFileUtils.check_file(file=file, file_types=[".jpg", ".jpeg", ".png"],
-                                               limit_file_size=(10 * 1024 * 1024))
-                except ValueError as e:
-                    error_msg = str(e)
-                    if '文件大小超过限制' in error_msg:
-                        raise ValueError(f"文件大小超过限制（最大 10 M）")
-                    else:
-                        raise e
-                if config_obj.get(flag_name):
-                    SQLBotFileUtils.delete_file(config_obj.get(flag_name))
-                file_id = await SQLBotFileUtils.upload(file)
-                ui_schema_dict[flag_name] = file_id
-            else:
-                raise ValueError(f"Unsupported file flag: {flag_name}")
-
-    for flag_name in ['logo', 'float_icon']:
-        file_val = config_obj.get(flag_name)
-        if file_val and not ui_schema_dict.get(flag_name):
-            config_obj[flag_name] = None
-            SQLBotFileUtils.delete_file(file_val)
-
-    for attr, value in ui_schema_dict.items():
-        if attr != 'id' and not attr.startswith("__"):
-            config_obj[attr] = value
-
-    db_model.configuration = json.dumps(config_obj, ensure_ascii=False)
-    session.add(db_model)
-    session.commit()
-    await clear_ui_cache(db_model.id)
-    return db_model
-
-
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 async def clear_ui_cache(id: int):
     pass
@@ -220,7 +168,7 @@ def get_db_type(type):
 
 
 @router.get("", response_model=list[AssistantModel], summary=f"{PLACEHOLDER_PREFIX}assistant_grid_api", description=f"{PLACEHOLDER_PREFIX}assistant_grid_api")
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
+@require_permissions(permission=SqlbotPermission(role=['admin']))
 async def query(session: SessionDep, current_user: CurrentUser):
     list_result = session.exec(select(AssistantModel).where(AssistantModel.type != 4).order_by(AssistantModel.name,
                                                                                                AssistantModel.create_time)).all()
@@ -230,7 +178,7 @@ async def query(session: SessionDep, current_user: CurrentUser):
 
 
 @router.get("/advanced_application", response_model=list[AssistantModel], include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
+@require_permissions(permission=SqlbotPermission(role=['admin']))
 async def query_advanced_application(session: SessionDep, current_user: CurrentUser):
     list_result = session.exec(select(AssistantModel).where(AssistantModel.type == 1).order_by(AssistantModel.name,
                                                                                                AssistantModel.create_time)).all()
@@ -238,14 +186,14 @@ async def query_advanced_application(session: SessionDep, current_user: CurrentU
 
 
 @router.post("", summary=f"{PLACEHOLDER_PREFIX}assistant_create_api", description=f"{PLACEHOLDER_PREFIX}assistant_create_api")
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
+@require_permissions(permission=SqlbotPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.APPLICATION, result_id_expr="id"))
 async def add(request: Request, session: SessionDep, current_user: CurrentUser, creator: AssistantBase):
     return await save(request, session, creator)
 
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}assistant_update_api", description=f"{PLACEHOLDER_PREFIX}assistant_update_api")
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
+@require_permissions(permission=SqlbotPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="editor.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, resource_id_expr="editor.id"))
 async def update(request: Request, session: SessionDep, editor: AssistantDTO):
@@ -270,7 +218,7 @@ async def get_one(session: SessionDep, id: int = Path(description="ID")):
 
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}assistant_del_api", description=f"{PLACEHOLDER_PREFIX}assistant_del_api")
-@require_permissions(permission=SqlbotPermission(role=['project_admin']))
+@require_permissions(permission=SqlbotPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.APPLICATION, resource_id_expr="id"))
 async def delete(request: Request, session: SessionDep, id: int = Path(description="ID")):

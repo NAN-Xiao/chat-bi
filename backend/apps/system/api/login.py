@@ -10,7 +10,6 @@ from common.core.security import create_access_token
 from datetime import timedelta
 from common.core.config import settings
 from common.core.schemas import Token
-from sqlbot_xpack.authentication.manage import logout as xpack_logout
 
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import system_log, LogConfig
@@ -45,6 +44,4 @@ async def local_login(
 
 @router.post("/logout")    
 async def logout(session: SessionDep, request: Request, dto: LogoutSchema):
-    if dto.origin != 0:
-        return await xpack_logout(session, request, dto)
     return None

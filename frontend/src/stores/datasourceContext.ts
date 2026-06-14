@@ -11,6 +11,10 @@ export interface DatasourceContextItem {
   name: string
   type?: string
   type_name?: string
+  project_role?: string
+  can_create_dashboard?: boolean
+  can_manage_dashboard?: boolean
+  can_manage_project?: boolean
 }
 
 interface DatasourceContextState {
@@ -19,6 +23,10 @@ interface DatasourceContextState {
   datasourceName: string
   datasourceType: string
   datasourceTypeName: string
+  projectRole: string
+  canCreateDashboard: boolean
+  canManageDashboard: boolean
+  canManageProject: boolean
   loading: boolean
   initialized: boolean
 }
@@ -30,6 +38,10 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
     datasourceName: '',
     datasourceType: '',
     datasourceTypeName: '',
+    projectRole: '',
+    canCreateDashboard: false,
+    canManageDashboard: false,
+    canManageProject: false,
     loading: false,
     initialized: false,
   }),
@@ -67,6 +79,10 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
             datasource.name,
             datasource.type || '',
             datasource.type_name || '',
+            datasource.project_role || '',
+            datasource.can_create_dashboard === true,
+            datasource.can_manage_dashboard === true,
+            datasource.can_manage_project === true,
             false
           )
         } else {
@@ -78,11 +94,25 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       }
     },
 
-    setDatasource(id?: number, name = '', type = '', typeName = '', persist = true) {
+    setDatasource(
+      id?: number,
+      name = '',
+      type = '',
+      typeName = '',
+      projectRole = '',
+      canCreateDashboard = false,
+      canManageDashboard = false,
+      canManageProject = false,
+      persist = true
+    ) {
       this.datasourceId = id
       this.datasourceName = name
       this.datasourceType = type
       this.datasourceTypeName = typeName
+      this.projectRole = projectRole
+      this.canCreateDashboard = canCreateDashboard
+      this.canManageDashboard = canManageDashboard
+      this.canManageProject = canManageProject
       if (persist && id) {
         wsCache.set(this.cacheKey(), id)
         wsCache.delete(this.legacyCacheKey())
@@ -94,6 +124,10 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       this.datasourceName = ''
       this.datasourceType = ''
       this.datasourceTypeName = ''
+      this.projectRole = ''
+      this.canCreateDashboard = false
+      this.canManageDashboard = false
+      this.canManageProject = false
       if (persist) {
         wsCache.delete(this.cacheKey())
         wsCache.delete(this.legacyCacheKey())

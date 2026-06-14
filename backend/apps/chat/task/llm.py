@@ -20,8 +20,6 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import and_, select
 from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlbot_xpack.config.model import SysArgModel
-from sqlbot_xpack.license.license_manage import SQLBotLicenseUtil
 from sqlmodel import Session
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
@@ -45,6 +43,7 @@ from apps.db.db import exec_sql, get_version, check_connection, get_sqlglot_dial
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
+from apps.system.models.system_model import SysArgModel
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
@@ -360,21 +359,20 @@ class LLMService:
                                                                 full_message=term_list)
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, ds_id: int = None):
-        if SQLBotLicenseUtil.valid():
-            calculate_ds_id = ds_id
-            if self.current_assistant:
-                if self.current_assistant.type == 1:
-                    calculate_ds_id = None
-            self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(session=_session,
-                                                                              operate=OperationEnum.FILTER_CUSTOM_PROMPT,
-                                                                              record_id=self.record.id,
-                                                                              local_operation=True)
-            self.chat_question.custom_prompt, prompt_list = find_custom_prompts(_session, custom_prompt_type,
-                                                                                calculate_ds_id)
-            self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
-                                                                            log=self.current_logs[
-                                                                                OperationEnum.FILTER_CUSTOM_PROMPT],
-                                                                            full_message=prompt_list)
+        calculate_ds_id = ds_id
+        if self.current_assistant:
+            if self.current_assistant.type == 1:
+                calculate_ds_id = None
+        self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = start_log(session=_session,
+                                                                          operate=OperationEnum.FILTER_CUSTOM_PROMPT,
+                                                                          record_id=self.record.id,
+                                                                          local_operation=True)
+        self.chat_question.custom_prompt, prompt_list = find_custom_prompts(_session, custom_prompt_type,
+                                                                            calculate_ds_id)
+        self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
+                                                                        log=self.current_logs[
+                                                                            OperationEnum.FILTER_CUSTOM_PROMPT],
+                                                                        full_message=prompt_list)
 
     def filter_training_template(self, _session: Session, ds_id: int = None):
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,
