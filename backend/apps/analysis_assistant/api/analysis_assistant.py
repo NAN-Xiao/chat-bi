@@ -36,13 +36,13 @@ class AnalysisAssistantRequest(BaseModel):
     datasource_id: int | None = None
 
 
-SYSTEM_PROMPT = """你是星通智数内置的综合分析助手，一个独立于“智能问数”的业务分析 Agent。
+SYSTEM_PROMPT = """你是星通智数内置的综合分析助手，一个独立于“智能报表”的业务分析 Agent。
 
 你的职责：
 1. 将用户的自然语言问题转成业务分析框架。
 2. 判断需要召回哪些数据，并生成只读 SQL。
 3. 基于召回数据做图表解释、异常归因、结论提炼和改进建议。
-4. 你可以复用系统的项目连接能力，但不要复用“智能问数”的对话状态和提示词。
+4. 你可以复用系统的项目连接能力，但不要复用“智能报表”的对话状态和提示词。
 
 回答要求：
 - 默认使用简体中文。
@@ -356,7 +356,7 @@ def _collect_metric_knowledge(
     session: SessionDep, datasource_id: int | None, question: str, current_user: CurrentUser | None = None
 ) -> str:
     """Reuse the project's existing semantic layer (术语 terminology + 数据训练 SQL 示例)
-    so the assistant shares the SAME metric definitions as 智能问数, instead of letting
+    so the assistant shares the SAME metric definitions as 智能报表, instead of letting
     the LLM re-invent 口径 every time."""
     parts: list[str] = []
     if current_user is not None and is_normal_user(current_user):

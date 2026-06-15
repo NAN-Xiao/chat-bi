@@ -3,6 +3,7 @@ import BaseAnswer from './BaseAnswer.vue'
 import { chatApi, ChatInfo, type ChatMessage, ChatRecord } from '@/api/chat.ts'
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
+import { parseSseChunk } from '@/utils/sse'
 const props = withDefaults(
   defineProps<{
     chatList?: Array<ChatInfo>
@@ -118,61 +119,54 @@ const sendMessage = async () => {
         break
       }
 
-      let chunk = decoder.decode(value, { stream: true })
-      tempResult += chunk
-      const split = tempResult.match(/data:.*}\n\n/g)
-      if (split) {
-        chunk = split.join('')
-        tempResult = tempResult.replace(chunk, '')
-      } else {
+      const parsed = parseSseChunk(tempResult, decoder.decode(value, { stream: true }))
+      tempResult = parsed.buffer
+      if (!parsed.payloads.length) {
         continue
       }
-      if (chunk && chunk.startsWith('data:{')) {
-        if (split) {
-          for (const str of split) {
-            let data
-            try {
-              data = JSON.parse(str.replace('data:{', '{'))
-            } catch (err) {
-              console.error('JSON string:', str)
-              throw err
-            }
 
-            if (data.code && data.code !== 200) {
-              ElMessage({
-                message: data.msg,
-                type: 'error',
-                showClose: true,
-              })
-              _loading.value = false
-              return
-            }
-
-            switch (data.type) {
-              case 'id':
-                currentRecord.id = data.id
-                _currentChat.value.records[index.value].id = data.id
-                break
-              case 'info':
-                console.info(data.msg)
-                break
-              case 'error':
-                currentRecord.error = data.content
-                emits('error', currentRecord.id)
-                break
-              case 'analysis-result':
-                analysis_answer += data.content
-                analysis_answer_thinking += data.reasoning_content
-                _currentChat.value.records[index.value].analysis = analysis_answer
-                _currentChat.value.records[index.value].analysis_thinking = analysis_answer_thinking
-                break
-              case 'analysis_finish':
-                emits('finish', currentRecord.id)
-                break
-            }
-            await nextTick()
-          }
+      for (const payload of parsed.payloads) {
+        let data
+        try {
+          data = JSON.parse(payload)
+        } catch (err) {
+          console.error('JSON string:', payload)
+          throw err
         }
+
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          _loading.value = false
+          return
+        }
+
+        switch (data.type) {
+          case 'id':
+            currentRecord.id = data.id
+            _currentChat.value.records[index.value].id = data.id
+            break
+          case 'info':
+            console.info(data.msg)
+            break
+          case 'error':
+            currentRecord.error = data.content
+            emits('error', currentRecord.id)
+            break
+          case 'analysis-result':
+            analysis_answer += data.content || ''
+            analysis_answer_thinking += data.reasoning_content || ''
+            _currentChat.value.records[index.value].analysis = analysis_answer
+            _currentChat.value.records[index.value].analysis_thinking = analysis_answer_thinking
+            break
+          case 'analysis_finish':
+            emits('finish', currentRecord.id)
+            break
+        }
+        await nextTick()
       }
     }
   } catch (error) {

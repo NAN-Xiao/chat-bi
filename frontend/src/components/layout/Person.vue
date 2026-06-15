@@ -210,6 +210,11 @@ const logout = async () => {
   border-radius: 8px;
   background-color: transparent;
   position: relative;
+  color: var(--theme-text-secondary);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
 
   &.collapse {
     width: 40px;
@@ -252,6 +257,7 @@ const logout = async () => {
   &:focus {
     border-color: var(--theme-shell-border);
     background: var(--theme-control-bg);
+    color: var(--theme-sidebar-active-text, var(--theme-text-primary));
 
     &::after {
       background: transparent;

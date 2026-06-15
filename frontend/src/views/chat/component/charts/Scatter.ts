@@ -6,6 +6,7 @@ import {
   formatNumber,
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
+import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Scatter extends BaseG2Chart {
   constructor(id: string) {
@@ -26,7 +27,7 @@ export class Scatter extends BaseG2Chart {
     const series = axes.series
     const _data = checkIsPercent(y, data)
 
-    const options: G2Spec = {
+    const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'point',
       data: _data.data,
@@ -72,7 +73,7 @@ export class Scatter extends BaseG2Chart {
         name: series.length > 0 ? datum[series[0].value] : y[0].name,
         value: `${x[0].name}: ${formatNumber(datum[x[0].value])}, ${y[0].name}: ${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
       }),
-    } as G2Spec
+    } as G2Spec)
 
     this.chart.options(options)
   }

@@ -44,7 +44,7 @@ EXPECTED_COPY_SNIPPETS = {
     "docker-compose.yaml": ['PROJECT_NAME: "星通智数"'],
     "installer/sqlbot/templates/sqlbot.conf": ['PROJECT_NAME="星通智数"'],
     "README.md": [
-        "星通智数是一款基于大语言模型和 RAG 的智能问数系统。",
+        "星通智数是一款基于大语言模型和 RAG 的智能报表系统。",
         "快速部署星通智数",
         "基于星通智数的源代码",
     ],

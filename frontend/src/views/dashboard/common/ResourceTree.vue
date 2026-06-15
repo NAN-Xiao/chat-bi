@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import { treeDraggableChart } from '@/views/dashboard/utils/treeDraggableChart'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_folder from '@/assets/svg/icon_folder.svg'
-import ope_add from '@/assets/svg/operate/ope-add.svg'
 import icon_dashboard from '@/assets/permission/icon_dashboard.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
+import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
+import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import dv_sort_asc from '@/assets/svg/dv-sort-asc.svg'
 import dv_sort_desc from '@/assets/svg/dv-sort-desc.svg'
 import { onMounted, reactive, ref, watch, nextTick, computed } from 'vue'
-import { ElIcon, ElScrollbar } from 'element-plus-secondary'
+import { ElIcon, ElMessage, ElMessageBox, ElScrollbar } from 'element-plus-secondary'
 import { Icon } from '@/components/icon-custom'
 import { type SQTreeNode } from '@/views/dashboard/utils/treeNode'
 import _ from 'lodash'
@@ -25,6 +27,7 @@ import { useI18n } from 'vue-i18n'
 import treeSort from '@/views/dashboard/utils/treeSortUtils.ts'
 import { useCache } from '@/utils/useCache.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
 const { wsCache } = useCache()
 
 const { t } = useI18n()
@@ -66,7 +69,7 @@ const state = reactive({
   originResourceTree: [] as SQTreeNode[],
   sortType: [],
   templateCreatePid: 0,
-  menuList: [
+  baseMenuList: [
     {
       label: t('dashboard.edit'),
       command: 'edit',
@@ -152,6 +155,17 @@ const getTree = async () => {
 const hasData = computed<boolean>(() => state.resourceTree.length > 0)
 const canCreateDashboard = computed<boolean>(() => datasourceContext.canCreateDashboard)
 const canManageNode = (data: SQTreeNode) => data.can_edit === true
+const nodeMenuList = (data: SQTreeNode) => {
+  const list = [...state.baseMenuList]
+  if (data.node_type === 'leaf') {
+    list.splice(2, 0, {
+      label: data.is_shared ? t('dashboard.cancel_share') : t('dashboard.share'),
+      command: data.is_shared ? 'unshare' : 'share',
+      svgName: data.is_shared ? icon_close_outlined : icon_export_outlined,
+    })
+  }
+  return list
+}
 const findTreeNode = (nodes: SQTreeNode[], id: string | number): SQTreeNode | undefined => {
   for (const item of nodes) {
     if (item.id === id) return item
@@ -179,11 +193,15 @@ const afterTreeInit = () => {
 }
 
 const copyLoading = ref(false)
-const emit = defineEmits(['nodeClick', 'deleteCurResource'])
+const emit = defineEmits(['nodeClick', 'deleteCurResource', 'toggleSidebar'])
 
 function createNewObject() {
   if (!canCreateDashboard.value) return
   addOperation({ opt: 'newLeaf' })
+}
+
+function onClickSideBarBtn() {
+  emit('toggleSidebar')
 }
 
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -258,7 +276,7 @@ const addOperation = (params: any) => {
   }
 }
 
-const operation = (opt: string, data: SQTreeNode) => {
+const operation = async (opt: string, data: SQTreeNode) => {
   if (opt === 'delete') {
     const msg = data.node_type === 'leaf' ? '' : t('dashboard.delete_tips')
     ElMessageBox.confirm(t('dashboard.delete_dashboard_warn', [data.name]), {
@@ -280,6 +298,31 @@ const operation = (opt: string, data: SQTreeNode) => {
     resourceGroupOptRef.value?.optInit({ opt: 'rename', id: data.id, name: data.name })
   } else if (opt === 'edit') {
     resourceEdit(data.id)
+  } else if (opt === 'share') {
+    const previewImage = selectedNodeKey.value === data.id ? await captureDashboardSharePreview() : ''
+    dashboardApi
+      .share({
+        dashboard_id: data.id,
+        share_type: 'dashboard',
+        preview_image: previewImage,
+      })
+      .then(() => {
+        ElMessage.success(t('dashboard.share_success'))
+        getTree()
+      })
+  } else if (opt === 'unshare') {
+    if (!data.share_id) return
+    ElMessageBox.confirm(t('dashboard.cancel_share_warn', [data.name]), {
+      confirmButtonType: 'danger',
+      type: 'warning',
+      autofocus: false,
+      showClose: false,
+    }).then(() => {
+      dashboardApi.share_delete({ id: data.share_id }).then(() => {
+        ElMessage.success(t('dashboard.cancel_share_success'))
+        getTree()
+      })
+    })
   }
 }
 
@@ -350,6 +393,7 @@ const sortTypeTip = computed(() => {
 
 defineExpose({
   hasData,
+  canCreateDashboard,
   createNewObject,
   mounted,
 })
@@ -360,85 +404,90 @@ defineExpose({
     <div class="tree-header">
       <div class="icon-methods">
         <span class="title">{{ t('dashboard.dashboard') }} </span>
-        <el-tooltip
-          :offset="12"
-          :content="t('dashboard.new_dashboard')"
-          placement="top"
-          effect="dark"
-        >
-          <el-icon
-            v-if="canCreateDashboard"
-            class="custom-icon btn hover-icon_with_bg primary-icon"
-            @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
-          >
-            <Icon name="dv-new-folder">
-              <ope_add class="svg-icon" />
-            </Icon>
-          </el-icon>
-        </el-tooltip>
-      </div>
-      <el-input
-        v-model="filterText"
-        :placeholder="t('dashboard.search')"
-        clearable
-        class="search-bar"
-      >
-        <template #prefix>
+        <el-button link type="primary" class="icon-btn" @click="onClickSideBarBtn">
           <el-icon>
-            <Icon name="icon_search-outline_outlined">
-              <icon_searchOutline_outlined class="svg-icon" />
-            </Icon>
+            <icon_sidebar_outlined />
           </el-icon>
-        </template>
-      </el-input>
-      <el-dropdown
-        popper-class="tree-sort-menu-custom"
-        trigger="click"
-        placement="bottom-end"
-        @command="handleSortTypeChange"
+        </el-button>
+      </div>
+      <el-button
+        v-if="canCreateDashboard"
+        class="create-dashboard-btn"
+        type="primary"
+        @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
       >
-        <el-icon class="filter-icon-span" :class="state.curSortType !== 'name_asc' && 'active'">
-          <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
-            <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc" class="opt-icon"
-              ><dv_sort_asc class="svg-icon opt-icon"
-            /></Icon>
-          </el-tooltip>
-          <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
-            <Icon v-if="state.curSortType.includes('desc')" name="dv-sort-desc" class="opt-icon"
-              ><dv_sort_desc class="svg-icon opt-icon"
-            /></Icon>
-          </el-tooltip>
-        </el-icon>
-        <template #dropdown>
-          <el-dropdown-menu style="width: 120px">
-            <span class="sort_menu">{{ t('dashboard.sort_column') }}</span>
-            <template v-for="ele in sortColumnList" :key="ele.value">
-              <el-dropdown-item
-                class="ed-select-dropdown__item"
-                :class="state.curSortType.includes(ele.value) && 'selected'"
-                :command="ele.value"
-              >
-                {{ ele.name }}
-              </el-dropdown-item>
-              <li v-if="ele.divided" class="ed-dropdown-menu__item--divided"></li>
-            </template>
-            <span class="sort_menu">{{ t('dashboard.sort_type') }}</span>
-            <template v-for="ele in sortTypeList" :key="ele.value">
-              <el-dropdown-item
-                class="ed-select-dropdown__item"
-                :class="state.curSortType.includes(ele.value) && 'selected'"
-                :command="ele.value"
-              >
-                {{ ele.name }}
-              </el-dropdown-item>
-            </template>
-          </el-dropdown-menu>
+        <template #icon>
+          <Icon name="icon_add_outlined">
+            <icon_add_outlined class="svg-icon" />
+          </Icon>
         </template>
-      </el-dropdown>
+        {{ t('dashboard.new_dashboard') }}
+      </el-button>
+      <div class="search-row">
+        <el-input
+          v-model="filterText"
+          :placeholder="t('dashboard.search')"
+          clearable
+          class="search-bar"
+        >
+          <template #prefix>
+            <el-icon>
+              <Icon name="icon_search-outline_outlined">
+                <icon_searchOutline_outlined class="svg-icon" />
+              </Icon>
+            </el-icon>
+          </template>
+        </el-input>
+        <el-dropdown
+          popper-class="tree-sort-menu-custom"
+          trigger="click"
+          placement="bottom-end"
+          @command="handleSortTypeChange"
+        >
+          <el-icon class="filter-icon-span" :class="state.curSortType !== 'name_asc' && 'active'">
+            <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
+              <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc" class="opt-icon"
+                ><dv_sort_asc class="svg-icon opt-icon"
+              /></Icon>
+            </el-tooltip>
+            <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
+              <Icon v-if="state.curSortType.includes('desc')" name="dv-sort-desc" class="opt-icon"
+                ><dv_sort_desc class="svg-icon opt-icon"
+              /></Icon>
+            </el-tooltip>
+          </el-icon>
+          <template #dropdown>
+            <el-dropdown-menu style="width: 120px">
+              <span class="sort_menu">{{ t('dashboard.sort_column') }}</span>
+              <template v-for="ele in sortColumnList" :key="ele.value">
+                <el-dropdown-item
+                  class="ed-select-dropdown__item"
+                  :class="state.curSortType.includes(ele.value) && 'selected'"
+                  :command="ele.value"
+                >
+                  {{ ele.name }}
+                </el-dropdown-item>
+                <li v-if="ele.divided" class="ed-dropdown-menu__item--divided"></li>
+              </template>
+              <span class="sort_menu">{{ t('dashboard.sort_type') }}</span>
+              <template v-for="ele in sortTypeList" :key="ele.value">
+                <el-dropdown-item
+                  class="ed-select-dropdown__item"
+                  :class="state.curSortType.includes(ele.value) && 'selected'"
+                  :command="ele.value"
+                >
+                  {{ ele.name }}
+                </el-dropdown-item>
+              </template>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
     </div>
     <el-scrollbar v-loading="copyLoading" class="custom-tree">
       <el-tree
         ref="resourceListTree"
+        class="dashboard-resource-tree"
         style="overflow-x: hidden"
         menu
         :empty-text="t('dashboard.no_dashboard')"
@@ -458,14 +507,17 @@ defineExpose({
       >
         <template #default="{ node, data }">
           <span class="custom-tree-node">
-            <el-icon v-if="data.node_type !== 'leaf'" style="font-size: 18px">
+            <el-icon v-if="data.node_type !== 'leaf'" class="tree-node-icon">
               <Icon name="icon_folder"><icon_folder class="svg-icon" /></Icon>
             </el-icon>
-            <el-icon v-else class="icon-primary" style="font-size: 18px">
+            <el-icon v-else class="tree-node-icon icon-primary">
               <Icon name="icon_dashboard"><icon_dashboard class="svg-icon" /></Icon>
             </el-icon>
             <span :title="node.label" class="label-tooltip">
               {{ node.label }}
+            </span>
+            <span v-if="data.node_type === 'leaf' && data.is_shared" class="shared-mark">
+              {{ t('dashboard.shared') }}
             </span>
             <div class="icon-more">
               <el-icon
@@ -478,7 +530,7 @@ defineExpose({
               </el-icon>
               <HandleMore
                 v-if="canManageNode(data)"
-                :menu-list="state.menuList"
+                :menu-list="nodeMenuList(data)"
                 :icon-name="icon_more_outlined"
                 placement="bottom-end"
                 @handle-command="(opt: string) => operation(opt, data)"
@@ -494,13 +546,13 @@ defineExpose({
 <style lang="less" scoped>
 .filter-icon-span {
   border: 1px solid var(--workspace-border, #d9dcdf);
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 6px;
   color: var(--workspace-text-primary, #1f2329);
   background: var(--workspace-card-bg, #ffffff);
   padding: 8px;
-  margin-left: 8px;
+  margin-left: 0;
   font-size: 16px;
   cursor: pointer;
 
@@ -534,7 +586,7 @@ defineExpose({
 
 .resource-tree {
   --ed-bg-color: var(--workspace-card-bg, #ffffff);
-  --ed-bg-color-page: var(--workspace-panel-bg, #f5f6f7);
+  --ed-bg-color-page: var(--workspace-panel-bg, var(--theme-panel-bg));
   --ed-bg-color-overlay: var(--workspace-card-bg, #ffffff);
   --ed-fill-color: var(--workspace-control-hover-bg, #eef2f8);
   --ed-fill-color-light: var(--workspace-control-hover-bg, #eef2f8);
@@ -553,67 +605,177 @@ defineExpose({
   --ed-tree-node-hover-bg-color: var(--workspace-control-hover-bg, #eef2f8);
   --ed-tree-text-color: var(--workspace-text-primary, #1f2329);
 
-  padding: 16px 0 0;
+  padding: 14px 0 0;
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--workspace-card-bg, #ffffff);
+  background: var(--workspace-panel-bg, var(--theme-panel-bg));
   color: var(--workspace-text-primary, #1f2329);
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
 
   .tree-header {
-    padding: 0 16px;
+    padding: 0 14px;
   }
 
   .icon-methods {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    height: 24px;
+    margin-bottom: 10px;
     font-size: 20px;
     font-weight: 500;
     color: var(--workspace-text-primary, var(--TextPrimary, #1f2329));
-    padding-bottom: 16px;
 
     .title {
       margin-right: auto;
-      font-size: 16px;
+      font-size: 15px;
       font-style: normal;
-      font-weight: 500;
+      font-weight: 600;
       line-height: 24px;
+      white-space: nowrap;
     }
 
-    .custom-icon {
-      font-size: 20px;
+    .icon-btn {
+      min-width: unset;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 6px;
+      font-size: 18px;
+      margin-left: 0;
+      color: var(--workspace-text-primary, var(--theme-text-primary));
 
-      &.btn {
-        color: var(--ed-color-primary);
+      :deep(.ed-icon),
+      :deep(svg) {
+        color: inherit;
+      }
+
+      :deep(svg path) {
+        fill: currentColor !important;
       }
 
       &:hover {
-        cursor: pointer;
+        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+        color: var(--workspace-text-primary, var(--theme-text-primary));
       }
     }
   }
 
+  .create-dashboard-btn {
+    width: 100%;
+    height: 38px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    justify-content: center;
+    border: 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    background: linear-gradient(135deg, #2f6bff 0%, #1d8dff 100%);
+    box-shadow: 0 8px 18px rgba(47, 107, 255, 0.18);
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease,
+      filter 0.18s ease;
+
+    --ed-button-text-color: #ffffff;
+    --ed-button-bg-color: #2f6bff;
+    --ed-button-border-color: transparent;
+    --ed-button-hover-bg-color: #235df0;
+    --ed-button-hover-text-color: #ffffff;
+    --ed-button-hover-border-color: transparent;
+    --ed-button-active-bg-color: #1f55de;
+    --ed-button-active-border-color: transparent;
+
+    &:hover {
+      background: linear-gradient(135deg, #235df0 0%, #137fe8 100%);
+      box-shadow: 0 10px 20px rgba(47, 107, 255, 0.24);
+      filter: saturate(1.04);
+    }
+
+    &:active {
+      transform: translateY(1px);
+      box-shadow: 0 6px 14px rgba(47, 107, 255, 0.18);
+    }
+
+    :deep(.ed-icon),
+    :deep(svg) {
+      width: 18px;
+      height: 18px;
+      color: inherit;
+    }
+
+    :deep(svg path) {
+      fill: currentColor !important;
+    }
+  }
+
+  .search-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 34px;
+  }
+
   .search-bar {
-    padding-bottom: 10px;
-    width: calc(100% - 40px);
+    flex: 1 1 auto;
+    width: 0;
+    height: 34px;
+    padding-bottom: 0;
 
     :deep(.ed-input__wrapper) {
-      background-color: var(--workspace-input-bg, #f8f9fa) !important;
-      box-shadow: 0 0 0 1px var(--workspace-border, #d9dcdf) inset !important;
+      min-height: 34px;
+      padding: 0 10px;
+      border-radius: 10px;
+      background-color: #ffffff !important;
+      box-shadow:
+        0 0 0 1px rgba(118, 134, 166, 0.22) inset,
+        0 4px 12px rgba(18, 34, 66, 0.04) !important;
+      transition:
+        box-shadow 0.18s ease,
+        background-color 0.18s ease;
+    }
+
+    :deep(.ed-input__wrapper:hover) {
+      box-shadow:
+        0 0 0 1px rgba(47, 107, 255, 0.28) inset,
+        0 6px 14px rgba(18, 34, 66, 0.06) !important;
+    }
+
+    :deep(.ed-input__wrapper.is-focus) {
+      box-shadow:
+        0 0 0 1px rgba(47, 107, 255, 0.52) inset,
+        0 0 0 3px rgba(47, 107, 255, 0.1) !important;
     }
 
     :deep(.ed-input__inner) {
       color: var(--workspace-text-primary, #1f2329) !important;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.1px;
     }
 
     :deep(.ed-input__inner::placeholder) {
       color: var(--workspace-text-tertiary, #8f959e) !important;
     }
 
+    :deep(.ed-input__prefix),
+    :deep(.ed-input__suffix) {
+      color: var(--workspace-text-tertiary, #8f959e) !important;
+    }
+
+    :deep(.ed-input__prefix .ed-icon),
+    :deep(.ed-input__suffix .ed-icon),
     :deep(.ed-input__prefix-inner .ed-icon) {
-      color: var(--workspace-text-secondary, #646a73) !important;
+      width: 15px;
+      height: 15px;
+      color: var(--workspace-text-tertiary, #8f959e) !important;
     }
   }
 }
@@ -649,18 +811,23 @@ defineExpose({
 }
 
 :deep(.ed-input__wrapper) {
-  width: 80px;
+  width: 100%;
 }
 
 .custom-tree {
-  height: calc(100vh - 148px);
-  padding: 0 8px;
-  background: var(--workspace-card-bg, #ffffff);
+  --hover-color: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+  --active-color: var(--workspace-active-bg, var(--theme-control-bg));
+
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  background: var(--workspace-panel-bg, var(--theme-panel-bg));
   color: var(--workspace-text-primary, #1f2329);
 
   :deep(.ed-scrollbar__view),
   :deep(.ed-tree) {
-    background: var(--workspace-card-bg, #ffffff) !important;
+    background: var(--workspace-panel-bg, var(--theme-panel-bg)) !important;
     color: var(--workspace-text-primary, #1f2329) !important;
   }
 
@@ -669,25 +836,58 @@ defineExpose({
     color: inherit !important;
   }
 
+  :deep(.ed-tree__empty-block) {
+    min-height: 200px;
+  }
+
+  :deep(.ed-tree__empty-text) {
+    color: var(--workspace-text-secondary, var(--theme-text-secondary)) !important;
+    font-size: 14px;
+    line-height: 22px;
+  }
+
   :deep(.ed-tree-node__content) {
+    margin: 0 16px 2px;
+    height: 40px;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 400;
     color: var(--workspace-text-primary, #1f2329) !important;
     background: transparent;
   }
 
   :deep(.ed-tree-node__content:hover),
   :deep(.ed-tree-node:focus > .ed-tree-node__content) {
-    background: var(--workspace-control-hover-bg, #eef2f8) !important;
+    background-color: var(--hover-color) !important;
   }
 
-  :deep(.ed-tree.is-menu .ed-tree-node.is-current > .ed-tree-node__content),
-  :deep(.ed-tree--highlight-current .ed-tree-node.is-current > .ed-tree-node__content) {
-    background: var(--workspace-primary-soft-bg, rgba(37, 99, 235, 0.1)) !important;
-    color: var(--ed-color-primary) !important;
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree.is-menu .ed-tree-node.is-current > .ed-tree-node__content),
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree--highlight-current .ed-tree-node.is-current > .ed-tree-node__content),
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree.is-menu .ed-tree-node.is-current > .ed-tree-node__content:hover),
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree--highlight-current .ed-tree-node.is-current > .ed-tree-node__content:hover),
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current:focus > .ed-tree-node__content) {
+    background-color: var(--active-color) !important;
+    color: var(--workspace-text-primary, var(--theme-text-primary)) !important;
+    font-weight: 500;
   }
 
-  :deep(.ed-tree.is-menu .ed-tree-node.is-current > .ed-tree-node__content .ed-tree-node__label),
-  :deep(.ed-tree--highlight-current .ed-tree-node.is-current > .ed-tree-node__content .ed-tree-node__label) {
-    color: var(--ed-color-primary) !important;
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .custom-tree-node),
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .ed-tree-node__label),
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .label-tooltip),
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon),
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon svg) {
+    color: var(--workspace-text-primary, var(--theme-text-primary)) !important;
+  }
+
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon svg path) {
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .label-tooltip) {
+    font-weight: 500;
   }
 
   :deep(.ed-tree-node) {
@@ -696,18 +896,41 @@ defineExpose({
 }
 
 .custom-tree-node {
-  width: calc(100% - 30px);
+  width: 100%;
   display: flex;
   align-items: center;
   box-sizing: content-box;
-  padding-right: 12px;
+  color: inherit;
+
+  .tree-node-icon {
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+  }
 
   .label-tooltip {
     width: 100%;
-    margin-left: 8.75px;
+    margin-left: 8px;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 22px;
+    color: inherit;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+
+  .shared-mark {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.1);
+    color: #2563eb;
+    font-size: 11px;
+    line-height: 18px;
+    font-weight: 500;
   }
 
   .icon-more {
@@ -718,7 +941,7 @@ defineExpose({
 
   &:hover {
     .label-tooltip {
-      width: calc(100% - 78px);
+      width: calc(100% - 96px);
     }
 
     .icon-more {

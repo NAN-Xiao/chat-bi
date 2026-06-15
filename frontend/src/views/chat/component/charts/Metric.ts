@@ -1,5 +1,6 @@
 import { BaseChart } from '@/views/chat/component/BaseChart.ts'
 import { formatNumber } from '@/views/chat/component/charts/utils.ts'
+import { chartPalette } from '@/views/chat/component/charts/theme.ts'
 
 export class Metric extends BaseChart {
   container: HTMLElement | null = null
@@ -36,20 +37,20 @@ export class Metric extends BaseChart {
       const card = document.createElement('div')
       Object.assign(card.style, {
         minWidth: '0',
-        border: '1px solid rgba(31, 35, 41, 0.1)',
+        border: '1px solid #dce6f2',
         borderRadius: '8px',
         background: '#fff',
         padding: '16px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        boxShadow: '0 2px 8px rgba(31, 35, 41, 0.04)',
+        boxShadow: '0 8px 20px rgba(17, 37, 73, 0.06)',
       })
 
       const label = document.createElement('div')
       label.textContent = axis.name || axis.value
       Object.assign(label.style, {
-        color: '#646a73',
+        color: '#6b7a90',
         fontSize: '13px',
         lineHeight: '20px',
         overflow: 'hidden',
@@ -64,7 +65,7 @@ export class Metric extends BaseChart {
           ? '-'
           : String(formatNumber(rawValue))
       Object.assign(value.style, {
-        color: '#1f2329',
+        color: '#15233b',
         fontSize: '28px',
         fontWeight: '700',
         lineHeight: '36px',
@@ -74,8 +75,18 @@ export class Metric extends BaseChart {
         whiteSpace: 'nowrap',
       })
 
+      const accent = document.createElement('div')
+      Object.assign(accent.style, {
+        width: '28px',
+        height: '3px',
+        borderRadius: '999px',
+        background: chartPalette[axes.indexOf(axis) % chartPalette.length],
+        marginTop: '12px',
+      })
+
       card.appendChild(label)
       card.appendChild(value)
+      card.appendChild(accent)
       wrapper.appendChild(card)
     })
 

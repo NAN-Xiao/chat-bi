@@ -1,5 +1,6 @@
 import { BaseChart } from '@/views/chat/component/BaseChart.ts'
 import { Chart } from '@antv/g2'
+import { chartTheme } from '@/views/chat/component/charts/theme.ts'
 
 export abstract class BaseG2Chart extends BaseChart {
   chart: Chart
@@ -12,11 +13,7 @@ export abstract class BaseG2Chart extends BaseChart {
       padding: 'auto',
     })
 
-    this.chart.theme({
-      view: {
-        viewFill: '#FFFFFF',
-      },
-    })
+    this.chart.theme(chartTheme)
   }
 
   render() {

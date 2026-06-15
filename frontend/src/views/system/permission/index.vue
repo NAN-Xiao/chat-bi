@@ -356,7 +356,7 @@ const handleEditeTable = (val: any) => {
       }, {})
       columnForm.permissions = fieldListOptions.value.map((ele) => {
         const { id, field_name, field_comment } = ele
-        return { field_id: id, field_name, field_comment, enable: enableMap[id] ?? false }
+        return { field_id: id, field_name, field_comment, enable: enableMap[id] ?? true }
       })
     })
     .finally(() => {

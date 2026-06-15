@@ -32,7 +32,6 @@ const openViewDialog = () => {
   chatChartSelectionRef.value?.dialogInit()
 }
 
-import cloneDeep from 'lodash/cloneDeep'
 import SQFullscreen from '@/views/dashboard/common/SQFullscreen.vue'
 
 let nameEdit = ref(false)
@@ -152,12 +151,8 @@ const backToMain = () => {
 }
 
 const addChatChart = (views: any) => {
-  emits('addComponents', 'SQView', views)
-  views.forEach((view: any) => {
-    const target = cloneDeep(view)
-    delete target.chart.sourceType
-    emits('addComponents', 'SQView', target)
-  })
+  const viewList = Array.isArray(views) ? views : [views]
+  emits('addComponents', 'SQView', viewList)
   ElMessage({
     type: 'success',
     message: t('dashboard.add_success'),

@@ -795,11 +795,11 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     width: 28px;
     height: 28px;
     min-width: 28px;
-    color: #646a73;
+    color: var(--workspace-text-secondary, var(--theme-text-secondary));
 
     &:hover {
-      background: #1f23291a;
-      color: #1f2329;
+      background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+      color: var(--workspace-text-primary, var(--theme-text-primary));
     }
   }
 }

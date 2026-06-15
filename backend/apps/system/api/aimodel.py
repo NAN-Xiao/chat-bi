@@ -5,7 +5,7 @@ from fastapi import APIRouter, Path, Query
 from fastapi.responses import StreamingResponse
 from sqlmodel import func, select, update
 
-from apps.ai_model.model_factory import LLMConfig, LLMFactory
+from apps.ai_model.model_factory import LLMConfig, LLMFactory, _normalize_api_base_url
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.models.system_model import AiModelDetail, AiModelBrief
@@ -32,7 +32,7 @@ async def check_llm(info: AiModelCreator, trans: Trans):
                 model_type="openai" if info.protocol == 1 else "vllm",
                 model_name=info.base_model,
                 api_key=info.api_key,
-                api_base_url=info.api_domain,
+                api_base_url=_normalize_api_base_url(info.api_domain),
                 additional_params=additional_params,
             )
             llm_instance = LLMFactory.create_llm(config)

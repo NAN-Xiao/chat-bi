@@ -2,6 +2,7 @@ import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { formatNumber, getAxesWithFilter, toNumber } from '@/views/chat/component/charts/utils.ts'
+import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Sankey extends BaseG2Chart {
   constructor(id: string) {
@@ -27,7 +28,7 @@ export class Sankey extends BaseG2Chart {
       }))
       .filter((datum) => datum[source.value] && datum[target.value] && datum[value.value] > 0)
 
-    const options: G2Spec = {
+    const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'sankey',
       data: normalizedData,
@@ -48,6 +49,7 @@ export class Sankey extends BaseG2Chart {
         nodeLineWidth: 1,
         linkFillOpacity: 0.36,
         labelFontSize: 11,
+        labelFill: '#5b6f95',
       },
       tooltip: {
         link: {
@@ -69,7 +71,7 @@ export class Sankey extends BaseG2Chart {
           ],
         },
       },
-    } as G2Spec
+    } as G2Spec)
 
     this.chart.options(options)
   }

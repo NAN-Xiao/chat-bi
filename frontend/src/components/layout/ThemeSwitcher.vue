@@ -93,9 +93,9 @@ onMounted(() => {
 
   &:hover,
   &:focus {
-    border-color: var(--ed-color-primary, #2563eb);
+    border-color: rgba(255, 255, 255, 0.22);
     background: var(--theme-control-hover-bg, #ffffff);
-    color: var(--theme-text-primary, #172033);
+    color: var(--theme-sidebar-active-text, var(--theme-text-primary, #172033));
     box-shadow: var(--theme-control-shadow, 0 8px 18px rgba(16, 24, 40, 0.08));
   }
 

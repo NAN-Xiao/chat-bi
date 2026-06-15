@@ -7,6 +7,7 @@ import {
   getAxesWithFilter,
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
+import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Bar extends BaseG2Chart {
   constructor(id: string) {
@@ -46,7 +47,7 @@ export class Bar extends BaseG2Chart {
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
 
-    const options: G2Spec = {
+    const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'interval',
       data: _data.data,
@@ -160,7 +161,7 @@ export class Bar extends BaseG2Chart {
             },
           ]
         : [],
-    } as G2Spec
+    } as G2Spec)
 
     if (series.length > 0) {
       options.transform = [{ type: 'stackY' }]

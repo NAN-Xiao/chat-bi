@@ -2,6 +2,7 @@ from functools import lru_cache
 import json
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, Type
+from urllib.parse import urlparse
 
 from langchain.chat_models.base import BaseChatModel
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from sqlmodel import Session, select
 
 from apps.ai_model.openai.llm import BaseChatOpenAI
 from apps.system.models.system_model import AiModelDetail
+from common.core.config import settings
 from common.core.db import engine
 from common.utils.crypto import sqlbot_decrypt
 from common.utils.utils import prepare_model_arg
@@ -91,6 +93,8 @@ class OpenAIAzureLLM(BaseLLM):
             api_version=api_version,
             deployment_name=deployment_name,
             streaming=True,
+            timeout=settings.LLM_REQUEST_TIMEOUT,
+            max_retries=settings.LLM_MAX_RETRIES,
             **self.config.additional_params,
         )
 
@@ -102,6 +106,8 @@ class OpenAILLM(BaseLLM):
             api_key=self.config.api_key or 'Empty',
             base_url=self.config.api_base_url,
             stream_usage=True,
+            timeout=settings.LLM_REQUEST_TIMEOUT,
+            max_retries=settings.LLM_MAX_RETRIES,
             **self.config.additional_params,
         )
 
@@ -131,6 +137,23 @@ class LLMFactory:
     def register_llm(cls, model_type: str, llm_class: Type[BaseLLM]):
         """Register new model type"""
         cls._llm_types[model_type] = llm_class
+
+
+def _normalize_api_base_url(raw_url: Optional[str]) -> Optional[str]:
+    if raw_url is None:
+        return None
+    url = raw_url.strip()
+    if not url:
+        return url
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(
+            "AI model API domain must start with http:// or https://"
+        )
+    if not parsed.netloc:
+        raise ValueError("AI model API domain is missing host information")
+    return url
 
 
 #  todo
@@ -165,10 +188,11 @@ async def get_default_config(custom_model_id: Optional[int] = None) -> LLMConfig
                                      "key" in item and "val" in item}
             except Exception:
                 pass
-        if not db_model.api_domain.startswith("http"):
+        if db_model.api_domain:
             db_model.api_domain = await sqlbot_decrypt(db_model.api_domain)
-            if db_model.api_key:
-                db_model.api_key = await sqlbot_decrypt(db_model.api_key)
+        if db_model.api_key:
+            db_model.api_key = await sqlbot_decrypt(db_model.api_key)
+        db_model.api_domain = _normalize_api_base_url(db_model.api_domain)
 
         # 构造 LLMConfig
         return LLMConfig(

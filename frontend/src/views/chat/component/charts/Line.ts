@@ -9,6 +9,7 @@ import {
   getAxesWithFilter,
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
+import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Line extends BaseG2Chart {
   constructor(id: string) {
@@ -62,7 +63,7 @@ export class Line extends BaseG2Chart {
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
 
-    const options: G2Spec = {
+    const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'view',
       data: _data.data,
@@ -101,6 +102,16 @@ export class Line extends BaseG2Chart {
         },
       },
       children: [
+        {
+          type: 'area',
+          encode: {
+            shape: 'smooth',
+          },
+          style: {
+            fillOpacity: 0.09,
+          },
+          tooltip: false,
+        },
         {
           type: 'line',
           encode: {
@@ -146,14 +157,15 @@ export class Line extends BaseG2Chart {
           type: 'point',
           style: {
             fill: 'white',
+            lineWidth: 1.8,
           },
           encode: {
-            size: 1.5,
+            size: 2.2,
           },
           tooltip: false,
         },
       ],
-    } as G2Spec
+    } as G2Spec)
 
     this.chart.options(options)
   }

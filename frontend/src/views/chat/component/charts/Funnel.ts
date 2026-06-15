@@ -6,6 +6,7 @@ import {
   formatNumber,
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
+import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Funnel extends BaseG2Chart {
   constructor(id: string) {
@@ -25,7 +26,7 @@ export class Funnel extends BaseG2Chart {
     const y = axes.y
     const _data = checkIsPercent(y, data)
 
-    const options: G2Spec = {
+    const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'interval',
       data: _data.data,
@@ -52,7 +53,7 @@ export class Funnel extends BaseG2Chart {
         name: datum[x[0].value],
         value: `${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
       }),
-    } as G2Spec
+    } as G2Spec)
 
     this.chart.options(options)
   }

@@ -57,12 +57,16 @@ const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.val
 .wrapper-outer {
   position: absolute;
   overflow: hidden;
+  background: var(--workspace-card-bg, #ffffff);
+  border: 1px solid var(--workspace-border-soft, #eff4fa);
   border-radius: 12px;
+  box-shadow: none;
+
   .wrapper-inner {
     width: 100%;
     height: 100%;
     position: relative;
-    background: #fff;
+    background: var(--workspace-card-bg, #ffffff);
     background-size: 100% 100% !important;
     .wrapper-inner-adaptor {
       position: relative;

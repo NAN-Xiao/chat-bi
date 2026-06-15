@@ -238,17 +238,20 @@ defineExpose({
 .chart-base-container {
   width: 100%;
   height: 100%;
-  background: #fff;
-  padding: 12px !important;
-  border-radius: 12px;
+  background: #ffffff;
+  padding: 14px 16px !important;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
   div::-webkit-scrollbar {
     width: 0 !important;
     height: 0 !important;
   }
   .header-bar {
-    height: 32px;
+    min-height: 34px;
     display: flex;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
 
     align-items: center;
     flex-direction: row;
@@ -261,7 +264,7 @@ defineExpose({
       font-weight: 400;
       line-height: 24px;
       border-radius: 6px;
-      color: rgba(100, 106, 115, 1);
+      color: var(--workspace-text-secondary, rgba(100, 106, 115, 1));
 
       .tool-btn-inner {
         display: flex;
@@ -270,10 +273,10 @@ defineExpose({
       }
 
       &:hover {
-        background: rgba(31, 35, 41, 0.1);
+        background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
       }
       &:active {
-        background: rgba(31, 35, 41, 0.1);
+        background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
       }
     }
 
@@ -302,10 +305,11 @@ defineExpose({
       overflow: hidden;
       text-overflow: ellipsis;
 
-      color: rgba(31, 35, 41, 1);
-      font-weight: 500;
-      font-size: 16px;
+      color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
+      font-weight: 600;
+      font-size: 15px;
       line-height: 24px;
+      letter-spacing: 0.01em;
     }
 
     .buttons-bar {
@@ -317,7 +321,7 @@ defineExpose({
       .divider {
         width: 1px;
         height: 16px;
-        border-left: 1px solid rgba(31, 35, 41, 0.15);
+        border-left: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
       }
     }
 
@@ -328,7 +332,7 @@ defineExpose({
       gap: 4px;
       border-radius: 6px;
 
-      border: 1px solid rgba(217, 220, 223, 1);
+      border: 1px solid var(--workspace-border, rgba(217, 220, 223, 1));
 
       .chart-select {
         min-width: 40px;
@@ -342,11 +346,11 @@ defineExpose({
           border-radius: 6px;
 
           &:hover {
-            background: rgba(31, 35, 41, 0.1);
-          }
-          &:active {
-            background: rgba(31, 35, 41, 0.1);
-          }
+              background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
+            }
+            &:active {
+              background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
+            }
         }
         :deep(.ed-select__caret) {
           font-size: 12px !important;
@@ -358,7 +362,7 @@ defineExpose({
 
 .chart-show-area {
   width: 100%;
-  height: calc(100% - 32px);
+  height: calc(100% - 46px);
 }
 
 .buttons-bar {
@@ -371,7 +375,7 @@ defineExpose({
   .divider {
     width: 1px;
     height: 16px;
-    border-left: 1px solid rgba(31, 35, 41, 0.15);
+    border-left: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
   }
 }
 
@@ -389,19 +393,19 @@ defineExpose({
     width: 40px;
     height: 24px;
 
-    :deep(.ed-select__wrapper) {
+      :deep(.ed-select__wrapper) {
       padding: 4px;
       min-height: 24px;
       box-shadow: unset;
       border-radius: 6px;
 
-      &:hover {
-        background: rgba(31, 35, 41, 0.1);
+        &:hover {
+          background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
+        }
+        &:active {
+          background: var(--workspace-active-bg, rgba(31, 35, 41, 0.1));
+        }
       }
-      &:active {
-        background: rgba(31, 35, 41, 0.1);
-      }
-    }
     :deep(.ed-select__caret) {
       font-size: 12px !important;
     }
@@ -416,6 +420,6 @@ defineExpose({
   justify-content: center;
   align-items: center;
   font-size: 12px;
-  color: var(--N600, #646a73);
+  color: var(--workspace-text-secondary, var(--N600, #646a73));
 }
 </style>

@@ -50,7 +50,7 @@ const handleDefaultChatChange = (val: any) => {
         @click="firstItem"
       >
         <component :is="currentIcon" />
-        <el-icon style="color: #646a73" class="expand" size="12">
+        <el-icon class="expand" size="12">
           <icon_expand_down_filled></icon_expand_down_filled>
         </el-icon>
       </div>
@@ -65,7 +65,7 @@ const handleDefaultChatChange = (val: any) => {
           :class="chartType === ele.value && 'isActive'"
           @click="handleDefaultChatChange(ele)"
         >
-          <el-icon style="color: #646a73" size="16">
+          <el-icon size="16">
             <component :is="ele.icon" :class="chartType === ele.value && 'icon-primary'" />
           </el-icon>
           <div class="model-name">{{ ele.name }}</div>
@@ -83,8 +83,9 @@ const handleDefaultChatChange = (val: any) => {
   padding: 4px 0;
   width: 120px !important;
   min-width: 120px !important;
-  box-shadow: 0px 4px 8px 0px #1f23291a;
-  border: 1px solid #dee0e3;
+  box-shadow: var(--workspace-card-shadow, 0 8px 24px rgba(17, 37, 73, 0.07));
+  border: 1px solid var(--workspace-border, #dce6f2);
+  background: var(--workspace-card-bg, #ffffff);
 
   .popover {
     .popover-content {
@@ -99,7 +100,7 @@ const handleDefaultChatChange = (val: any) => {
         display: flex;
         align-items: center;
         padding-left: 8px;
-        color: #8f959e;
+        color: var(--workspace-text-tertiary, #8a97aa);
       }
     }
     .popover-item {
@@ -116,7 +117,7 @@ const handleDefaultChatChange = (val: any) => {
         margin-bottom: 0;
       }
       &:hover {
-        background: #1f23291a;
+        background: var(--workspace-control-hover-bg, #e9f1ff);
       }
 
       .model-name {
@@ -153,18 +154,20 @@ const handleDefaultChatChange = (val: any) => {
   display: flex;
   align-items: center;
   cursor: pointer;
+  color: var(--workspace-text-secondary, var(--theme-text-secondary));
 
   .expand {
     margin-left: 4px;
   }
 
   &:hover {
-    background: #1f23291a;
+    background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+    color: var(--workspace-text-primary, var(--theme-text-primary));
   }
 
   &.active {
-    background: var(--ed-color-primary-1a, rgba(28, 186, 144, 0.1));
-    color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+    background: var(--workspace-primary-soft-bg, var(--ed-color-primary-1a));
+    color: var(--ed-color-primary, #2f6bff);
   }
 }
 </style>

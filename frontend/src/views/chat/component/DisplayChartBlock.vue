@@ -128,7 +128,9 @@ defineExpose({
 .chart-base-container {
   height: 100%;
   width: 100%;
-  border-radius: 12px;
-  background: rgba(224, 224, 226, 0.29);
+  border-radius: 8px;
+  background: var(--workspace-card-bg, #ffffff);
+  border: 1px solid var(--workspace-border, #dce6f2);
+  box-shadow: var(--workspace-card-shadow, 0 8px 24px rgba(17, 37, 73, 0.07));
 }
 </style>

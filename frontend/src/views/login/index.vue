@@ -8,12 +8,12 @@
             <img v-if="loginBg" :src="loginBg" alt="" />
             <el-icon v-else size="24">
               <custom_small v-if="appearanceStore.themeColor !== 'default'"></custom_small>
-              <LOGO_fold v-else></LOGO_fold>
+              <img v-else :src="elexDataLogoUrl" alt="" />
             </el-icon>
           </div>
           <div>
             <strong>{{ productName }}</strong>
-            <span>智能问数 · 数据分析 · 数据看板洞察</span>
+            <span>智能报表 · 数据分析 · 数据看板洞察</span>
           </div>
         </div>
 
@@ -96,7 +96,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
-import LOGO_fold from '@/assets/LOGO-fold.svg'
+import elexDataLogoUrl from '@/assets/elex_data.svg?url'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { toLoginSuccess } from '@/utils/utils'
 
@@ -127,7 +127,7 @@ const productSlogan = computed(() => {
 const capabilities = [
   {
     icon: '问',
-    title: '自然语言问数',
+    title: '自然语言报表',
     desc: '面向业务问题生成查询、解释结果并保留可追溯上下文。',
   },
   {

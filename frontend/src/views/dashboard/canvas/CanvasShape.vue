@@ -62,6 +62,7 @@ const dragDandleValue = computed(() => props.canEdit && !props.configItem.editin
 <template>
   <div
     ref="shapeRef"
+    :id="`canvas-item-${configItem.id}`"
     :class="{
       item: true,
       itemActive: active,

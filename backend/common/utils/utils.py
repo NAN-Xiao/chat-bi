@@ -90,11 +90,19 @@ def setup_logging():
     # 确保日志目录存在
     log_dir = Path(settings.LOG_DIR)
     log_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    log_format = str(settings.LOG_FORMAT or "").strip()
+    if log_format.lower() == "json":
+        # Fall back to a safe plain-text formatter when env config uses "json".
+        log_format = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
+
+    # 避免重复初始化时累加处理器
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        root_logger.handlers.clear()
+
     # 日志格式
-    formatter = logging.Formatter(
-        f'{settings.LOG_FORMAT}'
-    )
+    formatter = logging.Formatter(log_format)
     
     # 控制台日志
     console_handler = logging.StreamHandler()
@@ -110,7 +118,6 @@ def setup_logging():
     }
     
     # 主日志记录器
-    root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)  # 设置最低级别
     
     # 添加控制台处理器

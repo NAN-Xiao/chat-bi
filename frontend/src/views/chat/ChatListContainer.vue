@@ -272,11 +272,12 @@ function onChatRenamed(chat: Chat) {
   height: 100%;
   background: var(--workspace-panel-bg, var(--theme-panel-bg));
   color: var(--workspace-text-primary, var(--theme-text-primary));
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
 
   .icon-btn {
     min-width: unset;
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     font-size: 18px;
     color: var(--workspace-text-primary, var(--theme-text-primary));
 
@@ -296,18 +297,18 @@ function onChatRenamed(chat: Chat) {
   }
 
   .chat-list-header {
-    --ed-header-padding: 16px;
-    --ed-header-height: calc(16px + 24px + 16px + 40px + 16px + 32px + 16px);
+    --ed-header-padding: 14px;
+    --ed-header-height: calc(14px + 24px + 10px + 38px + 10px + 34px + 14px);
 
     &.in-popover {
-      --ed-header-height: calc(16px + 40px + 16px + 32px + 16px);
+      --ed-header-height: calc(14px + 38px + 10px + 34px + 14px);
     }
 
     display: flex;
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
 
     .title {
       height: 24px;
@@ -316,41 +317,116 @@ function onChatRenamed(chat: Chat) {
       flex-direction: row;
       align-items: center;
       justify-content: space-between;
-      font-weight: 500;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 24px;
+      letter-spacing: 0.1px;
       color: var(--workspace-text-primary, var(--theme-text-primary));
     }
 
     .btn {
       width: 100%;
-      height: 40px;
+      height: 38px;
+      border: 0;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.1px;
+      background: linear-gradient(135deg, #2f6bff 0%, #1d8dff 100%);
+      box-shadow: 0 8px 18px rgba(47, 107, 255, 0.18);
+      transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease,
+        filter 0.18s ease;
 
-      font-size: 16px;
-      font-weight: 500;
+      --ed-button-text-color: #ffffff;
+      --ed-button-bg-color: #2f6bff;
+      --ed-button-border-color: transparent;
+      --ed-button-hover-bg-color: #235df0;
+      --ed-button-hover-text-color: #ffffff;
+      --ed-button-hover-border-color: transparent;
+      --ed-button-active-bg-color: #1f55de;
+      --ed-button-active-border-color: transparent;
 
-      --ed-button-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-bg-color: var(--workspace-primary-soft-bg, var(--theme-primary-soft-bg, var(--ed-color-primary-1a, #1cba901a)));
-      --ed-button-border-color: var(--ed-color-primary-33, var(--ed-color-primary-60, #a4e3d3));
-      --ed-button-hover-bg-color: var(--workspace-control-hover-bg, var(--theme-hover-bg));
-      --ed-button-hover-text-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-hover-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      --ed-button-active-bg-color: var(--workspace-active-bg, var(--theme-active-bg));
-      --ed-button-active-border-color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      &:hover {
+        background: linear-gradient(135deg, #235df0 0%, #137fe8 100%);
+        box-shadow: 0 10px 20px rgba(47, 107, 255, 0.24);
+        filter: saturate(1.04);
+      }
+
+      &:active {
+        transform: translateY(1px);
+        box-shadow: 0 6px 14px rgba(47, 107, 255, 0.18);
+      }
+
+      :deep(.ed-icon) {
+        width: 18px;
+        height: 18px;
+        color: inherit;
+      }
+
+      :deep(svg) {
+        width: 18px;
+        height: 18px;
+        color: inherit;
+      }
+
+      :deep(svg path) {
+        fill: currentColor !important;
+      }
     }
 
     .search {
-      height: 32px;
+      height: 34px;
       width: 100%;
+
       :deep(.ed-input__wrapper) {
-        background-color: var(--workspace-input-bg, var(--theme-input-bg));
-        box-shadow: 0 0 0 1px var(--workspace-border, var(--theme-input-border)) inset;
+        min-height: 34px;
+        padding: 0 10px;
+        border-radius: 10px;
+        background-color: #ffffff;
+        box-shadow:
+          0 0 0 1px rgba(118, 134, 166, 0.22) inset,
+          0 4px 12px rgba(18, 34, 66, 0.04);
+        transition:
+          box-shadow 0.18s ease,
+          background-color 0.18s ease;
+      }
+
+      :deep(.ed-input__wrapper:hover) {
+        box-shadow:
+          0 0 0 1px rgba(47, 107, 255, 0.28) inset,
+          0 6px 14px rgba(18, 34, 66, 0.06);
+      }
+
+      :deep(.ed-input__wrapper.is-focus) {
+        box-shadow:
+          0 0 0 1px rgba(47, 107, 255, 0.52) inset,
+          0 0 0 3px rgba(47, 107, 255, 0.1);
       }
 
       :deep(.ed-input__inner) {
         color: var(--workspace-text-primary, var(--theme-text-primary));
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 400;
+        letter-spacing: 0.1px;
       }
 
       :deep(.ed-input__inner::placeholder) {
         color: var(--workspace-text-tertiary, var(--theme-text-tertiary));
+      }
+
+      :deep(.ed-input__prefix),
+      :deep(.ed-input__suffix) {
+        color: var(--workspace-text-tertiary, var(--theme-text-tertiary));
+      }
+
+      :deep(.ed-input__prefix .ed-icon),
+      :deep(.ed-input__suffix .ed-icon) {
+        width: 15px;
+        height: 15px;
       }
     }
   }

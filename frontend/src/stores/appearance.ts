@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { store } from '@/stores/index'
 import { setCurrentColor, setTitle } from '@/utils/utils'
 import { isBtnShow } from '@/utils/utils'
+import elexDataLogoUrl from '@/assets/elex_data.svg?url'
 
 interface AppearanceState {
   themeColor?: string
@@ -179,7 +180,7 @@ export const useAppearanceStore = defineStore('appearanceStore', {
 const setLinkIcon = () => {
   const link = document.querySelector('link[rel="icon"]') as HTMLLinkElement
   if (link) {
-    link.href = `${location.pathname}LOGO-fold.svg`
+    link.href = elexDataLogoUrl
   }
 }
 

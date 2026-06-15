@@ -32,7 +32,8 @@ const addComponents = (componentType: string, views?: any) => {
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   component.x = findPositionX(component.sizeX)
   if (views) {
-    views.forEach((view: any, index: number) => {
+    const viewList = Array.isArray(views) ? views : [views]
+    viewList.forEach((view: any, index: number) => {
       const target = cloneDeep(view)
       delete target.chart.sourceType
       if (index > 0) {
@@ -140,7 +141,7 @@ const findPositionX = (width: number) => {
 .editor-content {
   width: 100vw;
   height: 100vh;
-  background: #fff;
+  background: var(--workspace-panel-bg, #f6f9fd);
   overflow: hidden;
 }
 
@@ -149,7 +150,7 @@ const findPositionX = (width: number) => {
 }
 .editor-main {
   position: relative;
-  background: #f5f6f7;
+  background: var(--workspace-panel-bg, #f6f9fd);
   overflow: hidden;
   width: 100%;
   height: 100%;

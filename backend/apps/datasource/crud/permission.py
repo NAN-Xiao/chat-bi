@@ -1,5 +1,4 @@
 import datetime
-import json
 from typing import Any, List, Optional
 
 from sqlalchemy import and_, inspect, or_
@@ -351,10 +350,17 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
                             break
                     if flag:
                         res.append(trans_record_to_dto(session, permission))
-            where_str = transFilterTree(session, current_user, res, ds)
+            where_str = transFilterTree(session, current_user, res, ds, deny_mode=True)
             if where_str:
                 filters.append({"table": table.table_name, "filter": where_str})
     return filters
+
+
+def _permission_applies_to_user(permission: Any, contain_rules: list[Any], current_user: CurrentUser) -> bool:
+    for rule in contain_rules:
+        if _rule_contains_permission(rule, permission.id) and _rule_contains_user(rule, current_user):
+            return True
+    return False
 
 
 def get_column_permission_fields(session: SessionDep, current_user: CurrentUser, table: CoreTable,
@@ -369,14 +375,8 @@ def get_column_permission_fields(session: SessionDep, current_user: CurrentUser,
         )
         if column_permissions is not None:
             for permission in column_permissions:
-                # check permission and user in same rules
-                flag = False
-                for r in contain_rules:
-                    if _rule_contains_permission(r, permission.id) and _rule_contains_user(r, current_user):
-                        flag = True
-                        break
-                if flag:
-                    permission_list = json.loads(permission.permissions)
+                if _permission_applies_to_user(permission, contain_rules, current_user):
+                    permission_list = parse_json_list(permission.permissions)
                     fields = filter_list(fields, permission_list)
     return fields
 
@@ -432,13 +432,21 @@ def get_user_scoped_table_ids(
     if not is_normal_user(current_user):
         return None
 
+    checked_table_ids = {
+        int(_first_column_value(row))
+        for row in session.query(CoreTable.id).filter(
+            CoreTable.ds_id == datasource_id,
+            CoreTable.checked == True,
+        ).all()
+        if _first_column_value(row) is not None
+    }
     contain_rules = contain_rules if contain_rules is not None else get_user_permission_rules(
         session,
         current_user,
         datasource_id,
     )
     if not contain_rules:
-        return set()
+        return checked_table_ids
 
     rule_permission_ids: set[int] = set()
     for rule in contain_rules:
@@ -450,19 +458,21 @@ def get_user_scoped_table_ids(
             except (TypeError, ValueError):
                 continue
     if not rule_permission_ids:
-        return set()
+        return checked_table_ids
 
     permissions = list_permission_records(
         session,
         ids=sorted(rule_permission_ids),
         ds_id=datasource_id,
+        permission_type='table',
         enable=True,
     )
-    return {
+    denied_table_ids = {
         int(permission.table_id)
         for permission in permissions
         if permission.table_id is not None
     }
+    return checked_table_ids - denied_table_ids
 
 
 def can_access_table(

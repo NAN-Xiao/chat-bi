@@ -114,19 +114,37 @@
         <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
           <div class="welcome-content">
             <template v-if="isCompletePage">
-              <div class="greeting">
-                <img v-if="loginBg" height="32" width="32" :src="loginBg" alt="" />
-                <el-icon v-else size="32"
-                  ><custom_small v-if="appearanceStore.themeColor !== 'default'"></custom_small>
-                  <LOGO_fold v-else></LOGO_fold
-                ></el-icon>
-                {{ appearanceStore.pc_welcome ?? '你好，我是星通智数' }}
-              </div>
-              <div class="sub">
-                {{
-                  appearanceStore.pc_welcome_desc ??
-                  '我可以查询数据、生成图表、检测数据异常、预测数据等赶快开启智能问数吧～'
-                }}
+              <div class="smart-qa-welcome">
+                <img
+                  v-if="loginBg"
+                  class="smart-qa-welcome-logo"
+                  :src="loginBg"
+                  width="128"
+                  height="128"
+                  alt=""
+                />
+                <el-icon
+                  v-else-if="appearanceStore.themeColor !== 'default'"
+                  class="smart-qa-welcome-logo"
+                  :size="128"
+                >
+                  <custom_small></custom_small>
+                </el-icon>
+                <img
+                  v-else
+                  class="smart-qa-welcome-logo"
+                  :src="elexDataLogoUrl"
+                  width="128"
+                  height="128"
+                  alt=""
+                />
+                <div class="smart-qa-welcome-title">
+                  {{ t('embedded.i_am_sqlbot') }}
+                </div>
+                <div class="smart-qa-welcome-divider"></div>
+                <div class="smart-qa-welcome-desc">
+                  {{ t('embedded.predict_data_etc') }}
+                </div>
               </div>
             </template>
 
@@ -157,10 +175,10 @@
               :src="logoAssistant ? logoAssistant : loginBg"
               alt=""
             />
-            <el-icon v-else size="30"
-              ><custom_small v-if="appearanceStore.themeColor !== 'default'"></custom_small>
-              <LOGO_fold v-else></LOGO_fold
-            ></el-icon>
+            <el-icon v-else-if="appearanceStore.themeColor !== 'default'" size="30">
+              <custom_small></custom_small>
+            </el-icon>
+            <img v-else class="chat-loading-logo" :src="elexDataLogoUrl" alt="" />
             <span style="margin-left: 12px">{{ appearanceStore.name }}</span>
           </div>
         </div>
@@ -449,7 +467,7 @@ import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import { useI18n } from 'vue-i18n'
 import { find, forEach } from 'lodash-es'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
-import LOGO_fold from '@/assets/LOGO-fold.svg'
+import elexDataLogoUrl from '@/assets/elex_data.svg?url'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
@@ -880,6 +898,7 @@ const sendMessage = async (
   currentRecord.create_time = new Date()
   currentRecord.chat_id = currentChatId.value
   currentRecord.question = inputMessage.value
+  currentRecord.datasource = currentChat.value.datasource || datasourceContext.datasourceId
   currentRecord.regenerate_record_id = regenerate_record_id
   currentRecord.sql_answer = ''
   currentRecord.sql = ''
@@ -959,6 +978,7 @@ async function clickAnalysis(id?: number) {
   currentRecord.create_time = new Date()
   currentRecord.chat_id = baseRecord.chat_id
   currentRecord.question = baseRecord.question
+  currentRecord.datasource = baseRecord.datasource || currentChat.value.datasource
   currentRecord.chart = baseRecord.chart
   currentRecord.data = baseRecord.data
   currentRecord.analysis_record_id = id
@@ -1037,6 +1057,7 @@ async function clickPredict(id?: number) {
   currentRecord.create_time = new Date()
   currentRecord.chat_id = baseRecord.chat_id
   currentRecord.question = baseRecord.question
+  currentRecord.datasource = baseRecord.datasource || currentChat.value.datasource
   currentRecord.chart = baseRecord.chart
   currentRecord.data = baseRecord.data
   currentRecord.predict_record_id = id
@@ -1225,8 +1246,8 @@ onMounted(async () => {
 
   .icon-btn {
     min-width: unset;
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     font-size: 18px;
 
     --ed-button-text-color: var(--workspace-text-primary, var(--theme-text-primary));
@@ -1397,12 +1418,16 @@ onMounted(async () => {
         position: absolute;
         bottom: 12px;
         right: 12px;
+        width: 36px;
+        height: 36px;
+        box-shadow: 0 8px 18px rgba(47, 107, 255, 0.22);
 
         border-color: unset;
 
         &.is-disabled {
           background: rgba(187, 191, 196, 1);
           border-color: unset;
+          box-shadow: none;
         }
       }
     }
@@ -1431,6 +1456,7 @@ onMounted(async () => {
     font-weight: 400;
     line-height: 22px;
     color: var(--workspace-text-secondary, var(--theme-text-secondary));
+    border-radius: 8px;
 
     .tool-btn-inner {
       display: flex;
@@ -1455,6 +1481,20 @@ onMounted(async () => {
     height: 16px;
     border-left: 1px solid var(--workspace-border, var(--theme-shell-border));
   }
+}
+
+.chat-brand-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.chat-loading-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 
 .welcome-content-block {
@@ -1504,20 +1544,60 @@ onMounted(async () => {
       }
     }
 
-    .greeting {
+    .smart-qa-welcome {
       display: flex;
       align-items: center;
-      gap: 16px;
-      line-height: 32px;
-      font-size: 24px;
-      font-weight: 600;
+      flex-direction: column;
+      justify-content: center;
+      gap: 10px;
+      width: min(560px, 100%);
+      min-width: 0;
       color: var(--workspace-text-primary, var(--theme-text-primary));
+      text-align: center;
     }
 
-    .sub {
+    .smart-qa-welcome-logo {
+      display: block;
+      width: 128px !important;
+      height: 128px !important;
+      max-width: 128px;
+      max-height: 128px;
+      object-fit: contain;
+      flex: 0 0 auto;
+    }
+
+    .smart-qa-welcome-title {
+      display: block;
+      width: 100%;
+      color: var(--workspace-text-primary, var(--theme-text-primary));
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 32px;
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    .smart-qa-welcome-divider {
+      width: 280px;
+      max-width: 72%;
+      height: 1px;
+      margin: 0 auto 2px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(90, 112, 143, 0.26),
+        transparent
+      );
+    }
+
+    .smart-qa-welcome-desc {
+      display: block;
+      width: 100%;
       color: var(--workspace-text-secondary, var(--theme-text-secondary));
-      font-size: 16px;
+      font-size: 14px;
       line-height: 24px;
+      text-align: center;
+      white-space: nowrap;
     }
 
   }

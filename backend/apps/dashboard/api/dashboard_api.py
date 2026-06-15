@@ -3,8 +3,18 @@ from typing import List
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
 from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
-    create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas, preview_sql
-from apps.dashboard.models.dashboard_model import CreateDashboard, BaseDashboard, QueryDashboard, DashboardSqlPreview
+    create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas, preview_sql, \
+    share_resource, list_shared_resources, load_shared_resource, delete_shared_resource, use_shared_resource
+from apps.dashboard.models.dashboard_model import (
+    CreateDashboard,
+    BaseDashboard,
+    QueryDashboard,
+    DashboardSqlPreview,
+    DashboardShareRequest,
+    DashboardShareListQuery,
+    SharedDashboardQuery,
+    SharedDashboardUseRequest,
+)
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
 from common.audit.models.log_model import OperationType, OperationModules
@@ -79,3 +89,59 @@ async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: Quer
 @require_permissions(permission=SqlbotPermission(type='ds', keyExpression="request.datasource"))
 async def sql_preview_api(session: SessionDep, current_user: CurrentUser, request: DashboardSqlPreview):
     return preview_sql(session=session, current_user=current_user, request=request)
+
+
+@router.post("/share", summary=f"{PLACEHOLDER_PREFIX}dashboard_share")
+@system_log(LogConfig(
+    operation_type=OperationType.CREATE,
+    module=OperationModules.DASHBOARD,
+    result_id_expr="id"
+))
+async def share_resource_api(session: SessionDep, user: CurrentUser, request: DashboardShareRequest):
+    return share_resource(session=session, user=user, request=request)
+
+
+@router.post("/share/list", summary=f"{PLACEHOLDER_PREFIX}dashboard_share_list")
+async def list_shared_resource_api(
+        session: SessionDep,
+        current_user: CurrentUser,
+        query: DashboardShareListQuery,
+):
+    return list_shared_resources(session=session, current_user=current_user, query=query)
+
+
+@router.post("/share/load", summary=f"{PLACEHOLDER_PREFIX}dashboard_share_load")
+async def load_shared_resource_api(
+        session: SessionDep,
+        current_user: CurrentUser,
+        query: SharedDashboardQuery,
+):
+    return load_shared_resource(session=session, current_user=current_user, query=query)
+
+
+@router.post("/share/delete", summary=f"{PLACEHOLDER_PREFIX}dashboard_share_delete")
+@system_log(LogConfig(
+    operation_type=OperationType.DELETE,
+    module=OperationModules.DASHBOARD,
+    resource_id_expr="query.id"
+))
+async def delete_shared_resource_api(
+        session: SessionDep,
+        current_user: CurrentUser,
+        query: SharedDashboardQuery,
+):
+    return delete_shared_resource(session=session, current_user=current_user, query=query)
+
+
+@router.post("/share/use", summary=f"{PLACEHOLDER_PREFIX}dashboard_share_use")
+@system_log(LogConfig(
+    operation_type=OperationType.CREATE,
+    module=OperationModules.DASHBOARD,
+    result_id_expr="id"
+))
+async def use_shared_resource_api(
+        session: SessionDep,
+        user: CurrentUser,
+        request: SharedDashboardUseRequest,
+):
+    return use_shared_resource(session=session, user=user, request=request)

@@ -7,8 +7,14 @@ import { useI18n } from 'vue-i18n'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_chart_preview from '@/assets/svg/icon_chart_preview.svg'
 import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
+import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
+import { dashboardApi } from '@/api/dashboard'
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
+import { ElMessage } from 'element-plus-secondary'
+import { captureElementSharePreview } from '@/views/dashboard/utils/sharePreview'
 const { t } = useI18n()
 const emits = defineEmits(['enlargeView', 'editSql'])
+const dashboardStore = dashboardStoreWithOut()
 
 const props = defineProps({
   active: {
@@ -48,6 +54,23 @@ const doDeleteComponent = (e: MouseEvent) => {
   e.preventDefault()
   useEmitt().emitter.emit(`editor-delete-${props.canvasId}`, configItem.value.id)
 }
+
+const doShareComponent = async (e: MouseEvent) => {
+  e.stopPropagation()
+  e.preventDefault()
+  const previewImage = await captureElementSharePreview(
+    document.getElementById(`canvas-item-${configItem.value.id}`) ||
+      document.getElementById(`wrapper-outer-id-${configItem.value.id}`) ||
+      (e.currentTarget as HTMLElement | null)?.closest('.item')
+  )
+  await dashboardApi.share({
+    dashboard_id: dashboardStore.dashboardInfo.id,
+    share_type: 'chart',
+    source_view_id: configItem.value.id,
+    preview_image: previewImage,
+  })
+  ElMessage.success(t('dashboard.share_success'))
+}
 </script>
 
 <template>
@@ -77,6 +100,12 @@ const doDeleteComponent = (e: MouseEvent) => {
               :icon="icon_sql_outlined"
               @click="doEditSql"
               >{{ t('dashboard.edit_sql') }}</el-dropdown-item
+            >
+            <el-dropdown-item
+              v-if="configItem.component === 'SQView'"
+              :icon="icon_export_outlined"
+              @click="doShareComponent"
+              >{{ t('dashboard.share') }}</el-dropdown-item
             >
             <el-dropdown-item
               :divided="configItem.component === 'SQView'"

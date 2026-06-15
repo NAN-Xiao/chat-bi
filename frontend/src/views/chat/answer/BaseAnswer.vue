@@ -49,6 +49,10 @@ const reasoningContent = computed<Array<string>>(() => {
   return result
 })
 
+const showReasoningPlaceholder = computed<boolean>(() => {
+  return show.value && !!props.message.isTyping && !hasReasoning.value
+})
+
 const hasReasoning = computed<boolean>(() => {
   if (reasoningContent.value.length > 0) {
     for (let i = 0; i < reasoningContent.value.length; i++) {
@@ -88,6 +92,11 @@ onMounted(() => {
         </span>
       </div>
     </el-button>
+    <div v-if="showReasoningPlaceholder" class="reasoning-content reasoning-placeholder">
+      <div class="reasoning">
+        {{ t('qa.thinking') }}...
+      </div>
+    </div>
     <div v-if="hasReasoning && show" class="reasoning-content">
       <div v-for="(reason, _index) in reasoningContent" :key="_index" class="reasoning">
         <MdComponent :message="reason" />
@@ -154,6 +163,11 @@ onMounted(() => {
         line-height: 22px;
         font-weight: 400;
         font-size: 14px;
+        background: transparent !important;
+      }
+
+      .markdown-body :deep(*) {
+        background: transparent !important;
       }
 
       padding-bottom: 8px;
@@ -163,6 +177,13 @@ onMounted(() => {
         padding-bottom: unset;
         border-bottom: unset;
       }
+    }
+  }
+
+  .reasoning-placeholder {
+    .reasoning {
+      padding-bottom: unset;
+      border-bottom: unset;
     }
   }
 

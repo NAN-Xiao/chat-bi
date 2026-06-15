@@ -11,13 +11,36 @@ const { t } = useI18n()
 
 const assistantStore = useAssistantStore()
 const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
+const permissionDeniedType = 'permission-denied'
+const permissionDeniedPatterns = [
+  '当前用户无权访问项目',
+  'Datasource access is required',
+  'Chat does not belong to current project',
+  'SQL 超出当前数据权限范围',
+  'SQL 包含无权限表',
+  'SQL contains unauthorized tables',
+  'SQL 包含无权限字段',
+  'SQL 使用了 SELECT *，无法安全应用字段权限',
+  '无法安全应用字段权限',
+  '行权限过滤条件无法安全解析',
+]
 
 const showBlock = computed(() => {
   return props.error && props.error?.trim().length > 0
 })
 
+function isPermissionDeniedError(message?: string) {
+  if (!message) return false
+  return permissionDeniedPatterns.some(pattern => message.includes(pattern))
+}
+
 const errorMessage = computed(() => {
-  const obj = { message: props.error, showMore: false, traceback: '', type: undefined }
+  const obj: { message?: string; showMore: boolean; traceback: string; type?: string } = {
+    message: props.error,
+    showMore: false,
+    traceback: '',
+    type: undefined,
+  }
   if (showBlock.value && props.error?.trim().startsWith('{') && props.error?.trim().endsWith('}')) {
     try {
       const json = JSON.parse(props.error?.trim())
@@ -30,6 +53,12 @@ const errorMessage = computed(() => {
     } catch (e) {
       console.error(e)
     }
+  }
+  if (isPermissionDeniedError(`${obj.message ?? ''}\n${obj.traceback ?? ''}`)) {
+    obj.message = t('chat.permission_denied_tip')
+    obj.showMore = false
+    obj.traceback = ''
+    obj.type = permissionDeniedType
   }
   return obj
 })
@@ -54,6 +83,9 @@ function showTraceBack() {
       </template>
       <template v-else-if="errorMessage.type === 'exec-sql-err'">
         {{ t('chat.exec-sql-err') }}
+      </template>
+      <template v-else-if="errorMessage.type === permissionDeniedType">
+        {{ errorMessage.message }}
       </template>
       <template v-else>
         {{ t('chat.error') }}

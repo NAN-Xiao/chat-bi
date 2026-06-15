@@ -67,7 +67,7 @@ const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
 const canvasStyle = computed(() => {
-  return { background: '#f5f6f7' }
+  return { background: 'var(--workspace-panel-bg, var(--theme-panel-bg))' }
 })
 
 const restore = () => {}
@@ -87,8 +87,8 @@ const sizeInit = () => {
     const screenWidth = previewCanvas.value.offsetWidth
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenHeight = previewCanvas.value.offsetHeight
-    baseMarginLeft.value = 10
-    baseMarginTop.value = 10
+    baseMarginLeft.value = 6
+    baseMarginTop.value = 6
     baseWidth.value =
       (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
     baseHeight.value =
@@ -139,6 +139,7 @@ defineExpose({
   background-size: 100% 100% !important;
   width: 100%;
   height: 100%;
+  padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
   position: relative;

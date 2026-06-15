@@ -2,6 +2,7 @@ import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { checkIsPercent, formatNumber, getAxesWithFilter } from '@/views/chat/component/charts/utils.ts'
+import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Pie extends BaseG2Chart {
   constructor(id: string) {
@@ -21,7 +22,7 @@ export class Pie extends BaseG2Chart {
 
     console.debug({ 'render-info': { y: y, series: series, data: _data }, instance: this })
 
-    const options: G2Spec = {
+    const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'interval',
       coordinate: { type: 'theta', outerRadius: 0.8 },
@@ -64,7 +65,7 @@ export class Pie extends BaseG2Chart {
           },
         ],
       },
-    }
+    } as G2Spec)
 
     this.chart.options(options)
   }

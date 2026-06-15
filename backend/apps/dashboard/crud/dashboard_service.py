@@ -4,8 +4,18 @@ from fastapi import HTTPException
 from orjson import orjson
 from sqlalchemy import select, and_, or_, text
 
-from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard, QueryDashboard, DashboardBaseResponse, \
-    DashboardSqlPreview
+from apps.dashboard.models.dashboard_model import (
+    CoreDashboard,
+    CoreDashboardShare,
+    CreateDashboard,
+    QueryDashboard,
+    DashboardBaseResponse,
+    DashboardSqlPreview,
+    DashboardShareRequest,
+    DashboardShareListQuery,
+    SharedDashboardQuery,
+    SharedDashboardUseRequest,
+)
 from apps.datasource.crud.permission import (
     PROJECT_ROLE_EDITOR,
     get_accessible_datasource_ids,
@@ -120,6 +130,13 @@ def _load_dashboard_or_404(session: SessionDep, dashboard_id: str) -> CoreDashbo
     record = session.get(CoreDashboard, dashboard_id)
     if not record or record.delete_flag == 1:
         raise HTTPException(status_code=404, detail="Dashboard does not exist")
+    return record
+
+
+def _load_shared_dashboard_or_404(session: SessionDep, share_id: str) -> CoreDashboardShare:
+    record = session.get(CoreDashboardShare, share_id)
+    if not record or record.delete_flag == 1:
+        raise HTTPException(status_code=404, detail="Shared dashboard does not exist")
     return record
 
 
@@ -307,8 +324,97 @@ def _validate_canvas_datasources(session: SessionDep, current_user: CurrentUser,
         _ensure_datasource_access(session, current_user, item_datasource)
 
 
-def _dashboard_base_response(session: SessionDep, current_user: CurrentUser, record: CoreDashboard,
-                             datasource: int | None = None) -> DashboardBaseResponse:
+def _active_share_filter():
+    return or_(CoreDashboardShare.delete_flag == 0, CoreDashboardShare.delete_flag.is_(None))
+
+
+def _active_dashboard_share_map_for_user(
+        session: SessionDep,
+        current_user: CurrentUser,
+        dashboard_ids: list[str],
+) -> dict[str, CoreDashboardShare]:
+    if not dashboard_ids:
+        return {}
+    statement = (
+        select(CoreDashboardShare)
+        .where(
+            and_(
+                _active_share_filter(),
+                CoreDashboardShare.share_type == "dashboard",
+                CoreDashboardShare.source_dashboard_id.in_(dashboard_ids),
+                CoreDashboardShare.create_by == _user_id(current_user),
+            )
+        )
+        .order_by(CoreDashboardShare.update_time.desc(), CoreDashboardShare.create_time.desc())
+    )
+    shares = session.exec(statement).scalars().all()
+    result: dict[str, CoreDashboardShare] = {}
+    for share in shares:
+        if share.source_dashboard_id and share.source_dashboard_id not in result:
+            result[share.source_dashboard_id] = share
+    return result
+
+
+def _active_share_for_source(
+        session: SessionDep,
+        current_user: CurrentUser,
+        share_type: str,
+        source_dashboard_id: str,
+        source_view_id: str | None = None,
+) -> CoreDashboardShare | None:
+    filters = [
+        _active_share_filter(),
+        CoreDashboardShare.share_type == share_type,
+        CoreDashboardShare.source_dashboard_id == source_dashboard_id,
+        CoreDashboardShare.create_by == _user_id(current_user),
+    ]
+    if share_type == "chart":
+        filters.append(CoreDashboardShare.source_view_id == source_view_id)
+    else:
+        filters.append(or_(CoreDashboardShare.source_view_id.is_(None), CoreDashboardShare.source_view_id == ""))
+    statement = (
+        select(CoreDashboardShare)
+        .where(and_(*filters))
+        .order_by(CoreDashboardShare.update_time.desc(), CoreDashboardShare.create_time.desc())
+    )
+    return session.exec(statement).scalars().first()
+
+
+def _share_source_key(share: CoreDashboardShare) -> tuple[str | None, str | None, str | None, str | None]:
+    return (
+        str(share.create_by) if share.create_by is not None else None,
+        share.share_type,
+        share.source_dashboard_id,
+        share.source_view_id if share.share_type == "chart" else None,
+    )
+
+
+def _active_shares_for_same_source(session: SessionDep, share: CoreDashboardShare) -> list[CoreDashboardShare]:
+    filters = [
+        _active_share_filter(),
+        CoreDashboardShare.create_by == share.create_by,
+        CoreDashboardShare.share_type == share.share_type,
+        CoreDashboardShare.source_dashboard_id == share.source_dashboard_id,
+    ]
+    if share.share_type == "chart":
+        filters.append(CoreDashboardShare.source_view_id == share.source_view_id)
+    else:
+        filters.append(or_(CoreDashboardShare.source_view_id.is_(None), CoreDashboardShare.source_view_id == ""))
+    statement = select(CoreDashboardShare).where(and_(*filters))
+    return session.exec(statement).scalars().all()
+
+
+def _share_can_delete(current_user: CurrentUser, share: CoreDashboardShare) -> bool:
+    return is_system_admin(current_user) or str(share.create_by) == _user_id(current_user)
+
+
+def _dashboard_base_response(
+        session: SessionDep,
+        current_user: CurrentUser,
+        record: CoreDashboard,
+        datasource: int | None = None,
+        active_share: CoreDashboardShare | None = None,
+) -> DashboardBaseResponse:
     return DashboardBaseResponse(
         id=record.id,
         name=record.name,
@@ -320,7 +426,97 @@ def _dashboard_base_response(session: SessionDep, current_user: CurrentUser, rec
         create_time=record.create_time,
         update_time=record.update_time,
         can_edit=_can_edit_dashboard(session, current_user, record),
+        is_shared=active_share is not None,
+        share_id=active_share.id if active_share else None,
     )
+
+
+def _share_can_use(session: SessionDep, current_user: CurrentUser, share: CoreDashboardShare) -> bool:
+    datasource_id = _normalize_datasource_id(share.datasource)
+    if datasource_id is None:
+        return False
+    return has_datasource_access(session, current_user, datasource_id)
+
+
+def _datasource_name(session: SessionDep, datasource_id: int | None) -> str | None:
+    if datasource_id is None:
+        return None
+    datasource = session.get(CoreDatasource, datasource_id)
+    return datasource.name if datasource else None
+
+
+def _share_chart_snapshot(record: CoreDashboard, source_view_id: str) -> tuple[str, str, str]:
+    if not source_view_id:
+        raise HTTPException(status_code=400, detail="Shared chart source_view_id is required")
+    component_data_obj = orjson.loads(record.component_data or "[]")
+    canvas_view_obj = _parse_canvas_view_info(record.canvas_view_info)
+    if source_view_id not in canvas_view_obj:
+        raise HTTPException(status_code=404, detail="Dashboard chart does not exist")
+    component = next(
+        (item for item in component_data_obj if isinstance(item, dict) and str(item.get("id")) == source_view_id),
+        None,
+    )
+    if not component:
+        raise HTTPException(status_code=404, detail="Dashboard chart component does not exist")
+    return (
+        orjson.dumps([component]).decode(),
+        "{}",
+        orjson.dumps({source_view_id: canvas_view_obj[source_view_id]}).decode(),
+    )
+
+
+def _load_share_preview_payload(
+        session: SessionDep,
+        current_user: CurrentUser,
+        share: CoreDashboardShare,
+) -> dict[str, Any]:
+    datasource_id = _normalize_datasource_id(share.datasource)
+    can_use = _share_can_use(session, current_user, share)
+    result_dict = {
+        "id": share.id,
+        "name": share.name,
+        "datasource": datasource_id,
+        "type": "dashboard",
+        "node_type": "leaf",
+        "component_data": share.component_data or "[]",
+        "canvas_style_data": share.canvas_style_data or "{}",
+        "canvas_view_info": share.canvas_view_info or "{}",
+        "preview_image": share.preview_image,
+        "create_name": _user_name(session, share.create_by),
+        "update_name": _user_name(session, share.update_by),
+        "create_time": share.create_time,
+        "update_time": share.update_time,
+        "can_edit": False,
+        "can_use": can_use,
+        "can_delete": _share_can_delete(current_user, share),
+        "share_type": share.share_type,
+        "source_dashboard_id": share.source_dashboard_id,
+        "source_view_id": share.source_view_id,
+    }
+
+    canvas_view_obj = _parse_canvas_view_info(result_dict.get("canvas_view_info"))
+    for item in canvas_view_obj.values():
+        if not isinstance(item, dict):
+            continue
+        item_datasource = _normalize_datasource_id(item.get("datasource"))
+        if item_datasource is None:
+            item_datasource = datasource_id
+            if item_datasource is not None:
+                item["datasource"] = item_datasource
+        if item.get("sql") is None:
+            continue
+        if not can_use or item_datasource is None:
+            data_result = _failed_chart_result(_USER_PERMISSION_DENIED_MESSAGE)
+        else:
+            data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item["sql"])
+        if not isinstance(item.get("data"), dict):
+            item["data"] = {}
+        item["data"]["data"] = data_result["data"]
+        item["status"] = data_result["status"]
+        item["message"] = data_result["message"]
+        item["fields"] = data_result.get("fields", [])
+    result_dict["canvas_view_info"] = orjson.dumps(canvas_view_obj).decode()
+    return result_dict
 
 
 def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
@@ -344,7 +540,15 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
     result = session.exec(statement).scalars().all()
     if datasource_id is not None:
         result = [record for record in result if _dashboard_matches_datasource(record, datasource_id)]
-    nodes = [_dashboard_base_response(session, current_user, record, datasource_id) for record in result]
+    share_map = _active_dashboard_share_map_for_user(
+        session,
+        current_user,
+        [record.id for record in result],
+    )
+    nodes = [
+        _dashboard_base_response(session, current_user, record, datasource_id, share_map.get(record.id))
+        for record in result
+    ]
     tree = build_tree_generic(nodes, root_pid="root")
     return tree
 
@@ -526,3 +730,158 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             "message": "SQL不能为空",
         }
     return _execute_dashboard_chart_sql(session, current_user, request.datasource, request.sql)
+
+
+def share_resource(session: SessionDep, user: CurrentUser, request: DashboardShareRequest):
+    record = _load_dashboard_or_404(session, request.dashboard_id)
+    _require_edit_permission(session, user, record)
+    datasource_id = _effective_dashboard_datasource(record)
+    if datasource_id is not None:
+        _ensure_datasource_access(session, user, datasource_id)
+
+    share_id = uuid.uuid4().hex
+    share_name = (request.name or "").strip()
+    if request.share_type == "chart":
+        component_data, canvas_style_data, canvas_view_info = _share_chart_snapshot(
+            record,
+            request.source_view_id,
+        )
+        if not share_name:
+            view_info = _parse_canvas_view_info(canvas_view_info).get(request.source_view_id, {})
+            share_name = view_info.get("chart", {}).get("title") or record.name
+    else:
+        component_data = record.component_data or "[]"
+        canvas_style_data = record.canvas_style_data or "{}"
+        canvas_view_info = record.canvas_view_info or "{}"
+        if not share_name:
+            share_name = record.name
+
+    now = int(time.time())
+    share = _active_share_for_source(
+        session,
+        user,
+        request.share_type,
+        record.id,
+        request.source_view_id or None,
+    )
+    if share:
+        share.name = share_name
+        share.datasource = datasource_id
+        share.source_view_id = request.source_view_id or None
+        share.component_data = component_data
+        share.canvas_style_data = canvas_style_data
+        share.canvas_view_info = canvas_view_info
+        share.preview_image = request.preview_image or share.preview_image
+        share.update_by = str(user.id)
+        share.update_time = now
+        share.delete_flag = 0
+    else:
+        share = CoreDashboardShare(
+            id=share_id,
+            name=share_name,
+            datasource=datasource_id,
+            share_type=request.share_type,
+            source_dashboard_id=record.id,
+            source_view_id=request.source_view_id or None,
+            component_data=component_data,
+            canvas_style_data=canvas_style_data,
+            canvas_view_info=canvas_view_info,
+            preview_image=request.preview_image or None,
+            create_by=str(user.id),
+            update_by=str(user.id),
+            create_time=now,
+            update_time=now,
+            delete_flag=0,
+        )
+    session.add(share)
+    session.commit()
+    session.refresh(share)
+    return share
+
+
+def list_shared_resources(session: SessionDep, current_user: CurrentUser, query: DashboardShareListQuery):
+    filters = [_active_share_filter()]
+    keyword = (query.keyword or "").strip()
+    if keyword:
+        filters.append(CoreDashboardShare.name.ilike(f"%{keyword}%"))
+
+    statement = (
+        select(CoreDashboardShare)
+        .where(and_(*filters))
+        .order_by(CoreDashboardShare.update_time.desc(), CoreDashboardShare.create_time.desc())
+    )
+    result = session.exec(statement).scalars().all()
+    items = []
+    seen_keys = set()
+    for share in result:
+        share_key = _share_source_key(share)
+        if share_key in seen_keys:
+            continue
+        seen_keys.add(share_key)
+        datasource_id = _normalize_datasource_id(share.datasource)
+        items.append({
+            "id": share.id,
+            "name": share.name,
+            "datasource": datasource_id,
+            "datasource_name": _datasource_name(session, datasource_id),
+            "share_type": share.share_type,
+            "source_dashboard_id": share.source_dashboard_id,
+            "source_view_id": share.source_view_id,
+            "preview_image": share.preview_image,
+            "create_time": share.create_time,
+            "update_time": share.update_time,
+            "create_name": _user_name(session, share.create_by),
+            "update_name": _user_name(session, share.update_by),
+            "can_use": _share_can_use(session, current_user, share),
+            "can_delete": _share_can_delete(current_user, share),
+        })
+    return items
+
+
+def load_shared_resource(session: SessionDep, current_user: CurrentUser, query: SharedDashboardQuery):
+    share = _load_shared_dashboard_or_404(session, query.id)
+    return _load_share_preview_payload(session, current_user, share)
+
+
+def delete_shared_resource(session: SessionDep, current_user: CurrentUser, query: SharedDashboardQuery):
+    share = _load_shared_dashboard_or_404(session, query.id)
+    if not _share_can_delete(current_user, share):
+        raise HTTPException(status_code=403, detail="You do not have permission to delete this shared dashboard")
+    now = int(time.time())
+    for active_share in _active_shares_for_same_source(session, share):
+        active_share.delete_flag = 1
+        active_share.delete_time = now
+        active_share.delete_by = _user_id(current_user)
+        session.add(active_share)
+    session.commit()
+    return True
+
+
+def use_shared_resource(session: SessionDep, user: CurrentUser, request: SharedDashboardUseRequest):
+    share = _load_shared_dashboard_or_404(session, request.id)
+    datasource_id = _normalize_datasource_id(share.datasource)
+    if datasource_id is None or not _share_can_use(session, user, share):
+        raise HTTPException(status_code=403, detail="You do not have permission to use this shared dashboard")
+
+    record = CoreDashboard(
+        id=uuid.uuid4().hex,
+        name=share.name,
+        pid="root",
+        datasource=datasource_id,
+        org_id="",
+        level=1,
+        node_type="leaf",
+        type="dashboard",
+        canvas_style_data=share.canvas_style_data or "{}",
+        component_data=share.component_data or "[]",
+        canvas_view_info=share.canvas_view_info or "{}",
+        create_by=str(user.id),
+        update_by=str(user.id),
+        create_time=int(time.time()),
+        update_time=int(time.time()),
+        delete_flag=0,
+    )
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    return record

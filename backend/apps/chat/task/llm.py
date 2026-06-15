@@ -1160,13 +1160,34 @@ class LLMService:
             return None
 
     def await_result(self):
+        idle_rounds = 0
+        max_idle_rounds = max(1, settings.LLM_REQUEST_TIMEOUT * 2)
         while self.is_running():
+            emitted = False
             while True:
                 chunk = self.pop_chunk()
                 if chunk is not None:
+                    emitted = True
                     yield chunk
                 else:
                     break
+            if emitted:
+                idle_rounds = 0
+            else:
+                idle_rounds += 1
+                if idle_rounds >= max_idle_rounds:
+                    SQLBotLogUtil.error(
+                        f"LLM stream idle timeout after {settings.LLM_REQUEST_TIMEOUT}s for record {self.record.id}"
+                    )
+                    try:
+                        self.future.cancel()
+                    except Exception:
+                        pass
+                    yield 'data:' + orjson.dumps({
+                        'content': 'LLM 请求超时，当前模型未在限定时间内返回内容，请检查模型服务或稍后重试。',
+                        'type': 'error'
+                    }).decode() + '\n\n'
+                    return
         while True:
             chunk = self.pop_chunk()
             if chunk is None:

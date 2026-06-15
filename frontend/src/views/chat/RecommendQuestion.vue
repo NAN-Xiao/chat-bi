@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { endsWith, startsWith } from 'lodash-es'
 import { useI18n } from 'vue-i18n'
 import { chatApi, ChatInfo } from '@/api/chat.ts'
+import { parseSseChunk } from '@/utils/sse'
 
 const props = withDefaults(
   defineProps<{
@@ -91,56 +92,48 @@ async function getRecommendQuestions(articles_number: number) {
         break
       }
 
-      let chunk = decoder.decode(value, { stream: true })
-      tempResult += chunk
-      const split = tempResult.match(/data:.*}\n\n/g)
-      if (split) {
-        chunk = split.join('')
-        tempResult = tempResult.replace(chunk, '')
-      } else {
+      const parsed = parseSseChunk(tempResult, decoder.decode(value, { stream: true }))
+      tempResult = parsed.buffer
+      if (!parsed.payloads.length) {
         continue
       }
 
-      if (chunk && chunk.startsWith('data:{')) {
-        if (split) {
-          for (const str of split) {
-            let data
-            try {
-              data = JSON.parse(str.replace('data:{', '{'))
-            } catch (err) {
-              console.error('JSON string:', str)
-              throw err
-            }
+      for (const payload of parsed.payloads) {
+        let data
+        try {
+          data = JSON.parse(payload)
+        } catch (err) {
+          console.error('JSON string:', payload)
+          throw err
+        }
 
-            if (data.code && data.code !== 200) {
-              ElMessage({
-                message: data.msg,
-                type: 'error',
-                showClose: true,
-              })
-              return
-            }
+        if (data.code && data.code !== 200) {
+          ElMessage({
+            message: data.msg,
+            type: 'error',
+            showClose: true,
+          })
+          return
+        }
 
-            switch (data.type) {
-              case 'recommended_question':
-                if (
-                  data.content &&
-                  data.content.length > 0 &&
-                  startsWith(data.content.trim(), '[') &&
-                  endsWith(data.content.trim(), ']')
-                ) {
-                  if (_currentChat.value?.records) {
-                    for (let record of _currentChat.value.records) {
-                      if (record.id === props.recordId) {
-                        record.recommended_question = data.content
+        switch (data.type) {
+          case 'recommended_question':
+            if (
+              data.content &&
+              data.content.length > 0 &&
+              startsWith(data.content.trim(), '[') &&
+              endsWith(data.content.trim(), ']')
+            ) {
+              if (_currentChat.value?.records) {
+                for (let record of _currentChat.value.records) {
+                  if (record.id === props.recordId) {
+                    record.recommended_question = data.content
 
-                        await nextTick()
-                      }
-                    }
+                    await nextTick()
                   }
                 }
+              }
             }
-          }
         }
       }
     }

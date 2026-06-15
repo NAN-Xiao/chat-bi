@@ -140,6 +140,10 @@ onMounted(async () => {
   height: 40px;
   margin-bottom: 12px;
   color: var(--theme-text-secondary);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
 
   &.collapse {
     width: 40px;
@@ -162,6 +166,8 @@ onMounted(async () => {
 
   &:hover {
     background: var(--theme-hover-bg);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: var(--theme-sidebar-active-text, var(--theme-text-primary));
   }
 
   &:active {

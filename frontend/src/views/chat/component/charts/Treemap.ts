@@ -2,6 +2,7 @@ import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { formatNumber, getAxesWithFilter, toNumber } from '@/views/chat/component/charts/utils.ts'
+import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 interface TreeNode {
   name: string
@@ -64,7 +65,7 @@ export class Treemap extends BaseG2Chart {
     const group = axes.series[0]
     const treeData = buildTreemapData(data, category, value, group)
 
-    const options: G2Spec = {
+    const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'treemap',
       data: treeData,
@@ -76,7 +77,7 @@ export class Treemap extends BaseG2Chart {
         paddingOuter: 1,
       },
       style: {
-        labelFill: '#1f2329',
+        labelFill: '#15233b',
         labelFontSize: 11,
       },
       labels: this.showLabel
@@ -98,7 +99,7 @@ export class Treemap extends BaseG2Chart {
           }),
         ],
       },
-    } as G2Spec
+    } as G2Spec)
 
     this.chart.options(options)
   }

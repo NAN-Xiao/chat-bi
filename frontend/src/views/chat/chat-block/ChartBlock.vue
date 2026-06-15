@@ -27,6 +27,7 @@ import AddViewDashboard from '@/views/dashboard/common/AddViewDashboard.vue'
 import html2canvas from 'html2canvas'
 import { chatApi } from '@/api/chat'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 
 const chatConfig = useChatConfigStore()
 const showSQLBtn = chatConfig.getShowSQL
@@ -71,6 +72,7 @@ const dataObject = computed<{
   return {}
 })
 const assistantStore = useAssistantStore()
+const datasourceContext = useDatasourceContextStore()
 const isCompletePage = computed(() => !assistantStore.getAssistant || assistantStore.getEmbedded)
 
 const isAssistant = computed(() => assistantStore.getAssistant)
@@ -257,7 +259,7 @@ function addToDashboard() {
       data: data.value,
     },
     sql: props.message?.record?.sql,
-    datasource: props.message?.record?.datasource,
+    datasource: props.message?.record?.datasource || datasourceContext.datasourceId,
     chart: {},
   }
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -706,8 +708,9 @@ watch(
   padding: 16px;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(222, 224, 227, 1);
-  border-radius: 12px;
+  border: 1px solid var(--workspace-border, #dce6f2);
+  border-radius: 8px;
+  background: var(--workspace-card-bg, #ffffff);
 
   &.full-screen {
     border: unset;
@@ -716,7 +719,7 @@ watch(
     height: 100%;
 
     .header-bar {
-      border-bottom: 1px solid rgba(31, 35, 41, 0.15);
+      border-bottom: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
       height: 55px;
       padding: 16px 24px;
     }
@@ -744,7 +747,7 @@ watch(
       font-weight: 400;
       line-height: 24px;
       border-radius: 6px;
-      color: rgba(100, 106, 115, 1);
+      color: var(--workspace-text-secondary, var(--theme-text-secondary));
 
       .tool-btn-inner {
         display: flex;
@@ -753,11 +756,12 @@ watch(
       }
 
       &:hover {
-        background: rgba(31, 35, 41, 0.1);
+        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+        color: var(--workspace-text-primary, var(--theme-text-primary));
       }
 
       &:active {
-        background: rgba(31, 35, 41, 0.1);
+        background: var(--workspace-active-bg, var(--theme-active-bg));
       }
     }
 
@@ -789,7 +793,7 @@ watch(
       overflow: hidden;
       text-overflow: ellipsis;
 
-      color: rgba(31, 35, 41, 1);
+      color: var(--workspace-text-primary, var(--theme-text-primary));
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
@@ -805,7 +809,7 @@ watch(
       .divider {
         width: 1px;
         height: 16px;
-        border-left: 1px solid rgba(31, 35, 41, 0.15);
+        border-left: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
       }
     }
 
@@ -816,7 +820,7 @@ watch(
       gap: 4px;
       border-radius: 6px;
 
-      border: 1px solid rgba(217, 220, 223, 1);
+      border: 1px solid var(--workspace-border, rgba(217, 220, 223, 1));
 
       .chart-select {
         min-width: 40px;
@@ -830,11 +834,11 @@ watch(
           border-radius: 6px;
 
           &:hover {
-            background: rgba(31, 35, 41, 0.1);
+            background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
           }
 
           &:active {
-            background: rgba(31, 35, 41, 0.1);
+            background: var(--workspace-active-bg, var(--theme-active-bg));
           }
         }
 

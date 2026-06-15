@@ -22,6 +22,7 @@ defineProps({
     <div class="ed-empty__description">
       <p>{{ description }}</p>
     </div>
+    <slot></slot>
   </div>
 </template>
 

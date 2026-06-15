@@ -2,6 +2,43 @@
 
 Scope: entire repository.
 
+## Local Dev Runbook
+
+- For local Windows development, treat the stack as three separate local services:
+  `frontend` Vite on `127.0.0.1:5173`, backend API on `127.0.0.1:8000`, and MCP server on `127.0.0.1:8001`.
+- Before retrying random ports or passwords, use the known-good local app database settings from the repo root `.env`:
+  `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15432`, `POSTGRES_DB=sqlbot`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`.
+- Do not confuse the local app system database with the SLG BI demo datasources:
+  the SQLBot system database is PostgreSQL `sqlbot` on `127.0.0.1:15432` with user `root` / password `Password123@pg`;
+  the seeded BI demo datasources are PostgreSQL on `127.0.0.1:5432` with user `postgres` / password `111111`,
+  where datasource `SLG BI Mock` points to database `slg_bi_mock` and datasource `SLG BI Mock 2 - Season War` points to `slg_bi_mock_2`.
+- For this workspace's current default online LLM, use:
+  `base_url=https://aikey.elex-tech.com/v1`, `api_key=apg_c2a9f12cb04b6db44c905952402619ba39a4eb446185653c`, `default_model=qwen3.5-plus`.
+  If Smart Q&A fails immediately before SQL generation, verify the `ai_model` default row in the app database first instead of retrying random domains, ports, or passwords.
+- If you need to inspect datasource definitions in the SQLBot system database, query `core_datasource` in `sqlbot` on port `15432`.
+- Local startup logs to check first:
+  `.codex-runtime/backend-8000.current.err.log`, `.codex-runtime/backend-8001.current.err.log`, `.codex-runtime/frontend-5173.current.out.log`,
+  plus application logs under `logs/` and `backend/logs/`.
+- For local backend startup on this machine, set these environment overrides before running `uvicorn` so paths and ports match the workspace:
+  `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15432`, `POSTGRES_DB=sqlbot`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`,
+  `FRONTEND_HOST=http://127.0.0.1:5173`, `BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`,
+  `BASE_DIR=D:/work/AI/SQLBot/.codex-runtime/sqlbot`, `UPLOAD_DIR=D:/work/AI/SQLBot/.codex-runtime/file`,
+  `MCP_IMAGE_PATH=D:/work/AI/SQLBot/.codex-runtime/images`, `EXCEL_PATH=D:/work/AI/SQLBot/.codex-runtime/excel`,
+  `LOCAL_MODEL_PATH=D:/work/AI/SQLBot/.codex-runtime/models`.
+- In this local workspace, also set `EMBEDDING_ENABLED=false` and `TABLE_EMBEDDING_ENABLED=false` before starting the backend unless the local embedding model directory already exists at `.codex-runtime/models/embedding/shibing624_text2vec-base-chinese`.
+  Otherwise startup may fail or spam logs because the bundled local embedding model is missing.
+- Known-good local startup commands on Windows PowerShell are:
+  backend API:
+  ``$env:POSTGRES_SERVER='127.0.0.1'; $env:POSTGRES_PORT='15432'; $env:POSTGRES_DB='sqlbot'; $env:POSTGRES_USER='root'; $env:POSTGRES_PASSWORD='Password123@pg'; $env:FRONTEND_HOST='http://127.0.0.1:5173'; $env:BACKEND_CORS_ORIGINS='http://localhost:5173,http://127.0.0.1:5173'; $env:BASE_DIR='D:/work/AI/SQLBot/.codex-runtime/sqlbot'; $env:UPLOAD_DIR='D:/work/AI/SQLBot/.codex-runtime/file'; $env:MCP_IMAGE_PATH='D:/work/AI/SQLBot/.codex-runtime/images'; $env:EXCEL_PATH='D:/work/AI/SQLBot/.codex-runtime/excel'; $env:LOCAL_MODEL_PATH='D:/work/AI/SQLBot/.codex-runtime/models'; $env:EMBEDDING_ENABLED='false'; $env:TABLE_EMBEDDING_ENABLED='false'; Start-Process -FilePath 'D:\work\AI\SQLBot\backend\.venv\Scripts\python.exe' -WorkingDirectory 'D:\work\AI\SQLBot\backend' -ArgumentList '-m','uvicorn','main:app','--host','127.0.0.1','--port','8000' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\backend-8000.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\backend-8000.current.err.log' -WindowStyle Hidden``
+  MCP:
+  ``$env:POSTGRES_SERVER='127.0.0.1'; $env:POSTGRES_PORT='15432'; $env:POSTGRES_DB='sqlbot'; $env:POSTGRES_USER='root'; $env:POSTGRES_PASSWORD='Password123@pg'; $env:FRONTEND_HOST='http://127.0.0.1:5173'; $env:BACKEND_CORS_ORIGINS='http://localhost:5173,http://127.0.0.1:5173'; $env:BASE_DIR='D:/work/AI/SQLBot/.codex-runtime/sqlbot'; $env:UPLOAD_DIR='D:/work/AI/SQLBot/.codex-runtime/file'; $env:MCP_IMAGE_PATH='D:/work/AI/SQLBot/.codex-runtime/images'; $env:EXCEL_PATH='D:/work/AI/SQLBot/.codex-runtime/excel'; $env:LOCAL_MODEL_PATH='D:/work/AI/SQLBot/.codex-runtime/models'; $env:EMBEDDING_ENABLED='false'; $env:TABLE_EMBEDDING_ENABLED='false'; Start-Process -FilePath 'D:\work\AI\SQLBot\backend\.venv\Scripts\python.exe' -WorkingDirectory 'D:\work\AI\SQLBot\backend' -ArgumentList '-m','uvicorn','main:mcp_app','--host','127.0.0.1','--port','8001' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\backend-8001.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\backend-8001.current.err.log' -WindowStyle Hidden``
+  frontend:
+  ``Start-Process -FilePath 'C:\Windows\System32\cmd.exe' -WorkingDirectory 'D:\work\AI\SQLBot\frontend' -ArgumentList '/c','npm run dev -- --host 127.0.0.1' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\frontend-5173.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\frontend-5173.current.err.log' -WindowStyle Hidden``
+- Known-good health checks after startup:
+  `http://127.0.0.1:5173/` should return `200`,
+  `http://127.0.0.1:8000/api/v1/system/getLoginMethod` may return `401` but proves backend is up,
+  and `127.0.0.1:8000`, `127.0.0.1:8001`, `127.0.0.1:5173` should all be listening.
+
 ## SLG BI Mock Data Constraints
 
 - When creating or changing the SLG BI mock database, keep the dataset at tracking/event detail level.
@@ -23,6 +60,14 @@ Scope: entire repository.
 - Datasource access and the currently selected datasource context take precedence over user wording, test questions, semantic examples, and assistant-specific prompts. If a user mentions a datasource that is not selected or not authorized in the current context, the assistant must not generate SQL against it or use its schema/semantic examples; it should explain the permission/context mismatch and ask the user to switch or request access.
 - If domain-specific behavior is needed for a demo or customer scenario, keep it in configuration, seed scripts, documentation, test fixtures, or datasource-scoped semantic records. Do not wire it into the platform runtime path.
 - Production logic should be driven by system configuration, datasource metadata, user/workspace permissions, semantic-layer records, and selected assistant settings. Prefer extending those configuration mechanisms before adding code branches.
+
+## Temporarily Hidden Smart Q&A Actions
+
+- Smart Q&A chart-answer actions for data analysis and data prediction are intentionally hidden, not deleted.
+- The current switch is `showChartAnalysisPredictActions = false` in `frontend/src/views/chat/index.vue`.
+- Keep `clickAnalysis(...)`, `clickPredict(...)`, `AnalysisAnswer.vue`, `PredictAnswer.vue`, `analysis_record_id`, `predict_record_id`, and related APIs/data compatibility unless the user explicitly asks to permanently remove the capability.
+- Product direction: Smart Q&A should focus on asking data questions and generating charts; deeper analysis and prediction should be handled by the analysis assistant.
+- See `docs/smart_qa_hidden_analysis_predict_actions.md` for the detailed memo and restore steps.
 
 ## Semantic Layer First
 

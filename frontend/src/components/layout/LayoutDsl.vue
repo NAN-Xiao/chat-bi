@@ -6,7 +6,7 @@ import ProjectSelector from './ProjectSelector.vue'
 import Person from './Person.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 import AnalysisAssistantDock from '@/views/analysis-assistant/AnalysisAssistantDock.vue'
-import LOGO_fold from '@/assets/LOGO-fold.svg'
+import elexDataLogoUrl from '@/assets/elex_data.svg?url'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
@@ -98,11 +98,15 @@ onBeforeMount(() => {
                 :style="{ marginLeft: collapse ? '5px' : 0 }"
                 :class="!collapse && 'collapse-icon'"
               ></custom_small>
-              <LOGO_fold
+              <img
                 v-else
                 :style="{ marginLeft: collapse ? '5px' : 0 }"
                 :class="!collapse && 'collapse-icon'"
-              ></LOGO_fold>
+                :src="elexDataLogoUrl"
+                height="30"
+                width="30"
+                alt=""
+              />
               <span v-if="!collapse">{{ $t('training.system_management') }}</span>
             </div>
           </template>
@@ -201,13 +205,24 @@ onBeforeMount(() => {
                   appearanceStore.name
                 }}</span>
               </div>
-              <LOGO_fold
+              <img
                 v-else-if="collapse"
                 style="margin: 0 0 6px 5px; cursor: pointer"
+                :src="elexDataLogoUrl"
+                height="30"
+                width="30"
+                alt=""
                 @click="toChatIndex"
-              ></LOGO_fold>
+              />
               <div v-else class="default-sqlbot">
-                <LOGO_fold class="collapse-icon" @click="toChatIndex"></LOGO_fold>
+                <img
+                  :src="elexDataLogoUrl"
+                  class="collapse-icon"
+                  height="30"
+                  width="30"
+                  alt=""
+                  @click="toChatIndex"
+                />
                 <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
                   appearanceStore.name
                 }}</span>
@@ -259,8 +274,8 @@ onBeforeMount(() => {
   width: 100vw;
   height: 100vh;
   background:
-    linear-gradient(135deg, var(--theme-shell-gradient-a), transparent 32%),
-    linear-gradient(315deg, var(--theme-shell-gradient-b), transparent 34%),
+    linear-gradient(135deg, var(--theme-shell-gradient-a), transparent 30%),
+    linear-gradient(315deg, var(--theme-shell-gradient-b), transparent 32%),
     var(--theme-shell-bg);
   display: flex;
 
@@ -279,11 +294,24 @@ onBeforeMount(() => {
     padding: 16px;
     position: relative;
     min-width: 240px;
-    color: var(--theme-text-primary);
-    --layout-fold-bg-hover: var(--theme-hover-bg);
-    --layout-fold-bg-active: var(--theme-active-bg);
-    --layout-fold-color: var(--theme-text-primary);
-    --layout-fold-color-hover: var(--theme-text-primary);
+    color: var(--theme-sidebar-text);
+    background:
+      linear-gradient(180deg, rgba(47, 107, 255, 0.16), transparent 34%),
+      var(--theme-sidebar-bg);
+    border-right: 1px solid var(--theme-sidebar-border);
+    --layout-fold-bg-hover: var(--theme-sidebar-hover-bg);
+    --layout-fold-bg-active: rgba(47, 107, 255, 0.34);
+    --layout-fold-color: var(--theme-sidebar-text-secondary);
+    --layout-fold-color-hover: var(--theme-sidebar-active-text);
+    --theme-text-primary: var(--theme-sidebar-text);
+    --theme-text-secondary: var(--theme-sidebar-text-secondary);
+    --theme-text-tertiary: rgba(159, 176, 204, 0.72);
+    --theme-control-bg: rgba(255, 255, 255, 0.08);
+    --theme-control-hover-bg: rgba(255, 255, 255, 0.12);
+    --theme-hover-bg: var(--theme-sidebar-hover-bg);
+    --theme-active-bg: rgba(47, 107, 255, 0.34);
+    --theme-shell-border: var(--theme-sidebar-border);
+    --theme-card-shadow: none;
 
     .side-header {
       display: flex;
@@ -348,6 +376,8 @@ onBeforeMount(() => {
       align-items: center;
       font-weight: 500;
       font-size: 16px;
+      line-height: 22px;
+      color: var(--theme-sidebar-active-text);
       cursor: pointer;
       margin-bottom: 12px;
       .collapse-icon {
@@ -360,6 +390,8 @@ onBeforeMount(() => {
       align-items: center;
       font-weight: 500;
       font-size: 16px;
+      line-height: 22px;
+      color: var(--theme-sidebar-active-text);
       cursor: pointer;
       margin-bottom: 12px;
       .collapse-icon {
@@ -382,6 +414,11 @@ onBeforeMount(() => {
         border-radius: 8px;
         height: 40px;
         cursor: pointer;
+        color: var(--theme-sidebar-text-secondary);
+        transition:
+          background 160ms ease,
+          color 160ms ease,
+          border-color 160ms ease;
 
         &:not(.collapse) {
           background: var(--theme-control-bg);
@@ -389,6 +426,7 @@ onBeforeMount(() => {
         }
         &:hover {
           background-color: var(--theme-hover-bg);
+          color: var(--theme-sidebar-active-text);
         }
         &:active {
           background-color: var(--theme-active-bg);
@@ -447,7 +485,7 @@ onBeforeMount(() => {
     flex: 1;
     min-width: 0;
     width: auto;
-    padding: 8px 8px 8px 0;
+    padding: 14px 14px 14px 0;
     max-height: 100vh;
 
     &.right-side-collapse {
@@ -457,10 +495,10 @@ onBeforeMount(() => {
     .content {
       width: 100%;
       height: 100%;
-      padding: 16px 24px;
+      padding: 18px 24px;
       background-color: var(--workspace-shell-bg, var(--theme-panel-bg));
       color: var(--workspace-text-primary, var(--theme-text-primary));
-      border-radius: 12px;
+      border-radius: 8px;
       border: 1px solid var(--workspace-border, var(--theme-shell-border));
       box-shadow: var(--workspace-card-shadow, var(--theme-card-shadow));
       overflow-x: auto;

@@ -6,6 +6,7 @@ import {
   formatNumber,
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
+import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Heatmap extends BaseG2Chart {
   constructor(id: string) {
@@ -26,7 +27,7 @@ export class Heatmap extends BaseG2Chart {
     const series = axes.series
     const _data = checkIsPercent(y, data)
 
-    const options: G2Spec = {
+    const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
       type: 'cell',
       data: _data.data,
@@ -52,7 +53,7 @@ export class Heatmap extends BaseG2Chart {
       },
       scale: {
         color: {
-          range: ['#f7fbff', '#c6dbef', '#6baed6', '#2171b5', '#08306b'],
+          range: ['#f7fbff', '#dbe8ff', '#9bbcff', '#4c84ff', '#1d4ed8'],
         },
       },
       legend: {
@@ -71,7 +72,7 @@ export class Heatmap extends BaseG2Chart {
         name: `${datum[series[0].value]} / ${datum[x[0].value]}`,
         value: `${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
       }),
-    } as G2Spec
+    } as G2Spec)
 
     this.chart.options(options)
   }
