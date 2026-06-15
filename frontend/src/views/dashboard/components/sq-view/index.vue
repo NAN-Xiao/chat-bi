@@ -19,7 +19,7 @@ const props = defineProps({
   },
 })
 
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
@@ -112,12 +112,19 @@ const chartType = computed<ChartTypes>({
     if (currentChartType.value) {
       return currentChartType.value
     }
-    return props.viewInfo.chart['sourceType'] ?? 'table'
+    return props.viewInfo.chart?.type ?? props.viewInfo.chart?.['sourceType'] ?? 'table'
   },
   set(v) {
     currentChartType.value = v
   },
 })
+
+watch(
+  () => [props.viewInfo?.chart?.type, props.viewInfo?.chart?.sourceType],
+  ([type, sourceType]) => {
+    currentChartType.value = type ?? sourceType
+  }
+)
 
 function onTypeChange(val: any) {
   chartType.value = val

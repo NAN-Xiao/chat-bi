@@ -22,7 +22,7 @@
     "@eslint/js": "^9.28.0",
     "@highlightjs/vue-plugin": "^2.1.0",
     "@npkg/tinymce-plugins": "^0.0.7",
-    "@tinymce/tinymce-vue": "^5.1.0",
+    "@tinymce/tinymce-vue": "^6.3.0",
     "@vueuse/core": "^14.1.0",
     "dayjs": "^1.11.13",
     "element-plus": "^2.10.1",

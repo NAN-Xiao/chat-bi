@@ -100,6 +100,7 @@ class Settings(BaseSettings):
 
     MCP_IMAGE_PATH: str = '/opt/sqlbot/images'
     EXCEL_PATH: str = '/opt/sqlbot/data/excel'
+    MCP_ENABLED: bool = False
     MCP_IMAGE_HOST: str = 'http://localhost:3000'
     SERVER_IMAGE_HOST: str = 'http://YOUR_SERVE_IP:MCP_PORT/images/'
     SERVER_IMAGE_TIMEOUT: int = 15
@@ -142,6 +143,7 @@ class Settings(BaseSettings):
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',
                      'GENERATE_SQL_QUERY_LIMIT_ENABLED',
+                     'MCP_ENABLED',
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',
                      'TABLE_EMBEDDING_ENABLED',

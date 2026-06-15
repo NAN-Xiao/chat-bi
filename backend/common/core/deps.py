@@ -22,12 +22,11 @@ CurrentUser = Annotated[UserInfoDTO, Depends(get_current_user)]
 
 async def get_current_assistant(request: Request) -> AssistantHeader | None:
     base_assistant = request.state.assistant if hasattr(request.state, "assistant") else None
+    if base_assistant is None:
+        return None
     if request.headers.get("X-SQLBOT-ASSISTANT-CERTIFICATE"):
         entry_certificate = request.headers['X-SQLBOT-ASSISTANT-CERTIFICATE']
         base_assistant.certificate = unquote(base64.b64decode(entry_certificate).decode('utf-8'))
-    if request.headers.get("X-SQLBOT-ASSISTANT-ONLINE"):
-        entry_online = request.headers['X-SQLBOT-ASSISTANT-ONLINE']
-        base_assistant.online = str(entry_online).lower() == 'true' if entry_online else False
     return base_assistant
 
 CurrentAssistant = Annotated[AssistantHeader, Depends(get_current_assistant)]

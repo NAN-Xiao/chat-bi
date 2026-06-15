@@ -94,7 +94,7 @@ async def datasource_list(session: SessionDep, trans: Trans, mcp_ds: McpDs):
     ds_list = get_datasource_list(session=session, user=session_user)
     result = []
     for item in ds_list:
-        dic = item.__dict__
+        dic = item.model_dump()
         dic.pop('embedding', None)
         dic.pop('table_relation', None)
         dic.pop('recommended_config', None)

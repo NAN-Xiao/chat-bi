@@ -111,6 +111,10 @@ class AssistantDTO(AssistantBase, BaseCreatorDTO):
     pass
 
 
+class AssistantPublicInfo(AssistantDTO):
+    app_id: Optional[str] = None
+
+
 class AssistantHeader(AssistantDTO):
     unique: Optional[str] = None
     certificate: Optional[str] = None

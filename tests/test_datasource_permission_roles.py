@@ -220,6 +220,55 @@ def test_datasource_list_hides_connection_config_for_normal_users():
         assert admin_items[0]["can_manage_project"] is True
 
 
+def test_get_datasource_redacts_config_without_mutating_record():
+    engine = _engine_with_permission_tables()
+    normal_user = SimpleNamespace(id=2, isAdmin=False)
+    admin_user = SimpleNamespace(id=4, system_role="system_admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1))
+        session.commit()
+
+        result = asyncio.run(datasource_api.get_datasource.__wrapped__(session, normal_user, 1))
+        admin_result = asyncio.run(datasource_api.get_datasource.__wrapped__(session, admin_user, 1))
+        session.commit()
+        session.expire_all()
+        datasource = session.get(CoreDatasource, 1)
+
+        assert result["configuration"] is None
+        assert admin_result["configuration"] == "{}"
+        assert datasource.configuration == "{}"
+
+
+def test_update_datasource_ignores_missing_connection_config(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=4, system_role="system_admin")
+    monkeypatch.setattr(datasource_crud, "run_save_ds_embeddings", lambda *args, **kwargs: None)
+
+    with Session(engine) as session:
+        session.add(_datasource(1))
+        session.commit()
+
+        datasource_crud.update_ds(
+            session=session,
+            trans=lambda key: key,
+            user=current_user,
+            ds=CoreDatasource(
+                id=1,
+                name="Renamed Project",
+                type="pg",
+                configuration=None,
+                create_by=9,
+                recommended_config=1,
+            ),
+        )
+        session.expire_all()
+        datasource = session.get(CoreDatasource, 1)
+
+        assert datasource.name == "Renamed Project"
+        assert datasource.configuration == "{}"
+
+
 def test_update_datasource_users_excludes_system_admin_by_role_not_user_id():
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=4, system_role="system_admin")

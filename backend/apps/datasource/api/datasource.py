@@ -77,6 +77,22 @@ class DatasourceListItem(BaseModel):
     can_manage_project: bool = False
 
 
+class DatasourceDetailItem(BaseModel):
+    id: Optional[int] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    type: Optional[str] = None
+    type_name: Optional[str] = None
+    configuration: Optional[str] = None
+    create_time: Optional[datetime] = None
+    create_by: Optional[int] = None
+    status: Optional[str] = None
+    num: Optional[str] = None
+    table_relation: Optional[Any] = None
+    embedding: Optional[str] = None
+    recommended_config: Optional[int] = None
+
+
 @router.get("/list", response_model=List[DatasourceListItem], summary=f"{PLACEHOLDER_PREFIX}ds_list",
             description=f"{PLACEHOLDER_PREFIX}ds_list_description")
 async def datasource_list(session: SessionDep, user: CurrentUser):
@@ -178,13 +194,20 @@ async def update_datasource_user_api(
     }
 
 
-@router.post("/get/{id}", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_get")
+@router.post("/get/{id}", response_model=Optional[DatasourceDetailItem], summary=f"{PLACEHOLDER_PREFIX}ds_get")
 @require_permissions(permission=SqlbotPermission(type='ds', keyExpression="id"))
-async def get_datasource(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+async def get_datasource(
+        session: SessionDep,
+        user: CurrentUser,
+        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+):
     datasource = get_ds(session, id)
-    if datasource is not None:
-        datasource.configuration = None
-    return datasource
+    if datasource is None:
+        return None
+    data = datasource.model_dump()
+    if not is_system_admin(user):
+        data["configuration"] = None
+    return data
 
 
 @router.post("/check", response_model=bool, summary=f"{PLACEHOLDER_PREFIX}ds_check")

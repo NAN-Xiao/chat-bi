@@ -746,6 +746,35 @@ def test_project_viewer_can_rename_own_dashboard(monkeypatch):
         assert record.update_by == "2"
 
 
+def test_validate_name_allows_update_when_name_unchanged(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="留存相关",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        assert dashboard_service.validate_name(
+            session=session,
+            user=current_user,
+            dashboard=QueryDashboard(id="dashboard-1", name="留存相关", opt="updateLeaf", datasource=2),
+        ) is True
+
+
 def test_project_viewer_cannot_create_under_folder_they_cannot_edit(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False)

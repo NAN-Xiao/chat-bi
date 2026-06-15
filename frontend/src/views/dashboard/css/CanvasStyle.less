@@ -22,9 +22,8 @@
     position: absolute;
     width: 100px;
     height: 100px;
-    background-color: #fff;
+    background-color: transparent;
     cursor: move;
-    border-radius: 12px;
     .resizeHandle {
       position: absolute;
       background: #fff;
@@ -33,6 +32,14 @@
       height: 8px;
       border-radius: 50%;
       z-index: 10;
+    }
+
+    .item-content {
+      position: absolute;
+      inset: var(--dashboard-item-gap, 8px);
+      overflow: hidden;
+      background-color: #fff;
+      border-radius: 12px;
     }
 
     .sq-component {
@@ -57,15 +64,27 @@
     z-index: 100;
 
     transition: none;
-    border-radius: 12px;
     opacity: .5;
     overflow: hidden;
+
+    .item-content {
+      opacity: 1;
+    }
+
+    .clone_img {
+      position: absolute;
+      inset: var(--dashboard-item-gap, 8px);
+      width: calc(100% - var(--dashboard-item-gap, 8px) * 2);
+      height: calc(100% - var(--dashboard-item-gap, 8px) * 2);
+      border-radius: 12px;
+      object-fit: cover;
+      z-index: 2;
+    }
   }
 
   .movingItem {
     position: absolute;
     border: none;
-    border-radius: 12px;
     overflow: hidden;
     &:before {
       position: absolute;

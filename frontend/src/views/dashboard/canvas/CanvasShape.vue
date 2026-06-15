@@ -85,7 +85,9 @@ const dragDandleValue = computed(() => props.canEdit && !props.configItem.editin
     <template v-if="dragDandleValue">
       <drag-handle></drag-handle>
     </template>
-    <slot></slot>
+    <div class="item-content">
+      <slot></slot>
+    </div>
     <resize-handle
       v-if="active && canEdit"
       :start-resize="

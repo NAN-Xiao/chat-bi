@@ -694,6 +694,8 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
             raise ValueError("id is required for update operation")
         record = _load_dashboard_or_404(session, dashboard.id)
         _require_edit_permission(session, user, record)
+        if dashboard.name == record.name:
+            return True
         datasource_id = record.datasource or datasource_id
         query = session.query(CoreDashboard).filter(
             and_(

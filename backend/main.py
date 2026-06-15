@@ -182,7 +182,7 @@ os.makedirs(images_path, exist_ok=True)
 mcp_app.mount("/images", StaticFiles(directory=images_path), name="images")
 
 mcp = None
-if FastApiMCP is not None:
+if settings.MCP_ENABLED and FastApiMCP is not None:
     mcp = FastApiMCP(
         app,
         name="星通智数 MCP Server",
@@ -192,8 +192,10 @@ if FastApiMCP is not None:
         include_operations=["mcp_datasource_list", "get_model_list", "mcp_question", "mcp_start", "mcp_assistant"]
     )
     mcp.mount(mcp_app)
-else:
+elif settings.MCP_ENABLED:
     SQLBotLogUtil.warning(f"Skip MCP server setup because fastapi_mcp is unavailable: {_FASTAPI_MCP_IMPORT_ERROR}")
+else:
+    SQLBotLogUtil.info("MCP server is disabled by MCP_ENABLED=false")
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:

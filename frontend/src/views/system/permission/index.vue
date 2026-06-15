@@ -671,7 +671,7 @@ const columnRules = {
           :xs="24"
           :sm="12"
           :md="12"
-          :lg="8"
+          :lg="6"
           :xl="6"
           class="mb-16"
         >
@@ -1042,6 +1042,7 @@ const columnRules = {
   .card-content {
     max-height: calc(100% - 40px);
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 0 8px 0 24px;
 
     .w-full {

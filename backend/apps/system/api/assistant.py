@@ -22,7 +22,7 @@ from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.permission import SqlbotPermission, require_permissions
-from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantValidator
+from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantPublicInfo, AssistantValidator
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, Trans, CurrentUser
 from common.core.security import create_access_token
@@ -35,8 +35,44 @@ from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 
+PUBLIC_CONFIGURATION_KEYS = {
+    "name",
+    "welcome",
+    "welcome_desc",
+    "theme",
+    "header_font_color",
+    "logo",
+    "auto_ds",
+    "show_guide",
+    "float_icon",
+    "float_icon_drag",
+    "x_type",
+    "y_type",
+    "x_val",
+    "y_val",
+}
+
+
+def _public_assistant_info(db_model: AssistantModel, include_certificate: bool = False) -> AssistantPublicInfo:
+    data = db_model.model_dump(exclude={"app_secret"})
+    try:
+        configuration = json.loads(data.get("configuration") or "{}")
+        allowed_keys = set(PUBLIC_CONFIGURATION_KEYS)
+        if include_certificate:
+            allowed_keys.add("certificate")
+        public_configuration = {
+            key: configuration[key]
+            for key in allowed_keys
+            if key in configuration
+        }
+        data["configuration"] = json.dumps(public_configuration, ensure_ascii=False)
+    except Exception:
+        data["configuration"] = "{}"
+    return AssistantPublicInfo.model_validate(data)
+
+
 @router.get("/info/{id}", include_in_schema=False)
-async def info(request: Request, response: Response, session: SessionDep, trans: Trans, id: int) -> AssistantModel:
+async def info(request: Request, response: Response, session: SessionDep, trans: Trans, id: int) -> AssistantPublicInfo:
     if not id:
         raise Exception('miss assistant id')
     db_model = await get_assistant_info(session=session, assistant_id=id)
@@ -52,11 +88,11 @@ async def info(request: Request, response: Response, session: SessionDep, trans:
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
     
     response.headers["Access-Control-Allow-Origin"] = origin
-    return db_model
+    return _public_assistant_info(db_model, include_certificate=True)
 
 
 @router.get("/app/{appId}", include_in_schema=False)
-async def getApp(request: Request, response: Response, session: SessionDep, trans: Trans, appId: str) -> AssistantModel:
+async def getApp(request: Request, response: Response, session: SessionDep, trans: Trans, appId: str) -> AssistantPublicInfo:
     if not appId:
         raise Exception('miss assistant appId')
     db_model = session.exec(select(AssistantModel).where(AssistantModel.app_id == appId)).first()
@@ -71,11 +107,11 @@ async def getApp(request: Request, response: Response, session: SessionDep, tran
         raise RuntimeError(trans('i18n_embedded.invalid_origin', origin=origin or ''))
     
     response.headers["Access-Control-Allow-Origin"] = origin
-    return db_model
+    return _public_assistant_info(db_model, include_certificate=True)
 
 
 @router.get("/validator", response_model=AssistantValidator, include_in_schema=False)
-async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query(None)):
+async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query(None), online: Optional[bool] = Query(False)):
     if not id:
         raise Exception('miss assistant id')
 
@@ -85,8 +121,13 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     db_model = AssistantModel.model_validate(db_model)
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    # Keep the query parameter for frontend compatibility, but do not treat it as an auth signal.
+    _ = online
     assistantDict = {
-        "id": virtual, "account": 'sqlbot-inner-assistant', "assistant_id": id
+        "id": virtual,
+        "account": 'sqlbot-inner-assistant',
+        "assistant_id": id,
+        "assistant_online": False,
     }
     access_token = create_access_token(
         assistantDict, expires_delta=access_token_expires
@@ -208,13 +249,13 @@ async def update(request: Request, session: SessionDep, editor: AssistantDTO):
     dynamic_upgrade_cors(request=request, session=session)
 
 
-@router.get("/{id}", response_model=AssistantModel, summary=f"{PLACEHOLDER_PREFIX}assistant_query_api", description=f"{PLACEHOLDER_PREFIX}assistant_query_api")
-async def get_one(session: SessionDep, id: int = Path(description="ID")):
+@router.get("/{id}", response_model=AssistantPublicInfo, summary=f"{PLACEHOLDER_PREFIX}assistant_query_api", description=f"{PLACEHOLDER_PREFIX}assistant_query_api")
+async def get_one(session: SessionDep, id: int = Path(description="ID")) -> AssistantPublicInfo:
     db_model = await get_assistant_info(session=session, assistant_id=id)
     if not db_model:
         raise ValueError(f"AssistantModel with id {id} not found")
     db_model = AssistantModel.model_validate(db_model)
-    return db_model
+    return _public_assistant_info(db_model)
 
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}assistant_del_api", description=f"{PLACEHOLDER_PREFIX}assistant_del_api")

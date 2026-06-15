@@ -64,6 +64,7 @@ const axis = computed(() => {
 let chartInstance: BaseChart | undefined
 
 function renderChart() {
+  destroyChart()
   chartInstance = getChartInstance(params.type, chartId.value)
   if (chartInstance) {
     chartInstance.showLabel = params.showLabel
@@ -72,19 +73,32 @@ function renderChart() {
   }
 }
 
-watch(
-  () => params.showLabel,
-  () => {
-    renderChart()
-  }
-)
-
 function destroyChart() {
   if (chartInstance) {
     chartInstance.destroy()
     chartInstance = undefined
   }
+  document.getElementById(chartId.value)?.replaceChildren()
 }
+
+watch(
+  () => ({
+    type: params.type,
+    columns: params.columns,
+    x: params.x,
+    y: params.y,
+    series: params.series,
+    data: params.data,
+    multiQuotaName: params.multiQuotaName,
+    showLabel: params.showLabel,
+  }),
+  () => {
+    nextTick(() => {
+      renderChart()
+    })
+  },
+  { deep: true, flush: 'post' }
+)
 
 function getExcelData() {
   return {

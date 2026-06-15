@@ -5,6 +5,7 @@ import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import { get_supplier } from '@/entity/supplier'
 import { computed, ref, unref } from 'vue'
+import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 const props = withDefaults(
   defineProps<{
     name: string
@@ -69,10 +70,12 @@ defineExpose({ showErrorMask })
     :element-loading-text="errorMsg"
     element-loading-custom-class="model-card-loading"
   >
-    <div class="name-icon">
-      <img :src="current_supplier?.icon" width="32px" height="32px" />
-      <span :title="name" class="name ellipsis">{{ name }}</span>
-      <span v-if="isDefault" class="default">{{ $t('model.default_model') }}</span>
+    <div class="card-head">
+      <div class="name-icon">
+        <img :src="current_supplier?.icon" width="32px" height="32px" />
+        <span :title="name" class="name ellipsis">{{ name }}</span>
+        <span v-if="isDefault" class="default">{{ $t('model.default_model') }}</span>
+      </div>
     </div>
     <div class="type-value">
       <span class="type">{{ $t('model.model_type') }}</span>
@@ -84,34 +87,7 @@ defineExpose({ showErrorMask })
       <span class="type">{{ $t('model.basic_model') }}</span>
       <span class="value"> {{ baseModel }}</span>
     </div>
-    <div class="methods">
-      <el-tooltip
-        v-if="isDefault"
-        effect="dark"
-        :content="$t('common.the_default_model')"
-        placement="top"
-      >
-        <el-button secondary disabled>
-          <el-icon style="margin-right: 4px" size="16">
-            <icon_admin_outlined></icon_admin_outlined>
-          </el-icon>
-          {{ $t('common.as_default_model') }}
-        </el-button>
-      </el-tooltip>
-
-      <el-button v-else secondary @click="handleDefault">
-        <el-icon style="margin-right: 4px" size="16">
-          <icon_admin_outlined></icon_admin_outlined>
-        </el-icon>
-        {{ $t('common.as_default_model') }}
-      </el-button>
-      <el-button secondary @click="handleEdit">
-        <el-icon style="margin-right: 4px" size="16">
-          <edit></edit>
-        </el-icon>
-        {{ $t('dashboard.edit') }}
-      </el-button>
-
+    <div class="methods" @click.stop>
       <el-icon
         ref="buttonRef"
         v-click-outside="onClickOutside"
@@ -127,11 +103,23 @@ defineExpose({ showErrorMask })
         :virtual-ref="buttonRef"
         virtual-triggering
         trigger="click"
-        :teleported="false"
-        popper-class="popover-card-project"
-        placement="bottom-start"
+        :teleported="true"
+        popper-class="popover-card_model"
+        placement="bottom-end"
       >
         <div class="content">
+          <div v-if="!isDefault" class="item" @click.stop="handleDefault">
+            <el-icon size="16">
+              <icon_admin_outlined></icon_admin_outlined>
+            </el-icon>
+            {{ $t('common.as_default_model') }}
+          </div>
+          <div class="item" @click.stop="handleEdit">
+            <el-icon size="16">
+              <edit></edit>
+            </el-icon>
+            {{ $t('dashboard.edit') }}
+          </div>
           <div class="item" @click.stop="handleDel">
             <el-icon size="16">
               <delIcon></delIcon>
@@ -147,34 +135,59 @@ defineExpose({ showErrorMask })
 <style lang="less" scoped>
 .card {
   width: 100%;
-  height: 206px;
+  height: 152px;
   border: 1px solid #dee0e3;
-  padding: 16px;
-  border-radius: 12px;
+  padding: 16px 60px 16px 16px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 1px 5px 14px rgba(31, 35, 41, 0.08);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition:
+    box-shadow 0.12s ease,
+    transform 0.12s ease,
+    border-color 0.12s ease;
+
   &:hover {
-    box-shadow: 0px 6px 24px 0px #1f232914;
+    border-color: #d7dce2;
+    box-shadow: 3px 8px 24px rgba(31, 35, 41, 0.13);
+    transform: translateY(-2px) scale(1.012);
+  }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    margin-bottom: 14px;
   }
 
   .name-icon {
     display: flex;
     align-items: center;
-    margin-bottom: 12px;
+    min-width: 0;
+    flex: 1;
+
+    img {
+      flex: 0 0 auto;
+    }
+
     .name {
       margin-left: 12px;
       font-weight: 500;
       font-size: 16px;
       line-height: 24px;
-      max-width: calc(100% - 115px);
+      min-width: 0;
     }
     .default {
       margin-left: auto;
       background: var(--ed-color-primary-33, #1cba9033);
-      padding: 0 4px;
-      border-radius: 6px;
+      padding: 1px 7px;
+      border-radius: 999px;
       color: var(--ed-color-primary-dark-2);
       font-weight: 400;
       font-size: 12px;
-      line-height: 20px;
+      line-height: 18px;
+      white-space: nowrap;
     }
   }
 
@@ -191,11 +204,19 @@ defineExpose({ showErrorMask })
 
     .value {
       margin-left: 16px;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
     }
   }
 
   .methods {
-    margin-top: 16px;
+    position: absolute;
+    right: 16px;
+    top: 96px;
+    flex: 0 0 auto;
     align-items: center;
     display: flex;
 
@@ -208,9 +229,12 @@ defineExpose({ showErrorMask })
     .more {
       position: relative;
       cursor: pointer;
-      margin-left: 12px;
       width: 32px;
       height: 32px;
+      flex: 0 0 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
 
       svg {
         position: relative;
@@ -221,8 +245,8 @@ defineExpose({ showErrorMask })
         content: '';
         position: absolute;
         border-radius: 6px;
-        width: 30px;
-        height: 30px;
+        width: 32px;
+        height: 32px;
         transform: translate(-50%, -50%);
         top: 50%;
         left: 50%;
@@ -237,14 +261,8 @@ defineExpose({ showErrorMask })
       }
     }
   }
-
-  &:hover {
-    .methods {
-      display: flex;
-    }
-  }
   :deep(.model-card-loading) {
-    border-radius: 12px;
+    border-radius: 8px;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
@@ -271,7 +289,7 @@ defineExpose({ showErrorMask })
 </style>
 
 <style lang="less">
-.popover-card-project.popover-card-project {
+.popover-card_model.popover-card_model.popover-card_model {
   box-shadow: 0px 4px 8px 0px #1f23291a;
   border-radius: 6px;
   border: 1px solid #dee0e3;

@@ -2,14 +2,12 @@
 import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
-import icon_chat_outlined from '@/assets/svg/icon_new-chat_outlined.svg'
 import { computed, ref, unref } from 'vue'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import icon_recommended_problem from '@/assets/svg/icon_recommended_problem.svg'
-import { datasourceApi } from '@/api/datasource.ts'
 
 const props = withDefaults(
   defineProps<{
@@ -34,13 +32,10 @@ const props = withDefaults(
 const emits = defineEmits([
   'edit',
   'del',
-  'question',
   'dataTableDetail',
   'showTable',
   'recommendation',
   'members',
-  'startChecking',
-  'endChecking',
 ])
 const icon = computed(() => {
   return (dsTypeWithImg.find((ele) => props.type === ele.type) || {}).img
@@ -59,33 +54,6 @@ const handleMembers = () => {
 
 const handleDel = () => {
   emits('del')
-}
-
-const handleQuestion = () => {
-  //check first
-  emits('startChecking')
-  datasourceApi
-    .check_by_id(props.id)
-    .then((res: any) => {
-      if (res) {
-        emits('question', props.id)
-      }
-    })
-    .finally(() => {
-      emits('endChecking')
-    })
-}
-
-function runSQL() {
-  datasourceApi.execSql(
-    props.id,
-    'SELECT TO_CHAR(FLOOR("c"."CREDIT_LIMIT" / 10000) * 10000) || \' - \' || TO_CHAR((FLOOR("c"."CREDIT_LIMIT" / 10000) + 1) * 10000) AS "credit_range",\n' +
-      '       COUNT(*) AS "customer_count"\n' +
-      'FROM "WEI"."CUSTOMERS" "c"\n' +
-      'WHERE "c"."CREDIT_LIMIT" IS NOT NULL\n' +
-      'GROUP BY FLOOR("c"."CREDIT_LIMIT" / 10000)\n' +
-      'ORDER BY FLOOR("c"."CREDIT_LIMIT" / 10000)'
-  )
 }
 
 const dataTableDetail = () => {
@@ -119,13 +87,6 @@ const onClickOutside = () => {
         {{ num }}
       </div>
       <div click.stop class="methods">
-        <el-button v-if="false" @click="runSQL">test</el-button>
-        <el-button type="primary" style="margin-right: 8px" @click.stop="handleQuestion">
-          <el-icon style="margin-right: 4px" size="16">
-            <icon_chat_outlined></icon_chat_outlined>
-          </el-icon>
-          {{ $t('datasource.open_query') }}
-        </el-button>
         <el-icon
           v-if="canManageProject"
           ref="buttonRef"
@@ -142,7 +103,7 @@ const onClickOutside = () => {
           :virtual-ref="buttonRef"
           virtual-triggering
           trigger="click"
-          :teleported="false"
+          :teleported="true"
           popper-class="popover-card_ds"
           placement="bottom-end"
         >
@@ -183,11 +144,19 @@ const onClickOutside = () => {
   width: 100%;
   border: 1px solid #dee0e3;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 1px 5px 14px rgba(31, 35, 41, 0.08);
   cursor: pointer;
+  transition:
+    box-shadow 0.12s ease,
+    transform 0.12s ease,
+    border-color 0.12s ease;
 
   &:hover {
-    box-shadow: 0px 6px 24px 0px #1f232914;
+    border-color: #d7dce2;
+    box-shadow: 3px 8px 24px rgba(31, 35, 41, 0.13);
+    transform: translateY(-2px) scale(1.012);
   }
 
   .name-icon {
@@ -252,6 +221,10 @@ const onClickOutside = () => {
     .methods {
       align-items: center;
       display: none;
+
+      .ed-button {
+        margin-left: 0;
+      }
 
       .more {
         position: relative;

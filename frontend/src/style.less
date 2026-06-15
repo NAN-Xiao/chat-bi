@@ -1405,12 +1405,12 @@ strong {
   .ed-overlay,
   .ed-overlay-dialog,
   .ed-message-box__wrapper,
-  .ed-popper:not(.system-person):not(.system-language),
-  .ed-popper.is-light:not(.system-person):not(.system-language),
+  .ed-popper:not(.system-person):not(.system-language):not(.system-project),
+  .ed-popper.is-light:not(.system-person):not(.system-language):not(.system-project),
   .ed-dialog:not(.chart-fullscreen-dialog),
   .ed-drawer,
-  .ed-popover:not(.system-person):not(.system-language),
-  .ed-dropdown__popper:not(.system-person):not(.system-language),
+  .ed-popover:not(.system-person):not(.system-language):not(.system-project),
+  .ed-dropdown__popper:not(.system-person):not(.system-language):not(.system-project),
   .ed-select__popper,
   .ed-cascader__dropdown,
   .ed-picker__popper,
@@ -1471,9 +1471,9 @@ strong {
     box-shadow: 0 0 12px rgba(31, 35, 41, 0.08) !important;
   }
 
-  .ed-popover:not(.system-person):not(.system-language),
-  .ed-popper.is-light:not(.system-person):not(.system-language),
-  .ed-dropdown__popper:not(.system-person):not(.system-language),
+  .ed-popover:not(.system-person):not(.system-language):not(.system-project),
+  .ed-popper.is-light:not(.system-person):not(.system-language):not(.system-project),
+  .ed-dropdown__popper:not(.system-person):not(.system-language):not(.system-project),
   .ed-select__popper,
   .ed-cascader__dropdown,
   .ed-picker__popper,
@@ -1489,9 +1489,9 @@ strong {
   .ed-drawer__header,
   .ed-drawer__body,
   .ed-drawer__footer,
-  .ed-popover:not(.system-person):not(.system-language),
-  .ed-popper.is-light:not(.system-person):not(.system-language),
-  .ed-dropdown__popper:not(.system-person):not(.system-language),
+  .ed-popover:not(.system-person):not(.system-language):not(.system-project),
+  .ed-popper.is-light:not(.system-person):not(.system-language):not(.system-project),
+  .ed-dropdown__popper:not(.system-person):not(.system-language):not(.system-project),
   .ed-select__popper,
   .ed-cascader__dropdown,
   .ed-picker-panel,
@@ -1510,7 +1510,7 @@ strong {
   .ed-select__popper .ed-scrollbar,
   .ed-select__popper .ed-scrollbar__wrap,
   .ed-select__popper .ed-scrollbar__view,
-  .ed-dropdown__popper:not(.system-person):not(.system-language) .ed-dropdown-menu,
+  .ed-dropdown__popper:not(.system-person):not(.system-language):not(.system-project) .ed-dropdown-menu,
   .ed-cascader__dropdown .ed-cascader-panel,
   .ed-cascader__dropdown .ed-cascader-menu,
   .ed-cascader__dropdown .ed-cascader-menu__wrap,
@@ -1536,7 +1536,7 @@ strong {
   .ed-dialog:not(.chart-fullscreen-dialog) .ed-dialog__body,
   .ed-drawer__title,
   .ed-drawer__body,
-  .ed-popover:not(.system-person):not(.system-language),
+  .ed-popover:not(.system-person):not(.system-language):not(.system-project),
   .ed-popover__title,
   .ed-message-box__title,
   .ed-message-box__message,
@@ -1886,6 +1886,105 @@ strong {
 }
 
 :root[data-theme='dark'] {
+  .system-project.system-project {
+    color-scheme: dark;
+    --project-popper-bg: #15213a;
+    --project-popper-bg-soft: #1b2945;
+    --project-popper-hover-bg: rgba(74, 115, 190, 0.22);
+    --project-popper-active-bg: rgba(47, 107, 255, 0.2);
+    --project-popper-border: rgba(132, 159, 204, 0.18);
+    --project-popper-text: #f3f7ff;
+    --project-popper-text-secondary: #aab7d0;
+    --project-popper-text-tertiary: #7f8da8;
+    --ed-bg-color: var(--project-popper-bg);
+    --ed-bg-color-overlay: var(--project-popper-bg);
+    --ed-fill-color: var(--project-popper-bg-soft);
+    --ed-fill-color-light: var(--project-popper-hover-bg);
+    --ed-fill-color-blank: var(--project-popper-bg);
+    --ed-input-bg-color: var(--project-popper-bg-soft);
+    --ed-input-border-color: var(--project-popper-border);
+    --ed-input-text-color: var(--project-popper-text);
+    --ed-input-placeholder-color: var(--project-popper-text-tertiary);
+    --ed-text-color-primary: var(--project-popper-text);
+    --ed-text-color-regular: var(--project-popper-text);
+    --ed-text-color-secondary: var(--project-popper-text-secondary);
+    --ed-text-color-placeholder: var(--project-popper-text-tertiary);
+    --ed-border-color: var(--project-popper-border);
+    --ed-border-color-light: var(--project-popper-border);
+    --ed-border-color-lighter: rgba(132, 159, 204, 0.12);
+
+    background: var(--project-popper-bg) !important;
+    color: var(--project-popper-text) !important;
+    border-color: var(--project-popper-border) !important;
+    box-shadow: 0 16px 34px rgba(2, 8, 23, 0.34) !important;
+
+    .popover,
+    .popover-content,
+    .ed-scrollbar,
+    .ed-scrollbar__wrap,
+    .ed-scrollbar__view {
+      background: var(--project-popper-bg) !important;
+      color: var(--project-popper-text) !important;
+    }
+
+    .ed-input {
+      background: var(--project-popper-bg) !important;
+      border-color: var(--project-popper-border) !important;
+    }
+
+    .ed-input__wrapper {
+      background: var(--project-popper-bg-soft) !important;
+      box-shadow: 0 0 0 1px var(--project-popper-border) inset !important;
+      color: var(--project-popper-text) !important;
+    }
+
+    .ed-input__inner {
+      color: var(--project-popper-text) !important;
+      -webkit-text-fill-color: var(--project-popper-text) !important;
+    }
+
+    .ed-input__inner::placeholder {
+      color: var(--project-popper-text-tertiary) !important;
+      -webkit-text-fill-color: var(--project-popper-text-tertiary) !important;
+    }
+
+    .ed-input__prefix,
+    .ed-input__suffix,
+    .ed-input__prefix-inner,
+    .ed-input__suffix-inner,
+    .ed-icon {
+      color: var(--project-popper-text-secondary) !important;
+    }
+
+    .popover-item,
+    .datasource-name {
+      color: var(--project-popper-text) !important;
+    }
+
+    .popover-item:not(.empty):hover {
+      background: var(--project-popper-hover-bg) !important;
+      color: var(--project-popper-text) !important;
+    }
+
+    .popover-item.empty {
+      color: var(--project-popper-text-secondary) !important;
+    }
+
+    .popover-item.isActive {
+      background: var(--project-popper-active-bg) !important;
+      color: #74a0ff !important;
+
+      .datasource-name,
+      .done {
+        color: #74a0ff !important;
+      }
+    }
+
+    .isSearch {
+      color: #8db4ff !important;
+    }
+  }
+
   .analysis-assistant-dock {
     color-scheme: light;
     --theme-panel-bg: var(--workspace-card-bg, #fff);

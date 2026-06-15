@@ -5,7 +5,6 @@ import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlin
 import arrow_down from '@/assets/svg/arrow-down.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
-import { useRouter } from 'vue-router'
 import DataTable from './DataTable.vue'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import { datasourceApi } from '@/api/datasource'
@@ -16,7 +15,6 @@ import ProjectUserDialog from './ProjectUserDialog.vue'
 import { dsTypeWithImg } from './js/ds-type'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
-import { chatApi } from '@/api/chat'
 import RecommendedProblemConfigDialog from '@/views/ds/RecommendedProblemConfigDialog.vue'
 import { highlightKeyword } from '@/utils/xss'
 const userStore = useUserStore()
@@ -36,7 +34,6 @@ export interface Datasource {
   can_manage_project?: boolean
 }
 
-const router = useRouter()
 const { t } = useI18n()
 const keywords = ref('')
 const defaultDatasourceKeywords = ref('')
@@ -89,42 +86,6 @@ const handleRecommendation = (res: Datasource) => {
 
 const handleProjectUsers = (res: Datasource) => {
   projectUserDialogRef.value?.open(res)
-}
-
-const handleQuestion = async (id: string) => {
-  try {
-    await chatApi.checkLLMModel()
-  } catch (error: any) {
-    console.error(error)
-    let errorMsg = t('model.default_miss')
-    let confirm_text = t('datasource.got_it')
-    if (userStore.isSystemAdminUser) {
-      errorMsg = t('model.default_miss_admin')
-      confirm_text = t('model.to_config')
-    }
-    ElMessageBox.confirm(t('qa.ask_failed'), {
-      confirmButtonType: 'primary',
-      tip: errorMsg,
-      showCancelButton: userStore.isSystemAdminUser,
-      confirmButtonText: confirm_text,
-      cancelButtonText: t('common.cancel'),
-      customClass: 'confirm-no_icon',
-      autofocus: false,
-      showClose: false,
-      callback: (val: string) => {
-        if (userStore.isSystemAdminUser && val === 'confirm') {
-          router.push('/system/model')
-        }
-      },
-    })
-    return
-  }
-  router.push({
-    path: '/chat/index',
-    query: {
-      start_chat: id,
-    },
-  })
 }
 
 const handleAddDatasource = () => {
@@ -206,19 +167,10 @@ const back = () => {
   currentDataTable.value = null
 }
 
-const loading = ref(false)
-
-function startLoading() {
-  loading.value = true
-}
-function endLoading() {
-  loading.value = false
-}
-
 </script>
 
 <template>
-  <div v-show="!currentDataTable" v-loading="loading" class="datasource-config no-padding">
+  <div v-show="!currentDataTable" class="datasource-config no-padding">
     <div class="datasource-methods">
       <span class="title">{{ $t('ds.title') }}</span>
       <div class="button-input">
@@ -313,9 +265,6 @@ function endLoading() {
             :num="ele.num"
             :description="ele.description"
             :can-manage-project="ele.can_manage_project === true"
-            @start-checking="startLoading"
-            @end-checking="endLoading"
-            @question="handleQuestion"
             @edit="handleEditDatasource(ele)"
             @recommendation="handleRecommendation(ele)"
             @members="handleProjectUsers(ele)"

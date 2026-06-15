@@ -371,16 +371,11 @@ const submit = (item: any) => {
       img-type="tree"
     />
     <div v-else class="card-content">
-      <el-row :gutter="16" class="w-full">
-        <el-col
+      <div class="model-card-grid">
+        <div
           v-for="(ele, index) in modelListWithSearch"
           :key="ele.id"
-          :xs="24"
-          :sm="12"
-          :md="12"
-          :lg="8"
-          :xl="6"
-          class="mb-16"
+          class="model-card-item"
         >
           <card
             :id="ele.id"
@@ -395,8 +390,8 @@ const submit = (item: any) => {
             @del="deleteHandler"
             @default="handleDefault(ele)"
           ></card>
-        </el-col>
-      </el-row>
+        </div>
+      </div>
     </div>
     <template v-if="!keywords && !modelListWithSearch.length && !searchLoading">
       <EmptyBackground
@@ -498,12 +493,11 @@ const submit = (item: any) => {
     overflow-y: auto;
     padding: 0 8px 0 24px;
 
-    .w-full {
-      width: 100%;
-    }
-
-    .mb-16 {
-      margin-bottom: 16px;
+    .model-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 320px));
+      gap: 16px;
+      align-items: start;
     }
   }
 }

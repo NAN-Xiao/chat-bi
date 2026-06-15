@@ -165,6 +165,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 assistant_info = await get_assistant_info(session=session, assistant_id=payload['assistant_id'])
                 assistant_info = AssistantModel.model_validate(assistant_info)
                 assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
+                assistant_info.online = bool(payload.get("assistant_online", False))
                         
                 return True, session_user, assistant_info
         except Exception as e:

@@ -16,6 +16,7 @@ import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 import ChatChartSelection from '@/views/dashboard/editor/ChatChartSelection.vue'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import router from '@/router'
 const fullScreeRef = ref(null)
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -139,15 +140,10 @@ const redo = () => {
 }
 
 const backToMain = () => {
-  let url = '#/dashboard/index'
-  if (dashboardInfo.value.id) {
-    url = url + '?resourceId=' + dashboardInfo.value.id
-  }
-  if (history.state.back) {
-    history.back()
-  } else {
-    window.open(url, '_self')
-  }
+  router.push({
+    path: '/dashboard/index',
+    query: dashboardInfo.value.id ? { resourceId: dashboardInfo.value.id } : undefined,
+  })
 }
 
 const addChatChart = (views: any) => {

@@ -107,6 +107,8 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
     ds.status = "Success"
     record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()
     update_data = ds.model_dump(exclude_unset=True)
+    if update_data.get("configuration") in (None, ""):
+        update_data.pop("configuration", None)
     for field, value in update_data.items():
         setattr(record, field, value)
     session.add(record)

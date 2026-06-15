@@ -124,8 +124,14 @@ const editSql = (id: string) => {
   sqlEditorVisible.value = true
 }
 
-const onSqlApplied = () => {
-  useEmitt().emitter.emit('view-render-all')
+const onSqlApplied = (viewInfo: any) => {
+  nextTick(() => {
+    if (viewInfo?.id) {
+      useEmitt().emitter.emit(`view-render-${viewInfo.id}`)
+      return
+    }
+    useEmitt().emitter.emit('view-render-all')
+  })
 }
 
 const {
@@ -818,11 +824,46 @@ function getNowPosition(addSizeX: number, addSizeY: number, moveXSize: number, m
   return { nowSizeX, nowSizeY, nowX, nowY, nowOriginWidth, nowOriginHeight, nowOriginX, nowOriginY }
 }
 
+function snapDistanceToCell(distance: number, cellSize: number) {
+  if (cellSize <= 0) return 0
+  return Math.round(distance / cellSize)
+}
+
+function positionToCell(position: number, cellSize: number, margin: number) {
+  if (cellSize <= 0) return 1
+  return Math.max(1, Math.round((position - margin) / cellSize) + 1)
+}
+
+function getSnappedItemStyle(x: number, y: number, sizeX: number, sizeY: number) {
+  return {
+    left: cellWidth.value * (x - 1) + baseMarginLeft.value,
+    top: cellHeight.value * (y - 1) + baseMarginTop.value,
+    width: Math.max(baseWidth.value, cellWidth.value * sizeX - baseMarginLeft.value),
+    height: Math.max(baseHeight.value, cellHeight.value * sizeY - baseMarginTop.value),
+  }
+}
+
+function limitItemX(x: number, sizeX: number) {
+  return Math.min(Math.max(x, 1), Math.max(1, itemMaxX - sizeX + 1))
+}
+
+function normalizeResizeFrame(x: number, y: number, sizeX: number, sizeY: number) {
+  const normalizedX = Math.max(x, 1)
+  const normalizedSizeX = Math.max(1, Math.min(sizeX, itemMaxX - normalizedX + 1))
+
+  return {
+    x: normalizedX,
+    y: Math.max(y, 1),
+    sizeX: normalizedSizeX,
+    sizeY: Math.max(sizeY, 1),
+  }
+}
+
 function checkStartMove() {
   const cloneItem = infoBox.value.cloneItem
   const nowItemNode = infoBox.value.nowItemNode
-  const offsetX = cellWidth.value * 2
-  const offsetY = cellHeight.value * 2
+  const offsetX = cellWidth.value / 2
+  const offsetY = cellHeight.value / 2
   if (cloneItem && nowItemNode) {
     const xGap = Math.abs(cloneItem.offsetLeft - nowItemNode.offsetLeft)
     const yGap = Math.abs(cloneItem.offsetTop - nowItemNode.offsetTop)
@@ -879,12 +920,16 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   infoBox.value.cloneItem.classList.add('cloneNode')
   const img = new Image()
   img.classList.add('clone_img')
-  const clonedSlot = infoBox.value.nowItemNode.querySelector('.slot-component')
+  const clonedSlot =
+    infoBox.value.nowItemNode.querySelector('.item-content') ||
+    infoBox.value.nowItemNode.querySelector('.slot-component')
 
-  html2canvas(clonedSlot).then((canvas) => {
-    img.src = canvas.toDataURL()
-    infoBox.value.cloneItem?.appendChild(img)
-  })
+  if (clonedSlot) {
+    html2canvas(clonedSlot).then((canvas) => {
+      img.src = canvas.toDataURL()
+      infoBox.value.cloneItem?.appendChild(img)
+    })
+  }
 
   if (containerRef.value) {
     containerRef.value.append(infoBox.value.cloneItem)
@@ -909,35 +954,32 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       const moveXSize = e.pageX - infoBox.value.startX
       const moveYSize = e.pageY - infoBox.value.startY
 
-      const addSizeX =
-        moveXSize % cellWidth.value > cellWidth.value / 4
-          ? parseInt(String(moveXSize / cellWidth.value + 1))
-          : parseInt(String(moveXSize / cellWidth.value))
-
-      const addSizeY =
-        moveYSize % cellHeight.value > cellHeight.value / 4
-          ? parseInt(String(moveYSize / cellHeight.value + 1))
-          : parseInt(String(moveYSize / cellHeight.value))
+      const addSizeX = snapDistanceToCell(moveXSize, cellWidth.value)
+      const addSizeY = snapDistanceToCell(moveYSize, cellHeight.value)
       // Determine the resizing direction based on the coordinate points
       const {
         nowSizeX,
         nowSizeY,
         nowX,
         nowY,
-        nowOriginWidth,
-        nowOriginHeight,
-        nowOriginX,
-        nowOriginY,
       } = getNowPosition(addSizeX, addSizeY, moveXSize, moveYSize)
 
+      const normalizedFrame = normalizeResizeFrame(nowX, nowY, nowSizeX, nowSizeY)
+
       debounce(() => {
-        resizePlayer(resizeItem, { sizeX: nowSizeX, sizeY: nowSizeY, x: nowX, y: nowY })
+        resizePlayer(resizeItem, normalizedFrame)
       }, 10)
 
-      infoBox.value.cloneItem.style.width = `${nowOriginWidth}px`
-      infoBox.value.cloneItem.style.height = `${nowOriginHeight}px`
-      infoBox.value.cloneItem.style.left = `${nowOriginX}px`
-      infoBox.value.cloneItem.style.top = `${nowOriginY}px`
+      const snappedStyle = getSnappedItemStyle(
+        normalizedFrame.x,
+        normalizedFrame.y,
+        normalizedFrame.sizeX,
+        normalizedFrame.sizeY
+      )
+      infoBox.value.cloneItem.style.width = `${snappedStyle.width}px`
+      infoBox.value.cloneItem.style.height = `${snappedStyle.height}px`
+      infoBox.value.cloneItem.style.left = `${snappedStyle.left}px`
+      infoBox.value.cloneItem.style.top = `${snappedStyle.top}px`
     } else if (moveItem) {
       scrollScreen(e)
       if (!draggable.value) return
@@ -949,8 +991,19 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       let nowCloneItemX = infoBox.value.originX + moveXSize
       let nowCloneItemY = infoBox.value.originY + moveYSize
-      infoBox.value.cloneItem.style.left = `${nowCloneItemX}px`
-      infoBox.value.cloneItem.style.top = `${nowCloneItemY}px`
+      const candidateX = limitItemX(
+        positionToCell(nowCloneItemX, cellWidth.value, baseMarginLeft.value),
+        moveItem.sizeX
+      )
+      const candidateY = positionToCell(nowCloneItemY, cellHeight.value, baseMarginTop.value)
+      const snappedStyle = getSnappedItemStyle(
+        candidateX,
+        candidateY,
+        moveItem.sizeX,
+        moveItem.sizeY
+      )
+      infoBox.value.cloneItem.style.left = `${snappedStyle.left}px`
+      infoBox.value.cloneItem.style.top = `${snappedStyle.top}px`
       tabMoveInCheckSQ()
       tabMoveOutCheckSQ()
 
@@ -958,8 +1011,8 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       if (canvasLocked.value) return
       const { xMove, yMove } = checkStartMove()
       // Adjust the accuracy of moving coordinate changes
-      let newX = xMove ? Math.round(nowCloneItemX / cellWidth.value) : infoBox.value.oldX
-      let newY = yMove ? Math.round(nowCloneItemY / cellHeight.value) : infoBox.value.oldY
+      let newX = xMove ? candidateX : infoBox.value.oldX
+      let newY = yMove ? candidateY : infoBox.value.oldY
       newX = newX > 0 ? newX : 1
       newY = newY > 0 ? newY : 1
       debounce(() => {
