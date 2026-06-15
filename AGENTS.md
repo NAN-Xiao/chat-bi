@@ -24,6 +24,14 @@ Scope: entire repository.
 - If domain-specific behavior is needed for a demo or customer scenario, keep it in configuration, seed scripts, documentation, test fixtures, or datasource-scoped semantic records. Do not wire it into the platform runtime path.
 - Production logic should be driven by system configuration, datasource metadata, user/workspace permissions, semantic-layer records, and selected assistant settings. Prefer extending those configuration mechanisms before adding code branches.
 
+## Temporarily Hidden Smart Q&A Actions
+
+- Smart Q&A chart-answer actions for data analysis and data prediction are intentionally hidden, not deleted.
+- The current switch is `showChartAnalysisPredictActions = false` in `frontend/src/views/chat/index.vue`.
+- Keep `clickAnalysis(...)`, `clickPredict(...)`, `AnalysisAnswer.vue`, `PredictAnswer.vue`, `analysis_record_id`, `predict_record_id`, and related APIs/data compatibility unless the user explicitly asks to permanently remove the capability.
+- Product direction: Smart Q&A should focus on asking data questions and generating charts; deeper analysis and prediction should be handled by the analysis assistant.
+- See `docs/smart_qa_hidden_analysis_predict_actions.md` for the detailed memo and restore steps.
+
 ## Semantic Layer First
 
 - For business data issues involving metric definitions, analysis口径, SQL generation, chart field selection, datasource selection, or result interpretation, prefer solving them through the semantic layer: terminology, data-training SQL examples, datasource/table/field metadata, recommended questions, custom prompts, assistant configuration, and permission configuration.

@@ -9,6 +9,7 @@ import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Access from '@/views/access/index.vue'
+import DashboardStore from '@/views/dashboard/store/index.vue'
 import Datasource from '@/views/ds/Datasource.vue'
 import Model from '@/views/system/model/Model.vue'
 // import Embedded from '@/views/system/embedded/index.vue'
@@ -102,6 +103,23 @@ export const routes = [
           title: t('access.my_permissions'),
           iconActive: 'user',
           iconDeActive: 'noUser',
+        },
+      },
+    ],
+  },
+  {
+    path: '/dashboard-store',
+    component: LayoutDsl,
+    redirect: '/dashboard-store/index',
+    children: [
+      {
+        path: 'index',
+        name: 'dashboard-store',
+        component: DashboardStore,
+        meta: {
+          title: t('dashboard.store'),
+          iconActive: 'dashboardStore',
+          iconDeActive: 'noDashboardStore',
         },
       },
     ],

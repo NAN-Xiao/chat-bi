@@ -66,6 +66,7 @@ def build_permission_scope(
         if scoped_table_ids is not None and int(table.id) not in scoped_table_ids:
             continue
         table_fields = fields_by_table.get(int(table.id), [])
+        all_field_names = {normalize_identifier(field.field_name) for field in table_fields}
         if is_normal_user(current_user):
             table_fields = get_column_permission_fields(
                 session=session,
@@ -74,9 +75,11 @@ def build_permission_scope(
                 fields=table_fields,
                 contain_rules=contain_rules,
             )
+        allowed_field_names = {normalize_identifier(field.field_name) for field in table_fields}
         scope[normalize_identifier(table.table_name)] = {
             "table": table,
-            "fields": {normalize_identifier(field.field_name) for field in table_fields},
+            "fields": allowed_field_names,
+            "denied_fields": all_field_names - allowed_field_names,
         }
     return scope
 
@@ -171,7 +174,12 @@ def validate_sql_columns(
                 if not _column_can_resolve(column.name, column.table, selected_aliases, permission_scope):
                     denied_columns.add(column.sql())
 
-    if star_tables:
+    restricted_star_tables = {
+        table_name
+        for table_name in star_tables
+        if permission_scope.get(table_name, {}).get("denied_fields")
+    }
+    if restricted_star_tables:
         raise ValueError(
             "SQL 使用了 SELECT *，无法安全应用字段权限；请显式选择授权字段"
         )

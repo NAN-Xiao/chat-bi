@@ -25,7 +25,7 @@ def _escape_sql_value(value: str) -> str:
 
 
 def transFilterTree(session: SessionDep, current_user: CurrentUser, tree_list: List[any],
-                    ds: CoreDatasource) -> str | None:
+                    ds: CoreDatasource, deny_mode: bool = False) -> str | None:
     if tree_list is None:
         return None
     res: List[str] = []
@@ -35,7 +35,7 @@ def transFilterTree(session: SessionDep, current_user: CurrentUser, tree_list: L
             continue
         tree_exp = transTreeToWhere(session, current_user, tree, ds)
         if tree_exp is not None:
-            res.append(tree_exp)
+            res.append(f"NOT ({tree_exp})" if deny_mode else tree_exp)
     return " AND ".join(res)
 
 

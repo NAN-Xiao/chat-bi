@@ -70,7 +70,14 @@ const routerList = computed(() => {
   return list.sort((prev: any, next: any) => {
     const prevIsAccess = prev.path.includes('/access')
     const nextIsAccess = next.path.includes('/access')
-    if (prevIsAccess === nextIsAccess) return 0
+    const prevIsStore = prev.path.includes('/dashboard-store')
+    const nextIsStore = next.path.includes('/dashboard-store')
+    if (prevIsAccess && nextIsStore) return -1
+    if (prevIsStore && nextIsAccess) return 1
+    if (prevIsAccess === nextIsAccess) {
+      if (prevIsStore === nextIsStore) return 0
+      return prevIsStore ? 1 : -1
+    }
     return prevIsAccess ? 1 : -1
   })
 })

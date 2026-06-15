@@ -19,6 +19,8 @@ import set from '@/assets/svg/menu/icon_setting_filled.svg'
 import noSet from '@/assets/svg/menu/icon-setting.svg'
 import log from '@/assets/svg/menu/icon_log_filled.svg'
 import noLog from '@/assets/svg/menu/icon_log_outlined.svg'
+import dashboardStore from '@/assets/svg/menu/icon_moments-categories_filled.svg'
+import noDashboardStore from '@/assets/svg/menu/icon_moments-categories_outlined.svg'
 
 const iconMap = {
   chat,
@@ -37,6 +39,8 @@ const iconMap = {
   noEmbedded,
   log,
   noLog,
+  dashboardStore,
+  noDashboardStore,
 } as { [key: string]: any }
 
 const MenuItem = defineComponent({

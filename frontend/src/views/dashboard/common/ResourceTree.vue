@@ -8,6 +8,7 @@ import icon_dashboard from '@/assets/permission/icon_dashboard.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
+import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import dv_sort_asc from '@/assets/svg/dv-sort-asc.svg'
 import dv_sort_desc from '@/assets/svg/dv-sort-desc.svg'
@@ -76,6 +77,11 @@ const state = reactive({
       label: t('dashboard.rename'),
       command: 'rename',
       svgName: icon_rename,
+    },
+    {
+      label: t('dashboard.share'),
+      command: 'share',
+      svgName: icon_export_outlined,
     },
     {
       label: t('dashboard.delete'),
@@ -280,6 +286,15 @@ const operation = (opt: string, data: SQTreeNode) => {
     resourceGroupOptRef.value?.optInit({ opt: 'rename', id: data.id, name: data.name })
   } else if (opt === 'edit') {
     resourceEdit(data.id)
+  } else if (opt === 'share') {
+    dashboardApi
+      .share({
+        dashboard_id: data.id,
+        share_type: 'dashboard',
+      })
+      .then(() => {
+        ElMessage.success(t('dashboard.share_success'))
+      })
   }
 }
 

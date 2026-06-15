@@ -331,6 +331,8 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
         return tables
     contain_rules = get_user_permission_rules(session, current_user, id)
     scoped_table_ids = get_user_scoped_table_ids(session, current_user, id, contain_rules)
+    if scoped_table_ids is None:
+        return tables
     return [table for table in tables if int(table.id) in scoped_table_ids]
 
 

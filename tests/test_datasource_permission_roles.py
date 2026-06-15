@@ -387,7 +387,26 @@ def _insert_user_rule_for_orders(session: Session):
     ))
 
 
-def test_user_permission_rules_scope_visible_tables_and_fields(monkeypatch):
+def _insert_user_table_deny_for_payments(session: Session):
+    session.execute(text(
+        """
+        INSERT INTO ds_permission
+            (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+        VALUES
+            (1003, 'payments denied', 1, 'user', 'table', 1, 11, '{}', '[]', '[]')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO ds_rules
+            (id, enable, name, description, permission_list, user_list, white_list_user)
+        VALUES
+            (2003, 1, 'user 2 payments denied', '', '[1003]', '[2]', '[]')
+        """
+    ))
+
+
+def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
@@ -408,14 +427,14 @@ def test_user_permission_rules_scope_visible_tables_and_fields(monkeypatch):
             embedding=False,
         )
 
-        assert tables == ["orders"]
+        assert tables == ["orders", "payments"]
         assert "# Table: orders" in schema
+        assert "# Table: payments" in schema
         assert "order_id" in schema
         assert "amount" not in schema
-        assert "payments" not in schema
-        assert permission.get_user_scoped_table_ids(session, current_user, 1) == {10}
+        assert permission.get_user_scoped_table_ids(session, current_user, 1) == {10, 11}
         assert permission.can_access_table(session, current_user, 1, 10) is True
-        assert permission.can_access_table(session, current_user, 1, 11) is False
+        assert permission.can_access_table(session, current_user, 1, 11) is True
 
 
 def test_normal_user_sample_data_is_not_sent_to_model(monkeypatch):
@@ -453,6 +472,7 @@ def test_sql_permission_scope_denies_hidden_columns(monkeypatch):
         session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
         _insert_table_permission_fixture(session)
         _insert_user_rule_for_orders(session)
+        _insert_user_table_deny_for_payments(session)
         session.commit()
 
         ds = session.get(CoreDatasource, 1)
@@ -487,6 +507,7 @@ def test_user_schema_filters_relationships_outside_table_scope(monkeypatch):
         session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
         _insert_table_permission_fixture(session)
         _insert_user_rule_for_orders(session)
+        _insert_user_table_deny_for_payments(session)
         session.commit()
 
         ds = session.get(CoreDatasource, 1)
@@ -604,7 +625,7 @@ def test_system_admin_schema_keeps_authorized_relationships(monkeypatch):
         assert "orders.order_id=payments.payment_id" in schema
 
 
-def test_user_without_permission_rules_has_no_table_visibility(monkeypatch):
+def test_user_without_permission_rules_has_default_table_visibility(monkeypatch):
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
@@ -624,12 +645,12 @@ def test_user_without_permission_rules_has_no_table_visibility(monkeypatch):
             embedding=False,
         )
 
-        assert tables == []
-        assert permission.get_user_scoped_table_ids(session, current_user, 1) == set()
-        assert permission.can_access_table(session, current_user, 1, 10) is False
+        assert tables == ["orders", "payments"]
+        assert permission.get_user_scoped_table_ids(session, current_user, 1) == {10, 11}
+        assert permission.can_access_table(session, current_user, 1, 10) is True
 
 
-def test_preview_denies_tables_outside_user_scope(monkeypatch):
+def test_preview_denies_configured_denied_tables(monkeypatch):
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
@@ -646,6 +667,7 @@ def test_preview_denies_tables_outside_user_scope(monkeypatch):
         session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
         _insert_table_permission_fixture(session)
         _insert_user_rule_for_orders(session)
+        _insert_user_table_deny_for_payments(session)
         session.commit()
 
         allowed = datasource_crud.preview(

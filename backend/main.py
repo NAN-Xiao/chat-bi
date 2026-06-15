@@ -8,7 +8,6 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
-from fastapi_mcp import FastApiMCP
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
@@ -27,6 +26,14 @@ from common.core.sqlbot_cache import init_sqlbot_cache
 from common.utils.embedding_threads import fill_empty_terminology_embeddings, fill_empty_data_training_embeddings, \
     fill_empty_table_and_ds_embeddings
 from common.utils.utils import SQLBotLogUtil
+
+try:
+    from fastapi_mcp import FastApiMCP
+except Exception as exc:  # pragma: no cover - defensive fallback for local runtime
+    FastApiMCP = None
+    _FASTAPI_MCP_IMPORT_ERROR = exc
+else:
+    _FASTAPI_MCP_IMPORT_ERROR = None
 
 
 def run_migrations():
@@ -174,16 +181,19 @@ images_path = settings.MCP_IMAGE_PATH
 os.makedirs(images_path, exist_ok=True)
 mcp_app.mount("/images", StaticFiles(directory=images_path), name="images")
 
-mcp = FastApiMCP(
-    app,
-    name="星通智数 MCP Server",
-    description="星通智数 MCP Server",
-    describe_all_responses=True,
-    describe_full_response_schema=True,
-    include_operations=["mcp_datasource_list", "get_model_list", "mcp_question", "mcp_start", "mcp_assistant"]
-)
-
-mcp.mount(mcp_app)
+mcp = None
+if FastApiMCP is not None:
+    mcp = FastApiMCP(
+        app,
+        name="星通智数 MCP Server",
+        description="星通智数 MCP Server",
+        describe_all_responses=True,
+        describe_full_response_schema=True,
+        include_operations=["mcp_datasource_list", "get_model_list", "mcp_question", "mcp_start", "mcp_assistant"]
+    )
+    mcp.mount(mcp_app)
+else:
+    SQLBotLogUtil.warning(f"Skip MCP server setup because fastapi_mcp is unavailable: {_FASTAPI_MCP_IMPORT_ERROR}")
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:
@@ -205,7 +215,8 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 app.add_exception_handler(StarletteHTTPException, exception_handler.http_exception_handler)
 app.add_exception_handler(Exception, exception_handler.global_exception_handler)
 
-mcp.setup_server()
+if mcp is not None:
+    mcp.setup_server()
 
 if __name__ == "__main__":
     import uvicorn

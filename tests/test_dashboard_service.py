@@ -12,11 +12,21 @@ from apps.dashboard.crud import dashboard_service
 import pytest
 from fastapi import HTTPException
 
-from apps.dashboard.models.dashboard_model import CoreDashboard, CreateDashboard, QueryDashboard, DashboardSqlPreview
+from apps.dashboard.models.dashboard_model import (
+    CoreDashboard,
+    CoreDashboardShare,
+    CreateDashboard,
+    QueryDashboard,
+    DashboardSqlPreview,
+    DashboardShareRequest,
+    DashboardShareListQuery,
+    SharedDashboardQuery,
+    SharedDashboardUseRequest,
+)
 
 def _engine_with_dashboard_table():
     engine = create_engine("sqlite://")
-    SQLModel.metadata.create_all(engine, tables=[CoreDashboard.__table__])
+    SQLModel.metadata.create_all(engine, tables=[CoreDashboard.__table__, CoreDashboardShare.__table__])
     return engine
 
 
@@ -207,6 +217,25 @@ def _insert_orders_column_rule(session: Session):
             (id, enable, name, description, permission_list, user_list, white_list_user)
         VALUES
             (2000, 1, 'user 2 orders columns', '', '[1000]', '[2]', '[]')
+        """
+    ))
+
+
+def _insert_payments_table_deny_rule(session: Session):
+    session.execute(text(
+        """
+        INSERT INTO ds_permission
+            (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+        VALUES
+            (1002, 'payments denied', 1, 'user', 'table', 1, 11, '{}', '[]', '[]')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO ds_rules
+            (id, enable, name, description, permission_list, user_list, white_list_user)
+        VALUES
+            (2002, 1, 'user 2 payments denied', '', '[1002]', '[2]', '[]')
         """
     ))
 
@@ -722,6 +751,7 @@ def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
     with Session(engine) as session:
         _insert_dashboard_permission_fixture(session)
         _insert_orders_column_rule(session)
+        _insert_payments_table_deny_rule(session)
         session.add(
             CoreDashboard(
                 id="dashboard-1",
@@ -808,11 +838,12 @@ def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
     assert result["status"] == "success"
     assert len(exec_calls) == 1
     assert "FROM (SELECT * FROM orders WHERE" in exec_calls[0]
+    assert "NOT" in exec_calls[0]
     assert "region" in exec_calls[0]
     assert "'US'" in exec_calls[0]
 
 
-def test_dashboard_preview_denies_select_star_for_normal_user(monkeypatch):
+def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     exec_calls = []
@@ -825,6 +856,7 @@ def test_dashboard_preview_denies_select_star_for_normal_user(monkeypatch):
 
     with Session(engine) as session:
         _insert_dashboard_permission_fixture(session)
+        _insert_orders_column_rule(session)
         session.commit()
 
         result = dashboard_service.preview_sql(
@@ -848,3 +880,219 @@ def test_user_name_unwraps_row_result():
             return Result()
 
     assert dashboard_service._user_name(Session(), "1") == "Administrator"
+
+
+def test_share_dashboard_creates_share_record(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="看板 A",
+                pid="root",
+                datasource=1,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        share = dashboard_service.share_resource(
+            session=session,
+            user=current_user,
+            request=DashboardShareRequest(dashboard_id="dashboard-1", share_type="dashboard"),
+        )
+
+    assert share.source_dashboard_id == "dashboard-1"
+    assert share.share_type == "dashboard"
+    assert share.name == "看板 A"
+
+
+def test_share_chart_creates_chart_snapshot(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="看板 A",
+                pid="root",
+                datasource=1,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                component_data=json.dumps([{"id": "chart-1", "component": "SQView"}]),
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps(
+                    {
+                        "chart-1": {
+                            "datasource": 1,
+                            "sql": "select 1",
+                            "chart": {"title": "图表 A", "type": "table"},
+                        }
+                    }
+                ),
+            )
+        )
+        session.commit()
+
+        share = dashboard_service.share_resource(
+            session=session,
+            user=current_user,
+            request=DashboardShareRequest(
+                dashboard_id="dashboard-1",
+                share_type="chart",
+                source_view_id="chart-1",
+            ),
+        )
+
+    assert share.share_type == "chart"
+    assert share.source_view_id == "chart-1"
+    assert json.loads(share.component_data)[0]["id"] == "chart-1"
+    assert json.loads(share.canvas_view_info)["chart-1"]["chart"]["title"] == "图表 A"
+
+
+def test_list_shared_resources_marks_permission_status(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=9, isAdmin=False)
+    monkeypatch.setattr(
+        dashboard_service,
+        "has_datasource_access",
+        lambda session, user, datasource_id: datasource_id == 1,
+    )
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboardShare(
+                id="share-1",
+                name="共享看板",
+                datasource=1,
+                share_type="dashboard",
+                source_dashboard_id="dashboard-1",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+                create_by="1",
+                update_by="1",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+            )
+        )
+        session.add(
+            CoreDashboardShare(
+                id="share-2",
+                name="无权限共享看板",
+                datasource=2,
+                share_type="dashboard",
+                source_dashboard_id="dashboard-2",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+                create_by="1",
+                update_by="1",
+                create_time=101,
+                update_time=101,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        result = dashboard_service.list_shared_resources(
+            session=session,
+            current_user=current_user,
+            query=DashboardShareListQuery(),
+        )
+
+    can_use_map = {item["id"]: item["can_use"] for item in result}
+    assert can_use_map["share-1"] is True
+    assert can_use_map["share-2"] is False
+
+
+def test_use_shared_resource_creates_dashboard_copy(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=5, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboardShare(
+                id="share-1",
+                name="共享图表包",
+                datasource=1,
+                share_type="dashboard",
+                source_dashboard_id="dashboard-1",
+                component_data=json.dumps([{"id": "chart-1", "component": "SQView"}]),
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 1, "sql": "select 1"}}),
+                create_by="1",
+                update_by="1",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        record = dashboard_service.use_shared_resource(
+            session=session,
+            user=current_user,
+            request=SharedDashboardUseRequest(id="share-1"),
+        )
+
+    assert record.name == "共享图表包"
+    assert record.datasource == 1
+    assert record.create_by == "5"
+
+
+def test_load_shared_resource_returns_permission_denied_state_without_access(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=5, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: False)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboardShare(
+                id="share-1",
+                name="共享图表",
+                datasource=1,
+                share_type="chart",
+                source_dashboard_id="dashboard-1",
+                source_view_id="chart-1",
+                component_data=json.dumps([{"id": "chart-1", "component": "SQView"}]),
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 1, "sql": "select 1"}}),
+                create_by="1",
+                update_by="1",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        result = dashboard_service.load_shared_resource(
+            session=session,
+            current_user=current_user,
+            query=SharedDashboardQuery(id="share-1"),
+        )
+
+    chart = json.loads(result["canvas_view_info"])["chart-1"]
+    assert result["can_use"] is False
+    assert chart["status"] == "failed"
+    assert chart["message"] == "SQL 超出当前数据权限范围"
