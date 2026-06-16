@@ -1,4 +1,4 @@
-from typing import Any
+﻿from typing import Any
 
 from fastapi import HTTPException
 from orjson import orjson
@@ -38,7 +38,7 @@ from apps.system.models.user import UserModel
 from apps.system.crud.user import is_system_admin
 from common.core.deps import SessionDep, CurrentUser
 from common.utils.data_format import DataFormat
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 import uuid
 import time
 
@@ -285,7 +285,7 @@ def _execute_dashboard_chart_sql(
         json_result['data'] = data
         return json_result
     except Exception as e:
-        SQLBotLogUtil.error(f"Dashboard chart SQL permission check failed: {e}")
+        AppLogUtil.error(f"Dashboard chart SQL permission check failed: {e}")
         json_result['status'] = 'failed'
         json_result['message'] = _safe_chart_error_message(current_user, f"{e}")
         return json_result

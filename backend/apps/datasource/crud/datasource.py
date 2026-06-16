@@ -1,4 +1,4 @@
-import datetime
+﻿import datetime
 import json
 from typing import List
 
@@ -17,8 +17,8 @@ from apps.system.schemas.auth import CacheName, CacheNamespace
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.embedding_threads import run_save_table_embeddings, run_save_ds_embeddings
-from common.utils.utils import SQLBotLogUtil, deepcopy_ignore_extra, equals_ignore_case
-from common.core.sqlbot_cache import cache, clear_cache
+from common.utils.utils import AppLogUtil, deepcopy_ignore_extra, equals_ignore_case
+from common.core.app_cache import cache, clear_cache
 from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table

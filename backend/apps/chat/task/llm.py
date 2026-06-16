@@ -1,4 +1,4 @@
-import concurrent
+﻿import concurrent
 import json
 import os
 import traceback
@@ -48,21 +48,53 @@ from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
-from common.error import SingleMessageError, SQLBotDBError, ParseSQLResultError, SQLBotDBConnectionError
+from common.error import SingleMessageError, AppDBError, ParseSQLResultError, AppDBConnectionError
 from common.utils.data_format import DataFormat
 from common.utils.locale import I18n, I18nHelper
-from common.utils.utils import SQLBotLogUtil, extract_nested_json, prepare_for_orjson
+from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjson
 
 warnings.filterwarnings("ignore")
 
 executor = ThreadPoolExecutor(max_workers=200)
 
 dynamic_ds_types = [1, 3]
-dynamic_subsql_prefix = 'select * from sqlbot_dynamic_temp_table_'
+dynamic_subsql_prefix = 'select * from app_dynamic_temp_table_'
 
 session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 
 i18n = I18n()
+
+APP_SYSTEM_MESSAGE_KEY = "app_system"
+APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
+
+
+def _is_app_system_message(message: dict[str, Any]) -> bool:
+    return message.get(APP_SYSTEM_MESSAGE_KEY) is True
+
+
+def _message_has_app_system_flag(message: BaseMessage) -> bool:
+    return getattr(message, APP_SYSTEM_MESSAGE_KEY, False) is True
+
+
+def _serialize_prompt_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": msg.type,
+            APP_SYSTEM_MESSAGE_KEY: _message_has_app_system_flag(msg),
+            "content": msg.content,
+        }
+        for msg in messages
+    ]
+
+
+def _get_temp_sql_text(dynamic_sql_result: Optional[dict[str, Any]]) -> Optional[str]:
+    if not dynamic_sql_result:
+        return None
+    return dynamic_sql_result.get(APP_TEMP_SQL_TEXT_KEY)
+
+
+def _remove_temp_sql_text(dynamic_sql_result: dict[str, Any]) -> None:
+    dynamic_sql_result.pop(APP_TEMP_SQL_TEXT_KEY, None)
 
 
 
@@ -237,7 +269,7 @@ class LLMService:
             last_sql_messages: List[dict[str, Any]] = _temp_log.messages if _temp_log else []
 
         # 排除所有的系统提示词
-        last_sql_messages = [obj for obj in last_sql_messages if obj.get("sqlbot_system") != True]
+        last_sql_messages = [obj for obj in last_sql_messages if not _is_app_system_message(obj)]
 
         count_limit = self.base_message_round_count_limit
 
@@ -282,7 +314,7 @@ class LLMService:
             last_chart_messages: List[dict[str, Any]] = _temp_log.messages if _temp_log else []
 
         # 排除所有的系统提示词
-        last_chart_messages = [obj for obj in last_chart_messages if obj.get("sqlbot_system") != True]
+        last_chart_messages = [obj for obj in last_chart_messages if not _is_app_system_message(obj)]
 
         count_chart_limit = self.base_message_round_count_limit
 
@@ -432,13 +464,7 @@ class LLMService:
                                                               ai_modal_name=self.chat_question.ai_modal_name,
                                                               operate=OperationEnum.ANALYSIS,
                                                               record_id=self.record.id,
-                                                              full_message=[
-                                                                  {'type': msg.type,
-                                                                   'sqlbot_system': getattr(msg, 'sqlbot_system',
-                                                                                            False) is True,
-                                                                   'content': msg.content} for
-                                                                  msg
-                                                                  in analysis_msg])
+                                                              full_message=_serialize_prompt_messages(analysis_msg))
         full_thinking_text = ''
         full_analysis_text = ''
         token_usage = {}
@@ -455,12 +481,7 @@ class LLMService:
         self.current_logs[OperationEnum.ANALYSIS] = end_log(session=_session,
                                                             log=self.current_logs[
                                                                 OperationEnum.ANALYSIS],
-                                                            full_message=[
-                                                                {'type': msg.type,
-                                                                 'sqlbot_system': getattr(msg, 'sqlbot_system',
-                                                                                          False) is True,
-                                                                 'content': msg.content}
-                                                                for msg in analysis_msg],
+                                                            full_message=_serialize_prompt_messages(analysis_msg),
                                                             reasoning_content=full_thinking_text,
                                                             token_usage=token_usage)
         self.record = save_analysis_answer(session=_session, record_id=self.record.id,
@@ -484,13 +505,7 @@ class LLMService:
                                                                   ai_modal_name=self.chat_question.ai_modal_name,
                                                                   operate=OperationEnum.PREDICT_DATA,
                                                                   record_id=self.record.id,
-                                                                  full_message=[
-                                                                      {'type': msg.type,
-                                                                       'sqlbot_system': getattr(msg, 'sqlbot_system',
-                                                                                                False) is True,
-                                                                       'content': msg.content} for
-                                                                      msg
-                                                                      in predict_msg])
+                                                                  full_message=_serialize_prompt_messages(predict_msg))
         full_thinking_text = ''
         full_predict_text = ''
         token_usage = {}
@@ -508,12 +523,7 @@ class LLMService:
         self.current_logs[OperationEnum.PREDICT_DATA] = end_log(session=_session,
                                                                 log=self.current_logs[
                                                                     OperationEnum.PREDICT_DATA],
-                                                                full_message=[
-                                                                    {'type': msg.type,
-                                                                     'sqlbot_system': getattr(msg, 'sqlbot_system',
-                                                                                              False) is True,
-                                                                     'content': msg.content}
-                                                                    for msg in predict_msg],
+                                                                full_message=_serialize_prompt_messages(predict_msg),
                                                                 reasoning_content=full_thinking_text,
                                                                 token_usage=token_usage)
 
@@ -551,14 +561,7 @@ class LLMService:
                                                                                     ai_modal_name=self.chat_question.ai_modal_name,
                                                                                     operate=OperationEnum.GENERATE_RECOMMENDED_QUESTIONS,
                                                                                     record_id=self.record.id,
-                                                                                    full_message=[
-                                                                                        {'type': msg.type,
-                                                                                         'sqlbot_system': getattr(msg,
-                                                                                                                  'sqlbot_system',
-                                                                                                                  False) is True,
-                                                                                         'content': msg.content} for
-                                                                                        msg
-                                                                                        in guess_msg])
+                                                                                    full_message=_serialize_prompt_messages(guess_msg))
         full_thinking_text = ''
         full_guess_text = ''
         token_usage = {}
@@ -575,13 +578,7 @@ class LLMService:
         self.current_logs[OperationEnum.GENERATE_RECOMMENDED_QUESTIONS] = end_log(session=_session,
                                                                                   log=self.current_logs[
                                                                                       OperationEnum.GENERATE_RECOMMENDED_QUESTIONS],
-                                                                                  full_message=[
-                                                                                      {'type': msg.type,
-                                                                                       'sqlbot_system': getattr(msg,
-                                                                                                                'sqlbot_system',
-                                                                                                                False) is True,
-                                                                                       'content': msg.content}
-                                                                                      for msg in guess_msg],
+                                                                                  full_message=_serialize_prompt_messages(guess_msg),
                                                                                   reasoning_content=full_thinking_text,
                                                                                   token_usage=token_usage)
         self.record = save_recommend_question_answer(session=_session, record_id=self.record.id,
@@ -630,13 +627,7 @@ class LLMService:
                                                                            ai_modal_name=self.chat_question.ai_modal_name,
                                                                            operate=OperationEnum.CHOOSE_DATASOURCE,
                                                                            record_id=self.record.id,
-                                                                           full_message=[{'type': msg.type,
-                                                                                          'sqlbot_system': getattr(msg,
-                                                                                                                   'sqlbot_system',
-                                                                                                                   False) is True,
-                                                                                          'content': msg.content}
-                                                                                         for
-                                                                                         msg in datasource_msg])
+                                                                           full_message=_serialize_prompt_messages(datasource_msg))
 
             token_usage = {}
             res = process_stream(self.llm.stream(datasource_msg), token_usage)
@@ -651,13 +642,7 @@ class LLMService:
             self.current_logs[OperationEnum.CHOOSE_DATASOURCE] = end_log(session=_session,
                                                                          log=self.current_logs[
                                                                              OperationEnum.CHOOSE_DATASOURCE],
-                                                                         full_message=[
-                                                                             {'type': msg.type,
-                                                                              'sqlbot_system': getattr(msg,
-                                                                                                       'sqlbot_system',
-                                                                                                       False) is True,
-                                                                              'content': msg.content}
-                                                                             for msg in datasource_msg],
+                                                                         full_message=_serialize_prompt_messages(datasource_msg),
                                                                          reasoning_content=full_thinking_text,
                                                                          token_usage=token_usage)
 
@@ -745,12 +730,7 @@ class LLMService:
                                                                   ai_modal_name=self.chat_question.ai_modal_name,
                                                                   operate=OperationEnum.GENERATE_SQL,
                                                                   record_id=self.record.id,
-                                                                  full_message=[
-                                                                      {'type': msg.type,
-                                                                       'sqlbot_system': getattr(msg, 'sqlbot_system',
-                                                                                                False) is True,
-                                                                       'content': msg.content} for msg
-                                                                      in self.sql_message])
+                                                                  full_message=_serialize_prompt_messages(self.sql_message))
         full_thinking_text = ''
         full_sql_text = ''
         token_usage = {}
@@ -766,12 +746,7 @@ class LLMService:
 
         self.current_logs[OperationEnum.GENERATE_SQL] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.GENERATE_SQL],
-                                                                full_message=[{'type': msg.type,
-                                                                               'sqlbot_system': getattr(msg,
-                                                                                                        'sqlbot_system',
-                                                                                                        False) is True,
-                                                                               'content': msg.content}
-                                                                              for msg in self.sql_message],
+                                                                full_message=_serialize_prompt_messages(self.sql_message),
                                                                 reasoning_content=full_thinking_text,
                                                                 token_usage=token_usage)
         self.record = save_sql_answer(session=_session, record_id=self.record.id,
@@ -790,13 +765,7 @@ class LLMService:
                                                                           ai_modal_name=self.chat_question.ai_modal_name,
                                                                           operate=OperationEnum.GENERATE_DYNAMIC_SQL,
                                                                           record_id=self.record.id,
-                                                                          full_message=[{'type': msg.type,
-                                                                                         'sqlbot_system': getattr(msg,
-                                                                                                                  'sqlbot_system',
-                                                                                                                  False) is True,
-                                                                                         'content': msg.content}
-                                                                                        for
-                                                                                        msg in dynamic_sql_msg])
+                                                                          full_message=_serialize_prompt_messages(dynamic_sql_msg))
 
         full_thinking_text = ''
         full_dynamic_text = ''
@@ -813,17 +782,11 @@ class LLMService:
         self.current_logs[OperationEnum.GENERATE_DYNAMIC_SQL] = end_log(session=session,
                                                                         log=self.current_logs[
                                                                             OperationEnum.GENERATE_DYNAMIC_SQL],
-                                                                        full_message=[
-                                                                            {'type': msg.type,
-                                                                             'sqlbot_system': getattr(msg,
-                                                                                                      'sqlbot_system',
-                                                                                                      False) is True,
-                                                                             'content': msg.content}
-                                                                            for msg in dynamic_sql_msg],
+                                                                        full_message=_serialize_prompt_messages(dynamic_sql_msg),
                                                                         reasoning_content=full_thinking_text,
                                                                         token_usage=token_usage)
 
-        SQLBotLogUtil.info(full_dynamic_text)
+        AppLogUtil.info(full_dynamic_text)
         return full_dynamic_text
 
     def generate_assistant_dynamic_sql(self, _session: Session, sql, tables: List):
@@ -838,7 +801,7 @@ class LLMService:
         if not sub_query:
             return None
         temp_sql_text = self.generate_with_sub_sql(session=_session, sql=sql, sub_mappings=sub_query)
-        result_dict['sqlbot_temp_sql_text'] = temp_sql_text
+        result_dict[APP_TEMP_SQL_TEXT_KEY] = temp_sql_text
         return result_dict
 
     def build_table_filter(self, session: Session, sql: str, filters: list):
@@ -854,14 +817,7 @@ class LLMService:
                                                                                    ai_modal_name=self.chat_question.ai_modal_name,
                                                                                    operate=OperationEnum.GENERATE_SQL_WITH_PERMISSIONS,
                                                                                    record_id=self.record.id,
-                                                                                   full_message=[
-                                                                                       {'type': msg.type,
-                                                                                        'sqlbot_system': getattr(msg,
-                                                                                                                 'sqlbot_system',
-                                                                                                                 False) is True,
-                                                                                        'content': msg.content} for
-                                                                                       msg
-                                                                                       in permission_sql_msg])
+                                                                                   full_message=_serialize_prompt_messages(permission_sql_msg))
         full_thinking_text = ''
         full_filter_text = ''
         token_usage = {}
@@ -877,17 +833,11 @@ class LLMService:
         self.current_logs[OperationEnum.GENERATE_SQL_WITH_PERMISSIONS] = end_log(session=session,
                                                                                  log=self.current_logs[
                                                                                      OperationEnum.GENERATE_SQL_WITH_PERMISSIONS],
-                                                                                 full_message=[
-                                                                                     {'type': msg.type,
-                                                                                      'sqlbot_system': getattr(msg,
-                                                                                                               'sqlbot_system',
-                                                                                                               False) is True,
-                                                                                      'content': msg.content}
-                                                                                     for msg in permission_sql_msg],
+                                                                                 full_message=_serialize_prompt_messages(permission_sql_msg),
                                                                                  reasoning_content=full_thinking_text,
                                                                                  token_usage=token_usage)
 
-        SQLBotLogUtil.info(full_filter_text)
+        AppLogUtil.info(full_filter_text)
         return full_filter_text
 
     def generate_filter(self, _session: Session, sql: str, tables: List):
@@ -916,13 +866,7 @@ class LLMService:
                                                                     ai_modal_name=self.chat_question.ai_modal_name,
                                                                     operate=OperationEnum.GENERATE_CHART,
                                                                     record_id=self.record.id,
-                                                                    full_message=[
-                                                                        {'type': msg.type,
-                                                                         'sqlbot_system': getattr(msg, 'sqlbot_system',
-                                                                                                  False) is True,
-                                                                         'content': msg.content} for
-                                                                        msg
-                                                                        in self.chart_message])
+                                                                    full_message=_serialize_prompt_messages(self.chart_message))
         full_thinking_text = ''
         full_chart_text = ''
         token_usage = {}
@@ -940,12 +884,7 @@ class LLMService:
                                         answer=orjson.dumps({'content': full_chart_text}).decode())
         self.current_logs[OperationEnum.GENERATE_CHART] = end_log(session=_session,
                                                                   log=self.current_logs[OperationEnum.GENERATE_CHART],
-                                                                  full_message=[
-                                                                      {'type': msg.type,
-                                                                       'sqlbot_system': getattr(msg, 'sqlbot_system',
-                                                                                                False) is True,
-                                                                       'content': msg.content}
-                                                                      for msg in self.chart_message],
+                                                                  full_message=_serialize_prompt_messages(self.chart_message),
                                                                   reasoning_content=full_thinking_text,
                                                                   token_usage=token_usage)
 
@@ -1142,7 +1081,7 @@ class LLMService:
         Returns:
             Query results
         """
-        SQLBotLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
+        AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
             return exec_sql(ds=self.ds, sql=sql, origin_column=False)
         except Exception as e:
@@ -1150,7 +1089,7 @@ class LLMService:
                 raise e
             else:
                 err = traceback.format_exc(limit=1, chain=True)
-                raise SQLBotDBError(err)
+                raise AppDBError(err)
 
     def pop_chunk(self):
         try:
@@ -1176,7 +1115,7 @@ class LLMService:
             else:
                 idle_rounds += 1
                 if idle_rounds >= max_idle_rounds:
-                    SQLBotLogUtil.error(
+                    AppLogUtil.error(
                         f"LLM stream idle timeout after {settings.LLM_REQUEST_TIMEOUT}s for record {self.record.id}"
                     )
                     try:
@@ -1242,7 +1181,7 @@ class LLMService:
                 ds_res = self.select_datasource(_session)
 
                 for chunk in ds_res:
-                    SQLBotLogUtil.info(chunk)
+                    AppLogUtil.info(chunk)
                     if in_chat:
                         yield 'data:' + orjson.dumps(
                             {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
@@ -1258,7 +1197,7 @@ class LLMService:
             # check connection
             connected = check_connection(ds=self.ds, trans=None)
             if not connected:
-                raise SQLBotDBConnectionError('Connect DB failed')
+                raise AppDBConnectionError('Connect DB failed')
 
             # generate sql
             sql_res = self.generate_sql(_session)
@@ -1272,7 +1211,7 @@ class LLMService:
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
             # filter sql
-            SQLBotLogUtil.info(full_sql_text)
+            AppLogUtil.info(full_sql_text)
 
             chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
 
@@ -1294,7 +1233,7 @@ class LLMService:
             use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
             is_page_embedded: bool = self.current_assistant and self.current_assistant.type == 4
             dynamic_sql_result = None
-            sqlbot_temp_sql_text = None
+            app_temp_sql_text = None
             assistant_dynamic_sql = None
             # row permission
 
@@ -1307,8 +1246,7 @@ class LLMService:
 
                 if use_dynamic_ds:
                     dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
-                    sqlbot_temp_sql_text = dynamic_sql_result.get(
-                        'sqlbot_temp_sql_text') if dynamic_sql_result else None
+                    app_temp_sql_text = _get_temp_sql_text(dynamic_sql_result)
                 else:
                     statements, actual_tables, _permission_scope = validate_sql_scope(
                         _session,
@@ -1331,14 +1269,14 @@ class LLMService:
                         sql_result = apply_row_permission_filters(sql, self.ds, row_filters)
 
                 if sql_result:
-                    SQLBotLogUtil.info(sql_result)
+                    AppLogUtil.info(sql_result)
                     sql_operate = OperationEnum.GENERATE_SQL_WITH_PERMISSIONS
                     sql = self.save_checked_sql(session=_session, sql=sql_result)
                     if isinstance(self.ds, CoreDatasource):
                         validate_sql_table_scope(_session, self.current_user, self.ds, sql)
-                elif dynamic_sql_result and sqlbot_temp_sql_text:
+                elif dynamic_sql_result and app_temp_sql_text:
                     sql_operate = OperationEnum.GENERATE_DYNAMIC_SQL
-                    assistant_dynamic_sql = self.check_save_sql(session=_session, res=sqlbot_temp_sql_text,
+                    assistant_dynamic_sql = self.check_save_sql(session=_session, res=app_temp_sql_text,
                                                                 operate=sql_operate)
                 else:
                     sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
@@ -1349,7 +1287,7 @@ class LLMService:
                 if isinstance(self.ds, CoreDatasource):
                     validate_sql_scope(_session, self.current_user, self.ds, sql)
 
-            SQLBotLogUtil.info('sql: ' + sql)
+            AppLogUtil.info('sql: ' + sql)
 
             if not stream:
                 json_result['sql'] = sql
@@ -1363,8 +1301,8 @@ class LLMService:
 
             # execute sql
             real_execute_sql = sql
-            if sqlbot_temp_sql_text and assistant_dynamic_sql:
-                dynamic_sql_result.pop('sqlbot_temp_sql_text')
+            if app_temp_sql_text and assistant_dynamic_sql:
+                _remove_temp_sql_text(dynamic_sql_result)
                 for origin_table, subsql in dynamic_sql_result.items():
                     assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}',
                                                                           subsql)
@@ -1430,7 +1368,7 @@ class LLMService:
                 ds=self.ds,
                 question=self.chat_question.question,
                 embedding=False, table_list=tables)
-            SQLBotLogUtil.info('used_tables_schema: \n' + used_tables_schema)
+            AppLogUtil.info('used_tables_schema: \n' + used_tables_schema)
             chart_res = self.generate_chart(_session, chart_type, used_tables_schema)
             full_chart_text = ''
             for chunk in chart_res:
@@ -1443,9 +1381,9 @@ class LLMService:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
             # filter chart
-            SQLBotLogUtil.info(full_chart_text)
+            AppLogUtil.info(full_chart_text)
             chart = self.check_save_chart(session=_session, res=full_chart_text)
-            SQLBotLogUtil.info(chart)
+            AppLogUtil.info(chart)
 
             if not stream:
                 json_result['chart'] = chart
@@ -1480,7 +1418,7 @@ class LLMService:
                                                                                       local_operation=True)
                         image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
                                                            format_json_data(result))
-                        SQLBotLogUtil.info(image_url)
+                        AppLogUtil.info(image_url)
                         if stream:
                             yield f'![{chart.get("type")}]({image_url})'
                         else:
@@ -1506,10 +1444,10 @@ class LLMService:
             error_msg: str
             if isinstance(e, SingleMessageError):
                 error_msg = str(e)
-            elif isinstance(e, SQLBotDBConnectionError):
+            elif isinstance(e, AppDBConnectionError):
                 error_msg = orjson.dumps(
                     {'message': str(e), 'type': 'db-connection-err'}).decode()
-            elif isinstance(e, SQLBotDBError):
+            elif isinstance(e, AppDBError):
                 error_msg = orjson.dumps(
                     {'message': 'Execute SQL Failed', 'traceback': str(e), 'type': 'exec-sql-err'}).decode()
             else:
@@ -1649,7 +1587,7 @@ class LLMService:
 
                                 image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
                                                                    format_json_data(_data))
-                                SQLBotLogUtil.info(image_url)
+                                AppLogUtil.info(image_url)
                                 if stream:
                                     yield f'![{chart.get("type")}]({image_url})'
                                 else:
@@ -1743,7 +1681,7 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
 
     except Exception as e:
         error_msg = f"SQL execution failed: {str(e)}"
-        SQLBotLogUtil.exception(error_msg)
+        AppLogUtil.exception(error_msg)
         raise RuntimeError(error_msg)
 
 
@@ -1834,7 +1772,7 @@ def process_stream(res: Iterator[BaseMessageChunk],
     pending_start_tag = ''  # 用于缓存可能被截断的开始标签部分
 
     for chunk in res:
-        SQLBotLogUtil.info(chunk)
+        AppLogUtil.info(chunk)
         reasoning_content_chunk = ''
         content = chunk.content
         output_content = ''  # 实际要输出的内容

@@ -1,4 +1,4 @@
-import json
+﻿import json
 import re
 import urllib
 from typing import Optional
@@ -15,8 +15,8 @@ from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import AssistantHeader, AssistantOutDsSchema, UserInfoDTO
 from common.core.config import settings
 from common.core.db import engine
-from common.core.sqlbot_cache import cache
-from common.utils.utils import SQLBotLogUtil, get_domain_list, string_to_numeric_hash
+from common.core.app_cache import cache
+from common.utils.utils import AppLogUtil, get_domain_list, string_to_numeric_hash
 from common.core.deps import Trans
 from common.core.response_middleware import ResponseMiddleware
 
@@ -150,7 +150,7 @@ class AssistantOutDs:
             else:
                 raise Exception(f"Failed to get datasource list from {endpoint}, error: {result_json.get('message')}")
         else:
-            SQLBotLogUtil.error(f"Failed to get datasource list from {endpoint}, response: {res}")
+            AppLogUtil.error(f"Failed to get datasource list from {endpoint}, response: {res}")
             raise Exception(f"Failed to get datasource list from {endpoint}, response: {res}")
 
     def get_first_element(self, text: str):

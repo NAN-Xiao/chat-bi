@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import os
 from types import SimpleNamespace
 
@@ -315,7 +315,7 @@ def test_permission_decorator_rejects_unresolved_resource(monkeypatch):
     token = permission_schema.RequestContext.set_request(request)
 
     @permission_schema.require_permissions(
-        permission_schema.SqlbotPermission(type="ds", keyExpression="payload.datasource_id")
+        permission_schema.AppPermission(type="ds", keyExpression="payload.datasource_id")
     )
     async def endpoint(payload):
         return True
@@ -333,7 +333,7 @@ def test_permission_decorator_rejects_missing_key_expression():
     request.state.current_user = SimpleNamespace(id=2, isAdmin=False)
     token = permission_schema.RequestContext.set_request(request)
 
-    @permission_schema.require_permissions(permission_schema.SqlbotPermission(type="ds"))
+    @permission_schema.require_permissions(permission_schema.AppPermission(type="ds"))
     async def endpoint(datasource_id):
         return True
 
@@ -351,7 +351,7 @@ def test_permission_decorator_allows_system_admin_when_resource_cannot_resolve()
     token = permission_schema.RequestContext.set_request(request)
 
     @permission_schema.require_permissions(
-        permission_schema.SqlbotPermission(type="ds", keyExpression="payload.datasource_id")
+        permission_schema.AppPermission(type="ds", keyExpression="payload.datasource_id")
     )
     async def endpoint():
         return "ok"

@@ -1,4 +1,4 @@
-import json
+﻿import json
 import time
 import traceback
 from typing import List
@@ -8,7 +8,7 @@ from sqlalchemy import and_, select, update
 from apps.ai_model.embedding import EmbeddingModelCache
 from common.core.config import settings
 from common.core.deps import SessionDep
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 from ..models.datasource import CoreTable, CoreField, CoreDatasource
 
 
@@ -37,16 +37,16 @@ def run_fill_empty_table_and_ds_embedding(session_maker):
 
         session = session_maker()
 
-        SQLBotLogUtil.info('get tables')
+        AppLogUtil.info('get tables')
         stmt = select(CoreTable.id).where(and_(CoreTable.embedding.is_(None)))
         results = session.execute(stmt).scalars().all()
-        SQLBotLogUtil.info('table result: ' + str(len(results)))
+        AppLogUtil.info('table result: ' + str(len(results)))
         save_table_embedding(session_maker, results)
 
-        SQLBotLogUtil.info('get datasource')
+        AppLogUtil.info('get datasource')
         ds_stmt = select(CoreDatasource.id).where(and_(CoreDatasource.embedding.is_(None)))
         ds_results = session.execute(ds_stmt).scalars().all()
-        SQLBotLogUtil.info('datasource result: ' + str(len(ds_results)))
+        AppLogUtil.info('datasource result: ' + str(len(ds_results)))
         save_ds_embedding(session_maker, ds_results)
     except Exception:
         traceback.print_exc()
@@ -61,7 +61,7 @@ def save_table_embedding(session_maker, ids: List[int]):
     if not ids or len(ids) == 0:
         return
     try:
-        SQLBotLogUtil.info('start table embedding')
+        AppLogUtil.info('start table embedding')
         start_time = time.time()
         model = EmbeddingModelCache.get_model()
         session = session_maker()
@@ -99,7 +99,7 @@ def save_table_embedding(session_maker, ids: List[int]):
             session.commit()
 
         end_time = time.time()
-        SQLBotLogUtil.info('table embedding finished in: ' + str(end_time - start_time) + ' seconds')
+        AppLogUtil.info('table embedding finished in: ' + str(end_time - start_time) + ' seconds')
     except Exception:
         traceback.print_exc()
     finally:
@@ -113,7 +113,7 @@ def save_ds_embedding(session_maker, ids: List[int]):
     if not ids or len(ids) == 0:
         return
     try:
-        SQLBotLogUtil.info('start datasource embedding')
+        AppLogUtil.info('start datasource embedding')
         start_time = time.time()
         model = EmbeddingModelCache.get_model()
         session = session_maker()
@@ -154,7 +154,7 @@ def save_ds_embedding(session_maker, ids: List[int]):
             session.commit()
 
         end_time = time.time()
-        SQLBotLogUtil.info('datasource embedding finished in: ' + str(end_time - start_time) + ' seconds')
+        AppLogUtil.info('datasource embedding finished in: ' + str(end_time - start_time) + ' seconds')
     except Exception:
         traceback.print_exc()
     finally:

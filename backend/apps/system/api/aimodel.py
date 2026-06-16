@@ -1,4 +1,4 @@
-import json
+﻿import json
 from typing import List, Union
 
 from fastapi import APIRouter, Path, Query
@@ -10,11 +10,11 @@ from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.models.system_model import AiModelDetail, AiModelBrief
 from apps.system.schemas.ai_model_schema import AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import SessionDep, Trans, CurrentUser
 from common.utils.crypto import sqlbot_decrypt
 from common.utils.time import get_timestamp
-from common.utils.utils import SQLBotLogUtil, prepare_model_arg
+from common.utils.utils import AppLogUtil, prepare_model_arg
 
 router = APIRouter(tags=["system_model"], prefix="/system/aimodel")
 from common.audit.models.log_model import OperationType, OperationModules
@@ -22,7 +22,7 @@ from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 
 @router.post("/status", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def check_llm(info: AiModelCreator, trans: Trans):
     async def generate():
         try:
@@ -37,14 +37,14 @@ async def check_llm(info: AiModelCreator, trans: Trans):
             )
             llm_instance = LLMFactory.create_llm(config)
             async for chunk in llm_instance.llm.astream("1+1=?"):
-                SQLBotLogUtil.info(chunk)
+                AppLogUtil.info(chunk)
                 if chunk and isinstance(chunk, str):
                     yield json.dumps({"content": chunk}) + "\n"
                 if chunk and isinstance(chunk, dict) and chunk.content:
                     yield json.dumps({"content": chunk.content}) + "\n"
 
         except Exception as e:
-            SQLBotLogUtil.error(f"Error checking LLM: {e}")
+            AppLogUtil.error(f"Error checking LLM: {e}")
             error_msg = trans('i18n_llm.validate_error', msg=str(e))
             yield json.dumps({"error": error_msg}) + "\n"
 
@@ -62,7 +62,7 @@ async def check_default(session: SessionDep, trans: Trans):
 
 @router.put("/default/{id}", summary=f"{PLACEHOLDER_PREFIX}system_model_default",
             description=f"{PLACEHOLDER_PREFIX}system_model_default")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.AI_MODEL, resource_id_expr="id"))
 async def set_default(session: SessionDep, id: int = Path(description="ID")):
     db_model = session.get(AiModelDetail, id)
@@ -85,7 +85,7 @@ async def set_default(session: SessionDep, id: int = Path(description="ID")):
 
 @router.get("", response_model=list[AiModelGridItem], summary=f"{PLACEHOLDER_PREFIX}system_model_grid",
             description=f"{PLACEHOLDER_PREFIX}system_model_grid")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def query(
         session: SessionDep,
         keyword: Union[str, None] = Query(default=None, max_length=255, description=f"{PLACEHOLDER_PREFIX}keyword")
@@ -110,7 +110,7 @@ async def query(
 
 @router.get("/{id}", response_model=AiModelEditor, summary=f"{PLACEHOLDER_PREFIX}system_model_query",
             description=f"{PLACEHOLDER_PREFIX}system_model_query")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def get_model_by_id(
         session: SessionDep,
         id: int = Path(description="ID")
@@ -141,7 +141,7 @@ async def get_model_by_id(
 
 @router.post("", summary=f"{PLACEHOLDER_PREFIX}system_model_create",
              description=f"{PLACEHOLDER_PREFIX}system_model_create")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.AI_MODEL, result_id_expr="id"))
 async def add_model(
         session: SessionDep,
@@ -162,7 +162,7 @@ async def add_model(
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}system_model_update",
             description=f"{PLACEHOLDER_PREFIX}system_model_update")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(
     LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.AI_MODEL, resource_id_expr="editor.id"))
 async def update_model(
@@ -182,7 +182,7 @@ async def update_model(
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}system_model_del",
                description=f"{PLACEHOLDER_PREFIX}system_model_del")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.AI_MODEL, resource_id_expr="id"))
 async def delete_model(
         session: SessionDep,

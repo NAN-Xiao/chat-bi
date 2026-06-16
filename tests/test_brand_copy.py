@@ -70,7 +70,7 @@ EXPECTED_COPY_SNIPPETS = {
     ],
     "frontend/src/utils/utils.ts": ["document.title = title || '星通智数'"],
     "frontend/public/vite-sqlbot.svg": ["<title>星通智数</title>"],
-    "backend/common/core/sqlbot_cache.py": [
+    "backend/common/core/app_cache.py": [
         "星通智数使用内存缓存",
         "星通智数使用Redis缓存",
         "星通智数未启用缓存",

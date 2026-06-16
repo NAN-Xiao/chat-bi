@@ -109,7 +109,7 @@ const routerList = computed(() => {
     &:hover,
     &:focus {
       background: var(--theme-hover-bg) !important;
-      color: var(--theme-sidebar-active-text, var(--theme-text-primary));
+      color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
     }
 
     &.is-active {
@@ -119,7 +119,7 @@ const routerList = computed(() => {
       border-radius: 8px;
       color: var(--theme-sidebar-active-text, #ffffff) !important;
       font-weight: 600;
-      box-shadow: 0 10px 22px rgba(47, 107, 255, 0.24);
+      box-shadow: var(--theme-sidebar-active-shadow, 0 10px 22px rgba(47, 107, 255, 0.24));
     }
   }
 
@@ -135,7 +135,7 @@ const routerList = computed(() => {
     &:hover,
     &:focus {
       background: var(--theme-hover-bg) !important;
-      color: var(--theme-sidebar-active-text, var(--theme-text-primary));
+      color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
     }
   }
 
@@ -146,7 +146,7 @@ const routerList = computed(() => {
         var(--theme-sidebar-active-bg, var(--ed-color-primary, #2f6bff)) !important;
       color: var(--theme-sidebar-active-text, #ffffff) !important;
       font-weight: 600;
-      box-shadow: 0 10px 22px rgba(47, 107, 255, 0.24);
+      box-shadow: var(--theme-sidebar-active-shadow, 0 10px 22px rgba(47, 107, 255, 0.24));
     }
   }
 
@@ -224,10 +224,10 @@ const routerList = computed(() => {
 
       &:hover,
       &:focus {
-        color: var(--theme-sidebar-active-text, var(--theme-text-primary));
+        color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
 
         &::before {
-          background: var(--theme-sidebar-active-text, var(--theme-text-secondary));
+          background: var(--theme-sidebar-emphasis-text, var(--theme-text-secondary));
           opacity: 1;
         }
       }

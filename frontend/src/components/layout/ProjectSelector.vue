@@ -166,8 +166,8 @@ onMounted(async () => {
 
   &:hover {
     background: var(--theme-hover-bg);
-    border-color: rgba(255, 255, 255, 0.22);
-    color: var(--theme-sidebar-active-text, var(--theme-text-primary));
+    border-color: var(--theme-shell-border);
+    color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
   }
 
   &:active {

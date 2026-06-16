@@ -267,7 +267,7 @@ onMounted(() => {
           </el-icon>
           {{ collapse ? '' : $t('project.return_to_project') }}
         </div>
-        <div class="personal-info">
+        <div class="side-account-area">
           <Person :collapse="collapse" :in-sysmenu="showSysmenu"></Person>
           <ThemeSwitcher :collapse="collapse"></ThemeSwitcher>
         </div>
@@ -312,20 +312,18 @@ onMounted(() => {
     min-width: 240px;
     color: var(--theme-sidebar-text);
     background:
-      linear-gradient(180deg, rgba(47, 107, 255, 0.16), transparent 34%),
+      linear-gradient(180deg, var(--theme-sidebar-gradient-top), transparent 34%),
       var(--theme-sidebar-bg);
     border-right: 1px solid var(--theme-sidebar-border);
-    --layout-fold-bg-hover: var(--theme-sidebar-hover-bg);
-    --layout-fold-bg-active: rgba(47, 107, 255, 0.34);
     --layout-fold-color: var(--theme-sidebar-text-secondary);
-    --layout-fold-color-hover: var(--theme-sidebar-active-text);
+    --layout-fold-color-hover: var(--theme-sidebar-emphasis-text);
     --theme-text-primary: var(--theme-sidebar-text);
     --theme-text-secondary: var(--theme-sidebar-text-secondary);
-    --theme-text-tertiary: rgba(159, 176, 204, 0.72);
-    --theme-control-bg: rgba(255, 255, 255, 0.08);
-    --theme-control-hover-bg: rgba(255, 255, 255, 0.12);
+    --theme-text-tertiary: var(--theme-sidebar-text-tertiary);
+    --theme-control-bg: var(--theme-sidebar-control-bg);
+    --theme-control-hover-bg: var(--theme-sidebar-control-hover-bg);
     --theme-hover-bg: var(--theme-sidebar-hover-bg);
-    --theme-active-bg: rgba(47, 107, 255, 0.34);
+    --theme-active-bg: var(--theme-sidebar-active-soft-bg);
     --theme-shell-border: var(--theme-sidebar-border);
     --theme-card-shadow: none;
 
@@ -354,7 +352,6 @@ onMounted(() => {
         height: 32px;
         padding: 0;
         border: none;
-        border-radius: 6px;
         color: var(--layout-fold-color);
         background: transparent;
         cursor: pointer;
@@ -376,7 +373,7 @@ onMounted(() => {
 
         &:hover,
         &:focus {
-          background: var(--layout-fold-bg-hover);
+          background: transparent;
           color: var(--layout-fold-color-hover);
 
           :deep(svg) {
@@ -386,9 +383,17 @@ onMounted(() => {
         }
 
         &:active {
-          background: var(--layout-fold-bg-active);
+          background: transparent;
         }
       }
+    }
+
+    .side-account-area {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      width: 100%;
     }
 
     .default-sqlbot {
@@ -396,7 +401,7 @@ onMounted(() => {
       align-items: center;
       font-size: 16px;
       line-height: 22px;
-      color: var(--theme-sidebar-active-text);
+      color: var(--theme-sidebar-emphasis-text);
       cursor: pointer;
       margin-bottom: 12px;
 
@@ -406,7 +411,7 @@ onMounted(() => {
         font-weight: 700;
         line-height: 24px;
         letter-spacing: 0;
-        color: var(--theme-sidebar-active-text, #ffffff);
+        color: var(--theme-sidebar-emphasis-text, var(--theme-sidebar-text));
       }
 
       .collapse-icon {
@@ -420,7 +425,7 @@ onMounted(() => {
       font-weight: 500;
       font-size: 16px;
       line-height: 22px;
-      color: var(--theme-sidebar-active-text);
+      color: var(--theme-sidebar-emphasis-text);
       cursor: pointer;
       margin-bottom: 12px;
       .collapse-icon {
@@ -455,7 +460,7 @@ onMounted(() => {
         }
         &:hover {
           background-color: var(--theme-hover-bg);
-          color: var(--theme-sidebar-active-text);
+          color: var(--theme-sidebar-emphasis-text);
         }
         &:active {
           background-color: var(--theme-active-bg);
@@ -465,12 +470,8 @@ onMounted(() => {
         }
       }
 
-      .personal-info {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-top: 16px;
+      .back-to-project + .side-account-area {
+        margin-top: 12px;
       }
     }
 
@@ -498,13 +499,12 @@ onMounted(() => {
         }
       }
 
-      .personal-info {
-        flex-wrap: wrap;
-        justify-content: center;
+      .side-account-area {
+        align-items: center;
         gap: 8px;
 
         .default-avatar {
-          margin: 0 0 26px 4px;
+          margin: 0;
         }
       }
     }

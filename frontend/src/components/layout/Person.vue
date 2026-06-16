@@ -204,7 +204,7 @@ const logout = async () => {
   display: flex;
   align-items: center;
   cursor: pointer;
-  width: 152px;
+  width: 100%;
   height: 40px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -238,7 +238,7 @@ const logout = async () => {
     font-size: 14px;
     line-height: 22px;
     margin-left: 8px;
-    max-width: 96px;
+    max-width: calc(100% - 48px);
     color: var(--theme-text-primary);
   }
 
@@ -257,7 +257,7 @@ const logout = async () => {
   &:focus {
     border-color: var(--theme-shell-border);
     background: var(--theme-control-bg);
-    color: var(--theme-sidebar-active-text, var(--theme-text-primary));
+    color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
 
     &::after {
       background: transparent;

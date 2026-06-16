@@ -33,8 +33,14 @@ export const watchRouter = (router: Router) => {
       return
     }
     if (!userStore.getUid) {
-      await userStore.info()
-      generateDynamicRouters(router)
+      try {
+        await userStore.info()
+        generateDynamicRouters(router)
+      } catch {
+        userStore.clear()
+        next(toLoginPage(to.fullPath))
+        return
+      }
     }
     if (to.path === '/docs') {
       location.href = to.fullPath

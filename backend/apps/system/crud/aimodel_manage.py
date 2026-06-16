@@ -1,8 +1,8 @@
-from sqlmodel import Session, select
+﻿from sqlmodel import Session, select
 
 from apps.system.models.system_model import AiModelDetail, AiModelBrief
 from common.core.db import engine
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 
 
 async def async_model_info():
@@ -20,7 +20,7 @@ async def async_model_info():
                     session.add(model)
         if any_model_change:
             session.commit()
-            SQLBotLogUtil.info("✅ AI 模型历史数据兼容处理完成")
+            AppLogUtil.info("✅ AI 模型历史数据兼容处理完成")
 
 
 def get_ai_model_list(session: Session, with_default: bool = True):

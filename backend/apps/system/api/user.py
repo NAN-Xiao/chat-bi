@@ -1,4 +1,4 @@
-from collections import defaultdict
+﻿from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, File, Path, Query, UploadFile
 from sqlmodel import SQLModel, or_, select
@@ -24,7 +24,7 @@ from apps.system.crud.user import (
 from apps.system.crud.user_excel import batchUpload, downTemplate, download_error_file
 from apps.system.models.user import UserModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.schemas.system_schema import PwdEditor, UserCreator, UserEditor, UserGrid, UserInfoDTO, UserLanguage, UserStatus
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
@@ -32,7 +32,7 @@ from common.core.deps import CurrentUser, SessionDep, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginatedResponse, PaginationParams
 from common.core.security import default_md5_pwd, md5pwd, verify_md5pwd
-from common.core.sqlbot_cache import clear_cache
+from common.core.app_cache import clear_cache
 from common.core.config import settings
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 
@@ -40,18 +40,18 @@ router = APIRouter(tags=["system_user"], prefix="/user")
 
 
 @router.get("/template", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def templateExcel(trans: Trans):
     return await downTemplate(trans)
 
 @router.post("/batchImport", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser, file: UploadFile = File(...)):
     return await batchUpload(session, trans, file)
 
 
 @router.get("/errorRecord/{file_id}", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def download_error(file_id: str):
     return download_error_file(file_id)
 
@@ -61,12 +61,12 @@ async def user_info(current_user: CurrentUser) -> UserInfoDTO:
 
  
 @router.get("/defaultPwd", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def default_pwd() -> str:
     return settings.DEFAULT_PWD
 
 @router.get("/pager/{pageNum}/{pageSize}", response_model=PaginatedResponse[UserGrid], summary=f"{PLACEHOLDER_PREFIX}system_user_grid", description=f"{PLACEHOLDER_PREFIX}system_user_grid")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def pager(
     session: SessionDep,
     current_user: CurrentUser,
@@ -145,7 +145,7 @@ def format_user_dict(row) -> dict:
     return result_dict
 
 @router.get("/{id}", response_model=UserEditor, summary=f"{PLACEHOLDER_PREFIX}user_detail_api", description=f"{PLACEHOLDER_PREFIX}user_detail_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def query(session: SessionDep, current_user: CurrentUser, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")) -> UserEditor:
     db_user: UserModel = get_db_user(session = session, user_id = id)
     if is_high_privilege_user(db_user) and not is_super_admin(current_user):
@@ -157,7 +157,7 @@ async def query(session: SessionDep, current_user: CurrentUser, trans: Trans, id
 
 
 @router.post("", summary=f"{PLACEHOLDER_PREFIX}user_create_api", description=f"{PLACEHOLDER_PREFIX}user_create_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(
     operation_type=OperationType.CREATE,
     module=OperationModules.USER,
@@ -195,7 +195,7 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
 
     
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}user_update_api", description=f"{PLACEHOLDER_PREFIX}user_update_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="editor.id")
 @system_log(LogConfig(
     operation_type=OperationType.UPDATE,
@@ -232,7 +232,7 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
         )
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}user_del_api", description=f"{PLACEHOLDER_PREFIX}user_del_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(
     operation_type=OperationType.DELETE,
     module=OperationModules.USER,
@@ -247,7 +247,7 @@ async def delete(session: SessionDep, current_user: CurrentUser, id: int = Path(
     await single_delete(session, id)
 
 @router.delete("", summary=f"{PLACEHOLDER_PREFIX}user_batchdel_api", description=f"{PLACEHOLDER_PREFIX}user_batchdel_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.DELETE,module=OperationModules.USER,resource_id_expr="id_list"))
 async def batch_del(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
     for id in id_list:
@@ -268,9 +268,9 @@ async def langChange(session: SessionDep, current_user: CurrentUser, trans: Tran
     db_user.language = lang
     session.add(db_user)
 
-   
+
 @router.patch("/pwd/{id}", summary=f"{PLACEHOLDER_PREFIX}reset_pwd", description=f"{PLACEHOLDER_PREFIX}reset_pwd")
-@require_permissions(permission=SqlbotPermission(role=['admin'])) 
+@require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.RESET_PWD,module=OperationModules.USER,resource_id_expr="id"))
 async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
@@ -296,7 +296,7 @@ async def pwdUpdate(session: SessionDep, current_user: CurrentUser, trans: Trans
 
     
 @router.patch("/status", summary=f"{PLACEHOLDER_PREFIX}update_status", description=f"{PLACEHOLDER_PREFIX}update_status")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="statusDto.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE_STATUS,module=OperationModules.USER, resource_id_expr="statusDto.id"))
 async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Trans, statusDto: UserStatus):

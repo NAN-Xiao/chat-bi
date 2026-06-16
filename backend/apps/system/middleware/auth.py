@@ -1,4 +1,4 @@
-
+﻿
 import base64
 import json
 from typing import Optional
@@ -17,7 +17,7 @@ from common.core import security
 from common.core.config import settings
 from common.core.schemas import TokenPayload
 from common.utils.locale import I18n
-from common.utils.utils import SQLBotLogUtil, get_origin_from_referer
+from common.utils.utils import AppLogUtil, get_origin_from_referer
 from common.utils.whitelist import whiteUtils
 from fastapi.security.utils import get_authorization_scheme_param
 from common.core.deps import get_i18n
@@ -107,7 +107,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 return True, session_user
         except Exception as e:
             msg = str(e)
-            SQLBotLogUtil.exception(f"Token validation error: {msg}")
+            AppLogUtil.exception(f"Token validation error: {msg}")
             if 'expired' in msg:
                 return False, jwt.ExpiredSignatureError(trans('i18n_permission.token_expired')) 
             return False, e
@@ -135,7 +135,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 return True, session_user
         except Exception as e:
             msg = str(e)
-            SQLBotLogUtil.exception(f"Token validation error: {msg}")
+            AppLogUtil.exception(f"Token validation error: {msg}")
             if 'expired' in msg:
                 return False, jwt.ExpiredSignatureError(trans('i18n_permission.token_expired')) 
             return False, e
@@ -169,7 +169,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                         
                 return True, session_user, assistant_info
         except Exception as e:
-            SQLBotLogUtil.exception(f"Assistant validation error: {str(e)}")
+            AppLogUtil.exception(f"Assistant validation error: {str(e)}")
             # Return False and the exception message
             return False, e
     
@@ -211,7 +211,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                     raise Exception(message)
                 return True, session_user, assistant_info
         except Exception as e:
-            SQLBotLogUtil.exception(f"Embedded validation error: {str(e)}")
+            AppLogUtil.exception(f"Embedded validation error: {str(e)}")
             # Return False and the exception message
             return False, e
     

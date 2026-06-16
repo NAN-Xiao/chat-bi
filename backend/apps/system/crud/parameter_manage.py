@@ -1,10 +1,10 @@
-import json
+﻿import json
 
 from fastapi import Request
 from sqlmodel import select
 
 from common.core.deps import SessionDep
-from common.utils.file_utils import SQLBotFileUtils
+from common.utils.file_utils import AppFileUtils
 from apps.system.models.system_model import SysArgModel
 
 
@@ -34,7 +34,7 @@ async def save_group_args(
         if item.ptype == "file":
             old = existing.get(pkey)
             if old and old.pval and old.pval != pval:
-                SQLBotFileUtils.delete_file(old.pval)
+                AppFileUtils.delete_file(old.pval)
 
         if pkey in existing:
             row = existing[pkey]
@@ -77,14 +77,14 @@ async def save_parameter_args(session: SessionDep, request: Request):
         file_mapping = {}
         for file in files:
             origin_file_name = file.filename
-            file_name, flag_name = SQLBotFileUtils.split_filename_and_flag(origin_file_name)
+            file_name, flag_name = AppFileUtils.split_filename_and_flag(origin_file_name)
             file.filename = file_name
             allow_limit_obj = allow_file_mapping.get(flag_name)
             if allow_limit_obj:
-                SQLBotFileUtils.check_file(file=file, file_types=allow_limit_obj.get("types"), limit_file_size=allow_limit_obj.get("size"))
+                AppFileUtils.check_file(file=file, file_types=allow_limit_obj.get("types"), limit_file_size=allow_limit_obj.get("size"))
             else:
                 raise Exception(f'The file [{file_name}] is not allowed to be uploaded!')
-            file_id = await SQLBotFileUtils.upload(file)
+            file_id = await AppFileUtils.upload(file)
             file_mapping[f"{flag_name}"] = file_id
     
     await save_group_args(session=session, sys_args=sys_args, file_mapping=file_mapping)

@@ -50,14 +50,21 @@
   --theme-success-soft-bg: #eefbf5;
   --theme-danger-soft-bg: #fff5f5;
   --theme-primary-soft-bg: rgba(47, 107, 255, 0.1);
-  --theme-sidebar-bg: #0b1730;
-  --theme-sidebar-bg-soft: #102140;
-  --theme-sidebar-border: rgba(132, 159, 204, 0.18);
-  --theme-sidebar-text: #e7eefb;
-  --theme-sidebar-text-secondary: #9fb0cc;
-  --theme-sidebar-hover-bg: rgba(72, 111, 178, 0.28);
+  --theme-sidebar-bg: #f4f7fb;
+  --theme-sidebar-bg-soft: #ffffff;
+  --theme-sidebar-border: #e2eaf4;
+  --theme-sidebar-text: #1b2a41;
+  --theme-sidebar-text-secondary: #66758f;
+  --theme-sidebar-text-tertiary: #90a0b6;
+  --theme-sidebar-hover-bg: #edf3ff;
   --theme-sidebar-active-bg: #2f6bff;
   --theme-sidebar-active-text: #ffffff;
+  --theme-sidebar-emphasis-text: #1b2a41;
+  --theme-sidebar-control-bg: #ffffff;
+  --theme-sidebar-control-hover-bg: #edf3ff;
+  --theme-sidebar-active-soft-bg: #d9e7ff;
+  --theme-sidebar-gradient-top: transparent;
+  --theme-sidebar-active-shadow: 0 10px 22px rgba(47, 107, 255, 0.18);
   --theme-chart-blue: #4c84ff;
   --theme-chart-blue-soft: rgba(76, 132, 255, 0.14);
   --theme-chart-green: #39c98a;
@@ -152,6 +159,21 @@
   --theme-success-soft-bg: rgba(52, 199, 36, 0.12);
   --theme-danger-soft-bg: rgba(245, 74, 69, 0.12);
   --theme-primary-soft-bg: rgba(75, 141, 248, 0.14);
+  --theme-sidebar-bg: #0b1730;
+  --theme-sidebar-bg-soft: #102140;
+  --theme-sidebar-border: rgba(132, 159, 204, 0.18);
+  --theme-sidebar-text: #e7eefb;
+  --theme-sidebar-text-secondary: #9fb0cc;
+  --theme-sidebar-text-tertiary: rgba(159, 176, 204, 0.72);
+  --theme-sidebar-hover-bg: rgba(72, 111, 178, 0.28);
+  --theme-sidebar-active-bg: #2f6bff;
+  --theme-sidebar-active-text: #ffffff;
+  --theme-sidebar-emphasis-text: #ffffff;
+  --theme-sidebar-control-bg: rgba(255, 255, 255, 0.08);
+  --theme-sidebar-control-hover-bg: rgba(255, 255, 255, 0.12);
+  --theme-sidebar-active-soft-bg: rgba(47, 107, 255, 0.34);
+  --theme-sidebar-gradient-top: rgba(47, 107, 255, 0.16);
+  --theme-sidebar-active-shadow: 0 10px 22px rgba(47, 107, 255, 0.24);
   --workspace-shell-bg: #eef4fb;
   --workspace-panel-bg: #f6f9fd;
   --workspace-card-bg: #ffffff;
@@ -651,8 +673,8 @@ strong {
 
   .ed-icon,
   svg {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
   }
 }
 
@@ -677,13 +699,13 @@ strong {
     &:hover,
     &:focus {
       background: var(--theme-sidebar-hover-bg);
-      color: var(--theme-sidebar-active-text);
+      color: var(--theme-sidebar-emphasis-text);
     }
 
     &:active,
     &.active {
-      background: rgba(47, 107, 255, 0.34);
-      color: var(--theme-sidebar-active-text);
+      background: var(--theme-sidebar-active-soft-bg);
+      color: var(--theme-sidebar-emphasis-text);
     }
   }
 }

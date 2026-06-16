@@ -8,7 +8,7 @@ from fastapi import UploadFile
 from common.core.config import settings
 
 
-class SQLBotFileUtils:
+class AppFileUtils:
     @staticmethod
     def _base_dir() -> Path:
         base_dir = Path(settings.UPLOAD_DIR)
@@ -48,7 +48,7 @@ class SQLBotFileUtils:
     async def upload(file: UploadFile) -> str:
         suffix = Path(file.filename or "").suffix.lower()
         file_id = f"{uuid.uuid4().hex}{suffix}"
-        file_path = SQLBotFileUtils.get_file_path(file_id)
+        file_path = AppFileUtils.get_file_path(file_id)
         Path(file_path).parent.mkdir(parents=True, exist_ok=True)
 
         content = await file.read()
@@ -62,13 +62,13 @@ class SQLBotFileUtils:
         if not file_id:
             raise ValueError("file_id is required")
         safe_name = os.path.basename(file_id)
-        return str(SQLBotFileUtils._base_dir() / safe_name)
+        return str(AppFileUtils._base_dir() / safe_name)
 
     @staticmethod
     def delete_file(file_id: str | None) -> None:
         if not file_id:
             return
         try:
-            Path(SQLBotFileUtils.get_file_path(file_id)).unlink(missing_ok=True)
+            Path(AppFileUtils.get_file_path(file_id)).unlink(missing_ok=True)
         except OSError:
             return

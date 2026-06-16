@@ -85,6 +85,12 @@ const MAX_DOCK_WIDTH = 680
 const DOCK_TAB_HEIGHT = 112
 const DOCK_TAB_VERTICAL_MARGIN = 16
 const DOCK_TAB_DRAG_THRESHOLD = 4
+const DOCK_TAB_SNAP_ANIMATION_MS = 420
+const DOCK_TAB_INERTIA_FRICTION = 0.9
+const DOCK_TAB_INERTIA_START_VELOCITY = 0.08
+const DOCK_TAB_INERTIA_STOP_VELOCITY = 0.025
+const DOCK_TAB_MAX_INERTIA_MS = 700
+const DOCK_TAB_VELOCITY_SMOOTHING = 0.55
 const DOCK_TAB_POSITION_KEY = 'analysis-assistant-dock-tab-top'
 
 const getDefaultDockTabTop = () =>
@@ -111,18 +117,103 @@ const readDockTabTop = () => {
 const dockTabTop = ref(readDockTabTop())
 const resizing = ref(false)
 const draggingDockTab = ref(false)
+const settlingDockTab = ref(false)
+const inertialDockTab = ref(false)
 let resizeStartX = 0
 let resizeStartWidth = 0
 let dockTabPointerActive = false
 let dockTabStartY = 0
 let dockTabStartTop = 0
+let dockTabLastMoveY = 0
+let dockTabLastMoveTime = 0
+let dockTabVelocityY = 0
 let suppressDockTabClick = false
+let dockTabSettleTimer: number | undefined
+let dockTabInertiaFrame: number | undefined
 
 const hasMessages = computed(() => messages.value.length > 0)
 
 const dockStyle = computed(() => (props.expanded ? { width: `${dockWidth.value}px` } : undefined))
 
 const dockTabStyle = computed(() => ({ top: `${dockTabTop.value}px` }))
+
+const getDockTabTime = () =>
+  typeof performance !== 'undefined' ? performance.now() : Date.now()
+
+const startDockTabSettle = (duration = DOCK_TAB_SNAP_ANIMATION_MS) => {
+  if (dockTabSettleTimer !== undefined) {
+    window.clearTimeout(dockTabSettleTimer)
+  }
+
+  settlingDockTab.value = true
+  dockTabSettleTimer = window.setTimeout(() => {
+    settlingDockTab.value = false
+    dockTabSettleTimer = undefined
+  }, duration)
+}
+
+const cancelDockTabInertia = () => {
+  if (dockTabInertiaFrame !== undefined) {
+    window.cancelAnimationFrame(dockTabInertiaFrame)
+    dockTabInertiaFrame = undefined
+  }
+  inertialDockTab.value = false
+}
+
+const finishDockTabInertia = () => {
+  cancelDockTabInertia()
+  dockTabTop.value = clampDockTabTop(dockTabTop.value)
+  startDockTabSettle()
+  persistDockTabTop()
+}
+
+const startDockTabInertia = () => {
+  const initialVelocity = dockTabVelocityY
+  if (Math.abs(initialVelocity) < DOCK_TAB_INERTIA_START_VELOCITY) {
+    dockTabTop.value = clampDockTabTop(dockTabTop.value)
+    startDockTabSettle()
+    persistDockTabTop()
+    return
+  }
+
+  cancelDockTabInertia()
+  settlingDockTab.value = false
+  inertialDockTab.value = true
+
+  let velocity = initialVelocity
+  let lastTime = getDockTabTime()
+  const startTime = lastTime
+
+  const step = (time: number) => {
+    const deltaTime = Math.min(Math.max(time - lastTime, 8), 32)
+    lastTime = time
+
+    const minTop = DOCK_TAB_VERTICAL_MARGIN
+    const maxTop = getMaxDockTabTop()
+    const nextTop = dockTabTop.value + velocity * deltaTime
+
+    if (nextTop <= minTop || nextTop >= maxTop) {
+      dockTabTop.value = Math.min(maxTop, Math.max(minTop, nextTop))
+      finishDockTabInertia()
+      return
+    }
+
+    dockTabTop.value = nextTop
+    velocity *= Math.pow(DOCK_TAB_INERTIA_FRICTION, deltaTime / 16.67)
+
+    if (
+      Math.abs(velocity) <= DOCK_TAB_INERTIA_STOP_VELOCITY ||
+      time - startTime >= DOCK_TAB_MAX_INERTIA_MS
+    ) {
+      finishDockTabInertia()
+      return
+    }
+
+    dockTabInertiaFrame = window.requestAnimationFrame(step)
+  }
+
+  dockTabInertiaFrame = window.requestAnimationFrame(step)
+}
 
 const pageContext = computed(() => {
   const title = route.meta?.title
@@ -181,18 +272,29 @@ const stopDockTabDrag = () => {
   window.removeEventListener('pointercancel', stopDockTabDrag)
 
   if (draggingDockTab.value) {
-    persistDockTabTop()
+    draggingDockTab.value = false
+    startDockTabInertia()
     suppressDockTabClick = true
     window.setTimeout(() => {
       suppressDockTabClick = false
     }, 0)
+  } else {
+    draggingDockTab.value = false
   }
-
-  draggingDockTab.value = false
 }
 
 const handleDockTabDrag = (event: PointerEvent) => {
   if (!dockTabPointerActive) return
+
+  const now = getDockTabTime()
+  const moveDistance = event.clientY - dockTabLastMoveY
+  const moveTime = Math.max(now - dockTabLastMoveTime, 16)
+  const instantVelocity = moveDistance / moveTime
+  dockTabVelocityY =
+    dockTabVelocityY * (1 - DOCK_TAB_VELOCITY_SMOOTHING) +
+    instantVelocity * DOCK_TAB_VELOCITY_SMOOTHING
+  dockTabLastMoveY = event.clientY
+  dockTabLastMoveTime = now
 
   const deltaY = event.clientY - dockTabStartY
   if (!draggingDockTab.value && Math.abs(deltaY) < DOCK_TAB_DRAG_THRESHOLD) {
@@ -211,6 +313,15 @@ const startDockTabDrag = (event: PointerEvent) => {
   draggingDockTab.value = false
   dockTabStartY = event.clientY
   dockTabStartTop = dockTabTop.value
+  dockTabLastMoveY = event.clientY
+  dockTabLastMoveTime = getDockTabTime()
+  dockTabVelocityY = 0
+  settlingDockTab.value = false
+  cancelDockTabInertia()
+  if (dockTabSettleTimer !== undefined) {
+    window.clearTimeout(dockTabSettleTimer)
+    dockTabSettleTimer = undefined
+  }
   document.body.style.cursor = 'ns-resize'
   document.body.style.userSelect = 'none'
   window.addEventListener('pointermove', handleDockTabDrag)
@@ -236,6 +347,10 @@ const handleWindowResize = () => {
 onBeforeUnmount(() => {
   stopResize()
   stopDockTabDrag()
+  cancelDockTabInertia()
+  if (dockTabSettleTimer !== undefined) {
+    window.clearTimeout(dockTabSettleTimer)
+  }
   window.removeEventListener('resize', handleWindowResize)
 })
 
@@ -557,7 +672,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     <button
       v-if="!expanded"
       class="dock-tab"
-      :class="{ dragging: draggingDockTab }"
+      :class="{ dragging: draggingDockTab, inertial: inertialDockTab, settling: settlingDockTab }"
       :style="dockTabStyle"
       type="button"
       @pointerdown="startDockTabDrag"
@@ -866,7 +981,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   touch-action: none;
   user-select: none;
   transition:
-    top 0.12s ease,
+    top 0.16s ease,
     background 0.16s ease,
     box-shadow 0.16s ease,
     transform 0.16s ease;
@@ -912,9 +1027,17 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     box-shadow: 0 8px 20px rgba(11, 23, 48, 0.24);
   }
 
-  &.dragging {
+  &.dragging,
+  &.inertial {
     cursor: ns-resize;
     transition: none;
+  }
+
+  &.settling {
+    transition:
+      top 0.36s cubic-bezier(0.2, 0.8, 0.2, 1),
+      background 0.16s ease,
+      box-shadow 0.16s ease;
   }
 }
 

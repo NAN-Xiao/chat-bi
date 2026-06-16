@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Request
@@ -8,7 +8,7 @@ from sqlalchemy import func, or_
 from sqlmodel import select
 
 from apps.system.models.user import UserModel
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationStatus, OperationType, SystemLog, SystemLogsResource
 from common.core.deps import SessionDep
 
@@ -148,7 +148,7 @@ def _resource_name_map(session: SessionDep, log_ids: list[int]) -> dict[int, str
 
 
 @router.get("/page/{page_num}/{page_size}")
-@require_permissions(permission=SqlbotPermission(role=["admin"]))
+@require_permissions(permission=AppPermission(role=["admin"]))
 async def page(session: SessionDep, request: Request, page_num: int, page_size: int):
     base_stmt = _build_stmt(request)
     total_count = session.exec(select(func.count()).select_from(base_stmt.subquery())).one()
@@ -166,20 +166,20 @@ async def page(session: SessionDep, request: Request, page_num: int, page_size: 
 
 
 @router.get("/get_options")
-@require_permissions(permission=SqlbotPermission(role=["admin"]))
+@require_permissions(permission=AppPermission(role=["admin"]))
 async def get_options():
     return [{"id": item.value, "name": OPERATION_TYPE_NAMES.get(item.value, item.value)} for item in OperationType]
 
 
 @router.get("/users")
-@require_permissions(permission=SqlbotPermission(role=["admin"]))
+@require_permissions(permission=AppPermission(role=["admin"]))
 async def users(session: SessionDep):
     rows = session.exec(select(UserModel.id, UserModel.name).order_by(UserModel.name)).all()
     return [{"id": item.id, "name": item.name} for item in rows]
 
 
 @router.get("/export")
-@require_permissions(permission=SqlbotPermission(role=["admin"]))
+@require_permissions(permission=AppPermission(role=["admin"]))
 async def export(session: SessionDep, request: Request):
     logs = session.exec(_build_stmt(request).order_by(SystemLog.create_time.desc(), SystemLog.id.desc())).all()
     resource_map = _resource_name_map(session, [item.id for item in logs if item.id])

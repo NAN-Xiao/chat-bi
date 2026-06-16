@@ -1,4 +1,4 @@
-import os
+﻿import os
 from typing import Dict, Any
 
 from alembic.config import Config
@@ -22,10 +22,10 @@ from apps.system.schemas.permission import RequestContextMiddleware
 from common.audit.schemas.request_context import RequestContextMiddlewareCommon
 from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
-from common.core.sqlbot_cache import init_sqlbot_cache
+from common.core.app_cache import init_app_cache
 from common.utils.embedding_threads import fill_empty_terminology_embeddings, fill_empty_data_training_embeddings, \
     fill_empty_table_and_ds_embeddings
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 
 try:
     from fastapi_mcp import FastApiMCP
@@ -56,15 +56,15 @@ def init_table_and_ds_embedding():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
-    init_sqlbot_cache()
+    init_app_cache()
     init_dynamic_cors(app)
     init_terminology_embedding_data()
     init_data_training_embedding_data()
     init_table_and_ds_embedding()
-    SQLBotLogUtil.info("✅ 星通智数 初始化完成")
+    AppLogUtil.info("✅ 星通智数 初始化完成")
     await async_model_info()  # 异步加密已有模型的密钥和地址
     yield
-    SQLBotLogUtil.info("星通智数 应用关闭")
+    AppLogUtil.info("星通智数 应用关闭")
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -193,9 +193,9 @@ if settings.MCP_ENABLED and FastApiMCP is not None:
     )
     mcp.mount(mcp_app)
 elif settings.MCP_ENABLED:
-    SQLBotLogUtil.warning(f"Skip MCP server setup because fastapi_mcp is unavailable: {_FASTAPI_MCP_IMPORT_ERROR}")
+    AppLogUtil.warning(f"Skip MCP server setup because fastapi_mcp is unavailable: {_FASTAPI_MCP_IMPORT_ERROR}")
 else:
-    SQLBotLogUtil.info("MCP server is disabled by MCP_ENABLED=false")
+    AppLogUtil.info("MCP server is disabled by MCP_ENABLED=false")
 
 # Set all CORS enabled origins
 if settings.all_cors_origins:

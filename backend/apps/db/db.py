@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 import json
 import os
 import platform
@@ -29,7 +29,7 @@ from apps.db.engine import get_engine_config
 from apps.system.crud.assistant import get_out_ds_conf
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import Trans
-from common.utils.utils import SQLBotLogUtil, equals_ignore_case
+from common.utils.utils import AppLogUtil, equals_ignore_case
 from fastapi import HTTPException
 from apps.db.es_engine import get_es_connect, get_es_index, get_es_fields, get_es_data_by_http
 from common.core.config import settings
@@ -43,11 +43,11 @@ try:
         oracledb.init_oracle_client(
             lib_dir=settings.ORACLE_CLIENT_PATH
         )
-        SQLBotLogUtil.info("init oracle client success, use thick mode")
+        AppLogUtil.info("init oracle client success, use thick mode")
     else:
-        SQLBotLogUtil.info("init oracle client failed, because not found oracle client, use thin mode")
+        AppLogUtil.info("init oracle client failed, because not found oracle client, use thin mode")
 except Exception as e:
-    SQLBotLogUtil.error("init oracle client failed, check your client is installed, use thin mode")
+    AppLogUtil.error("init oracle client failed, check your client is installed, use thin mode")
 
 
 def get_uri(ds: CoreDatasource) -> str:
@@ -187,10 +187,10 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
         conn = get_engine(ds, 10)
         try:
             with conn.connect() as connection:
-                SQLBotLogUtil.info("success")
+                AppLogUtil.info("success")
                 return True
         except Exception as e:
-            SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+            AppLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
             if is_raise:
                 raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
             return False
@@ -202,10 +202,10 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                                   port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute('select 1', timeout=10).fetchall()
-                    SQLBotLogUtil.info("success")
+                    AppLogUtil.info("success")
                     return True
                 except Exception as e:
-                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                    AppLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
                     if is_raise:
                         raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                     return False
@@ -216,10 +216,10 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                                  read_timeout=10, **extra_config_dict, **ssl_args) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute('select 1')
-                    SQLBotLogUtil.info("success")
+                    AppLogUtil.info("success")
                     return True
                 except Exception as e:
-                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                    AppLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
                     if is_raise:
                         raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                     return False
@@ -230,10 +230,10 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                                             timeout=10, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute('select 1')
-                    SQLBotLogUtil.info("success")
+                    AppLogUtil.info("success")
                     return True
                 except Exception as e:
-                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                    AppLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
                     if is_raise:
                         raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                     return False
@@ -244,10 +244,10 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                                   connect_timeout=10, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute('select 1')
-                    SQLBotLogUtil.info("success")
+                    AppLogUtil.info("success")
                     return True
                 except Exception as e:
-                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                    AppLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
                     if is_raise:
                         raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                     return False
@@ -256,10 +256,10 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
                               database=conf.database, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute('select 1')
-                    SQLBotLogUtil.info("success")
+                    AppLogUtil.info("success")
                     return True
                 except Exception as e:
-                    SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+                    AppLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
                     if is_raise:
                         raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
                     return False
@@ -267,19 +267,19 @@ def check_connection(trans: Optional[Trans], ds: CoreDatasource | AssistantOutDs
         elif equals_ignore_case(ds.type, 'es'):
             es_conn = get_es_connect(conf)
             if es_conn.ping():
-                SQLBotLogUtil.info("success")
+                AppLogUtil.info("success")
                 return True
             else:
-                SQLBotLogUtil.info("failed")
+                AppLogUtil.info("failed")
                 return False
     # else:
     #     conn = get_ds_engine(ds)
     #     try:
     #         with conn.connect() as connection:
-    #             SQLBotLogUtil.info("success")
+    #             AppLogUtil.info("success")
     #             return True
     #     except Exception as e:
-    #         SQLBotLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
+    #         AppLogUtil.error(f"Datasource {ds.id} connection failed: {e}")
     #         if is_raise:
     #             raise HTTPException(status_code=500, detail=trans('i18n_ds_invalid') + f': {e.args}')
     #         return False

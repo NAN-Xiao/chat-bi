@@ -15,7 +15,7 @@ from apps.system.schemas.system_schema import UserInfoDTO
 from common.utils.locale import I18n
 i18n = I18n()
 
-class SqlbotPermission(BaseModel):
+class AppPermission(BaseModel):
     role: Optional[list[str]] = None
     type: Optional[str] = None
     keyExpression: Optional[str] = None
@@ -160,7 +160,7 @@ async def check_project_permission(
     return False
         
  
-def require_permissions(permission: SqlbotPermission):
+def require_permissions(permission: AppPermission):
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):

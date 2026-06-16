@@ -1,4 +1,4 @@
-import datetime
+﻿import datetime
 from decimal import Decimal
 from typing import List, Optional, Union, Dict, Any
 
@@ -22,7 +22,7 @@ from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
-from common.utils.utils import extract_nested_json, SQLBotLogUtil
+from common.utils.utils import extract_nested_json, AppLogUtil
 
 _USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
 
@@ -88,7 +88,7 @@ def _record_allowed_by_current_permissions(session: SessionDep, current_user: Cu
         validate_sql_scope(session, current_user, datasource, sql)
         return True
     except Exception as exc:
-        SQLBotLogUtil.error(f"Chat record permission validation failed: {exc}")
+        AppLogUtil.error(f"Chat record permission validation failed: {exc}")
         return False
 
 
@@ -398,7 +398,7 @@ def get_chart_data_ds(session: SessionDep,ds_id,sql):
             json_result['data'] = _data
             return json_result
     except Exception as e:
-        SQLBotLogUtil.error(f"Function failed: {e}")
+        AppLogUtil.error(f"Function failed: {e}")
         json_result['status'] = 'failed'
         json_result['message'] = f"{e}"
         pass

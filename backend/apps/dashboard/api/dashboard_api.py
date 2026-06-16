@@ -1,4 +1,4 @@
-from typing import List
+﻿from typing import List
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
 
@@ -16,7 +16,7 @@ from apps.dashboard.models.dashboard_model import (
     SharedDashboardUseRequest,
 )
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import SessionDep, CurrentUser
@@ -86,7 +86,7 @@ async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: Quer
 
 
 @router.post("/sql_preview", summary=f"{PLACEHOLDER_PREFIX}dashboard_sql_preview")
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="request.datasource"))
+@require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
 async def sql_preview_api(session: SessionDep, current_user: CurrentUser, request: DashboardSqlPreview):
     return preview_sql(session=session, current_user=current_user, request=request)
 

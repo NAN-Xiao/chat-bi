@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import io
 import traceback
 from typing import Optional, List
@@ -20,7 +20,7 @@ from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat
 from apps.chat.task.llm import LLMService
 from apps.datasource.crud.permission import has_datasource_access
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
@@ -194,7 +194,7 @@ async def delete(session: SessionDep, current_user: CurrentUser, chart_id: int, 
 
 
 @router.post("/start", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}start_chat")
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="create_chat_obj.datasource"))
+@require_permissions(permission=AppPermission(type='ds', keyExpression="create_chat_obj.datasource"))
 @system_log(LogConfig(
     operation_type=OperationType.CREATE,
     module=OperationModules.CHAT,
@@ -267,7 +267,7 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
 
 @router.get("/recent_questions/{datasource_id}", response_model=List[str],
             summary=f"{PLACEHOLDER_PREFIX}get_recommend_questions")
-# @require_permissions(permission=SqlbotPermission(type='ds', keyExpression="datasource_id"))
+# @require_permissions(permission=AppPermission(type='ds', keyExpression="datasource_id"))
 async def recommend_questions(session: SessionDep, current_user: CurrentUser,
                               datasource_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     return list_recent_questions(session=session, current_user=current_user, datasource_id=datasource_id)
@@ -287,7 +287,7 @@ def find_base_question(record_id: int, session: SessionDep):
 
 
 @router.post("/question", summary=f"{PLACEHOLDER_PREFIX}ask_question")
-@require_permissions(permission=SqlbotPermission(type='chat', keyExpression="request_question.chat_id"))
+@require_permissions(permission=AppPermission(type='chat', keyExpression="request_question.chat_id"))
 async def question_answer(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestionBase,
                           current_assistant: CurrentAssistant):
     question = ChatQuestion(chat_id=request_question.chat_id, question=request_question.question)

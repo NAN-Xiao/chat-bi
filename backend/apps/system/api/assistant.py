@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 from datetime import timedelta
 from typing import Optional
@@ -21,13 +21,13 @@ from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantPublicInfo, AssistantValidator
 from common.core.config import settings
 from common.core.deps import CurrentAssistant, SessionDep, Trans, CurrentUser
 from common.core.security import create_access_token
-from common.core.sqlbot_cache import clear_cache
-from common.utils.file_utils import SQLBotFileUtils
+from common.core.app_cache import clear_cache
+from common.utils.file_utils import AppFileUtils
 from common.utils.utils import get_origin_from_referer, origin_match_domain
 
 router = APIRouter(tags=["system_assistant"], prefix="/system/assistant")
@@ -137,7 +137,7 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
 
 @router.get('/picture/{file_id}', summary=f"{PLACEHOLDER_PREFIX}assistant_picture_api", description=f"{PLACEHOLDER_PREFIX}assistant_picture_api")
 async def picture(file_id: str = Path(description="file_id")):
-    file_path = SQLBotFileUtils.get_file_path(file_id=file_id)
+    file_path = AppFileUtils.get_file_path(file_id=file_id)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -209,7 +209,7 @@ def get_db_type(type):
 
 
 @router.get("", response_model=list[AssistantModel], summary=f"{PLACEHOLDER_PREFIX}assistant_grid_api", description=f"{PLACEHOLDER_PREFIX}assistant_grid_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def query(session: SessionDep, current_user: CurrentUser):
     list_result = session.exec(select(AssistantModel).where(AssistantModel.type != 4).order_by(AssistantModel.name,
                                                                                                AssistantModel.create_time)).all()
@@ -219,7 +219,7 @@ async def query(session: SessionDep, current_user: CurrentUser):
 
 
 @router.get("/advanced_application", response_model=list[AssistantModel], include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def query_advanced_application(session: SessionDep, current_user: CurrentUser):
     list_result = session.exec(select(AssistantModel).where(AssistantModel.type == 1).order_by(AssistantModel.name,
                                                                                                AssistantModel.create_time)).all()
@@ -227,14 +227,14 @@ async def query_advanced_application(session: SessionDep, current_user: CurrentU
 
 
 @router.post("", summary=f"{PLACEHOLDER_PREFIX}assistant_create_api", description=f"{PLACEHOLDER_PREFIX}assistant_create_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.APPLICATION, result_id_expr="id"))
 async def add(request: Request, session: SessionDep, current_user: CurrentUser, creator: AssistantBase):
     return await save(request, session, creator)
 
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}assistant_update_api", description=f"{PLACEHOLDER_PREFIX}assistant_update_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="editor.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, resource_id_expr="editor.id"))
 async def update(request: Request, session: SessionDep, editor: AssistantDTO):
@@ -259,7 +259,7 @@ async def get_one(session: SessionDep, id: int = Path(description="ID")) -> Assi
 
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}assistant_del_api", description=f"{PLACEHOLDER_PREFIX}assistant_del_api")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.APPLICATION, resource_id_expr="id"))
 async def delete(request: Request, session: SessionDep, id: int = Path(description="ID")):

@@ -1,4 +1,4 @@
-from typing import Any
+﻿from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
@@ -8,7 +8,7 @@ from apps.datasource.crud.permission_rules import (
     list_rule_dtos,
     save_rule_dto,
 )
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.datasource.models.datasource import CoreDatasource, CoreTable
 from common.core.deps import CurrentUser, SessionDep
 
@@ -36,13 +36,13 @@ def _validate_permission_rule_scope(session: SessionDep, rule_data: dict[str, An
 
 
 @router.post("/ds_permission/list")
-@require_permissions(permission=SqlbotPermission(role=["admin"]))
+@require_permissions(permission=AppPermission(role=["admin"]))
 async def p_list(session: SessionDep, user: CurrentUser):
     return list_rule_dtos(session)
 
 
 @router.post("/ds_permission/get/{id}")
-@require_permissions(permission=SqlbotPermission(role=["admin"]))
+@require_permissions(permission=AppPermission(role=["admin"]))
 async def get(session: SessionDep, id: int):
     rule = get_rule_dto(session, id)
     if rule is None:
@@ -51,14 +51,14 @@ async def get(session: SessionDep, id: int):
 
 
 @router.post("/ds_permission/save")
-@require_permissions(permission=SqlbotPermission(role=["admin"]))
+@require_permissions(permission=AppPermission(role=["admin"]))
 async def save_rule(session: SessionDep, user: CurrentUser, ruleDTO: dict[str, Any]):
     _validate_permission_rule_scope(session, ruleDTO)
     return save_rule_dto(session, ruleDTO)
 
 
 @router.post("/ds_permission/delete/{id}")
-@require_permissions(permission=SqlbotPermission(role=["admin"]))
+@require_permissions(permission=AppPermission(role=["admin"]))
 async def delete(session: SessionDep, id: int):
     delete_rule_dto(session, id)
     return True

@@ -173,7 +173,7 @@ class CallerLogger(logging.Logger):
         if self.logger.isEnabledFor(level):
             self.logger._log(level, msg, args, exc_info=exc_info, extra=extra, stacklevel=stacklevel)
 
-class SQLBotLogUtil:
+class AppLogUtil:
     
     @staticmethod
     def _get_logger() -> logging.Logger:
@@ -188,25 +188,25 @@ class SQLBotLogUtil:
 
     @staticmethod
     def debug(msg: str, *args, **kwargs):
-        logger = SQLBotLogUtil._get_logger()
+        logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.DEBUG):
             logger._log(logging.DEBUG, msg, args, **kwargs)
 
     @staticmethod
     def info(msg: str, *args, **kwargs):
-        logger = SQLBotLogUtil._get_logger()
+        logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.INFO):
             logger._log(logging.INFO, msg, args, **kwargs)
 
     @staticmethod
     def warning(msg: str, *args, **kwargs):
-        logger = SQLBotLogUtil._get_logger()
+        logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.WARNING):
             logger._log(logging.WARNING, msg, args, **kwargs)
 
     @staticmethod
     def error(msg: str, *args, exc_info: Optional[bool] = None, **kwargs):
-        logger = SQLBotLogUtil._get_logger()
+        logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.ERROR):
             logger._log(
                 logging.ERROR, 
@@ -218,13 +218,13 @@ class SQLBotLogUtil:
 
     @staticmethod
     def exception(msg: str, *args, **kwargs):
-        logger = SQLBotLogUtil._get_logger()
+        logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.ERROR):
             logger._log(logging.ERROR, msg, args, exc_info=True, **kwargs)
 
     @staticmethod
     def critical(msg: str, *args, **kwargs):
-        logger = SQLBotLogUtil._get_logger()
+        logger = AppLogUtil._get_logger()
         if logger.isEnabledFor(logging.CRITICAL):
             logger._log(logging.CRITICAL, msg, args, **kwargs)
             
@@ -268,7 +268,7 @@ def get_origin_from_referer(request: Request):
         
         return f"{parsed.scheme}://{parsed.hostname}"
     except Exception as e:
-        SQLBotLogUtil.error(f"解析 Referer 出错: {e}")
+        AppLogUtil.error(f"解析 Referer 出错: {e}")
         return referer
 
 def origin_match_domain(origin: str, domain: str) -> bool:

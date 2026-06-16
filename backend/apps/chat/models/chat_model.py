@@ -389,7 +389,7 @@ class McpAssistant(BaseModel):
 
 
 class SystemPromptMessage(SystemMessage):
-    sqlbot_system: bool = True
+    app_system: bool = True
 
     def __init__(
             self, content: Union[str, list[Union[str, dict]]], **kwargs: Any
@@ -398,7 +398,7 @@ class SystemPromptMessage(SystemMessage):
 
 
 class HumanPromptMessage(HumanMessage):
-    sqlbot_system: bool = True
+    app_system: bool = True
 
     def __init__(
             self, content: Union[str, list[Union[str, dict]]], **kwargs: Any
@@ -407,7 +407,7 @@ class HumanPromptMessage(HumanMessage):
 
 
 class AIPromptMessage(AIMessage):
-    sqlbot_system: bool = True
+    app_system: bool = True
 
     def __init__(
             self, content: Union[str, list[Union[str, dict]]], **kwargs: Any

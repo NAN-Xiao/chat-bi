@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import hashlib
 import io
 import os
@@ -37,13 +37,13 @@ from apps.datasource.crud.permission import (
 )
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.user import is_system_admin
-from apps.system.schemas.permission import SqlbotPermission, require_permissions
+from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.models.user import UserModel
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum, \
     check_status_by_id, sync_single_fields
@@ -135,7 +135,7 @@ class DatasourceUserUpdate(BaseModel):
 
 
 @router.get("/{id}/users", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def datasource_users(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     project_users = list_datasource_users(session, id)
     user_ids = [item["user_id"] for item in project_users]
@@ -162,7 +162,7 @@ async def datasource_users(session: SessionDep, id: int = Path(..., description=
 
 
 @router.put("/{id}/users", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def update_datasource_user_api(
         session: SessionDep,
         user: CurrentUser,
@@ -195,7 +195,7 @@ async def update_datasource_user_api(
 
 
 @router.post("/get/{id}", response_model=Optional[DatasourceDetailItem], summary=f"{PLACEHOLDER_PREFIX}ds_get")
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="id"))
+@require_permissions(permission=AppPermission(type='ds', keyExpression="id"))
 async def get_datasource(
         session: SessionDep,
         user: CurrentUser,
@@ -211,7 +211,7 @@ async def get_datasource(
 
 
 @router.post("/check", response_model=bool, summary=f"{PLACEHOLDER_PREFIX}ds_check")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
     def inner():
         return check_status(session, trans, ds, True)
@@ -220,7 +220,7 @@ async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
 
 
 @router.get("/check/{ds_id}", response_model=bool, summary=f"{PLACEHOLDER_PREFIX}ds_check")
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="ds_id"))
+@require_permissions(permission=AppPermission(type='ds', keyExpression="ds_id"))
 async def check_by_id(session: SessionDep, trans: Trans,
                       ds_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     def inner():
@@ -231,13 +231,13 @@ async def check_by_id(session: SessionDep, trans: Trans,
 
 @router.post("/add", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_add")
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.DATASOURCE, result_id_expr="id"))
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDatasource):
     return await create_ds(session, trans, user, ds)
 
 
 @router.post("/chooseTables/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_choose_tables")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def choose_tables(session: SessionDep, trans: Trans, tables: List[CoreTable],
                         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     def inner():
@@ -247,7 +247,7 @@ async def choose_tables(session: SessionDep, trans: Trans, tables: List[CoreTabl
 
 
 @router.post("/update", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_update")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(
     LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.DATASOURCE, resource_id_expr="ds.id"))
 async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
@@ -258,7 +258,7 @@ async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreD
 
 
 @router.post("/delete/{id}/{name}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_delete")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.DATASOURCE, resource_id_expr="id",
                       ))
 async def delete(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"), name: str = None):
@@ -266,13 +266,13 @@ async def delete(session: SessionDep, id: int = Path(..., description=f"{PLACEHO
 
 
 @router.post("/getTables/{id}", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def get_tables(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     return getTables(session, id)
 
 
 @router.post("/getTablesByConf", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
     try:
         def inner():
@@ -286,12 +286,12 @@ async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
 
         status = await asyncio.to_thread(inner)
         if status:
-            SQLBotLogUtil.error(f"get table failed: {e}")
+            AppLogUtil.error(f"get table failed: {e}")
             raise HTTPException(status_code=500, detail=f'Get table Failed: {e.args}')
 
 
 @router.post("/getSchemaByConf", response_model=List[str], summary=f"{PLACEHOLDER_PREFIX}ds_get_schema")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
     try:
         def inner():
@@ -305,13 +305,13 @@ async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
 
         status = await asyncio.to_thread(inner)
         if status:
-            SQLBotLogUtil.error(f"get table failed: {e}")
+            AppLogUtil.error(f"get table failed: {e}")
             raise HTTPException(status_code=500, detail=f'Get table Failed: {e.args}')
 
 
 @router.post("/getFields/{id}/{table_name}", response_model=List[ColumnSchemaResponse],
              summary=f"{PLACEHOLDER_PREFIX}ds_get_fields")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def get_fields(session: SessionDep,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                      table_name: str = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_name")):
@@ -319,7 +319,7 @@ async def get_fields(session: SessionDep,
 
 
 @router.post("/syncFields/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_sync_fields")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def sync_fields(session: SessionDep, trans: Trans,
                       id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
     return sync_single_fields(session, trans, id)
@@ -347,7 +347,7 @@ async def exec_sql(session: SessionDep, id: int, obj: TestObj):
 
 
 @router.post("/tableList/{id}", response_model=List[CoreTable], summary=f"{PLACEHOLDER_PREFIX}ds_table_list")
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="id"))
+@require_permissions(permission=AppPermission(type='ds', keyExpression="id"))
 async def table_list(session: SessionDep, current_user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     tables = get_tables_by_ds_id(session, id)
     if not is_normal_user(current_user):
@@ -360,7 +360,7 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
 
 
 @router.post("/fieldList/{id}", response_model=List[CoreField], summary=f"{PLACEHOLDER_PREFIX}ds_field_list")
-@require_permissions(permission=SqlbotPermission(type='table', keyExpression="id"))
+@require_permissions(permission=AppPermission(type='table', keyExpression="id"))
 async def field_list(session: SessionDep, current_user: CurrentUser, field: FieldObj,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
     table = session.get(CoreTable, id)
@@ -374,25 +374,25 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
 
 
 @router.post("/editLocalComment", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def edit_local(session: SessionDep, data: TableObj):
     update_table_and_fields(session, data)
 
 
 @router.post("/editTable", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_table")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def edit_table(session: SessionDep, table: CoreTable):
     updateTable(session, table)
 
 
 @router.post("/editField", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_field")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def edit_field(session: SessionDep, field: CoreField):
     updateField(session, field)
 
 
 @router.post("/previewData/{id}", response_model=PreviewResponse, summary=f"{PLACEHOLDER_PREFIX}ds_preview_data")
-@require_permissions(permission=SqlbotPermission(type='ds', keyExpression="id"))
+@require_permissions(permission=AppPermission(type='ds', keyExpression="id"))
 async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, data: TableObj,
                        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     def inner():
@@ -403,7 +403,7 @@ async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentU
             # check ds status
             status = check_status(session, trans, ds, True)
             if status:
-                SQLBotLogUtil.error(f"Preview failed: {e}")
+                AppLogUtil.error(f"Preview failed: {e}")
                 raise HTTPException(status_code=500, detail=f'Preview Failed: {e.args}')
 
     return await asyncio.to_thread(inner)
@@ -411,7 +411,7 @@ async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentU
 
 # not used
 @router.post("/fieldEnum/{id}", include_in_schema=False)
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def field_enum(session: SessionDep, id: int):
     def inner():
         return fieldEnum(session, id)
@@ -485,7 +485,7 @@ async def field_enum(session: SessionDep, id: int):
 
 # deprecated
 @router.post("/uploadExcel", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_upload_excel")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def upload_excel(session: SessionDep, file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel")):
     ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
@@ -564,7 +564,7 @@ f_c_col = "字段备注"
 
 
 @router.get("/exportDsSchema/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_export_ds_schema")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def export_ds_schema(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     # {
     #     'sheet':'', sheet name
@@ -639,7 +639,7 @@ async def export_ds_schema(session: SessionDep, id: int = Path(..., description=
 
 
 @router.post("/uploadDsSchema/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_upload_ds_schema")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def upload_ds_schema(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                            file: UploadFile = File(...)):
     ALLOWED_EXTENSIONS = {"xlsx", "xls"}
@@ -701,7 +701,7 @@ async def upload_ds_schema(session: SessionDep, id: int = Path(..., description=
 
 
 @router.post("/parseExcel", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_parse_excel")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def parse_excel(file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel")):
     ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
     if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
@@ -724,7 +724,7 @@ async def parse_excel(file: UploadFile = File(..., description=f"{PLACEHOLDER_PR
 
 
 @router.post("/importToDb", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_import_to_db")
-@require_permissions(permission=SqlbotPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['admin']))
 async def import_to_db(session: SessionDep, trans: Trans, import_req: ImportRequest):
     save_path = os.path.join(path, import_req.filePath)
     if not os.path.exists(save_path):

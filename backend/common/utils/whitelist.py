@@ -1,8 +1,8 @@
-# app/utils/whitelist.py
+﻿# app/utils/whitelist.py
 import re
 from typing import List, Pattern
 from common.core.config import settings
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 wlist = [
     "/",
     "/docs",
@@ -55,7 +55,7 @@ class WhitelistChecker:
                 try:
                     self._compiled_patterns.append(re.compile(regex_pattern))
                 except re.error:
-                    SQLBotLogUtil.error(f"Invalid regex pattern: {regex_pattern}")
+                    AppLogUtil.error(f"Invalid regex pattern: {regex_pattern}")
     
     def is_whitelisted(self, path: str) -> bool:
         prefix = settings.API_V1_STR

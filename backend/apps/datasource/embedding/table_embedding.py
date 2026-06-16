@@ -1,4 +1,4 @@
-# Author: Junjun
+﻿# Author: Junjun
 # Date: 2025/9/23
 import json
 import time
@@ -7,7 +7,7 @@ import traceback
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.datasource.embedding.utils import cosine_similarity
 from common.core.config import settings
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 
 
 def get_table_embedding(tables: list[dict], question: str):
@@ -23,7 +23,7 @@ def get_table_embedding(tables: list[dict], question: str):
             start_time = time.time()
             results = model.embed_documents(text)
             end_time = time.time()
-            SQLBotLogUtil.info(str(end_time - start_time))
+            AppLogUtil.info(str(end_time - start_time))
 
             q_embedding = model.embed_query(question)
             for index in range(len(results)):
@@ -33,7 +33,7 @@ def get_table_embedding(tables: list[dict], question: str):
             _list.sort(key=lambda x: x['cosine_similarity'], reverse=True)
             _list = _list[:settings.TABLE_EMBEDDING_COUNT]
             # print(len(_list))
-            SQLBotLogUtil.info(json.dumps(_list))
+            AppLogUtil.info(json.dumps(_list))
             return _list
         except Exception:
             traceback.print_exc()
@@ -55,7 +55,7 @@ def calc_table_embedding(tables: list[dict], question: str):
             start_time = time.time()
             # results = model.embed_documents(text)
             # end_time = time.time()
-            # SQLBotLogUtil.info(str(end_time - start_time))
+            # AppLogUtil.info(str(end_time - start_time))
             results = [item.get('embedding') for item in _list]
 
             q_embedding = model.embed_query(question)
@@ -68,8 +68,8 @@ def calc_table_embedding(tables: list[dict], question: str):
             _list = _list[:settings.TABLE_EMBEDDING_COUNT]
             # print(len(_list))
             end_time = time.time()
-            SQLBotLogUtil.info(str(end_time - start_time))
-            SQLBotLogUtil.info(json.dumps([{"id": ele.get('id'), "schema_table": ele.get('schema_table'),
+            AppLogUtil.info(str(end_time - start_time))
+            AppLogUtil.info(json.dumps([{"id": ele.get('id'), "schema_table": ele.get('schema_table'),
                                             "cosine_similarity": ele.get('cosine_similarity'), "table_name": ele.get('table_name')}
                                            for ele in _list]))
             return _list

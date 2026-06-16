@@ -1,13 +1,13 @@
-
+﻿
 from typing import Optional
 from sqlmodel import Session, func, select, delete as sqlmodel_delete
 from apps.datasource.models.datasource import CoreDatasourceUser
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import EMAIL_REGEX, PWD_REGEX, BaseUserDTO, UserInfoDTO
 from common.core.deps import SessionDep
-from common.core.sqlbot_cache import cache, clear_cache
+from common.core.app_cache import cache, clear_cache
 from common.utils.locale import I18n
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 from ..models.user import UserModel, UserPlatformModel
 from common.core.security import verify_md5pwd
 import re
@@ -109,7 +109,7 @@ async def single_delete(session: SessionDep, id: int):
 
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")    
 async def clean_user_cache(id: int):
-    SQLBotLogUtil.info(f"User cache for [{id}] has been cleaned")
+    AppLogUtil.info(f"User cache for [{id}] has been cleaned")
 
 
 def check_account_exists(*, session: Session, account: str) -> bool:

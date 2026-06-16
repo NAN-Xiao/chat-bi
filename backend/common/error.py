@@ -7,11 +7,11 @@ class SingleMessageError(Exception):
         return self.message
 
 
-class SQLBotDBConnectionError(Exception):
+class AppDBConnectionError(Exception):
     pass
 
 
-class SQLBotDBError(Exception):
+class AppDBError(Exception):
     pass
 
 

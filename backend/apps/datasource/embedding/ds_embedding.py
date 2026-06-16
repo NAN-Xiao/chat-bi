@@ -1,4 +1,4 @@
-# Author: Junjun
+﻿# Author: Junjun
 # Date: 2025/9/18
 import json
 import time
@@ -12,7 +12,7 @@ from apps.system.crud.assistant import AssistantOutDs
 from common.core.config import settings
 from common.core.deps import CurrentAssistant
 from common.core.deps import SessionDep, CurrentUser
-from common.utils.utils import SQLBotLogUtil
+from common.utils.utils import AppLogUtil
 
 
 def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, out_ds: AssistantOutDs,
@@ -43,7 +43,7 @@ def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, o
                 _list.sort(key=lambda x: x['cosine_similarity'], reverse=True)
                 # print(len(_list))
                 _list = _list[:settings.DS_EMBEDDING_COUNT]
-                SQLBotLogUtil.info(json.dumps(
+                AppLogUtil.info(json.dumps(
                     [{"id": ele.get("id"), "name": ele.get("ds").name,
                       "cosine_similarity": ele.get("cosine_similarity")}
                      for ele in _list]))
@@ -78,9 +78,9 @@ def get_ds_embedding(session: SessionDep, current_user: CurrentUser, _ds_list, o
                 _list.sort(key=lambda x: x['cosine_similarity'], reverse=True)
                 # print(len(_list))
                 end_time = time.time()
-                SQLBotLogUtil.info(str(end_time - start_time))
+                AppLogUtil.info(str(end_time - start_time))
                 _list = _list[:settings.DS_EMBEDDING_COUNT]
-                SQLBotLogUtil.info(json.dumps(
+                AppLogUtil.info(json.dumps(
                     [{"id": ele.get("id"), "name": ele.get("ds").name,
                       "cosine_similarity": ele.get("cosine_similarity")}
                      for ele in _list]))
