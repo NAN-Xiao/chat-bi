@@ -278,21 +278,32 @@ function onChatRenamed(chat: Chat) {
     min-width: unset;
     width: 28px;
     height: 28px;
-    font-size: 18px;
-    color: var(--workspace-text-primary, var(--theme-text-primary));
+    font-size: 16px;
+    color: var(--workspace-text-secondary, var(--theme-text-secondary));
+    border-radius: 6px;
 
     :deep(.ed-icon),
     :deep(svg) {
       color: inherit;
     }
 
-    :deep(svg path) {
-      fill: currentColor !important;
+    :deep(svg) {
+      width: 16px;
+      height: 16px;
+      opacity: 0.88;
+    }
+
+    :deep(svg [stroke]) {
+      stroke: currentColor;
     }
 
     &:hover {
       background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
       color: var(--workspace-text-primary, var(--theme-text-primary));
+
+      :deep(svg) {
+        opacity: 1;
+      }
     }
   }
 

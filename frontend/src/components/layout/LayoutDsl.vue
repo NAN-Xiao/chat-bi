@@ -1,12 +1,13 @@
 <script lang="ts" setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onBeforeMount, onMounted, onUnmounted } from 'vue'
 import Menu from './Menu.vue'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
 import ProjectSelector from './ProjectSelector.vue'
 import Person from './Person.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 import AnalysisAssistantDock from '@/views/analysis-assistant/AnalysisAssistantDock.vue'
-import elexDataLogoUrl from '@/assets/elex_data.svg?url'
+import elexDataLogoUrl from '@/assets/elex_data.png'
+import elexDataGrayLogoUrl from '@/assets/elex_data_gray.png'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
@@ -14,7 +15,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useEmitt } from '@/utils/useEmitt'
 import { isMobile } from '@/utils/utils'
-import { onBeforeMount } from 'vue'
+import { getInitialTheme, THEME_CHANGE_EVENT, type ThemeMode } from '@/utils/theme'
 
 const isPhone = computed(() => {
   return isMobile()
@@ -23,14 +24,25 @@ const router = useRouter()
 const collapse = ref(false)
 const collapseCopy = ref(false)
 const analysisAssistantExpanded = ref(false)
+const currentTheme = ref<ThemeMode>(getInitialTheme())
 const appearanceStore = useAppearanceStoreWithOut()
 let time: any
+const handleThemeChange = (event: Event) => {
+  const theme = (event as CustomEvent<ThemeMode>).detail
+  if (theme === 'dark' || theme === 'light') {
+    currentTheme.value = theme
+  }
+}
 onUnmounted(() => {
   clearTimeout(time)
+  window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange)
 })
 const loginBg = computed(() => {
   return appearanceStore.getLogin
 })
+const defaultLogoUrl = computed(() =>
+  currentTheme.value === 'dark' ? elexDataGrayLogoUrl : elexDataLogoUrl
+)
 const handleCollapseChange = (val: any = true) => {
   collapseCopy.value = val
   clearTimeout(time)
@@ -74,6 +86,10 @@ onBeforeMount(() => {
     collapseCopy.value = true
   }
 })
+onMounted(() => {
+  currentTheme.value = getInitialTheme()
+  window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange)
+})
 </script>
 
 <template>
@@ -102,7 +118,7 @@ onBeforeMount(() => {
                 v-else
                 :style="{ marginLeft: collapse ? '5px' : 0 }"
                 :class="!collapse && 'collapse-icon'"
-                :src="elexDataLogoUrl"
+                :src="defaultLogoUrl"
                 height="30"
                 width="30"
                 alt=""
@@ -208,7 +224,7 @@ onBeforeMount(() => {
               <img
                 v-else-if="collapse"
                 style="margin: 0 0 6px 5px; cursor: pointer"
-                :src="elexDataLogoUrl"
+                :src="defaultLogoUrl"
                 height="30"
                 width="30"
                 alt=""
@@ -216,7 +232,7 @@ onBeforeMount(() => {
               />
               <div v-else class="default-sqlbot">
                 <img
-                  :src="elexDataLogoUrl"
+                  :src="defaultLogoUrl"
                   class="collapse-icon"
                   height="30"
                   width="30"
@@ -231,7 +247,7 @@ onBeforeMount(() => {
           </template>
         </div>
         <button type="button" class="fold" @click.stop="handleFoldExpand">
-          <el-icon size="20">
+          <el-icon size="18">
             <icon_side_expand_outlined v-if="collapse"></icon_side_expand_outlined>
             <icon_side_fold_outlined v-else></icon_side_fold_outlined>
           </el-icon>
@@ -348,11 +364,14 @@ onBeforeMount(() => {
         }
 
         :deep(svg) {
+          width: 18px;
+          height: 18px;
           color: inherit;
+          opacity: 0.9;
         }
 
-        :deep(svg path) {
-          fill: currentColor !important;
+        :deep(svg [stroke]) {
+          stroke: currentColor;
         }
 
         &:hover,
@@ -362,6 +381,7 @@ onBeforeMount(() => {
 
           :deep(svg) {
             color: inherit;
+            opacity: 1;
           }
         }
 
@@ -374,14 +394,23 @@ onBeforeMount(() => {
     .default-sqlbot {
       display: flex;
       align-items: center;
-      font-weight: 500;
       font-size: 16px;
       line-height: 22px;
       color: var(--theme-sidebar-active-text);
       cursor: pointer;
       margin-bottom: 12px;
+
+      > span {
+        font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 24px;
+        letter-spacing: 0;
+        color: var(--theme-sidebar-active-text, #ffffff);
+      }
+
       .collapse-icon {
-        margin-right: 8px;
+        margin-right: 10px;
       }
     }
 

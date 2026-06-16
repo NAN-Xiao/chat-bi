@@ -382,22 +382,6 @@
       </el-main>
       <el-footer v-if="showChatFooter" class="chat-footer">
         <div class="input-wrapper" @click="clickInput">
-          <div v-if="isCompletePage || selectAssistantDs" class="datasource">
-            <template v-if="footerDatasource">
-              {{ t('qa.selected_datasource') }}:
-              <img
-                v-if="currentChatEngineType"
-                style="margin-left: 4px; margin-right: 4px"
-                :src="currentChatEngineType"
-                width="16px"
-                height="16px"
-                alt=""
-              />
-              <span class="name">
-                {{ footerDatasource.name }}
-              </span>
-            </template>
-          </div>
           <div v-if="computedMessages.length > 0 && currentChat.datasource" class="quick_question">
             <quick-question
               ref="quickQuestionRef"
@@ -463,11 +447,10 @@ import ChatCreator from '@/views/chat/ChatCreator.vue'
 import ChatTokenTime from '@/views/chat/ChatTokenTime.vue'
 import ErrorInfo from './ErrorInfo.vue'
 import ChatToolBar from './ChatToolBar.vue'
-import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 import { useI18n } from 'vue-i18n'
 import { find, forEach } from 'lodash-es'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
-import elexDataLogoUrl from '@/assets/elex_data.svg?url'
+import elexDataLogoUrl from '@/assets/elex_data.png'
 import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
 import icon_replace_outlined from '@/assets/svg/icon_replace_outlined.svg'
@@ -588,24 +571,6 @@ const showChatFooter = computed(() => {
     (!isCompletePage.value && !selectAssistantDs.value) ||
     currentChatId.value === undefined
   )
-})
-
-const footerDatasource = computed(() => {
-  if (currentChat.value.datasource && currentChat.value.datasource_name) {
-    return {
-      id: currentChat.value.datasource,
-      name: currentChat.value.datasource_name,
-      type: currentChat.value.ds_type,
-    }
-  }
-  if (datasourceContext.datasourceId && datasourceContext.datasourceName) {
-    return {
-      id: datasourceContext.datasourceId,
-      name: datasourceContext.datasourceName,
-      type: datasourceContext.datasourceType,
-    }
-  }
-  return undefined
 })
 
 const goEmpty = (func?: (...p: any[]) => void, ...param: any[]) => {
@@ -729,10 +694,6 @@ function onClickHistory(chat: ChatInfo) {
     }
   })
 }
-
-const currentChatEngineType = computed(() => {
-  return (dsTypeWithImg.find((ele) => footerDatasource.value?.type === ele.type) || {}).img
-})
 
 function onChatDeleted(id: number) {
   console.info('deleted', id)
@@ -1336,31 +1297,6 @@ onMounted(async () => {
       width: 100%;
       position: relative;
       max-width: 800px;
-
-      .datasource {
-        width: calc(100% - 2px);
-        position: absolute;
-        margin-left: 1px;
-        margin-top: 1px;
-        left: 0;
-        top: 0;
-        padding-top: 12px;
-        padding-left: 12px;
-        z-index: 10;
-        background: transparent;
-        line-height: 22px;
-        font-size: 14px;
-        font-weight: 400;
-        border-top-right-radius: 16px;
-        border-top-left-radius: 16px;
-        color: var(--workspace-text-secondary, var(--theme-text-secondary));
-        display: flex;
-        align-items: center;
-
-        .name {
-          color: var(--workspace-text-primary, var(--theme-text-primary));
-        }
-      }
 
       .quick_question {
         min-width: 100px;

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { store } from '@/stores/index'
 import { setCurrentColor, setTitle } from '@/utils/utils'
 import { isBtnShow } from '@/utils/utils'
-import elexDataLogoUrl from '@/assets/elex_data.svg?url'
+import elexDataLogoUrl from '@/assets/elex_data.png'
 
 interface AppearanceState {
   themeColor?: string

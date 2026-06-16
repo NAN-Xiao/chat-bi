@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChatInfo, type ChatMessage } from '@/api/chat.ts'
-import elexDataLogoUrl from '@/assets/elex_data.svg?url'
+import elexDataLogoUrl from '@/assets/elex_data.png'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
 

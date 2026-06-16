@@ -75,14 +75,14 @@ const scrollRef = ref()
 const inputRef = ref()
 const isStreaming = ref(false)
 const streamController = ref<AbortController>()
-const dockWidth = ref(400)
+const dockWidth = ref(360)
 let messageId = 0
 let streamBuffer = ''
 let streamFinished = false
 
-const MIN_DOCK_WIDTH = 360
-const MAX_DOCK_WIDTH = 760
-const DOCK_TAB_HEIGHT = 104
+const MIN_DOCK_WIDTH = 320
+const MAX_DOCK_WIDTH = 680
+const DOCK_TAB_HEIGHT = 112
 const DOCK_TAB_VERTICAL_MARGIN = 16
 const DOCK_TAB_DRAG_THRESHOLD = 4
 const DOCK_TAB_POSITION_KEY = 'analysis-assistant-dock-tab-top'
@@ -101,7 +101,10 @@ const clampDockTabTop = (top: number) =>
 const readDockTabTop = () => {
   if (typeof window === 'undefined') return getDefaultDockTabTop()
 
-  const savedTop = Number(window.localStorage.getItem(DOCK_TAB_POSITION_KEY))
+  const savedTopText = window.localStorage.getItem(DOCK_TAB_POSITION_KEY)
+  if (savedTopText === null) return getDefaultDockTabTop()
+
+  const savedTop = Number(savedTopText)
   return Number.isFinite(savedTop) ? clampDockTabTop(savedTop) : getDefaultDockTabTop()
 }
 
@@ -563,7 +566,10 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
       <el-icon size="18">
         <icon_side_expand_outlined />
       </el-icon>
-      <span>助手</span>
+      <span class="dock-tab-text">
+        <span>助</span>
+        <span>手</span>
+      </span>
     </button>
 
     <template v-else>
@@ -769,9 +775,23 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
 <style scoped lang="less">
 .analysis-assistant-dock {
+  --assistant-dock-bg: #ffffff;
+  --assistant-dock-body-bg: #f6f8fc;
+  --assistant-dock-control-bg: #f1f5fb;
+  --assistant-dock-control-hover-bg: #e8f0ff;
+  --assistant-dock-pill-bg: #edf3ff;
+  --assistant-dock-border: #d7e1ef;
+  --assistant-dock-border-soft: #e6edf6;
+  --assistant-dock-text-primary: #15233b;
+  --assistant-dock-text-secondary: #6b7a90;
+  --assistant-dock-text-tertiary: #8a97aa;
+  --assistant-dock-input-bg: #ffffff;
+  --assistant-dock-primary-soft-bg: rgba(47, 107, 255, 0.1);
+  --assistant-dock-danger-soft-bg: #fff5f5;
+
   position: fixed;
   top: 0;
-  right: 8px;
+  right: 0;
   z-index: 1200;
   width: 44px;
   height: 0;
@@ -780,15 +800,17 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     transform 0.18s ease;
 
   &.expanded {
-    top: 8px;
-    bottom: 8px;
-    width: 400px;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 360px;
     height: auto;
     max-width: calc(100vw - 32px);
-    background: #fff;
-    border: 1px solid #dee0e3;
-    border-radius: 8px;
-    box-shadow: 0 8px 24px 0 #1f232926;
+    background: var(--assistant-dock-bg);
+    border: 1px solid var(--assistant-dock-border);
+    border-right: 0;
+    border-radius: 12px 0 0 12px;
+    box-shadow: 0 18px 44px rgba(17, 37, 73, 0.16);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -830,35 +852,64 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 .dock-tab {
   position: absolute;
   right: 0;
-  width: 36px;
-  height: 104px;
+  width: 40px;
+  height: 112px;
   padding: 10px 0;
-  border: 1px solid #dee0e3;
-  border-radius: 8px 0 0 8px;
-  background: #fff;
-  box-shadow: 0 2px 4px 0 #1f23291f;
-  color: #1f2329;
+  border: 1px solid var(--theme-sidebar-border, rgba(132, 159, 204, 0.18));
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  background:
+    linear-gradient(180deg, var(--theme-sidebar-bg-soft, #102140), var(--theme-sidebar-bg, #0b1730));
+  box-shadow: 0 6px 16px rgba(11, 23, 48, 0.2);
+  color: var(--theme-sidebar-text, #e7eefb);
   cursor: pointer;
   touch-action: none;
   user-select: none;
   transition:
     top 0.12s ease,
     background 0.16s ease,
-    box-shadow 0.16s ease;
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 8px;
 
+  .ed-icon {
+    width: 20px;
+    height: 20px;
+    color: currentColor;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  :deep(svg),
+  :deep(svg path) {
+    color: currentColor;
+    fill: currentColor !important;
+  }
+
   span {
-    writing-mode: vertical-rl;
-    font-size: 13px;
     line-height: 16px;
   }
 
+  .dock-tab-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
   &:hover {
-    background: #f5f6f7;
+    background:
+      linear-gradient(180deg, #18305a, var(--theme-sidebar-bg-soft, #102140));
+    border-color: var(--theme-sidebar-border, rgba(132, 159, 204, 0.18));
+    box-shadow: 0 8px 20px rgba(11, 23, 48, 0.24);
   }
 
   &.dragging {
@@ -870,7 +921,8 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 .dock-header {
   min-height: 58px;
   padding: 8px 12px 8px 16px;
-  border-bottom: 1px solid #eff0f1;
+  border-bottom: 1px solid var(--assistant-dock-border-soft);
+  background: var(--assistant-dock-bg);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -884,7 +936,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   .dock-title {
     font-size: 15px;
     font-weight: 600;
-    color: #1f2329;
+    color: var(--assistant-dock-text-primary);
     line-height: 22px;
   }
 
@@ -896,8 +948,8 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     margin-top: 4px;
     padding: 0 8px;
     border-radius: 6px;
-    background: #f5f6f7;
-    color: #646a73;
+    background: var(--assistant-dock-pill-bg);
+    color: var(--assistant-dock-text-secondary);
     font-size: 12px;
     line-height: 22px;
     overflow: hidden;
@@ -915,11 +967,11 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     width: 28px;
     height: 28px;
     min-width: 28px;
-    color: var(--workspace-text-secondary, var(--theme-text-secondary));
+    color: var(--assistant-dock-text-secondary);
 
     &:hover {
-      background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
-      color: var(--workspace-text-primary, var(--theme-text-primary));
+      background: var(--assistant-dock-control-hover-bg);
+      color: var(--assistant-dock-text-primary);
     }
   }
 }
@@ -927,7 +979,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 .dock-body {
   flex: 1;
   min-height: 0;
-  background: #fbfbfc;
+  background: var(--assistant-dock-body-bg);
 
   :deep(.ed-scrollbar__view) {
     min-height: 100%;
@@ -945,7 +997,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   .empty-title {
     font-size: 18px;
     font-weight: 600;
-    color: #1f2329;
+    color: var(--assistant-dock-text-primary);
   }
 }
 
@@ -957,9 +1009,9 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     justify-content: flex-end;
 
     .message-bubble {
-      background: var(--ed-color-primary-1a, #1cba901a);
-      border-color: var(--ed-color-primary-33, #1cba9033);
-      color: #1f2329;
+      background: var(--assistant-dock-primary-soft-bg);
+      border-color: rgba(47, 107, 255, 0.22);
+      color: var(--assistant-dock-text-primary);
       white-space: pre-wrap;
     }
   }
@@ -972,16 +1024,17 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 .message-bubble {
   max-width: 92%;
   padding: 10px 12px;
-  border: 1px solid #eff0f1;
+  border: 1px solid var(--assistant-dock-border-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--assistant-dock-bg);
+  color: var(--assistant-dock-text-primary);
   font-size: 14px;
   line-height: 22px;
   word-break: break-word;
 
   &.error {
     border-color: #f5c2c7;
-    background: #fff5f5;
+    background: var(--assistant-dock-danger-soft-bg);
     color: #a61b29;
   }
 
@@ -1024,7 +1077,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 .final-answer {
   border: 1px solid #e6e8eb;
   border-radius: 8px;
-  background: #fff;
+  background: var(--assistant-dock-bg);
 }
 
 .analysis-trace {
@@ -1035,7 +1088,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     margin-bottom: 8px;
     font-size: 13px;
     font-weight: 600;
-    color: #1f2329;
+    color: var(--assistant-dock-text-primary);
   }
 
   .trace-list {
@@ -1050,7 +1103,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     gap: 8px;
     min-height: 22px;
     margin: 6px 0;
-    color: #646a73;
+    color: var(--assistant-dock-text-secondary);
     font-size: 13px;
     line-height: 20px;
 
@@ -1081,13 +1134,13 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   .plan-intro {
     font-size: 14px;
     line-height: 22px;
-    color: #1f2329;
+    color: var(--assistant-dock-text-primary);
   }
 
   .plan-steps {
     margin: 8px 0 0;
     padding-left: 20px;
-    color: #4e5969;
+    color: var(--assistant-dock-text-secondary);
 
     li {
       margin: 4px 0;
@@ -1124,14 +1177,14 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     font-size: 14px;
     font-weight: 600;
     line-height: 20px;
-    color: #1f2329;
+    color: var(--assistant-dock-text-primary);
   }
 
   .block-purpose {
     margin-top: 3px;
     font-size: 12px;
     line-height: 18px;
-    color: #646a73;
+    color: var(--assistant-dock-text-secondary);
   }
 
   .chart-type {
@@ -1139,8 +1192,8 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     height: 20px;
     padding: 0 6px;
     border-radius: 4px;
-    background: #f2f3f5;
-    color: #4e5969;
+    background: var(--assistant-dock-control-bg);
+    color: var(--assistant-dock-text-secondary);
     font-size: 12px;
     line-height: 20px;
   }
@@ -1150,9 +1203,9 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   height: 240px;
   min-height: 240px;
   margin-bottom: 10px;
-  border: 1px solid #eef0f2;
+  border: 1px solid var(--assistant-dock-border-soft);
   border-radius: 6px;
-  background: #fff;
+  background: var(--assistant-dock-bg);
   overflow: hidden;
 
   &.table {
@@ -1171,7 +1224,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   padding: 24px 0;
   border: 1px dashed #d8dbe0;
   border-radius: 6px;
-  color: #8f959e;
+  color: var(--assistant-dock-text-tertiary);
   text-align: center;
 }
 
@@ -1182,13 +1235,13 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
 .block-details {
   margin-top: 8px;
-  border-top: 1px solid #f0f1f2;
+  border-top: 1px solid var(--assistant-dock-border-soft);
   padding-top: 8px;
 
   summary {
     width: fit-content;
     cursor: pointer;
-    color: #4e5969;
+    color: var(--assistant-dock-text-secondary);
     font-size: 13px;
     line-height: 20px;
   }
@@ -1198,8 +1251,8 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     margin: 8px 0 0;
     padding: 10px;
     border-radius: 6px;
-    background: #f7f8fa;
-    color: #1f2329;
+    background: var(--assistant-dock-control-bg);
+    color: var(--assistant-dock-text-primary);
     overflow: auto;
     white-space: pre-wrap;
     word-break: break-word;
@@ -1210,7 +1263,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   max-height: 220px;
   margin-top: 8px;
   overflow: auto;
-  border: 1px solid #eef0f2;
+  border: 1px solid var(--assistant-dock-border-soft);
   border-radius: 6px;
 }
 
@@ -1223,7 +1276,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   td {
     max-width: 160px;
     padding: 7px 8px;
-    border-bottom: 1px solid #eef0f2;
+    border-bottom: 1px solid var(--assistant-dock-border-soft);
     text-align: left;
     white-space: nowrap;
     overflow: hidden;
@@ -1234,13 +1287,13 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     position: sticky;
     top: 0;
     z-index: 1;
-    background: #f7f8fa;
-    color: #4e5969;
+    background: var(--assistant-dock-control-bg);
+    color: var(--assistant-dock-text-secondary);
     font-weight: 600;
   }
 
   td {
-    color: #1f2329;
+    color: var(--assistant-dock-text-primary);
   }
 }
 
@@ -1254,7 +1307,8 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 .dock-footer {
   flex-shrink: 0;
   padding: 10px 14px 14px;
-  background: #fbfbfc;
+  border-top: 1px solid var(--assistant-dock-border-soft);
+  background: var(--assistant-dock-body-bg);
 
   .input-shell {
     position: relative;
@@ -1267,7 +1321,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     padding: 10px 48px 36px 12px;
     border-radius: 8px;
     line-height: 22px;
-    background: #f8f9fa;
+    background: var(--assistant-dock-input-bg);
     overflow-y: auto;
   }
 

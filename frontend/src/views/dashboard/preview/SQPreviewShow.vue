@@ -200,6 +200,8 @@ defineExpose({
   .preview-area {
     flex: 1;
     display: flex;
+    min-width: 0;
+    min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
     position: relative;
@@ -208,15 +210,17 @@ defineExpose({
     .preview-stage {
       display: flex;
       flex: 1;
-      min-height: 100%;
+      min-width: 0;
+      min-height: 0;
       flex-direction: column;
     }
 
     .content {
       position: relative;
       display: flex;
+      flex: 1;
+      min-height: 0;
       width: 100%;
-      height: 100%;
       overflow-x: hidden;
       overflow-y: auto;
       padding: 0;
@@ -242,11 +246,11 @@ defineExpose({
 
 .preview-area.is-empty {
   .preview-stage {
-    min-height: 100%;
+    min-height: 0;
   }
 
   .content {
-    min-height: 100%;
+    min-height: 0;
   }
 }
 

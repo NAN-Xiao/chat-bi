@@ -96,7 +96,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
-import elexDataLogoUrl from '@/assets/elex_data.svg?url'
+import elexDataLogoUrl from '@/assets/elex_data.png'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { toLoginSuccess } from '@/utils/utils'
 
@@ -258,17 +258,13 @@ const submitForm = () => {
 .product-login-brand-mark {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
   display: grid;
   place-items: center;
-  overflow: hidden;
-  background: #2563eb;
-  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.35);
   color: #ffffff;
 
   img {
-    max-width: 28px;
-    max-height: 28px;
+    width: 34px;
+    height: 34px;
     object-fit: contain;
   }
 

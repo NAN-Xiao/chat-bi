@@ -1,6 +1,7 @@
 export type ThemeMode = 'dark' | 'light'
 
 export const THEME_STORAGE_KEY = 'sqlbot-theme-mode'
+export const THEME_CHANGE_EVENT = 'sqlbot-theme-change'
 export const DEFAULT_THEME: ThemeMode = 'dark'
 
 export const isThemeMode = (value: string | null): value is ThemeMode => {
@@ -40,6 +41,8 @@ export const applyTheme = (value: ThemeMode) => {
   } catch {
     // Current page still updates when storage is unavailable.
   }
+
+  window.dispatchEvent(new CustomEvent<ThemeMode>(THEME_CHANGE_EVENT, { detail: value }))
 }
 
 export const applyInitialTheme = () => {

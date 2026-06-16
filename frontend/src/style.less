@@ -853,7 +853,6 @@ strong {
 
   .sq-message-export,
   .analysis-assistant-dock.expanded,
-  .dock-tab,
   .access-summary,
   .access-section,
   .access-notice {
@@ -2002,60 +2001,66 @@ strong {
 
   .analysis-assistant-dock {
     color-scheme: light;
-    --theme-panel-bg: var(--workspace-card-bg, #fff);
-    --theme-panel-bg-soft: var(--workspace-panel-bg, #f5f6f7);
-    --theme-control-bg: var(--workspace-control-bg, #f8f9fa);
-    --theme-control-hover-bg: var(--workspace-control-hover-bg, #eef2f8);
-    --theme-hover-bg: var(--workspace-control-hover-bg, #eef2f8);
-    --theme-active-bg: var(--workspace-active-bg, #fff);
-    --theme-shell-border: var(--workspace-border, #d9dcdf);
-    --theme-border-soft: var(--workspace-border-soft, #eff0f1);
-    --theme-text-primary: var(--workspace-text-primary, #1f2329);
-    --theme-text-secondary: var(--workspace-text-secondary, #646a73);
-    --theme-text-tertiary: var(--workspace-text-tertiary, #8f959e);
-    --theme-input-bg: var(--workspace-input-bg, #f8f9fa);
-    --theme-input-border: var(--workspace-border, #d9dcdf);
-    --theme-primary-soft-bg: var(--workspace-primary-soft-bg, rgba(37, 99, 235, 0.1));
-    --theme-danger-soft-bg: #fff5f5;
-    --ed-bg-color: var(--workspace-card-bg, #fff);
-    --ed-bg-color-page: var(--workspace-panel-bg, #f5f6f7);
-    --ed-bg-color-overlay: var(--workspace-card-bg, #fff);
-    --ed-fill-color: var(--workspace-control-hover-bg, #eef2f8);
-    --ed-fill-color-light: var(--workspace-control-hover-bg, #eef2f8);
-    --ed-fill-color-lighter: var(--workspace-control-bg, #f8f9fa);
-    --ed-fill-color-extra-light: var(--workspace-card-bg, #fff);
-    --ed-fill-color-blank: var(--workspace-card-bg, #fff);
-    --ed-text-color-primary: var(--workspace-text-primary, #1f2329);
-    --ed-text-color-regular: var(--workspace-text-primary, #1f2329);
-    --ed-text-color-secondary: var(--workspace-text-secondary, #646a73);
-    --ed-text-color-placeholder: var(--workspace-text-tertiary, #8f959e);
-    --ed-text-color-disabled: var(--workspace-text-tertiary, #8f959e);
-    --ed-border-color: var(--workspace-border, #d9dcdf);
-    --ed-border-color-light: var(--workspace-border, #d9dcdf);
-    --ed-border-color-lighter: var(--workspace-border-soft, #eff0f1);
-    --ed-border-color-extra-light: var(--workspace-border-soft, #eff0f1);
+    --theme-panel-bg: var(--assistant-dock-bg, #fff);
+    --theme-panel-bg-soft: var(--assistant-dock-body-bg, #f6f8fc);
+    --theme-control-bg: var(--assistant-dock-control-bg, #f1f5fb);
+    --theme-control-hover-bg: var(--assistant-dock-control-hover-bg, #e8f0ff);
+    --theme-hover-bg: var(--assistant-dock-control-hover-bg, #e8f0ff);
+    --theme-active-bg: var(--assistant-dock-bg, #fff);
+    --theme-shell-border: var(--assistant-dock-border, #d7e1ef);
+    --theme-border-soft: var(--assistant-dock-border-soft, #e6edf6);
+    --theme-text-primary: var(--assistant-dock-text-primary, #15233b);
+    --theme-text-secondary: var(--assistant-dock-text-secondary, #6b7a90);
+    --theme-text-tertiary: var(--assistant-dock-text-tertiary, #8a97aa);
+    --theme-input-bg: var(--assistant-dock-input-bg, #fff);
+    --theme-input-border: var(--assistant-dock-border, #d7e1ef);
+    --theme-primary-soft-bg: var(--assistant-dock-primary-soft-bg, rgba(47, 107, 255, 0.1));
+    --theme-danger-soft-bg: var(--assistant-dock-danger-soft-bg, #fff5f5);
+    --ed-bg-color: var(--assistant-dock-bg, #fff);
+    --ed-bg-color-page: var(--assistant-dock-body-bg, #f6f8fc);
+    --ed-bg-color-overlay: var(--assistant-dock-bg, #fff);
+    --ed-fill-color: var(--assistant-dock-control-hover-bg, #e8f0ff);
+    --ed-fill-color-light: var(--assistant-dock-control-hover-bg, #e8f0ff);
+    --ed-fill-color-lighter: var(--assistant-dock-control-bg, #f1f5fb);
+    --ed-fill-color-extra-light: var(--assistant-dock-bg, #fff);
+    --ed-fill-color-blank: var(--assistant-dock-bg, #fff);
+    --ed-text-color-primary: var(--assistant-dock-text-primary, #15233b);
+    --ed-text-color-regular: var(--assistant-dock-text-primary, #15233b);
+    --ed-text-color-secondary: var(--assistant-dock-text-secondary, #6b7a90);
+    --ed-text-color-placeholder: var(--assistant-dock-text-tertiary, #8a97aa);
+    --ed-text-color-disabled: var(--assistant-dock-text-tertiary, #8a97aa);
+    --ed-border-color: var(--assistant-dock-border, #d7e1ef);
+    --ed-border-color-light: var(--assistant-dock-border, #d7e1ef);
+    --ed-border-color-lighter: var(--assistant-dock-border-soft, #e6edf6);
+    --ed-border-color-extra-light: var(--assistant-dock-border-soft, #e6edf6);
   }
 
   .analysis-assistant-dock.expanded,
-  .analysis-assistant-dock .dock-tab,
   .analysis-assistant-dock .dock-header,
   .analysis-assistant-dock .message-bubble,
   .analysis-assistant-dock .analysis-trace,
   .analysis-assistant-dock .analysis-plan,
   .analysis-assistant-dock .analysis-block,
   .analysis-assistant-dock .final-answer {
-    background: var(--workspace-card-bg, #fff) !important;
-    color: var(--workspace-text-primary, #1f2329) !important;
-    border-color: var(--workspace-border, #d9dcdf) !important;
+    background: var(--assistant-dock-bg, #fff) !important;
+    color: var(--assistant-dock-text-primary, #15233b) !important;
+    border-color: var(--assistant-dock-border, #d7e1ef) !important;
   }
 
   .analysis-assistant-dock .dock-body,
-  .analysis-assistant-dock .dock-footer,
   .analysis-assistant-dock .preview-table th,
   .analysis-assistant-dock .block-details pre,
   .analysis-assistant-dock .chart-type {
-    background: var(--workspace-control-bg, #f8f9fa) !important;
-    color: var(--workspace-text-primary, #1f2329) !important;
+    background: var(--assistant-dock-control-bg, #f1f5fb) !important;
+    color: var(--assistant-dock-text-primary, #15233b) !important;
+  }
+
+  .analysis-assistant-dock .dock-body {
+    background: var(--assistant-dock-body-bg, #f6f8fc) !important;
+  }
+
+  .analysis-assistant-dock .dock-footer {
+    background: var(--assistant-dock-body-bg, #f6f8fc) !important;
   }
 
   .analysis-assistant-dock .dock-title,
@@ -2064,7 +2069,7 @@ strong {
   .analysis-assistant-dock .plan-intro,
   .analysis-assistant-dock .block-title,
   .analysis-assistant-dock .preview-table td {
-    color: var(--workspace-text-primary, #1f2329) !important;
+    color: var(--assistant-dock-text-primary, #15233b) !important;
   }
 
   .analysis-assistant-dock .datasource-pill,
@@ -2075,31 +2080,34 @@ strong {
   .analysis-assistant-dock .chart-type,
   .analysis-assistant-dock .empty-data,
   .analysis-assistant-dock .block-details summary {
-    color: var(--workspace-text-secondary, #646a73) !important;
+    color: var(--assistant-dock-text-secondary, #6b7a90) !important;
   }
 
-  .analysis-assistant-dock .datasource-pill,
+  .analysis-assistant-dock .datasource-pill {
+    background: var(--assistant-dock-pill-bg, #edf3ff) !important;
+  }
+
   .analysis-assistant-dock .message-row.user .message-bubble,
   .analysis-assistant-dock .analysis-progress {
-    background: var(--workspace-primary-soft-bg, rgba(37, 99, 235, 0.1)) !important;
+    background: var(--assistant-dock-primary-soft-bg, rgba(47, 107, 255, 0.1)) !important;
   }
 
   .analysis-assistant-dock .message-bubble.error,
   .analysis-assistant-dock .analysis-block.failed {
-    background: var(--theme-danger-soft-bg, #fff5f5) !important;
+    background: var(--assistant-dock-danger-soft-bg, #fff5f5) !important;
   }
 
   .analysis-assistant-dock .dock-footer .ed-textarea__inner {
-    background: var(--workspace-input-bg, #f8f9fa) !important;
-    border-color: var(--workspace-border, #d9dcdf) !important;
-    box-shadow: 0 0 0 1px var(--workspace-border, #d9dcdf) inset !important;
-    color: var(--workspace-text-primary, #1f2329) !important;
-    -webkit-text-fill-color: var(--workspace-text-primary, #1f2329) !important;
+    background: var(--assistant-dock-input-bg, #fff) !important;
+    border-color: var(--assistant-dock-border, #d7e1ef) !important;
+    box-shadow: 0 0 0 1px var(--assistant-dock-border, #d7e1ef) inset !important;
+    color: var(--assistant-dock-text-primary, #15233b) !important;
+    -webkit-text-fill-color: var(--assistant-dock-text-primary, #15233b) !important;
   }
 
   .analysis-assistant-dock .dock-footer .ed-textarea__inner::placeholder {
-    color: var(--workspace-text-tertiary, #8f959e) !important;
-    -webkit-text-fill-color: var(--workspace-text-tertiary, #8f959e) !important;
+    color: var(--assistant-dock-text-tertiary, #8a97aa) !important;
+    -webkit-text-fill-color: var(--assistant-dock-text-tertiary, #8a97aa) !important;
   }
 
   .analysis-assistant-dock .preview-table th,
@@ -2112,6 +2120,6 @@ strong {
   .analysis-assistant-dock .analysis-block,
   .analysis-assistant-dock .message-bubble,
   .analysis-assistant-dock .empty-data {
-    border-color: var(--workspace-border-soft, #eff0f1) !important;
+    border-color: var(--assistant-dock-border-soft, #e6edf6) !important;
   }
 }
