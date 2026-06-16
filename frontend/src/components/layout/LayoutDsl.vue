@@ -289,10 +289,7 @@ onMounted(() => {
 .system-layout {
   width: 100vw;
   height: 100vh;
-  background:
-    linear-gradient(135deg, var(--theme-shell-gradient-a), transparent 30%),
-    linear-gradient(315deg, var(--theme-shell-gradient-b), transparent 32%),
-    var(--theme-shell-bg);
+  background: var(--theme-shell-bg);
   display: flex;
 
   @keyframes rotate {
@@ -311,9 +308,7 @@ onMounted(() => {
     position: relative;
     min-width: 240px;
     color: var(--theme-sidebar-text);
-    background:
-      linear-gradient(180deg, var(--theme-sidebar-gradient-top), transparent 34%),
-      var(--theme-sidebar-bg);
+    background: var(--theme-sidebar-bg);
     border-right: 1px solid var(--theme-sidebar-border);
     --layout-fold-color: var(--theme-sidebar-text-secondary);
     --layout-fold-color-hover: var(--theme-sidebar-emphasis-text);
