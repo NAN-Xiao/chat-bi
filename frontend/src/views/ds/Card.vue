@@ -7,6 +7,7 @@ import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import icon_recommended_problem from '@/assets/svg/icon_recommended_problem.svg'
+import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -16,6 +17,7 @@ const props = withDefaults(
     num: string
     description?: string
     id?: string
+    projectRole?: string
     canManageProject?: boolean
   }>(),
   {
@@ -23,11 +25,13 @@ const props = withDefaults(
     type: '-',
     description: '-',
     id: '-',
+    projectRole: '',
     typeName: '-',
     canManageProject: false,
   }
 )
 
+const { t } = useI18n()
 const emits = defineEmits([
   'edit',
   'del',
@@ -38,6 +42,11 @@ const emits = defineEmits([
 ])
 const icon = computed(() => {
   return (dsTypeWithImg.find((ele) => props.type === ele.type) || {}).img
+})
+const roleLabel = computed(() => {
+  if (props.canManageProject) return t('project.administrator')
+  if (props.projectRole === 'editor') return t('datasource.project_role_editor')
+  return t('datasource.project_role_viewer')
 })
 const handleEdit = () => {
   emits('edit')
@@ -79,59 +88,58 @@ const dataTableDetail = () => {
         <span class="value ellipsis">{{ typeName }}</span>
       </div>
       <div class="detail-row">
+        <span class="label">{{ $t('user.project_role') }}</span>
+        <span class="value ellipsis">{{ roleLabel }}</span>
+      </div>
+      <div class="detail-row detail-row-table">
+        <el-icon class="table-icon" size="14">
+          <icon_form_outlined></icon_form_outlined>
+        </el-icon>
         <span class="label">{{ $t('ds.tables') }}</span>
         <span class="value ellipsis">{{ num }}</span>
       </div>
     </div>
 
-    <div class="bottom-info">
-      <div class="form-rate">
-        <el-icon class="form-icon" size="16">
-          <icon_form_outlined></icon_form_outlined>
-        </el-icon>
-        {{ num }}
-      </div>
-      <div class="methods" @click.stop>
-        <el-popover
-          v-if="canManageProject"
-          trigger="click"
-          :teleported="true"
-          popper-class="popover-card_ds"
-          placement="bottom-end"
-        >
-          <template #reference>
-            <button type="button" class="more" aria-label="more actions" @click.stop>
-              <icon_more_outlined></icon_more_outlined>
-            </button>
-          </template>
-          <div class="content">
-            <div class="item" @click.stop="handleEdit">
-              <el-icon size="16">
-                <edit></edit>
-              </el-icon>
-              {{ $t('datasource.edit') }}
-            </div>
-            <div class="item" @click.stop="handleRecommendation">
-              <el-icon size="16">
-                <icon_recommended_problem></icon_recommended_problem>
-              </el-icon>
-              {{ $t('datasource.recommended_problem_configuration') }}
-            </div>
-            <div class="item" @click.stop="handleMembers">
-              <el-icon size="16">
-                <icon_member_outlined></icon_member_outlined>
-              </el-icon>
-              {{ $t('datasource.project_authorization') }}
-            </div>
-            <div class="item" @click.stop="handleDel">
-              <el-icon size="16">
-                <delIcon></delIcon>
-              </el-icon>
-              {{ $t('dashboard.delete') }}
-            </div>
+    <div class="methods" @click.stop>
+      <el-popover
+        v-if="canManageProject"
+        trigger="click"
+        :teleported="true"
+        popper-class="popover-card_ds"
+        placement="bottom-end"
+      >
+        <template #reference>
+          <button type="button" class="more" aria-label="more actions" @click.stop>
+            <icon_more_outlined></icon_more_outlined>
+          </button>
+        </template>
+        <div class="content">
+          <div class="item" @click.stop="handleEdit">
+            <el-icon size="16">
+              <edit></edit>
+            </el-icon>
+            {{ $t('datasource.edit') }}
           </div>
-        </el-popover>
-      </div>
+          <div class="item" @click.stop="handleRecommendation">
+            <el-icon size="16">
+              <icon_recommended_problem></icon_recommended_problem>
+            </el-icon>
+            {{ $t('datasource.recommended_problem_configuration') }}
+          </div>
+          <div class="item" @click.stop="handleMembers">
+            <el-icon size="16">
+              <icon_member_outlined></icon_member_outlined>
+            </el-icon>
+            {{ $t('datasource.project_authorization') }}
+          </div>
+          <div class="item" @click.stop="handleDel">
+            <el-icon size="16">
+              <delIcon></delIcon>
+            </el-icon>
+            {{ $t('dashboard.delete') }}
+          </div>
+        </div>
+      </el-popover>
     </div>
   </div>
 </template>
@@ -139,9 +147,9 @@ const dataTableDetail = () => {
 <style lang="less" scoped>
 .card {
   width: 100%;
-  height: 176px;
+  height: 216px;
   border: 1px solid var(--workspace-border, #e2eaf4);
-  padding: 16px 54px 16px 16px;
+  padding: 16px 54px 20px 16px;
   border-radius: 8px;
   background: var(--workspace-card-bg, #ffffff);
   box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
@@ -163,7 +171,7 @@ const dataTableDetail = () => {
   .name-icon {
     display: flex;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 
     .info {
       margin-left: 12px;
@@ -193,6 +201,7 @@ const dataTableDetail = () => {
     line-height: 22px;
     color: var(--workspace-text-secondary, #66758f);
     height: 44px;
+    flex: 0 0 44px;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -203,17 +212,22 @@ const dataTableDetail = () => {
 
   .detail-list {
     margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     min-width: 0;
+    flex: 0 0 auto;
   }
 
   .detail-row {
     display: flex;
     align-items: center;
-    font-size: 13px;
-    line-height: 20px;
+    font-size: 14px;
+    line-height: 22px;
+    min-height: 22px;
 
     .label {
-      flex: 0 0 60px;
+      flex: 0 0 72px;
       color: var(--workspace-text-secondary, #66758f);
       white-space: nowrap;
     }
@@ -225,35 +239,31 @@ const dataTableDetail = () => {
   }
 
   .detail-row + .detail-row {
-    margin-top: 4px;
+    margin-top: 0;
   }
 
-  .bottom-info {
-    margin-top: auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 32px;
+  .detail-row-table {
+    color: var(--workspace-text-secondary, #66758f);
 
-    .form-rate {
-      display: flex;
-      align-items: center;
+    .table-icon {
+      align-self: center;
+      margin-right: 10px;
+      flex: 0 0 auto;
       color: var(--workspace-text-secondary, #66758f);
-      font-weight: 400;
-      font-size: 14px;
-      line-height: 22px;
-
-      .form-icon {
-        margin-right: 8px;
-      }
     }
 
-    .methods {
-      position: absolute;
-      right: 16px;
-      top: 16px;
-      align-items: center;
-      display: flex;
+    .label {
+      flex: 0 0 auto;
+      margin-right: 12px;
+    }
+  }
+
+  .methods {
+    position: absolute;
+    right: 16px;
+    top: 16px;
+    align-items: center;
+    display: flex;
 
       .ed-button {
         margin-left: 0;
@@ -316,7 +326,6 @@ const dataTableDetail = () => {
           outline: none;
         }
       }
-    }
   }
 }
 </style>

@@ -71,7 +71,7 @@ const setUser = () => {
 
     <div class="bottom-info">
       <div class="form-rate">
-        <el-icon class="form-icon" size="16">
+        <el-icon class="form-icon" size="14">
           <icon_key_outlined></icon_key_outlined>
         </el-icon>
         {{ $t('permission.2', { msg: num }) }}
@@ -117,9 +117,9 @@ const setUser = () => {
 <style lang="less" scoped>
 .card {
   width: 100%;
-  height: 176px;
+  height: 216px;
   border: 1px solid var(--workspace-border, #e2eaf4);
-  padding: 16px 54px 16px 16px;
+  padding: 16px 54px 20px 16px;
   border-radius: 8px;
   background: var(--workspace-card-bg, #ffffff);
   box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
@@ -165,7 +165,7 @@ const setUser = () => {
   }
 
   .detail-list {
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
   }
 
@@ -198,7 +198,7 @@ const setUser = () => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 32px;
+    height: 22px;
 
     .form-rate {
       display: flex;
@@ -210,8 +210,9 @@ const setUser = () => {
       line-height: 22px;
 
       .form-icon {
-        margin-right: 8px;
+        margin-right: 10px;
         flex: 0 0 auto;
+        color: var(--workspace-text-secondary, #66758f);
       }
     }
 

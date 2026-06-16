@@ -264,6 +264,7 @@ const back = () => {
             :type-name="ele.type_name"
             :num="ele.num"
             :description="ele.description"
+            :project-role="ele.project_role"
             :can-manage-project="ele.can_manage_project === true"
             @edit="handleEditDatasource(ele)"
             @recommendation="handleRecommendation(ele)"

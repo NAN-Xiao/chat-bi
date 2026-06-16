@@ -152,7 +152,7 @@ const routerList = computed(() => {
 
   .ed-sub-menu.is-active.is-opened {
     .ed-sub-menu__title {
-      color: var(--theme-sidebar-active-text, #ffffff) !important;
+      color: var(--theme-sidebar-text-secondary, var(--theme-text-secondary)) !important;
       font-weight: 600;
     }
   }

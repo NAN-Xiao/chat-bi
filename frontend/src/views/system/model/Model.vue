@@ -495,9 +495,29 @@ const submit = (item: any) => {
 
     .model-card-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 320px));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 16px;
       align-items: start;
+    }
+  }
+}
+
+@media (max-width: 1199px) {
+  .model-config {
+    .card-content {
+      .model-card-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .model-config {
+    .card-content {
+      .model-card-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
   }
 }

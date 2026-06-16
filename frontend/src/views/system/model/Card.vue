@@ -128,9 +128,9 @@ defineExpose({ showErrorMask })
 <style lang="less" scoped>
 .card {
   width: 100%;
-  height: 176px;
+  height: 216px;
   border: 1px solid var(--workspace-border, #e2eaf4);
-  padding: 16px 54px 16px 16px;
+  padding: 16px 54px 20px 16px;
   border-radius: 8px;
   background: var(--workspace-card-bg, #ffffff);
   box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
