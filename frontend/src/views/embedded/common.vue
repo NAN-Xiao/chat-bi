@@ -1,5 +1,5 @@
 <template>
-  <div v-loading="divLoading" class="sqlbot--embedded-page">
+  <div v-loading="divLoading" class="zhishu--embedded-page">
     <ds-component
       v-if="!loading && isWsAdmin && busiFlag === 'ds'"
       ref="dsRef"
@@ -27,7 +27,7 @@ const route = useRoute()
 
 const loading = ref(true)
 const divLoading = ref(true)
-const eventName = 'sqlbot_embedded_event'
+const eventName = 'zhishu_embedded_event'
 const busiFlag = ref('ds')
 
 const isWsAdmin = computed(() => {
@@ -73,7 +73,7 @@ watch(
 const registerReady = (assistantId: any) => {
   window.addEventListener('message', communicationCb)
   const readyData = {
-    eventName: 'sqlbot_embedded_event',
+    eventName: 'zhishu_embedded_event',
     busi: 'ready',
     ready: true,
     messageId: assistantId,
@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="less" scoped>
-.sqlbot--embedded-page {
+.zhishu--embedded-page {
   width: 100%;
   height: 100vh;
   position: relative;

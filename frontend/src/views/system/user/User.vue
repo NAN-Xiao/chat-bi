@@ -1,5 +1,5 @@
 <template>
-  <div class="sqlbot-table-container professional-container">
+  <div class="zhishu-table-container professional-container">
     <div class="tool-left">
       <span class="page-title">{{ $t('user.user_management') }}</span>
       <div class="search-bar">
@@ -39,7 +39,7 @@
       </div>
     </div>
     <div
-      class="sqlbot-table_user"
+      class="zhishu-table_user"
       :class="[
         state.filterTexts.length && 'is-filter',
         multipleSelectionAll.length && 'show-pagination_height',
@@ -680,7 +680,7 @@ const { copy } = useClipboard({ legacy: true })
 const userStore = useUserStore()
 
 const { t } = useI18n()
-const defaultPwd = ref('SQLBot@123456')
+const defaultPwd = ref('Zhishu@123456')
 const keyword = ref('')
 const dialogFormVisible = ref(false)
 const termFormRef = ref()
@@ -1574,7 +1574,7 @@ onMounted(() => {
 </script>
 
 <style lang="less" scoped>
-.sqlbot-table-container {
+.zhishu-table-container {
   width: 100%;
   height: 100%;
   position: relative;
@@ -1624,7 +1624,7 @@ onMounted(() => {
       line-height: 28px;
     }
   }
-  .sqlbot-table_user {
+  .zhishu-table_user {
     width: 100%;
     max-height: calc(100vh - 150px);
     overflow-y: auto;

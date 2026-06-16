@@ -11,5 +11,5 @@ jobs:
           dst: 'gitee/fit2cloud-feizhiyun'
           dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
           dst_token:  ${{ secrets.GITEE_TOKEN }}
-          static_list: "SQLBot"
+          static_list: "星通智数"
           force_update: true

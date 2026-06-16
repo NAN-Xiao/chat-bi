@@ -1,4 +1,4 @@
-﻿import json
+import json
 import re
 import urllib
 from typing import Optional
@@ -28,8 +28,8 @@ async def get_assistant_info(*, session: Session, assistant_id: int) -> Assistan
 
 
 def get_assistant_user(*, id: int):
-    return UserInfoDTO(id=id, account="sqlbot-inner-assistant", name="sqlbot-inner-assistant",
-                       email="sqlbot-inner-assistant@sqlbot.com")
+    return UserInfoDTO(id=id, account="zhishu-inner-assistant", name="zhishu-inner-assistant",
+                       email="zhishu-inner-assistant@zhishu.com")
 
 
 def get_assistant_ds(session: Session, llm_service) -> list[dict]:
@@ -254,7 +254,7 @@ class AssistantOutDs:
         if not id:
             for attr in attr_list:
                 if attr in ds_dict:
-                    id_marker += str(ds_dict.get(attr, '')) + '--sqlbot--'
+                    id_marker += str(ds_dict.get(attr, '')) + '--zhishu--'
             id = string_to_numeric_hash(id_marker)
         db_schema = ds_dict.get('schema', ds_dict.get('db_schema', ''))
         ds_dict.pop("schema", None)

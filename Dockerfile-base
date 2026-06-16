@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && chmod g+x /usr/local/bin/python*
 
 # Download Oracle instant client
-ENV DB_CLIENT=/opt/sqlbot/db_client
+ENV DB_CLIENT=/opt/zhishu/db_client
 ENV LD_LIBRARY_PATH="${DB_CLIENT}/oracle_instant_client:${LD_LIBRARY_PATH}"
 ARG TARGETARCH
 RUN apt-get update && \
@@ -51,7 +51,7 @@ RUN apt-get update && \
 # Download DM library
 ENV DM_HOME=/opt/dmdbms
 ENV LD_LIBRARY_PATH=$DM_HOME/bin:$LD_LIBRARY_PATH
-RUN curl -L -o dm.zip https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/sqlbot/dm/$TARGETARCH.zip && \
+RUN curl -L -o dm.zip https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/zhishu/dm/$TARGETARCH.zip && \
     mkdir -p $DM_HOME/bin && \
     unzip dm.zip -d $DM_HOME/bin && \
     chmod -R +x $DM_HOME/bin && \

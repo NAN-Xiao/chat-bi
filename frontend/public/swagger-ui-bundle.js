@@ -56486,7 +56486,7 @@
         function getTokenKey() {
           var pathname = window.location.pathname.replace('docs', '')
           var match = pathname.match(/^\/([^\/]+)/)
-          var prefix = match ? `${match[1]}_` : 'sqlbot_v1_'
+          var prefix = match ? `${match[1]}_` : 'zhishu_v1_'
           return `${prefix}user.token`
         }
         function get_token() {
@@ -56521,7 +56521,7 @@
                 (s) => (
                   'string' == typeof s && (s = { url: s }),
                   (s = serializeRequest(s)),
-                  get_token() && (s.headers['x-sqlbot-token'] = `Bearer ${get_token()}`),
+                  get_token() && (s.headers['x-zhishu-token'] = `Bearer ${get_token()}`),
                   (s = a(s)),
                   u(i(s))
                 )),

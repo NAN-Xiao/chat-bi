@@ -1,13 +1,13 @@
-<p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/sqlbot/sqlbot.png" alt="SQLBot" width="300" /></p>
+<p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/zhishu/zhishu.png" alt="星通智数" width="300" /></p>
 <h3 align="center">Intelligent Questioning System Based on Large Models and RAG</h3>
 <p align="center">
-  <a href="https://trendshift.io/repositories/14540" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14540" alt="dataease%2FSQLBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+  <a href="https://trendshift.io/repositories/14540" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14540" alt="dataease%2Fzhishu | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/dataease/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/SQLBot" alt="Latest release"></a>
-  <a href="https://github.com/dataease/SQLBot"><img src="https://img.shields.io/github/stars/dataease/SQLBot?color=%231890FF&style=flat-square" alt="Stars"></a>    
-  <a href="https://hub.docker.com/r/dataease/SQLbot"><img src="https://img.shields.io/docker/pulls/dataease/sqlbot?label=downloads" alt="Download"></a><br/>
+  <a href="https://github.com/dataease/zhishu/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/zhishu" alt="Latest release"></a>
+  <a href="https://github.com/dataease/zhishu"><img src="https://img.shields.io/github/stars/dataease/zhishu?color=%231890FF&style=flat-square" alt="Stars"></a>    
+  <a href="https://hub.docker.com/r/dataease/zhishu"><img src="https://img.shields.io/docker/pulls/dataease/zhishu?label=downloads" alt="Download"></a><br/>
 </p>
 
 <p align="center">
@@ -55,29 +55,29 @@ Prepare a Linux server, install [Docker](https://docs.docker.com/get-docker/), a
 
 ```bash
 docker run -d \
-  --name sqlbot \
+  --name zhishu \
   --restart unless-stopped \
   -p 8000:8000 \
   -p 8001:8001 \
-  -v ./data/sqlbot/excel:/opt/sqlbot/data/excel \
-  -v ./data/sqlbot/file:/opt/sqlbot/data/file \
-  -v ./data/sqlbot/images:/opt/sqlbot/images \
-  -v ./data/sqlbot/logs:/opt/sqlbot/app/logs \
+  -v ./data/zhishu/excel:/opt/zhishu/data/excel \
+  -v ./data/zhishu/file:/opt/zhishu/data/file \
+  -v ./data/zhishu/images:/opt/zhishu/images \
+  -v ./data/zhishu/logs:/opt/zhishu/app/logs \
   -v ./data/postgresql:/var/lib/postgresql/data \
   --privileged=true \
-  dataease/sqlbot
+  dataease/zhishu
 ```
 
 You can also quickly deploy 星通智数 through the [1Panel app store](https://apps.fit2cloud.com/1panel).
 
-If you are in an intranet environment, you can deploy 星通智数 via the [offline installation package](https://community.fit2cloud.com/#/products/sqlbot/downloads).
+If you are in an intranet environment, you can deploy 星通智数 via the [offline installation package](https://community.fit2cloud.com/#/products/zhishu/downloads).
 
 
 ### Access methods
 
 - Open in your browser: http://<your server IP>:8000/
 - Username: admin
-- Password: SQLBot@123456
+- Password: Zhishu@123456
 
 
 ## UI Display
@@ -90,7 +90,7 @@ If you are in an intranet environment, you can deploy 星通智数 via the [offl
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=dataease/sqlbot&type=Date)](https://www.star-history.com/#dataease/sqlbot&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=dataease/zhishu&type=Date)](https://www.star-history.com/#dataease/zhishu&Date)
 
 ## Other star projects under FIT2CLOUD
 

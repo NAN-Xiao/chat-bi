@@ -198,7 +198,7 @@ const submitForm = () => {
 .product-login-story {
   position: relative;
   min-width: 0;
-  padding: 56px 70px;
+  padding: 64px 76px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -237,40 +237,44 @@ const submitForm = () => {
 }
 
 .product-login-brand {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
+  width: fit-content;
+  min-height: 84px;
+  gap: 8px;
 
   strong {
     display: block;
-    font-size: 16px;
-    line-height: 1.3;
+    font-size: 22px;
+    line-height: 1.2;
   }
 
   span {
     display: block;
-    margin-top: 2px;
+    margin-top: 4px;
     color: #b9c4d8;
-    font-size: 12px;
+    font-size: 13px;
+    line-height: 1.35;
   }
 }
 
 .product-login-brand-mark {
-  width: 40px;
-  height: 40px;
+  width: 76px;
+  height: 76px;
+  flex: 0 0 76px;
   display: grid;
   place-items: center;
   color: #ffffff;
 
   img {
-    width: 34px;
-    height: 34px;
+    width: 70px;
+    height: 70px;
     object-fit: contain;
   }
 
   :deep(svg) {
-    width: 24px;
-    height: 24px;
+    width: 42px;
+    height: 42px;
   }
 }
 
@@ -543,7 +547,7 @@ const submitForm = () => {
   }
 }
 
-:deep(.sqlbot-other-login) {
+:deep(.zhishu-other-login) {
   height: auto;
   min-height: 0;
 }
@@ -566,6 +570,38 @@ const submitForm = () => {
   .product-login-story {
     min-height: 420px;
     padding: 34px 24px;
+  }
+
+  .product-login-brand {
+    min-height: 80px;
+    gap: 6px;
+
+    strong {
+      font-size: 21px;
+      line-height: 1.2;
+    }
+
+    span {
+      margin-top: 3px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+  }
+
+  .product-login-brand-mark {
+    width: 72px;
+    height: 72px;
+    flex-basis: 72px;
+
+    img {
+      width: 66px;
+      height: 66px;
+    }
+
+    :deep(svg) {
+      width: 40px;
+      height: 40px;
+    }
   }
 
   .product-login-headline {

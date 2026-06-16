@@ -2,9 +2,9 @@ import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { endsWith, replace } from 'lodash-es'
 
-const AUTO_VALUE_FIELD = 'sqlbot_auto_quota'
-const AUTO_SERIES_FIELD = 'sqlbot_auto_series'
-const AUTO_PERCENT_FIELD = 'sqlbot_auto_is_percent'
+const AUTO_VALUE_FIELD = 'zhishu_auto_quota'
+const AUTO_SERIES_FIELD = 'zhishu_auto_series'
+const AUTO_PERCENT_FIELD = 'zhishu_auto_is_percent'
 
 const PERCENT_KEYWORDS = [
   'rate',
@@ -247,7 +247,7 @@ function buildPercentScale(data: Array<ChartData>, valueField: string): Record<s
   const scale: Record<string, any> = {
     nice: true,
     type: 'linear',
-    key: 'sqlbot_percent_axis',
+    key: 'zhishu_percent_axis',
     domainMin: 0,
   }
 
@@ -312,7 +312,7 @@ export function processMultiQuotaData(
   x: Array<ChartAxis>,
   y: Array<ChartAxis>,
   multiQuota: Array<string>,
-  multiQuotaName: string = 'sqlbot_auto_series',
+  multiQuotaName: string = 'zhishu_auto_series',
   data: Array<ChartData>
 ) {
   const _list: Array<ChartData> = []
@@ -468,7 +468,7 @@ export function buildMixedUnitComboOptions(
           y: {
             nice: true,
             type: 'linear',
-            key: 'sqlbot_count_axis',
+            key: 'zhishu_count_axis',
             zero: true,
           },
         },

@@ -45,7 +45,7 @@ jobs:
       - name: Prepare
         id: prepare
         run: |
-          DOCKER_IMAGE=${{ secrets.ALIYUN_REGISTRY_HOST }}/dataease/sqlbot-python-pg
+          DOCKER_IMAGE=${{ secrets.ALIYUN_REGISTRY_HOST }}/dataease/zhishu-python-pg
           DOCKER_PLATFORMS=${{ github.event.inputs.architecture }}
           TAG_NAME=${{ github.event.inputs.dockerImageTag }}
           TAG_NAME_WITH_LATEST=${{ github.event.inputs.dockerImageTagWithLatest }}
@@ -80,7 +80,7 @@ jobs:
       - name: Prepare
         id: prepare
         run: |
-          DOCKER_IMAGE=dataease/sqlbot-python-pg
+          DOCKER_IMAGE=dataease/zhishu-python-pg
           DOCKER_PLATFORMS=${{ github.event.inputs.architecture }}
           TAG_NAME=${{ github.event.inputs.dockerImageTag }}          
           TAG_NAME_WITH_LATEST=${{ github.event.inputs.dockerImageTagWithLatest }}

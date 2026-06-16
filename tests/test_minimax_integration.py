@@ -1,5 +1,5 @@
 """
-Integration tests for MiniMax LLM provider in SQLBot.
+Integration tests for MiniMax LLM provider.
 
 These tests validate that the MiniMax API is reachable and functioning
 correctly via the OpenAI-compatible protocol.

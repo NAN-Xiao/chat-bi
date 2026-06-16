@@ -520,8 +520,8 @@ def system_log(config: Union[LogConfig, Dict]):
                         args,
                         kwargs
                     )
-                    from common.utils.crypto import sqlbot_decrypt
-                    input_account = await sqlbot_decrypt(input_account_dec)
+                    from common.utils.crypto import zhishu_decrypt
+                    input_account = await zhishu_decrypt(input_account_dec)
                     with Session(engine) as session:
                         userInfo = get_user_by_account(session=session, account=input_account)
                         if userInfo is not None:

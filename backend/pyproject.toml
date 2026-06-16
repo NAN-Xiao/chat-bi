@@ -1,5 +1,5 @@
 [project]
-name = "sqlbot"
+name = "zhishu"
 version = "1.9.0"
 description = ""
 requires-python = "==3.11.*"

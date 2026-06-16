@@ -2,7 +2,7 @@ import datetime
 from typing import Any, List, Optional
 
 from sqlalchemy import and_, inspect, or_
-from sqlmodel import select
+from sqlmodel import func, select
 
 from apps.datasource.crud.permission_rules import (
     list_permission_records,
@@ -107,6 +107,30 @@ def list_datasource_users(session: SessionDep, datasource_id: int) -> list[dict[
         for row in rows
         if int(row.user_id) in assignable_ids
     ]
+
+
+def list_datasource_user_counts(session: SessionDep, datasource_ids) -> dict[int, int]:
+    requested_ids = {int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None}
+    if not requested_ids:
+        return {}
+
+    statement = (
+        select(CoreDatasourceUser.ds_id, func.count(CoreDatasourceUser.user_id))
+        .where(CoreDatasourceUser.ds_id.in_(requested_ids))
+        .group_by(CoreDatasourceUser.ds_id)
+    )
+    if _supports_user_system_role_filter(session):
+        statement = (
+            statement.join(UserModel, UserModel.id == CoreDatasourceUser.user_id)
+            .where(UserModel.system_role.not_in(SYSTEM_ADMIN_ROLES))
+        )
+
+    rows = session.exec(statement).all()
+    return {
+        int(_first_column_value(row)): int(row[1])
+        for row in rows
+        if _first_column_value(row) is not None
+    }
 
 
 def list_user_datasource_ids(session: SessionDep, user_id: int) -> list[int]:

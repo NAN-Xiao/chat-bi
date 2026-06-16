@@ -30,6 +30,7 @@ export interface Datasource {
   id?: string
   recommended_config?: string
   project_role?: string
+  authorized_user_count?: number
   can_manage_dashboard?: boolean
   can_manage_project?: boolean
 }
@@ -265,6 +266,7 @@ const back = () => {
             :num="ele.num"
             :description="ele.description"
             :project-role="ele.project_role"
+            :authorized-user-count="ele.authorized_user_count ?? 0"
             :can-manage-project="ele.can_manage_project === true"
             @edit="handleEditDatasource(ele)"
             @recommendation="handleRecommendation(ele)"

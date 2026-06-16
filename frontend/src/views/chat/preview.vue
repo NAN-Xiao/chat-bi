@@ -1,5 +1,5 @@
 <template>
-  <div v-loading="divLoading" class="sqlbot-embedded-assistant-page">
+  <div v-loading="divLoading" class="zhishu-embedded-assistant-page">
     <error-page v-if="inIframe" :title="t('embedded.preview_error')" />
     <chat-component
       v-else
@@ -22,7 +22,7 @@ const { t } = useI18n()
 
 const customSet = reactive({
   name: '',
-  welcome: t('embedded.i_am_sqlbot'),
+  welcome: t('embedded.i_am_zhishu'),
   welcome_desc: t('embedded.data_analysis_now'),
   theme: '#1CBA90',
   header_font_color: '#1F2329',
@@ -42,13 +42,13 @@ onMounted(() => {
 </script>
 
 <style lang="less" scoped>
-.sqlbot--embedded-page {
+.zhishu--embedded-page {
   width: 100%;
   height: 100vh;
   position: relative;
   background: #fff;
 }
-.sqlbot-embedded-assistant-page {
+.zhishu-embedded-assistant-page {
   width: 100%;
   height: 100%;
   position: absolute;

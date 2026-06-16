@@ -1,4 +1,4 @@
-﻿import json
+import json
 from typing import List, Union
 
 from fastapi import APIRouter, Path, Query
@@ -12,7 +12,7 @@ from apps.system.models.system_model import AiModelDetail, AiModelBrief
 from apps.system.schemas.ai_model_schema import AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import SessionDep, Trans, CurrentUser
-from common.utils.crypto import sqlbot_decrypt
+from common.utils.crypto import zhishu_decrypt
 from common.utils.time import get_timestamp
 from common.utils.utils import AppLogUtil, prepare_model_arg
 
@@ -128,9 +128,9 @@ async def get_model_by_id(
             pass
     try:
         if db_model.api_key:
-            db_model.api_key = await sqlbot_decrypt(db_model.api_key)
+            db_model.api_key = await zhishu_decrypt(db_model.api_key)
         if db_model.api_domain:
-            db_model.api_domain = await sqlbot_decrypt(db_model.api_domain)
+            db_model.api_domain = await zhishu_decrypt(db_model.api_domain)
     except Exception:
         pass
     data = AiModelDetail.model_validate(db_model).model_dump(exclude_unset=True)

@@ -1,7 +1,7 @@
 <template>
   <div
     v-loading="divLoading"
-    :class="dynamicType === 4 ? 'sqlbot--embedded-page' : 'sqlbot-embedded-assistant-page'"
+    :class="dynamicType === 4 ? 'zhishu--embedded-page' : 'zhishu-embedded-assistant-page'"
   >
     <chat-component
       v-if="!loading"
@@ -36,7 +36,7 @@ const assistantName = ref('')
 const dynamicType = ref(0)
 const customSet = reactive({
   name: '',
-  welcome: t('embedded.i_am_sqlbot'),
+  welcome: t('embedded.i_am_zhishu'),
   welcome_desc: t('embedded.data_analysis_now'),
   theme: '#1CBA90',
   header_font_color: '#1F2329',
@@ -52,7 +52,7 @@ const validator = ref({
 })
 const loading = ref(true)
 const divLoading = ref(true)
-const eventName = 'sqlbot_embedded_event'
+const eventName = 'zhishu_embedded_event'
 const communicationCb = async (event: any) => {
   if (event.data?.eventName === eventName) {
     if (event.data?.messageId !== route.query.id) {
@@ -119,7 +119,7 @@ const setFormatOnline = (text?: any) => {
 const registerReady = (assistantId: any) => {
   window.addEventListener('message', communicationCb)
   const readyData = {
-    eventName: 'sqlbot_embedded_event',
+    eventName: 'zhishu_embedded_event',
     busi: 'ready',
     ready: true,
     messageId: assistantId,
@@ -220,13 +220,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="less" scoped>
-.sqlbot--embedded-page {
+.zhishu--embedded-page {
   width: 100%;
   height: 100vh;
   position: relative;
   background: #fff;
 }
-.sqlbot-embedded-assistant-page {
+.zhishu-embedded-assistant-page {
   width: 100%;
   height: 100%;
   position: absolute;

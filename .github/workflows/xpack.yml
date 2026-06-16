@@ -35,7 +35,7 @@ on:
           - testpypi
           - pypi
       xpack_branch:
-        description: 'SQLBot X-Pack Branch'
+        description: 'X-Pack Branch'
         required: true
         type: choice
         default: "main"
@@ -45,28 +45,28 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    environment: sqlbot-xpack-env
+    environment: zhishu-xpack-env
     defaults:
       run:
-        working-directory: ./sqlbot-xpack
+        working-directory: ./zhishu-xpack
     strategy:
       matrix:
         os: ${{ fromJSON(inputs.target_os) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check out SQLBot xpack repo
+      - name: Check out xpack repo
         uses: actions/checkout@v4
         with:
-          repository: dataease/sqlbot-xpack
+          repository: dataease/zhishu-xpack
           ref: ${{ inputs.xpack_branch }}
-          path: ./sqlbot-xpack
+          path: ./zhishu-xpack
           token: ${{ secrets.GH_TOKEN }}
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
       - name: Install and build
-        working-directory: ./sqlbot-xpack/xpack_static
+        working-directory: ./zhishu-xpack/xpack_static
         run: |
           npm install
           npm run build:prod

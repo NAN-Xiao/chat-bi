@@ -34,7 +34,7 @@ const isAdmin = computed(() => userStore.isSystemManagerUser)
 const isLocalUser = computed(() => !userStore.getOrigin)
 
 const isClient = computed(() => {
-  return !!wsCache.get('sqlbot-platform-client')
+  return !!wsCache.get('zhishu-platform-client')
 })
 
 const platFlag = computed(() => {

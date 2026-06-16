@@ -28,8 +28,8 @@ const dialogVisible = ref(false)
 
 <template>
   <div class="chat-init_tip">
-    <div class="hello-sqlbot">Hello, I'm 星通智数, happy to serve you!</div>
-    <div class="function-sqlbot">
+    <div class="hello-zhishu">Hello, I'm 星通智数, happy to serve you!</div>
+    <div class="function-zhishu">
       I can help you query data, generate charts, detect data anomalies, predict data, etc. Please
       select a data source and start intelligent data query~
     </div>
@@ -84,12 +84,12 @@ const dialogVisible = ref(false)
 .chat-init_tip {
   width: 780px;
   padding: 16px;
-  .hello-sqlbot {
+  .hello-zhishu {
     margin-bottom: 12px;
     font-size: 16px;
     font-weight: 500;
   }
-  .function-sqlbot {
+  .function-zhishu {
     margin-bottom: 12px;
   }
 

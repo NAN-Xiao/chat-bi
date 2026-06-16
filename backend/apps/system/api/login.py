@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from apps.system.schemas.logout_schema import LogoutSchema
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.core.deps import SessionDep, Trans
-from common.utils.crypto import sqlbot_decrypt
+from common.utils.crypto import zhishu_decrypt
 from ..crud.user import authenticate
 from common.core.security import create_access_token
 from datetime import timedelta
@@ -27,8 +27,8 @@ async def local_login(
     trans: Trans,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ) -> Token:
-    origin_account = await sqlbot_decrypt(form_data.username)
-    origin_pwd = await sqlbot_decrypt(form_data.password)
+    origin_account = await zhishu_decrypt(form_data.username)
+    origin_pwd = await zhishu_decrypt(form_data.password)
     user: BaseUserDTO = authenticate(session=session, account=origin_account, password=origin_pwd)
     if not user:
         raise HTTPException(status_code=400, detail=trans('i18n_login.account_pwd_error'))

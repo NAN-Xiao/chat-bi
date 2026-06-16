@@ -12,7 +12,7 @@ from apps.ai_model.openai.llm import BaseChatOpenAI
 from apps.system.models.system_model import AiModelDetail
 from common.core.config import settings
 from common.core.db import engine
-from common.utils.crypto import sqlbot_decrypt
+from common.utils.crypto import zhishu_decrypt
 from common.utils.utils import prepare_model_arg
 from langchain_community.llms import VLLMOpenAI
 from langchain_openai import AzureChatOpenAI
@@ -189,9 +189,9 @@ async def get_default_config(custom_model_id: Optional[int] = None) -> LLMConfig
             except Exception:
                 pass
         if db_model.api_domain:
-            db_model.api_domain = await sqlbot_decrypt(db_model.api_domain)
+            db_model.api_domain = await zhishu_decrypt(db_model.api_domain)
         if db_model.api_key:
-            db_model.api_key = await sqlbot_decrypt(db_model.api_key)
+            db_model.api_key = await zhishu_decrypt(db_model.api_key)
         db_model.api_domain = _normalize_api_base_url(db_model.api_domain)
 
         # 构造 LLMConfig

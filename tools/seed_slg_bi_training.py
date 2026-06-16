@@ -1,4 +1,4 @@
-"""Seed 统一业务口径（术语 + 数据训练 SQL 示例）into the SQLBot 系统库。
+"""Seed 统一业务口径（术语 + 数据训练 SQL 示例）into the 星通智数系统库。
 
 - 不修改任何应用代码，只向系统库 terminology / data_training 表插入配置数据。
 - 幂等：重复运行不会产生重复记录，已存在记录会更新到最新口径。
@@ -52,6 +52,8 @@ TERMS: list[tuple[str, list[str], str]] = [
         "Dn 留存口径：成熟 cohort。分母 = install_date <= 观察最大日期 - n 的玩家；"
         "分子 = 这些玩家在 lifecycle_day = n 于 fact_sessions 有活跃行为的去重数；"
         "留存率 = 分子 / 分母。D0 可视为 100% 安装基准，D1 及以后必须从 fact_sessions 行为计算，"
+        "当用户指定某一天新增用户（如 6月1号新增用户）时，分母必须固定为该 install_date cohort 的总新增人数，"
+        "不要在按 lifecycle_day 分组后用当天有 session 的玩家数重新计算分母，否则会得到错误的 100% 留存；"
         "样本未成熟时输出“样本未成熟/暂不判断”，不要输出 0% 或全量流失。",
     ),
     (
@@ -253,6 +255,46 @@ EXAMPLES: list[tuple[str, str]] = [
         "       cohort_size, retained_users,\n"
         "       round(retained_users::numeric / nullif(cohort_size,0) * 100, 2) AS retention_pct\n"
         "FROM base ORDER BY n;\n"
+        "```",
+    ),
+    (
+        "分析6月1号新增用户的每日留存趋势",
+        "单日新增 cohort 留存：先锁定指定 install_date 的 cohort，分母固定为该日新增总人数；"
+        "再按 lifecycle_day 统计这些玩家当天在 fact_sessions 中活跃的去重人数。"
+        "不要在按 s.lifecycle_day 分组后使用 count(distinct p.player_id) 当分母，"
+        "因为 LEFT JOIN 后每个分组只剩当天活跃玩家，会导致 cohort_size = active_users、留存率恒为 100%。"
+        "留存率字段返回 0~100 的数值，不拼接 '%'；D0 可为 100%，D1 及以后必须按活跃人数 / 固定 cohort_size 计算。\n"
+        "```sql\n"
+        "WITH cohort AS (\n"
+        "  SELECT p.player_id\n"
+        "  FROM dim_player p\n"
+        "  WHERE p.install_date = DATE '2026-06-01'\n"
+        "),\n"
+        "cohort_size AS (\n"
+        "  SELECT count(*) AS new_users FROM cohort\n"
+        "),\n"
+        "days AS (\n"
+        "  SELECT generate_series(\n"
+        "           0,\n"
+        "           (SELECT max(s.lifecycle_day) FROM fact_sessions s JOIN cohort c ON c.player_id = s.player_id)\n"
+        "         ) AS day_index\n"
+        "),\n"
+        "active AS (\n"
+        "  SELECT s.lifecycle_day AS day_index,\n"
+        "         count(DISTINCT s.player_id) AS active_users\n"
+        "  FROM fact_sessions s\n"
+        "  JOIN cohort c ON c.player_id = s.player_id\n"
+        "  GROUP BY s.lifecycle_day\n"
+        ")\n"
+        "SELECT d.day_index,\n"
+        "       'D' || d.day_index AS lifecycle_day,\n"
+        "       cs.new_users,\n"
+        "       coalesce(a.active_users, 0) AS active_users,\n"
+        "       round(coalesce(a.active_users, 0)::numeric / nullif(cs.new_users, 0) * 100, 2) AS retention_pct\n"
+        "FROM days d\n"
+        "CROSS JOIN cohort_size cs\n"
+        "LEFT JOIN active a ON a.day_index = d.day_index\n"
+        "ORDER BY d.day_index;\n"
         "```",
     ),
     (

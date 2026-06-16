@@ -1,5 +1,5 @@
 """
-Unit tests for the MiniMax supplier configuration in SQLBot.
+Unit tests for the MiniMax supplier configuration.
 
 These tests validate that the MiniMax LLM provider is correctly configured
 in the frontend supplier registry, i18n translation files, and backend

@@ -1,4 +1,4 @@
-﻿
+
 import base64
 import json
 from typing import Optional
@@ -34,7 +34,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         assistantTokenKey = settings.ASSISTANT_TOKEN_KEY
         assistantToken = request.headers.get(assistantTokenKey)
-        askToken = request.headers.get("X-SQLBOT-ASK-TOKEN")
+        askToken = request.headers.get("X-ZHISHU-ASK-TOKEN")
         trans = await get_i18n(request)
         if askToken:
             validate_pass, data = await self.validateAskToken(askToken, trans)
@@ -51,7 +51,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if request.state.current_user and trans.lang:
                     request.state.current_user.language = trans.lang
                 request.state.assistant = validator[2]
-                origin = request.headers.get("X-SQLBOT-HOST-ORIGIN") or get_origin_from_referer(request)
+                origin = request.headers.get("X-ZHISHU-HOST-ORIGIN") or get_origin_from_referer(request)
                 if origin and validator[2]:
                     request.state.assistant.request_origin = origin
                 return await call_next(request)
@@ -73,7 +73,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
     
     async def validateAskToken(self, askToken: Optional[str], trans: I18n):
         if not askToken:
-            return False, f"Miss Token[X-SQLBOT-ASK-TOKEN]!"
+            return False, f"Miss Token[X-ZHISHU-ASK-TOKEN]!"
         schema, param = get_authorization_scheme_param(askToken)
         if schema.lower() != "sk":
             return False, f"Token schema error!"

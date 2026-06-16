@@ -100,7 +100,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="sqlbot-apikey-container">
+  <div class="zhishu-apikey-container">
     <div class="warn-template">
       <span class="icon-span">
         <el-icon>
@@ -273,7 +273,7 @@ onMounted(() => {
 </template>
 
 <style lang="less" scoped>
-.sqlbot-apikey-container {
+.zhishu-apikey-container {
   background: #ffffff;
   border-radius: 8px;
   row-gap: 24px;

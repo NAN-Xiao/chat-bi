@@ -7,7 +7,7 @@ assignees: xuwei-fit2cloud, BBchicken-9527
 
 ---
 
-**SQLBot Version**
+**Version**
 
 **Run Mode**
 Is it running in a Docker container or running from source code?

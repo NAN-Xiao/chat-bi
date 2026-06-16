@@ -285,7 +285,7 @@ export function isMobile() {
   )
 }
 
-export const getSQLBotAddr = (portEnd?: boolean) => {
+export const getZhishuAddr = (portEnd?: boolean) => {
   const addr = location.origin + location.pathname
   if (!portEnd || !addr.endsWith('/')) {
     return addr

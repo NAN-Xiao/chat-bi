@@ -139,7 +139,7 @@
                   alt=""
                 />
                 <div class="smart-qa-welcome-title">
-                  {{ t('embedded.i_am_sqlbot') }}
+                  {{ t('embedded.i_am_zhishu') }}
                 </div>
                 <div class="smart-qa-welcome-divider"></div>
                 <div class="smart-qa-welcome-desc">

@@ -29,6 +29,7 @@ from apps.datasource.crud.permission import (
     PROJECT_ROLE_EDITOR,
     PROJECT_ROLE_VIEWER,
     get_datasource_role,
+    list_datasource_user_counts,
     list_project_assignable_user_ids,
     list_datasource_users,
     normalize_project_role,
@@ -72,6 +73,7 @@ class DatasourceListItem(BaseModel):
     embedding: Optional[str] = None
     recommended_config: Optional[int] = None
     project_role: Optional[str] = None
+    authorized_user_count: int = 0
     can_create_dashboard: bool = False
     can_manage_dashboard: bool = False
     can_manage_project: bool = False
@@ -97,6 +99,10 @@ class DatasourceDetailItem(BaseModel):
             description=f"{PLACEHOLDER_PREFIX}ds_list_description")
 async def datasource_list(session: SessionDep, user: CurrentUser):
     datasources = get_datasource_list(session=session, user=user)
+    authorized_user_counts = list_datasource_user_counts(
+        session,
+        [datasource.id for datasource in datasources],
+    )
     result = []
     for datasource in datasources:
         role = get_datasource_role(session, user, datasource.id)
@@ -116,6 +122,7 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
             "embedding": datasource.embedding,
             "recommended_config": datasource.recommended_config,
             "project_role": role,
+            "authorized_user_count": authorized_user_counts.get(int(datasource.id), 0),
             "can_create_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_VIEWER),
             "can_manage_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_EDITOR),
             "can_manage_project": is_admin,

@@ -1,14 +1,14 @@
-<p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/sqlbot/sqlbot.png" alt="SQLBot" width="300" /></p>
+<p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/zhishu/zhishu.png" alt="星通智数" width="300" /></p>
 <h3 align="center">基于大模型和 RAG 的智能报表系统</h3>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/14540" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14540" alt="dataease%2FSQLBot | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+  <a href="https://trendshift.io/repositories/14540" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14540" alt="dataease%2Fzhishu | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/dataease/SQLBot/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/SQLBot" alt="Latest release"></a>
-  <a href="https://github.com/dataease/SQLBot"><img src="https://img.shields.io/github/stars/dataease/SQLBot?color=%231890FF&style=flat-square" alt="Stars"></a>    
-  <a href="https://hub.docker.com/r/dataease/SQLbot"><img src="https://img.shields.io/docker/pulls/dataease/sqlbot?label=downloads" alt="Download"></a><br/>
+  <a href="https://github.com/dataease/zhishu/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/zhishu" alt="Latest release"></a>
+  <a href="https://github.com/dataease/zhishu"><img src="https://img.shields.io/github/stars/dataease/zhishu?color=%231890FF&style=flat-square" alt="Stars"></a>    
+  <a href="https://hub.docker.com/r/dataease/zhishu"><img src="https://img.shields.io/docker/pulls/dataease/zhishu?label=downloads" alt="Download"></a><br/>
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 <hr/>
 
 
-SQLBot 是一款基于大语言模型和 RAG 的智能报表系统，由 DataEase 开源项目组匠心出品。借助 SQLBot，用户可以实现对话式数据分析（ChatBI），快速提炼获取所需的数据信息及可视化图表，并且支持进一步开展智能分析。
+星通智数是一款基于大语言模型和 RAG 的智能报表系统，由 DataEase 开源项目组匠心出品。借助星通智数，用户可以实现对话式数据分析（ChatBI），快速提炼获取所需的数据信息及可视化图表，并且支持进一步开展智能分析。
 
 ## 工作原理
 
@@ -56,28 +56,28 @@ SQLBot 是一款基于大语言模型和 RAG 的智能报表系统，由 DataEas
 
 ```bash
 docker run -d \
-  --name sqlbot \
+  --name zhishu \
   --restart unless-stopped \
   -p 8000:8000 \
   -p 8001:8001 \
-  -v ./data/sqlbot/excel:/opt/sqlbot/data/excel \
-  -v ./data/sqlbot/file:/opt/sqlbot/data/file \
-  -v ./data/sqlbot/images:/opt/sqlbot/images \
-  -v ./data/sqlbot/logs:/opt/sqlbot/app/logs \
+  -v ./data/zhishu/excel:/opt/zhishu/data/excel \
+  -v ./data/zhishu/file:/opt/zhishu/data/file \
+  -v ./data/zhishu/images:/opt/zhishu/images \
+  -v ./data/zhishu/logs:/opt/zhishu/app/logs \
   -v ./data/postgresql:/var/lib/postgresql/data \
   --privileged=true \
-  dataease/sqlbot
+  dataease/zhishu
 ```
 
-你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署 SQLBot。
+你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署星通智数。
 
-如果是内网环境，你可以通过 [离线安装包方式](https://community.fit2cloud.com/#/products/sqlbot/downloads) 部署 SQLBot。
+如果是内网环境，你可以通过 [离线安装包方式](https://community.fit2cloud.com/#/products/zhishu/downloads) 部署星通智数。
 
 ### 访问方式
 
 - 在浏览器中打开: http://<你的服务器IP>:8000/
 - 用户名: admin
-- 密码: SQLBot@123456
+- 密码: Zhishu@123456
 
 ### 联系我们
 
@@ -93,7 +93,7 @@ docker run -d \
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=dataease/sqlbot&type=Date)](https://www.star-history.com/#dataease/sqlbot&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=dataease/zhishu&type=Date)](https://www.star-history.com/#dataease/zhishu&Date)
 
 ## 飞致云旗下的其他明星项目
 
@@ -109,9 +109,9 @@ docker run -d \
 
 本仓库遵循 [FIT2CLOUD Open Source License](LICENSE) 开源协议，该许可证本质上是 GPLv3，但有一些额外的限制。
 
-你可以基于 SQLBot 的源代码进行二次开发，但是需要遵守以下规定：
+你可以基于星通智数的源代码进行二次开发，但是需要遵守以下规定：
 
-- 不能替换和修改 SQLBot 的 Logo 和版权信息；
+- 不能替换和修改星通智数的 Logo 和版权信息；
 - 二次开发后的衍生作品必须遵守 GPL V3 的开源义务。
 
 如需商业授权，请联系 support@fit2cloud.com 。

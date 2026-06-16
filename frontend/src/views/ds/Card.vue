@@ -7,7 +7,6 @@ import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import icon_recommended_problem from '@/assets/svg/icon_recommended_problem.svg'
-import { useI18n } from 'vue-i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -18,6 +17,7 @@ const props = withDefaults(
     description?: string
     id?: string
     projectRole?: string
+    authorizedUserCount?: number | string
     canManageProject?: boolean
   }>(),
   {
@@ -26,12 +26,12 @@ const props = withDefaults(
     description: '-',
     id: '-',
     projectRole: '',
+    authorizedUserCount: 0,
     typeName: '-',
     canManageProject: false,
   }
 )
 
-const { t } = useI18n()
 const emits = defineEmits([
   'edit',
   'del',
@@ -42,11 +42,6 @@ const emits = defineEmits([
 ])
 const icon = computed(() => {
   return (dsTypeWithImg.find((ele) => props.type === ele.type) || {}).img
-})
-const roleLabel = computed(() => {
-  if (props.canManageProject) return t('project.administrator')
-  if (props.projectRole === 'editor') return t('datasource.project_role_editor')
-  return t('datasource.project_role_viewer')
 })
 const handleEdit = () => {
   emits('edit')
@@ -88,8 +83,10 @@ const dataTableDetail = () => {
         <span class="value ellipsis">{{ typeName }}</span>
       </div>
       <div class="detail-row">
-        <span class="label">{{ $t('user.project_role') }}</span>
-        <span class="value ellipsis">{{ roleLabel }}</span>
+        <span class="label">{{ $t('datasource.authorized_users') }}</span>
+        <span class="value ellipsis">{{
+          $t('datasource.authorized_user_count', { msg: authorizedUserCount })
+        }}</span>
       </div>
       <div class="detail-row detail-row-table">
         <el-icon class="table-icon" size="14">

@@ -168,7 +168,7 @@ const routerList = computed(() => {
       color: inherit !important;
     }
 
-    .sqlbot-menu-line-icon {
+    .zhishu-menu-line-icon {
       color: inherit !important;
 
       path,
@@ -185,7 +185,7 @@ const routerList = computed(() => {
       }
     }
 
-    svg:not(.sqlbot-menu-line-icon) path {
+    svg:not(.zhishu-menu-line-icon) path {
       fill: currentColor !important;
       stroke: currentColor !important;
     }

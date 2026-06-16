@@ -212,10 +212,10 @@ const backMain = () => {
 }
 const switchLayout = () => {
   topLayout.value = !topLayout.value
-  wsCache.set('sqlbot-topbar-layout', topLayout.value)
+  wsCache.set('zhishu-topbar-layout', topLayout.value)
 }
 onMounted(() => {
-  topLayout.value = wsCache.get('sqlbot-topbar-layout') || true
+  topLayout.value = wsCache.get('zhishu-topbar-layout') || true
 })
 </script>
 

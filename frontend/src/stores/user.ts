@@ -4,7 +4,7 @@ import { AuthApi } from '@/api/login'
 import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
 import { store } from './index'
-import { getCurrentRouter, getQueryString, getSQLBotAddr, isPlatform } from '@/utils/utils'
+import { getCurrentRouter, getQueryString, getZhishuAddr, isPlatform } from '@/utils/utils'
 
 const { wsCache } = useCache()
 
@@ -100,7 +100,7 @@ export const UserStore = defineStore('user', {
         isPlatform()
       ) {
         const currentPath = getCurrentRouter()
-        let logout_url = getSQLBotAddr() + '#/login'
+        let logout_url = getZhishuAddr() + '#/login'
         if (currentPath) {
           logout_url += `?redirect=${currentPath}`
         }

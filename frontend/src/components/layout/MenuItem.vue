@@ -84,7 +84,7 @@ const MenuLineIcon = defineComponent({
       h(
         'svg',
         {
-          class: 'sqlbot-menu-line-icon',
+          class: 'zhishu-menu-line-icon',
           width: 18,
           height: 18,
           viewBox: '0 0 18 18',

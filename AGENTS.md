@@ -5,24 +5,24 @@ Scope: entire repository.
 ## Local Dev Runbook
 
 - For local Windows development, treat the stack as three separate local services:
-  `frontend` Vite on `127.0.0.1:5173`, backend API on `127.0.0.1:8000`, and MCP server on `127.0.0.1:8001`.
+  `frontend` Vite on `0.0.0.0:5173`, backend API on `0.0.0.0:8000`, and MCP server on `0.0.0.0:8001`.
 - Before retrying random ports or passwords, use the known-good local app database settings from the repo root `.env`:
   `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15432`, `POSTGRES_DB=zhishu_bi`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`.
 - Do not confuse the local app system database with the SLG BI demo datasources:
-  the SQLBot system database is PostgreSQL `zhishu_bi` on `127.0.0.1:15432` with user `root` / password `Password123@pg`;
+  the 星通智数 system database is PostgreSQL `zhishu_bi` on `127.0.0.1:15432` with user `root` / password `Password123@pg`;
   the seeded BI demo datasources are PostgreSQL on `127.0.0.1:5432` with user `postgres` / password `111111`,
   where datasource `SLG BI Mock` points to database `slg_bi_mock` and datasource `SLG BI Mock 2 - Season War` points to `slg_bi_mock_2`.
 - For this workspace's current default online LLM, use:
   `base_url=https://aikey.elex-tech.com/v1`, `api_key=apg_c2a9f12cb04b6db44c905952402619ba39a4eb446185653c`, `default_model=qwen3.5-plus`.
   If Smart Q&A fails immediately before SQL generation, verify the `ai_model` default row in the app database first instead of retrying random domains, ports, or passwords.
-- If you need to inspect datasource definitions in the SQLBot system database, query `core_datasource` in `zhishu_bi` on port `15432`.
+- If you need to inspect datasource definitions in the 星通智数 system database, query `core_datasource` in `zhishu_bi` on port `15432`.
 - Local startup logs to check first:
   `.codex-runtime/backend-8000.current.err.log`, `.codex-runtime/backend-8001.current.err.log`, `.codex-runtime/frontend-5173.current.out.log`,
   plus application logs under `logs/` and `backend/logs/`.
 - For local backend startup on this machine, set these environment overrides before running `uvicorn` so paths and ports match the workspace:
   `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15432`, `POSTGRES_DB=zhishu_bi`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`,
-  `FRONTEND_HOST=http://127.0.0.1:5173`, `BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`,
-  `BASE_DIR=D:/work/AI/SQLBot/.codex-runtime/sqlbot`, `UPLOAD_DIR=D:/work/AI/SQLBot/.codex-runtime/file`,
+  `FRONTEND_HOST=http://localhost:5173`, `BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173`,
+  `BASE_DIR=D:/work/AI/SQLBot/.codex-runtime/zhishu`, `UPLOAD_DIR=D:/work/AI/SQLBot/.codex-runtime/file`,
   `MCP_IMAGE_PATH=D:/work/AI/SQLBot/.codex-runtime/images`, `EXCEL_PATH=D:/work/AI/SQLBot/.codex-runtime/excel`,
   `LOCAL_MODEL_PATH=D:/work/AI/SQLBot/.codex-runtime/models`.
 - MCP tools are disabled by default in this workspace. Set `MCP_ENABLED=false` for local backend/MCP startup unless you are explicitly testing MCP access controls.
@@ -30,15 +30,15 @@ Scope: entire repository.
   Otherwise startup may fail or spam logs because the bundled local embedding model is missing.
 - Known-good local startup commands on Windows PowerShell are:
   backend API:
-  ``$env:POSTGRES_SERVER='127.0.0.1'; $env:POSTGRES_PORT='15432'; $env:POSTGRES_DB='zhishu_bi'; $env:POSTGRES_USER='root'; $env:POSTGRES_PASSWORD='Password123@pg'; $env:FRONTEND_HOST='http://127.0.0.1:5173'; $env:BACKEND_CORS_ORIGINS='http://localhost:5173,http://127.0.0.1:5173'; $env:BASE_DIR='D:/work/AI/SQLBot/.codex-runtime/sqlbot'; $env:UPLOAD_DIR='D:/work/AI/SQLBot/.codex-runtime/file'; $env:MCP_IMAGE_PATH='D:/work/AI/SQLBot/.codex-runtime/images'; $env:EXCEL_PATH='D:/work/AI/SQLBot/.codex-runtime/excel'; $env:LOCAL_MODEL_PATH='D:/work/AI/SQLBot/.codex-runtime/models'; $env:MCP_ENABLED='false'; $env:EMBEDDING_ENABLED='false'; $env:TABLE_EMBEDDING_ENABLED='false'; Start-Process -FilePath 'D:\work\AI\SQLBot\backend\.venv\Scripts\python.exe' -WorkingDirectory 'D:\work\AI\SQLBot\backend' -ArgumentList '-m','uvicorn','main:app','--host','127.0.0.1','--port','8000' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\backend-8000.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\backend-8000.current.err.log' -WindowStyle Hidden``
+  ``$env:POSTGRES_SERVER='127.0.0.1'; $env:POSTGRES_PORT='15432'; $env:POSTGRES_DB='zhishu_bi'; $env:POSTGRES_USER='root'; $env:POSTGRES_PASSWORD='Password123@pg'; $env:FRONTEND_HOST='http://localhost:5173'; $env:BACKEND_CORS_ORIGINS='http://localhost:5173,http://127.0.0.1:5173'; $env:BASE_DIR='D:/work/AI/SQLBot/.codex-runtime/zhishu'; $env:UPLOAD_DIR='D:/work/AI/SQLBot/.codex-runtime/file'; $env:MCP_IMAGE_PATH='D:/work/AI/SQLBot/.codex-runtime/images'; $env:EXCEL_PATH='D:/work/AI/SQLBot/.codex-runtime/excel'; $env:LOCAL_MODEL_PATH='D:/work/AI/SQLBot/.codex-runtime/models'; $env:MCP_ENABLED='false'; $env:EMBEDDING_ENABLED='false'; $env:TABLE_EMBEDDING_ENABLED='false'; Start-Process -FilePath 'D:\work\AI\SQLBot\backend\.venv\Scripts\python.exe' -WorkingDirectory 'D:\work\AI\SQLBot\backend' -ArgumentList '-m','uvicorn','main:app','--host','0.0.0.0','--port','8000' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\backend-8000.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\backend-8000.current.err.log' -WindowStyle Hidden``
   MCP:
-  ``$env:POSTGRES_SERVER='127.0.0.1'; $env:POSTGRES_PORT='15432'; $env:POSTGRES_DB='zhishu_bi'; $env:POSTGRES_USER='root'; $env:POSTGRES_PASSWORD='Password123@pg'; $env:FRONTEND_HOST='http://127.0.0.1:5173'; $env:BACKEND_CORS_ORIGINS='http://localhost:5173,http://127.0.0.1:5173'; $env:BASE_DIR='D:/work/AI/SQLBot/.codex-runtime/sqlbot'; $env:UPLOAD_DIR='D:/work/AI/SQLBot/.codex-runtime/file'; $env:MCP_IMAGE_PATH='D:/work/AI/SQLBot/.codex-runtime/images'; $env:EXCEL_PATH='D:/work/AI/SQLBot/.codex-runtime/excel'; $env:LOCAL_MODEL_PATH='D:/work/AI/SQLBot/.codex-runtime/models'; $env:MCP_ENABLED='false'; $env:EMBEDDING_ENABLED='false'; $env:TABLE_EMBEDDING_ENABLED='false'; Start-Process -FilePath 'D:\work\AI\SQLBot\backend\.venv\Scripts\python.exe' -WorkingDirectory 'D:\work\AI\SQLBot\backend' -ArgumentList '-m','uvicorn','main:mcp_app','--host','127.0.0.1','--port','8001' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\backend-8001.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\backend-8001.current.err.log' -WindowStyle Hidden``
+  ``$env:POSTGRES_SERVER='127.0.0.1'; $env:POSTGRES_PORT='15432'; $env:POSTGRES_DB='zhishu_bi'; $env:POSTGRES_USER='root'; $env:POSTGRES_PASSWORD='Password123@pg'; $env:FRONTEND_HOST='http://localhost:5173'; $env:BACKEND_CORS_ORIGINS='http://localhost:5173,http://127.0.0.1:5173'; $env:BASE_DIR='D:/work/AI/SQLBot/.codex-runtime/zhishu'; $env:UPLOAD_DIR='D:/work/AI/SQLBot/.codex-runtime/file'; $env:MCP_IMAGE_PATH='D:/work/AI/SQLBot/.codex-runtime/images'; $env:EXCEL_PATH='D:/work/AI/SQLBot/.codex-runtime/excel'; $env:LOCAL_MODEL_PATH='D:/work/AI/SQLBot/.codex-runtime/models'; $env:MCP_ENABLED='false'; $env:EMBEDDING_ENABLED='false'; $env:TABLE_EMBEDDING_ENABLED='false'; Start-Process -FilePath 'D:\work\AI\SQLBot\backend\.venv\Scripts\python.exe' -WorkingDirectory 'D:\work\AI\SQLBot\backend' -ArgumentList '-m','uvicorn','main:mcp_app','--host','0.0.0.0','--port','8001' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\backend-8001.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\backend-8001.current.err.log' -WindowStyle Hidden``
   frontend:
-  ``Start-Process -FilePath 'C:\Windows\System32\cmd.exe' -WorkingDirectory 'D:\work\AI\SQLBot\frontend' -ArgumentList '/c','npm run dev -- --host 127.0.0.1' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\frontend-5173.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\frontend-5173.current.err.log' -WindowStyle Hidden``
+  ``Start-Process -FilePath 'C:\Windows\System32\cmd.exe' -WorkingDirectory 'D:\work\AI\SQLBot\frontend' -ArgumentList '/c','npm run dev' -RedirectStandardOutput 'D:\work\AI\SQLBot\.codex-runtime\frontend-5173.current.out.log' -RedirectStandardError 'D:\work\AI\SQLBot\.codex-runtime\frontend-5173.current.err.log' -WindowStyle Hidden``
 - Known-good health checks after startup:
   `http://127.0.0.1:5173/` should return `200`,
   `http://127.0.0.1:8000/api/v1/system/getLoginMethod` may return `401` but proves backend is up,
-  and `127.0.0.1:8000`, `127.0.0.1:8001`, `127.0.0.1:5173` should all be listening.
+  and `0.0.0.0:8000`, `0.0.0.0:8001`, `0.0.0.0:5173` should all be listening for LAN testing.
 
 ## SLG BI Mock Data Constraints
 

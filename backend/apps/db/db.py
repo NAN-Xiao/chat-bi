@@ -1,4 +1,4 @@
-﻿import base64
+import base64
 import json
 import os
 import platform
@@ -784,7 +784,7 @@ def check_sql_read(sql: str, ds: CoreDatasource | AssistantOutDsSchema) -> tuple
         first_keyword = normalized_sql.split(None, 1)[0].upper() if normalized_sql else ""
 
         # 根据配置决定是否允许元数据查询
-        if settings.SQLBOT_ALLOW_METADATA_QUERIES:
+        if settings.ZHISHU_ALLOW_METADATA_QUERIES:
             allowed_read_commands = {"SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"}
         else:
             allowed_read_commands = {"SELECT", "WITH"}

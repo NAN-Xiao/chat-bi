@@ -49,6 +49,19 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    server: {
+      host: '0.0.0.0',
+      proxy: {
+        '/api': {
+          target: 'http://127.0.0.1:8000',
+          changeOrigin: true,
+        },
+        '/xpack_static': {
+          target: 'http://127.0.0.1:8000',
+          changeOrigin: true,
+        },
+      },
+    },
     esbuild: {
       jsxFactory: 'h',
       jsxFragment: 'Fragment',

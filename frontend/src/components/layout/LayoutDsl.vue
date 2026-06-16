@@ -137,7 +137,7 @@ onMounted(() => {
                 alt=""
                 @click="toChatIndex"
               />
-              <div v-else-if="loginBg && !collapse" class="default-sqlbot">
+              <div v-else-if="loginBg && !collapse" class="default-zhishu">
                 <img
                   height="30"
                   width="30"
@@ -156,7 +156,7 @@ onMounted(() => {
                 :class="!collapse && 'collapse-icon'"
               ></custom_small>
 
-              <div v-else class="default-sqlbot">
+              <div v-else class="default-zhishu">
                 <custom_small class="collapse-icon"></custom_small>
                 <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
                   appearanceStore.name
@@ -173,7 +173,7 @@ onMounted(() => {
                 alt=""
                 @click="toChatIndex"
               />
-              <div v-else-if="loginBg && !collapse" class="default-sqlbot">
+              <div v-else-if="loginBg && !collapse" class="default-zhishu">
                 <img
                   height="30"
                   width="30"
@@ -191,7 +191,7 @@ onMounted(() => {
                 style="margin: 0 0 6px 5px; cursor: pointer"
                 @click="toChatIndex"
               ></custom_small>
-              <div v-else class="default-sqlbot">
+              <div v-else class="default-zhishu">
                 <custom_small class="collapse-icon"></custom_small>
                 <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
                   appearanceStore.name
@@ -208,7 +208,7 @@ onMounted(() => {
                 alt=""
                 @click="toChatIndex"
               />
-              <div v-else-if="loginBg && !collapse" class="default-sqlbot">
+              <div v-else-if="loginBg && !collapse" class="default-zhishu">
                 <img
                   height="30"
                   width="30"
@@ -230,7 +230,7 @@ onMounted(() => {
                 alt=""
                 @click="toChatIndex"
               />
-              <div v-else class="default-sqlbot">
+              <div v-else class="default-zhishu">
                 <img
                   :src="defaultLogoUrl"
                   class="collapse-icon"
@@ -333,7 +333,7 @@ onMounted(() => {
         min-width: 0;
       }
 
-      .default-sqlbot,
+      .default-zhishu,
       .sys-management {
         margin-bottom: 0;
       }
@@ -391,7 +391,7 @@ onMounted(() => {
       width: 100%;
     }
 
-    .default-sqlbot {
+    .default-zhishu {
       display: flex;
       align-items: center;
       font-size: 16px;

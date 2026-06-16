@@ -1,4 +1,4 @@
-﻿import json
+import json
 import os
 from datetime import timedelta
 from typing import Optional
@@ -125,7 +125,7 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
     _ = online
     assistantDict = {
         "id": virtual,
-        "account": 'sqlbot-inner-assistant',
+        "account": 'zhishu-inner-assistant',
         "assistant_id": id,
         "assistant_online": False,
     }

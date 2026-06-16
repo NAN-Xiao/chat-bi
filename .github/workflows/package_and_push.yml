@@ -72,13 +72,13 @@ jobs:
               exit 2
           fi
 
-          DOCKER_IMAGE=${ALIYUN_REGISTRY_HOST}/dataease/sqlbot
+          DOCKER_IMAGE=${ALIYUN_REGISTRY_HOST}/dataease/zhishu
           cd installer
           
-          echo ${TAG_NAME} > ./sqlbot/templates/version
-          sed -i -e "s/SQLBOT_TAG/${TAG_NAME}/g" sqlbot/docker-compose.yml
+          echo ${TAG_NAME} > ./zhishu/templates/version
+          sed -i -e "s/ZHISHU_TAG/${TAG_NAME}/g" zhishu/docker-compose.yml
           mkdir images
-          for image in $(grep  "image: " sqlbot/docker*.yml | awk -F 'image:' '{print $2}'); do
+          for image in $(grep  "image: " zhishu/docker*.yml | awk -F 'image:' '{print $2}'); do
             image_path=$(eval echo $image)
             image_name=$(echo ${image_path##*/})
             docker pull $image_path
@@ -99,17 +99,17 @@ jobs:
 
           if [[ $ARCH == 'x86_64' ]]; then
             #打包离线包
-            package_offline="sqlbot-offline-installer-${TAG_NAME}${platform}-ce.tar.gz"
+            package_offline="zhishu-offline-installer-${TAG_NAME}${platform}-ce.tar.gz"
             touch $package_offline
-            tar --transform "s/^\./sqlbot-offline-installer-${TAG_NAME}${platform}-ce/" \
+            tar --transform "s/^\./zhishu-offline-installer-${TAG_NAME}${platform}-ce/" \
             --exclude $package_offline \
             --exclude .git \
             -czvf $package_offline . 
   
             #打包在线包
-            package_online="sqlbot-online-installer-${TAG_NAME}${platform}-ce.tar.gz"
+            package_online="zhishu-online-installer-${TAG_NAME}${platform}-ce.tar.gz"
             touch $package_online
-            tar --transform "s/^\./sqlbot-online-installer-${TAG_NAME}${platform}-ce/" \
+            tar --transform "s/^\./zhishu-online-installer-${TAG_NAME}${platform}-ce/" \
             --exclude $package_online \
             --exclude $package_offline \
             --exclude .git \
@@ -119,22 +119,22 @@ jobs:
           fi
           
           if [[ ${PACKAGE_EE} == 'true' ]]; then 
-            package_offline_ee="sqlbot-offline-installer-${TAG_NAME}${platform}-ee.tar.gz"
+            package_offline_ee="zhishu-offline-installer-${TAG_NAME}${platform}-ee.tar.gz"
             touch $package_offline_ee
-            tar --transform "s/^\./sqlbot-offline-installer-${TAG_NAME}${platform}-ee/" \
+            tar --transform "s/^\./zhishu-offline-installer-${TAG_NAME}${platform}-ee/" \
             --exclude $package_online \
             --exclude $package_offline \
             --exclude $package_offline_ee \
             --exclude .git \
             -czvf $package_offline_ee . 
 
-            ossutil cp -rf ${package_offline_ee} oss://$ALIYUN_OSS_BUCKET/sqlbot/${package_offline_ee} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}
+            ossutil cp -rf ${package_offline_ee} oss://$ALIYUN_OSS_BUCKET/zhishu/${package_offline_ee} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}
           fi
 
           if [[ $ARCH == 'x86_64' ]]; then
             #Sync files to OSS
-            ossutil cp -rf ${package_offline} oss://$ALIYUN_OSS_BUCKET/sqlbot/${package_offline} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}          
-            ossutil cp -rf ${package_online} oss://$ALIYUN_OSS_BUCKET/sqlbot/${package_online} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}
+            ossutil cp -rf ${package_offline} oss://$ALIYUN_OSS_BUCKET/zhishu/${package_offline} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}          
+            ossutil cp -rf ${package_online} oss://$ALIYUN_OSS_BUCKET/zhishu/${package_online} --access-key-id=$ALIYUN_OSS_ACCESS_KEY --access-key-secret=$ALIYUN_OSS_ACCESS_SECRET --endpoint=${ALIYUN_OSS_BUCKET_ENDPOINT}
           fi
 
 

@@ -96,12 +96,12 @@ class HttpService {
         // Add auth token
         const token = wsCache.get('user.token')
         if (token && config.headers) {
-          config.headers['X-SQLBOT-TOKEN'] = `Bearer ${token}`
+          config.headers['X-ZHISHU-TOKEN'] = `Bearer ${token}`
         }
         if (assistantStore.getToken) {
           const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
-          config.headers['X-SQLBOT-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
-          if (config.headers['X-SQLBOT-TOKEN']) config.headers.delete('X-SQLBOT-TOKEN')
+          config.headers['X-ZHISHU-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
+          if (config.headers['X-ZHISHU-TOKEN']) config.headers.delete('X-ZHISHU-TOKEN')
           if (
             assistantStore.getType &&
             !!(assistantStore.getType % 2) &&
@@ -114,15 +114,15 @@ class HttpService {
             ) {
               await assistantStore.refreshCertificate(config.url || '')
             }
-            config.headers['X-SQLBOT-ASSISTANT-CERTIFICATE'] = btoa(
+            config.headers['X-ZHISHU-ASSISTANT-CERTIFICATE'] = btoa(
               encodeURIComponent(assistantStore.getCertificate)
             )
           }
           if (!assistantStore.getType || assistantStore.getType === 2) {
-            config.headers['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
+            config.headers['X-ZHISHU-ASSISTANT-ONLINE'] = assistantStore.getOnline
           }
           if (assistantStore.getHostOrigin) {
-            config.headers['X-SQLBOT-HOST-ORIGIN'] = assistantStore.getHostOrigin
+            config.headers['X-ZHISHU-HOST-ORIGIN'] = assistantStore.getHostOrigin
           }
         }
         const locale = getLocale()
@@ -290,27 +290,27 @@ class HttpService {
       'Content-Type': 'application/json',
     }
     if (token) {
-      heads['X-SQLBOT-TOKEN'] = `Bearer ${token}`
+      heads['X-ZHISHU-TOKEN'] = `Bearer ${token}`
     }
     if (assistantStore.getToken) {
       const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
-      heads['X-SQLBOT-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
-      if (heads['X-SQLBOT-TOKEN']) delete heads['X-SQLBOT-TOKEN']
+      heads['X-ZHISHU-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
+      if (heads['X-ZHISHU-TOKEN']) delete heads['X-ZHISHU-TOKEN']
       if (
         assistantStore.getType &&
         !!(assistantStore.getType % 2) &&
         assistantStore.getCertificate
       ) {
         await assistantStore.refreshCertificate(url)
-        heads['X-SQLBOT-ASSISTANT-CERTIFICATE'] = btoa(
+        heads['X-ZHISHU-ASSISTANT-CERTIFICATE'] = btoa(
           encodeURIComponent(assistantStore.getCertificate)
         )
       }
       if (assistantStore.getHostOrigin) {
-        heads['X-SQLBOT-HOST-ORIGIN'] = assistantStore.getHostOrigin
+        heads['X-ZHISHU-HOST-ORIGIN'] = assistantStore.getHostOrigin
       }
       if (!assistantStore.getType || assistantStore.getType === 2) {
-        heads['X-SQLBOT-ASSISTANT-ONLINE'] = assistantStore.getOnline
+        heads['X-ZHISHU-ASSISTANT-ONLINE'] = assistantStore.getOnline
       }
     }
 

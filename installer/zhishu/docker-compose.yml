@@ -1,0 +1,22 @@
+services:
+  zhishu:
+    image: registry.cn-qingdao.aliyuncs.com/dataease/zhishu:ZHISHU_TAG
+    container_name: zhishu
+    restart: always
+    privileged: true
+    networks:
+      - zhishu-network
+    ports:
+      - ${ZHISHU_WEB_PORT}:8000
+      - ${ZHISHU_MCP_PORT}:8001
+    env_file:
+      - conf/zhishu.conf
+    volumes:
+      - ./data/zhishu/excel:/opt/zhishu/data/excel
+      - ./data/zhishu/file:/opt/zhishu/data/file
+      - ./data/zhishu/images:/opt/zhishu/images
+      - ./data/zhishu/logs:/opt/zhishu/app/logs
+      - ./data/postgresql:/var/lib/postgresql/data
+
+networks:
+  zhishu-network:

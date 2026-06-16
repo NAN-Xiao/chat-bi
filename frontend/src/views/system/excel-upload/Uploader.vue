@@ -28,7 +28,7 @@ const uploadLoading = ref(false)
 
 const token = wsCache.get('user.token')
 const locale = getLocale()
-const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}`, 'Accept-Language': locale })
+const headers = ref<any>({ 'X-ZHISHU-TOKEN': `Bearer ${token}`, 'Accept-Language': locale })
 const getUploadURL = () => {
   const params = new URLSearchParams()
   Object.entries(props.uploadParams || {}).forEach(([key, value]) => {

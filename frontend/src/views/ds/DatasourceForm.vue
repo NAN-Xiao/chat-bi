@@ -144,7 +144,7 @@ const close = () => {
 
 const { wsCache } = useCache()
 const token = wsCache.get('user.token')
-const headers = ref<any>({ 'X-SQLBOT-TOKEN': `Bearer ${token}` })
+const headers = ref<any>({ 'X-ZHISHU-TOKEN': `Bearer ${token}` })
 
 const initForm = (item: any, editTable: boolean = false) => {
   isEditTable.value = false

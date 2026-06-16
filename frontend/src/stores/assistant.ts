@@ -139,7 +139,7 @@ export const AssistantStore = defineStore('assistant', {
         if (this.peddingStatus !== 1) {
           this.peddingStatus = 1
           const readyData = {
-            eventName: this.pageEmbedded ? 'sqlbot_embedded_event' : 'sqlbot_assistant_event',
+            eventName: this.pageEmbedded ? 'zhishu_embedded_event' : 'zhishu_assistant_event',
             busi: 'ready',
             ready: true,
             messageId: this.id,

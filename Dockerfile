@@ -1,9 +1,9 @@
-# Build sqlbot
+# Build zhishu
 FROM ghcr.io/1panel-dev/maxkb-vector-model:v1.0.1 AS vector-model
-FROM --platform=${BUILDPLATFORM} registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-ui-builder
-ENV SQLBOT_HOME=/opt/sqlbot
-ENV APP_HOME=${SQLBOT_HOME}/app
-ENV UI_HOME=${SQLBOT_HOME}/frontend
+FROM --platform=${BUILDPLATFORM} registry.cn-qingdao.aliyuncs.com/dataease/zhishu-base:latest AS zhishu-ui-builder
+ENV ZHISHU_HOME=/opt/zhishu
+ENV APP_HOME=${ZHISHU_HOME}/app
+ENV UI_HOME=${ZHISHU_HOME}/frontend
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
@@ -12,13 +12,13 @@ COPY frontend /tmp/frontend
 RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
 
 
-FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS sqlbot-builder
+FROM registry.cn-qingdao.aliyuncs.com/dataease/zhishu-base:latest AS zhishu-builder
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
-ENV SQLBOT_HOME=/opt/sqlbot
-ENV APP_HOME=${SQLBOT_HOME}/app
-ENV UI_HOME=${SQLBOT_HOME}/frontend
-ENV PYTHONPATH=${SQLBOT_HOME}/app
+ENV ZHISHU_HOME=/opt/zhishu
+ENV APP_HOME=${ZHISHU_HOME}/app
+ENV UI_HOME=${ZHISHU_HOME}/frontend
+ENV PYTHONPATH=${ZHISHU_HOME}/app
 ENV PATH="${APP_HOME}/.venv/bin:$PATH"
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
@@ -29,7 +29,7 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 WORKDIR ${APP_HOME}
 
-COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
+COPY  --from=zhishu-ui-builder ${UI_HOME} ${UI_HOME}
 # Install dependencies
 RUN test -f "./uv.lock" && \
     --mount=type=cache,target=/root/.cache/uv \
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --extra cpu
 
 # Build g2-ssr
-FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest AS ssr-builder
+FROM registry.cn-qingdao.aliyuncs.com/dataease/zhishu-base:latest AS ssr-builder
 
 WORKDIR /app
 
@@ -65,31 +65,31 @@ COPY g2-ssr/charts/* /app/charts/
 RUN npm install
 
 # Runtime stage
-FROM registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
+FROM registry.cn-qingdao.aliyuncs.com/dataease/zhishu-python-pg:latest
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
 
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
-ENV SQLBOT_HOME=/opt/sqlbot
-ENV PYTHONPATH=${SQLBOT_HOME}/app
-ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
+ENV ZHISHU_HOME=/opt/zhishu
+ENV PYTHONPATH=${ZHISHU_HOME}/app
+ENV PATH="${ZHISHU_HOME}/app/.venv/bin:$PATH"
 
 ENV POSTGRES_DB=zhishu_bi
 ENV POSTGRES_USER=root
 ENV POSTGRES_PASSWORD=Password123@pg
 
 # Copy necessary files from builder
-COPY start.sh /opt/sqlbot/app/start.sh
+COPY start.sh /opt/zhishu/app/start.sh
 COPY g2-ssr/*.ttf /usr/share/fonts/truetype/liberation/
-COPY --from=sqlbot-builder ${SQLBOT_HOME} ${SQLBOT_HOME}
-COPY --from=ssr-builder /app /opt/sqlbot/g2-ssr
-COPY --from=vector-model /opt/maxkb/app/model /opt/sqlbot/models
+COPY --from=zhishu-builder ${ZHISHU_HOME} ${ZHISHU_HOME}
+COPY --from=ssr-builder /app /opt/zhishu/g2-ssr
+COPY --from=vector-model /opt/maxkb/app/model /opt/zhishu/models
 
-WORKDIR ${SQLBOT_HOME}/app
+WORKDIR ${ZHISHU_HOME}/app
 
-RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
+RUN mkdir -p /opt/zhishu/images /opt/zhishu/g2-ssr
 
 EXPOSE 3000 8000 8001 5432
 

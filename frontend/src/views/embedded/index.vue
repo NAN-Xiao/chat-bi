@@ -1,5 +1,5 @@
 <template>
-  <div class="sqlbot-assistant-container">
+  <div class="zhishu-assistant-container">
     <div class="header" :style="{ color: customSet.header_font_color }">
       <el-icon v-if="!embeddedHistoryHidden" size="20"> </el-icon>
       <el-icon v-if="!logo" class="logo" size="30">
@@ -18,7 +18,7 @@
         </el-icon>
       </el-tooltip>
     </div>
-    <div class="sqlbot-chat-container">
+    <div class="zhishu-chat-container">
       <chat-component
         v-if="!loading"
         ref="chatRef"
@@ -68,7 +68,7 @@ const validator = ref({
 })
 const appName = ref('')
 const loading = ref(true)
-const eventName = 'sqlbot_assistant_event'
+const eventName = 'zhishu_assistant_event'
 const communicationCb = async (event: any) => {
   if (event.data?.eventName === eventName) {
     if (event.data?.messageId !== route.query.id) {
@@ -123,7 +123,7 @@ onMounted(() => {
 })
 const customSet = reactive({
   name: '',
-  welcome: t('embedded.i_am_sqlbot'),
+  welcome: t('embedded.i_am_zhishu'),
   welcome_desc: t('embedded.data_analysis_now'),
   theme: '#1CBA90',
   header_font_color: '#1F2329',
@@ -173,7 +173,7 @@ onBeforeMount(async () => {
 
   window.addEventListener('message', communicationCb)
   const readyData = {
-    eventName: 'sqlbot_assistant_event',
+    eventName: 'zhishu_assistant_event',
     busi: 'ready',
     ready: true,
     messageId: assistantId,
@@ -225,7 +225,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="less" scoped>
-.sqlbot-assistant-container {
+.zhishu-assistant-container {
   height: 100vh;
   width: 100%;
   color: rgb(31, 35, 41);
@@ -283,7 +283,7 @@ onBeforeUnmount(() => {
       top: 17px;
     }
   }
-  .sqlbot-chat-container {
+  .zhishu-chat-container {
     padding-top: 56px;
     height: 100%;
     :deep(.ed-aside) {

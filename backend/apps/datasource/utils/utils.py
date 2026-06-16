@@ -2,7 +2,8 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad, pad
 import base64
 
-key = b'SQLBot1234567890'
+key = b'Zhishu1234567890'
+legacy_keys = (b'SQLBot1234567890',)
 
 def aes_encrypt(data):
     data = bytes(data,'utf-8')
@@ -13,7 +14,12 @@ def aes_encrypt(data):
 
 def aes_decrypt(encrypted_data):
     encrypted_data = base64.b64decode(encrypted_data)
-    cipher = AES.new(key, AES.MODE_ECB)
-    text = cipher.decrypt(encrypted_data)
-    decrypted_text = unpad(text, AES.block_size)
-    return decrypted_text.decode('utf-8')
+    for candidate_key in (key, *legacy_keys):
+        try:
+            cipher = AES.new(candidate_key, AES.MODE_ECB)
+            text = cipher.decrypt(encrypted_data)
+            decrypted_text = unpad(text, AES.block_size)
+            return decrypted_text.decode('utf-8')
+        except Exception:
+            continue
+    raise ValueError("Invalid encrypted datasource configuration")

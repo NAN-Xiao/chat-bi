@@ -29,7 +29,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     PROJECT_NAME: str = "星通智数"
-    #CONTEXT_PATH: str = "/sqlbot"
+    #CONTEXT_PATH: str = "/zhishu"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)
     # 60 minutes * 24 hours * 8 days = 8 days
@@ -64,12 +64,12 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = 'root'
     POSTGRES_PASSWORD: str = "Password123@pg"
     POSTGRES_DB: str = "zhishu_bi"
-    SQLBOT_DB_URL: str = ''
-    # SQLBOT_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/sqlbot'
+    ZHISHU_DB_URL: str = ''
+    # ZHISHU_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/zhishu'
 
-    TOKEN_KEY: str = "X-SQLBOT-TOKEN"
-    DEFAULT_PWD: str = "SQLBot@123456"
-    ASSISTANT_TOKEN_KEY: str = "X-SQLBOT-ASSISTANT-TOKEN"
+    TOKEN_KEY: str = "X-ZHISHU-TOKEN"
+    DEFAULT_PWD: str = "Zhishu@123456"
+    ASSISTANT_TOKEN_KEY: str = "X-ZHISHU-ASSISTANT-TOKEN"
 
     CACHE_TYPE: Literal["redis", "memory", "None"] = "memory"
     CACHE_REDIS_URL: str | None = None  # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
@@ -78,16 +78,16 @@ class Settings(BaseSettings):
     LOG_DIR: str = "logs"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
     SQL_DEBUG: bool = False
-    BASE_DIR: str = "/opt/sqlbot"
+    BASE_DIR: str = "/opt/zhishu"
     SCRIPT_DIR: str = f"{BASE_DIR}/scripts"
-    UPLOAD_DIR: str = "/opt/sqlbot/data/file"
-    SQLBOT_KEY_EXPIRED: int = 100  # License key expiration timestamp, 0 means no expiration
+    UPLOAD_DIR: str = "/opt/zhishu/data/file"
+    ZHISHU_KEY_EXPIRED: int = 100  # License key expiration timestamp, 0 means no expiration
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn | str:
-        if self.SQLBOT_DB_URL:
-            return self.SQLBOT_DB_URL
+        if self.ZHISHU_DB_URL:
+            return self.ZHISHU_DB_URL
         # return MultiHostUrl.build(
         #     scheme="postgresql+psycopg",
         #     username=urllib.parse.quote(self.POSTGRES_USER),
@@ -98,8 +98,8 @@ class Settings(BaseSettings):
         # )
         return f"postgresql+psycopg://{urllib.parse.quote(self.POSTGRES_USER)}:{urllib.parse.quote(self.POSTGRES_PASSWORD)}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
-    MCP_IMAGE_PATH: str = '/opt/sqlbot/images'
-    EXCEL_PATH: str = '/opt/sqlbot/data/excel'
+    MCP_IMAGE_PATH: str = '/opt/zhishu/images'
+    EXCEL_PATH: str = '/opt/zhishu/data/excel'
     MCP_ENABLED: bool = False
     MCP_IMAGE_HOST: str = 'http://localhost:3000'
     SERVER_IMAGE_HOST: str = 'http://YOUR_SERVE_IP:MCP_PORT/images/'
@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     LLM_REQUEST_TIMEOUT: int = 45
     LLM_MAX_RETRIES: int = 1
 
-    LOCAL_MODEL_PATH: str = '/opt/sqlbot/models'
+    LOCAL_MODEL_PATH: str = '/opt/zhishu/models'
     DEFAULT_EMBEDDING_MODEL: str = 'shibing624/text2vec-base-chinese'
     EMBEDDING_ENABLED: bool = True
     EMBEDDING_DEFAULT_SIMILARITY: float = 0.4
@@ -123,7 +123,7 @@ class Settings(BaseSettings):
 
     # 安全配置：是否允许元数据查询（SHOW/DESCRIBE/DESC/EXPLAIN）
     # 默认关闭，防止通过元数据查询泄露数据库结构
-    SQLBOT_ALLOW_METADATA_QUERIES: bool = False
+    ZHISHU_ALLOW_METADATA_QUERIES: bool = False
 
     PARSE_REASONING_BLOCK_ENABLED: bool = True
     DEFAULT_REASONING_CONTENT_START: str = '<think>'
@@ -138,7 +138,7 @@ class Settings(BaseSettings):
     TABLE_EMBEDDING_COUNT: int = 10
     DS_EMBEDDING_COUNT: int = 10
 
-    ORACLE_CLIENT_PATH: str = '/opt/sqlbot/db_client/oracle_instant_client'
+    ORACLE_CLIENT_PATH: str = '/opt/zhishu/db_client/oracle_instant_client'
 
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',

@@ -487,7 +487,7 @@ const handleEmbedded = (row: any) => {
   scriptElement.value = `g-#script
   async
   defer
-  id="sqlbot-assistant-float-script-${row.id}"
+  id="zhishu-assistant-float-script-${row.id}"
   src="${origin + pathname}assistant.js?id=${row.id}"k-*g-#/scriptk-*`
     .replaceAll('g-#', '<')
     .replaceAll('k-*', '>')
@@ -497,7 +497,7 @@ const handleEmbedded = (row: any) => {
     script.defer = true;
     script.async = true;
     script.src = "${origin + pathname}assistant.js?id=${row.id}";
-    script.id = "sqlbot-assistant-float-script-${row.id}";
+    script.id = "zhishu-assistant-float-script-${row.id}";
     document.head.appendChild(script);
   })()`
 
@@ -506,7 +506,7 @@ const handleEmbedded = (row: any) => {
     script.defer = true;
     script.async = true;
     script.src = "${origin + pathname}assistant.js?id=${row.id}";
-    script.id = "sqlbot-assistant-page-script-${row.id}";
+    script.id = "zhishu-assistant-page-script-${row.id}";
     document.head.appendChild(script);
   })()
   `
