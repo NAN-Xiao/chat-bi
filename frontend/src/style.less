@@ -16,10 +16,10 @@
   --warning-color: #f5b74f;
   --text-color: #15233b;
   --text-light: #6b7a90;
-  --bg-color: #eef4fb;
+  --bg-color: #f4f7fb;
   --white: #ffffff;
   --border-color: #dce6f2;
-  --bg-primary: #eef4fb;
+  --bg-primary: #f4f7fb;
   --bg-secondary: #ffffff;
   --bg-tertiary: #f4f8fd;
   --bg-hover: #e6efff;
@@ -31,7 +31,7 @@
   --user-msg-bg: #2f6bff;
   --ai-msg-bg: #ffffff;
   --input-bg: #ffffff;
-  --theme-shell-bg: #eef3f8;
+  --theme-shell-bg: #e7edf5;
   --theme-shell-gradient-a: transparent;
   --theme-shell-gradient-b: transparent;
   --theme-panel-bg: #ffffff;
@@ -50,18 +50,18 @@
   --theme-success-soft-bg: #eefbf5;
   --theme-danger-soft-bg: #fff5f5;
   --theme-primary-soft-bg: rgba(47, 107, 255, 0.1);
-  --theme-sidebar-bg: #eef3f8;
+  --theme-sidebar-bg: #e7edf5;
   --theme-sidebar-bg-soft: #ffffff;
   --theme-sidebar-border: transparent;
   --theme-sidebar-text: #1b2a41;
   --theme-sidebar-text-secondary: #66758f;
   --theme-sidebar-text-tertiary: #90a0b6;
-  --theme-sidebar-hover-bg: #edf3ff;
+  --theme-sidebar-hover-bg: #ffffff;
   --theme-sidebar-active-bg: #2f6bff;
   --theme-sidebar-active-text: #ffffff;
   --theme-sidebar-emphasis-text: #1b2a41;
   --theme-sidebar-control-bg: #ffffff;
-  --theme-sidebar-control-hover-bg: #edf3ff;
+  --theme-sidebar-control-hover-bg: #ffffff;
   --theme-sidebar-active-soft-bg: #d9e7ff;
   --theme-sidebar-gradient-top: transparent;
   --theme-sidebar-active-shadow: 0 10px 22px rgba(47, 107, 255, 0.18);
@@ -71,7 +71,7 @@
   --theme-chart-red: #f56c6c;
   --theme-chart-orange: #f5b74f;
   --theme-chart-grid: #e8eef7;
-  --workspace-shell-bg: #eef3f8;
+  --workspace-shell-bg: #f4f7fb;
   --workspace-panel-bg: #f8fbff;
   --workspace-card-bg: #ffffff;
   --workspace-control-bg: #f7faff;
@@ -2055,6 +2055,15 @@ strong {
     --ed-border-color-light: var(--assistant-dock-border, #d7e1ef);
     --ed-border-color-lighter: var(--assistant-dock-border-soft, #e6edf6);
     --ed-border-color-extra-light: var(--assistant-dock-border-soft, #e6edf6);
+  }
+
+  .analysis-assistant-dock {
+    --assistant-tab-bg: var(--theme-sidebar-bg, #0b1730);
+    --assistant-tab-hover-bg: var(--theme-sidebar-bg-soft, #102140);
+    --assistant-tab-border: var(--theme-sidebar-border, transparent);
+    --assistant-tab-text: var(--theme-sidebar-text, #e7eefb);
+    --assistant-tab-shadow: 0 6px 16px rgba(11, 23, 48, 0.2);
+    --assistant-tab-hover-shadow: 0 8px 20px rgba(11, 23, 48, 0.24);
   }
 
   .analysis-assistant-dock.expanded,

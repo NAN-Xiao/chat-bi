@@ -2,8 +2,7 @@
 import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
-import { computed, ref, unref } from 'vue'
-import { ClickOutside as vClickOutside } from 'element-plus-secondary'
+import { computed } from 'vue'
 import { dsTypeWithImg } from './js/ds-type'
 import edit from '@/assets/svg/icon_edit_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
@@ -59,11 +58,6 @@ const handleDel = () => {
 const dataTableDetail = () => {
   emits('dataTableDetail')
 }
-const buttonRef = ref()
-const popoverRef = ref()
-const onClickOutside = () => {
-  unref(popoverRef).popperRef?.delayHide?.()
-}
 </script>
 
 <template>
@@ -79,6 +73,17 @@ const onClickOutside = () => {
       {{ description }}
     </div>
 
+    <div class="detail-list">
+      <div class="detail-row">
+        <span class="label">{{ $t('ds.type') }}</span>
+        <span class="value ellipsis">{{ typeName }}</span>
+      </div>
+      <div class="detail-row">
+        <span class="label">{{ $t('ds.tables') }}</span>
+        <span class="value ellipsis">{{ num }}</span>
+      </div>
+    </div>
+
     <div class="bottom-info">
       <div class="form-rate">
         <el-icon class="form-icon" size="16">
@@ -86,27 +91,19 @@ const onClickOutside = () => {
         </el-icon>
         {{ num }}
       </div>
-      <div click.stop class="methods">
-        <el-icon
-          v-if="canManageProject"
-          ref="buttonRef"
-          v-click-outside="onClickOutside"
-          class="more"
-          size="16"
-          style="color: #646a73"
-          @click.stop
-        >
-          <icon_more_outlined></icon_more_outlined>
-        </el-icon>
+      <div class="methods" @click.stop>
         <el-popover
-          ref="popoverRef"
-          :virtual-ref="buttonRef"
-          virtual-triggering
+          v-if="canManageProject"
           trigger="click"
           :teleported="true"
           popper-class="popover-card_ds"
           placement="bottom-end"
         >
+          <template #reference>
+            <button type="button" class="more" aria-label="more actions" @click.stop>
+              <icon_more_outlined></icon_more_outlined>
+            </button>
+          </template>
           <div class="content">
             <div class="item" @click.stop="handleEdit">
               <el-icon size="16">
@@ -142,20 +139,24 @@ const onClickOutside = () => {
 <style lang="less" scoped>
 .card {
   width: 100%;
-  border: 1px solid #dee0e3;
-  padding: 16px;
+  height: 176px;
+  border: 1px solid var(--workspace-border, #e2eaf4);
+  padding: 16px 54px 16px 16px;
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 1px 5px 14px rgba(31, 35, 41, 0.08);
+  background: var(--workspace-card-bg, #ffffff);
+  box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
   cursor: pointer;
+  position: relative;
+  display: flex;
+  flex-direction: column;
   transition:
     box-shadow 0.12s ease,
     transform 0.12s ease,
     border-color 0.12s ease;
 
   &:hover {
-    border-color: #d7dce2;
-    box-shadow: 3px 8px 24px rgba(31, 35, 41, 0.13);
+    border-color: var(--workspace-border, #e2eaf4);
+    box-shadow: 0 16px 36px rgba(24, 46, 86, 0.11);
     transform: translateY(-2px) scale(1.012);
   }
 
@@ -167,19 +168,21 @@ const onClickOutside = () => {
     .info {
       margin-left: 12px;
       max-width: calc(100% - 50px);
+      min-width: 0;
 
       .name {
         font-weight: 500;
         font-size: 16px;
         line-height: 24px;
         max-width: 100%;
+        color: var(--workspace-text-primary, #1b2a41);
       }
 
       .type {
         font-weight: 400;
         font-size: 12px;
         line-height: 20px;
-        color: #646a73;
+        color: var(--workspace-text-secondary, #66758f);
       }
     }
   }
@@ -188,7 +191,7 @@ const onClickOutside = () => {
     font-weight: 400;
     font-size: 14px;
     line-height: 22px;
-    color: #646a73;
+    color: var(--workspace-text-secondary, #66758f);
     height: 44px;
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -198,8 +201,35 @@ const onClickOutside = () => {
     width: 100%;
   }
 
+  .detail-list {
+    margin-top: 10px;
+    min-width: 0;
+  }
+
+  .detail-row {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    line-height: 20px;
+
+    .label {
+      flex: 0 0 60px;
+      color: var(--workspace-text-secondary, #66758f);
+      white-space: nowrap;
+    }
+
+    .value {
+      min-width: 0;
+      color: var(--workspace-text-primary, #1b2a41);
+    }
+  }
+
+  .detail-row + .detail-row {
+    margin-top: 4px;
+  }
+
   .bottom-info {
-    margin-top: 16px;
+    margin-top: auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -208,7 +238,7 @@ const onClickOutside = () => {
     .form-rate {
       display: flex;
       align-items: center;
-      color: #646a73;
+      color: var(--workspace-text-secondary, #66758f);
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
@@ -219,19 +249,34 @@ const onClickOutside = () => {
     }
 
     .methods {
+      position: absolute;
+      right: 16px;
+      top: 16px;
       align-items: center;
-      display: none;
+      display: flex;
 
       .ed-button {
         margin-left: 0;
       }
 
       .more {
+        border: 0;
+        padding: 0;
+        color: var(--workspace-text-secondary, #66758f);
+        background: transparent;
+        appearance: none;
+        line-height: 1;
         position: relative;
         cursor: pointer;
-        margin-left: 4px;
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
+        flex: 0 0 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition:
+          color 0.16s ease,
+          transform 0.16s ease;
 
         svg {
           position: relative;
@@ -241,28 +286,36 @@ const onClickOutside = () => {
         &::after {
           content: '';
           position: absolute;
-          border-radius: 6px;
-          width: 32px;
-          height: 32px;
+          border-radius: 8px;
+          width: 28px;
+          height: 28px;
           transform: translate(-50%, -50%);
           top: 50%;
           left: 50%;
-          background: #fff;
-          border: 1px solid #d9dcdf;
+          background: var(--workspace-control-bg, #f7faff);
+          border: 1px solid var(--workspace-border-soft, #eff4fa);
+          box-shadow: 0 1px 2px rgba(24, 46, 86, 0.05);
+          transition:
+            background-color 0.16s ease,
+            border-color 0.16s ease,
+            box-shadow 0.16s ease;
         }
 
         &:hover {
+          color: var(--workspace-text-primary, #1b2a41);
+          transform: translateY(-1px);
+
           &::after {
-            background-color: #f5f6f7;
+            background-color: var(--workspace-control-hover-bg, #edf3ff);
+            border-color: var(--workspace-border, #e2eaf4);
+            box-shadow: 0 4px 10px rgba(24, 46, 86, 0.08);
           }
         }
-      }
-    }
-  }
 
-  &:hover {
-    .methods {
-      display: flex;
+        &:focus-visible {
+          outline: none;
+        }
+      }
     }
   }
 }

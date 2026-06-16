@@ -671,7 +671,7 @@ const columnRules = {
           :xs="24"
           :sm="12"
           :md="12"
-          :lg="6"
+          :lg="8"
           :xl="6"
           class="mb-16"
         >

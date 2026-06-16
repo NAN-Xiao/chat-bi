@@ -177,15 +177,15 @@ onMounted(() => {
 <style scoped lang="less">
 .card {
   width: 100%;
-  border: 1px solid #dee0e3;
+  border: 1px solid var(--workspace-border, #e2eaf4);
   border-radius: 8px;
-  background: #fff;
+  background: var(--workspace-card-bg, #ffffff);
   overflow: hidden;
-  box-shadow: 1px 5px 14px rgba(31, 35, 41, 0.08);
+  box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
   transition: box-shadow 0.12s ease, transform 0.12s ease;
 
   &:hover {
-    box-shadow: 3px 8px 24px rgba(31, 35, 41, 0.13);
+    box-shadow: 0 16px 36px rgba(24, 46, 86, 0.11);
     transform: translateY(-2px) scale(1.012);
   }
 }
@@ -194,8 +194,8 @@ onMounted(() => {
   position: relative;
   height: 204px;
   padding: 12px;
-  border-bottom: 1px solid #eff0f1;
-  background: linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
+  border-bottom: 1px solid var(--workspace-border-soft, #eff4fa);
+  background: linear-gradient(180deg, #fbfdff 0%, #f3f7fc 100%);
 }
 
 .preview-image {
@@ -214,7 +214,7 @@ onMounted(() => {
   border: none;
   outline: none;
   background: transparent;
-  color: #646a73;
+  color: var(--workspace-text-secondary, #66758f);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -226,7 +226,7 @@ onMounted(() => {
   }
 
   :deep(path) {
-    fill: #a8b0bb;
+    fill: var(--workspace-text-tertiary, #90a0b6);
   }
 
   &:hover {
@@ -244,7 +244,7 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #646a73;
+  color: var(--workspace-text-secondary, #66758f);
   text-align: center;
 }
 
@@ -271,8 +271,8 @@ onMounted(() => {
   align-items: center;
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563eb;
+  background: var(--workspace-primary-soft-bg, rgba(47, 107, 255, 0.1));
+  color: var(--primary-color, #2f6bff);
   font-size: 12px;
   line-height: 18px;
 }
@@ -281,7 +281,7 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #646a73;
+  color: var(--workspace-text-secondary, #66758f);
   font-size: 12px;
   line-height: 18px;
 }
@@ -306,6 +306,7 @@ onMounted(() => {
   font-weight: 500;
   font-size: 15px;
   line-height: 24px;
+  color: var(--workspace-text-primary, #1b2a41);
 }
 
 .info-row {
@@ -317,12 +318,12 @@ onMounted(() => {
   line-height: 18px;
 
   .label {
-    color: #646a73;
+    color: var(--workspace-text-secondary, #66758f);
     flex: 0 0 auto;
   }
 
   .value {
-    color: #1f2329;
+    color: var(--workspace-text-primary, #1b2a41);
     flex: 1 1 auto;
     min-width: 0;
   }

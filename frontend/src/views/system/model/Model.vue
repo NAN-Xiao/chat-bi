@@ -495,7 +495,7 @@ const submit = (item: any) => {
 
     .model-card-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 320px));
+      grid-template-columns: repeat(auto-fill, minmax(320px, 320px));
       gap: 16px;
       align-items: start;
     }

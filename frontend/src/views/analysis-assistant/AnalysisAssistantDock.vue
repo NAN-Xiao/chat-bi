@@ -903,6 +903,12 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   --assistant-dock-input-bg: #ffffff;
   --assistant-dock-primary-soft-bg: rgba(47, 107, 255, 0.1);
   --assistant-dock-danger-soft-bg: #fff5f5;
+  --assistant-tab-bg: #ffffff;
+  --assistant-tab-hover-bg: #edf3ff;
+  --assistant-tab-border: #d7e1ef;
+  --assistant-tab-text: #15233b;
+  --assistant-tab-shadow: 0 8px 20px rgba(24, 46, 86, 0.12);
+  --assistant-tab-hover-shadow: 0 10px 24px rgba(24, 46, 86, 0.16);
 
   position: fixed;
   top: 0;
@@ -970,13 +976,12 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   width: 40px;
   height: 112px;
   padding: 10px 0;
-  border: 1px solid var(--theme-sidebar-border, rgba(132, 159, 204, 0.18));
+  border: 1px solid var(--assistant-tab-border);
   border-right: 0;
   border-radius: 6px 0 0 6px;
-  background:
-    linear-gradient(180deg, var(--theme-sidebar-bg-soft, #102140), var(--theme-sidebar-bg, #0b1730));
-  box-shadow: 0 6px 16px rgba(11, 23, 48, 0.2);
-  color: var(--theme-sidebar-text, #e7eefb);
+  background: var(--assistant-tab-bg);
+  box-shadow: var(--assistant-tab-shadow);
+  color: var(--assistant-tab-text);
   cursor: pointer;
   touch-action: none;
   user-select: none;
@@ -1021,10 +1026,9 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   }
 
   &:hover {
-    background:
-      linear-gradient(180deg, #18305a, var(--theme-sidebar-bg-soft, #102140));
-    border-color: var(--theme-sidebar-border, rgba(132, 159, 204, 0.18));
-    box-shadow: 0 8px 20px rgba(11, 23, 48, 0.24);
+    background: var(--assistant-tab-hover-bg);
+    border-color: var(--assistant-tab-border);
+    box-shadow: var(--assistant-tab-hover-shadow);
   }
 
   &.dragging,
