@@ -481,6 +481,24 @@ function setPlayerGridFrame(
   return getItemGridFrame(item)
 }
 
+function movePlayerToFrame(item: CanvasItem, frame: { x: number; y: number }) {
+  const nextFrame = normalizeGridFrame({
+    x: frame.x,
+    y: frame.y,
+    sizeX: item.sizeX,
+    sizeY: item.sizeY,
+  })
+
+  movePlayer(item, nextFrame)
+  rebuildPositionBox()
+
+  if (item.component === 'SQView') {
+    useEmittLazy(`view-render-${item.id}`)
+  }
+
+  return getItemGridFrame(item)
+}
+
 function removeItemById(id: number) {
   const index = canvasComponentData.value.findIndex((item) => item.id === id)
   if (index >= 0) {
@@ -1050,39 +1068,27 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
         sizeX: moveItem.sizeX,
         sizeY: moveItem.sizeY,
       })
-      const canPlaceFrame = canPlaceGridFrame(moveItem, candidateFrame)
-      if (canPlaceFrame) {
-        infoBox.value.lastValidFrame = candidateFrame
-        const validStyle = getSnappedItemStyle(
-          candidateFrame.x,
-          candidateFrame.y,
-          candidateFrame.sizeX,
-          candidateFrame.sizeY
-        )
-        infoBox.value.cloneItem.style.left = `${validStyle.left}px`
-        infoBox.value.cloneItem.style.top = `${validStyle.top}px`
-        tabMoveInCheckSQ()
-        tabMoveOutCheckSQ()
+      infoBox.value.lastValidFrame = candidateFrame
+      const validStyle = getSnappedItemStyle(
+        candidateFrame.x,
+        candidateFrame.y,
+        candidateFrame.sizeX,
+        candidateFrame.sizeY
+      )
+      infoBox.value.cloneItem.style.left = `${validStyle.left}px`
+      infoBox.value.cloneItem.style.top = `${validStyle.top}px`
+      tabMoveInCheckSQ()
+      tabMoveOutCheckSQ()
 
-        //If the current canvas is locked, no component movement will be performed
-        if (canvasLocked.value) return
+      //If the current canvas is locked, no component movement will be performed
+      if (canvasLocked.value) return
 
-        debounce(() => {
-          setPlayerGridFrame(moveItem, candidateFrame)
-          infoBox.value.oldX = newX
-          infoBox.value.oldY = newY
-        }, 10)
-      } else {
-        const lastValidFrame = infoBox.value.lastValidFrame || getItemGridFrame(moveItem)
-        const lastValidStyle = getSnappedItemStyle(
-          lastValidFrame.x,
-          lastValidFrame.y,
-          lastValidFrame.sizeX,
-          lastValidFrame.sizeY
-        )
-        infoBox.value.cloneItem.style.left = `${lastValidStyle.left}px`
-        infoBox.value.cloneItem.style.top = `${lastValidStyle.top}px`
-      }
+      debounce(() => {
+        const movedFrame = movePlayerToFrame(moveItem, candidateFrame)
+        infoBox.value.lastValidFrame = movedFrame
+        infoBox.value.oldX = movedFrame.x
+        infoBox.value.oldY = movedFrame.y
+      }, 10)
     }
   }
 
@@ -1139,7 +1145,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
     }
     if (infoBox.value.moveItem) {
       if (infoBox.value.lastValidFrame) {
-        setPlayerGridFrame(infoBox.value.moveItem, infoBox.value.lastValidFrame)
+        movePlayerToFrame(infoBox.value.moveItem, infoBox.value.lastValidFrame)
       }
       props.dragEnd(e, infoBox.value.moveItem, infoBox.value.moveItem._dragId)
       infoBox.value.moveItem.show = true

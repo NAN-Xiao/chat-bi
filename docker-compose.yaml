@@ -13,7 +13,7 @@ services:
       # Database configuration
       POSTGRES_SERVER: localhost
       POSTGRES_PORT: 5432
-      POSTGRES_DB: sqlbot
+      POSTGRES_DB: zhishu_bi
       POSTGRES_USER: root
       POSTGRES_PASSWORD: Password123@pg
       # Project basic settings
