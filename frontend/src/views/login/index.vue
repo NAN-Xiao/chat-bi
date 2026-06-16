@@ -11,7 +11,7 @@
               <img v-else :src="elexDataLogoUrl" alt="" />
             </el-icon>
           </div>
-          <div>
+          <div class="product-login-brand-copy">
             <strong>{{ productName }}</strong>
             <span>智能报表 · 数据分析 · 数据看板洞察</span>
           </div>
@@ -196,6 +196,8 @@ const submitForm = () => {
 }
 
 .product-login-story {
+  --product-login-depth-x: 107px;
+  --product-login-depth-y: 152px;
   position: relative;
   min-width: 0;
   padding: 64px 76px;
@@ -211,11 +213,17 @@ const submitForm = () => {
     position: absolute;
     inset: 0;
     background:
+      radial-gradient(
+        ellipse 230px 170px at var(--product-login-depth-x) var(--product-login-depth-y),
+        rgba(6, 12, 28, 0.52) 0%,
+        rgba(8, 16, 36, 0.32) 34%,
+        rgba(8, 16, 36, 0) 72%
+      ),
       linear-gradient(120deg, rgba(37, 99, 235, 0.35), transparent 42%),
       radial-gradient(circle at 78% 24%, rgba(20, 184, 166, 0.22), transparent 28%),
       linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
-    background-size: auto, auto, 42px 42px, 42px 42px;
+    background-size: auto, auto, auto, 42px 42px, 42px 42px;
     opacity: 0.95;
   }
 }
@@ -267,15 +275,20 @@ const submitForm = () => {
   color: #ffffff;
 
   img {
-    width: 70px;
-    height: 70px;
+    width: 62px;
+    height: 62px;
     object-fit: contain;
+    transform: translate(-7px, 7px);
   }
 
   :deep(svg) {
     width: 42px;
     height: 42px;
   }
+}
+
+.product-login-brand-copy {
+  transform: translate(-14px, 14px);
 }
 
 .product-login-headline {
@@ -568,6 +581,8 @@ const submitForm = () => {
   }
 
   .product-login-story {
+    --product-login-depth-x: 53px;
+    --product-login-depth-y: 112px;
     min-height: 420px;
     padding: 34px 24px;
   }
@@ -594,8 +609,8 @@ const submitForm = () => {
     flex-basis: 72px;
 
     img {
-      width: 66px;
-      height: 66px;
+      width: 58px;
+      height: 58px;
     }
 
     :deep(svg) {
