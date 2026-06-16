@@ -56,7 +56,7 @@ class UserCreator(BaseUser):
     email: str = Field(min_length=1, max_length=100, description=f"{PLACEHOLDER_PREFIX}user_email")
     status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
     origin: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}origin")
-    system_role: Literal["system_admin", "viewer"] = "viewer"
+    system_role: Literal["system_admin", "collab_admin", "viewer"] = "viewer"
     project_ids: Optional[list[int]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}ds_id")
     project_role_map: Optional[dict[int, str]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}ds_role")
     system_variables: Optional[List] = Field(default=[])

@@ -1074,6 +1074,15 @@ strong {
   color: var(--workspace-text-primary);
 }
 
+.dv-preview .is-tab-preview.canvas-container,
+.dv-preview .is-tab-preview .wrapper-outer,
+.dv-preview .is-tab-preview .wrapper-inner,
+.dashboard-preview-content .is-tab-preview.canvas-container,
+.dashboard-preview-content .is-tab-preview .wrapper-outer,
+.dashboard-preview-content .is-tab-preview .wrapper-inner {
+  background: var(--workspace-card-bg, #ffffff) !important;
+}
+
 .chat-container,
 .chat-record-list {
   background: var(--workspace-shell-bg);
@@ -1209,6 +1218,12 @@ strong {
     .wrapper-inner {
       background: var(--workspace-panel-bg) !important;
       color: var(--workspace-text-primary) !important;
+    }
+
+    .is-tab-preview.canvas-container,
+    .is-tab-preview .wrapper-outer,
+    .is-tab-preview .wrapper-inner {
+      background: var(--workspace-card-bg, #ffffff) !important;
     }
 
     .preview-area.no-data,

@@ -76,19 +76,50 @@ const inputRef = ref()
 const isStreaming = ref(false)
 const streamController = ref<AbortController>()
 const dockWidth = ref(400)
-const resizing = ref(false)
 let messageId = 0
 let streamBuffer = ''
 let streamFinished = false
-let resizeStartX = 0
-let resizeStartWidth = 0
 
 const MIN_DOCK_WIDTH = 360
 const MAX_DOCK_WIDTH = 760
+const DOCK_TAB_HEIGHT = 104
+const DOCK_TAB_VERTICAL_MARGIN = 16
+const DOCK_TAB_DRAG_THRESHOLD = 4
+const DOCK_TAB_POSITION_KEY = 'analysis-assistant-dock-tab-top'
+
+const getDefaultDockTabTop = () =>
+  typeof window === 'undefined'
+    ? DOCK_TAB_VERTICAL_MARGIN
+    : Math.max(DOCK_TAB_VERTICAL_MARGIN, Math.round((window.innerHeight - DOCK_TAB_HEIGHT) / 2))
+
+const getMaxDockTabTop = () =>
+  Math.max(DOCK_TAB_VERTICAL_MARGIN, window.innerHeight - DOCK_TAB_HEIGHT - DOCK_TAB_VERTICAL_MARGIN)
+
+const clampDockTabTop = (top: number) =>
+  Math.min(getMaxDockTabTop(), Math.max(DOCK_TAB_VERTICAL_MARGIN, Math.round(top)))
+
+const readDockTabTop = () => {
+  if (typeof window === 'undefined') return getDefaultDockTabTop()
+
+  const savedTop = Number(window.localStorage.getItem(DOCK_TAB_POSITION_KEY))
+  return Number.isFinite(savedTop) ? clampDockTabTop(savedTop) : getDefaultDockTabTop()
+}
+
+const dockTabTop = ref(readDockTabTop())
+const resizing = ref(false)
+const draggingDockTab = ref(false)
+let resizeStartX = 0
+let resizeStartWidth = 0
+let dockTabPointerActive = false
+let dockTabStartY = 0
+let dockTabStartTop = 0
+let suppressDockTabClick = false
 
 const hasMessages = computed(() => messages.value.length > 0)
 
 const dockStyle = computed(() => (props.expanded ? { width: `${dockWidth.value}px` } : undefined))
+
+const dockTabStyle = computed(() => ({ top: `${dockTabTop.value}px` }))
 
 const pageContext = computed(() => {
   const title = route.meta?.title
@@ -107,6 +138,10 @@ const getMaxDockWidth = () => Math.max(MIN_DOCK_WIDTH, Math.min(MAX_DOCK_WIDTH, 
 
 const clampDockWidth = (width: number) =>
   Math.min(getMaxDockWidth(), Math.max(MIN_DOCK_WIDTH, Math.round(width)))
+
+const persistDockTabTop = () => {
+  window.localStorage.setItem(DOCK_TAB_POSITION_KEY, String(dockTabTop.value))
+}
 
 const stopResize = () => {
   if (!resizing.value) return
@@ -133,11 +168,77 @@ const startResize = (event: PointerEvent) => {
   window.addEventListener('pointerup', stopResize)
 }
 
+const stopDockTabDrag = () => {
+  if (!dockTabPointerActive) return
+  dockTabPointerActive = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  window.removeEventListener('pointermove', handleDockTabDrag)
+  window.removeEventListener('pointerup', stopDockTabDrag)
+  window.removeEventListener('pointercancel', stopDockTabDrag)
+
+  if (draggingDockTab.value) {
+    persistDockTabTop()
+    suppressDockTabClick = true
+    window.setTimeout(() => {
+      suppressDockTabClick = false
+    }, 0)
+  }
+
+  draggingDockTab.value = false
+}
+
+const handleDockTabDrag = (event: PointerEvent) => {
+  if (!dockTabPointerActive) return
+
+  const deltaY = event.clientY - dockTabStartY
+  if (!draggingDockTab.value && Math.abs(deltaY) < DOCK_TAB_DRAG_THRESHOLD) {
+    return
+  }
+
+  draggingDockTab.value = true
+  dockTabTop.value = clampDockTabTop(dockTabStartTop + deltaY)
+}
+
+const startDockTabDrag = (event: PointerEvent) => {
+  if (props.expanded || event.button !== 0) return
+
+  event.preventDefault()
+  dockTabPointerActive = true
+  draggingDockTab.value = false
+  dockTabStartY = event.clientY
+  dockTabStartTop = dockTabTop.value
+  document.body.style.cursor = 'ns-resize'
+  document.body.style.userSelect = 'none'
+  window.addEventListener('pointermove', handleDockTabDrag)
+  window.addEventListener('pointerup', stopDockTabDrag)
+  window.addEventListener('pointercancel', stopDockTabDrag)
+}
+
+const handleDockTabClick = (event: MouseEvent) => {
+  if (suppressDockTabClick) {
+    event.preventDefault()
+    event.stopPropagation()
+    return
+  }
+
+  setExpanded(true)
+}
+
+const handleWindowResize = () => {
+  dockWidth.value = clampDockWidth(dockWidth.value)
+  dockTabTop.value = clampDockTabTop(dockTabTop.value)
+}
+
 onBeforeUnmount(() => {
   stopResize()
+  stopDockTabDrag()
+  window.removeEventListener('resize', handleWindowResize)
 })
 
 onMounted(() => {
+  dockTabTop.value = readDockTabTop()
+  window.addEventListener('resize', handleWindowResize)
   analysisContext.loadDatasources().catch((e) => console.error(e))
 })
 
@@ -450,7 +551,15 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
 <template>
   <aside class="analysis-assistant-dock" :class="{ expanded, resizing }" :style="dockStyle">
-    <button v-if="!expanded" class="dock-tab" type="button" @click="setExpanded(true)">
+    <button
+      v-if="!expanded"
+      class="dock-tab"
+      :class="{ dragging: draggingDockTab }"
+      :style="dockTabStyle"
+      type="button"
+      @pointerdown="startDockTabDrag"
+      @click="handleDockTabClick"
+    >
       <el-icon size="18">
         <icon_side_expand_outlined />
       </el-icon>
@@ -661,18 +770,20 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 <style scoped lang="less">
 .analysis-assistant-dock {
   position: fixed;
-  top: 8px;
+  top: 0;
   right: 8px;
-  bottom: 8px;
   z-index: 1200;
   width: 44px;
-  height: auto;
+  height: 0;
   transition:
     width 0.18s ease,
     transform 0.18s ease;
 
   &.expanded {
+    top: 8px;
+    bottom: 8px;
     width: 400px;
+    height: auto;
     max-width: calc(100vw - 32px);
     background: #fff;
     border: 1px solid #dee0e3;
@@ -718,9 +829,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
 .dock-tab {
   position: absolute;
-  top: 50%;
   right: 0;
-  transform: translateY(-50%);
   width: 36px;
   height: 104px;
   padding: 10px 0;
@@ -730,6 +839,12 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   box-shadow: 0 2px 4px 0 #1f23291f;
   color: #1f2329;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  transition:
+    top 0.12s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -744,6 +859,11 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
   &:hover {
     background: #f5f6f7;
+  }
+
+  &.dragging {
+    cursor: ns-resize;
+    transition: none;
   }
 }
 

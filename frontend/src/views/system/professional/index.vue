@@ -37,8 +37,8 @@ const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
 const drawerMainRef = ref()
-const canManageTerminology = computed(() => userStore.isSystemAdminUser)
-const canManageGlobalTerminology = computed(() => userStore.isSystemAdminUser)
+const canManageTerminology = computed(() => userStore.isSystemManagerUser)
+const canManageGlobalTerminology = computed(() => userStore.isSystemManagerUser)
 const selectedDatasourceParams = computed(() =>
   datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}
 )
@@ -260,7 +260,7 @@ const search = ($event: any = {}) => {
   }
   searchLoading.value = true
   oldKeywords.value = keywords.value
-  if (!datasourceContext.datasourceId && !userStore.isSystemAdminUser) {
+  if (!datasourceContext.datasourceId && !userStore.isSystemManagerUser) {
     fieldList.value = []
     pageInfo.total = 0
     searchLoading.value = false

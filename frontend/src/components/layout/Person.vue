@@ -30,7 +30,7 @@ defineProps({
 const name = computed(() => userStore.getName)
 const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
-const isAdmin = computed(() => userStore.isSystemAdminUser)
+const isAdmin = computed(() => userStore.isSystemManagerUser)
 const isLocalUser = computed(() => !userStore.getOrigin)
 
 const isClient = computed(() => {

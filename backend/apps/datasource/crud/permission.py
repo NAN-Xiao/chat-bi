@@ -13,7 +13,7 @@ from apps.datasource.crud.permission_rules import (
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable
 from common.core.deps import CurrentUser, SessionDep
-from apps.system.crud.user import SYSTEM_ROLE_SYSTEM_ADMIN, is_system_admin
+from apps.system.crud.user import SYSTEM_ADMIN_ROLES, is_system_admin
 from apps.system.models.user import UserModel
 
 PROJECT_ROLE_VIEWER = "viewer"
@@ -84,7 +84,7 @@ def list_project_assignable_user_ids(session: SessionDep, user_ids) -> set[int]:
     rows = session.exec(
         select(UserModel.id).where(
             UserModel.id.in_(requested_ids),
-            UserModel.system_role != SYSTEM_ROLE_SYSTEM_ADMIN,
+            UserModel.system_role.not_in(SYSTEM_ADMIN_ROLES),
         )
     ).all()
     return {int(_first_column_value(row)) for row in rows if _first_column_value(row) is not None}

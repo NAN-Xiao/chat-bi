@@ -76,6 +76,16 @@
           </template>
         </el-table-column>
         <el-table-column prop="email" show-overflow-tooltip :label="$t('user.email')" />
+        <el-table-column prop="system_role" :label="$t('user.system_role')" width="140">
+          <template #default="scope">
+            <el-tag
+              size="small"
+              :type="scope.row.system_role === 'collab_admin' ? 'warning' : 'info'"
+            >
+              {{ formatSystemRole(scope.row.system_role) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <!-- <el-table-column prop="phone" :label="$t('user.phone_number')" width="280" /> -->
         <el-table-column prop="origin" :label="$t('user.user_source')" width="120">
           <template #default="scope">
@@ -94,6 +104,7 @@
                 v-model="scope.row.status"
                 :active-value="1"
                 :inactive-value="0"
+                :disabled="!canManageUserRole(scope.row)"
                 size="small"
                 @change="statusHandler(scope.row)"
               />
@@ -123,6 +134,7 @@
                   "
                   v-click-outside="() => onClickOutside(scope.row)"
                   class="action-btn"
+                  :class="{ disabled: !canManageUserRole(scope.row) }"
                   size="16"
                 >
                   <IconLock></IconLock>
@@ -160,7 +172,11 @@
                     <el-button secondary @click="closeResetInfo(scope.row)">{{
                       t('common.cancel')
                     }}</el-button>
-                    <el-button type="primary" @click="handleEditPassword(scope.row.id)">
+                    <el-button
+                      type="primary"
+                      :disabled="!canManageUserRole(scope.row)"
+                      @click="handleEditPassword(scope.row)"
+                    >
                       {{ t('datasource.confirm') }}
                     </el-button>
                   </div>
@@ -173,7 +189,12 @@
                 :content="$t('dashboard.delete')"
                 placement="top"
               >
-                <el-icon class="action-btn" size="16" @click="deleteHandler(scope.row)">
+                <el-icon
+                  class="action-btn"
+                  :class="{ disabled: !canManageUserRole(scope.row) }"
+                  size="16"
+                  @click="deleteHandler(scope.row)"
+                >
                   <IconOpeDelete></IconOpeDelete>
                 </el-icon>
               </el-tooltip>
@@ -653,8 +674,10 @@ import { formatTimestamp } from '@/utils/date'
 import { ClickOutside as vClickOutside } from 'element-plus-secondary'
 import icon_warning_filled from '@/assets/svg/icon_warning_filled.svg'
 import { useClipboard } from '@vueuse/core'
+import { useUserStore } from '@/stores/user'
 
 const { copy } = useClipboard({ legacy: true })
+const userStore = useUserStore()
 
 const { t } = useI18n()
 const defaultPwd = ref('SQLBot@123456')
@@ -721,8 +744,12 @@ const variables = shallowRef<any[]>([])
 const variableValueMap = shallowRef<any>({})
 const projectOptions = shallowRef<any[]>([])
 const permissionRuleGroups = shallowRef<any[]>([])
+const isSuperAdmin = computed(() => userStore.isSystemAdminUser)
 const systemRoleOptions = computed(() => [
   { value: 'viewer', label: t('user.system_role_viewer') },
+  ...(isSuperAdmin.value
+    ? [{ value: 'collab_admin', label: t('user.system_role_collab_admin') }]
+    : []),
 ])
 const projectRoleOptions = computed(() => [
   { value: 'viewer', label: t('datasource.project_role_viewer') },
@@ -775,6 +802,22 @@ const buildProjectRoleMap = (projectIds: number[], value: any = {}) => {
     result[id] = normalizeProjectRole(source?.[id] || source?.[String(id)])
   })
   return result
+}
+
+const isHighPrivilegeRole = (role: any) =>
+  ['system_admin', 'collab_admin'].includes(String(role || '').trim().toLowerCase())
+
+const canManageUserRole = (row: any) => {
+  if (!row) return true
+  if (row.system_role === 'system_admin') return false
+  return isSuperAdmin.value || !isHighPrivilegeRole(row.system_role)
+}
+
+const formatSystemRole = (role: any) => {
+  const normalized = String(role || 'viewer').trim().toLowerCase()
+  if (normalized === 'collab_admin') return t('user.system_role_collab_admin')
+  if (normalized === 'system_admin') return t('user.system_role_system_admin')
+  return t('user.system_role_viewer')
 }
 
 const getProjectIdsFromRule = (rule: any): number[] => {
@@ -1078,8 +1121,13 @@ const deleteValues = (index: number) => {
   state.form.system_variables.splice(index, 1)
 }
 
-const handleEditPassword = (id: any) => {
-  userApi.pwd(id).then(() => {
+const handleEditPassword = (row: any) => {
+  if (!canManageUserRole(row)) {
+    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    return
+  }
+  userApi.pwd(row.id).then(() => {
+    closeResetInfo(row)
     ElMessage({
       type: 'success',
       message: t('common.password_reset_successful'),
@@ -1170,6 +1218,10 @@ const drawerMainClose = () => {
   drawerMainRef.value.close()
 }
 const editHandler = (row: any) => {
+  if (row && !canManageUserRole(row)) {
+    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    return
+  }
   Promise.all([variablesApi.listAll(), datasourceApi.list(), getPermissionList()])
     .then(([variableRes, projectRes, permissionRes]: any[]) => {
       projectOptions.value = projectRes || []
@@ -1227,6 +1279,11 @@ const editHandler = (row: any) => {
 }
 
 const statusHandler = (row: any) => {
+  if (!canManageUserRole(row)) {
+    row.status = row.status ? 0 : 1
+    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    return
+  }
   /* state.form = { ...row }
   editTerm() */
   const param = {
@@ -1243,6 +1300,11 @@ const cancelDelete = () => {
   isIndeterminate.value = false
 }
 const deleteBatchUser = () => {
+  const protectedUsers = multipleSelectionAll.value.filter((ele) => !canManageUserRole(ele))
+  if (protectedUsers.length) {
+    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    return
+  }
   ElMessageBox.confirm(t('user.selected_2_users', { msg: multipleSelectionAll.value.length }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -1261,6 +1323,10 @@ const deleteBatchUser = () => {
   })
 }
 const deleteHandler = (row: any) => {
+  if (!canManageUserRole(row)) {
+    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    return
+  }
   ElMessageBox.confirm(t('user.del_user', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -1604,6 +1670,15 @@ onMounted(() => {
         position: relative;
         cursor: pointer;
         color: #646a73;
+
+        &.disabled {
+          cursor: not-allowed;
+          color: #b8bdc6;
+
+          &::after {
+            display: none !important;
+          }
+        }
 
         &::after {
           content: '';

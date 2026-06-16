@@ -446,14 +446,14 @@ defineExpose({
         >
           <el-icon class="filter-icon-span" :class="state.curSortType !== 'name_asc' && 'active'">
             <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
-              <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc" class="opt-icon"
-                ><dv_sort_asc class="svg-icon opt-icon"
-              /></Icon>
-            </el-tooltip>
-            <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
-              <Icon v-if="state.curSortType.includes('desc')" name="dv-sort-desc" class="opt-icon"
-                ><dv_sort_desc class="svg-icon opt-icon"
-              /></Icon>
+              <span class="sort-trigger-icon">
+                <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc"
+                  ><dv_sort_asc class="svg-icon opt-icon"
+                /></Icon>
+                <Icon v-else name="dv-sort-desc"
+                  ><dv_sort_desc class="svg-icon opt-icon"
+                /></Icon>
+              </span>
             </el-tooltip>
           </el-icon>
           <template #dropdown>
@@ -555,6 +555,15 @@ defineExpose({
   margin-left: 0;
   font-size: 16px;
   cursor: pointer;
+
+  .sort-trigger-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: inherit;
+  }
 
   .opt-icon:focus {
     outline: none !important;

@@ -54,6 +54,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  inTab: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const canvasSizeInit = () => {
@@ -137,7 +141,7 @@ const emits = defineEmits(['parentAddItemBox'])
   <div
     ref="dashboardEditorRef"
     class="dashboard-editor-main"
-    :class="{ 'move-in-active': moveInActive }"
+    :class="{ 'move-in-active': moveInActive, 'is-tab-editor': inTab }"
     :style="gridStyle"
   >
     <CanvasCore
@@ -189,5 +193,20 @@ const emits = defineEmits(['parentAddItemBox'])
 .move-in-active {
   border: 2px dotted blueviolet;
   margin: -2px;
+}
+
+.is-tab-editor {
+  --dashboard-grid-bg: #ffffff;
+  --dashboard-item-gap: 8px;
+  background-color: #ffffff !important;
+
+  :deep(.dragAndResize) {
+    background-color: #ffffff !important;
+    background-image: none !important;
+  }
+
+  :deep(.item) {
+    background-color: #ffffff;
+  }
 }
 </style>

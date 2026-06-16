@@ -37,7 +37,7 @@ const searchLoading = ref(false)
 const { copy } = useClipboard({ legacy: true })
 const options = ref<any[]>([])
 const adv_options = ref<any[]>([])
-const canManageTraining = computed(() => userStore.isSystemAdminUser)
+const canManageTraining = computed(() => userStore.isSystemManagerUser)
 const selectedDatasourceParams = computed(() =>
   datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}
 )

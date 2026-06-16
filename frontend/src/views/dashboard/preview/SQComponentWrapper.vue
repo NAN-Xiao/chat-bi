@@ -26,6 +26,10 @@ const props = defineProps({
     type: String,
     default: 'canvas-main',
   },
+  frameless: {
+    type: Boolean,
+    default: false,
+  },
 })
 const { configItem, showPosition } = toRefs(props)
 const component = ref(null)
@@ -34,7 +38,7 @@ const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.val
 </script>
 
 <template>
-  <div :id="wrapperId" class="wrapper-outer">
+  <div :id="wrapperId" class="wrapper-outer" :class="{ 'is-frameless': frameless }">
     <div :id="viewDemoInnerId" ref="componentWrapperInnerRef" class="wrapper-inner">
       <div class="wrapper-inner-adaptor">
         <component
@@ -61,6 +65,15 @@ const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.val
   border: 1px solid var(--workspace-border-soft, #eff4fa);
   border-radius: 12px;
   box-shadow: none;
+
+  &.is-frameless {
+    border: none;
+    border-radius: 0;
+
+    .wrapper-inner {
+      border-radius: 0;
+    }
+  }
 
   .wrapper-inner {
     width: 100%;

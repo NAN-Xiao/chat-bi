@@ -271,6 +271,66 @@ function removeItemFromPositionBox(item: CanvasItem) {
   }
 }
 
+function rebuildPositionBox() {
+  positionBox.value = []
+  resetPositionBox()
+
+  const maxBottom = canvasComponentData.value.reduce((max, item) => {
+    return Math.max(max, item.y + item.sizeY)
+  }, 1)
+
+  fillPositionBox(maxBottom)
+  canvasComponentData.value.forEach((item) => addItemToPositionBox(item))
+}
+
+function getItemGridFrame(item: CanvasItem) {
+  return {
+    x: item.x,
+    y: item.y,
+    sizeX: item.sizeX,
+    sizeY: item.sizeY,
+  }
+}
+
+function normalizeGridFrame(frame: { x: number; y: number; sizeX: number; sizeY: number }) {
+  const safeMaxCell = Math.max(itemMaxX, 1)
+  const sizeX = Math.max(1, Math.min(Math.round(frame.sizeX), safeMaxCell))
+  const sizeY = Math.max(1, Math.round(frame.sizeY))
+  const x = Math.min(Math.max(Math.round(frame.x), 1), Math.max(1, safeMaxCell - sizeX + 1))
+  const y = Math.max(Math.round(frame.y), 1)
+
+  return { x, y, sizeX, sizeY }
+}
+
+function isSameCanvasItem(a: CanvasItem, b: CanvasItem) {
+  return (
+    a === b ||
+    (a._dragId !== undefined && a._dragId === b._dragId) ||
+    (a.id !== undefined && a.id === b.id)
+  )
+}
+
+function isGridFrameOverlap(
+  a: { x: number; y: number; sizeX: number; sizeY: number },
+  b: { x: number; y: number; sizeX: number; sizeY: number }
+) {
+  return (
+    a.x < b.x + b.sizeX &&
+    a.x + a.sizeX > b.x &&
+    a.y < b.y + b.sizeY &&
+    a.y + a.sizeY > b.y
+  )
+}
+
+function canPlaceGridFrame(item: CanvasItem, frame: { x: number; y: number; sizeX: number; sizeY: number }) {
+  return !canvasComponentData.value.some((otherItem) => {
+    if (isSameCanvasItem(item, otherItem)) {
+      return false
+    }
+    return isGridFrameOverlap(frame, getItemGridFrame(otherItem))
+  })
+}
+
 /**
  * Recalculate the width so that the smallest cell can fill the entire container
  */
@@ -318,44 +378,6 @@ function init() {
     }
   }, 1)
   renderOk.value = true
-}
-
-function resizePlayer(item: CanvasItem, newSize: any) {
-  removeItemFromPositionBox(item)
-  const belowItems = findBelowItems(item) as CanvasItem[]
-  _.forEach(belowItems, (upItem) => {
-    const canGoUpRows = canItemGoUp(upItem)
-    if (canGoUpRows > 0) {
-      moveItemUp(upItem, canGoUpRows)
-    }
-  })
-
-  item.sizeX = newSize.sizeX
-  item.sizeY = newSize.sizeY
-
-  if (item.sizeX + item.x - 1 > itemMaxX) {
-    item.sizeX = itemMaxX - item.x + 1
-  }
-
-  if (item.sizeY + item.y > itemMaxY) {
-    fillPositionBox(item.y + item.sizeY)
-  }
-
-  // Move the current item
-  item.x = newSize.x
-  item.y = newSize.y
-
-  emptyTargetCell(item)
-  addItemToPositionBox(item)
-  changeItemCoord(item)
-
-  const canGoUpRows = canItemGoUp(item)
-  if (canGoUpRows > 0) {
-    moveItemUp(item, canGoUpRows)
-  }
-  if (item.component === 'SQView') {
-    useEmittLazy(`view-render-${item.id}`)
-  }
 }
 
 /**
@@ -426,6 +448,37 @@ function movePlayer(item: CanvasItem, position: any) {
   if (canGoUpRows > 0) {
     moveItemUp(item, canGoUpRows)
   }
+}
+
+function setPlayerGridFrame(
+  item: CanvasItem,
+  frame: Partial<{ x: number; y: number; sizeX: number; sizeY: number }>
+) {
+  const nextFrame = normalizeGridFrame({
+    x: frame.x ?? item.x,
+    y: frame.y ?? item.y,
+    sizeX: frame.sizeX ?? item.sizeX,
+    sizeY: frame.sizeY ?? item.sizeY,
+  })
+
+  if (!canPlaceGridFrame(item, nextFrame)) {
+    return null
+  }
+
+  item.x = nextFrame.x
+  item.y = nextFrame.y
+  item.sizeX = nextFrame.sizeX
+  item.sizeY = nextFrame.sizeY
+
+  checkItemPosition(item, nextFrame)
+  rebuildPositionBox()
+  changeItemCoord(item)
+
+  if (item.component === 'SQView') {
+    useEmittLazy(`view-render-${item.id}`)
+  }
+
+  return getItemGridFrame(item)
 }
 
 function removeItemById(id: number) {
@@ -859,25 +912,6 @@ function normalizeResizeFrame(x: number, y: number, sizeX: number, sizeY: number
   }
 }
 
-function checkStartMove() {
-  const cloneItem = infoBox.value.cloneItem
-  const nowItemNode = infoBox.value.nowItemNode
-  const offsetX = cellWidth.value / 2
-  const offsetY = cellHeight.value / 2
-  if (cloneItem && nowItemNode) {
-    const xGap = Math.abs(cloneItem.offsetLeft - nowItemNode.offsetLeft)
-    const yGap = Math.abs(cloneItem.offsetTop - nowItemNode.offsetTop)
-    return {
-      xMove: xGap > offsetX,
-      yMove: yGap > offsetY,
-    }
-  }
-  return {
-    xMove: false,
-    yMove: false,
-  }
-}
-
 function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   canvasLocked.value = false // Reset canvas lock status
   if (!draggable.value) return
@@ -941,6 +975,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   infoBox.value.oldY = item.y
   infoBox.value.oldSizeX = item.sizeX
   infoBox.value.oldSizeY = item.sizeY
+  infoBox.value.lastValidFrame = getItemGridFrame(item)
   infoBox.value.originWidth = infoBox.value.cloneItem.offsetWidth
   infoBox.value.originHeight = infoBox.value.cloneItem.offsetHeight
   const itemMouseMove = (e: MouseEvent) => {
@@ -964,17 +999,26 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
         nowY,
       } = getNowPosition(addSizeX, addSizeY, moveXSize, moveYSize)
 
-      const normalizedFrame = normalizeResizeFrame(nowX, nowY, nowSizeX, nowSizeY)
+      const candidateFrame = normalizeGridFrame(
+        normalizeResizeFrame(nowX, nowY, nowSizeX, nowSizeY)
+      )
+      const canPlaceFrame = canPlaceGridFrame(resizeItem, candidateFrame)
+      const previewFrame = canPlaceFrame
+        ? candidateFrame
+        : infoBox.value.lastValidFrame || getItemGridFrame(resizeItem)
 
-      debounce(() => {
-        resizePlayer(resizeItem, normalizedFrame)
-      }, 10)
+      if (canPlaceFrame) {
+        infoBox.value.lastValidFrame = candidateFrame
+        debounce(() => {
+          setPlayerGridFrame(resizeItem, candidateFrame)
+        }, 10)
+      }
 
       const snappedStyle = getSnappedItemStyle(
-        normalizedFrame.x,
-        normalizedFrame.y,
-        normalizedFrame.sizeX,
-        normalizedFrame.sizeY
+        previewFrame.x,
+        previewFrame.y,
+        previewFrame.sizeX,
+        previewFrame.sizeY
       )
       infoBox.value.cloneItem.style.width = `${snappedStyle.width}px`
       infoBox.value.cloneItem.style.height = `${snappedStyle.height}px`
@@ -996,32 +1040,49 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
         moveItem.sizeX
       )
       const candidateY = positionToCell(nowCloneItemY, cellHeight.value, baseMarginTop.value)
-      const snappedStyle = getSnappedItemStyle(
-        candidateX,
-        candidateY,
-        moveItem.sizeX,
-        moveItem.sizeY
-      )
-      infoBox.value.cloneItem.style.left = `${snappedStyle.left}px`
-      infoBox.value.cloneItem.style.top = `${snappedStyle.top}px`
-      tabMoveInCheckSQ()
-      tabMoveOutCheckSQ()
-
-      //If the current canvas is locked, no component movement will be performed
-      if (canvasLocked.value) return
-      const { xMove, yMove } = checkStartMove()
-      // Adjust the accuracy of moving coordinate changes
-      let newX = xMove ? candidateX : infoBox.value.oldX
-      let newY = yMove ? candidateY : infoBox.value.oldY
+      let newX = candidateX
+      let newY = candidateY
       newX = newX > 0 ? newX : 1
       newY = newY > 0 ? newY : 1
-      debounce(() => {
-        if (newX !== infoBox.value.oldX || newY !== infoBox.value.oldY) {
-          movePlayer(moveItem, { x: newX, y: newY })
+      const candidateFrame = normalizeGridFrame({
+        x: newX,
+        y: newY,
+        sizeX: moveItem.sizeX,
+        sizeY: moveItem.sizeY,
+      })
+      const canPlaceFrame = canPlaceGridFrame(moveItem, candidateFrame)
+      if (canPlaceFrame) {
+        infoBox.value.lastValidFrame = candidateFrame
+        const validStyle = getSnappedItemStyle(
+          candidateFrame.x,
+          candidateFrame.y,
+          candidateFrame.sizeX,
+          candidateFrame.sizeY
+        )
+        infoBox.value.cloneItem.style.left = `${validStyle.left}px`
+        infoBox.value.cloneItem.style.top = `${validStyle.top}px`
+        tabMoveInCheckSQ()
+        tabMoveOutCheckSQ()
+
+        //If the current canvas is locked, no component movement will be performed
+        if (canvasLocked.value) return
+
+        debounce(() => {
+          setPlayerGridFrame(moveItem, candidateFrame)
           infoBox.value.oldX = newX
           infoBox.value.oldY = newY
-        }
-      }, 10)
+        }, 10)
+      } else {
+        const lastValidFrame = infoBox.value.lastValidFrame || getItemGridFrame(moveItem)
+        const lastValidStyle = getSnappedItemStyle(
+          lastValidFrame.x,
+          lastValidFrame.y,
+          lastValidFrame.sizeX,
+          lastValidFrame.sizeY
+        )
+        infoBox.value.cloneItem.style.left = `${lastValidStyle.left}px`
+        infoBox.value.cloneItem.style.top = `${lastValidStyle.top}px`
+      }
     }
   }
 
@@ -1064,6 +1125,9 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       infoBox.value.cloneItem.remove()
     }
     if (infoBox.value.resizeItem) {
+      if (infoBox.value.lastValidFrame) {
+        setPlayerGridFrame(infoBox.value.resizeItem, infoBox.value.lastValidFrame)
+      }
       delete infoBox.value.resizeItem.isPlayer
       props.resizeEnd(e, infoBox.value.resizeItem, infoBox.value.resizeItem._dragId)
 
@@ -1074,6 +1138,9 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       }
     }
     if (infoBox.value.moveItem) {
+      if (infoBox.value.lastValidFrame) {
+        setPlayerGridFrame(infoBox.value.moveItem, infoBox.value.lastValidFrame)
+      }
       props.dragEnd(e, infoBox.value.moveItem, infoBox.value.moveItem._dragId)
       infoBox.value.moveItem.show = true
       delete infoBox.value.moveItem.isPlayer

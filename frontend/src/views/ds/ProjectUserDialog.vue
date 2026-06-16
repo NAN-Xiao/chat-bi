@@ -220,7 +220,7 @@ const open = async (row: any) => {
       datasourceApi.users(row.id),
     ])
     users.value = (userPage?.items || []).filter(
-      (user: any) => user.system_role !== 'system_admin'
+      (user: any) => !['system_admin', 'collab_admin'].includes(user.system_role)
     )
     const authorizedRoles = new Map(
       (projectUsers?.users || []).map((user: any) => [Number(user.id), user.role || 'viewer'])

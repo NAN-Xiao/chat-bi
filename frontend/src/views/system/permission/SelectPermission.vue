@@ -161,7 +161,9 @@ const open = async (user: any) => {
   const systemUserList = await userApi.pager('', 1, 1000)
   project.value = JSON.parse(
     JSON.stringify(
-      (systemUserList.items || []).filter((ele: any) => ele.system_role !== 'system_admin') as any
+      (systemUserList.items || []).filter(
+        (ele: any) => !['system_admin', 'collab_admin'].includes(ele.system_role)
+      ) as any
     )
   )
   if (user?.length) {

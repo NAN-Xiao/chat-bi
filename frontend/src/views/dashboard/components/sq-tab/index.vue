@@ -249,6 +249,7 @@ defineExpose({
             :canvas-view-info="canvasViewInfo"
             :base-matrix-count="tabBaseMatrixCount"
             :canvas-id="tabItem.name"
+            in-tab
           ></SQPreview>
           <DashboardEditor
             v-else
@@ -260,6 +261,7 @@ defineExpose({
             :base-matrix-count="tabBaseMatrixCount"
             :canvas-id="tabItem.name"
             :parent-config-item="configItem"
+            in-tab
             @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
           >
           </DashboardEditor>
@@ -296,12 +298,22 @@ defineExpose({
 </template>
 
 <style scoped lang="less">
+::v-deep(.de-tabs) {
+  background: #fff;
+}
+
 ::v-deep(.ed-tabs__header) {
   margin: 0 40px 0 12px !important;
+  background: #fff;
 }
 ::v-deep(.ed-tabs__nav-scroll) {
   margin: 0 12px !important;
 }
+
+::v-deep(.ed-tabs__content) {
+  background: #fff;
+}
+
 .ed-dropdown-link {
   margin-top: 3px !important;
 }
@@ -311,6 +323,7 @@ defineExpose({
   width: 100%;
   height: 100%;
   margin: 2px !important; // border size
+  background: #fff;
   div::-webkit-scrollbar {
     width: 0 !important;
     height: 0 !important;
@@ -323,6 +336,7 @@ defineExpose({
 
 .tab-dashboard-editor-main {
   height: 100% !important;
+  background: #ffffff !important;
 }
 
 .tab-moveout {

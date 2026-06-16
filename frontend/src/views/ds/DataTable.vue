@@ -61,7 +61,7 @@ const props = withDefaults(
 const { t } = useI18n()
 const userStore = useUserStore()
 const canManageMetadata = computed(
-  () => userStore.isSystemAdminUser || props.info.can_manage_project === true
+  () => userStore.isSystemManagerUser || props.info.can_manage_project === true
 )
 const paramsFormRef = ref()
 const tableList = ref([] as any[])

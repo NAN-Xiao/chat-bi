@@ -229,7 +229,7 @@ const back = () => {
           </div>
         </el-popover>
 
-        <el-button v-if="userStore.isSystemAdminUser" type="primary" @click="handleAddDatasource">
+        <el-button v-if="userStore.isSystemManagerUser" type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -282,7 +282,7 @@ const back = () => {
       />
 
       <div style="text-align: center; margin-top: -10px">
-        <el-button v-if="userStore.isSystemAdminUser" type="primary" @click="handleAddDatasource">
+        <el-button v-if="userStore.isSystemManagerUser" type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>

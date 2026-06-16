@@ -49,6 +49,10 @@ const props = defineProps({
     type: String,
     default: 'preview',
   },
+  inTab: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const { componentData, showPosition, canvasId } = toRefs(props)
@@ -67,6 +71,9 @@ const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
 const canvasStyle = computed(() => {
+  if (props.inTab) {
+    return { background: '#ffffff' }
+  }
   return { background: 'var(--workspace-panel-bg, var(--theme-panel-bg))' }
 })
 
@@ -116,6 +123,7 @@ defineExpose({
     :id="domId"
     ref="previewCanvas"
     class="canvas-container"
+    :class="{ 'is-tab-preview': inTab }"
     :style="canvasStyle"
   >
     <template v-if="renderReady">
@@ -129,6 +137,7 @@ defineExpose({
         :canvas-id="canvasId"
         :style="nowItemStyle(item)"
         :index="index"
+        :frameless="inTab"
       />
     </template>
   </div>
@@ -156,6 +165,15 @@ defineExpose({
   div {
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
+  }
+}
+
+.is-tab-preview {
+  background: #ffffff !important;
+
+  :deep(.wrapper-outer),
+  :deep(.wrapper-inner) {
+    background: #ffffff !important;
   }
 }
 

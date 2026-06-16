@@ -62,10 +62,13 @@ export const UserStore = defineStore('user', {
       return this.time
     },
     isSystemAdminUser(): boolean {
-      return this.isSystemAdmin || this.systemRole === 'system_admin'
+      return this.systemRole === 'system_admin'
+    },
+    isSystemManagerUser(): boolean {
+      return this.isSystemAdmin || this.isSystemAdminUser || this.systemRole === 'collab_admin'
     },
     isAdmin(): boolean {
-      return this.isSystemAdminUser
+      return this.isSystemManagerUser
     },
     getOrigin(): number {
       return this.origin

@@ -13,9 +13,15 @@ from common.core.security import verify_md5pwd
 import re
 
 SYSTEM_ROLE_SYSTEM_ADMIN = "system_admin"
+SYSTEM_ROLE_COLLAB_ADMIN = "collab_admin"
 SYSTEM_ROLE_VIEWER = "viewer"
+SYSTEM_ADMIN_ROLES = {
+    SYSTEM_ROLE_SYSTEM_ADMIN,
+    SYSTEM_ROLE_COLLAB_ADMIN,
+}
 SYSTEM_ROLE_ORDER = {
     SYSTEM_ROLE_VIEWER: 10,
+    SYSTEM_ROLE_COLLAB_ADMIN: 20,
     SYSTEM_ROLE_SYSTEM_ADMIN: 30,
 }
 
@@ -31,8 +37,30 @@ def is_system_admin(user) -> bool:
     if user is None:
         return False
     if hasattr(user, "system_role"):
-        return normalize_system_role(getattr(user, "system_role", None)) == SYSTEM_ROLE_SYSTEM_ADMIN
+        return normalize_system_role(getattr(user, "system_role", None)) in SYSTEM_ADMIN_ROLES
     return bool(getattr(user, "isAdmin", False))
+
+
+def is_super_admin(user) -> bool:
+    if user is None or not hasattr(user, "system_role"):
+        return False
+    return normalize_system_role(getattr(user, "system_role", None)) == SYSTEM_ROLE_SYSTEM_ADMIN
+
+
+def is_collab_admin(user) -> bool:
+    if user is None or not hasattr(user, "system_role"):
+        return False
+    return normalize_system_role(getattr(user, "system_role", None)) == SYSTEM_ROLE_COLLAB_ADMIN
+
+
+def is_high_privilege_system_role(role: str | None) -> bool:
+    return normalize_system_role(role) in SYSTEM_ADMIN_ROLES
+
+
+def is_high_privilege_user(user) -> bool:
+    if user is None or not hasattr(user, "system_role"):
+        return False
+    return is_high_privilege_system_role(getattr(user, "system_role", None))
 
 
 def apply_user_role_flags(user_info: UserInfoDTO) -> UserInfoDTO:
