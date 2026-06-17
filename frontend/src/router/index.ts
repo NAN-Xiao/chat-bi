@@ -9,6 +9,7 @@ import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Access from '@/views/access/index.vue'
+import CustomAgent from '@/views/custom-agent/index.vue'
 import DashboardStore from '@/views/dashboard/store/index.vue'
 import Datasource from '@/views/ds/Datasource.vue'
 import Model from '@/views/system/model/Model.vue'
@@ -103,6 +104,23 @@ export const routes = [
           title: t('access.my_permissions'),
           iconActive: 'user',
           iconDeActive: 'noUser',
+        },
+      },
+    ],
+  },
+  {
+    path: '/custom-agent',
+    component: LayoutDsl,
+    redirect: '/custom-agent/index',
+    children: [
+      {
+        path: 'index',
+        name: 'custom-agent',
+        component: CustomAgent,
+        meta: {
+          title: t('access.custom_agents'),
+          iconActive: 'embedded',
+          iconDeActive: 'noEmbedded',
         },
       },
     ],

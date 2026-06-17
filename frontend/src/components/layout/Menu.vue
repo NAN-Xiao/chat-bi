@@ -35,6 +35,15 @@ const formatRoute = (arr: any, parentPath = '') => {
   })
 }
 
+const mainMenuOrder = (path: string) => {
+  if (path.includes('/chat')) return 10
+  if (path.includes('/dashboard') && !path.includes('/dashboard-store')) return 20
+  if (path.includes('/access')) return 30
+  if (path.includes('/custom-agent')) return 40
+  if (path.includes('/dashboard-store')) return 50
+  return 100
+}
+
 const routerList = computed(() => {
   if (showSysmenu.value) {
     const [sysRouter] = formatRoute(
@@ -67,19 +76,7 @@ const routerList = computed(() => {
     )
   })
 
-  return list.sort((prev: any, next: any) => {
-    const prevIsAccess = prev.path.includes('/access')
-    const nextIsAccess = next.path.includes('/access')
-    const prevIsStore = prev.path.includes('/dashboard-store')
-    const nextIsStore = next.path.includes('/dashboard-store')
-    if (prevIsAccess && nextIsStore) return -1
-    if (prevIsStore && nextIsAccess) return 1
-    if (prevIsAccess === nextIsAccess) {
-      if (prevIsStore === nextIsStore) return 0
-      return prevIsStore ? 1 : -1
-    }
-    return prevIsAccess ? 1 : -1
-  })
+  return list.sort((prev: any, next: any) => mainMenuOrder(prev.path) - mainMenuOrder(next.path))
 })
 </script>
 

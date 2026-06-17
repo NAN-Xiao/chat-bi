@@ -11,23 +11,30 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlmodel import Session, select
 
-from apps.chat.curd.custom_prompt import CustomPromptTypeEnum
+from apps.chat.curd.custom_prompt import (
+    CustomPromptTargetScopeEnum,
+    CustomPromptTypeEnum,
+    CustomPromptVisibilityScopeEnum,
+)
 from apps.chat.curd.custom_prompt_manage import (
     batch_create_custom_prompts,
     create_custom_prompt,
     delete_custom_prompts,
     get_all_custom_prompts,
     get_custom_prompt,
+    list_custom_prompt_options,
     page_custom_prompts,
     update_custom_prompt,
 )
 from apps.chat.models.chat_model import AxisObj
-from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo
+from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo, CustomPromptOption
 from apps.datasource.crud.permission import (
     get_datasource_ids_with_min_role,
     has_datasource_role,
 )
 from apps.datasource.models.datasource import CoreDatasource
+from apps.system.models.user import UserModel
+from apps.system.models.system_model import AiModelDetail
 from apps.system.crud.user import is_system_admin
 from common.audit.models.log_model import OperationModules, OperationType
 from common.audit.schemas.logger_decorator import LogConfig, system_log
@@ -47,18 +54,75 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
     return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
 
 
+def _can_manage_all_prompts(session: SessionDep, current_user: CurrentUser) -> bool:
+    if is_system_admin(current_user):
+        return True
+    try:
+        db_user = session.get(UserModel, int(current_user.id))
+    except (TypeError, ValueError):
+        return False
+    return bool(db_user and is_system_admin(db_user))
+
+
 def _require_prompt_scope_admin(session: SessionDep, current_user: CurrentUser, prompt: CustomPromptInfo | CustomPrompt):
-    if not is_system_admin(current_user):
+    if not _can_manage_all_prompts(session, current_user):
         raise HTTPException(status_code=403, detail="System admin access is required")
 
 
-def _require_prompt_admin(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
+def _require_prompt_owner(session: SessionDep, current_user: CurrentUser, prompt: CustomPromptInfo | CustomPrompt):
+    if _can_manage_all_prompts(session, current_user):
+        return
+    if (
+        getattr(prompt, "visibility_scope", None) != CustomPromptVisibilityScopeEnum.USER_PRIVATE
+        or prompt.create_by is None
+        or int(prompt.create_by) != int(current_user.id)
+    ):
+        raise HTTPException(status_code=403, detail="Only the creator can edit or delete this Agent")
+
+
+def _normalize_datasource_ids(value) -> list[int]:
+    result: list[int] = []
+    for item in value or []:
+        try:
+            result.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return list(dict.fromkeys(result))
+
+
+def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
+    can_manage_all = _can_manage_all_prompts(session, current_user)
     if info.id:
         existing = session.get(CustomPrompt, int(info.id))
         if not existing:
             raise HTTPException(status_code=404, detail="Custom prompt not found")
-        _require_prompt_scope_admin(session, current_user, existing)
-    _require_prompt_scope_admin(session, current_user, info)
+        _require_prompt_owner(session, current_user, existing)
+        if can_manage_all:
+            info.visibility_scope = existing.visibility_scope or CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
+            if info.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE:
+                info.specific_ds = True
+                info.datasource_ids = _normalize_datasource_ids(existing.datasource_ids)
+        else:
+            datasource_ids = _normalize_datasource_ids(existing.datasource_ids)
+            if not datasource_ids or not has_datasource_role(session, current_user, datasource_ids, "project_viewer"):
+                raise HTTPException(status_code=403, detail="Datasource access is required")
+            info.visibility_scope = CustomPromptVisibilityScopeEnum.USER_PRIVATE
+            info.specific_ds = True
+            info.datasource_ids = datasource_ids
+        return
+
+    if can_manage_all:
+        info.visibility_scope = CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
+        return
+
+    datasource_ids = _normalize_datasource_ids(info.datasource_ids)
+    if len(datasource_ids) != 1:
+        raise HTTPException(status_code=400, detail="User Agent must be bound to the current project")
+    if not has_datasource_role(session, current_user, datasource_ids, "project_viewer"):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
+    info.visibility_scope = CustomPromptVisibilityScopeEnum.USER_PRIVATE
+    info.specific_ds = True
+    info.datasource_ids = datasource_ids
 
 
 def _require_prompt_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):
@@ -68,7 +132,7 @@ def _require_prompt_ids_admin(session: SessionDep, current_user: CurrentUser, id
     if len(rows) != len(set(ids)):
         raise HTTPException(status_code=404, detail="Custom prompt not found")
     for row in rows:
-        _require_prompt_scope_admin(session, current_user, row)
+        _require_prompt_owner(session, current_user, row)
 
 
 def _parse_type(value: str) -> CustomPromptTypeEnum:
@@ -76,6 +140,43 @@ def _parse_type(value: str) -> CustomPromptTypeEnum:
         return CustomPromptTypeEnum(value)
     except ValueError:
         raise HTTPException(status_code=400, detail="Unsupported custom prompt type")
+
+
+def _parse_target_scope(value: Optional[str]) -> CustomPromptTargetScopeEnum:
+    if value in (None, ""):
+        return CustomPromptTargetScopeEnum.SMART_QA
+    try:
+        return CustomPromptTargetScopeEnum(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unsupported custom prompt target scope")
+
+
+def _target_scope_export_value(value: Optional[CustomPromptTargetScopeEnum | str]) -> str:
+    if not value:
+        return CustomPromptTargetScopeEnum.SMART_QA.value
+    try:
+        return CustomPromptTargetScopeEnum(str(value)).value
+    except ValueError:
+        return CustomPromptTargetScopeEnum.SMART_QA.value
+
+
+def _parse_target_scope_cell(value: str, trans: Trans) -> CustomPromptTargetScopeEnum:
+    raw = (value or "").strip()
+    if not raw:
+        return CustomPromptTargetScopeEnum.SMART_QA
+    label_map = {
+        CustomPromptTargetScopeEnum.SMART_QA.value.lower(): CustomPromptTargetScopeEnum.SMART_QA,
+        CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT.value.lower(): CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+        CustomPromptTargetScopeEnum.ALL.value.lower(): CustomPromptTargetScopeEnum.ALL,
+        trans("i18n_custom_prompt.target_scope_smart_qa").lower(): CustomPromptTargetScopeEnum.SMART_QA,
+        trans("i18n_custom_prompt.target_scope_analysis_assistant").lower(): CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+        trans("i18n_custom_prompt.target_scope_all").lower(): CustomPromptTargetScopeEnum.ALL,
+    }
+    return label_map.get(raw.lower(), CustomPromptTargetScopeEnum.SMART_QA)
+
+
+def _parse_active_cell(value: str) -> bool:
+    return (value or "").strip().lower() in ["y", "yes", "true", "1", "active", "enabled", "已激活", "启用"]
 
 
 def _split_query_ids(value) -> Optional[list[int]]:
@@ -96,6 +197,27 @@ def _query_ids(request: Request, key: str) -> Optional[list[int]]:
     return _split_query_ids(request.query_params.getlist(key))
 
 
+@router.get("/options", response_model=list[CustomPromptOption])
+async def options(
+        session: SessionDep,
+        current_user: CurrentUser,
+        target_scope: str = Query(CustomPromptTargetScopeEnum.SMART_QA.value),
+        custom_prompt_type: Optional[str] = Query(None),
+        datasource_id: Optional[int] = Query(None),
+):
+    can_manage_all = _can_manage_all_prompts(session, current_user)
+    visible_ids = None if can_manage_all else _visible_datasource_ids(session, current_user)
+    return list_custom_prompt_options(
+        session,
+        _parse_target_scope(target_scope),
+        _parse_type(custom_prompt_type) if custom_prompt_type else None,
+        datasource_id=datasource_id,
+        accessible_datasource_ids=visible_ids,
+        current_user_id=int(current_user.id),
+        can_manage_all=can_manage_all,
+    )
+
+
 @router.get("/{custom_prompt_type}/page/{current_page}/{page_size}")
 async def pager(
         session: SessionDep,
@@ -106,19 +228,22 @@ async def pager(
         page_size: int,
         name: Optional[str] = Query(None),
 ):
-    visible_ids = _visible_datasource_ids(session, current_user)
+    can_manage_all = _can_manage_all_prompts(session, current_user)
+    visible_ids = None if can_manage_all else _visible_datasource_ids(session, current_user)
     ds_ids = _query_ids(request, "dslist")
     if ds_ids and visible_ids is not None and not set(ds_ids).issubset(visible_ids):
         raise HTTPException(status_code=403, detail="Datasource access is required")
     current_page, page_size, total_count, total_pages, data = page_custom_prompts(
         session,
         _parse_type(custom_prompt_type),
-        current_page,
-        page_size,
-        name,
-        ds_ids,
-        visible_ids,
-        is_system_admin(current_user),
+        current_page=current_page,
+        page_size=page_size,
+        name=name,
+        dslist=ds_ids,
+        accessible_datasource_ids=visible_ids,
+        include_global=True,
+        current_user_id=int(current_user.id),
+        can_manage_all=can_manage_all,
     )
     return {
         "current_page": current_page,
@@ -135,12 +260,20 @@ async def excel_template(trans: Trans):
         data_list = [
             {
                 "name": trans("i18n_custom_prompt.prompt_word_name_template_example1"),
+                "description": trans("i18n_custom_prompt.agent_description_template_example1"),
+                "target_scope": trans("i18n_custom_prompt.target_scope_smart_qa"),
+                "active": "N",
+                "ai_model": trans("i18n_custom_prompt.ai_model_template_example1"),
                 "prompt": trans("i18n_custom_prompt.prompt_word_content_template_example1"),
                 "datasource": trans("i18n_custom_prompt.effective_data_sources_template_example1"),
                 "all_data_sources": "N",
             },
             {
                 "name": trans("i18n_custom_prompt.prompt_word_name_template_example2"),
+                "description": trans("i18n_custom_prompt.agent_description_template_example2"),
+                "target_scope": trans("i18n_custom_prompt.target_scope_all"),
+                "active": "Y",
+                "ai_model": "",
                 "prompt": trans("i18n_custom_prompt.prompt_word_content_template_example2"),
                 "datasource": "",
                 "all_data_sources": "Y",
@@ -148,6 +281,10 @@ async def excel_template(trans: Trans):
         ]
         fields = [
             AxisObj(name=trans("i18n_custom_prompt.prompt_word_name_template"), value="name"),
+            AxisObj(name=trans("i18n_custom_prompt.agent_description_template"), value="description"),
+            AxisObj(name=trans("i18n_custom_prompt.target_scope_template"), value="target_scope"),
+            AxisObj(name=trans("i18n_custom_prompt.active_template"), value="active"),
+            AxisObj(name=trans("i18n_custom_prompt.ai_model_template"), value="ai_model"),
             AxisObj(name=trans("i18n_custom_prompt.prompt_word_content_template"), value="prompt"),
             AxisObj(name=trans("i18n_custom_prompt.effective_data_sources_template"), value="datasource"),
             AxisObj(name=trans("i18n_custom_prompt.all_data_sources_template"), value="all_data_sources"),
@@ -166,28 +303,32 @@ async def excel_template(trans: Trans):
 
 @router.get("/{prompt_id}")
 async def get_one(session: SessionDep, current_user: CurrentUser, prompt_id: int):
-    info = get_custom_prompt(session, prompt_id)
-    if info.specific_ds and not has_datasource_role(session, current_user, info.datasource_ids, "project_viewer"):
-        raise HTTPException(status_code=403, detail="Datasource access is required")
-    if not info.specific_ds and not is_system_admin(current_user):
-        raise HTTPException(status_code=403, detail="Datasource access is required")
+    can_manage_all = _can_manage_all_prompts(session, current_user)
+    info = get_custom_prompt(session, prompt_id, int(current_user.id), can_manage_all)
+    if not can_manage_all:
+        if info.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE and not info.is_owner:
+            raise HTTPException(status_code=403, detail="Datasource access is required")
+        if info.specific_ds and not has_datasource_role(session, current_user, info.datasource_ids, "project_viewer"):
+            raise HTTPException(status_code=403, detail="Datasource access is required")
     return info
 
 
 @router.put("")
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.PROMPT_WORDS, resource_id_expr="info.id", result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
-    _require_prompt_admin(session, current_user, info)
+    can_manage_all = _can_manage_all_prompts(session, current_user)
+    _prepare_prompt_for_save(session, current_user, info)
     if info.id:
-        return update_custom_prompt(session, info)
-    return create_custom_prompt(session, info)
+        return update_custom_prompt(session, info, int(current_user.id), can_manage_all)
+    return create_custom_prompt(session, info, int(current_user.id))
 
 
 @router.delete("")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.PROMPT_WORDS, resource_id_expr="id_list"))
 async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
+    can_manage_all = _can_manage_all_prompts(session, current_user)
     _require_prompt_ids_admin(session, current_user, id_list)
-    delete_custom_prompts(session, id_list)
+    delete_custom_prompts(session, id_list, int(current_user.id), can_manage_all)
 
 
 @router.get("/{custom_prompt_type}/export")
@@ -200,7 +341,8 @@ async def export_excel(
         custom_prompt_type: str,
         name: Optional[str] = Query(None),
 ):
-    visible_ids = _visible_datasource_ids(session, current_user)
+    can_manage_all = _can_manage_all_prompts(session, current_user)
+    visible_ids = None if can_manage_all else _visible_datasource_ids(session, current_user)
     ds_ids = _query_ids(request, "dslist")
     if ds_ids and visible_ids is not None and not set(ds_ids).issubset(visible_ids):
         raise HTTPException(status_code=403, detail="Datasource access is required")
@@ -209,14 +351,20 @@ async def export_excel(
         rows = get_all_custom_prompts(
             session,
             _parse_type(custom_prompt_type),
-            name,
-            ds_ids,
-            visible_ids,
-            is_system_admin(current_user),
+            name=name,
+            dslist=ds_ids,
+            accessible_datasource_ids=visible_ids,
+            include_global=True,
+            current_user_id=int(current_user.id),
+            can_manage_all=can_manage_all,
         )
         data_list = [
             {
                 "name": row.name,
+                "description": row.description,
+                "target_scope": _target_scope_export_value(row.target_scope),
+                "active": "Y" if row.active else "N",
+                "ai_model": row.ai_model_name or "",
                 "prompt": row.prompt,
                 "datasource": ", ".join(row.datasource_names or []) if row.specific_ds else "",
                 "all_data_sources": "N" if row.specific_ds else "Y",
@@ -225,6 +373,10 @@ async def export_excel(
         ]
         fields = [
             AxisObj(name=trans("i18n_custom_prompt.prompt_word_name"), value="name"),
+            AxisObj(name=trans("i18n_custom_prompt.agent_description"), value="description"),
+            AxisObj(name=trans("i18n_custom_prompt.target_scope"), value="target_scope"),
+            AxisObj(name=trans("i18n_custom_prompt.active"), value="active"),
+            AxisObj(name=trans("i18n_custom_prompt.ai_model"), value="ai_model"),
             AxisObj(name=trans("i18n_custom_prompt.prompt_word_content"), value="prompt"),
             AxisObj(name=trans("i18n_custom_prompt.effective_data_sources"), value="datasource"),
             AxisObj(name=trans("i18n_custom_prompt.all_data_sources"), value="all_data_sources"),
@@ -250,7 +402,7 @@ async def upload_excel(
         custom_prompt_type: str,
         file: UploadFile = File(...),
 ):
-    if not is_system_admin(current_user):
+    if not _can_manage_all_prompts(session, current_user):
         raise HTTPException(status_code=403, detail="Global prompt import can only be maintained by system admins")
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Only support .xlsx/.xls")
@@ -264,8 +416,6 @@ async def upload_excel(
     with open(save_path, "wb") as f:
         f.write(await file.read())
 
-    use_cols = [0, 1, 2, 3]
-
     def inner():
         db_session = session_maker()
         try:
@@ -274,10 +424,22 @@ async def upload_excel(
                 for row in db_session.execute(select(CoreDatasource.id, CoreDatasource.name)).all()
                 if row.name
             }
+            ai_model_name_to_id = {
+                row.name.strip(): int(row.id)
+                for row in db_session.execute(select(AiModelDetail.id, AiModelDetail.name)).all()
+                if row.name
+            }
             import_data = []
             for sheet_name in pd.ExcelFile(save_path).sheet_names:
-                if get_excel_column_count(save_path, sheet_name) < len(use_cols):
+                column_count = get_excel_column_count(save_path, sheet_name)
+                if column_count < 4:
                     raise Exception(trans("i18n_excel_import.col_num_not_match"))
+                if column_count >= 8:
+                    use_cols = [0, 1, 2, 3, 4, 5, 6, 7]
+                elif column_count >= 6:
+                    use_cols = [0, 1, 2, 3, 4, 5]
+                else:
+                    use_cols = [0, 1, 2, 3, 4] if column_count >= 5 else [0, 1, 2, 3]
                 df = pd.read_excel(
                     save_path,
                     sheet_name=sheet_name,
@@ -289,20 +451,78 @@ async def upload_excel(
                 for _, row in df.iterrows():
                     if row.isnull().all():
                         continue
-                    name = row[0].strip() if pd.notna(row[0]) and row[0].strip() else ""
-                    prompt = row[1].strip() if pd.notna(row[1]) and row[1].strip() else ""
-                    datasource_names = [item.strip() for item in row[2].split(",") if item.strip()] if pd.notna(row[2]) else []
-                    all_datasource = bool(pd.notna(row[3]) and row[3].lower().strip() in ["y", "yes", "true"])
+                    if len(use_cols) >= 8:
+                        name_raw, description_raw, target_scope_raw, active_raw, ai_model_raw, prompt_raw, datasource_raw, all_datasource_raw = (
+                            row.iloc[0],
+                            row.iloc[1],
+                            row.iloc[2],
+                            row.iloc[3],
+                            row.iloc[4],
+                            row.iloc[5],
+                            row.iloc[6],
+                            row.iloc[7],
+                        )
+                    elif len(use_cols) >= 6:
+                        name_raw, description_raw, ai_model_raw, prompt_raw, datasource_raw, all_datasource_raw = (
+                            row.iloc[0],
+                            row.iloc[1],
+                            row.iloc[2],
+                            row.iloc[3],
+                            row.iloc[4],
+                            row.iloc[5],
+                        )
+                        target_scope_raw = ""
+                        active_raw = ""
+                    elif len(use_cols) >= 5:
+                        name_raw, description_raw, prompt_raw, datasource_raw, all_datasource_raw = (
+                            row.iloc[0],
+                            row.iloc[1],
+                            row.iloc[2],
+                            row.iloc[3],
+                            row.iloc[4],
+                        )
+                        ai_model_raw = ""
+                        target_scope_raw = ""
+                        active_raw = ""
+                    else:
+                        name_raw, prompt_raw, datasource_raw, all_datasource_raw = (
+                            row.iloc[0],
+                            row.iloc[1],
+                            row.iloc[2],
+                            row.iloc[3],
+                        )
+                        description_raw = ""
+                        ai_model_raw = ""
+                        target_scope_raw = ""
+                        active_raw = ""
+
+                    name = name_raw.strip() if pd.notna(name_raw) and name_raw.strip() else ""
+                    description = description_raw.strip() if pd.notna(description_raw) and description_raw.strip() else ""
+                    target_scope = _parse_target_scope_cell(
+                        target_scope_raw.strip() if pd.notna(target_scope_raw) and target_scope_raw.strip() else "",
+                        trans,
+                    )
+                    active = _parse_active_cell(active_raw if pd.notna(active_raw) else "")
+                    ai_model_name = ai_model_raw.strip() if pd.notna(ai_model_raw) and ai_model_raw.strip() else ""
+                    ai_model_id = ai_model_name_to_id.get(ai_model_name) if ai_model_name else None
+                    prompt = prompt_raw.strip() if pd.notna(prompt_raw) and prompt_raw.strip() else ""
+                    datasource_names = [item.strip() for item in datasource_raw.split(",") if item.strip()] if pd.notna(datasource_raw) else []
+                    all_datasource = bool(pd.notna(all_datasource_raw) and all_datasource_raw.lower().strip() in ["y", "yes", "true"])
                     datasource_ids = [datasource_name_to_id[item] for item in datasource_names if item in datasource_name_to_id]
                     import_data.append(CustomPromptInfo(
                         type=prompt_type,
                         name=name,
+                        description=description,
+                        target_scope=target_scope,
+                        active=active,
+                        ai_model_id=ai_model_id,
+                        ai_model_name=ai_model_name if ai_model_id else None,
                         prompt=prompt,
                         datasource_names=datasource_names,
                         datasource_ids=datasource_ids,
                         specific_ds=not all_datasource,
                     ))
-            result = batch_create_custom_prompts(db_session, import_data)
+            result = batch_create_custom_prompts(db_session, import_data, int(current_user.id))
 
             error_excel_filename = None
             if result["failed_records"]:
@@ -311,6 +531,10 @@ async def upload_excel(
                     data = obj["data"]
                     error_rows.append({
                         "name": data.name,
+                        "description": data.description,
+                        "target_scope": _target_scope_export_value(data.target_scope),
+                        "active": "Y" if data.active else "N",
+                        "ai_model": data.ai_model_name or "",
                         "prompt": data.prompt,
                         "datasource": ", ".join(data.datasource_names or []),
                         "all_data_sources": "N" if data.specific_ds else "Y",
@@ -318,6 +542,10 @@ async def upload_excel(
                     })
                 fields = [
                     AxisObj(name=trans("i18n_custom_prompt.prompt_word_name"), value="name"),
+                    AxisObj(name=trans("i18n_custom_prompt.agent_description"), value="description"),
+                    AxisObj(name=trans("i18n_custom_prompt.target_scope"), value="target_scope"),
+                    AxisObj(name=trans("i18n_custom_prompt.active"), value="active"),
+                    AxisObj(name=trans("i18n_custom_prompt.ai_model"), value="ai_model"),
                     AxisObj(name=trans("i18n_custom_prompt.prompt_word_content"), value="prompt"),
                     AxisObj(name=trans("i18n_custom_prompt.effective_data_sources"), value="datasource"),
                     AxisObj(name=trans("i18n_custom_prompt.all_data_sources"), value="all_data_sources"),

@@ -128,6 +128,7 @@ class ChatRecord(SQLModel, table=True):
     analysis_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     predict_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     regenerate_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
+    custom_prompt_id: int = Field(sa_column=Column(BigInteger, nullable=True))
 
 
 class ChatRecordResult(BaseModel):
@@ -154,6 +155,7 @@ class ChatRecordResult(BaseModel):
     analysis_record_id: Optional[int] = None
     predict_record_id: Optional[int] = None
     regenerate_record_id: Optional[int] = None
+    custom_prompt_id: Optional[int] = None
     sql_reasoning_content: Optional[str] = None
     chart_reasoning_content: Optional[str] = None
     analysis_reasoning_content: Optional[str] = None
@@ -226,6 +228,7 @@ class AiModelQuestion(BaseModel):
     terminologies: str = ""
     data_training: str = ""
     custom_prompt: str = ""
+    custom_prompt_id: Optional[int] = None
     error_msg: str = ""
     regenerate_record_id: Optional[int] = None
     sample_data: str = ""
@@ -359,6 +362,7 @@ class ChatStart(BaseModel):
 class ChatQuestionBase(BaseModel):
     question: str = Body(description='用户提问')
     chat_id: int = Body(description='会话ID')
+    custom_prompt_id: Optional[int] = Body(description='本次提问选择的自定义 Agent ID', default=None)
 
 
 class McpQuestion(ChatQuestionBase):

@@ -409,6 +409,30 @@
             @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
 
+          <el-select
+            v-if="isCompletePage"
+            v-model="selectedCustomPromptId"
+            class="agent-select"
+            clearable
+            filterable
+            :disabled="isTyping"
+            :placeholder="t('prompt.default_agent')"
+            @click.stop
+          >
+            <el-option :label="t('prompt.default_agent')" :value="null" />
+            <el-option
+              v-for="agent in customPromptOptions"
+              :key="agent.id"
+              :label="agent.name"
+              :value="agent.id"
+            >
+              <span>{{ agent.name }}</span>
+              <span v-if="agent.ai_model_name" class="agent-option-model">
+                {{ agent.ai_model_name }}
+              </span>
+            </el-option>
+          </el-select>
+
           <el-button
             circle
             type="primary"
@@ -468,6 +492,7 @@ import router from '@/router'
 import QuickQuestion from '@/views/chat/QuickQuestion.vue'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { promptApi } from '@/api/prompt'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -509,6 +534,36 @@ const isPhone = computed(() => {
   return isMobile()
 })
 const inputMessage = ref('')
+const selectedCustomPromptId = ref<string | number | null>(null)
+const customPromptOptions = ref<any[]>([])
+
+const loadCustomPromptOptions = () => {
+  if (!isCompletePage.value) {
+    customPromptOptions.value = []
+    selectedCustomPromptId.value = null
+    return
+  }
+  const datasourceId = currentChat.value.datasource || datasourceContext.datasourceId
+  promptApi
+    .options({
+      target_scope: 'SMART_QA',
+      custom_prompt_type: 'GENERATE_SQL',
+      ...(datasourceId ? { datasource_id: datasourceId } : {}),
+    })
+    .then((res: any) => {
+      customPromptOptions.value = res || []
+      if (
+        selectedCustomPromptId.value &&
+        !customPromptOptions.value.some((item) => String(item.id) === String(selectedCustomPromptId.value))
+      ) {
+        selectedCustomPromptId.value = null
+      }
+    })
+    .catch((e: any) => {
+      console.error(e)
+      customPromptOptions.value = []
+    })
+}
 
 const chatListRef = ref()
 const innerRef = ref()
@@ -724,6 +779,7 @@ function onChatCreatedQuick(chat: ChatInfo) {
   chatList.value.unshift(chat)
   currentChatId.value = chat.id
   currentChat.value = chat
+  loadCustomPromptOptions()
   onChatCreated(chat)
 }
 
@@ -737,7 +793,16 @@ watch(
     currentChat.value = new ChatInfo()
     currentChatId.value = undefined
     chatList.value = []
+    selectedCustomPromptId.value = null
     getChatList()
+    loadCustomPromptOptions()
+  }
+)
+
+watch(
+  () => currentChat.value.datasource,
+  () => {
+    loadCustomPromptOptions()
   }
 )
 
@@ -861,6 +926,7 @@ const sendMessage = async (
   currentRecord.question = inputMessage.value
   currentRecord.datasource = currentChat.value.datasource || datasourceContext.datasourceId
   currentRecord.regenerate_record_id = regenerate_record_id
+  currentRecord.custom_prompt_id = selectedCustomPromptId.value || undefined
   currentRecord.sql_answer = ''
   currentRecord.sql = ''
   currentRecord.chart_answer = ''
@@ -943,6 +1009,7 @@ async function clickAnalysis(id?: number) {
   currentRecord.chart = baseRecord.chart
   currentRecord.data = baseRecord.data
   currentRecord.analysis_record_id = id
+  currentRecord.custom_prompt_id = baseRecord.custom_prompt_id
   currentRecord.analysis = ''
 
   currentChat.value.records.push(currentRecord)
@@ -1022,6 +1089,7 @@ async function clickPredict(id?: number) {
   currentRecord.chart = baseRecord.chart
   currentRecord.data = baseRecord.data
   currentRecord.predict_record_id = id
+  currentRecord.custom_prompt_id = baseRecord.custom_prompt_id
   currentRecord.predict = ''
   currentRecord.predict_data = ''
 
@@ -1181,6 +1249,7 @@ onMounted(async () => {
     }
   }
   await datasourceContext.loadDatasources().catch((e) => console.error(e))
+  loadCustomPromptOptions()
   getChatList(jumpCreatChat)
   assistantPrepareInit()
 })
@@ -1364,6 +1433,27 @@ onMounted(async () => {
           background: rgba(187, 191, 196, 1);
           border-color: unset;
           box-shadow: none;
+        }
+      }
+
+      .agent-select {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        width: 116px;
+        z-index: 2;
+
+        :deep(.ed-select__wrapper) {
+          min-height: 28px;
+          height: 28px;
+          border-radius: 6px;
+          background: var(--workspace-control-bg, #f7faff);
+          box-shadow: 0 0 0 1px var(--workspace-border, #dbe5f2) inset;
+        }
+
+        :deep(.ed-select__selected-item),
+        :deep(.ed-select__placeholder) {
+          font-size: 12px;
         }
       }
     }

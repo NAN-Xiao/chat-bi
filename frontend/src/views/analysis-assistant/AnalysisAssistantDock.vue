@@ -14,6 +14,7 @@ import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { promptApi } from '@/api/prompt'
 
 interface DockMessage extends AnalysisAssistantMessage {
   id: number
@@ -71,6 +72,8 @@ const route = useRoute()
 const analysisContext = useDatasourceContextStore()
 const messages = ref<DockMessage[]>([])
 const inputMessage = ref('')
+const selectedCustomPromptId = ref<string | number | null>(null)
+const customPromptOptions = ref<any[]>([])
 const scrollRef = ref()
 const inputRef = ref()
 const isStreaming = ref(false)
@@ -136,6 +139,28 @@ const hasMessages = computed(() => messages.value.length > 0)
 const dockStyle = computed(() => (props.expanded ? { width: `${dockWidth.value}px` } : undefined))
 
 const dockTabStyle = computed(() => ({ top: `${dockTabTop.value}px` }))
+
+const loadCustomPromptOptions = () => {
+  const datasourceId = analysisContext.datasourceId
+  promptApi
+    .options({
+      target_scope: 'ANALYSIS_ASSISTANT',
+      ...(datasourceId ? { datasource_id: datasourceId } : {}),
+    })
+    .then((res: any) => {
+      customPromptOptions.value = res || []
+      if (
+        selectedCustomPromptId.value &&
+        !customPromptOptions.value.some((item) => String(item.id) === String(selectedCustomPromptId.value))
+      ) {
+        selectedCustomPromptId.value = null
+      }
+    })
+    .catch((e: any) => {
+      console.error(e)
+      customPromptOptions.value = []
+    })
+}
 
 const getDockTabTime = () =>
   typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -357,7 +382,10 @@ onBeforeUnmount(() => {
 onMounted(() => {
   dockTabTop.value = readDockTabTop()
   window.addEventListener('resize', handleWindowResize)
-  analysisContext.loadDatasources().catch((e) => console.error(e))
+  analysisContext
+    .loadDatasources()
+    .catch((e) => console.error(e))
+    .finally(() => loadCustomPromptOptions())
 })
 
 const scrollToBottom = () => {
@@ -585,6 +613,7 @@ const sendMessage = async ($event: any = {}) => {
       requestMessages(),
       pageContext.value,
       analysisContext.datasourceId,
+      selectedCustomPromptId.value,
       streamController.value
     )
     if (!response.ok) {
@@ -652,6 +681,7 @@ watch(
     if (oldValue && value !== oldValue) {
       clearMessages()
     }
+    loadCustomPromptOptions()
   }
 )
 
@@ -869,6 +899,23 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
             @keydown.enter.exact.prevent="($event: any) => sendMessage($event)"
             @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
+          <el-select
+            v-model="selectedCustomPromptId"
+            class="agent-select"
+            clearable
+            filterable
+            :disabled="isStreaming"
+            placeholder="默认 Agent"
+            @click.stop
+          >
+            <el-option label="默认 Agent" :value="null" />
+            <el-option
+              v-for="agent in customPromptOptions"
+              :key="agent.id"
+              :label="agent.name"
+              :value="agent.id"
+            />
+          </el-select>
           <el-button
             v-if="!isStreaming"
             circle
@@ -1445,11 +1492,32 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     height: 96px;
     min-height: 96px !important;
     max-height: 96px;
-    padding: 10px 48px 36px 12px;
+    padding: 10px 48px 38px 12px;
     border-radius: 8px;
     line-height: 22px;
     background: var(--assistant-dock-input-bg);
     overflow-y: auto;
+  }
+
+  .agent-select {
+    position: absolute;
+    left: 10px;
+    bottom: 8px;
+    z-index: 2;
+    width: 116px;
+
+    :deep(.ed-select__wrapper) {
+      min-height: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: var(--assistant-dock-control-bg);
+      box-shadow: 0 0 0 1px var(--assistant-dock-border) inset;
+    }
+
+    :deep(.ed-select__selected-item),
+    :deep(.ed-select__placeholder) {
+      font-size: 12px;
+    }
   }
 
   .send-btn {

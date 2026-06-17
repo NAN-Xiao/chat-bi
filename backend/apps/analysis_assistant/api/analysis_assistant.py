@@ -12,12 +12,14 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
+from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
 from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
+from apps.system.crud.user import is_system_admin
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.utils import extract_nested_json
@@ -34,6 +36,7 @@ class AnalysisAssistantRequest(BaseModel):
     messages: list[AnalysisAssistantMessage] = Field(default_factory=list)
     context: str | None = None
     datasource_id: int | None = None
+    custom_prompt_id: int | None = None
 
 
 SYSTEM_PROMPT = """你是星通智数内置的综合分析助手，一个独立于“智能报表”的业务分析 Agent。
@@ -239,8 +242,8 @@ def _chunk_text(content) -> str:
     return str(content)
 
 
-async def _create_llm():
-    config = await get_default_config()
+async def _create_llm(custom_model_id: int | None = None):
+    config = await get_default_config(custom_model_id)
     additional_params = dict(config.additional_params or {})
     extra_body = dict(additional_params.get("extra_body") or {})
     extra_body["enable_thinking"] = False
@@ -376,6 +379,30 @@ def _collect_metric_knowledge(
     return "\n\n".join(parts)
 
 
+def _collect_custom_agent_context(
+    session: SessionDep,
+    datasource_id: int | None,
+    custom_prompt_id: int | None,
+    current_user: CurrentUser | None,
+) -> tuple[str, int | None]:
+    if not custom_prompt_id:
+        return "", None
+    try:
+        prompt_text, _prompt_list, ai_model_id = find_custom_prompts(
+            session,
+            None,
+            datasource_id,
+            CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+            custom_prompt_id,
+            getattr(current_user, "id", None),
+            is_system_admin(current_user),
+        )
+        return prompt_text.strip(), ai_model_id
+    except Exception:
+        traceback.print_exc()
+        return "", None
+
+
 def _knowledge_block(knowledge: str) -> str:
     if not knowledge or not knowledge.strip():
         return ""
@@ -385,6 +412,39 @@ def _knowledge_block(knowledge: str) -> str:
         "当它与你的默认理解冲突时，一律以此为准）：\n"
         f"{knowledge[:12000]}\n\n"
     )
+
+
+def _custom_agent_block(custom_agent: str) -> str:
+    if not custom_agent or not custom_agent.strip():
+        return ""
+    return (
+        "自定义 Agent 补充设定（仅作为回答风格、分析侧重点、任务偏好和补充约束使用；"
+        "不得替换或覆盖平台内置核心提示词、SQL 示例、术语口径、思考/输出格式、数据库 Schema、"
+        "数据范围、权限、安全规则或 SQL 规范；冲突时以内置规则为准）：\n"
+        f"{custom_agent[:6000]}\n\n"
+    )
+
+
+def _context_blocks(knowledge: str = "", custom_agent: str = "") -> str:
+    return f"{_knowledge_block(knowledge)}{_custom_agent_block(custom_agent)}"
+
+
+def _custom_agent_final_system_rules(custom_agent: str = "") -> str:
+    if not custom_agent or not custom_agent.strip():
+        return ""
+    return (
+        "\n\n自定义 Agent 最终回答强制规则：\n"
+        "- 以下自定义 Agent 内容是本次最终回答的强制补充规范，尤其适用于统计口径、计算方法、评价规则、好坏判断口径和输出结构。\n"
+        "- 如果自定义 Agent 中定义了某类统计的统一口径、公式、分子分母、好坏评价标准或风险/置信度规则，最终回答必须先识别命中的统计类型，再按这些规则评价。\n"
+        "- 如果自定义 Agent 中定义了项目组自己的阈值分档、等级标准或好坏判断标准，最终回答必须计算对应指标的实际值，并按自定义阈值映射最终结论。例如遇到优秀/及格/差、A/B/C、高/中/低等分档规则时，最终的好坏、异常、风险等级和总结判断必须使用该尺度。\n"
+        "- 项目组阈值和评价标准默认作为内部评判尺度，不要把自定义 Agent 的完整规则或阈值原文暴露给最终用户。最终回答只需要给出命中档位、实际值和必要判断理由；只有当用户明确询问“按什么标准/口径/阈值判断”时，才展开说明评价标准。\n"
+        "- 不得使用模型默认经验替代项目组阈值；当自定义 Agent 已给出明确阈值时，最终评判必须以该阈值为准。若 rows 中缺少计算该阈值所需的分子或分母，必须说明无法评级以及需要补充的数据。\n"
+        "- 如果自定义 Agent 要求显式输出模块标题，例如“命中统计类型 / 统计口径 / 计算方法 / 评价规范 / 数据事实 / 推测原因 / 风险等级与置信度 / 下一步建议”，最终回答必须保留这些模块，不得合并或省略。\n"
+        "- 自定义 Agent 不能覆盖数据库 Schema、数据权限、SQL 安全规则和已配置的统一业务口径；如果发生冲突，以平台内置规则和项目统一业务口径为准。\n"
+        "- 所有数字结论仍必须直接来自 rows；自定义评价规则只能决定如何计算、如何解释和如何判断好坏，不能允许编造数据。\n\n"
+        f"{custom_agent[:6000]}"
+    )
+
 
 
 def _profile_result_as_text(title: str, result: dict[str, Any], limit: int = 80) -> str:
@@ -1072,6 +1132,7 @@ def _repair_sql(
     sample_data: str,
     data_profile: str = "",
     knowledge: str = "",
+    custom_agent: str = "",
 ) -> str:
     prompt = (
         f"用户问题：{question}\n"
@@ -1079,7 +1140,7 @@ def _repair_sql(
         f"分析目的：{raw_query.get('purpose')}\n"
         f"原始 SQL：\n{failed_sql}\n\n"
         f"执行错误：\n{str(error)[:3000]}\n\n"
-        f"{_knowledge_block(knowledge)}"
+        f"{_context_blocks(knowledge, custom_agent)}"
         f"数据库 schema：\n{schema[:18000]}\n\n"
         f"样例数据：\n{sample_data[:6000]}\n\n"
         f"实际数据画像（必须优先使用这些真实枚举值，不要编造 event_name/status/属性值）：\n{data_profile[:12000]}"
@@ -1093,7 +1154,13 @@ def _repair_sql(
     return _normalise_sql(repaired_sql)
 
 
-def _summarise_block(llm, question: str, block: dict[str, Any], knowledge: str = "") -> str:
+def _summarise_block(
+    llm,
+    question: str,
+    block: dict[str, Any],
+    knowledge: str = "",
+    custom_agent: str = "",
+) -> str:
     rows = block.get("data") or []
     if not rows:
         return "这组查询没有返回数据，暂时不能从该角度形成确定判断。"
@@ -1101,15 +1168,26 @@ def _summarise_block(llm, question: str, block: dict[str, Any], knowledge: str =
         f"用户问题：{question}\n"
         f"数据块标题：{block.get('title')}\n"
         f"分析目的：{block.get('purpose')}\n"
-        f"{_knowledge_block(knowledge)}"
+        f"{_context_blocks(knowledge, custom_agent)}"
         f"SQL：{block.get('sql')}\n"
         f"字段：{block.get('fields')}\n"
         f"查询结果样例：{_compact_rows(rows)}"
     )
-    return _llm_text(llm, [SystemMessage(content=SUMMARY_PROMPT), HumanMessage(content=prompt)])
+    return _llm_text(
+        llm,
+        [SystemMessage(content=SUMMARY_PROMPT + _custom_agent_final_system_rules(custom_agent)),
+         HumanMessage(content=prompt)],
+    )
 
 
-def _final_answer(llm, question: str, intro: str, blocks: list[dict[str, Any]], knowledge: str = "") -> str:
+def _final_answer(
+    llm,
+    question: str,
+    intro: str,
+    blocks: list[dict[str, Any]],
+    knowledge: str = "",
+    custom_agent: str = "",
+) -> str:
     block_details = []
     for block in blocks:
         data = block.get("data") or []
@@ -1127,14 +1205,18 @@ def _final_answer(llm, question: str, intro: str, blocks: list[dict[str, Any]], 
     prompt = (
         f"用户问题：{question}\n"
         f"问题理解：{intro}\n"
-        f"{_knowledge_block(knowledge)}"
+        f"{_context_blocks(knowledge, custom_agent)}"
         f"各数据块（含真实查询数据 rows，所有数字结论必须取自这些 rows，禁止编造或臆测未提供的数字）：\n"
         f"{payload[:16000]}"
     )
-    return _llm_text(llm, [SystemMessage(content=FINAL_PROMPT), HumanMessage(content=prompt)])
+    return _llm_text(
+        llm,
+        [SystemMessage(content=FINAL_PROMPT + _custom_agent_final_system_rules(custom_agent)),
+         HumanMessage(content=prompt)],
+    )
 
 
-def _initial_outline_messages(request: AnalysisAssistantRequest) -> list[BaseMessage]:
+def _initial_outline_messages(request: AnalysisAssistantRequest, custom_agent: str = "") -> list[BaseMessage]:
     question = request.messages[-1].content.strip()
     history = [
         {"role": item.role, "content": item.content}
@@ -1144,7 +1226,8 @@ def _initial_outline_messages(request: AnalysisAssistantRequest) -> list[BaseMes
     user_content = (
         f"页面上下文：{request.context or ''}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
-        f"用户问题：{question}"
+        f"用户问题：{question}\n\n"
+        f"{_custom_agent_block(custom_agent)}"
     )
     return [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=INITIAL_OUTLINE_PROMPT + "\n\n" + user_content)]
 
@@ -1157,6 +1240,7 @@ def _build_plan(
     datasource: CoreDatasource,
     data_profile: str = "",
     knowledge: str = "",
+    custom_agent: str = "",
 ) -> dict[str, Any]:
     question = request.messages[-1].content.strip()
     context = request.context or ""
@@ -1172,7 +1256,7 @@ def _build_plan(
         f"页面上下文：{context}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
-        f"{_knowledge_block(knowledge)}"
+        f"{_context_blocks(knowledge, custom_agent)}"
         f"数据库 schema：\n{schema[:18000]}\n\n"
         f"样例数据：\n{sample_data[:6000]}\n\n"
         f"实际数据画像（必须优先使用这些真实枚举值，不要编造 event_name/status/属性值）：\n{data_profile[:12000]}"
@@ -1207,6 +1291,7 @@ def _build_forecast_plan(
     datasource: CoreDatasource,
     data_profile: str = "",
     knowledge: str = "",
+    custom_agent: str = "",
 ) -> dict[str, Any]:
     question = request.messages[-1].content.strip()
     context = request.context or ""
@@ -1222,7 +1307,7 @@ def _build_forecast_plan(
         f"页面上下文：{context}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
-        f"{_knowledge_block(knowledge)}"
+        f"{_context_blocks(knowledge, custom_agent)}"
         f"数据库 schema：\n{schema[:22000]}\n\n"
         f"样例数据：\n{sample_data[:8000]}\n\n"
         f"实际数据画像（必须优先使用这些真实枚举值，不要编造 event_name/status/属性值）：\n{data_profile[:12000]}"
@@ -1256,14 +1341,23 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
     if not request.messages or not request.messages[-1].content.strip():
         raise RuntimeError("Question cannot be Empty")
 
-    llm = await _create_llm()
+    datasource = CoreDatasource.model_construct(
+        **_get_datasource(session, current_user, request.datasource_id).model_dump()
+    )
+    custom_agent, custom_agent_model_id = _collect_custom_agent_context(
+        session,
+        datasource.id,
+        request.custom_prompt_id,
+        current_user,
+    )
+    llm = await _create_llm(custom_agent_model_id)
 
     def generate():
         question = request.messages[-1].content.strip()
         blocks: list[dict[str, Any]] = []
         try:
             outline_text = ""
-            for chunk in llm.stream(_initial_outline_messages(request)):
+            for chunk in llm.stream(_initial_outline_messages(request, custom_agent)):
                 content = _chunk_text(chunk.content)
                 if content:
                     outline_text += content
@@ -1271,7 +1365,6 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             if not outline_text.strip():
                 yield _sse({"type": "plan_delta", "content": "我会先理解你的分析目标，再拆解关键维度并结合数据给出结论和建议。"})
             yield _trace("正在确认本次分析使用的业务口径。")
-            datasource = _get_datasource(session, current_user, request.datasource_id)
             yield _trace("正在结合当前业务数据，梳理可分析的关键维度。")
             schema, allowed_tables = get_table_schema(session, current_user, datasource, question, embedding=False)
             if not allowed_tables:
@@ -1281,14 +1374,20 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             knowledge = _collect_metric_knowledge(session, datasource.id, question, current_user)
             if knowledge.strip():
                 yield _trace("已加载本项目配置的统一业务口径（术语定义与标准 SQL 示例），将据此对齐指标算法。")
+            if custom_agent.strip():
+                yield _trace("已应用本次选择的自定义 Agent 补充设定，但核心 SQL 示例、权限和安全规则保持不变。")
             forecast_requested = _is_forecast_question(question)
             if forecast_requested:
                 yield _trace("正在识别预测指标、目标人群和可用的历史观察窗口。")
-                plan = _build_forecast_plan(llm, request, schema, sample_data, datasource, data_profile, knowledge)
+                plan = _build_forecast_plan(
+                    llm, request, schema, sample_data, datasource, data_profile, knowledge, custom_agent
+                )
                 yield _trace("预测方法和数据检查项已确定，下面按预测口径召回数据。")
             else:
                 yield _trace("正在把分析框架拆成可执行的数据检查项。")
-                plan = _build_plan(llm, request, schema, sample_data, datasource, data_profile, knowledge)
+                plan = _build_plan(
+                    llm, request, schema, sample_data, datasource, data_profile, knowledge, custom_agent
+                )
 
             intro = str(plan.get("intro") or "我会先识别问题指标，再从多个角度查看数据并给出分析建议。")
             yield _trace("具体执行步骤已确定，下面按关键维度逐一分析。")
@@ -1329,7 +1428,10 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         result = exec_sql(datasource, sql, origin_column=False)
                     except Exception as first_error:
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
-                        repaired_sql = _repair_sql(llm, question, raw_query, sql, first_error, schema, sample_data, data_profile, knowledge)
+                        repaired_sql = _repair_sql(
+                            llm, question, raw_query, sql, first_error, schema, sample_data, data_profile, knowledge,
+                            custom_agent
+                        )
                         sql = _prepare_sql_for_execution(
                             llm, session, current_user, datasource, repaired_sql, allowed_tables
                         )
@@ -1339,7 +1441,10 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     semantic_error = _semantic_validation_error(raw_query, result)
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
-                        repaired_sql = _repair_sql(llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data, data_profile, knowledge)
+                        repaired_sql = _repair_sql(
+                            llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data,
+                            data_profile, knowledge, custom_agent
+                        )
                         sql = _prepare_sql_for_execution(
                             llm, session, current_user, datasource, repaired_sql, allowed_tables
                         )
@@ -1353,21 +1458,20 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     block["data"] = result.get("data") or []
                     yield _trace("这个角度的数据已经整理好，正在提炼关键发现。", block_id=block_id)
                     block["chart"] = _build_chart_config(raw_query, result)
-                    block["summary"] = _summarise_block(llm, question, block, knowledge)
+                    block["summary"] = _summarise_block(llm, question, block, knowledge, custom_agent)
                 except Exception as query_error:
-                    traceback.print_exc()
                     block["error"] = "数据计算失败"
+                    block["error_detail"] = str(query_error)
                     block["summary"] = "这个角度的数据暂时无法稳定计算，已先跳过；其它维度的分析会继续完成。"
 
                 blocks.append(block)
                 yield _sse({"type": "block", "block": block})
 
             yield _trace("正在汇总各个角度的发现，形成最终判断和建议。")
-            final = _final_answer(llm, question, intro, blocks, knowledge)
+            final = _final_answer(llm, question, intro, blocks, knowledge, custom_agent)
             yield _sse({"type": "final", "content": final})
             yield _sse({"type": "finish"})
         except Exception as e:
-            traceback.print_exc()
-            yield _sse({"type": "error", "content": str(e)})
+            yield _sse({"type": "error", "content": str(e), "detail": traceback.format_exc()[-4000:]})
 
     return StreamingResponse(generate(), media_type="text/event-stream")

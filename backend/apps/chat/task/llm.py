@@ -29,7 +29,7 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error, format_json_data, format_chart_fields, get_chat_brief_generate, get_chat_predict_data, \
     get_chat_chart_config, trigger_log_error
-from apps.chat.curd.custom_prompt import CustomPromptTypeEnum, find_custom_prompts
+from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, CustomPromptTypeEnum, find_custom_prompts
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
     ChatFinishStep, AxisObj, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
 from apps.data_training.curd.data_training import get_training_template
@@ -42,6 +42,7 @@ from apps.db.db import exec_sql, get_version, check_connection
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
+from apps.system.crud.user import is_system_admin
 from apps.system.models.system_model import SysArgModel
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
@@ -223,6 +224,24 @@ class LLMService:
                     if any(str(model.id) == str(args[3].custom_model) for model in _ai_model_list):
                         specialized_model_id = args[3].custom_model
                         print("use custom model: id[" + specialized_model_id + "]")
+        chat_question = args[2] if len(args) > 2 else None
+        selected_prompt_id = getattr(chat_question, "custom_prompt_id", None)
+        if selected_prompt_id:
+            if not _ai_model_list and args[1]:
+                _ai_model_list = get_ai_model_list(args[0], False)
+            chat = args[0].get(Chat, chat_question.chat_id) if chat_question and chat_question.chat_id else None
+            datasource_id = getattr(chat, "datasource", None) or getattr(chat_question, "datasource_id", None)
+            _prompt, _prompt_list, prompt_model_id = find_custom_prompts(
+                args[0],
+                CustomPromptTypeEnum.GENERATE_SQL,
+                datasource_id,
+                CustomPromptTargetScopeEnum.SMART_QA,
+                selected_prompt_id,
+                getattr(args[1], "id", None),
+                is_system_admin(args[1]),
+            )
+            if prompt_model_id and any(str(model.id) == str(prompt_model_id) for model in _ai_model_list):
+                specialized_model_id = prompt_model_id
         config: LLMConfig = await get_default_config(specialized_model_id)
         instance = cls(*args, **kwargs, config=config)
 
@@ -373,7 +392,7 @@ class LLMService:
                                                                 full_message=term_list)
 
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, ds_id: int = None):
-        if is_normal_user(self.current_user):
+        if not self.chat_question.custom_prompt_id:
             self.chat_question.custom_prompt = ""
             return
 
@@ -385,8 +404,15 @@ class LLMService:
                                                                           operate=OperationEnum.FILTER_CUSTOM_PROMPT,
                                                                           record_id=self.record.id,
                                                                           local_operation=True)
-        self.chat_question.custom_prompt, prompt_list = find_custom_prompts(_session, custom_prompt_type,
-                                                                            calculate_ds_id)
+        self.chat_question.custom_prompt, prompt_list, _prompt_model_id = find_custom_prompts(
+            _session,
+            custom_prompt_type,
+            calculate_ds_id,
+            CustomPromptTargetScopeEnum.SMART_QA,
+            self.chat_question.custom_prompt_id,
+            self.current_user.id,
+            is_system_admin(self.current_user),
+        )
         self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
                                                                         log=self.current_logs[
                                                                             OperationEnum.FILTER_CUSTOM_PROMPT],

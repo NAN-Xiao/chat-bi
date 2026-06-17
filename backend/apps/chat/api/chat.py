@@ -290,7 +290,11 @@ def find_base_question(record_id: int, session: SessionDep):
 @require_permissions(permission=AppPermission(type='chat', keyExpression="request_question.chat_id"))
 async def question_answer(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestionBase,
                           current_assistant: CurrentAssistant):
-    question = ChatQuestion(chat_id=request_question.chat_id, question=request_question.question)
+    question = ChatQuestion(
+        chat_id=request_question.chat_id,
+        question=request_question.question,
+        custom_prompt_id=request_question.custom_prompt_id,
+    )
     return await question_answer_inner(session, current_user, question, current_assistant, embedding=True)
 
 
@@ -444,14 +448,15 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 
         stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource,
                       ChatRecord.engine_type,
-                      ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.chart, ChatRecord.data).where(
+                      ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.chart, ChatRecord.data,
+                      ChatRecord.custom_prompt_id).where(
             and_(ChatRecord.id == chat_record_id))
         result = session.execute(stmt)
         for r in result:
             record = ChatRecord(id=r.id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
                                 engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by,
                                 chart=r.chart,
-                                data=r.data)
+                                data=r.data, custom_prompt_id=r.custom_prompt_id)
 
         if not record:
             raise Exception(f"Chat record with id {chat_record_id} not found")
@@ -465,7 +470,11 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             raise Exception(current_data.get("message") or "SQL 超出当前数据权限范围")
         record.data = orjson.dumps(current_data).decode()
 
-        request_question = ChatQuestion(chat_id=record.chat_id, question=record.question)
+        request_question = ChatQuestion(
+            chat_id=record.chat_id,
+            question=record.question,
+            custom_prompt_id=record.custom_prompt_id,
+        )
 
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant)
         llm_service.run_analysis_or_predict_task_async(session, action_type, record, in_chat, stream)

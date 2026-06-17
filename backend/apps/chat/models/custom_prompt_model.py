@@ -2,11 +2,15 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Identity, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Identity, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
-from apps.chat.curd.custom_prompt import CustomPromptTypeEnum
+from apps.chat.curd.custom_prompt import (
+    CustomPromptTargetScopeEnum,
+    CustomPromptTypeEnum,
+    CustomPromptVisibilityScopeEnum,
+)
 
 
 class CustomPrompt(SQLModel, table=True):
@@ -16,6 +20,18 @@ class CustomPrompt(SQLModel, table=True):
     type: Optional[CustomPromptTypeEnum] = Field(default=None, max_length=20)
     create_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
     name: Optional[str] = Field(default=None, max_length=255)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    target_scope: Optional[CustomPromptTargetScopeEnum] = Field(
+        default=CustomPromptTargetScopeEnum.SMART_QA,
+        max_length=32,
+    )
+    active: Optional[bool] = Field(default=False, sa_column=Column(Boolean, default=False))
+    ai_model_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
+    create_by: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
+    visibility_scope: Optional[CustomPromptVisibilityScopeEnum] = Field(
+        default=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+        sa_column=Column(String(32), nullable=False, server_default=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value),
+    )
     prompt: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     specific_ds: Optional[bool] = Field(default=False, sa_column=Column(Boolean, default=False))
     datasource_ids: Optional[list[int]] = Field(default=[], sa_column=Column(JSONB))
@@ -26,7 +42,27 @@ class CustomPromptInfo(BaseModel):
     type: Optional[CustomPromptTypeEnum] = None
     create_time: Optional[datetime] = None
     name: Optional[str] = None
+    description: Optional[str] = None
+    target_scope: Optional[CustomPromptTargetScopeEnum] = CustomPromptTargetScopeEnum.SMART_QA
+    active: Optional[bool] = False
+    ai_model_id: Optional[int] = None
+    ai_model_name: Optional[str] = None
+    can_manage: Optional[bool] = False
+    is_owner: Optional[bool] = False
+    prompt_visible: Optional[bool] = True
+    visibility_scope: Optional[CustomPromptVisibilityScopeEnum] = CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
     prompt: Optional[str] = None
     specific_ds: Optional[bool] = False
     datasource_ids: Optional[list[int]] = []
     datasource_names: Optional[list[str]] = []
+
+
+class CustomPromptOption(BaseModel):
+    id: int
+    type: Optional[CustomPromptTypeEnum] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    target_scope: Optional[CustomPromptTargetScopeEnum] = CustomPromptTargetScopeEnum.SMART_QA
+    ai_model_id: Optional[int] = None
+    ai_model_name: Optional[str] = None
+    visibility_scope: Optional[CustomPromptVisibilityScopeEnum] = CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC

@@ -1,122 +1,163 @@
 <script lang="ts" setup>
-import { nextTick, onMounted, reactive, ref, unref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import { promptApi } from '@/api/prompt'
 import { formatTimestamp } from '@/utils/date'
 import { datasourceApi } from '@/api/datasource'
+import { modelApi } from '@/api/system'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
+import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
+import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
+import icon_ai from '@/assets/svg/icon_ai.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { useClipboard } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import { convertFilterText, FilterText } from '@/components/filter-text'
+import { convertFilterText } from '@/components/filter-text'
 import { DrawerMain } from '@/components/drawer-main'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import Uploader from '@/views/system/excel-upload/Uploader.vue'
+import { useUserStore } from '@/stores/user'
 
-interface Form {
-  id?: string | null
+interface AgentForm {
+  id?: string | number | null
   type: string | null
   prompt: string | null
+  description: string | null
+  target_scope: string
+  active: boolean
+  ai_model_id: string | number | null
+  ai_model_name: string | null
+  can_manage?: boolean
   specific_ds: boolean
   datasource_ids: number[]
   datasource_names: string[]
   name: string | null
 }
+
 const drawerMainRef = ref()
 const { t } = useI18n()
 const { copy } = useClipboard({ legacy: true })
-const multipleSelectionAll = ref<any[]>([])
+const userStore = useUserStore()
+
 const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
 const currentType = ref('GENERATE_SQL')
-
 const options = ref<any[]>([])
-const selectable = () => {
-  return true
-}
+const aiModelOptions = ref<any[]>([])
+const fieldList = ref<any[]>([])
+const dialogFormVisible = ref(false)
+const rowInfoDialog = ref(false)
+const termFormRef = ref()
+const updateLoading = ref(false)
+const dialogTitle = ref('')
 
-const state = reactive<any>({
-  conditions: [],
-  filterTexts: [],
-})
-
-onMounted(() => {
-  datasourceApi.list().then((res) => {
-    filterOption.value[0].option = [...res]
-  })
-  search()
-})
-
-const dialogFormVisible = ref<boolean>(false)
-const multipleTableRef = ref()
-const isIndeterminate = ref(true)
-const checkAll = ref(false)
-const fieldList = ref<any>([])
 const pageInfo = reactive({
   currentPage: 1,
   pageSize: 10,
   total: 0,
 })
 
-const dialogTitle = ref('')
-const updateLoading = ref(false)
-const defaultForm = {
+const state = reactive<any>({
+  conditions: [],
+  filterTexts: [],
+})
+
+const defaultForm: AgentForm = {
   id: null,
   type: null,
   prompt: null,
+  description: null,
+  target_scope: 'SMART_QA',
+  active: false,
+  ai_model_id: null,
+  ai_model_name: null,
   datasource_ids: [],
   datasource_names: [],
   name: null,
   specific_ds: false,
 }
-const pageForm = ref<Form>(cloneDeep(defaultForm))
-const copyCode = () => {
-  copy(pageForm.value.prompt!)
-    .then(function () {
-      ElMessage.success(t('embedded.copy_successful'))
-    })
-    .catch(function () {
-      ElMessage.error(t('embedded.copy_failed'))
-    })
-}
-const cancelDelete = () => {
-  handleToggleRowSelection(false)
-  multipleSelectionAll.value = []
-  checkAll.value = false
-  isIndeterminate.value = false
+const pageForm = ref<AgentForm>(cloneDeep(defaultForm))
+
+const filterOption = ref<any[]>([
+  {
+    type: 'select',
+    option: [],
+    field: 'dslist',
+    title: t('ds.title'),
+    operate: 'in',
+    property: { placeholder: t('common.empty') + t('ds.title') },
+  },
+])
+
+const typeTitle = (type = currentType.value) => {
+  if (type === 'GENERATE_SQL') return t('prompt.ask_sql')
+  if (type === 'ANALYSIS') return t('prompt.data_analysis')
+  if (type === 'PREDICT_DATA') return t('prompt.data_prediction')
+  return ''
 }
 
-const getFileName = () => {
-  let title = ''
-  if (currentType.value === 'GENERATE_SQL') {
-    title = t('prompt.ask_sql')
+const loadDatasources = () => {
+  datasourceApi.list().then((res: any) => {
+    options.value = res || []
+    filterOption.value[0].option = [...(res || [])]
+  })
+}
+
+const loadAiModels = () => {
+  modelApi.listAvailable().then((res: any) => {
+    aiModelOptions.value = res || []
+  })
+}
+
+onMounted(() => {
+  loadDatasources()
+  loadAiModels()
+  search()
+})
+
+const getFileName = () => `${typeTitle()}.xlsx`
+
+const configParams = () => {
+  const params = new URLSearchParams()
+  if (keywords.value) {
+    params.set('name', keywords.value)
   }
-  if (currentType.value === 'ANALYSIS') {
-    title = t('prompt.data_analysis')
+
+  state.conditions.forEach((ele: any) => {
+    ele.value.forEach((itx: any) => {
+      params.append(ele.field, String(itx))
+    })
+  })
+
+  const query = params.toString()
+  return query ? `?${query}` : ''
+}
+
+const search = ($event: any = {}) => {
+  if ($event?.isComposing) {
+    return
   }
-  if (currentType.value === 'PREDICT_DATA') {
-    title = t('prompt.data_prediction')
-  }
-  return `${title}.xlsx`
+  searchLoading.value = true
+  oldKeywords.value = keywords.value
+  promptApi
+    .getList(pageInfo.currentPage, pageInfo.pageSize, currentType.value, configParams())
+    .then((res: any) => {
+      fieldList.value = res.data
+      pageInfo.total = res.total_count
+    })
+    .finally(() => {
+      searchLoading.value = false
+    })
 }
 
 const exportExcel = () => {
-  let title = ''
-  if (currentType.value === 'GENERATE_SQL') {
-    title = t('prompt.ask_sql')
-  }
-  if (currentType.value === 'ANALYSIS') {
-    title = t('prompt.data_analysis')
-  }
-  if (currentType.value === 'PREDICT_DATA') {
-    title = t('prompt.data_prediction')
-  }
+  const title = typeTitle()
   ElMessageBox.confirm(t('prompt.export_hint', { msg: pageInfo.total, type: title }), {
     confirmButtonType: 'primary',
     confirmButtonText: t('professional.export'),
@@ -125,8 +166,12 @@ const exportExcel = () => {
     autofocus: false,
   }).then(() => {
     searchLoading.value = true
+    const params: Record<string, string> = {}
+    if (keywords.value) {
+      params.name = keywords.value
+    }
     promptApi
-      .export2Excel(currentType.value, keywords.value ? { name: keywords.value } : {})
+      .export2Excel(currentType.value, params)
       .then((res) => {
         const blob = new Blob([res], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -155,7 +200,6 @@ const exportExcel = () => {
             console.error('Error processing error response:', e)
           }
         } else {
-          console.error('Other error:', error)
           ElMessage({
             message: error,
             type: 'error',
@@ -168,27 +212,7 @@ const exportExcel = () => {
       })
   })
 }
-const deleteBatchUser = () => {
-  ElMessageBox.confirm(
-    t('prompt.selected_prompt_words', { msg: multipleSelectionAll.value.length }),
-    {
-      confirmButtonType: 'danger',
-      confirmButtonText: t('dashboard.delete'),
-      cancelButtonText: t('common.cancel'),
-      customClass: 'confirm-no_icon',
-      autofocus: false,
-    }
-  ).then(() => {
-    promptApi.deleteEmbedded(multipleSelectionAll.value.map((ele) => ele.id)).then(() => {
-      ElMessage({
-        type: 'success',
-        message: t('dashboard.delete_success'),
-      })
-      multipleSelectionAll.value = []
-      search()
-    })
-  })
-}
+
 const deleteHandler = (row: any) => {
   ElMessageBox.confirm(t('prompt.prompt_word_name_de', { msg: row.name }), {
     confirmButtonType: 'danger',
@@ -198,7 +222,6 @@ const deleteHandler = (row: any) => {
     autofocus: false,
   }).then(() => {
     promptApi.deleteEmbedded([row.id]).then(() => {
-      multipleSelectionAll.value = multipleSelectionAll.value.filter((ele) => row.id !== ele.id)
       ElMessage({
         type: 'success',
         message: t('dashboard.delete_success'),
@@ -207,75 +230,15 @@ const deleteHandler = (row: any) => {
     })
   })
 }
-const handleSelectionChange = (val: any[]) => {
-  if (toggleRowLoading.value) return
-  const arr = fieldList.value.filter(selectable)
-  const ids = arr.map((ele: any) => ele.id)
-  multipleSelectionAll.value = [
-    ...multipleSelectionAll.value.filter((ele: any) => !ids.includes(ele.id)),
-    ...val,
-  ]
-  isIndeterminate.value = !(val.length === 0 || val.length === arr.length)
-  checkAll.value = val.length === arr.length
-}
-const handleCheckAllChange = (val: any) => {
-  isIndeterminate.value = false
-  handleSelectionChange(val ? fieldList.value.filter(selectable) : [])
-  if (val) {
-    handleToggleRowSelection()
-  } else {
-    multipleTableRef.value.clearSelection()
-  }
-}
 
-const toggleRowLoading = ref(false)
-
-const handleToggleRowSelection = (check: boolean = true) => {
-  toggleRowLoading.value = true
-  const arr = fieldList.value.filter(selectable)
-  let i = 0
-  const ids = multipleSelectionAll.value.map((ele: any) => ele.id)
-  for (const key in arr) {
-    if (ids.includes((arr[key] as any).id)) {
-      i += 1
-      multipleTableRef.value.toggleRowSelection(arr[key], check)
-    }
-  }
-  toggleRowLoading.value = false
-  checkAll.value = i === arr.length
-  isIndeterminate.value = !(i === 0 || i === arr.length)
-}
-
-const search = ($event: any = {}) => {
-  if ($event?.isComposing) {
-    return
-  }
-  searchLoading.value = true
-  oldKeywords.value = keywords.value
-  promptApi
-    .getList(pageInfo.currentPage, pageInfo.pageSize, currentType.value, configParams())
-    .then((res: any) => {
-      toggleRowLoading.value = true
-      fieldList.value = res.data
-      pageInfo.total = res.total_count
-      searchLoading.value = false
-      nextTick(() => {
-        handleToggleRowSelection()
-      })
-    })
-    .finally(() => {
-      searchLoading.value = false
-    })
-}
-
-const termFormRef = ref()
-const validatePass = (_: any, value: any, callback: any) => {
+const validateDatasource = (_: any, value: any, callback: any) => {
   if (pageForm.value.specific_ds && !value.length) {
     callback(new Error(t('datasource.Please_select') + t('common.empty') + t('ds.title')))
   } else {
     callback()
   }
 }
+
 const rules = {
   name: [
     {
@@ -285,8 +248,8 @@ const rules = {
   ],
   datasource_ids: [
     {
-      validator: validatePass,
-      trigger: 'blur',
+      validator: validateDatasource,
+      trigger: 'change',
     },
   ],
   prompt: [
@@ -297,16 +260,10 @@ const rules = {
   ],
 }
 
-const list = () => {
-  datasourceApi.list().then((res: any) => {
-    options.value = res || []
-  })
-}
-
 const saveHandler = () => {
   termFormRef.value.validate((res: any) => {
     if (res) {
-      const obj = unref(pageForm)
+      const obj = cloneDeep(pageForm.value)
       if (!obj.id) {
         delete obj.id
       }
@@ -329,12 +286,20 @@ const saveHandler = () => {
 }
 
 const editHandler = (row: any) => {
-  pageForm.value.id = null
-  pageForm.value.type = unref(currentType)
+  pageForm.value = cloneDeep(defaultForm)
+  pageForm.value.type = currentType.value
   if (row) {
-    pageForm.value = cloneDeep(row)
+    pageForm.value = cloneDeep({
+      description: null,
+      target_scope: 'SMART_QA',
+      active: false,
+      ai_model_id: null,
+      ai_model_name: null,
+      ...row,
+    })
   }
-  list()
+  loadDatasources()
+  loadAiModels()
   dialogTitle.value = row?.id ? t('prompt.edit_prompt_word') : t('prompt.add_prompt_word')
   dialogFormVisible.value = true
 }
@@ -354,10 +319,16 @@ const handleCurrentChange = (val: number) => {
   pageInfo.currentPage = val
   search()
 }
-const rowInfoDialog = ref(false)
 
 const handleRowClick = (row: any) => {
-  pageForm.value = cloneDeep(row)
+  pageForm.value = cloneDeep({
+    description: null,
+    target_scope: 'SMART_QA',
+    active: false,
+    ai_model_id: null,
+    ai_model_name: null,
+    ...row,
+  })
   rowInfoDialog.value = true
 }
 
@@ -366,41 +337,15 @@ const onRowFormClose = () => {
   rowInfoDialog.value = false
 }
 
-const handleChange = () => {
+const handleDatasourceChange = () => {
   termFormRef.value.validateField('datasource_ids')
 }
 
-const typeChange = (val: any) => {
+const typeChange = (val: string) => {
   currentType.value = val
-  pageInfo.currentPage = 0
+  pageInfo.currentPage = 1
   search()
 }
-
-const configParams = () => {
-  const params = new URLSearchParams()
-  if (keywords.value) {
-    params.set('name', keywords.value)
-  }
-
-  state.conditions.forEach((ele: any) => {
-    ele.value.forEach((itx: any) => {
-      params.append(ele.field, String(itx))
-    })
-  })
-
-  const query = params.toString()
-  return query ? `?${query}` : ''
-}
-const filterOption = ref<any[]>([
-  {
-    type: 'select',
-    option: [],
-    field: 'dslist',
-    title: t('ds.title'),
-    operate: 'in',
-    property: { placeholder: t('common.empty') + t('ds.title') },
-  },
-])
 
 const fillFilterText = () => {
   const textArray = state.conditions?.length
@@ -409,15 +354,17 @@ const fillFilterText = () => {
   state.filterTexts = [...textArray]
   Object.assign(state.filterTexts, textArray)
 }
+
 const searchCondition = (conditions: any) => {
   state.conditions = conditions
   fillFilterText()
+  pageInfo.currentPage = 1
   search()
   drawerMainClose()
 }
 
 const clearFilter = (params?: number) => {
-  let index = params ? params : 0
+  const index = params ? params : 0
   if (isNaN(index)) {
     state.filterTexts = []
   } else {
@@ -432,6 +379,39 @@ const drawerMainOpen = async () => {
 
 const drawerMainClose = () => {
   drawerMainRef.value.close()
+}
+
+const scopeText = (row: any) => {
+  if (row.specific_ds) {
+    return row.datasource_names?.length
+      ? row.datasource_names.join(', ')
+      : t('training.partial_data_sources')
+  }
+  return t('training.all_data_sources')
+}
+
+const modelText = (row: any) => {
+  return row.ai_model_name || t('prompt.default_ai_model')
+}
+
+const targetScopeText = (scope?: string | null) => {
+  if (scope === 'ANALYSIS_ASSISTANT') return t('prompt.target_scope_analysis_assistant')
+  if (scope === 'ALL') return t('prompt.target_scope_all')
+  return t('prompt.target_scope_smart_qa')
+}
+
+const canManageAgent = (row: any) => {
+  return row.can_manage === true || userStore.isSystemManagerUser
+}
+
+const copyCode = () => {
+  copy(pageForm.value.prompt || '')
+    .then(() => {
+      ElMessage.success(t('embedded.copy_successful'))
+    })
+    .catch(() => {
+      ElMessage.error(t('embedded.copy_failed'))
+    })
 }
 </script>
 
@@ -464,7 +444,7 @@ const drawerMainClose = () => {
       <div class="tool-row">
         <el-input
           v-model="keywords"
-          style="width: 240px; margin-right: 12px"
+          style="width: 240px"
           :placeholder="$t('dashboard.search')"
           clearable
           @keydown.enter.exact.prevent="search"
@@ -501,105 +481,124 @@ const drawerMainClose = () => {
         </el-button>
       </div>
     </div>
-    <div
-      v-if="!searchLoading"
-      class="table-content"
-      :class="multipleSelectionAll.length ? 'show-pagination_height' : ''"
-    >
+
+    <div v-loading="searchLoading" class="agent-content">
       <filter-text
         :total="pageInfo.total"
         :filter-texts="state.filterTexts"
         @clear-filter="clearFilter"
       />
-      <div class="preview-or-schema">
-        <el-table
-          ref="multipleTableRef"
-          :data="fieldList"
-          style="width: 100%"
-          @row-click="handleRowClick"
-          @selection-change="handleSelectionChange"
-        >
-          <el-table-column :selectable="selectable" type="selection" width="55" />
-          <el-table-column prop="name" :label="$t('prompt.prompt_word_name')" width="280">
-          </el-table-column>
-          <el-table-column prop="prompt" :label="$t('prompt.prompt_word_content')" min-width="240">
-            <template #default="scope">
-              <div class="field-comment_d">
-                <span :title="scope.row.prompt" class="notes-in_table">{{ scope.row.prompt }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column :label="$t('training.effective_data_sources')" min-width="240"
-            ><template #default="scope">
-              <div v-if="scope.row.specific_ds" class="field-comment_d">
-                <span :title="scope.row.datasource_names" class="notes-in_table">{{
-                  scope.row.datasource_names.join(',')
-                }}</span>
-              </div>
-              <div v-else>{{ t('training.all_data_sources') }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="create_time"
-            sortable
-            :label="$t('dashboard.create_time')"
-            width="240"
-          >
-            <template #default="scope">
-              <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column fixed="right" width="80" :label="t('ds.actions')">
-            <template #default="scope">
-              <div class="field-comment">
-                <el-tooltip
-                  :offset="14"
-                  effect="dark"
-                  :content="$t('datasource.edit')"
-                  placement="top"
-                >
-                  <el-icon class="action-btn" size="16" @click.stop="editHandler(scope.row)">
-                    <IconOpeEdit></IconOpeEdit>
-                  </el-icon>
-                </el-tooltip>
-                <el-tooltip
-                  :offset="14"
-                  effect="dark"
-                  :content="$t('dashboard.delete')"
-                  placement="top"
-                >
-                  <el-icon class="action-btn" size="16" @click.stop="deleteHandler(scope.row)">
-                    <IconOpeDelete></IconOpeDelete>
-                  </el-icon>
-                </el-tooltip>
-              </div>
-            </template>
-          </el-table-column>
-          <template #empty>
-            <EmptyBackground
-              v-if="!!oldKeywords && !fieldList.length"
-              :description="$t('datasource.relevant_content_found')"
-              img-type="tree"
-            />
-            <template v-if="!oldKeywords && !fieldList.length">
-              <EmptyBackground
-                class="datasource-yet"
-                :description="$t('prompt.no_prompt_words')"
-                img-type="noneWhite"
-              />
 
-              <div style="text-align: center; margin-top: -23px">
-                <el-button type="primary" @click="editHandler(null)">
-                  <template #icon>
-                    <icon_add_outlined></icon_add_outlined>
-                  </template>
-                  {{ $t('prompt.add_prompt_word') }}
-                </el-button>
+      <div v-if="fieldList.length" class="card-content">
+        <el-row :gutter="16" class="w-full">
+          <el-col
+            v-for="item in fieldList"
+            :key="item.id"
+            :xs="24"
+            :sm="12"
+            :md="12"
+            :lg="8"
+            :xl="6"
+            class="mb-16"
+          >
+            <article class="agent-card" @click="handleRowClick(item)">
+              <div class="name-icon">
+                <el-icon class="icon-primary" size="32">
+                  <icon_ai></icon_ai>
+                </el-icon>
+                <div class="info">
+                  <div class="name ellipsis" :title="item.name">{{ item.name }}</div>
+                  <div class="sub-title">{{ typeTitle(item.type) }}</div>
+                </div>
               </div>
-            </template>
-          </template>
-        </el-table>
+
+              <div class="detail-list">
+                <div class="type-value">
+                  <span class="type">{{ $t('prompt.agent_description') }}</span>
+                  <span class="value ellipsis" :title="item.description || $t('prompt.agent_empty_description')">
+                    {{ item.description || $t('prompt.agent_empty_description') }}
+                  </span>
+                </div>
+                <div class="type-value">
+                  <span class="type">{{ $t('prompt.ai_model') }}</span>
+                  <span class="value ellipsis" :title="modelText(item)">{{ modelText(item) }}</span>
+                </div>
+                <div class="type-value">
+                  <span class="type">{{ $t('prompt.target_scope') }}</span>
+                  <span class="value ellipsis" :title="targetScopeText(item.target_scope)">
+                    {{ targetScopeText(item.target_scope) }}
+                  </span>
+                </div>
+                <div class="type-value">
+                  <span class="type">{{ $t('prompt.active_status') }}</span>
+                  <span class="value" :class="item.active ? 'is-active-status' : 'is-inactive-status'">
+                    {{ item.active ? $t('prompt.active_enabled') : $t('prompt.active_disabled') }}
+                  </span>
+                </div>
+                <div class="type-value">
+                  <span class="type">{{ $t('training.effective_data_sources') }}</span>
+                  <span class="value ellipsis" :title="scopeText(item)">{{ scopeText(item) }}</span>
+                </div>
+              </div>
+
+              <div class="bottom-info">
+                <div class="form-rate">
+                  <el-icon class="form-icon" size="14">
+                    <icon_key_outlined></icon_key_outlined>
+                  </el-icon>
+                  {{ typeTitle(item.type) }}
+                </div>
+                <div class="create-time">
+                  {{ formatTimestamp(item.create_time, 'YYYY-MM-DD HH:mm:ss') }}
+                </div>
+                <div v-if="canManageAgent(item)" class="methods" @click.stop>
+                  <el-popover
+                    trigger="click"
+                    :teleported="true"
+                    popper-class="popover-card_agent"
+                    placement="bottom-end"
+                  >
+                    <template #reference>
+                      <button type="button" class="more" aria-label="more actions">
+                        <icon_more_outlined></icon_more_outlined>
+                      </button>
+                    </template>
+                    <div class="content">
+                      <div class="item" @click.stop="editHandler(item)">
+                        <el-icon size="16">
+                          <IconOpeEdit></IconOpeEdit>
+                        </el-icon>
+                        {{ $t('datasource.edit') }}
+                      </div>
+                      <div class="item" @click.stop="deleteHandler(item)">
+                        <el-icon size="16">
+                          <IconOpeDelete></IconOpeDelete>
+                        </el-icon>
+                        {{ $t('dashboard.delete') }}
+                      </div>
+                    </div>
+                  </el-popover>
+                </div>
+              </div>
+            </article>
+          </el-col>
+        </el-row>
       </div>
+
+      <template v-else-if="!searchLoading">
+        <EmptyBackground
+          v-if="!!oldKeywords"
+          :description="$t('datasource.relevant_content_found')"
+          img-type="tree"
+        />
+        <template v-else>
+          <EmptyBackground
+            class="datasource-yet"
+            :description="$t('prompt.no_prompt_words')"
+            img-type="noneWhite"
+          />
+        </template>
+      </template>
     </div>
 
     <div v-if="fieldList.length" class="pagination-container">
@@ -613,25 +612,6 @@ const drawerMainClose = () => {
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
       />
-    </div>
-    <div v-if="multipleSelectionAll.length" class="bottom-select">
-      <el-checkbox
-        v-model="checkAll"
-        :indeterminate="isIndeterminate"
-        @change="handleCheckAllChange"
-      >
-        {{ $t('datasource.select_all') }}
-      </el-checkbox>
-
-      <button class="danger-button" @click="deleteBatchUser">{{ $t('dashboard.delete') }}</button>
-
-      <span class="selected">{{
-        $t('user.selected_2_items', { msg: multipleSelectionAll.length })
-      }}</span>
-
-      <el-button text @click="cancelDelete">
-        {{ $t('common.cancel') }}
-      </el-button>
     </div>
   </div>
 
@@ -663,11 +643,60 @@ const drawerMainClose = () => {
           clearable
         />
       </el-form-item>
+
+      <el-form-item prop="description" :label="t('prompt.agent_description')">
+        <el-input
+          v-model="pageForm.description"
+          :placeholder="$t('prompt.agent_description_placeholder')"
+          :autosize="{ minRows: 2, maxRows: 4 }"
+          type="textarea"
+        />
+      </el-form-item>
+
+      <el-form-item prop="ai_model_id" :label="t('prompt.ai_model')">
+        <el-select
+          v-model="pageForm.ai_model_id"
+          clearable
+          filterable
+          :placeholder="$t('prompt.select_ai_model_placeholder')"
+          style="width: 100%"
+        >
+          <el-option :label="$t('prompt.default_ai_model')" :value="null" />
+          <el-option
+            v-for="item in aiModelOptions"
+            :key="item.id"
+            :label="item.default_model ? `${item.name}（${$t('prompt.default_ai_model')}）` : item.name"
+            :value="item.id"
+          />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item prop="target_scope" :label="t('prompt.target_scope')">
+        <el-radio-group v-model="pageForm.target_scope">
+          <el-radio :value="'SMART_QA'">{{ $t('prompt.target_scope_smart_qa') }}</el-radio>
+          <el-radio :value="'ANALYSIS_ASSISTANT'">
+            {{ $t('prompt.target_scope_analysis_assistant') }}
+          </el-radio>
+          <el-radio :value="'ALL'">{{ $t('prompt.target_scope_all') }}</el-radio>
+        </el-radio-group>
+      </el-form-item>
+
+      <el-form-item prop="active" :label="t('prompt.active_status')">
+        <el-switch
+          v-model="pageForm.active"
+          :active-text="$t('prompt.active_enabled')"
+          :inactive-text="$t('prompt.active_disabled')"
+        />
+        <div class="tips">
+          {{ t('prompt.active_hint') }}
+        </div>
+      </el-form-item>
+
       <el-form-item prop="prompt" :label="t('prompt.prompt_word_content')">
         <el-input
           v-model="pageForm.prompt"
           :placeholder="$t('prompt.replaced_with')"
-          :autosize="{ minRows: 3.636, maxRows: 11.09 }"
+          :autosize="{ minRows: 6, maxRows: 14 }"
           type="textarea"
         />
         <div class="tips">
@@ -692,7 +721,7 @@ const drawerMainClose = () => {
           filterable
           :placeholder="$t('datasource.Please_select') + $t('common.empty') + $t('ds.title')"
           style="width: 100%; margin-top: 8px"
-          @change="handleChange"
+          @change="handleDatasourceChange"
         >
           <el-option v-for="item in options" :key="item.id" :label="item.name" :value="item.id" />
         </el-select>
@@ -707,6 +736,7 @@ const drawerMainClose = () => {
       </div>
     </template>
   </el-drawer>
+
   <el-drawer
     v-model="rowInfoDialog"
     :title="$t('menu.Details')"
@@ -719,6 +749,26 @@ const drawerMainClose = () => {
       <el-form-item :label="t('prompt.prompt_word_name')">
         <div class="content">
           {{ pageForm.name }}
+        </div>
+      </el-form-item>
+      <el-form-item :label="t('prompt.agent_description')">
+        <div class="content">
+          {{ pageForm.description || t('prompt.agent_empty_description') }}
+        </div>
+      </el-form-item>
+      <el-form-item :label="t('prompt.ai_model')">
+        <div class="content">
+          {{ modelText(pageForm) }}
+        </div>
+      </el-form-item>
+      <el-form-item :label="t('prompt.target_scope')">
+        <div class="content">
+          {{ targetScopeText(pageForm.target_scope) }}
+        </div>
+      </el-form-item>
+      <el-form-item :label="t('prompt.active_status')">
+        <div class="content">
+          {{ pageForm.active ? t('prompt.active_enabled') : t('prompt.active_disabled') }}
         </div>
       </el-form-item>
       <el-form-item :label="t('prompt.prompt_word_content')">
@@ -737,13 +787,14 @@ const drawerMainClose = () => {
         <div class="content">
           {{
             pageForm.datasource_names.length && pageForm.specific_ds
-              ? pageForm.datasource_names.join()
+              ? pageForm.datasource_names.join(', ')
               : t('training.all_data_sources')
           }}
         </div>
       </el-form-item>
     </el-form>
   </el-drawer>
+
   <drawer-main
     ref="drawerMainRef"
     :filter-options="filterOption"
@@ -755,9 +806,13 @@ const drawerMainClose = () => {
 .no-margin {
   margin: 0;
 }
+
 .prompt {
   height: 100%;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 
   .datasource-yet {
     padding-bottom: 0;
@@ -765,21 +820,11 @@ const drawerMainClose = () => {
     padding-top: 160px;
   }
 
-  :deep(.ed-table__cell) {
-    cursor: pointer;
-  }
-
-  .tool-row {
-    display: flex;
-    align-items: center;
-    flex-direction: row;
-    gap: 8px;
-  }
-
   .tool-left {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
     margin-bottom: 16px;
 
     .btn-select {
@@ -791,6 +836,7 @@ const drawerMainClose = () => {
       background: #ffffff;
       border: 1px solid var(--ed-border-color);
       border-radius: 6px;
+      flex: none;
 
       .is-active {
         background: var(--ed-color-primary-1a, #1cba901a);
@@ -800,13 +846,254 @@ const drawerMainClose = () => {
       .ed-button:not(.is-active) {
         color: #1f2329;
       }
+
       .ed-button.is-text {
         height: 24px;
         padding: 0 8px;
         line-height: 22px;
       }
+
       .ed-button + .ed-button {
         margin-left: 4px;
+      }
+    }
+  }
+
+  .tool-row {
+    display: flex;
+    align-items: center;
+    flex-direction: row;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .agent-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 2px;
+  }
+
+  .card-content {
+    padding-top: 12px;
+
+    .w-full {
+      width: 100%;
+    }
+
+    .mb-16 {
+      margin-bottom: 16px;
+    }
+  }
+
+  .agent-card {
+    width: 100%;
+    height: 246px;
+    border: 1px solid var(--workspace-border, #e2eaf4);
+    padding: 16px 54px 20px 16px;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    transition:
+      box-shadow 0.12s ease,
+      transform 0.12s ease,
+      border-color 0.12s ease;
+
+    &:hover {
+      border-color: var(--workspace-border, #e2eaf4);
+      box-shadow: 0 16px 36px rgba(24, 46, 86, 0.11);
+      transform: translateY(-2px) scale(1.012);
+    }
+
+    .name-icon {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+
+      .icon-primary {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        background: #2f6de5;
+        color: #ffffff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 32px;
+
+        :deep(svg) {
+          width: 20px;
+          height: 20px;
+        }
+
+        :deep(path) {
+          fill: currentColor !important;
+        }
+      }
+
+      .info {
+        margin-left: 12px;
+        max-width: calc(100% - 50px);
+        min-width: 0;
+      }
+
+      .name {
+        font-weight: 500;
+        font-size: 16px;
+        line-height: 24px;
+        max-width: 100%;
+        color: var(--workspace-text-primary, #1b2a41);
+      }
+
+      .sub-title {
+        font-weight: 400;
+        font-size: 12px;
+        line-height: 20px;
+        color: var(--workspace-text-secondary, #66758f);
+      }
+    }
+
+    .detail-list {
+      flex: 0 0 auto;
+      min-width: 0;
+    }
+
+    .type-value {
+      display: flex;
+      align-items: center;
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 22px;
+
+      .type {
+        color: var(--workspace-text-secondary, #66758f);
+        flex: 0 0 86px;
+        white-space: nowrap;
+      }
+
+      .value {
+        margin-left: 16px;
+        min-width: 0;
+        flex: 1;
+        color: var(--workspace-text-primary, #1b2a41);
+
+        &.is-active-status {
+          color: var(--ed-color-primary, #1cba90);
+        }
+
+        &.is-inactive-status {
+          color: var(--workspace-text-tertiary, #8a97aa);
+        }
+      }
+    }
+
+    .type-value + .type-value {
+      margin-top: 6px;
+    }
+
+    .bottom-info {
+      margin-top: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      height: 22px;
+
+      .form-rate {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        color: var(--workspace-text-secondary, #66758f);
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        .form-icon {
+          margin-right: 10px;
+          flex: 0 0 auto;
+          color: var(--workspace-text-secondary, #66758f);
+        }
+      }
+
+      .create-time {
+        color: var(--workspace-text-secondary, #66758f);
+        font-size: 12px;
+        line-height: 20px;
+        flex: 0 0 auto;
+      }
+
+      .methods {
+        position: absolute;
+        right: 16px;
+        top: 16px;
+        align-items: center;
+        display: flex;
+
+        .more {
+          border: 0;
+          padding: 0;
+          color: var(--workspace-text-secondary, #66758f);
+          background: transparent;
+          appearance: none;
+          line-height: 1;
+          position: relative;
+          cursor: pointer;
+          width: 28px;
+          height: 28px;
+          flex: 0 0 28px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition:
+            color 0.16s ease,
+            transform 0.16s ease;
+
+          svg {
+            position: relative;
+            z-index: 10;
+          }
+
+          &::after {
+            content: '';
+            position: absolute;
+            border-radius: 8px;
+            width: 28px;
+            height: 28px;
+            transform: translate(-50%, -50%);
+            top: 50%;
+            left: 50%;
+            background: var(--workspace-control-bg, #f7faff);
+            border: 1px solid var(--workspace-border-soft, #eff4fa);
+            box-shadow: 0 1px 2px rgba(24, 46, 86, 0.05);
+            transition:
+              background-color 0.16s ease,
+              border-color 0.16s ease,
+              box-shadow 0.16s ease;
+          }
+
+          &:hover {
+            color: var(--workspace-text-primary, #1b2a41);
+            transform: translateY(-1px);
+
+            &::after {
+              background-color: var(--workspace-control-hover-bg, #edf3ff);
+              border-color: var(--workspace-border, #e2eaf4);
+              box-shadow: 0 4px 10px rgba(24, 46, 86, 0.08);
+            }
+          }
+
+          &:focus-visible {
+            outline: none;
+          }
+        }
       }
     }
   }
@@ -817,145 +1104,9 @@ const drawerMainClose = () => {
     align-items: center;
     margin-top: 16px;
   }
-
-  .table-content {
-    max-height: calc(100% - 104px);
-    overflow-y: auto;
-
-    &.show-pagination_height {
-      max-height: calc(100% - 165px);
-    }
-
-    .preview-or-schema {
-      .field-comment_d {
-        display: flex;
-        align-items: center;
-        min-height: 24px;
-      }
-      .notes-in_table {
-        max-width: 100%;
-        display: -webkit-box;
-        max-height: 44px;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2; /* 限制行数为3 */
-        overflow: hidden;
-        text-overflow: ellipsis;
-        word-break: break-word;
-        white-space: pre-wrap;
-      }
-      .ed-icon {
-        color: #646a73;
-      }
-
-      .user-status-container {
-        display: flex;
-        align-items: center;
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
-        height: 24px;
-
-        .ed-icon {
-          margin-left: 8px;
-        }
-      }
-
-      .field-comment {
-        height: 24px;
-
-        .ed-icon {
-          position: relative;
-          cursor: pointer;
-          margin-top: 4px;
-
-          &::after {
-            content: '';
-            background-color: #1f23291a;
-            position: absolute;
-            border-radius: 6px;
-            width: 24px;
-            height: 24px;
-            transform: translate(-50%, -50%);
-            top: 50%;
-            left: 50%;
-            display: none;
-          }
-
-          &:not(.not-allow):hover {
-            &::after {
-              display: block;
-            }
-          }
-
-          &.not-allow {
-            cursor: not-allowed;
-          }
-        }
-        .ed-icon + .ed-icon {
-          margin-left: 12px;
-        }
-      }
-
-      .preview-num {
-        margin: 12px 0;
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
-        color: #646a73;
-      }
-    }
-  }
-
-  .bottom-select {
-    position: absolute;
-    height: 64px;
-    width: calc(100% + 48px);
-    left: -24px;
-    bottom: -16px;
-    border-top: 1px solid #1f232926;
-    display: flex;
-    background-color: #fff;
-    align-items: center;
-    padding-left: 24px;
-    background-color: #fff;
-    z-index: 10;
-
-    .danger-button {
-      border: 1px solid var(--ed-color-danger);
-      color: var(--ed-color-danger);
-      border-radius: var(--ed-border-radius-base);
-      min-width: 80px;
-      height: 32px;
-      line-height: 32px;
-      text-align: center;
-      cursor: pointer;
-      margin: 0 16px;
-      background-color: transparent;
-    }
-
-    .primary-button {
-      border: 1px solid var(--ed-color-primary);
-      color: var(--ed-color-primary);
-      border-radius: var(--ed-border-radius-base);
-      min-width: 80px;
-      height: 32px;
-      line-height: 32px;
-      text-align: center;
-      cursor: pointer;
-      margin: 0 16px;
-      background-color: transparent;
-    }
-
-    .selected {
-      font-weight: 400;
-      font-size: 14px;
-      line-height: 22px;
-      color: #646a73;
-      margin-right: 12px;
-    }
-  }
 }
 </style>
+
 <style lang="less">
 .prompt-term_drawer {
   .ed-form-item--label-top .ed-form-item__label {
@@ -986,14 +1137,62 @@ const drawerMainClose = () => {
     line-height: 22px;
     color: #ff8800;
   }
+
   .no-error.no-error {
     .ed-form-item__error {
       display: none;
     }
     margin-bottom: 16px;
   }
+
   .ed-textarea__inner {
     line-height: 22px;
+  }
+}
+
+.popover-card_agent.popover-card_agent.popover-card_agent {
+  box-shadow: 0px 4px 8px 0px #1f23291a;
+  border-radius: 6px;
+  border: 1px solid #dee0e3;
+  width: fit-content !important;
+  min-width: 120px !important;
+  padding: 0;
+
+  .content {
+    position: relative;
+
+    .item {
+      position: relative;
+      padding: 0 12px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+
+      .ed-icon {
+        margin-right: 8px;
+        color: #646a73;
+      }
+
+      &:hover {
+        &::after {
+          display: block;
+        }
+      }
+
+      &::after {
+        content: '';
+        width: calc(100% - 8px);
+        height: 32px;
+        border-radius: 6px;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #1f23291a;
+        display: none;
+      }
+    }
   }
 }
 </style>
