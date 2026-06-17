@@ -101,7 +101,7 @@
     "ask_sql": "데이터 조회 SQL",
     "data_analysis": "데이터 분석",
     "data_prediction": "데이터 예측",
-    "add_prompt_word": "Agent 추가",
+    "add_prompt_word": "새 Agent",
     "prompt_word_name": "이름",
     "agent_description": "설명",
     "agent_description_placeholder": "Agent 설명을 입력하세요",

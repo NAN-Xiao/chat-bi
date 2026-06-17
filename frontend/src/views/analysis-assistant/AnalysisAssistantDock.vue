@@ -14,7 +14,7 @@ import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
-import { promptApi } from '@/api/prompt'
+import AgentSelector from '@/components/custom-agent/AgentSelector.vue'
 
 interface DockMessage extends AnalysisAssistantMessage {
   id: number
@@ -73,7 +73,6 @@ const analysisContext = useDatasourceContextStore()
 const messages = ref<DockMessage[]>([])
 const inputMessage = ref('')
 const selectedCustomPromptId = ref<string | number | null>(null)
-const customPromptOptions = ref<any[]>([])
 const scrollRef = ref()
 const inputRef = ref()
 const isStreaming = ref(false)
@@ -139,28 +138,6 @@ const hasMessages = computed(() => messages.value.length > 0)
 const dockStyle = computed(() => (props.expanded ? { width: `${dockWidth.value}px` } : undefined))
 
 const dockTabStyle = computed(() => ({ top: `${dockTabTop.value}px` }))
-
-const loadCustomPromptOptions = () => {
-  const datasourceId = analysisContext.datasourceId
-  promptApi
-    .options({
-      target_scope: 'ANALYSIS_ASSISTANT',
-      ...(datasourceId ? { datasource_id: datasourceId } : {}),
-    })
-    .then((res: any) => {
-      customPromptOptions.value = res || []
-      if (
-        selectedCustomPromptId.value &&
-        !customPromptOptions.value.some((item) => String(item.id) === String(selectedCustomPromptId.value))
-      ) {
-        selectedCustomPromptId.value = null
-      }
-    })
-    .catch((e: any) => {
-      console.error(e)
-      customPromptOptions.value = []
-    })
-}
 
 const getDockTabTime = () =>
   typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -385,7 +362,6 @@ onMounted(() => {
   analysisContext
     .loadDatasources()
     .catch((e) => console.error(e))
-    .finally(() => loadCustomPromptOptions())
 })
 
 const scrollToBottom = () => {
@@ -681,7 +657,6 @@ watch(
     if (oldValue && value !== oldValue) {
       clearMessages()
     }
-    loadCustomPromptOptions()
   }
 )
 
@@ -899,23 +874,16 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
             @keydown.enter.exact.prevent="($event: any) => sendMessage($event)"
             @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
-          <el-select
+          <AgentSelector
             v-model="selectedCustomPromptId"
             class="agent-select"
-            clearable
-            filterable
             :disabled="isStreaming"
-            placeholder="默认 Agent"
-            @click.stop
-          >
-            <el-option label="默认 Agent" :value="null" />
-            <el-option
-              v-for="agent in customPromptOptions"
-              :key="agent.id"
-              :label="agent.name"
-              :value="agent.id"
-            />
-          </el-select>
+            :datasource-id="analysisContext.datasourceId"
+            :datasource-name="analysisContext.datasourceName"
+            target-scope="ANALYSIS_ASSISTANT"
+            create-type="ANALYSIS"
+            :custom-prompt-types="['GENERATE_SQL', 'ANALYSIS', 'PREDICT_DATA']"
+          />
           <el-button
             v-if="!isStreaming"
             circle

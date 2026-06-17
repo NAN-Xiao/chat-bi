@@ -107,7 +107,7 @@ def find_custom_prompts(
     ai_model_id: Optional[int] = None
     for row in rows:
         visibility_scope = row.get("visibility_scope") or CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value
-        if not can_manage_all and visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
+        if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
             if current_user_id is None or str(row.get("create_by")) != str(current_user_id):
                 continue
 

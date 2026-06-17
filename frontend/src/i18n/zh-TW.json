@@ -101,7 +101,7 @@
     "ask_sql": "問數 SQL",
     "data_analysis": "資料分析",
     "data_prediction": "資料預測",
-    "add_prompt_word": "新增 Agent",
+    "add_prompt_word": "新建 Agent",
     "prompt_word_name": "名稱",
     "agent_description": "描述",
     "agent_description_placeholder": "請輸入 Agent 描述",

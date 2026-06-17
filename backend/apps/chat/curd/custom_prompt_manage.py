@@ -311,6 +311,11 @@ def list_custom_prompt_options(
     if custom_prompt_type:
         stmt = stmt.where(CustomPrompt.type == _normalize_type(custom_prompt_type).value)
 
+    stmt = stmt.where(or_(
+        _public_visibility_condition(),
+        _private_visibility_condition(current_user_id),
+    ))
+
     if datasource_id is not None:
         if accessible_datasource_ids is not None and int(datasource_id) not in accessible_datasource_ids:
             raise HTTPException(status_code=403, detail="Datasource access is required")

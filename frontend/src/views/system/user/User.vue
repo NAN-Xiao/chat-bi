@@ -78,12 +78,12 @@
         <el-table-column prop="email" show-overflow-tooltip :label="$t('user.email')" />
         <el-table-column prop="system_role" :label="$t('user.system_role')" width="140">
           <template #default="scope">
-            <el-tag
-              size="small"
-              :type="scope.row.system_role === 'collab_admin' ? 'warning' : 'info'"
+            <span
+              class="system-role-text"
+              :class="systemRoleClass(scope.row.system_role)"
             >
               {{ formatSystemRole(scope.row.system_role) }}
-            </el-tag>
+            </span>
           </template>
         </el-table-column>
         <!-- <el-table-column prop="phone" :label="$t('user.phone_number')" width="280" /> -->
@@ -818,6 +818,13 @@ const formatSystemRole = (role: any) => {
   if (normalized === 'collab_admin') return t('user.system_role_collab_admin')
   if (normalized === 'system_admin') return t('user.system_role_system_admin')
   return t('user.system_role_viewer')
+}
+
+const systemRoleClass = (role: any) => {
+  const normalized = String(role || 'viewer').trim().toLowerCase()
+  if (normalized === 'system_admin') return 'is-system-admin'
+  if (normalized === 'collab_admin') return 'is-collab-admin'
+  return 'is-viewer'
 }
 
 const getProjectIdsFromRule = (rule: any): number[] => {
@@ -1698,6 +1705,25 @@ onMounted(() => {
             display: block;
           }
         }
+      }
+    }
+
+    .system-role-text {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 22px;
+
+      &.is-viewer {
+        color: #646a73;
+        font-weight: 400;
+      }
+
+      &.is-collab-admin {
+        color: #245bdb;
+      }
+
+      &.is-system-admin {
+        color: #c42a2a;
       }
     }
   }

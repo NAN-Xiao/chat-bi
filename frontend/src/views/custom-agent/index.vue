@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import { useUserStore } from '@/stores/user'
+import { Search } from '@element-plus/icons-vue'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { promptApi } from '@/api/prompt'
 import { modelApi } from '@/api/system'
@@ -15,7 +15,6 @@ import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import { formatTimestamp } from '@/utils/date'
 
 const { t } = useI18n()
-const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
 
 const CUSTOM_PROMPT_TYPES = ['GENERATE_SQL', 'ANALYSIS', 'PREDICT_DATA']
@@ -29,6 +28,7 @@ const agentDetailVisible = ref(false)
 const agentDialogTitle = ref('')
 const selectedAgent = ref<any | null>(null)
 const savingAgent = ref(false)
+const agentKeyword = ref('')
 
 const defaultAgentForm = {
   id: null as number | string | null,
@@ -47,9 +47,6 @@ const agentForm = ref(cloneDeep(defaultAgentForm))
 
 const currentDatasourceId = computed(() => datasourceContext.datasourceId)
 const currentDatasourceName = computed(() => datasourceContext.datasourceName)
-const canCreatePersonalAgent = computed(
-  () => !userStore.isSystemManagerUser && !!currentDatasourceId.value
-)
 
 const agentRules = {
   name: [
@@ -97,12 +94,25 @@ const scopeText = (row: any) => {
   return t('training.all_data_sources')
 }
 
-const canManageAgent = (row: any) => row?.can_manage === true
+const isVisibleInPersonalEntry = (row: any) => {
+  return row?.visibility_scope !== 'USER_PRIVATE' || row?.is_owner === true
+}
+
+const canManageAgent = (row: any) => {
+  return row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true
+}
+
+const canViewPromptInPersonalEntry = (row: any) => {
+  return row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true
+}
 
 const buildAgentQuery = () => {
   const params = new URLSearchParams()
   if (currentDatasourceId.value) {
     params.append('dslist', String(currentDatasourceId.value))
+  }
+  if (agentKeyword.value.trim()) {
+    params.append('name', agentKeyword.value.trim())
   }
   const query = params.toString()
   return query ? `?${query}` : ''
@@ -129,6 +139,7 @@ const loadAgents = async () => {
     )
     agentList.value = responses
       .flatMap((res: any) => res?.data || [])
+      .filter(isVisibleInPersonalEntry)
       .sort((a: any, b: any) => {
         const left = a.create_time ? new Date(a.create_time).getTime() : 0
         const right = b.create_time ? new Date(b.create_time).getTime() : 0
@@ -143,10 +154,15 @@ const resetAgentForm = () => {
   agentForm.value = {
     ...cloneDeep(defaultAgentForm),
     datasource_ids: currentDatasourceId.value ? [Number(currentDatasourceId.value)] : [],
+    visibility_scope: 'USER_PRIVATE',
   }
 }
 
 const openCreateAgent = () => {
+  if (!currentDatasourceId.value) {
+    ElMessage.warning(t('access.no_project_agent'))
+    return
+  }
   resetAgentForm()
   agentDialogTitle.value = t('prompt.add_prompt_word')
   agentDialogVisible.value = true
@@ -226,6 +242,10 @@ onMounted(async () => {
 watch(currentDatasourceId, () => {
   loadAgents()
 })
+
+watch(agentKeyword, () => {
+  loadAgents()
+})
 </script>
 
 <template>
@@ -237,12 +257,21 @@ watch(currentDatasourceId, () => {
           {{ t('access.current_project') }}：{{ currentDatasourceName || '-' }}
         </div>
       </div>
-      <el-button v-if="canCreatePersonalAgent" type="primary" @click="openCreateAgent">
-        <template #icon>
-          <icon_add_outlined />
-        </template>
-        {{ t('prompt.add_prompt_word') }}
-      </el-button>
+      <div class="page-actions">
+        <el-input
+          v-model="agentKeyword"
+          clearable
+          class="agent-search"
+          :prefix-icon="Search"
+          :placeholder="t('dashboard.search')"
+        />
+        <el-button type="primary" @click="openCreateAgent">
+          <template #icon>
+            <icon_add_outlined />
+          </template>
+          {{ t('prompt.add_prompt_word') }}
+        </el-button>
+      </div>
     </div>
 
     <section class="agent-section">
@@ -491,7 +520,10 @@ watch(currentDatasourceId, () => {
         <el-form-item :label="t('training.effective_data_sources')">
           <div class="detail-content">{{ scopeText(selectedAgent) }}</div>
         </el-form-item>
-        <el-form-item v-if="selectedAgent?.prompt_visible" :label="t('prompt.prompt_word_content')">
+        <el-form-item
+          v-if="canViewPromptInPersonalEntry(selectedAgent)"
+          :label="t('prompt.prompt_word_content')"
+        >
           <div class="detail-content pre-wrap">{{ selectedAgent?.prompt }}</div>
         </el-form-item>
         <el-form-item v-else :label="t('prompt.prompt_word_content')">
@@ -558,6 +590,18 @@ watch(currentDatasourceId, () => {
     .mb-16 {
       margin-bottom: 16px;
     }
+  }
+
+  .page-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    min-width: 360px;
+  }
+
+  .agent-search {
+    width: 240px;
   }
 
   .agent-card {

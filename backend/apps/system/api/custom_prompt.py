@@ -90,6 +90,31 @@ def _normalize_datasource_ids(value) -> list[int]:
     return list(dict.fromkeys(result))
 
 
+def _is_user_private_scope(value) -> bool:
+    if isinstance(value, CustomPromptVisibilityScopeEnum):
+        return value == CustomPromptVisibilityScopeEnum.USER_PRIVATE
+    return value == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value
+
+
+def _force_user_private_prompt(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
+    datasource_ids = _normalize_datasource_ids(info.datasource_ids)
+    if len(datasource_ids) != 1:
+        raise HTTPException(status_code=400, detail="User Agent must be bound to the current project")
+    datasource_id = datasource_ids[0]
+    if not session.get(CoreDatasource, datasource_id):
+        raise HTTPException(status_code=400, detail="Datasource not found")
+    if not _can_manage_all_prompts(session, current_user) and not has_datasource_role(
+        session,
+        current_user,
+        datasource_ids,
+        "project_viewer",
+    ):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
+    info.visibility_scope = CustomPromptVisibilityScopeEnum.USER_PRIVATE
+    info.specific_ds = True
+    info.datasource_ids = [datasource_id]
+
+
 def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
     can_manage_all = _can_manage_all_prompts(session, current_user)
     if info.id:
@@ -112,17 +137,13 @@ def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, inf
         return
 
     if can_manage_all:
+        if _is_user_private_scope(info.visibility_scope):
+            _force_user_private_prompt(session, current_user, info)
+            return
         info.visibility_scope = CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
         return
 
-    datasource_ids = _normalize_datasource_ids(info.datasource_ids)
-    if len(datasource_ids) != 1:
-        raise HTTPException(status_code=400, detail="User Agent must be bound to the current project")
-    if not has_datasource_role(session, current_user, datasource_ids, "project_viewer"):
-        raise HTTPException(status_code=403, detail="Datasource access is required")
-    info.visibility_scope = CustomPromptVisibilityScopeEnum.USER_PRIVATE
-    info.specific_ds = True
-    info.datasource_ids = datasource_ids
+    _force_user_private_prompt(session, current_user, info)
 
 
 def _require_prompt_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):

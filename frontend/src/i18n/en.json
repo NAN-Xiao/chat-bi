@@ -101,7 +101,7 @@
     "ask_sql": "Ask SQL",
     "data_analysis": "Data Analysis",
     "data_prediction": "Data Prediction",
-    "add_prompt_word": "Add Agent",
+    "add_prompt_word": "New Agent",
     "prompt_word_name": "Name",
     "agent_description": "Description",
     "agent_description_placeholder": "Enter an Agent description",

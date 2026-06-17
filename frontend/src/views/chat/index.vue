@@ -409,29 +409,17 @@
             @keydown.ctrl.enter.exact.prevent="handleCtrlEnter"
           />
 
-          <el-select
+          <AgentSelector
             v-if="isCompletePage"
             v-model="selectedCustomPromptId"
             class="agent-select"
-            clearable
-            filterable
             :disabled="isTyping"
-            :placeholder="t('prompt.default_agent')"
-            @click.stop
-          >
-            <el-option :label="t('prompt.default_agent')" :value="null" />
-            <el-option
-              v-for="agent in customPromptOptions"
-              :key="agent.id"
-              :label="agent.name"
-              :value="agent.id"
-            >
-              <span>{{ agent.name }}</span>
-              <span v-if="agent.ai_model_name" class="agent-option-model">
-                {{ agent.ai_model_name }}
-              </span>
-            </el-option>
-          </el-select>
+            :datasource-id="currentAgentDatasourceId"
+            :datasource-name="currentAgentDatasourceName"
+            target-scope="SMART_QA"
+            create-type="GENERATE_SQL"
+            :custom-prompt-types="['GENERATE_SQL']"
+          />
 
           <el-button
             circle
@@ -468,6 +456,7 @@ import UserChat from './chat-block/UserChat.vue'
 import RecommendQuestion from './RecommendQuestion.vue'
 import ChatListContainer from './ChatListContainer.vue'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
+import AgentSelector from '@/components/custom-agent/AgentSelector.vue'
 import ChatTokenTime from '@/views/chat/ChatTokenTime.vue'
 import ErrorInfo from './ErrorInfo.vue'
 import ChatToolBar from './ChatToolBar.vue'
@@ -492,7 +481,6 @@ import router from '@/router'
 import QuickQuestion from '@/views/chat/QuickQuestion.vue'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
-import { promptApi } from '@/api/prompt'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -535,35 +523,14 @@ const isPhone = computed(() => {
 })
 const inputMessage = ref('')
 const selectedCustomPromptId = ref<string | number | null>(null)
-const customPromptOptions = ref<any[]>([])
-
-const loadCustomPromptOptions = () => {
-  if (!isCompletePage.value) {
-    customPromptOptions.value = []
-    selectedCustomPromptId.value = null
-    return
-  }
-  const datasourceId = currentChat.value.datasource || datasourceContext.datasourceId
-  promptApi
-    .options({
-      target_scope: 'SMART_QA',
-      custom_prompt_type: 'GENERATE_SQL',
-      ...(datasourceId ? { datasource_id: datasourceId } : {}),
-    })
-    .then((res: any) => {
-      customPromptOptions.value = res || []
-      if (
-        selectedCustomPromptId.value &&
-        !customPromptOptions.value.some((item) => String(item.id) === String(selectedCustomPromptId.value))
-      ) {
-        selectedCustomPromptId.value = null
-      }
-    })
-    .catch((e: any) => {
-      console.error(e)
-      customPromptOptions.value = []
-    })
-}
+const currentAgentDatasourceId = computed(() => currentChat.value.datasource || datasourceContext.datasourceId)
+const currentAgentDatasourceName = computed(() => {
+  if (currentChat.value.datasource_name) return currentChat.value.datasource_name
+  const datasource = datasourceContext.datasources.find(
+    (item: any) => String(item.id) === String(currentAgentDatasourceId.value)
+  )
+  return datasource?.name || datasourceContext.datasourceName || ''
+})
 
 const chatListRef = ref()
 const innerRef = ref()
@@ -779,7 +746,6 @@ function onChatCreatedQuick(chat: ChatInfo) {
   chatList.value.unshift(chat)
   currentChatId.value = chat.id
   currentChat.value = chat
-  loadCustomPromptOptions()
   onChatCreated(chat)
 }
 
@@ -795,14 +761,6 @@ watch(
     chatList.value = []
     selectedCustomPromptId.value = null
     getChatList()
-    loadCustomPromptOptions()
-  }
-)
-
-watch(
-  () => currentChat.value.datasource,
-  () => {
-    loadCustomPromptOptions()
   }
 )
 
@@ -1249,7 +1207,6 @@ onMounted(async () => {
     }
   }
   await datasourceContext.loadDatasources().catch((e) => console.error(e))
-  loadCustomPromptOptions()
   getChatList(jumpCreatChat)
   assistantPrepareInit()
 })
