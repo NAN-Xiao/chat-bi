@@ -1,7 +1,7 @@
 <template>
   <div class="zhishu-table-container professional-container">
     <div class="tool-left">
-      <span class="page-title">{{ $t('user.user_management') }}</span>
+      <span class="page-title">{{ pageTitle }}</span>
       <div class="search-bar">
         <el-input
           v-model="keyword"
@@ -76,18 +76,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="email" show-overflow-tooltip :label="$t('user.email')" />
-        <el-table-column
-          v-if="isSuperAdmin"
-          prop="tenant_names"
-          show-overflow-tooltip
-          label="所属企业"
-          width="220"
-        >
-          <template #default="scope">
-            <span>{{ formatTenantNames(scope.row) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="tenant_role" :label="$t('user.tenant_role')" width="140">
+        <el-table-column v-if="!isSuperAdmin" prop="tenant_role" :label="$t('user.tenant_role')" width="140">
           <template #default="scope">
             <span
               class="role-text"
@@ -339,7 +328,7 @@
           clearable
         />
       </el-form-item>
-      <el-form-item :label="$t('user.tenant_role')">
+      <el-form-item v-if="!isSuperAdmin" :label="$t('user.tenant_role')">
         <el-select
           v-model="state.form.tenant_role"
           popper-class="user-light-select-popper"
@@ -368,7 +357,7 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item :label="$t('user.project_permission_config')">
+      <el-form-item v-if="!isSuperAdmin" :label="$t('user.project_permission_config')">
         <div class="project-permission-panel">
           <div class="project-permission-toolbar">
             <el-select
@@ -801,6 +790,9 @@ const variableValueMap = shallowRef<any>({})
 const projectOptions = shallowRef<any[]>([])
 const permissionRuleGroups = shallowRef<any[]>([])
 const isSuperAdmin = computed(() => userStore.isSystemAdminUser)
+const pageTitle = computed(() =>
+  isSuperAdmin.value ? t('user.user_management') : t('user.tenant_member_management')
+)
 const systemRoleOptions = computed(() => [
   { value: 'viewer', label: t('user.system_role_viewer') },
   ...(isSuperAdmin.value
@@ -889,10 +881,11 @@ const canChangeUserAccountStatus = (row: any) => {
 }
 
 const canTransferTenantOwner = (row: any) => {
+  if (isSuperAdmin.value) return false
   if (!row || !row.status) return false
   if (normalizeTenantRole(row.tenant_role) === 'owner') return false
   if (isHighPrivilegeRole(row.system_role)) return false
-  return isSuperAdmin.value || normalizeTenantRole(userStore.getTenantRole) === 'owner'
+  return normalizeTenantRole(userStore.getTenantRole) === 'owner'
 }
 
 const protectedUserMessage = (row: any) => {
@@ -905,11 +898,6 @@ const protectedUserMessage = (row: any) => {
 const formatTenantRole = (role: any) => {
   const normalized = normalizeTenantRole(role)
   return t(`user.tenant_role_${normalized}`)
-}
-
-const formatTenantNames = (row: any) => {
-  const names = Array.isArray(row?.tenant_names) ? row.tenant_names.filter(Boolean) : []
-  return names.length ? names.join('、') : '-'
 }
 
 const tenantRoleClass = (role: any) => {
@@ -1334,10 +1322,12 @@ const editHandler = (row: any) => {
     ElMessage.warning(protectedUserMessage(row))
     return
   }
+  const projectRequest = isSuperAdmin.value ? Promise.resolve([]) : datasourceApi.list()
+  const permissionRequest = isSuperAdmin.value ? Promise.resolve([]) : getPermissionList()
   Promise.all([
     variablesApi.listAll(),
-    datasourceApi.list(),
-    getPermissionList(),
+    projectRequest,
+    permissionRequest,
     row?.id ? userApi.get(row.id) : Promise.resolve(null),
   ])
     .then(([variableRes, projectRes, permissionRes, userDetail]: any[]) => {
@@ -1359,7 +1349,7 @@ const editHandler = (row: any) => {
         state.form = {
           ...detail,
           system_role: detail.system_role || 'viewer',
-          tenant_role: normalizeTenantRole(detail.tenant_role),
+          tenant_role: isSuperAdmin.value ? null : normalizeTenantRole(detail.tenant_role),
           project_ids: projectIds,
           project_role_map: buildProjectRoleMap(projectIds, detail.project_role_map),
           project_permission_map: buildUserProjectPermissionMap(detail.id, projectIds),
@@ -1372,7 +1362,7 @@ const editHandler = (row: any) => {
         state.form = {
           ...defaultForm,
           system_role: 'viewer',
-          tenant_role: 'member',
+          tenant_role: isSuperAdmin.value ? null : 'member',
           project_ids: [],
           project_role_map: {},
           project_permission_map: {},
@@ -1425,7 +1415,11 @@ const deleteBatchUser = () => {
     ElMessage.warning(protectedUserMessage(protectedUsers[0]))
     return
   }
-  ElMessageBox.confirm(t('user.remove_selected_members', { msg: multipleSelectionAll.value.length }), {
+  ElMessageBox.confirm(
+    isSuperAdmin.value
+      ? t('user.selected_2_users', { msg: multipleSelectionAll.value.length })
+      : t('user.remove_selected_members', { msg: multipleSelectionAll.value.length }),
+    {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
@@ -1447,7 +1441,7 @@ const deleteHandler = (row: any) => {
     ElMessage.warning(protectedUserMessage(row))
     return
   }
-  ElMessageBox.confirm(t('user.remove_member_confirm', { msg: row.name }), {
+  ElMessageBox.confirm(isSuperAdmin.value ? t('user.del_user', { msg: row.name }) : t('user.remove_member_confirm', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
@@ -1489,7 +1483,7 @@ const onFormClose = () => {
   state.form = {
     ...defaultForm,
     system_role: 'viewer',
-    tenant_role: 'member',
+    tenant_role: isSuperAdmin.value ? null : 'member',
     project_ids: [],
     project_role_map: {},
     project_permission_map: {},
@@ -1546,19 +1540,25 @@ const formatVariableValues = () => {
 const addTerm = () => {
   const { account, email, name, status, system_role, tenant_role, project_ids, project_role_map } =
     state.form
+  const payload: any = {
+    account,
+    email,
+    name,
+    status,
+    system_role: isSuperAdmin.value ? system_role : 'viewer',
+    system_variables: formatVariableValues(),
+  }
+  if (!isSuperAdmin.value) {
+    const projectIds = toNumberList(project_ids)
+    payload.tenant_role = normalizeTenantRole(tenant_role)
+    payload.project_ids = projectIds
+    payload.project_role_map = buildProjectRoleMap(projectIds, project_role_map)
+  }
   userApi
-    .add({
-      account,
-      email,
-      name,
-      status,
-      system_role: isSuperAdmin.value ? system_role : 'viewer',
-      tenant_role: normalizeTenantRole(tenant_role),
-      project_ids,
-      project_role_map: buildProjectRoleMap(toNumberList(project_ids), project_role_map),
-      system_variables: formatVariableValues(),
-    })
-    .then((res: any) => syncUserPermissionStrategies(res?.id).then(() => res))
+    .add(payload)
+    .then((res: any) =>
+      isSuperAdmin.value ? res : syncUserPermissionStrategies(res?.id).then(() => res)
+    )
     .then(() => {
       onFormClose()
       handleCurrentChange(1)
@@ -1584,22 +1584,26 @@ const editTerm = () => {
     tenant_role,
   } =
     state.form
+  const payload: any = {
+    account,
+    id,
+    create_time,
+    email,
+    language,
+    name,
+    status,
+    system_role: isSuperAdmin.value ? system_role : 'viewer',
+    system_variables: formatVariableValues(),
+  }
+  if (!isSuperAdmin.value) {
+    const projectIds = toNumberList(project_ids)
+    payload.tenant_role = normalizeTenantRole(tenant_role)
+    payload.project_ids = projectIds
+    payload.project_role_map = buildProjectRoleMap(projectIds, project_role_map)
+  }
   userApi
-    .edit({
-      account,
-      id,
-      create_time,
-      email,
-      language,
-      name,
-      project_ids,
-      project_role_map: buildProjectRoleMap(toNumberList(project_ids), project_role_map),
-      status,
-      system_role: isSuperAdmin.value ? system_role : 'viewer',
-      tenant_role: normalizeTenantRole(tenant_role),
-      system_variables: formatVariableValues(),
-    })
-    .then(() => syncUserPermissionStrategies(id))
+    .edit(payload)
+    .then(() => (isSuperAdmin.value ? undefined : syncUserPermissionStrategies(id)))
     .then(() => {
       onFormClose()
       handleCurrentChange(1)

@@ -219,7 +219,7 @@ def test_tenant_admin_creates_enterprise_admin_without_platform_role():
         assert membership.role == "admin"
 
 
-def test_platform_admin_can_grant_platform_collab_role_and_owner_membership():
+def test_platform_admin_creates_platform_user_without_tenant_membership():
     engine = _engine()
     with Session(engine) as session:
         created = asyncio.run(user_api.create(
@@ -231,7 +231,6 @@ def test_platform_admin_can_grant_platform_collab_role_and_owner_membership():
                 email="platform-collab@example.com",
                 status=1,
                 system_role="collab_admin",
-                tenant_role="owner",
             ),
             trans=_trans,
         ))
@@ -239,13 +238,12 @@ def test_platform_admin_can_grant_platform_collab_role_and_owner_membership():
         db_user = session.get(UserModel, created.id)
         membership = session.exec(
             select(TenantUserModel).where(
-                TenantUserModel.tenant_id == 10,
                 TenantUserModel.user_id == created.id,
             )
-        ).one()
+        ).first()
 
         assert db_user.system_role == "collab_admin"
-        assert membership.role == "owner"
+        assert membership is None
 
 
 def test_tenant_admin_updates_tenant_role_without_escalating_platform_role():
@@ -384,6 +382,9 @@ def test_platform_admin_user_pager_can_view_users_across_all_tenants():
         assert tenant_b_only["tenant_names"] == ["Tenant B"]
         assert tenant_b_only["tenant_role"] == "admin"
         assert registered_only["tenant_ids"] == []
+        assert registered_only["tenant_names"] == []
+        assert registered_only["tenant_roles"] == {}
+        assert registered_only["tenant_role"] is None
 
 
 def test_tenant_admin_cannot_query_user_outside_current_tenant():

@@ -64,7 +64,7 @@ class UserCreator(BaseUser):
     status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
     origin: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}origin")
     system_role: Literal["system_admin", "collab_admin", "viewer"] = "viewer"
-    tenant_role: Literal["owner", "admin", "member"] = "member"
+    tenant_role: Optional[Literal["owner", "admin", "member"]] = "member"
     tenant_id: Optional[int] = None
     project_ids: Optional[list[int]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}ds_id")
     project_role_map: Optional[dict[int, str]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}ds_role")

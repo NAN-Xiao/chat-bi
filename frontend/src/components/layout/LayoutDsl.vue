@@ -75,9 +75,6 @@ const toChatIndex = () => {
   router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/chat/index')
 }
 
-const toUserIndex = () => {
-  router.push('/system/user')
-}
 const route = useRoute()
 const showSysmenu = computed(() => {
   return route.path.includes('/system')
@@ -100,7 +97,7 @@ onMounted(() => {
       <div class="side-header">
         <div class="side-brand">
           <template v-if="showSysmenu">
-            <div class="sys-management" @click="toUserIndex">
+            <div class="sys-management" @click="toChatIndex">
               <img
                 v-if="loginBg"
                 :style="{ marginLeft: collapse ? '5px' : 0 }"
@@ -139,7 +136,7 @@ onMounted(() => {
                 alt=""
                 @click="toChatIndex"
               />
-              <div v-else-if="loginBg && !collapse" class="default-zhishu">
+              <div v-else-if="loginBg && !collapse" class="default-zhishu" @click="toChatIndex">
                 <img
                   height="30"
                   width="30"
@@ -154,11 +151,12 @@ onMounted(() => {
               </div>
               <custom_small
                 v-else-if="collapse"
-                :style="{ marginLeft: collapse ? '5px' : 0 }"
+                :style="{ marginLeft: collapse ? '5px' : 0, cursor: 'pointer' }"
                 :class="!collapse && 'collapse-icon'"
+                @click="toChatIndex"
               ></custom_small>
 
-              <div v-else class="default-zhishu">
+              <div v-else class="default-zhishu" @click="toChatIndex">
                 <custom_small class="collapse-icon"></custom_small>
                 <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
                   appearanceStore.name
@@ -175,7 +173,7 @@ onMounted(() => {
                 alt=""
                 @click="toChatIndex"
               />
-              <div v-else-if="loginBg && !collapse" class="default-zhishu">
+              <div v-else-if="loginBg && !collapse" class="default-zhishu" @click="toChatIndex">
                 <img
                   height="30"
                   width="30"
@@ -193,7 +191,7 @@ onMounted(() => {
                 style="margin: 0 0 6px 5px; cursor: pointer"
                 @click="toChatIndex"
               ></custom_small>
-              <div v-else class="default-zhishu">
+              <div v-else class="default-zhishu" @click="toChatIndex">
                 <custom_small class="collapse-icon"></custom_small>
                 <span style="max-width: 150px" :title="appearanceStore.name" class="ellipsis">{{
                   appearanceStore.name
@@ -210,7 +208,7 @@ onMounted(() => {
                 alt=""
                 @click="toChatIndex"
               />
-              <div v-else-if="loginBg && !collapse" class="default-zhishu">
+              <div v-else-if="loginBg && !collapse" class="default-zhishu" @click="toChatIndex">
                 <img
                   height="30"
                   width="30"
@@ -232,7 +230,7 @@ onMounted(() => {
                 alt=""
                 @click="toChatIndex"
               />
-              <div v-else class="default-zhishu">
+              <div v-else class="default-zhishu" @click="toChatIndex">
                 <img
                   :src="defaultLogoUrl"
                   class="collapse-icon"

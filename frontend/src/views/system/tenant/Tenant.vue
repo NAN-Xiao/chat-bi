@@ -1,11 +1,11 @@
 <template>
-  <div class="tenant-container professional-container">
+  <div class="zhishu-table-container professional-container">
     <div class="tool-left">
       <span class="page-title">{{ t('tenant.management') }}</span>
       <div class="search-bar">
         <el-input
           v-model="keyword"
-          style="width: 260px; margin-right: 12px"
+          class="tenant-search-input"
           :placeholder="t('tenant.search_placeholder')"
           clearable
         >
@@ -24,216 +24,187 @@
       </div>
     </div>
 
-    <div class="section-title">{{ t('tenant.application_review') }}</div>
-    <el-table :data="applications" class="tenant-table application-table" style="width: 100%">
-      <el-table-column prop="tenant_name" :label="t('tenant.name')" min-width="160" show-overflow-tooltip />
-      <el-table-column prop="tenant_code" :label="t('tenant.code')" min-width="130" show-overflow-tooltip />
-      <el-table-column prop="applicant_name" :label="t('tenant.applicant')" min-width="150" show-overflow-tooltip>
-        <template #default="scope">
-          <div>
-            <div>{{ scope.row.applicant_name || scope.row.applicant_account || '-' }}</div>
-            <div class="muted">{{ scope.row.applicant_email || scope.row.applicant_account }}</div>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="requested_role" :label="t('tenant.requested_role')" width="130">
-        <template #default="scope">
-          {{ formatRequestedRole(scope.row.requested_role) }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="plan" :label="t('tenant.plan')" width="120">
-        <template #default="scope">
-          <el-tag size="small" type="info">{{ formatPlan(scope.row.plan) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" :label="t('tenant.application_status')" width="120">
-        <template #default="scope">
-          <el-tag size="small" :type="applicationStatusType(scope.row.status)">
-            {{ formatApplicationStatus(scope.row.status) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="reason" :label="t('tenant.apply_reason')" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="create_time" :label="t('tenant.apply_time')" width="180">
-        <template #default="scope">
-          <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column fixed="right" :label="t('ds.actions')" width="150">
-        <template #default="scope">
-          <div v-if="scope.row.status === 'pending'" class="review-actions">
-            <el-button text :loading="reviewLoadingId === String(scope.row.id)" @click="reviewApplication(scope.row, true)">
-              {{ t('tenant.approve') }}
-            </el-button>
-            <el-button text type="danger" @click="reviewApplication(scope.row, false)">
-              {{ t('tenant.reject') }}
-            </el-button>
-          </div>
-          <span v-else class="muted">{{ scope.row.review_comment || '-' }}</span>
-        </template>
-      </el-table-column>
-      <template #empty>
-        <EmptyBackground :description="t('tenant.no_applications')" img-type="tree" />
-      </template>
-    </el-table>
-
-    <div class="section-title">{{ t('tenant.domain_review') }}</div>
-    <el-table :data="domainRows" class="tenant-table application-table" style="width: 100%">
-      <el-table-column prop="domain" :label="t('tenant.domain')" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="tenant_id" :label="t('tenant.tenant_id')" width="130" />
-      <el-table-column prop="auto_join_role" :label="t('tenant.auto_join_role')" width="140">
-        <template #default="scope">
-          {{ formatRequestedRole(scope.row.auto_join_role) }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" :label="t('tenant.domain_status')" width="120">
-        <template #default="scope">
-          <el-tag size="small" :type="domainStatusType(scope.row.status)">
-            {{ formatDomainStatus(scope.row.status) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="create_time" :label="t('tenant.create_time')" width="180">
-        <template #default="scope">
-          <span>{{ formatOptionalTimestamp(scope.row.create_time) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column fixed="right" :label="t('ds.actions')" width="150">
-        <template #default="scope">
-          <div v-if="scope.row.status === 'pending'" class="review-actions">
-            <el-button text :loading="domainReviewLoadingId === String(scope.row.id)" @click="reviewDomain(scope.row, 'verified')">
-              {{ t('tenant.verify') }}
-            </el-button>
-            <el-button text type="danger" @click="reviewDomain(scope.row, 'disabled')">
-              {{ t('tenant.disable') }}
-            </el-button>
-          </div>
-          <span v-else class="muted">-</span>
-        </template>
-      </el-table-column>
-      <template #empty>
-        <EmptyBackground :description="t('tenant.no_domain_bindings')" img-type="tree" />
-      </template>
-    </el-table>
-
-    <div class="section-title">{{ t('tenant.data_request_review') }}</div>
-    <el-table :data="dataRequestRows" class="tenant-table application-table" style="width: 100%">
-      <el-table-column prop="tenant_id" :label="t('tenant.tenant_id')" width="130" />
-      <el-table-column prop="request_type" :label="t('tenant.data_request_type')" width="130">
-        <template #default="scope">
-          {{ formatDataRequestType(scope.row.request_type) }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" :label="t('tenant.data_request_status')" width="120">
-        <template #default="scope">
-          <el-tag size="small" :type="dataRequestStatusType(scope.row.status)">
-            {{ formatDataRequestStatus(scope.row.status) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="reason" :label="t('tenant.apply_reason')" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="review_comment" :label="t('tenant.review_comment')" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="update_time" :label="t('tenant.update_time')" width="180">
-        <template #default="scope">
-          <span>{{ formatOptionalTimestamp(scope.row.update_time) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column fixed="right" :label="t('ds.actions')" width="210">
-        <template #default="scope">
-          <div class="review-actions">
-            <template v-if="scope.row.status === 'pending'">
-              <el-button text :loading="dataRequestLoadingId === String(scope.row.id)" @click="reviewDataRequest(scope.row, true)">
+    <div class="zhishu-table_user">
+      <el-table :data="enterpriseRows" style="width: 100%">
+        <el-table-column prop="name" :label="t('tenant.enterprise_user')" width="280">
+          <template #default="scope">
+            <div class="table-two-line-cell">
+              <div class="enterprise-user-name ellipsis" :title="scope.row.name">
+                {{ scope.row.name }}
+              </div>
+              <div v-if="scope.row.row_type === 'application'" class="table-secondary-text">
+                {{ t('tenant.application_status_pending') }}
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="code" :label="t('tenant.code')" width="220" show-overflow-tooltip />
+        <el-table-column :label="t('tenant.owner_or_applicant')" min-width="210">
+          <template #default="scope">
+            <div class="table-two-line-cell">
+              <div class="table-primary-text ellipsis" :title="scope.row.contact_name">
+                {{ scope.row.contact_name || '-' }}
+              </div>
+              <div
+                v-if="scope.row.contact_detail"
+                class="table-secondary-text ellipsis"
+                :title="scope.row.contact_detail"
+              >
+                {{ scope.row.contact_detail }}
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('tenant.plan_subscription')" width="160">
+          <template #default="scope">
+            <span v-if="scope.row.row_type === 'application'" class="muted">
+              {{ formatPlan(scope.row.plan) }}
+            </span>
+            <div v-else class="plan-subscription-cell">
+              <span class="tenant-plain-text" :class="planTextClass(scope.row.plan)">
+                {{ formatPlan(scope.row.plan) }}
+              </span>
+              <span
+                class="tenant-plain-text"
+                :class="subscriptionStatusClass(scope.row.subscription_status)"
+              >
+                {{ formatSubscriptionStatus(scope.row.subscription_status) }}
+              </span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" :label="t('tenant.status')" width="140">
+          <template #default="scope">
+            <span
+              v-if="scope.row.row_type === 'application'"
+              class="tenant-plain-text"
+              :class="applicationStatusClass(scope.row.application_status)"
+            >
+              {{ formatApplicationStatus(scope.row.application_status) }}
+            </span>
+            <div
+              v-else
+              class="user-status-container"
+              :class="scope.row.status ? 'active' : 'disabled'"
+            >
+              <el-icon size="16">
+                <SuccessFilled v-if="scope.row.status" />
+                <CircleCloseFilled v-else />
+              </el-icon>
+              <span>{{ scope.row.status ? t('tenant.enabled') : t('tenant.disabled') }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('tenant.usage_summary')" width="190">
+          <template #default="scope">
+            <div v-if="scope.row.row_type === 'tenant'" class="usage-status-cell">
+              <el-progress
+                type="circle"
+                :width="36"
+                :stroke-width="4"
+                :show-text="false"
+                :percentage="usageHealthPercent(scope.row.id)"
+                :status="usageProgressStatus(scope.row.id)"
+              />
+              <div class="usage-summary-text">
+                <span>{{ t('tenant.requests') }} {{ usageRequestCount(scope.row.id) }}</span>
+                <span class="muted"
+                  >{{ t('tenant.failure') }} {{ usageFailureCount(scope.row.id) }}</span
+                >
+              </div>
+            </div>
+            <span v-else class="muted">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="current_period_end_time"
+          :label="t('tenant.current_period_end_time')"
+          width="180"
+        >
+          <template #default="scope">
+            <span>{{ formatOptionalTimestamp(scope.row.current_period_end_time) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="create_time" :label="t('tenant.create_time')" width="180">
+          <template #default="scope">
+            <span>{{ formatOptionalTimestamp(scope.row.create_time) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column fixed="right" :label="t('ds.actions')" width="180">
+          <template #default="scope">
+            <div v-if="scope.row.row_type === 'application'" class="review-actions">
+              <el-button
+                text
+                :loading="reviewLoadingId === String(scope.row.application_id)"
+                @click="reviewApplication(scope.row.source, true)"
+              >
                 {{ t('tenant.approve') }}
               </el-button>
-              <el-button text type="danger" @click="reviewDataRequest(scope.row, false)">
+              <div class="line"></div>
+              <el-button text type="danger" @click="reviewApplication(scope.row.source, false)">
                 {{ t('tenant.reject') }}
               </el-button>
-            </template>
-            <el-button
-              v-else-if="scope.row.status === 'approved'"
-              text
-              :loading="dataRequestLoadingId === String(scope.row.id)"
-              @click="completeDataRequest(scope.row)"
-            >
-              {{ t('tenant.complete') }}
-            </el-button>
-            <el-button v-if="scope.row.export_manifest" text @click="viewExportManifest(scope.row.export_manifest)">
-              {{ t('tenant.view_manifest') }}
-            </el-button>
-          </div>
+            </div>
+            <div v-else class="table-operate">
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="t('datasource.edit')"
+                placement="top"
+              >
+                <el-icon class="action-btn" size="16" @click="openDrawer(scope.row.source)">
+                  <IconOpeEdit />
+                </el-icon>
+              </el-tooltip>
+              <div class="line"></div>
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="scope.row.status ? t('tenant.stop_service') : t('tenant.restore_service')"
+                placement="top"
+              >
+                <el-icon
+                  class="action-btn"
+                  :class="{ disabled: isDefaultTenant(scope.row) }"
+                  size="16"
+                  @click="handleServiceStatus(scope.row.source)"
+                >
+                  <IconLock />
+                </el-icon>
+              </el-tooltip>
+              <div class="line"></div>
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="t('tenant.delete_tenant')"
+                placement="top"
+              >
+                <el-icon
+                  class="action-btn"
+                  :class="{
+                    disabled:
+                      isDefaultTenant(scope.row) || deleteLoadingId === String(scope.row.id),
+                  }"
+                  size="16"
+                  @click="deleteTenantHandler(scope.row.source)"
+                >
+                  <IconOpeDelete />
+                </el-icon>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+        <template #empty>
+          <EmptyBackground :description="t('tenant.empty')" img-type="tree" />
         </template>
-      </el-table-column>
-      <template #empty>
-        <EmptyBackground :description="t('tenant.no_data_requests')" img-type="tree" />
-      </template>
-    </el-table>
-
-    <div class="section-title">{{ t('tenant.workspace_list') }}</div>
-    <el-table :data="filteredTenants" class="tenant-table" style="width: 100%">
-      <el-table-column prop="name" :label="t('tenant.name')" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="code" :label="t('tenant.code')" min-width="140" show-overflow-tooltip />
-      <el-table-column prop="plan" :label="t('tenant.plan')" width="140">
-        <template #default="scope">
-          <el-tag size="small" type="info">{{ formatPlan(scope.row.plan) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="subscription_status" :label="t('tenant.subscription_status')" width="150">
-        <template #default="scope">
-          <el-tag size="small" :type="subscriptionStatusType(scope.row.subscription_status)">
-            {{ formatSubscriptionStatus(scope.row.subscription_status) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="current_period_end_time" :label="t('tenant.current_period_end_time')" width="180">
-        <template #default="scope">
-          <span>{{ formatOptionalTimestamp(scope.row.current_period_end_time) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" :label="t('tenant.status')" width="140">
-        <template #default="scope">
-          <div class="tenant-status" :class="scope.row.status ? 'active' : 'disabled'">
-            <span class="status-dot"></span>
-            <span>{{ scope.row.status ? t('tenant.enabled') : t('tenant.disabled') }}</span>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="create_time" :label="t('tenant.create_time')" width="180">
-        <template #default="scope">
-          <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="update_time" :label="t('tenant.update_time')" width="180">
-        <template #default="scope">
-          <span>{{ formatTimestamp(scope.row.update_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column fixed="right" :label="t('ds.actions')" width="160">
-        <template #default="scope">
-          <div class="table-operate">
-            <el-switch
-              v-model="scope.row.status"
-              :active-value="1"
-              :inactive-value="0"
-              :disabled="isDefaultTenant(scope.row) || statusLoadingId === String(scope.row.id)"
-              size="small"
-              @change="changeStatus(scope.row)"
-            />
-            <div class="line"></div>
-            <el-button text @click="openDrawer(scope.row)">
-              {{ t('datasource.edit') }}
-            </el-button>
-          </div>
-        </template>
-      </el-table-column>
-      <template #empty>
-        <EmptyBackground :description="t('tenant.empty')" img-type="tree" />
-      </template>
-    </el-table>
+      </el-table>
+    </div>
 
     <el-drawer
       v-model="drawerVisible"
       :title="form.id ? t('tenant.edit') : t('tenant.add')"
       destroy-on-close
+      modal-class="tenant-add-class"
       size="520px"
       :before-close="closeDrawer"
     >
@@ -325,21 +296,26 @@
 </template>
 
 <script setup lang="ts">
+import dayjs from 'dayjs'
 import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
+import SuccessFilled from '@/assets/svg/gou_icon.svg'
+import CircleCloseFilled from '@/assets/svg/icon_ban_filled.svg'
+import IconLock from '@/assets/svg/icon-key_outlined.svg'
+import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
+import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import {
   tenantApi,
   type TenantApplicationInfo,
-  type TenantDataRequestInfo,
-  type TenantDomainInfo,
   type TenantInfo,
+  type TenantUsageDailyInfo,
 } from '@/api/tenant'
-import { formatTimestamp } from '@/utils/date'
 import { useUserStore } from '@/stores/user'
+import { formatTimestamp } from '@/utils/date'
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -347,14 +323,12 @@ const keyword = ref('')
 const drawerVisible = ref(false)
 const saving = ref(false)
 const statusLoadingId = ref('')
+const deleteLoadingId = ref('')
 const reviewLoadingId = ref('')
-const domainReviewLoadingId = ref('')
-const dataRequestLoadingId = ref('')
 const formRef = ref()
 const tenants = shallowRef<TenantInfo[]>([])
 const applications = shallowRef<TenantApplicationInfo[]>([])
-const domainRows = shallowRef<TenantDomainInfo[]>([])
-const dataRequestRows = shallowRef<TenantDataRequestInfo[]>([])
+const usageRows = shallowRef<TenantUsageDailyInfo[]>([])
 const defaultForm = {
   id: '',
   code: '',
@@ -402,12 +376,61 @@ const rules = computed(() => ({
 
 const filteredTenants = computed(() => {
   const value = keyword.value.trim().toLowerCase()
-  if (!value) return tenants.value
-  return tenants.value.filter((tenant) =>
-    [tenant.name, tenant.code, tenant.plan].some((item) =>
-      String(item || '').toLowerCase().includes(value)
+  const rows = [
+    ...applications.value
+      .filter((application) => application.status === 'pending')
+      .map((application) => ({
+        row_type: 'application',
+        id: `application-${application.id}`,
+        application_id: application.id,
+        name: application.tenant_name,
+        code: application.tenant_code,
+        plan: application.plan,
+        subscription_status: '',
+        current_period_end_time: null,
+        status: null,
+        application_status: application.status,
+        contact_name: application.applicant_name || application.applicant_account || '',
+        contact_detail: application.applicant_email || application.applicant_account || '',
+        create_time: application.create_time,
+        update_time: application.update_time,
+        source: application,
+      })),
+    ...tenants.value.map((tenant) => ({
+      ...tenant,
+      row_type: 'tenant',
+      application_status: '',
+      contact_name: tenant.owner_name || tenant.owner_account || '',
+      contact_detail: tenant.owner_email || tenant.owner_account || '',
+      source: tenant,
+    })),
+  ]
+  if (!value) return rows
+  return rows.filter((row) =>
+    [row.name, row.code].some((item) =>
+      String(item || '')
+        .toLowerCase()
+        .includes(value)
     )
   )
+})
+
+const enterpriseRows = filteredTenants
+
+const tenantUsageMap = computed(() => {
+  return usageRows.value.reduce<
+    Record<string, { requests: number; failures: number; success: number }>
+  >((result, row) => {
+    const tenantId = String(row.tenant_id || '')
+    if (!tenantId) return result
+    if (!result[tenantId]) {
+      result[tenantId] = { requests: 0, failures: 0, success: 0 }
+    }
+    result[tenantId].requests += Number(row.request_count || 0)
+    result[tenantId].failures += Number(row.failure_count || 0)
+    result[tenantId].success += Number(row.success_count || 0)
+    return result
+  }, {})
 })
 
 const isDefaultTenant = (tenant: TenantInfo) => String(tenant.code || '') === 'default'
@@ -424,16 +447,48 @@ const formatSubscriptionStatus = (status?: string) => {
   return label === key ? status || t('tenant.subscription_active') : label
 }
 
-const subscriptionStatusType = (status?: string) => {
-  if (status === 'suspended' || status === 'cancelled') return 'danger'
-  if (status === 'past_due') return 'warning'
-  if (status === 'trialing') return 'primary'
-  return 'success'
+const planTextClass = (plan?: string) => {
+  if (plan === 'enterprise') return 'is-enterprise'
+  if (plan === 'basic') return 'is-basic'
+  return 'is-default'
 }
 
-const formatOptionalTimestamp = (value?: number | string | null) => {
-  const timestamp = Number(value || 0)
-  return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm:ss') : '-'
+const subscriptionStatusClass = (status?: string) => {
+  if (status === 'suspended' || status === 'cancelled') return 'is-danger'
+  if (status === 'past_due') return 'is-warning'
+  if (status === 'trialing') return 'is-primary'
+  return 'is-success'
+}
+
+const applicationStatusClass = (status?: string) => {
+  if (status === 'approved') return 'is-success'
+  if (status === 'rejected' || status === 'cancelled') return 'is-danger'
+  return 'is-warning'
+}
+
+const usageHealthPercent = (tenantId: string | number) => {
+  const usage = tenantUsageMap.value[String(tenantId)]
+  if (!usage || usage.requests <= 0) return 0
+  return Math.max(1, Math.round((usage.success / usage.requests) * 100))
+}
+
+const usageProgressStatus = (tenantId: string | number) => {
+  const usage = tenantUsageMap.value[String(tenantId)]
+  if (!usage || usage.requests <= 0) return undefined
+  const percent = usageHealthPercent(tenantId)
+  if (percent >= 98) return 'success'
+  if (percent >= 90) return 'warning'
+  return 'exception'
+}
+
+const usageRequestCount = (tenantId: string | number) => {
+  const usage = tenantUsageMap.value[String(tenantId)]
+  return usage ? usage.requests.toLocaleString() : '0'
+}
+
+const usageFailureCount = (tenantId: string | number) => {
+  const usage = tenantUsageMap.value[String(tenantId)]
+  return usage ? usage.failures.toLocaleString() : '0'
 }
 
 const normalizeTimestamp = (value?: number | string | null) => {
@@ -442,53 +497,15 @@ const normalizeTimestamp = (value?: number | string | null) => {
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null
 }
 
-const formatRequestedRole = (role?: string) => {
-  if (role === 'owner') return t('tenant.request_role_owner')
-  if (role === 'admin') return t('tenant.request_role_admin')
-  return t('tenant.request_role_member')
+const formatOptionalTimestamp = (value?: number | string | null) => {
+  const timestamp = normalizeTimestamp(value)
+  return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm:ss') : '-'
 }
 
 const formatApplicationStatus = (status?: string) => {
   const key = `tenant.application_status_${status || 'pending'}`
   const label = t(key)
   return label === key ? status || '-' : label
-}
-
-const applicationStatusType = (status?: string) => {
-  if (status === 'approved') return 'success'
-  if (status === 'rejected') return 'danger'
-  return 'warning'
-}
-
-const formatDomainStatus = (status?: string) => {
-  const key = `tenant.domain_status_${status || 'pending'}`
-  const label = t(key)
-  return label === key ? status || '-' : label
-}
-
-const domainStatusType = (status?: string) => {
-  if (status === 'verified') return 'success'
-  if (status === 'disabled') return 'info'
-  return 'warning'
-}
-
-const formatDataRequestType = (type?: string) => {
-  const key = `tenant.data_request_${type || 'export'}`
-  const label = t(key)
-  return label === key ? type || '-' : label
-}
-
-const formatDataRequestStatus = (status?: string) => {
-  const key = `tenant.data_request_status_${status || 'pending'}`
-  const label = t(key)
-  return label === key ? status || '-' : label
-}
-
-const dataRequestStatusType = (status?: string) => {
-  if (status === 'approved') return 'primary'
-  if (status === 'completed') return 'success'
-  if (status === 'rejected') return 'danger'
-  return 'warning'
 }
 
 const loadTenants = async () => {
@@ -499,12 +516,19 @@ const loadApplications = async () => {
   applications.value = await tenantApi.adminApplications()
 }
 
-const loadDomainReviews = async () => {
-  domainRows.value = await tenantApi.adminDomains()
+const loadUsageSnapshot = async () => {
+  usageRows.value = await tenantApi.usage({
+    start_date: dayjs().subtract(13, 'day').format('YYYY-MM-DD'),
+    end_date: dayjs().format('YYYY-MM-DD'),
+    limit: 5000,
+  })
 }
 
-const loadDataRequests = async () => {
-  dataRequestRows.value = await tenantApi.dataRequests()
+const reloadEnterpriseRows = async () => {
+  await loadTenants()
+  await loadUsageSnapshot()
+  await loadApplications()
+  await userStore.loadTenants(true)
 }
 
 const openDrawer = (tenant: TenantInfo | null) => {
@@ -557,24 +581,41 @@ const saveTenant = () => {
       }
       ElMessage.success(t('common.save_success'))
       closeDrawer()
-      await loadTenants()
-      await loadApplications()
-      await userStore.loadTenants(true)
+      await reloadEnterpriseRows()
     } finally {
       saving.value = false
     }
   })
 }
 
-const changeStatus = async (tenant: TenantInfo) => {
-  const nextStatus = Number(tenant.status)
-  const previousStatus = nextStatus ? 0 : 1
+const confirmStopService = async (tenant: TenantInfo) => {
+  await ElMessageBox.confirm(t('tenant.stop_service_confirm', { msg: tenant.name }), {
+    confirmButtonType: 'danger',
+    confirmButtonText: t('tenant.stop_service'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+  })
+  await ElMessageBox.confirm(t('tenant.stop_service_second_confirm', { msg: tenant.name }), {
+    confirmButtonType: 'danger',
+    confirmButtonText: t('tenant.confirm_stop_service'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+  })
+}
+
+const handleServiceStatus = async (tenant: TenantInfo) => {
+  if (isDefaultTenant(tenant)) return
+  const nextStatus = Number(tenant.status) ? 0 : 1
   statusLoadingId.value = String(tenant.id)
   try {
     if (!nextStatus) {
-      await ElMessageBox.confirm(t('tenant.disable_confirm', { msg: tenant.name }), {
-        confirmButtonType: 'danger',
-        confirmButtonText: t('tenant.disable'),
+      await confirmStopService(tenant)
+    } else {
+      await ElMessageBox.confirm(t('tenant.restore_service_confirm', { msg: tenant.name }), {
+        confirmButtonType: 'primary',
+        confirmButtonText: t('tenant.restore_service'),
         cancelButtonText: t('common.cancel'),
         customClass: 'confirm-no_icon',
         autofocus: false,
@@ -582,12 +623,52 @@ const changeStatus = async (tenant: TenantInfo) => {
     }
     await tenantApi.status(tenant.id, nextStatus)
     ElMessage.success(t('common.save_success'))
-    await loadTenants()
-    await userStore.loadTenants(true)
-  } catch (error) {
-    tenant.status = previousStatus
+    await reloadEnterpriseRows()
   } finally {
     statusLoadingId.value = ''
+  }
+}
+
+const deleteTenantHandler = async (tenant: TenantInfo) => {
+  if (isDefaultTenant(tenant)) return
+  if (Number(tenant.status) !== 0) {
+    await ElMessageBox.alert(t('tenant.delete_requires_disabled', { msg: tenant.name }), {
+      confirmButtonText: t('common.confirm'),
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+    })
+    return
+  }
+  await ElMessageBox.confirm(t('tenant.delete_tenant_confirm', { msg: tenant.name }), {
+    confirmButtonType: 'danger',
+    confirmButtonText: t('tenant.delete_tenant'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+  })
+  const result = await ElMessageBox.prompt(
+    t('tenant.delete_tenant_code_confirm', { code: tenant.code }),
+    t('tenant.delete_tenant'),
+    {
+      confirmButtonType: 'danger',
+      confirmButtonText: t('tenant.confirm_delete_tenant'),
+      cancelButtonText: t('common.cancel'),
+      inputPlaceholder: tenant.code,
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+    }
+  )
+  if ((result.value || '').trim() !== String(tenant.code || '').trim()) {
+    ElMessage.error(t('tenant.delete_tenant_code_mismatch'))
+    return
+  }
+  deleteLoadingId.value = String(tenant.id)
+  try {
+    await tenantApi.delete(tenant.id)
+    ElMessage.success(t('common.delete_success'))
+    await reloadEnterpriseRows()
+  } finally {
+    deleteLoadingId.value = ''
   }
 }
 
@@ -627,117 +708,15 @@ const reviewApplication = async (application: TenantApplicationInfo, approved: b
   }
 }
 
-const reviewDomain = async (domain: TenantDomainInfo, status: 'verified' | 'disabled') => {
-  domainReviewLoadingId.value = String(domain.id)
-  try {
-    if (status === 'verified') {
-      await ElMessageBox.confirm(t('tenant.domain_verify_confirm', { msg: domain.domain }), {
-        confirmButtonType: 'primary',
-        confirmButtonText: t('tenant.verify'),
-        cancelButtonText: t('common.cancel'),
-        customClass: 'confirm-no_icon',
-        autofocus: false,
-      })
-    } else {
-      await ElMessageBox.confirm(t('tenant.domain_disable_confirm', { msg: domain.domain }), {
-        confirmButtonType: 'danger',
-        confirmButtonText: t('tenant.disable'),
-        cancelButtonText: t('common.cancel'),
-        customClass: 'confirm-no_icon',
-        autofocus: false,
-      })
-    }
-    await tenantApi.reviewDomain(domain.id, {
-      status,
-      auto_join_role: domain.auto_join_role === 'admin' ? 'admin' : 'member',
-    })
-    ElMessage.success(t('common.save_success'))
-    await loadDomainReviews()
-  } finally {
-    domainReviewLoadingId.value = ''
-  }
-}
-
-const reviewDataRequest = async (row: TenantDataRequestInfo, approved: boolean) => {
-  dataRequestLoadingId.value = String(row.id)
-  try {
-    let reviewComment = ''
-    if (!approved) {
-      const result = await ElMessageBox.prompt(t('tenant.reject_reason'), t('tenant.reject'), {
-        confirmButtonType: 'danger',
-        confirmButtonText: t('tenant.reject'),
-        cancelButtonText: t('common.cancel'),
-        inputType: 'textarea',
-        customClass: 'confirm-no_icon',
-        autofocus: false,
-      })
-      reviewComment = result.value || ''
-    } else {
-      await ElMessageBox.confirm(t('tenant.data_request_approve_confirm'), {
-        confirmButtonType: 'primary',
-        confirmButtonText: t('tenant.approve'),
-        cancelButtonText: t('common.cancel'),
-        customClass: 'confirm-no_icon',
-        autofocus: false,
-      })
-    }
-    await tenantApi.reviewDataRequest(row.id, {
-      approved,
-      review_comment: reviewComment,
-    })
-    ElMessage.success(t('common.save_success'))
-    await loadDataRequests()
-  } finally {
-    dataRequestLoadingId.value = ''
-  }
-}
-
-const completeDataRequest = async (row: TenantDataRequestInfo) => {
-  dataRequestLoadingId.value = String(row.id)
-  try {
-    const result = await ElMessageBox.prompt(
-      t('tenant.data_request_complete_comment'),
-      t('tenant.complete'),
-      {
-        confirmButtonType: 'primary',
-        confirmButtonText: t('tenant.complete'),
-        cancelButtonText: t('common.cancel'),
-        inputType: 'textarea',
-        customClass: 'confirm-no_icon',
-        autofocus: false,
-      }
-    )
-    await tenantApi.completeDataRequest(row.id, { complete_comment: result.value || '' })
-    ElMessage.success(t('common.operation_success'))
-    await loadDataRequests()
-  } finally {
-    dataRequestLoadingId.value = ''
-  }
-}
-
-const viewExportManifest = (manifest: string) => {
-  let content = manifest
-  try {
-    content = JSON.stringify(JSON.parse(manifest), null, 2)
-  } catch {
-    content = manifest
-  }
-  ElMessageBox.alert(content, t('tenant.export_manifest'), {
-    customClass: 'tenant-manifest-dialog',
-    confirmButtonText: t('common.confirm'),
-  })
-}
-
 onMounted(() => {
   loadTenants()
+  loadUsageSnapshot()
   loadApplications()
-  loadDomainReviews()
-  loadDataRequests()
 })
 </script>
 
 <style lang="less" scoped>
-.tenant-container {
+.zhishu-table-container {
   width: 100%;
   height: 100%;
   position: relative;
@@ -747,82 +726,299 @@ onMounted(() => {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
+    gap: 16px;
 
     .page-title {
+      flex: 0 0 auto;
       font-weight: 500;
       font-size: 20px;
       line-height: 28px;
+      white-space: nowrap;
     }
   }
 
   .search-bar {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
+
+    .tenant-search-input {
+      width: 260px;
+      margin-right: 12px;
+    }
   }
 
-  .tenant-table {
-    max-height: calc(100vh - 150px);
-    overflow-y: auto;
-  }
+  .zhishu-table_user {
+    width: 100%;
+    max-height: calc(100vh - 156px);
+    overflow: auto;
 
-  .application-table {
-    margin-bottom: 20px;
-  }
-
-  .section-title {
-    margin: 18px 0 10px;
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 22px;
-    color: #1f2329;
-  }
-
-  .muted {
-    color: #8f959e;
-    font-size: 12px;
-    line-height: 18px;
-  }
-
-  .review-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .tenant-status {
-    display: flex;
-    align-items: center;
-    font-size: 14px;
-    line-height: 22px;
-    color: #646a73;
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 8px;
-      background: #b8bdc6;
+    :deep(.ed-popper.is-dark) {
+      max-width: 400px;
     }
 
-    &.active {
-      color: #24714d;
+    :deep(.ed-table) {
+      --el-table-header-bg-color: #f5f7fa;
+      --el-table-border-color: #ebeef5;
+      --el-table-header-text-color: #606266;
+      background: #fff;
 
-      .status-dot {
-        background: #2ca86f;
+      th {
+        font-weight: 600;
+        height: 48px;
+        background: #f7f9fc;
+      }
+
+      td {
+        height: 52px;
+      }
+
+      .ed-table__row {
+        transition: background-color 0.16s ease;
+      }
+
+      .ed-table__row:hover > td {
+        background-color: #f8fbff;
       }
     }
+
+    .muted {
+      color: #8f959e;
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .tenant-plain-text {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 22px;
+
+      &.is-default {
+        color: #646a73;
+        font-weight: 400;
+      }
+
+      &.is-basic {
+        color: #245bdb;
+      }
+
+      &.is-enterprise {
+        color: #8f3f11;
+      }
+
+      &.is-primary {
+        color: #245bdb;
+      }
+
+      &.is-success {
+        color: #24714d;
+      }
+
+      &.is-warning {
+        color: #b76e00;
+      }
+
+      &.is-danger {
+        color: #c42a2a;
+      }
+    }
+
+    .plan-subscription-cell,
+    .table-two-line-cell {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .plan-subscription-cell {
+      gap: 0;
+    }
+
+    .table-primary-text,
+    .enterprise-user-name {
+      max-width: 100%;
+      color: #1f2329;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 22px;
+    }
+
+    .table-secondary-text {
+      max-width: 100%;
+      color: #8f959e;
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .review-actions,
+    .table-operate {
+      display: flex;
+      align-items: center;
+      height: 24px;
+      line-height: 24px;
+
+      .line {
+        margin: 0 10px 0 12px;
+        height: 16px;
+        width: 1px;
+        background-color: #1f232926;
+      }
+    }
+
+    .review-actions {
+      .ed-button {
+        height: 24px;
+        padding: 0 4px;
+      }
+    }
+
+    .table-operate {
+      .ed-icon + .ed-icon {
+        margin-left: 12px;
+      }
+
+      .ed-icon {
+        position: relative;
+        cursor: pointer;
+        color: #646a73;
+
+        &.disabled {
+          cursor: not-allowed;
+          color: #b8bdc6;
+
+          &::after {
+            display: none !important;
+          }
+        }
+
+        &::after {
+          content: '';
+          background-color: #1f23291a;
+          position: absolute;
+          border-radius: 6px;
+          width: 24px;
+          height: 24px;
+          transform: translate(-50%, -50%);
+          top: 50%;
+          left: 50%;
+          display: none;
+        }
+
+        &:hover {
+          &::after {
+            display: block;
+          }
+        }
+      }
+    }
+
+    .usage-status-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .usage-summary-text {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      color: #1f2329;
+      font-size: 13px;
+      line-height: 18px;
+    }
+  }
+}
+
+.user-status-container {
+  display: flex;
+  align-items: center;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 22px;
+
+  .ed-icon {
+    margin-right: 8px;
   }
 
-  .table-operate {
-    display: flex;
-    align-items: center;
+  &.active {
+    color: #24714d;
+  }
 
-    .line {
-      margin: 0 10px 0 12px;
-      height: 16px;
-      width: 1px;
-      background-color: #1f232926;
-    }
+  &.disabled {
+    color: #8f959e;
+  }
+}
+</style>
+
+<style lang="less">
+.tenant-add-class {
+  .ed-drawer,
+  .ed-drawer__header,
+  .ed-drawer__body,
+  .ed-drawer__footer {
+    background: #fff !important;
+    color: #1f2329 !important;
+  }
+
+  .ed-drawer__header {
+    border-bottom: 1px solid #dee0e3;
+    margin-bottom: 0;
+    padding-bottom: 16px;
+  }
+
+  .ed-drawer__body {
+    padding-top: 16px;
+  }
+
+  .ed-drawer__footer {
+    border-top: 1px solid #dee0e3;
+  }
+
+  .ed-form-item__label,
+  .ed-select__selected-item,
+  .ed-input__inner,
+  .ed-textarea__inner {
+    color: #1f2329 !important;
+    -webkit-text-fill-color: #1f2329 !important;
+  }
+
+  .ed-input__wrapper,
+  .ed-select__wrapper,
+  .ed-textarea__inner,
+  .ed-date-editor {
+    background-color: #fff !important;
+    border-color: #d0d3d6 !important;
+    box-shadow: 0 0 0 1px #d0d3d6 inset !important;
+  }
+
+  .ed-input__inner::placeholder,
+  .ed-textarea__inner::placeholder {
+    color: #8f959e !important;
+    -webkit-text-fill-color: #8f959e !important;
+  }
+
+  .ed-input.is-disabled .ed-input__wrapper {
+    background-color: #f5f6f7 !important;
+    box-shadow: 0 0 0 1px #dee0e3 inset !important;
+  }
+
+  .ed-input.is-disabled .ed-input__inner {
+    color: #8f959e !important;
+    -webkit-text-fill-color: #8f959e !important;
+  }
+
+  .ed-button.is-secondary {
+    background-color: #fff !important;
+    border-color: #d0d3d6 !important;
+    color: #1f2329 !important;
+  }
+}
+
+:root[data-theme='dark'] {
+  .tenant-add-class {
+    color-scheme: light;
   }
 }
 </style>

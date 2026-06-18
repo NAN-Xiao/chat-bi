@@ -4,7 +4,7 @@
       class="main-menu"
       :class="{ 'main-menu-sidebar': !topLayout, 'main-menu-topbar': topLayout }"
     >
-      <div class="logo">星通智数</div>
+      <div class="logo" @click="goHome">星通智数</div>
       <el-menu
         v-if="!topLayout || !showSubmenu"
         :default-active="activeMenu"
@@ -210,6 +210,9 @@ const toSystem = () => {
 const backMain = () => {
   router.push('/')
 }
+const goHome = () => {
+  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/chat/index')
+}
 const switchLayout = () => {
   topLayout.value = !topLayout.value
   wsCache.set('zhishu-topbar-layout', topLayout.value)
@@ -239,6 +242,7 @@ onMounted(() => {
       color: var(--el-color-primary);
       text-align: left;
       margin-left: 24px;
+      cursor: pointer;
     }
 
     .menu-container {

@@ -85,7 +85,7 @@ def _get_user_tenant_role(session: SessionDep, user_id: int, tenant_id: int) -> 
     return normalize_tenant_role(membership.role if membership else TENANT_ROLE_MEMBER)
 
 
-def _get_user_visible_tenant_role(session: SessionDep, current_user: CurrentUser, user_id: int) -> str:
+def _get_user_visible_tenant_role(session: SessionDep, current_user: CurrentUser, user_id: int) -> str | None:
     if not is_super_admin(current_user):
         return _get_user_tenant_role(session, user_id, _current_tenant_id(current_user))
     tenant_id = getattr(current_user, "tenant_id", None)
@@ -103,7 +103,7 @@ def _get_user_visible_tenant_role(session: SessionDep, current_user: CurrentUser
         )
         .order_by(TenantUserModel.is_primary.desc(), TenantModel.name)
     ).first()
-    return normalize_tenant_role(row if row else TENANT_ROLE_MEMBER)
+    return normalize_tenant_role(row) if row else None
 
 
 def _user_active_tenant_summary(session: SessionDep, user_ids: list[int]) -> dict[int, dict]:
@@ -197,6 +197,10 @@ def _target_tenant_id_for_payload(current_user: CurrentUser, tenant_id: int | No
     return tenant_id if tenant_id and is_super_admin(current_user) else _current_tenant_id(current_user)
 
 
+def _should_assign_tenant_from_payload(current_user: CurrentUser, tenant_id: int | None = None) -> bool:
+    return not is_super_admin(current_user) or tenant_id is not None
+
+
 def _existing_user_by_account(session: SessionDep, account: str) -> UserModel | None:
     return session.exec(select(UserModel).where(UserModel.account == account)).first()
 
@@ -207,6 +211,8 @@ async def _join_existing_user_to_tenant(
     existing_user: UserModel,
     creator: UserCreator,
 ):
+    if is_super_admin(current_user) and creator.tenant_id is None:
+        raise Exception("User already exists")
     target_tenant_id = _target_tenant_id_for_payload(current_user, creator.tenant_id)
     if check_user_in_tenant(session=session, user_id=int(existing_user.id), tenant_id=target_tenant_id):
         raise Exception("User already exists in current tenant")
@@ -363,7 +369,7 @@ async def pager(
         result.append(item)
     project_rows = []
     current_tenant_id = getattr(current_user, "tenant_id", None)
-    if current_tenant_id:
+    if current_tenant_id and not is_super_admin(current_user):
         project_rows = session.exec(
             select(CoreDatasourceUser.user_id, CoreDatasourceUser.ds_id, CoreDatasourceUser.role)
             .join(CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id)
@@ -404,8 +410,12 @@ async def query(session: SessionDep, current_user: CurrentUser, _trans: Trans, i
         raise Exception("Only system admin can manage administrator roles")
     result = UserEditor.model_validate(db_user.model_dump())
     result.tenant_role = _get_user_visible_tenant_role(session, current_user, id)
-    result.project_ids = list_user_datasource_ids(session, id, current_user)
-    result.project_role_map = list_user_datasource_roles(session, id, current_user)
+    if is_super_admin(current_user):
+        result.project_ids = []
+        result.project_role_map = {}
+    else:
+        result.project_ids = list_user_datasource_ids(session, id, current_user)
+        result.project_role_map = list_user_datasource_roles(session, id, current_user)
     summary = _user_active_tenant_summary(session, [id]).get(int(id), {})
     for key, value in summary.items():
         setattr(result, key, value)
@@ -439,15 +449,17 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
     user_model.language = "zh-CN"
     session.add(user_model)
     session.flush()
-    target_tenant_id = _target_tenant_id_for_payload(current_user, creator.tenant_id)
-    assign_user_to_tenant(
-        session,
-        int(user_model.id),
-        tenant_id=target_tenant_id,
-        role=_normalize_editable_tenant_role(creator.tenant_role, current_user),
-        is_primary=True,
-    )
-    if creator.project_ids is not None:
+    assigned_to_tenant = _should_assign_tenant_from_payload(current_user, creator.tenant_id)
+    if assigned_to_tenant:
+        target_tenant_id = _target_tenant_id_for_payload(current_user, creator.tenant_id)
+        assign_user_to_tenant(
+            session,
+            int(user_model.id),
+            tenant_id=target_tenant_id,
+            role=_normalize_editable_tenant_role(creator.tenant_role, current_user),
+            is_primary=True,
+        )
+    if assigned_to_tenant and creator.project_ids is not None:
         update_user_datasources(
             session,
             current_user,
@@ -478,15 +490,7 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
     if not check_email_format(editor.email):
         raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email')} [{editor.email}]"))
     data = _user_payload_data(editor, current_user, user_model)
-    should_update_tenant_membership = (
-        not is_super_admin(current_user)
-        or editor.tenant_id is not None
-        or check_user_in_tenant(
-            session=session,
-            user_id=int(user_model.id),
-            tenant_id=getattr(current_user, "tenant_id", None),
-        )
-    )
+    should_update_tenant_membership = not is_super_admin(current_user) or editor.tenant_id is not None
     current_tenant_role = TENANT_ROLE_MEMBER
     if should_update_tenant_membership:
         current_tenant_role = _ensure_tenant_owner_manageable(
@@ -514,7 +518,7 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
             role=_normalize_editable_tenant_role(editor.tenant_role, current_user, current_role=current_tenant_role),
             is_primary=True,
         )
-    if editor.project_ids is not None:
+    if should_update_tenant_membership and editor.project_ids is not None:
         update_user_datasources(
             session,
             current_user,

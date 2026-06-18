@@ -17,6 +17,10 @@ export interface TenantInfo {
   subscription_note?: string
   create_time?: number
   update_time?: number
+  owner_user_id?: number | string
+  owner_account?: string
+  owner_name?: string
+  owner_email?: string
 }
 
 export interface TenantSearchInfo {
@@ -141,7 +145,9 @@ const buildTenantUsageQuery = (params: TenantUsageQuery = {}) => {
   return query ? `?${query}` : ''
 }
 
-const buildOptionalTenantQuery = (params: { tenant_id?: number | string; status?: string } = {}) => {
+const buildOptionalTenantQuery = (
+  params: { tenant_id?: number | string; status?: string } = {}
+) => {
   const searchParams = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return
@@ -204,8 +210,7 @@ export const tenantApi = {
     billing_contact?: string
     billing_email?: string
     subscription_note?: string
-  }) =>
-    request.post<TenantInfo>('/system/tenant', data),
+  }) => request.post<TenantInfo>('/system/tenant', data),
   edit: (
     id: number | string,
     data: {
@@ -220,10 +225,10 @@ export const tenantApi = {
       billing_email?: string
       subscription_note?: string
     }
-  ) =>
-    request.put<TenantInfo>(`/system/tenant/${id}`, data),
+  ) => request.put<TenantInfo>(`/system/tenant/${id}`, data),
   status: (id: number | string, status: number) =>
     request.patch<TenantInfo>(`/system/tenant/${id}/status`, { status }),
+  delete: (id: number | string) => request.delete<TenantInfo>(`/system/tenant/${id}`),
   usage: (params?: TenantUsageQuery) =>
     request.get<TenantUsageDailyInfo[]>(`/system/tenant/usage${buildTenantUsageQuery(params)}`),
   bindDomain: (data: { domain: string; auto_join_role: 'admin' | 'member' }) =>
@@ -249,10 +254,8 @@ export const tenantApi = {
     ),
   submitDataRequest: (data: { request_type: 'cancel' | 'export' | 'delete'; reason?: string }) =>
     request.post<TenantDataRequestInfo>('/system/tenant/data-request', data),
-  reviewDataRequest: (
-    id: number | string,
-    data: { approved: boolean; review_comment?: string }
-  ) => request.post<TenantDataRequestInfo>(`/system/tenant/data-request/${id}/review`, data),
+  reviewDataRequest: (id: number | string, data: { approved: boolean; review_comment?: string }) =>
+    request.post<TenantDataRequestInfo>(`/system/tenant/data-request/${id}/review`, data),
   completeDataRequest: (id: number | string, data: { complete_comment?: string }) =>
     request.post<TenantDataRequestInfo>(`/system/tenant/data-request/${id}/complete`, data),
 }

@@ -1,6 +1,6 @@
 <template>
   <div class="tenant-usage-container professional-container">
-    <div class="tool-left">
+    <div class="tool-left" :class="{ 'is-embedded': embedded }">
       <span class="page-title">{{ t('tenant_usage.title') }}</span>
       <div class="toolbar">
         <el-date-picker
@@ -150,6 +150,13 @@ import { useUserStore } from '@/stores/user'
 import { formatTimestamp } from '@/utils/date'
 
 const { t } = useI18n()
+const props = defineProps({
+  embedded: {
+    type: Boolean,
+    default: false,
+  },
+})
+const embedded = computed(() => props.embedded)
 const userStore = useUserStore()
 const loading = ref(false)
 const tenants = shallowRef<TenantInfo[]>([])
@@ -312,6 +319,14 @@ onMounted(async () => {
       font-weight: 500;
       font-size: 20px;
       line-height: 28px;
+    }
+
+    &.is-embedded {
+      justify-content: flex-end;
+
+      .page-title {
+        display: none;
+      }
     }
   }
 

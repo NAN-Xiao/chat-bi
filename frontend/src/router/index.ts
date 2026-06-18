@@ -237,6 +237,7 @@ export const routes = [
           iconActive: 'user',
           iconDeActive: 'noUser',
           platformOperation: true,
+          hideForPlatformAdmin: true,
         },
       },
       {
@@ -260,6 +261,7 @@ export const routes = [
           iconActive: 'log',
           iconDeActive: 'noLog',
           platformOperation: true,
+          hideForPlatformAdmin: true,
         },
       },
       {

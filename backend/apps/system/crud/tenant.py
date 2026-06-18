@@ -85,6 +85,7 @@ TENANT_DATA_REQUEST_STATUSES = {
     TENANT_DATA_REQUEST_STATUS_REJECTED,
     TENANT_DATA_REQUEST_STATUS_COMPLETED,
 }
+TENANT_STATUS_DELETED = -1
 
 
 class TenantContext(BaseModel):
@@ -335,6 +336,8 @@ def list_tenants(session: Session, *, include_disabled: bool = False) -> list[Te
     statement = select(TenantModel).order_by(TenantModel.name, TenantModel.code)
     if not include_disabled:
         statement = statement.where(TenantModel.status == 1)
+    else:
+        statement = statement.where(TenantModel.status != TENANT_STATUS_DELETED)
     return list(session.exec(statement).all())
 
 
@@ -413,9 +416,26 @@ def set_tenant_status(session: Session, *, tenant_id: int, status: int) -> Tenan
     tenant = session.get(TenantModel, tenant_id)
     if not tenant:
         raise ValueError("Tenant does not exist")
+    if int(tenant.status) == TENANT_STATUS_DELETED:
+        raise ValueError("Deleted tenant cannot be updated")
     if int(tenant.id) == DEFAULT_TENANT_ID and status == 0:
         raise ValueError("Default tenant cannot be disabled")
     tenant.status = status
+    tenant.update_time = get_timestamp()
+    session.add(tenant)
+    session.flush()
+    return tenant
+
+
+def delete_tenant(session: Session, *, tenant_id: int) -> TenantModel:
+    tenant = session.get(TenantModel, tenant_id)
+    if not tenant or int(tenant.status) == TENANT_STATUS_DELETED:
+        raise ValueError("Tenant does not exist")
+    if int(tenant.id) == DEFAULT_TENANT_ID:
+        raise ValueError("Default tenant cannot be deleted")
+    if int(tenant.status) != 0:
+        raise ValueError("Tenant must be disabled before deletion")
+    tenant.status = TENANT_STATUS_DELETED
     tenant.update_time = get_timestamp()
     session.add(tenant)
     session.flush()

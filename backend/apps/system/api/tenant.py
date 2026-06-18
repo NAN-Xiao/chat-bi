@@ -22,6 +22,7 @@ from apps.system.crud.tenant import (
     create_tenant_data_request,
     create_tenant_domain,
     create_tenant_invitation,
+    delete_tenant,
     complete_tenant_data_request,
     leave_tenant,
     list_tenant_data_requests,
@@ -1390,5 +1391,26 @@ async def update_tenant_status(session: SessionDep, current_user: CurrentUser, t
         resource_id=tenant.id,
         resource_name=tenant.name,
         remark=f"tenant_code={tenant.code}; status={tenant.status}",
+    )
+    return _tenant_dto(tenant)
+
+
+@router.delete("/{tenant_id}", response_model=TenantDTO)
+async def remove_tenant(session: SessionDep, current_user: CurrentUser, tenant_id: int):
+    _require_platform_admin(current_user)
+    try:
+        tenant = delete_tenant(session, tenant_id=tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _write_tenant_audit(
+        session,
+        current_user,
+        operation_type=OperationType.DELETE,
+        detail="删除企业",
+        module=OperationModules.TENANT,
+        tenant_id=int(tenant.id),
+        resource_id=tenant.id,
+        resource_name=tenant.name,
+        remark=f"tenant_code={tenant.code}; soft_deleted=true",
     )
     return _tenant_dto(tenant)
