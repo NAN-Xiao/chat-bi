@@ -33,7 +33,7 @@ def _legacy_ecb_decrypt(text: str) -> str:
         raise
 
 
-async def zhishu_decrypt(text: Optional[str]) -> Optional[str]:
+def zhishu_decrypt_sync(text: Optional[str]) -> Optional[str]:
     if text is None:
         return None
     if not isinstance(text, str):
@@ -46,6 +46,10 @@ async def zhishu_decrypt(text: Optional[str]) -> Optional[str]:
         # Keep plaintext-compatible behavior for requests like login and
         # for records that may already be stored as raw text.
         return text
+
+
+async def zhishu_decrypt(text: Optional[str]) -> Optional[str]:
+    return zhishu_decrypt_sync(text)
 
 
 async def zhishu_encrypt(text: Optional[str]) -> Optional[str]:

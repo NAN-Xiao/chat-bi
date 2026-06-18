@@ -107,8 +107,15 @@ class Settings(BaseSettings):
     LLM_REQUEST_TIMEOUT: int = 45
     LLM_MAX_RETRIES: int = 1
 
-    LOCAL_MODEL_PATH: str = '/opt/zhishu/models'
-    DEFAULT_EMBEDDING_MODEL: str = 'shibing624/text2vec-base-chinese'
+    DEFAULT_EMBEDDING_MODEL: str = 'text-embedding-v4'
+    EMBEDDING_PROVIDER: Literal["openai"] = "openai"
+    EMBEDDING_MODEL: str = 'text-embedding-v4'
+    EMBEDDING_API_BASE_URL: str | None = None
+    EMBEDDING_API_KEY: str | None = None
+    EMBEDDING_USE_DEFAULT_AI_MODEL_CONFIG: bool = True
+    EMBEDDING_REQUEST_TIMEOUT: int = 30
+    EMBEDDING_BATCH_SIZE: int = 32
+    EMBEDDING_NORMALIZE: bool = True
     EMBEDDING_ENABLED: bool = True
     EMBEDDING_DEFAULT_SIMILARITY: float = 0.4
     EMBEDDING_TERMINOLOGY_SIMILARITY: float = EMBEDDING_DEFAULT_SIMILARITY
@@ -147,6 +154,8 @@ class Settings(BaseSettings):
                      'PARSE_REASONING_BLOCK_ENABLED',
                      'PG_POOL_PRE_PING',
                      'TABLE_EMBEDDING_ENABLED',
+                     'EMBEDDING_USE_DEFAULT_AI_MODEL_CONFIG',
+                     'EMBEDDING_NORMALIZE',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:

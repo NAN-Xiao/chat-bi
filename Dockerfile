@@ -1,5 +1,4 @@
 # Build zhishu
-FROM ghcr.io/1panel-dev/maxkb-vector-model:v1.0.1 AS vector-model
 FROM --platform=${BUILDPLATFORM} registry.cn-qingdao.aliyuncs.com/dataease/zhishu-base:latest AS zhishu-ui-builder
 ENV ZHISHU_HOME=/opt/zhishu
 ENV APP_HOME=${ZHISHU_HOME}/app
@@ -85,7 +84,6 @@ COPY start.sh /opt/zhishu/app/start.sh
 COPY g2-ssr/*.ttf /usr/share/fonts/truetype/liberation/
 COPY --from=zhishu-builder ${ZHISHU_HOME} ${ZHISHU_HOME}
 COPY --from=ssr-builder /app /opt/zhishu/g2-ssr
-COPY --from=vector-model /opt/maxkb/app/model /opt/zhishu/models
 
 WORKDIR ${ZHISHU_HOME}/app
 

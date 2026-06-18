@@ -23,8 +23,6 @@ from common.audit.schemas.request_context import RequestContextMiddlewareCommon
 from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
 from common.core.app_cache import init_app_cache
-from common.utils.embedding_threads import fill_empty_terminology_embeddings, fill_empty_data_training_embeddings, \
-    fill_empty_table_and_ds_embeddings
 from common.utils.utils import AppLogUtil
 
 try:
@@ -41,26 +39,11 @@ def run_migrations():
     command.upgrade(alembic_cfg, "head")
 
 
-def init_terminology_embedding_data():
-    fill_empty_terminology_embeddings()
-
-
-def init_data_training_embedding_data():
-    fill_empty_data_training_embeddings()
-
-
-def init_table_and_ds_embedding():
-    fill_empty_table_and_ds_embeddings()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
     init_app_cache()
     init_dynamic_cors(app)
-    init_terminology_embedding_data()
-    init_data_training_embedding_data()
-    init_table_and_ds_embedding()
     AppLogUtil.info("✅ 星通智数 初始化完成")
     await async_model_info()  # 异步加密已有模型的密钥和地址
     yield
