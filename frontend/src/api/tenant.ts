@@ -55,6 +55,36 @@ export interface TenantApplicationPayload {
   reason?: string
 }
 
+export interface TenantUsageDailyInfo {
+  tenant_id: number | string
+  usage_date: string
+  metric: string
+  request_count: number
+  success_count: number
+  failure_count: number
+  total_tokens: number
+  task_count: number
+  update_time?: number
+}
+
+export interface TenantUsageQuery {
+  tenant_id?: number | string
+  start_date?: string
+  end_date?: string
+  metric?: string
+  limit?: number
+}
+
+const buildTenantUsageQuery = (params: TenantUsageQuery = {}) => {
+  const searchParams = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+    searchParams.append(key, String(value))
+  })
+  const query = searchParams.toString()
+  return query ? `?${query}` : ''
+}
+
 export const tenantApi = {
   current: () => request.get<TenantInfo>('/system/tenant/current'),
   list: () => request.get<TenantInfo[]>('/system/tenant/list'),
@@ -100,4 +130,6 @@ export const tenantApi = {
     request.put<TenantInfo>(`/system/tenant/${id}`, data),
   status: (id: number | string, status: number) =>
     request.patch<TenantInfo>(`/system/tenant/${id}/status`, { status }),
+  usage: (params?: TenantUsageQuery) =>
+    request.get<TenantUsageDailyInfo[]>(`/system/tenant/usage${buildTenantUsageQuery(params)}`),
 }

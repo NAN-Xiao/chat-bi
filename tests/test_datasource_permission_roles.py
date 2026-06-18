@@ -11,8 +11,10 @@ from sqlmodel import Session, create_engine
 from apps.datasource.crud import datasource as datasource_crud
 from apps.datasource.api import datasource as datasource_api
 from apps.datasource.crud import permission
+from apps.datasource.crud.permission_errors import PERMISSION_DENIED_AGENT_GUIDANCE, PERMISSION_DENIED_RESULT_MESSAGE
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreTable, TableObj
+from apps.analysis_assistant.api import analysis_assistant as analysis_assistant_api
 
 
 def _engine_with_permission_tables():
@@ -199,6 +201,21 @@ def test_datasource_membership_does_not_cross_tenant_boundary():
         assert permission.get_accessible_datasource_ids(session, current_user) == {1}
 
 
+def test_tenant_admin_can_manage_all_datasources_in_current_tenant_only():
+    engine = _engine_with_permission_tables()
+    tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        session.add(_datasource(2, tenant_id=2))
+        session.commit()
+
+        assert permission.get_accessible_datasource_ids(session, tenant_admin) == {1}
+        assert permission.get_datasource_role(session, tenant_admin, 1) == "editor"
+        assert permission.has_datasource_role(session, tenant_admin, 1, "project_editor") is True
+        assert permission.has_datasource_access(session, tenant_admin, 2) is False
+
+
 def test_update_user_datasources_ignores_projects_outside_current_tenant():
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
@@ -255,6 +272,7 @@ def test_datasource_list_hides_connection_config_for_normal_users():
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     system_admin = SimpleNamespace(id=4, system_role="system_admin")
+    tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="owner")
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -263,11 +281,14 @@ def test_datasource_list_hides_connection_config_for_normal_users():
 
         normal_items = asyncio.run(datasource_api.datasource_list(session, current_user))
         admin_items = asyncio.run(datasource_api.datasource_list(session, system_admin))
+        tenant_admin_items = asyncio.run(datasource_api.datasource_list(session, tenant_admin))
 
         assert normal_items[0]["configuration"] is None
         assert admin_items[0]["configuration"] == "{}"
+        assert tenant_admin_items[0]["configuration"] == "{}"
         assert normal_items[0]["can_manage_project"] is False
         assert admin_items[0]["can_manage_project"] is True
+        assert tenant_admin_items[0]["can_manage_project"] is True
 
 
 def test_get_datasource_redacts_config_without_mutating_record():
@@ -585,6 +606,107 @@ def test_sql_permission_scope_denies_hidden_columns(monkeypatch):
             assert "amount" in str(exc)
         else:
             raise AssertionError("hidden column query should be rejected")
+
+
+def test_analysis_assistant_permission_failure_is_structured_and_sanitized(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        try:
+            analysis_assistant_api._prepare_sql_for_execution(
+                None,
+                session,
+                current_user,
+                ds,
+                "select amount from orders",
+                ["orders", "payments"],
+            )
+        except ValueError as exc:
+            block = {"summary": "old summary"}
+            analysis_assistant_api._mark_query_error_block(block, exc, current_user)
+        else:
+            raise AssertionError("hidden column query should be rejected")
+
+    assert block["error_type"] == analysis_assistant_api.PERMISSION_DENIED_ERROR_TYPE
+    assert block["warning"] == PERMISSION_DENIED_RESULT_MESSAGE
+    assert block["agent_guidance"] == PERMISSION_DENIED_AGENT_GUIDANCE
+    assert block["error_detail"] == ""
+    assert block["summary"] == ""
+    assert block["status"] == "failed"
+    assert "amount" not in block["warning"]
+
+
+def test_analysis_assistant_final_prompt_carries_permission_gap(monkeypatch):
+    captured = {}
+
+    def fake_llm_text(_llm, messages):
+        captured["messages"] = messages
+        return "final"
+
+    monkeypatch.setattr(analysis_assistant_api, "_llm_text", fake_llm_text)
+
+    result = analysis_assistant_api._final_answer(
+        None,
+        "分析经营情况",
+        "综合分析",
+        [
+            {
+                "id": "q1",
+                "title": "可见收入趋势",
+                "purpose": "查看已授权收入走势",
+                "summary": "收入上涨。",
+                "fields": ["day", "revenue"],
+                "data": [{"day": "2026-01-01", "revenue": 100}],
+            },
+            {
+                "id": "q2",
+                "title": "受限成本拆解",
+                "purpose": "查看成本结构",
+                "error_type": analysis_assistant_api.PERMISSION_DENIED_ERROR_TYPE,
+                "error": PERMISSION_DENIED_RESULT_MESSAGE,
+                "reason": PERMISSION_DENIED_RESULT_MESSAGE,
+                "agent_guidance": PERMISSION_DENIED_AGENT_GUIDANCE,
+                "fields": [],
+                "data": [],
+            },
+        ],
+    )
+
+    user_prompt = captured["messages"][1].content
+    assert result == "final"
+    assert "受限成本拆解" in user_prompt
+    assert "当前用户数据权限受限" in user_prompt
+    assert "可能因缺少受限数据而存在偏差" in user_prompt
+    assert PERMISSION_DENIED_AGENT_GUIDANCE in user_prompt
+    assert "不要猜测或暴露具体受限表名" in user_prompt
+
+
+def test_analysis_assistant_db_permission_failure_is_structured_and_sanitized():
+    block = {"title": "受限数据检查", "summary": "old summary"}
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+
+    analysis_assistant_api._mark_query_error_block(
+        block,
+        RuntimeError("psycopg.errors.InsufficientPrivilege: permission denied for relation secret_orders"),
+        current_user,
+    )
+
+    assert block["status"] == "failed"
+    assert block["error_type"] == analysis_assistant_api.PERMISSION_DENIED_ERROR_TYPE
+    assert block["warning"] == PERMISSION_DENIED_RESULT_MESSAGE
+    assert block["agent_guidance"] == PERMISSION_DENIED_AGENT_GUIDANCE
+    assert block["error_detail"] == ""
+    assert block["summary"] == ""
+    assert "secret_orders" not in block["warning"]
 
 
 def test_user_schema_filters_relationships_outside_table_scope(monkeypatch):

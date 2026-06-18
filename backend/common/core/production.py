@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import urlsplit
@@ -62,7 +63,11 @@ def validate_production_settings() -> list[str]:
     elif len(sensitive_key or "") < 32:
         errors.append("SENSITIVE_CONFIG_ENCRYPTION_KEY must be at least 32 characters.")
     if settings.CACHE_TYPE != "redis":
-        errors.append("CACHE_TYPE must be redis for production single-tenant deployments.")
+        errors.append("CACHE_TYPE must be redis for production multi-tenant deployments.")
+    if settings.AUTO_RUN_MIGRATIONS:
+        errors.append(
+            "AUTO_RUN_MIGRATIONS must be false in production; run database migrations as a separate release step."
+        )
 
     redis_url = settings.CACHE_REDIS_URL or settings.REDIS_URL
     if not settings.REDIS_PASSWORD and not _redis_url_has_auth(redis_url):
@@ -90,12 +95,46 @@ def validate_production_settings() -> list[str]:
         errors.append("TASK_QUEUE_MAX_ATTEMPTS should be at least 2 in production.")
     if settings.TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS <= 0:
         errors.append("TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS must be greater than 0.")
+    if settings.TASK_QUEUE_MAX_PENDING_PER_TENANT < 0:
+        errors.append("TASK_QUEUE_MAX_PENDING_PER_TENANT must be greater than or equal to 0.")
+    if settings.TASK_QUEUE_MAX_PROCESSING_PER_TENANT < 0:
+        errors.append("TASK_QUEUE_MAX_PROCESSING_PER_TENANT must be greater than or equal to 0.")
     if not settings.LOGIN_RATE_LIMIT_ENABLED:
         errors.append("LOGIN_RATE_LIMIT_ENABLED must be true in production.")
     if settings.LOGIN_MAX_FAILED_ATTEMPTS <= 0 or settings.LOGIN_MAX_FAILED_ATTEMPTS > 10:
         errors.append("LOGIN_MAX_FAILED_ATTEMPTS must be between 1 and 10 in production.")
     if settings.LOGIN_LOCKOUT_SECONDS <= 0:
         errors.append("LOGIN_LOCKOUT_SECONDS must be greater than 0 in production.")
+    if not settings.TENANT_RATE_LIMIT_ENABLED:
+        errors.append("TENANT_RATE_LIMIT_ENABLED must be true in production.")
+    if not settings.TENANT_USAGE_METERING_ENABLED:
+        errors.append("TENANT_USAGE_METERING_ENABLED must be true in production.")
+    if not settings.TENANT_USAGE_QUOTA_ENABLED:
+        errors.append("TENANT_USAGE_QUOTA_ENABLED must be true in production.")
+    if settings.TENANT_RATE_LIMIT_PLAN_OVERRIDES:
+        try:
+            plan_overrides = json.loads(settings.TENANT_RATE_LIMIT_PLAN_OVERRIDES)
+        except json.JSONDecodeError:
+            errors.append("TENANT_RATE_LIMIT_PLAN_OVERRIDES must be valid JSON.")
+        else:
+            if not isinstance(plan_overrides, dict):
+                errors.append("TENANT_RATE_LIMIT_PLAN_OVERRIDES must be a JSON object.")
+    if settings.TENANT_USAGE_QUOTA_PLAN_LIMITS:
+        try:
+            quota_limits = json.loads(settings.TENANT_USAGE_QUOTA_PLAN_LIMITS)
+        except json.JSONDecodeError:
+            errors.append("TENANT_USAGE_QUOTA_PLAN_LIMITS must be valid JSON.")
+        else:
+            if not isinstance(quota_limits, dict):
+                errors.append("TENANT_USAGE_QUOTA_PLAN_LIMITS must be a JSON object.")
+    for name in (
+        "TENANT_CHAT_REQUESTS_PER_MINUTE",
+        "TENANT_ANALYSIS_REQUESTS_PER_MINUTE",
+        "TENANT_RECOMMEND_REQUESTS_PER_MINUTE",
+        "TENANT_LLM_REQUESTS_PER_MINUTE",
+    ):
+        if int(getattr(settings, name)) <= 0:
+            errors.append(f"{name} must be greater than 0 in production.")
     if settings.MAX_UPLOAD_BYTES <= 0:
         errors.append("MAX_UPLOAD_BYTES must be greater than 0 in production.")
     if settings.MAX_UPLOAD_BYTES > 100 * 1024 * 1024:

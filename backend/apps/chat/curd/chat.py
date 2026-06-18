@@ -12,12 +12,14 @@ from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, 
     TypeEnum, OperationEnum, ChatRecordResult, ChatLogHistory, ChatLogHistoryItem
 from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
 from apps.datasource.crud.datasource import get_ds
+from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
 from apps.datasource.crud.permission import get_accessible_datasource_ids, has_datasource_access, is_normal_user
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
 from apps.db.db import exec_sql
+from apps.system.crud.tenant_usage import record_tenant_usage_detached, token_total
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
@@ -26,6 +28,18 @@ from common.utils.utils import extract_nested_json, AppLogUtil
 
 _USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
 DEFAULT_TENANT_ID = 1
+
+CHAT_USAGE_METRICS = {
+    OperationEnum.GENERATE_SQL: "chat.generate_sql",
+    OperationEnum.GENERATE_CHART: "chat.generate_chart",
+    OperationEnum.ANALYSIS: "chat.analysis",
+    OperationEnum.PREDICT_DATA: "chat.predict",
+    OperationEnum.GENERATE_RECOMMENDED_QUESTIONS: "chat.recommend",
+    OperationEnum.CHOOSE_DATASOURCE: "chat.choose_datasource",
+    OperationEnum.GENERATE_SQL_WITH_PERMISSIONS: "chat.generate_sql_with_permissions",
+    OperationEnum.GENERATE_DYNAMIC_SQL: "chat.generate_dynamic_sql",
+    OperationEnum.EXECUTE_SQL: "chat.execute_sql",
+}
 
 
 def _current_tenant_id(current_user: CurrentUser | None) -> int:
@@ -44,12 +58,31 @@ def _record_tenant_id(session: SessionDep, record_id: int | None) -> int:
     return int(tenant_id or DEFAULT_TENANT_ID)
 
 
+def _record_chat_usage_from_log(log: ChatLog, *, success: bool) -> None:
+    metric = CHAT_USAGE_METRICS.get(log.operate)
+    if not metric:
+        return
+    total_tokens = token_total(log.token_usage)
+    if log.local_operation and log.operate != OperationEnum.EXECUTE_SQL:
+        return
+    record_tenant_usage_detached(
+        tenant_id=int(log.tenant_id or DEFAULT_TENANT_ID),
+        metric=metric,
+        request_count=1,
+        success_count=1 if success else 0,
+        failure_count=0 if success else 1,
+        total_tokens=total_tokens,
+    )
+
+
 def _failed_permission_data(message: str = _USER_PERMISSION_DENIED_MESSAGE) -> dict[str, Any]:
     return {
         "status": "failed",
+        "error_type": PERMISSION_DENIED_ERROR_TYPE,
         "fields": [],
         "data": [],
         "message": message,
+        "reason": message,
     }
 
 
@@ -325,6 +358,9 @@ def format_json_data(origin_data: dict):
     _list = origin_data.get('data') if origin_data.get('data') else []
     data = format_json_list_data(_list)
     result['data'] = data
+    for key in ("status", "error_type", "message", "reason", "warning", "agent_guidance", "datasource", "limit"):
+        if key in origin_data:
+            result[key] = origin_data.get(key)
 
     return result
 
@@ -1116,6 +1152,7 @@ def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], d
     )
     session.execute(stmt)
     session.commit()
+    _record_chat_usage_from_log(log, success=True)
 
     return log
 
@@ -1127,6 +1164,7 @@ def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
     )
     session.execute(stmt)
     session.commit()
+    _record_chat_usage_from_log(log, success=False)
 
     return log
 

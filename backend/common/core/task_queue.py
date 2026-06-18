@@ -12,6 +12,7 @@ from typing import Any
 
 from redis.exceptions import RedisError
 
+from apps.system.crud.tenant_usage import check_tenant_usage_quota_detached, record_tenant_usage_detached
 from common.core.config import settings
 from common.core.redis_client import get_redis_client, redis_key, tenant_redis_key
 from common.utils.utils import AppLogUtil
@@ -58,6 +59,37 @@ def _normalize_tenant_id(tenant_id: int | str | None) -> int:
     if tenant_id in (None, ""):
         return DEFAULT_TASK_TENANT_ID
     return int(tenant_id)
+
+
+def _record_task_usage(tenant_id: int | str | None, metric: str, *, success: bool | None = None) -> None:
+    record_tenant_usage_detached(
+        tenant_id=_normalize_tenant_id(tenant_id),
+        metric=metric,
+        request_count=1,
+        success_count=1 if success is True else 0,
+        failure_count=1 if success is False else 0,
+        task_count=1,
+    )
+
+
+def _tenant_pending_key(tenant_id: int | str | None, queue_name: str | None = None) -> str:
+    return tenant_redis_key(
+        _normalize_tenant_id(tenant_id),
+        "task",
+        "queue",
+        queue_name or settings.TASK_QUEUE_NAME,
+        "pending",
+    )
+
+
+def _tenant_processing_key(tenant_id: int | str | None, queue_name: str | None = None) -> str:
+    return tenant_redis_key(
+        _normalize_tenant_id(tenant_id),
+        "task",
+        "queue",
+        queue_name or settings.TASK_QUEUE_NAME,
+        "processing",
+    )
 
 
 def _task_key(task_id: str, tenant_id: int | str | None = None) -> str:
@@ -132,6 +164,20 @@ async def enqueue_task(
     task_id = uuid.uuid4().hex
     now = utc_now()
     resolved_tenant_id = _normalize_tenant_id(tenant_id)
+    quota_state = check_tenant_usage_quota_detached(tenant_id=resolved_tenant_id, action="task")
+    if not quota_state.allowed:
+        raise RuntimeError(
+            f"Tenant {resolved_tenant_id} task quota exceeded "
+            f"({quota_state.used}/{quota_state.limit} {quota_state.window})."
+        )
+    max_pending_per_tenant = int(settings.TASK_QUEUE_MAX_PENDING_PER_TENANT or 0)
+    if max_pending_per_tenant > 0:
+        current_pending = await tenant_queue_size(resolved_tenant_id, queue_name)
+        if current_pending >= max_pending_per_tenant:
+            raise RuntimeError(
+                f"Tenant {resolved_tenant_id} task queue is full "
+                f"({current_pending}/{max_pending_per_tenant} pending)."
+            )
     task = {
         "id": task_id,
         "tenant_id": resolved_tenant_id,
@@ -163,6 +209,8 @@ async def enqueue_task(
         ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
     )
     await client.lpush(_queue_key(queue_name), task_id)
+    await _push_pending_task(task_id, resolved_tenant_id, queue_name)
+    _record_task_usage(resolved_tenant_id, "task.enqueued", success=True)
     return task
 
 
@@ -246,6 +294,45 @@ async def processing_size(queue_name: str | None = None) -> int:
     return int(await client.llen(_processing_key(queue_name)))
 
 
+async def tenant_queue_size(tenant_id: int | str | None, queue_name: str | None = None) -> int:
+    client = get_redis_client()
+    return int(await client.llen(_tenant_pending_key(tenant_id, queue_name)))
+
+
+async def tenant_processing_size(tenant_id: int | str | None, queue_name: str | None = None) -> int:
+    client = get_redis_client()
+    return int(await client.llen(_tenant_processing_key(tenant_id, queue_name)))
+
+
+async def _push_pending_task(task_id: str, tenant_id: int | str | None, queue_name: str | None = None) -> None:
+    client = get_redis_client()
+    pending_key = _tenant_pending_key(tenant_id, queue_name)
+    await client.lrem(pending_key, 0, task_id)
+    await client.lpush(pending_key, task_id)
+
+
+async def _remove_pending_task(task_id: str, tenant_id: int | str | None, queue_name: str | None = None) -> None:
+    await get_redis_client().lrem(_tenant_pending_key(tenant_id, queue_name), 0, task_id)
+
+
+async def _push_processing_task(task_id: str, tenant_id: int | str | None, queue_name: str | None = None) -> None:
+    client = get_redis_client()
+    processing_key = _tenant_processing_key(tenant_id, queue_name)
+    await client.lrem(processing_key, 0, task_id)
+    await client.lpush(processing_key, task_id)
+
+
+async def _remove_processing_task(task_id: str, tenant_id: int | str | None, queue_name: str | None = None) -> None:
+    await get_redis_client().lrem(_tenant_processing_key(tenant_id, queue_name), 0, task_id)
+
+
+async def _tenant_processing_limit_reached(tenant_id: int | str | None, queue_name: str | None = None) -> bool:
+    limit = int(settings.TASK_QUEUE_MAX_PROCESSING_PER_TENANT or 0)
+    if limit <= 0:
+        return False
+    return await tenant_processing_size(tenant_id, queue_name) >= limit
+
+
 async def task_queue_health(queue_name: str | None = None) -> dict[str, Any]:
     try:
         client = get_redis_client()
@@ -255,6 +342,10 @@ async def task_queue_health(queue_name: str | None = None) -> dict[str, Any]:
             "queue": queue_name or settings.TASK_QUEUE_NAME,
             "pending": await queue_size(queue_name),
             "processing": await processing_size(queue_name),
+            "tenant_limits": {
+                "max_pending_per_tenant": settings.TASK_QUEUE_MAX_PENDING_PER_TENANT,
+                "max_processing_per_tenant": settings.TASK_QUEUE_MAX_PROCESSING_PER_TENANT,
+            },
             "registered_tasks": registered_task_names(),
         }
     except RedisError as exc:
@@ -283,18 +374,38 @@ async def _save_task(task: dict[str, Any]) -> None:
 
 async def _claim_task(queue_name: str | None = None, *, timeout: int | None = None) -> str | None:
     client = get_redis_client()
-    raw_task_id = await client.brpoplpush(
-        _queue_key(queue_name),
-        _processing_key(queue_name),
-        timeout=settings.TASK_QUEUE_POLL_TIMEOUT_SECONDS if timeout is None else timeout,
-    )
-    if raw_task_id is None:
-        return None
-    return _decode_redis_value(raw_task_id)
+    queue = queue_name or settings.TASK_QUEUE_NAME
+    timeout_seconds = settings.TASK_QUEUE_POLL_TIMEOUT_SECONDS if timeout is None else timeout
+    max_scan = max(1, await queue_size(queue))
+    for attempt in range(max_scan):
+        raw_task_id = await client.brpoplpush(
+            _queue_key(queue),
+            _processing_key(queue),
+            timeout=timeout_seconds if attempt == 0 else 0,
+        )
+        if raw_task_id is None:
+            return None
+        task_id = _decode_redis_value(raw_task_id)
+        task = await get_task(task_id)
+        if task is None:
+            await _ack_task(task_id, queue)
+            continue
+        tenant_id = task.get("tenant_id")
+        if await _tenant_processing_limit_reached(tenant_id, queue):
+            await _ack_task(task_id, queue)
+            await client.lpush(_queue_key(queue), task_id)
+            continue
+        await _remove_pending_task(task_id, tenant_id, queue)
+        await _push_processing_task(task_id, tenant_id, queue)
+        return task_id
+    return None
 
 
 async def _ack_task(task_id: str, queue_name: str | None = None) -> None:
+    task = await get_task(task_id)
     await get_redis_client().lrem(_processing_key(queue_name), 0, task_id)
+    if task is not None:
+        await _remove_processing_task(task_id, task.get("tenant_id"), task.get("queue") or queue_name)
 
 
 async def _run_handler(name: str, payload: dict[str, Any], task: dict[str, Any] | None = None) -> Any:
@@ -362,6 +473,12 @@ async def run_task(
         await _ack_task(task_id, task_queue)
         if should_requeue:
             await get_redis_client().lpush(_queue_key(task_queue), task_id)
+            await _push_pending_task(task_id, task.get("tenant_id"), task_queue)
+            _record_task_usage(task.get("tenant_id"), "task.retried", success=False)
+        elif task["status"] == TaskStatus.SUCCEEDED.value:
+            _record_task_usage(task.get("tenant_id"), "task.succeeded", success=True)
+        elif task["status"] == TaskStatus.FAILED.value:
+            _record_task_usage(task.get("tenant_id"), "task.failed", success=False)
 
     return task
 
@@ -428,6 +545,7 @@ async def recover_stale_tasks(
         await _save_task(task)
         await _ack_task(task_id, queue)
         await client.lpush(_queue_key(queue), task_id)
+        await _push_pending_task(task_id, task.get("tenant_id"), queue)
         recovered += 1
 
     return {"recovered": recovered, "removed": removed, "failed": failed}

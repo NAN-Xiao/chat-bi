@@ -158,9 +158,10 @@ def test_data_training_pager_rejects_unavailable_datasource(monkeypatch):
     assert exc.value.status_code == 403
 
 
-def test_data_training_maintenance_requires_system_admin(monkeypatch):
+def test_data_training_maintenance_requires_tenant_or_system_admin(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     system_admin = SimpleNamespace(id=1, isAdmin=True)
+    tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=1, tenant_role="owner")
     monkeypatch.setattr(data_training_api, "has_datasource_access", lambda *args, **kwargs: True)
 
     with pytest.raises(HTTPException) as exc:
@@ -174,6 +175,11 @@ def test_data_training_maintenance_requires_system_admin(monkeypatch):
     data_training_api._require_training_admin(
         session=object(),
         current_user=system_admin,
+        info=DataTrainingInfo(datasource=1),
+    )
+    data_training_api._require_training_admin(
+        session=object(),
+        current_user=tenant_admin,
         info=DataTrainingInfo(datasource=1),
     )
 
@@ -234,9 +240,10 @@ def test_terminology_pager_rejects_unavailable_datasource(monkeypatch):
     assert exc.value.status_code == 403
 
 
-def test_terminology_maintenance_requires_system_admin(monkeypatch):
+def test_terminology_maintenance_requires_tenant_or_system_admin(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     system_admin = SimpleNamespace(id=1, isAdmin=True)
+    tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=1, tenant_role="admin")
     monkeypatch.setattr(terminology_api, "has_datasource_access", lambda *args, **kwargs: True)
 
     with pytest.raises(HTTPException) as exc:
@@ -250,6 +257,11 @@ def test_terminology_maintenance_requires_system_admin(monkeypatch):
     terminology_api._require_term_scope_admin(
         session=object(),
         current_user=system_admin,
+        term=TerminologyInfo(specific_ds=True, datasource_ids=[1]),
+    )
+    terminology_api._require_term_scope_admin(
+        session=object(),
+        current_user=tenant_admin,
         term=TerminologyInfo(specific_ds=True, datasource_ids=[1]),
     )
 

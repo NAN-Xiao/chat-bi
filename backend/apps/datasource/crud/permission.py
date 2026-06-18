@@ -12,7 +12,7 @@ from apps.datasource.crud.permission_rules import (
 )
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable
-from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.models.tenant import TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
 from apps.system.crud.user import SYSTEM_ADMIN_ROLES, is_system_admin
@@ -402,7 +402,8 @@ def _rule_contains_permission(rule: Any, permission_id) -> bool:
 
 
 def _is_datasource_scope_admin(current_user: CurrentUser) -> bool:
-    return is_system_admin(current_user)
+    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+    return is_system_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
 
 
 def _first_column_value(row):

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "星通智数"
     APP_ENV: Literal["development", "test", "production"] = "development"
     PRODUCTION_CHECKS_ENABLED: bool = True
+    AUTO_RUN_MIGRATIONS: bool = True
     #CONTEXT_PATH: str = "/zhishu"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)
@@ -79,6 +80,15 @@ class Settings(BaseSettings):
     LOGIN_MAX_FAILED_ATTEMPTS: int = 5
     LOGIN_FAILURE_WINDOW_SECONDS: int = 15 * 60
     LOGIN_LOCKOUT_SECONDS: int = 15 * 60
+    TENANT_RATE_LIMIT_ENABLED: bool = True
+    TENANT_CHAT_REQUESTS_PER_MINUTE: int = 60
+    TENANT_ANALYSIS_REQUESTS_PER_MINUTE: int = 20
+    TENANT_RECOMMEND_REQUESTS_PER_MINUTE: int = 30
+    TENANT_LLM_REQUESTS_PER_MINUTE: int = 60
+    TENANT_RATE_LIMIT_PLAN_OVERRIDES: str = ""
+    TENANT_USAGE_METERING_ENABLED: bool = True
+    TENANT_USAGE_QUOTA_ENABLED: bool = True
+    TENANT_USAGE_QUOTA_PLAN_LIMITS: str = ""
     MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024
 
     CACHE_TYPE: Literal["redis", "memory", "none"] = "memory"
@@ -104,6 +114,8 @@ class Settings(BaseSettings):
     TASK_QUEUE_MAX_ATTEMPTS: int = 1
     TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS: int = 60 * 60
     TASK_QUEUE_REQUEUE_INTERVAL_SECONDS: int = 60
+    TASK_QUEUE_MAX_PENDING_PER_TENANT: int = 0
+    TASK_QUEUE_MAX_PROCESSING_PER_TENANT: int = 0
 
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     LOG_DIR: str = "logs"
@@ -193,8 +205,12 @@ class Settings(BaseSettings):
                      'EMBEDDING_NORMALIZE',
                      'REDIS_SSL',
                      'PRODUCTION_CHECKS_ENABLED',
+                     'AUTO_RUN_MIGRATIONS',
                      'ENABLE_LOCAL_DEV_CORS',
                      'LOGIN_RATE_LIMIT_ENABLED',
+                     'TENANT_RATE_LIMIT_ENABLED',
+                     'TENANT_USAGE_METERING_ENABLED',
+                     'TENANT_USAGE_QUOTA_ENABLED',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:

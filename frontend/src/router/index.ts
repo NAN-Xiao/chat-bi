@@ -30,6 +30,7 @@ import Parameter from '@/views/system/parameter/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import Tenant from '@/views/system/tenant/Tenant.vue'
 import TenantAccess from '@/views/system/tenant-access/TenantAccess.vue'
+import TenantUsage from '@/views/system/tenant-usage/TenantUsage.vue'
 import User from '@/views/system/user/User.vue'
 import MyWorkspaces from '@/views/account/workspaces/MyWorkspaces.vue'
 import Page401 from '@/views/error/index.vue'
@@ -238,6 +239,12 @@ export const routes = [
           iconDeActive: 'noUser',
           platformOnly: true,
         },
+      },
+      {
+        path: 'usage',
+        name: 'tenant-usage',
+        component: TenantUsage,
+        meta: { title: t('tenant_usage.title'), iconActive: 'log', iconDeActive: 'noLog' },
       },
       {
         path: 'project',

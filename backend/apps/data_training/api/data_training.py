@@ -20,6 +20,7 @@ from apps.datasource.crud.permission import (
 from apps.data_training.models.data_training_model import DataTraining
 from apps.data_training.models.data_training_model import DataTrainingInfo
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_system_admin
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
@@ -36,9 +37,14 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
     return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
 
 
+def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
+    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+    return is_system_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
+
+
 def _require_training_admin(session: SessionDep, current_user: CurrentUser, info: DataTrainingInfo):
-    if not is_system_admin(current_user):
-        raise HTTPException(status_code=403, detail="System admin access is required")
+    if not _can_manage_tenant_semantic_layer(current_user):
+        raise HTTPException(status_code=403, detail="Tenant admin access is required")
     tenant_id = current_tenant_id(current_user)
     if info.id:
         existing = session.get(DataTraining, int(info.id))
@@ -53,8 +59,8 @@ def _require_training_admin(session: SessionDep, current_user: CurrentUser, info
 def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):
     if not ids:
         return
-    if not is_system_admin(current_user):
-        raise HTTPException(status_code=403, detail="System admin access is required")
+    if not _can_manage_tenant_semantic_layer(current_user):
+        raise HTTPException(status_code=403, detail="Tenant admin access is required")
     rows = session.exec(
         select(DataTraining.datasource).where(
             DataTraining.id.in_(ids),
@@ -214,8 +220,8 @@ async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentU
                        file: UploadFile = File(...)):
     if datasource is None:
         raise HTTPException(status_code=400, detail="Datasource is required")
-    if not is_system_admin(current_user):
-        raise HTTPException(status_code=403, detail="System admin access is required")
+    if not _can_manage_tenant_semantic_layer(current_user):
+        raise HTTPException(status_code=403, detail="Tenant admin access is required")
     if not has_datasource_access(session, current_user, datasource):
         raise HTTPException(status_code=403, detail="Datasource access is required")
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}

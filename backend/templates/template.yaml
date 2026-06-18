@@ -663,6 +663,9 @@ template:
         <rule>
           请使用语言：{lang} 回答，若有深度思考过程，则思考过程也需要使用 {lang} 输出
         </rule>
+        <rule>
+          如果<data>是对象且包含 status=failed 与 error_type=permission_denied，说明取数阶段被当前用户数据权限拦截。你必须遵守<data>内的 agent_guidance；只能说明当前账号缺少本次分析所需数据权限，无法基于这部分数据形成确定结论；不要猜测具体受限表名、字段名、行权限条件或权限配置，也不要编造任何数据结果。
+        </rule>
       </Rules>
       
       <Info>
@@ -695,6 +698,9 @@ template:
         </rule>
         <rule>
           预测的数据是一段可以展示趋势的数据，至少2个周期
+        </rule>
+        <rule>
+          如果<data>是对象且包含 status=failed 与 error_type=permission_denied，说明取数阶段被当前用户数据权限拦截。你必须遵守<data>内的 agent_guidance；只能说明当前账号缺少本次预测所需数据权限，无法生成可靠预测；不要猜测具体受限表名、字段名、行权限条件或权限配置，也不要编造预测数据。
         </rule>
         <rule>
           返回的预测数据必须与用户提供的数据同样的格式，使用JSON数组的形式返回

@@ -19,9 +19,11 @@ from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat
     ChatInfo, Chat, ChatFinishStep, ChatQuestionBase
 from apps.chat.task.llm import LLMService
 from apps.datasource.crud.permission import has_datasource_access
+from apps.system.crud.tenant_usage import check_tenant_usage_quota
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
+from common.core.tenant_rate_limiter import consume_tenant_rate_limit, resolve_tenant_rate_limit
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
 from common.audit.models.log_model import OperationType, OperationModules
@@ -32,6 +34,133 @@ router = APIRouter(tags=["Data Q&A"], prefix="/chat")
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
     return int(getattr(current_user, "tenant_id", None) or 1)
+
+
+def _rate_limit_message(retry_after_seconds: int) -> str:
+    return f"当前租户请求过于频繁，请稍后再试。约 {retry_after_seconds} 秒后可以重试。"
+
+
+def _quota_message(state) -> str:
+    window_name = "每日" if state.window == "daily" else "每月"
+    return (
+        f"当前租户套餐的{window_name} {state.action} 用量已达上限"
+        f"（{state.used}/{state.limit}），请联系企业管理员或平台管理员调整套餐。"
+    )
+
+
+async def _tenant_rate_limit_response(
+        session: SessionDep,
+        current_user: CurrentUser,
+        action: str,
+        *,
+        in_chat: bool = True,
+        stream: bool = True,
+):
+    try:
+        limit = resolve_tenant_rate_limit(session, _current_tenant_id(current_user), action)
+        state = await consume_tenant_rate_limit(_current_tenant_id(current_user), action, limit=limit)
+    except RuntimeError as exc:
+        message = str(exc)
+        if stream:
+            def _err():
+                if in_chat:
+                    yield 'data:' + orjson.dumps({
+                        'content': message,
+                        'type': 'error',
+                        'error_type': 'rate_limit_unavailable',
+                    }).decode() + '\n\n'
+                else:
+                    yield f'&#x274c; **ERROR:**\n> {message}\n'
+
+            return StreamingResponse(_err(), media_type="text/event-stream", status_code=503)
+        return JSONResponse(content={'message': message, 'error_type': 'rate_limit_unavailable'}, status_code=503)
+
+    if state.allowed:
+        try:
+            quota_state = check_tenant_usage_quota(session, tenant_id=_current_tenant_id(current_user), action=action)
+        except RuntimeError as exc:
+            message = str(exc)
+            if stream:
+                def _quota_unavailable():
+                    if in_chat:
+                        yield 'data:' + orjson.dumps({
+                            'content': message,
+                            'type': 'error',
+                            'error_type': 'quota_unavailable',
+                        }).decode() + '\n\n'
+                    else:
+                        yield f'&#x274c; **ERROR:**\n> {message}\n'
+
+                return StreamingResponse(_quota_unavailable(), media_type="text/event-stream", status_code=503)
+            return JSONResponse(content={'message': message, 'error_type': 'quota_unavailable'}, status_code=503)
+        if quota_state.allowed:
+            return None
+        message = _quota_message(quota_state)
+        if stream:
+            def _quota_err():
+                if in_chat:
+                    yield 'data:' + orjson.dumps({
+                        'content': message,
+                        'type': 'error',
+                        'error_type': 'quota_exceeded',
+                        'quota': {
+                            'action': quota_state.action,
+                            'window': quota_state.window,
+                            'limit': quota_state.limit,
+                            'used': quota_state.used,
+                            'remaining': quota_state.remaining,
+                            'reset_at': quota_state.reset_at,
+                        },
+                    }).decode() + '\n\n'
+                else:
+                    yield f'&#x274c; **ERROR:**\n> {message}\n'
+
+            return StreamingResponse(_quota_err(), media_type="text/event-stream", status_code=429)
+        return JSONResponse(
+            content={
+                'message': message,
+                'error_type': 'quota_exceeded',
+                'quota': {
+                    'action': quota_state.action,
+                    'window': quota_state.window,
+                    'limit': quota_state.limit,
+                    'used': quota_state.used,
+                    'remaining': quota_state.remaining,
+                    'reset_at': quota_state.reset_at,
+                },
+            },
+            status_code=429,
+        )
+
+    message = _rate_limit_message(state.retry_after_seconds)
+    headers = {"Retry-After": str(state.retry_after_seconds)}
+    if stream:
+        def _err():
+            if in_chat:
+                yield 'data:' + orjson.dumps({
+                    'content': message,
+                    'type': 'error',
+                    'error_type': 'rate_limited',
+                    'retry_after_seconds': state.retry_after_seconds,
+                }).decode() + '\n\n'
+            else:
+                yield f'&#x274c; **ERROR:**\n> {message}\n'
+
+        return StreamingResponse(
+            _err(),
+            media_type="text/event-stream",
+            status_code=429,
+            headers=headers,
+        )
+    return JSONResponse(
+        content={
+            'message': message,
+            'error_type': 'rate_limited',
+            'retry_after_seconds': state.retry_after_seconds,
+        },
+        status_code=429,
+        headers=headers,
+    )
 
 
 @router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
@@ -246,6 +375,10 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
     def _return_empty():
         yield 'data:' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
 
+    limited_response = await _tenant_rate_limit_response(session, current_user, "recommend")
+    if limited_response is not None:
+        return limited_response
+
     try:
         record = get_chat_record_by_id(session, chat_record_id, _current_tenant_id(current_user))
 
@@ -409,6 +542,10 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
                      current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True, stream: bool = True,
                      finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False,
                      return_img: bool = True):
+    limited_response = await _tenant_rate_limit_response(session, current_user, "chat", in_chat=in_chat, stream=stream)
+    if limited_response is not None:
+        return limited_response
+
     try:
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
                                               embedding=embedding)
@@ -455,6 +592,10 @@ async def analysis_or_predict_question(session: SessionDep, current_user: Curren
 
 async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str,
                               current_assistant: CurrentAssistant, in_chat: bool = True, stream: bool = True):
+    limited_response = await _tenant_rate_limit_response(session, current_user, "analysis", in_chat=in_chat, stream=stream)
+    if limited_response is not None:
+        return limited_response
+
     try:
         if action_type != 'analysis' and action_type != 'predict':
             raise Exception(f"Type {action_type} Not Found")
@@ -484,8 +625,6 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
                 f"Chat record with id {chat_record_id} has not generated chart, do not support to analyze it")
 
         current_data = get_chart_data_with_user(session, current_user, record.id)
-        if current_data.get("status") == "failed":
-            raise Exception(current_data.get("message") or "SQL 超出当前数据权限范围")
         record.data = orjson.dumps(current_data).decode()
 
         request_question = ChatQuestion(

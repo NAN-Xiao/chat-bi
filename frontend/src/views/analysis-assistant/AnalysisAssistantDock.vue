@@ -58,6 +58,8 @@ interface AnalysisBlock {
   chart?: AnalysisChartConfig
   summary?: string
   error?: string
+  error_type?: string
+  warning?: string
 }
 
 const props = defineProps<{
@@ -819,6 +821,9 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                     />
                   </div>
                   <div v-else-if="!block.error" class="empty-data">暂无可展示数据</div>
+                  <div v-if="block.warning || block.error" class="block-warning">
+                    {{ block.warning || block.error }}
+                  </div>
 
                   <MdComponent v-if="block.summary" class="block-summary" :message="block.summary" />
 
@@ -1368,6 +1373,17 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   border-radius: 6px;
   color: var(--assistant-dock-text-tertiary);
   text-align: center;
+}
+
+.block-warning {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f3d19e;
+  border-radius: 6px;
+  background: #fdf6ec;
+  color: #9a5b00;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .block-summary {

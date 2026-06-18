@@ -1,7 +1,6 @@
 ﻿import os
 from typing import Any
 
-from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.concurrency import asynccontextmanager
 from fastapi.openapi.utils import get_openapi
@@ -11,7 +10,6 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 
-from alembic import command
 from apps.api import api_router
 from apps.swagger.i18n import (
     DEFAULT_LANG,
@@ -27,6 +25,7 @@ from apps.system.schemas.permission import RequestContextMiddleware
 from common.audit.schemas.request_context import RequestContextMiddlewareCommon
 from common.core.app_cache import cache_health, close_app_cache, init_app_cache
 from common.core.config import settings
+from common.core.migrations import run_migrations
 from common.core.production import init_observability, validate_production_settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
 from common.utils.utils import AppLogUtil
@@ -40,16 +39,12 @@ else:
     _FASTAPI_MCP_IMPORT_ERROR = None
 
 
-def run_migrations():
-    alembic_cfg = Config("alembic.ini")
-    command.upgrade(alembic_cfg, "head")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_production_settings()
     init_observability()
-    run_migrations()
+    if settings.AUTO_RUN_MIGRATIONS:
+        run_migrations()
     await init_app_cache()
     init_dynamic_cors(app)
     AppLogUtil.info("✅ 星通智数 初始化完成")

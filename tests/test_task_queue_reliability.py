@@ -58,10 +58,18 @@ class FakeRedis:
 def _install_fake_redis(monkeypatch):
     fake = FakeRedis()
     monkeypatch.setattr(task_queue, "get_redis_client", lambda: fake)
+    monkeypatch.setattr(task_queue, "record_tenant_usage_detached", lambda **kwargs: True)
+    monkeypatch.setattr(
+        task_queue,
+        "check_tenant_usage_quota_detached",
+        lambda **kwargs: SimpleNamespace(allowed=True),
+    )
     monkeypatch.setattr(settings, "TASK_QUEUE_NAME", "test")
     monkeypatch.setattr(settings, "TASK_QUEUE_MAX_ATTEMPTS", 2)
     monkeypatch.setattr(settings, "TASK_QUEUE_POLL_TIMEOUT_SECONDS", 0)
     monkeypatch.setattr(settings, "TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS", 1)
+    monkeypatch.setattr(settings, "TASK_QUEUE_MAX_PENDING_PER_TENANT", 0)
+    monkeypatch.setattr(settings, "TASK_QUEUE_MAX_PROCESSING_PER_TENANT", 0)
     return fake
 
 
@@ -197,6 +205,76 @@ def test_worker_exposes_current_task_tenant_context(monkeypatch):
         assert claimed == task["id"]
         assert result["status"] == TaskStatus.SUCCEEDED.value
         assert result["result"] == {"tenant_id": 77}
+
+    asyncio.run(scenario())
+
+
+def test_enqueue_rejects_when_tenant_pending_limit_is_reached(monkeypatch):
+    _install_fake_redis(monkeypatch)
+    monkeypatch.setattr(settings, "TASK_QUEUE_MAX_PENDING_PER_TENANT", 1)
+    task_queue._task_handlers["test.limited"] = lambda payload: payload
+
+    async def scenario():
+        await task_queue.enqueue_task("test.limited", tenant_id=10)
+        assert await task_queue.tenant_queue_size(10) == 1
+        try:
+            await task_queue.enqueue_task("test.limited", tenant_id=10)
+        except RuntimeError as exc:
+            assert "Tenant 10 task queue is full" in str(exc)
+        else:
+            raise AssertionError("tenant pending limit should reject the second task")
+
+        await task_queue.enqueue_task("test.limited", tenant_id=11)
+        assert await task_queue.tenant_queue_size(11) == 1
+
+    asyncio.run(scenario())
+
+
+def test_enqueue_rejects_when_tenant_task_quota_is_exceeded(monkeypatch):
+    _install_fake_redis(monkeypatch)
+    monkeypatch.setattr(
+        task_queue,
+        "check_tenant_usage_quota_detached",
+        lambda **kwargs: SimpleNamespace(allowed=False, used=10, limit=10, window="daily"),
+    )
+    task_queue._task_handlers["test.quota"] = lambda payload: payload
+
+    async def scenario():
+        try:
+            await task_queue.enqueue_task("test.quota", tenant_id=10)
+        except RuntimeError as exc:
+            assert "Tenant 10 task quota exceeded" in str(exc)
+        else:
+            raise AssertionError("tenant task quota should reject enqueue")
+
+    asyncio.run(scenario())
+
+
+def test_claim_skips_tenant_when_processing_limit_is_reached(monkeypatch):
+    _install_fake_redis(monkeypatch)
+    monkeypatch.setattr(settings, "TASK_QUEUE_MAX_PROCESSING_PER_TENANT", 1)
+    task_queue._task_handlers["test.fair"] = lambda payload: payload
+
+    async def scenario():
+        tenant_one_first = await task_queue.enqueue_task("test.fair", {"item": "t1-first"}, tenant_id=1)
+        tenant_one_second = await task_queue.enqueue_task("test.fair", {"item": "t1-second"}, tenant_id=1)
+        tenant_two = await task_queue.enqueue_task("test.fair", {"item": "t2"}, tenant_id=2)
+
+        first_claim = await task_queue._claim_task()
+        assert first_claim == tenant_one_first["id"]
+        assert await task_queue.tenant_processing_size(1) == 1
+
+        second_claim = await task_queue._claim_task()
+        assert second_claim == tenant_two["id"]
+        assert await task_queue.tenant_processing_size(2) == 1
+        assert await task_queue.tenant_queue_size(1) == 1
+
+        first_result = await task_queue.run_task(first_claim, worker_name="worker-1")
+        assert first_result["status"] == TaskStatus.SUCCEEDED.value
+        assert await task_queue.tenant_processing_size(1) == 0
+
+        third_claim = await task_queue._claim_task()
+        assert third_claim == tenant_one_second["id"]
 
     asyncio.run(scenario())
 

@@ -1,0 +1,18 @@
+# 星通智数 production log rotation.
+# Install to /etc/logrotate.d/zhishu after adjusting paths if the deployment layout differs.
+
+/opt/zhishu/logs/*.log
+/var/log/nginx/zhishu.*.log
+/var/log/redis/zhishu-redis.log
+{
+    daily
+    rotate 14
+    maxage 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    dateext
+    copytruncate
+    su root root
+}

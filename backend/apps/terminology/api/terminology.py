@@ -15,6 +15,7 @@ from apps.datasource.crud.permission import (
     has_datasource_access,
 )
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_system_admin
 from apps.terminology.curd.terminology import page_terminology, create_terminology, update_terminology, \
     delete_terminology, enable_terminology, get_all_terminology, batch_create_terminology
@@ -33,9 +34,14 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
     return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
 
 
+def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
+    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+    return is_system_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
+
+
 def _require_term_scope_admin(session: SessionDep, current_user: CurrentUser, term: TerminologyInfo | Terminology):
-    if not is_system_admin(current_user):
-        raise HTTPException(status_code=403, detail="System admin access is required")
+    if not _can_manage_tenant_semantic_layer(current_user):
+        raise HTTPException(status_code=403, detail="Tenant admin access is required")
     tenant_id = current_tenant_id(current_user)
     if getattr(term, "tenant_id", None) is not None and int(term.tenant_id) != tenant_id:
         raise HTTPException(status_code=404, detail="Terminology not found")
@@ -222,8 +228,8 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
                        datasource: Optional[int] = Query(None, description="数据源ID(可选)"),
                        file: UploadFile = File(...)):
-    if not is_system_admin(current_user):
-        raise HTTPException(status_code=403, detail="System admin access is required")
+    if not _can_manage_tenant_semantic_layer(current_user):
+        raise HTTPException(status_code=403, detail="Tenant admin access is required")
     if datasource is not None and not has_datasource_access(session, current_user, datasource):
         raise HTTPException(status_code=403, detail="Datasource access is required")
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}

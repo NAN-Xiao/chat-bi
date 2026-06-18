@@ -37,6 +37,7 @@ from apps.datasource.crud.permission import (
     update_datasource_users,
 )
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_system_admin
 from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.models.user import UserModel
@@ -60,6 +61,18 @@ from ..utils.excel import parse_excel_preview, USER_TYPE_TO_PANDAS
 
 router = APIRouter(tags=["Datasource"], prefix="/datasource")
 path = settings.EXCEL_PATH
+
+
+def _tenant_excel_path(current_user: CurrentUser) -> str:
+    tenant_id = current_tenant_id(current_user) or 1
+    tenant_path = os.path.join(path, f"tenant_{tenant_id}")
+    os.makedirs(tenant_path, exist_ok=True)
+    return tenant_path
+
+
+def _can_manage_tenant_projects(user: CurrentUser) -> bool:
+    tenant_role = normalize_tenant_role(getattr(user, "tenant_role", None))
+    return is_system_admin(user) or tenant_role in TENANT_ADMIN_ROLES
 
 
 class DatasourceListItem(BaseModel):
@@ -111,14 +124,18 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
     result = []
     for datasource in datasources:
         role = get_datasource_role(session, user, datasource.id)
-        is_admin = is_system_admin(user)
+        can_manage_tenant_projects = _can_manage_tenant_projects(user)
         item = {
             "id": datasource.id,
             "name": datasource.name,
             "description": datasource.description,
             "type": datasource.type,
             "type_name": datasource.type_name,
-            "configuration": decrypt_datasource_configuration_for_output(datasource.configuration) if is_admin else None,
+            "configuration": (
+                decrypt_datasource_configuration_for_output(datasource.configuration)
+                if can_manage_tenant_projects
+                else None
+            ),
             "create_time": datasource.create_time,
             "create_by": datasource.create_by,
             "status": datasource.status,
@@ -130,7 +147,7 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
             "authorized_user_count": authorized_user_counts.get(int(datasource.id), 0),
             "can_create_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_VIEWER),
             "can_manage_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_EDITOR),
-            "can_manage_project": is_admin,
+            "can_manage_project": can_manage_tenant_projects,
         }
         result.append(item)
     return result
@@ -224,7 +241,7 @@ async def get_datasource(
     if datasource is None:
         return None
     data = datasource.model_dump()
-    if not is_system_admin(user):
+    if not _can_manage_tenant_projects(user):
         data["configuration"] = None
     else:
         data["configuration"] = decrypt_datasource_configuration_for_output(data.get("configuration"))
@@ -536,12 +553,16 @@ async def field_enum(session: SessionDep, user: CurrentUser, id: int):
 # deprecated
 @router.post("/uploadExcel", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_upload_excel")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def upload_excel(session: SessionDep, file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel")):
+async def upload_excel(
+        session: SessionDep,
+        current_user: CurrentUser,
+        file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel"),
+):
     ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 
-    os.makedirs(path, exist_ok=True)
+    tenant_path = _tenant_excel_path(current_user)
     _base_filename, filename = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
-    save_path = str(AppFileUtils.safe_path(path, filename))
+    save_path = str(AppFileUtils.safe_path(tenant_path, filename))
     with open(save_path, "wb") as f:
         f.write(await AppFileUtils.read_upload_limited(file))
 
@@ -748,12 +769,15 @@ async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
 
 @router.post("/parseExcel", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_parse_excel")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def parse_excel(file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel")):
+async def parse_excel(
+        current_user: CurrentUser,
+        file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel"),
+):
     ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 
-    os.makedirs(path, exist_ok=True)
+    tenant_path = _tenant_excel_path(current_user)
     _base_filename, filename = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
-    save_path = str(AppFileUtils.safe_path(path, filename))
+    save_path = str(AppFileUtils.safe_path(tenant_path, filename))
     with open(save_path, "wb") as f:
         f.write(await AppFileUtils.read_upload_limited(file))
 
@@ -769,9 +793,9 @@ async def parse_excel(file: UploadFile = File(..., description=f"{PLACEHOLDER_PR
 
 @router.post("/importToDb", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_import_to_db")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def import_to_db(session: SessionDep, trans: Trans, import_req: ImportRequest):
+async def import_to_db(session: SessionDep, trans: Trans, current_user: CurrentUser, import_req: ImportRequest):
     safe_file_name = os.path.basename(import_req.filePath or "")
-    save_path = str(AppFileUtils.safe_path(path, safe_file_name))
+    save_path = str(AppFileUtils.safe_path(_tenant_excel_path(current_user), safe_file_name))
     if not os.path.exists(save_path):
         raise HTTPException(400, "File not found")
 

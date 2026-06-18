@@ -10,6 +10,12 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from apps.chat.curd import chat as chat_crud
 from apps.chat.models.chat_model import Chat, ChatRecord
+from apps.chat.task.llm import format_chart_data_for_agent_prompt
+from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_AGENT_GUIDANCE,
+    looks_like_permission_scope_error,
+    permission_denied_result,
+)
 
 
 def _engine_with_chat_permission_tables():
@@ -183,6 +189,40 @@ def _insert_permission_fixture(session: Session):
     ))
 
 
+def test_failed_chart_data_is_preserved_for_agent_prompt():
+    payload = {
+        "status": "failed",
+        "error_type": "permission_denied",
+        "fields": [],
+        "data": [],
+        "message": "当前用户对该项目的表或字段权限受限，无法返回这部分数据。",
+        "reason": "当前用户对该项目的表或字段权限受限，无法返回这部分数据。",
+    }
+
+    result = json.loads(format_chart_data_for_agent_prompt(payload))
+
+    assert result["status"] == "failed"
+    assert result["error_type"] == "permission_denied"
+    assert result["message"] == payload["message"]
+    assert result["warning"] == payload["message"]
+    assert result["agent_guidance"] == PERMISSION_DENIED_AGENT_GUIDANCE
+    assert "data" not in result
+
+
+def test_db_permission_errors_are_detected_and_warning_is_preserved():
+    assert looks_like_permission_scope_error(
+        "psycopg.errors.InsufficientPrivilege: permission denied for relation secret_orders"
+    )
+
+    payload = permission_denied_result()
+    result = chat_crud.format_json_data(payload)
+
+    assert result["status"] == "failed"
+    assert result["error_type"] == "permission_denied"
+    assert result["warning"] == payload["warning"]
+    assert result["agent_guidance"] == payload["agent_guidance"]
+
+
 def test_chat_cached_data_is_rechecked_against_current_permissions(monkeypatch):
     engine = _engine_with_chat_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)
@@ -210,6 +250,7 @@ def test_chat_cached_data_is_rechecked_against_current_permissions(monkeypatch):
 
     assert exec_calls == []
     assert result["status"] == "failed"
+    assert result["error_type"] == "permission_denied"
     assert result["message"] == "SQL 超出当前数据权限范围"
     assert "amount" not in result["message"]
 
@@ -256,6 +297,7 @@ def test_chat_history_scrubs_cached_artifacts_after_permission_change(monkeypatc
     assert record["error"] == "SQL 超出当前数据权限范围"
     assert record["data"]["fields"] == []
     assert record["data"]["data"] == []
+    assert record["data"]["error_type"] == "permission_denied"
 
 
 def test_normal_user_chat_log_history_hides_internal_messages():

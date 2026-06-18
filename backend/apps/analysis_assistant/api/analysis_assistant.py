@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import orjson
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
@@ -14,12 +14,20 @@ from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custo
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
+from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_AGENT_GUIDANCE,
+    PERMISSION_DENIED_ERROR_TYPE,
+    PERMISSION_DENIED_RESULT_MESSAGE,
+    looks_like_permission_scope_error,
+)
 from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
+from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
 from apps.system.crud.user import is_system_admin
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.deps import CurrentUser, SessionDep
+from common.core.tenant_rate_limiter import consume_tenant_rate_limit, resolve_tenant_rate_limit
 from common.utils.utils import extract_nested_json
 
 router = APIRouter(tags=["analysis_assistant"], prefix="/analysis-assistant")
@@ -176,7 +184,8 @@ JSON 格式：
 - ORDER BY 使用的字段或别名必须在最终 SELECT 中存在；如果排序字段是计算值，要在 SELECT 中输出同名别名，或改用实际存在的输出别名。
 - 输出字段使用英文小写别名，便于图表绑定。
 - 具体指标定义、字段选择、枚举值含义和业务算法优先依据随后的统一业务口径、schema、样例数据和实际数据画像。
-- 修正时只解决执行错误、权限范围、字段不存在、语法错误或明显的数据一致性问题，不要引入提示词中未提供的业务算法。
+- 修正时只解决普通执行错误、字段不存在、语法错误或明显的数据一致性问题，不要引入提示词中未提供的业务算法。
+- 如果错误来自当前用户数据权限受限，不要尝试绕开或改写权限范围，应让系统把该数据块标记为权限失败。
 """
 
 
@@ -203,6 +212,8 @@ FINAL_PROMPT = """你是业务数据分析师。请基于多个数据块的总�
 所有具体数字（金额、人数、比率、预测值等）必须直接来自数据块的 rows 字段；如果 rows 里没有某个数字，就不要给出该数字，而要说明数据未覆盖。
 术语、口径、字段解释和异常判断优先遵循用户问题、数据块说明以及随后的统一业务口径。
 如果数据不足以支持确定判断，要说明不确定性和需要补充的数据。
+如果任何数据块因为当前用户数据权限受限而失败，最终答案必须明确说明哪些分析角度未能取回数据；若仍有其它数据块可用，必须说明结论只基于已返回数据，可能因缺少受限数据而存在偏差；若全部失败，只能说明无法形成有数据支撑的结论。
+不要展开、猜测或暴露具体受限表名、字段名、行过滤条件或权限配置。
 """
 
 
@@ -257,11 +268,93 @@ def _sse(payload: dict[str, Any]) -> str:
     return "data:" + orjson.dumps(payload).decode() + "\n\n"
 
 
+def _current_tenant_id(current_user: CurrentUser) -> int:
+    return int(getattr(current_user, "tenant_id", None) or 1)
+
+
+def _rate_limit_message(retry_after_seconds: int) -> str:
+    return f"当前租户请求过于频繁，请稍后再试。约 {retry_after_seconds} 秒后可以重试。"
+
+
+def _quota_message(state) -> str:
+    window_name = "每日" if state.window == "daily" else "每月"
+    return (
+        f"当前租户套餐的{window_name} {state.action} 用量已达上限"
+        f"（{state.used}/{state.limit}），请联系企业管理员或平台管理员调整套餐。"
+    )
+
+
+async def _tenant_rate_limit_response(session: SessionDep, current_user: CurrentUser):
+    try:
+        limit = resolve_tenant_rate_limit(session, _current_tenant_id(current_user), "analysis")
+        state = await consume_tenant_rate_limit(_current_tenant_id(current_user), "analysis", limit=limit)
+    except RuntimeError as exc:
+        return JSONResponse(
+            content={"message": str(exc), "error_type": "rate_limit_unavailable"},
+            status_code=503,
+        )
+    if state.allowed:
+        try:
+            quota_state = check_tenant_usage_quota(
+                session,
+                tenant_id=_current_tenant_id(current_user),
+                action="analysis",
+            )
+        except RuntimeError as exc:
+            return JSONResponse(
+                content={"message": str(exc), "error_type": "quota_unavailable"},
+                status_code=503,
+            )
+        if quota_state.allowed:
+            return None
+        return JSONResponse(
+            content={
+                "message": _quota_message(quota_state),
+                "error_type": "quota_exceeded",
+                "quota": {
+                    "action": quota_state.action,
+                    "window": quota_state.window,
+                    "limit": quota_state.limit,
+                    "used": quota_state.used,
+                    "remaining": quota_state.remaining,
+                    "reset_at": quota_state.reset_at,
+                },
+            },
+            status_code=429,
+        )
+    return JSONResponse(
+        content={
+            "message": _rate_limit_message(state.retry_after_seconds),
+            "error_type": "rate_limited",
+            "retry_after_seconds": state.retry_after_seconds,
+        },
+        status_code=429,
+        headers={"Retry-After": str(state.retry_after_seconds)},
+    )
+
+
 def _trace(content: str, block_id: str | None = None) -> str:
     payload: dict[str, Any] = {"type": "trace", "content": content}
     if block_id:
         payload["block_id"] = block_id
     return _sse(payload)
+
+
+def _mark_query_error_block(block: dict[str, Any], query_error: Exception, current_user: CurrentUser) -> None:
+    if is_normal_user(current_user) and looks_like_permission_scope_error(str(query_error)):
+        block["status"] = "failed"
+        block["error"] = PERMISSION_DENIED_RESULT_MESSAGE
+        block["error_type"] = PERMISSION_DENIED_ERROR_TYPE
+        block["warning"] = PERMISSION_DENIED_RESULT_MESSAGE
+        block["reason"] = PERMISSION_DENIED_RESULT_MESSAGE
+        block["agent_guidance"] = PERMISSION_DENIED_AGENT_GUIDANCE
+        block["error_detail"] = ""
+        block["summary"] = ""
+        return
+
+    block["error"] = "数据计算失败"
+    block["error_detail"] = str(query_error)
+    block["summary"] = "这个角度的数据暂时无法稳定计算，已先跳过；其它维度的分析会继续完成。"
 
 
 def _llm_text(llm, messages: list[BaseMessage]) -> str:
@@ -1198,24 +1291,45 @@ def _final_answer(
     custom_agent: str = "",
 ) -> str:
     block_details = []
+    permission_limited_titles: list[str] = []
     for block in blocks:
         data = block.get("data") or []
+        if block.get("error_type") == PERMISSION_DENIED_ERROR_TYPE:
+            permission_limited_titles.append(str(block.get("title") or block.get("id") or "未命名分析"))
         block_details.append(
             {
                 "title": block.get("title"),
                 "purpose": block.get("purpose"),
                 "summary": block.get("summary"),
+                "error": block.get("error"),
+                "error_type": block.get("error_type"),
+                "reason": block.get("reason"),
+                "warning": block.get("warning"),
+                "agent_guidance": block.get("agent_guidance"),
                 "fields": block.get("fields"),
                 "row_count": len(data),
                 "rows": data[:12],
             }
         )
     payload = orjson.dumps(block_details).decode()
+    permission_notice = ""
+    if permission_limited_titles:
+        permission_notice = (
+            "权限受限数据块："
+            + "、".join(permission_limited_titles)
+            + "。\n最终回答必须说明这些角度因当前用户数据权限受限未能返回数据；"
+            "如果其它数据块成功，结论只能基于已返回数据，并提示可能因缺少受限数据而存在偏差；"
+            "如果所有数据块都受限，则说明无法形成有数据支撑的结论。"
+            "不要猜测或暴露具体受限表名、字段名、行权限条件或权限配置。\n"
+        )
     prompt = (
         f"用户问题：{question}\n"
         f"问题理解：{intro}\n"
         f"{_context_blocks(knowledge, custom_agent)}"
-        f"各数据块（含真实查询数据 rows，所有数字结论必须取自这些 rows，禁止编造或臆测未提供的数字）：\n"
+        f"{permission_notice}"
+        "各数据块（含真实查询数据 rows，所有数字结论必须取自这些 rows，禁止编造或臆测未提供的数字）。"
+        "如果某个数据块 error_type=permission_denied，只说明该角度因当前用户数据权限受限无法分析，"
+        "不要猜测其数据结果，也不要展开或臆测具体受限表名、字段名或权限配置：\n"
         f"{payload[:16000]}"
     )
     return _llm_text(
@@ -1349,6 +1463,9 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         raise RuntimeError("Unauthorized")
     if not request.messages or not request.messages[-1].content.strip():
         raise RuntimeError("Question cannot be Empty")
+    limited_response = await _tenant_rate_limit_response(session, current_user)
+    if limited_response is not None:
+        return limited_response
 
     datasource = CoreDatasource.model_construct(
         **_get_datasource(session, current_user, request.datasource_id).model_dump()
@@ -1364,6 +1481,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
     def generate():
         question = request.messages[-1].content.strip()
         blocks: list[dict[str, Any]] = []
+        success = False
         try:
             outline_text = ""
             for chunk in llm.stream(_initial_outline_messages(request, custom_agent)):
@@ -1436,6 +1554,8 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     try:
                         result = exec_sql(datasource, sql, origin_column=False)
                     except Exception as first_error:
+                        if looks_like_permission_scope_error(str(first_error)):
+                            raise first_error
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
                         repaired_sql = _repair_sql(
                             llm, question, raw_query, sql, first_error, schema, sample_data, data_profile, knowledge,
@@ -1469,9 +1589,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     block["chart"] = _build_chart_config(raw_query, result)
                     block["summary"] = _summarise_block(llm, question, block, knowledge, custom_agent)
                 except Exception as query_error:
-                    block["error"] = "数据计算失败"
-                    block["error_detail"] = str(query_error)
-                    block["summary"] = "这个角度的数据暂时无法稳定计算，已先跳过；其它维度的分析会继续完成。"
+                    _mark_query_error_block(block, query_error, current_user)
 
                 blocks.append(block)
                 yield _sse({"type": "block", "block": block})
@@ -1479,8 +1597,17 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             yield _trace("正在汇总各个角度的发现，形成最终判断和建议。")
             final = _final_answer(llm, question, intro, blocks, knowledge, custom_agent)
             yield _sse({"type": "final", "content": final})
+            success = True
             yield _sse({"type": "finish"})
         except Exception as e:
             yield _sse({"type": "error", "content": str(e), "detail": traceback.format_exc()[-4000:]})
+        finally:
+            record_tenant_usage_detached(
+                tenant_id=_current_tenant_id(current_user),
+                metric="analysis_assistant.request",
+                request_count=1,
+                success_count=1 if success else 0,
+                failure_count=0 if success else 1,
+            )
 
     return StreamingResponse(generate(), media_type="text/event-stream")

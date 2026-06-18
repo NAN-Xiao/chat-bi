@@ -56,6 +56,10 @@ const addViewRef = ref(null)
 const emits = defineEmits(['exitFullScreen'])
 
 const dataObject = computed<{
+  status?: string
+  error_type?: string
+  message?: string
+  reason?: string
   fields: Array<string>
   data: Array<{ [key: string]: any }>
   limit: number | undefined
@@ -78,6 +82,10 @@ const isCompletePage = computed(() => !assistantStore.getAssistant || assistantS
 const isAssistant = computed(() => assistantStore.getAssistant)
 
 const chartId = computed(() => props.message?.record?.id + (props.enlarge ? '-fullscreen' : ''))
+const dataPermissionDenied = computed(
+  () => dataObject.value?.status === 'failed' && dataObject.value?.error_type === 'permission_denied'
+)
+const dataFailureMessage = computed(() => dataObject.value?.message || dataObject.value?.reason || '')
 
 const data = computed(() => {
   if (props.isPredict) {
@@ -403,10 +411,10 @@ watch(
   >
     <div class="header-bar">
       <div class="title">
-        {{ chartObject.title }}
+        {{ chartObject.title || message.record?.question }}
       </div>
       <div class="buttons-bar">
-        <div class="chart-select-container">
+        <div v-if="!dataPermissionDenied" class="chart-select-container">
           <el-tooltip effect="dark" :offset="8" :content="t('chat.type')" placement="top">
             <ChartPopover
               v-if="chartTypeList.length > 0"
@@ -437,7 +445,7 @@ watch(
         </div>
 
         <div
-          v-if="currentChartType !== 'table' && currentChartType !== 'metric'"
+          v-if="!dataPermissionDenied && currentChartType !== 'table' && currentChartType !== 'metric'"
           class="chart-select-container"
         >
           <el-tooltip
@@ -468,7 +476,7 @@ watch(
             </el-button>
           </el-tooltip>
         </div>
-        <div v-if="message?.record?.chart">
+        <div v-if="message?.record?.chart && !dataPermissionDenied">
           <el-popover
             ref="exportRef"
             trigger="click"
@@ -514,7 +522,7 @@ watch(
             </div>
           </el-popover>
         </div>
-        <div v-if="message?.record?.chart && !isAssistant">
+        <div v-if="message?.record?.chart && !isAssistant && !dataPermissionDenied">
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
               <el-icon size="16">
@@ -524,7 +532,7 @@ watch(
           </el-tooltip>
         </div>
         <div class="divider" />
-        <div v-if="!enlarge">
+        <div v-if="!enlarge && !dataPermissionDenied">
           <el-tooltip
             effect="dark"
             :offset="8"
@@ -538,7 +546,7 @@ watch(
             </el-button>
           </el-tooltip>
         </div>
-        <div v-else>
+        <div v-else-if="!dataPermissionDenied">
           <el-tooltip
             effect="dark"
             :offset="8"
@@ -555,7 +563,11 @@ watch(
       </div>
     </div>
 
-    <template v-if="message?.record?.chart">
+    <div v-if="dataPermissionDenied" class="data-permission-warning">
+      {{ dataFailureMessage }}
+    </div>
+
+    <template v-else-if="message?.record?.chart">
       <div class="chart-block">
         <DisplayChartBlock
           :id="chartId"
@@ -855,6 +867,18 @@ watch(
 
     margin-top: 16px;
   }
+
+  .data-permission-warning {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid #f3d19e;
+    border-radius: 6px;
+    background: #fdf6ec;
+    color: #9a5b00;
+    font-size: 14px;
+    line-height: 22px;
+  }
+
   .over-limit-hint {
     min-height: 24px;
     line-height: 24px;

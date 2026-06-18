@@ -24,6 +24,10 @@ from apps.datasource.crud.permission import (
     has_datasource_role,
     is_normal_user,
 )
+from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_ERROR_TYPE,
+    looks_like_permission_scope_error,
+)
 from apps.datasource.crud.sql_permission import (
     apply_row_permission_filters as _apply_row_permission_filters,
     build_permission_scope as _build_dashboard_permission_scope,
@@ -235,32 +239,29 @@ def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: in
 _USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
 
 
-def _looks_like_permission_scope_error(message: str) -> bool:
-    text = str(message or "").lower()
-    return any(marker in text for marker in (
-        "无权限",
-        "字段权限",
-        "表范围",
-        "select *",
-        "unauthorized",
-        "allowed tables",
-        "permission_scope",
-    ))
-
-
 def _safe_chart_error_message(current_user: CurrentUser, message: str) -> str:
-    if is_normal_user(current_user) and _looks_like_permission_scope_error(message):
+    if is_normal_user(current_user) and looks_like_permission_scope_error(message):
         return _USER_PERMISSION_DENIED_MESSAGE
     return message
 
 
-def _failed_chart_result(message: str) -> dict[str, Any]:
-    return {
+def _safe_chart_error_type(current_user: CurrentUser, message: str) -> str | None:
+    if is_normal_user(current_user) and looks_like_permission_scope_error(message):
+        return PERMISSION_DENIED_ERROR_TYPE
+    return None
+
+
+def _failed_chart_result(message: str, error_type: str | None = None) -> dict[str, Any]:
+    result = {
         'status': 'failed',
         'data': [],
         'fields': [],
         'message': message,
     }
+    if error_type:
+        result['error_type'] = error_type
+        result['reason'] = message
+    return result
 
 
 def _execute_dashboard_chart_sql(
@@ -275,7 +276,10 @@ def _execute_dashboard_chart_sql(
         if datasource is None:
             return _failed_chart_result("项目不存在")
         if not has_datasource_access(session, current_user, datasource_id):
-            return _failed_chart_result("You do not have permission to access this datasource")
+            return _failed_chart_result(
+                _safe_chart_error_message(current_user, "You do not have permission to access this datasource"),
+                _safe_chart_error_type(current_user, "You do not have permission to access this datasource"),
+            )
 
         statements = _parse_sql_statements(sql, datasource.type)
         actual_tables = _extract_physical_tables(statements)
@@ -285,10 +289,11 @@ def _execute_dashboard_chart_sql(
         permission_scope = _build_dashboard_permission_scope(session, current_user, datasource)
         unauthorized_tables = actual_tables - set(permission_scope.keys())
         if unauthorized_tables:
-            return _failed_chart_result(_safe_chart_error_message(
-                current_user,
-                f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}"
-            ))
+            error_message = f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}"
+            return _failed_chart_result(
+                _safe_chart_error_message(current_user, error_message),
+                _safe_chart_error_type(current_user, error_message),
+            )
         _validate_sql_columns(statements, permission_scope, current_user)
 
         execute_sql_text = sql
@@ -304,10 +309,11 @@ def _execute_dashboard_chart_sql(
                 rewritten_statements = _parse_sql_statements(execute_sql_text, datasource.type)
                 rewritten_tables = _extract_physical_tables(rewritten_statements)
                 if not rewritten_tables or not rewritten_tables.issubset(set(permission_scope.keys())):
-                    return _failed_chart_result(_safe_chart_error_message(
-                        current_user,
-                        "行权限 SQL 重写后表范围校验失败"
-                    ))
+                    error_message = "行权限 SQL 重写后表范围校验失败"
+                    return _failed_chart_result(
+                        _safe_chart_error_message(current_user, error_message),
+                        _safe_chart_error_type(current_user, error_message),
+                    )
 
         result = exec_sql(ds=datasource, sql=execute_sql_text, origin_column=False)
         data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
@@ -319,6 +325,10 @@ def _execute_dashboard_chart_sql(
         AppLogUtil.error(f"Dashboard chart SQL permission check failed: {e}")
         json_result['status'] = 'failed'
         json_result['message'] = _safe_chart_error_message(current_user, f"{e}")
+        error_type = _safe_chart_error_type(current_user, f"{e}")
+        if error_type:
+            json_result['error_type'] = error_type
+            json_result['reason'] = json_result['message']
         return json_result
 
 

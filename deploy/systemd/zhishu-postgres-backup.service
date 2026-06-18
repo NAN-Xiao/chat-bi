@@ -1,0 +1,19 @@
+[Unit]
+Description=星通智数 PostgreSQL backup
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=zhishu
+Group=zhishu
+EnvironmentFile=/etc/zhishu/zhishu.env
+ExecStart=/opt/zhishu/deploy/scripts/zhishu-postgres-backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

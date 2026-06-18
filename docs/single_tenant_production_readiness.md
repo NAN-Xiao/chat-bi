@@ -1,16 +1,22 @@
-# 单租户生产可用基线
+# B2B 多租户高可用生产基线
 
-这份基线面向“一个客户/一个组织独立部署”的生产形态，不等同于云上多租户 SaaS。
+这份基线面向 B2B 商业化 ChatBI 产品：同一套平台服务多个企业租户，核心目标是租户隔离、权限清晰、ChatBI 功能完整、可横向扩展、部署和运维友好。
+
+当前仓库支持的生产形态是“共享系统库 + 租户级业务隔离 + 多 API 副本 + Redis 共享状态 + 独立 worker”。它可以用于单客户私有化部署，也可以作为多企业托管部署的第一阶段；所有新增业务能力都必须默认带 `tenant_id`、数据源授权和租户用量治理。
 
 ## 必须完成
 
 - 稳定入口：Nginx 统一暴露 `80/443`，后端只监听内网 `127.0.0.1:8000`。
 - Redis：生产必须启用 `CACHE_TYPE=redis`，配置密码、AOF、内存上限和 `noeviction`。
-- 任务队列：worker 独立进程运行；任务使用 Redis pending/processing 队列，worker 中断后由超时恢复机制重投。
+- 租户级限流：生产必须启用 `TENANT_RATE_LIMIT_ENABLED=true`，并为 ChatBI 问答、分析助手和推荐问题配置每分钟上限；可通过 `TENANT_RATE_LIMIT_PLAN_OVERRIDES` 按 `default/basic/enterprise` 等套餐覆盖限额，防止单个租户占满模型、数据库和 worker 资源。
+- 租户用量计量与套餐配额：生产必须启用 `TENANT_USAGE_METERING_ENABLED=true` 和 `TENANT_USAGE_QUOTA_ENABLED=true`，并完成数据库迁移创建 `sys_tenant_usage_daily`，用于按天汇总 ChatBI、分析助手、任务队列、Token 和失败计数；可通过 `TENANT_USAGE_QUOTA_PLAN_LIMITS` 配置 `default/basic/enterprise` 等套餐的 daily/monthly 用量上限。
+- 任务队列：worker 独立进程运行；任务使用 Redis pending/processing 队列，worker 中断后由超时恢复机制重投，并配置租户级 pending/processing 上限。
 - 数据库备份：PostgreSQL 至少每天全量备份，保留 7-14 天，并每次上线前确认恢复命令可用。
 - 日志监控：`LOG_LEVEL=INFO`，关闭 `SQL_DEBUG`，Nginx、API、worker、Redis、PostgreSQL 日志都纳入采集。
 - 密钥管理：`SECRET_KEY`、数据库密码、Redis 密码、模型 API Key 不得使用开发默认值，不得提交到 Git。
 - 权限边界：普通用户不能看到未授权数据源、连接配置、其他用户任务、其他用户对话。
+- 多租户边界：所有企业资产必须按当前租户过滤，包括用户成员关系、数据源、语义层、ChatBI 对话、图表看板、自定义 Agent、分析助手、API Key、审计日志和用量计量。
+- 企业自治：企业 `owner/admin` 可以管理本企业成员、项目数据源、公开自定义 Agent、术语库和 SQL 示例；普通成员只能使用授权项目，项目 viewer/editor 只影响项目使用和看板编辑，不等同于企业管理员。
 - 安全基线：登录限流、上传大小限制、上传/下载路径校验、统一 5xx 异常脱敏、CORS 不允许未知来源、生产禁用默认密码接口。
 - 依赖漏洞：上线前必须通过前端 `npm audit --omit=dev` 和后端 `pip-audit`，不得带已知高危生产依赖漏洞上线。
 
@@ -23,8 +29,15 @@
 - 密码存储已从新写入 MD5 改为 bcrypt；旧 MD5 密码仍可登录一次，并在认证成功后自动重写为 bcrypt。
 - 数据源连接配置和大模型 `api_key/api_domain` 新写入时使用服务端版本化 Fernet 加密；旧固定 AES 密文仍可读取。
 - 生产配置检查要求 `SENSITIVE_CONFIG_ENCRYPTION_KEY`、`SECRET_KEY`、数据库密码、Redis 密码等从环境变量提供，且不能使用开发默认值。
-- 生产配置检查覆盖 Redis、任务队列、CORS、默认密码、登录限流、上传大小和绝对路径。
+- 生产配置检查覆盖 Redis、任务队列、CORS、默认密码、登录限流、上传大小、绝对路径和生产 API 启动自动迁移禁用。
+- 租户用量计量和套餐配额已加入生产配置检查；`/api/v1/system/tenant/usage` 可供平台管理员或企业管理员查看授权范围内的日聚合用量。
+- 企业 owner/admin 已纳入本租户数据源管理员、语义层管理员和 SQL 示例管理员模型；普通成员仍必须通过项目授权访问 ChatBI、看板和分析助手。
+- 数据源 Excel/CSV 临时导入文件已按租户目录隔离，避免共享 `EXCEL_PATH` 下通过文件名跨租户引用临时文件。
 - 登录失败限流支持 Redis，开发环境可回退进程内存；生产仍要求 `CACHE_TYPE=redis`。
+- 生产 PostgreSQL 备份脚本与 systemd timer 已提供：`deploy/scripts/zhishu-postgres-backup.sh`、
+  `deploy/systemd/zhishu-postgres-backup.service`、`deploy/systemd/zhishu-postgres-backup.timer`。
+- 生产日志轮转配置已提供：`deploy/logrotate/zhishu`，覆盖 `/opt/zhishu/logs/*.log`、
+  `/var/log/nginx/zhishu.*.log` 和 `/var/log/redis/zhishu-redis.log`。
 - 全局异常处理隐藏 5xx 内部错误细节，并补充基础安全响应头。
 - ASK token 和 embedded token 不再信任未验签 payload 中的关键身份字段。
 - Excel/CSV 上传统一限制扩展名、文件名和最大大小，下载错误文件限制在指定目录内。
@@ -37,6 +50,9 @@
 - PostgreSQL 备份文件实际生成，并恢复到非生产库成功。
 - 多 backend 副本通过 Nginx 轮询，Redis 共享缓存和限流状态正常。
 - worker 故障后，超时任务能恢复到 pending 或最终 failed。
+- 配置 `TASK_QUEUE_MAX_PENDING_PER_TENANT` 和 `TASK_QUEUE_MAX_PROCESSING_PER_TENANT`，避免单个租户占满队列或 worker。
+- 配置 `TENANT_CHAT_REQUESTS_PER_MINUTE`、`TENANT_ANALYSIS_REQUESTS_PER_MINUTE`、`TENANT_RECOMMEND_REQUESTS_PER_MINUTE` 和可选的 `TENANT_RATE_LIMIT_PLAN_OVERRIDES`，并确认不同套餐超过上限时接口返回 `429` 或 SSE `error` 事件。
+- 确认 `TENANT_USAGE_METERING_ENABLED=true`、`TENANT_USAGE_QUOTA_ENABLED=true`，并在产生一次 ChatBI、分析助手或任务队列调用后，`sys_tenant_usage_daily` 中出现对应租户的日聚合记录；将测试租户套餐限额调低后，超额请求应返回 `quota_exceeded`。
 - 日志采集、告警接收人、磁盘空间和备份保留策略确认。
 
 ## 生产启动前检查
@@ -49,33 +65,89 @@ APP_ENV=production python scripts/production_check.py
 
 生产环境中 `PRODUCTION_CHECKS_ENABLED=true` 时，API 启动也会自动执行同一套检查；不满足要求会直接启动失败。
 
+生产环境必须设置 `AUTO_RUN_MIGRATIONS=false`。数据库迁移作为发布步骤单独执行一次，不能由每个 API 副本在启动时自动执行：
+
+```bash
+APP_ENV=production python -m scripts.db_migrate
+```
+
+推荐发布顺序：
+
+1. 先生成 PostgreSQL 备份并确认备份文件有效。
+2. 执行 `APP_ENV=production python scripts/production_check.py`。
+3. 执行 `APP_ENV=production python -m scripts.db_migrate`。
+4. 滚动启动或重启 API 副本和 worker。
+
 ## 推荐配置文件
 
 - 环境变量模板：`deploy/env.production.example`
 - Redis 模板：`deploy/redis/redis.production.conf.template`
 - Nginx 模板：`deploy/nginx/nginx.production.conf.template`
+- logrotate 模板：`deploy/logrotate/zhishu`
 - systemd API：`deploy/systemd/zhishu-api.service`
 - systemd API 多副本：`deploy/systemd/zhishu-api@.service`
+- systemd 数据库迁移：`deploy/systemd/zhishu-migrate.service`
 - systemd worker：`deploy/systemd/zhishu-worker.service`
 - systemd worker 多实例：`deploy/systemd/zhishu-worker@.service`
+- systemd PostgreSQL 备份：`deploy/systemd/zhishu-postgres-backup.service`
+- systemd PostgreSQL 定时器：`deploy/systemd/zhishu-postgres-backup.timer`
 
 ## 备份恢复
 
-当前本地已有 Windows 备份脚本：`tools/postgres-backup-local.ps1`。生产 Linux 上建议使用 `pg_dump -Fc`：
+本地 Windows 可继续使用 `tools/postgres-backup-local.ps1`。生产 Linux 使用
+`deploy/scripts/zhishu-postgres-backup.sh`，默认从 `/etc/zhishu/zhishu.env` 读取数据库连接信息。
+先确认环境变量中已配置：
 
 ```bash
-pg_dump -h 127.0.0.1 -p 5432 -U zhishu -d zhishu_bi -Fc -f /data/backups/zhishu_bi_$(date +%F_%H%M%S).dump
+BACKUP_DIR=/var/backups/zhishu/postgres
+BACKUP_RETENTION_DAYS=14
+PG_DUMP_BIN=pg_dump
+PG_RESTORE_BIN=pg_restore
+```
+
+部署时安装脚本和 timer：
+
+```bash
+install -o root -g root -m 0755 deploy/scripts/zhishu-postgres-backup.sh /opt/zhishu/deploy/scripts/zhishu-postgres-backup.sh
+install -o root -g root -m 0644 deploy/systemd/zhishu-postgres-backup.service /etc/systemd/system/zhishu-postgres-backup.service
+install -o root -g root -m 0644 deploy/systemd/zhishu-postgres-backup.timer /etc/systemd/system/zhishu-postgres-backup.timer
+install -o zhishu -g zhishu -m 0700 -d /var/backups/zhishu/postgres
+systemctl daemon-reload
+```
+
+手动生成一次备份：
+
+```bash
+systemctl start zhishu-postgres-backup.service
+systemctl status zhishu-postgres-backup.service --no-pager
+ls -lh /var/backups/zhishu/postgres
+```
+
+确认手动备份成功后再启用每天定时备份：
+
+```bash
+systemctl enable --now zhishu-postgres-backup.timer
+systemctl list-timers zhishu-postgres-backup.timer
 ```
 
 恢复演练必须在非生产库执行：
 
 ```bash
-pg_restore -h 127.0.0.1 -p 5432 -U zhishu -d zhishu_bi_restore --clean --if-exists /data/backups/zhishu_bi_YYYY-MM-DD_HHMMSS.dump
+PGPASSWORD="$POSTGRES_PASSWORD" "$PG_RESTORE_BIN" \
+  -h 127.0.0.1 \
+  -p 5432 \
+  -U zhishu \
+  -d zhishu_bi_restore \
+  --clean \
+  --if-exists \
+  /var/backups/zhishu/postgres/zhishu_bi-YYYYMMDDTHHMMSSZ.dump
 ```
 
 验收标准：
 
 - 备份命令退出码为 `0`，备份文件大小非 `0`。
+- 备份目录权限为 `0700`，备份文件权限不向其它用户开放。
+- `.sha256` 校验文件存在；`sha256sum -c` 能通过。
 - 恢复库可连接，核心表存在，管理员账号和数据源配置可查询。
 - 恢复演练记录包含备份文件名、恢复库名、执行时间、执行人和结果。
 
@@ -100,26 +172,58 @@ systemctl start zhishu-worker
 验收动作：
 
 - Nginx upstream 至少配置两个 backend，`/ready` 连续访问都返回 `200`。
+- `AUTO_RUN_MIGRATIONS=false`，上线前只通过 `zhishu-migrate.service` 或 `python -m scripts.db_migrate` 执行一次迁移。
 - `CACHE_TYPE=redis`，`/ready` 中 cache 状态为 `ok`。
 - 创建一个 `system.ping` 任务，worker 能消费并返回 `succeeded`。
 - 在任务 running 时停掉 worker，超过 `TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS` 后，新 worker 能恢复任务或按最大重试次数标记失败。
 - 停掉任意一个 backend 副本，Nginx 仍能把请求转到其他健康副本。
+
+## 日志轮转
+
+生产部署时安装 logrotate 配置：
+
+```bash
+install -o root -g root -m 0644 deploy/logrotate/zhishu /etc/logrotate.d/zhishu
+logrotate -d /etc/logrotate.d/zhishu
+```
+
+确认路径与生产实际一致：
+
+- 应用日志：`/opt/zhishu/logs/*.log`，由后端 `LOG_DIR` 控制。
+- Nginx 日志：`/var/log/nginx/zhishu.access.log`、`/var/log/nginx/zhishu.error.log`。
+- Redis 日志：`/var/log/redis/zhishu-redis.log`。
+
+上线验收时至少执行一次 dry-run；如果生产路径改过，要先调整 `deploy/logrotate/zhishu` 再安装。
+真实轮转由系统 logrotate 定时任务触发，也可以在维护窗口手动执行：
+
+```bash
+logrotate -f /etc/logrotate.d/zhishu
+```
+
+验收标准：
+
+- `logrotate -d /etc/logrotate.d/zhishu` 不报错。
+- 日志文件轮转后服务不需要重启，仍能继续写入当前日志。
+- 磁盘使用率纳入监控，备份目录和日志目录至少设置一个告警阈值。
 
 ## 上线验收
 
 - `GET /health` 返回 `200`。
 - `GET /ready` 返回 `200`，且 cache 为 Redis `ok`。
 - `GET /api/v1/system/tasks/health` 由系统管理员访问时返回 pending/processing/registered tasks。
+- `GET /api/v1/system/tenant/usage` 由平台管理员或企业管理员访问时返回租户日用量记录，普通成员不能跨租户查看。
 - 停掉一个 worker 后，超时任务能恢复到 pending 或最终 failed。
 - 普通用户无法访问未授权数据源、连接配置、其他用户任务。
+- 单个租户超过 ChatBI/分析助手限额时被限流，其他租户仍可正常请求。
 - 依赖审计无生产阻断漏洞。
 - `APP_ENV=production python scripts/production_check.py` 返回 `Production settings check passed.`
+- `APP_ENV=production python -m scripts.db_migrate` 或 `systemctl start zhishu-migrate` 在启动 API 副本前成功完成。
 - 管理员新建或更新数据源/大模型配置后，数据库中对应敏感字段以 `fernet:v1:` 开头。
+- `logrotate -d /etc/logrotate.d/zhishu` 通过，日志和备份目录有磁盘使用率告警。
 
 ## 暂不纳入
 
-- 云上多租户租户模型。
-- 对象存储。
+- 跨 Region 主备、多活和自动故障转移编排。
+- 对象存储。当前单机多副本仍共享本地 `file/excel/images` 目录，多机器生产前必须切换到共享存储或对象存储。
 - 数据库上云。
 - Kubernetes / Helm。
-- 自动定时备份编排。

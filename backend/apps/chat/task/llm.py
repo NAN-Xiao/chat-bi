@@ -32,6 +32,13 @@ from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameCh
     ChatFinishStep, AxisObj, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
+from apps.datasource.crud.permission_errors import (
+    PERMISSION_DENIED_AGENT_GUIDANCE,
+    PERMISSION_DENIED_ERROR_TYPE,
+    PERMISSION_DENIED_RESULT_MESSAGE,
+    looks_like_permission_scope_error,
+    permission_denied_result,
+)
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
 from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
@@ -479,7 +486,7 @@ class LLMService:
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
         data = get_chat_chart_data(_session, self.record.id)
-        self.chat_question.data = orjson.dumps(data.get('data')).decode()
+        self.chat_question.data = format_chart_data_for_agent_prompt(data)
         analysis_msg: List[Union[BaseMessage, dict[str, Any]]] = []
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
@@ -523,7 +530,7 @@ class LLMService:
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
         data = get_chat_chart_data(_session, self.record.id)
-        self.chat_question.data = orjson.dumps(data.get('data')).decode()
+        self.chat_question.data = format_chart_data_for_agent_prompt(data)
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, ds_id)
@@ -1087,6 +1094,8 @@ class LLMService:
         try:
             data_result = data_obj.get('data')
             limit = 1000
+            if getattr(self.ds, "id", None) is not None:
+                data_obj['datasource'] = self.ds.id
             if data_result:
                 data_result = prepare_for_orjson(data_result)
                 if data_result and len(data_result) > limit and self.enable_sql_row_limit:
@@ -1094,11 +1103,15 @@ class LLMService:
                     data_obj['limit'] = limit
                 else:
                     data_obj['data'] = data_result
-                data_obj['datasource'] = self.ds.id
             return save_sql_exec_data(session=session, record_id=self.record.id,
                                       data=orjson.dumps(data_obj).decode())
         except Exception as e:
             raise e
+
+    def save_permission_denied_data(self, session: Session) -> dict[str, Any]:
+        data_obj = permission_denied_result(PERMISSION_DENIED_RESULT_MESSAGE)
+        self.save_sql_data(session=session, data_obj=data_obj)
+        return data_obj
 
     def finish(self, session: Session):
         return finish_record(session=session, record_id=self.record.id)
@@ -1272,52 +1285,80 @@ class LLMService:
             sql_operate = OperationEnum.GENERATE_SQL
             sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
 
-            if ((not self.current_assistant or is_page_embedded) and is_normal_user(
-                    self.current_user)) or use_dynamic_ds:
-                sql_result = None
+            try:
+                if ((not self.current_assistant or is_page_embedded) and is_normal_user(
+                        self.current_user)) or use_dynamic_ds:
+                    sql_result = None
 
-                if use_dynamic_ds:
-                    dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
-                    app_temp_sql_text = _get_temp_sql_text(dynamic_sql_result)
-                else:
-                    statements, actual_tables, _permission_scope = validate_sql_scope(
-                        _session,
-                        self.current_user,
-                        self.ds,
-                        sql,
-                    )
-                    if not actual_tables.issubset(set(self.table_name_list)):
-                        raise SingleMessageError(
-                            f"SQL contains unauthorized tables: {', '.join(sorted(actual_tables - set(self.table_name_list)))}. "
-                            f"Allowed tables: {', '.join(self.table_name_list)}"
+                    if use_dynamic_ds:
+                        dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
+                        app_temp_sql_text = _get_temp_sql_text(dynamic_sql_result)
+                    else:
+                        statements, actual_tables, _permission_scope = validate_sql_scope(
+                            _session,
+                            self.current_user,
+                            self.ds,
+                            sql,
                         )
-                    row_filters = get_row_permission_filters(
-                        session=_session,
-                        current_user=self.current_user,
-                        ds=self.ds,
-                        tables=sorted(actual_tables),
-                    )
-                    if row_filters:
-                        sql_result = apply_row_permission_filters(sql, self.ds, row_filters)
+                        if not actual_tables.issubset(set(self.table_name_list)):
+                            raise SingleMessageError(
+                                f"SQL contains unauthorized tables: {', '.join(sorted(actual_tables - set(self.table_name_list)))}. "
+                                f"Allowed tables: {', '.join(self.table_name_list)}"
+                            )
+                        row_filters = get_row_permission_filters(
+                            session=_session,
+                            current_user=self.current_user,
+                            ds=self.ds,
+                            tables=sorted(actual_tables),
+                        )
+                        if row_filters:
+                            sql_result = apply_row_permission_filters(sql, self.ds, row_filters)
 
-                if sql_result:
-                    AppLogUtil.info(sql_result)
-                    sql_operate = OperationEnum.GENERATE_SQL_WITH_PERMISSIONS
-                    sql = self.save_checked_sql(session=_session, sql=sql_result)
-                    if isinstance(self.ds, CoreDatasource):
-                        validate_sql_table_scope(_session, self.current_user, self.ds, sql)
-                elif dynamic_sql_result and app_temp_sql_text:
-                    sql_operate = OperationEnum.GENERATE_DYNAMIC_SQL
-                    assistant_dynamic_sql = self.check_save_sql(session=_session, res=app_temp_sql_text,
-                                                                operate=sql_operate)
+                    if sql_result:
+                        AppLogUtil.info(sql_result)
+                        sql_operate = OperationEnum.GENERATE_SQL_WITH_PERMISSIONS
+                        sql = self.save_checked_sql(session=_session, sql=sql_result)
+                        if isinstance(self.ds, CoreDatasource):
+                            validate_sql_table_scope(_session, self.current_user, self.ds, sql)
+                    elif dynamic_sql_result and app_temp_sql_text:
+                        sql_operate = OperationEnum.GENERATE_DYNAMIC_SQL
+                        assistant_dynamic_sql = self.check_save_sql(session=_session, res=app_temp_sql_text,
+                                                                    operate=sql_operate)
+                    else:
+                        sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
+                        if isinstance(self.ds, CoreDatasource):
+                            validate_sql_scope(_session, self.current_user, self.ds, sql)
                 else:
                     sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
                     if isinstance(self.ds, CoreDatasource):
                         validate_sql_scope(_session, self.current_user, self.ds, sql)
-            else:
-                sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
-                if isinstance(self.ds, CoreDatasource):
-                    validate_sql_scope(_session, self.current_user, self.ds, sql)
+            except Exception as permission_error:
+                if not looks_like_permission_scope_error(str(permission_error)):
+                    raise
+                sql = self.save_checked_sql(session=_session, sql=sql)
+                failed_result = self.save_permission_denied_data(session=_session)
+                format_sql = sqlparse.format(sql, reindent=True)
+                if in_chat:
+                    yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
+                    yield 'data:' + orjson.dumps({
+                        'content': 'execute-failed',
+                        'type': 'sql-data',
+                        'status': 'failed',
+                        'error_type': PERMISSION_DENIED_ERROR_TYPE,
+                        'message': PERMISSION_DENIED_RESULT_MESSAGE,
+                    }).decode() + '\n\n'
+                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
+                else:
+                    if stream:
+                        yield f'```sql\n{format_sql}\n```\n\n'
+                        yield f'> {PERMISSION_DENIED_RESULT_MESSAGE}\n'
+                    else:
+                        json_result['success'] = False
+                        json_result['sql'] = sql
+                        json_result['data'] = failed_result
+                        json_result['message'] = PERMISSION_DENIED_RESULT_MESSAGE
+                        yield json_result
+                return
 
             AppLogUtil.info('sql: ' + sql)
 
@@ -1350,7 +1391,33 @@ class LLMService:
             self.current_logs[OperationEnum.EXECUTE_SQL] = start_log(session=_session,
                                                                      operate=OperationEnum.EXECUTE_SQL,
                                                                      record_id=self.record.id, local_operation=True)
-            result = self.execute_sql(sql=real_execute_sql)
+            try:
+                result = self.execute_sql(sql=real_execute_sql)
+            except Exception as execute_error:
+                if not looks_like_permission_scope_error(str(execute_error)):
+                    raise
+                trigger_log_error(_session, self.current_logs[OperationEnum.EXECUTE_SQL])
+                failed_result = self.save_permission_denied_data(session=_session)
+                if in_chat:
+                    yield 'data:' + orjson.dumps({
+                        'content': 'execute-failed',
+                        'type': 'sql-data',
+                        'status': 'failed',
+                        'error_type': PERMISSION_DENIED_ERROR_TYPE,
+                        'message': PERMISSION_DENIED_RESULT_MESSAGE,
+                        'reason': PERMISSION_DENIED_RESULT_MESSAGE,
+                    }).decode() + '\n\n'
+                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
+                else:
+                    if stream:
+                        yield f'> {PERMISSION_DENIED_RESULT_MESSAGE}\n'
+                    else:
+                        json_result['success'] = False
+                        json_result['sql'] = sql
+                        json_result['data'] = failed_result
+                        json_result['message'] = PERMISSION_DENIED_RESULT_MESSAGE
+                        yield json_result
+                return
             self.current_logs[OperationEnum.EXECUTE_SQL] = end_log(session=_session,
                                                                    log=self.current_logs[OperationEnum.EXECUTE_SQL],
                                                                    full_message={'sql': real_execute_sql,
@@ -1715,6 +1782,20 @@ def execute_sql_with_db(db: SQLDatabase, sql: str) -> str:
         error_msg = f"SQL execution failed: {str(e)}"
         AppLogUtil.exception(error_msg)
         raise RuntimeError(error_msg)
+
+
+def format_chart_data_for_agent_prompt(data: dict[str, Any]) -> str:
+    if isinstance(data, dict) and data.get("status") == "failed":
+        payload = {
+            "status": data.get("status"),
+            "error_type": data.get("error_type"),
+            "message": data.get("message"),
+            "reason": data.get("reason") or data.get("message"),
+            "warning": data.get("warning") or data.get("message"),
+            "agent_guidance": data.get("agent_guidance") or PERMISSION_DENIED_AGENT_GUIDANCE,
+        }
+        return orjson.dumps(payload).decode()
+    return orjson.dumps(data.get("data") if isinstance(data, dict) else []).decode()
 
 
 def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):

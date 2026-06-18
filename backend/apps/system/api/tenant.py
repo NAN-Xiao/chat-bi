@@ -31,6 +31,7 @@ from apps.system.crud.tenant import (
     update_tenant,
     user_belongs_to_tenant,
 )
+from apps.system.crud.tenant_usage import list_tenant_usage_daily
 from apps.system.crud.user import (
     SYSTEM_ROLE_VIEWER,
     check_email_format,
@@ -51,6 +52,7 @@ from apps.system.schemas.tenant_schema import (
     TenantSearchDTO,
     TenantStatus,
 )
+from apps.system.schemas.tenant_usage_schema import TenantUsageDailyDTO
 from common.audit.models.log_model import OperationModules, OperationStatus, OperationType, SystemLog
 from common.audit.schemas.request_context import RequestContext
 from common.core.deps import CurrentTenant, CurrentUser, SessionDep
@@ -243,6 +245,20 @@ def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str]]) -
     ]
 
 
+def _usage_dto(row) -> TenantUsageDailyDTO:
+    return TenantUsageDailyDTO(
+        tenant_id=int(row.tenant_id),
+        usage_date=row.usage_date,
+        metric=row.metric,
+        request_count=int(row.request_count or 0),
+        success_count=int(row.success_count or 0),
+        failure_count=int(row.failure_count or 0),
+        total_tokens=int(row.total_tokens or 0),
+        task_count=int(row.task_count or 0),
+        update_time=int(row.update_time or 0),
+    )
+
+
 def _application_user_map(session: SessionDep, user_ids: list[int]) -> dict[int, dict]:
     if not user_ids or not _table_exists(session, UserModel.__tablename__):
         return {}
@@ -401,6 +417,35 @@ async def admin_tenant_list(session: SessionDep, current_user: CurrentUser):
     _require_platform_admin(current_user)
     tenants = list_tenants(session, include_disabled=True)
     return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER) for tenant in tenants])
+
+
+@router.get("/usage", response_model=list[TenantUsageDailyDTO])
+async def tenant_usage(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    tenant_id: int | None = None,
+    start_date: str | None = Query(default=None, max_length=10),
+    end_date: str | None = Query(default=None, max_length=10),
+    metric: str | None = Query(default=None, max_length=128),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    if is_super_admin(current_user):
+        scoped_tenant_id = tenant_id
+    else:
+        _require_current_tenant_admin(current_user)
+        scoped_tenant_id = int(current_tenant.id)
+        if tenant_id is not None and int(tenant_id) != scoped_tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant usage access denied")
+    rows = list_tenant_usage_daily(
+        session,
+        tenant_id=scoped_tenant_id,
+        start_date=start_date,
+        end_date=end_date,
+        metric=metric,
+        limit=limit,
+    )
+    return [_usage_dto(row) for row in rows]
 
 
 @router.post("/application", response_model=TenantApplicationDTO)
