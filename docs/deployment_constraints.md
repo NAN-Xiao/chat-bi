@@ -6,6 +6,9 @@
 
 生产方向保持可扩展：同一套代码必须支持 Nginx 入口、backend 多副本、Redis 共享状态、后续任务队列。
 
+当前优先目标是“单租户生产可用”，不是云上多租户 SaaS。生产模式必须显式设置
+`APP_ENV=production`，并通过 `backend/scripts/production_check.py` 的启动前检查。
+
 ## 已落地
 
 - Redis 应用侧基础接入：统一 client、连接池、健康检查、分布式锁工具。
@@ -15,6 +18,8 @@
 - 任务队列第一版：Redis 队列、任务状态、worker 启动入口、`system.ping` 测试任务、字段同步和 embedding 刷新任务。
 - 本地一键编排脚本：`tools/stack-local.ps1` 串联 PostgreSQL、Redis、backend、Nginx 和 worker。
 - 本地 PostgreSQL 备份/恢复脚本：`tools/postgres-backup-local.ps1`，默认备份到 `.codex-runtime/pg-backups`。
+- 单租户生产配置模板：`deploy/env.production.example`、`deploy/redis/redis.production.conf.template`、
+  `deploy/nginx/nginx.production.conf.template` 和 `deploy/systemd/`。
 
 ## 暂不做
 
@@ -97,6 +102,8 @@ worker 任务队列
 
 - worker 必须使用 Redis。
 - 任务状态保存在 Redis，默认保留 24 小时。
+- worker 通过 pending/processing 两级队列领取任务；worker 中断后，超出
+  `TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS` 的任务可恢复或最终失败。
 - 不向普通用户开放任意任务投递能力；业务接口应只投递白名单任务。
 - 任务 payload 不保存敏感明文密钥。
 - 现有字段同步任务只传 `table_id`，worker 从系统库读取数据源配置，不把数据源密码写入 Redis payload。

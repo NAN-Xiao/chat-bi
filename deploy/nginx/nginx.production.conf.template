@@ -1,0 +1,102 @@
+worker_processes auto;
+
+events {
+    worker_connections 4096;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'rt=$request_time uct=$upstream_connect_time urt=$upstream_response_time';
+
+    access_log /var/log/nginx/zhishu.access.log main;
+    error_log  /var/log/nginx/zhishu.error.log warn;
+
+    sendfile on;
+    keepalive_timeout 65;
+    client_max_body_size 100m;
+
+    gzip on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;
+
+    upstream zhishu_backend {
+        least_conn;
+        server 127.0.0.1:8000 max_fails=3 fail_timeout=10s;
+        # Add replicas only after CACHE_TYPE=redis and shared file storage are ready:
+        # server 127.0.0.1:8002 max_fails=3 fail_timeout=10s;
+        # server 127.0.0.1:8003 max_fails=3 fail_timeout=10s;
+    }
+
+    server {
+        listen 80;
+        server_name bi.example.com;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl http2;
+        server_name bi.example.com;
+
+        ssl_certificate     /etc/nginx/certs/bi.example.com/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/bi.example.com/privkey.pem;
+        ssl_session_timeout 1d;
+        ssl_session_cache shared:SSL:10m;
+        ssl_protocols TLSv1.2 TLSv1.3;
+
+        root /opt/zhishu/frontend/dist;
+        index index.html;
+
+        location = /health {
+            proxy_pass http://zhishu_backend/health;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 15s;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location = /ready {
+            proxy_pass http://zhishu_backend/ready;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 15s;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location /api/ {
+            proxy_pass http://zhishu_backend;
+            proxy_http_version 1.1;
+            proxy_buffering off;
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location /xpack_static/ {
+            proxy_pass http://zhishu_backend;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 120s;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

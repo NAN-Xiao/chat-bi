@@ -1,5 +1,5 @@
 ﻿import os
-from typing import Dict, Any
+from typing import Any
 
 from alembic.config import Config
 from fastapi import FastAPI, Request
@@ -13,16 +13,22 @@ from starlette.middleware.cors import CORSMiddleware
 
 from alembic import command
 from apps.api import api_router
-from apps.swagger.i18n import PLACEHOLDER_PREFIX, tags_metadata, i18n_list
-from apps.swagger.i18n import get_translation, DEFAULT_LANG
+from apps.swagger.i18n import (
+    DEFAULT_LANG,
+    PLACEHOLDER_PREFIX,
+    get_translation,
+    i18n_list,
+    tags_metadata,
+)
 from apps.system.crud.aimodel_manage import async_model_info
 from apps.system.crud.assistant import init_dynamic_cors
 from apps.system.middleware.auth import TokenMiddleware
 from apps.system.schemas.permission import RequestContextMiddleware
 from common.audit.schemas.request_context import RequestContextMiddlewareCommon
-from common.core.config import settings
-from common.core.response_middleware import ResponseMiddleware, exception_handler
 from common.core.app_cache import cache_health, close_app_cache, init_app_cache
+from common.core.config import settings
+from common.core.production import init_observability, validate_production_settings
+from common.core.response_middleware import ResponseMiddleware, exception_handler
 from common.utils.utils import AppLogUtil
 
 try:
@@ -41,6 +47,8 @@ def run_migrations():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_production_settings()
+    init_observability()
     run_migrations()
     await init_app_cache()
     init_dynamic_cors(app)
@@ -65,10 +73,10 @@ app = FastAPI(
     redoc_url=None
 )
 # cache docs for different text
-_openapi_cache: Dict[str, Dict[str, Any]] = {}
+_openapi_cache: dict[str, dict[str, Any]] = {}
 
 # replace placeholder
-def replace_placeholders_in_schema(schema: Dict[str, Any], trans: Dict[str, str]) -> None:
+def replace_placeholders_in_schema(schema: dict[str, Any], trans: dict[str, str]) -> None:
     """
     search OpenAPI schema，replace PLACEHOLDER_xxx to text。
     """
@@ -98,7 +106,7 @@ def get_language_from_request(request: Request) -> str:
     return DEFAULT_LANG
 
 
-def generate_openapi_for_lang(lang: str) -> Dict[str, Any]:
+def generate_openapi_for_lang(lang: str) -> dict[str, Any]:
     if lang in _openapi_cache:
         return _openapi_cache[lang]
 

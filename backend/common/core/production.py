@@ -1,0 +1,113 @@
+import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from urllib.parse import urlsplit
+
+from common.core.config import settings
+from common.utils.utils import AppLogUtil
+
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def _env_present(name: str) -> bool:
+    return bool(os.environ.get(name))
+
+
+def _host_from_origin(origin: str) -> str:
+    parsed = urlsplit(origin)
+    return parsed.hostname or ""
+
+
+def _is_local_origin(origin: str) -> bool:
+    return _host_from_origin(origin).lower() in _LOCAL_HOSTS
+
+
+def _redis_url_has_auth(url: str | None) -> bool:
+    if not url:
+        return False
+    parsed = urlsplit(url)
+    return bool(parsed.password or (parsed.username and "@" in parsed.netloc))
+
+
+def _is_absolute_path(value: str) -> bool:
+    return bool(value) and (
+        Path(value).is_absolute()
+        or PurePosixPath(value).is_absolute()
+        or PureWindowsPath(value).is_absolute()
+    )
+
+
+def _configured_cors_origins() -> list[str]:
+    origins = settings.BACKEND_CORS_ORIGINS
+    if isinstance(origins, str):
+        return [item.strip().rstrip("/") for item in origins.split(",") if item.strip()]
+    return [str(origin).rstrip("/") for origin in origins]
+
+
+def validate_production_settings() -> list[str]:
+    """Return production setting errors, and raise when production checks are active."""
+    if settings.APP_ENV != "production":
+        return []
+
+    errors: list[str] = []
+
+    if not _env_present("SECRET_KEY") or len(settings.SECRET_KEY) < 32:
+        errors.append("SECRET_KEY must be set from environment and be at least 32 characters.")
+    if settings.DEFAULT_PWD == "Zhishu@123456":
+        errors.append("DEFAULT_PWD must be changed from the development default.")
+    if settings.POSTGRES_PASSWORD == "Password123@pg":
+        errors.append("POSTGRES_PASSWORD must be changed from the development default.")
+    if settings.CACHE_TYPE != "redis":
+        errors.append("CACHE_TYPE must be redis for production single-tenant deployments.")
+
+    redis_url = settings.CACHE_REDIS_URL or settings.REDIS_URL
+    if not settings.REDIS_PASSWORD and not _redis_url_has_auth(redis_url):
+        errors.append("Redis must require authentication through REDIS_PASSWORD, REDIS_URL, or CACHE_REDIS_URL.")
+
+    cors_origins = _configured_cors_origins()
+    if not cors_origins:
+        errors.append("BACKEND_CORS_ORIGINS must contain the production frontend origin.")
+    if any(origin == "*" for origin in cors_origins):
+        errors.append("BACKEND_CORS_ORIGINS must not contain '*'.")
+    if any(_is_local_origin(origin) for origin in cors_origins):
+        errors.append("BACKEND_CORS_ORIGINS must not contain localhost or loopback origins in production.")
+    if _is_local_origin(settings.FRONTEND_HOST):
+        errors.append("FRONTEND_HOST must be the production frontend origin.")
+    if settings.ENABLE_LOCAL_DEV_CORS:
+        errors.append("ENABLE_LOCAL_DEV_CORS must be false in production.")
+
+    if settings.LOG_LEVEL.upper() == "DEBUG":
+        errors.append("LOG_LEVEL must not be DEBUG in production.")
+    if settings.SQL_DEBUG:
+        errors.append("SQL_DEBUG must be false in production.")
+    if settings.ZHISHU_ALLOW_METADATA_QUERIES:
+        errors.append("ZHISHU_ALLOW_METADATA_QUERIES must stay false in production.")
+    if settings.TASK_QUEUE_MAX_ATTEMPTS < 2:
+        errors.append("TASK_QUEUE_MAX_ATTEMPTS should be at least 2 in production.")
+    if settings.TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS <= 0:
+        errors.append("TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS must be greater than 0.")
+
+    for name in ("BASE_DIR", "UPLOAD_DIR", "EXCEL_PATH", "MCP_IMAGE_PATH", "LOG_DIR"):
+        if not _is_absolute_path(str(getattr(settings, name))):
+            errors.append(f"{name} must be an absolute path in production.")
+
+    if settings.MCP_ENABLED and "YOUR_SERVE_IP" in settings.SERVER_IMAGE_HOST:
+        errors.append("SERVER_IMAGE_HOST must be configured when MCP_ENABLED=true.")
+
+    if errors and settings.PRODUCTION_CHECKS_ENABLED:
+        message = "Invalid production settings:\n- " + "\n- ".join(errors)
+        raise RuntimeError(message)
+    return errors
+
+
+def init_observability() -> None:
+    if not settings.SENTRY_DSN:
+        return
+
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT or settings.APP_ENV,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+    )
+    AppLogUtil.info("Sentry observability initialized")

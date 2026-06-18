@@ -1,0 +1,30 @@
+# Redis production template for a single-tenant 星通智数 deployment.
+# Fill placeholders before starting Redis. Keep this file private after rendering.
+
+bind 127.0.0.1
+port 6379
+protected-mode yes
+requirepass CHANGE_ME_STRONG_REDIS_PASSWORD
+
+daemonize yes
+supervised systemd
+pidfile /run/redis/zhishu-redis.pid
+loglevel notice
+logfile /var/log/redis/zhishu-redis.log
+dir /var/lib/redis/zhishu
+dbfilename dump.rdb
+
+appendonly yes
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+
+maxmemory 1gb
+maxmemory-policy noeviction
+timeout 0
+tcp-keepalive 300
+
+save 900 1
+save 300 10
+save 60 10000

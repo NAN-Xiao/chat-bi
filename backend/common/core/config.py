@@ -7,9 +7,8 @@ from pydantic import (
     BeforeValidator,
     PostgresDsn,
     computed_field,
-    field_validator
+    field_validator,
 )
-from pydantic_core import MultiHostUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +28,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     PROJECT_NAME: str = "星通智数"
+    APP_ENV: Literal["development", "test", "production"] = "development"
+    PRODUCTION_CHECKS_ENABLED: bool = True
     #CONTEXT_PATH: str = "/zhishu"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     )
+    ENABLE_LOCAL_DEV_CORS: bool = True
 
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
@@ -50,8 +52,9 @@ class Settings(BaseSettings):
         origins = [
             *[str(origin).rstrip("/") for origin in self.BACKEND_CORS_ORIGINS],
             self.FRONTEND_HOST,
-            *self.LOCAL_DEV_FRONTEND_HOSTS,
         ]
+        if self.ENABLE_LOCAL_DEV_CORS:
+            origins.extend(self.LOCAL_DEV_FRONTEND_HOSTS)
         return list(dict.fromkeys(origin.rstrip("/") for origin in origins if origin))
 
     @computed_field  # type: ignore[prop-decorator]
@@ -92,6 +95,8 @@ class Settings(BaseSettings):
     TASK_QUEUE_RESULT_TTL_SECONDS: int = 60 * 60 * 24
     TASK_QUEUE_POLL_TIMEOUT_SECONDS: int = 5
     TASK_QUEUE_MAX_ATTEMPTS: int = 1
+    TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS: int = 60 * 60
+    TASK_QUEUE_REQUEUE_INTERVAL_SECONDS: int = 60
 
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     LOG_DIR: str = "logs"
@@ -125,6 +130,10 @@ class Settings(BaseSettings):
     SERVER_IMAGE_TIMEOUT: int = 15
     LLM_REQUEST_TIMEOUT: int = 45
     LLM_MAX_RETRIES: int = 1
+
+    SENTRY_DSN: str | None = None
+    SENTRY_ENVIRONMENT: str | None = None
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
 
     DEFAULT_EMBEDDING_MODEL: str = 'text-embedding-v4'
     EMBEDDING_PROVIDER: Literal["openai"] = "openai"
@@ -176,6 +185,8 @@ class Settings(BaseSettings):
                      'EMBEDDING_USE_DEFAULT_AI_MODEL_CONFIG',
                      'EMBEDDING_NORMALIZE',
                      'REDIS_SSL',
+                     'PRODUCTION_CHECKS_ENABLED',
+                     'ENABLE_LOCAL_DEV_CORS',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:
@@ -198,6 +209,14 @@ class Settings(BaseSettings):
             if value in ("", "null"):
                 return "none"
             return value
+        return v
+
+    @field_validator('APP_ENV', mode='before')
+    @classmethod
+    def normalize_app_env(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            value = v.lower().strip()
+            return "production" if value == "prod" else value
         return v
 
 
