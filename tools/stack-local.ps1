@@ -177,6 +177,7 @@ function Start-Redis {
     $process = Start-Process `
         -FilePath $redisExe `
         -ArgumentList "--bind", $RedisHost, "--port", ([string]$RedisPort) `
+        -WorkingDirectory $stackRuntime `
         -RedirectStandardOutput $stdout `
         -RedirectStandardError $stderr `
         -WindowStyle Hidden `

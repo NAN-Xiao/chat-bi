@@ -187,6 +187,8 @@ cython_debug/
 
 .DS_Store
 test.py
+dump.rdb
+appendonlydir/
 
 
 !/.venv/
