@@ -38,6 +38,10 @@ Scope: entire repository.
   `http://127.0.0.1:5173/` should return `200`,
   `http://127.0.0.1:8000/api/v1/system/getLoginMethod` may return `401` but proves backend is up,
   and `0.0.0.0:8000`, `0.0.0.0:8001`, `0.0.0.0:5173` should all be listening for LAN testing.
+- Current deployment direction: keep local development simple and single-replica by default, but keep production deployment multi-replica capable through configuration. Local backend replicas can be started with `tools/backend-local.ps1`; default `-BackendPorts 8000` is development mode, while `-BackendPorts 8000,8002,8003 -CacheType redis` is the local production-like mode. Local Nginx can be run with `tools/nginx-local.ps1`, defaulting to port `8080`.
+- For backend multi-replica mode, use Redis-backed cache/state. Do not rely on process-local memory cache for shared auth, assistant, datasource, lock, rate-limit, or task state. Start replicas sequentially or run database migrations once before starting all replicas; avoid concurrent Alembic migrations from multiple backend processes.
+- Object storage is intentionally deferred for now. Local single-machine replicas may share `.codex-runtime/file`, `.codex-runtime/excel`, and `.codex-runtime/images`; before multi-machine production, these paths must move to shared storage or object storage.
+- Docker is not a current requirement for this Windows development workspace. Prefer native PowerShell scripts plus local PostgreSQL, Redis, and optional Nginx zip runtime until Docker/WSL is deliberately revisited.
 
 ## SLG BI Mock Data Constraints
 

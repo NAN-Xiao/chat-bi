@@ -22,7 +22,7 @@ from apps.system.schemas.permission import RequestContextMiddleware
 from common.audit.schemas.request_context import RequestContextMiddlewareCommon
 from common.core.config import settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
-from common.core.app_cache import init_app_cache
+from common.core.app_cache import cache_health, close_app_cache, init_app_cache
 from common.utils.utils import AppLogUtil
 
 try:
@@ -42,11 +42,12 @@ def run_migrations():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
-    init_app_cache()
+    await init_app_cache()
     init_dynamic_cors(app)
     AppLogUtil.info("✅ 星通智数 初始化完成")
     await async_model_info()  # 异步加密已有模型的密钥和地址
     yield
+    await close_app_cache()
     AppLogUtil.info("星通智数 应用关闭")
 
 
@@ -155,6 +156,25 @@ async def custom_swagger_ui(request: Request):
         swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
         swagger_js_url="./swagger-ui-bundle.js",
         swagger_css_url="./swagger-ui.css",
+    )
+
+
+@app.get(f"{settings.CONTEXT_PATH}/health", include_in_schema=False)
+async def health():
+    return {"status": "ok", "service": settings.PROJECT_NAME}
+
+
+@app.get(f"{settings.CONTEXT_PATH}/ready", include_in_schema=False)
+async def ready():
+    cache = await cache_health()
+    ok = cache.get("status") in {"ok", "disabled"}
+    return JSONResponse(
+        {
+            "status": "ok" if ok else "error",
+            "service": settings.PROJECT_NAME,
+            "cache": cache,
+        },
+        status_code=200 if ok else 503,
     )
 
 

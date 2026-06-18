@@ -1,13 +1,22 @@
 import re
-from fastapi_cache import FastAPICache
 from functools import partial, wraps
-from typing import Optional, Any, Dict, Tuple
 from inspect import signature
-from common.core.config import settings
-from common.utils.utils import AppLogUtil
-from fastapi_cache.backends.inmemory import InMemoryBackend
+from typing import Any, Dict, Optional, Tuple
 
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi_cache.decorator import cache as original_cache
+
+from common.core.config import settings
+from common.core.redis_client import (
+    build_redis_url,
+    close_redis_client,
+    get_redis_client,
+    mask_redis_url,
+    ping_redis,
+    redis_health,
+)
+from common.utils.utils import AppLogUtil
 
 def custom_key_builder(
     func: Any,
@@ -112,11 +121,7 @@ def clear_cache(
             backend = FastAPICache.get_backend()
             for temp_cache_key in key_list:
                 if await backend.get(temp_cache_key):
-                    if settings.CACHE_TYPE.lower() == "redis":
-                        redis = backend.redis
-                        await redis.delete(temp_cache_key)
-                    else:
-                        await backend.clear(key=temp_cache_key)
+                    await backend.clear(key=temp_cache_key)
                     AppLogUtil.debug(f"Cache cleared: {temp_cache_key}")
             return await func(*args, **kwargs)
         
@@ -124,23 +129,42 @@ def clear_cache(
     return decorator
 
 
-def init_app_cache():
-    cache_type: str = settings.CACHE_TYPE
+async def init_app_cache():
+    cache_type: str = (settings.CACHE_TYPE or "none").lower()
+    FastAPICache.reset()
     if cache_type == "memory":
         FastAPICache.init(InMemoryBackend())
         AppLogUtil.info("星通智数使用内存缓存, 仅支持单进程模式")
     elif cache_type == "redis":
         from fastapi_cache.backends.redis import RedisBackend
-        import redis.asyncio as redis
-        from redis.asyncio.connection import ConnectionPool
-        redis_url = settings.CACHE_REDIS_URL or "redis://localhost:6379/0"
-        pool = ConnectionPool.from_url(url=redis_url)
-        redis_client = redis.Redis(connection_pool=pool)
-        FastAPICache.init(RedisBackend(redis_client), prefix="app-cache")
-        AppLogUtil.info("星通智数使用Redis缓存, 可使用多进程模式")
+        redis_client = get_redis_client()
+        await ping_redis()
+        FastAPICache.init(RedisBackend(redis_client), prefix=settings.CACHE_REDIS_PREFIX)
+        AppLogUtil.info(f"星通智数使用Redis缓存, 可使用多进程模式: {mask_redis_url(build_redis_url())}")
     else:
         AppLogUtil.warning("星通智数未启用缓存, 可使用多进程模式")
     
+
+async def close_app_cache():
+    if (settings.CACHE_TYPE or "none").lower() == "redis":
+        await close_redis_client()
+
+
+async def cache_health() -> dict:
+    cache_type: str = (settings.CACHE_TYPE or "none").lower()
+    if cache_type == "redis":
+        return await redis_health()
+    if cache_type == "memory":
+        return {
+            "status": "ok",
+            "type": "memory",
+            "message": "内存缓存仅适合单进程开发环境",
+        }
+    return {
+        "status": "disabled",
+        "type": cache_type,
+    }
+
 
 def is_cache_initialized() -> bool:
     # 检查必要的属性是否存在

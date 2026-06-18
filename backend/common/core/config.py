@@ -71,8 +71,22 @@ class Settings(BaseSettings):
     DEFAULT_PWD: str = "Zhishu@123456"
     ASSISTANT_TOKEN_KEY: str = "X-ZHISHU-ASSISTANT-TOKEN"
 
-    CACHE_TYPE: Literal["redis", "memory", "None"] = "memory"
+    CACHE_TYPE: Literal["redis", "memory", "none"] = "memory"
     CACHE_REDIS_URL: str | None = None  # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
+    CACHE_REDIS_PREFIX: str = "zhishu-cache"
+
+    REDIS_URL: str | None = None
+    REDIS_HOST: str = "127.0.0.1"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_USERNAME: str | None = None
+    REDIS_PASSWORD: str | None = None
+    REDIS_SSL: bool = False
+    REDIS_SOCKET_TIMEOUT: float = 3.0
+    REDIS_CONNECT_TIMEOUT: float = 3.0
+    REDIS_HEALTH_CHECK_INTERVAL: int = 30
+    REDIS_MAX_CONNECTIONS: int = 100
+    REDIS_KEY_PREFIX: str = "zhishu"
 
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     LOG_DIR: str = "logs"
@@ -156,6 +170,7 @@ class Settings(BaseSettings):
                      'TABLE_EMBEDDING_ENABLED',
                      'EMBEDDING_USE_DEFAULT_AI_MODEL_CONFIG',
                      'EMBEDDING_NORMALIZE',
+                     'REDIS_SSL',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:
@@ -166,6 +181,18 @@ class Settings(BaseSettings):
                 return True
             elif v_lower == 'false':
                 return False
+        return v
+
+    @field_validator('CACHE_TYPE', mode='before')
+    @classmethod
+    def lowercase_cache_type(cls, v: Any) -> Any:
+        if v is None:
+            return "none"
+        if isinstance(v, str):
+            value = v.lower().strip()
+            if value in ("", "null"):
+                return "none"
+            return value
         return v
 
 

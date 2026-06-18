@@ -93,6 +93,6 @@ EXPOSE 3000 8000 8001 5432
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import os, urllib.request; urllib.request.urlopen(f'http://localhost:8000/{os.environ.get(\"CONTEXT_PATH\", \"\")}', timeout=3)" || exit 1
+    CMD python3 -c "import os, urllib.request; p=os.environ.get('CONTEXT_PATH','').strip('/'); urllib.request.urlopen('http://localhost:8000/' + ((p + '/') if p else '') + 'health', timeout=3)" || exit 1
 
 ENTRYPOINT ["sh", "start.sh"]

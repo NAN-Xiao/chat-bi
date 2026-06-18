@@ -5,6 +5,8 @@ from common.core.config import settings
 from common.utils.utils import AppLogUtil
 wlist = [
     "/",
+    "/health",
+    "/ready",
     "/docs",
     "/login/*",
     "*.ico",
