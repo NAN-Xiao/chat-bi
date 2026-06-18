@@ -104,6 +104,8 @@ class UserInfoDTO(UserEditor):
     language: str = "zh-CN"
     weight: int = 0
     isAdmin: bool = False
+    tenant_code: Optional[str] = None
+    tenant_name: Optional[str] = None
     tenant_ids: list[int] = Field(default_factory=list)
 
 
