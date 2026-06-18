@@ -1,8 +1,6 @@
 import asyncio
-import hashlib
 import io
 import os
-import uuid
 from typing import Optional
 
 import pandas as pd
@@ -23,6 +21,7 @@ from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
 from common.utils.excel import get_excel_column_count
+from common.utils.file_utils import AppFileUtils
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 router = APIRouter(tags=["Terminology"], prefix="/system/terminology")
@@ -209,16 +208,13 @@ async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentU
                        file: UploadFile = File(...)):
     if not is_system_admin(current_user):
         raise HTTPException(status_code=403, detail="System admin access is required")
-    ALLOWED_EXTENSIONS = {"xlsx", "xls"}
-    if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
-        raise HTTPException(400, "Only support .xlsx/.xls")
+    ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
 
     os.makedirs(path, exist_ok=True)
-    base_filename = f"{file.filename.split('.')[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
-    filename = f"{base_filename}.{file.filename.split('.')[1]}"
-    save_path = os.path.join(path, filename)
+    base_filename, filename = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
+    save_path = str(AppFileUtils.safe_path(path, filename))
     with open(save_path, "wb") as f:
-        f.write(await file.read())
+        f.write(await AppFileUtils.read_upload_limited(file))
 
     use_cols = [0, 1, 2, 3, 4]
 

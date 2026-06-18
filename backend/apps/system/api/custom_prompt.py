@@ -1,8 +1,6 @@
 import asyncio
-import hashlib
 import io
 import os
-import uuid
 from typing import Optional
 
 import pandas as pd
@@ -43,6 +41,7 @@ from common.core.db import engine
 from common.core.deps import CurrentUser, SessionDep, Trans
 from common.utils.data_format import DataFormat
 from common.utils.excel import get_excel_column_count
+from common.utils.file_utils import AppFileUtils
 
 router = APIRouter(tags=["CustomPrompt"], prefix="/system/custom_prompt", include_in_schema=False)
 
@@ -425,17 +424,14 @@ async def upload_excel(
 ):
     if not _can_manage_all_prompts(session, current_user):
         raise HTTPException(status_code=403, detail="Global prompt import can only be maintained by system admins")
-    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
-        raise HTTPException(400, "Only support .xlsx/.xls")
+    ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
+    base_filename, filename = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
 
     prompt_type = _parse_type(custom_prompt_type)
     os.makedirs(path, exist_ok=True)
-    suffix = file.filename.rsplit(".", 1)[-1]
-    base_filename = f"{file.filename.rsplit('.', 1)[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}"
-    filename = f"{base_filename}.{suffix}"
-    save_path = os.path.join(path, filename)
+    save_path = str(AppFileUtils.safe_path(path, filename))
     with open(save_path, "wb") as f:
-        f.write(await file.read())
+        f.write(await AppFileUtils.read_upload_limited(file))
 
     def inner():
         db_session = session_maker()

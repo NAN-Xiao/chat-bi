@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     TOKEN_KEY: str = "X-ZHISHU-TOKEN"
     DEFAULT_PWD: str = "Zhishu@123456"
     ASSISTANT_TOKEN_KEY: str = "X-ZHISHU-ASSISTANT-TOKEN"
+    SENSITIVE_CONFIG_ENCRYPTION_KEY: str | None = None
+    DATASOURCE_CONFIG_ENCRYPTION_KEY: str | None = None
+    LOGIN_RATE_LIMIT_ENABLED: bool = True
+    LOGIN_MAX_FAILED_ATTEMPTS: int = 5
+    LOGIN_FAILURE_WINDOW_SECONDS: int = 15 * 60
+    LOGIN_LOCKOUT_SECONDS: int = 15 * 60
+    MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024
 
     CACHE_TYPE: Literal["redis", "memory", "none"] = "memory"
     CACHE_REDIS_URL: str | None = None  # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
@@ -187,6 +194,7 @@ class Settings(BaseSettings):
                      'REDIS_SSL',
                      'PRODUCTION_CHECKS_ENABLED',
                      'ENABLE_LOCAL_DEV_CORS',
+                     'LOGIN_RATE_LIMIT_ENABLED',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:

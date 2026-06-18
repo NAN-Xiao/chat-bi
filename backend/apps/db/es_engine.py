@@ -28,7 +28,7 @@ def get_es_connect(conf: DatasourceConf):
     es_client = Elasticsearch(
         [conf.host],  # ES address
         basic_auth=(conf.username, conf.password),
-        verify_certs=False,
+        verify_certs=conf.ssl,
         compatibility_mode=True,
         headers=get_es_auth(conf)
     )
@@ -114,12 +114,12 @@ def get_es_data_by_http(conf: DatasourceConf, sql: str):
     # Note: In production, always set verify=True or provide path to CA bundle
     # If using self-signed certificates, provide the cert path: verify='/path/to/cert.pem'
     # verify_ssl = True if not url.startswith('https://localhost') else False
-    
+
     response = requests.post(
-        host, 
-        data=json.dumps({"query": sql}), 
-        headers=get_es_auth(conf), 
-        verify=False,
+        host,
+        data=json.dumps({"query": sql}),
+        headers=get_es_auth(conf),
+        verify=conf.ssl,
         timeout=30  # Add timeout to prevent hanging
     )
 

@@ -46,7 +46,9 @@ from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.core.task_registry import register_builtin_tasks
 from common.core.task_queue import enqueue_task
+from common.utils.file_utils import AppFileUtils
 from common.utils.utils import AppLogUtil
+from ..utils.utils import decrypt_datasource_configuration_for_output
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum, \
     check_status_by_id
@@ -115,7 +117,7 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
             "description": datasource.description,
             "type": datasource.type,
             "type_name": datasource.type_name,
-            "configuration": datasource.configuration if is_admin else None,
+            "configuration": decrypt_datasource_configuration_for_output(datasource.configuration) if is_admin else None,
             "create_time": datasource.create_time,
             "create_by": datasource.create_by,
             "status": datasource.status,
@@ -216,6 +218,8 @@ async def get_datasource(
     data = datasource.model_dump()
     if not is_system_admin(user):
         data["configuration"] = None
+    else:
+        data["configuration"] = decrypt_datasource_configuration_for_output(data.get("configuration"))
     return data
 
 
@@ -501,15 +505,13 @@ async def field_enum(session: SessionDep, id: int):
 @router.post("/uploadExcel", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_upload_excel")
 @require_permissions(permission=AppPermission(role=['admin']))
 async def upload_excel(session: SessionDep, file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel")):
-    ALLOWED_EXTENSIONS = {"xlsx", "xls", "csv"}
-    if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
-        raise HTTPException(400, "Only support .xlsx/.xls/.csv")
+    ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
 
     os.makedirs(path, exist_ok=True)
-    filename = f"{file.filename.split('.')[0]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.{file.filename.split('.')[1]}"
-    save_path = os.path.join(path, filename)
+    _base_filename, filename = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
+    save_path = str(AppFileUtils.safe_path(path, filename))
     with open(save_path, "wb") as f:
-        f.write(await file.read())
+        f.write(await AppFileUtils.read_upload_limited(file))
 
     def inner():
         sheets = []
@@ -656,12 +658,11 @@ async def export_ds_schema(session: SessionDep, id: int = Path(..., description=
 @require_permissions(permission=AppPermission(role=['admin']))
 async def upload_ds_schema(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                            file: UploadFile = File(...)):
-    ALLOWED_EXTENSIONS = {"xlsx", "xls"}
-    if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
-        raise HTTPException(400, "Only support .xlsx/.xls")
+    ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
+    AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
 
     try:
-        contents = await file.read()
+        contents = await AppFileUtils.read_upload_limited(file)
         excel_file = io.BytesIO(contents)
 
         sheet_names = pd.ExcelFile(excel_file, engine="openpyxl").sheet_names
@@ -718,14 +719,12 @@ async def upload_ds_schema(session: SessionDep, id: int = Path(..., description=
 @require_permissions(permission=AppPermission(role=['admin']))
 async def parse_excel(file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel")):
     ALLOWED_EXTENSIONS = {".xlsx", ".xls", ".csv"}
-    if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
-        raise HTTPException(400, "Only support .xlsx/.xls/.csv")
 
     os.makedirs(path, exist_ok=True)
-    filename = f"{file.filename.split('.')[0].split('/')[-1]}_{hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:10]}.{file.filename.split('.')[-1]}"
-    save_path = os.path.join(path, filename)
+    _base_filename, filename = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
+    save_path = str(AppFileUtils.safe_path(path, filename))
     with open(save_path, "wb") as f:
-        f.write(await file.read())
+        f.write(await AppFileUtils.read_upload_limited(file))
 
     def inner():
         sheets_data = parse_excel_preview(save_path)
@@ -740,7 +739,8 @@ async def parse_excel(file: UploadFile = File(..., description=f"{PLACEHOLDER_PR
 @router.post("/importToDb", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_import_to_db")
 @require_permissions(permission=AppPermission(role=['admin']))
 async def import_to_db(session: SessionDep, trans: Trans, import_req: ImportRequest):
-    save_path = os.path.join(path, import_req.filePath)
+    safe_file_name = os.path.basename(import_req.filePath or "")
+    save_path = str(AppFileUtils.safe_path(path, safe_file_name))
     if not os.path.exists(save_path):
         raise HTTPException(400, "File not found")
 
@@ -797,7 +797,7 @@ async def import_to_db(session: SessionDep, trans: Trans, import_req: ImportRequ
                 cursor.close()
                 conn.close()
 
-        return {"filename": import_req.filePath, "sheets": results}
+        return {"filename": safe_file_name, "sheets": results}
 
     return await asyncio.to_thread(inner)
 

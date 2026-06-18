@@ -1,19 +1,20 @@
 
 
 import asyncio
-from http.client import HTTPException
 import io
 import sys
 import tempfile
 import uuid
 import atexit
 import threading
+from fastapi import HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
 import os
 from openai import BaseModel
 import pandas as pd
 from apps.system.models.user import UserModel
 from common.core.deps import SessionDep
+from common.utils.file_utils import AppFileUtils
 
 
 class RowValidator:
@@ -83,16 +84,15 @@ async def downTemplate(trans):
     return StreamingResponse(result, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 async def batchUpload(session: SessionDep, trans, file) -> UploadResultDTO:
-    ALLOWED_EXTENSIONS = {"xlsx", "xls"}
-    if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
-        raise HTTPException(400, "Only support .xlsx/.xls")
+    ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
+    AppFileUtils.validate_extension(getattr(file, "filename", None), ALLOWED_EXTENSIONS)
     
     # Support FastAPI UploadFile (async read) and file-like objects.
     NA_VALUES = ['', 'NA', 'N/A', 'NULL']
     df = None
     # If file provides an async read (UploadFile), read bytes first
     if hasattr(file, 'read') and asyncio.iscoroutinefunction(getattr(file, 'read')):
-        content = await file.read()
+        content = await AppFileUtils.read_upload_limited(file)
         df = pd.read_excel(io.BytesIO(content), sheet_name=0, na_values=NA_VALUES)
     else:
         # If it's a Starlette UploadFile-like with a .file attribute, use that

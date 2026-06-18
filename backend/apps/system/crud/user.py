@@ -9,7 +9,7 @@ from common.core.app_cache import cache, clear_cache
 from common.utils.locale import I18n
 from common.utils.utils import AppLogUtil
 from ..models.user import UserModel, UserPlatformModel
-from common.core.security import verify_md5pwd
+from common.core.security import hash_password, verify_stored_password
 import re
 
 SYSTEM_ROLE_SYSTEM_ADMIN = "system_admin"
@@ -89,12 +89,17 @@ async def get_user_info(*, session: Session, user_id: int) -> UserInfoDTO | None
     return apply_user_role_flags(userInfo)
 
 def authenticate(*, session: Session, account: str, password: str) -> BaseUserDTO | None:
-    db_user = get_user_by_account(session=session, account=account)
+    statement = select(UserModel).where(UserModel.account == account)
+    db_user = session.exec(statement).first()
     if not db_user:
         return None
-    if not verify_md5pwd(password, db_user.password):
+    valid_password, needs_rehash = verify_stored_password(password, db_user.password)
+    if not valid_password:
         return None
-    return db_user
+    if needs_rehash:
+        db_user.password = hash_password(password)
+        session.add(db_user)
+    return BaseUserDTO.model_validate(db_user.model_dump())
 
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.USER_INFO, keyExpression="id")
 async def single_delete(session: SessionDep, id: int):

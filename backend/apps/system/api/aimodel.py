@@ -1,24 +1,36 @@
 import json
-from typing import List, Union
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 from sqlmodel import func, select, update
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, _normalize_api_base_url
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.aimodel_manage import get_ai_model_list
-from apps.system.models.system_model import AiModelDetail, AiModelBrief
-from apps.system.schemas.ai_model_schema import AiModelConfigItem, AiModelCreator, AiModelEditor, AiModelGridItem
+from apps.system.models.system_model import AiModelBrief, AiModelDetail
+from apps.system.schemas.ai_model_schema import (
+    AiModelConfigItem,
+    AiModelCreator,
+    AiModelEditor,
+    AiModelGridItem,
+)
 from apps.system.schemas.permission import AppPermission, require_permissions
-from common.core.deps import SessionDep, Trans, CurrentUser
-from common.utils.crypto import zhishu_decrypt
+from common.audit.models.log_model import OperationModules, OperationType
+from common.audit.schemas.logger_decorator import LogConfig, system_log
+from common.core.deps import CurrentUser, SessionDep, Trans
+from common.utils.crypto import zhishu_decrypt, zhishu_encrypt
 from common.utils.time import get_timestamp
 from common.utils.utils import AppLogUtil, prepare_model_arg
 
 router = APIRouter(tags=["system_model"], prefix="/system/aimodel")
-from common.audit.models.log_model import OperationType, OperationModules
-from common.audit.schemas.logger_decorator import LogConfig, system_log
+
+
+async def _encrypt_ai_model_secrets(data: dict) -> dict:
+    encrypted = dict(data)
+    for key in ("api_key", "api_domain"):
+        if key in encrypted and encrypted[key] is not None:
+            encrypted[key] = await zhishu_encrypt(encrypted[key])
+    return encrypted
 
 
 @router.post("/status", include_in_schema=False)
@@ -54,7 +66,7 @@ async def check_llm(info: AiModelCreator, trans: Trans):
 @router.get("/default", include_in_schema=False)
 async def check_default(session: SessionDep, trans: Trans):
     db_model = session.exec(
-        select(AiModelDetail).where(AiModelDetail.default_model == True)
+        select(AiModelDetail).where(AiModelDetail.default_model)
     ).first()
     if not db_model:
         raise Exception(trans('i18n_llm.miss_default'))
@@ -88,7 +100,7 @@ async def set_default(session: SessionDep, id: int = Path(description="ID")):
 @require_permissions(permission=AppPermission(role=['admin']))
 async def query(
         session: SessionDep,
-        keyword: Union[str, None] = Query(default=None, max_length=255, description=f"{PLACEHOLDER_PREFIX}keyword")
+        keyword: str | None = Query(default=None, max_length=255, description=f"{PLACEHOLDER_PREFIX}keyword")
 ):
     statement = (
         select(
@@ -119,21 +131,26 @@ async def get_model_by_id(
     if not db_model:
         raise ValueError(f"AiModelDetail with id {id} not found")
 
-    config_list: List[AiModelConfigItem] = []
+    config_list: list[AiModelConfigItem] = []
     if db_model.config:
         try:
             raw = json.loads(db_model.config)
             config_list = [AiModelConfigItem(**item) for item in raw]
         except Exception:
             pass
+    data = AiModelDetail.model_validate(db_model).model_dump(exclude_unset=True)
     try:
         if db_model.api_key:
-            db_model.api_key = await zhishu_decrypt(db_model.api_key)
+            data["api_key"] = await zhishu_decrypt(db_model.api_key)
         if db_model.api_domain:
-            db_model.api_domain = await zhishu_decrypt(db_model.api_domain)
+            data["api_domain"] = await zhishu_decrypt(db_model.api_domain)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="AI model sensitive configuration cannot be decrypted.",
+        ) from exc
     except Exception:
         pass
-    data = AiModelDetail.model_validate(db_model).model_dump(exclude_unset=True)
     data.pop("config", None)
     data["config_list"] = config_list
     return AiModelEditor(**data)
@@ -150,6 +167,7 @@ async def add_model(
     data = creator.model_dump(exclude_unset=True)
     data["config"] = json.dumps([item.model_dump(exclude_unset=True) for item in creator.config_list])
     data.pop("config_list", None)
+    data = await _encrypt_ai_model_secrets(data)
     detail = AiModelDetail.model_validate(data)
     detail.create_time = get_timestamp()
     count = session.exec(select(func.count(AiModelDetail.id))).one()
@@ -173,6 +191,7 @@ async def update_model(
     data = editor.model_dump(exclude_unset=True)
     data["config"] = json.dumps([item.model_dump(exclude_unset=True) for item in editor.config_list])
     data.pop("config_list", None)
+    data = await _encrypt_ai_model_secrets(data)
     db_model = session.get(AiModelDetail, id)
     # update_data = AiModelDetail.model_validate(data)
     db_model.sqlmodel_update(data)
@@ -196,10 +215,10 @@ async def delete_model(
     session.commit()
 
 
-@router.get("/list/available", response_model=List[AiModelBrief], summary=f"{PLACEHOLDER_PREFIX}system_model_list_available",
+@router.get("/list/available", response_model=list[AiModelBrief], summary=f"{PLACEHOLDER_PREFIX}system_model_list_available",
             description=f"{PLACEHOLDER_PREFIX}system_model_list_available")
 async def get_available_models(
         session: SessionDep,
-        current_user: CurrentUser
+        _current_user: CurrentUser
 ):
     return get_ai_model_list(session, False)

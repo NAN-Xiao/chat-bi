@@ -1,11 +1,14 @@
 import os
+import re
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 
 from common.core.config import settings
+
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 class AppFileUtils:
@@ -45,16 +48,82 @@ class AppFileUtils:
             raise ValueError("文件大小超过限制")
 
     @staticmethod
+    def _normalize_extensions(file_types: Iterable[str]) -> set[str]:
+        return {
+            item.lower() if item.startswith(".") else f".{item.lower()}"
+            for item in file_types
+        }
+
+    @staticmethod
+    def validate_extension(filename: str | None, file_types: Iterable[str]) -> str:
+        suffix = Path(filename or "").suffix.lower()
+        if suffix not in AppFileUtils._normalize_extensions(file_types):
+            allowed = "/".join(sorted(AppFileUtils._normalize_extensions(file_types)))
+            raise HTTPException(status_code=400, detail=f"Only support {allowed}")
+        return suffix
+
+    @staticmethod
+    def safe_upload_name(filename: str | None, file_types: Iterable[str]) -> tuple[str, str]:
+        suffix = AppFileUtils.validate_extension(filename, file_types)
+        raw_name = os.path.basename(filename or "")
+        stem = Path(raw_name).stem
+        safe_stem = re.sub(r"[^\w\u4e00-\u9fa5-]+", "_", stem).strip("._-")
+        if not safe_stem:
+            safe_stem = "upload"
+        base_filename = f"{safe_stem}_{uuid.uuid4().hex[:10]}"
+        return base_filename, f"{base_filename}{suffix}"
+
+    @staticmethod
+    def safe_path(base_dir: str | Path, filename: str, *, required_suffix: str | None = None) -> Path:
+        safe_name = os.path.basename(filename or "")
+        if not safe_name:
+            raise HTTPException(status_code=400, detail="filename is required")
+        if required_suffix and not safe_name.lower().endswith(required_suffix.lower()):
+            raise HTTPException(status_code=400, detail=f"Only support {required_suffix}")
+
+        base_path = Path(base_dir).resolve()
+        target = (base_path / safe_name).resolve()
+        try:
+            common_path = os.path.commonpath([str(base_path), str(target)])
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail="Unauthorized file access") from exc
+        if common_path != str(base_path):
+            raise HTTPException(status_code=403, detail="Unauthorized file access")
+        return target
+
+    @staticmethod
+    async def read_upload_limited(
+        file: UploadFile,
+        *,
+        limit_file_size: int | None = None,
+    ) -> bytes:
+        limit = limit_file_size if limit_file_size is not None else settings.MAX_UPLOAD_BYTES
+        chunks: list[bytes] = []
+        total_size = 0
+
+        while True:
+            chunk = await file.read(_UPLOAD_CHUNK_SIZE)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if limit and total_size > limit:
+                await file.seek(0)
+                raise HTTPException(status_code=413, detail="文件大小超过限制")
+            chunks.append(chunk)
+
+        await file.seek(0)
+        return b"".join(chunks)
+
+    @staticmethod
     async def upload(file: UploadFile) -> str:
         suffix = Path(file.filename or "").suffix.lower()
         file_id = f"{uuid.uuid4().hex}{suffix}"
         file_path = AppFileUtils.get_file_path(file_id)
         Path(file_path).parent.mkdir(parents=True, exist_ok=True)
 
-        content = await file.read()
+        content = await AppFileUtils.read_upload_limited(file)
         with open(file_path, "wb") as target:
             target.write(content)
-        await file.seek(0)
         return file_id
 
     @staticmethod

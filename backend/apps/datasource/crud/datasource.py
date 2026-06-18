@@ -9,7 +9,7 @@ from sqlmodel import select
 from apps.datasource.crud.permission import can_access_table, get_accessible_datasource_ids, get_column_permission_fields, \
     get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, is_normal_user
 from apps.datasource.embedding.table_embedding import calc_table_embedding
-from apps.datasource.utils.utils import aes_decrypt
+from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
 from apps.db.constant import DB
 from apps.db.db import get_tables, get_fields, exec_sql, check_connection
 from apps.db.engine import get_engine_config, get_engine_conn
@@ -80,6 +80,7 @@ async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create
     ds.create_by = user.id
     ds.status = "Success"
     ds.type_name = DB.get_db(ds.type).db_name
+    ds.configuration = encrypt_datasource_configuration(ds.configuration)
     record = CoreDatasource(**ds.model_dump())
     session.add(record)
     session.flush()
@@ -109,6 +110,8 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
     update_data = ds.model_dump(exclude_unset=True)
     if update_data.get("configuration") in (None, ""):
         update_data.pop("configuration", None)
+    elif "configuration" in update_data:
+        update_data["configuration"] = encrypt_datasource_configuration(update_data["configuration"])
     for field, value in update_data.items():
         setattr(record, field, value)
     session.add(record)

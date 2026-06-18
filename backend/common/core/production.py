@@ -56,6 +56,11 @@ def validate_production_settings() -> list[str]:
         errors.append("DEFAULT_PWD must be changed from the development default.")
     if settings.POSTGRES_PASSWORD == "Password123@pg":
         errors.append("POSTGRES_PASSWORD must be changed from the development default.")
+    sensitive_key = settings.SENSITIVE_CONFIG_ENCRYPTION_KEY or settings.DATASOURCE_CONFIG_ENCRYPTION_KEY
+    if not (_env_present("SENSITIVE_CONFIG_ENCRYPTION_KEY") or _env_present("DATASOURCE_CONFIG_ENCRYPTION_KEY")):
+        errors.append("SENSITIVE_CONFIG_ENCRYPTION_KEY must be set from environment in production.")
+    elif len(sensitive_key or "") < 32:
+        errors.append("SENSITIVE_CONFIG_ENCRYPTION_KEY must be at least 32 characters.")
     if settings.CACHE_TYPE != "redis":
         errors.append("CACHE_TYPE must be redis for production single-tenant deployments.")
 
@@ -85,6 +90,16 @@ def validate_production_settings() -> list[str]:
         errors.append("TASK_QUEUE_MAX_ATTEMPTS should be at least 2 in production.")
     if settings.TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS <= 0:
         errors.append("TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS must be greater than 0.")
+    if not settings.LOGIN_RATE_LIMIT_ENABLED:
+        errors.append("LOGIN_RATE_LIMIT_ENABLED must be true in production.")
+    if settings.LOGIN_MAX_FAILED_ATTEMPTS <= 0 or settings.LOGIN_MAX_FAILED_ATTEMPTS > 10:
+        errors.append("LOGIN_MAX_FAILED_ATTEMPTS must be between 1 and 10 in production.")
+    if settings.LOGIN_LOCKOUT_SECONDS <= 0:
+        errors.append("LOGIN_LOCKOUT_SECONDS must be greater than 0 in production.")
+    if settings.MAX_UPLOAD_BYTES <= 0:
+        errors.append("MAX_UPLOAD_BYTES must be greater than 0 in production.")
+    if settings.MAX_UPLOAD_BYTES > 100 * 1024 * 1024:
+        errors.append("MAX_UPLOAD_BYTES must not exceed 100 MiB in production.")
 
     for name in ("BASE_DIR", "UPLOAD_DIR", "EXCEL_PATH", "MCP_IMAGE_PATH", "LOG_DIR"):
         if not _is_absolute_path(str(getattr(settings, name))):

@@ -14,6 +14,10 @@ export function escapeHtml(text: string): string {
   return div.innerHTML
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /**
  * Highlight keywords in text with XSS protection
  * @param text - The original text
@@ -32,7 +36,7 @@ export function highlightKeyword(
   const escapedKeyword = escapeHtml(keyword)
 
   // Use case-insensitive replace
-  const regex = new RegExp(escapedKeyword, 'gi')
+  const regex = new RegExp(escapeRegExp(escapedKeyword), 'gi')
   return escapedText.replace(regex, (match) => `<span class="${highlightClass}">${match}</span>`)
 }
 

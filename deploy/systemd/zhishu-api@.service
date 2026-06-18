@@ -1,0 +1,19 @@
+[Unit]
+Description=星通智数 API replica on port %i
+After=network-online.target postgresql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zhishu
+Group=zhishu
+WorkingDirectory=/opt/zhishu/backend
+EnvironmentFile=/etc/zhishu/zhishu.env
+ExecStart=/opt/zhishu/backend/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port %i --workers 1
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

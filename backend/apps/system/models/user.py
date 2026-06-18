@@ -5,14 +5,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
 
 from common.core.models import SnowflakeBase
-from common.core.security import default_md5_pwd
+from common.core.security import default_password_hash
 from common.utils.time import get_timestamp
 
 
 class BaseUserPO(SQLModel):
     account: str = Field(max_length=255, unique=True)
     name: str = Field(max_length=255, unique=True)
-    password: str = Field(default_factory=default_md5_pwd, max_length=255)
+    password: str = Field(default_factory=default_password_hash, max_length=255)
     email: str = Field(max_length=255)
     status: int = Field(default=0, nullable=False)
     origin: int = Field(nullable=False, default=0)
