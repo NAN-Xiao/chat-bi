@@ -13,11 +13,14 @@
 - Nginx 本地配置：默认代理单副本 `8000`，也支持 `8000,8002,8003`。
 - 后端本地启动脚本：默认开发单副本，多端口时启用多副本。
 - 任务队列第一版：Redis 队列、任务状态、worker 启动入口、`system.ping` 测试任务。
+- 本地一键编排脚本：`tools/stack-local.ps1` 串联 PostgreSQL、Redis、backend、Nginx 和可选 worker。
+- 本地 PostgreSQL 备份/恢复脚本：`tools/postgres-backup-local.ps1`，默认备份到 `.codex-runtime/pg-backups`。
 
 ## 暂不做
 
 - 对象存储暂不做，后续多机器部署或文件规模上来后再引入。
 - 数据库上云暂不做，本地阶段必须保留自动备份和恢复预案。
+- 当前已有手动备份/恢复脚本，自动定时备份后续再接 Windows 计划任务或生产备份策略。
 - Docker 暂不作为当前路径依赖，Windows 本地继续使用原生进程和 Nginx zip 版。
 
 ## 开发与生产的分界
@@ -43,6 +46,18 @@ worker 任务队列
 ```
 
 开发环境不要强制复杂化；生产能力通过配置、脚本和共享状态设施打开。
+
+本地开发默认仍使用单副本：
+
+```powershell
+.\tools\stack-local.ps1 -Action start
+```
+
+多副本压测或上线前模拟再显式开启：
+
+```powershell
+.\tools\stack-local.ps1 -Action start -BackendPorts 8000,8002,8003 -StartWorker -Workers 2
+```
 
 ## 多副本约束
 
