@@ -42,6 +42,7 @@ Scope: entire repository.
 - For backend multi-replica mode, use Redis-backed cache/state. Do not rely on process-local memory cache for shared auth, assistant, datasource, lock, rate-limit, or task state. Start replicas sequentially or run database migrations once before starting all replicas; avoid concurrent Alembic migrations from multiple backend processes.
 - Object storage is intentionally deferred for now. Local single-machine replicas may share `.codex-runtime/file`, `.codex-runtime/excel`, and `.codex-runtime/images`; before multi-machine production, these paths must move to shared storage or object storage.
 - Docker is not a current requirement for this Windows development workspace. Prefer native PowerShell scripts plus local PostgreSQL, Redis, and optional Nginx zip runtime until Docker/WSL is deliberately revisited.
+- Task queue first version is Redis-backed. Use `tools/worker-local.ps1` for local workers. Only enqueue registered task handlers; do not expose arbitrary task execution to normal users. Keep sensitive credentials out of task payloads.
 
 ## SLG BI Mock Data Constraints
 

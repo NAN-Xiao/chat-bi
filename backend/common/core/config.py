@@ -82,11 +82,16 @@ class Settings(BaseSettings):
     REDIS_USERNAME: str | None = None
     REDIS_PASSWORD: str | None = None
     REDIS_SSL: bool = False
-    REDIS_SOCKET_TIMEOUT: float = 3.0
+    REDIS_SOCKET_TIMEOUT: float = 10.0
     REDIS_CONNECT_TIMEOUT: float = 3.0
     REDIS_HEALTH_CHECK_INTERVAL: int = 30
     REDIS_MAX_CONNECTIONS: int = 100
     REDIS_KEY_PREFIX: str = "zhishu"
+
+    TASK_QUEUE_NAME: str = "default"
+    TASK_QUEUE_RESULT_TTL_SECONDS: int = 60 * 60 * 24
+    TASK_QUEUE_POLL_TIMEOUT_SECONDS: int = 5
+    TASK_QUEUE_MAX_ATTEMPTS: int = 1
 
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     LOG_DIR: str = "logs"

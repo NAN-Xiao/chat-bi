@@ -154,6 +154,7 @@ function Start-UvicornApp([string]$Name, [string]$AppTarget, [int]$Port, [string
 
 function Stop-ByPidFile([string]$Name, [int]$Port) {
     $pidFile = Get-PidFile -Name "$Name-$Port"
+    $stopped = $false
     if (Test-Path -LiteralPath $pidFile) {
         $pidValue = (Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
         if ($pidValue) {
@@ -162,13 +163,13 @@ function Stop-ByPidFile([string]$Name, [int]$Port) {
                 Stop-Process -Id $process.Id -Force
                 $process.WaitForExit(5000)
                 Write-Host "Stopped $Name $Port pid=$($process.Id)"
+                $stopped = $true
             }
         }
         Remove-Item -LiteralPath $pidFile -ErrorAction SilentlyContinue
-        return
     }
 
-    if ($ForcePortStop) {
+    if (-not $stopped -and ($ForcePortStop -or $Action -eq "restart")) {
         $owner = Get-PortOwner -Port $Port
         if ($owner) {
             $process = Get-Process -Id $owner -ErrorAction SilentlyContinue

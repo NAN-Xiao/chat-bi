@@ -5,7 +5,7 @@ from apps.chat.api import chat
 from apps.dashboard.api import dashboard_api
 from apps.data_training.api import data_training
 from apps.datasource.api import datasource, table_relation, recommended_problem, permission
-from apps.system.api import login, user, aimodel, assistant, parameter, apikey, variable_api, audit, custom_prompt
+from apps.system.api import login, user, aimodel, assistant, parameter, apikey, variable_api, audit, custom_prompt, task_queue
 from apps.terminology.api import terminology
 from common.core.config import settings
 from apps.settings.api import base
@@ -38,3 +38,4 @@ api_router.include_router(recommended_problem.router)
 api_router.include_router(variable_api.router)
 api_router.include_router(audit.router)
 api_router.include_router(custom_prompt.router)
+api_router.include_router(task_queue.router)
