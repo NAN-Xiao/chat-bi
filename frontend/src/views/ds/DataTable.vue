@@ -276,10 +276,42 @@ const syncFields = () => {
   loading.value = true
   datasourceApi
     .syncFields(currentTable.value.id)
-    .then(() => {
-      btnSelectClick('d')
-      ElMessage.success(t('ds.sync_fields_success'))
+    .then((task: any) => {
+      if (task?.id) {
+        pollSyncFieldsTask(task.id)
+      } else {
+        btnSelectClick('d')
+        ElMessage.success(t('ds.sync_fields_success'))
+        loading.value = false
+      }
+    })
+    .catch(() => {
       loading.value = false
+      ElMessage.warning(t('ds.sync_fields_failed'))
+    })
+}
+
+const pollSyncFieldsTask = (taskId: string, attempt = 0) => {
+  datasourceApi
+    .getTask(taskId)
+    .then((task: any) => {
+      if (task?.status === 'succeeded') {
+        btnSelectClick('d')
+        ElMessage.success(t('ds.sync_fields_success'))
+        loading.value = false
+        return
+      }
+      if (task?.status === 'failed') {
+        loading.value = false
+        ElMessage.warning(t('ds.sync_fields_failed'))
+        return
+      }
+      if (attempt >= 300) {
+        loading.value = false
+        ElMessage.warning(t('ds.sync_fields_failed'))
+        return
+      }
+      window.setTimeout(() => pollSyncFieldsTask(taskId, attempt + 1), 1000)
     })
     .catch(() => {
       loading.value = false

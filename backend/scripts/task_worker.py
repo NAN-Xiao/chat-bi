@@ -1,14 +1,15 @@
 import asyncio
 import signal
 
-from apps.system import tasks as system_tasks  # noqa: F401
 from common.core.app_cache import close_app_cache, init_app_cache
 from common.core.config import settings
 from common.core.task_queue import worker_loop
+from common.core.task_registry import register_builtin_tasks
 from common.utils.utils import AppLogUtil
 
 
 async def main() -> None:
+    register_builtin_tasks()
     await init_app_cache()
     stop_event = asyncio.Event()
 

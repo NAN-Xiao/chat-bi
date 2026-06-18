@@ -105,6 +105,51 @@ async def enqueue_task(
     return task
 
 
+async def _enqueue_task_and_log(
+    name: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    created_by: int | None = None,
+    queue_name: str | None = None,
+    max_attempts: int | None = None,
+) -> dict[str, Any] | None:
+    try:
+        return await enqueue_task(
+            name,
+            payload,
+            created_by=created_by,
+            queue_name=queue_name,
+            max_attempts=max_attempts,
+        )
+    except Exception:
+        AppLogUtil.exception(f"Failed to enqueue task: {name}")
+        return None
+
+
+def enqueue_task_detached(
+    name: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    created_by: int | None = None,
+    queue_name: str | None = None,
+    max_attempts: int | None = None,
+) -> dict[str, Any] | None:
+    coroutine = _enqueue_task_and_log(
+        name,
+        payload,
+        created_by=created_by,
+        queue_name=queue_name,
+        max_attempts=max_attempts,
+    )
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coroutine)
+
+    loop.create_task(coroutine)
+    return None
+
+
 async def get_task(task_id: str) -> dict[str, Any] | None:
     client = get_redis_client()
     return _json_loads(await client.get(_task_key(task_id)))

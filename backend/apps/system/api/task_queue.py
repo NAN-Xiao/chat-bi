@@ -5,9 +5,11 @@ from pydantic import BaseModel, Field
 
 from apps.system.crud.user import is_system_admin
 from apps.system.schemas.permission import AppPermission, require_permissions
-from apps.system.tasks import ping_task as _ping_task  # noqa: F401
 from common.core.deps import CurrentUser
 from common.core.task_queue import enqueue_task, get_task, task_queue_health
+from common.core.task_registry import register_builtin_tasks
+
+register_builtin_tasks()
 
 router = APIRouter(tags=["system/task"], prefix="/system/tasks", include_in_schema=False)
 

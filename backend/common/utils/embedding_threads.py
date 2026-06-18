@@ -1,48 +1,49 @@
-from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import Any
 
-from sqlalchemy.orm import sessionmaker, scoped_session
-
-executor = ThreadPoolExecutor(max_workers=200)
-
-from common.core.db import engine
-
-session_maker = scoped_session(sessionmaker(bind=engine))
+from common.core.task_queue import enqueue_task_detached
+from common.core.task_registry import register_builtin_tasks
+from common.utils.utils import AppLogUtil
 
 
-# session = session_maker()
+def _int_list(value: list[int] | None) -> list[int]:
+    if not value:
+        return []
+    return [int(item) for item in value]
 
 
-def run_save_terminology_embeddings(ids: List[int]):
-    from apps.terminology.curd.terminology import save_embeddings
-    executor.submit(save_embeddings, session_maker, ids)
+def _enqueue_embedding_task(name: str, payload: dict[str, Any]) -> None:
+    try:
+        register_builtin_tasks()
+        task = enqueue_task_detached(name, payload)
+        if task:
+            AppLogUtil.info(f"Queued embedding task: {name} task_id={task.get('id')}")
+    except Exception:
+        AppLogUtil.exception(f"Failed to queue embedding task: {name}")
+
+
+def run_save_terminology_embeddings(ids: list[int]):
+    _enqueue_embedding_task("terminology.embedding", {"ids": _int_list(ids)})
 
 
 def fill_empty_terminology_embeddings():
-    from apps.terminology.curd.terminology import run_fill_empty_embeddings
-    executor.submit(run_fill_empty_embeddings, session_maker)
+    _enqueue_embedding_task("terminology.fill_empty_embedding", {})
 
 
-def run_save_data_training_embeddings(ids: List[int]):
-    from apps.data_training.curd.data_training import save_embeddings
-    executor.submit(save_embeddings, session_maker, ids)
+def run_save_data_training_embeddings(ids: list[int]):
+    _enqueue_embedding_task("data_training.embedding", {"ids": _int_list(ids)})
 
 
 def fill_empty_data_training_embeddings():
-    from apps.data_training.curd.data_training import run_fill_empty_embeddings
-    executor.submit(run_fill_empty_embeddings, session_maker)
+    _enqueue_embedding_task("data_training.fill_empty_embedding", {})
 
 
-def run_save_table_embeddings(ids: List[int]):
-    from apps.datasource.crud.table import save_table_embedding
-    executor.submit(save_table_embedding, session_maker, ids)
+def run_save_table_embeddings(ids: list[int]):
+    _enqueue_embedding_task("datasource.table_embedding", {"ids": _int_list(ids)})
 
 
-def run_save_ds_embeddings(ids: List[int]):
-    from apps.datasource.crud.table import save_ds_embedding
-    executor.submit(save_ds_embedding, session_maker, ids)
+def run_save_ds_embeddings(ids: list[int]):
+    _enqueue_embedding_task("datasource.datasource_embedding", {"ids": _int_list(ids)})
 
 
 def fill_empty_table_and_ds_embeddings():
-    from apps.datasource.crud.table import run_fill_empty_table_and_ds_embedding
-    executor.submit(run_fill_empty_table_and_ds_embedding, session_maker)
+    _enqueue_embedding_task("datasource.fill_empty_table_and_ds_embedding", {})

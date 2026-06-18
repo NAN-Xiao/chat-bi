@@ -174,8 +174,10 @@ def execSql(session: SessionDep, id: int, sql: str):
     return exec_sql(ds, sql, True)
 
 
-def sync_single_fields(session: SessionDep, trans: Trans, id: int):
+def sync_single_fields(session: SessionDep, trans: Trans, id: int, *, schedule_embeddings: bool = True):
     table = session.query(CoreTable).filter(CoreTable.id == id).first()
+    if table is None:
+        raise HTTPException(status_code=404, detail="Table not found")
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == table.ds_id).first()
 
     tables = getTablesByDs(session, ds)
@@ -190,9 +192,15 @@ def sync_single_fields(session: SessionDep, trans: Trans, id: int):
     fields = getFieldsByDs(session, ds, table.table_name)
     sync_fields(session, ds, table, fields)
 
-    # do table embedding
-    run_save_table_embeddings([table.id])
-    run_save_ds_embeddings([ds.id])
+    if schedule_embeddings:
+        run_save_table_embeddings([table.id])
+        run_save_ds_embeddings([ds.id])
+    return {
+        "table": table.table_name,
+        "table_id": table.id,
+        "datasource": ds.id,
+        "field_count": len(fields),
+    }
 
 
 def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable]):

@@ -43,7 +43,7 @@ Scope: entire repository.
 - Object storage is intentionally deferred for now. Local single-machine replicas may share `.codex-runtime/file`, `.codex-runtime/excel`, and `.codex-runtime/images`; before multi-machine production, these paths must move to shared storage or object storage.
 - Docker is not a current requirement for this Windows development workspace. Prefer native PowerShell scripts plus local PostgreSQL, Redis, and optional Nginx zip runtime until Docker/WSL is deliberately revisited.
 - Task queue first version is Redis-backed. Use `tools/worker-local.ps1` for local workers. Only enqueue registered task handlers; do not expose arbitrary task execution to normal users. Keep sensitive credentials out of task payloads.
-- Use `tools/stack-local.ps1` for one-command local orchestration. Default local development stays single-backend on `8000`; pass multiple `-BackendPorts` only for pressure tests or production-like simulation.
+- Use `tools/stack-local.ps1` for one-command local orchestration. Default local development stays single-backend on `8000` and starts one task worker; pass multiple `-BackendPorts` only for pressure tests or production-like simulation. Use `-SkipWorker` only when queue-backed actions are not being tested.
 - Use `tools/postgres-backup-local.ps1` for local PostgreSQL backups/restores before risky schema or data changes. Backups go under `.codex-runtime/pg-backups` and must not be committed.
 
 ## SLG BI Mock Data Constraints

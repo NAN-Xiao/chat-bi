@@ -12,8 +12,8 @@
 - `/health` 和 `/ready`：提供给 Nginx 或负载均衡做探活。
 - Nginx 本地配置：默认代理单副本 `8000`，也支持 `8000,8002,8003`。
 - 后端本地启动脚本：默认开发单副本，多端口时启用多副本。
-- 任务队列第一版：Redis 队列、任务状态、worker 启动入口、`system.ping` 测试任务。
-- 本地一键编排脚本：`tools/stack-local.ps1` 串联 PostgreSQL、Redis、backend、Nginx 和可选 worker。
+- 任务队列第一版：Redis 队列、任务状态、worker 启动入口、`system.ping` 测试任务、字段同步和 embedding 刷新任务。
+- 本地一键编排脚本：`tools/stack-local.ps1` 串联 PostgreSQL、Redis、backend、Nginx 和 worker。
 - 本地 PostgreSQL 备份/恢复脚本：`tools/postgres-backup-local.ps1`，默认备份到 `.codex-runtime/pg-backups`。
 
 ## 暂不做
@@ -59,6 +59,8 @@ worker 任务队列
 .\tools\stack-local.ps1 -Action start -BackendPorts 8000,8002,8003 -StartWorker -Workers 2
 ```
 
+当前已有业务动作依赖任务队列，`stack-local.ps1` 默认启动 1 个 worker；只有明确不测试队列时才使用 `-SkipWorker`。
+
 ## 多副本约束
 
 - 多副本 backend 必须尽量无状态。
@@ -81,11 +83,11 @@ worker 任务队列
 
 ## 任务队列约束
 
-任务队列已经有基础设施，当前只提供测试任务。后续优先拆：
+任务队列已经有基础设施，当前已迁移单表字段同步、表/数据源 embedding、术语 embedding、SQL 示例 embedding。后续优先拆：
 
 - Excel/CSV 导入。
-- 数据源探查和字段同步。
-- 语义层 embedding 刷新。
+- 数据源探查和批量选表同步。
+- 语义层全量 embedding 重建入口。
 - 推荐问题生成。
 - 长时间分析任务。
 
@@ -97,3 +99,4 @@ worker 任务队列
 - 任务状态保存在 Redis，默认保留 24 小时。
 - 不向普通用户开放任意任务投递能力；业务接口应只投递白名单任务。
 - 任务 payload 不保存敏感明文密钥。
+- 现有字段同步任务只传 `table_id`，worker 从系统库读取数据源配置，不把数据源密码写入 Redis payload。

@@ -6,7 +6,7 @@
 - Redis：默认检查 `127.0.0.1:6379`。
 - backend：默认单副本 `8000`。
 - Nginx：默认监听 `8080`。
-- worker：默认不启动，需要显式加 `-StartWorker`。
+- worker：默认启动 1 个，用于消费 Redis 任务队列。
 
 脚本会优先探测端口。PostgreSQL 和 Redis 如果已经在运行，就不会重复启动；如果没运行，只有在你提供服务名或可执行文件路径时才会尝试拉起。
 
@@ -22,10 +22,10 @@
 .\tools\stack-local.ps1 -Action status
 ```
 
-如果需要同时启动任务队列 worker：
+如果不想启动任务队列 worker：
 
 ```powershell
-.\tools\stack-local.ps1 -Action start -StartWorker -Workers 1
+.\tools\stack-local.ps1 -Action start -SkipWorker
 ```
 
 ## 多副本压测/生产模拟

@@ -16,6 +16,7 @@ param(
     [string]$NginxHome = $env:NGINX_HOME,
     [int]$NginxPort = 8080,
     [switch]$StartWorker,
+    [switch]$SkipWorker,
     [int]$Workers = 1,
     [switch]$StartMcp,
     [switch]$SkipDatabase,
@@ -239,14 +240,18 @@ function Stop-Backend {
 }
 
 function Start-Workers {
-    if (-not $StartWorker) {
+    if ($SkipWorker) {
+        return
+    }
+    if (-not (Test-TcpPort -HostName $RedisHost -Port $RedisPort)) {
+        Write-Warning "Task worker start skipped because Redis is not listening on ${RedisHost}:$RedisPort"
         return
     }
     & $workerScript -Action start -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort
 }
 
 function Stop-Workers {
-    if (-not $StartWorker) {
+    if ($SkipWorker) {
         return
     }
     & $workerScript -Action stop -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort
@@ -309,7 +314,7 @@ function Show-StackStatus {
             State = if (Test-TcpPort -HostName "127.0.0.1" -Port 8001) { "listening" } else { "closed" }
         }
     }
-    if ($StartWorker) {
+    if (-not $SkipWorker) {
         foreach ($index in 1..$Workers) {
             $pidFile = Join-Path $runtimeRoot "task-workers\worker-$index.pid"
             $pidValue = if (Test-Path -LiteralPath $pidFile) { Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }

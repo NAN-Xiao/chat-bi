@@ -44,10 +44,12 @@ from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
+from common.core.task_registry import register_builtin_tasks
+from common.core.task_queue import enqueue_task
 from common.utils.utils import AppLogUtil
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
     update_table_and_fields, getTablesByDs, chooseTables, preview, updateTable, updateField, get_ds, fieldEnum, \
-    check_status_by_id, sync_single_fields
+    check_status_by_id
 from ..crud.field import get_fields_by_table_id
 from ..crud.table import get_tables_by_ds_id
 from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, CoreTable, CoreField, FieldObj, \
@@ -327,9 +329,14 @@ async def get_fields(session: SessionDep,
 
 @router.post("/syncFields/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_sync_fields")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def sync_fields(session: SessionDep, trans: Trans,
+async def sync_fields(current_user: CurrentUser,
                       id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
-    return sync_single_fields(session, trans, id)
+    register_builtin_tasks()
+    return await enqueue_task(
+        "datasource.sync_fields",
+        {"table_id": int(id)},
+        created_by=current_user.id,
+    )
 
 
 class TestObj(BaseModel):
