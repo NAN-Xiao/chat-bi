@@ -20,6 +20,7 @@ class CustomPromptTargetScopeEnum(str, Enum):
 
 
 class CustomPromptVisibilityScopeEnum(str, Enum):
+    PLATFORM_PUBLIC = "PLATFORM_PUBLIC"
     ADMIN_PUBLIC = "ADMIN_PUBLIC"
     USER_PRIVATE = "USER_PRIVATE"
 
@@ -84,6 +85,7 @@ def find_custom_prompts(
         "all_scope": CustomPromptTargetScopeEnum.ALL.value,
         "smart_qa_scope": CustomPromptTargetScopeEnum.SMART_QA.value,
         "current_user_id": int(current_user_id) if current_user_id not in (None, "") else None,
+        "platform_scope": CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value,
         "public_scope": CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value,
         "private_scope": CustomPromptVisibilityScopeEnum.USER_PRIVATE.value,
     }
@@ -100,6 +102,8 @@ def find_custom_prompts(
               {type_condition}
               AND COALESCE(active, false) = true
               AND (
+                visibility_scope = :platform_scope
+                OR
                 (COALESCE(visibility_scope, :public_scope) = :public_scope AND tenant_id = :tenant_id)
                 OR (visibility_scope = :private_scope AND create_by = :current_user_id)
               )

@@ -5,7 +5,7 @@ from typing import Optional, List
 
 import orjson
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, select
 from starlette.responses import JSONResponse
@@ -20,6 +20,7 @@ from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat
 from apps.chat.task.llm import LLMService
 from apps.datasource.crud.permission import has_datasource_access
 from apps.system.crud.tenant_usage import check_tenant_usage_quota
+from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
@@ -29,7 +30,11 @@ from common.utils.data_format import DataFormat
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 
-router = APIRouter(tags=["Data Q&A"], prefix="/chat")
+router = APIRouter(
+    tags=["Data Q&A"],
+    prefix="/chat",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
@@ -41,6 +46,11 @@ def _rate_limit_message(retry_after_seconds: int) -> str:
 
 
 def _quota_message(state) -> str:
+    if getattr(state, "reason", None) == "subscription_suspended":
+        return (
+            f"当前租户订阅状态为 {getattr(state, 'subscription_status', 'suspended')}，"
+            "高消耗功能已由平台管理员暂停。请联系企业管理员或平台管理员处理。"
+        )
     window_name = "每日" if state.window == "daily" else "每月"
     return (
         f"当前租户套餐的{window_name} {state.action} 用量已达上限"

@@ -78,7 +78,9 @@ class UserCreator(BaseUser):
 
 
 class UserEditor(UserCreator, BaseCreatorDTO):
-    pass
+    tenant_ids: Optional[list[int]] = Field(default_factory=list)
+    tenant_names: Optional[list[str]] = Field(default_factory=list)
+    tenant_roles: Optional[dict[str, str]] = Field(default_factory=dict)
 
 
 class UserGrid(UserEditor):

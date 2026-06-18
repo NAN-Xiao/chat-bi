@@ -1,6 +1,6 @@
 ﻿from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from apps.datasource.crud.permission_rules import (
     delete_rule_dto,
@@ -9,12 +9,16 @@ from apps.datasource.crud.permission_rules import (
     save_rule_dto,
 )
 from apps.datasource.crud.permission import has_datasource_access
+from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.datasource.models.datasource import CoreDatasource, CoreTable
 from common.core.deps import CurrentUser, SessionDep
 
 
-router = APIRouter(tags=["permission"])
+router = APIRouter(
+    tags=["permission"],
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 
 
 def _permission_belongs_to_current_tenant(session: SessionDep, user: CurrentUser, permission: dict[str, Any]) -> bool:

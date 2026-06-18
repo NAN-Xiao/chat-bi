@@ -166,6 +166,11 @@ async def enqueue_task(
     resolved_tenant_id = _normalize_tenant_id(tenant_id)
     quota_state = check_tenant_usage_quota_detached(tenant_id=resolved_tenant_id, action="task")
     if not quota_state.allowed:
+        if getattr(quota_state, "reason", None) == "subscription_suspended":
+            raise RuntimeError(
+                f"Tenant {resolved_tenant_id} subscription is {quota_state.subscription_status}; "
+                "task enqueue is suspended by platform administrator."
+            )
         raise RuntimeError(
             f"Tenant {resolved_tenant_id} task quota exceeded "
             f"({quota_state.used}/{quota_state.limit} {quota_state.window})."

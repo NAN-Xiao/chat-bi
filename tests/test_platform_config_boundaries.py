@@ -7,6 +7,7 @@ from starlette.requests import Request
 
 from apps.system.api import parameter as parameter_api
 from apps.system.api import variable_api
+from apps.system.schemas.business_access import ensure_chatbi_business_user
 from apps.system.schemas import permission as permission_schema
 
 
@@ -75,3 +76,14 @@ def test_platform_admin_can_read_platform_parameters(monkeypatch):
         assert asyncio.run(parameter_api.get_args(session=None)) == ["ok"]
     finally:
         permission_schema.RequestContext.reset(token)
+
+
+def test_platform_admin_cannot_use_tenant_chatbi_business_features():
+    with pytest.raises(HTTPException) as exc:
+        ensure_chatbi_business_user(_platform_admin())
+
+    assert exc.value.status_code == 403
+
+
+def test_tenant_admin_can_use_tenant_chatbi_business_features():
+    ensure_chatbi_business_user(_tenant_admin())

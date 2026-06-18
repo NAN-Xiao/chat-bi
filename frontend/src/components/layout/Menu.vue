@@ -37,6 +37,27 @@ const formatRoute = (arr: any, parentPath = '') => {
   })
 }
 
+const filterSystemRoutes = (arr: any[]): any[] => {
+  return arr
+    .map((item: any) => {
+      const children = item.children?.length ? filterSystemRoutes(item.children) : []
+      if (userStore.isSystemAdminUser) {
+        if (item.meta?.tenantBusiness) {
+          return null
+        }
+        if (item.meta?.platformOperation || item.meta?.platformOnly || children.length) {
+          return { ...item, children }
+        }
+        return null
+      }
+      if (item.meta?.platformOnly) {
+        return null
+      }
+      return { ...item, children }
+    })
+    .filter(Boolean)
+}
+
 const mainMenuOrder = (path: string) => {
   if (path.includes('/chat')) return 10
   if (path.includes('/dashboard') && !path.includes('/dashboard-store')) return 20
@@ -52,7 +73,10 @@ const routerList = computed(() => {
     const [sysRouter] = formatRoute(
       router.getRoutes().filter((route: any) => route?.name === 'system')
     )
-    return sysRouter.children.filter((item: any) => !item.meta?.platformOnly || userStore.isSystemAdminUser)
+    return filterSystemRoutes(sysRouter.children || [])
+  }
+  if (userStore.isSystemAdminUser) {
+    return []
   }
   const list = router.getRoutes().filter((route) => {
     return (

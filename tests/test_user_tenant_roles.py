@@ -10,7 +10,7 @@ from sqlmodel import Session, create_engine, select
 
 from apps.system.api import user as user_api
 from apps.system.models.tenant import TenantUserModel
-from apps.system.models.user import UserModel
+from apps.system.models.user import UserModel, UserPlatformModel
 from apps.system.schemas.system_schema import UserCreator, UserEditor, UserStatus
 
 
@@ -46,6 +46,14 @@ def _engine():
                 name VARCHAR(255) NOT NULL,
                 status INTEGER NOT NULL DEFAULT 1,
                 plan VARCHAR(64) NOT NULL DEFAULT 'default',
+                subscription_status VARCHAR(32) NOT NULL DEFAULT 'active',
+                billing_mode VARCHAR(32) NOT NULL DEFAULT 'manual',
+                trial_end_time INTEGER,
+                current_period_end_time INTEGER,
+                contract_no VARCHAR(128),
+                billing_contact VARCHAR(128),
+                billing_email VARCHAR(128),
+                subscription_note TEXT,
                 create_time INTEGER NOT NULL,
                 update_time INTEGER NOT NULL
             )
@@ -61,6 +69,16 @@ def _engine():
                 is_primary BOOLEAN NOT NULL DEFAULT FALSE,
                 status INTEGER NOT NULL DEFAULT 1,
                 create_time INTEGER NOT NULL
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE sys_user_platform (
+                id INTEGER PRIMARY KEY,
+                uid INTEGER NOT NULL,
+                origin INTEGER NOT NULL DEFAULT 0,
+                platform_uid VARCHAR(255) NOT NULL
             )
             """
         ))
@@ -99,10 +117,10 @@ def _engine():
         conn.execute(text(
             """
             INSERT INTO sys_tenant
-                (id, code, name, status, plan, create_time, update_time)
+                (id, code, name, status, plan, subscription_status, billing_mode, create_time, update_time)
             VALUES
-                (10, 'tenant-a', 'Tenant A', 1, 'default', 1, 1),
-                (20, 'tenant-b', 'Tenant B', 1, 'default', 1, 1)
+                (10, 'tenant-a', 'Tenant A', 1, 'default', 'active', 'manual', 1, 1),
+                (20, 'tenant-b', 'Tenant B', 1, 'default', 'active', 'manual', 1, 1)
             """
         ))
         conn.execute(text(
@@ -113,7 +131,9 @@ def _engine():
                 (1, 'platform-admin', 'Platform Admin', '', 'platform@example.com', 1, 0, 1, 'zh-CN', 'system_admin'),
                 (2, 'tenant-admin', 'Tenant Admin', '', 'tenant-admin@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
                 (3, 'tenant-member', 'Tenant Member', '', 'tenant-member@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
-                (4, 'tenant-owner', 'Tenant Owner', '', 'tenant-owner@example.com', 1, 0, 1, 'zh-CN', 'viewer')
+                (4, 'tenant-owner', 'Tenant Owner', '', 'tenant-owner@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                (5, 'tenant-b-only', 'Tenant B Only', '', 'tenant-b-only@example.com', 1, 8, 1, 'zh-CN', 'viewer'),
+                (6, 'registered-only', 'Registered Only', '', 'registered-only@example.com', 1, 0, 1, 'zh-CN', 'viewer')
             """
         ))
         conn.execute(text(
@@ -125,7 +145,16 @@ def _engine():
                 (102, 10, 2, 'admin', TRUE, 1, 1),
                 (103, 10, 3, 'member', TRUE, 1, 1),
                 (104, 20, 3, 'member', FALSE, 1, 1),
-                (105, 10, 4, 'owner', FALSE, 1, 1)
+                (105, 10, 4, 'owner', FALSE, 1, 1),
+                (106, 20, 5, 'admin', TRUE, 1, 1)
+            """
+        ))
+        conn.execute(text(
+            """
+            INSERT INTO sys_user_platform
+                (id, uid, origin, platform_uid)
+            VALUES
+                (701, 5, 8, 'ou_tenant_b_only')
             """
         ))
         conn.execute(text(
@@ -330,3 +359,104 @@ def test_tenant_admin_cannot_disable_global_platform_account_status():
 
         assert exc.value.status_code == 403
         assert session.get(UserModel, 3).status == 1
+
+
+def test_platform_admin_user_pager_can_view_users_across_all_tenants():
+    engine = _engine()
+    endpoint = inspect.unwrap(user_api.pager)
+    with Session(engine) as session:
+        page = asyncio.run(endpoint(
+            session=session,
+            current_user=_platform_admin(),
+            pageNum=1,
+            pageSize=20,
+            keyword=None,
+            status=None,
+            origins=None,
+        ))
+
+        accounts = {item["account"] for item in page.items}
+        tenant_b_only = next(item for item in page.items if item["account"] == "tenant-b-only")
+        registered_only = next(item for item in page.items if item["account"] == "registered-only")
+
+        assert {"platform-admin", "tenant-admin", "tenant-b-only", "registered-only"}.issubset(accounts)
+        assert tenant_b_only["tenant_ids"] == [20]
+        assert tenant_b_only["tenant_names"] == ["Tenant B"]
+        assert tenant_b_only["tenant_role"] == "admin"
+        assert registered_only["tenant_ids"] == []
+
+
+def test_tenant_admin_cannot_query_user_outside_current_tenant():
+    engine = _engine()
+    endpoint = inspect.unwrap(user_api.query)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(endpoint(session=session, current_user=_tenant_admin(), _trans=_trans, id=5))
+
+        assert exc.value.status_code == 404
+
+
+def test_platform_admin_updates_global_user_without_changing_feishu_origin_or_joining_current_tenant():
+    engine = _engine()
+    endpoint = inspect.unwrap(user_api.update)
+    with Session(engine) as session:
+        asyncio.run(endpoint(
+            session=session,
+            current_user=_platform_admin(),
+            editor=UserEditor(
+                id=5,
+                account="tenant-b-only",
+                name="Tenant B Renamed",
+                email="tenant-b-renamed@example.com",
+                status=1,
+                origin=0,
+                system_role="viewer",
+                tenant_role="member",
+            ),
+            trans=_trans,
+        ))
+
+        db_user = session.get(UserModel, 5)
+        tenant_a_membership = session.exec(
+            select(TenantUserModel).where(
+                TenantUserModel.tenant_id == 10,
+                TenantUserModel.user_id == 5,
+            )
+        ).first()
+        tenant_b_membership = session.exec(
+            select(TenantUserModel).where(
+                TenantUserModel.tenant_id == 20,
+                TenantUserModel.user_id == 5,
+            )
+        ).one()
+
+        assert db_user.name == "Tenant B Renamed"
+        assert db_user.email == "tenant-b-renamed@example.com"
+        assert db_user.origin == 8
+        assert tenant_a_membership is None
+        assert tenant_b_membership.role == "admin"
+
+
+def test_platform_admin_can_disable_user_outside_current_tenant():
+    engine = _engine()
+    endpoint = inspect.unwrap(user_api.statusChange)
+    with Session(engine) as session:
+        asyncio.run(endpoint(
+            session=session,
+            current_user=_platform_admin(),
+            trans=_trans,
+            statusDto=UserStatus(id=5, status=0),
+        ))
+
+        assert session.get(UserModel, 5).status == 0
+
+
+def test_platform_admin_delete_removes_global_user_and_identity_bindings():
+    engine = _engine()
+    endpoint = inspect.unwrap(user_api.delete)
+    with Session(engine) as session:
+        asyncio.run(endpoint(session=session, current_user=_platform_admin(), id=5))
+
+        assert session.get(UserModel, 5) is None
+        assert session.exec(select(TenantUserModel).where(TenantUserModel.user_id == 5)).first() is None
+        assert session.exec(select(UserPlatformModel).where(UserPlatformModel.uid == 5)).first() is None

@@ -20,8 +20,9 @@ from apps.datasource.crud.permission import (
 from apps.data_training.models.data_training_model import DataTraining
 from apps.data_training.models.data_training_model import DataTrainingInfo
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_system_admin
+from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.user import is_platform_admin, is_system_admin
+from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum, normalize_semantic_scope
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
@@ -30,41 +31,73 @@ from common.utils.file_utils import AppFileUtils
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 
-router = APIRouter(tags=["SQL Examples"], prefix="/system/data-training")
+router = APIRouter(
+    tags=["SQL Examples"],
+    prefix="/system/data-training",
+)
 
 
 def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
+    if is_platform_admin(current_user):
+        return None
     return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
 
 
 def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
+    if is_platform_admin(current_user):
+        return False
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
     return is_system_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
 
 
+def _can_manage_platform_semantic_layer(current_user: CurrentUser) -> bool:
+    return is_platform_admin(current_user)
+
+
+def _request_scope(current_user: CurrentUser) -> SemanticRecordScopeEnum:
+    return SemanticRecordScopeEnum.PLATFORM if is_platform_admin(current_user) else SemanticRecordScopeEnum.TENANT
+
+
+def _request_tenant_id(current_user: CurrentUser) -> int:
+    return DEFAULT_TENANT_ID if is_platform_admin(current_user) else current_tenant_id(current_user)
+
+
 def _require_training_admin(session: SessionDep, current_user: CurrentUser, info: DataTrainingInfo):
-    if not _can_manage_tenant_semantic_layer(current_user):
-        raise HTTPException(status_code=403, detail="Tenant admin access is required")
-    tenant_id = current_tenant_id(current_user)
+    scope = normalize_semantic_scope(info.scope)
+    if scope == SemanticRecordScopeEnum.PLATFORM:
+        if not _can_manage_platform_semantic_layer(current_user):
+            raise HTTPException(status_code=403, detail="Platform admin access is required")
+    else:
+        if not _can_manage_tenant_semantic_layer(current_user):
+            raise HTTPException(status_code=403, detail="Tenant admin access is required")
+    tenant_id = _request_tenant_id(current_user)
     if info.id:
         existing = session.get(DataTraining, int(info.id))
         if not existing:
             raise HTTPException(status_code=404, detail="SQL example not found")
-        if int(existing.tenant_id) != tenant_id:
+        existing_scope = normalize_semantic_scope(existing.scope)
+        if existing_scope != scope:
             raise HTTPException(status_code=404, detail="SQL example not found")
-    if info.datasource is not None and not has_datasource_access(session, current_user, info.datasource):
+        if scope == SemanticRecordScopeEnum.TENANT and int(existing.tenant_id) != tenant_id:
+            raise HTTPException(status_code=404, detail="SQL example not found")
+    if scope == SemanticRecordScopeEnum.TENANT and info.datasource is not None and not has_datasource_access(session, current_user, info.datasource):
         raise HTTPException(status_code=403, detail="Datasource access is required")
 
 
 def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):
     if not ids:
         return
-    if not _can_manage_tenant_semantic_layer(current_user):
+    scope = _request_scope(current_user)
+    if scope == SemanticRecordScopeEnum.PLATFORM:
+        if not _can_manage_platform_semantic_layer(current_user):
+            raise HTTPException(status_code=403, detail="Platform admin access is required")
+    elif not _can_manage_tenant_semantic_layer(current_user):
         raise HTTPException(status_code=403, detail="Tenant admin access is required")
     rows = session.exec(
         select(DataTraining.datasource).where(
             DataTraining.id.in_(ids),
-            DataTraining.tenant_id == current_tenant_id(current_user),
+            DataTraining.tenant_id == _request_tenant_id(current_user),
+            DataTraining.scope == scope.value,
         )
     ).all()
     if len(rows) != len(set(ids)):
@@ -75,6 +108,7 @@ def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, 
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
                 question: Optional[str] = Query(None, description="搜索问题(可选)"),
                 datasource: Optional[int] = Query(None, description="数据源ID(可选)")):
+    scope = _request_scope(current_user) if is_platform_admin(current_user) else None
     datasource_ids = _visible_datasource_ids(session, current_user)
     if datasource is not None:
         if datasource_ids is not None and datasource not in datasource_ids:
@@ -82,7 +116,10 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
         datasource_ids = {datasource}
     current_page, page_size, total_count, total_pages, _list = page_data_training(session, current_page, page_size,
                                                                                   question, datasource_ids,
-                                                                                  current_tenant_id(current_user))
+                                                                                  _request_tenant_id(current_user),
+                                                                                  scope,
+                                                                                  _can_manage_platform_semantic_layer(current_user),
+                                                                                  _can_manage_tenant_semantic_layer(current_user))
 
     return {
         "current_page": current_page,
@@ -96,7 +133,11 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
 @router.put("", response_model=int, summary=f"{PLACEHOLDER_PREFIX}create_or_update_dt")
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.DATA_TRAINING,resource_id_expr='info.id', result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, trans: Trans, info: DataTrainingInfo):
-    info.tenant_id = current_tenant_id(current_user)
+    info.scope = _request_scope(current_user)
+    info.tenant_id = _request_tenant_id(current_user)
+    if info.scope == SemanticRecordScopeEnum.PLATFORM:
+        info.datasource = None
+        info.advanced_application = None
     _require_training_admin(session, current_user, info)
     if info.id:
         return update_training(session, info, trans)
@@ -108,14 +149,14 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, trans
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.DATA_TRAINING,resource_id_expr='id_list'))
 async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
     _require_training_ids_admin(session, current_user, id_list)
-    delete_training(session, id_list, current_tenant_id(current_user))
+    delete_training(session, id_list, _request_tenant_id(current_user), _request_scope(current_user))
 
 
 @router.get("/{id}/enable/{enabled}", summary=f"{PLACEHOLDER_PREFIX}enable_dt")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.DATA_TRAINING,resource_id_expr='id'))
 async def enable(session: SessionDep, current_user: CurrentUser, id: int, enabled: bool, trans: Trans):
     _require_training_ids_admin(session, current_user, [id])
-    enable_training(session, id, enabled, trans, current_tenant_id(current_user))
+    enable_training(session, id, enabled, trans, _request_tenant_id(current_user), _request_scope(current_user))
 
 
 @router.get("/export", summary=f"{PLACEHOLDER_PREFIX}export_dt")
@@ -130,7 +171,15 @@ async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentU
         datasource_ids = {datasource}
 
     def inner():
-        _list = get_all_data_training(session, question, datasource_ids, current_tenant_id(current_user))
+        _list = get_all_data_training(
+            session,
+            question,
+            datasource_ids,
+            _request_tenant_id(current_user),
+            _request_scope(current_user) if is_platform_admin(current_user) else None,
+            _can_manage_platform_semantic_layer(current_user),
+            _can_manage_tenant_semantic_layer(current_user),
+        )
 
         data_list = []
         for obj in _list:
@@ -218,11 +267,15 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
     datasource: Optional[int] = Query(None, description="数据源ID(可选)"),
                        file: UploadFile = File(...)):
-    if datasource is None:
+    can_manage_platform = _can_manage_platform_semantic_layer(current_user)
+    can_manage_tenant = _can_manage_tenant_semantic_layer(current_user)
+    if can_manage_platform:
+        datasource = None
+    if datasource is None and not can_manage_platform:
         raise HTTPException(status_code=400, detail="Datasource is required")
-    if not _can_manage_tenant_semantic_layer(current_user):
+    if not (can_manage_platform or can_manage_tenant):
         raise HTTPException(status_code=403, detail="Tenant admin access is required")
-    if not has_datasource_access(session, current_user, datasource):
+    if datasource is not None and not has_datasource_access(session, current_user, datasource):
         raise HTTPException(status_code=403, detail="Datasource access is required")
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
 
@@ -270,10 +323,17 @@ async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentU
                 import_data.append(
                     DataTrainingInfo(question=question, description=description,
                                      datasource=datasource,
-                                     datasource_name=datasource_name,
-                                     advanced_application_name=advanced_application_name))
+                                     datasource_name="" if can_manage_platform else datasource_name,
+                                     advanced_application_name="" if can_manage_platform else advanced_application_name,
+                                     scope=_request_scope(current_user)))
 
-        res = batch_create_training(session, import_data, trans, current_tenant_id(current_user))
+        res = batch_create_training(
+            session,
+            import_data,
+            trans,
+            _request_tenant_id(current_user),
+            _request_scope(current_user),
+        )
 
         failed_records = res['failed_records']
 

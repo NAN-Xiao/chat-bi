@@ -18,6 +18,11 @@
 - 任务队列第一版：Redis 队列、任务状态、worker 启动入口、`system.ping` 测试任务、字段同步和 embedding 刷新任务。
 - 租户级高消耗接口限流：ChatBI 问答、分析助手和推荐问题按租户共享 Redis 计数，超限返回 `429` 或 SSE `error` 事件。
 - 租户日用量计量与套餐配额：`sys_tenant_usage_daily` 按租户/日期/指标累计 ChatBI、分析助手、任务队列、Token 和失败次数；`TENANT_USAGE_QUOTA_PLAN_LIMITS` 可按套餐配置 daily/monthly 上限，超额返回 `quota_exceeded`。
+- 人工商业化订阅状态：`sys_tenant` 保存 `subscription_status`、服务期、试用期、合同编号和商务联系人。`past_due` 和服务期到期只作为运营跟进状态，不自动停服；只有平台管理员人工设置 `suspended` 或 `cancelled` 后，ChatBI 生成、分析助手和任务入队等高消耗能力才会被拦截。
+- 租户生命周期请求：`sys_tenant_data_request` 支持租户注销、数据导出、数据删除的提交、平台审核、完成记录。审核通过或完成记录本身不自动停用租户、不自动删除数据；平台管理员必须按线下/运维清单执行后手动标记。
+- 企业邮箱域：`sys_tenant_domain` 支持企业提交邮箱域，平台管理员审核为 `verified` 后，同域邮箱用户登录或 token 校验时可自动加入对应租户；`pending/disabled` 域不会自动归属。
+- 租户安全策略：`sys_tenant_security_policy` 支持 IP 白名单、强制 SSO 标记和会话超时配置。当前强制 SSO 先按登录来源拦截本地账号，完整 SSO IdP 配置仍待后续实现；平台管理员为运维支持绕过租户级 IP/SSO 策略。
+- 成员准入增强：企业管理员可批量邀请已有账号，每个账号返回独立结果，并写入租户审计日志，方便后续成员变更追溯。
 - 本地一键编排脚本：`tools/stack-local.ps1` 串联 PostgreSQL、Redis、backend、Nginx 和 worker。
 - 本地 PostgreSQL 备份/恢复脚本：`tools/postgres-backup-local.ps1`，默认备份到 `.codex-runtime/pg-backups`。
 - 生产 PostgreSQL 定时备份：`deploy/scripts/zhishu-postgres-backup.sh` 结合
@@ -86,6 +91,10 @@ worker 任务队列
 - 高消耗接口限流必须使用租户维度共享计数，避免某个租户在多 API 副本下绕过单进程限额。
 - 多副本下用量计量和套餐配额必须写入共享系统库，不依赖进程内存；生产必须保持
   `TENANT_USAGE_METERING_ENABLED=true` 和 `TENANT_USAGE_QUOTA_ENABLED=true`，数据库迁移必须先创建 `sys_tenant_usage_daily`。
+- 欠费或服务期到期不能由程序自动停服；只能由平台管理员审核后手动把租户订阅状态切换为 `suspended` 或 `cancelled`。`past_due` 租户仍可继续使用高消耗功能，除非同时触发套餐配额上限。
+- 租户注销、数据导出、数据删除请求必须走平台管理员审核；请求完成状态只是审计记录，不能由 API 副本自动清理业务表或自动停用租户。
+- 邮箱域自动归属只认平台已验证域名；多副本下该归属关系写入系统库，不依赖单进程内存。
+- 租户 IP 白名单和 SSO 强制策略必须在所有 API 副本上通过共享系统库读取，不能用本地配置分叉。
 - 生产环境禁止 API 副本启动时自动执行 Alembic 迁移；生产配置检查会拒绝
   `AUTO_RUN_MIGRATIONS=true`。迁移必须作为发布步骤单独执行一次，再启动或滚动重启 API 副本。
 - 上传目录、Excel 目录、图片目录当前仍是本地目录；单机多副本可以共享，多机部署前必须改成共享存储或对象存储。

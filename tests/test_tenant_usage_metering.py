@@ -153,6 +153,57 @@ def test_usage_quota_uses_tenant_plan_and_action_metric_group(monkeypatch):
     assert state.limit == 3
 
 
+def test_past_due_subscription_does_not_auto_stop_high_cost_features(monkeypatch):
+    monkeypatch.setattr(settings, "TENANT_USAGE_QUOTA_ENABLED", True)
+    monkeypatch.setattr(settings, "TENANT_USAGE_QUOTA_PLAN_LIMITS", "")
+    engine = _engine_with_usage_and_tenant_tables()
+
+    with Session(engine) as session:
+        session.add(
+            TenantModel(
+                id=30,
+                code="tenant-past-due",
+                name="Tenant Past Due",
+                status=1,
+                plan="basic",
+                subscription_status="past_due",
+                current_period_end_time=1,
+            )
+        )
+        session.commit()
+
+        state = check_tenant_usage_quota(session, tenant_id=30, action="chat")
+
+    assert state.allowed is True
+    assert state.subscription_status == "past_due"
+
+
+def test_suspended_subscription_blocks_high_cost_features_even_without_quota(monkeypatch):
+    monkeypatch.setattr(settings, "TENANT_USAGE_QUOTA_ENABLED", False)
+    monkeypatch.setattr(settings, "TENANT_USAGE_QUOTA_PLAN_LIMITS", "")
+    engine = _engine_with_usage_and_tenant_tables()
+
+    with Session(engine) as session:
+        session.add(
+            TenantModel(
+                id=31,
+                code="tenant-suspended",
+                name="Tenant Suspended",
+                status=1,
+                plan="enterprise",
+                subscription_status="suspended",
+            )
+        )
+        session.commit()
+
+        state = check_tenant_usage_quota(session, tenant_id=31, action="analysis")
+
+    assert state.allowed is False
+    assert state.reason == "subscription_suspended"
+    assert state.window == "subscription"
+    assert state.subscription_status == "suspended"
+
+
 def test_tenant_usage_endpoint_scopes_tenant_admin(monkeypatch):
     monkeypatch.setattr(settings, "TENANT_USAGE_METERING_ENABLED", True)
     engine = _engine_with_usage_table()

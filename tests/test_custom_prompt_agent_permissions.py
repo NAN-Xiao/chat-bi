@@ -128,6 +128,10 @@ def _tenant_admin(tenant_id=10):
     return SimpleNamespace(id=2, system_role="viewer", tenant_id=tenant_id, tenant_role="admin")
 
 
+def _platform_admin():
+    return SimpleNamespace(id=1, system_role="system_admin", tenant_id=1, tenant_role="owner")
+
+
 def _member(user_id=3, tenant_id=10):
     return SimpleNamespace(id=user_id, system_role="viewer", tenant_id=tenant_id, tenant_role="member")
 
@@ -284,3 +288,56 @@ def test_other_user_cannot_use_private_agent_even_when_prompt_id_is_known():
 
         assert prompt == ""
         assert logs == []
+
+
+def test_platform_agent_is_visible_to_tenants_but_read_only_and_runtime_usable():
+    engine = _engine()
+    with Session(engine) as session:
+        platform_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_platform_admin(),
+            info=_prompt_info(
+                name="Platform Foundation Agent",
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                specific_ds=True,
+                datasource_ids=[501],
+            ),
+        ))
+
+        row = session.get(CustomPrompt, platform_id)
+        assert row.tenant_id == 1
+        assert row.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
+        assert row.specific_ds is False
+        assert row.datasource_ids == []
+
+        _page, _size, _total, _pages, rows = custom_prompt_api.page_custom_prompts(
+            session,
+            CustomPromptTypeEnum.GENERATE_SQL,
+            current_user_id=2,
+            can_manage_public=True,
+            tenant_id=10,
+            visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+        )
+        visible = next(item for item in rows if item.id == platform_id)
+        assert visible.can_manage is False
+        assert visible.prompt == "Use strict business terms."
+
+        with pytest.raises(HTTPException) as delete_exc:
+            asyncio.run(_unwrap(custom_prompt_api.delete)(
+                session=session,
+                current_user=_tenant_admin(10),
+                id_list=[platform_id],
+            ))
+        assert delete_exc.value.status_code == 404
+
+        prompt, logs, _model = find_custom_prompts(
+            session,
+            CustomPromptTypeEnum.GENERATE_SQL,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            prompt_id=platform_id,
+            current_user_id=3,
+            tenant_id=10,
+        )
+        assert "Use strict business terms." in prompt
+        assert logs == ["名称：Platform Foundation Agent\n补充提示词：Use strict business terms."]

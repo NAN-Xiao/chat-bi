@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, provide, reactive, unref } from 'vue'
+import { onMounted, provide, reactive, ref, unref } from 'vue'
 import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
 import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
@@ -14,7 +14,22 @@ const state = reactive({
     'chat.show_sql': false,
     'chat.show_log': false,
   }),
+  feishuForm: reactive<any>({
+    enable: false,
+    valid: false,
+    app_id: '',
+    app_secret: '',
+    redirect_uri: '',
+    authorize_url: '',
+    token_url: '',
+    tenant_access_token_url: '',
+    user_info_url: '',
+    scope: '',
+    token_mode: 'oauth_v2',
+    secret_configured: false,
+  }),
 })
+const feishuSaving = ref(false)
 provide('parameterForm', state.parameterForm)
 const loadData = () => {
   request.get('/system/parameter').then((res: any) => {
@@ -36,6 +51,15 @@ const loadData = () => {
       })
       console.log(state.parameterForm)
     }
+  })
+}
+
+const loadFeishuConfig = () => {
+  request.get('/system/auth/feishu').then((res: any) => {
+    Object.assign(state.feishuForm, {
+      ...res,
+      app_secret: '',
+    })
   })
 }
 
@@ -88,8 +112,36 @@ const saveHandler = () => {
       ElMessage.success(t('common.save_success'))
     })
 }
+const saveFeishuHandler = () => {
+  feishuSaving.value = true
+  const payload = {
+    enable: Boolean(state.feishuForm.enable),
+    app_id: state.feishuForm.app_id || '',
+    app_secret: state.feishuForm.app_secret || null,
+    redirect_uri: state.feishuForm.redirect_uri || '',
+    authorize_url: state.feishuForm.authorize_url || '',
+    token_url: state.feishuForm.token_url || '',
+    tenant_access_token_url: state.feishuForm.tenant_access_token_url || '',
+    user_info_url: state.feishuForm.user_info_url || '',
+    scope: state.feishuForm.scope || null,
+    token_mode: state.feishuForm.token_mode || 'oauth_v2',
+  }
+  request
+    .put('/system/auth/feishu', payload)
+    .then((res: any) => {
+      Object.assign(state.feishuForm, {
+        ...res,
+        app_secret: '',
+      })
+      ElMessage.success(t('common.save_success'))
+    })
+    .finally(() => {
+      feishuSaving.value = false
+    })
+}
 onMounted(() => {
   loadData()
+  loadFeishuConfig()
 })
 </script>
 
@@ -193,6 +245,106 @@ onMounted(() => {
         </el-row>
       </div>
 
+      <div class="card">
+        <div class="card-title">
+          飞书登录配置
+        </div>
+        <el-row>
+          <div class="card-item">
+            <div class="label">启用飞书登录</div>
+            <div class="value">
+              <el-switch v-model="state.feishuForm.enable" />
+            </div>
+          </div>
+          <div class="card-item" style="margin-left: 16px">
+            <div class="label">配置状态</div>
+            <div class="value feishu-valid-state" :class="{ valid: state.feishuForm.valid }">
+              {{ state.feishuForm.valid ? '可用' : '未完成' }}
+            </div>
+          </div>
+        </el-row>
+        <el-row>
+          <div class="card-item">
+            <div class="label">App ID</div>
+            <div class="value">
+              <el-input v-model="state.feishuForm.app_id" placeholder="cli_xxx" />
+            </div>
+          </div>
+          <div class="card-item" style="margin-left: 16px">
+            <div class="label">App Secret</div>
+            <div class="value">
+              <el-input
+                v-model="state.feishuForm.app_secret"
+                type="password"
+                show-password
+                :placeholder="state.feishuForm.secret_configured ? '留空则保持当前密钥' : '请输入 App Secret'"
+              />
+            </div>
+          </div>
+        </el-row>
+        <el-row>
+          <div class="card-item" style="width: 100%">
+            <div class="label">回调地址</div>
+            <div class="value">
+              <el-input v-model="state.feishuForm.redirect_uri" />
+            </div>
+          </div>
+        </el-row>
+        <el-row>
+          <div class="card-item">
+            <div class="label">Token 模式</div>
+            <div class="value">
+              <el-select v-model="state.feishuForm.token_mode" style="width: 100%">
+                <el-option label="OAuth v2" value="oauth_v2" />
+                <el-option label="Authen v1" value="authen_v1" />
+              </el-select>
+            </div>
+          </div>
+          <div class="card-item" style="margin-left: 16px">
+            <div class="label">Scope</div>
+            <div class="value">
+              <el-input v-model="state.feishuForm.scope" placeholder="可选" />
+            </div>
+          </div>
+        </el-row>
+        <el-row>
+          <div class="card-item" style="width: 100%">
+            <div class="label">授权地址</div>
+            <div class="value">
+              <el-input v-model="state.feishuForm.authorize_url" />
+            </div>
+          </div>
+        </el-row>
+        <el-row>
+          <div class="card-item" style="width: 100%">
+            <div class="label">Token 地址</div>
+            <div class="value">
+              <el-input v-model="state.feishuForm.token_url" />
+            </div>
+          </div>
+        </el-row>
+        <el-row v-if="state.feishuForm.token_mode === 'authen_v1'">
+          <div class="card-item" style="width: 100%">
+            <div class="label">Tenant Access Token 地址</div>
+            <div class="value">
+              <el-input v-model="state.feishuForm.tenant_access_token_url" />
+            </div>
+          </div>
+        </el-row>
+        <el-row>
+          <div class="card-item" style="width: 100%">
+            <div class="label">用户信息地址</div>
+            <div class="value">
+              <el-input v-model="state.feishuForm.user_info_url" />
+            </div>
+          </div>
+        </el-row>
+        <div class="card-actions">
+          <el-button type="primary" :loading="feishuSaving" @click="saveFeishuHandler">
+            保存飞书配置
+          </el-button>
+        </div>
+      </div>
     </div>
     <div class="save" style="margin-top: 16px">
       <el-button type="primary" @click="saveHandler">{{ t('common.save') }}</el-button>
@@ -263,6 +415,27 @@ onMounted(() => {
         .value {
           margin-top: 8px;
           line-height: 20px;
+        }
+      }
+      .card-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 16px;
+      }
+      .feishu-valid-state {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0 10px;
+        border-radius: 6px;
+        background: #fff7ed;
+        color: #c2410c;
+        font-size: 13px;
+        font-weight: 600;
+
+        &.valid {
+          background: #ecfdf3;
+          color: #047857;
         }
       }
     }

@@ -7,6 +7,14 @@ export interface TenantInfo {
   role: string
   plan?: string
   status?: number
+  subscription_status?: string
+  billing_mode?: string
+  trial_end_time?: number
+  current_period_end_time?: number
+  contract_no?: string
+  billing_contact?: string
+  billing_email?: string
+  subscription_note?: string
   create_time?: number
   update_time?: number
 }
@@ -17,6 +25,7 @@ export interface TenantSearchInfo {
   name: string
   plan?: string
   status?: number
+  subscription_status?: string
   already_joined?: boolean
 }
 
@@ -67,6 +76,53 @@ export interface TenantUsageDailyInfo {
   update_time?: number
 }
 
+export interface TenantDomainInfo {
+  id: number | string
+  tenant_id: number | string
+  domain: string
+  auto_join_role: string
+  status: string
+  requested_by_user_id?: number | string
+  verified_by_user_id?: number | string
+  create_time?: number
+  update_time?: number
+  verify_time?: number
+}
+
+export interface TenantSecurityPolicyInfo {
+  id?: number | string
+  tenant_id: number | string
+  ip_whitelist?: string
+  sso_required: boolean
+  session_timeout_minutes?: number | null
+  create_time?: number
+  update_time?: number
+}
+
+export interface TenantDataRequestInfo {
+  id: number | string
+  tenant_id: number | string
+  request_type: 'cancel' | 'export' | 'delete' | string
+  status: string
+  requested_by_user_id: number | string
+  reviewer_user_id?: number | string
+  completed_by_user_id?: number | string
+  reason?: string
+  review_comment?: string
+  export_manifest?: string
+  create_time?: number
+  update_time?: number
+  review_time?: number
+  complete_time?: number
+}
+
+export interface TenantBulkInviteResult {
+  account: string
+  status: string
+  message?: string
+  application_id?: number | string
+}
+
 export interface TenantUsageQuery {
   tenant_id?: number | string
   start_date?: string
@@ -76,6 +132,16 @@ export interface TenantUsageQuery {
 }
 
 const buildTenantUsageQuery = (params: TenantUsageQuery = {}) => {
+  const searchParams = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+    searchParams.append(key, String(value))
+  })
+  const query = searchParams.toString()
+  return query ? `?${query}` : ''
+}
+
+const buildOptionalTenantQuery = (params: { tenant_id?: number | string; status?: string } = {}) => {
   const searchParams = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return
@@ -112,6 +178,8 @@ export const tenantApi = {
   ) => request.post<TenantApplicationInfo>(`/system/tenant/application/tenant/${id}/review`, data),
   invite: (data: { account: string; requested_role: 'admin' | 'member'; reason?: string }) =>
     request.post<TenantApplicationInfo>('/system/tenant/invitation', data),
+  bulkInvite: (data: { accounts: string[]; requested_role: 'admin' | 'member'; reason?: string }) =>
+    request.post<TenantBulkInviteResult[]>('/system/tenant/invitation/bulk', data),
   invitations: (status?: string) =>
     request.get<TenantApplicationInfo[]>(
       `/system/tenant/invitation/list${status ? `?status=${status}` : ''}`
@@ -124,12 +192,67 @@ export const tenantApi = {
   transferOwner: (targetUserId: number | string) =>
     request.post<TenantInfo>('/system/tenant/owner/transfer', { target_user_id: targetUserId }),
   leave: (id: number | string) => request.post<TenantInfo[]>(`/system/tenant/${id}/leave`),
-  add: (data: { code: string; name: string; plan?: string }) =>
+  add: (data: {
+    code: string
+    name: string
+    plan?: string
+    subscription_status?: string
+    billing_mode?: string
+    trial_end_time?: number | null
+    current_period_end_time?: number | null
+    contract_no?: string
+    billing_contact?: string
+    billing_email?: string
+    subscription_note?: string
+  }) =>
     request.post<TenantInfo>('/system/tenant', data),
-  edit: (id: number | string, data: { name: string; plan?: string }) =>
+  edit: (
+    id: number | string,
+    data: {
+      name: string
+      plan?: string
+      subscription_status?: string
+      billing_mode?: string
+      trial_end_time?: number | null
+      current_period_end_time?: number | null
+      contract_no?: string
+      billing_contact?: string
+      billing_email?: string
+      subscription_note?: string
+    }
+  ) =>
     request.put<TenantInfo>(`/system/tenant/${id}`, data),
   status: (id: number | string, status: number) =>
     request.patch<TenantInfo>(`/system/tenant/${id}/status`, { status }),
   usage: (params?: TenantUsageQuery) =>
     request.get<TenantUsageDailyInfo[]>(`/system/tenant/usage${buildTenantUsageQuery(params)}`),
+  bindDomain: (data: { domain: string; auto_join_role: 'admin' | 'member' }) =>
+    request.post<TenantDomainInfo>('/system/tenant/domain', data),
+  domains: () => request.get<TenantDomainInfo[]>('/system/tenant/domain/list'),
+  adminDomains: (tenantId?: number | string) =>
+    request.get<TenantDomainInfo[]>(
+      `/system/tenant/domain/admin/list${buildOptionalTenantQuery({ tenant_id: tenantId })}`
+    ),
+  reviewDomain: (
+    id: number | string,
+    data: { status: 'verified' | 'disabled'; auto_join_role: 'admin' | 'member' }
+  ) => request.post<TenantDomainInfo>(`/system/tenant/domain/${id}/review`, data),
+  security: () => request.get<TenantSecurityPolicyInfo>('/system/tenant/security'),
+  updateSecurity: (data: {
+    ip_whitelist?: string
+    sso_required: boolean
+    session_timeout_minutes?: number | null
+  }) => request.put<TenantSecurityPolicyInfo>('/system/tenant/security', data),
+  dataRequests: (params?: { tenant_id?: number | string; status?: string }) =>
+    request.get<TenantDataRequestInfo[]>(
+      `/system/tenant/data-request/list${buildOptionalTenantQuery(params)}`
+    ),
+  submitDataRequest: (data: { request_type: 'cancel' | 'export' | 'delete'; reason?: string }) =>
+    request.post<TenantDataRequestInfo>('/system/tenant/data-request', data),
+  reviewDataRequest: (
+    id: number | string,
+    data: { approved: boolean; review_comment?: string }
+  ) => request.post<TenantDataRequestInfo>(`/system/tenant/data-request/${id}/review`, data),
+  completeDataRequest: (id: number | string, data: { complete_comment?: string }) =>
+    request.post<TenantDataRequestInfo>(`/system/tenant/data-request/${id}/complete`, data),
 }

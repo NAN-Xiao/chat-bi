@@ -10,7 +10,7 @@ from io import StringIO
 from typing import Any, List, Optional
 
 import pandas as pd
-from fastapi import APIRouter, File, UploadFile, HTTPException, Path
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Path
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from psycopg2 import sql
@@ -39,6 +39,7 @@ from apps.datasource.crud.permission import (
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_system_admin
+from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.models.user import UserModel
 from common.audit.models.log_model import OperationType, OperationModules
@@ -59,7 +60,11 @@ from ..models.datasource import CoreDatasource, CreateDatasource, TableObj, Core
     TableSchemaResponse, ColumnSchemaResponse, PreviewResponse, ImportRequest
 from ..utils.excel import parse_excel_preview, USER_TYPE_TO_PANDAS
 
-router = APIRouter(tags=["Datasource"], prefix="/datasource")
+router = APIRouter(
+    tags=["Datasource"],
+    prefix="/datasource",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 path = settings.EXCEL_PATH
 
 

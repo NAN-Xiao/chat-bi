@@ -76,6 +76,17 @@
           </template>
         </el-table-column>
         <el-table-column prop="email" show-overflow-tooltip :label="$t('user.email')" />
+        <el-table-column
+          v-if="isSuperAdmin"
+          prop="tenant_names"
+          show-overflow-tooltip
+          label="所属企业"
+          width="220"
+        >
+          <template #default="scope">
+            <span>{{ formatTenantNames(scope.row) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="tenant_role" :label="$t('user.tenant_role')" width="140">
           <template #default="scope">
             <span
@@ -896,6 +907,11 @@ const formatTenantRole = (role: any) => {
   return t(`user.tenant_role_${normalized}`)
 }
 
+const formatTenantNames = (row: any) => {
+  const names = Array.isArray(row?.tenant_names) ? row.tenant_names.filter(Boolean) : []
+  return names.length ? names.join('、') : '-'
+}
+
 const tenantRoleClass = (role: any) => {
   const normalized = normalizeTenantRole(role)
   if (normalized === 'owner') return 'is-tenant-owner'
@@ -1318,8 +1334,13 @@ const editHandler = (row: any) => {
     ElMessage.warning(protectedUserMessage(row))
     return
   }
-  Promise.all([variablesApi.listAll(), datasourceApi.list(), getPermissionList()])
-    .then(([variableRes, projectRes, permissionRes]: any[]) => {
+  Promise.all([
+    variablesApi.listAll(),
+    datasourceApi.list(),
+    getPermissionList(),
+    row?.id ? userApi.get(row.id) : Promise.resolve(null),
+  ])
+    .then(([variableRes, projectRes, permissionRes, userDetail]: any[]) => {
       projectOptions.value = projectRes || []
       permissionRuleGroups.value = permissionRes || []
       variables.value = variableRes.filter((ele: any) => ele.type === 'custom')
@@ -1333,15 +1354,16 @@ const editHandler = (row: any) => {
       }, {})
 
       if (row) {
-        const projectIds = (row.project_ids || []).map((id: any) => Number(id))
+        const detail = userDetail || row
+        const projectIds = (detail.project_ids || []).map((id: any) => Number(id))
         state.form = {
-          ...row,
-          system_role: row.system_role || 'viewer',
-          tenant_role: normalizeTenantRole(row.tenant_role),
+          ...detail,
+          system_role: detail.system_role || 'viewer',
+          tenant_role: normalizeTenantRole(detail.tenant_role),
           project_ids: projectIds,
-          project_role_map: buildProjectRoleMap(projectIds, row.project_role_map),
-          project_permission_map: buildUserProjectPermissionMap(row.id, projectIds),
-          system_variables: (row.system_variables || []).map((ele: any) => ({
+          project_role_map: buildProjectRoleMap(projectIds, detail.project_role_map),
+          project_permission_map: buildUserProjectPermissionMap(detail.id, projectIds),
+          system_variables: (detail.system_variables || []).map((ele: any) => ({
             ...ele,
             variableValue: ele.variableValues[0],
           })),
@@ -1557,7 +1579,6 @@ const editTerm = () => {
     name,
     project_ids,
     project_role_map,
-    origin,
     status,
     system_role,
     tenant_role,
@@ -1573,7 +1594,6 @@ const editTerm = () => {
       name,
       project_ids,
       project_role_map: buildProjectRoleMap(toNumberList(project_ids), project_role_map),
-      origin,
       status,
       system_role: isSuperAdmin.value ? system_role : 'viewer',
       tenant_role: normalizeTenantRole(tenant_role),

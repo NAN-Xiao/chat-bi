@@ -10,6 +10,34 @@ const userStore = useUserStore()
 const { wsCache } = useCache()
 const whiteList = ['/login', '/admin-login']
 const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/401']
+const platformAdminHome = '/system/tenant'
+const tenantChatBIEntryPrefixes = [
+  '/chat',
+  '/dashboard',
+  '/dashboard-store',
+  '/custom-agent',
+  '/access',
+  '/account',
+  '/as',
+  '/canvas',
+  '/dashboard-preview',
+  '/chatPreview',
+  '/dsTable',
+  '/set/permission',
+  '/set/appearance',
+  '/system/project',
+  '/system/embedded',
+  '/system/setting/permission',
+]
+
+const defaultAuthenticatedPath = () =>
+  userStore.isSystemAdminUser ? platformAdminHome : '/chat'
+
+const matchesPathPrefix = (path: string, prefix: string) =>
+  path === prefix || path.startsWith(`${prefix}/`)
+
+const isTenantChatBIRoute = (path: string) =>
+  tenantChatBIEntryPrefixes.some((prefix) => matchesPathPrefix(path, prefix))
 
 export const watchRouter = (router: Router) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
@@ -47,7 +75,7 @@ export const watchRouter = (router: Router) => {
       return
     }
     if (to.path === '/' || accessCrossPermission(to)) {
-      next('/chat')
+      next(defaultAuthenticatedPath())
       return
     }
     if (to.path === '/login' || to.path === '/admin-login') {
@@ -63,6 +91,7 @@ const accessCrossPermission = (to: any) => {
   if (!to?.path) return false
   const platformOnly = to.matched?.some((record: any) => record?.meta?.platformOnly)
   return (
+    (userStore.isSystemAdminUser && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !userStore.isSystemManagerUser) ||
     (to.path.startsWith('/set') && !userStore.isSystemManagerUser) ||
     (platformOnly && !userStore.isSystemAdminUser)

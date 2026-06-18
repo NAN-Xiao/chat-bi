@@ -19,6 +19,7 @@ from apps.system.api import (
     custom_prompt,
     login,
     parameter,
+    sso,
     task_queue,
     tenant,
     user,
@@ -33,6 +34,7 @@ from common.core.config import settings
 api_router = APIRouter()
 api_router.include_router(analysis_assistant.router)
 api_router.include_router(login.router)
+api_router.include_router(sso.login_router)
 api_router.include_router(user.router)
 api_router.include_router(assistant.router)
 api_router.include_router(aimodel.router)
@@ -58,3 +60,4 @@ api_router.include_router(audit.router)
 api_router.include_router(custom_prompt.router)
 api_router.include_router(task_queue.router)
 api_router.include_router(tenant.router)
+api_router.include_router(sso.admin_router)

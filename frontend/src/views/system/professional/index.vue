@@ -31,6 +31,7 @@ interface Form {
 const { t } = useI18n()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
+const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
 const multipleSelectionAll = ref<any[]>([])
 const allDsList = ref<any[]>([])
 const keywords = ref('')
@@ -38,13 +39,22 @@ const oldKeywords = ref('')
 const searchLoading = ref(false)
 const drawerMainRef = ref()
 const canManageTerminology = computed(() => userStore.isSystemManagerUser)
-const canManageGlobalTerminology = computed(() => userStore.isSystemManagerUser)
+const canManageGlobalTerminology = computed(
+  () => userStore.isSystemManagerUser && !isPlatformAdmin.value
+)
 const selectedDatasourceParams = computed(() =>
-  datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}
+  !isPlatformAdmin.value && datasourceContext.datasourceId
+    ? { datasource: datasourceContext.datasourceId }
+    : {}
 )
 
-const selectable = () => canManageTerminology.value
+const selectable = (row?: any) => canManageTerminology.value && row?.can_manage !== false
 onMounted(() => {
+  if (isPlatformAdmin.value) {
+    filterOption.value[0].option = []
+    search()
+    return
+  }
   datasourceContext.loadDatasources().then(() => {
     datasourceApi.list().then((res) => {
       filterOption.value[0].option = [...res]
@@ -56,6 +66,7 @@ onMounted(() => {
 watch(
   () => datasourceContext.datasourceId,
   () => {
+    if (isPlatformAdmin.value) return
     pageInfo.currentPage = 1
     multipleSelectionAll.value = []
     search()
@@ -109,7 +120,9 @@ const exportExcel = () => {
     professionalApi
       .export2Excel({
         ...(keywords.value ? { word: keywords.value } : {}),
-        ...(datasourceContext.datasourceId ? { dslist: datasourceContext.datasourceId } : {}),
+        ...(!isPlatformAdmin.value && datasourceContext.datasourceId
+          ? { dslist: datasourceContext.datasourceId }
+          : {}),
       })
       .then((res) => {
         const blob = new Blob([res], {
@@ -176,7 +189,7 @@ const deleteBatch = () => {
   })
 }
 const deleteHandler = (row: any) => {
-  if (!canManageTerminology.value) return
+  if (!selectable(row)) return
   ElMessageBox.confirm(t('professional.the_term_gmv', { msg: row.word }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -239,7 +252,7 @@ const configParams = () => {
     params.append('word', keywords.value)
   }
 
-  if (datasourceContext.datasourceId) {
+  if (!isPlatformAdmin.value && datasourceContext.datasourceId) {
     params.append('dslist', String(datasourceContext.datasourceId))
   }
 
@@ -348,12 +361,16 @@ const saveHandler = () => {
   })
 }
 const list = () => {
+  if (isPlatformAdmin.value) {
+    allDsList.value = []
+    return
+  }
   datasourceApi.list().then((res) => {
     allDsList.value = res || []
   })
 }
 const editHandler = (row: any) => {
-  if (!canManageTerminology.value) return
+  if (row && !selectable(row)) return
   pageForm.value.id = null
   if (row) {
     pageForm.value = cloneDeep(row)
@@ -443,7 +460,8 @@ const drawerMainClose = () => {
 }
 
 const changeStatus = (id: any, val: any) => {
-  if (!canManageTerminology.value) {
+  const row = fieldList.value.find((item: any) => item.id === id)
+  if (!selectable(row)) {
     search()
     return
   }
@@ -493,7 +511,7 @@ const changeStatus = (id: any, val: any) => {
           :upload-params="selectedDatasourceParams"
           @upload-finished="search"
         />
-        <el-button class="no-margin" secondary @click="drawerMainOpen">
+        <el-button v-if="!isPlatformAdmin" class="no-margin" secondary @click="drawerMainOpen">
           <template #icon>
             <iconFilter></iconFilter>
           </template>
@@ -561,7 +579,7 @@ const changeStatus = (id: any, val: any) => {
               <div style="display: flex; align-items: center" @click.stop>
                 <el-switch
                   v-model="scope.row.enabled"
-                  :disabled="!canManageTerminology"
+                  :disabled="!selectable(scope.row)"
                   size="small"
                   @change="(val: any) => changeStatus(scope.row.id, val)"
                 />
@@ -580,7 +598,7 @@ const changeStatus = (id: any, val: any) => {
           </el-table-column>
           <el-table-column v-if="canManageTerminology" fixed="right" width="80" :label="t('ds.actions')">
             <template #default="scope">
-              <div class="field-comment">
+              <div v-if="selectable(scope.row)" class="field-comment">
                 <el-tooltip
                   :offset="14"
                   effect="dark"
@@ -696,7 +714,10 @@ const changeStatus = (id: any, val: any) => {
         prop="datasource_ids"
         :label="t('training.effective_data_sources')"
       >
-        <el-radio-group v-if="canManageGlobalTerminology" v-model="pageForm.specific_ds">
+        <div v-if="isPlatformAdmin" class="content">
+          {{ t('training.all_data_sources') }}
+        </div>
+        <el-radio-group v-else-if="canManageGlobalTerminology" v-model="pageForm.specific_ds">
           <el-radio :value="false">{{ $t('training.all_data_sources') }}</el-radio>
           <el-radio :value="true">{{ $t('training.partial_data_sources') }}</el-radio>
         </el-radio-group>

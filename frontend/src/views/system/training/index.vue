@@ -30,6 +30,7 @@ interface Form {
 const { t } = useI18n()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
+const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
 const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
 const oldKeywords = ref('')
@@ -39,16 +40,23 @@ const options = ref<any[]>([])
 const adv_options = ref<any[]>([])
 const canManageTraining = computed(() => userStore.isSystemManagerUser)
 const selectedDatasourceParams = computed(() =>
-  datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}
+  !isPlatformAdmin.value && datasourceContext.datasourceId
+    ? { datasource: datasourceContext.datasourceId }
+    : {}
 )
-const selectable = () => canManageTraining.value
+const selectable = (row?: any) => canManageTraining.value && row?.can_manage !== false
 onMounted(() => {
+  if (isPlatformAdmin.value) {
+    search()
+    return
+  }
   datasourceContext.loadDatasources().then(() => search())
 })
 
 watch(
   () => datasourceContext.datasourceId,
   () => {
+    if (isPlatformAdmin.value) return
     pageInfo.currentPage = 1
     multipleSelectionAll.value = []
     search()
@@ -173,7 +181,7 @@ const deleteBatchUser = () => {
   })
 }
 const deleteHandler = (row: any) => {
-  if (!canManageTraining.value) return
+  if (!selectable(row)) return
   ElMessageBox.confirm(t('training.sales_this_year', { msg: row.question }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -236,7 +244,7 @@ const search = ($event: any = {}) => {
   }
   searchLoading.value = true
   oldKeywords.value = keywords.value
-  if (!datasourceContext.datasourceId) {
+  if (!datasourceContext.datasourceId && !isPlatformAdmin.value) {
     fieldList.value = []
     pageInfo.total = 0
     searchLoading.value = false
@@ -295,6 +303,11 @@ const rules = computed(() => {
 })
 
 const list = () => {
+  if (isPlatformAdmin.value) {
+    options.value = []
+    adv_options.value = []
+    return
+  }
   datasourceApi.list().then((res: any) => {
     options.value = res || []
   })
@@ -308,7 +321,10 @@ const saveHandler = () => {
   termFormRef.value.validate((res: any) => {
     if (res) {
       const obj = unref(pageForm)
-      if (!obj.datasource && datasourceContext.datasourceId) {
+      if (isPlatformAdmin.value) {
+        obj.datasource = null
+        obj.advanced_application = null
+      } else if (!obj.datasource && datasourceContext.datasourceId) {
         obj.datasource = String(datasourceContext.datasourceId)
       }
       if (!obj.id) {
@@ -333,11 +349,11 @@ const saveHandler = () => {
 }
 
 const editHandler = (row: any) => {
-  if (!canManageTraining.value) return
+  if (row && !selectable(row)) return
   pageForm.value.id = null
   if (row) {
     pageForm.value = cloneDeep(row)
-  } else if (datasourceContext.datasourceId) {
+  } else if (!isPlatformAdmin.value && datasourceContext.datasourceId) {
     pageForm.value.datasource = String(datasourceContext.datasourceId)
     pageForm.value.datasource_name = datasourceContext.datasourceName
   }
@@ -370,7 +386,8 @@ const handleRowClick = (row: any) => {
 }
 
 const changeStatus = (id: any, val: any) => {
-  if (!canManageTraining.value) {
+  const row = fieldList.value.find((item: any) => item.id === id)
+  if (!selectable(row)) {
     search()
     return
   }
@@ -469,7 +486,7 @@ const onRowFormClose = () => {
               <div style="display: flex; align-items: center" @click.stop>
                 <el-switch
                   v-model="scope.row.enabled"
-                  :disabled="!canManageTraining"
+                  :disabled="!selectable(scope.row)"
                   size="small"
                   @change="(val: any) => changeStatus(scope.row.id, val)"
                 />
@@ -488,7 +505,7 @@ const onRowFormClose = () => {
           </el-table-column>
           <el-table-column v-if="canManageTraining" fixed="right" width="80" :label="t('ds.actions')">
             <template #default="scope">
-              <div class="field-comment">
+              <div v-if="selectable(scope.row)" class="field-comment">
                 <el-tooltip
                   :offset="14"
                   effect="dark"
@@ -610,7 +627,11 @@ const onRowFormClose = () => {
         />
       </el-form-item>
 
-      <el-form-item prop="datasource" :label="t('ds.title')">
+      <el-form-item v-if="isPlatformAdmin" :label="t('training.effective_data_sources')">
+        <div class="content">{{ t('training.all_data_sources') }}</div>
+      </el-form-item>
+
+      <el-form-item v-if="!isPlatformAdmin" prop="datasource" :label="t('ds.title')">
         <el-select
           v-model="pageForm.datasource"
           filterable
@@ -622,7 +643,11 @@ const onRowFormClose = () => {
         </el-select>
       </el-form-item>
 
-      <el-form-item prop="advanced_application" :label="t('embedded.advanced_application')">
+      <el-form-item
+        v-if="!isPlatformAdmin"
+        prop="advanced_application"
+        :label="t('embedded.advanced_application')"
+      >
         <el-select
           v-model="pageForm.advanced_application"
           filterable
@@ -678,12 +703,12 @@ const onRowFormClose = () => {
           </el-tooltip>
         </div>
       </el-form-item>
-      <el-form-item :label="t('ds.title')">
+      <el-form-item v-if="!isPlatformAdmin" :label="t('ds.title')">
         <div class="content">
           {{ pageForm.datasource_name }}
         </div>
       </el-form-item>
-      <el-form-item :label="t('embedded.advanced_application')">
+      <el-form-item v-if="!isPlatformAdmin" :label="t('embedded.advanced_application')">
         <div class="content">
           {{ pageForm.advanced_application_name }}
         </div>

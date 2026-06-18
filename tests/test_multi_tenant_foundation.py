@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -14,18 +15,34 @@ from apps.system.crud.tenant import (
     TENANT_APPLICATION_TYPE_JOIN,
     TENANT_ROLE_ADMIN,
     TENANT_ROLE_MEMBER,
+    auto_assign_tenants_by_email_domain,
     create_tenant_invitation,
     assign_user_to_tenant,
     ensure_default_tenant,
     resolve_current_tenant,
+    validate_tenant_security_policy,
     user_belongs_to_tenant,
 )
 from apps.system.api import tenant as tenant_api
-from apps.system.models.tenant import TenantApplicationModel, TenantModel, TenantUserModel
+from apps.system.models.tenant import (
+    TenantApplicationModel,
+    TenantDataRequestModel,
+    TenantDomainModel,
+    TenantModel,
+    TenantSecurityPolicyModel,
+    TenantUserModel,
+)
 from apps.system.schemas.system_schema import BaseUserDTO
 from apps.system.schemas.tenant_schema import (
     TenantApplicationCreator,
     TenantApplicationReview,
+    TenantBulkInviteCreator,
+    TenantDataRequestComplete,
+    TenantDataRequestCreator,
+    TenantDataRequestReview,
+    TenantDomainCreator,
+    TenantDomainReview,
+    TenantSecurityPolicyEditor,
     TenantEditor,
     TenantOwnerTransfer,
     TenantStatus,
@@ -42,6 +59,9 @@ def _engine():
     TenantModel.__table__.create(engine)
     TenantUserModel.__table__.create(engine)
     TenantApplicationModel.__table__.create(engine)
+    TenantDomainModel.__table__.create(engine)
+    TenantSecurityPolicyModel.__table__.create(engine)
+    TenantDataRequestModel.__table__.create(engine)
     SystemLog.__table__.create(engine)
     with engine.begin() as conn:
         conn.execute(text(
@@ -76,6 +96,15 @@ def _engine():
                 id INTEGER PRIMARY KEY,
                 ds_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE tenant_export_rows (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                value VARCHAR(32)
             )
             """
         ))
@@ -193,20 +222,50 @@ def test_platform_admin_manages_tenant_lifecycle():
         tenant = asyncio.run(tenant_api.add_tenant(
             session,
             _user(1, "system_admin"),
-            tenant_api.TenantCreator(code="tenant-b", name="Tenant B", plan="basic"),
+            tenant_api.TenantCreator(
+                code="tenant-b",
+                name="Tenant B",
+                plan="basic",
+                subscription_status="trialing",
+                billing_mode="contract",
+                trial_end_time=1000,
+                current_period_end_time=2000,
+                contract_no="CTR-001",
+                billing_contact="Ops",
+                billing_email="ops@example.com",
+                subscription_note="pilot",
+            ),
         ))
         assert tenant.code == "tenant-b"
         assert tenant.plan == "basic"
+        assert tenant.subscription_status == "trialing"
+        assert tenant.billing_mode == "contract"
+        assert tenant.current_period_end_time == 2000
+        assert tenant.contract_no == "CTR-001"
         assert tenant.status == 1
 
         edited = asyncio.run(tenant_api.edit_tenant(
             session,
             _user(1, "system_admin"),
             tenant.id,
-            TenantEditor(name="Tenant Beta", plan="enterprise"),
+            TenantEditor(
+                name="Tenant Beta",
+                plan="enterprise",
+                subscription_status="past_due",
+                billing_mode="manual",
+                trial_end_time=None,
+                current_period_end_time=3000,
+                contract_no="CTR-002",
+                billing_contact="Finance",
+                billing_email="finance@example.com",
+                subscription_note="manual follow-up required",
+            ),
         ))
         assert edited.name == "Tenant Beta"
         assert edited.plan == "enterprise"
+        assert edited.subscription_status == "past_due"
+        assert edited.current_period_end_time == 3000
+        assert edited.subscription_note == "manual follow-up required"
 
         disabled = asyncio.run(tenant_api.update_tenant_status(
             session,
@@ -471,6 +530,231 @@ def test_tenant_admin_can_cancel_pending_invitation():
 
         assert cancelled.status == "cancelled"
         assert not user_belongs_to_tenant(session, 100, 200)
+
+
+def test_bulk_invite_records_per_account_results_and_audit():
+    engine = _engine()
+    tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    with Session(engine) as session:
+        session.exec(text(
+            """
+            INSERT INTO sys_user
+                (id, account, name, password, email, status, origin, create_time, language, system_role)
+            VALUES
+                (2, 'tenant-admin', 'Tenant Admin', '', 'admin@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                (3, 'invitee', 'Invitee', '', 'invitee@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                (4, 'platform-admin', 'Platform Admin', '', 'platform@example.com', 1, 0, 1, 'zh-CN', 'system_admin')
+            """
+        ))
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=2, role="admin", is_primary=True, status=1))
+        session.commit()
+
+        results = asyncio.run(tenant_api.bulk_invite_tenant_members(
+            session,
+            tenant_admin,
+            current_tenant,
+            TenantBulkInviteCreator(accounts=["invitee", "missing", "platform-admin", "invitee"]),
+        ))
+
+        result_by_account = {item.account: item for item in results}
+        assert result_by_account["invitee"].status == "created"
+        assert result_by_account["invitee"].application_id is not None
+        assert result_by_account["missing"].status == "failed"
+        assert result_by_account["platform-admin"].status == "failed"
+        assert len(results) == 3
+        audit_log = session.exec(
+            select(SystemLog).where(
+                SystemLog.tenant_id == 200,
+                SystemLog.operation_detail == "批量邀请企业成员",
+            )
+        ).first()
+        assert audit_log is not None
+        assert "created=1" in audit_log.remark
+
+
+def test_verified_email_domain_auto_assigns_user_after_platform_review_only():
+    engine = _engine()
+    tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
+    platform_admin = _user(1, "system_admin")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    new_user = SimpleNamespace(id=100, email="new.employee@acme.example")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=2, role="admin", is_primary=True, status=1))
+        session.commit()
+
+        pending = asyncio.run(tenant_api.bind_tenant_domain(
+            session,
+            tenant_admin,
+            current_tenant,
+            TenantDomainCreator(domain="@acme.example", auto_join_role="admin"),
+        ))
+        assert pending.status == "pending"
+        assert auto_assign_tenants_by_email_domain(session, new_user) == []
+        assert not user_belongs_to_tenant(session, 100, 200)
+
+        reviewed = asyncio.run(tenant_api.review_domain_binding(
+            session,
+            platform_admin,
+            int(pending.id),
+            TenantDomainReview(status="verified", auto_join_role="admin"),
+        ))
+        assert reviewed.status == "verified"
+
+        assigned = auto_assign_tenants_by_email_domain(session, new_user)
+
+        assert len(assigned) == 1
+        assert assigned[0].tenant_id == 200
+        assert assigned[0].role == "admin"
+
+
+def test_tenant_security_policy_blocks_ip_and_local_login_but_not_platform_admin():
+    engine = _engine()
+    tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin", origin=0)
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.commit()
+
+        policy = asyncio.run(tenant_api.update_tenant_security_policy(
+            session,
+            tenant_admin,
+            current_tenant,
+            TenantSecurityPolicyEditor(
+                ip_whitelist="10.0.0.0/8; 192.168.1.10",
+                sso_required=True,
+                session_timeout_minutes=60,
+            ),
+        ))
+
+        assert policy.sso_required is True
+        with pytest.raises(PermissionError, match="IP"):
+            validate_tenant_security_policy(
+                session,
+                tenant_id=200,
+                user=SimpleNamespace(id=100, origin=1, system_role="viewer"),
+                ip_address="203.0.113.10",
+            )
+        with pytest.raises(PermissionError, match="SSO"):
+            validate_tenant_security_policy(
+                session,
+                tenant_id=200,
+                user=SimpleNamespace(id=100, origin=0, system_role="viewer"),
+                ip_address="10.2.3.4",
+            )
+        validate_tenant_security_policy(
+            session,
+            tenant_id=200,
+            user=SimpleNamespace(id=1, origin=0, system_role="system_admin"),
+            ip_address="203.0.113.10",
+        )
+
+
+def test_data_export_request_creates_manifest_after_platform_review():
+    engine = _engine()
+    tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
+    platform_admin = _user(1, "system_admin")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.exec(text(
+            """
+            INSERT INTO tenant_export_rows (id, tenant_id, value)
+            VALUES (1, 200, 'a'), (2, 200, 'b'), (3, 300, 'other')
+            """
+        ))
+        session.commit()
+
+        submitted = asyncio.run(tenant_api.submit_tenant_data_request(
+            session,
+            tenant_admin,
+            current_tenant,
+            TenantDataRequestCreator(request_type="export", reason="customer offboarding"),
+        ))
+        assert submitted.status == "pending"
+        assert submitted.export_manifest is None
+
+        reviewed = asyncio.run(tenant_api.review_data_request(
+            session,
+            platform_admin,
+            int(submitted.id),
+            TenantDataRequestReview(approved=True, review_comment="approved"),
+        ))
+
+        manifest = json.loads(reviewed.export_manifest)
+        export_row_scope = [
+            item for item in manifest["tables"] if item["table"] == "tenant_export_rows"
+        ]
+        assert reviewed.status == "approved"
+        assert export_row_scope == [{"table": "tenant_export_rows", "rows": 2}]
+
+
+def test_tenant_delete_request_is_manual_and_does_not_delete_data_on_completion():
+    engine = _engine()
+    tenant_owner = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="owner")
+    tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=200, tenant_role="admin")
+    platform_admin = _user(1, "system_admin")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=2, role="owner", is_primary=True, status=1))
+        session.exec(text("INSERT INTO tenant_export_rows (id, tenant_id, value) VALUES (1, 200, 'keep')"))
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(tenant_api.submit_tenant_data_request(
+                session,
+                tenant_admin,
+                current_tenant,
+                TenantDataRequestCreator(request_type="delete", reason="not owner"),
+            ))
+        assert exc.value.status_code == 403
+
+        submitted = asyncio.run(tenant_api.submit_tenant_data_request(
+            session,
+            tenant_owner,
+            current_tenant,
+            TenantDataRequestCreator(request_type="delete", reason="tenant cancellation"),
+        ))
+        reviewed = asyncio.run(tenant_api.review_data_request(
+            session,
+            platform_admin,
+            int(submitted.id),
+            TenantDataRequestReview(approved=True, review_comment="manual checklist accepted"),
+        ))
+        completed = asyncio.run(tenant_api.complete_data_request(
+            session,
+            platform_admin,
+            int(reviewed.id),
+            TenantDataRequestComplete(complete_comment="operator finished offline deletion"),
+        ))
+
+        assert completed.status == "completed"
+        assert session.get(TenantModel, 200) is not None
+        assert session.exec(text("SELECT COUNT(*) FROM tenant_export_rows WHERE tenant_id = 200")).one()[0] == 1
+
+        cancellation = asyncio.run(tenant_api.submit_tenant_data_request(
+            session,
+            tenant_owner,
+            current_tenant,
+            TenantDataRequestCreator(request_type="cancel", reason="close tenant"),
+        ))
+        cancellation = asyncio.run(tenant_api.review_data_request(
+            session,
+            platform_admin,
+            int(cancellation.id),
+            TenantDataRequestReview(approved=True, review_comment="approved for manual offboarding"),
+        ))
+        cancellation = asyncio.run(tenant_api.complete_data_request(
+            session,
+            platform_admin,
+            int(cancellation.id),
+            TenantDataRequestComplete(complete_comment="operator confirmed manual offboarding"),
+        ))
+        assert cancellation.status == "completed"
+        assert session.get(TenantModel, 200).status == 1
 
 
 def test_tenant_owner_can_transfer_ownership_to_active_member():

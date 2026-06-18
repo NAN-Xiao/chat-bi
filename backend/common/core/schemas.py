@@ -15,6 +15,7 @@ class TokenPayload(BaseModel):
     account: str | None = None
     id: int | None = None
     tenant_id: int | None = None
+    auth_origin: int | None = None
 
 class Token(SQLModel):
     access_token: str

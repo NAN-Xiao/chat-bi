@@ -1,6 +1,6 @@
 ﻿from typing import List
 
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 
 from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
     create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas, preview_sql, \
@@ -16,12 +16,17 @@ from apps.dashboard.models.dashboard_model import (
     SharedDashboardUseRequest,
 )
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import SessionDep, CurrentUser
 
-router = APIRouter(tags=["Dashboard"], prefix="/dashboard")
+router = APIRouter(
+    tags=["Dashboard"],
+    prefix="/dashboard",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 
 
 @router.post("/list_resource", summary=f"{PLACEHOLDER_PREFIX}list_resource_api")

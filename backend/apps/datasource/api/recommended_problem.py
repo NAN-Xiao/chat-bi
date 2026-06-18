@@ -1,6 +1,6 @@
 ﻿from fastapi import APIRouter
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
 
 from apps.datasource.crud.datasource import update_ds_recommended_config
 from apps.datasource.crud.permission import has_datasource_access
@@ -8,12 +8,17 @@ from apps.datasource.crud.recommended_problem import get_datasource_recommended,
     save_recommended_problem, get_datasource_recommended_base
 from apps.datasource.models.datasource import RecommendedProblemBase
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.deps import SessionDep, CurrentUser
 
-router = APIRouter(tags=["recommended problem"], prefix="/recommended_problem")
+router = APIRouter(
+    tags=["recommended problem"],
+    prefix="/recommended_problem",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 
 
 @router.get("/get_datasource_recommended/{ds_id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}rp_get")

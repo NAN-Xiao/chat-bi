@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import { promptApi } from '@/api/prompt'
 import { formatTimestamp } from '@/utils/date'
@@ -21,6 +21,7 @@ import { convertFilterText } from '@/components/filter-text'
 import { DrawerMain } from '@/components/drawer-main'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import Uploader from '@/views/system/excel-upload/Uploader.vue'
+import { useUserStore } from '@/stores/user'
 
 interface AgentForm {
   id?: string | number | null
@@ -32,6 +33,7 @@ interface AgentForm {
   ai_model_id: string | number | null
   ai_model_name: string | null
   can_manage?: boolean
+  visibility_scope?: string
   specific_ds: boolean
   datasource_ids: number[]
   datasource_names: string[]
@@ -41,6 +43,8 @@ interface AgentForm {
 const drawerMainRef = ref()
 const { t } = useI18n()
 const { copy } = useClipboard({ legacy: true })
+const userStore = useUserStore()
+const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
 
 const keywords = ref('')
 const oldKeywords = ref('')
@@ -101,6 +105,11 @@ const typeTitle = (type = currentType.value) => {
 }
 
 const loadDatasources = () => {
+  if (isPlatformAdmin.value) {
+    options.value = []
+    filterOption.value[0].option = []
+    return
+  }
   datasourceApi.list().then((res: any) => {
     options.value = res || []
     filterOption.value[0].option = [...(res || [])]
@@ -123,7 +132,7 @@ const getFileName = () => `${typeTitle()}.xlsx`
 
 const configParams = () => {
   const params = new URLSearchParams()
-  params.set('visibility_scope', 'ADMIN_PUBLIC')
+  params.set('visibility_scope', isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
   if (keywords.value) {
     params.set('name', keywords.value)
   }
@@ -166,7 +175,7 @@ const exportExcel = () => {
   }).then(() => {
     searchLoading.value = true
     const params: Record<string, string> = {}
-    params.visibility_scope = 'ADMIN_PUBLIC'
+    params.visibility_scope = isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
     if (keywords.value) {
       params.name = keywords.value
     }
@@ -264,6 +273,11 @@ const saveHandler = () => {
   termFormRef.value.validate((res: any) => {
     if (res) {
       const obj = cloneDeep(pageForm.value)
+      if (isPlatformAdmin.value) {
+        obj.visibility_scope = 'PLATFORM_PUBLIC'
+        obj.specific_ds = false
+        obj.datasource_ids = []
+      }
       if (!obj.id) {
         delete obj.id
       }
@@ -467,7 +481,7 @@ const copyCode = () => {
           :template-name="getFileName()"
           @upload-finished="search"
         />
-        <el-button class="no-margin" secondary @click="drawerMainOpen">
+        <el-button v-if="!isPlatformAdmin" class="no-margin" secondary @click="drawerMainOpen">
           <template #icon>
             <iconFilter></iconFilter>
           </template>
@@ -704,7 +718,12 @@ const copyCode = () => {
         </div>
       </el-form-item>
 
+      <el-form-item v-if="isPlatformAdmin" :label="t('training.effective_data_sources')">
+        <div class="content">{{ t('training.all_data_sources') }}</div>
+      </el-form-item>
+
       <el-form-item
+        v-else
         class="is-required"
         :class="!pageForm.specific_ds && 'no-error'"
         prop="datasource_ids"

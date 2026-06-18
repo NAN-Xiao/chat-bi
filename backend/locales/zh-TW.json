@@ -37,7 +37,8 @@
     "authenticate_invalid": "認證無效【{msg}】",
     "token_expired": "Token 已過期",
     "only_project_role": "需要專案檢視者或編輯者權限！",
-    "permission_resource_limit": "沒有操作權限或資源不存在！"
+    "permission_resource_limit": "沒有操作權限或資源不存在！",
+    "platform_admin_chatbi_forbidden": "平台管理員用於 SaaS 平台營運管理，不能存取租戶側 ChatBI 業務功能。"
   },
   "i18n_llm": {
     "validate_error": "校驗失敗[{msg}]",

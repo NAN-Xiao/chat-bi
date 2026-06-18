@@ -3,7 +3,7 @@ import os
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
 
@@ -21,6 +21,7 @@ from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
 from apps.system.crud.user import is_platform_admin
 from apps.system.models.system_model import AssistantModel
+from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.schemas.system_schema import AssistantBase, AssistantDTO, AssistantPublicInfo, AssistantValidator
@@ -253,7 +254,13 @@ def get_db_type(type):
         return None
 
 
-@router.get("", response_model=list[AssistantModel], summary=f"{PLACEHOLDER_PREFIX}assistant_grid_api", description=f"{PLACEHOLDER_PREFIX}assistant_grid_api")
+@router.get(
+    "",
+    response_model=list[AssistantModel],
+    summary=f"{PLACEHOLDER_PREFIX}assistant_grid_api",
+    description=f"{PLACEHOLDER_PREFIX}assistant_grid_api",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 @require_permissions(permission=AppPermission(role=['admin']))
 async def query(session: SessionDep, current_user: CurrentUser):
     statement = (
@@ -267,7 +274,12 @@ async def query(session: SessionDep, current_user: CurrentUser):
     return list_result
 
 
-@router.get("/advanced_application", response_model=list[AssistantModel], include_in_schema=False)
+@router.get(
+    "/advanced_application",
+    response_model=list[AssistantModel],
+    include_in_schema=False,
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 @require_permissions(permission=AppPermission(role=['admin']))
 async def query_advanced_application(session: SessionDep, current_user: CurrentUser):
     statement = (
@@ -279,14 +291,24 @@ async def query_advanced_application(session: SessionDep, current_user: CurrentU
     return list_result
 
 
-@router.post("", summary=f"{PLACEHOLDER_PREFIX}assistant_create_api", description=f"{PLACEHOLDER_PREFIX}assistant_create_api")
+@router.post(
+    "",
+    summary=f"{PLACEHOLDER_PREFIX}assistant_create_api",
+    description=f"{PLACEHOLDER_PREFIX}assistant_create_api",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 @require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.APPLICATION, result_id_expr="id"))
 async def add(request: Request, session: SessionDep, current_user: CurrentUser, creator: AssistantBase):
     return await save(request, session, creator, tenant_id=_current_tenant_id(current_user))
 
 
-@router.put("", summary=f"{PLACEHOLDER_PREFIX}assistant_update_api", description=f"{PLACEHOLDER_PREFIX}assistant_update_api")
+@router.put(
+    "",
+    summary=f"{PLACEHOLDER_PREFIX}assistant_update_api",
+    description=f"{PLACEHOLDER_PREFIX}assistant_update_api",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 @require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="editor.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, resource_id_expr="editor.id"))
@@ -300,13 +322,24 @@ async def update(request: Request, session: SessionDep, current_user: CurrentUse
     dynamic_upgrade_cors(request=request, session=session)
 
 
-@router.get("/{id}", response_model=AssistantPublicInfo, summary=f"{PLACEHOLDER_PREFIX}assistant_query_api", description=f"{PLACEHOLDER_PREFIX}assistant_query_api")
+@router.get(
+    "/{id}",
+    response_model=AssistantPublicInfo,
+    summary=f"{PLACEHOLDER_PREFIX}assistant_query_api",
+    description=f"{PLACEHOLDER_PREFIX}assistant_query_api",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 async def get_one(session: SessionDep, current_user: CurrentUser, id: int = Path(description="ID")) -> AssistantPublicInfo:
     db_model = _get_manageable_assistant(session, current_user, id)
     return _public_assistant_info(db_model)
 
 
-@router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}assistant_del_api", description=f"{PLACEHOLDER_PREFIX}assistant_del_api")
+@router.delete(
+    "/{id}",
+    summary=f"{PLACEHOLDER_PREFIX}assistant_del_api",
+    description=f"{PLACEHOLDER_PREFIX}assistant_del_api",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 @require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.APPLICATION, resource_id_expr="id"))

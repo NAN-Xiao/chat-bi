@@ -1,7 +1,18 @@
+import ipaddress
+import json
+
 from pydantic import BaseModel
+from sqlalchemy import column as sa_column, func, inspect, table as sa_table
 from sqlmodel import Session, select
 
-from apps.system.models.tenant import TenantApplicationModel, TenantModel, TenantUserModel
+from apps.system.models.tenant import (
+    TenantApplicationModel,
+    TenantDataRequestModel,
+    TenantDomainModel,
+    TenantModel,
+    TenantSecurityPolicyModel,
+    TenantUserModel,
+)
 from common.utils.time import get_timestamp
 
 DEFAULT_TENANT_ID = 1
@@ -12,6 +23,26 @@ TENANT_ROLE_ADMIN = "admin"
 TENANT_ROLE_MEMBER = "member"
 TENANT_ADMIN_ROLES = {TENANT_ROLE_OWNER, TENANT_ROLE_ADMIN}
 SYSTEM_ROLE_SYSTEM_ADMIN = "system_admin"
+TENANT_SUBSCRIPTION_TRIALING = "trialing"
+TENANT_SUBSCRIPTION_ACTIVE = "active"
+TENANT_SUBSCRIPTION_PAST_DUE = "past_due"
+TENANT_SUBSCRIPTION_SUSPENDED = "suspended"
+TENANT_SUBSCRIPTION_CANCELLED = "cancelled"
+TENANT_SUBSCRIPTION_STATUSES = {
+    TENANT_SUBSCRIPTION_TRIALING,
+    TENANT_SUBSCRIPTION_ACTIVE,
+    TENANT_SUBSCRIPTION_PAST_DUE,
+    TENANT_SUBSCRIPTION_SUSPENDED,
+    TENANT_SUBSCRIPTION_CANCELLED,
+}
+TENANT_SUBSCRIPTION_BLOCKING_STATUSES = {
+    TENANT_SUBSCRIPTION_SUSPENDED,
+    TENANT_SUBSCRIPTION_CANCELLED,
+}
+BILLING_MODE_MANUAL = "manual"
+BILLING_MODE_CONTRACT = "contract"
+BILLING_MODE_OFFLINE = "offline"
+BILLING_MODES = {BILLING_MODE_MANUAL, BILLING_MODE_CONTRACT, BILLING_MODE_OFFLINE}
 TENANT_APPLICATION_STATUS_PENDING = "pending"
 TENANT_APPLICATION_STATUS_APPROVED = "approved"
 TENANT_APPLICATION_STATUS_REJECTED = "rejected"
@@ -32,6 +63,28 @@ TENANT_APPLICATION_TYPES = {
 }
 TENANT_CREATE_APPLICATION_ROLES = {TENANT_ROLE_OWNER, TENANT_ROLE_ADMIN}
 TENANT_MEMBERSHIP_APPLICATION_ROLES = {TENANT_ROLE_ADMIN, TENANT_ROLE_MEMBER}
+TENANT_DOMAIN_STATUS_PENDING = "pending"
+TENANT_DOMAIN_STATUS_VERIFIED = "verified"
+TENANT_DOMAIN_STATUS_DISABLED = "disabled"
+TENANT_DOMAIN_STATUSES = {TENANT_DOMAIN_STATUS_PENDING, TENANT_DOMAIN_STATUS_VERIFIED, TENANT_DOMAIN_STATUS_DISABLED}
+TENANT_DATA_REQUEST_TYPE_EXPORT = "export"
+TENANT_DATA_REQUEST_TYPE_DELETE = "delete"
+TENANT_DATA_REQUEST_TYPE_CANCEL = "cancel"
+TENANT_DATA_REQUEST_TYPES = {
+    TENANT_DATA_REQUEST_TYPE_EXPORT,
+    TENANT_DATA_REQUEST_TYPE_DELETE,
+    TENANT_DATA_REQUEST_TYPE_CANCEL,
+}
+TENANT_DATA_REQUEST_STATUS_PENDING = "pending"
+TENANT_DATA_REQUEST_STATUS_APPROVED = "approved"
+TENANT_DATA_REQUEST_STATUS_REJECTED = "rejected"
+TENANT_DATA_REQUEST_STATUS_COMPLETED = "completed"
+TENANT_DATA_REQUEST_STATUSES = {
+    TENANT_DATA_REQUEST_STATUS_PENDING,
+    TENANT_DATA_REQUEST_STATUS_APPROVED,
+    TENANT_DATA_REQUEST_STATUS_REJECTED,
+    TENANT_DATA_REQUEST_STATUS_COMPLETED,
+}
 
 
 class TenantContext(BaseModel):
@@ -66,6 +119,39 @@ def normalize_application_status(status: str | None) -> str:
     return normalized if normalized in TENANT_APPLICATION_STATUSES else TENANT_APPLICATION_STATUS_PENDING
 
 
+def normalize_domain_status(status: str | None) -> str:
+    normalized = (status or "").strip().lower()
+    return normalized if normalized in TENANT_DOMAIN_STATUSES else TENANT_DOMAIN_STATUS_PENDING
+
+
+def normalize_domain(domain: str | None) -> str:
+    normalized = (domain or "").strip().lower().lstrip("@")
+    if not normalized or "." not in normalized or any(part == "" for part in normalized.split(".")):
+        raise ValueError("Tenant domain is invalid")
+    return normalized
+
+
+def normalize_data_request_type(request_type: str | None) -> str:
+    normalized = (request_type or "").strip().lower()
+    if normalized not in TENANT_DATA_REQUEST_TYPES:
+        raise ValueError("Tenant data request type is invalid")
+    return normalized
+
+
+def normalize_subscription_status(status: str | None) -> str:
+    normalized = (status or "").strip().lower()
+    return normalized if normalized in TENANT_SUBSCRIPTION_STATUSES else TENANT_SUBSCRIPTION_ACTIVE
+
+
+def normalize_billing_mode(mode: str | None) -> str:
+    normalized = (mode or "").strip().lower()
+    return normalized if normalized in BILLING_MODES else BILLING_MODE_MANUAL
+
+
+def subscription_blocks_high_cost_features(status: str | None) -> bool:
+    return normalize_subscription_status(status) in TENANT_SUBSCRIPTION_BLOCKING_STATUSES
+
+
 def _user_is_system_admin(user) -> bool:
     return (getattr(user, "system_role", "") or "").strip().lower() == SYSTEM_ROLE_SYSTEM_ADMIN
 
@@ -87,14 +173,59 @@ def ensure_default_tenant(session: Session) -> TenantModel:
     return tenant
 
 
-def create_tenant(session: Session, *, code: str, name: str, plan: str = "default") -> TenantModel:
+def _clean_optional_text(value: str | None) -> str | None:
+    return (value or "").strip() or None
+
+
+def _email_domain(email: str | None) -> str | None:
+    value = (email or "").strip().lower()
+    if "@" not in value:
+        return None
+    return value.rsplit("@", 1)[1] or None
+
+
+def _table_exists(session: Session, table_name: str) -> bool:
+    try:
+        return inspect(session.connection()).has_table(table_name)
+    except Exception:
+        return False
+
+
+def create_tenant(
+    session: Session,
+    *,
+    code: str,
+    name: str,
+    plan: str = "default",
+    subscription_status: str = TENANT_SUBSCRIPTION_ACTIVE,
+    billing_mode: str = BILLING_MODE_MANUAL,
+    trial_end_time: int | None = None,
+    current_period_end_time: int | None = None,
+    contract_no: str | None = None,
+    billing_contact: str | None = None,
+    billing_email: str | None = None,
+    subscription_note: str | None = None,
+) -> TenantModel:
     normalized_code = code.strip().lower()
     if not normalized_code:
         raise ValueError("Tenant code is required")
     existing = session.exec(select(TenantModel).where(TenantModel.code == normalized_code)).first()
     if existing:
         raise ValueError("Tenant code already exists")
-    tenant = TenantModel(code=normalized_code, name=name.strip(), plan=plan.strip() or "default", status=1)
+    tenant = TenantModel(
+        code=normalized_code,
+        name=name.strip(),
+        plan=plan.strip() or "default",
+        status=1,
+        subscription_status=normalize_subscription_status(subscription_status),
+        billing_mode=normalize_billing_mode(billing_mode),
+        trial_end_time=trial_end_time,
+        current_period_end_time=current_period_end_time,
+        contract_no=_clean_optional_text(contract_no),
+        billing_contact=_clean_optional_text(billing_contact),
+        billing_email=_clean_optional_text(billing_email),
+        subscription_note=_clean_optional_text(subscription_note),
+    )
     session.add(tenant)
     session.flush()
     return tenant
@@ -105,6 +236,99 @@ def tenant_code_exists(session: Session, code: str) -> bool:
     if not normalized_code:
         return False
     return session.exec(select(TenantModel.id).where(TenantModel.code == normalized_code)).first() is not None
+
+
+def create_tenant_domain(
+    session: Session,
+    *,
+    tenant_id: int,
+    domain: str,
+    requested_by_user_id: int | None = None,
+    auto_join_role: str = TENANT_ROLE_MEMBER,
+) -> TenantDomainModel:
+    tenant = session.get(TenantModel, int(tenant_id))
+    if not tenant:
+        raise ValueError("Tenant does not exist")
+    normalized_domain = normalize_domain(domain)
+    existing = session.exec(select(TenantDomainModel).where(TenantDomainModel.domain == normalized_domain)).first()
+    if existing:
+        if int(existing.tenant_id) != int(tenant_id):
+            raise ValueError("Tenant domain is already bound to another tenant")
+        existing.auto_join_role = normalize_application_role(auto_join_role, TENANT_APPLICATION_TYPE_JOIN)
+        existing.status = TENANT_DOMAIN_STATUS_PENDING if existing.status == TENANT_DOMAIN_STATUS_DISABLED else existing.status
+        existing.update_time = get_timestamp()
+        session.add(existing)
+        session.flush()
+        return existing
+    row = TenantDomainModel(
+        tenant_id=int(tenant_id),
+        domain=normalized_domain,
+        auto_join_role=normalize_application_role(auto_join_role, TENANT_APPLICATION_TYPE_JOIN),
+        status=TENANT_DOMAIN_STATUS_PENDING,
+        requested_by_user_id=requested_by_user_id,
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def list_tenant_domains(session: Session, *, tenant_id: int | None = None, include_disabled: bool = True) -> list[TenantDomainModel]:
+    statement = select(TenantDomainModel).order_by(TenantDomainModel.domain)
+    if tenant_id is not None:
+        statement = statement.where(TenantDomainModel.tenant_id == int(tenant_id))
+    if not include_disabled:
+        statement = statement.where(TenantDomainModel.status != TENANT_DOMAIN_STATUS_DISABLED)
+    return list(session.exec(statement).all())
+
+
+def review_tenant_domain(
+    session: Session,
+    *,
+    domain_id: int,
+    status: str,
+    reviewed_by_user_id: int,
+    auto_join_role: str = TENANT_ROLE_MEMBER,
+) -> TenantDomainModel:
+    row = session.get(TenantDomainModel, int(domain_id))
+    if not row:
+        raise ValueError("Tenant domain does not exist")
+    normalized_status = normalize_domain_status(status)
+    if normalized_status == TENANT_DOMAIN_STATUS_PENDING:
+        raise ValueError("Tenant domain review status must be verified or disabled")
+    row.status = normalized_status
+    row.auto_join_role = normalize_application_role(auto_join_role, TENANT_APPLICATION_TYPE_JOIN)
+    row.verified_by_user_id = int(reviewed_by_user_id)
+    row.verify_time = get_timestamp()
+    row.update_time = row.verify_time
+    session.add(row)
+    session.flush()
+    return row
+
+
+def auto_assign_tenants_by_email_domain(session: Session, user) -> list[TenantUserModel]:
+    email_domain = _email_domain(getattr(user, "email", None))
+    user_id = getattr(user, "id", None)
+    if not email_domain or not user_id:
+        return []
+    domain_rows = session.exec(
+        select(TenantDomainModel).where(
+            TenantDomainModel.domain == email_domain,
+            TenantDomainModel.status == TENANT_DOMAIN_STATUS_VERIFIED,
+        )
+    ).all()
+    assigned = []
+    for row in domain_rows:
+        if not user_belongs_to_tenant(session, int(user_id), int(row.tenant_id)):
+            assigned.append(
+                assign_user_to_tenant(
+                    session,
+                    int(user_id),
+                    tenant_id=int(row.tenant_id),
+                    role=normalize_application_role(row.auto_join_role, TENANT_APPLICATION_TYPE_JOIN),
+                    is_primary=False,
+                )
+            )
+    return assigned
 
 
 def list_tenants(session: Session, *, include_disabled: bool = False) -> list[TenantModel]:
@@ -149,12 +373,34 @@ def search_active_tenants(session: Session, *, keyword: str, limit: int = 20) ->
     return list(session.exec(statement).all())
 
 
-def update_tenant(session: Session, *, tenant_id: int, name: str, plan: str = "default") -> TenantModel:
+def update_tenant(
+    session: Session,
+    *,
+    tenant_id: int,
+    name: str,
+    plan: str = "default",
+    subscription_status: str = TENANT_SUBSCRIPTION_ACTIVE,
+    billing_mode: str = BILLING_MODE_MANUAL,
+    trial_end_time: int | None = None,
+    current_period_end_time: int | None = None,
+    contract_no: str | None = None,
+    billing_contact: str | None = None,
+    billing_email: str | None = None,
+    subscription_note: str | None = None,
+) -> TenantModel:
     tenant = session.get(TenantModel, tenant_id)
     if not tenant:
         raise ValueError("Tenant does not exist")
     tenant.name = name.strip()
     tenant.plan = plan.strip() or "default"
+    tenant.subscription_status = normalize_subscription_status(subscription_status)
+    tenant.billing_mode = normalize_billing_mode(billing_mode)
+    tenant.trial_end_time = trial_end_time
+    tenant.current_period_end_time = current_period_end_time
+    tenant.contract_no = _clean_optional_text(contract_no)
+    tenant.billing_contact = _clean_optional_text(billing_contact)
+    tenant.billing_email = _clean_optional_text(billing_email)
+    tenant.subscription_note = _clean_optional_text(subscription_note)
     tenant.update_time = get_timestamp()
     session.add(tenant)
     session.flush()
@@ -174,6 +420,197 @@ def set_tenant_status(session: Session, *, tenant_id: int, status: int) -> Tenan
     session.add(tenant)
     session.flush()
     return tenant
+
+
+def get_tenant_security_policy(session: Session, *, tenant_id: int) -> TenantSecurityPolicyModel | None:
+    if not _table_exists(session, TenantSecurityPolicyModel.__tablename__):
+        return None
+    return session.exec(
+        select(TenantSecurityPolicyModel).where(TenantSecurityPolicyModel.tenant_id == int(tenant_id))
+    ).first()
+
+
+def upsert_tenant_security_policy(
+    session: Session,
+    *,
+    tenant_id: int,
+    ip_whitelist: str | None = None,
+    sso_required: bool = False,
+    session_timeout_minutes: int | None = None,
+) -> TenantSecurityPolicyModel:
+    tenant = session.get(TenantModel, int(tenant_id))
+    if not tenant:
+        raise ValueError("Tenant does not exist")
+    _parse_ip_whitelist(ip_whitelist)
+    if session_timeout_minutes is not None and int(session_timeout_minutes) < 5:
+        raise ValueError("Session timeout must be at least 5 minutes")
+    now = get_timestamp()
+    row = get_tenant_security_policy(session, tenant_id=int(tenant_id))
+    if row is None:
+        row = TenantSecurityPolicyModel(
+            tenant_id=int(tenant_id),
+            ip_whitelist=_clean_optional_text(ip_whitelist),
+            sso_required=bool(sso_required),
+            session_timeout_minutes=session_timeout_minutes,
+            create_time=now,
+            update_time=now,
+        )
+    else:
+        row.ip_whitelist = _clean_optional_text(ip_whitelist)
+        row.sso_required = bool(sso_required)
+        row.session_timeout_minutes = session_timeout_minutes
+        row.update_time = now
+    session.add(row)
+    session.flush()
+    return row
+
+
+def _parse_ip_whitelist(value: str | None):
+    items = []
+    for raw in (value or "").replace(";", ",").split(","):
+        item = raw.strip()
+        if not item:
+            continue
+        try:
+            items.append(ipaddress.ip_network(item, strict=False))
+        except ValueError as exc:
+            raise ValueError(f"Invalid IP whitelist entry: {item}") from exc
+    return items
+
+
+def validate_tenant_security_policy(session: Session, *, tenant_id: int, user, ip_address: str | None) -> None:
+    policy = get_tenant_security_policy(session, tenant_id=int(tenant_id))
+    if not policy:
+        return
+    if _user_is_system_admin(user):
+        return
+    whitelist = _parse_ip_whitelist(policy.ip_whitelist)
+    if whitelist:
+        try:
+            remote_ip = ipaddress.ip_address((ip_address or "").strip())
+        except ValueError as exc:
+            raise PermissionError("Request IP is not allowed by tenant security policy") from exc
+        if not any(remote_ip in network for network in whitelist):
+            raise PermissionError("Request IP is not allowed by tenant security policy")
+    if bool(policy.sso_required) and int(getattr(user, "origin", 0) or 0) == 0:
+        raise PermissionError("Tenant requires SSO login")
+
+
+def create_tenant_data_request(
+    session: Session,
+    *,
+    tenant_id: int,
+    requested_by_user_id: int,
+    request_type: str,
+    reason: str | None = None,
+) -> TenantDataRequestModel:
+    tenant = session.get(TenantModel, int(tenant_id))
+    if not tenant:
+        raise ValueError("Tenant does not exist")
+    row = TenantDataRequestModel(
+        tenant_id=int(tenant_id),
+        request_type=normalize_data_request_type(request_type),
+        status=TENANT_DATA_REQUEST_STATUS_PENDING,
+        requested_by_user_id=int(requested_by_user_id),
+        reason=_clean_optional_text(reason),
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def list_tenant_data_requests(
+    session: Session,
+    *,
+    tenant_id: int | None = None,
+    status: str | None = None,
+) -> list[TenantDataRequestModel]:
+    statement = select(TenantDataRequestModel).order_by(TenantDataRequestModel.create_time.desc())
+    if tenant_id is not None:
+        statement = statement.where(TenantDataRequestModel.tenant_id == int(tenant_id))
+    if status:
+        statement = statement.where(TenantDataRequestModel.status == status.strip().lower())
+    return list(session.exec(statement).all())
+
+
+def build_tenant_export_manifest(session: Session, *, tenant_id: int) -> dict:
+    inspector = inspect(session.connection())
+    tables = []
+    for table_name in inspector.get_table_names():
+        try:
+            columns = {column["name"] for column in inspector.get_columns(table_name)}
+        except Exception:
+            continue
+        if "tenant_id" not in columns:
+            continue
+        try:
+            dynamic_table = sa_table(table_name, sa_column("tenant_id"))
+            count_value = session.exec(
+                select(func.count()).select_from(dynamic_table).where(dynamic_table.c.tenant_id == int(tenant_id))
+            ).one()
+        except Exception:
+            continue
+        tables.append({"table": table_name, "rows": int(count_value or 0)})
+    return {
+        "tenant_id": int(tenant_id),
+        "scope": "tenant_id",
+        "tables": sorted(tables, key=lambda item: item["table"]),
+        "warning": "This manifest records export scope and row counts; actual file generation is a separate controlled operation.",
+    }
+
+
+def review_tenant_data_request(
+    session: Session,
+    *,
+    request_id: int,
+    reviewer_user_id: int,
+    approved: bool,
+    review_comment: str | None = None,
+) -> TenantDataRequestModel:
+    row = session.get(TenantDataRequestModel, int(request_id))
+    if not row:
+        raise ValueError("Tenant data request does not exist")
+    if row.status != TENANT_DATA_REQUEST_STATUS_PENDING:
+        raise ValueError("Tenant data request has already been reviewed")
+    now = get_timestamp()
+    row.status = TENANT_DATA_REQUEST_STATUS_APPROVED if approved else TENANT_DATA_REQUEST_STATUS_REJECTED
+    row.reviewer_user_id = int(reviewer_user_id)
+    row.review_comment = _clean_optional_text(review_comment)
+    row.review_time = now
+    row.update_time = now
+    if approved and row.request_type == TENANT_DATA_REQUEST_TYPE_EXPORT:
+        row.export_manifest = json.dumps(
+            build_tenant_export_manifest(session, tenant_id=int(row.tenant_id)),
+            ensure_ascii=False,
+        )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def complete_tenant_data_request(
+    session: Session,
+    *,
+    request_id: int,
+    completed_by_user_id: int,
+    complete_comment: str | None = None,
+) -> TenantDataRequestModel:
+    row = session.get(TenantDataRequestModel, int(request_id))
+    if not row:
+        raise ValueError("Tenant data request does not exist")
+    if row.status != TENANT_DATA_REQUEST_STATUS_APPROVED:
+        raise ValueError("Tenant data request must be approved before completion")
+    now = get_timestamp()
+    row.status = TENANT_DATA_REQUEST_STATUS_COMPLETED
+    row.completed_by_user_id = int(completed_by_user_id)
+    note = _clean_optional_text(complete_comment)
+    if note:
+        row.review_comment = f"{row.review_comment or ''}\ncomplete: {note}".strip()
+    row.complete_time = now
+    row.update_time = now
+    session.add(row)
+    session.flush()
+    return row
 
 
 def create_tenant_application(

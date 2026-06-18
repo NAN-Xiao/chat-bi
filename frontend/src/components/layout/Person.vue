@@ -39,6 +39,7 @@ const name = computed(() => userStore.getName)
 const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
 const isAdmin = computed(() => userStore.isSystemManagerUser)
+const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
 const isLocalUser = computed(() => !userStore.getOrigin)
 const currentTenantName = computed(() => userStore.getTenantName || t('common.default_tenant'))
 const currentTenantRole = computed(() => formatTenantRole(userStore.getTenantRole))
@@ -113,7 +114,7 @@ const switchTenant = async (tenant: TenantInfo) => {
     useEmitt().emitter.emit('datasource-context-change', null)
     ElMessage.success(t('common.switch_success'))
     popoverRef.value?.hide?.()
-    router.push('/chat/index')
+    router.push(isPlatformAdmin.value ? '/system/tenant' : '/chat/index')
   } finally {
     tenantSwitchingId.value = ''
   }
@@ -179,7 +180,7 @@ onMounted(() => {
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
         <el-popover
-          v-if="tenantList.length > 1"
+          v-if="!isPlatformAdmin && tenantList.length > 1"
           :teleported="false"
           popper-class="system-tenant"
           placement="right"
@@ -230,7 +231,7 @@ onMounted(() => {
             </el-scrollbar>
           </div>
         </el-popover>
-        <div v-else class="popover-item tenant-trigger static">
+        <div v-else-if="!isPlatformAdmin" class="popover-item tenant-trigger static">
           <el-icon size="16">
             <icon_member_outlined></icon_member_outlined>
           </el-icon>
@@ -245,7 +246,7 @@ onMounted(() => {
           </el-icon>
           <div class="datasource-name">{{ $t('common.system_manage') }}</div>
         </div>
-        <div class="popover-item" @click="toMyWorkspaces">
+        <div v-if="!isPlatformAdmin" class="popover-item" @click="toMyWorkspaces">
           <el-icon size="16">
             <icon_member_outlined></icon_member_outlined>
           </el-icon>

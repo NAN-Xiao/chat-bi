@@ -101,8 +101,11 @@ def ensure_custom_prompt_owner(
         current_user_id: int,
         can_manage_all: bool = False,
         can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
 ):
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC and can_manage_platform_public:
+        return
     if visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC and (can_manage_all or can_manage_public):
         return
     if (
@@ -126,8 +129,11 @@ def _can_manage_row(
         current_user_id: Optional[int],
         can_manage_all: bool,
         can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
 ) -> bool:
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        return can_manage_platform_public
     if visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC:
         return can_manage_all or can_manage_public
     return visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE and _is_owner(row, current_user_id)
@@ -140,6 +146,8 @@ def _prompt_visible(
         can_manage_public: bool = False,
 ) -> bool:
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        return True
     if visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC:
         return can_manage_all or can_manage_public
     return visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE and _is_owner(row, current_user_id)
@@ -152,6 +160,7 @@ def _to_info(
         current_user_id: Optional[int] = None,
         can_manage_all: bool = False,
         can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
 ) -> CustomPromptInfo:
     datasource_ids = _normalize_ids(row.datasource_ids)
     ds_names = ds_names or {}
@@ -171,8 +180,14 @@ def _to_info(
         active=bool(row.active),
         ai_model_id=ai_model_id,
         ai_model_name=ai_model_names.get(ai_model_id) if ai_model_id else None,
-        can_manage=_can_manage_row(row, current_user_id, can_manage_all, can_manage_public),
         is_owner=is_owner,
+        can_manage=_can_manage_row(
+            row,
+            current_user_id,
+            can_manage_all,
+            can_manage_public,
+            can_manage_platform_public,
+        ),
         prompt_visible=prompt_visible,
         visibility_scope=visibility_scope,
         prompt=row.prompt if prompt_visible else None,
@@ -215,11 +230,15 @@ def _access_conditions(accessible_datasource_ids: Optional[set[int]], include_gl
     return conditions
 
 
-def _public_visibility_condition():
+def _tenant_public_visibility_condition():
     return or_(
         CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value,
         CustomPrompt.visibility_scope.is_(None),
     )
+
+
+def _platform_public_visibility_condition():
+    return CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
 
 
 def _private_visibility_condition(current_user_id: Optional[int]):
@@ -247,7 +266,8 @@ def _visible_conditions(
     private_access = _access_conditions(datasource_ids, include_global=True)
     conditions = []
     if public_access:
-        conditions.append(and_(_public_visibility_condition(), or_(*public_access)))
+        conditions.append(and_(_tenant_public_visibility_condition(), or_(*public_access)))
+        conditions.append(and_(_platform_public_visibility_condition(), or_(*public_access)))
     if private_access:
         conditions.append(and_(_private_visibility_condition(current_user_id), or_(*private_access)))
     return conditions
@@ -263,22 +283,30 @@ def _build_query(
         can_manage_all: bool = False,
         tenant_id: int | None = None,
         can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None = None,
+        platform_only: bool = False,
 ):
     prompt_type = _normalize_type(custom_prompt_type)
     resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
     private_condition = _private_visibility_condition(current_user_id)
-    stmt = select(CustomPrompt).where(
-        CustomPrompt.type == prompt_type.value,
-        or_(
-            and_(CustomPrompt.tenant_id == resolved_tenant_id, _public_visibility_condition()),
-            private_condition,
-        ),
-    )
+    visibility_conditions = [
+        and_(CustomPrompt.tenant_id == resolved_tenant_id, _tenant_public_visibility_condition()),
+        _platform_public_visibility_condition(),
+        private_condition,
+    ]
+    if platform_only:
+        visibility_conditions = [_platform_public_visibility_condition()]
+    stmt = select(CustomPrompt).where(CustomPrompt.type == prompt_type.value, or_(*visibility_conditions))
     if visibility_scope:
         normalized_visibility = _normalize_visibility_scope(visibility_scope)
-        if normalized_visibility == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC:
-            stmt = stmt.where(_public_visibility_condition())
+        if normalized_visibility == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+            stmt = stmt.where(_platform_public_visibility_condition())
+        elif normalized_visibility == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC:
+            stmt = stmt.where(or_(
+                and_(CustomPrompt.tenant_id == resolved_tenant_id, _tenant_public_visibility_condition()),
+                _platform_public_visibility_condition(),
+            ))
         else:
             stmt = stmt.where(_private_visibility_condition(current_user_id))
 
@@ -335,16 +363,21 @@ def list_custom_prompt_options(
         current_user_id: Optional[int] = None,
         can_manage_all: bool = False,
         tenant_id: int | None = None,
+        platform_only: bool = False,
 ) -> list[CustomPromptOption]:
     resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
     private_condition = _private_visibility_condition(current_user_id)
+    visibility_conditions = [
+        and_(CustomPrompt.tenant_id == resolved_tenant_id, _tenant_public_visibility_condition()),
+        _platform_public_visibility_condition(),
+        private_condition,
+    ]
+    if platform_only:
+        visibility_conditions = [_platform_public_visibility_condition()]
     stmt = select(CustomPrompt).where(
         CustomPrompt.active == True,
         _target_scope_condition(target_scope),
-        or_(
-            and_(CustomPrompt.tenant_id == resolved_tenant_id, _public_visibility_condition()),
-            private_condition,
-        ),
+        or_(*visibility_conditions),
     )
     if custom_prompt_type:
         stmt = stmt.where(CustomPrompt.type == _normalize_type(custom_prompt_type).value)
@@ -383,7 +416,9 @@ def page_custom_prompts(
         can_manage_all: bool = False,
         can_manage_public: bool = False,
         tenant_id: int | None = None,
+        can_manage_platform_public: bool = False,
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None = None,
+        platform_only: bool = False,
 ):
     stmt = _build_query(
         custom_prompt_type=custom_prompt_type,
@@ -395,7 +430,9 @@ def page_custom_prompts(
         can_manage_all=can_manage_all,
         tenant_id=tenant_id,
         can_manage_public=can_manage_public,
+        can_manage_platform_public=can_manage_platform_public,
         visibility_scope=visibility_scope,
+        platform_only=platform_only,
     )
     total_count = session.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
     page_size = max(10, page_size)
@@ -419,7 +456,15 @@ def page_custom_prompts(
     ai_model_names = _ai_model_name_map(session, list(dict.fromkeys(ai_model_ids)))
 
     return current_page, page_size, total_count, total_pages, [
-        _to_info(row, ds_names, ai_model_names, current_user_id, can_manage_all, can_manage_public)
+        _to_info(
+            row,
+            ds_names,
+            ai_model_names,
+            current_user_id,
+            can_manage_all,
+            can_manage_public,
+            can_manage_platform_public,
+        )
         for row in rows
     ]
 
@@ -435,7 +480,9 @@ def get_all_custom_prompts(
         can_manage_all: bool = False,
         can_manage_public: bool = False,
         tenant_id: int | None = None,
+        can_manage_platform_public: bool = False,
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None = None,
+        platform_only: bool = False,
 ) -> list[CustomPromptInfo]:
     stmt = _build_query(
         custom_prompt_type=custom_prompt_type,
@@ -447,7 +494,9 @@ def get_all_custom_prompts(
         can_manage_all=can_manage_all,
         tenant_id=tenant_id,
         can_manage_public=can_manage_public,
+        can_manage_platform_public=can_manage_platform_public,
         visibility_scope=visibility_scope,
+        platform_only=platform_only,
     )
     rows = session.execute(stmt.order_by(CustomPrompt.create_time.desc(), CustomPrompt.id.desc())).scalars().all()
 
@@ -461,7 +510,18 @@ def get_all_custom_prompts(
     ds_names = _datasource_name_map(session, list(dict.fromkeys(datasource_ids)))
     ai_model_names = _ai_model_name_map(session, list(dict.fromkeys(ai_model_ids)))
 
-    return [_to_info(row, ds_names, ai_model_names, current_user_id, can_manage_all, can_manage_public) for row in rows]
+    return [
+        _to_info(
+            row,
+            ds_names,
+            ai_model_names,
+            current_user_id,
+            can_manage_all,
+            can_manage_public,
+            can_manage_platform_public,
+        )
+        for row in rows
+    ]
 
 
 def get_custom_prompt(
@@ -470,6 +530,7 @@ def get_custom_prompt(
         current_user_id: Optional[int] = None,
         can_manage_all: bool = False,
         can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
         tenant_id: int | None = None,
 ) -> CustomPromptInfo:
     row = session.get(CustomPrompt, prompt_id)
@@ -480,16 +541,25 @@ def get_custom_prompt(
         visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
         and int(row.tenant_id) == int(tenant_id or DEFAULT_TENANT_ID)
     )
+    platform_match = visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC
     private_match = (
         visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE
         and _is_owner(row, current_user_id)
     )
-    if not public_match and not private_match:
+    if not public_match and not platform_match and not private_match:
         raise HTTPException(status_code=404, detail="Custom prompt not found")
     ds_names = _datasource_name_map(session, _normalize_ids(row.datasource_ids))
     ai_model_id = _normalize_ai_model_id(row.ai_model_id)
     ai_model_names = _ai_model_name_map(session, [ai_model_id] if ai_model_id else [])
-    return _to_info(row, ds_names, ai_model_names, current_user_id, can_manage_all, can_manage_public)
+    return _to_info(
+        row,
+        ds_names,
+        ai_model_names,
+        current_user_id,
+        can_manage_all,
+        can_manage_public,
+        can_manage_platform_public,
+    )
 
 
 def create_custom_prompt(
@@ -512,6 +582,8 @@ def create_custom_prompt(
     ai_model_id = _require_ai_model(session, _normalize_ai_model_id(info.ai_model_id))
     target_scope = _normalize_target_scope(info.target_scope)
     visibility_scope = _normalize_visibility_scope(info.visibility_scope)
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        resolved_tenant_id = DEFAULT_TENANT_ID
 
     exists_query = select(func.count()).select_from(CustomPrompt).where(
         CustomPrompt.type == prompt_type.value,
@@ -519,7 +591,9 @@ def create_custom_prompt(
         CustomPrompt.name == info.name.strip(),
         CustomPrompt.id != (info.id or 0),
     )
-    if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE:
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        exists_query = exists_query.where(CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value)
+    elif visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE:
         exists_query = exists_query.where(
             CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value,
             CustomPrompt.create_by == current_user_id,
@@ -561,6 +635,7 @@ def update_custom_prompt(
         can_manage_all: bool = False,
         tenant_id: int | None = None,
         can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
 ) -> int:
     if not info.id:
         return create_custom_prompt(session, info, current_user_id, tenant_id)
@@ -573,14 +648,21 @@ def update_custom_prompt(
         visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
         and int(row.tenant_id) == int(resolved_tenant_id)
     )
+    platform_match = visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC
     private_match = (
         visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE
         and _is_owner(row, current_user_id)
     )
-    if not public_match and not private_match:
+    if not public_match and not platform_match and not private_match:
         raise HTTPException(status_code=404, detail="Custom prompt not found")
     if current_user_id is not None:
-        ensure_custom_prompt_owner(row, current_user_id, can_manage_all, can_manage_public)
+        ensure_custom_prompt_owner(
+            row,
+            current_user_id,
+            can_manage_all,
+            can_manage_public,
+            can_manage_platform_public,
+        )
     if not info.name or not info.name.strip():
         raise HTTPException(status_code=400, detail="Prompt name is required")
     if not info.prompt or not info.prompt.strip():
@@ -594,6 +676,8 @@ def update_custom_prompt(
     ai_model_id = _require_ai_model(session, _normalize_ai_model_id(info.ai_model_id))
     target_scope = _normalize_target_scope(info.target_scope or row.target_scope)
     visibility_scope = _normalize_visibility_scope(info.visibility_scope or row.visibility_scope)
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        resolved_tenant_id = DEFAULT_TENANT_ID
 
     exists_query = select(func.count()).select_from(CustomPrompt).where(
         CustomPrompt.type == prompt_type.value,
@@ -601,7 +685,9 @@ def update_custom_prompt(
         CustomPrompt.name == info.name.strip(),
         CustomPrompt.id != int(info.id),
     )
-    if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE:
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        exists_query = exists_query.where(CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value)
+    elif visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE:
         exists_query = exists_query.where(
             CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value,
             CustomPrompt.create_by == row.create_by,
@@ -637,6 +723,7 @@ def delete_custom_prompts(
         can_manage_all: bool = False,
         tenant_id: int | None = None,
         can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
 ):
     normalized_ids = _normalize_ids(ids)
     if not normalized_ids:
@@ -652,13 +739,20 @@ def delete_custom_prompts(
                 visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
                 and int(row.tenant_id) == int(resolved_tenant_id)
             )
+            platform_match = visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC
             private_match = (
                 visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE
                 and _is_owner(row, current_user_id)
             )
-            if not public_match and not private_match:
+            if not public_match and not platform_match and not private_match:
                 raise HTTPException(status_code=404, detail="Custom prompt not found")
-            ensure_custom_prompt_owner(row, current_user_id, can_manage_all, can_manage_public)
+            ensure_custom_prompt_owner(
+                row,
+                current_user_id,
+                can_manage_all,
+                can_manage_public,
+                can_manage_platform_public,
+            )
     delete_conditions = [CustomPrompt.id.in_(normalized_ids)]
     if current_user_id is None:
         delete_conditions.append(CustomPrompt.tenant_id == resolved_tenant_id)

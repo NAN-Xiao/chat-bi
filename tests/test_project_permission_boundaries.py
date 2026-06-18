@@ -122,7 +122,7 @@ def test_data_training_pager_uses_visible_datasource_scope(monkeypatch):
 
     monkeypatch.setattr(data_training_api, "_visible_datasource_ids", lambda session, user: {1, 3})
 
-    def fake_page_data_training(session, current_page, page_size, question, datasource_ids, tenant_id):
+    def fake_page_data_training(session, current_page, page_size, question, datasource_ids, tenant_id, *args):
         captured["datasource_ids"] = datasource_ids
         captured["question"] = question
         captured["tenant_id"] = tenant_id
@@ -198,6 +198,7 @@ def test_terminology_pager_uses_visible_datasource_scope(monkeypatch):
         accessible_datasource_ids,
         include_global,
         tenant_id,
+        *args,
     ):
         captured["dslist"] = dslist
         captured["accessible_datasource_ids"] = accessible_datasource_ids

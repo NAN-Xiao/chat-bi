@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
-from apps.system.crud.tenant import attach_tenant_context, resolve_current_tenant
+from apps.system.crud.tenant import auto_assign_tenants_by_email_domain, attach_tenant_context, resolve_current_tenant
 from apps.system.schemas.logout_schema import LogoutSchema
 from apps.system.schemas.system_schema import BaseUserDTO
 from common.audit.models.log_model import OperationModules, OperationType
@@ -74,6 +74,7 @@ async def local_login(
     if user.origin is not None and user.origin != 0:
         raise HTTPException(status_code=400, detail=trans('i18n_login.origin_error'))
     try:
+        auto_assign_tenants_by_email_domain(session, user)
         tenant = resolve_current_tenant(session, user, requested_tenant_id=_requested_tenant_id(request))
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc

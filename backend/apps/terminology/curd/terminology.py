@@ -11,6 +11,7 @@ from sqlalchemy.orm import aliased
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum, normalize_semantic_scope
 from apps.template.generate_chart.generator import get_base_terminology_template
 from apps.terminology.models.terminology_model import Terminology, TerminologyInfo
 from common.core.config import settings
@@ -55,18 +56,48 @@ def get_terminology_base_query(name: Optional[str] = None):
     return parent_ids_subquery, child
 
 
+def _scope_value(value) -> str:
+    return normalize_semantic_scope(value).value
+
+
+def _tenant_scope_condition(tenant_id: int):
+    return and_(
+        Terminology.tenant_id == tenant_id,
+        or_(
+            Terminology.scope == SemanticRecordScopeEnum.TENANT.value,
+            Terminology.scope.is_(None),
+        ),
+    )
+
+
+def _platform_scope_condition():
+    return Terminology.scope == SemanticRecordScopeEnum.PLATFORM.value
+
+
+def _semantic_scope_condition(tenant_id: int, scope: SemanticRecordScopeEnum | str | None = None):
+    normalized_scope = normalize_semantic_scope(scope) if scope else None
+    if normalized_scope == SemanticRecordScopeEnum.PLATFORM:
+        return _platform_scope_condition()
+    if normalized_scope == SemanticRecordScopeEnum.TENANT:
+        return _tenant_scope_condition(tenant_id)
+    return or_(_tenant_scope_condition(tenant_id), _platform_scope_condition())
+
+
 def build_terminology_query(session: SessionDep, name: Optional[str] = None,
                             paginate: bool = True, current_page: int = 1, page_size: int = 10,
                             dslist: Optional[list[int]] = None,
                             accessible_datasource_ids: Optional[set[int]] = None,
                             include_global: bool = True,
-                            tenant_id: int | None = None):
+                            tenant_id: int | None = None,
+                            scope: SemanticRecordScopeEnum | str | None = None,
+                            can_manage_platform: bool = False,
+                            can_manage_tenant: bool = False):
     """
     构建术语查询的通用方法
     """
     parent_ids_subquery, child = get_terminology_base_query(name)
     resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    parent_ids_subquery = parent_ids_subquery.where(Terminology.tenant_id == resolved_tenant_id)
+    parent_ids_subquery = parent_ids_subquery.where(_semantic_scope_condition(resolved_tenant_id, scope))
 
     if accessible_datasource_ids is not None:
         access_conditions = []
@@ -134,7 +165,7 @@ def build_terminology_query(session: SessionDep, name: Optional[str] = None,
             child.pid,
             func.jsonb_agg(child.word).filter(child.word.isnot(None)).label('other_words')
         )
-        .where(child.pid.isnot(None), child.tenant_id == resolved_tenant_id)
+        .where(child.pid.isnot(None), child.pid.in_(paginated_parent_ids))
         .group_by(child.pid)
         .subquery()
     )
@@ -153,6 +184,7 @@ def build_terminology_query(session: SessionDep, name: Optional[str] = None,
         select(
             Terminology.id,
             Terminology.tenant_id,
+            Terminology.scope,
             Terminology.word,
             Terminology.create_time,
             Terminology.description,
@@ -178,6 +210,7 @@ def build_terminology_query(session: SessionDep, name: Optional[str] = None,
         .group_by(
             Terminology.id,
             Terminology.tenant_id,
+            Terminology.scope,
             Terminology.word,
             Terminology.create_time,
             Terminology.description,
@@ -189,10 +222,15 @@ def build_terminology_query(session: SessionDep, name: Optional[str] = None,
         .order_by(Terminology.create_time.desc())
     )
 
-    return stmt, total_count, total_pages, current_page, page_size
+    return stmt, total_count, total_pages, current_page, page_size, can_manage_platform, can_manage_tenant
 
 
-def execute_terminology_query(session: SessionDep, stmt) -> List[TerminologyInfo]:
+def execute_terminology_query(
+        session: SessionDep,
+        stmt,
+        can_manage_platform: bool = False,
+        can_manage_tenant: bool = False,
+) -> List[TerminologyInfo]:
     """
     执行查询并返回术语信息列表
     """
@@ -203,6 +241,7 @@ def execute_terminology_query(session: SessionDep, stmt) -> List[TerminologyInfo
         _list.append(TerminologyInfo(
             id=row.id,
             tenant_id=row.tenant_id,
+            scope=normalize_semantic_scope(row.scope),
             word=row.word,
             create_time=row.create_time,
             description=row.description,
@@ -211,6 +250,11 @@ def execute_terminology_query(session: SessionDep, stmt) -> List[TerminologyInfo
             datasource_ids=row.datasource_ids if row.datasource_ids is not None else [],
             datasource_names=row.datasource_names if row.datasource_names is not None else [],
             enabled=row.enabled if row.enabled is not None else False,
+            can_manage=(
+                can_manage_platform
+                if normalize_semantic_scope(row.scope) == SemanticRecordScopeEnum.PLATFORM
+                else can_manage_tenant
+            ),
         ))
 
     return _list
@@ -220,14 +264,18 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
                      name: Optional[str] = None, dslist: Optional[list[int]] = None,
                      accessible_datasource_ids: Optional[set[int]] = None,
                      include_global: bool = True,
-                     tenant_id: int | None = None):
+                     tenant_id: int | None = None,
+                     scope: SemanticRecordScopeEnum | str | None = None,
+                     can_manage_platform: bool = False,
+                     can_manage_tenant: bool = False):
     """
     分页查询术语（原方法保持不变）
     """
-    stmt, total_count, total_pages, current_page, page_size = build_terminology_query(
-        session, name, True, current_page, page_size, dslist, accessible_datasource_ids, include_global, tenant_id
+    stmt, total_count, total_pages, current_page, page_size, can_manage_platform, can_manage_tenant = build_terminology_query(
+        session, name, True, current_page, page_size, dslist, accessible_datasource_ids, include_global, tenant_id,
+        scope, can_manage_platform, can_manage_tenant
     )
-    _list = execute_terminology_query(session, stmt)
+    _list = execute_terminology_query(session, stmt, can_manage_platform, can_manage_tenant)
 
     return current_page, page_size, total_count, total_pages, _list
 
@@ -235,15 +283,18 @@ def page_terminology(session: SessionDep, current_page: int = 1, page_size: int 
 def get_all_terminology(session: SessionDep, name: Optional[str] = None,
                         accessible_datasource_ids: Optional[set[int]] = None,
                         include_global: bool = True,
-                        tenant_id: int | None = None):
+                        tenant_id: int | None = None,
+                        scope: SemanticRecordScopeEnum | str | None = None,
+                        can_manage_platform: bool = False,
+                        can_manage_tenant: bool = False):
     """
     获取所有术语（不分页）
     """
-    stmt, total_count, total_pages, current_page, page_size = build_terminology_query(
+    stmt, total_count, total_pages, current_page, page_size, can_manage_platform, can_manage_tenant = build_terminology_query(
         session, name, False, accessible_datasource_ids=accessible_datasource_ids, include_global=include_global,
-        tenant_id=tenant_id
+        tenant_id=tenant_id, scope=scope, can_manage_platform=can_manage_platform, can_manage_tenant=can_manage_tenant
     )
-    _list = execute_terminology_query(session, stmt)
+    _list = execute_terminology_query(session, stmt, can_manage_platform, can_manage_tenant)
 
     return _list
 
@@ -264,9 +315,15 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans,
 
     create_time = datetime.datetime.now()
     tenant_id = info.tenant_id or DEFAULT_TENANT_ID
+    scope = normalize_semantic_scope(info.scope)
+    if scope == SemanticRecordScopeEnum.PLATFORM:
+        tenant_id = DEFAULT_TENANT_ID
 
     specific_ds = info.specific_ds if info.specific_ds is not None else False
     datasource_ids = info.datasource_ids if info.datasource_ids is not None else []
+    if scope == SemanticRecordScopeEnum.PLATFORM:
+        specific_ds = False
+        datasource_ids = []
 
     if specific_ds:
         if not datasource_ids:
@@ -274,6 +331,7 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans,
 
     parent = Terminology(
         tenant_id=tenant_id,
+        scope=scope.value,
         word=info.word.strip(),
         create_time=create_time,
         description=info.description.strip(),
@@ -296,6 +354,7 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans,
     # 基础查询条件
     base_query = and_(
         Terminology.tenant_id == tenant_id,
+        Terminology.scope == scope.value,
         Terminology.word.in_(words)
     )
 
@@ -340,6 +399,7 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans,
             child_list.append(
                 Terminology(
                     tenant_id=tenant_id,
+                    scope=scope.value,
                     pid=parent.id,
                     word=other_word.strip(),
                     create_time=create_time,
@@ -367,6 +427,7 @@ def batch_create_terminology(
         info_list: List[TerminologyInfo],
         trans: Trans,
         tenant_id: int | None = None,
+        scope: SemanticRecordScopeEnum | str | None = None,
 ):
     """
     批量创建术语记录（复用单条插入逻辑）
@@ -426,10 +487,14 @@ def batch_create_terminology(
     # 预加载数据源名称到ID的映射
     datasource_name_to_id = {}
     resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.tenant_id == resolved_tenant_id)
-    datasource_result = session.execute(datasource_stmt).all()
-    for ds in datasource_result:
-        datasource_name_to_id[ds.name.strip()] = ds.id
+    resolved_scope = normalize_semantic_scope(scope)
+    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
+        resolved_tenant_id = DEFAULT_TENANT_ID
+    if resolved_scope == SemanticRecordScopeEnum.TENANT:
+        datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.tenant_id == resolved_tenant_id)
+        datasource_result = session.execute(datasource_stmt).all()
+        for ds in datasource_result:
+            datasource_name_to_id[ds.name.strip()] = ds.id
     valid_datasource_ids = {int(value) for value in datasource_name_to_id.values()}
 
     # 验证和转换数据源名称
@@ -447,6 +512,9 @@ def batch_create_terminology(
         # 根据specific_ds决定是否验证数据源
         specific_ds = info.specific_ds if info.specific_ds is not None else False
         datasource_ids = list(info.datasource_ids or [])
+        if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
+            specific_ds = False
+            datasource_ids = []
 
         if specific_ds:
             invalid_datasource_ids = [item for item in datasource_ids if int(item) not in valid_datasource_ids]
@@ -496,6 +564,7 @@ def batch_create_terminology(
         # 创建新的TerminologyInfo对象
         processed_info = TerminologyInfo(
             tenant_id=resolved_tenant_id,
+            scope=resolved_scope,
             word=info.word.strip(),
             description=info.description.strip(),
             other_words=[w for w in info.other_words if w and w.strip()],  # 过滤空字符串
@@ -545,15 +614,22 @@ def batch_create_terminology(
 
 def update_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans):
     tenant_id = info.tenant_id or DEFAULT_TENANT_ID
+    scope = normalize_semantic_scope(info.scope)
+    if scope == SemanticRecordScopeEnum.PLATFORM:
+        tenant_id = DEFAULT_TENANT_ID
     count = session.query(Terminology).filter(
         Terminology.id == info.id,
         Terminology.tenant_id == tenant_id,
+        Terminology.scope == scope.value,
     ).count()
     if count == 0:
         raise Exception(trans('i18n_terminology.terminology_not_exists'))
 
     specific_ds = info.specific_ds if info.specific_ds is not None else False
     datasource_ids = info.datasource_ids if info.datasource_ids is not None else []
+    if scope == SemanticRecordScopeEnum.PLATFORM:
+        specific_ds = False
+        datasource_ids = []
 
     if specific_ds:
         if not datasource_ids:
@@ -569,6 +645,7 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans)
     # 基础查询条件
     base_query = and_(
         Terminology.tenant_id == tenant_id,
+        Terminology.scope == scope.value,
         Terminology.word.in_(words),
         or_(
             Terminology.pid != info.id,
@@ -605,7 +682,9 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans)
     if exists:
         raise Exception(trans("i18n_terminology.exists_in_db"))
 
-    stmt = update(Terminology).where(and_(Terminology.id == info.id, Terminology.tenant_id == tenant_id)).values(
+    stmt = update(Terminology).where(
+        and_(Terminology.id == info.id, Terminology.tenant_id == tenant_id, Terminology.scope == scope.value)
+    ).values(
         word=info.word.strip(),
         description=info.description.strip(),
         specific_ds=specific_ds,
@@ -615,7 +694,9 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans)
     session.execute(stmt)
     session.commit()
 
-    stmt = delete(Terminology).where(and_(Terminology.pid == info.id, Terminology.tenant_id == tenant_id))
+    stmt = delete(Terminology).where(
+        and_(Terminology.pid == info.id, Terminology.tenant_id == tenant_id, Terminology.scope == scope.value)
+    )
     session.execute(stmt)
     session.commit()
 
@@ -629,6 +710,7 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans)
             child_list.append(
                 Terminology(
                     tenant_id=tenant_id,
+                    scope=scope.value,
                     pid=info.id,
                     word=other_word.strip(),
                     create_time=create_time,
@@ -649,11 +731,20 @@ def update_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans)
     return info.id
 
 
-def delete_terminology(session: SessionDep, ids: list[int], tenant_id: int | None = None):
+def delete_terminology(
+        session: SessionDep,
+        ids: list[int],
+        tenant_id: int | None = None,
+        scope: SemanticRecordScopeEnum | str | None = SemanticRecordScopeEnum.TENANT,
+):
     resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    resolved_scope = normalize_semantic_scope(scope)
+    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
+        resolved_tenant_id = DEFAULT_TENANT_ID
     stmt = delete(Terminology).where(
         and_(
             Terminology.tenant_id == resolved_tenant_id,
+            Terminology.scope == resolved_scope.value,
             or_(Terminology.id.in_(ids), Terminology.pid.in_(ids)),
         )
     )
@@ -661,17 +752,32 @@ def delete_terminology(session: SessionDep, ids: list[int], tenant_id: int | Non
     session.commit()
 
 
-def enable_terminology(session: SessionDep, id: int, enabled: bool, trans: Trans, tenant_id: int | None = None):
+def enable_terminology(
+        session: SessionDep,
+        id: int,
+        enabled: bool,
+        trans: Trans,
+        tenant_id: int | None = None,
+        scope: SemanticRecordScopeEnum | str | None = SemanticRecordScopeEnum.TENANT,
+):
     resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    resolved_scope = normalize_semantic_scope(scope)
+    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
+        resolved_tenant_id = DEFAULT_TENANT_ID
     count = session.query(Terminology).filter(
         Terminology.id == id,
         Terminology.tenant_id == resolved_tenant_id,
+        Terminology.scope == resolved_scope.value,
     ).count()
     if count == 0:
         raise Exception(trans('i18n_terminology.terminology_not_exists'))
 
     stmt = update(Terminology).where(
-        and_(Terminology.tenant_id == resolved_tenant_id, or_(Terminology.id == id, Terminology.pid == id))
+        and_(
+            Terminology.tenant_id == resolved_tenant_id,
+            Terminology.scope == resolved_scope.value,
+            or_(Terminology.id == id, Terminology.pid == id),
+        )
     ).values(
         enabled=enabled,
     )
@@ -749,12 +855,12 @@ def save_embeddings(session_maker, ids: List[int], tenant_id: int | None = None)
 embedding_sql = f"""
 SELECT id, pid, word, similarity
 FROM
-(SELECT id, pid, word, tenant_id, specific_ds, datasource_ids, enabled,
+(SELECT id, pid, word, tenant_id, scope, specific_ds, datasource_ids, enabled,
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM terminology AS child
 ) TEMP
 WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} AND enabled = true
-AND tenant_id = :tenant_id
+AND ((COALESCE(scope, 'TENANT') = 'TENANT' AND tenant_id = :tenant_id) OR scope = 'PLATFORM')
 AND (specific_ds = false OR specific_ds IS NULL)
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
@@ -763,12 +869,12 @@ LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
 embedding_sql_with_datasource = f"""
 SELECT id, pid, word, similarity
 FROM
-(SELECT id, pid, word, tenant_id, specific_ds, datasource_ids, enabled,
+(SELECT id, pid, word, tenant_id, scope, specific_ds, datasource_ids, enabled,
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM terminology AS child
 ) TEMP
 WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} AND enabled = true
-AND tenant_id = :tenant_id
+AND ((COALESCE(scope, 'TENANT') = 'TENANT' AND tenant_id = :tenant_id) OR scope = 'PLATFORM')
 AND (
     (specific_ds = false OR specific_ds IS NULL)
      OR
@@ -809,7 +915,7 @@ def select_terminology_by_word(
         )
         .where(
             and_(
-                Terminology.tenant_id == resolved_tenant_id,
+                _semantic_scope_condition(resolved_tenant_id),
                 text(":sentence ILIKE '%' || word || '%'"),
                 Terminology.enabled == True,
             )
@@ -883,7 +989,7 @@ def select_terminology_by_word(
 
     t_list = session.query(Terminology.id, Terminology.pid, Terminology.word, Terminology.description).filter(
         and_(
-            Terminology.tenant_id == resolved_tenant_id,
+            _semantic_scope_condition(resolved_tenant_id),
             or_(Terminology.id.in_(_ids), Terminology.pid.in_(_ids)),
         )
     ).all()

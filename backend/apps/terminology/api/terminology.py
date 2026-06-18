@@ -15,8 +15,9 @@ from apps.datasource.crud.permission import (
     has_datasource_access,
 )
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_system_admin
+from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.user import is_platform_admin, is_system_admin
+from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum, normalize_semantic_scope
 from apps.terminology.curd.terminology import page_terminology, create_terminology, update_terminology, \
     delete_terminology, enable_terminology, get_all_terminology, batch_create_terminology
 from apps.terminology.models.terminology_model import Terminology, TerminologyInfo
@@ -27,23 +28,49 @@ from common.utils.excel import get_excel_column_count
 from common.utils.file_utils import AppFileUtils
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
-router = APIRouter(tags=["Terminology"], prefix="/system/terminology")
+router = APIRouter(
+    tags=["Terminology"],
+    prefix="/system/terminology",
+)
 
 
 def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
+    if is_platform_admin(current_user):
+        return None
     return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
 
 
 def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
+    if is_platform_admin(current_user):
+        return False
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
     return is_system_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
 
 
+def _can_manage_platform_semantic_layer(current_user: CurrentUser) -> bool:
+    return is_platform_admin(current_user)
+
+
+def _request_scope(current_user: CurrentUser) -> SemanticRecordScopeEnum:
+    return SemanticRecordScopeEnum.PLATFORM if is_platform_admin(current_user) else SemanticRecordScopeEnum.TENANT
+
+
+def _request_tenant_id(current_user: CurrentUser) -> int:
+    return DEFAULT_TENANT_ID if is_platform_admin(current_user) else current_tenant_id(current_user)
+
+
 def _require_term_scope_admin(session: SessionDep, current_user: CurrentUser, term: TerminologyInfo | Terminology):
-    if not _can_manage_tenant_semantic_layer(current_user):
-        raise HTTPException(status_code=403, detail="Tenant admin access is required")
-    tenant_id = current_tenant_id(current_user)
-    if getattr(term, "tenant_id", None) is not None and int(term.tenant_id) != tenant_id:
+    scope = normalize_semantic_scope(getattr(term, "scope", None))
+    if scope == SemanticRecordScopeEnum.PLATFORM:
+        if not _can_manage_platform_semantic_layer(current_user):
+            raise HTTPException(status_code=403, detail="Platform admin access is required")
+    else:
+        if not _can_manage_tenant_semantic_layer(current_user):
+            raise HTTPException(status_code=403, detail="Tenant admin access is required")
+    tenant_id = _request_tenant_id(current_user)
+    if scope == SemanticRecordScopeEnum.TENANT and getattr(term, "tenant_id", None) is not None and int(term.tenant_id) != tenant_id:
+        raise HTTPException(status_code=404, detail="Terminology not found")
+    if scope == SemanticRecordScopeEnum.PLATFORM and not is_platform_admin(current_user):
         raise HTTPException(status_code=404, detail="Terminology not found")
     datasource_ids = [int(item) for item in (getattr(term, "datasource_ids", None) or [])]
     if datasource_ids and not has_datasource_access(session, current_user, datasource_ids):
@@ -73,13 +100,17 @@ def _require_term_ids_admin(session: SessionDep, current_user: CurrentUser, ids:
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
     word: Optional[str] = Query(None, description="搜索术语(可选)"),
                 dslist: Optional[list[int]] = Query(None, description="数据集ID集合(可选)")):
+    scope = _request_scope(current_user) if is_platform_admin(current_user) else None
     visible_ids = _visible_datasource_ids(session, current_user)
     if dslist and visible_ids is not None and not set(dslist).issubset(visible_ids):
         raise HTTPException(status_code=403, detail="Datasource access is required")
     current_page, page_size, total_count, total_pages, _list = page_terminology(session, current_page, page_size, word,
                                                                                 dslist, visible_ids,
-                                                                                is_system_admin(current_user),
-                                                                                current_tenant_id(current_user))
+                                                                                True if is_platform_admin(current_user) else is_system_admin(current_user),
+                                                                                _request_tenant_id(current_user),
+                                                                                scope,
+                                                                                _can_manage_platform_semantic_layer(current_user),
+                                                                                _can_manage_tenant_semantic_layer(current_user))
 
     return {
         "current_page": current_page,
@@ -93,7 +124,11 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}create_or_update_term")
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.TERMINOLOGY,resource_id_expr='info.id', result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, trans: Trans, info: TerminologyInfo):
-    info.tenant_id = current_tenant_id(current_user)
+    info.scope = _request_scope(current_user)
+    info.tenant_id = _request_tenant_id(current_user)
+    if info.scope == SemanticRecordScopeEnum.PLATFORM:
+        info.specific_ds = False
+        info.datasource_ids = []
     _require_term_admin(session, current_user, info)
     if info.id:
         return update_terminology(session, info, trans)
@@ -105,14 +140,14 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, trans
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.TERMINOLOGY,resource_id_expr='id_list'))
 async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
     _require_term_ids_admin(session, current_user, id_list)
-    delete_terminology(session, id_list, current_tenant_id(current_user))
+    delete_terminology(session, id_list, _request_tenant_id(current_user), _request_scope(current_user))
 
 
 @router.get("/{id}/enable/{enabled}", summary=f"{PLACEHOLDER_PREFIX}enable_term")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.TERMINOLOGY,resource_id_expr='id'))
 async def enable(session: SessionDep, current_user: CurrentUser, id: int, enabled: bool, trans: Trans):
     _require_term_ids_admin(session, current_user, [id])
-    enable_terminology(session, id, enabled, trans, current_tenant_id(current_user))
+    enable_terminology(session, id, enabled, trans, _request_tenant_id(current_user), _request_scope(current_user))
 
 
 @router.get("/export", summary=f"{PLACEHOLDER_PREFIX}export_term")
@@ -130,8 +165,11 @@ async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentU
             session,
             word,
             scoped_visible_ids,
-            is_system_admin(current_user),
-            current_tenant_id(current_user),
+            True if is_platform_admin(current_user) else is_system_admin(current_user),
+            _request_tenant_id(current_user),
+            _request_scope(current_user) if is_platform_admin(current_user) else None,
+            _can_manage_platform_semantic_layer(current_user),
+            _can_manage_tenant_semantic_layer(current_user),
         )
 
         data_list = []
@@ -228,8 +266,12 @@ session_maker = scoped_session(sessionmaker(bind=engine, class_=Session))
 async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentUser,
                        datasource: Optional[int] = Query(None, description="数据源ID(可选)"),
                        file: UploadFile = File(...)):
-    if not _can_manage_tenant_semantic_layer(current_user):
+    can_manage_platform = _can_manage_platform_semantic_layer(current_user)
+    can_manage_tenant = _can_manage_tenant_semantic_layer(current_user)
+    if not (can_manage_platform or can_manage_tenant):
         raise HTTPException(status_code=403, detail="Tenant admin access is required")
+    if can_manage_platform:
+        datasource = None
     if datasource is not None and not has_datasource_access(session, current_user, datasource):
         raise HTTPException(status_code=403, detail="Datasource access is required")
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
@@ -290,7 +332,13 @@ async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentU
                     import_data.append(TerminologyInfo(word=word, description=description, other_words=other_words,
                                                        datasource_names=datasource_names, specific_ds=specific_ds))
 
-        res = batch_create_terminology(session, import_data, trans, current_tenant_id(current_user))
+        res = batch_create_terminology(
+            session,
+            import_data,
+            trans,
+            _request_tenant_id(current_user),
+            _request_scope(current_user),
+        )
 
         failed_records = res['failed_records']
 

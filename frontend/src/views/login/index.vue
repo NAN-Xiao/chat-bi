@@ -83,6 +83,18 @@
                 }}</el-button>
               </el-form-item>
             </el-form>
+            <template v-if="feishuStatus.enabled">
+              <div class="product-login-divider">
+                <span>企业登录</span>
+              </div>
+              <el-button
+                class="product-login-feishu"
+                :loading="feishuLoading"
+                @click="startFeishuLogin"
+              >
+                飞书登录
+              </el-button>
+            </template>
           </div>
         </div>
       </div>
@@ -91,7 +103,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useI18n } from 'vue-i18n'
@@ -99,6 +111,7 @@ import custom_small from '@/assets/svg/logo-custom_small.svg'
 import elexDataLogoUrl from '@/assets/elex_data.png'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { toLoginSuccess } from '@/utils/utils'
+import { AuthApi } from '@/api/login'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -107,6 +120,14 @@ const { t } = useI18n()
 const loginForm = ref({
   username: '',
   password: '',
+})
+const feishuLoading = ref(false)
+const feishuStatus = ref<{
+  enabled: boolean
+  authorize_url?: string | null
+}>({
+  enabled: false,
+  authorize_url: null,
 })
 // const isLdap = computed(() => activeName.value == 'ldap')
 const storyBg = computed(() => appearanceStore.getBg || '')
@@ -166,6 +187,74 @@ const rules = {
 
 const loginFormRef = ref()
 
+const getCallbackParam = (name: string) => {
+  const searchValue = new URLSearchParams(window.location.search).get(name)
+  if (searchValue) {
+    return searchValue
+  }
+  const hash = window.location.hash || ''
+  const queryIndex = hash.indexOf('?')
+  if (queryIndex < 0) {
+    return null
+  }
+  return new URLSearchParams(hash.slice(queryIndex + 1)).get(name)
+}
+
+const currentRedirect = () => {
+  const redirect = router.currentRoute.value.query.redirect
+  const value = Array.isArray(redirect) ? redirect[0] : redirect
+  return value || undefined
+}
+
+const loadFeishuStatus = async () => {
+  try {
+    const res: any = await AuthApi.feishuStatus({ redirect: currentRedirect() })
+    feishuStatus.value = {
+      enabled: Boolean(res?.enabled),
+      authorize_url: res?.authorize_url || null,
+    }
+  } catch {
+    feishuStatus.value = { enabled: false, authorize_url: null }
+  }
+}
+
+const handleFeishuCallback = async () => {
+  const code = getCallbackParam('code')
+  const state = getCallbackParam('state')
+  if (!code || !state || !state.includes('feishu')) {
+    return false
+  }
+  feishuLoading.value = true
+  try {
+    const res: any = await AuthApi.feishuCallback({ code, state })
+    userStore.setToken(res.access_token)
+    if (res.platform_info) {
+      userStore.setPlatformInfo(res.platform_info)
+    }
+    const cleanQuery = { ...router.currentRoute.value.query }
+    delete cleanQuery.code
+    delete cleanQuery.state
+    await router.replace({ path: '/login', query: cleanQuery })
+    if (res.platform_info?.redirect) {
+      await router.push(res.platform_info.redirect)
+    } else {
+      toLoginSuccess(router)
+    }
+    return true
+  } finally {
+    feishuLoading.value = false
+  }
+}
+
+const startFeishuLogin = async () => {
+  if (!feishuStatus.value.authorize_url) {
+    await loadFeishuStatus()
+  }
+  if (feishuStatus.value.authorize_url) {
+    window.location.href = feishuStatus.value.authorize_url
+  }
+}
+
 const submitForm = () => {
   loginFormRef.value.validate((valid: boolean) => {
     if (valid) {
@@ -175,6 +264,13 @@ const submitForm = () => {
     }
   })
 }
+
+onMounted(async () => {
+  const handled = await handleFeishuCallback()
+  if (!handled) {
+    await loadFeishuStatus()
+  }
+})
 </script>
 
 <style lang="less" scoped>
@@ -557,6 +653,41 @@ const submitForm = () => {
   &:focus {
     background: #1d4ed8;
     color: #ffffff;
+  }
+}
+
+.product-login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 14px;
+  color: var(--theme-text-tertiary);
+  font-size: 12px;
+
+  &::before,
+  &::after {
+    content: '';
+    height: 1px;
+    flex: 1;
+    background: var(--theme-shell-border);
+  }
+}
+
+.product-login-feishu {
+  width: 100%;
+  height: 42px;
+  border-radius: 7px;
+  border-color: #cbd5e1;
+  color: #172033;
+  background: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+
+  &:hover,
+  &:focus {
+    border-color: #2563eb;
+    color: #2563eb;
+    background: #f8fbff;
   }
 }
 

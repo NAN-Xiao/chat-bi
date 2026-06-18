@@ -103,7 +103,7 @@ const canManageAgent = (row: any) => {
 }
 
 const canViewPromptInPersonalEntry = (row: any) => {
-  return row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true
+  return row?.prompt_visible === true || (row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true)
 }
 
 const buildAgentQuery = () => {

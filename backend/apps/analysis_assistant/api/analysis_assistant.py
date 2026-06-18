@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 import orjson
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -25,12 +25,17 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
 from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
 from apps.system.crud.user import is_system_admin
+from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.deps import CurrentUser, SessionDep
 from common.core.tenant_rate_limiter import consume_tenant_rate_limit, resolve_tenant_rate_limit
 from common.utils.utils import extract_nested_json
 
-router = APIRouter(tags=["analysis_assistant"], prefix="/analysis-assistant")
+router = APIRouter(
+    tags=["analysis_assistant"],
+    prefix="/analysis-assistant",
+    dependencies=[Depends(require_chatbi_business_user)],
+)
 
 
 class AnalysisAssistantMessage(BaseModel):
@@ -277,6 +282,11 @@ def _rate_limit_message(retry_after_seconds: int) -> str:
 
 
 def _quota_message(state) -> str:
+    if getattr(state, "reason", None) == "subscription_suspended":
+        return (
+            f"当前租户订阅状态为 {getattr(state, 'subscription_status', 'suspended')}，"
+            "高消耗功能已由平台管理员暂停。请联系企业管理员或平台管理员处理。"
+        )
     window_name = "每日" if state.window == "daily" else "每月"
     return (
         f"当前租户套餐的{window_name} {state.action} 用量已达上限"

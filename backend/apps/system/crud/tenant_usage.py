@@ -36,6 +36,8 @@ class TenantUsageQuotaState:
     used: int
     remaining: int
     reset_at: str | None = None
+    reason: str | None = None
+    subscription_status: str | None = None
 
 
 def usage_metric_date(now: datetime | None = None) -> str:
@@ -282,6 +284,21 @@ def resolve_tenant_plan(session: Session | None, tenant_id: int | str | None) ->
     return "default"
 
 
+def resolve_tenant_subscription_status(session: Session | None, tenant_id: int | str | None) -> str:
+    resolved_tenant_id = _tenant_id(tenant_id)
+    try:
+        from apps.system.crud.tenant import TENANT_SUBSCRIPTION_ACTIVE, normalize_subscription_status
+        from apps.system.models.tenant import TenantModel
+
+        tenant = session.get(TenantModel, resolved_tenant_id) if session is not None else None
+        if tenant and getattr(tenant, "subscription_status", None):
+            return normalize_subscription_status(str(tenant.subscription_status))
+        return TENANT_SUBSCRIPTION_ACTIVE
+    except Exception:
+        AppLogUtil.exception("Could not resolve tenant subscription status")
+        return "active"
+
+
 def check_tenant_usage_quota(
     session: Session,
     *,
@@ -292,11 +309,52 @@ def check_tenant_usage_quota(
     resolved_tenant_id = _tenant_id(tenant_id)
     action_key = (action or "").strip().lower()
     plan = resolve_tenant_plan(session, resolved_tenant_id)
+    subscription_status = resolve_tenant_subscription_status(session, resolved_tenant_id)
+    try:
+        from apps.system.crud.tenant import subscription_blocks_high_cost_features
+
+        if subscription_blocks_high_cost_features(subscription_status):
+            return TenantUsageQuotaState(
+                allowed=False,
+                tenant_id=resolved_tenant_id,
+                plan=plan,
+                action=action_key,
+                window="subscription",
+                limit=0,
+                used=0,
+                remaining=0,
+                reason="subscription_suspended",
+                subscription_status=subscription_status,
+            )
+    except Exception:
+        AppLogUtil.exception("Could not evaluate tenant subscription status")
+        if settings.APP_ENV == "production":
+            raise RuntimeError("Tenant subscription status unavailable")
     if not settings.TENANT_USAGE_QUOTA_ENABLED:
-        return TenantUsageQuotaState(True, resolved_tenant_id, plan, action_key, None, 0, 0, 0)
+        return TenantUsageQuotaState(
+            True,
+            resolved_tenant_id,
+            plan,
+            action_key,
+            None,
+            0,
+            0,
+            0,
+            subscription_status=subscription_status,
+        )
     metrics = ACTION_METRICS.get(action_key)
     if not metrics:
-        return TenantUsageQuotaState(True, resolved_tenant_id, plan, action_key, None, 0, 0, 0)
+        return TenantUsageQuotaState(
+            True,
+            resolved_tenant_id,
+            plan,
+            action_key,
+            None,
+            0,
+            0,
+            0,
+            subscription_status=subscription_status,
+        )
 
     for window in ("daily", "monthly"):
         limit = _quota_limit_for_plan(plan, action_key, window)
@@ -321,14 +379,24 @@ def check_tenant_usage_quota(
                 used=used,
                 remaining=0,
                 reset_at=reset_at,
+                reason="quota_exceeded",
+                subscription_status=subscription_status,
             )
-    return TenantUsageQuotaState(True, resolved_tenant_id, plan, action_key, None, 0, 0, 0)
+    return TenantUsageQuotaState(
+        True,
+        resolved_tenant_id,
+        plan,
+        action_key,
+        None,
+        0,
+        0,
+        0,
+        subscription_status=subscription_status,
+    )
 
 
 def check_tenant_usage_quota_detached(*, tenant_id: int | str | None, action: str) -> TenantUsageQuotaState:
     resolved_tenant_id = _tenant_id(tenant_id)
-    if not settings.TENANT_USAGE_QUOTA_ENABLED or not _parse_quota_limits():
-        return TenantUsageQuotaState(True, resolved_tenant_id, "default", action, None, 0, 0, 0)
     try:
         from common.core.db import engine
 

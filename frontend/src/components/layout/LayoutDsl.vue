@@ -13,6 +13,7 @@ import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
+import { useUserStore } from '@/stores/user'
 import { useEmitt } from '@/utils/useEmitt'
 import { isMobile } from '@/utils/utils'
 import { getInitialTheme, THEME_CHANGE_EVENT, type ThemeMode } from '@/utils/theme'
@@ -21,6 +22,7 @@ const isPhone = computed(() => {
   return isMobile()
 })
 const router = useRouter()
+const userStore = useUserStore()
 const collapse = ref(false)
 const collapseCopy = ref(false)
 const analysisAssistantExpanded = ref(false)
@@ -66,11 +68,11 @@ const handleFoldExpand = () => {
 }
 
 const toProjectList = () => {
-  router.push('/chat/index')
+  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/chat/index')
 }
 
 const toChatIndex = () => {
-  router.push('/chat/index')
+  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/chat/index')
 }
 
 const toUserIndex = () => {
@@ -253,11 +255,14 @@ onMounted(() => {
           </el-icon>
         </button>
       </div>
-      <ProjectSelector v-if="!showSysmenu" :collapse="collapse"></ProjectSelector>
+      <ProjectSelector
+        v-if="!showSysmenu && !userStore.isSystemAdminUser"
+        :collapse="collapse"
+      ></ProjectSelector>
       <Menu :collapse="collapseCopy"></Menu>
       <div class="bottom">
         <div
-          v-if="showSysmenu"
+          v-if="showSysmenu && !userStore.isSystemAdminUser"
           class="back-to-project"
           :class="collapse && 'collapse'"
           @click="toProjectList"
@@ -279,7 +284,7 @@ onMounted(() => {
       </div>
     </div>
     <AnalysisAssistantDock
-      v-if="!showSysmenu && !isPhone"
+      v-if="!showSysmenu && !isPhone && !userStore.isSystemAdminUser"
       v-model:expanded="analysisAssistantExpanded"
     />
   </div>
