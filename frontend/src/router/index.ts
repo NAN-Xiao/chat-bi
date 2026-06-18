@@ -28,7 +28,10 @@ import Prompt from '@/views/system/prompt/index.vue'
 import Audit from '@/views/system/audit/index.vue'
 import Parameter from '@/views/system/parameter/index.vue'
 import Permission from '@/views/system/permission/index.vue'
+import Tenant from '@/views/system/tenant/Tenant.vue'
+import TenantAccess from '@/views/system/tenant-access/TenantAccess.vue'
 import User from '@/views/system/user/User.vue'
+import MyWorkspaces from '@/views/account/workspaces/MyWorkspaces.vue'
 import Page401 from '@/views/error/index.vue'
 import ChatPreview from '@/views/chat/preview.vue'
 
@@ -102,6 +105,23 @@ export const routes = [
         component: Access,
         meta: {
           title: t('access.my_permissions'),
+          iconActive: 'user',
+          iconDeActive: 'noUser',
+        },
+      },
+    ],
+  },
+  {
+    path: '/account',
+    component: LayoutDsl,
+    redirect: '/account/workspaces',
+    children: [
+      {
+        path: 'workspaces',
+        name: 'my-workspaces',
+        component: MyWorkspaces,
+        meta: {
+          title: t('tenant.my_workspaces'),
           iconActive: 'user',
           iconDeActive: 'noUser',
         },
@@ -203,6 +223,23 @@ export const routes = [
         meta: { title: t('user.user_management'), iconActive: 'user', iconDeActive: 'noUser' },
       },
       {
+        path: 'member-access',
+        name: 'member-access',
+        component: TenantAccess,
+        meta: { title: t('tenant.member_access'), iconActive: 'user', iconDeActive: 'noUser' },
+      },
+      {
+        path: 'tenant',
+        name: 'tenant',
+        component: Tenant,
+        meta: {
+          title: t('tenant.management'),
+          iconActive: 'user',
+          iconDeActive: 'noUser',
+          platformOnly: true,
+        },
+      },
+      {
         path: 'project',
         name: 'project',
         component: Datasource,
@@ -216,6 +253,7 @@ export const routes = [
           title: t('model.ai_model_configuration'),
           iconActive: 'model',
           iconDeActive: 'noModel',
+          platformOnly: true,
         },
       },
       {
@@ -262,13 +300,13 @@ export const routes = [
             path: 'parameter',
             name: 'parameter',
             component: Parameter,
-            meta: { title: t('parameter.parameter_configuration') },
+            meta: { title: t('parameter.parameter_configuration'), platformOnly: true },
           },
           {
             path: 'variables',
             name: 'variables',
             component: Variables,
-            meta: { title: t('variables.system_variables') },
+            meta: { title: t('variables.system_variables'), platformOnly: true },
           },
         ],
       },

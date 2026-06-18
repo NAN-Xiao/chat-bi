@@ -34,7 +34,7 @@ async def _encrypt_ai_model_secrets(data: dict) -> dict:
 
 
 @router.post("/status", include_in_schema=False)
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def check_llm(info: AiModelCreator, trans: Trans):
     async def generate():
         try:
@@ -74,7 +74,7 @@ async def check_default(session: SessionDep, trans: Trans):
 
 @router.put("/default/{id}", summary=f"{PLACEHOLDER_PREFIX}system_model_default",
             description=f"{PLACEHOLDER_PREFIX}system_model_default")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.AI_MODEL, resource_id_expr="id"))
 async def set_default(session: SessionDep, id: int = Path(description="ID")):
     db_model = session.get(AiModelDetail, id)
@@ -97,7 +97,7 @@ async def set_default(session: SessionDep, id: int = Path(description="ID")):
 
 @router.get("", response_model=list[AiModelGridItem], summary=f"{PLACEHOLDER_PREFIX}system_model_grid",
             description=f"{PLACEHOLDER_PREFIX}system_model_grid")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def query(
         session: SessionDep,
         keyword: str | None = Query(default=None, max_length=255, description=f"{PLACEHOLDER_PREFIX}keyword")
@@ -122,7 +122,7 @@ async def query(
 
 @router.get("/{id}", response_model=AiModelEditor, summary=f"{PLACEHOLDER_PREFIX}system_model_query",
             description=f"{PLACEHOLDER_PREFIX}system_model_query")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_model_by_id(
         session: SessionDep,
         id: int = Path(description="ID")
@@ -158,7 +158,7 @@ async def get_model_by_id(
 
 @router.post("", summary=f"{PLACEHOLDER_PREFIX}system_model_create",
              description=f"{PLACEHOLDER_PREFIX}system_model_create")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.AI_MODEL, result_id_expr="id"))
 async def add_model(
         session: SessionDep,
@@ -180,7 +180,7 @@ async def add_model(
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}system_model_update",
             description=f"{PLACEHOLDER_PREFIX}system_model_update")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 @system_log(
     LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.AI_MODEL, resource_id_expr="editor.id"))
 async def update_model(
@@ -201,7 +201,7 @@ async def update_model(
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}system_model_del",
                description=f"{PLACEHOLDER_PREFIX}system_model_del")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.AI_MODEL, resource_id_expr="id"))
 async def delete_model(
         session: SessionDep,

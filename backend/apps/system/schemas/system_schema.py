@@ -37,12 +37,19 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
     origin: int = 0
     name: str
     system_role: str = "viewer"
+    tenant_id: Optional[int] = None
+    tenant_code: Optional[str] = None
+    tenant_name: Optional[str] = None
+    tenant_role: Optional[str] = None
 
     def to_dict(self):
-        return {
+        data = {
             "id": self.id,
             "account": self.account,
         }
+        if self.tenant_id is not None:
+            data["tenant_id"] = self.tenant_id
+        return data
 
     @field_validator("language")
     def validate_language(cls, lang: str) -> str:
@@ -57,6 +64,8 @@ class UserCreator(BaseUser):
     status: int = Field(default=1, description=f"{PLACEHOLDER_PREFIX}status")
     origin: Optional[int] = Field(default=0, description=f"{PLACEHOLDER_PREFIX}origin")
     system_role: Literal["system_admin", "collab_admin", "viewer"] = "viewer"
+    tenant_role: Literal["owner", "admin", "member"] = "member"
+    tenant_id: Optional[int] = None
     project_ids: Optional[list[int]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}ds_id")
     project_role_map: Optional[dict[int, str]] = Field(default=None, description=f"{PLACEHOLDER_PREFIX}ds_role")
     system_variables: Optional[List] = Field(default=[])
@@ -95,6 +104,7 @@ class UserInfoDTO(UserEditor):
     language: str = "zh-CN"
     weight: int = 0
     isAdmin: bool = False
+    tenant_ids: list[int] = Field(default_factory=list)
 
 
 class AssistantBase(BaseModel):
@@ -120,6 +130,7 @@ class AssistantHeader(AssistantDTO):
     certificate: Optional[str] = None
     online: bool = False
     request_origin: Optional[str] = None
+    tenant_id: int = 1
 
 
 class AssistantValidator(BaseModel):
@@ -190,5 +201,6 @@ class ApikeyStatus(BaseModel):
 class ApikeyGridItem(BaseCreatorDTO):
     access_key: str = Field(description=f"Access Key")
     secret_key: str = Field(description=f"Secret Key")
+    tenant_id: int = Field(default=1, description="Tenant ID")
     status: bool = Field(description=f"{PLACEHOLDER_PREFIX}status")
     create_time: int = Field(description=f"{PLACEHOLDER_PREFIX}create_time")

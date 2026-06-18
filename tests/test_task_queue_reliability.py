@@ -2,9 +2,11 @@ import asyncio
 import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
+from apps.system.api.task_queue import _can_read_task
 from common.core import task_queue
 from common.core.config import settings
 from common.core.task_queue import TaskStatus
@@ -162,3 +164,48 @@ def test_recover_stale_task_fails_after_max_attempts(monkeypatch):
         assert await task_queue.processing_size() == 0
 
     asyncio.run(scenario())
+
+
+def test_task_state_is_scoped_by_tenant(monkeypatch):
+    fake = _install_fake_redis(monkeypatch)
+    task_queue._task_handlers["test.tenant_scope"] = lambda payload: payload
+
+    async def scenario():
+        task = await task_queue.enqueue_task("test.tenant_scope", {"value": 1}, tenant_id=42)
+
+        assert task["tenant_id"] == 42
+        assert await task_queue.get_task(task["id"], tenant_id=42) is not None
+        assert await task_queue.get_task(task["id"], tenant_id=43) is None
+        assert f"{settings.REDIS_KEY_PREFIX}:tenant:42:task:item:{task['id']}" in fake.values
+
+    asyncio.run(scenario())
+
+
+def test_worker_exposes_current_task_tenant_context(monkeypatch):
+    _install_fake_redis(monkeypatch)
+
+    def handler(_payload):
+        return {"tenant_id": task_queue.current_task_tenant_id()}
+
+    task_queue._task_handlers["test.tenant_context"] = handler
+
+    async def scenario():
+        task = await task_queue.enqueue_task("test.tenant_context", tenant_id=77)
+        claimed = await task_queue._claim_task()
+        result = await task_queue.run_task(claimed, worker_name="worker-1")
+
+        assert claimed == task["id"]
+        assert result["status"] == TaskStatus.SUCCEEDED.value
+        assert result["result"] == {"tenant_id": 77}
+
+    asyncio.run(scenario())
+
+
+def test_task_read_permission_requires_current_tenant():
+    tenant_one_admin = SimpleNamespace(id=1, system_role="system_admin", tenant_id=1)
+    tenant_one_user = SimpleNamespace(id=2, system_role="", tenant_id=1)
+
+    assert _can_read_task({"created_by": 2, "tenant_id": 1}, tenant_one_admin) is True
+    assert _can_read_task({"created_by": 2, "tenant_id": 2}, tenant_one_admin) is False
+    assert _can_read_task({"created_by": 2, "tenant_id": 1}, tenant_one_user) is True
+    assert _can_read_task({"created_by": 3, "tenant_id": 1}, tenant_one_user) is False

@@ -37,6 +37,7 @@ def _engine_with_dashboard_permission_tables():
             """
             CREATE TABLE core_datasource (
                 id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
                 name VARCHAR(128) NOT NULL,
                 description VARCHAR(512),
                 type VARCHAR(64),
@@ -132,6 +133,7 @@ def _create_simple_datasource_table(session: Session):
         """
         CREATE TABLE core_datasource (
             id INTEGER PRIMARY KEY,
+            tenant_id INTEGER NOT NULL DEFAULT 1,
             name VARCHAR(128) NOT NULL,
             description VARCHAR(512),
             type VARCHAR(64),
@@ -303,6 +305,81 @@ def test_list_resource_returns_dashboard_tree_nodes_for_admin():
     assert tree[0].datasource == 2
     assert tree[0].leaf is True
     assert tree[0].can_edit is True
+
+
+def test_list_resource_excludes_dashboards_from_other_tenants_for_admin():
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=2)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="tenant-1-dashboard",
+                tenant_id=1,
+                name="租户一看板",
+                pid="root",
+                datasource=None,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="tenant-2-dashboard",
+                tenant_id=2,
+                name="租户二看板",
+                pid="root",
+                datasource=None,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=101,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(),
+            current_user=current_user,
+        )
+
+    assert [node.id for node in tree] == ["tenant-2-dashboard"]
+
+
+def test_load_resource_denies_cross_tenant_dashboard():
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=2)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="tenant-1-dashboard",
+                tenant_id=1,
+                name="租户一看板",
+                pid="root",
+                datasource=None,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.load_resource(
+                session=session,
+                dashboard=QueryDashboard(id="tenant-1-dashboard"),
+                current_user=current_user,
+            )
+
+    assert exc_info.value.status_code == 404
 
 
 def test_list_resource_marks_project_editor_can_edit(monkeypatch):
@@ -605,7 +682,7 @@ def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monk
 
 def test_project_editor_can_create_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=3)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
@@ -625,6 +702,7 @@ def test_project_editor_can_create_dashboard(monkeypatch):
 
         assert record.datasource == 2
         assert record.create_by == "2"
+        assert record.tenant_id == 3
 
 
 def test_project_viewer_can_create_own_dashboard(monkeypatch):
@@ -1110,6 +1188,97 @@ def test_list_shared_resources_marks_permission_status(monkeypatch):
     assert can_use_map["share-1"] is True
     assert can_use_map["share-2"] is False
     assert preview_map["share-1"] == "data:image/jpeg;base64,preview"
+
+
+def test_list_shared_resources_excludes_other_tenant_shares(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=9, isAdmin=False, tenant_id=2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_datasource_name", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboardShare(
+                id="tenant-1-share",
+                tenant_id=1,
+                name="租户一共享",
+                datasource=1,
+                share_type="dashboard",
+                source_dashboard_id="dashboard-1",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+                create_by="1",
+                update_by="1",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+            )
+        )
+        session.add(
+            CoreDashboardShare(
+                id="tenant-2-share",
+                tenant_id=2,
+                name="租户二共享",
+                datasource=1,
+                share_type="dashboard",
+                source_dashboard_id="dashboard-2",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+                create_by="1",
+                update_by="1",
+                create_time=101,
+                update_time=101,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        result = dashboard_service.list_shared_resources(
+            session=session,
+            current_user=current_user,
+            query=DashboardShareListQuery(),
+        )
+
+    assert [item["id"] for item in result] == ["tenant-2-share"]
+
+
+def test_load_shared_resource_denies_cross_tenant_share(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=9, isAdmin=True, tenant_id=2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboardShare(
+                id="tenant-1-share",
+                tenant_id=1,
+                name="租户一共享",
+                datasource=1,
+                share_type="dashboard",
+                source_dashboard_id="dashboard-1",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+                create_by="1",
+                update_by="1",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.load_shared_resource(
+                session=session,
+                current_user=current_user,
+                query=SharedDashboardQuery(id="tenant-1-share"),
+            )
+
+    assert exc_info.value.status_code == 404
 
 
 def test_list_shared_resources_deduplicates_same_source(monkeypatch):

@@ -3,8 +3,10 @@ import { computed } from 'vue'
 import { ElMenu } from 'element-plus-secondary'
 import { useRoute, useRouter } from 'vue-router'
 import MenuItem from './MenuItem.vue'
+import { useUserStore } from '@/stores/user'
 // import { routes } from '@/router'
 const router = useRouter()
+const userStore = useUserStore()
 defineProps({
   collapse: Boolean,
 })
@@ -39,6 +41,7 @@ const mainMenuOrder = (path: string) => {
   if (path.includes('/chat')) return 10
   if (path.includes('/dashboard') && !path.includes('/dashboard-store')) return 20
   if (path.includes('/access')) return 30
+  if (path.includes('/account')) return 35
   if (path.includes('/custom-agent')) return 40
   if (path.includes('/dashboard-store')) return 50
   return 100
@@ -49,7 +52,7 @@ const routerList = computed(() => {
     const [sysRouter] = formatRoute(
       router.getRoutes().filter((route: any) => route?.name === 'system')
     )
-    return sysRouter.children
+    return sysRouter.children.filter((item: any) => !item.meta?.platformOnly || userStore.isSystemAdminUser)
   }
   const list = router.getRoutes().filter((route) => {
     return (

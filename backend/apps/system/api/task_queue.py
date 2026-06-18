@@ -19,7 +19,14 @@ class PingTaskRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+def _current_tenant_id(current_user) -> int:
+    tenant_id = getattr(current_user, "tenant_id", None)
+    return int(tenant_id or 1)
+
+
 def _can_read_task(task: dict[str, Any], current_user) -> bool:
+    if int(task.get("tenant_id") or 1) != _current_tenant_id(current_user):
+        return False
     if is_system_admin(current_user):
         return True
     return task.get("created_by") == current_user.id
@@ -35,12 +42,17 @@ async def task_health():
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def create_ping_task(req: PingTaskRequest, current_user: CurrentUser):
     payload = {"message": req.message, **req.payload}
-    return await enqueue_task("system.ping", payload, created_by=current_user.id)
+    return await enqueue_task(
+        "system.ping",
+        payload,
+        created_by=current_user.id,
+        tenant_id=_current_tenant_id(current_user),
+    )
 
 
 @router.get("/{task_id}")
 async def get_task_info(task_id: str, current_user: CurrentUser):
-    task = await get_task(task_id)
+    task = await get_task(task_id, tenant_id=_current_tenant_id(current_user))
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if not _can_read_task(task, current_user):

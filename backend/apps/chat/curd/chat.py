@@ -25,6 +25,23 @@ from common.utils.data_format import DataFormat
 from common.utils.utils import extract_nested_json, AppLogUtil
 
 _USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
+DEFAULT_TENANT_ID = 1
+
+
+def _current_tenant_id(current_user: CurrentUser | None) -> int:
+    tenant_id = getattr(current_user, "tenant_id", None)
+    return int(tenant_id or DEFAULT_TENANT_ID)
+
+
+def _same_tenant(row, current_user: CurrentUser | None) -> bool:
+    return int(getattr(row, "tenant_id", DEFAULT_TENANT_ID) or DEFAULT_TENANT_ID) == _current_tenant_id(current_user)
+
+
+def _record_tenant_id(session: SessionDep, record_id: int | None) -> int:
+    if not record_id:
+        return DEFAULT_TENANT_ID
+    tenant_id = session.exec(select(ChatRecord.tenant_id).where(ChatRecord.id == record_id)).first()
+    return int(tenant_id or DEFAULT_TENANT_ID)
 
 
 def _failed_permission_data(message: str = _USER_PERMISSION_DENIED_MESSAGE) -> dict[str, Any]:
@@ -73,7 +90,7 @@ def _record_allowed_by_current_permissions(session: SessionDep, current_user: Cu
         source_record_id = _row_value(row, "analysis_record_id") or _row_value(row, "predict_record_id")
         if source_record_id:
             source_record = session.get(ChatRecord, source_record_id)
-            if source_record is None or source_record.create_by != current_user.id:
+            if source_record is None or source_record.create_by != current_user.id or not _same_tenant(source_record, current_user):
                 return False
             datasource_id = source_record.datasource
             sql = source_record.sql
@@ -126,17 +143,20 @@ def _public_log_message(current_user: CurrentUser, log: ChatLog, message):
     return None
 
 
-def get_chat_record_by_id(session: SessionDep, record_id: int):
+def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | None = None):
     record: ChatRecord | None = None
 
     stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource, ChatRecord.engine_type,
-                  ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.custom_prompt_id).where(
+                  ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.custom_prompt_id,
+                  ChatRecord.tenant_id).where(
         and_(ChatRecord.id == record_id))
+    if tenant_id is not None:
+        stmt = stmt.where(ChatRecord.tenant_id == int(tenant_id))
     result = session.execute(stmt)
     for r in result:
         record = ChatRecord(id=r.id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
                             engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by,
-                            custom_prompt_id=r.custom_prompt_id)
+                            custom_prompt_id=r.custom_prompt_id, tenant_id=r.tenant_id)
     return record
 
 
@@ -147,7 +167,7 @@ def get_chat(session: SessionDep, chat_id: int) -> Chat:
 
 
 def list_chats(session: SessionDep, current_user: CurrentUser, datasource_id: Optional[int] = None) -> List[Chat]:
-    filters = [Chat.create_by == current_user.id]
+    filters = [Chat.create_by == current_user.id, Chat.tenant_id == _current_tenant_id(current_user)]
     if datasource_id:
         filters.append(Chat.datasource == datasource_id)
     else:
@@ -168,6 +188,8 @@ def list_recent_questions(session: SessionDep, current_user: CurrentUser, dataso
         .join(Chat, ChatRecord.chat_id == Chat.id)  # 关联Chat表
         .filter(
             Chat.datasource == datasource_id,  # 使用Chat表的datasource字段
+            Chat.tenant_id == _current_tenant_id(current_user),
+            ChatRecord.tenant_id == _current_tenant_id(current_user),
             ChatRecord.question.isnot(None),
             ChatRecord.create_by == current_user.id
         )
@@ -183,7 +205,7 @@ def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename
     chat = session.get(Chat, rename_object.id)
     if not chat:
         raise Exception(f"Chat with id {rename_object.id} not found")
-    if chat.create_by != current_user.id:
+    if chat.create_by != current_user.id or not _same_tenant(chat, current_user):
         raise Exception(f"Chat with id {rename_object.id} not Owned by the current user")
     chat.brief = rename_object.brief.strip()[:20]
     chat.brief_generate = rename_object.brief_generate
@@ -227,7 +249,7 @@ def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
     chat = session.query(Chat).filter(Chat.id == chart_id).first()
     if not chat:
         return f'Chat with id {chart_id} has been deleted'
-    if chat.create_by != current_user.id:
+    if chat.create_by != current_user.id or not _same_tenant(chat, current_user):
         raise Exception(f"Chat with id {chart_id} not Owned by the current user")
     session.delete(chat)
     session.commit()
@@ -348,7 +370,11 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
         ChatRecord.analysis_record_id,
         ChatRecord.predict_record_id,
     ).where(
-        and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id)
+        and_(
+            ChatRecord.id == chat_record_id,
+            ChatRecord.create_by == current_user.id,
+            ChatRecord.tenant_id == _current_tenant_id(current_user),
+        )
     )
     res = session.execute(stmt)
     for row in res:
@@ -377,7 +403,11 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
     return {}
 
 def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
-    stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+    stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(
+        ChatRecord.id == chat_record_id,
+        ChatRecord.create_by == current_user.id,
+        ChatRecord.tenant_id == _current_tenant_id(current_user),
+    ))
     row = session.execute(stmt).first()
     if row is None or row.datasource is None or not row.sql:
         return {'status': 'failed', 'fields': [], 'data': [], 'message': '记录不存在或没有可执行 SQL'}
@@ -418,7 +448,11 @@ def get_chat_chart_data(session: SessionDep, chat_record_id: int):
 
 def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     stmt = select(ChatRecord.predict_data, ChatRecord.predict_record_id).where(
-        and_(ChatRecord.id == chat_record_id, ChatRecord.create_by == current_user.id))
+        and_(
+            ChatRecord.id == chat_record_id,
+            ChatRecord.create_by == current_user.id,
+            ChatRecord.tenant_id == _current_tenant_id(current_user),
+        ))
     res = session.execute(stmt)
     for row in res:
         if row.predict_record_id:
@@ -461,7 +495,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     chat = session.get(Chat, chart_id)
     if not chat:
         raise Exception(f"Chat with id {chart_id} not found")
-    if chat.create_by != current_user.id:
+    if chat.create_by != current_user.id or not _same_tenant(chat, current_user):
         raise Exception(f"Chat with id {chart_id} not Owned by the current user")
     if chat.datasource and not has_datasource_access(session, current_user, chat.datasource):
         raise Exception(f"当前用户无权访问项目 {chat.datasource}")
@@ -486,7 +520,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     analysis_alias_log = aliased(ChatLog)
     predict_alias_log = aliased(ChatLog)
 
-    stmt = (select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
+    tenant_id = _current_tenant_id(current_user)
+    stmt = (select(ChatRecord.id, ChatRecord.tenant_id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
                    ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
                    ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                    ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
@@ -511,10 +546,14 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     .outerjoin(predict_alias_log, and_(predict_alias_log.pid == ChatRecord.id,
                                        predict_alias_log.type == TypeEnum.CHAT,
                                        predict_alias_log.operate == OperationEnum.PREDICT_DATA))
-    .where(and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(
+    .where(and_(
+        ChatRecord.create_by == current_user.id,
+        ChatRecord.chat_id == chart_id,
+        ChatRecord.tenant_id == tenant_id,
+    )).order_by(
         ChatRecord.create_time))
     if with_data:
-        stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
+        stmt = select(ChatRecord.id, ChatRecord.tenant_id, ChatRecord.chat_id, ChatRecord.create_time, ChatRecord.finish_time,
                       ChatRecord.question, ChatRecord.sql_answer, ChatRecord.sql,ChatRecord.datasource,
                       ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                       ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
@@ -522,7 +561,11 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                       ChatRecord.custom_prompt_id,
                       ChatRecord.recommended_question, ChatRecord.first_chat,
                       ChatRecord.finish, ChatRecord.error, ChatRecord.data, ChatRecord.predict_data).where(
-            and_(ChatRecord.create_by == current_user.id, ChatRecord.chat_id == chart_id)).order_by(
+            and_(
+                ChatRecord.create_by == current_user.id,
+                ChatRecord.chat_id == chart_id,
+                ChatRecord.tenant_id == tenant_id,
+            )).order_by(
             ChatRecord.create_time)
 
     result = session.execute(stmt).all()
@@ -537,6 +580,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         log_stmt = select(ChatLog.pid, ChatLog.token_usage).where(
             and_(
                 ChatLog.pid.in_(record_ids),
+                ChatLog.tenant_id == tenant_id,
                 ChatLog.local_operation == False,
                 ChatLog.operate != OperationEnum.GENERATE_RECOMMENDED_QUESTIONS,
                 ChatLog.token_usage.is_not(None)  # 排除token_usage为空的记录
@@ -587,7 +631,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
         record_result: ChatRecordResult
         if not with_data:
-            record_result = ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
+            record_result = ChatRecordResult(id=row.id, tenant_id=row.tenant_id, chat_id=row.chat_id, create_time=row.create_time,
                                              finish_time=row.finish_time,
                                              duration=duration,
                                              total_tokens=total_tokens,
@@ -611,7 +655,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
             predict_data_value = row.predict_data
             if row.predict_record_id and not current_permission_allowed:
                 predict_data_value = None
-            record_result = ChatRecordResult(id=row.id, chat_id=row.chat_id, create_time=row.create_time,
+            record_result = ChatRecordResult(id=row.id, tenant_id=row.tenant_id, chat_id=row.chat_id, create_time=row.create_time,
                                              finish_time=row.finish_time,
                                              duration=duration,
                                              total_tokens=total_tokens,
@@ -738,12 +782,14 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
     if not chat_record:
         raise Exception(f"ChatRecord with id {chat_record_id} not found")
 
-    if chat_record.create_by != current_user.id:
+    tenant_id = _current_tenant_id(current_user)
+    if chat_record.create_by != current_user.id or int(chat_record.tenant_id or DEFAULT_TENANT_ID) != tenant_id:
         raise Exception(f"ChatRecord with id {chat_record_id} not owned by the current user")
 
     # 2. 查询与该ChatRecord相关的所有ChatLog记录
     chat_logs = session.query(ChatLog).filter(
         ChatLog.pid == chat_record_id,
+        ChatLog.tenant_id == tenant_id,
         ChatLog.operate != OperationEnum.GENERATE_RECOMMENDED_QUESTIONS
     ).order_by(ChatLog.start_time).all()
 
@@ -849,9 +895,17 @@ def get_chat_brief_generate(session: SessionDep, chat_id: int):
 
 
 def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
+    tenant_id = session.exec(select(Chat.tenant_id).where(Chat.id == chart_id)).first()
     stmt = select(ChatLog).where(
-        and_(ChatLog.pid.in_(select(ChatRecord.id).where(and_(ChatRecord.chat_id == chart_id))),
-             ChatLog.type == TypeEnum.CHAT, ChatLog.operate == OperationEnum.GENERATE_SQL)).order_by(
+        and_(
+            ChatLog.pid.in_(select(ChatRecord.id).where(and_(
+                ChatRecord.chat_id == chart_id,
+                ChatRecord.tenant_id == int(tenant_id or DEFAULT_TENANT_ID),
+            ))),
+            ChatLog.tenant_id == int(tenant_id or DEFAULT_TENANT_ID),
+            ChatLog.type == TypeEnum.CHAT,
+            ChatLog.operate == OperationEnum.GENERATE_SQL,
+        )).order_by(
         ChatLog.start_time)
     result = session.execute(stmt).all()
     _list = []
@@ -862,9 +916,17 @@ def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
 
 
 def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
+    tenant_id = session.exec(select(Chat.tenant_id).where(Chat.id == chart_id)).first()
     stmt = select(ChatLog).where(
-        and_(ChatLog.pid.in_(select(ChatRecord.id).where(and_(ChatRecord.chat_id == chart_id))),
-             ChatLog.type == TypeEnum.CHAT, ChatLog.operate == OperationEnum.GENERATE_CHART)).order_by(
+        and_(
+            ChatLog.pid.in_(select(ChatRecord.id).where(and_(
+                ChatRecord.chat_id == chart_id,
+                ChatRecord.tenant_id == int(tenant_id or DEFAULT_TENANT_ID),
+            ))),
+            ChatLog.tenant_id == int(tenant_id or DEFAULT_TENANT_ID),
+            ChatLog.type == TypeEnum.CHAT,
+            ChatLog.operate == OperationEnum.GENERATE_CHART,
+        )).order_by(
         ChatLog.start_time)
     result = session.execute(stmt).all()
     _list = []
@@ -883,6 +945,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
         create_chat_obj.question = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     chat = Chat(create_time=datetime.datetime.now(),
+                tenant_id=_current_tenant_id(current_user),
                 create_by=current_user.id,
                 brief=create_chat_obj.question.strip()[:20],
                 origin=create_chat_obj.origin if create_chat_obj.origin is not None else 0)
@@ -923,6 +986,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
     if require_datasource and ds:
         # generate first empty record
         record = ChatRecord()
+        record.tenant_id = chat.tenant_id
         record.chat_id = chat.id
         record.datasource = ds.id
         record.engine_type = ds.type_name
@@ -960,8 +1024,11 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     chat: Chat = session.get(Chat, question.chat_id)
     if not chat:
         raise Exception(f"Chat with id {question.chat_id} not found")
+    if chat.create_by != current_user.id or not _same_tenant(chat, current_user):
+        raise Exception(f"Chat with id {question.chat_id} not Owned by the current user")
 
     record = ChatRecord()
+    record.tenant_id = _current_tenant_id(current_user)
     record.question = question.question
     record.chat_id = chat.id
     record.create_time = datetime.datetime.now()
@@ -985,6 +1052,7 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
 
 def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, action_type: str) -> ChatRecord:
     record = ChatRecord()
+    record.tenant_id = int(base_record.tenant_id or DEFAULT_TENANT_ID)
     record.question = base_record.question
     record.chat_id = base_record.chat_id
     record.datasource = base_record.datasource
@@ -1015,7 +1083,8 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
 def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str = None, operate: OperationEnum = None,
               record_id: int = None, full_message: Union[list[dict], dict] = None,
               local_operation: bool = False) -> ChatLog:
-    log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
+    log = ChatLog(tenant_id=_record_tenant_id(session, record_id),
+                  type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
                   messages=full_message, start_time=datetime.datetime.now(), local_operation=local_operation)
 
     result = ChatLog(**log.model_dump())
@@ -1159,7 +1228,7 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
 
             if not json_str:
                 json_str = '[]'
-        except Exception as e:
+        except Exception:
             pass
     recommended_question = json_str
 

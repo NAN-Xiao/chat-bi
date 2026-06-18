@@ -61,8 +61,10 @@ export const watchRouter = (router: Router) => {
 
 const accessCrossPermission = (to: any) => {
   if (!to?.path) return false
+  const platformOnly = to.matched?.some((record: any) => record?.meta?.platformOnly)
   return (
     (to.path.startsWith('/system') && !userStore.isSystemManagerUser) ||
-    (to.path.startsWith('/set') && !userStore.isSystemManagerUser)
+    (to.path.startsWith('/set') && !userStore.isSystemManagerUser) ||
+    (platformOnly && !userStore.isSystemAdminUser)
   )
 }

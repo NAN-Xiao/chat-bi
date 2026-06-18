@@ -1,4 +1,3 @@
-import json
 import re
 import traceback
 from datetime import datetime
@@ -9,7 +8,6 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
-from sqlmodel import select
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts
@@ -365,13 +363,23 @@ def _collect_metric_knowledge(
     if current_user is not None and is_normal_user(current_user):
         return ""
     try:
-        terminology_template, _terms = get_terminology_template(session, question, datasource_id)
+        terminology_template, _terms = get_terminology_template(
+            session,
+            question,
+            datasource_id,
+            getattr(current_user, "tenant_id", None),
+        )
         if terminology_template and terminology_template.strip():
             parts.append(terminology_template.strip())
     except Exception:
         traceback.print_exc()
     try:
-        training_template, _examples = get_training_template(session, question, datasource_id)
+        training_template, _examples = get_training_template(
+            session,
+            question,
+            datasource_id,
+            tenant_id=getattr(current_user, "tenant_id", None),
+        )
         if training_template and training_template.strip():
             parts.append(training_template.strip())
     except Exception:
@@ -396,6 +404,7 @@ def _collect_custom_agent_context(
             custom_prompt_id,
             getattr(current_user, "id", None),
             is_system_admin(current_user),
+            getattr(current_user, "tenant_id", None),
         )
         return prompt_text.strip(), ai_model_id
     except Exception:

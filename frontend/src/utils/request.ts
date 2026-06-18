@@ -98,6 +98,10 @@ class HttpService {
         if (token && config.headers) {
           config.headers['X-ZHISHU-TOKEN'] = `Bearer ${token}`
         }
+        const tenantId = wsCache.get('user.tenantId')
+        if (tenantId && config.headers) {
+          config.headers['X-ZHISHU-TENANT-ID'] = String(tenantId)
+        }
         if (assistantStore.getToken) {
           const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
           config.headers['X-ZHISHU-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
@@ -291,6 +295,10 @@ class HttpService {
     }
     if (token) {
       heads['X-ZHISHU-TOKEN'] = `Bearer ${token}`
+    }
+    const tenantId = wsCache.get('user.tenantId')
+    if (tenantId) {
+      heads['X-ZHISHU-TENANT-ID'] = String(tenantId)
     }
     if (assistantStore.getToken) {
       const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '

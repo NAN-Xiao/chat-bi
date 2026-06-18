@@ -40,8 +40,9 @@ def dynamic_upgrade_cors(request: Request, session: Session):
         for instance in ResponseMiddleware.instances:
             instance.update_allow_origins(updated_origins)
 
-async def save(request: Request, session: Session, creator: AssistantBase):
-    db_model = AssistantModel.model_validate(creator)
+async def save(request: Request, session: Session, creator: AssistantBase, tenant_id: int = 1):
+    db_model = AssistantModel.model_validate(creator.model_dump(exclude_unset=True))
+    db_model.tenant_id = int(tenant_id or 1)
     db_model.create_time = get_timestamp()
     session.add(db_model)
     session.commit()

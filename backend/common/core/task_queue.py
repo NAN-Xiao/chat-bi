@@ -5,6 +5,7 @@ import socket
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -12,7 +13,7 @@ from typing import Any
 from redis.exceptions import RedisError
 
 from common.core.config import settings
-from common.core.redis_client import get_redis_client, redis_key
+from common.core.redis_client import get_redis_client, redis_key, tenant_redis_key
 from common.utils.utils import AppLogUtil
 
 
@@ -25,6 +26,8 @@ class TaskStatus(str, Enum):
 
 TaskHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 _task_handlers: dict[str, TaskHandler] = {}
+_current_task_context: ContextVar[dict[str, Any] | None] = ContextVar("current_task_context", default=None)
+DEFAULT_TASK_TENANT_ID = 1
 
 
 def utc_now() -> str:
@@ -51,8 +54,22 @@ def _processing_key(queue_name: str | None = None) -> str:
     return redis_key("task", "processing", queue_name or settings.TASK_QUEUE_NAME)
 
 
-def _task_key(task_id: str) -> str:
+def _normalize_tenant_id(tenant_id: int | str | None) -> int:
+    if tenant_id in (None, ""):
+        return DEFAULT_TASK_TENANT_ID
+    return int(tenant_id)
+
+
+def _task_key(task_id: str, tenant_id: int | str | None = None) -> str:
+    return tenant_redis_key(_normalize_tenant_id(tenant_id), "task", "item", task_id)
+
+
+def _legacy_task_key(task_id: str) -> str:
     return redis_key("task", "item", task_id)
+
+
+def _task_tenant_index_key(task_id: str) -> str:
+    return redis_key("task", "tenant", task_id)
 
 
 def _decode_redis_value(value: bytes | str) -> str:
@@ -69,6 +86,21 @@ def _parse_utc(value: str | None) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+def current_task_context() -> dict[str, Any] | None:
+    context = _current_task_context.get()
+    return dict(context) if context else None
+
+
+def current_task_tenant_id(default: int | None = DEFAULT_TASK_TENANT_ID) -> int | None:
+    context = _current_task_context.get()
+    if not context:
+        return default
+    tenant_id = context.get("tenant_id")
+    if tenant_id in (None, ""):
+        return default
+    return int(tenant_id)
 
 
 def task_handler(name: str):
@@ -90,6 +122,7 @@ async def enqueue_task(
     payload: dict[str, Any] | None = None,
     *,
     created_by: int | None = None,
+    tenant_id: int | str | None = None,
     queue_name: str | None = None,
     max_attempts: int | None = None,
 ) -> dict[str, Any]:
@@ -98,8 +131,10 @@ async def enqueue_task(
 
     task_id = uuid.uuid4().hex
     now = utc_now()
+    resolved_tenant_id = _normalize_tenant_id(tenant_id)
     task = {
         "id": task_id,
+        "tenant_id": resolved_tenant_id,
         "name": name,
         "queue": queue_name or settings.TASK_QUEUE_NAME,
         "status": TaskStatus.PENDING.value,
@@ -118,8 +153,13 @@ async def enqueue_task(
 
     client = get_redis_client()
     await client.set(
-        _task_key(task_id),
+        _task_key(task_id, resolved_tenant_id),
         _json_dumps(task),
+        ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
+    )
+    await client.set(
+        _task_tenant_index_key(task_id),
+        str(resolved_tenant_id),
         ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
     )
     await client.lpush(_queue_key(queue_name), task_id)
@@ -131,6 +171,7 @@ async def _enqueue_task_and_log(
     payload: dict[str, Any] | None = None,
     *,
     created_by: int | None = None,
+    tenant_id: int | str | None = None,
     queue_name: str | None = None,
     max_attempts: int | None = None,
 ) -> dict[str, Any] | None:
@@ -139,6 +180,7 @@ async def _enqueue_task_and_log(
             name,
             payload,
             created_by=created_by,
+            tenant_id=tenant_id,
             queue_name=queue_name,
             max_attempts=max_attempts,
         )
@@ -152,6 +194,7 @@ def enqueue_task_detached(
     payload: dict[str, Any] | None = None,
     *,
     created_by: int | None = None,
+    tenant_id: int | str | None = None,
     queue_name: str | None = None,
     max_attempts: int | None = None,
 ) -> dict[str, Any] | None:
@@ -159,6 +202,7 @@ def enqueue_task_detached(
         name,
         payload,
         created_by=created_by,
+        tenant_id=tenant_id,
         queue_name=queue_name,
         max_attempts=max_attempts,
     )
@@ -171,9 +215,25 @@ def enqueue_task_detached(
     return None
 
 
-async def get_task(task_id: str) -> dict[str, Any] | None:
+async def get_task(task_id: str, *, tenant_id: int | str | None = None) -> dict[str, Any] | None:
     client = get_redis_client()
-    return _json_loads(await client.get(_task_key(task_id)))
+    raw_index_tenant_id = await client.get(_task_tenant_index_key(task_id))
+    indexed_tenant_id = _decode_redis_value(raw_index_tenant_id) if raw_index_tenant_id is not None else None
+    if tenant_id is not None:
+        requested_tenant_id = _normalize_tenant_id(tenant_id)
+        if indexed_tenant_id is not None and int(indexed_tenant_id) != requested_tenant_id:
+            return None
+        task = _json_loads(await client.get(_task_key(task_id, requested_tenant_id)))
+        if task is not None:
+            return task
+        if indexed_tenant_id is None and requested_tenant_id == DEFAULT_TASK_TENANT_ID:
+            return _json_loads(await client.get(_legacy_task_key(task_id)))
+        return None
+    if indexed_tenant_id is not None:
+        task = _json_loads(await client.get(_task_key(task_id, indexed_tenant_id)))
+        if task is not None:
+            return task
+    return _json_loads(await client.get(_legacy_task_key(task_id)))
 
 
 async def queue_size(queue_name: str | None = None) -> int:
@@ -207,9 +267,16 @@ async def task_queue_health(queue_name: str | None = None) -> dict[str, Any]:
 
 async def _save_task(task: dict[str, Any]) -> None:
     client = get_redis_client()
+    resolved_tenant_id = _normalize_tenant_id(task.get("tenant_id"))
+    task["tenant_id"] = resolved_tenant_id
     await client.set(
-        _task_key(task["id"]),
+        _task_key(task["id"], resolved_tenant_id),
         _json_dumps(task),
+        ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
+    )
+    await client.set(
+        _task_tenant_index_key(task["id"]),
+        str(resolved_tenant_id),
         ex=settings.TASK_QUEUE_RESULT_TTL_SECONDS,
     )
 
@@ -230,14 +297,18 @@ async def _ack_task(task_id: str, queue_name: str | None = None) -> None:
     await get_redis_client().lrem(_processing_key(queue_name), 0, task_id)
 
 
-async def _run_handler(name: str, payload: dict[str, Any]) -> Any:
+async def _run_handler(name: str, payload: dict[str, Any], task: dict[str, Any] | None = None) -> Any:
     handler = _task_handlers.get(name)
     if handler is None:
         raise ValueError(f"Unknown task handler: {name}")
-    result = handler(payload)
-    if inspect.isawaitable(result):
-        return await result
-    return result
+    token = _current_task_context.set(task)
+    try:
+        result = handler(payload)
+        if inspect.isawaitable(result):
+            return await result
+        return result
+    finally:
+        _current_task_context.reset(token)
 
 
 async def run_task(
@@ -266,7 +337,7 @@ async def run_task(
     await _save_task(task)
 
     try:
-        result = await _run_handler(task["name"], task.get("payload") or {})
+        result = await _run_handler(task["name"], task.get("payload") or {}, task)
         task["status"] = TaskStatus.SUCCEEDED.value
         task["result"] = result
         task["error"] = None

@@ -9,7 +9,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
 from apps.chat.models.chat_model import Chat
 from common.core.db import engine
-from apps.system.crud.user import is_system_admin
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.user import is_platform_admin, is_system_admin
 from apps.system.schemas.system_schema import UserInfoDTO
 
 from common.utils.locale import I18n
@@ -31,6 +32,19 @@ def _required_project_role(role_list: Optional[list[str]]) -> Optional[str]:
 
 def _is_system_admin(current_user: UserInfoDTO) -> bool:
     return is_system_admin(current_user)
+
+
+def _is_platform_admin(current_user: UserInfoDTO) -> bool:
+    return is_platform_admin(current_user)
+
+
+def _is_tenant_admin(current_user: UserInfoDTO) -> bool:
+    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+    return _is_platform_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
+
+
+def _has_admin_permission(current_user: UserInfoDTO) -> bool:
+    return _is_tenant_admin(current_user) or _is_system_admin(current_user)
 
 
 def _resource_is_empty(resource) -> bool:
@@ -98,7 +112,7 @@ async def check_project_permission(
         resource,
         role_list: Optional[list[str]] = None,
 ) -> bool:
-    if _is_system_admin(current_user):
+    if _has_admin_permission(current_user) and type not in {'ds', 'datasource', 'table', 'field'}:
         return True
 
     if _resource_is_empty(resource):
@@ -149,11 +163,16 @@ async def check_project_permission(
             chat_ids = {int(item) for item in requested_ids}
         except (TypeError, ValueError):
             return False
-        if _is_system_admin(current_user):
-            return True
+        tenant_id = getattr(current_user, "tenant_id", None) or 1
+        filters = [
+            Chat.id.in_(chat_ids),
+            Chat.tenant_id == int(tenant_id),
+        ]
+        if not _has_admin_permission(current_user):
+            filters.append(Chat.create_by == current_user.id)
         with Session(engine) as session:
             owned_count = session.exec(
-                select(Chat.id).where(Chat.id.in_(chat_ids), Chat.create_by == current_user.id)
+                select(Chat.id).where(*filters)
             ).all()
             return chat_ids.issubset({int(item) for item in owned_count})
 
@@ -174,21 +193,27 @@ def require_permissions(permission: AppPermission):
                 )
             trans = i18n(request)
             
-            if _is_system_admin(current_user):
-                return await func(*args, **kwargs)
             role_list = permission.role
             keyExpression = permission.keyExpression
             resource_type = permission.type
             
             if role_list:
-                if 'admin' in role_list and not _is_system_admin(current_user):
+                if 'platform_admin' in role_list and not _is_platform_admin(current_user):
+                    raise HTTPException(status_code=403, detail=trans('i18n_permission.only_admin'))
+                if (
+                    ('admin' in role_list or 'tenant_admin' in role_list)
+                    and not _has_admin_permission(current_user)
+                ):
                     raise HTTPException(status_code=403, detail=trans('i18n_permission.only_admin'))
                 if (
                     any(role in role_list for role in ('project_editor', 'project_viewer'))
                     and not resource_type
-                    and not _is_system_admin(current_user)
+                    and not _has_admin_permission(current_user)
                 ):
                     raise HTTPException(status_code=403, detail=trans('i18n_permission.only_project_role'))
+            is_admin = _has_admin_permission(current_user)
+            if is_admin and not permission.type:
+                return await func(*args, **kwargs)
             if not resource_type:
                 return await func(*args, **kwargs)
 

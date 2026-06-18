@@ -96,6 +96,10 @@ def redis_key(*parts: object) -> str:
     return f"{settings.REDIS_KEY_PREFIX}:{suffix}" if suffix else settings.REDIS_KEY_PREFIX
 
 
+def tenant_redis_key(tenant_id: int | str | None, *parts: object) -> str:
+    return redis_key("tenant", tenant_id, *parts)
+
+
 @asynccontextmanager
 async def redis_lock(
     name: str,

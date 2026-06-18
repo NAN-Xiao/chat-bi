@@ -6,7 +6,6 @@ import urllib.parse
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
-from dis import specialized
 from typing import Any, List, Optional, Union, Dict, Iterator
 
 import orjson
@@ -16,7 +15,6 @@ import sqlparse
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
-from sqlalchemy import and_, select
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlmodel import Session
 
@@ -146,6 +144,9 @@ class LLMService:
         chat: Chat | None = session.get(Chat, chat_id)
         if not chat:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
+        tenant_id = int(getattr(current_user, "tenant_id", None) or 1)
+        if chat.create_by != current_user.id or int(chat.tenant_id or 1) != tenant_id:
+            raise SingleMessageError(f"Chat with id {chat_id} not Owned by the current user")
         ds: CoreDatasource | AssistantOutDsSchema | None = None
         if not chat.datasource and chat_question.datasource_id:
             _ds = session.get(CoreDatasource, chat_question.datasource_id)
@@ -239,6 +240,7 @@ class LLMService:
                 selected_prompt_id,
                 getattr(args[1], "id", None),
                 is_system_admin(args[1]),
+                getattr(args[1], "tenant_id", None),
             )
             if prompt_model_id and any(str(model.id) == str(prompt_model_id) for model in _ai_model_list):
                 specialized_model_id = prompt_model_id
@@ -272,7 +274,7 @@ class LLMService:
                 return True
             else:
                 return False
-        except Exception as e:
+        except Exception:
             return True
 
     def init_messages(self, session: Session):
@@ -386,7 +388,8 @@ class LLMService:
                                                                   record_id=self.record.id, local_operation=True)
 
         self.chat_question.terminologies, term_list = get_terminology_template(_session, self.chat_question.question,
-                                                                               calculate_ds_id)
+                                                                               calculate_ds_id,
+                                                                               getattr(self.current_user, "tenant_id", None))
         self.current_logs[OperationEnum.FILTER_TERMS] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.FILTER_TERMS],
                                                                 full_message=term_list)
@@ -412,6 +415,7 @@ class LLMService:
             self.chat_question.custom_prompt_id,
             self.current_user.id,
             is_system_admin(self.current_user),
+            getattr(self.current_user, "tenant_id", None),
         )
         self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
                                                                         log=self.current_logs[
@@ -434,11 +438,13 @@ class LLMService:
         if self.current_assistant and self.current_assistant.type == 1:
             self.chat_question.data_training, example_list = get_training_template(_session,
                                                                                    self.chat_question.question,
-                                                                                   None, self.current_assistant.id)
+                                                                                   None, self.current_assistant.id,
+                                                                                   getattr(self.current_user, "tenant_id", None))
         else:
             self.chat_question.data_training, example_list = get_training_template(_session,
                                                                                    self.chat_question.question,
-                                                                                   calculate_ds_id)
+                                                                                   calculate_ds_id,
+                                                                                   tenant_id=getattr(self.current_user, "tenant_id", None))
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = end_log(session=_session,
                                                                       log=self.current_logs[
                                                                           OperationEnum.FILTER_SQL_EXAMPLE],
@@ -1121,7 +1127,7 @@ class LLMService:
         try:
             chunk = self.chunk_list.pop(0)
             return chunk
-        except IndexError as e:
+        except IndexError:
             return None
 
     def await_result(self):
@@ -1671,7 +1677,7 @@ class LLMService:
                 current_ds = session.get(CoreDatasource, _ds.id)
                 if not current_ds:
                     raise SingleMessageError('chat.ds_is_invalid')
-            except Exception as e:
+            except Exception:
                 raise SingleMessageError("chat.ds_is_invalid")
         else:
             try:

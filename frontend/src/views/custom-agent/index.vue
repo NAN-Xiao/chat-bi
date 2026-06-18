@@ -39,7 +39,7 @@ const defaultAgentForm = {
   active: true,
   ai_model_id: null as number | string | null,
   prompt: '',
-  specific_ds: true,
+  specific_ds: false,
   datasource_ids: [] as number[],
   visibility_scope: 'USER_PRIVATE',
 }
@@ -85,7 +85,7 @@ const sourceText = (row: any) => {
 }
 
 const scopeText = (row: any) => {
-  if (row?.visibility_scope === 'USER_PRIVATE') return currentDatasourceName.value || '-'
+  if (row?.visibility_scope === 'USER_PRIVATE') return t('access.user_permission_scope')
   if (row?.specific_ds) {
     return row.datasource_names?.length
       ? row.datasource_names.join('、')
@@ -125,10 +125,6 @@ const loadAiModels = () => {
 }
 
 const loadAgents = async () => {
-  if (!currentDatasourceId.value) {
-    agentList.value = []
-    return
-  }
   agentLoading.value = true
   try {
     const query = buildAgentQuery()
@@ -153,16 +149,13 @@ const loadAgents = async () => {
 const resetAgentForm = () => {
   agentForm.value = {
     ...cloneDeep(defaultAgentForm),
-    datasource_ids: currentDatasourceId.value ? [Number(currentDatasourceId.value)] : [],
+    specific_ds: false,
+    datasource_ids: [],
     visibility_scope: 'USER_PRIVATE',
   }
 }
 
 const openCreateAgent = () => {
-  if (!currentDatasourceId.value) {
-    ElMessage.warning(t('access.no_project_agent'))
-    return
-  }
   resetAgentForm()
   agentDialogTitle.value = t('prompt.add_prompt_word')
   agentDialogVisible.value = true
@@ -173,12 +166,8 @@ const openEditAgent = (row: any) => {
   agentForm.value = {
     ...cloneDeep(defaultAgentForm),
     ...cloneDeep(row),
-    specific_ds: true,
-    datasource_ids: row.datasource_ids?.length
-      ? row.datasource_ids.map((item: any) => Number(item))
-      : currentDatasourceId.value
-        ? [Number(currentDatasourceId.value)]
-        : [],
+    specific_ds: false,
+    datasource_ids: [],
     visibility_scope: 'USER_PRIVATE',
   }
   agentDialogTitle.value = t('prompt.edit_prompt_word')
@@ -192,11 +181,11 @@ const closeAgentForm = () => {
 
 const saveAgent = () => {
   agentFormRef.value?.validate((valid: boolean) => {
-    if (!valid || !currentDatasourceId.value || savingAgent.value) return
+    if (!valid || savingAgent.value) return
     const payload = cloneDeep(agentForm.value)
     payload.type = payload.type || 'GENERATE_SQL'
-    payload.specific_ds = true
-    payload.datasource_ids = [Number(currentDatasourceId.value)]
+    payload.specific_ds = false
+    payload.datasource_ids = []
     payload.visibility_scope = 'USER_PRIVATE'
     savingAgent.value = true
     promptApi
@@ -276,10 +265,7 @@ watch(agentKeyword, () => {
 
     <section class="agent-section">
       <div v-loading="agentLoading" class="agent-content">
-        <div v-if="!currentDatasourceId" class="agent-empty">
-          {{ t('access.no_project_agent') }}
-        </div>
-        <div v-else-if="!agentList.length && !agentLoading" class="agent-empty">
+        <div v-if="!agentList.length && !agentLoading" class="agent-empty">
           {{ t('prompt.no_prompt_words') }}
         </div>
         <template v-else>
@@ -468,7 +454,7 @@ watch(agentKeyword, () => {
           />
         </el-form-item>
         <el-form-item :label="t('training.effective_data_sources')">
-          <div class="fixed-project">{{ currentDatasourceName || '-' }}</div>
+          <div class="fixed-project">{{ t('access.user_permission_scope') }}</div>
         </el-form-item>
         <el-form-item prop="prompt" :label="t('prompt.prompt_word_content')">
           <el-input

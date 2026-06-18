@@ -19,6 +19,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
+from apps.system.crud.user import is_platform_admin
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.permission import AppPermission, require_permissions
@@ -51,6 +52,39 @@ PUBLIC_CONFIGURATION_KEYS = {
     "x_val",
     "y_val",
 }
+
+
+def _current_tenant_id(current_user: CurrentUser) -> int:
+    tenant_id = getattr(current_user, "tenant_id", None)
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Current tenant is required")
+    return int(tenant_id)
+
+
+def _can_manage_all_assistants(current_user: CurrentUser) -> bool:
+    return is_platform_admin(current_user)
+
+
+def _tenant_scoped_assistant_statement(statement, current_user: CurrentUser):
+    if _can_manage_all_assistants(current_user):
+        return statement
+    return statement.where(AssistantModel.tenant_id == _current_tenant_id(current_user))
+
+
+def _get_manageable_assistant(session: SessionDep, current_user: CurrentUser, assistant_id: int) -> AssistantModel:
+    db_model = session.get(AssistantModel, assistant_id)
+    if not db_model:
+        raise HTTPException(status_code=404, detail=f"AssistantModel with id {assistant_id} not found")
+    if (
+        not _can_manage_all_assistants(current_user)
+        and int(getattr(db_model, "tenant_id", 1) or 1) != _current_tenant_id(current_user)
+    ):
+        raise HTTPException(status_code=404, detail=f"AssistantModel with id {assistant_id} not found")
+    return db_model
+
+
+def _assistant_tenant_id(current_assistant: CurrentAssistant) -> int:
+    return int(getattr(current_assistant, "tenant_id", None) or 1)
 
 
 def _public_assistant_info(db_model: AssistantModel, include_certificate: bool = False) -> AssistantPublicInfo:
@@ -128,6 +162,7 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
         "account": 'zhishu-inner-assistant',
         "assistant_id": id,
         "assistant_online": False,
+        "tenant_id": int(getattr(db_model, "tenant_id", None) or 1),
     }
     access_token = create_access_token(
         assistantDict, expires_delta=access_token_expires
@@ -163,7 +198,17 @@ async def ds(session: SessionDep, current_assistant: CurrentAssistant):
         online = current_assistant.online
         configuration = current_assistant.configuration
         config: dict[any] = json.loads(configuration)
-        stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description, CoreDatasource.type, CoreDatasource.type_name, CoreDatasource.num)
+        stmt = (
+            select(
+                CoreDatasource.id,
+                CoreDatasource.name,
+                CoreDatasource.description,
+                CoreDatasource.type,
+                CoreDatasource.type_name,
+                CoreDatasource.num,
+            )
+            .where(CoreDatasource.tenant_id == _assistant_tenant_id(current_assistant))
+        )
         if not online:
             public_list: list[int] = config.get('public_list') or None
             if public_list:
@@ -211,8 +256,12 @@ def get_db_type(type):
 @router.get("", response_model=list[AssistantModel], summary=f"{PLACEHOLDER_PREFIX}assistant_grid_api", description=f"{PLACEHOLDER_PREFIX}assistant_grid_api")
 @require_permissions(permission=AppPermission(role=['admin']))
 async def query(session: SessionDep, current_user: CurrentUser):
-    list_result = session.exec(select(AssistantModel).where(AssistantModel.type != 4).order_by(AssistantModel.name,
-                                                                                               AssistantModel.create_time)).all()
+    statement = (
+        select(AssistantModel)
+        .where(AssistantModel.type != 4)
+        .order_by(AssistantModel.name, AssistantModel.create_time)
+    )
+    list_result = session.exec(_tenant_scoped_assistant_statement(statement, current_user)).all()
     for model in list_result:
         model.enable_custom_model = model.enable_custom_model or False
     return list_result
@@ -221,8 +270,12 @@ async def query(session: SessionDep, current_user: CurrentUser):
 @router.get("/advanced_application", response_model=list[AssistantModel], include_in_schema=False)
 @require_permissions(permission=AppPermission(role=['admin']))
 async def query_advanced_application(session: SessionDep, current_user: CurrentUser):
-    list_result = session.exec(select(AssistantModel).where(AssistantModel.type == 1).order_by(AssistantModel.name,
-                                                                                               AssistantModel.create_time)).all()
+    statement = (
+        select(AssistantModel)
+        .where(AssistantModel.type == 1)
+        .order_by(AssistantModel.name, AssistantModel.create_time)
+    )
+    list_result = session.exec(_tenant_scoped_assistant_statement(statement, current_user)).all()
     return list_result
 
 
@@ -230,19 +283,17 @@ async def query_advanced_application(session: SessionDep, current_user: CurrentU
 @require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.APPLICATION, result_id_expr="id"))
 async def add(request: Request, session: SessionDep, current_user: CurrentUser, creator: AssistantBase):
-    return await save(request, session, creator)
+    return await save(request, session, creator, tenant_id=_current_tenant_id(current_user))
 
 
 @router.put("", summary=f"{PLACEHOLDER_PREFIX}assistant_update_api", description=f"{PLACEHOLDER_PREFIX}assistant_update_api")
 @require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="editor.id")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.APPLICATION, resource_id_expr="editor.id"))
-async def update(request: Request, session: SessionDep, editor: AssistantDTO):
+async def update(request: Request, session: SessionDep, current_user: CurrentUser, editor: AssistantDTO):
     id = editor.id
-    db_model = session.get(AssistantModel, id)
-    if not db_model:
-        raise ValueError(f"AssistantModel with id {id} not found")
-    update_data = AssistantModel.model_validate(editor)
+    db_model = _get_manageable_assistant(session, current_user, id)
+    update_data = editor.model_dump(exclude_unset=True, exclude={"id"})
     db_model.sqlmodel_update(update_data)
     session.add(db_model)
     session.commit()
@@ -250,11 +301,8 @@ async def update(request: Request, session: SessionDep, editor: AssistantDTO):
 
 
 @router.get("/{id}", response_model=AssistantPublicInfo, summary=f"{PLACEHOLDER_PREFIX}assistant_query_api", description=f"{PLACEHOLDER_PREFIX}assistant_query_api")
-async def get_one(session: SessionDep, id: int = Path(description="ID")) -> AssistantPublicInfo:
-    db_model = await get_assistant_info(session=session, assistant_id=id)
-    if not db_model:
-        raise ValueError(f"AssistantModel with id {id} not found")
-    db_model = AssistantModel.model_validate(db_model)
+async def get_one(session: SessionDep, current_user: CurrentUser, id: int = Path(description="ID")) -> AssistantPublicInfo:
+    db_model = _get_manageable_assistant(session, current_user, id)
     return _public_assistant_info(db_model)
 
 
@@ -262,10 +310,8 @@ async def get_one(session: SessionDep, id: int = Path(description="ID")) -> Assi
 @require_permissions(permission=AppPermission(role=['admin']))
 @clear_cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="id")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.APPLICATION, resource_id_expr="id"))
-async def delete(request: Request, session: SessionDep, id: int = Path(description="ID")):
-    db_model = session.get(AssistantModel, id)
-    if not db_model:
-        raise ValueError(f"AssistantModel with id {id} not found")
+async def delete(request: Request, session: SessionDep, current_user: CurrentUser, id: int = Path(description="ID")):
+    db_model = _get_manageable_assistant(session, current_user, id)
     session.delete(db_model)
     session.commit()
     dynamic_upgrade_cors(request=request, session=session)

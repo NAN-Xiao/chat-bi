@@ -11,6 +11,7 @@ from sqlalchemy import text
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.data_training.models.data_training_model import DataTrainingInfo, DataTraining, DataTrainingInfoResult
 from apps.datasource.models.datasource import CoreDatasource
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_model import AssistantModel
 from apps.template.generate_chart.generator import get_base_data_training_template
 from common.core.config import settings
@@ -38,11 +39,14 @@ def get_data_training_base_query(name: Optional[str] = None):
 
 def build_data_training_query(session: SessionDep, name: Optional[str] = None,
                               paginate: bool = True, current_page: int = 1, page_size: int = 10,
-                              datasource_ids: Optional[set[int]] = None):
+                              datasource_ids: Optional[set[int]] = None,
+                              tenant_id: int | None = None):
     """
     构建数据训练查询的通用方法
     """
     parent_ids_subquery = get_data_training_base_query(name)
+    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    parent_ids_subquery = parent_ids_subquery.where(DataTraining.tenant_id == resolved_tenant_id)
     if datasource_ids is not None:
         parent_ids_subquery = parent_ids_subquery.where(DataTraining.datasource.in_(list(datasource_ids)))
 
@@ -79,6 +83,7 @@ def build_data_training_query(session: SessionDep, name: Optional[str] = None,
     stmt = (
         select(
             DataTraining.id,
+            DataTraining.tenant_id,
             DataTraining.datasource,
             CoreDatasource.name,
             DataTraining.question,
@@ -108,6 +113,7 @@ def execute_data_training_query(session: SessionDep, stmt) -> List[DataTrainingI
     for row in result:
         _list.append(DataTrainingInfoResult(
             id=str(row.id),
+            tenant_id=row.tenant_id,
             datasource=row.datasource,
             datasource_name=row.name,
             question=row.question,
@@ -122,12 +128,13 @@ def execute_data_training_query(session: SessionDep, stmt) -> List[DataTrainingI
 
 
 def page_data_training(session: SessionDep, current_page: int = 1, page_size: int = 10,
-                       name: Optional[str] = None, datasource_ids: Optional[set[int]] = None):
+                       name: Optional[str] = None, datasource_ids: Optional[set[int]] = None,
+                       tenant_id: int | None = None):
     """
     分页查询数据训练（原方法保持不变）
     """
     stmt, total_count, total_pages, current_page, page_size = build_data_training_query(
-        session, name, True, current_page, page_size, datasource_ids
+        session, name, True, current_page, page_size, datasource_ids, tenant_id
     )
     _list = execute_data_training_query(session, stmt)
 
@@ -135,12 +142,13 @@ def page_data_training(session: SessionDep, current_page: int = 1, page_size: in
 
 
 def get_all_data_training(session: SessionDep, name: Optional[str] = None,
-                          datasource_ids: Optional[set[int]] = None):
+                          datasource_ids: Optional[set[int]] = None,
+                          tenant_id: int | None = None):
     """
     获取所有数据训练（不分页）
     """
     stmt, total_count, total_pages, current_page, page_size = build_data_training_query(
-        session, name, False, datasource_ids=datasource_ids
+        session, name, False, datasource_ids=datasource_ids, tenant_id=tenant_id
     )
     _list = execute_data_training_query(session, stmt)
 
@@ -161,6 +169,7 @@ def create_training(session: SessionDep, info: DataTrainingInfo, trans: Trans, s
         raise Exception(trans("i18n_data_training.description_cannot_be_empty"))
 
     create_time = datetime.datetime.now()
+    tenant_id = info.tenant_id or DEFAULT_TENANT_ID
 
     # 检查数据源和高级应用不能同时为空
     if info.datasource is None and info.advanced_application is None:
@@ -168,6 +177,7 @@ def create_training(session: SessionDep, info: DataTrainingInfo, trans: Trans, s
 
     # 检查重复记录
     stmt = select(DataTraining.id).where(
+        DataTraining.tenant_id == tenant_id,
         DataTraining.question == info.question.strip()
     )
 
@@ -190,6 +200,7 @@ def create_training(session: SessionDep, info: DataTrainingInfo, trans: Trans, s
 
     # 创建记录
     data_training = DataTraining(
+        tenant_id=tenant_id,
         question=info.question.strip(),
         description=info.description.strip(),
         datasource=info.datasource,
@@ -205,12 +216,13 @@ def create_training(session: SessionDep, info: DataTrainingInfo, trans: Trans, s
 
     # 处理embedding（批量插入时跳过）
     if not skip_embedding:
-        run_save_data_training_embeddings([data_training.id])
+        run_save_data_training_embeddings([data_training.id], tenant_id=tenant_id)
 
     return data_training.id
 
 
 def update_training(session: SessionDep, info: DataTrainingInfo, trans: Trans):
+    tenant_id = info.tenant_id or DEFAULT_TENANT_ID
     # 基本验证
     if not info.question or not info.question.strip():
         raise Exception(trans("i18n_data_training.question_cannot_be_empty"))
@@ -222,13 +234,18 @@ def update_training(session: SessionDep, info: DataTrainingInfo, trans: Trans):
         raise Exception(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
 
     count = session.query(DataTraining).filter(
-        DataTraining.id == info.id
+        DataTraining.id == info.id,
+        DataTraining.tenant_id == tenant_id,
     ).count()
     if count == 0:
         raise Exception(trans('i18n_data_training.data_training_not_exists'))
 
     stmt = select(DataTraining.id).where(
-        and_(DataTraining.question == info.question, DataTraining.id != info.id))
+        and_(
+            DataTraining.tenant_id == tenant_id,
+            DataTraining.question == info.question,
+            DataTraining.id != info.id,
+        ))
 
     if info.datasource is not None and info.advanced_application is not None:
         stmt = stmt.where(
@@ -244,7 +261,7 @@ def update_training(session: SessionDep, info: DataTrainingInfo, trans: Trans):
     if exists:
         raise Exception(trans("i18n_data_training.exists_in_db"))
 
-    stmt = update(DataTraining).where(and_(DataTraining.id == info.id)).values(
+    stmt = update(DataTraining).where(and_(DataTraining.id == info.id, DataTraining.tenant_id == tenant_id)).values(
         question=info.question.strip(),
         description=info.description.strip(),
         datasource=info.datasource,
@@ -255,12 +272,17 @@ def update_training(session: SessionDep, info: DataTrainingInfo, trans: Trans):
     session.commit()
 
     # embedding
-    run_save_data_training_embeddings([info.id])
+    run_save_data_training_embeddings([info.id], tenant_id=tenant_id)
 
     return info.id
 
 
-def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo], trans: Trans):
+def batch_create_training(
+        session: SessionDep,
+        info_list: List[DataTrainingInfo],
+        trans: Trans,
+        tenant_id: int | None = None,
+):
     """
     批量创建数据训练记录（复用单条插入逻辑）
     """
@@ -298,11 +320,13 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
     deduplicated_list = list(unique_records.values())
 
     # 预加载数据源和高级应用名称到ID的映射
+    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
     datasource_name_to_id = {}
-    datasource_stmt = select(CoreDatasource.id, CoreDatasource.name)
+    datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.tenant_id == resolved_tenant_id)
     datasource_result = session.execute(datasource_stmt).all()
     for ds in datasource_result:
         datasource_name_to_id[ds.name.strip()] = ds.id
+    valid_datasource_ids = {int(value) for value in datasource_name_to_id.values()}
 
     assistant_name_to_id = {}
 
@@ -325,6 +349,8 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
 
         # 数据源验证和转换
         datasource_id = info.datasource
+        if datasource_id is not None and int(datasource_id) not in valid_datasource_ids:
+            error_messages.append(trans("i18n_data_training.datasource_not_found").format(info.datasource_name or datasource_id))
         if datasource_id is None and info.datasource_name and info.datasource_name.strip():
             if info.datasource_name.strip() in datasource_name_to_id:
                 datasource_id = datasource_name_to_id[info.datasource_name.strip()]
@@ -353,6 +379,7 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
 
         # 创建处理后的DataTrainingInfo对象
         processed_info = DataTrainingInfo(
+            tenant_id=resolved_tenant_id,
             question=info.question.strip(),
             description=info.description.strip(),
             datasource=datasource_id,
@@ -369,6 +396,7 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
         for info in valid_records:
             try:
                 # 直接复用create_training方法，跳过embedding处理
+                info.tenant_id = info.tenant_id or resolved_tenant_id
                 training_id = create_training(session, info, trans, skip_embedding=True)
                 inserted_ids.append(training_id)
                 success_count += 1
@@ -384,7 +412,7 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
         # 批量处理embedding（只在最后执行一次）
         if success_count > 0 and inserted_ids:
             try:
-                run_save_data_training_embeddings(inserted_ids)
+                run_save_data_training_embeddings(inserted_ids, tenant_id=resolved_tenant_id)
             except Exception as e:
                 # 如果embedding处理失败，记录错误但不回滚数据
                 print(f"Embedding processing failed: {str(e)}")
@@ -399,20 +427,23 @@ def batch_create_training(session: SessionDep, info_list: List[DataTrainingInfo]
     }
 
 
-def delete_training(session: SessionDep, ids: list[int]):
-    stmt = delete(DataTraining).where(and_(DataTraining.id.in_(ids)))
+def delete_training(session: SessionDep, ids: list[int], tenant_id: int | None = None):
+    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    stmt = delete(DataTraining).where(and_(DataTraining.tenant_id == resolved_tenant_id, DataTraining.id.in_(ids)))
     session.execute(stmt)
     session.commit()
 
 
-def enable_training(session: SessionDep, id: int, enabled: bool, trans: Trans):
+def enable_training(session: SessionDep, id: int, enabled: bool, trans: Trans, tenant_id: int | None = None):
+    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
     count = session.query(DataTraining).filter(
-        DataTraining.id == id
+        DataTraining.id == id,
+        DataTraining.tenant_id == resolved_tenant_id,
     ).count()
     if count == 0:
         raise Exception(trans('i18n_data_training.data_training_not_exists'))
 
-    stmt = update(DataTraining).where(and_(DataTraining.id == id)).values(
+    stmt = update(DataTraining).where(and_(DataTraining.id == id, DataTraining.tenant_id == resolved_tenant_id)).values(
         enabled=enabled,
     )
     session.execute(stmt)
@@ -427,23 +458,26 @@ def enable_training(session: SessionDep, id: int, enabled: bool, trans: Trans):
 #     executor.submit(run_fill_empty_embeddings)
 
 
-def run_fill_empty_embeddings(session_maker):
+def run_fill_empty_embeddings(session_maker, tenant_id: int | None = None):
     try:
         if not settings.EMBEDDING_ENABLED:
             return
 
         session = session_maker()
-        stmt = select(DataTraining.id).where(and_(DataTraining.embedding.is_(None)))
+        filters = [DataTraining.embedding.is_(None)]
+        if tenant_id is not None:
+            filters.append(DataTraining.tenant_id == int(tenant_id))
+        stmt = select(DataTraining.id).where(and_(*filters))
         results = session.execute(stmt).scalars().all()
 
-        save_embeddings(session_maker, results)
+        save_embeddings(session_maker, results, tenant_id=tenant_id)
     except Exception:
         traceback.print_exc()
     finally:
         session_maker.remove()
 
 
-def save_embeddings(session_maker, ids: List[int]):
+def save_embeddings(session_maker, ids: List[int], tenant_id: int | None = None):
     if not settings.EMBEDDING_ENABLED:
         return
 
@@ -451,7 +485,10 @@ def save_embeddings(session_maker, ids: List[int]):
         return
     try:
         session = session_maker()
-        _list = session.query(DataTraining).filter(and_(DataTraining.id.in_(ids))).all()
+        filters = [DataTraining.id.in_(ids)]
+        if tenant_id is not None:
+            filters.append(DataTraining.tenant_id == int(tenant_id))
+        _list = session.query(DataTraining).filter(and_(*filters)).all()
 
         _question_list = [item.question for item in _list]
 
@@ -461,7 +498,10 @@ def save_embeddings(session_maker, ids: List[int]):
 
         for index in range(len(results)):
             item = results[index]
-            stmt = update(DataTraining).where(and_(DataTraining.id == _list[index].id)).values(embedding=item)
+            update_filters = [DataTraining.id == _list[index].id]
+            if tenant_id is not None:
+                update_filters.append(DataTraining.tenant_id == int(tenant_id))
+            stmt = update(DataTraining).where(and_(*update_filters)).values(embedding=item)
             session.execute(stmt)
             session.commit()
 
@@ -474,31 +514,38 @@ def save_embeddings(session_maker, ids: List[int]):
 embedding_sql = f"""
 SELECT id, datasource, question, similarity
 FROM
-(SELECT id, datasource, question, enabled,
+(SELECT id, tenant_id, datasource, question, enabled,
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM data_training AS child
 ) TEMP
-WHERE similarity > {settings.EMBEDDING_DATA_TRAINING_SIMILARITY} and datasource = :datasource and enabled = true
+WHERE similarity > {settings.EMBEDDING_DATA_TRAINING_SIMILARITY} and tenant_id = :tenant_id and datasource = :datasource and enabled = true
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
 """
 embedding_sql_in_advanced_application = f"""
 SELECT id, advanced_application, question, similarity
 FROM
-(SELECT id, advanced_application, question, enabled,
+(SELECT id, tenant_id, advanced_application, question, enabled,
 ( 1 - (embedding <=> :embedding_array) ) AS similarity
 FROM data_training AS child
 ) TEMP
-WHERE similarity > {settings.EMBEDDING_DATA_TRAINING_SIMILARITY} and advanced_application = :advanced_application and enabled = true
+WHERE similarity > {settings.EMBEDDING_DATA_TRAINING_SIMILARITY} and tenant_id = :tenant_id and advanced_application = :advanced_application and enabled = true
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
 """
 
 
 def select_training_by_question(session: SessionDep, question: str, datasource: Optional[int] = None,
-                                advanced_application_id: Optional[int] = None):
+                                advanced_application_id: Optional[int] = None,
+                                tenant_id: Optional[int] = None):
     if question.strip() == "":
         return []
+
+    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    if datasource is not None and tenant_id is None:
+        datasource_row = session.get(CoreDatasource, int(datasource))
+        if datasource_row and getattr(datasource_row, "tenant_id", None):
+            resolved_tenant_id = int(datasource_row.tenant_id)
 
     _list: List[DataTraining] = []
 
@@ -509,8 +556,11 @@ def select_training_by_question(session: SessionDep, question: str, datasource: 
             DataTraining.question,
         )
         .where(
-            and_(or_(text(":sentence ILIKE '%' || question || '%'"), text("question ILIKE '%' || :sentence || '%'")),
-                 DataTraining.enabled == True)
+            and_(
+                DataTraining.tenant_id == resolved_tenant_id,
+                or_(text(":sentence ILIKE '%' || question || '%'"), text("question ILIKE '%' || :sentence || '%'")),
+                DataTraining.enabled == True,
+            )
         )
     )
     if advanced_application_id is not None:
@@ -533,10 +583,15 @@ def select_training_by_question(session: SessionDep, question: str, datasource: 
                 if advanced_application_id is not None:
                     results = session.execute(text(embedding_sql_in_advanced_application),
                                               {'embedding_array': str(embedding),
-                                               'advanced_application': advanced_application_id})
+                                               'advanced_application': advanced_application_id,
+                                               'tenant_id': resolved_tenant_id})
                 else:
                     results = session.execute(text(embedding_sql),
-                                              {'embedding_array': str(embedding), 'datasource': datasource})
+                                              {
+                                                  'embedding_array': str(embedding),
+                                                  'datasource': datasource,
+                                                  'tenant_id': resolved_tenant_id,
+                                              })
 
                 for row in results:
                     _list.append(DataTraining(id=row.id, question=row.question))
@@ -557,7 +612,7 @@ def select_training_by_question(session: SessionDep, question: str, datasource: 
         return []
 
     t_list = session.query(DataTraining.id, DataTraining.question, DataTraining.description).filter(
-        and_(DataTraining.id.in_(_ids))).all()
+        and_(DataTraining.tenant_id == resolved_tenant_id, DataTraining.id.in_(_ids))).all()
 
     for row in t_list:
         _map[row.id] = {'question': row.question, 'suggestion-answer': row.description}
@@ -600,10 +655,11 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'sql-examples') -> str:
 
 
 def get_training_template(session: SessionDep, question: str, datasource: Optional[int] = None,
-                          advanced_application_id: Optional[int] = None) -> tuple[str, list[dict]]:
+                          advanced_application_id: Optional[int] = None,
+                          tenant_id: Optional[int] = None) -> tuple[str, list[dict]]:
     if not datasource and not advanced_application_id:
         return '', []
-    _results = select_training_by_question(session, question, datasource, advanced_application_id)
+    _results = select_training_by_question(session, question, datasource, advanced_application_id, tenant_id)
     if _results and len(_results) > 0:
         data_training = to_xml_string(_results)
         template = get_base_data_training_template().format(data_training=data_training)

@@ -4,10 +4,11 @@ from urllib.parse import unquote
 
 from fastapi import Depends, Request
 from sqlmodel import Session
+
+from apps.system.crud.tenant import TenantContext
 from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core.db import get_session
 from common.utils.locale import I18n
-
 
 SessionDep = Annotated[Session, Depends(get_session)]
 i18n = I18n()
@@ -19,6 +20,11 @@ async def get_current_user(request: Request) -> UserInfoDTO:
     return request.state.current_user
 
 CurrentUser = Annotated[UserInfoDTO, Depends(get_current_user)]
+
+async def get_current_tenant(request: Request) -> TenantContext:
+    return request.state.current_tenant
+
+CurrentTenant = Annotated[TenantContext, Depends(get_current_tenant)]
 
 async def get_current_assistant(request: Request) -> AssistantHeader | None:
     base_assistant = request.state.assistant if hasattr(request.state, "assistant") else None

@@ -27,13 +27,15 @@ from apps.chat.curd.custom_prompt_manage import (
 from apps.chat.models.chat_model import AxisObj
 from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo, CustomPromptOption
 from apps.datasource.crud.permission import (
+    current_tenant_id,
     get_datasource_ids_with_min_role,
     has_datasource_role,
 )
 from apps.datasource.models.datasource import CoreDatasource
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.user import is_system_admin
 from apps.system.models.user import UserModel
 from apps.system.models.system_model import AiModelDetail
-from apps.system.crud.user import is_system_admin
 from common.audit.models.log_model import OperationModules, OperationType
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 from common.core.config import settings
@@ -63,16 +65,29 @@ def _can_manage_all_prompts(session: SessionDep, current_user: CurrentUser) -> b
     return bool(db_user and is_system_admin(db_user))
 
 
-def _require_prompt_scope_admin(session: SessionDep, current_user: CurrentUser, prompt: CustomPromptInfo | CustomPrompt):
-    if not _can_manage_all_prompts(session, current_user):
-        raise HTTPException(status_code=403, detail="System admin access is required")
+def _can_manage_tenant_public_prompts(session: SessionDep, current_user: CurrentUser) -> bool:
+    if _can_manage_all_prompts(session, current_user):
+        return True
+    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+    return tenant_role in TENANT_ADMIN_ROLES
 
 
-def _require_prompt_owner(session: SessionDep, current_user: CurrentUser, prompt: CustomPromptInfo | CustomPrompt):
+def _is_public_scope(value) -> bool:
+    if isinstance(value, CustomPromptVisibilityScopeEnum):
+        return value == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
+    return value in (None, "", CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value)
+
+
+def _require_prompt_manage(session: SessionDep, current_user: CurrentUser, prompt: CustomPromptInfo | CustomPrompt):
     if _can_manage_all_prompts(session, current_user):
         return
     if (
-        getattr(prompt, "visibility_scope", None) != CustomPromptVisibilityScopeEnum.USER_PRIVATE
+        _is_public_scope(getattr(prompt, "visibility_scope", None))
+        and _can_manage_tenant_public_prompts(session, current_user)
+    ):
+        return
+    if (
+        not _is_user_private_scope(getattr(prompt, "visibility_scope", None))
         or prompt.create_by is None
         or int(prompt.create_by) != int(current_user.id)
     ):
@@ -96,49 +111,59 @@ def _is_user_private_scope(value) -> bool:
 
 
 def _force_user_private_prompt(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
-    datasource_ids = _normalize_datasource_ids(info.datasource_ids)
-    if len(datasource_ids) != 1:
-        raise HTTPException(status_code=400, detail="User Agent must be bound to the current project")
-    datasource_id = datasource_ids[0]
-    if not session.get(CoreDatasource, datasource_id):
-        raise HTTPException(status_code=400, detail="Datasource not found")
-    if not _can_manage_all_prompts(session, current_user) and not has_datasource_role(
-        session,
-        current_user,
-        datasource_ids,
-        "project_viewer",
-    ):
-        raise HTTPException(status_code=403, detail="Datasource access is required")
     info.visibility_scope = CustomPromptVisibilityScopeEnum.USER_PRIVATE
-    info.specific_ds = True
-    info.datasource_ids = [datasource_id]
+    info.specific_ds = False
+    info.datasource_ids = []
+
+
+def _validate_prompt_datasource_scope(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
+    datasource_ids = _normalize_datasource_ids(info.datasource_ids)
+    if not info.specific_ds:
+        info.datasource_ids = []
+        return
+    if not datasource_ids:
+        raise HTTPException(status_code=400, detail="Datasource is required")
+    if not has_datasource_role(session, current_user, datasource_ids, "project_viewer"):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
+    info.datasource_ids = datasource_ids
 
 
 def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
     can_manage_all = _can_manage_all_prompts(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
+    current_tid = current_tenant_id(current_user)
     if info.id:
         existing = session.get(CustomPrompt, int(info.id))
         if not existing:
             raise HTTPException(status_code=404, detail="Custom prompt not found")
-        _require_prompt_owner(session, current_user, existing)
-        if can_manage_all:
-            info.visibility_scope = existing.visibility_scope or CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
-            if info.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE:
-                info.specific_ds = True
-                info.datasource_ids = _normalize_datasource_ids(existing.datasource_ids)
-        else:
-            datasource_ids = _normalize_datasource_ids(existing.datasource_ids)
-            if not datasource_ids or not has_datasource_role(session, current_user, datasource_ids, "project_viewer"):
-                raise HTTPException(status_code=403, detail="Datasource access is required")
+        existing_private = _is_user_private_scope(existing.visibility_scope)
+        if existing_private:
+            if existing.create_by is None or int(existing.create_by) != int(current_user.id):
+                raise HTTPException(status_code=404, detail="Custom prompt not found")
+        elif int(existing.tenant_id) != current_tid:
+            raise HTTPException(status_code=404, detail="Custom prompt not found")
+        _require_prompt_manage(session, current_user, existing)
+        if existing_private:
             info.visibility_scope = CustomPromptVisibilityScopeEnum.USER_PRIVATE
-            info.specific_ds = True
-            info.datasource_ids = datasource_ids
+            info.tenant_id = existing.tenant_id or current_tid
+            info.specific_ds = False
+            info.datasource_ids = []
+        else:
+            if not can_manage_public:
+                raise HTTPException(status_code=403, detail="Only tenant admin can maintain public Agents")
+            info.tenant_id = current_tid
+            _validate_prompt_datasource_scope(session, current_user, info)
+            info.visibility_scope = CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
         return
 
-    if can_manage_all:
-        if _is_user_private_scope(info.visibility_scope):
-            _force_user_private_prompt(session, current_user, info)
-            return
+    if _is_user_private_scope(info.visibility_scope):
+        info.tenant_id = current_tid
+        _force_user_private_prompt(session, current_user, info)
+        return
+
+    if can_manage_public:
+        info.tenant_id = current_tid
+        _validate_prompt_datasource_scope(session, current_user, info)
         info.visibility_scope = CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
         return
 
@@ -152,7 +177,12 @@ def _require_prompt_ids_admin(session: SessionDep, current_user: CurrentUser, id
     if len(rows) != len(set(ids)):
         raise HTTPException(status_code=404, detail="Custom prompt not found")
     for row in rows:
-        _require_prompt_owner(session, current_user, row)
+        if _is_user_private_scope(row.visibility_scope):
+            if row.create_by is None or int(row.create_by) != int(current_user.id):
+                raise HTTPException(status_code=404, detail="Custom prompt not found")
+        elif int(row.tenant_id) != current_tenant_id(current_user):
+            raise HTTPException(status_code=404, detail="Custom prompt not found")
+        _require_prompt_manage(session, current_user, row)
 
 
 def _parse_type(value: str) -> CustomPromptTypeEnum:
@@ -169,6 +199,15 @@ def _parse_target_scope(value: Optional[str]) -> CustomPromptTargetScopeEnum:
         return CustomPromptTargetScopeEnum(value)
     except ValueError:
         raise HTTPException(status_code=400, detail="Unsupported custom prompt target scope")
+
+
+def _parse_visibility_scope(value: Optional[str]) -> CustomPromptVisibilityScopeEnum | None:
+    if value in (None, ""):
+        return None
+    try:
+        return CustomPromptVisibilityScopeEnum(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unsupported custom prompt visibility scope")
 
 
 def _target_scope_export_value(value: Optional[CustomPromptTargetScopeEnum | str]) -> str:
@@ -226,7 +265,8 @@ async def options(
         datasource_id: Optional[int] = Query(None),
 ):
     can_manage_all = _can_manage_all_prompts(session, current_user)
-    visible_ids = None if can_manage_all else _visible_datasource_ids(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
+    visible_ids = _visible_datasource_ids(session, current_user)
     return list_custom_prompt_options(
         session,
         _parse_target_scope(target_scope),
@@ -235,6 +275,7 @@ async def options(
         accessible_datasource_ids=visible_ids,
         current_user_id=int(current_user.id),
         can_manage_all=can_manage_all,
+        tenant_id=current_tenant_id(current_user),
     )
 
 
@@ -247,9 +288,11 @@ async def pager(
         current_page: int,
         page_size: int,
         name: Optional[str] = Query(None),
+        visibility_scope: Optional[str] = Query(None),
 ):
     can_manage_all = _can_manage_all_prompts(session, current_user)
-    visible_ids = None if can_manage_all else _visible_datasource_ids(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
+    visible_ids = _visible_datasource_ids(session, current_user)
     ds_ids = _query_ids(request, "dslist")
     if ds_ids and visible_ids is not None and not set(ds_ids).issubset(visible_ids):
         raise HTTPException(status_code=403, detail="Datasource access is required")
@@ -264,6 +307,9 @@ async def pager(
         include_global=True,
         current_user_id=int(current_user.id),
         can_manage_all=can_manage_all,
+        can_manage_public=can_manage_public,
+        tenant_id=current_tenant_id(current_user),
+        visibility_scope=_parse_visibility_scope(visibility_scope),
     )
     return {
         "current_page": current_page,
@@ -324,7 +370,15 @@ async def excel_template(trans: Trans):
 @router.get("/{prompt_id}")
 async def get_one(session: SessionDep, current_user: CurrentUser, prompt_id: int):
     can_manage_all = _can_manage_all_prompts(session, current_user)
-    info = get_custom_prompt(session, prompt_id, int(current_user.id), can_manage_all)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
+    info = get_custom_prompt(
+        session,
+        prompt_id,
+        current_user_id=int(current_user.id),
+        can_manage_all=can_manage_all,
+        can_manage_public=can_manage_public,
+        tenant_id=current_tenant_id(current_user),
+    )
     if not can_manage_all:
         if info.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE and not info.is_owner:
             raise HTTPException(status_code=403, detail="Datasource access is required")
@@ -337,18 +391,39 @@ async def get_one(session: SessionDep, current_user: CurrentUser, prompt_id: int
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.PROMPT_WORDS, resource_id_expr="info.id", result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
     can_manage_all = _can_manage_all_prompts(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
     _prepare_prompt_for_save(session, current_user, info)
     if info.id:
-        return update_custom_prompt(session, info, int(current_user.id), can_manage_all)
-    return create_custom_prompt(session, info, int(current_user.id))
+        return update_custom_prompt(
+            session,
+            info,
+            current_user_id=int(current_user.id),
+            can_manage_all=can_manage_all,
+            tenant_id=current_tenant_id(current_user),
+            can_manage_public=can_manage_public,
+        )
+    return create_custom_prompt(
+        session,
+        info,
+        current_user_id=int(current_user.id),
+        tenant_id=current_tenant_id(current_user),
+    )
 
 
 @router.delete("")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.PROMPT_WORDS, resource_id_expr="id_list"))
 async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
     can_manage_all = _can_manage_all_prompts(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
     _require_prompt_ids_admin(session, current_user, id_list)
-    delete_custom_prompts(session, id_list, int(current_user.id), can_manage_all)
+    delete_custom_prompts(
+        session,
+        id_list,
+        current_user_id=int(current_user.id),
+        can_manage_all=can_manage_all,
+        tenant_id=current_tenant_id(current_user),
+        can_manage_public=can_manage_public,
+    )
 
 
 @router.get("/{custom_prompt_type}/export")
@@ -360,9 +435,11 @@ async def export_excel(
         trans: Trans,
         custom_prompt_type: str,
         name: Optional[str] = Query(None),
+        visibility_scope: Optional[str] = Query(None),
 ):
     can_manage_all = _can_manage_all_prompts(session, current_user)
-    visible_ids = None if can_manage_all else _visible_datasource_ids(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
+    visible_ids = _visible_datasource_ids(session, current_user)
     ds_ids = _query_ids(request, "dslist")
     if ds_ids and visible_ids is not None and not set(ds_ids).issubset(visible_ids):
         raise HTTPException(status_code=403, detail="Datasource access is required")
@@ -377,6 +454,9 @@ async def export_excel(
             include_global=True,
             current_user_id=int(current_user.id),
             can_manage_all=can_manage_all,
+            can_manage_public=can_manage_public,
+            tenant_id=current_tenant_id(current_user),
+            visibility_scope=_parse_visibility_scope(visibility_scope),
         )
         data_list = [
             {
@@ -422,8 +502,8 @@ async def upload_excel(
         custom_prompt_type: str,
         file: UploadFile = File(...),
 ):
-    if not _can_manage_all_prompts(session, current_user):
-        raise HTTPException(status_code=403, detail="Global prompt import can only be maintained by system admins")
+    if not _can_manage_tenant_public_prompts(session, current_user):
+        raise HTTPException(status_code=403, detail="Public prompt import can only be maintained by tenant admins")
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
     base_filename, filename = AppFileUtils.safe_upload_name(file.filename, ALLOWED_EXTENSIONS)
 
@@ -438,7 +518,11 @@ async def upload_excel(
         try:
             datasource_name_to_id = {
                 row.name.strip(): int(row.id)
-                for row in db_session.execute(select(CoreDatasource.id, CoreDatasource.name)).all()
+                for row in db_session.execute(
+                    select(CoreDatasource.id, CoreDatasource.name).where(
+                        CoreDatasource.tenant_id == current_tenant_id(current_user)
+                    )
+                ).all()
                 if row.name
             }
             ai_model_name_to_id = {
@@ -539,7 +623,12 @@ async def upload_excel(
                         datasource_ids=datasource_ids,
                         specific_ds=not all_datasource,
                     ))
-            result = batch_create_custom_prompts(db_session, import_data, int(current_user.id))
+            result = batch_create_custom_prompts(
+                db_session,
+                import_data,
+                int(current_user.id),
+                current_tenant_id(current_user),
+            )
 
             error_excel_filename = None
             if result["failed_records"]:

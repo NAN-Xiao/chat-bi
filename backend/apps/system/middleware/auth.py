@@ -10,6 +10,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from apps.system.crud.apikey_manage import get_api_key
 from apps.system.crud.assistant import get_assistant_info, get_assistant_user
+from apps.system.crud.tenant import (
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
+    TENANT_ROLE_MEMBER,
+    TenantContext,
+    attach_tenant_context,
+    get_active_tenant,
+    resolve_current_tenant,
+)
 from apps.system.crud.user import get_user_by_account, get_user_info
 from apps.system.models.system_model import ApiKeyModel, AssistantModel
 from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
@@ -40,7 +50,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         askToken = request.headers.get("X-ZHISHU-ASK-TOKEN")
         trans = await get_i18n(request)
         if askToken:
-            validate_pass, data = await self.validateAskToken(askToken, trans)
+            validate_pass, data = await self.validateAskToken(request, askToken, trans)
             if validate_pass:
                 request.state.current_user = data
                 return await call_next(request)
@@ -48,7 +58,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return JSONResponse(message, status_code=401, headers=cors_headers_for_request(request))
         #if assistantToken and assistantToken.lower().startswith("assistant "):
         if assistantToken:
-            validator: tuple[any] = await self.validateAssistant(assistantToken, trans)
+            validator: tuple[any] = await self.validateAssistant(request, assistantToken, trans)
             if validator[0]:
                 request.state.current_user = validator[1]
                 if request.state.current_user and trans.lang:
@@ -63,7 +73,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         #validate pass
         tokenkey = settings.TOKEN_KEY
         token = request.headers.get(tokenkey)
-        validate_pass, data = await self.validateToken(token, trans)
+        validate_pass, data = await self.validateToken(request, token, trans)
         if validate_pass:
             request.state.current_user = data
             return await call_next(request)
@@ -74,7 +84,80 @@ class TokenMiddleware(BaseHTTPMiddleware):
     def is_options(self, request: Request):
         return request.method == "OPTIONS"
 
-    async def validateAskToken(self, askToken: str | None, trans: I18n):
+    def _tenant_id_from_request(
+        self,
+        request: Request,
+        token_tenant_id: int | None = None,
+        *,
+        allow_header_override: bool = True,
+    ) -> int | None:
+        if not allow_header_override:
+            return token_tenant_id
+        raw = request.headers.get("X-ZHISHU-TENANT-ID")
+        if not raw:
+            return token_tenant_id
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return token_tenant_id
+
+    def _attach_tenant(
+        self,
+        request: Request,
+        session: Session,
+        user: UserInfoDTO,
+        token_tenant_id: int | None = None,
+        *,
+        allow_header_tenant_override: bool = True,
+    ) -> UserInfoDTO:
+        requested_tenant_id = self._tenant_id_from_request(
+            request,
+            token_tenant_id,
+            allow_header_override=allow_header_tenant_override,
+        )
+        tenant = resolve_current_tenant(session, user, requested_tenant_id=requested_tenant_id)
+        request.state.current_tenant = tenant
+        return attach_tenant_context(user, tenant)
+
+    def _assistant_tenant_id_from_payload(self, payload: dict, assistant_info: AssistantModel) -> int:
+        assistant_tenant_id = int(getattr(assistant_info, "tenant_id", None) or DEFAULT_TENANT_ID)
+        payload_tenant_id = payload.get("tenant_id")
+        if payload_tenant_id and int(payload_tenant_id) != assistant_tenant_id:
+            raise PermissionError("Token tenant payload mismatch!")
+        return assistant_tenant_id
+
+    def _attach_assistant_tenant(
+        self,
+        request: Request,
+        session: Session,
+        user: UserInfoDTO,
+        assistant_info: AssistantModel,
+    ) -> UserInfoDTO:
+        tenant_id = int(getattr(assistant_info, "tenant_id", None) or DEFAULT_TENANT_ID)
+        try:
+            tenant = get_active_tenant(session, tenant_id=tenant_id)
+        except Exception:
+            tenant = None
+        if tenant:
+            context = TenantContext(
+                id=int(tenant.id),
+                code=tenant.code,
+                name=tenant.name,
+                role=TENANT_ROLE_MEMBER,
+            )
+        elif tenant_id == DEFAULT_TENANT_ID:
+            context = TenantContext(
+                id=DEFAULT_TENANT_ID,
+                code=DEFAULT_TENANT_CODE,
+                name=DEFAULT_TENANT_NAME,
+                role=TENANT_ROLE_MEMBER,
+            )
+        else:
+            raise PermissionError("Assistant tenant is disabled or does not exist")
+        request.state.current_tenant = context
+        return attach_tenant_context(user, context)
+
+    async def validateAskToken(self, request: Request, askToken: str | None, trans: I18n):
         if not askToken:
             return False, "Miss Token[X-ZHISHU-ASK-TOKEN]!"
         schema, param = get_authorization_scheme_param(askToken)
@@ -100,6 +183,14 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 )
                 if payload.get('access_key') != access_key:
                     return False, "Token access_key payload mismatch!"
+                api_key_tenant_id = getattr(api_key_model, "tenant_id", None)
+                payload_tenant_id = payload.get("tenant_id")
+                header_tenant_id = self._tenant_id_from_request(request, None)
+                bound_tenant_id = api_key_tenant_id or payload_tenant_id or header_tenant_id
+                if api_key_tenant_id and payload_tenant_id and int(payload_tenant_id) != int(api_key_tenant_id):
+                    return False, "Token tenant payload mismatch!"
+                if api_key_tenant_id and header_tenant_id and int(header_tenant_id) != int(api_key_tenant_id):
+                    return False, "Token tenant header mismatch!"
                 uid = api_key_model.uid
                 session_user = await get_user_info(session = session, user_id = uid)
                 if not session_user:
@@ -109,6 +200,13 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if session_user.status != 1:
                     message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
                     raise Exception(message)
+                session_user = self._attach_tenant(
+                    request,
+                    session,
+                    session_user,
+                    bound_tenant_id,
+                    allow_header_tenant_override=not bool(api_key_tenant_id),
+                )
                 return True, session_user
         except Exception as e:
             msg = str(e)
@@ -117,7 +215,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 return False, jwt.ExpiredSignatureError(trans('i18n_permission.token_expired'))
             return False, e
 
-    async def validateToken(self, token: str | None, trans: I18n):
+    async def validateToken(self, request: Request, token: str | None, trans: I18n):
         if not token:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(token)
@@ -137,6 +235,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if session_user.status != 1:
                     message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
                     raise Exception(message)
+                session_user = self._attach_tenant(request, session, session_user, token_data.tenant_id)
                 return True, session_user
         except Exception as e:
             msg = str(e)
@@ -146,29 +245,30 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return False, e
 
 
-    async def validateAssistant(self, assistantToken: str | None, trans: I18n) -> tuple[any]:
+    async def validateAssistant(self, request: Request, assistantToken: str | None, trans: I18n) -> tuple[any]:
         if not assistantToken:
             return False, f"Miss Token[{settings.TOKEN_KEY}]!"
         schema, param = get_authorization_scheme_param(assistantToken)
 
-
         try:
             if schema.lower() == 'embedded':
-                return await self.validateEmbedded(param, trans)
+                return await self.validateEmbedded(request, param, trans)
             if schema.lower() != "assistant":
                 return False, "Token schema error!"
             payload = jwt.decode(
                 param, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
             )
-            token_data = TokenPayload(**payload)
             if not payload['assistant_id']:
                 return False, "Miss assistant payload error!"
             with Session(engine) as session:
                 """ session_user = await get_user_info(session = session, user_id = token_data.id)
                 session_user = UserInfoDTO.model_validate(session_user) """
-                session_user = get_assistant_user(id = token_data.id)
+                token_data = TokenPayload(**payload)
                 assistant_info = await get_assistant_info(session=session, assistant_id=payload['assistant_id'])
                 assistant_info = AssistantModel.model_validate(assistant_info)
+                self._assistant_tenant_id_from_payload(payload, assistant_info)
+                session_user = get_assistant_user(id = token_data.id)
+                session_user = self._attach_assistant_tenant(request, session, session_user, assistant_info)
                 assistant_info = AssistantHeader.model_validate(assistant_info.model_dump(exclude_unset=True))
                 assistant_info.online = bool(payload.get("assistant_online", False))
 
@@ -178,7 +278,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
             # Return False and the exception message
             return False, e
 
-    async def validateEmbedded(self, param: str, trans: I18n) -> tuple[any]:
+    async def validateEmbedded(self, request: Request, param: str, trans: I18n) -> tuple[any]:
         try:
             unverified_payload: dict = jwt.decode(
                 param,
@@ -195,6 +295,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 payload = jwt.decode(
                     param, assistant_info.app_secret, algorithms=[security.ALGORITHM]
                 )
+                self._assistant_tenant_id_from_payload(payload, assistant_info)
                 verified_embedded_id = payload.get('embeddedId', None)
                 if not verified_embedded_id and payload.get('appId'):
                     verified_embedded_id = xor_decrypt(payload.get('appId'))
@@ -216,6 +317,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if session_user.status != 1:
                     message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
                     raise Exception(message)
+                session_user = self._attach_assistant_tenant(request, session, session_user, assistant_info)
                 return True, session_user, assistant_info
         except Exception as e:
             AppLogUtil.exception(f"Embedded validation error: {str(e)}")

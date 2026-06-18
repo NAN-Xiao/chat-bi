@@ -20,6 +20,7 @@ def _engine_with_chat_permission_tables():
             """
             CREATE TABLE chat_log (
                 id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
                 type VARCHAR(3),
                 operate VARCHAR(3),
                 pid INTEGER,
@@ -39,6 +40,7 @@ def _engine_with_chat_permission_tables():
             """
             CREATE TABLE core_datasource (
                 id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
                 name VARCHAR(128) NOT NULL,
                 description VARCHAR(512),
                 type VARCHAR(64),
@@ -289,3 +291,54 @@ def test_normal_user_chat_log_history_hides_internal_messages():
 
     assert result.steps[0].message is None
     assert result.steps[1].message == {"count": 3}
+
+
+def test_chat_detail_requires_current_tenant():
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=2)
+
+    with Session(engine) as session:
+        session.add(Chat(
+            id=1,
+            tenant_id=1,
+            create_by=2,
+            create_time=datetime.datetime(2026, 1, 1),
+            datasource=None,
+            engine_type="",
+            brief="tenant-one",
+        ))
+        session.commit()
+
+        try:
+            chat_crud.get_chat_with_records(session, 1, current_user, None, with_data=True)
+        except Exception as exc:
+            assert "not Owned by the current user" in str(exc)
+        else:
+            raise AssertionError("cross-tenant chat detail should be denied")
+
+
+def test_chat_record_data_requires_current_tenant(monkeypatch):
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=2)
+    monkeypatch.setattr(
+        chat_crud,
+        "exec_sql",
+        lambda ds, sql, origin_column=False: {"fields": ["amount"], "data": [{"amount": 99}]},
+    )
+
+    with Session(engine) as session:
+        _insert_permission_fixture(session)
+        session.add(ChatRecord(
+            id=1,
+            tenant_id=1,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            sql="select amount from orders",
+            data=json.dumps({"fields": ["amount"], "data": [{"amount": 99}]}),
+        ))
+        session.commit()
+
+        result = chat_crud.get_chart_data_with_user(session, current_user, 1)
+
+    assert result == {}

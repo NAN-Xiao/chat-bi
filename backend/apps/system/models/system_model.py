@@ -1,6 +1,7 @@
 from typing import Optional
 
 from pydantic import field_serializer
+from sqlalchemy import Index
 from sqlmodel import BigInteger, Field, Text, SQLModel
 
 from common.core.models import SnowflakeBase
@@ -68,6 +69,11 @@ class AssistantBaseModel(SQLModel):
 
 class AssistantModel(SnowflakeBase, AssistantBaseModel, table=True):
     __tablename__ = "sys_assistant"
+    __table_args__ = (
+        Index("idx_sys_assistant_tenant_id", "tenant_id"),
+    )
+
+    tenant_id: int = Field(default=1, nullable=False, sa_type=BigInteger())
 
 
 class AuthenticationBaseModel(SQLModel):
@@ -88,6 +94,7 @@ class ApiKeyBaseModel(SQLModel):
     secret_key: str = Field(max_length=255, nullable=False)
     create_time: int = Field(default=0, sa_type=BigInteger())
     uid: int = Field(default=0, nullable=False, sa_type=BigInteger())
+    tenant_id: int = Field(default=1, nullable=False, sa_type=BigInteger())
     status: bool = Field(default=True, nullable=False)
 
 

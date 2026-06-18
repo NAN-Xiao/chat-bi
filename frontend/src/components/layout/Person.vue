@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Default_avatar_custom from '@/assets/img/Default-avatar.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
@@ -8,18 +8,26 @@ import icon_translate_outlined from '@/assets/svg/icon_translate_outlined.svg'
 import icon_logout_outlined from '@/assets/svg/icon_logout_outlined.svg'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
+import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import PwdForm from './PwdForm.vue'
 import Apikey from './Apikey.vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { userApi } from '@/api/auth'
+import { type TenantInfo } from '@/api/tenant'
 import { toLoginPage } from '@/utils/utils'
 import { useCache } from '@/utils/useCache'
+import { useEmitt } from '@/utils/useEmitt'
+import { ElMessage } from 'element-plus-secondary'
 
 const { wsCache } = useCache()
 const router = useRouter()
 const userStore = useUserStore()
+const datasourceContext = useDatasourceContextStore()
+const dashboardStore = dashboardStoreWithOut()
 const pwdFormRef = ref()
 const { t, locale } = useI18n()
 defineProps({
@@ -32,6 +40,9 @@ const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
 const isAdmin = computed(() => userStore.isSystemManagerUser)
 const isLocalUser = computed(() => !userStore.getOrigin)
+const currentTenantName = computed(() => userStore.getTenantName || t('common.default_tenant'))
+const currentTenantRole = computed(() => formatTenantRole(userStore.getTenantRole))
+const tenantList = computed(() => userStore.getTenants)
 
 const isClient = computed(() => {
   return !!wsCache.get('zhishu-platform-client')
@@ -62,10 +73,50 @@ const languageList = computed(() => [
   },
 ])
 const popoverRef = ref()
+const tenantSwitchingId = ref('')
+
+const formatTenantRole = (role: string) => {
+  const key = `common.tenant_role_${role || 'member'}`
+  const label = t(key)
+  return label === key ? role || t('common.tenant_role_member') : label
+}
 
 const toSystem = () => {
   popoverRef.value.hide()
   router.push('/system')
+}
+
+const toMyWorkspaces = () => {
+  popoverRef.value?.hide?.()
+  router.push('/account/workspaces')
+}
+
+const loadTenants = async () => {
+  try {
+    await userStore.loadTenants()
+  } catch (error) {
+    console.warn('Failed to load tenant list', error)
+  }
+}
+
+const switchTenant = async (tenant: TenantInfo) => {
+  const tenantId = String(tenant.id || '')
+  if (!tenantId || tenantId === String(userStore.getTenantId || '')) {
+    return
+  }
+  tenantSwitchingId.value = tenantId
+  try {
+    await userStore.switchTenant(tenantId)
+    datasourceContext.clear(true)
+    await datasourceContext.loadDatasources(true)
+    dashboardStore.canvasDataInit()
+    useEmitt().emitter.emit('datasource-context-change', null)
+    ElMessage.success(t('common.switch_success'))
+    popoverRef.value?.hide?.()
+    router.push('/chat/index')
+  } finally {
+    tenantSwitchingId.value = ''
+  }
 }
 
 const changeLanguage = (lang: string) => {
@@ -97,6 +148,10 @@ const logout = async () => {
     // router.push('/login')
   }
 }
+
+onMounted(() => {
+  loadTenants()
+})
 </script>
 
 <template>
@@ -123,11 +178,78 @@ const logout = async () => {
           <div :title="name" class="top ellipsis">{{ name }}</div>
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
+        <el-popover
+          v-if="tenantList.length > 1"
+          :teleported="false"
+          popper-class="system-tenant"
+          placement="right"
+        >
+          <template #reference>
+            <div class="popover-item tenant-trigger">
+              <el-icon size="16">
+                <icon_member_outlined></icon_member_outlined>
+              </el-icon>
+              <div class="tenant-summary">
+                <div :title="currentTenantName" class="tenant-name ellipsis">
+                  {{ currentTenantName }}
+                </div>
+                <div class="tenant-role">{{ currentTenantRole }}</div>
+              </div>
+              <el-icon class="right" size="16">
+                <icon_right_outlined></icon_right_outlined>
+              </el-icon>
+            </div>
+          </template>
+          <div class="tenant-popover">
+            <div class="tenant-title">{{ $t('common.switch_tenant') }}</div>
+            <el-scrollbar max-height="300px">
+              <div
+                v-for="tenant in tenantList"
+                :key="tenant.id"
+                class="tenant-option"
+                :class="String(userStore.getTenantId) === String(tenant.id) && 'isActive'"
+                @click="switchTenant(tenant)"
+              >
+                <el-icon size="16">
+                  <icon_member_outlined></icon_member_outlined>
+                </el-icon>
+                <div class="tenant-option-main">
+                  <div :title="tenant.name || tenant.code" class="tenant-name ellipsis">
+                    {{ tenant.name || tenant.code }}
+                  </div>
+                  <div class="tenant-code ellipsis">{{ tenant.code }}</div>
+                </div>
+                <el-icon
+                  v-if="tenantSwitchingId !== String(tenant.id)"
+                  size="16"
+                  class="done"
+                >
+                  <icon_done_outlined></icon_done_outlined>
+                </el-icon>
+              </div>
+            </el-scrollbar>
+          </div>
+        </el-popover>
+        <div v-else class="popover-item tenant-trigger static">
+          <el-icon size="16">
+            <icon_member_outlined></icon_member_outlined>
+          </el-icon>
+          <div class="tenant-summary">
+            <div :title="currentTenantName" class="tenant-name ellipsis">{{ currentTenantName }}</div>
+            <div class="tenant-role">{{ currentTenantRole }}</div>
+          </div>
+        </div>
         <div v-if="isAdmin && !inSysmenu" class="popover-item" @click="toSystem">
           <el-icon style="color: var(--theme-text-secondary)" size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('common.system_manage') }}</div>
+        </div>
+        <div class="popover-item" @click="toMyWorkspaces">
+          <el-icon size="16">
+            <icon_member_outlined></icon_member_outlined>
+          </el-icon>
+          <div class="datasource-name">{{ $t('tenant.my_workspaces') }}</div>
         </div>
         <div v-if="isLocalUser && !platFlag" class="popover-item" @click="openPwd">
           <el-icon size="16">
@@ -272,12 +394,13 @@ const logout = async () => {
     }
   }
 }
+
 </style>
 
 <style lang="less">
 .system-person.system-person {
   padding: 0;
-  width: 200px !important;
+  width: 240px !important;
   box-shadow: var(--theme-card-shadow);
   border: 1px solid var(--theme-shell-border);
   background: var(--theme-panel-bg);
@@ -285,31 +408,12 @@ const logout = async () => {
   position: relative;
   border-radius: 10px;
 
-  &::after {
-    content: '';
-    position: absolute;
-    bottom: 40px;
-    left: 0;
-    height: 1px;
-    width: 100%;
-    background: var(--theme-shell-border);
-  }
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 62px;
-    left: 0;
-    height: 1px;
-    width: 100%;
-    background: var(--theme-shell-border);
-  }
-
   .popover {
     .info {
       height: 62px;
       padding: 8px;
       margin-bottom: 4px;
+      border-bottom: 1px solid var(--theme-shell-border);
 
       .avatar-custom {
         float: left;
@@ -333,7 +437,7 @@ const logout = async () => {
         color: var(--theme-text-secondary);
       }
     }
-    .popover-item {
+      .popover-item {
       height: 32px;
       display: flex;
       align-items: center;
@@ -354,13 +458,108 @@ const logout = async () => {
         margin-left: 8px;
       }
 
+      &.tenant-trigger {
+        height: 44px;
+        cursor: pointer;
+
+        &.static {
+          cursor: default;
+
+          &:hover {
+            background: transparent;
+          }
+        }
+      }
+
+      .tenant-summary {
+        min-width: 0;
+        margin-left: 8px;
+        flex: 1;
+
+        .tenant-name {
+          font-weight: 500;
+          font-size: 14px;
+          line-height: 20px;
+          color: var(--theme-text-primary);
+        }
+
+        .tenant-role {
+          font-size: 12px;
+          line-height: 16px;
+          color: var(--theme-text-secondary);
+        }
+      }
+
       &.mr4 {
         margin: 4px;
+        border-top: 1px solid var(--theme-shell-border);
+        padding-top: 4px;
+        height: 36px;
       }
 
       .right {
         margin-left: auto;
       }
+    }
+  }
+}
+
+.system-tenant.system-tenant {
+  padding: 4px;
+  width: 260px !important;
+  box-shadow: var(--theme-card-shadow);
+  border: 1px solid var(--theme-shell-border);
+  background: var(--theme-panel-bg);
+  color: var(--theme-text-primary);
+
+  .tenant-title {
+    padding: 4px 8px 6px;
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--theme-text-secondary);
+  }
+
+  .tenant-option {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--theme-hover-bg);
+    }
+
+    &.isActive {
+      color: var(--ed-color-primary);
+
+      .done {
+        display: block;
+      }
+    }
+
+    .tenant-option-main {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .tenant-name {
+      font-size: 14px;
+      line-height: 20px;
+      font-weight: 500;
+    }
+
+    .tenant-code {
+      font-size: 12px;
+      line-height: 16px;
+      color: var(--theme-text-secondary);
+    }
+
+    .done {
+      margin-left: auto;
+      display: none;
     }
   }
 }

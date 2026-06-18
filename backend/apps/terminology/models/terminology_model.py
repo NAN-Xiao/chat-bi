@@ -11,6 +11,7 @@ from sqlmodel import SQLModel, Field
 class Terminology(SQLModel, table=True):
     __tablename__ = "terminology"
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    tenant_id: int = Field(default=1, sa_column=Column(BigInteger, nullable=False, server_default="1"))
     pid: Optional[int] = Field(sa_column=Column(BigInteger, nullable=True))
     create_time: Optional[datetime] = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     word: Optional[str] = Field(max_length=255)
@@ -23,6 +24,7 @@ class Terminology(SQLModel, table=True):
 
 class TerminologyInfo(BaseModel):
     id: Optional[int] = None
+    tenant_id: Optional[int] = None
     create_time: Optional[datetime] = None
     word: Optional[str] = None
     description: Optional[str] = None

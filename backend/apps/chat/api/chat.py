@@ -11,9 +11,9 @@ from sqlalchemy import and_, select
 from starlette.responses import JSONResponse
 
 from apps.chat.curd.chat import delete_chat_with_user, get_chart_data_with_user, get_chat_predict_data_with_user, \
-    list_chats, get_chat_with_records, create_chat, rename_chat, \
-    delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
-    format_json_data, format_json_list_data, get_chart_config, list_recent_questions, get_chat as get_chat_exec, \
+    list_chats, get_chat_with_records, create_chat, \
+    get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
+    format_json_data, format_json_list_data, get_chart_config, list_recent_questions, \
     rename_chat_with_user, get_chat_log_history, get_chart_data_with_user_live
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
     ChatInfo, Chat, ChatFinishStep, ChatQuestionBase
@@ -28,6 +28,10 @@ from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
+
+
+def _current_tenant_id(current_user: CurrentUser) -> int:
+    return int(getattr(current_user, "tenant_id", None) or 1)
 
 
 @router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
@@ -243,9 +247,9 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
         yield 'data:' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
 
     try:
-        record = get_chat_record_by_id(session, chat_record_id)
+        record = get_chat_record_by_id(session, chat_record_id, _current_tenant_id(current_user))
 
-        if not record:
+        if not record or record.create_by != current_user.id:
             return StreamingResponse(_return_empty(), media_type="text/event-stream")
 
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
@@ -273,15 +277,19 @@ async def recommend_questions(session: SessionDep, current_user: CurrentUser,
     return list_recent_questions(session=session, current_user=current_user, datasource_id=datasource_id)
 
 
-def find_base_question(record_id: int, session: SessionDep):
+def find_base_question(record_id: int, session: SessionDep, current_user: CurrentUser):
     stmt = select(ChatRecord.question, ChatRecord.regenerate_record_id).where(
-        and_(ChatRecord.id == record_id))
+        and_(
+            ChatRecord.id == record_id,
+            ChatRecord.create_by == current_user.id,
+            ChatRecord.tenant_id == _current_tenant_id(current_user),
+        ))
     _record = session.execute(stmt).fetchone()
     if not _record:
         raise Exception(f'Cannot find base chat record')
     rec_question, rec_regenerate_record_id = _record
     if rec_regenerate_record_id:
-        return find_base_question(rec_regenerate_record_id, session)
+        return find_base_question(rec_regenerate_record_id, session, current_user)
     else:
         return rec_question
 
@@ -315,7 +323,11 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
                 stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.analysis_record_id,
                               ChatRecord.predict_record_id, ChatRecord.regenerate_record_id,
                               ChatRecord.first_chat).where(
-                    and_(ChatRecord.id == record_id)).order_by(ChatRecord.create_time.desc())
+                    and_(
+                        ChatRecord.id == record_id,
+                        ChatRecord.create_by == current_user.id,
+                        ChatRecord.tenant_id == _current_tenant_id(current_user),
+                    )).order_by(ChatRecord.create_time.desc())
                 _record = session.execute(stmt).fetchone()
                 if not _record:
                     raise Exception(f'Record id: {record_id} does not exist')
@@ -335,6 +347,8 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
             else:  # get last record id
                 stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.regenerate_record_id).where(
                     and_(ChatRecord.chat_id == request_question.chat_id,
+                         ChatRecord.create_by == current_user.id,
+                         ChatRecord.tenant_id == _current_tenant_id(current_user),
                          ChatRecord.first_chat == False,
                          ChatRecord.analysis_record_id.is_(None),
                          ChatRecord.predict_record_id.is_(None))).order_by(
@@ -351,7 +365,7 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
                 rec_regenerate_record_id = rec_id
 
             # 针对已经是重新生成的提问，需要找到原来的提问是什么
-            base_question_text = find_base_question(rec_regenerate_record_id, session)
+            base_question_text = find_base_question(rec_regenerate_record_id, session, current_user)
             text_before_command = text_before_command + ("\n" if text_before_command else "") + base_question_text
 
             if command == QuickCommand.REGENERATE:
@@ -446,14 +460,18 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             raise Exception(f"Type {action_type} Not Found")
         record: ChatRecord | None = None
 
-        stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource,
+        stmt = select(ChatRecord.id, ChatRecord.tenant_id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource,
                       ChatRecord.engine_type,
                       ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.chart, ChatRecord.data,
                       ChatRecord.custom_prompt_id).where(
-            and_(ChatRecord.id == chat_record_id))
+            and_(
+                ChatRecord.id == chat_record_id,
+                ChatRecord.create_by == current_user.id,
+                ChatRecord.tenant_id == _current_tenant_id(current_user),
+            ))
         result = session.execute(stmt)
         for r in result:
-            record = ChatRecord(id=r.id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
+            record = ChatRecord(id=r.id, tenant_id=r.tenant_id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
                                 engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by,
                                 chart=r.chart,
                                 data=r.data, custom_prompt_id=r.custom_prompt_id)
@@ -522,6 +540,11 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
             detail=f"ChatRecord with id {chat_record_id} not found"
         )
     if chat_record.create_by != current_user.id:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ChatRecord with id {chat_record_id} not Owned by the current user"
+        )
+    if int(chat_record.tenant_id or 1) != _current_tenant_id(current_user):
         raise HTTPException(
             status_code=500,
             detail=f"ChatRecord with id {chat_record_id} not Owned by the current user"

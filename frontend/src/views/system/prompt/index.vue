@@ -21,7 +21,6 @@ import { convertFilterText } from '@/components/filter-text'
 import { DrawerMain } from '@/components/drawer-main'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import Uploader from '@/views/system/excel-upload/Uploader.vue'
-import { useUserStore } from '@/stores/user'
 
 interface AgentForm {
   id?: string | number | null
@@ -42,7 +41,6 @@ interface AgentForm {
 const drawerMainRef = ref()
 const { t } = useI18n()
 const { copy } = useClipboard({ legacy: true })
-const userStore = useUserStore()
 
 const keywords = ref('')
 const oldKeywords = ref('')
@@ -125,6 +123,7 @@ const getFileName = () => `${typeTitle()}.xlsx`
 
 const configParams = () => {
   const params = new URLSearchParams()
+  params.set('visibility_scope', 'ADMIN_PUBLIC')
   if (keywords.value) {
     params.set('name', keywords.value)
   }
@@ -167,6 +166,7 @@ const exportExcel = () => {
   }).then(() => {
     searchLoading.value = true
     const params: Record<string, string> = {}
+    params.visibility_scope = 'ADMIN_PUBLIC'
     if (keywords.value) {
       params.name = keywords.value
     }
@@ -401,7 +401,7 @@ const targetScopeText = (scope?: string | null) => {
 }
 
 const canManageAgent = (row: any) => {
-  return row.can_manage === true || userStore.isSystemManagerUser
+  return row.can_manage === true
 }
 
 const copyCode = () => {

@@ -37,9 +37,13 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
     type = assistant.type
     if type == 0 or type == 2:
         configuration = assistant.configuration
+        tenant_id = int(getattr(assistant, "tenant_id", None) or 1)
+        stmt = (
+            select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description)
+            .where(CoreDatasource.tenant_id == tenant_id)
+        )
         if configuration:
             config: dict[any] = json.loads(configuration)
-            stmt = select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description)
             if not assistant.online:
                 public_list: list[int] = config.get('public_list') or None
                 if public_list:

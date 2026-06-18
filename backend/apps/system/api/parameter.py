@@ -15,13 +15,13 @@ async def get_login_args(session: SessionDep) -> list[SysArgModel]:
 
 
 @router.get("")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_args(session: SessionDep) -> list[SysArgModel]:
     return await get_parameter_args(session)
 
 
 @router.post("", )
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.PARAMS_SETTING))
 async def save_args(session: SessionDep, request: Request):
     return await save_parameter_args(session=session, request=request)

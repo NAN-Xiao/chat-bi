@@ -1,16 +1,14 @@
 ﻿
-from typing import Optional
 from sqlmodel import Session, func, select, delete as sqlmodel_delete
 from apps.datasource.models.datasource import CoreDatasourceUser
+from apps.system.crud.tenant import user_belongs_to_tenant
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.system_schema import EMAIL_REGEX, PWD_REGEX, BaseUserDTO, UserInfoDTO
 from common.core.deps import SessionDep
 from common.core.app_cache import cache, clear_cache
-from common.utils.locale import I18n
 from common.utils.utils import AppLogUtil
 from ..models.user import UserModel, UserPlatformModel
 from common.core.security import hash_password, verify_stored_password
-import re
 
 SYSTEM_ROLE_SYSTEM_ADMIN = "system_admin"
 SYSTEM_ROLE_COLLAB_ADMIN = "collab_admin"
@@ -39,6 +37,10 @@ def is_system_admin(user) -> bool:
     if hasattr(user, "system_role"):
         return normalize_system_role(getattr(user, "system_role", None)) in SYSTEM_ADMIN_ROLES
     return bool(getattr(user, "isAdmin", False))
+
+
+def is_platform_admin(user) -> bool:
+    return is_super_admin(user)
 
 
 def is_super_admin(user) -> bool:
@@ -119,6 +121,10 @@ async def clean_user_cache(id: int):
 
 def check_account_exists(*, session: Session, account: str) -> bool:
     return session.exec(select(func.count()).select_from(UserModel).where(UserModel.account == account)).one() > 0
+
+
+def check_user_in_tenant(*, session: Session, user_id: int, tenant_id: int | None) -> bool:
+    return user_belongs_to_tenant(session, user_id, tenant_id)
 def check_email_exists(*, session: Session, email: str) -> bool:
     return session.exec(select(func.count()).select_from(UserModel).where(UserModel.email == email)).one() > 0
 

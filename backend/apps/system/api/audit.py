@@ -7,10 +7,13 @@ from openpyxl import Workbook
 from sqlalchemy import func, or_
 from sqlmodel import select
 
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.crud.user import is_super_admin
+from apps.system.models.tenant import TenantUserModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationStatus, OperationType, SystemLog, SystemLogsResource
-from common.core.deps import SessionDep
+from common.core.deps import CurrentUser, SessionDep
 
 router = APIRouter(tags=["system_audit"], prefix="/system/audit", include_in_schema=False)
 
@@ -67,9 +70,22 @@ def _parse_millis(value: str | None) -> datetime | None:
         return None
 
 
-def _build_stmt(request: Request):
+def _current_tenant_id(current_user: CurrentUser) -> int:
+    try:
+        return int(getattr(current_user, "tenant_id", None) or DEFAULT_TENANT_ID)
+    except (TypeError, ValueError):
+        return DEFAULT_TENANT_ID
+
+
+def _apply_tenant_scope(stmt, current_user: CurrentUser):
+    if is_super_admin(current_user):
+        return stmt
+    return stmt.where(SystemLog.tenant_id == _current_tenant_id(current_user))
+
+
+def _build_stmt(request: Request, current_user: CurrentUser):
     filters = _query_filters(request)
-    stmt = select(SystemLog)
+    stmt = _apply_tenant_scope(select(SystemLog), current_user)
 
     keyword = filters["name"]
     if keyword:
@@ -149,8 +165,8 @@ def _resource_name_map(session: SessionDep, log_ids: list[int]) -> dict[int, str
 
 @router.get("/page/{page_num}/{page_size}")
 @require_permissions(permission=AppPermission(role=["admin"]))
-async def page(session: SessionDep, request: Request, page_num: int, page_size: int):
-    base_stmt = _build_stmt(request)
+async def page(session: SessionDep, request: Request, current_user: CurrentUser, page_num: int, page_size: int):
+    base_stmt = _build_stmt(request, current_user)
     total_count = session.exec(select(func.count()).select_from(base_stmt.subquery())).one()
     logs = session.exec(
         base_stmt
@@ -173,15 +189,26 @@ async def get_options():
 
 @router.get("/users")
 @require_permissions(permission=AppPermission(role=["admin"]))
-async def users(session: SessionDep):
-    rows = session.exec(select(UserModel.id, UserModel.name).order_by(UserModel.name)).all()
+async def users(session: SessionDep, current_user: CurrentUser):
+    stmt = select(UserModel.id, UserModel.name)
+    if not is_super_admin(current_user):
+        stmt = (
+            stmt
+            .join(TenantUserModel, TenantUserModel.user_id == UserModel.id)
+            .where(
+                TenantUserModel.tenant_id == _current_tenant_id(current_user),
+                TenantUserModel.status == 1,
+            )
+            .distinct()
+        )
+    rows = session.exec(stmt.order_by(UserModel.name)).all()
     return [{"id": item.id, "name": item.name} for item in rows]
 
 
 @router.get("/export")
 @require_permissions(permission=AppPermission(role=["admin"]))
-async def export(session: SessionDep, request: Request):
-    logs = session.exec(_build_stmt(request).order_by(SystemLog.create_time.desc(), SystemLog.id.desc())).all()
+async def export(session: SessionDep, request: Request, current_user: CurrentUser):
+    logs = session.exec(_build_stmt(request, current_user).order_by(SystemLog.create_time.desc(), SystemLog.id.desc())).all()
     resource_map = _resource_name_map(session, [item.id for item in logs if item.id])
 
     wb = Workbook()

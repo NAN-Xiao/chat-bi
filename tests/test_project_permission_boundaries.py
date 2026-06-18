@@ -24,6 +24,7 @@ def _engine_with_project_metadata_tables():
             """
             CREATE TABLE core_datasource (
                 id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
                 name VARCHAR(128) NOT NULL,
                 description VARCHAR(512),
                 type VARCHAR(64),
@@ -121,9 +122,10 @@ def test_data_training_pager_uses_visible_datasource_scope(monkeypatch):
 
     monkeypatch.setattr(data_training_api, "_visible_datasource_ids", lambda session, user: {1, 3})
 
-    def fake_page_data_training(session, current_page, page_size, question, datasource_ids):
+    def fake_page_data_training(session, current_page, page_size, question, datasource_ids, tenant_id):
         captured["datasource_ids"] = datasource_ids
         captured["question"] = question
+        captured["tenant_id"] = tenant_id
         return 1, 10, 0, 1, []
 
     monkeypatch.setattr(data_training_api, "page_data_training", fake_page_data_training)
@@ -137,7 +139,7 @@ def test_data_training_pager_uses_visible_datasource_scope(monkeypatch):
         datasource=None,
     ))
 
-    assert captured == {"datasource_ids": {1, 3}, "question": "revenue"}
+    assert captured == {"datasource_ids": {1, 3}, "question": "revenue", "tenant_id": 1}
     assert result["data"] == []
 
 
@@ -159,6 +161,7 @@ def test_data_training_pager_rejects_unavailable_datasource(monkeypatch):
 def test_data_training_maintenance_requires_system_admin(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     system_admin = SimpleNamespace(id=1, isAdmin=True)
+    monkeypatch.setattr(data_training_api, "has_datasource_access", lambda *args, **kwargs: True)
 
     with pytest.raises(HTTPException) as exc:
         data_training_api._require_training_admin(
@@ -188,10 +191,12 @@ def test_terminology_pager_uses_visible_datasource_scope(monkeypatch):
         dslist,
         accessible_datasource_ids,
         include_global,
+        tenant_id,
     ):
         captured["dslist"] = dslist
         captured["accessible_datasource_ids"] = accessible_datasource_ids
         captured["include_global"] = include_global
+        captured["tenant_id"] = tenant_id
         return 1, 10, 0, 1, []
 
     monkeypatch.setattr(terminology_api, "page_terminology", fake_page_terminology)
@@ -209,6 +214,7 @@ def test_terminology_pager_uses_visible_datasource_scope(monkeypatch):
         "dslist": [1],
         "accessible_datasource_ids": {1, 3},
         "include_global": False,
+        "tenant_id": 1,
     }
     assert result["data"] == []
 
@@ -231,6 +237,7 @@ def test_terminology_pager_rejects_unavailable_datasource(monkeypatch):
 def test_terminology_maintenance_requires_system_admin(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     system_admin = SimpleNamespace(id=1, isAdmin=True)
+    monkeypatch.setattr(terminology_api, "has_datasource_access", lambda *args, **kwargs: True)
 
     with pytest.raises(HTTPException) as exc:
         terminology_api._require_term_scope_admin(
@@ -345,7 +352,54 @@ def test_permission_decorator_rejects_missing_key_expression():
         permission_schema.RequestContext.reset(token)
 
 
-def test_permission_decorator_allows_system_admin_when_resource_cannot_resolve():
+def test_platform_admin_role_is_separate_from_tenant_admin():
+    request = Request({"type": "http", "headers": []})
+    request.state.current_user = SimpleNamespace(
+        id=2,
+        system_role="viewer",
+        tenant_id=10,
+        tenant_role="owner",
+    )
+    token = permission_schema.RequestContext.set_request(request)
+
+    @permission_schema.require_permissions(permission_schema.AppPermission(role=["platform_admin"]))
+    async def platform_endpoint():
+        return "ok"
+
+    @permission_schema.require_permissions(permission_schema.AppPermission(role=["admin"]))
+    async def tenant_endpoint():
+        return "ok"
+
+    try:
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(platform_endpoint())
+        assert exc.value.status_code == 403
+        assert asyncio.run(tenant_endpoint()) == "ok"
+    finally:
+        permission_schema.RequestContext.reset(token)
+
+
+def test_platform_admin_role_accepts_service_provider_admin():
+    request = Request({"type": "http", "headers": []})
+    request.state.current_user = SimpleNamespace(
+        id=1,
+        system_role="system_admin",
+        tenant_id=10,
+        tenant_role="owner",
+    )
+    token = permission_schema.RequestContext.set_request(request)
+
+    @permission_schema.require_permissions(permission_schema.AppPermission(role=["platform_admin"]))
+    async def endpoint():
+        return "ok"
+
+    try:
+        assert asyncio.run(endpoint()) == "ok"
+    finally:
+        permission_schema.RequestContext.reset(token)
+
+
+def test_permission_decorator_rejects_unresolved_resource_for_system_admin():
     request = Request({"type": "http", "headers": []})
     request.state.current_user = SimpleNamespace(id=1, isAdmin=True)
     token = permission_schema.RequestContext.set_request(request)
@@ -357,6 +411,8 @@ def test_permission_decorator_allows_system_admin_when_resource_cannot_resolve()
         return "ok"
 
     try:
-        assert asyncio.run(endpoint()) == "ok"
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(endpoint())
+        assert exc.value.status_code == 403
     finally:
         permission_schema.RequestContext.reset(token)

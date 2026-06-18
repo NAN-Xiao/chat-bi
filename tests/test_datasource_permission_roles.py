@@ -6,7 +6,7 @@ from types import SimpleNamespace
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
 from sqlalchemy import text
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, create_engine
 
 from apps.datasource.crud import datasource as datasource_crud
 from apps.datasource.api import datasource as datasource_api
@@ -22,6 +22,7 @@ def _engine_with_permission_tables():
             """
             CREATE TABLE core_datasource (
                 id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
                 name VARCHAR(128) NOT NULL,
                 description VARCHAR(512),
                 type VARCHAR(64),
@@ -139,9 +140,10 @@ def _engine_with_permission_tables():
     return engine
 
 
-def _datasource(datasource_id=1, create_by=9):
+def _datasource(datasource_id=1, create_by=9, tenant_id=1):
     return CoreDatasource(
         id=datasource_id,
+        tenant_id=tenant_id,
         name=f"Project {datasource_id}",
         type="pg",
         configuration="{}",
@@ -162,6 +164,54 @@ def test_datasource_role_defaults_to_viewer_for_existing_membership():
         assert permission.get_datasource_role(session, current_user, 1) == "viewer"
         assert permission.has_datasource_role(session, current_user, 1, "project_viewer") is True
         assert permission.has_datasource_role(session, current_user, 1, "project_editor") is False
+
+
+def test_system_admin_datasource_list_is_scoped_to_current_tenant():
+    engine = _engine_with_permission_tables()
+    tenant_one_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
+    tenant_two_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=2)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        session.add(_datasource(2, tenant_id=2))
+        session.commit()
+
+        tenant_one_items = asyncio.run(datasource_api.datasource_list(session, tenant_one_admin))
+        tenant_two_items = asyncio.run(datasource_api.datasource_list(session, tenant_two_admin))
+
+        assert [item["id"] for item in tenant_one_items] == [1]
+        assert [item["id"] for item in tenant_two_items] == [2]
+
+
+def test_datasource_membership_does_not_cross_tenant_boundary():
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        session.add(_datasource(2, tenant_id=2))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        session.add(CoreDatasourceUser(ds_id=2, user_id=2, role="editor"))
+        session.commit()
+
+        assert permission.has_datasource_access(session, current_user, 1) is True
+        assert permission.has_datasource_access(session, current_user, 2) is False
+        assert permission.get_accessible_datasource_ids(session, current_user) == {1}
+
+
+def test_update_user_datasources_ignores_projects_outside_current_tenant():
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        session.add(_datasource(2, tenant_id=2))
+        session.commit()
+
+        assert permission.update_user_datasources(session, current_user, 2, [1, 2]) == [1]
+        session.commit()
+
+        assert permission.list_user_datasource_roles(session, 2, current_user) == {1: "viewer"}
 
 
 def test_datasource_editor_satisfies_dashboard_edit_role():

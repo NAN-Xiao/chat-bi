@@ -4,6 +4,8 @@ from typing import Optional
 from sqlalchemy import text as sql_text
 from sqlmodel import Session
 
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
+
 
 class CustomPromptTypeEnum(str, Enum):
     GENERATE_SQL = "GENERATE_SQL"
@@ -67,6 +69,7 @@ def find_custom_prompts(
         prompt_id: Optional[int | str] = None,
         current_user_id: Optional[int | str] = None,
         can_manage_all: bool = False,
+        tenant_id: Optional[int | str] = None,
 ) -> tuple[str, list[str], Optional[int]]:
     normalized_prompt_id = _normalize_prompt_id(prompt_id)
     if normalized_prompt_id is None:
@@ -76,9 +79,13 @@ def find_custom_prompts(
     type_condition = ""
     params = {
         "prompt_id": normalized_prompt_id,
+        "tenant_id": int(tenant_id or DEFAULT_TENANT_ID),
         "target_scope": normalized_scope.value,
         "all_scope": CustomPromptTargetScopeEnum.ALL.value,
         "smart_qa_scope": CustomPromptTargetScopeEnum.SMART_QA.value,
+        "current_user_id": int(current_user_id) if current_user_id not in (None, "") else None,
+        "public_scope": CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value,
+        "private_scope": CustomPromptVisibilityScopeEnum.USER_PRIVATE.value,
     }
     if custom_prompt_type is not None:
         type_condition = "AND type = :custom_prompt_type"
@@ -92,6 +99,10 @@ def find_custom_prompts(
             WHERE id = :prompt_id
               {type_condition}
               AND COALESCE(active, false) = true
+              AND (
+                (COALESCE(visibility_scope, :public_scope) = :public_scope AND tenant_id = :tenant_id)
+                OR (visibility_scope = :private_scope AND create_by = :current_user_id)
+              )
               AND (
                 target_scope = :target_scope
                 OR target_scope = :all_scope

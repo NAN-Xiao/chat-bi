@@ -1,12 +1,19 @@
 from sqlmodel import SQLModel, Field
-from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, DateTime
+from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index
 from typing import Optional, List, Literal
 from pydantic import BaseModel
 
 class CoreDashboard(SQLModel, table=True):
     __tablename__ = "core_dashboard"
+    __table_args__ = (
+        Index("idx_core_dashboard_tenant_id", "tenant_id"),
+    )
     id: str = Field(
         sa_column=Column(String(50), nullable=False, primary_key=True)
+    )
+    tenant_id: int = Field(
+        default=1,
+        sa_column=Column(BigInteger, nullable=False, server_default="1")
     )
     name: str = Field(
         default=None,
@@ -128,8 +135,15 @@ class CoreDashboard(SQLModel, table=True):
 
 class CoreDashboardShare(SQLModel, table=True):
     __tablename__ = "core_dashboard_share"
+    __table_args__ = (
+        Index("idx_core_dashboard_share_tenant_id", "tenant_id"),
+    )
     id: str = Field(
         sa_column=Column(String(50), nullable=False, primary_key=True)
+    )
+    tenant_id: int = Field(
+        default=1,
+        sa_column=Column(BigInteger, nullable=False, server_default="1")
     )
     name: str = Field(
         default=None,
@@ -205,6 +219,7 @@ class CoreDashboardShare(SQLModel, table=True):
 
 class DashboardBaseResponse(BaseModel):
     id: Optional[str] = None
+    tenant_id: Optional[int] = None
     name: Optional[str] = None
     pid: Optional[str] = None
     datasource: Optional[int] = None
@@ -221,6 +236,7 @@ class DashboardBaseResponse(BaseModel):
 
 class DashboardShareListResponse(BaseModel):
     id: Optional[str] = None
+    tenant_id: Optional[int] = None
     name: Optional[str] = None
     datasource: Optional[int] = None
     datasource_name: Optional[str] = None
@@ -241,6 +257,7 @@ class DashboardResponse(CoreDashboard):
 
 class BaseDashboard(BaseModel):
     id: str = ''
+    tenant_id: Optional[int] = None
     name: str = ''
     pid: str = ''
     datasource: Optional[int] = None

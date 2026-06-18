@@ -1,0 +1,585 @@
+import asyncio
+from types import SimpleNamespace
+
+import pytest
+from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, create_engine, select
+
+from apps.system.crud.tenant import (
+    DEFAULT_TENANT_CODE,
+    DEFAULT_TENANT_ID,
+    TENANT_APPLICATION_TYPE_INVITE,
+    TENANT_APPLICATION_TYPE_JOIN,
+    TENANT_ROLE_ADMIN,
+    TENANT_ROLE_MEMBER,
+    create_tenant_invitation,
+    assign_user_to_tenant,
+    ensure_default_tenant,
+    resolve_current_tenant,
+    user_belongs_to_tenant,
+)
+from apps.system.api import tenant as tenant_api
+from apps.system.models.tenant import TenantApplicationModel, TenantModel, TenantUserModel
+from apps.system.schemas.system_schema import BaseUserDTO
+from apps.system.schemas.tenant_schema import (
+    TenantApplicationCreator,
+    TenantApplicationReview,
+    TenantEditor,
+    TenantOwnerTransfer,
+    TenantStatus,
+)
+from common.audit.models.log_model import SystemLog
+
+
+def _engine():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    TenantModel.__table__.create(engine)
+    TenantUserModel.__table__.create(engine)
+    TenantApplicationModel.__table__.create(engine)
+    SystemLog.__table__.create(engine)
+    with engine.begin() as conn:
+        conn.execute(text(
+            """
+            CREATE TABLE sys_user (
+                id INTEGER PRIMARY KEY,
+                account VARCHAR(255) NOT NULL UNIQUE,
+                name VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                status INTEGER NOT NULL,
+                origin INTEGER NOT NULL DEFAULT 0,
+                create_time INTEGER NOT NULL,
+                language VARCHAR(255),
+                system_role VARCHAR(32) NOT NULL DEFAULT 'viewer',
+                system_variables TEXT
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE core_datasource (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
+                name VARCHAR(128) NOT NULL
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE core_datasource_user (
+                id INTEGER PRIMARY KEY,
+                ds_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL
+            )
+            """
+        ))
+    return engine
+
+
+def _user(user_id: int, role: str = "viewer"):
+    return SimpleNamespace(id=user_id, system_role=role)
+
+
+def test_default_tenant_is_created_once():
+    engine = _engine()
+    with Session(engine) as session:
+        first = ensure_default_tenant(session)
+        second = ensure_default_tenant(session)
+
+        assert first.id == DEFAULT_TENANT_ID
+        assert first.code == DEFAULT_TENANT_CODE
+        assert second.id == first.id
+
+
+def test_user_without_membership_is_attached_to_default_tenant():
+    engine = _engine()
+    with Session(engine) as session:
+        tenant = resolve_current_tenant(session, _user(100))
+
+        assert tenant.id == DEFAULT_TENANT_ID
+        assert tenant.role == TENANT_ROLE_MEMBER
+        assert user_belongs_to_tenant(session, 100, DEFAULT_TENANT_ID)
+
+
+def test_user_cannot_resolve_another_tenant_without_membership():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.commit()
+
+        with pytest.raises(PermissionError):
+            resolve_current_tenant(session, _user(100), requested_tenant_id=200)
+
+
+def test_user_can_resolve_requested_tenant_when_member():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.flush()
+        assign_user_to_tenant(session, 100, tenant_id=200, role=TENANT_ROLE_ADMIN, is_primary=True)
+
+        tenant = resolve_current_tenant(session, _user(100), requested_tenant_id=200)
+
+        assert tenant.id == 200
+        assert tenant.role == TENANT_ROLE_ADMIN
+
+
+def test_system_admin_can_resolve_active_tenant_for_platform_operations():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.commit()
+
+        tenant = resolve_current_tenant(session, _user(1, "system_admin"), requested_tenant_id=200)
+
+        assert tenant.id == 200
+        assert tenant.role == "owner"
+
+
+def test_user_token_payload_includes_current_tenant():
+    user = BaseUserDTO(
+        id=100,
+        account="demo",
+        name="Demo",
+        email="demo@example.com",
+        password="secret",
+        status=1,
+        origin=0,
+        system_role="viewer",
+        tenant_id=DEFAULT_TENANT_ID,
+    )
+
+    assert user.to_dict() == {
+        "id": 100,
+        "account": "demo",
+        "tenant_id": DEFAULT_TENANT_ID,
+    }
+
+
+def test_platform_admin_lists_all_active_tenants():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=300, code="tenant-c", name="Tenant C", status=0, plan="default"))
+        session.commit()
+
+        tenants = asyncio.run(tenant_api.tenant_list(session, _user(1, "system_admin")))
+
+        assert {tenant.code for tenant in tenants} == {"tenant-b"}
+        assert all(tenant.role == "owner" for tenant in tenants)
+
+
+def test_only_platform_admin_can_use_tenant_admin_list():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(tenant_api.admin_tenant_list(session, _user(100)))
+
+        assert exc.value.status_code == 403
+
+
+def test_platform_admin_manages_tenant_lifecycle():
+    engine = _engine()
+    with Session(engine) as session:
+        tenant = asyncio.run(tenant_api.add_tenant(
+            session,
+            _user(1, "system_admin"),
+            tenant_api.TenantCreator(code="tenant-b", name="Tenant B", plan="basic"),
+        ))
+        assert tenant.code == "tenant-b"
+        assert tenant.plan == "basic"
+        assert tenant.status == 1
+
+        edited = asyncio.run(tenant_api.edit_tenant(
+            session,
+            _user(1, "system_admin"),
+            tenant.id,
+            TenantEditor(name="Tenant Beta", plan="enterprise"),
+        ))
+        assert edited.name == "Tenant Beta"
+        assert edited.plan == "enterprise"
+
+        disabled = asyncio.run(tenant_api.update_tenant_status(
+            session,
+            _user(1, "system_admin"),
+            tenant.id,
+            TenantStatus(status=0),
+        ))
+        assert disabled.status == 0
+
+        admin_rows = asyncio.run(tenant_api.admin_tenant_list(session, _user(1, "system_admin")))
+        assert {row.code for row in admin_rows} == {"tenant-b"}
+
+
+def test_default_tenant_cannot_be_disabled():
+    engine = _engine()
+    with Session(engine) as session:
+        ensure_default_tenant(session)
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(tenant_api.update_tenant_status(
+                session,
+                _user(1, "system_admin"),
+                DEFAULT_TENANT_ID,
+                TenantStatus(status=0),
+            ))
+
+        assert exc.value.status_code == 400
+
+
+def test_user_submits_tenant_application_and_platform_admin_approves_workspace():
+    engine = _engine()
+    applicant = _user(100)
+    platform_admin = _user(1, "system_admin")
+    with Session(engine) as session:
+        application = asyncio.run(tenant_api.submit_tenant_application(
+            session,
+            applicant,
+            TenantApplicationCreator(
+                tenant_code="tenant-b",
+                tenant_name="Tenant B",
+                plan="enterprise",
+                requested_role="owner",
+                reason="Need a company workspace",
+            ),
+        ))
+
+        assert application.status == "pending"
+        assert application.applicant_user_id == 100
+
+        reviewed = asyncio.run(tenant_api.review_tenant_application(
+            session,
+            platform_admin,
+            int(application.id),
+            TenantApplicationReview(approved=True, review_comment="ok"),
+        ))
+
+        assert reviewed.status == "approved"
+        assert reviewed.tenant_id is not None
+        assert user_belongs_to_tenant(session, 100, int(reviewed.tenant_id))
+        membership = session.exec(
+            select(TenantUserModel).where(
+                TenantUserModel.tenant_id == int(reviewed.tenant_id),
+                TenantUserModel.user_id == 100,
+            )
+        ).one()
+        assert membership.role == "owner"
+        audit_log = session.exec(
+            select(SystemLog).where(
+                SystemLog.tenant_id == int(reviewed.tenant_id),
+                SystemLog.operation_detail == "审核企业创建申请通过",
+            )
+        ).first()
+        assert audit_log is not None
+        assert audit_log.resource_id == str(application.id)
+        assert audit_log.resource_name == "Tenant B"
+
+
+def test_rejected_tenant_application_does_not_create_workspace():
+    engine = _engine()
+    applicant = _user(100)
+    platform_admin = _user(1, "system_admin")
+    with Session(engine) as session:
+        application = asyncio.run(tenant_api.submit_tenant_application(
+            session,
+            applicant,
+            TenantApplicationCreator(
+                tenant_code="tenant-b",
+                tenant_name="Tenant B",
+                requested_role="admin",
+            ),
+        ))
+
+        reviewed = asyncio.run(tenant_api.review_tenant_application(
+            session,
+            platform_admin,
+            int(application.id),
+            TenantApplicationReview(approved=False, review_comment="missing proof"),
+        ))
+
+        assert reviewed.status == "rejected"
+        assert session.exec(select(TenantModel).where(TenantModel.code == "tenant-b")).first() is None
+        assert not user_belongs_to_tenant(session, 100, 200)
+
+
+def test_user_searches_tenant_and_applies_to_join_by_id():
+    engine = _engine()
+    applicant = _user(100)
+    tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.commit()
+
+        search_rows = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="200"))
+        assert len(search_rows) == 1
+        assert search_rows[0].id == 200
+        assert search_rows[0].already_joined is False
+
+        application = asyncio.run(tenant_api.submit_tenant_application(
+            session,
+            applicant,
+            TenantApplicationCreator(
+                application_type=TENANT_APPLICATION_TYPE_JOIN,
+                tenant_id=200,
+                requested_role="admin",
+                reason="Please add me",
+            ),
+        ))
+        assert application.application_type == "join"
+        assert application.tenant_id == 200
+
+        reviewed = asyncio.run(tenant_api.review_tenant_join_application(
+            session,
+            tenant_admin,
+            current_tenant,
+            int(application.id),
+            TenantApplicationReview(approved=True, review_comment="ok"),
+        ))
+
+        assert reviewed.status == "approved"
+        assert user_belongs_to_tenant(session, 100, 200)
+        membership = session.exec(
+            select(TenantUserModel).where(
+                TenantUserModel.tenant_id == 200,
+                TenantUserModel.user_id == 100,
+            )
+        ).one()
+        assert membership.role == "admin"
+
+
+def test_tenant_join_search_does_not_fuzzy_disclose_tenant_names_or_codes():
+    engine = _engine()
+    applicant = _user(100)
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant Beta", status=1, plan="basic"))
+        session.add(TenantModel(id=300, code="finance-prod", name="Finance Production", status=1, plan="basic"))
+        session.commit()
+
+        by_code = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="tenant-b"))
+        by_id = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="300"))
+        by_name = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="Finance"))
+        by_partial_code = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="tenant"))
+
+        assert [row.id for row in by_code] == [200]
+        assert [row.id for row in by_id] == [300]
+        assert by_name == []
+        assert by_partial_code == []
+
+
+def test_pending_join_application_can_be_cancelled_by_applicant():
+    engine = _engine()
+    applicant = _user(100)
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.commit()
+
+        application = asyncio.run(tenant_api.submit_tenant_application(
+            session,
+            applicant,
+            TenantApplicationCreator(
+                application_type=TENANT_APPLICATION_TYPE_JOIN,
+                tenant_id=200,
+                requested_role="member",
+            ),
+        ))
+
+        cancelled = asyncio.run(tenant_api.cancel_my_tenant_application(
+            session,
+            applicant,
+            int(application.id),
+        ))
+
+        assert cancelled.status == "cancelled"
+        assert not user_belongs_to_tenant(session, 100, 200)
+
+
+def test_tenant_admin_invites_existing_user_and_user_accepts():
+    engine = _engine()
+    tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
+    invitee = _user(100)
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=2, role="admin", is_primary=True, status=1))
+        invitation = create_tenant_invitation(
+            session,
+            tenant_id=200,
+            invitee_user_id=100,
+            invited_by_user_id=2,
+            requested_role="member",
+        )
+        session.commit()
+
+        invited_rows = asyncio.run(tenant_api.my_tenant_invitations(session, invitee))
+        assert [row.id for row in invited_rows] == [invitation.id]
+        assert invited_rows[0].application_type == TENANT_APPLICATION_TYPE_INVITE
+
+        accepted = asyncio.run(tenant_api.respond_tenant_invitation(
+            session,
+            invitee,
+            int(invitation.id),
+            TenantApplicationReview(approved=True, review_comment="accepted"),
+        ))
+
+        assert accepted.status == "approved"
+        assert user_belongs_to_tenant(session, 100, 200)
+        audit_log = session.exec(
+            select(SystemLog).where(
+                SystemLog.tenant_id == 200,
+                SystemLog.operation_detail == "接受企业邀请",
+            )
+        ).first()
+        assert audit_log is not None
+        assert audit_log.resource_id == str(invitation.id)
+
+        tenant_rows = asyncio.run(tenant_api.tenant_join_applications(session, tenant_admin, current_tenant))
+        assert tenant_rows == []
+
+
+def test_tenant_admin_can_cancel_pending_invitation():
+    engine = _engine()
+    tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        invitation = create_tenant_invitation(
+            session,
+            tenant_id=200,
+            invitee_user_id=100,
+            invited_by_user_id=2,
+            requested_role="member",
+        )
+        session.commit()
+
+        cancelled = asyncio.run(tenant_api.cancel_tenant_invitation(
+            session,
+            tenant_admin,
+            current_tenant,
+            int(invitation.id),
+        ))
+
+        assert cancelled.status == "cancelled"
+        assert not user_belongs_to_tenant(session, 100, 200)
+
+
+def test_tenant_owner_can_transfer_ownership_to_active_member():
+    engine = _engine()
+    tenant_owner = SimpleNamespace(id=10, system_role="viewer", tenant_id=200, tenant_role="owner")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+    with Session(engine) as session:
+        session.exec(text(
+            """
+            INSERT INTO sys_user
+                (id, account, name, password, email, status, origin, create_time, language, system_role)
+            VALUES
+                (10, 'owner', 'Owner', '', 'owner@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                (11, 'member', 'Member', '', 'member@example.com', 1, 0, 1, 'zh-CN', 'viewer')
+            """
+        ))
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=10, role="owner", is_primary=True, status=1))
+        session.add(TenantUserModel(id=202, tenant_id=200, user_id=11, role="member", is_primary=False, status=1))
+        session.commit()
+
+        result = asyncio.run(tenant_api.transfer_current_tenant_owner(
+            session,
+            tenant_owner,
+            current_tenant,
+            TenantOwnerTransfer(target_user_id=11),
+        ))
+
+        previous_owner = session.exec(
+            select(TenantUserModel).where(TenantUserModel.tenant_id == 200, TenantUserModel.user_id == 10)
+        ).one()
+        new_owner = session.exec(
+            select(TenantUserModel).where(TenantUserModel.tenant_id == 200, TenantUserModel.user_id == 11)
+        ).one()
+        assert result.owner_user_id == 11
+        assert previous_owner.role == "admin"
+        assert new_owner.role == "owner"
+        audit_log = session.exec(
+            select(SystemLog).where(
+                SystemLog.tenant_id == 200,
+                SystemLog.operation_detail == "转移企业所有者",
+            )
+        ).first()
+        assert audit_log is not None
+        assert audit_log.resource_id == "11"
+
+
+def test_tenant_admin_cannot_transfer_ownership():
+    engine = _engine()
+    tenant_admin = SimpleNamespace(id=10, system_role="viewer", tenant_id=200, tenant_role="admin")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(tenant_api.transfer_current_tenant_owner(
+                session,
+                tenant_admin,
+                current_tenant,
+                TenantOwnerTransfer(target_user_id=11),
+            ))
+
+        assert exc.value.status_code == 403
+
+
+def test_user_leaves_joined_tenant_and_loses_tenant_project_permissions():
+    engine = _engine()
+    current_user = SimpleNamespace(id=100, system_role="viewer", tenant_id=1, tenant_role="member", name="Member")
+    with Session(engine) as session:
+        session.add(TenantModel(id=1, code="default", name="Default", status=1, plan="default"))
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=101, tenant_id=1, user_id=100, role="member", is_primary=True, status=1))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=100, role="member", is_primary=False, status=1))
+        session.exec(text("INSERT INTO core_datasource (id, tenant_id, name) VALUES (301, 200, 'Tenant DS')"))
+        session.exec(text("INSERT INTO core_datasource_user (id, ds_id, user_id) VALUES (401, 301, 100)"))
+        session.commit()
+
+        remaining = asyncio.run(tenant_api.leave_joined_tenant(session, current_user, 200))
+
+        membership = session.exec(
+            select(TenantUserModel).where(TenantUserModel.tenant_id == 200, TenantUserModel.user_id == 100)
+        ).one()
+        datasource_permission = session.exec(text(
+            "SELECT id FROM core_datasource_user WHERE ds_id = 301 AND user_id = 100"
+        )).first()
+        assert membership.status == 0
+        assert datasource_permission is None
+        assert [tenant.id for tenant in remaining] == [1]
+        audit_log = session.exec(
+            select(SystemLog).where(
+                SystemLog.tenant_id == 200,
+                SystemLog.operation_detail == "退出企业",
+            )
+        ).first()
+        assert audit_log is not None
+        assert audit_log.resource_id == "100"
+
+
+def test_last_tenant_owner_cannot_leave_before_transferring_ownership():
+    engine = _engine()
+    current_user = SimpleNamespace(id=100, system_role="viewer", tenant_id=200, tenant_role="owner")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=100, role="owner", is_primary=True, status=1))
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(tenant_api.leave_joined_tenant(session, current_user, 200))
+
+        assert exc.value.status_code == 400
+        membership = session.exec(
+            select(TenantUserModel).where(TenantUserModel.tenant_id == 200, TenantUserModel.user_id == 100)
+        ).one()
+        assert membership.status == 1

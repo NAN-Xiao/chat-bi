@@ -59,7 +59,7 @@ const defaultAgentForm = {
   active: true,
   ai_model_id: null as number | string | null,
   prompt: '',
-  specific_ds: true,
+  specific_ds: false,
   datasource_ids: [] as number[],
   visibility_scope: 'USER_PRIVATE',
 }
@@ -95,7 +95,7 @@ const usablePromptTypes = computed(() => {
   return types.filter((item) => CUSTOM_PROMPT_TYPES.includes(item))
 })
 
-const canCreateAgent = computed(() => !!datasourceIdValue.value)
+const canCreateAgent = computed(() => true)
 
 const selectedAgent = computed(() =>
   agentList.value.find((item) => String(item.id) === String(props.modelValue))
@@ -197,13 +197,13 @@ const resetAgentForm = () => {
     ...cloneDeep(defaultAgentForm),
     type: props.createType || usablePromptTypes.value[0] || 'GENERATE_SQL',
     target_scope: props.targetScope || 'SMART_QA',
-    datasource_ids: datasourceIdValue.value ? [datasourceIdValue.value] : [],
+    specific_ds: false,
+    datasource_ids: [],
     visibility_scope: 'USER_PRIVATE',
   }
 }
 
 const openCreateAgent = () => {
-  if (!canCreateAgent.value) return
   resetAgentForm()
   agentDialogTitle.value = t('prompt.add_prompt_word')
   agentDialogVisible.value = true
@@ -216,11 +216,8 @@ const openEditAgent = (row: any) => {
     ...cloneDeep(defaultAgentForm),
     ...cloneDeep(row),
     target_scope: row.target_scope || props.targetScope || 'SMART_QA',
-    datasource_ids: row.datasource_ids?.length
-      ? row.datasource_ids.map((item: any) => Number(item))
-      : datasourceIdValue.value
-        ? [datasourceIdValue.value]
-        : [],
+    specific_ds: false,
+    datasource_ids: [],
     visibility_scope: 'USER_PRIVATE',
   }
   agentDialogTitle.value = t('prompt.edit_prompt_word')
@@ -239,15 +236,14 @@ const buildSavePayload = () => {
   payload.target_scope = payload.target_scope || props.targetScope || 'SMART_QA'
 
   payload.visibility_scope = 'USER_PRIVATE'
-  payload.specific_ds = true
-  payload.datasource_ids = datasourceIdValue.value ? [datasourceIdValue.value] : []
+  payload.specific_ds = false
+  payload.datasource_ids = []
   return payload
 }
 
 const saveAgent = () => {
   agentFormRef.value?.validate((valid: boolean) => {
     if (!valid || savingAgent.value) return
-    if (!datasourceIdValue.value && !agentForm.value.id) return
 
     savingAgent.value = true
     promptApi
@@ -307,7 +303,7 @@ onMounted(() => {
           <div>
             <div class="agent-panel-title">{{ t('access.custom_agents') }}</div>
             <div class="agent-panel-subtitle">
-              {{ props.datasourceName || t('access.no_project_agent') }}
+              {{ props.datasourceName || t('access.user_permission_scope') }}
             </div>
           </div>
           <el-button
@@ -462,7 +458,7 @@ onMounted(() => {
           />
         </el-form-item>
         <el-form-item :label="t('training.effective_data_sources')">
-          <div class="fixed-project">{{ props.datasourceName || '-' }}</div>
+          <div class="fixed-project">{{ t('access.user_permission_scope') }}</div>
         </el-form-item>
         <el-form-item prop="prompt" :label="t('prompt.prompt_word_content')">
           <el-input

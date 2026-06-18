@@ -6,8 +6,9 @@ from fastapi import HTTPException
 from sqlalchemy import and_, text
 from sqlmodel import select
 
-from apps.datasource.crud.permission import can_access_table, get_accessible_datasource_ids, get_column_permission_fields, \
-    get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, is_normal_user
+from apps.datasource.crud.permission import can_access_table, current_tenant_id, get_accessible_datasource_ids, \
+    get_column_permission_fields, get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, \
+    is_normal_user
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
 from apps.db.constant import DB
@@ -17,8 +18,8 @@ from apps.system.schemas.auth import CacheName, CacheNamespace
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.utils.embedding_threads import run_save_table_embeddings, run_save_ds_embeddings
-from common.utils.utils import AppLogUtil, deepcopy_ignore_extra, equals_ignore_case
-from common.core.app_cache import cache, clear_cache
+from common.utils.utils import deepcopy_ignore_extra, equals_ignore_case
+from common.core.app_cache import clear_cache
 from .table import get_tables_by_ds_id
 from ..crud.field import delete_field_by_ds_id, update_field
 from ..crud.table import delete_table_by_ds_id, update_table
@@ -27,19 +28,22 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
 
 
 def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreDatasource]:
+    tenant_id = current_tenant_id(user)
     accessible_ids = get_accessible_datasource_ids(session, user)
-    if accessible_ids is not None:
-        if not accessible_ids:
-            return []
-        return session.exec(
-            select(CoreDatasource).where(CoreDatasource.id.in_(accessible_ids)).order_by(CoreDatasource.name)
-        ).all()
+    if not accessible_ids:
+        return []
 
-    return session.exec(select(CoreDatasource).order_by(CoreDatasource.name)).all()
+    statement = select(CoreDatasource).where(CoreDatasource.id.in_(accessible_ids))
+    if tenant_id is not None:
+        statement = statement.where(CoreDatasource.tenant_id == tenant_id)
+    return session.exec(statement.order_by(CoreDatasource.name)).all()
 
 
-def get_ds(session: SessionDep, id: int):
+def get_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
     statement = select(CoreDatasource).where(CoreDatasource.id == id)
+    tenant_id = current_tenant_id(user)
+    if tenant_id is not None:
+        statement = statement.where(CoreDatasource.tenant_id == tenant_id)
     datasource = session.exec(statement).first()
     return datasource
 
@@ -57,15 +61,24 @@ def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise
     return check_connection(trans, ds, is_raise)
 
 
+def _datasource_tenant_id(session: SessionDep, ds_id: int | None) -> int | None:
+    if ds_id is None:
+        return None
+    return session.exec(select(CoreDatasource.tenant_id).where(CoreDatasource.id == ds_id)).first()
+
+
 def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
+    tenant_id = current_tenant_id(user)
+    filters = [CoreDatasource.name == ds.name]
+    if tenant_id is not None:
+        filters.append(CoreDatasource.tenant_id == tenant_id)
     if ds.id is not None:
         ds_list = session.query(CoreDatasource).filter(
-            and_(CoreDatasource.name == ds.name, CoreDatasource.id != ds.id)).all()
+            and_(*filters, CoreDatasource.id != ds.id)).all()
         if ds_list is not None and len(ds_list) > 0:
             raise HTTPException(status_code=500, detail=trans('i18n_ds_name_exist'))
     else:
-        ds_list = session.query(CoreDatasource).filter(
-            CoreDatasource.name == ds.name).all()
+        ds_list = session.query(CoreDatasource).filter(and_(*filters)).all()
         if ds_list is not None and len(ds_list) > 0:
             raise HTTPException(status_code=500, detail=trans('i18n_ds_name_exist'))
 
@@ -75,6 +88,7 @@ async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
     check_name(session, trans, user, ds)
+    ds.tenant_id = current_tenant_id(user)
     ds.create_time = datetime.datetime.now()
     # status = check_status(session, ds)
     ds.create_by = user.id
@@ -106,8 +120,10 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
     check_name(session, trans, user, ds)
     # status = check_status(session, trans, ds)
     ds.status = "Success"
-    record = session.exec(select(CoreDatasource).where(CoreDatasource.id == ds.id)).first()
-    update_data = ds.model_dump(exclude_unset=True)
+    record = get_ds(session, ds.id, user)
+    if record is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    update_data = ds.model_dump(exclude_unset=True, exclude={"tenant_id"})
     if update_data.get("configuration") in (None, ""):
         update_data.pop("configuration", None)
     elif "configuration" in update_data:
@@ -117,7 +133,7 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
     session.add(record)
     session.commit()
 
-    run_save_ds_embeddings([ds.id])
+    run_save_ds_embeddings([ds.id], tenant_id=record.tenant_id)
     return ds
 
 
@@ -128,8 +144,10 @@ def update_ds_recommended_config(session: SessionDep, datasource_id: int, recomm
     session.commit()
 
 
-async def delete_ds(session: SessionDep, id: int):
-    term = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
+async def delete_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
+    term = get_ds(session, id, user)
+    if term is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     if term.type == "excel":
         # drop all tables for current datasource
         engine = get_engine_conn()
@@ -177,8 +195,20 @@ def execSql(session: SessionDep, id: int, sql: str):
     return exec_sql(ds, sql, True)
 
 
-def sync_single_fields(session: SessionDep, trans: Trans, id: int, *, schedule_embeddings: bool = True):
-    table = session.query(CoreTable).filter(CoreTable.id == id).first()
+def sync_single_fields(
+        session: SessionDep,
+        trans: Trans,
+        id: int,
+        *,
+        schedule_embeddings: bool = True,
+        tenant_id: int | None = None,
+):
+    table_query = session.query(CoreTable).filter(CoreTable.id == id)
+    if tenant_id is not None:
+        table_query = table_query.join(CoreDatasource, CoreDatasource.id == CoreTable.ds_id).filter(
+            CoreDatasource.tenant_id == int(tenant_id)
+        )
+    table = table_query.first()
     if table is None:
         raise HTTPException(status_code=404, detail="Table not found")
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == table.ds_id).first()
@@ -196,8 +226,8 @@ def sync_single_fields(session: SessionDep, trans: Trans, id: int, *, schedule_e
     sync_fields(session, ds, table, fields)
 
     if schedule_embeddings:
-        run_save_table_embeddings([table.id])
-        run_save_ds_embeddings([ds.id])
+        run_save_table_embeddings([table.id], tenant_id=ds.tenant_id)
+        run_save_ds_embeddings([ds.id], tenant_id=ds.tenant_id)
     return {
         "table": table.table_name,
         "table_id": table.id,
@@ -246,8 +276,8 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
         session.commit()
 
     # do table embedding
-    run_save_table_embeddings(id_list)
-    run_save_ds_embeddings([ds.id])
+    run_save_table_embeddings(id_list, tenant_id=ds.tenant_id)
+    run_save_ds_embeddings([ds.id], tenant_id=ds.tenant_id)
 
 
 def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, fields: List[ColumnSchema]):
@@ -288,24 +318,27 @@ def update_table_and_fields(session: SessionDep, data: TableObj):
         update_field(session, field)
 
     # do table embedding
-    run_save_table_embeddings([data.table.id])
-    run_save_ds_embeddings([data.table.ds_id])
+    tenant_id = _datasource_tenant_id(session, data.table.ds_id)
+    run_save_table_embeddings([data.table.id], tenant_id=tenant_id)
+    run_save_ds_embeddings([data.table.ds_id], tenant_id=tenant_id)
 
 
 def updateTable(session: SessionDep, table: CoreTable):
     update_table(session, table)
 
     # do table embedding
-    run_save_table_embeddings([table.id])
-    run_save_ds_embeddings([table.ds_id])
+    tenant_id = _datasource_tenant_id(session, table.ds_id)
+    run_save_table_embeddings([table.id], tenant_id=tenant_id)
+    run_save_ds_embeddings([table.ds_id], tenant_id=tenant_id)
 
 
 def updateField(session: SessionDep, field: CoreField):
     update_field(session, field)
 
     # do table embedding
-    run_save_table_embeddings([field.table_id])
-    run_save_ds_embeddings([field.ds_id])
+    tenant_id = _datasource_tenant_id(session, field.ds_id)
+    run_save_table_embeddings([field.table_id], tenant_id=tenant_id)
+    run_save_ds_embeddings([field.ds_id], tenant_id=tenant_id)
 
 
 def preview(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):

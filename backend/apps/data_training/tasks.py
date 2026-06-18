@@ -7,7 +7,7 @@ from apps.data_training.curd.data_training import (
     save_embeddings,
 )
 from common.core.db import engine
-from common.core.task_queue import task_handler
+from common.core.task_queue import current_task_tenant_id, task_handler
 
 session_maker = scoped_session(sessionmaker(bind=engine))
 
@@ -21,11 +21,13 @@ def _int_list(value: Any) -> list[int]:
 @task_handler("data_training.embedding")
 def data_training_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
     ids = _int_list(payload.get("ids"))
-    save_embeddings(session_maker, ids)
-    return {"ids": ids, "count": len(ids)}
+    tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
+    save_embeddings(session_maker, ids, tenant_id=tenant_id)
+    return {"ids": ids, "count": len(ids), "tenant_id": tenant_id}
 
 
 @task_handler("data_training.fill_empty_embedding")
-def fill_empty_data_training_embedding_task(_payload: dict[str, Any]) -> dict[str, Any]:
-    run_fill_empty_embeddings(session_maker)
-    return {"status": "completed"}
+def fill_empty_data_training_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
+    tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
+    run_fill_empty_embeddings(session_maker, tenant_id=tenant_id)
+    return {"status": "completed", "tenant_id": tenant_id}

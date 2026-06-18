@@ -21,6 +21,8 @@ _operation_module_values = {
     "THEME": "theme",
     "PARAMS_SETTING": "params_setting",
     "API_KEY": "api_key",
+    "TENANT": "tenant",
+    "TENANT_APPLICATION": "tenant_application",
     "LOG_SETTING": "log_setting",
     "SETTING": "setting",
     "SYSTEM_MANAGEMENT": "system_management",
@@ -62,6 +64,7 @@ class SystemLogsResource(SQLModel, table=True):
 class SystemLog(SQLModel, table=True):
     __tablename__ = "sys_logs"
     id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: Optional[int] = Field(default=1, sa_type=BigInteger())
     operation_type: str = Field(default=None)
     operation_detail: str = Field(default=None)
     user_id: Optional[int] = Field(default=None, sa_type=BigInteger())

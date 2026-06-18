@@ -4,11 +4,29 @@ from apps.analysis_assistant.api import analysis_assistant
 from apps.chat.api import chat
 from apps.dashboard.api import dashboard_api
 from apps.data_training.api import data_training
-from apps.datasource.api import datasource, table_relation, recommended_problem, permission
-from apps.system.api import login, user, aimodel, assistant, parameter, apikey, variable_api, audit, custom_prompt, task_queue
+from apps.datasource.api import (
+    datasource,
+    permission,
+    recommended_problem,
+    table_relation,
+)
+from apps.settings.api import base
+from apps.system.api import (
+    aimodel,
+    apikey,
+    assistant,
+    audit,
+    custom_prompt,
+    login,
+    parameter,
+    task_queue,
+    tenant,
+    user,
+    variable_api,
+)
 from apps.terminology.api import terminology
 from common.core.config import settings
-from apps.settings.api import base
+
 #from audit.api import audit_api
 
 
@@ -39,3 +57,4 @@ api_router.include_router(variable_api.router)
 api_router.include_router(audit.router)
 api_router.include_router(custom_prompt.router)
 api_router.include_router(task_queue.router)
+api_router.include_router(tenant.router)

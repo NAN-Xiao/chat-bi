@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 // import { ref } from 'vue'
 import { AuthApi } from '@/api/login'
+import { tenantApi, type TenantInfo } from '@/api/tenant'
 import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
 import { store } from './index'
@@ -19,6 +20,12 @@ interface UserState {
   origin: number
   systemRole: string
   isSystemAdmin: boolean
+  tenantId: string
+  tenantCode: string
+  tenantName: string
+  tenantRole: string
+  tenants: TenantInfo[]
+  tenantLoading: boolean
   platformInfo: any | null
   [key: string]: string | number | any | null
 }
@@ -36,6 +43,12 @@ export const UserStore = defineStore('user', {
       origin: 0,
       systemRole: 'viewer',
       isSystemAdmin: false,
+      tenantId: '',
+      tenantCode: '',
+      tenantName: '',
+      tenantRole: '',
+      tenants: [],
+      tenantLoading: false,
       platformInfo: null,
     }
   },
@@ -64,8 +77,16 @@ export const UserStore = defineStore('user', {
     isSystemAdminUser(): boolean {
       return this.systemRole === 'system_admin'
     },
+    isTenantAdminUser(): boolean {
+      return ['owner', 'admin'].includes(String(this.tenantRole || '').trim().toLowerCase())
+    },
     isSystemManagerUser(): boolean {
-      return this.isSystemAdmin || this.isSystemAdminUser || this.systemRole === 'collab_admin'
+      return (
+        this.isSystemAdmin ||
+        this.isSystemAdminUser ||
+        this.systemRole === 'collab_admin' ||
+        this.isTenantAdminUser
+      )
     },
     isAdmin(): boolean {
       return this.isSystemManagerUser
@@ -75,6 +96,18 @@ export const UserStore = defineStore('user', {
     },
     getPlatformInfo(): any | null {
       return this.platformInfo
+    },
+    getTenantId(): string {
+      return this.tenantId
+    },
+    getTenantName(): string {
+      return this.tenantName || this.tenantCode
+    },
+    getTenantRole(): string {
+      return this.tenantRole
+    },
+    getTenants(): TenantInfo[] {
+      return this.tenants
     },
   },
   actions: {
@@ -125,12 +158,24 @@ export const UserStore = defineStore('user', {
         'origin',
         'systemRole',
         'isSystemAdmin',
+        'tenantId',
+        'tenantCode',
+        'tenantName',
+        'tenantRole',
       ] as const
 
       keys.forEach((key) => {
         const dkey =
           key === 'uid' ? 'id' : key === 'systemRole' ? 'system_role' : key === 'isSystemAdmin' ? 'isAdmin' : key
-        const value = res_data[dkey]
+        const tenantKeyMap: Record<string, string> = {
+          tenantId: 'tenant_id',
+          tenantCode: 'tenant_code',
+          tenantName: 'tenant_name',
+          tenantRole: 'tenant_role',
+        }
+        const resolvedKey = tenantKeyMap[key] || dkey
+        const rawValue = res_data[resolvedKey]
+        const value = rawValue ?? ''
         if (key === 'exp' || key === 'time' || key === 'origin') {
           this[key] = Number(value)
         } else if (key === 'isSystemAdmin') {
@@ -143,6 +188,68 @@ export const UserStore = defineStore('user', {
 
       this.setLanguage(this.language)
       this.platformInfo = wsCache.get('user.platformInfo')
+    },
+    async loadTenants(force = false): Promise<TenantInfo[]> {
+      if (this.tenantLoading) {
+        return this.tenants
+      }
+      if (!force && this.tenants.length > 0) {
+        return this.tenants
+      }
+      this.tenantLoading = true
+      try {
+        const res = await tenantApi.list()
+        this.tenants = Array.isArray(res) ? res : []
+        if (!this.tenantId && this.tenants.length > 0) {
+          this.setTenant(this.tenants[0])
+        }
+        return this.tenants
+      } finally {
+        this.tenantLoading = false
+      }
+    },
+    async switchTenant(tenantId: string | number): Promise<void> {
+      const nextTenantId = String(tenantId || '')
+      if (!nextTenantId || nextTenantId === String(this.tenantId || '')) {
+        return
+      }
+      const previousTenant: TenantInfo = {
+        id: this.tenantId,
+        code: this.tenantCode,
+        name: this.tenantName,
+        role: this.tenantRole,
+      }
+      const targetTenant =
+        this.tenants.find((tenant) => String(tenant.id) === nextTenantId) || ({
+          id: nextTenantId,
+          code: '',
+          name: '',
+          role: '',
+        } as TenantInfo)
+      this.setTenant(targetTenant)
+      try {
+        if (this.token || wsCache.get('user.token')) {
+          await this.info()
+          await this.loadTenants(true)
+        }
+      } catch (error) {
+        this.setTenant(previousTenant)
+        throw error
+      }
+    },
+    setTenant(tenant: Partial<TenantInfo> | null) {
+      const tenantId = tenant?.id ? String(tenant.id) : ''
+      const tenantCode = tenant?.code ? String(tenant.code) : ''
+      const tenantName = tenant?.name ? String(tenant.name) : ''
+      const tenantRole = tenant?.role ? String(tenant.role) : ''
+      this.tenantId = tenantId
+      this.tenantCode = tenantCode
+      this.tenantName = tenantName
+      this.tenantRole = tenantRole
+      wsCache.set('user.tenantId', tenantId)
+      wsCache.set('user.tenantCode', tenantCode)
+      wsCache.set('user.tenantName', tenantName)
+      wsCache.set('user.tenantRole', tenantRole)
     },
     setToken(token: string) {
       wsCache.set('user.token', token)
@@ -205,6 +312,10 @@ export const UserStore = defineStore('user', {
         'origin',
         'systemRole',
         'isSystemAdmin',
+        'tenantId',
+        'tenantCode',
+        'tenantName',
+        'tenantRole',
         'platformInfo',
       ]
       keys.forEach((key) => wsCache.delete('user.' + key))

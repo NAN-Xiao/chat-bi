@@ -9,7 +9,12 @@ from sqlmodel import SQLModel, Field
 
 class CoreDatasource(SQLModel, table=True):
     __tablename__ = "core_datasource"
+    __table_args__ = (
+        Index("idx_core_datasource_tenant_id", "tenant_id"),
+    )
+
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
+    tenant_id: int = Field(default=1, sa_column=Column(BigInteger(), nullable=False, server_default="1"))
     name: str = Field(max_length=128, nullable=False)
     description: str = Field(max_length=512, nullable=True)
     type: str = Field(max_length=64)

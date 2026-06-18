@@ -17,6 +17,13 @@ from sqlalchemy import and_, select
 from common.core.db import engine
 
 
+def _user_tenant_id(user: Optional[UserInfoDTO]) -> int:
+    try:
+        return int(getattr(user, "tenant_id", None) or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
 def get_resource_name_by_id_and_module(session, resource_id: Any, module: str) -> List[Dict[str, str]]:
     from common.audit.schemas.log_utils import build_resource_union_query
 
@@ -93,10 +100,12 @@ class SystemLogger:
             resource_id: Any = None,
             request_method: Optional[str] = None,
             request_path: Optional[str] = None,
-            remark: Optional[str] = None
+            remark: Optional[str] = None,
+            tenant_id: Optional[int] = None
     ):
         try:
             log = SystemLog(
+                tenant_id=tenant_id or _user_tenant_id(user),
                 operation_type=operation_type,
                 operation_detail=operation_detail,
                 user_id=user.id if user else None,
@@ -405,6 +414,7 @@ class SystemLogger:
 
             # Create log object
             log = SystemLog(
+                tenant_id=_user_tenant_id(user_info),
                 operation_type=opt_type_ref if opt_type_ref else config.operation_type,
                 operation_detail=config.operation_detail,
                 user_id=user_id,

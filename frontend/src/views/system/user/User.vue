@@ -76,10 +76,25 @@
           </template>
         </el-table-column>
         <el-table-column prop="email" show-overflow-tooltip :label="$t('user.email')" />
-        <el-table-column prop="system_role" :label="$t('user.system_role')" width="140">
+        <el-table-column prop="tenant_role" :label="$t('user.tenant_role')" width="140">
           <template #default="scope">
             <span
-              class="system-role-text"
+              class="role-text"
+              :class="tenantRoleClass(scope.row.tenant_role)"
+            >
+              {{ formatTenantRole(scope.row.tenant_role) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-if="isSuperAdmin"
+          prop="system_role"
+          :label="$t('user.platform_role')"
+          width="140"
+        >
+          <template #default="scope">
+            <span
+              class="role-text"
               :class="systemRoleClass(scope.row.system_role)"
             >
               {{ formatSystemRole(scope.row.system_role) }}
@@ -97,14 +112,14 @@
             <span>{{ formatTimestamp(scope.row.create_time, 'YYYY-MM-DD HH:mm:ss') }}</span>
           </template>
         </el-table-column>
-        <el-table-column fixed="right" width="150" :label="$t('ds.actions')">
+        <el-table-column fixed="right" width="180" :label="$t('ds.actions')">
           <template #default="scope">
             <div class="table-operate">
               <el-switch
                 v-model="scope.row.status"
                 :active-value="1"
                 :inactive-value="0"
-                :disabled="!canManageUserRole(scope.row)"
+                :disabled="!canChangeUserAccountStatus(scope.row)"
                 size="small"
                 @change="statusHandler(scope.row)"
               />
@@ -182,6 +197,18 @@
                   </div>
                 </div>
               </el-popover>
+
+              <el-tooltip
+                v-if="canTransferTenantOwner(scope.row)"
+                :offset="14"
+                effect="dark"
+                :content="$t('user.transfer_tenant_owner')"
+                placement="top"
+              >
+                <el-icon class="action-btn" size="16" @click="transferOwnerHandler(scope.row)">
+                  <icon_admin_outlined></icon_admin_outlined>
+                </el-icon>
+              </el-tooltip>
 
               <el-tooltip
                 :offset="14"
@@ -301,7 +328,22 @@
           clearable
         />
       </el-form-item>
-      <el-form-item :label="$t('user.system_role')">
+      <el-form-item :label="$t('user.tenant_role')">
+        <el-select
+          v-model="state.form.tenant_role"
+          popper-class="user-light-select-popper"
+          style="width: 240px"
+        >
+          <el-option
+            v-for="item in tenantRoleOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+            :disabled="item.disabled"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item v-if="isSuperAdmin" :label="$t('user.platform_role')">
         <el-select
           v-model="state.form.system_role"
           popper-class="user-light-select-popper"
@@ -662,7 +704,9 @@ import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import { userApi } from '@/api/user'
+import { tenantApi } from '@/api/tenant'
 import { datasourceApi } from '@/api/datasource'
 import { getList as getPermissionList, savePermissions } from '@/api/permissions'
 import { decrypted } from '@/views/ds/js/aes'
@@ -734,6 +778,7 @@ const defaultForm = {
   email: '',
   status: 1,
   system_role: 'viewer',
+  tenant_role: 'member',
   phoneNumber: '',
   project_ids: [],
   project_role_map: {},
@@ -807,10 +852,55 @@ const buildProjectRoleMap = (projectIds: number[], value: any = {}) => {
 const isHighPrivilegeRole = (role: any) =>
   ['system_admin', 'collab_admin'].includes(String(role || '').trim().toLowerCase())
 
+const normalizeTenantRole = (role: any) => {
+  const normalized = String(role || 'member').trim().toLowerCase()
+  return ['owner', 'admin', 'member'].includes(normalized) ? normalized : 'member'
+}
+
+const tenantRoleOptions = computed(() => [
+  ...(isSuperAdmin.value || normalizeTenantRole(state.form.tenant_role) === 'owner'
+    ? [{ value: 'owner', label: t('user.tenant_role_owner'), disabled: !isSuperAdmin.value }]
+    : []),
+  { value: 'admin', label: t('user.tenant_role_admin') },
+  { value: 'member', label: t('user.tenant_role_member') },
+])
+
 const canManageUserRole = (row: any) => {
   if (!row) return true
   if (row.system_role === 'system_admin') return false
-  return isSuperAdmin.value || !isHighPrivilegeRole(row.system_role)
+  if (!isSuperAdmin.value && isHighPrivilegeRole(row.system_role)) return false
+  if (!isSuperAdmin.value && normalizeTenantRole(row.tenant_role) === 'owner') return false
+  return true
+}
+
+const canChangeUserAccountStatus = (row: any) => {
+  return isSuperAdmin.value && canManageUserRole(row)
+}
+
+const canTransferTenantOwner = (row: any) => {
+  if (!row || !row.status) return false
+  if (normalizeTenantRole(row.tenant_role) === 'owner') return false
+  if (isHighPrivilegeRole(row.system_role)) return false
+  return isSuperAdmin.value || normalizeTenantRole(userStore.getTenantRole) === 'owner'
+}
+
+const protectedUserMessage = (row: any) => {
+  if (normalizeTenantRole(row?.tenant_role) === 'owner') {
+    return t('user.only_platform_admin_manage_owner')
+  }
+  return t('user.only_system_admin_manage_admin_roles')
+}
+
+const formatTenantRole = (role: any) => {
+  const normalized = normalizeTenantRole(role)
+  return t(`user.tenant_role_${normalized}`)
+}
+
+const tenantRoleClass = (role: any) => {
+  const normalized = normalizeTenantRole(role)
+  if (normalized === 'owner') return 'is-tenant-owner'
+  if (normalized === 'admin') return 'is-tenant-admin'
+  return 'is-tenant-member'
 }
 
 const formatSystemRole = (role: any) => {
@@ -1055,7 +1145,6 @@ const rules = {
     },
   ],
 }
-
 const passwordRules = {
   new: [
     {
@@ -1130,7 +1219,7 @@ const deleteValues = (index: number) => {
 
 const handleEditPassword = (row: any) => {
   if (!canManageUserRole(row)) {
-    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    ElMessage.warning(protectedUserMessage(row))
     return
   }
   userApi.pwd(row.id).then(() => {
@@ -1226,7 +1315,7 @@ const drawerMainClose = () => {
 }
 const editHandler = (row: any) => {
   if (row && !canManageUserRole(row)) {
-    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    ElMessage.warning(protectedUserMessage(row))
     return
   }
   Promise.all([variablesApi.listAll(), datasourceApi.list(), getPermissionList()])
@@ -1248,6 +1337,7 @@ const editHandler = (row: any) => {
         state.form = {
           ...row,
           system_role: row.system_role || 'viewer',
+          tenant_role: normalizeTenantRole(row.tenant_role),
           project_ids: projectIds,
           project_role_map: buildProjectRoleMap(projectIds, row.project_role_map),
           project_permission_map: buildUserProjectPermissionMap(row.id, projectIds),
@@ -1260,6 +1350,7 @@ const editHandler = (row: any) => {
         state.form = {
           ...defaultForm,
           system_role: 'viewer',
+          tenant_role: 'member',
           project_ids: [],
           project_role_map: {},
           project_permission_map: {},
@@ -1286,9 +1377,9 @@ const editHandler = (row: any) => {
 }
 
 const statusHandler = (row: any) => {
-  if (!canManageUserRole(row)) {
+  if (!canChangeUserAccountStatus(row)) {
     row.status = row.status ? 0 : 1
-    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    ElMessage.warning(t('user.only_platform_admin_change_account_status'))
     return
   }
   /* state.form = { ...row }
@@ -1309,10 +1400,10 @@ const cancelDelete = () => {
 const deleteBatchUser = () => {
   const protectedUsers = multipleSelectionAll.value.filter((ele) => !canManageUserRole(ele))
   if (protectedUsers.length) {
-    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    ElMessage.warning(protectedUserMessage(protectedUsers[0]))
     return
   }
-  ElMessageBox.confirm(t('user.selected_2_users', { msg: multipleSelectionAll.value.length }), {
+  ElMessageBox.confirm(t('user.remove_selected_members', { msg: multipleSelectionAll.value.length }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
@@ -1331,10 +1422,10 @@ const deleteBatchUser = () => {
 }
 const deleteHandler = (row: any) => {
   if (!canManageUserRole(row)) {
-    ElMessage.warning(t('user.only_system_admin_manage_admin_roles'))
+    ElMessage.warning(protectedUserMessage(row))
     return
   }
-  ElMessageBox.confirm(t('user.del_user', { msg: row.name }), {
+  ElMessageBox.confirm(t('user.remove_member_confirm', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
@@ -1352,6 +1443,23 @@ const deleteHandler = (row: any) => {
   })
 }
 
+const transferOwnerHandler = (row: any) => {
+  if (!canTransferTenantOwner(row)) return
+  ElMessageBox.confirm(t('user.transfer_tenant_owner_confirm', { msg: row.name || row.account }), {
+    confirmButtonType: 'warning',
+    confirmButtonText: t('user.transfer_tenant_owner'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+  }).then(() => {
+    tenantApi.transferOwner(row.id).then(async () => {
+      await Promise.all([userStore.info(), userStore.loadTenants(true)])
+      ElMessage.success(t('common.operation_success'))
+      handleCurrentChange(1)
+    })
+  })
+}
+
 const closeForm = () => {
   dialogFormVisible.value = false
 }
@@ -1359,6 +1467,7 @@ const onFormClose = () => {
   state.form = {
     ...defaultForm,
     system_role: 'viewer',
+    tenant_role: 'member',
     project_ids: [],
     project_role_map: {},
     project_permission_map: {},
@@ -1413,14 +1522,16 @@ const formatVariableValues = () => {
 }
 
 const addTerm = () => {
-  const { account, email, name, status, system_role, project_ids, project_role_map } = state.form
+  const { account, email, name, status, system_role, tenant_role, project_ids, project_role_map } =
+    state.form
   userApi
     .add({
       account,
       email,
       name,
       status,
-      system_role,
+      system_role: isSuperAdmin.value ? system_role : 'viewer',
+      tenant_role: normalizeTenantRole(tenant_role),
       project_ids,
       project_role_map: buildProjectRoleMap(toNumberList(project_ids), project_role_map),
       system_variables: formatVariableValues(),
@@ -1449,6 +1560,7 @@ const editTerm = () => {
     origin,
     status,
     system_role,
+    tenant_role,
   } =
     state.form
   userApi
@@ -1463,7 +1575,8 @@ const editTerm = () => {
       project_role_map: buildProjectRoleMap(toNumberList(project_ids), project_role_map),
       origin,
       status,
-      system_role,
+      system_role: isSuperAdmin.value ? system_role : 'viewer',
+      tenant_role: normalizeTenantRole(tenant_role),
       system_variables: formatVariableValues(),
     })
     .then(() => syncUserPermissionStrategies(id))
@@ -1575,7 +1688,6 @@ const formatUserOrigin = (origin?: number) => {
 
 onMounted(() => {
   handleCurrentChange(1)
-
   loadDefaultPwd()
 })
 </script>
@@ -1631,13 +1743,19 @@ onMounted(() => {
       line-height: 28px;
     }
   }
+
+  .search-bar {
+    display: flex;
+    align-items: center;
+  }
+
   .zhishu-table_user {
     width: 100%;
-    max-height: calc(100vh - 150px);
+    max-height: calc(100vh - 156px);
     overflow-y: auto;
 
     &.show-pagination_height {
-      max-height: calc(100vh - 215px);
+      max-height: calc(100vh - 221px);
     }
 
     :deep(.ed-popper.is-dark) {
@@ -1708,7 +1826,7 @@ onMounted(() => {
       }
     }
 
-    .system-role-text {
+    .role-text {
       font-size: 14px;
       font-weight: 500;
       line-height: 22px;
@@ -1724,6 +1842,19 @@ onMounted(() => {
 
       &.is-system-admin {
         color: #c42a2a;
+      }
+
+      &.is-tenant-owner {
+        color: #8f3f11;
+      }
+
+      &.is-tenant-admin {
+        color: #245bdb;
+      }
+
+      &.is-tenant-member {
+        color: #646a73;
+        font-weight: 400;
       }
     }
   }

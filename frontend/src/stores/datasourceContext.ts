@@ -49,7 +49,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
   actions: {
     cacheKey() {
       const userStore = useUserStore()
-      return `datasource.current.${userStore.getUid || 'default'}`
+      return `datasource.current.${userStore.getUid || 'default'}.${userStore.getTenantId || 'default'}`
     },
 
     legacyCacheKey() {
@@ -65,7 +65,10 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       try {
         const res = await datasourceApi.list()
         this.datasources = Array.isArray(res) ? res : []
-        const cachedId = Number(wsCache.get(this.cacheKey()) || wsCache.get(this.legacyCacheKey()))
+        const userStore = useUserStore()
+        const tenantScopedCachedId = wsCache.get(this.cacheKey())
+        const legacyCachedId = userStore.getTenantId ? undefined : wsCache.get(this.legacyCacheKey())
+        const cachedId = Number(tenantScopedCachedId || legacyCachedId)
         const currentDatasource = this.datasourceId
           ? this.datasources.find((item) => Number(item.id) === Number(this.datasourceId))
           : undefined
@@ -120,6 +123,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
     },
 
     clear(persist = true) {
+      this.datasources = []
       this.datasourceId = undefined
       this.datasourceName = ''
       this.datasourceType = ''
@@ -128,6 +132,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       this.canCreateDashboard = false
       this.canManageDashboard = false
       this.canManageProject = false
+      this.initialized = false
       if (persist) {
         wsCache.delete(this.cacheKey())
         wsCache.delete(this.legacyCacheKey())

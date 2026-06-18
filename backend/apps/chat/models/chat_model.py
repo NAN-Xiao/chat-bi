@@ -5,7 +5,7 @@ from typing import List, Optional, Any, Union
 from fastapi import Body
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from pydantic import BaseModel
-from sqlalchemy import Column, Integer, Text, BigInteger, DateTime, Identity, Boolean
+from sqlalchemy import Column, Integer, Text, BigInteger, DateTime, Identity, Boolean, Index
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field
@@ -65,7 +65,11 @@ class QuickCommand(Enum):
 
 class ChatLog(SQLModel, table=True):
     __tablename__ = "chat_log"
+    __table_args__ = (
+        Index("idx_chat_log_tenant_id", "tenant_id"),
+    )
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    tenant_id: int = Field(default=1, sa_column=Column(BigInteger, nullable=False, server_default="1"))
     type: TypeEnum = Field(
         sa_column=Column(SQLAlchemyEnum(TypeEnum, native_enum=False, values_callable=enum_values, length=3)))
     operate: OperationEnum = Field(
@@ -84,7 +88,11 @@ class ChatLog(SQLModel, table=True):
 
 class Chat(SQLModel, table=True):
     __tablename__ = "chat"
+    __table_args__ = (
+        Index("idx_chat_tenant_id", "tenant_id"),
+    )
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    tenant_id: int = Field(default=1, sa_column=Column(BigInteger, nullable=False, server_default="1"))
     create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
     create_by: int = Field(sa_column=Column(BigInteger, nullable=True))
     brief: str = Field(max_length=64, nullable=True)
@@ -101,7 +109,11 @@ class Chat(SQLModel, table=True):
 
 class ChatRecord(SQLModel, table=True):
     __tablename__ = "chat_record"
+    __table_args__ = (
+        Index("idx_chat_record_tenant_id", "tenant_id"),
+    )
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    tenant_id: int = Field(default=1, sa_column=Column(BigInteger, nullable=False, server_default="1"))
     chat_id: int = Field(sa_column=Column(BigInteger, nullable=False))
     ai_modal_id: Optional[int] = Field(sa_column=Column(BigInteger))
     first_chat: bool = Field(sa_column=Column(Boolean, nullable=True, default=False))
@@ -133,6 +145,7 @@ class ChatRecord(SQLModel, table=True):
 
 class ChatRecordResult(BaseModel):
     id: Optional[int] = None
+    tenant_id: Optional[int] = None
     chat_id: Optional[int] = None
     ai_modal_id: Optional[int] = None
     first_chat: bool = False
@@ -179,6 +192,7 @@ class RenameChat(BaseModel):
 
 class ChatInfo(BaseModel):
     id: Optional[int] = None
+    tenant_id: Optional[int] = None
     create_time: datetime = None
     create_by: int = None
     brief: str = ''

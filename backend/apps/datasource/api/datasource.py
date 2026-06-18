@@ -8,7 +8,6 @@ import re
 from datetime import datetime
 from io import StringIO
 from typing import Any, List, Optional
-from urllib.parse import quote
 
 import pandas as pd
 from fastapi import APIRouter, File, UploadFile, HTTPException, Path
@@ -22,6 +21,7 @@ from apps.db.db import get_schema
 from apps.db.engine import get_engine_conn
 from apps.datasource.crud.permission import (
     can_access_table,
+    current_tenant_id,
     get_column_permission_fields,
     get_user_permission_rules,
     get_user_scoped_table_ids,
@@ -106,6 +106,7 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
     authorized_user_counts = list_datasource_user_counts(
         session,
         [datasource.id for datasource in datasources],
+        user,
     )
     result = []
     for datasource in datasources:
@@ -147,8 +148,15 @@ class DatasourceUserUpdate(BaseModel):
 
 @router.get("/{id}/users", include_in_schema=False)
 @require_permissions(permission=AppPermission(role=['admin']))
-async def datasource_users(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
-    project_users = list_datasource_users(session, id)
+async def datasource_users(
+        session: SessionDep,
+        user: CurrentUser,
+        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+):
+    datasource = get_ds(session, id, user)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    project_users = list_datasource_users(session, id, user)
     user_ids = [item["user_id"] for item in project_users]
     role_map = {item["user_id"]: item["role"] for item in project_users}
     users = []
@@ -180,12 +188,12 @@ async def update_datasource_user_api(
         data: DatasourceUserUpdate,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")
 ):
-    datasource = get_ds(session, id)
+    datasource = get_ds(session, id, user)
     if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     requested_user_ids = data.user_ids or [item.id for item in data.users]
     requested_role_map = {int(item.id): normalize_project_role(item.role) for item in data.users}
-    valid_user_ids = sorted(list_project_assignable_user_ids(session, requested_user_ids))
+    valid_user_ids = sorted(list_project_assignable_user_ids(session, requested_user_ids, user))
     updated_users = update_datasource_users(
         session,
         user,
@@ -212,7 +220,7 @@ async def get_datasource(
         user: CurrentUser,
         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
 ):
-    datasource = get_ds(session, id)
+    datasource = get_ds(session, id, user)
     if datasource is None:
         return None
     data = datasource.model_dump()
@@ -251,8 +259,12 @@ async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDa
 
 @router.post("/chooseTables/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_choose_tables")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def choose_tables(session: SessionDep, trans: Trans, tables: List[CoreTable],
+async def choose_tables(session: SessionDep, trans: Trans, user: CurrentUser, tables: List[CoreTable],
                         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    datasource = get_ds(session, id, user)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
     def inner():
         chooseTables(session, trans, id, tables)
 
@@ -274,13 +286,15 @@ async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreD
 @require_permissions(permission=AppPermission(role=['admin']))
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.DATASOURCE, resource_id_expr="id",
                       ))
-async def delete(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"), name: str = None):
-    return await delete_ds(session, id)
+async def delete(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"), name: str = None):
+    return await delete_ds(session, id, user)
 
 
 @router.post("/getTables/{id}", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def get_tables(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+async def get_tables(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    if get_ds(session, id, user) is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     return getTables(session, id)
 
 
@@ -326,20 +340,28 @@ async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
              summary=f"{PLACEHOLDER_PREFIX}ds_get_fields")
 @require_permissions(permission=AppPermission(role=['admin']))
 async def get_fields(session: SessionDep,
+                     user: CurrentUser,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                      table_name: str = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_name")):
+    if get_ds(session, id, user) is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     return getFields(session, id, table_name)
 
 
 @router.post("/syncFields/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_sync_fields")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def sync_fields(current_user: CurrentUser,
+async def sync_fields(session: SessionDep,
+                      current_user: CurrentUser,
                       id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
+    table = session.get(CoreTable, id)
+    if table is None or get_ds(session, table.ds_id, current_user) is None:
+        raise HTTPException(status_code=404, detail="数据表不存在")
     register_builtin_tasks()
     return await enqueue_task(
         "datasource.sync_fields",
         {"table_id": int(id)},
         created_by=current_user.id,
+        tenant_id=current_tenant_id(current_user),
     )
 
 
@@ -393,19 +415,25 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
 
 @router.post("/editLocalComment", include_in_schema=False)
 @require_permissions(permission=AppPermission(role=['admin']))
-async def edit_local(session: SessionDep, data: TableObj):
+async def edit_local(session: SessionDep, user: CurrentUser, data: TableObj):
+    if not data.table or get_ds(session, data.table.ds_id, user) is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     update_table_and_fields(session, data)
 
 
 @router.post("/editTable", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_table")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def edit_table(session: SessionDep, table: CoreTable):
+async def edit_table(session: SessionDep, user: CurrentUser, table: CoreTable):
+    if get_ds(session, table.ds_id, user) is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     updateTable(session, table)
 
 
 @router.post("/editField", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_field")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def edit_field(session: SessionDep, field: CoreField):
+async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
+    if get_ds(session, field.ds_id, user) is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     updateField(session, field)
 
 
@@ -417,7 +445,7 @@ async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentU
         try:
             return preview(session, current_user, id, data)
         except Exception as e:
-            ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
+            ds = get_ds(session, id, current_user)
             # check ds status
             status = check_status(session, trans, ds, True)
             if status:
@@ -430,7 +458,11 @@ async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentU
 # not used
 @router.post("/fieldEnum/{id}", include_in_schema=False)
 @require_permissions(permission=AppPermission(role=['admin']))
-async def field_enum(session: SessionDep, id: int):
+async def field_enum(session: SessionDep, user: CurrentUser, id: int):
+    field = session.get(CoreField, id)
+    if field is None or get_ds(session, field.ds_id, user) is None:
+        raise HTTPException(status_code=404, detail="字段不存在")
+
     def inner():
         return fieldEnum(session, id)
 
@@ -581,7 +613,9 @@ f_c_col = "字段备注"
 
 @router.get("/exportDsSchema/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_export_ds_schema")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def export_ds_schema(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    if id != 0 and get_ds(session, id, user) is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     # {
     #     'sheet':'', sheet name
     #     'c1_h':'', column1 column name
@@ -591,7 +625,6 @@ async def export_ds_schema(session: SessionDep, id: int = Path(..., description=
     # }
     def inner():
         if id == 0:  # download template
-            file_name = '批量上传备注'
             df_list = [
                 {'sheet': t_sheet, 'c0_h': t_s_col, 'c1_h': t_n_col, 'c2_h': t_c_col, 'c0': ["数据表1", "数据表2"],
                  'c1': ["user", "score"],
@@ -602,8 +635,6 @@ async def export_ds_schema(session: SessionDep, id: int = Path(..., description=
                  'c2': ["课程名称", "用户ID", "课程得分"]},
             ]
         else:
-            ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
-            file_name = ds.name
             tables = session.query(CoreTable).filter(CoreTable.ds_id == id).order_by(
                 CoreTable.table_name.asc()).all()
             if len(tables) == 0:
@@ -639,8 +670,6 @@ async def export_ds_schema(session: SessionDep, id: int = Path(..., description=
 
         output.seek(0)
 
-        filename = f'{file_name}.xlsx'
-        encoded_filename = quote(filename)
         return io.BytesIO(output.getvalue())
 
     # headers = {
@@ -656,8 +685,10 @@ async def export_ds_schema(session: SessionDep, id: int = Path(..., description=
 
 @router.post("/uploadDsSchema/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_upload_ds_schema")
 @require_permissions(permission=AppPermission(role=['admin']))
-async def upload_ds_schema(session: SessionDep, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                            file: UploadFile = File(...)):
+    if get_ds(session, id, user) is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
     AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
 

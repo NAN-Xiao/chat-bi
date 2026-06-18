@@ -13,7 +13,9 @@ from apps.chat.models.chat_model import AxisObj
 from apps.data_training.curd.data_training import page_data_training, create_training, update_training, delete_training, \
     enable_training, get_all_data_training, batch_create_training
 from apps.datasource.crud.permission import (
+    current_tenant_id,
     get_datasource_ids_with_min_role,
+    has_datasource_access,
 )
 from apps.data_training.models.data_training_model import DataTraining
 from apps.data_training.models.data_training_model import DataTrainingInfo
@@ -37,10 +39,15 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
 def _require_training_admin(session: SessionDep, current_user: CurrentUser, info: DataTrainingInfo):
     if not is_system_admin(current_user):
         raise HTTPException(status_code=403, detail="System admin access is required")
+    tenant_id = current_tenant_id(current_user)
     if info.id:
         existing = session.get(DataTraining, int(info.id))
         if not existing:
             raise HTTPException(status_code=404, detail="SQL example not found")
+        if int(existing.tenant_id) != tenant_id:
+            raise HTTPException(status_code=404, detail="SQL example not found")
+    if info.datasource is not None and not has_datasource_access(session, current_user, info.datasource):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
 
 
 def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, ids: list[int]):
@@ -48,7 +55,12 @@ def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, 
         return
     if not is_system_admin(current_user):
         raise HTTPException(status_code=403, detail="System admin access is required")
-    rows = session.exec(select(DataTraining.datasource).where(DataTraining.id.in_(ids))).all()
+    rows = session.exec(
+        select(DataTraining.datasource).where(
+            DataTraining.id.in_(ids),
+            DataTraining.tenant_id == current_tenant_id(current_user),
+        )
+    ).all()
     if len(rows) != len(set(ids)):
         raise HTTPException(status_code=404, detail="SQL example not found")
 
@@ -63,7 +75,8 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
             raise HTTPException(status_code=403, detail="Datasource access is required")
         datasource_ids = {datasource}
     current_page, page_size, total_count, total_pages, _list = page_data_training(session, current_page, page_size,
-                                                                                  question, datasource_ids)
+                                                                                  question, datasource_ids,
+                                                                                  current_tenant_id(current_user))
 
     return {
         "current_page": current_page,
@@ -77,6 +90,7 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
 @router.put("", response_model=int, summary=f"{PLACEHOLDER_PREFIX}create_or_update_dt")
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.DATA_TRAINING,resource_id_expr='info.id', result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, trans: Trans, info: DataTrainingInfo):
+    info.tenant_id = current_tenant_id(current_user)
     _require_training_admin(session, current_user, info)
     if info.id:
         return update_training(session, info, trans)
@@ -88,14 +102,14 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, trans
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.DATA_TRAINING,resource_id_expr='id_list'))
 async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[int]):
     _require_training_ids_admin(session, current_user, id_list)
-    delete_training(session, id_list)
+    delete_training(session, id_list, current_tenant_id(current_user))
 
 
 @router.get("/{id}/enable/{enabled}", summary=f"{PLACEHOLDER_PREFIX}enable_dt")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.DATA_TRAINING,resource_id_expr='id'))
 async def enable(session: SessionDep, current_user: CurrentUser, id: int, enabled: bool, trans: Trans):
     _require_training_ids_admin(session, current_user, [id])
-    enable_training(session, id, enabled, trans)
+    enable_training(session, id, enabled, trans, current_tenant_id(current_user))
 
 
 @router.get("/export", summary=f"{PLACEHOLDER_PREFIX}export_dt")
@@ -110,7 +124,7 @@ async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentU
         datasource_ids = {datasource}
 
     def inner():
-        _list = get_all_data_training(session, question, datasource_ids)
+        _list = get_all_data_training(session, question, datasource_ids, current_tenant_id(current_user))
 
         data_list = []
         for obj in _list:
@@ -202,6 +216,8 @@ async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentU
         raise HTTPException(status_code=400, detail="Datasource is required")
     if not is_system_admin(current_user):
         raise HTTPException(status_code=403, detail="System admin access is required")
+    if not has_datasource_access(session, current_user, datasource):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
 
     os.makedirs(path, exist_ok=True)
@@ -251,7 +267,7 @@ async def upload_excel(session: SessionDep, trans: Trans, current_user: CurrentU
                                      datasource_name=datasource_name,
                                      advanced_application_name=advanced_application_name))
 
-        res = batch_create_training(session, import_data, trans)
+        res = batch_create_training(session, import_data, trans, current_tenant_id(current_user))
 
         failed_records = res['failed_records']
 

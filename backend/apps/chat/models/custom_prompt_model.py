@@ -17,6 +17,7 @@ class CustomPrompt(SQLModel, table=True):
     __tablename__ = "custom_prompt"
 
     id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    tenant_id: int = Field(default=1, sa_column=Column(BigInteger, nullable=False, server_default="1"))
     type: Optional[CustomPromptTypeEnum] = Field(default=None, max_length=20)
     create_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
     name: Optional[str] = Field(default=None, max_length=255)
@@ -39,6 +40,7 @@ class CustomPrompt(SQLModel, table=True):
 
 class CustomPromptInfo(BaseModel):
     id: Optional[int] = None
+    tenant_id: Optional[int] = None
     type: Optional[CustomPromptTypeEnum] = None
     create_time: Optional[datetime] = None
     name: Optional[str] = None

@@ -1,7 +1,7 @@
 import datetime
 from typing import Any, List, Optional
 
-from sqlalchemy import and_, inspect, or_
+from sqlalchemy import and_, inspect
 from sqlmodel import func, select
 
 from apps.datasource.crud.permission_rules import (
@@ -12,6 +12,8 @@ from apps.datasource.crud.permission_rules import (
 )
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.models.tenant import TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
 from apps.system.crud.user import SYSTEM_ADMIN_ROLES, is_system_admin
 from apps.system.models.user import UserModel
@@ -32,6 +34,55 @@ REQUIRED_PROJECT_ROLE_ALIASES = {
     "project_viewer": PROJECT_ROLE_VIEWER,
     "project_editor": PROJECT_ROLE_EDITOR,
 }
+
+
+def current_tenant_id(current_user: CurrentUser | None) -> int | None:
+    if current_user is None:
+        return None
+    tenant_id = getattr(current_user, "tenant_id", None)
+    if tenant_id is None or tenant_id == "":
+        return DEFAULT_TENANT_ID
+    try:
+        return int(tenant_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _supports_table(session: SessionDep, table_name: str) -> bool:
+    try:
+        return inspect(session.connection()).has_table(table_name)
+    except Exception:
+        return False
+
+
+def _supports_datasource_tenant_filter(session: SessionDep) -> bool:
+    try:
+        inspector = inspect(session.connection())
+        if not inspector.has_table(CoreDatasource.__tablename__):
+            return False
+        return any(
+            column["name"] == "tenant_id"
+            for column in inspector.get_columns(CoreDatasource.__tablename__)
+        )
+    except Exception:
+        return False
+
+
+def _supports_tenant_user_filter(session: SessionDep) -> bool:
+    return _supports_table(session, TenantUserModel.__tablename__)
+
+
+def _apply_datasource_tenant_filter(statement, session: SessionDep, current_user: CurrentUser | None):
+    tenant_id = current_tenant_id(current_user)
+    if tenant_id is None or not _supports_datasource_tenant_filter(session):
+        return statement
+    return statement.where(CoreDatasource.tenant_id == tenant_id)
+
+
+def _datasource_in_current_tenant(session: SessionDep, datasource_id: int, current_user: CurrentUser | None) -> bool:
+    statement = select(CoreDatasource.id).where(CoreDatasource.id == datasource_id)
+    statement = _apply_datasource_tenant_filter(statement, session, current_user)
+    return session.exec(statement).first() is not None
 
 
 def normalize_project_role(role: str | None) -> str:
@@ -74,31 +125,53 @@ def _supports_user_system_role_filter(session: SessionDep) -> bool:
         return False
 
 
-def list_project_assignable_user_ids(session: SessionDep, user_ids) -> set[int]:
+def list_project_assignable_user_ids(
+        session: SessionDep,
+        user_ids,
+        current_user: CurrentUser | None = None,
+) -> set[int]:
     requested_ids = {int(user_id) for user_id in user_ids if user_id is not None}
     if not requested_ids:
         return set()
-    if not _supports_user_system_role_filter(session):
+    statement = select(UserModel.id).where(UserModel.id.in_(requested_ids))
+    if _supports_user_system_role_filter(session):
+        statement = statement.where(UserModel.system_role.not_in(SYSTEM_ADMIN_ROLES))
+
+    tenant_id = current_tenant_id(current_user)
+    if tenant_id is not None and _supports_tenant_user_filter(session):
+        statement = statement.join(TenantUserModel, TenantUserModel.user_id == UserModel.id).where(
+            TenantUserModel.tenant_id == tenant_id,
+            TenantUserModel.status == 1,
+        )
+
+    if not _supports_user_system_role_filter(session) and not _supports_tenant_user_filter(session):
         return requested_ids
 
-    rows = session.exec(
-        select(UserModel.id).where(
-            UserModel.id.in_(requested_ids),
-            UserModel.system_role.not_in(SYSTEM_ADMIN_ROLES),
-        )
-    ).all()
+    rows = session.exec(statement).all()
     return {int(_first_column_value(row)) for row in rows if _first_column_value(row) is not None}
 
 
-def list_datasource_user_ids(session: SessionDep, datasource_id: int) -> list[int]:
+def list_datasource_user_ids(
+        session: SessionDep,
+        datasource_id: int,
+        current_user: CurrentUser | None = None,
+) -> list[int]:
+    if not _datasource_in_current_tenant(session, int(datasource_id), current_user):
+        return []
     rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource_id).all()
-    assignable_ids = list_project_assignable_user_ids(session, [row.user_id for row in rows])
+    assignable_ids = list_project_assignable_user_ids(session, [row.user_id for row in rows], current_user)
     return [int(row.user_id) for row in rows if int(row.user_id) in assignable_ids]
 
 
-def list_datasource_users(session: SessionDep, datasource_id: int) -> list[dict[str, Any]]:
+def list_datasource_users(
+        session: SessionDep,
+        datasource_id: int,
+        current_user: CurrentUser | None = None,
+) -> list[dict[str, Any]]:
+    if not _datasource_in_current_tenant(session, int(datasource_id), current_user):
+        return []
     rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource_id).all()
-    assignable_ids = list_project_assignable_user_ids(session, [row.user_id for row in rows])
+    assignable_ids = list_project_assignable_user_ids(session, [row.user_id for row in rows], current_user)
     return [
         {
             "user_id": int(row.user_id),
@@ -109,20 +182,35 @@ def list_datasource_users(session: SessionDep, datasource_id: int) -> list[dict[
     ]
 
 
-def list_datasource_user_counts(session: SessionDep, datasource_ids) -> dict[int, int]:
+def list_datasource_user_counts(
+        session: SessionDep,
+        datasource_ids,
+        current_user: CurrentUser | None = None,
+) -> dict[int, int]:
     requested_ids = {int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None}
     if not requested_ids:
         return {}
 
     statement = (
         select(CoreDatasourceUser.ds_id, func.count(CoreDatasourceUser.user_id))
+        .join(CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id)
         .where(CoreDatasourceUser.ds_id.in_(requested_ids))
         .group_by(CoreDatasourceUser.ds_id)
     )
+    statement = _apply_datasource_tenant_filter(statement, session, current_user)
     if _supports_user_system_role_filter(session):
         statement = (
             statement.join(UserModel, UserModel.id == CoreDatasourceUser.user_id)
             .where(UserModel.system_role.not_in(SYSTEM_ADMIN_ROLES))
+        )
+    tenant_id = current_tenant_id(current_user)
+    if tenant_id is not None and _supports_tenant_user_filter(session):
+        statement = (
+            statement.join(TenantUserModel, TenantUserModel.user_id == CoreDatasourceUser.user_id)
+            .where(
+                TenantUserModel.tenant_id == tenant_id,
+                TenantUserModel.status == 1,
+            )
         )
 
     rows = session.exec(statement).all()
@@ -133,14 +221,36 @@ def list_datasource_user_counts(session: SessionDep, datasource_ids) -> dict[int
     }
 
 
-def list_user_datasource_ids(session: SessionDep, user_id: int) -> list[int]:
-    rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.user_id == user_id).all()
-    return [int(row.ds_id) for row in rows]
+def list_user_datasource_ids(
+        session: SessionDep,
+        user_id: int,
+        current_user: CurrentUser | None = None,
+) -> list[int]:
+    statement = (
+        select(CoreDatasourceUser.ds_id)
+        .join(CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id)
+        .where(CoreDatasourceUser.user_id == user_id)
+        .order_by(CoreDatasourceUser.ds_id)
+    )
+    statement = _apply_datasource_tenant_filter(statement, session, current_user)
+    rows = session.exec(statement).all()
+    return [int(_first_column_value(row)) for row in rows if _first_column_value(row) is not None]
 
 
-def list_user_datasource_roles(session: SessionDep, user_id: int) -> dict[int, str]:
-    rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.user_id == user_id).all()
-    return {int(row.ds_id): normalize_project_role(getattr(row, "role", None)) for row in rows}
+def list_user_datasource_roles(
+        session: SessionDep,
+        user_id: int,
+        current_user: CurrentUser | None = None,
+) -> dict[int, str]:
+    statement = (
+        select(CoreDatasourceUser.ds_id, CoreDatasourceUser.role)
+        .join(CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id)
+        .where(CoreDatasourceUser.user_id == user_id)
+        .order_by(CoreDatasourceUser.ds_id)
+    )
+    statement = _apply_datasource_tenant_filter(statement, session, current_user)
+    rows = session.exec(statement).all()
+    return {int(row[0]): normalize_project_role(row[1]) for row in rows}
 
 
 def get_datasource_ids_with_min_role(
@@ -149,16 +259,23 @@ def get_datasource_ids_with_min_role(
         min_role: str = PROJECT_ROLE_VIEWER,
 ) -> Optional[set[int]]:
     if _is_datasource_scope_admin(current_user):
-        return None
+        statement = select(CoreDatasource.id).order_by(CoreDatasource.id)
+        statement = _apply_datasource_tenant_filter(statement, session, current_user)
+        rows = session.exec(statement).all()
+        return {int(_first_column_value(row)) for row in rows if _first_column_value(row) is not None}
 
     result: set[int] = set()
     required_rank = required_project_role_rank(min_role)
     if required_rank <= 0:
         return result
 
-    membership_rows = session.query(CoreDatasourceUser).filter(
-        CoreDatasourceUser.user_id == current_user.id
-    ).all()
+    statement = (
+        select(CoreDatasourceUser)
+        .join(CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id)
+        .where(CoreDatasourceUser.user_id == current_user.id)
+    )
+    statement = _apply_datasource_tenant_filter(statement, session, current_user)
+    membership_rows = session.exec(statement).all()
     for row in membership_rows:
         if project_role_rank(getattr(row, "role", None)) >= required_rank:
             result.add(int(row.ds_id))
@@ -174,7 +291,9 @@ def update_datasource_users(
         user_roles: Optional[dict[int, str]] = None
 ) -> list[dict[str, Any]]:
     user_roles = user_roles or {}
-    next_user_ids = list_project_assignable_user_ids(session, user_ids)
+    if not _datasource_in_current_tenant(session, int(datasource.id), current_user):
+        return []
+    next_user_ids = list_project_assignable_user_ids(session, user_ids, current_user)
     current_rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == datasource.id).all()
     current_rows_by_user = {int(row.user_id): row for row in current_rows}
 
@@ -215,14 +334,14 @@ def update_user_datasources(
         target_user_id = int(user_id)
     except (TypeError, ValueError):
         return []
-    if target_user_id not in list_project_assignable_user_ids(session, [target_user_id]):
+    if target_user_id not in list_project_assignable_user_ids(session, [target_user_id], current_user):
         return []
 
     next_datasource_ids = {int(datasource_id) for datasource_id in datasource_ids}
     if next_datasource_ids:
-        existing_datasources = session.query(CoreDatasource).filter(
-            CoreDatasource.id.in_(next_datasource_ids)
-        ).all()
+        statement = select(CoreDatasource).where(CoreDatasource.id.in_(next_datasource_ids))
+        statement = _apply_datasource_tenant_filter(statement, session, current_user)
+        existing_datasources = session.exec(statement).all()
         datasource_map = {int(datasource.id): datasource for datasource in existing_datasources}
         next_datasource_ids = set(datasource_map.keys())
     else:
@@ -237,7 +356,15 @@ def update_user_datasources(
         except (TypeError, ValueError):
             continue
 
-    current_rows = session.query(CoreDatasourceUser).filter(CoreDatasourceUser.user_id == target_user_id).all()
+    current_rows = session.exec(
+        select(CoreDatasourceUser)
+        .join(CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id)
+        .where(CoreDatasourceUser.user_id == target_user_id)
+    ).all()
+    current_rows = [
+        row for row in current_rows
+        if _datasource_in_current_tenant(session, int(row.ds_id), current_user)
+    ]
     current_datasource_ids = {int(row.ds_id) for row in current_rows}
 
     for row in current_rows:
@@ -250,7 +377,6 @@ def update_user_datasources(
 
     add_datasource_ids = next_datasource_ids - current_datasource_ids
     for datasource_id in add_datasource_ids:
-        datasource = datasource_map.get(datasource_id)
         session.add(CoreDatasourceUser(
             ds_id=datasource_id,
             user_id=target_user_id,
@@ -291,12 +417,14 @@ def _first_column_value(row):
 def get_datasource_role(session: SessionDep, current_user: CurrentUser, datasource_id) -> str | None:
     if datasource_id is None or datasource_id == "":
         return None
-    if _is_datasource_scope_admin(current_user):
-        return PROJECT_ROLE_EDITOR
     try:
         datasource_id = int(datasource_id)
     except (TypeError, ValueError):
         return None
+    if not _datasource_in_current_tenant(session, datasource_id, current_user):
+        return None
+    if _is_datasource_scope_admin(current_user):
+        return PROJECT_ROLE_EDITOR
 
     row = session.query(CoreDatasourceUser).filter(
         CoreDatasourceUser.ds_id == datasource_id,
