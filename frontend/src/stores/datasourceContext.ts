@@ -63,7 +63,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       }
       this.loading = true
       try {
-        const res = await datasourceApi.list()
+        const res = await datasourceApi.accessibleList()
         this.datasources = Array.isArray(res) ? res : []
         const userStore = useUserStore()
         const tenantScopedCachedId = wsCache.get(this.cacheKey())

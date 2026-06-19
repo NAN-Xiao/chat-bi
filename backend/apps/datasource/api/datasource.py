@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Path
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from psycopg2 import sql
-from sqlalchemy import and_
+from sqlalchemy import and_, inspect
 from sqlmodel import select
 
 from apps.db.db import get_schema
@@ -36,10 +36,16 @@ from apps.datasource.crud.permission import (
     project_role_rank,
     update_datasource_users,
 )
+from apps.datasource.crud.binding import bind_datasource_to_tenant
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_system_admin
-from apps.system.schemas.business_access import require_chatbi_business_user
+from apps.system.crud.user import is_platform_admin, is_system_admin
+from apps.system.models.tenant import TenantModel
+from apps.system.schemas.business_access import (
+    ensure_chatbi_business_user,
+    require_chatbi_business_or_platform_admin,
+)
 from apps.system.schemas.permission import AppPermission, require_permissions
 from apps.system.models.user import UserModel
 from common.audit.models.log_model import OperationType, OperationModules
@@ -63,7 +69,7 @@ from ..utils.excel import parse_excel_preview, USER_TYPE_TO_PANDAS
 router = APIRouter(
     tags=["Datasource"],
     prefix="/datasource",
-    dependencies=[Depends(require_chatbi_business_user)],
+    dependencies=[Depends(require_chatbi_business_or_platform_admin)],
 )
 path = settings.EXCEL_PATH
 
@@ -77,7 +83,12 @@ def _tenant_excel_path(current_user: CurrentUser) -> str:
 
 def _can_manage_tenant_projects(user: CurrentUser) -> bool:
     tenant_role = normalize_tenant_role(getattr(user, "tenant_role", None))
-    return is_system_admin(user) or tenant_role in TENANT_ADMIN_ROLES
+    return not is_platform_admin(user) and (is_system_admin(user) or tenant_role in TENANT_ADMIN_ROLES)
+
+
+def _require_platform_project_admin(user: CurrentUser) -> None:
+    if not is_platform_admin(user):
+        raise HTTPException(status_code=403, detail="Only platform admin can manage projects")
 
 
 class DatasourceListItem(BaseModel):
@@ -95,10 +106,14 @@ class DatasourceListItem(BaseModel):
     embedding: Optional[str] = None
     recommended_config: Optional[int] = None
     project_role: Optional[str] = None
+    tenant_id: Optional[int] = None
+    tenant_name: Optional[str] = None
     authorized_user_count: int = 0
     can_create_dashboard: bool = False
     can_manage_dashboard: bool = False
     can_manage_project: bool = False
+    can_manage_metadata: bool = False
+    can_bind_workspace: bool = False
 
 
 class DatasourceDetailItem(BaseModel):
@@ -115,12 +130,56 @@ class DatasourceDetailItem(BaseModel):
     table_relation: Optional[Any] = None
     embedding: Optional[str] = None
     recommended_config: Optional[int] = None
+    tenant_id: Optional[int] = None
+    tenant_name: Optional[str] = None
+    can_manage_metadata: bool = False
 
 
-@router.get("/list", response_model=List[DatasourceListItem], summary=f"{PLACEHOLDER_PREFIX}ds_list",
-            description=f"{PLACEHOLDER_PREFIX}ds_list_description")
-async def datasource_list(session: SessionDep, user: CurrentUser):
-    datasources = get_datasource_list(session=session, user=user)
+class DatasourceBindingUpdate(BaseModel):
+    tenant_id: Optional[int] = None
+
+
+class DatasourceBindingItem(BaseModel):
+    datasource_id: int
+    tenant_id: Optional[int] = None
+    tenant_name: Optional[str] = None
+
+
+def _tenant_name_map(session: SessionDep, tenant_ids) -> dict[int, str]:
+    ids = {int(tenant_id) for tenant_id in tenant_ids if tenant_id not in (None, "")}
+    if not ids:
+        return {}
+    try:
+        if not inspect(session.connection()).has_table(TenantModel.__tablename__):
+            return {}
+    except Exception:
+        return {}
+    rows = session.exec(
+        select(TenantModel.id, TenantModel.name)
+        .where(TenantModel.id.in_(ids))
+    ).all()
+    return {int(row[0]): row[1] for row in rows}
+
+
+def _datasource_binding_item(session: SessionDep, datasource: CoreDatasource) -> DatasourceBindingItem:
+    tenant_id = int(datasource.tenant_id) if getattr(datasource, "tenant_id", None) else None
+    tenant_name = None
+    if tenant_id and tenant_id != DEFAULT_TENANT_ID:
+        tenant = session.get(TenantModel, tenant_id)
+        tenant_name = tenant.name if tenant else None
+    return DatasourceBindingItem(
+        datasource_id=int(datasource.id),
+        tenant_id=tenant_id if tenant_id != DEFAULT_TENANT_ID else None,
+        tenant_name=tenant_name,
+    )
+
+
+def _datasource_list_items(
+        session: SessionDep,
+        user: CurrentUser,
+        datasources: list[CoreDatasource],
+) -> list[dict[str, Any]]:
+    tenant_names = _tenant_name_map(session, [datasource.tenant_id for datasource in datasources])
     authorized_user_counts = list_datasource_user_counts(
         session,
         [datasource.id for datasource in datasources],
@@ -129,6 +188,9 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
     result = []
     for datasource in datasources:
         role = get_datasource_role(session, user, datasource.id)
+        datasource_tenant_id = int(datasource.tenant_id) if datasource.tenant_id else None
+        bound_tenant_id = datasource_tenant_id if datasource_tenant_id != DEFAULT_TENANT_ID else None
+        can_platform_manage_project = is_platform_admin(user)
         can_manage_tenant_projects = _can_manage_tenant_projects(user)
         item = {
             "id": datasource.id,
@@ -138,7 +200,7 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
             "type_name": datasource.type_name,
             "configuration": (
                 decrypt_datasource_configuration_for_output(datasource.configuration)
-                if can_manage_tenant_projects
+                if can_platform_manage_project
                 else None
             ),
             "create_time": datasource.create_time,
@@ -149,13 +211,33 @@ async def datasource_list(session: SessionDep, user: CurrentUser):
             "embedding": datasource.embedding,
             "recommended_config": datasource.recommended_config,
             "project_role": role,
+            "tenant_id": bound_tenant_id,
+            "tenant_name": tenant_names.get(bound_tenant_id) if bound_tenant_id else None,
             "authorized_user_count": authorized_user_counts.get(int(datasource.id), 0),
             "can_create_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_VIEWER),
             "can_manage_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_EDITOR),
             "can_manage_project": can_manage_tenant_projects,
+            "can_manage_metadata": can_platform_manage_project,
+            "can_bind_workspace": can_platform_manage_project,
         }
         result.append(item)
     return result
+
+
+@router.get("/list", response_model=List[DatasourceListItem], summary=f"{PLACEHOLDER_PREFIX}ds_list",
+            description=f"{PLACEHOLDER_PREFIX}ds_list_description")
+@require_permissions(permission=AppPermission(role=['platform_admin']))
+async def datasource_list(session: SessionDep, user: CurrentUser):
+    _require_platform_project_admin(user)
+    datasources = get_datasource_list(session=session, user=user)
+    return _datasource_list_items(session, user, datasources)
+
+
+@router.get("/accessible/list", response_model=List[DatasourceListItem], include_in_schema=False)
+async def accessible_datasource_list(session: SessionDep, user: CurrentUser):
+    ensure_chatbi_business_user(user)
+    datasources = get_datasource_list(session=session, user=user)
+    return _datasource_list_items(session, user, datasources)
 
 
 class DatasourceUserMember(BaseModel):
@@ -246,15 +328,47 @@ async def get_datasource(
     if datasource is None:
         return None
     data = datasource.model_dump()
-    if not _can_manage_tenant_projects(user):
-        data["configuration"] = None
-    else:
+    if is_platform_admin(user):
         data["configuration"] = decrypt_datasource_configuration_for_output(data.get("configuration"))
+    else:
+        data["configuration"] = None
+    data["tenant_name"] = _tenant_name_map(session, [datasource.tenant_id]).get(int(datasource.tenant_id or 0))
+    data["can_manage_metadata"] = is_platform_admin(user)
     return data
 
 
+@router.get("/{id}/binding", response_model=DatasourceBindingItem, include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['platform_admin']))
+async def datasource_binding(
+        session: SessionDep,
+        user: CurrentUser,
+        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+):
+    _require_platform_project_admin(user)
+    datasource = get_ds(session, id, user)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    return _datasource_binding_item(session, datasource)
+
+
+@router.put("/{id}/binding", response_model=DatasourceBindingItem, include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['platform_admin']))
+async def update_datasource_binding(
+        session: SessionDep,
+        user: CurrentUser,
+        data: DatasourceBindingUpdate,
+        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+):
+    _require_platform_project_admin(user)
+    datasource = get_ds(session, id, user)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    datasource = bind_datasource_to_tenant(session, user, datasource, data.tenant_id)
+    return _datasource_binding_item(session, datasource)
+
+
 @router.post("/check", response_model=bool, summary=f"{PLACEHOLDER_PREFIX}ds_check")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def check(session: SessionDep, trans: Trans, ds: CoreDatasource):
     def inner():
         return check_status(session, trans, ds, True)
@@ -274,13 +388,13 @@ async def check_by_id(session: SessionDep, trans: Trans,
 
 @router.post("/add", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_add")
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.DATASOURCE, result_id_expr="id"))
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def add(session: SessionDep, trans: Trans, user: CurrentUser, ds: CreateDatasource):
     return await create_ds(session, trans, user, ds)
 
 
 @router.post("/chooseTables/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_choose_tables")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def choose_tables(session: SessionDep, trans: Trans, user: CurrentUser, tables: List[CoreTable],
                         id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     datasource = get_ds(session, id, user)
@@ -294,7 +408,7 @@ async def choose_tables(session: SessionDep, trans: Trans, user: CurrentUser, ta
 
 
 @router.post("/update", response_model=CoreDatasource, summary=f"{PLACEHOLDER_PREFIX}ds_update")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 @system_log(
     LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.DATASOURCE, resource_id_expr="ds.id"))
 async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
@@ -305,7 +419,7 @@ async def update(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreD
 
 
 @router.post("/delete/{id}/{name}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_delete")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.DATASOURCE, resource_id_expr="id",
                       ))
 async def delete(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"), name: str = None):
@@ -313,7 +427,7 @@ async def delete(session: SessionDep, user: CurrentUser, id: int = Path(..., des
 
 
 @router.post("/getTables/{id}", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_tables(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     if get_ds(session, id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -321,7 +435,7 @@ async def get_tables(session: SessionDep, user: CurrentUser, id: int = Path(...,
 
 
 @router.post("/getTablesByConf", response_model=List[TableSchemaResponse], summary=f"{PLACEHOLDER_PREFIX}ds_get_tables")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
     try:
         def inner():
@@ -340,7 +454,7 @@ async def get_tables_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
 
 
 @router.post("/getSchemaByConf", response_model=List[str], summary=f"{PLACEHOLDER_PREFIX}ds_get_schema")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasource):
     try:
         def inner():
@@ -360,7 +474,7 @@ async def get_schema_by_conf(session: SessionDep, trans: Trans, ds: CoreDatasour
 
 @router.post("/getFields/{id}/{table_name}", response_model=List[ColumnSchemaResponse],
              summary=f"{PLACEHOLDER_PREFIX}ds_get_fields")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def get_fields(session: SessionDep,
                      user: CurrentUser,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
@@ -371,7 +485,7 @@ async def get_fields(session: SessionDep,
 
 
 @router.post("/syncFields/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_sync_fields")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def sync_fields(session: SessionDep,
                       current_user: CurrentUser,
                       id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
@@ -436,7 +550,7 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
 
 
 @router.post("/editLocalComment", include_in_schema=False)
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_local(session: SessionDep, user: CurrentUser, data: TableObj):
     if not data.table or get_ds(session, data.table.ds_id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -444,7 +558,7 @@ async def edit_local(session: SessionDep, user: CurrentUser, data: TableObj):
 
 
 @router.post("/editTable", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_table")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_table(session: SessionDep, user: CurrentUser, table: CoreTable):
     if get_ds(session, table.ds_id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -452,7 +566,7 @@ async def edit_table(session: SessionDep, user: CurrentUser, table: CoreTable):
 
 
 @router.post("/editField", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_field")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
     if get_ds(session, field.ds_id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -479,7 +593,7 @@ async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentU
 
 # not used
 @router.post("/fieldEnum/{id}", include_in_schema=False)
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def field_enum(session: SessionDep, user: CurrentUser, id: int):
     field = session.get(CoreField, id)
     if field is None or get_ds(session, field.ds_id, user) is None:
@@ -557,7 +671,7 @@ async def field_enum(session: SessionDep, user: CurrentUser, id: int):
 
 # deprecated
 @router.post("/uploadExcel", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_upload_excel")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def upload_excel(
         session: SessionDep,
         current_user: CurrentUser,
@@ -638,7 +752,7 @@ f_c_col = "字段备注"
 
 
 @router.get("/exportDsSchema/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_export_ds_schema")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     if id != 0 and get_ds(session, id, user) is None:
         raise HTTPException(status_code=404, detail="项目不存在")
@@ -710,7 +824,7 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
 
 
 @router.post("/uploadDsSchema/{id}", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_upload_ds_schema")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                            file: UploadFile = File(...)):
     if get_ds(session, id, user) is None:
@@ -773,7 +887,7 @@ async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
 
 
 @router.post("/parseExcel", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_parse_excel")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def parse_excel(
         current_user: CurrentUser,
         file: UploadFile = File(..., description=f"{PLACEHOLDER_PREFIX}ds_excel"),
@@ -797,7 +911,7 @@ async def parse_excel(
 
 
 @router.post("/importToDb", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_import_to_db")
-@require_permissions(permission=AppPermission(role=['admin']))
+@require_permissions(permission=AppPermission(role=['platform_admin']))
 async def import_to_db(session: SessionDep, trans: Trans, current_user: CurrentUser, import_req: ImportRequest):
     safe_file_name = os.path.basename(import_req.filePath or "")
     save_path = str(AppFileUtils.safe_path(_tenant_excel_path(current_user), safe_file_name))

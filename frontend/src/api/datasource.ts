@@ -8,6 +8,7 @@ export const datasourceApi = {
   add: (data: any) => request.post('/datasource/add', data),
   importToDb: (data: any) => request.post('/datasource/importToDb', data),
   list: () => request.get('/datasource/list'),
+  accessibleList: () => request.get('/datasource/accessible/list'),
   update: (data: any) => request.post('/datasource/update', data),
   delete: (id: number, name: string) => request.post(`/datasource/delete/${id}/${name}`),
   getTables: (id: number) => request.post(`/datasource/getTables/${id}`),
@@ -25,6 +26,9 @@ export const datasourceApi = {
   saveTable: (data: any) => request.post('/datasource/editTable', data),
   saveField: (data: any) => request.post('/datasource/editField', data),
   getDs: (id: number) => request.post(`/datasource/get/${id}`),
+  binding: (id: number | string) => request.get(`/datasource/${id}/binding`),
+  updateBinding: (id: number | string, data: { tenant_id?: number | string | null }) =>
+    request.put(`/datasource/${id}/binding`, data),
   users: (id: number | string) => request.get(`/datasource/${id}/users`),
   updateUsers: (id: number | string, data: any) => request.put(`/datasource/${id}/users`, data),
   cancelRequests: () => request.cancelRequests(),

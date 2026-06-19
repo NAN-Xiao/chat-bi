@@ -3,6 +3,7 @@ import BaseAnswer from './BaseAnswer.vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat.ts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ChartBlock from '@/views/chat/chat-block/ChartBlock.vue'
+import MdComponent from '@/views/chat/component/MdComponent.vue'
 import JSONBig from 'json-bigint'
 import { parseSseChunk } from '@/utils/sse'
 
@@ -95,6 +96,10 @@ const sendMessage = async () => {
   }
 
   const currentRecord: ChatRecord = _currentChat.value.records[index.value]
+  if (currentRecord.local_answer) {
+    _loading.value = false
+    return
+  }
 
   let error: boolean = false
   if (_currentChatId.value === undefined) {
@@ -268,6 +273,7 @@ defineExpose({ sendMessage, index: () => index.value, stop })
 
 <template>
   <BaseAnswer v-if="message" :message="message" :reasoning-name="reasoningName" :loading="_loading">
+    <MdComponent v-if="message.record?.local_answer" :message="message.record.local_answer" />
     <ChartBlock
       style="margin-top: 6px"
       :message="message"

@@ -83,7 +83,13 @@ export const UserStore = defineStore('user', {
       return this.time
     },
     isSystemAdminUser(): boolean {
-      return this.globalRole === 'platform_admin' || this.systemRole === 'system_admin'
+      return (
+        this.globalRole === 'platform_admin' ||
+        ['system_admin', 'collab_admin'].includes(String(this.systemRole || '').trim().toLowerCase())
+      )
+    },
+    isSuperAdminUser(): boolean {
+      return String(this.systemRole || '').trim().toLowerCase() === 'system_admin'
     },
     isCollabAdminUser(): boolean {
       return this.systemRole === 'collab_admin'

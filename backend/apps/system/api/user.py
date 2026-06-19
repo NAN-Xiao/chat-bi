@@ -27,6 +27,7 @@ from apps.system.crud.user import (
     get_db_user,
     is_high_privilege_system_role,
     is_high_privilege_user,
+    is_platform_admin,
     is_super_admin,
     normalize_system_role,
 )
@@ -68,7 +69,7 @@ def _current_tenant_id(current_user: CurrentUser) -> int:
 
 
 def _require_user_in_current_tenant(session: SessionDep, current_user: CurrentUser, user_id: int) -> None:
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         return
     if not check_user_in_tenant(session=session, user_id=int(user_id), tenant_id=_current_tenant_id(current_user)):
         raise HTTPException(status_code=404, detail="User not found in current tenant")
@@ -86,7 +87,7 @@ def _get_user_tenant_role(session: SessionDep, user_id: int, tenant_id: int) -> 
 
 
 def _get_user_visible_tenant_role(session: SessionDep, current_user: CurrentUser, user_id: int) -> str | None:
-    if not is_super_admin(current_user):
+    if not is_platform_admin(current_user):
         return _get_user_tenant_role(session, user_id, _current_tenant_id(current_user))
     tenant_id = getattr(current_user, "tenant_id", None)
     if tenant_id:
@@ -194,11 +195,11 @@ def _user_payload_data(
 
 
 def _target_tenant_id_for_payload(current_user: CurrentUser, tenant_id: int | None = None) -> int:
-    return tenant_id if tenant_id and is_super_admin(current_user) else _current_tenant_id(current_user)
+    return tenant_id if tenant_id and is_platform_admin(current_user) else _current_tenant_id(current_user)
 
 
 def _should_assign_tenant_from_payload(current_user: CurrentUser, tenant_id: int | None = None) -> bool:
-    return not is_super_admin(current_user) or tenant_id is not None
+    return not is_platform_admin(current_user) or tenant_id is not None
 
 
 def _existing_user_by_account(session: SessionDep, account: str) -> UserModel | None:
@@ -211,7 +212,7 @@ async def _join_existing_user_to_tenant(
     existing_user: UserModel,
     creator: UserCreator,
 ):
-    if is_super_admin(current_user) and creator.tenant_id is None:
+    if is_platform_admin(current_user) and creator.tenant_id is None:
         raise Exception("User already exists")
     target_tenant_id = _target_tenant_id_for_payload(current_user, creator.tenant_id)
     if check_user_in_tenant(session=session, user_id=int(existing_user.id), tenant_id=target_tenant_id):
@@ -252,6 +253,8 @@ def _delete_global_user(session: SessionDep, current_user: CurrentUser, user_id:
         raise HTTPException(status_code=404, detail="User not found")
     if int(user_model.id) == int(current_user.id) or is_super_admin(user_model):
         raise HTTPException(status_code=403, detail="System admin cannot be deleted")
+    if is_high_privilege_user(user_model) and not is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only system admin can delete administrator roles")
     session.exec(sqlmodel_delete(CoreDatasourceUser).where(CoreDatasourceUser.user_id == int(user_id)))
     session.exec(sqlmodel_delete(TenantUserModel).where(TenantUserModel.user_id == int(user_id)))
     session.exec(sqlmodel_delete(UserPlatformModel).where(UserPlatformModel.uid == int(user_id)))
@@ -260,7 +263,7 @@ def _delete_global_user(session: SessionDep, current_user: CurrentUser, user_id:
 
 
 def _remove_user_from_current_tenant(session: SessionDep, current_user: CurrentUser, user_id: int) -> None:
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         _delete_global_user(session, current_user, user_id)
         return
     _require_user_in_current_tenant(session, current_user, user_id)
@@ -317,7 +320,7 @@ async def pager(
     paginator = Paginator(session)
     filters = {}
 
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         origin_stmt = select(UserModel.id, UserModel.account).order_by(UserModel.account)
     else:
         origin_stmt = (
@@ -356,12 +359,12 @@ async def pager(
     users = session.exec(
         select(UserModel).where(UserModel.id.in_(uid_list)).order_by(UserModel.account, UserModel.create_time)
     ).all()
-    tenant_summary = _user_active_tenant_summary(session, [int(item) for item in uid_list]) if is_super_admin(current_user) else {}
+    tenant_summary = _user_active_tenant_summary(session, [int(item) for item in uid_list]) if is_platform_admin(current_user) else {}
     result = []
     for user in users:
         item = user.model_dump()
         item["tenant_role"] = _get_user_visible_tenant_role(session, current_user, int(user.id))
-        if is_super_admin(current_user):
+        if is_platform_admin(current_user):
             item["tenant_ids"] = []
             item["tenant_names"] = []
             item["tenant_roles"] = {}
@@ -369,7 +372,7 @@ async def pager(
         result.append(item)
     project_rows = []
     current_tenant_id = getattr(current_user, "tenant_id", None)
-    if current_tenant_id and not is_super_admin(current_user):
+    if current_tenant_id and not is_platform_admin(current_user):
         project_rows = session.exec(
             select(CoreDatasourceUser.user_id, CoreDatasourceUser.ds_id, CoreDatasourceUser.role)
             .join(CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id)
@@ -410,7 +413,7 @@ async def query(session: SessionDep, current_user: CurrentUser, _trans: Trans, i
         raise Exception("Only system admin can manage administrator roles")
     result = UserEditor.model_validate(db_user.model_dump())
     result.tenant_role = _get_user_visible_tenant_role(session, current_user, id)
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         result.project_ids = []
         result.project_role_map = {}
     else:
@@ -490,7 +493,7 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
     if not check_email_format(editor.email):
         raise Exception(trans('i18n_format_invalid', key = f"{trans('i18n_user.email')} [{editor.email}]"))
     data = _user_payload_data(editor, current_user, user_model)
-    should_update_tenant_membership = not is_super_admin(current_user) or editor.tenant_id is not None
+    should_update_tenant_membership = not is_platform_admin(current_user) or editor.tenant_id is not None
     current_tenant_role = TENANT_ROLE_MEMBER
     if should_update_tenant_membership:
         current_tenant_role = _ensure_tenant_owner_manageable(
@@ -561,7 +564,7 @@ async def langChange(session: SessionDep, current_user: CurrentUser, trans: Tran
 @system_log(LogConfig(operation_type=OperationType.RESET_PWD,module=OperationModules.USER,resource_id_expr="id"))
 async def pwdReset(session: SessionDep, current_user: CurrentUser, trans: Trans, id: int = Path(description=f"{PLACEHOLDER_PREFIX}uid")):
     _require_user_in_current_tenant(session, current_user, id)
-    if not is_super_admin(current_user):
+    if not is_platform_admin(current_user):
         _ensure_tenant_owner_manageable(session, current_user, id)
     db_user: UserModel = get_db_user(session=session, user_id=id)
     if not db_user:

@@ -21,6 +21,10 @@ export interface TenantInfo {
   owner_account?: string
   owner_name?: string
   owner_email?: string
+  bound_project_id?: number | string | null
+  bound_project_name?: string | null
+  admin_count?: number
+  member_count?: number
   join_time?: number
 }
 
@@ -339,6 +343,10 @@ export const tenantApi = {
   ) => request.put<TenantInfo>(`/system/tenant/${id}`, data),
   status: (id: number | string, status: number) =>
     request.patch<TenantInfo>(`/system/tenant/${id}/status`, { status }),
+  updateProjectBinding: (
+    id: number | string,
+    data: { datasource_id?: number | string | null }
+  ) => request.put<TenantInfo>(`/system/tenant/${id}/project-binding`, data),
   delete: (id: number | string) => request.delete<TenantInfo>(`/system/tenant/${id}`),
   overview: (days = 7) => request.get<TenantOverviewInfo>(`/system/tenant/overview?days=${days}`),
   usage: (params?: TenantUsageQuery) =>

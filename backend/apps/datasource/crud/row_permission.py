@@ -5,6 +5,7 @@ from typing import List, Dict
 
 from apps.datasource.models.datasource import CoreField, CoreDatasource
 from apps.db.constant import DB
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_variable_model import SystemVariable
 from common.core.deps import SessionDep, CurrentUser
 
@@ -93,6 +94,8 @@ def transTreeItem(session: SessionDep, current_user: CurrentUser, item: Dict, ds
             if variable_id is not None:
                 sys_variable = session.query(SystemVariable).filter(SystemVariable.id == variable_id).first()
                 if sys_variable is None:
+                    return None
+                if sys_variable.type != 'system' and int(sys_variable.tenant_id or DEFAULT_TENANT_ID) != int(ds.tenant_id or DEFAULT_TENANT_ID):
                     return None
 
                 # do inner system variable

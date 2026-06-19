@@ -10,7 +10,13 @@
       <div class="left-side">
         <div style="display: flex; justify-content: space-between; align-items: center">
           <span>{{ t('ds.tables') }}</span>
-          <el-button style="padding: 12px" text :icon="CreditCard" @click="editTables(ds)" />
+          <el-button
+            v-if="canManageMetadata"
+            style="padding: 12px"
+            text
+            :icon="CreditCard"
+            @click="editTables(ds)"
+          />
         </div>
         <el-input
           v-model="searchValue"
@@ -41,6 +47,7 @@
               <span>{{ t('ds.comment') }}:</span>
               <span>{{ currentTable.custom_comment }}</span>
               <el-button
+                v-if="canManageMetadata"
                 style="margin-left: 10px"
                 text
                 class="action-btn"
@@ -60,6 +67,7 @@
                     <div class="field-comment">
                       <span>{{ scope.row.custom_comment }}</span>
                       <el-button
+                        v-if="canManageMetadata"
                         text
                         class="action-btn"
                         :icon="IconOpeEdit"
@@ -68,7 +76,7 @@
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column :label="t('ds.field.status')" width="180">
+                <el-table-column v-if="canManageMetadata" :label="t('ds.field.status')" width="180">
                   <template #default="scope">
                     <div style="display: flex; align-items: center">
                       <el-switch
@@ -133,7 +141,7 @@
 </template>
 
 <script setup lang="tsx">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { datasourceApi } from '@/api/datasource'
 import { onMounted } from 'vue'
@@ -164,6 +172,7 @@ const tableDialog = ref<boolean>(false)
 const fieldDialog = ref<boolean>(false)
 const dsForm = ref()
 const ds = ref<any>({})
+const canManageMetadata = computed(() => ds.value?.can_manage_metadata === true)
 const tableComment = ref('')
 const fieldComment = ref('')
 
@@ -186,6 +195,7 @@ const back = () => {
 // };
 
 const editTable = () => {
+  if (!canManageMetadata.value) return
   tableComment.value = currentTable.value.custom_comment
   tableDialog.value = true
 }
@@ -195,6 +205,7 @@ const closeTable = () => {
 }
 
 const saveTable = () => {
+  if (!canManageMetadata.value) return
   currentTable.value.custom_comment = tableComment.value
   datasourceApi.saveTable(currentTable.value).then(() => {
     closeTable()
@@ -207,12 +218,14 @@ const saveTable = () => {
 }
 
 const editField = (row: any) => {
+  if (!canManageMetadata.value) return
   currentField.value = row
   fieldComment.value = currentField.value.custom_comment
   fieldDialog.value = true
 }
 
 const changeStatus = (row: any) => {
+  if (!canManageMetadata.value) return
   currentField.value = row
   datasourceApi.saveField(currentField.value).then(() => {
     closeField()
@@ -229,6 +242,7 @@ const closeField = () => {
 }
 
 const saveField = () => {
+  if (!canManageMetadata.value) return
   currentField.value.custom_comment = fieldComment.value
   datasourceApi.saveField(currentField.value).then(() => {
     closeField()
@@ -259,6 +273,7 @@ const handleClick = (tab: TabsPaneContext) => {
 }
 
 const editTables = (item: any) => {
+  if (!canManageMetadata.value) return
   dsForm.value.open(item, true)
 }
 

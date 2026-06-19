@@ -24,6 +24,10 @@ class TenantDTO(BaseModel):
     owner_account: Optional[str] = None
     owner_name: Optional[str] = None
     owner_email: Optional[str] = None
+    bound_project_id: Optional[int] = None
+    bound_project_name: Optional[str] = None
+    admin_count: int = 0
+    member_count: int = 0
     join_time: int = 0
 
 
@@ -70,6 +74,10 @@ class TenantEditor(BaseModel):
 
 class TenantStatus(BaseModel):
     status: int = Field(ge=0, le=1)
+
+
+class TenantProjectBindingEditor(BaseModel):
+    datasource_id: Optional[int] = None
 
 
 class TenantOwnerTransfer(BaseModel):

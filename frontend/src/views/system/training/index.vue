@@ -308,7 +308,7 @@ const list = () => {
     adv_options.value = []
     return
   }
-  datasourceApi.list().then((res: any) => {
+  datasourceApi.accessibleList().then((res: any) => {
     options.value = res || []
   })
   getAdvancedApplicationList().then((res: any) => {

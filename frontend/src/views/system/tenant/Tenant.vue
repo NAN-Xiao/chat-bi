@@ -55,6 +55,19 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column :label="t('tenant.member_stats')" width="140">
+          <template #default="scope">
+            <div v-if="scope.row.row_type === 'tenant'" class="table-two-line-cell">
+              <span class="table-primary-text">
+                {{ t('tenant.admin_count', { msg: scope.row.admin_count || 0 }) }}
+              </span>
+              <span class="table-secondary-text">
+                {{ t('tenant.member_count', { msg: scope.row.member_count || 0 }) }}
+              </span>
+            </div>
+            <span v-else class="muted">-</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('tenant.plan_subscription')" width="160">
           <template #default="scope">
             <span v-if="scope.row.row_type === 'application'" class="muted">
@@ -71,6 +84,14 @@
                 {{ formatSubscriptionStatus(scope.row.subscription_status) }}
               </span>
             </div>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('tenant.bound_project')" width="190">
+          <template #default="scope">
+            <span v-if="scope.row.row_type === 'tenant'" class="table-primary-text ellipsis">
+              {{ scope.row.bound_project_name || t('tenant.no_bound_project') }}
+            </span>
+            <span v-else class="muted">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" :label="t('tenant.status')" width="140">
@@ -154,6 +175,22 @@
               >
                 <el-icon class="action-btn" size="16" @click="openDrawer(scope.row.source)">
                   <IconOpeEdit />
+                </el-icon>
+              </el-tooltip>
+              <div class="line"></div>
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="t('tenant.bind_project')"
+                placement="top"
+              >
+                <el-icon
+                  class="action-btn"
+                  :class="{ disabled: isDefaultTenant(scope.row) }"
+                  size="16"
+                  @click="openProjectBinding(scope.row.source)"
+                >
+                  <icon_form_outlined />
                 </el-icon>
               </el-tooltip>
               <div class="line"></div>
@@ -292,6 +329,58 @@
         </div>
       </template>
     </el-drawer>
+    <el-drawer
+      v-model="projectBindingVisible"
+      :title="t('tenant.bind_project')"
+      destroy-on-close
+      modal-class="tenant-project-binding-class"
+      size="420px"
+      :before-close="closeProjectBinding"
+    >
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item :label="t('tenant.name')">
+          <el-input v-model="projectBindingForm.tenantName" disabled />
+        </el-form-item>
+        <el-form-item :label="t('tenant.bound_project')">
+          <el-select
+            v-model="projectBindingForm.datasourceId"
+            clearable
+            filterable
+            :loading="projectLoading"
+            style="width: 100%"
+            :placeholder="t('tenant.select_project')"
+          >
+            <el-option
+              v-for="project in projectOptions"
+              :key="project.id"
+              :label="project.name"
+              :value="project.id"
+            >
+              <div class="project-option">
+                <span class="project-name ellipsis">{{ project.name }}</span>
+                <span class="project-type ellipsis">{{ project.type_name || project.type }}</span>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button
+            v-if="projectBindingForm.datasourceId"
+            secondary
+            :loading="projectBindingSaving"
+            @click="unbindProject"
+          >
+            {{ t('tenant.unbind_project') }}
+          </el-button>
+          <el-button secondary @click="closeProjectBinding">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" :loading="projectBindingSaving" @click="saveProjectBinding">
+            {{ t('common.save') }}
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -305,9 +394,11 @@ import CircleCloseFilled from '@/assets/svg/icon_ban_filled.svg'
 import IconLock from '@/assets/svg/icon-key_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
+import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import { datasourceApi } from '@/api/datasource'
 import {
   tenantApi,
   type TenantApplicationInfo,
@@ -325,10 +416,14 @@ const saving = ref(false)
 const statusLoadingId = ref('')
 const deleteLoadingId = ref('')
 const reviewLoadingId = ref('')
+const projectBindingVisible = ref(false)
+const projectBindingSaving = ref(false)
+const projectLoading = ref(false)
 const formRef = ref()
 const tenants = shallowRef<TenantInfo[]>([])
 const applications = shallowRef<TenantApplicationInfo[]>([])
 const usageRows = shallowRef<TenantUsageDailyInfo[]>([])
+const projectOptions = shallowRef<any[]>([])
 const defaultForm = {
   id: '',
   code: '',
@@ -344,6 +439,11 @@ const defaultForm = {
   subscription_note: '',
 }
 const form = reactive({ ...defaultForm })
+const projectBindingForm = reactive({
+  tenantId: '' as number | string,
+  tenantName: '',
+  datasourceId: '' as number | string,
+})
 
 const planOptions = computed(() => [
   { value: 'default', label: t('tenant.plan_default') },
@@ -402,6 +502,10 @@ const filteredTenants = computed(() => {
       application_status: '',
       contact_name: tenant.owner_name || tenant.owner_account || '',
       contact_detail: tenant.owner_email || tenant.owner_account || '',
+      bound_project_id: tenant.bound_project_id,
+      bound_project_name: tenant.bound_project_name,
+      admin_count: tenant.admin_count || 0,
+      member_count: tenant.member_count || 0,
       source: tenant,
     })),
   ]
@@ -516,6 +620,16 @@ const loadApplications = async () => {
   applications.value = await tenantApi.adminApplications()
 }
 
+const loadProjectOptions = async () => {
+  if (projectOptions.value.length) return
+  projectLoading.value = true
+  try {
+    projectOptions.value = await datasourceApi.list()
+  } finally {
+    projectLoading.value = false
+  }
+}
+
 const loadUsageSnapshot = async () => {
   usageRows.value = await tenantApi.usage({
     start_date: dayjs().subtract(13, 'day').format('YYYY-MM-DD'),
@@ -552,6 +666,46 @@ const openDrawer = (tenant: TenantInfo | null) => {
 const closeDrawer = () => {
   Object.assign(form, defaultForm)
   drawerVisible.value = false
+}
+
+const openProjectBinding = async (tenant: TenantInfo) => {
+  if (isDefaultTenant(tenant)) return
+  await loadProjectOptions()
+  Object.assign(projectBindingForm, {
+    tenantId: tenant.id,
+    tenantName: tenant.name,
+    datasourceId: tenant.bound_project_id || '',
+  })
+  projectBindingVisible.value = true
+}
+
+const closeProjectBinding = () => {
+  Object.assign(projectBindingForm, {
+    tenantId: '',
+    tenantName: '',
+    datasourceId: '',
+  })
+  projectBindingVisible.value = false
+}
+
+const saveProjectBinding = async () => {
+  if (!projectBindingForm.tenantId) return
+  projectBindingSaving.value = true
+  try {
+    await tenantApi.updateProjectBinding(projectBindingForm.tenantId, {
+      datasource_id: projectBindingForm.datasourceId || null,
+    })
+    ElMessage.success(t('common.save_success'))
+    closeProjectBinding()
+    await reloadEnterpriseRows()
+  } finally {
+    projectBindingSaving.value = false
+  }
+}
+
+const unbindProject = async () => {
+  projectBindingForm.datasourceId = ''
+  await saveProjectBinding()
 }
 
 const saveTenant = () => {
@@ -971,10 +1125,29 @@ onMounted(() => {
     color: #8f959e;
   }
 }
+
+.project-option {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  .project-name {
+    min-width: 0;
+  }
+
+  .project-type {
+    max-width: 120px;
+    color: #8f959e;
+    font-size: 12px;
+  }
+}
 </style>
 
 <style lang="less">
-.tenant-add-class {
+.tenant-add-class,
+.tenant-project-binding-class {
   .ed-drawer,
   .ed-drawer__header,
   .ed-drawer__body,
@@ -1038,7 +1211,8 @@ onMounted(() => {
 }
 
 :root[data-theme='dark'] {
-  .tenant-add-class {
+  .tenant-add-class,
+  .tenant-project-binding-class {
     color-scheme: light;
   }
 }

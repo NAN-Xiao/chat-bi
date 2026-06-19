@@ -14,7 +14,6 @@ import TableRelationship from '@/views/ds/TableRelationship.vue'
 import icon_mindnote_outlined from '@/assets/svg/icon_mindnote_outlined.svg'
 import { Refresh } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
-import { useUserStore } from '@/stores/user'
 
 interface Table {
   name: string
@@ -32,6 +31,7 @@ interface Table {
   configuration: string
   id: number
   can_manage_project?: boolean
+  can_manage_metadata?: boolean
 }
 
 const props = withDefaults(
@@ -55,14 +55,12 @@ const props = withDefaults(
       configuration: '-',
       id: 0,
       can_manage_project: false,
+      can_manage_metadata: false,
     }),
   }
 )
 const { t } = useI18n()
-const userStore = useUserStore()
-const canManageMetadata = computed(
-  () => userStore.isSystemManagerUser || props.info.can_manage_project === true
-)
+const canManageMetadata = computed(() => props.info.can_manage_metadata === true)
 const paramsFormRef = ref()
 const tableList = ref([] as any[])
 const loading = ref(false)

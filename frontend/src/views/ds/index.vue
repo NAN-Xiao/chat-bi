@@ -91,7 +91,7 @@ const refresh = () => {
 
 const list = () => {
   loading.value = true
-  datasourceApi.list().then((res) => {
+  datasourceApi.accessibleList().then((res) => {
     allDsList.value = res
     dsList.value = JSON.parse(JSON.stringify(allDsList.value))
     loading.value = false

@@ -110,7 +110,7 @@ const loadDatasources = () => {
     filterOption.value[0].option = []
     return
   }
-  datasourceApi.list().then((res: any) => {
+  datasourceApi.accessibleList().then((res: any) => {
     options.value = res || []
     filterOption.value[0].option = [...(res || [])]
   })

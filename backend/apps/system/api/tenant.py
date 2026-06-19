@@ -8,6 +8,7 @@ from apps.chat.curd.custom_prompt import CustomPromptVisibilityScopeEnum
 from apps.chat.models.custom_prompt_model import CustomPrompt
 from apps.dashboard.models.dashboard_model import CoreDashboard
 from apps.data_training.models.data_training_model import DataTraining
+from apps.datasource.crud.binding import bind_tenant_to_datasource
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
 from apps.datasource.crud.permission import (
     list_user_datasource_ids,
@@ -60,6 +61,7 @@ from apps.system.crud.user import (
     SYSTEM_ROLE_VIEWER,
     check_email_format,
     is_high_privilege_user,
+    is_platform_admin,
     is_super_admin,
 )
 from apps.system.models.system_model import AssistantModel
@@ -102,6 +104,7 @@ from apps.system.schemas.tenant_schema import (
     TenantOverviewTodoDTO,
     TenantOverviewTrendPointDTO,
     TenantOwnerTransfer,
+    TenantProjectBindingEditor,
     TenantSecurityPolicyDTO,
     TenantSecurityPolicyEditor,
     TenantSearchDTO,
@@ -203,8 +206,8 @@ def _write_tenant_audit(
 
 
 def _require_platform_admin(current_user: CurrentUser) -> None:
-    if not is_super_admin(current_user):
-        raise HTTPException(status_code=403, detail="Only system admin can manage tenants")
+    if not is_platform_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only platform admin can manage tenants")
 
 
 def _require_current_tenant_admin(current_user: CurrentUser) -> None:
@@ -275,15 +278,69 @@ def _tenant_owner_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, d
     return result
 
 
+def _tenant_bound_project_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
+    ids = [int(tenant_id) for tenant_id in tenant_ids if int(tenant_id) != DEFAULT_TENANT_ID]
+    if not ids or not _table_exists(session, CoreDatasource.__tablename__):
+        return {}
+    rows = session.exec(
+        select(CoreDatasource.tenant_id, CoreDatasource.id, CoreDatasource.name)
+        .where(CoreDatasource.tenant_id.in_(ids))
+        .order_by(CoreDatasource.name)
+    ).all()
+    result = {}
+    for tenant_id, datasource_id, datasource_name in rows:
+        result.setdefault(
+            int(tenant_id),
+            {
+                "bound_project_id": int(datasource_id),
+                "bound_project_name": datasource_name,
+            },
+        )
+    return result
+
+
+def _tenant_member_stats_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
+    ids = [int(tenant_id) for tenant_id in tenant_ids]
+    if not ids:
+        return {}
+    rows = session.exec(
+        select(TenantUserModel.tenant_id, TenantUserModel.role, func.count())
+        .where(
+            TenantUserModel.tenant_id.in_(ids),
+            TenantUserModel.status == 1,
+        )
+        .group_by(TenantUserModel.tenant_id, TenantUserModel.role)
+    ).all()
+    result: dict[int, dict] = {}
+    for tenant_id, role, count in rows:
+        tenant_stats = result.setdefault(
+            int(tenant_id),
+            {
+                "admin_count": 0,
+                "member_count": 0,
+            },
+        )
+        normalized_role = normalize_tenant_role(role)
+        if normalized_role in TENANT_ADMIN_ROLES:
+            tenant_stats["admin_count"] += int(count or 0)
+        else:
+            tenant_stats["member_count"] += int(count or 0)
+    return result
+
+
 def _tenant_dto(
     tenant: TenantModel,
     *,
     role: str = TENANT_ROLE_OWNER,
     owner: dict | None = None,
+    project: dict | None = None,
+    member_stats: dict | None = None,
     include_operations: bool | None = None,
     join_time: int | None = None,
 ) -> TenantDTO:
     owner = owner or {}
+    project = project or {}
+    member_stats = member_stats or {}
     normalized_role = normalize_tenant_role(role)
     show_operations = normalized_role in TENANT_ADMIN_ROLES if include_operations is None else include_operations
     return TenantDTO(
@@ -307,14 +364,28 @@ def _tenant_dto(
         owner_account=owner.get("owner_account") if show_operations else None,
         owner_name=owner.get("owner_name") if show_operations else None,
         owner_email=owner.get("owner_email") if show_operations else None,
+        bound_project_id=project.get("bound_project_id") if show_operations else None,
+        bound_project_name=project.get("bound_project_name") if show_operations else None,
+        admin_count=int(member_stats.get("admin_count") or 0) if show_operations else 0,
+        member_count=int(member_stats.get("member_count") or 0) if show_operations else 0,
         join_time=int(join_time or 0),
     )
 
 
 def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int | None]]) -> list[TenantDTO]:
-    owner_map = _tenant_owner_map(session, [int(tenant.id) for tenant, _role, _join_time in rows])
+    tenant_ids = [int(tenant.id) for tenant, _role, _join_time in rows]
+    owner_map = _tenant_owner_map(session, tenant_ids)
+    project_map = _tenant_bound_project_map(session, tenant_ids)
+    member_stats_map = _tenant_member_stats_map(session, tenant_ids)
     return [
-        _tenant_dto(tenant, role=role, owner=owner_map.get(int(tenant.id)), join_time=join_time)
+        _tenant_dto(
+            tenant,
+            role=role,
+            owner=owner_map.get(int(tenant.id)),
+            project=project_map.get(int(tenant.id)),
+            member_stats=member_stats_map.get(int(tenant.id)),
+            join_time=join_time,
+        )
         for tenant, role, join_time in rows
     ]
 
@@ -633,7 +704,7 @@ async def current_tenant(current_tenant: CurrentTenant):
 
 @router.get("/list", response_model=list[TenantDTO])
 async def tenant_list(session: SessionDep, current_user: CurrentUser):
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         tenants = list_tenants(session)
         return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER, None) for tenant in tenants])
     rows = list_user_tenant_memberships(session, int(current_user.id))
@@ -681,7 +752,7 @@ async def tenant_usage(
     metric: str | None = Query(default=None, max_length=128),
     limit: int = Query(500, ge=1, le=5000),
 ):
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         scoped_tenant_id = tenant_id
     else:
         _require_current_tenant_admin(current_user)
@@ -709,7 +780,7 @@ async def tenant_usage_by_user(
     end_date: str | None = Query(default=None, max_length=10),
     limit: int = Query(100, ge=1, le=500),
 ):
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         scoped_tenant_id = tenant_id if tenant_id is not None else int(current_tenant.id)
     else:
         _require_current_tenant_admin(current_user)
@@ -733,7 +804,7 @@ async def tenant_overview(
     current_tenant: CurrentTenant,
     days: int = Query(7, ge=7, le=30),
 ):
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         raise HTTPException(status_code=403, detail="Platform admin does not have tenant overview")
     _require_current_tenant_admin(current_user)
 
@@ -926,14 +997,6 @@ async def tenant_overview(
                 level="warning",
                 count=int(pending_member_application_count),
                 route="/system/member-access",
-            )
-        )
-    if datasource_total <= 0:
-        todos.append(
-            TenantOverviewTodoDTO(
-                key="missing_datasource",
-                level="attention",
-                route="/system/project",
             )
         )
     if dashboard_total <= 0:
@@ -1835,7 +1898,7 @@ async def tenant_data_request_list(
     status: str | None = None,
     tenant_id: int | None = None,
 ):
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         scoped_tenant_id = tenant_id
     else:
         _require_current_tenant_admin(current_user)
@@ -1917,7 +1980,7 @@ async def leave_joined_tenant(
     current_user: CurrentUser,
     tenant_id: int,
 ):
-    if is_super_admin(current_user):
+    if is_platform_admin(current_user):
         raise HTTPException(status_code=403, detail="Platform administrator cannot leave tenant from this endpoint")
     tenant = session.get(TenantModel, int(tenant_id))
     if not tenant:
@@ -1944,6 +2007,35 @@ async def leave_joined_tenant(
     )
     rows = list_user_tenant_memberships(session, int(current_user.id))
     return _tenant_dto_list(session, [(tenant, membership.role, membership.create_time) for tenant, membership in rows])
+
+
+@router.put("/{tenant_id}/project-binding", response_model=TenantDTO)
+async def update_tenant_project_binding(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+    editor: TenantProjectBindingEditor,
+):
+    _require_platform_admin(current_user)
+    tenant = session.get(TenantModel, int(tenant_id))
+    if tenant is None or int(getattr(tenant, "status", 1)) < 0:
+        raise HTTPException(status_code=404, detail="Tenant does not exist")
+    bind_tenant_to_datasource(session, current_user, int(tenant_id), editor.datasource_id)
+    tenant = session.get(TenantModel, int(tenant_id))
+    owner = _tenant_owner_map(session, [int(tenant_id)]).get(int(tenant_id))
+    project = _tenant_bound_project_map(session, [int(tenant_id)]).get(int(tenant_id))
+    _write_tenant_audit(
+        session,
+        current_user,
+        operation_type=OperationType.UPDATE,
+        detail="更新工作空间绑定项目",
+        module=OperationModules.TENANT,
+        tenant_id=int(tenant_id),
+        resource_id=tenant_id,
+        resource_name=tenant.name if tenant else str(tenant_id),
+        remark=f"datasource_id={editor.datasource_id or 'none'}",
+    )
+    return _tenant_dto(tenant, owner=owner, project=project)
 
 
 @router.post("", response_model=TenantDTO)

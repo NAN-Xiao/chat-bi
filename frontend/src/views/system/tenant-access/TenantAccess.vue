@@ -741,7 +741,7 @@ const syncUserPermissionStrategies = (userId: any): Promise<void> => {
 }
 
 const loadProjectOptions = async () => {
-  const [projects, permissions] = await Promise.all([datasourceApi.list(), getPermissionList()])
+  const [projects, permissions] = await Promise.all([datasourceApi.accessibleList(), getPermissionList()])
   projectOptions.value = projects || []
   permissionRuleGroups.value = permissions || []
 }

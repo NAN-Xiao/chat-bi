@@ -23,3 +23,13 @@ def ensure_chatbi_business_user(current_user: UserInfoDTO, trans=None) -> None:
 
 async def require_chatbi_business_user(current_user: CurrentUser, trans: Trans):
     ensure_chatbi_business_user(current_user, trans)
+
+
+def ensure_chatbi_business_or_platform_admin(current_user: UserInfoDTO, trans=None) -> None:
+    if is_platform_admin(current_user):
+        return
+    ensure_chatbi_business_user(current_user, trans)
+
+
+async def require_chatbi_business_or_platform_admin(current_user: CurrentUser, trans: Trans):
+    ensure_chatbi_business_or_platform_admin(current_user, trans)

@@ -155,6 +155,13 @@ def _user_is_system_admin(user) -> bool:
     return (getattr(user, "system_role", "") or "").strip().lower() == SYSTEM_ROLE_SYSTEM_ADMIN
 
 
+def _user_is_platform_admin(user) -> bool:
+    return (getattr(user, "system_role", "") or "").strip().lower() in {
+        SYSTEM_ROLE_SYSTEM_ADMIN,
+        "collab_admin",
+    }
+
+
 def ensure_default_tenant(session: Session) -> TenantModel:
     tenant = session.exec(select(TenantModel).where(TenantModel.code == DEFAULT_TENANT_CODE)).first()
     if tenant:
@@ -1095,7 +1102,7 @@ def resolve_current_tenant(
 
 def attach_tenant_context(user, tenant: TenantContext | None):
     user_copy = user.model_copy(deep=True) if hasattr(user, "model_copy") else user
-    is_platform_admin = _user_is_system_admin(user_copy)
+    is_platform_admin = _user_is_platform_admin(user_copy)
     user_copy.global_role = "platform_admin" if is_platform_admin else "normal_user"
     if tenant is None:
         user_copy.tenant_id = None

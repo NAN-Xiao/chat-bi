@@ -249,7 +249,10 @@
                         :duration="message.record?.duration"
                         :total-tokens="message.record?.total_tokens"
                       />
-                      <ChatToolBar v-if="!message.isTyping" :message="message">
+                      <ChatToolBar
+                        v-if="!message.isTyping && !message.record?.local_answer"
+                        :message="message"
+                      >
                         <div class="tool-btns">
                           <el-tooltip
                             effect="dark"
@@ -440,8 +443,14 @@
       v-if="isCompletePage || selectAssistantDs"
       ref="chatCreatorRef"
       @on-chat-created="onChatCreatedQuick"
+      @on-no-datasource="onNoDatasource"
     />
-    <ChatCreator ref="hiddenChatCreatorRef" hidden @on-chat-created="onChatCreatedQuick" />
+    <ChatCreator
+      ref="hiddenChatCreatorRef"
+      hidden
+      @on-chat-created="onChatCreatedQuick"
+      @on-no-datasource="onNoDatasource"
+    />
   </el-container>
 </template>
 
@@ -558,9 +567,6 @@ const loginBg = computed(() => {
 })
 const computedMessages = computed<Array<ChatMessage>>(() => {
   const messages: Array<ChatMessage> = []
-  if (currentChatId.value === undefined) {
-    return messages
-  }
   for (let i = 0; i < currentChat.value.records.length; i++) {
     const record = currentChat.value.records[i]
     if (record.question !== undefined && !record.first_chat) {
@@ -773,6 +779,29 @@ function onChatCreated(chat: ChatInfo) {
   }
 }
 
+function appendNoDatasourceAnswer(question: string) {
+  const trimmedQuestion = question.trim()
+  if (!trimmedQuestion) {
+    return
+  }
+
+  const currentRecord = new ChatRecord()
+  currentRecord.create_time = new Date()
+  currentRecord.question = trimmedQuestion
+  currentRecord.local_answer = t('qa.no_bound_datasource_answer')
+  currentRecord.finish = true
+
+  currentChat.value.records.push(currentRecord)
+  inputMessage.value = ''
+  loading.value = false
+  isTyping.value = false
+  scrollToBottom()
+}
+
+function onNoDatasource() {
+  appendNoDatasourceAnswer(inputMessage.value)
+}
+
 function getRecommendQuestions(id?: number) {
   nextTick(() => {
     if (recommendQuestionRef.value) {
@@ -848,10 +877,16 @@ const ensureChatReadyForSend = async () => {
     return assistantPrepareSend()
   }
 
-  await datasourceContext.loadDatasources().catch((e) => console.error(e))
+  await datasourceContext
+    .loadDatasources(datasourceContext.datasources.length === 0)
+    .catch((e) => console.error(e))
   if (!selectAssistantDs.value && datasourceContext.datasourceId) {
     const chat = await hiddenChatCreatorRef.value?.createChat(datasourceContext.datasourceId)
     return !!chat && currentChatId.value !== undefined
+  }
+  if (!selectAssistantDs.value && datasourceContext.datasources.length === 0) {
+    appendNoDatasourceAnswer(inputMessage.value)
+    return false
   }
 
   chatCreatorRef.value?.showDs()

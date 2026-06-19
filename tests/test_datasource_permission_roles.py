@@ -10,7 +10,9 @@ from sqlmodel import Session, create_engine
 
 from apps.datasource.crud import datasource as datasource_crud
 from apps.datasource.api import datasource as datasource_api
+from apps.datasource.crud.binding import bind_tenant_to_datasource
 from apps.datasource.crud import permission
+from apps.datasource.crud.permission_rules import delete_permission_records_for_datasources
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_AGENT_GUIDANCE, PERMISSION_DENIED_RESULT_MESSAGE
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreTable, TableObj
@@ -130,6 +132,27 @@ def _engine_with_permission_tables():
         ))
         conn.execute(text(
             """
+            CREATE TABLE sys_tenant (
+                id INTEGER PRIMARY KEY,
+                code VARCHAR(64) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                status INTEGER NOT NULL DEFAULT 1,
+                plan VARCHAR(64) DEFAULT 'default',
+                subscription_status VARCHAR(32) DEFAULT 'active',
+                billing_mode VARCHAR(32) DEFAULT 'manual',
+                trial_end_time INTEGER,
+                current_period_end_time INTEGER,
+                contract_no VARCHAR(128),
+                billing_contact VARCHAR(128),
+                billing_email VARCHAR(128),
+                subscription_note VARCHAR(2000),
+                create_time INTEGER DEFAULT 0,
+                update_time INTEGER DEFAULT 0
+            )
+            """
+        ))
+        conn.execute(text(
+            """
             INSERT INTO sys_user
                 (id, account, name, password, email, status, origin, create_time, language, system_role)
             VALUES
@@ -137,6 +160,15 @@ def _engine_with_permission_tables():
                 (2, 'editor', 'Editor', '', 'editor@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
                 (3, 'analyst', 'Analyst', '', 'analyst@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
                 (4, 'sysadmin', 'System Admin', '', 'sysadmin@example.com', 1, 0, 1, 'zh-CN', 'system_admin')
+            """
+        ))
+        conn.execute(text(
+            """
+            INSERT INTO sys_tenant
+                (id, code, name, status, plan, subscription_status, billing_mode, create_time, update_time)
+            VALUES
+                (1, 'default', 'Default', 1, 'default', 'active', 'manual', 1, 1),
+                (2, 'workspace-2', 'Workspace 2', 1, 'default', 'active', 'manual', 1, 1)
             """
         ))
     return engine
@@ -168,21 +200,21 @@ def test_datasource_role_defaults_to_viewer_for_existing_membership():
         assert permission.has_datasource_role(session, current_user, 1, "project_editor") is False
 
 
-def test_system_admin_datasource_list_is_scoped_to_current_tenant():
+def test_platform_admin_datasource_list_can_view_all_projects():
     engine = _engine_with_permission_tables()
-    tenant_one_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
-    tenant_two_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=2)
+    system_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
+    collab_admin = SimpleNamespace(id=6, system_role="collab_admin", tenant_id=2)
 
     with Session(engine) as session:
         session.add(_datasource(1, tenant_id=1))
         session.add(_datasource(2, tenant_id=2))
         session.commit()
 
-        tenant_one_items = asyncio.run(datasource_api.datasource_list(session, tenant_one_admin))
-        tenant_two_items = asyncio.run(datasource_api.datasource_list(session, tenant_two_admin))
+        system_admin_items = asyncio.run(datasource_api.datasource_list.__wrapped__(session, system_admin))
+        collab_admin_items = asyncio.run(datasource_api.datasource_list.__wrapped__(session, collab_admin))
 
-        assert [item["id"] for item in tenant_one_items] == [1]
-        assert [item["id"] for item in tenant_two_items] == [2]
+        assert [item["id"] for item in system_admin_items] == [1, 2]
+        assert [item["id"] for item in collab_admin_items] == [1, 2]
 
 
 def test_datasource_membership_does_not_cross_tenant_boundary():
@@ -216,9 +248,9 @@ def test_tenant_admin_can_manage_all_datasources_in_current_tenant_only():
         assert permission.has_datasource_access(session, tenant_admin, 2) is False
 
 
-def test_update_user_datasources_ignores_projects_outside_current_tenant():
+def test_tenant_admin_update_user_datasources_ignores_projects_outside_current_tenant():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
+    current_user = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="admin")
 
     with Session(engine) as session:
         session.add(_datasource(1, tenant_id=1))
@@ -270,7 +302,7 @@ def test_missing_datasource_membership_does_not_default_to_viewer():
 
 def test_datasource_list_hides_connection_config_for_normal_users():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     system_admin = SimpleNamespace(id=4, system_role="system_admin")
     tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="owner")
 
@@ -279,16 +311,72 @@ def test_datasource_list_hides_connection_config_for_normal_users():
         session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
         session.commit()
 
-        normal_items = asyncio.run(datasource_api.datasource_list(session, current_user))
-        admin_items = asyncio.run(datasource_api.datasource_list(session, system_admin))
-        tenant_admin_items = asyncio.run(datasource_api.datasource_list(session, tenant_admin))
+        normal_items = asyncio.run(datasource_api.accessible_datasource_list(session, current_user))
+        admin_items = asyncio.run(datasource_api.datasource_list.__wrapped__(session, system_admin))
+        tenant_admin_items = asyncio.run(datasource_api.accessible_datasource_list(session, tenant_admin))
 
         assert normal_items[0]["configuration"] is None
         assert admin_items[0]["configuration"] == "{}"
-        assert tenant_admin_items[0]["configuration"] == "{}"
+        assert tenant_admin_items[0]["configuration"] is None
         assert normal_items[0]["can_manage_project"] is False
-        assert admin_items[0]["can_manage_project"] is True
+        assert admin_items[0]["can_manage_project"] is False
+        assert admin_items[0]["can_manage_metadata"] is True
+        assert admin_items[0]["can_bind_workspace"] is True
         assert tenant_admin_items[0]["can_manage_project"] is True
+        assert tenant_admin_items[0]["can_manage_metadata"] is False
+        assert tenant_admin_items[0]["can_bind_workspace"] is False
+
+
+def test_workspace_binding_replaces_and_cancels_bound_project_permissions():
+    engine = _engine_with_permission_tables()
+    platform_admin = SimpleNamespace(id=4, system_role="system_admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        session.add(_datasource(2, tenant_id=1))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        session.add(CoreDatasourceUser(ds_id=2, user_id=3, role="editor"))
+        session.execute(text(
+            """
+            INSERT INTO ds_permission
+                (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+            VALUES
+                (1000, 'project 1 table', 1, 'user', 'table', 1, 10, '{}', '[]', '[]'),
+                (1001, 'project 2 table', 1, 'user', 'table', 2, 20, '{}', '[]', '[]')
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO ds_rules
+                (id, enable, name, description, permission_list, user_list, white_list_user)
+            VALUES
+                (2000, 1, 'project 1', '', '[1000]', '[2]', '[]'),
+                (2001, 1, 'project 2', '', '[1001]', '[3]', '[]')
+            """
+        ))
+        session.commit()
+
+        bound = bind_tenant_to_datasource(session, platform_admin, 2, 1)
+        session.expire_all()
+
+        assert int(bound.id) == 1
+        assert session.get(CoreDatasource, 1).tenant_id == 2
+        assert session.get(CoreDatasource, 2).tenant_id == 1
+        assert session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == 1).count() == 0
+
+        bind_tenant_to_datasource(session, platform_admin, 2, 2)
+        session.expire_all()
+
+        assert session.get(CoreDatasource, 1).tenant_id == 1
+        assert session.get(CoreDatasource, 2).tenant_id == 2
+        assert session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id.in_([1, 2])).count() == 0
+
+        bind_tenant_to_datasource(session, platform_admin, 2, None)
+        session.expire_all()
+
+        assert session.get(CoreDatasource, 2).tenant_id == 1
+        assert session.execute(text("SELECT id FROM ds_permission ORDER BY id")).all() == []
+        assert session.execute(text("SELECT id FROM ds_rules ORDER BY id")).all() == []
 
 
 def test_get_datasource_redacts_config_without_mutating_record():
@@ -482,6 +570,47 @@ def _insert_table_permission_fixture(session: Session):
             (110, 1, 11, 1, 'payment_id', 'int', 'payment_id', 'payment_id', 1)
         """
     ))
+
+
+def test_delete_permission_records_for_datasources_removes_only_target_project_rules():
+    engine = _engine_with_permission_tables()
+
+    with Session(engine) as session:
+        session.add(_datasource(1))
+        session.add(_datasource(2))
+        session.execute(text(
+            """
+            INSERT INTO ds_permission
+                (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+            VALUES
+                (1000, 'project 1 table', 1, 'user', 'table', 1, 10, '{}', '[]', '[]'),
+                (1001, 'project 2 table', 1, 'user', 'table', 2, 20, '{}', '[]', '[]'),
+                (1002, 'project 1 row', 1, 'user', 'row', 1, 10, '{}', '[]', '[]')
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO ds_rules
+                (id, enable, name, description, permission_list, user_list, white_list_user)
+            VALUES
+                (2000, 1, 'mixed projects', '', '[1000,1001]', '[2]', '[]'),
+                (2001, 1, 'project 1 only', '', '[1002]', '[2]', '[]')
+            """
+        ))
+        session.commit()
+
+        delete_permission_records_for_datasources(session, [1])
+        session.commit()
+
+        remaining_permissions = session.execute(text(
+            "SELECT id FROM ds_permission ORDER BY id"
+        )).all()
+        remaining_rules = session.execute(text(
+            "SELECT id, permission_list FROM ds_rules ORDER BY id"
+        )).all()
+
+        assert [row[0] for row in remaining_permissions] == [1001]
+        assert remaining_rules == [(2000, "[1001]")]
 
 
 def _insert_user_rule_for_orders(session: Session):

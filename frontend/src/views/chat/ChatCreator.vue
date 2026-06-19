@@ -17,7 +17,7 @@ const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
 const router = useRouter()
 
-const canCreateProject = computed(() => userStore.isAdmin)
+const canCreateProject = computed(() => userStore.isSystemAdminUser)
 const selectAssistantDs = computed(
   () => assistantStore.getAssistant && !assistantStore.getEmbedded && !assistantStore.getAutoDs
 )
@@ -45,11 +45,11 @@ const beforeClose = () => {
   keywords.value = ''
 }
 
-const emits = defineEmits(['onChatCreated'])
+const emits = defineEmits(['onChatCreated', 'onNoDatasource'])
 
 function listDs() {
   searchLoading.value = true
-  ;(selectAssistantDs.value ? request.get('/system/assistant/ds') : datasourceApi.list())
+  ;(selectAssistantDs.value ? request.get('/system/assistant/ds') : datasourceApi.accessibleList())
     .then((res) => {
       datasourceList.value = res
     })
@@ -64,9 +64,15 @@ const loading = ref(false)
 const statusLoading = ref(false)
 
 async function showDs() {
-  await datasourceContext.loadDatasources().catch((e) => console.error(e))
+  await datasourceContext
+    .loadDatasources(datasourceContext.datasources.length === 0)
+    .catch((e) => console.error(e))
   if (!selectAssistantDs.value && datasourceContext.datasourceId) {
     createChat(datasourceContext.datasourceId)
+    return
+  }
+  if (!selectAssistantDs.value && datasourceContext.datasources.length === 0) {
+    emits('onNoDatasource')
     return
   }
   listDs()

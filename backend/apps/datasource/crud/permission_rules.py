@@ -304,6 +304,37 @@ def delete_rule_dto(session: SessionDep, rule_id: int) -> None:
     session.flush()
 
 
+def delete_permission_records_for_datasources(session: SessionDep, datasource_ids: list[int]) -> None:
+    ids = [int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None]
+    if not ids:
+        return
+
+    permission_rows = session.execute(
+        select(ds_permission_table.c.id).where(ds_permission_table.c.ds_id.in_(ids))
+    ).all()
+    permission_ids = {int(row[0]) for row in permission_rows if row[0] is not None}
+    if not permission_ids:
+        return
+
+    for rule in list_rule_records(session):
+        rule_permission_ids = _int_list(rule.permission_list)
+        next_permission_ids = [
+            permission_id for permission_id in rule_permission_ids if permission_id not in permission_ids
+        ]
+        if not next_permission_ids:
+            session.execute(delete(ds_rules_table).where(ds_rules_table.c.id == int(rule.id)))
+            continue
+        if len(next_permission_ids) != len(rule_permission_ids):
+            session.execute(
+                update(ds_rules_table)
+                .where(ds_rules_table.c.id == int(rule.id))
+                .values(permission_list=json.dumps(next_permission_ids, ensure_ascii=False))
+            )
+
+    session.execute(delete(ds_permission_table).where(ds_permission_table.c.id.in_(permission_ids)))
+    session.flush()
+
+
 def list_rule_user_ids(session: SessionDep, rule: SimpleNamespace) -> list[int]:
     return _int_list(rule.user_list)
 

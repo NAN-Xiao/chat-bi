@@ -314,6 +314,23 @@ def test_only_platform_admin_can_use_tenant_admin_list():
         assert exc.value.status_code == 403
 
 
+def test_platform_admin_tenant_list_includes_member_stats():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=100, role="owner", is_primary=True, status=1))
+        session.add(TenantUserModel(id=202, tenant_id=200, user_id=101, role="admin", is_primary=False, status=1))
+        session.add(TenantUserModel(id=203, tenant_id=200, user_id=102, role="member", is_primary=False, status=1))
+        session.add(TenantUserModel(id=204, tenant_id=200, user_id=103, role="member", is_primary=False, status=0))
+        session.commit()
+
+        tenants = asyncio.run(tenant_api.admin_tenant_list(session, _user(1, "system_admin")))
+
+        tenant = next(row for row in tenants if row.code == "tenant-b")
+        assert tenant.admin_count == 2
+        assert tenant.member_count == 1
+
+
 def test_platform_admin_manages_tenant_lifecycle():
     engine = _engine()
     with Session(engine) as session:

@@ -56,7 +56,7 @@ onMounted(() => {
     return
   }
   datasourceContext.loadDatasources().then(() => {
-    datasourceApi.list().then((res) => {
+    datasourceApi.accessibleList().then((res) => {
       filterOption.value[0].option = [...res]
     })
     search()
@@ -365,7 +365,7 @@ const list = () => {
     allDsList.value = []
     return
   }
-  datasourceApi.list().then((res) => {
+  datasourceApi.accessibleList().then((res) => {
     allDsList.value = res || []
   })
 }

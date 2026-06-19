@@ -43,6 +43,7 @@ export class ChatRecord {
   data?: string | any
   chart_answer?: string
   chart?: string
+  local_answer?: string
   analysis?: string
   analysis_thinking?: string
   predict?: string

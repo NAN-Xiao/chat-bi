@@ -40,7 +40,7 @@ def is_system_admin(user) -> bool:
 
 
 def is_platform_admin(user) -> bool:
-    return is_super_admin(user)
+    return is_system_admin(user)
 
 
 def is_super_admin(user) -> bool:
@@ -68,7 +68,7 @@ def is_high_privilege_user(user) -> bool:
 def apply_user_role_flags(user_info: UserInfoDTO) -> UserInfoDTO:
     user_info.system_role = normalize_system_role(getattr(user_info, "system_role", None))
     user_info.isAdmin = is_system_admin(user_info)
-    user_info.global_role = "platform_admin" if is_super_admin(user_info) else "normal_user"
+    user_info.global_role = "platform_admin" if is_platform_admin(user_info) else "normal_user"
     return user_info
 
 

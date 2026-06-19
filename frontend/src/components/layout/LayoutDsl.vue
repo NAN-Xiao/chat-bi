@@ -516,7 +516,7 @@ onMounted(() => {
     flex: 1;
     min-width: 0;
     width: auto;
-    padding: 14px 14px 14px 0;
+    padding: 0;
     max-height: 100vh;
 
     &.right-side-collapse {
@@ -529,9 +529,9 @@ onMounted(() => {
       padding: 18px 24px;
       background-color: var(--workspace-shell-bg, var(--theme-panel-bg));
       color: var(--workspace-text-primary, var(--theme-text-primary));
-      border-radius: 8px;
-      border: 1px solid var(--workspace-border, var(--theme-shell-border));
-      box-shadow: var(--workspace-card-shadow, var(--theme-card-shadow));
+      border-radius: 0;
+      border: 0;
+      box-shadow: none;
       overflow-x: auto;
 
       &:has(.no-padding) {

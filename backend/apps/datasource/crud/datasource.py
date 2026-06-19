@@ -14,6 +14,8 @@ from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configur
 from apps.db.constant import DB
 from apps.db.db import get_tables, get_fields, exec_sql, check_connection
 from apps.db.engine import get_engine_config, get_engine_conn
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.crud.user import is_platform_admin
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
@@ -28,6 +30,9 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
 
 
 def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreDatasource]:
+    if is_platform_admin(user):
+        return session.exec(select(CoreDatasource).order_by(CoreDatasource.name)).all()
+
     tenant_id = current_tenant_id(user)
     accessible_ids = get_accessible_datasource_ids(session, user)
     if not accessible_ids:
@@ -41,7 +46,7 @@ def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreData
 
 def get_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
     statement = select(CoreDatasource).where(CoreDatasource.id == id)
-    tenant_id = current_tenant_id(user)
+    tenant_id = None if is_platform_admin(user) else current_tenant_id(user)
     if tenant_id is not None:
         statement = statement.where(CoreDatasource.tenant_id == tenant_id)
     datasource = session.exec(statement).first()
@@ -68,7 +73,7 @@ def _datasource_tenant_id(session: SessionDep, ds_id: int | None) -> int | None:
 
 
 def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
-    tenant_id = current_tenant_id(user)
+    tenant_id = None if is_platform_admin(user) else current_tenant_id(user)
     filters = [CoreDatasource.name == ds.name]
     if tenant_id is not None:
         filters.append(CoreDatasource.tenant_id == tenant_id)
@@ -88,7 +93,7 @@ async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
     check_name(session, trans, user, ds)
-    ds.tenant_id = current_tenant_id(user)
+    ds.tenant_id = DEFAULT_TENANT_ID if is_platform_admin(user) else current_tenant_id(user)
     ds.create_time = datetime.datetime.now()
     # status = check_status(session, ds)
     ds.create_by = user.id

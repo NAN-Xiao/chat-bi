@@ -15,7 +15,7 @@ from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
 from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.models.tenant import TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
-from apps.system.crud.user import SYSTEM_ADMIN_ROLES, is_system_admin
+from apps.system.crud.user import SYSTEM_ADMIN_ROLES, is_platform_admin, is_system_admin
 from apps.system.models.user import UserModel
 
 PROJECT_ROLE_VIEWER = "viewer"
@@ -73,6 +73,8 @@ def _supports_tenant_user_filter(session: SessionDep) -> bool:
 
 
 def _apply_datasource_tenant_filter(statement, session: SessionDep, current_user: CurrentUser | None):
+    if is_platform_admin(current_user):
+        return statement
     tenant_id = current_tenant_id(current_user)
     if tenant_id is None or not _supports_datasource_tenant_filter(session):
         return statement
@@ -138,7 +140,7 @@ def list_project_assignable_user_ids(
         statement = statement.where(UserModel.system_role.not_in(SYSTEM_ADMIN_ROLES))
 
     tenant_id = current_tenant_id(current_user)
-    if tenant_id is not None and _supports_tenant_user_filter(session):
+    if tenant_id is not None and not is_platform_admin(current_user) and _supports_tenant_user_filter(session):
         statement = statement.join(TenantUserModel, TenantUserModel.user_id == UserModel.id).where(
             TenantUserModel.tenant_id == tenant_id,
             TenantUserModel.status == 1,
@@ -204,7 +206,7 @@ def list_datasource_user_counts(
             .where(UserModel.system_role.not_in(SYSTEM_ADMIN_ROLES))
         )
     tenant_id = current_tenant_id(current_user)
-    if tenant_id is not None and _supports_tenant_user_filter(session):
+    if tenant_id is not None and not is_platform_admin(current_user) and _supports_tenant_user_filter(session):
         statement = (
             statement.join(TenantUserModel, TenantUserModel.user_id == CoreDatasourceUser.user_id)
             .where(

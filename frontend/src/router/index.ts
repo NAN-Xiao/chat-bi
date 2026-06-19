@@ -48,7 +48,7 @@ const resolveSystemHome = () => {
   const userStore = UserStore(store)
   if (userStore.isSystemAdminUser) return '/system/tenant'
   if (userStore.isTenantAdminUser) return '/system/overview'
-  return '/system/project'
+  return '/chat'
 }
 export const routes = [
   {
@@ -303,7 +303,13 @@ export const routes = [
         path: 'project',
         name: 'project',
         component: Datasource,
-        meta: { title: t('ds.title'), iconActive: 'ds', iconDeActive: 'noDs', tenantBusiness: true },
+        meta: {
+          title: t('ds.title'),
+          iconActive: 'ds',
+          iconDeActive: 'noDs',
+          platformOnly: true,
+          platformOperation: true,
+        },
       },
       {
         path: 'model',
@@ -433,8 +439,7 @@ export const routes = [
           title: t('variables.system_variables'),
           iconActive: 'set',
           iconDeActive: 'noSet',
-          platformOnly: true,
-          platformOperation: true,
+          tenantAdminOnly: true,
         },
       },
     ],

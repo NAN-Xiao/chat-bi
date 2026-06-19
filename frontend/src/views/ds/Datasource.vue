@@ -17,6 +17,7 @@ import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import RecommendedProblemConfigDialog from '@/views/ds/RecommendedProblemConfigDialog.vue'
 import { highlightKeyword } from '@/utils/xss'
+import { tenantApi, type TenantInfo } from '@/api/tenant'
 const userStore = useUserStore()
 const recommendedProblemConfigRef = ref()
 
@@ -33,6 +34,10 @@ export interface Datasource {
   authorized_user_count?: number
   can_manage_dashboard?: boolean
   can_manage_project?: boolean
+  can_manage_metadata?: boolean
+  can_bind_workspace?: boolean
+  tenant_id?: number | string | null
+  tenant_name?: string
 }
 
 const { t } = useI18n()
@@ -41,6 +46,15 @@ const defaultDatasourceKeywords = ref('')
 const addDrawerRef = ref()
 const projectUserDialogRef = ref()
 const searchLoading = ref(false)
+const bindingVisible = ref(false)
+const bindingSaving = ref(false)
+const tenantLoading = ref(false)
+const tenantOptions = shallowRef<TenantInfo[]>([])
+const bindingForm = ref({
+  datasourceId: '' as number | string,
+  datasourceName: '',
+  tenantId: '' as number | string,
+})
 
 const datasourceList = shallowRef([] as Datasource[])
 const defaultDatasourceList = shallowRef(dsTypeWithImg as (Datasource & { img: string })[])
@@ -87,6 +101,58 @@ const handleRecommendation = (res: Datasource) => {
 
 const handleProjectUsers = (res: Datasource) => {
   projectUserDialogRef.value?.open(res)
+}
+
+const loadTenantOptions = async () => {
+  if (tenantOptions.value.length) return
+  tenantLoading.value = true
+  try {
+    const rows = await tenantApi.adminList()
+    tenantOptions.value = (rows || []).filter(
+      (tenant) => tenant.code !== 'default' && Number(tenant.status ?? 1) === 1
+    )
+  } finally {
+    tenantLoading.value = false
+  }
+}
+
+const handleProjectBinding = async (res: Datasource) => {
+  await loadTenantOptions()
+  bindingForm.value = {
+    datasourceId: res.id || '',
+    datasourceName: res.name,
+    tenantId: res.tenant_id || '',
+  }
+  bindingVisible.value = true
+}
+
+const closeBinding = () => {
+  bindingVisible.value = false
+  bindingForm.value = {
+    datasourceId: '',
+    datasourceName: '',
+    tenantId: '',
+  }
+}
+
+const saveBinding = async () => {
+  if (!bindingForm.value.datasourceId) return
+  bindingSaving.value = true
+  try {
+    await datasourceApi.updateBinding(bindingForm.value.datasourceId, {
+      tenant_id: bindingForm.value.tenantId || null,
+    })
+    ElMessage.success(t('common.save_success'))
+    closeBinding()
+    search()
+  } finally {
+    bindingSaving.value = false
+  }
+}
+
+const unbindWorkspace = async () => {
+  bindingForm.value.tenantId = ''
+  await saveBinding()
 }
 
 const handleAddDatasource = () => {
@@ -230,7 +296,7 @@ const back = () => {
           </div>
         </el-popover>
 
-        <el-button v-if="userStore.isSystemManagerUser" type="primary" @click="handleAddDatasource">
+        <el-button v-if="userStore.isSystemAdminUser" type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -268,9 +334,13 @@ const back = () => {
             :project-role="ele.project_role"
             :authorized-user-count="ele.authorized_user_count ?? 0"
             :can-manage-project="ele.can_manage_project === true"
+            :can-maintain-project="ele.can_manage_metadata === true"
+            :can-bind-workspace="ele.can_bind_workspace === true"
+            :tenant-name="ele.tenant_name || ''"
             @edit="handleEditDatasource(ele)"
             @recommendation="handleRecommendation(ele)"
             @members="handleProjectUsers(ele)"
+            @binding="handleProjectBinding(ele)"
             @del="deleteHandler(ele)"
             @data-table-detail="dataTableDetail(ele)"
           ></Card>
@@ -285,7 +355,7 @@ const back = () => {
       />
 
       <div style="text-align: center; margin-top: -10px">
-        <el-button v-if="userStore.isSystemManagerUser" type="primary" @click="handleAddDatasource">
+        <el-button v-if="userStore.isSystemAdminUser" type="primary" @click="handleAddDatasource">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -299,6 +369,58 @@ const back = () => {
     ></RecommendedProblemConfigDialog>
     <ProjectUserDialog ref="projectUserDialogRef" @refresh="search"></ProjectUserDialog>
     <AddDrawer ref="addDrawerRef" @search="search"></AddDrawer>
+    <el-drawer
+      v-model="bindingVisible"
+      :title="$t('datasource.workspace_binding')"
+      size="420px"
+      destroy-on-close
+      modal-class="project-binding-drawer"
+      :before-close="closeBinding"
+    >
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item :label="$t('ds.title')">
+          <el-input v-model="bindingForm.datasourceName" disabled />
+        </el-form-item>
+        <el-form-item :label="$t('datasource.bound_workspace')">
+          <el-select
+            v-model="bindingForm.tenantId"
+            clearable
+            filterable
+            :loading="tenantLoading"
+            style="width: 100%"
+            :placeholder="$t('datasource.select_workspace')"
+          >
+            <el-option
+              v-for="tenant in tenantOptions"
+              :key="tenant.id"
+              :label="tenant.name"
+              :value="tenant.id"
+            >
+              <div class="workspace-option">
+                <span class="workspace-name ellipsis">{{ tenant.name }}</span>
+                <span class="workspace-code ellipsis">{{ tenant.code }}</span>
+              </div>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button
+            v-if="bindingForm.tenantId"
+            secondary
+            :loading="bindingSaving"
+            @click="unbindWorkspace"
+          >
+            {{ t('datasource.unbind_workspace') }}
+          </el-button>
+          <el-button secondary @click="closeBinding">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" :loading="bindingSaving" @click="saveBinding">
+            {{ t('common.save') }}
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
   <DataTable
     v-if="currentDataTable"
@@ -343,6 +465,32 @@ const back = () => {
     padding-bottom: 0;
     height: auto;
     padding-top: 200px;
+  }
+}
+</style>
+
+<style lang="less">
+.project-binding-drawer {
+  .ed-drawer__body {
+    padding-top: 16px;
+  }
+
+  .workspace-option {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .workspace-name {
+    min-width: 0;
+  }
+
+  .workspace-code {
+    max-width: 140px;
+    color: #8f959e;
+    font-size: 12px;
   }
 }
 </style>

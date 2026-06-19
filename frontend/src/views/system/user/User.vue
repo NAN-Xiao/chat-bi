@@ -76,7 +76,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="email" show-overflow-tooltip :label="$t('user.email')" />
-        <el-table-column v-if="!isSuperAdmin" prop="tenant_role" :label="$t('user.tenant_role')" width="140">
+        <el-table-column v-if="!isPlatformAdmin" prop="tenant_role" :label="$t('user.tenant_role')" width="140">
           <template #default="scope">
             <span
               class="role-text"
@@ -87,7 +87,7 @@
           </template>
         </el-table-column>
         <el-table-column
-          v-if="isSuperAdmin"
+          v-if="isPlatformAdmin"
           prop="system_role"
           :label="$t('user.platform_role')"
           width="140"
@@ -328,7 +328,7 @@
           clearable
         />
       </el-form-item>
-      <el-form-item v-if="!isSuperAdmin" :label="$t('user.tenant_role')">
+      <el-form-item v-if="!isPlatformAdmin" :label="$t('user.tenant_role')">
         <el-select
           v-model="state.form.tenant_role"
           popper-class="user-light-select-popper"
@@ -343,7 +343,7 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item v-if="isSuperAdmin" :label="$t('user.platform_role')">
+      <el-form-item v-if="isPlatformAdmin" :label="$t('user.platform_role')">
         <el-select
           v-model="state.form.system_role"
           popper-class="user-light-select-popper"
@@ -357,7 +357,7 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item v-if="!isSuperAdmin" :label="$t('user.project_permission_config')">
+      <el-form-item v-if="!isPlatformAdmin" :label="$t('user.project_permission_config')">
         <div class="project-permission-panel">
           <div class="project-permission-toolbar">
             <el-select
@@ -789,9 +789,10 @@ const variables = shallowRef<any[]>([])
 const variableValueMap = shallowRef<any>({})
 const projectOptions = shallowRef<any[]>([])
 const permissionRuleGroups = shallowRef<any[]>([])
-const isSuperAdmin = computed(() => userStore.isSystemAdminUser)
+const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
+const isSuperAdmin = computed(() => userStore.isSuperAdminUser)
 const pageTitle = computed(() =>
-  isSuperAdmin.value ? t('user.user_management') : t('user.tenant_member_management')
+  isPlatformAdmin.value ? t('user.user_management') : t('user.tenant_member_management')
 )
 const systemRoleOptions = computed(() => [
   { value: 'viewer', label: t('user.system_role_viewer') },
@@ -881,7 +882,7 @@ const canChangeUserAccountStatus = (row: any) => {
 }
 
 const canTransferTenantOwner = (row: any) => {
-  if (isSuperAdmin.value) return false
+  if (isPlatformAdmin.value) return false
   if (!row || !row.status) return false
   if (normalizeTenantRole(row.tenant_role) === 'owner') return false
   if (isHighPrivilegeRole(row.system_role)) return false
@@ -1322,8 +1323,8 @@ const editHandler = (row: any) => {
     ElMessage.warning(protectedUserMessage(row))
     return
   }
-  const projectRequest = isSuperAdmin.value ? Promise.resolve([]) : datasourceApi.list()
-  const permissionRequest = isSuperAdmin.value ? Promise.resolve([]) : getPermissionList()
+  const projectRequest = isPlatformAdmin.value ? Promise.resolve([]) : datasourceApi.accessibleList()
+  const permissionRequest = isPlatformAdmin.value ? Promise.resolve([]) : getPermissionList()
   Promise.all([
     variablesApi.listAll(),
     projectRequest,
@@ -1349,7 +1350,7 @@ const editHandler = (row: any) => {
         state.form = {
           ...detail,
           system_role: detail.system_role || 'viewer',
-          tenant_role: isSuperAdmin.value ? null : normalizeTenantRole(detail.tenant_role),
+          tenant_role: isPlatformAdmin.value ? null : normalizeTenantRole(detail.tenant_role),
           project_ids: projectIds,
           project_role_map: buildProjectRoleMap(projectIds, detail.project_role_map),
           project_permission_map: buildUserProjectPermissionMap(detail.id, projectIds),
@@ -1362,7 +1363,7 @@ const editHandler = (row: any) => {
         state.form = {
           ...defaultForm,
           system_role: 'viewer',
-          tenant_role: isSuperAdmin.value ? null : 'member',
+          tenant_role: isPlatformAdmin.value ? null : 'member',
           project_ids: [],
           project_role_map: {},
           project_permission_map: {},
@@ -1416,7 +1417,7 @@ const deleteBatchUser = () => {
     return
   }
   ElMessageBox.confirm(
-    isSuperAdmin.value
+    isPlatformAdmin.value
       ? t('user.selected_2_users', { msg: multipleSelectionAll.value.length })
       : t('user.remove_selected_members', { msg: multipleSelectionAll.value.length }),
     {
@@ -1441,7 +1442,7 @@ const deleteHandler = (row: any) => {
     ElMessage.warning(protectedUserMessage(row))
     return
   }
-  ElMessageBox.confirm(isSuperAdmin.value ? t('user.del_user', { msg: row.name }) : t('user.remove_member_confirm', { msg: row.name }), {
+  ElMessageBox.confirm(isPlatformAdmin.value ? t('user.del_user', { msg: row.name }) : t('user.remove_member_confirm', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
@@ -1483,7 +1484,7 @@ const onFormClose = () => {
   state.form = {
     ...defaultForm,
     system_role: 'viewer',
-    tenant_role: isSuperAdmin.value ? null : 'member',
+    tenant_role: isPlatformAdmin.value ? null : 'member',
     project_ids: [],
     project_role_map: {},
     project_permission_map: {},
@@ -1548,7 +1549,7 @@ const addTerm = () => {
     system_role: isSuperAdmin.value ? system_role : 'viewer',
     system_variables: formatVariableValues(),
   }
-  if (!isSuperAdmin.value) {
+  if (!isPlatformAdmin.value) {
     const projectIds = toNumberList(project_ids)
     payload.tenant_role = normalizeTenantRole(tenant_role)
     payload.project_ids = projectIds
@@ -1557,7 +1558,7 @@ const addTerm = () => {
   userApi
     .add(payload)
     .then((res: any) =>
-      isSuperAdmin.value ? res : syncUserPermissionStrategies(res?.id).then(() => res)
+      isPlatformAdmin.value ? res : syncUserPermissionStrategies(res?.id).then(() => res)
     )
     .then(() => {
       onFormClose()
@@ -1595,7 +1596,7 @@ const editTerm = () => {
     system_role: isSuperAdmin.value ? system_role : 'viewer',
     system_variables: formatVariableValues(),
   }
-  if (!isSuperAdmin.value) {
+  if (!isPlatformAdmin.value) {
     const projectIds = toNumberList(project_ids)
     payload.tenant_role = normalizeTenantRole(tenant_role)
     payload.project_ids = projectIds
@@ -1603,7 +1604,7 @@ const editTerm = () => {
   }
   userApi
     .edit(payload)
-    .then(() => (isSuperAdmin.value ? undefined : syncUserPermissionStrategies(id)))
+    .then(() => (isPlatformAdmin.value ? undefined : syncUserPermissionStrategies(id)))
     .then(() => {
       onFormClose()
       handleCurrentChange(1)

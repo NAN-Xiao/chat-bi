@@ -24,8 +24,8 @@ const tenantChatBIEntryPrefixes = [
   '/dsTable',
   '/set/permission',
   '/set/appearance',
-  '/system/project',
   '/system/embedded',
+  '/system/variables',
   '/system/setting/permission',
 ]
 
