@@ -392,6 +392,73 @@ export function checkIsPercent(valueAxes: Array<ChartAxis>, data: Array<ChartDat
   return result
 }
 
+function parseSortableAxisValue(value: any): number | string | null {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+
+  const text = String(value).trim()
+  if (!text) {
+    return null
+  }
+
+  const numericText = text.replace(/,/g, '').replace(/%$/, '')
+  if (/^[+-]?\d+(\.\d+)?$/.test(numericText)) {
+    const numericValue = Number(numericText)
+    return Number.isFinite(numericValue) ? numericValue : null
+  }
+
+  if (/^\d{4}[-/]\d{1,2}([-/]\d{1,2})?/.test(text)) {
+    const timestamp = Date.parse(text.replace(/\//g, '-'))
+    if (Number.isFinite(timestamp)) {
+      return timestamp
+    }
+  }
+
+  const dayMatch = text.match(/(?:^|[^\d])(?:d|day|第)?\s*([+-]?\d+(?:\.\d+)?)\s*(?:日|天|day|d)?(?:$|[^\d])/i)
+  if (dayMatch) {
+    const dayValue = Number(dayMatch[1])
+    if (Number.isFinite(dayValue)) {
+      return dayValue
+    }
+  }
+
+  return text
+}
+
+export function sortDataByXAxis(data: Array<ChartData>, xAxis?: ChartAxis): Array<ChartData> {
+  if (!xAxis?.value || data.length < 2) {
+    return data
+  }
+
+  const sortableRows = data.map((datum, index) => ({
+    datum,
+    index,
+    sortValue: parseSortableAxisValue(datum?.[xAxis.value]),
+  }))
+
+  if (sortableRows.every((row) => row.sortValue === null)) {
+    return data
+  }
+
+  return sortableRows
+    .sort((left, right) => {
+      if (left.sortValue === null) return 1
+      if (right.sortValue === null) return -1
+      if (typeof left.sortValue === 'number' && typeof right.sortValue === 'number') {
+        return left.sortValue - right.sortValue || left.index - right.index
+      }
+      return String(left.sortValue).localeCompare(String(right.sortValue), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      }) || left.index - right.index
+    })
+    .map((row) => row.datum)
+}
+
 export function buildMixedUnitComboOptions(
   baseOptions: G2Spec,
   xAxis: ChartAxis,

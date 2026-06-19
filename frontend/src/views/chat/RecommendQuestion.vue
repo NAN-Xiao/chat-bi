@@ -87,7 +87,6 @@ async function getRecommendQuestions(articles_number: number) {
   stopFlag.value = false
   setLoading(true)
   let controller: AbortController | undefined
-  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   try {
     controller = new AbortController()
@@ -98,7 +97,7 @@ async function getRecommendQuestions(articles_number: number) {
     }, RECOMMEND_QUESTION_TIMEOUT_MS)
     const params = articles_number ? '?articles_number=' + articles_number : ''
     const response = await chatApi.recommendQuestions(props.recordId, controller, params)
-    reader = response.body.getReader()
+    const streamReader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader()
     const decoder = new TextDecoder('utf-8')
 
     let tempResult = ''
@@ -111,7 +110,7 @@ async function getRecommendQuestions(articles_number: number) {
         break
       }
 
-      const { done, value } = await reader.read()
+      const { done, value } = await streamReader.read()
       if (done) {
         break
       }
@@ -178,7 +177,7 @@ async function getRecommendQuestions(articles_number: number) {
       }
 
       if (shouldCloseStream) {
-        await reader.cancel().catch(() => undefined)
+        await streamReader.cancel().catch(() => undefined)
         controller.abort()
         break
       }

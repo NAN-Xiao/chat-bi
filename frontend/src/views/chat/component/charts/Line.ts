@@ -8,6 +8,7 @@ import {
   formatNumber,
   getAxesWithFilter,
   processMultiQuotaData,
+  sortDataByXAxis,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
@@ -27,7 +28,7 @@ export class Line extends BaseG2Chart {
     }
 
     let config = {
-      data: data,
+      data: sortDataByXAxis(data, axes.x[0]),
       y: axes.y,
       series: axes.series,
     }

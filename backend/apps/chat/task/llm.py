@@ -1557,8 +1557,13 @@ class LLMService:
         self.future = executor.submit(self.run_recommend_questions_task_cache)
 
     def run_recommend_questions_task_cache(self):
-        for chunk in self.run_recommend_questions_task():
-            self.chunk_list.append(chunk)
+        try:
+            for chunk in self.run_recommend_questions_task():
+                self.chunk_list.append(chunk)
+        finally:
+            self.chunk_list.append(
+                'data:' + orjson.dumps({'type': 'recommended_question_finish'}).decode() + '\n\n'
+            )
 
     def run_recommend_questions_task(self):
         try:

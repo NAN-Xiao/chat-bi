@@ -15,6 +15,8 @@ $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
 $workerRuntime = Join-Path $runtimeRoot "task-workers"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $runtimeRootForEnv = ($runtimeRoot -replace "\\", "/")
+$localSecretKey = "chat-bi-local-dev-secret-key-keep-stable-20260620"
+$localSensitiveConfigKey = "chat-bi-local-sensitive-config-key-keep-stable-20260620"
 
 if (-not (Test-Path -LiteralPath $pythonExe)) {
     throw "Cannot find backend Python interpreter: $pythonExe"
@@ -27,6 +29,9 @@ function Get-PidFile([int]$Index) {
 }
 
 function Set-WorkerEnvironment {
+    $env:SECRET_KEY = $localSecretKey
+    $env:SENSITIVE_CONFIG_ENCRYPTION_KEY = $localSensitiveConfigKey
+
     $env:POSTGRES_SERVER = "127.0.0.1"
     $env:POSTGRES_PORT = "15432"
     $env:POSTGRES_DB = "zhishu_bi_single_ha"
@@ -45,6 +50,7 @@ function Set-WorkerEnvironment {
     $env:LOCAL_MODEL_PATH = "$runtimeRootForEnv/models"
     $env:MCP_IMAGE_HOST = "http://localhost:3001"
     $env:MCP_ENABLED = "false"
+    $env:EMBEDDING_BATCH_SIZE = "10"
 }
 
 function Get-WorkerProcess([int]$Index) {

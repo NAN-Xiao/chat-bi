@@ -26,6 +26,7 @@ const { currentChat } = toRefs(props)
 const emits = defineEmits(['clickQuestion', 'stop', 'loadingOver'])
 
 const loading = ref(false)
+const RECOMMEND_QUESTION_TIMEOUT_MS = 15000
 
 const questions = ref<string | undefined>('[]')
 
@@ -79,15 +80,21 @@ async function getRecommendQuestionsLLM(articles_number: number) {
   stopFlag.value = false
   setLoading(true)
   let controller: AbortController | undefined
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
   try {
     controller = new AbortController()
     controllerRef.value = controller
+    timeoutId = setTimeout(() => {
+      stopFlag.value = true
+      controller?.abort()
+    }, RECOMMEND_QUESTION_TIMEOUT_MS)
     const params = articles_number ? '?articles_number=' + articles_number : ''
     const response = await chatApi.recommendQuestions(props.recordId, controller, params)
-    const reader = response.body.getReader()
+    const streamReader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader()
     const decoder = new TextDecoder('utf-8')
 
     let tempResult = ''
+    let shouldCloseStream = false
 
     while (true) {
       if (stopFlag.value) {
@@ -96,7 +103,7 @@ async function getRecommendQuestionsLLM(articles_number: number) {
         break
       }
 
-      const { done, value } = await reader.read()
+      const { done, value } = await streamReader.read()
       if (done) {
         break
       }
@@ -143,11 +150,34 @@ async function getRecommendQuestionsLLM(articles_number: number) {
               currentChat.value.recommended_question = data.content
               currentChat.value.recommended_generate = true
               await nextTick()
+              shouldCloseStream = true
             }
+            break
+          case 'recommended_question_finish':
+          case 'error':
+            shouldCloseStream = true
+            break
+        }
+
+        if (shouldCloseStream) {
+          break
         }
       }
+
+      if (shouldCloseStream) {
+        await streamReader.cancel().catch(() => undefined)
+        controller.abort()
+        break
+      }
+    }
+  } catch (error: any) {
+    if (!stopFlag.value && error?.name !== 'AbortError') {
+      console.error('Recommend questions failed:', error)
     }
   } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
     if (controller && controllerRef.value === controller) {
       controllerRef.value = undefined
     }

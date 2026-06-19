@@ -19,6 +19,17 @@ from psycopg.types.json import Jsonb
 DB = dict(host="127.0.0.1", port=15432, user="root", password="Password123@pg", dbname="zhishu_bi_single_ha")
 DATASOURCE_NAME = "SLG BI Mock"
 
+TABLE_COMMENTS: dict[str, str] = {
+    "fact_sessions": (
+        "会话事实表，一行代表一次登录到登出；用于 DAU/WAU/MAU、登录活跃、D1/Dn 留存、回流等活跃口径，"
+        "日期来自 session_start::date，生命周期来自 lifecycle_day。"
+    ),
+    "fact_events": (
+        "生产级统一原始埋点表，一行代表一次客户端或服务端事件；用于事件行为、路径、功能参与等明细分析。"
+        "DAU 和留存等登录活跃口径优先使用 fact_sessions。"
+    ),
+}
+
 
 # ---------------------------------------------------------------------------
 # 术语口径：word 主词 / synonyms 同义词（用户问题里可能出现）/ description 统一口径定义
@@ -79,6 +90,8 @@ TERMS: list[tuple[str, list[str], str]] = [
         "分子 = 这些玩家在 lifecycle_day = n 于 fact_sessions 有活跃行为的去重数；"
         "留存率 = 分子 / 分母。D0 可视为 100% 安装基准，D1 及以后必须从 fact_sessions 行为计算，"
         "当用户指定某一天新增用户（如 6月1号新增用户）时，分母必须固定为该 install_date cohort 的总新增人数，"
+        "并按 lifecycle_day 输出生命周期序列：day_index 用于排序、lifecycle_day 用于展示、"
+        "active_users 表示当天活跃留存人数、retention_pct 表示留存率；不要只返回 D1/D7/D30 留存人数宽表。"
         "不要在按 lifecycle_day 分组后用当天有 session 的玩家数重新计算分母，否则会得到错误的 100% 留存；"
         "样本未成熟时输出“样本未成熟/暂不判断”，不要输出 0% 或全量流失。",
     ),
@@ -374,6 +387,87 @@ EXAMPLES: list[tuple[str, str]] = [
         "LEFT JOIN active a ON a.day_index = d.day_index\n"
         "ORDER BY d.day_index;\n"
         "```",
+    ),
+    (
+        "某一天新增用户的留存情况用折线图展示",
+        "当用户指定某一天新增用户并要求留存情况或折线趋势时，应按单日 cohort 生命周期留存处理："
+        "分母固定为该 install_date 的新增用户数，分子按 fact_sessions.lifecycle_day 统计活跃去重玩家。"
+        "不要只返回 D1/D7/D30 留存人数，也不要把展示标签（如 D30）当字符串排序；必须返回 day_index 作为排序字段，"
+        "lifecycle_day 作为展示标签，retention_pct 作为折线指标。下面以 2026-05-18 为例，实际日期应替换为用户指定日期。\n"
+        "```sql\n"
+        "WITH cohort AS (\n"
+        "  SELECT p.player_id\n"
+        "  FROM dim_player p\n"
+        "  WHERE p.install_date = DATE '2026-05-18'\n"
+        "),\n"
+        "cohort_size AS (\n"
+        "  SELECT count(*) AS new_users FROM cohort\n"
+        "),\n"
+        "days AS (\n"
+        "  SELECT * FROM (VALUES (0),(1),(3),(7),(14),(30)) AS v(day_index)\n"
+        "),\n"
+        "active AS (\n"
+        "  SELECT s.lifecycle_day AS day_index,\n"
+        "         count(DISTINCT s.player_id) AS active_users\n"
+        "  FROM fact_sessions s\n"
+        "  JOIN cohort c ON c.player_id = s.player_id\n"
+        "  WHERE s.lifecycle_day IN (0,1,3,7,14,30)\n"
+        "  GROUP BY s.lifecycle_day\n"
+        ")\n"
+        "SELECT d.day_index,\n"
+        "       'D' || d.day_index AS lifecycle_day,\n"
+        "       cs.new_users,\n"
+        "       coalesce(a.active_users, 0) AS active_users,\n"
+        "       round(coalesce(a.active_users, 0)::numeric / nullif(cs.new_users, 0) * 100, 2) AS retention_pct\n"
+        "FROM days d\n"
+        "CROSS JOIN cohort_size cs\n"
+        "LEFT JOIN active a ON a.day_index = d.day_index\n"
+        "ORDER BY d.day_index;\n"
+        "```\n"
+        "图表配置建议：type=line，x=lifecycle_day，y=retention_pct；不要把 new_users 或 active_users 同时配置为折线图 y 轴或 multi-quota，"
+        "它们只适合在表格明细或文字说明中展示。",
+    ),
+    (
+        "帮我分析某一天新增用户的留存情况",
+        "当用户问某一天新增用户的留存情况（例如 5月18号新增用户的留存情况）时，优先返回该 install_date cohort 的生命周期留存序列，"
+        "而不是只返回一行 D1/D7/D30 宽表。分母固定为该日新增用户数；分子按 fact_sessions.lifecycle_day 统计活跃去重玩家；"
+        "输出 day_index 用于排序、lifecycle_day 用于展示、retention_pct 用于趋势图，new_users/active_users 可用于表格说明。"
+        "下面以 2026-05-18 为例，实际日期应替换为用户指定日期。\n"
+        "```sql\n"
+        "WITH cohort AS (\n"
+        "  SELECT p.player_id\n"
+        "  FROM dim_player p\n"
+        "  WHERE p.install_date = DATE '2026-05-18'\n"
+        "),\n"
+        "cohort_size AS (\n"
+        "  SELECT count(*) AS new_users FROM cohort\n"
+        "),\n"
+        "days AS (\n"
+        "  SELECT generate_series(\n"
+        "           0,\n"
+        "           least(30, coalesce((SELECT max(s.lifecycle_day) FROM fact_sessions s JOIN cohort c ON c.player_id = s.player_id), 30))\n"
+        "         ) AS day_index\n"
+        "),\n"
+        "active AS (\n"
+        "  SELECT s.lifecycle_day AS day_index,\n"
+        "         count(DISTINCT s.player_id) AS active_users\n"
+        "  FROM fact_sessions s\n"
+        "  JOIN cohort c ON c.player_id = s.player_id\n"
+        "  WHERE s.lifecycle_day BETWEEN 0 AND 30\n"
+        "  GROUP BY s.lifecycle_day\n"
+        ")\n"
+        "SELECT d.day_index,\n"
+        "       'D' || d.day_index AS lifecycle_day,\n"
+        "       cs.new_users,\n"
+        "       coalesce(a.active_users, 0) AS active_users,\n"
+        "       round(coalesce(a.active_users, 0)::numeric / nullif(cs.new_users, 0) * 100, 2) AS retention_pct\n"
+        "FROM days d\n"
+        "CROSS JOIN cohort_size cs\n"
+        "LEFT JOIN active a ON a.day_index = d.day_index\n"
+        "ORDER BY d.day_index;\n"
+        "```\n"
+        "图表建议：如果用户未指定图表，可使用 line 展示留存趋势，主图只画 retention_pct；不要把 active_users/new_users 与 retention_pct 放进同一个 multi-quota。"
+        "若使用表格，也应保留 day_index 顺序和 retention_pct。",
     ),
     (
         "帮我分析最近一个月新增用户的留存情况",
@@ -1142,6 +1236,22 @@ def main() -> None:
         ds_id = row[0]
         print(f"目标数据源: id={ds_id} name={DATASOURCE_NAME!r}")
 
+        table_comment_updated = 0
+        for table_name, comment in TABLE_COMMENTS.items():
+            cur.execute(
+                """
+                UPDATE core_table
+                SET custom_comment = %s, embedding = NULL
+                WHERE ds_id = %s
+                  AND table_name = %s
+                  AND coalesce(custom_comment, '') <> %s
+                """,
+                (comment, ds_id, table_name, comment),
+            )
+            table_comment_updated += cur.rowcount
+        if table_comment_updated:
+            cur.execute("UPDATE core_datasource SET embedding = NULL WHERE id = %s", (ds_id,))
+
         term_added = term_updated = 0
         global_terms_disabled = 0
         for word, synonyms, description in TERMS:
@@ -1278,6 +1388,7 @@ def main() -> None:
         print(f"已禁用同名全局术语: {global_terms_disabled} 条")
         print(f"数据训练: 新增 {ex_added} 条，更新 {ex_updated} 条")
         print(f"已禁用同问题全局数据训练: {global_examples_disabled} 条")
+        print(f"表说明: 更新 {table_comment_updated} 张")
         cur.execute(
             """
             SELECT count(*) FROM terminology
