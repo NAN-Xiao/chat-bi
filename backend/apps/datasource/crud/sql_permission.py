@@ -173,6 +173,20 @@ def _nearest_select(node: exp.Expression) -> exp.Select | None:
     return None
 
 
+def _is_row_permission_filter_select(select_expr: exp.Select) -> bool:
+    """Detect the system-generated row-permission wrapper: SELECT * FROM table WHERE ..."""
+    parent = select_expr.parent
+    from_expr = select_expr.args.get("from_")
+    expressions = select_expr.expressions or []
+    if not isinstance(parent, exp.Subquery):
+        return False
+    if select_expr.args.get("where") is None:
+        return False
+    if len(expressions) != 1 or not isinstance(expressions[0], exp.Star):
+        return False
+    return bool(from_expr and isinstance(from_expr.this, exp.Table))
+
+
 def _is_select_order_output_name(
         column: exp.Column,
         select_expr: exp.Select,
@@ -190,6 +204,7 @@ def validate_sql_columns(
         statements: list[exp.Expression],
         permission_scope: dict[str, dict[str, Any]],
         current_user: CurrentUser,
+        allow_row_permission_filter_star: bool = False,
 ) -> None:
     if not is_normal_user(current_user):
         return
@@ -203,6 +218,8 @@ def validate_sql_columns(
             if cte.alias_or_name
         }
         for select_expr in statement.find_all(exp.Select):
+            if allow_row_permission_filter_star and _is_row_permission_filter_select(select_expr):
+                continue
             selected_aliases = selected_table_aliases(select_expr, cte_names)
             output_names = selected_output_names(select_expr)
             for star in select_expr.find_all(exp.Star):
@@ -242,6 +259,7 @@ def validate_sql_scope(
         current_user: CurrentUser,
         datasource: CoreDatasource,
         sql: str,
+        allow_row_permission_filter_star: bool = False,
 ) -> tuple[list[exp.Expression], set[str], dict[str, dict[str, Any]]]:
     statements = parse_sql_statements(sql, datasource.type)
     actual_tables = extract_physical_tables(statements)
@@ -253,7 +271,12 @@ def validate_sql_scope(
     if unauthorized_tables:
         raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
 
-    validate_sql_columns(statements, permission_scope, current_user)
+    validate_sql_columns(
+        statements,
+        permission_scope,
+        current_user,
+        allow_row_permission_filter_star=allow_row_permission_filter_star,
+    )
     return statements, actual_tables, permission_scope
 
 

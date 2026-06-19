@@ -13,6 +13,7 @@ from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, 
 from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
 from apps.datasource.crud.datasource import get_ds
 from apps.datasource.crud.permission import get_accessible_datasource_ids, has_datasource_access, is_normal_user
+from apps.datasource.crud.query_execution import call_exec_sql_compat, execute_scoped_query
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
@@ -383,21 +384,29 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
         return {'status': 'failed', 'fields': [], 'data': [], 'message': '记录不存在或没有可执行 SQL'}
     return _execute_dashboard_chart_sql(session, current_user, row.datasource, row.sql)
 
-def get_chart_data_ds(session: SessionDep,ds_id,sql):
+def get_chart_data_ds(session: SessionDep, ds_id, sql, current_user: CurrentUser | None = None):
     json_result: Dict[str, Any] = {'status': 'success','fields':[],'data':[],'message':''}
     try:
-        datasource = get_ds(session,ds_id)
-        if datasource is None:
+        if current_user is None:
             json_result['status'] = 'failed'
-            json_result['message'] = '项目不存在'
+            json_result['message'] = '当前用户不存在，无法校验数据权限'
             return json_result
-        else:
-            result = exec_sql(ds=datasource,sql=sql, origin_column=False)
-            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
-            _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
-            json_result['fields'] = list(_data[0].keys()) if _data else result.get('fields', [])
-            json_result['data'] = _data
-            return json_result
+        return execute_scoped_query(
+            session=session,
+            current_user=current_user,
+            datasource_id=int(ds_id),
+            sql=sql,
+            purpose="chat_history",
+            executor=lambda datasource, execute_sql_text, origin_column=False,
+                            execution_timeout_seconds=None, fetch_limit=None: call_exec_sql_compat(
+                exec_sql,
+                ds=datasource,
+                sql=execute_sql_text,
+                origin_column=origin_column,
+                execution_timeout_seconds=execution_timeout_seconds,
+                fetch_limit=fetch_limit,
+            ),
+        )
     except Exception as e:
         AppLogUtil.error(f"Function failed: {e}")
         json_result['status'] = 'failed'
@@ -699,6 +708,7 @@ def format_record(record: ChatRecordResult):
         try:
             # 可以格式化为更易读的形式
             _dict['duration'] = round(_dict['duration'], 2)  # 保留2位小数
+            _dict['run_time'] = _dict['duration']
         except Exception:
             pass
 

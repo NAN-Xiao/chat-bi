@@ -493,19 +493,9 @@ def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: "Administrator")
     monkeypatch.setattr(
         dashboard_service,
-        "_extract_physical_tables",
-        lambda statements: {"chart_source"},
-    )
-    monkeypatch.setattr(
-        dashboard_service,
-        "_build_dashboard_permission_scope",
-        lambda *args, **kwargs: {"chart_source": {"fields": {"value"}}},
-    )
-    monkeypatch.setattr(
-        dashboard_service,
-        "exec_sql",
-        lambda ds, sql, origin_column=False: chart_calls.append((ds.id, sql))
-        or {"data": [{"value": 1}], "fields": ["value"]},
+        "execute_scoped_query",
+        lambda **kwargs: chart_calls.append((kwargs["datasource_id"], kwargs["sql"]))
+        or {"status": "success", "data": [{"value": 1}], "fields": ["value"], "message": ""},
     )
 
     with Session(engine) as session:
@@ -551,19 +541,9 @@ def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monk
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: "Administrator")
     monkeypatch.setattr(
         dashboard_service,
-        "_extract_physical_tables",
-        lambda statements: {"chart_source"},
-    )
-    monkeypatch.setattr(
-        dashboard_service,
-        "_build_dashboard_permission_scope",
-        lambda *args, **kwargs: {"chart_source": {"fields": {"value"}}},
-    )
-    monkeypatch.setattr(
-        dashboard_service,
-        "exec_sql",
-        lambda ds, sql, origin_column=False: chart_calls.append((ds.id, sql))
-        or {"data": [{"value": 1}], "fields": ["value"]},
+        "execute_scoped_query",
+        lambda **kwargs: chart_calls.append((kwargs["datasource_id"], kwargs["sql"]))
+        or {"status": "success", "data": [{"value": 1}], "fields": ["value"], "message": ""},
     )
 
     with Session(engine) as session:

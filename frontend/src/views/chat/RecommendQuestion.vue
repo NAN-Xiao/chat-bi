@@ -27,6 +27,7 @@ const props = withDefaults(
 const emits = defineEmits(['clickQuestion', 'update:currentChat', 'stop', 'loadingOver'])
 
 const loading = ref(false)
+const RECOMMEND_QUESTION_TIMEOUT_MS = 15000
 
 const _currentChat = computed({
   get() {
@@ -86,15 +87,22 @@ async function getRecommendQuestions(articles_number: number) {
   stopFlag.value = false
   setLoading(true)
   let controller: AbortController | undefined
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
   try {
     controller = new AbortController()
     controllerRef.value = controller
+    timeoutId = setTimeout(() => {
+      stopFlag.value = true
+      controller?.abort()
+    }, RECOMMEND_QUESTION_TIMEOUT_MS)
     const params = articles_number ? '?articles_number=' + articles_number : ''
     const response = await chatApi.recommendQuestions(props.recordId, controller, params)
-    const reader = response.body.getReader()
+    reader = response.body.getReader()
     const decoder = new TextDecoder('utf-8')
 
     let tempResult = ''
+    let shouldCloseStream = false
 
     while (true) {
       if (stopFlag.value) {
@@ -155,11 +163,34 @@ async function getRecommendQuestions(articles_number: number) {
                   }
                 }
               }
+              shouldCloseStream = true
             }
+            break
+          case 'recommended_question_finish':
+          case 'error':
+            shouldCloseStream = true
+            break
+        }
+
+        if (shouldCloseStream) {
+          break
         }
       }
+
+      if (shouldCloseStream) {
+        await reader.cancel().catch(() => undefined)
+        controller.abort()
+        break
+      }
+    }
+  } catch (error: any) {
+    if (!stopFlag.value && error?.name !== 'AbortError') {
+      console.error('Recommend questions failed:', error)
     }
   } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
     if (controller && controllerRef.value === controller) {
       controllerRef.value = undefined
     }

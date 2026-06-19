@@ -348,7 +348,7 @@ export const supplierList: Array<{
     is_private: true,
     model_config: {
       0: {
-        api_domain: 'http://127.0.0.1:8000/v1',
+        api_domain: 'https://aikey.elex-tech.com/v1',
         common_args: [{ key: 'temperature', val: 0.6, type: 'number', range: '[0, 1]' }],
         model_options: [
           { name: 'gpt-4.1' },

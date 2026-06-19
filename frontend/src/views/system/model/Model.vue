@@ -7,8 +7,6 @@ import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
-import ModelList from './ModelList.vue'
-import ModelListSide from './ModelListSide.vue'
 import ModelForm from './ModelForm.vue'
 import { modelApi } from '@/api/system'
 import Card from './Card.vue'
@@ -16,6 +14,8 @@ import { getModelTypeName } from '@/entity/CommonEntity.ts'
 import { useI18n } from 'vue-i18n'
 import { get_supplier } from '@/entity/supplier'
 import { highlightKeyword } from '@/utils/xss'
+
+const GENERIC_OPENAI_SUPPLIER_ID = 15
 
 interface Model {
   name: string
@@ -32,10 +32,8 @@ const defaultModelKeywords = ref('')
 const modelConfigvVisible = ref(false)
 const searchLoading = ref(false)
 const editModel = ref(false)
-const activeStep = ref(0)
 const activeName = ref('')
-const activeNameI18nKey = ref('')
-const activeType = ref('')
+const activeType = ref<string | number>('')
 const modelFormRef = ref()
 const cardRefs = ref<any[]>([])
 const showCardError = ref(false) // if you don`t want card mask error, just change this to false
@@ -60,6 +58,8 @@ const modelListWithSearch = computed(() => {
 const beforeClose = () => {
   modelConfigvVisible.value = false
 }
+const modelDrawerSize = computed(() => '636px')
+const modelDrawerDirection = computed(() => 'rtl')
 const defaultModelListWithSearch = computed(() => {
   let tempModelList = modelList.value
   if (defaultModelKeywords.value) {
@@ -175,16 +175,21 @@ const formatKeywords = (item: string) => {
   return highlightKeyword(item, defaultModelKeywords.value, 'isSearch')
 }
 const handleAddModel = () => {
-  activeStep.value = 0
+  const supplier = get_supplier(GENERIC_OPENAI_SUPPLIER_ID)
   editModel.value = false
+  activeType.value = GENERIC_OPENAI_SUPPLIER_ID
+  activeName.value = supplier?.name || ''
   modelConfigvVisible.value = true
+  nextTick(() => {
+    if (supplier) {
+      modelFormRef.value?.supplierChang({ ...supplier })
+    }
+  })
 }
 const handleEditModel = (row: any) => {
-  activeStep.value = 1
   editModel.value = true
   activeType.value = row.supplier
   activeName.value = row.supplier_item.name
-  activeNameI18nKey.value = row.supplier_item.i18nKey
   modelApi.query(row.id).then((res: any) => {
     modelConfigvVisible.value = true
     nextTick(() => {
@@ -249,25 +254,8 @@ const deleteHandler = (item: any) => {
   })
 }
 
-const clickModel = (ele: any) => {
-  activeStep.value = 1
-  supplierChang(ele)
-}
-
-const supplierChang = (ele: any) => {
-  activeName.value = ele.name
-  activeNameI18nKey.value = ele.i18nKey
-  nextTick(() => {
-    modelFormRef.value.supplierChang({ ...ele })
-  })
-}
-
 const cancel = () => {
   beforeClose()
-}
-
-const preStep = () => {
-  activeStep.value = 0
 }
 
 const saveModel = () => {
@@ -412,9 +400,9 @@ const submit = (item: any) => {
     <el-drawer
       v-model="modelConfigvVisible"
       :close-on-click-modal="false"
-      size="calc(100% - 100px)"
+      :size="modelDrawerSize"
       modal-class="model-drawer-fullscreen"
-      direction="btt"
+      :direction="modelDrawerDirection"
       destroy-on-close
       :before-close="beforeClose"
       :show-close="false"
@@ -422,43 +410,23 @@ const submit = (item: any) => {
       <template #header="{ close }">
         <span style="white-space: nowrap">{{
           editModel
-            ? $t('dashboard.edit') + $t('common.empty') + $t(activeNameI18nKey)
+            ? $t('dashboard.edit') + $t('common.empty') + t('model.ai_model_configuration')
             : t('model.add_model')
         }}</span>
-        <div v-if="!editModel" class="flex-center" style="width: 100%">
-          <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
-            <el-step>
-              <template #title> {{ t('model.select_supplier') }} </template>
-            </el-step>
-            <el-step>
-              <template #title> {{ t('model.add_model') }} </template>
-            </el-step>
-          </el-steps>
-        </div>
         <el-icon class="ed-dialog__headerbtn mrt" style="cursor: pointer" @click="close">
           <icon_close_outlined></icon_close_outlined>
         </el-icon>
       </template>
-      <ModelList v-if="activeStep === 0" @click-model="clickModel"></ModelList>
-      <ModelListSide
-        v-if="activeStep === 1 && !editModel"
-        :active-name="activeName"
-        :active-type="activeType"
-        @click-model="supplierChang"
-      ></ModelListSide>
       <ModelForm
-        v-if="activeStep === 1 && modelConfigvVisible"
+        v-if="modelConfigvVisible"
         ref="modelFormRef"
         :active-name="activeName"
         :active-type="activeType"
         :edit-model="editModel"
         @submit="submit"
       ></ModelForm>
-      <template v-if="activeStep !== 0" #footer>
+      <template #footer>
         <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
-        <el-button v-if="!editModel" secondary @click="preStep">
-          {{ $t('ds.previous') }}
-        </el-button>
         <el-button type="primary" @click="saveModel"> {{ $t('common.save') }} </el-button>
       </template>
     </el-drawer>

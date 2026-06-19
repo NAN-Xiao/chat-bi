@@ -638,6 +638,11 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
             status_code=500,
             detail=trans("i18n_excel_export.data_is_empty")
         )
+    if len(_data) > settings.CHAT_EXPORT_MAX_ROWS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"导出数据超过上限 {settings.CHAT_EXPORT_MAX_ROWS} 行，请缩小查询范围后重试"
+        )
 
     chart_info = get_chart_config(session, chat_record_id)
 

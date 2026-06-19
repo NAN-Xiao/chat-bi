@@ -9,7 +9,7 @@ param(
     [string]$RedisServiceName = "",
     [string]$RedisServerPath = "",
     [string]$PostgresHost = "127.0.0.1",
-    [int]$PostgresPort = 15433,
+    [int]$PostgresPort = 15432,
     [string]$PostgresServiceName = "",
     [string]$PostgresBin = "",
     [string]$PostgresData = "",

@@ -21,13 +21,24 @@ from apps.datasource.crud.analysis_context import (
     resolve_datasource_context,
 )
 from apps.datasource.crud.datasource import get_table_schema, get_tables_sample_data
-from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
-from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
+from apps.datasource.crud.permission import is_normal_user
 from apps.datasource.models.datasource import CoreDatasource
+from apps.analysis_assistant.service.query_runner import (
+    clamp_common_limit_syntax,
+    contains_row_limit,
+    enforce_max_limit,
+    execute_analysis_sql,
+    normalise_sql,
+    prepare_analysis_sql,
+    sqlglot_write_dialect,
+    supports_limit_wrapper,
+)
+from apps.datasource.crud.query_execution import call_exec_sql_compat
 from apps.db.constant import DB
 from apps.db.db import exec_sql, get_sqlglot_dialect
+from common.core.config import settings
 from common.core.deps import CurrentUser, SessionDep
-from common.utils.utils import extract_nested_json
+from common.utils.utils import AppLogUtil, extract_nested_json
 
 router = APIRouter(tags=["analysis_assistant"], prefix="/analysis-assistant")
 
@@ -85,9 +96,9 @@ CHART_TYPES = {
     "sankey",
     "treemap",
 }
-MAX_ANALYSIS_QUERIES = 4
-MAX_SQL_ROWS = 200
-MAX_FORECAST_QUERIES = 4
+MAX_ANALYSIS_QUERIES = settings.ANALYSIS_ASSISTANT_MAX_QUERIES
+MAX_SQL_ROWS = settings.ANALYSIS_ASSISTANT_MAX_SQL_ROWS
+MAX_FORECAST_QUERIES = settings.ANALYSIS_ASSISTANT_MAX_QUERIES
 
 
 def _db_info(datasource: CoreDatasource) -> DB:
@@ -99,19 +110,7 @@ def _database_name(datasource: CoreDatasource) -> str:
 
 
 def _sqlglot_write_dialect(datasource: CoreDatasource) -> str | None:
-    ds_type = str(getattr(datasource, "type", "") or "")
-    dialect = get_sqlglot_dialect(ds_type)
-    if dialect:
-        return dialect
-    if ds_type.casefold() in {"pg", "excel"}:
-        return "postgres"
-    if ds_type.casefold() in {"redshift", "kingbase"}:
-        return "postgres"
-    if ds_type.casefold() == "oracle":
-        return "oracle"
-    if ds_type.casefold() == "ck":
-        return "clickhouse"
-    return None
+    return sqlglot_write_dialect(datasource)
 
 
 def _limit_instruction(datasource: CoreDatasource) -> str:
@@ -345,7 +344,7 @@ async def _create_llm(custom_model_id: int | None = None):
     additional_params["temperature"] = 0
     additional_params["top_p"] = 1
     config = config.model_copy(update={"additional_params": additional_params})
-    return LLMFactory.create_llm(config).llm
+    return LLMFactory.create_llm(config).llm, getattr(config, "model_id", None)
 
 
 def _sse(payload: dict[str, Any]) -> str:
@@ -375,31 +374,11 @@ def _extract_json_object(text: str) -> dict[str, Any]:
 
 
 def _contains_row_limit(sql: str) -> bool:
-    return bool(
-        re.search(r"\blimit\s+\d+\b", sql, flags=re.IGNORECASE)
-        or re.search(r"\btop\s+\(?\d+\)?\b", sql, flags=re.IGNORECASE)
-        or re.search(r"\bfetch\s+(?:first|next)\s+\d+\s+rows\s+only\b", sql, flags=re.IGNORECASE)
-        or re.search(r"\brownum\s*<=\s*\d+\b", sql, flags=re.IGNORECASE)
-    )
+    return contains_row_limit(sql)
 
 
 def _clamp_common_limit_syntax(sql: str) -> str:
-    def replace(match: re.Match[str]) -> str:
-        value = int(match.group("value"))
-        if value <= MAX_SQL_ROWS:
-            return match.group(0)
-        suffix = match.groupdict().get("suffix") or ""
-        return f"{match.group('prefix')}{MAX_SQL_ROWS}{suffix}"
-
-    patterns = (
-        r"(?P<prefix>\blimit\s+)(?P<value>\d+)(?P<suffix>\b)(?!\s*,)",
-        r"(?P<prefix>\btop\s+\(?)(?P<value>\d+)(?P<suffix>\)?\b)",
-        r"(?P<prefix>\bfetch\s+(?:first|next)\s+)(?P<value>\d+)(?P<suffix>\s+rows\s+only\b)",
-        r"(?P<prefix>\brownum\s*<=\s*)(?P<value>\d+)(?P<suffix>\b)",
-    )
-    for pattern in patterns:
-        sql = re.sub(pattern, replace, sql, flags=re.IGNORECASE)
-    return sql
+    return clamp_common_limit_syntax(sql)
 
 
 def _limit_literal(limit: exp.Expression | None) -> exp.Literal | None:
@@ -410,63 +389,15 @@ def _limit_literal(limit: exp.Expression | None) -> exp.Literal | None:
 
 
 def _enforce_max_limit(statement: exp.Expression) -> None:
-    limit = statement.args.get("limit")
-    if limit is None:
-        if not isinstance(statement, exp.Query):
-            raise ValueError("综合分析助手只允许执行查询语句")
-        statement.set("limit", exp.Limit(expression=exp.Literal.number(MAX_SQL_ROWS)))
-        return
-
-    literal = _limit_literal(limit)
-    if literal is None:
-        return
-    try:
-        value = int(str(literal.this))
-    except (TypeError, ValueError):
-        return
-    if value <= MAX_SQL_ROWS:
-        return
-    if "count" in limit.args:
-        limit.set("count", exp.Literal.number(MAX_SQL_ROWS))
-    else:
-        limit.set("expression", exp.Literal.number(MAX_SQL_ROWS))
+    return enforce_max_limit(statement)
 
 
 def _supports_limit_wrapper(datasource: CoreDatasource) -> bool:
-    ds_type = str(getattr(datasource, "type", "") or "")
-    return ds_type.casefold() not in {"sqlserver", "oracle"}
+    return supports_limit_wrapper(datasource)
 
 
 def _normalise_sql(sql: str, datasource: CoreDatasource | None = None) -> str:
-    sql = (sql or "").strip()
-    sql = re.sub(r"^```(?:sql)?", "", sql, flags=re.IGNORECASE).strip()
-    sql = re.sub(r"```$", "", sql).strip()
-    while sql.endswith(";"):
-        sql = sql[:-1].strip()
-    if not re.match(r"^(select|with)\b", sql, flags=re.IGNORECASE):
-        raise ValueError("综合分析助手只允许执行 SELECT/WITH 查询")
-    if ";" in sql:
-        raise ValueError("综合分析助手每个数据块只允许执行一条 SELECT/WITH 查询")
-    sql = _clamp_common_limit_syntax(sql)
-    if datasource is None:
-        datasource = CoreDatasource(type="pg", name="", configuration="{}", create_by=0, recommended_config=0)
-    dialect = _sqlglot_write_dialect(datasource)
-    try:
-        statements = [statement for statement in sqlglot.parse(sql, dialect=dialect) if statement is not None]
-        if len(statements) != 1:
-            raise ValueError("综合分析助手每个数据块只允许执行一条 SELECT/WITH 查询")
-        statement = statements[0]
-        _enforce_max_limit(statement)
-        return statement.sql(dialect=dialect)
-    except ValueError:
-        raise
-    except Exception as exc:
-        if _contains_row_limit(sql):
-            return sql
-        if _supports_limit_wrapper(datasource):
-            return f"select * from ({sql}) as analysis_query_limit limit {MAX_SQL_ROWS}"
-        raise ValueError("SQL 解析失败，无法安全应用当前数据库的行数限制") from exc
-    return sql
+    return normalise_sql(sql, datasource)
 
 
 def _get_datasource(
@@ -480,27 +411,6 @@ def _get_datasource(
     ).datasource
 
 
-def _apply_row_permissions(
-    llm,
-    session: SessionDep,
-    current_user: CurrentUser,
-    datasource: CoreDatasource,
-    sql: str,
-    tables: list[str],
-) -> str:
-    if not is_normal_user(current_user):
-        return sql
-    filters = get_row_permission_filters(
-        session=session,
-        current_user=current_user,
-        ds=datasource,
-        tables=tables,
-    )
-    if not filters:
-        return sql
-    return _normalise_sql(apply_row_permission_filters(sql, datasource, filters), datasource)
-
-
 def _prepare_sql_for_execution(
     llm,
     session: SessionDep,
@@ -508,19 +418,14 @@ def _prepare_sql_for_execution(
     datasource: CoreDatasource,
     raw_sql: str,
     allowed_tables: list[str],
-) -> str:
-    sql = _normalise_sql(raw_sql, datasource)
-    _statements, tables_set, _permission_scope = validate_sql_scope(session, current_user, datasource, sql)
-    tables = sorted(tables_set)
-    unauthorized_tables = tables_set - set(allowed_tables)
-    if unauthorized_tables:
-        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
-    sql = _apply_row_permissions(llm, session, current_user, datasource, sql, tables)
-    rewritten_tables = validate_sql_table_scope(session, current_user, datasource, sql)
-    unauthorized_tables = rewritten_tables - set(allowed_tables)
-    if unauthorized_tables:
-        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
-    return sql
+) -> tuple[str, bool]:
+    return prepare_analysis_sql(
+        session=session,
+        current_user=current_user,
+        datasource=datasource,
+        raw_sql=raw_sql,
+        allowed_tables=allowed_tables,
+    )
 
 
 def _collect_metric_knowledge(
@@ -636,7 +541,14 @@ def _collect_date_bounds(datasource: CoreDatasource, schema: str) -> str:
             select_parts.append(f"{_normalise_aggregate_alias(f'MIN({quoted_field})', f'f{index}_min', datasource)}")
         sql = f"SELECT {', '.join(select_parts)} FROM {_profile_table_reference(table_name, datasource)}"
         try:
-            result = exec_sql(datasource, sql, origin_column=False)
+            result = call_exec_sql_compat(
+                exec_sql,
+                ds=datasource,
+                sql=sql,
+                origin_column=False,
+                execution_timeout_seconds=settings.SQL_QUERY_EXECUTION_TIMEOUT_SECONDS,
+                fetch_limit=1,
+            )
             data = result.get("data") or []
             if not data:
                 continue
@@ -649,7 +561,7 @@ def _collect_date_bounds(datasource: CoreDatasource, schema: str) -> str:
                 lines.append(f"- {table_name}.{field}: 最早 {min_value}, 最新 {max_value}")
             table_count += 1
         except Exception:
-            traceback.print_exc()
+            AppLogUtil.exception(f"analysis_assistant_date_profile_failed table={table_name}")
     if not lines:
         return ""
     header = (
@@ -1439,7 +1351,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         request.custom_prompt_id,
         current_user,
     )
-    llm = await _create_llm(custom_agent_model_id)
+    llm, model_id = await _create_llm(custom_agent_model_id)
 
     def generate():
         question = request.messages[-1].content.strip()
@@ -1508,25 +1420,49 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 }
                 try:
                     raw_query["_user_question"] = question
-                    sql = _prepare_sql_for_execution(
-                        llm, session, current_user, datasource, str(raw_query.get("sql") or ""), allowed_tables
+                    sql, row_permission_star_allowed = prepare_analysis_sql(
+                        session=session,
+                        current_user=current_user,
+                        datasource=datasource,
+                        raw_sql=str(raw_query.get("sql") or ""),
+                        allowed_tables=allowed_tables,
                     )
                     block["sql"] = sql
                     raw_query["sql"] = sql
                     try:
-                        result = exec_sql(datasource, sql, origin_column=False)
+                        result = execute_analysis_sql(
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            sql=sql,
+                            model_id=model_id,
+                            custom_agent_id=request.custom_prompt_id,
+                            allow_row_permission_filter_star=row_permission_star_allowed,
+                        )
                     except Exception as first_error:
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
                         repaired_sql = _repair_sql(
                             llm, question, raw_query, sql, first_error, schema, sample_data, datasource, data_profile, knowledge,
                             custom_agent
                         )
-                        sql = _prepare_sql_for_execution(
-                            llm, session, current_user, datasource, repaired_sql, allowed_tables
+                        sql, row_permission_star_allowed = prepare_analysis_sql(
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            raw_sql=repaired_sql,
+                            allowed_tables=allowed_tables,
                         )
                         block["sql"] = sql
                         raw_query["sql"] = sql
-                        result = exec_sql(datasource, sql, origin_column=False)
+                        result = execute_analysis_sql(
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            sql=sql,
+                            model_id=model_id,
+                            custom_agent_id=request.custom_prompt_id,
+                            allow_row_permission_filter_star=row_permission_star_allowed,
+                        )
                     semantic_error = _semantic_validation_error(raw_query, result)
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
@@ -1534,12 +1470,24 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data, datasource,
                             data_profile, knowledge, custom_agent
                         )
-                        sql = _prepare_sql_for_execution(
-                            llm, session, current_user, datasource, repaired_sql, allowed_tables
+                        sql, row_permission_star_allowed = prepare_analysis_sql(
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            raw_sql=repaired_sql,
+                            allowed_tables=allowed_tables,
                         )
                         block["sql"] = sql
                         raw_query["sql"] = sql
-                        result = exec_sql(datasource, sql, origin_column=False)
+                        result = execute_analysis_sql(
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            sql=sql,
+                            model_id=model_id,
+                            custom_agent_id=request.custom_prompt_id,
+                            allow_row_permission_filter_star=row_permission_star_allowed,
+                        )
                         semantic_error = _semantic_validation_error(raw_query, result)
                         if semantic_error:
                             raise ValueError(semantic_error)
@@ -1549,8 +1497,13 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     block["chart"] = _build_chart_config(raw_query, result)
                     block["summary"] = _summarise_block(llm, question, block, knowledge, custom_agent)
                 except Exception as query_error:
+                    AppLogUtil.exception(
+                        "analysis_assistant_block_failed "
+                        f"record_user_id={getattr(current_user, 'id', None)} "
+                        f"datasource_id={getattr(datasource, 'id', None)} "
+                        f"block_id={block_id} title={title} error={query_error}"
+                    )
                     block["error"] = "数据计算失败"
-                    block["error_detail"] = str(query_error)
                     block["summary"] = "这个角度的数据暂时无法稳定计算，已先跳过；其它维度的分析会继续完成。"
 
                 blocks.append(block)
@@ -1561,6 +1514,13 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             yield _sse({"type": "final", "content": final})
             yield _sse({"type": "finish"})
         except Exception as e:
-            yield _sse({"type": "error", "content": str(e), "detail": traceback.format_exc()[-4000:]})
+            AppLogUtil.exception(f"analysis_assistant_stream_failed user_id={getattr(current_user, 'id', None)} error={e}")
+            payload = {
+                "type": "error",
+                "content": "综合分析暂时失败，请联系管理员查看后台日志。" if settings.APP_ENV == "production" else str(e),
+            }
+            if settings.APP_ENV != "production":
+                payload["detail"] = traceback.format_exc()[-4000:]
+            yield _sse(payload)
 
     return StreamingResponse(generate(), media_type="text/event-stream")

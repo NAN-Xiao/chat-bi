@@ -19,25 +19,17 @@ from apps.dashboard.models.dashboard_model import (
 from apps.datasource.crud.permission import (
     PROJECT_ROLE_EDITOR,
     get_accessible_datasource_ids,
-    get_row_permission_filters,
     has_datasource_access,
     has_datasource_role,
     is_normal_user,
 )
-from apps.datasource.crud.sql_permission import (
-    apply_row_permission_filters as _apply_row_permission_filters,
-    build_permission_scope as _build_dashboard_permission_scope,
-    extract_physical_tables as _extract_physical_tables,
-    normalize_identifier as _normalize_identifier,
-    parse_sql_statements as _parse_sql_statements,
-    validate_sql_columns as _validate_sql_columns,
-)
+from apps.datasource.crud.query_execution import call_exec_sql_compat, execute_scoped_query
+from apps.datasource.crud.sql_permission import normalize_identifier as _normalize_identifier
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
 from apps.system.models.user import UserModel
 from apps.system.crud.user import is_system_admin
 from common.core.deps import SessionDep, CurrentUser
-from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil
 import uuid
 import time
@@ -238,57 +230,25 @@ def _execute_dashboard_chart_sql(
         datasource_id: int,
         sql: str,
 ) -> dict[str, Any]:
-    json_result: dict[str, Any] = {'status': 'success', 'fields': [], 'data': [], 'message': ''}
-    try:
-        datasource = session.get(CoreDatasource, datasource_id)
-        if datasource is None:
-            return _failed_chart_result("项目不存在")
-        if not has_datasource_access(session, current_user, datasource_id):
-            return _failed_chart_result("You do not have permission to access this datasource")
-
-        statements = _parse_sql_statements(sql, datasource.type)
-        actual_tables = _extract_physical_tables(statements)
-        if not actual_tables:
-            return _failed_chart_result("SQL 解析失败，无法确认查询表范围")
-
-        permission_scope = _build_dashboard_permission_scope(session, current_user, datasource)
-        unauthorized_tables = actual_tables - set(permission_scope.keys())
-        if unauthorized_tables:
-            return _failed_chart_result(_safe_chart_error_message(
-                current_user,
-                f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}"
-            ))
-        _validate_sql_columns(statements, permission_scope, current_user)
-
-        execute_sql_text = sql
-        if is_normal_user(current_user):
-            row_filters = get_row_permission_filters(
-                session=session,
-                current_user=current_user,
-                ds=datasource,
-                tables=sorted(actual_tables),
-            )
-            if row_filters:
-                execute_sql_text = _apply_row_permission_filters(sql, datasource, row_filters)
-                rewritten_statements = _parse_sql_statements(execute_sql_text, datasource.type)
-                rewritten_tables = _extract_physical_tables(rewritten_statements)
-                if not rewritten_tables or not rewritten_tables.issubset(set(permission_scope.keys())):
-                    return _failed_chart_result(_safe_chart_error_message(
-                        current_user,
-                        "行权限 SQL 重写后表范围校验失败"
-                    ))
-
-        result = exec_sql(ds=datasource, sql=execute_sql_text, origin_column=False)
-        data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
-        data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
-        json_result['fields'] = list(data[0].keys()) if data else result.get('fields', [])
-        json_result['data'] = data
-        return json_result
-    except Exception as e:
-        AppLogUtil.error(f"Dashboard chart SQL permission check failed: {e}")
-        json_result['status'] = 'failed'
-        json_result['message'] = _safe_chart_error_message(current_user, f"{e}")
-        return json_result
+    result = execute_scoped_query(
+        session=session,
+        current_user=current_user,
+        datasource_id=datasource_id,
+        sql=sql,
+        purpose="dashboard",
+        executor=lambda datasource, execute_sql_text, origin_column=False,
+                        execution_timeout_seconds=None, fetch_limit=None: call_exec_sql_compat(
+            exec_sql,
+            ds=datasource,
+            sql=execute_sql_text,
+            origin_column=origin_column,
+            execution_timeout_seconds=execution_timeout_seconds,
+            fetch_limit=fetch_limit,
+        ),
+    )
+    if result.get("status") == "failed":
+        result["message"] = _safe_chart_error_message(current_user, str(result.get("message") or ""))
+    return result
 
 
 def _user_name(session: SessionDep, user_id) -> str | None:

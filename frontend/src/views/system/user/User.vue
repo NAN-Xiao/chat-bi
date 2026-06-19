@@ -680,7 +680,7 @@ const { copy } = useClipboard({ legacy: true })
 const userStore = useUserStore()
 
 const { t } = useI18n()
-const defaultPwd = ref('Zhishu@123456')
+const defaultPwd = ref('elex@123')
 const keyword = ref('')
 const dialogFormVisible = ref(false)
 const termFormRef = ref()

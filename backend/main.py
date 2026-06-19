@@ -27,9 +27,12 @@ from apps.system.schemas.permission import RequestContextMiddleware
 from common.audit.schemas.request_context import RequestContextMiddlewareCommon
 from common.core.app_cache import cache_health, close_app_cache, init_app_cache
 from common.core.config import settings
+from common.core.db import engine
 from common.core.production import init_observability, validate_production_settings
 from common.core.response_middleware import ResponseMiddleware, exception_handler
+from common.core.task_queue import task_queue_health
 from common.utils.utils import AppLogUtil
+from sqlalchemy import text
 
 try:
     from fastapi_mcp import FastApiMCP
@@ -172,15 +175,32 @@ async def health():
     return {"status": "ok", "service": settings.PROJECT_NAME}
 
 
+def _database_health() -> dict[str, Any]:
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("select 1"))
+        return {"status": "ok"}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
 @app.get(f"{settings.CONTEXT_PATH}/ready", include_in_schema=False)
 async def ready():
+    database = _database_health()
     cache = await cache_health()
-    ok = cache.get("status") in {"ok", "disabled"}
+    task_queue = await task_queue_health()
+    cache_ok = cache.get("status") in {"ok", "disabled"} and (
+        settings.APP_ENV != "production" or cache.get("status") == "ok"
+    )
+    task_queue_ok = task_queue.get("status") == "ok" if settings.CACHE_TYPE == "redis" else True
+    ok = database.get("status") == "ok" and cache_ok and task_queue_ok
     return JSONResponse(
         {
             "status": "ok" if ok else "error",
             "service": settings.PROJECT_NAME,
+            "database": database,
             "cache": cache,
+            "task_queue": task_queue,
         },
         status_code=200 if ok else 503,
     )

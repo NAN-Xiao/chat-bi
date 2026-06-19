@@ -35,7 +35,7 @@
 ```text
 frontend 5174
 backend 8010
-PostgreSQL 15433
+PostgreSQL 15432
 Redis 6379 可选
 Nginx 8081 可选
 ```

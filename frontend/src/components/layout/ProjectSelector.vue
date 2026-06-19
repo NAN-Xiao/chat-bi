@@ -1,12 +1,12 @@
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import icon_expand_down_filled from '@/assets/svg/icon_expand-down_filled.svg'
 import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-import { ElMessage } from 'element-plus-secondary'
+import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { highlightKeyword } from '@/utils/xss'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useEmitt } from '@/utils/useEmitt'
@@ -18,6 +18,7 @@ defineProps({
 })
 
 const router = useRouter()
+const route = useRoute()
 const currentProject = computed(() => ({
   id: datasourceContext.datasourceId,
   name: datasourceContext.datasourceName,
@@ -35,15 +36,36 @@ const formatKeywords = (item: string) => {
   return highlightKeyword(item, projectKeywords.value, 'isSearch')
 }
 
+const refreshProjects = async () => {
+  try {
+    await datasourceContext.loadDatasources(true)
+  } catch {
+    // Keep the current cached project list visible if a background refresh fails.
+  }
+}
+
+const handleProjectSelectorClick = () => {
+  void refreshProjects()
+}
+
+const handleWindowFocus = () => {
+  void refreshProjects()
+}
+
+const handleVisibilityChange = () => {
+  if (!document.hidden) {
+    void refreshProjects()
+  }
+}
+
 const emit = defineEmits(['selectProject'])
 
-const handleDefaultProjectChange = (item: any) => {
-  if (
-    currentProject.value?.id &&
-    item.id.toString() === currentProject.value.id.toString()
-  ) {
-    return
-  }
+const shouldConfirmContextReset = computed(() => {
+  const path = route.path || ''
+  return path === '/chat' || path.startsWith('/chat/') || path === '/as' || path.startsWith('/as/')
+})
+
+const applyProjectChange = (item: any) => {
   datasourceContext.setDatasource(
     Number(item.id),
     item.name,
@@ -60,8 +82,40 @@ const handleDefaultProjectChange = (item: any) => {
   emit('selectProject', item)
 }
 
+const handleDefaultProjectChange = (item: any) => {
+  if (
+    currentProject.value?.id &&
+    item.id.toString() === currentProject.value.id.toString()
+  ) {
+    return
+  }
+  if (!shouldConfirmContextReset.value) {
+    applyProjectChange(item)
+    return
+  }
+  ElMessageBox.confirm('切换项目后，当前页面上下文会清空。', {
+    confirmButtonType: 'primary',
+    confirmButtonText: t('datasource.confirm'),
+    cancelButtonText: t('common.cancel'),
+    customClass: 'confirm-no_icon',
+    autofocus: false,
+    callback: (val: string) => {
+      if (val === 'confirm') {
+        applyProjectChange(item)
+      }
+    },
+  })
+}
+
 onMounted(async () => {
-  await datasourceContext.loadDatasources()
+  await refreshProjects()
+  window.addEventListener('focus', handleWindowFocus)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('focus', handleWindowFocus)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 
@@ -72,7 +126,11 @@ onMounted(async () => {
     :placement="collapse ? 'right' : 'bottom'"
   >
     <template #reference>
-      <button class="project-selector" :class="collapse && 'collapse'">
+      <button
+        class="project-selector"
+        :class="collapse && 'collapse'"
+        @click="handleProjectSelectorClick"
+      >
         <el-icon size="18">
           <icon_moments_categories_outlined></icon_moments_categories_outlined>
         </el-icon>

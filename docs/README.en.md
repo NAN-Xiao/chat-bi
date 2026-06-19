@@ -77,7 +77,7 @@ If you are in an intranet environment, you can deploy 星通智数 via the [offl
 
 - Open in your browser: http://<your server IP>:8000/
 - Username: admin
-- Password: Zhishu@123456
+- Password: elex@123
 
 
 ## UI Display

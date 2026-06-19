@@ -9,21 +9,21 @@ Scope: entire repository.
   optional local Nginx on `127.0.0.1:8081`, and optional G2 SSR image service on `localhost:3001`.
   Keep this workspace self-contained; do not point dependencies, runtime data, or services at another clone.
 - Before retrying random ports or passwords, use the known-good local app database settings from the repo root `.env`:
-  `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15433`, `POSTGRES_DB=zhishu_bi_single_ha`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`.
+  `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15432`, `POSTGRES_DB=zhishu_bi_single_ha`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`.
 - Do not confuse the local app system database with the SLG BI demo datasources:
-  the current single-user HA branch system database is PostgreSQL `zhishu_bi_single_ha` on `127.0.0.1:15433` with user `root` / password `Password123@pg`;
+  the current single-user HA branch system database is PostgreSQL `zhishu_bi_single_ha` on `127.0.0.1:15432` with user `root` / password `Password123@pg`;
   the seeded BI demo datasources are PostgreSQL on `127.0.0.1:5432` with user `postgres` / password `111111`,
   where datasource `SLG BI Mock` points to database `slg_bi_mock` and datasource `SLG BI Mock 2 - Season War` points to `slg_bi_mock_2`.
 - For this workspace's current default online LLM, use:
   `base_url=https://aikey.elex-tech.com/v1`, `api_key=apg_c2a9f12cb04b6db44c905952402619ba39a4eb446185653c`, `default_model=qwen3.5-plus`.
   The same OpenAI-compatible endpoint also provides the remote embedding model `text-embedding-v4`.
   If Smart Q&A fails immediately before SQL generation, verify the `ai_model` default row in the app database first instead of retrying random domains, ports, or passwords.
-- If you need to inspect datasource definitions in the 星通智数 system database for this clone, query `core_datasource` in `zhishu_bi_single_ha` on port `15433`.
+- If you need to inspect datasource definitions in the 星通智数 system database for this clone, query `core_datasource` in `zhishu_bi_single_ha` on port `15432`.
 - Local startup logs to check first:
   `.codex-runtime/backend-replicas/backend-8010.err.log`, `.codex-runtime/backend-replicas/mcp-8011.err.log`, `.codex-runtime/frontend-5174.current.out.log`,
   plus application logs under `logs/` and `backend/logs/`.
 - For local backend startup on this machine, set these environment overrides before running `uvicorn` so paths and ports match the workspace:
-  `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15433`, `POSTGRES_DB=zhishu_bi_single_ha`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`,
+  `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15432`, `POSTGRES_DB=zhishu_bi_single_ha`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`,
   `FRONTEND_HOST=http://localhost:5174`,
   `BACKEND_CORS_ORIGINS=http://localhost:5174,http://127.0.0.1:5174,http://localhost:8081,http://127.0.0.1:8081`,
   `BASE_DIR=D:/work/AI/chat-bi/.codex-runtime/zhishu`, `UPLOAD_DIR=D:/work/AI/chat-bi/.codex-runtime/file`,

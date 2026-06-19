@@ -63,7 +63,7 @@ class Settings(BaseSettings):
         return self.CONTEXT_PATH + "/api/v1"
 
     POSTGRES_SERVER: str = 'localhost'
-    POSTGRES_PORT: int = 15433
+    POSTGRES_PORT: int = 15432
     POSTGRES_USER: str = 'root'
     POSTGRES_PASSWORD: str = "Password123@pg"
     POSTGRES_DB: str = "zhishu_bi_single_ha"
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     # ZHISHU_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/zhishu'
 
     TOKEN_KEY: str = "X-ZHISHU-TOKEN"
-    DEFAULT_PWD: str = "Zhishu@123456"
+    DEFAULT_PWD: str = "elex@123"
     ASSISTANT_TOKEN_KEY: str = "X-ZHISHU-ASSISTANT-TOKEN"
     SENSITIVE_CONFIG_ENCRYPTION_KEY: str | None = None
     DATASOURCE_CONFIG_ENCRYPTION_KEY: str | None = None
@@ -137,6 +137,11 @@ class Settings(BaseSettings):
     SERVER_IMAGE_TIMEOUT: int = 15
     LLM_REQUEST_TIMEOUT: int = 45
     LLM_MAX_RETRIES: int = 1
+    SQL_QUERY_EXECUTION_TIMEOUT_SECONDS: int = 60
+    SQL_QUERY_DEFAULT_ROW_LIMIT: int = 1000
+    ANALYSIS_ASSISTANT_MAX_QUERIES: int = 4
+    ANALYSIS_ASSISTANT_MAX_SQL_ROWS: int = 200
+    CHAT_EXPORT_MAX_ROWS: int = 100000
     CHAT_GENERATION_CONCURRENCY_LIMIT_ENABLED: bool = True
     CHAT_MAX_CONCURRENT_GENERATIONS_PER_USER: int = 1
     CHAT_GENERATION_CONCURRENCY_SLOT_TTL_SECONDS: int = 10 * 60

@@ -6,6 +6,7 @@ from common.core.config import settings
 from common.utils.utils import AppLogUtil
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+_DEVELOPMENT_DEFAULT_PASSWORDS = {"elex@123", "Zhishu@123456"}
 
 
 def _env_present(name: str) -> bool:
@@ -52,7 +53,7 @@ def validate_production_settings() -> list[str]:
 
     if not _env_present("SECRET_KEY") or len(settings.SECRET_KEY) < 32:
         errors.append("SECRET_KEY must be set from environment and be at least 32 characters.")
-    if settings.DEFAULT_PWD == "Zhishu@123456":
+    if settings.DEFAULT_PWD in _DEVELOPMENT_DEFAULT_PASSWORDS:
         errors.append("DEFAULT_PWD must be changed from the development default.")
     if settings.POSTGRES_PASSWORD == "Password123@pg":
         errors.append("POSTGRES_PASSWORD must be changed from the development default.")
@@ -100,6 +101,25 @@ def validate_production_settings() -> list[str]:
         errors.append("MAX_UPLOAD_BYTES must be greater than 0 in production.")
     if settings.MAX_UPLOAD_BYTES > 100 * 1024 * 1024:
         errors.append("MAX_UPLOAD_BYTES must not exceed 100 MiB in production.")
+    if settings.LLM_REQUEST_TIMEOUT <= 0 or settings.LLM_REQUEST_TIMEOUT > 120:
+        errors.append("LLM_REQUEST_TIMEOUT must be between 1 and 120 seconds in production.")
+    if settings.SQL_QUERY_EXECUTION_TIMEOUT_SECONDS <= 0 or settings.SQL_QUERY_EXECUTION_TIMEOUT_SECONDS > 120:
+        errors.append("SQL_QUERY_EXECUTION_TIMEOUT_SECONDS must be between 1 and 120 seconds in production.")
+    if settings.SQL_QUERY_DEFAULT_ROW_LIMIT <= 0 or settings.SQL_QUERY_DEFAULT_ROW_LIMIT > 1000:
+        errors.append("SQL_QUERY_DEFAULT_ROW_LIMIT must be between 1 and 1000 in production.")
+    if settings.ANALYSIS_ASSISTANT_MAX_QUERIES <= 0 or settings.ANALYSIS_ASSISTANT_MAX_QUERIES > 4:
+        errors.append("ANALYSIS_ASSISTANT_MAX_QUERIES must be between 1 and 4 in production.")
+    if settings.ANALYSIS_ASSISTANT_MAX_SQL_ROWS <= 0 or settings.ANALYSIS_ASSISTANT_MAX_SQL_ROWS > 1000:
+        errors.append("ANALYSIS_ASSISTANT_MAX_SQL_ROWS must be between 1 and 1000 in production.")
+    if settings.CHAT_EXPORT_MAX_ROWS <= 0 or settings.CHAT_EXPORT_MAX_ROWS > 100000:
+        errors.append("CHAT_EXPORT_MAX_ROWS must be between 1 and 100000 in production.")
+    if not settings.CHAT_GENERATION_CONCURRENCY_LIMIT_ENABLED:
+        errors.append("CHAT_GENERATION_CONCURRENCY_LIMIT_ENABLED must be true in production.")
+    if (
+        settings.CHAT_MAX_CONCURRENT_GENERATIONS_PER_USER <= 0
+        or settings.CHAT_MAX_CONCURRENT_GENERATIONS_PER_USER > 2
+    ):
+        errors.append("CHAT_MAX_CONCURRENT_GENERATIONS_PER_USER must be between 1 and 2 in production.")
 
     for name in ("BASE_DIR", "UPLOAD_DIR", "EXCEL_PATH", "MCP_IMAGE_PATH", "LOG_DIR"):
         if not _is_absolute_path(str(getattr(settings, name))):

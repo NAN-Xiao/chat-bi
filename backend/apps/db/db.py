@@ -6,7 +6,7 @@ import re
 import urllib.parse
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Any
 
 import oracledb
 import psycopg2
@@ -145,9 +145,14 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
         conf.timeout = timeout
 
     if equals_ignore_case(ds.type, "pg"):
+        options = []
         if conf.dbSchema is not None and conf.dbSchema != "":
+            options.append(f"-c search_path={urllib.parse.quote(conf.dbSchema)}")
+        if conf.timeout and conf.timeout > 0:
+            options.append(f"-c statement_timeout={int(conf.timeout * 1000)}")
+        if options:
             engine = create_engine(get_uri(ds),
-                                   connect_args={"options": f"-c search_path={urllib.parse.quote(conf.dbSchema)}",
+                                   connect_args={"options": " ".join(options),
                                                  "connect_timeout": conf.timeout}, poolclass=NullPool)
         else:
             engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
@@ -158,20 +163,25 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
         engine = create_engine(get_uri(ds), poolclass=NullPool)
     elif equals_ignore_case(ds.type, 'mysql'):  # mysql
         ssl_mode = {"require": True} if conf.ssl else None
-        engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout, "ssl": ssl_mode},
+        engine = create_engine(get_uri(ds), connect_args={
+            "connect_timeout": conf.timeout,
+            "read_timeout": conf.timeout,
+            "write_timeout": conf.timeout,
+            "ssl": ssl_mode,
+        },
                                poolclass=NullPool)
     else:  # ck
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
     return engine
 
 
-def get_session(ds: CoreDatasource | AssistantOutDsSchema):
+def get_session(ds: CoreDatasource | AssistantOutDsSchema, timeout: int = 0):
     # engine = get_engine(ds) if isinstance(ds, CoreDatasource) else get_ds_engine(ds)
     if isinstance(ds, AssistantOutDsSchema):
         out_conf = get_out_ds_conf(ds, 30)
         ds.configuration = out_conf
 
-    engine = get_engine(ds)
+    engine = get_engine(ds, timeout=timeout)
     session_maker = sessionmaker(bind=engine)
     session = session_maker()
     return session
@@ -582,7 +592,46 @@ def convert_value(value, datetime_format='space'):
         return value
 
 
-def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
+def _effective_timeout_seconds(conf_timeout: int | None, execution_timeout_seconds: int | None) -> int | None:
+    configured_timeout = int(conf_timeout or 0)
+    requested_timeout = int(execution_timeout_seconds or 0)
+    if configured_timeout > 0 and requested_timeout > 0:
+        return min(configured_timeout, requested_timeout)
+    if requested_timeout > 0:
+        return requested_timeout
+    if configured_timeout > 0:
+        return configured_timeout
+    return None
+
+
+def _fetch_query_rows(result: Any, fetch_limit: int | None = None):
+    if fetch_limit and fetch_limit > 0:
+        return result.fetchmany(fetch_limit + 1)
+    return result.fetchall()
+
+
+def _normalise_query_columns(raw_columns, origin_column: bool):
+    return list(raw_columns) if origin_column else [item.lower() for item in raw_columns]
+
+
+def _build_exec_sql_result(columns, rows, sql: str):
+    result_list = [
+        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in rows
+    ]
+    return {
+        "fields": columns,
+        "data": result_list,
+        "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8'))),
+    }
+
+
+def exec_sql(
+        ds: CoreDatasource | AssistantOutDsSchema,
+        sql: str,
+        origin_column=False,
+        execution_timeout_seconds: int | None = None,
+        fetch_limit: int | None = None,
+):
     while sql.endswith(';'):
         sql = sql[:-1]
     # check execute sql only contain read operations
@@ -591,109 +640,79 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
         raise ValueError(f"SQL can only contain read operations: {error_reason}")
 
     db = DB.get_db(ds.type)
+    timeout = execution_timeout_seconds if execution_timeout_seconds and execution_timeout_seconds > 0 else None
     if db.connect_type == ConnectType.sqlalchemy:
-        with get_session(ds) as session:
-            with session.execute(text(sql)) as result:
+        with get_session(ds, timeout=timeout or 0) as session:
+            statement = text(sql)
+            if fetch_limit and fetch_limit > 0:
+                statement = statement.execution_options(stream_results=True)
+            with session.execute(statement) as result:
                 try:
-                    columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
-                    res = result.fetchall()
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    columns = _normalise_query_columns(result.keys()._keys, origin_column)
+                    res = _fetch_query_rows(result, fetch_limit)
+                    return _build_exec_sql_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
     else:
         conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+        timeout = _effective_timeout_seconds(conf.timeout, execution_timeout_seconds)
         extra_config_dict = get_extra_config(conf)
         if equals_ignore_case(ds.type, 'dm'):
             with dmPython.connect(user=conf.username, password=conf.password, server=conf.host,
                                   port=conf.port, **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
-                    cursor.execute(sql, timeout=conf.timeout)
-                    res = cursor.fetchall()
-                    columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
-                                                                                                field in
-                                                                                                cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    cursor.execute(sql, timeout=timeout or conf.timeout)
+                    res = _fetch_query_rows(cursor, fetch_limit)
+                    columns = _normalise_query_columns([field[0] for field in cursor.description], origin_column)
+                    return _build_exec_sql_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'doris', 'starrocks'):
             ssl_args = {'ssl': {'ssl_mode': 'REQUIRE'}} if conf.ssl else {}
             with pymysql.connect(user=conf.username, passwd=conf.password, host=conf.host,
-                                 port=conf.port, db=conf.database, connect_timeout=conf.timeout,
-                                 read_timeout=conf.timeout, **extra_config_dict,
+                                 port=conf.port, db=conf.database, connect_timeout=timeout or conf.timeout,
+                                 read_timeout=timeout or conf.timeout,
+                                 write_timeout=timeout or conf.timeout,
+                                 **extra_config_dict,
                                  **ssl_args) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql)
-                    res = cursor.fetchall()
-                    columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
-                                                                                                field in
-                                                                                                cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    res = _fetch_query_rows(cursor, fetch_limit)
+                    columns = _normalise_query_columns([field[0] for field in cursor.description], origin_column)
+                    return _build_exec_sql_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'redshift'):
             with redshift_connector.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                             password=conf.password,
-                                            timeout=conf.timeout, **extra_config_dict) as conn, conn.cursor() as cursor:
+                                            timeout=timeout or conf.timeout,
+                                            **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql)
-                    res = cursor.fetchall()
-                    columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
-                                                                                                field in
-                                                                                                cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    res = _fetch_query_rows(cursor, fetch_limit)
+                    columns = _normalise_query_columns([field[0] for field in cursor.description], origin_column)
+                    return _build_exec_sql_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'kingbase'):
             with psycopg2.connect(host=conf.host, port=conf.port, database=conf.database, user=conf.username,
                                   password=conf.password,
-                                  options=f"-c statement_timeout={conf.timeout * 1000}",
+                                  options=f"-c statement_timeout={(timeout or conf.timeout) * 1000}",
                                   **extra_config_dict) as conn, conn.cursor() as cursor:
                 try:
                     cursor.execute(sql)
-                    res = cursor.fetchall()
-                    columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
-                                                                                                field in
-                                                                                                cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                    res = _fetch_query_rows(cursor, fetch_limit)
+                    columns = _normalise_query_columns([field[0] for field in cursor.description], origin_column)
+                    return _build_exec_sql_result(columns, res, sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
         elif equals_ignore_case(ds.type, 'es'):
             try:
                 res, columns = get_es_data_by_http(conf, sql)
-                columns = [field.get('name') for field in columns] if origin_column else [field.get('name').lower() for
-                                                                                          field in
-                                                                                          columns]
-                result_list = [
-                    {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                    res
-                ]
-                return {"fields": columns, "data": result_list,
-                        "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
+                if fetch_limit and fetch_limit > 0:
+                    res = res[:fetch_limit + 1]
+                columns = _normalise_query_columns([field.get('name') for field in columns], origin_column)
+                return _build_exec_sql_result(columns, res, sql)
             except Exception as ex:
                 raise Exception(str(ex))
         elif equals_ignore_case(ds.type, 'hive'):
@@ -703,16 +722,9 @@ def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=
                     # Hive uses backticks for identifiers; normalize quoted identifiers as a compatibility fallback.
                     hive_sql = re.sub(r'"([A-Za-z_][A-Za-z0-9_]*)"', r'`\1`', sql)
                     cursor.execute(hive_sql)
-                    res = cursor.fetchall()
-                    columns = [field[0] for field in cursor.description] if origin_column else [field[0].lower() for
-                                                                                                field in
-                                                                                                cursor.description]
-                    result_list = [
-                        {str(columns[i]): convert_value(value) for i, value in enumerate(tuple_item)} for tuple_item in
-                        res
-                    ]
-                    return {"fields": columns, "data": result_list,
-                            "sql": bytes.decode(base64.b64encode(bytes(hive_sql, 'utf-8')))}
+                    res = _fetch_query_rows(cursor, fetch_limit)
+                    columns = _normalise_query_columns([field[0] for field in cursor.description], origin_column)
+                    return _build_exec_sql_result(columns, res, hive_sql)
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
 

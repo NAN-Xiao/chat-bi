@@ -33,7 +33,7 @@ def test_default_password_hash_is_not_md5():
 
     assert not is_md5_password_hash(password_hash)
     assert password_hash.startswith("$2")
-    assert verify_stored_password("Zhishu@123456", password_hash) == (True, False)
+    assert verify_stored_password("elex@123", password_hash) == (True, False)
 
 
 def test_authenticate_rehashes_legacy_md5_password():

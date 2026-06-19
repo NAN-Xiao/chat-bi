@@ -16,7 +16,7 @@ import datetime
 import psycopg
 from psycopg.types.json import Jsonb
 
-DB = dict(host="127.0.0.1", port=15433, user="root", password="Password123@pg", dbname="zhishu_bi_single_ha")
+DB = dict(host="127.0.0.1", port=15432, user="root", password="Password123@pg", dbname="zhishu_bi_single_ha")
 DATASOURCE_NAME = "SLG BI Mock"
 
 

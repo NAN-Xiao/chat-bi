@@ -1,10 +1,13 @@
 import json
+from urllib.parse import urljoin
 
+import httpx
 from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 from sqlmodel import func, select, update
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, _normalize_api_base_url
+from common.core.config import settings
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.models.system_model import AiModelBrief, AiModelDetail
@@ -13,6 +16,8 @@ from apps.system.schemas.ai_model_schema import (
     AiModelCreator,
     AiModelEditor,
     AiModelGridItem,
+    AiModelRemoteItem,
+    AiModelRemoteListRequest,
 )
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationModules, OperationType
@@ -31,6 +36,45 @@ async def _encrypt_ai_model_secrets(data: dict) -> dict:
         if key in encrypted and encrypted[key] is not None:
             encrypted[key] = await zhishu_encrypt(encrypted[key])
     return encrypted
+
+
+def _remote_models_url(api_domain: str) -> str:
+    base_url = _normalize_api_base_url(api_domain).rstrip("/")
+    if base_url.endswith("/models"):
+        return base_url
+    return urljoin(f"{base_url}/", "models")
+
+
+@router.post("/remote-models", response_model=list[AiModelRemoteItem], include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['admin']))
+async def list_remote_models(info: AiModelRemoteListRequest):
+    url = _remote_models_url(info.api_domain)
+    headers = {}
+    if info.api_key:
+        headers["Authorization"] = f"Bearer {info.api_key}"
+    try:
+        async with httpx.AsyncClient(timeout=settings.LLM_REQUEST_TIMEOUT) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text or str(exc)
+        raise HTTPException(status_code=400, detail=f"Failed to fetch model list: {detail}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch model list: {exc}") from exc
+
+    data = payload.get("data") if isinstance(payload, dict) else payload
+    if not isinstance(data, list):
+        raise HTTPException(status_code=400, detail="Remote model list response is invalid")
+
+    models: list[AiModelRemoteItem] = []
+    seen: set[str] = set()
+    for item in data:
+        model_id = item.get("id") if isinstance(item, dict) else None
+        if isinstance(model_id, str) and model_id and model_id not in seen:
+            seen.add(model_id)
+            models.append(AiModelRemoteItem(id=model_id))
+    return models
 
 
 @router.post("/status", include_in_schema=False)

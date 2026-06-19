@@ -8,24 +8,35 @@ import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import ParamsForm from './ParamsForm.vue'
 import { modelTypeOptions } from '@/entity/CommonEntity.ts'
 import { base_model_options, get_supplier } from '@/entity/supplier'
+import icon_common_openai from '@/assets/model/icon_common_openai.png'
 import { useI18n } from 'vue-i18n'
+import { modelApi } from '@/api/system'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     activeName: string
+    activeType?: string | number
     editModel: boolean
   }>(),
   {
     activeName: '',
+    activeType: '',
     editModel: false,
   }
 )
+
+const GENERIC_OPENAI_SUPPLIER_ID = 15
 
 interface ParamsFormData {
   key?: string
   val?: string
   name?: string
   id?: string
+}
+interface ModelOptionData {
+  name: string
+  api_domain?: string
+  args?: Array<any>
 }
 const { t } = useI18n()
 
@@ -46,6 +57,8 @@ const paramsFormRef = ref()
 const advancedSetting = ref([] as ParamsFormData[])
 const paramsFormDrawer = ref(false)
 const configExpand = ref(true)
+const remoteModelLoading = ref(false)
+const remoteModelOptions = ref<ModelOptionData[]>([])
 let tempConfigMap = new Map<string, Array<any>>()
 
 const modelSelected = computed(() => {
@@ -57,9 +70,17 @@ const currentSupplier = computed(() => {
   }
   return get_supplier(modelForm.supplier)
 })
+const useOpenAIConfigForm = computed(
+  () => props.editModel || Number(props.activeType) === GENERIC_OPENAI_SUPPLIER_ID
+)
+const editSupplierTitle = computed(() => t('supplier.generic_openai'))
+const editSupplierDescription = computed(() => t('model.openai_compatible_api'))
 const modelList = computed(() => {
   if (!modelForm.supplier) {
     return []
+  }
+  if (useOpenAIConfigForm.value) {
+    return remoteModelOptions.value
   }
   return base_model_options(modelForm.supplier, modelForm.model_type)
 })
@@ -107,17 +128,19 @@ const rules = computed(() => ({
     },
   ],
   base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'change' }],
-  name: [
-    { required: true, message: t('model.the_basic_model'), trigger: 'blur' },
-    {
-      max: 100,
-      message: t('model.length_max_error', { msg: t('model.model_name'), max: 100 }),
-      trigger: 'blur',
-    },
-  ],
+  name: useOpenAIConfigForm.value
+    ? []
+    : [
+        { required: true, message: t('model.the_basic_model'), trigger: 'blur' },
+        {
+          max: 100,
+          message: t('model.length_max_error', { msg: t('model.model_name'), max: 100 }),
+          trigger: 'blur',
+        },
+      ],
   api_key: [
     {
-      required: !currentSupplier.value?.is_private,
+      required: useOpenAIConfigForm.value || !currentSupplier.value?.is_private,
       message: t('datasource.please_enter') + t('common.empty') + 'API Key',
       trigger: 'blur',
     },
@@ -177,16 +200,27 @@ const supplierChang = (supplier: any) => {
   const config = supplier.model_config[modelForm.model_type || 0]
   modelForm.api_domain = config.api_domain
   modelForm.base_model = ''
+  modelForm.name = ''
   modelForm.protocol = supplier.type === 'vllm' ? 2 : 1
   advancedSetting.value = []
+  remoteModelOptions.value = []
 }
 let curId = +new Date()
 const initForm = (item?: any) => {
   modelForm.id = ''
   modelRef.value.clearValidate()
   tempConfigMap = new Map<string, Array<any>>()
+  remoteModelOptions.value = []
   if (item) {
-    Object.assign(modelForm, { ...item })
+    Object.assign(modelForm, {
+      ...item,
+      supplier: props.editModel ? GENERIC_OPENAI_SUPPLIER_ID : item.supplier,
+      protocol: props.editModel ? 1 : item.protocol,
+      name: props.editModel ? item.base_model || item.name : item.name,
+    })
+    if (item.base_model) {
+      remoteModelOptions.value = [{ name: item.base_model }]
+    }
     if (item?.config_list?.length) {
       advancedSetting.value = item.config_list
       advancedSetting.value.forEach((ele: any) => {
@@ -211,6 +245,10 @@ const formatAdvancedSetting = (list: Array<any>) => {
 }
 const baseModelChange = (val: string) => {
   if (!val || !modelForm.supplier) {
+    return
+  }
+  if (useOpenAIConfigForm.value) {
+    modelForm.name = val
     return
   }
   const current_model = modelList.value?.find((model: any) => model.name == val)
@@ -252,7 +290,35 @@ const getModelDefaultArgs = () => {
 }
 const emits = defineEmits(['submit'])
 
+const fetchRemoteModels = async () => {
+  await modelRef.value.validateField(['api_domain', 'api_key'])
+  remoteModelLoading.value = true
+  try {
+    const res = await modelApi.remoteModels({
+      api_domain: modelForm.api_domain,
+      api_key: modelForm.api_key,
+    })
+    remoteModelOptions.value = (res || []).map((item: any) => ({
+      name: item.id || item.name,
+    }))
+    if (!remoteModelOptions.value.length) {
+      ElMessage.warning(t('model.remote_model_empty'))
+      return
+    }
+    if (!remoteModelOptions.value.some((item) => item.name === modelForm.base_model)) {
+      modelForm.base_model = remoteModelOptions.value[0].name
+      baseModelChange(modelForm.base_model)
+    }
+    ElMessage.success(t('model.remote_model_fetch_success'))
+  } finally {
+    remoteModelLoading.value = false
+  }
+}
+
 const submitModel = () => {
+  if (useOpenAIConfigForm.value && modelForm.base_model) {
+    modelForm.name = modelForm.base_model
+  }
   modelRef.value.validate((res: any) => {
     if (res) {
       emits('submit', {
@@ -275,7 +341,90 @@ defineExpose({
 </script>
 
 <template>
-  <div class="model-form" :class="editModel && 'is-edit_model'">
+  <div class="model-form" :class="useOpenAIConfigForm && 'is-edit_model'">
+    <template v-if="useOpenAIConfigForm">
+      <el-scrollbar class="edit-scrollbar">
+        <div class="edit-form-content">
+          <div class="supplier-summary">
+            <img class="supplier-icon" :src="icon_common_openai" />
+            <div class="supplier-copy">
+              <div class="supplier-name">{{ editSupplierTitle }}</div>
+              <div class="supplier-desc">{{ editSupplierDescription }}</div>
+            </div>
+          </div>
+          <el-form
+            ref="modelRef"
+            :rules="rules"
+            label-position="top"
+            :model="modelForm"
+            style="width: 100%"
+            @submit.prevent
+          >
+            <div class="section-title">{{ t('model.connection_config') }}</div>
+            <el-form-item prop="api_domain">
+              <template #label>
+                <span class="custom-require_danger">{{ t('model.api_domain_name') }}</span>
+              </template>
+              <el-input
+                v-model="modelForm.api_domain"
+                clearable
+                :placeholder="
+                  $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
+                "
+              />
+            </el-form-item>
+            <el-form-item prop="api_key" label="API Key">
+              <template #label>
+                <span class="custom-require_danger">API Key</span>
+              </template>
+              <el-input
+                v-model="modelForm.api_key"
+                clearable
+                :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
+                type="password"
+                show-password
+              />
+            </el-form-item>
+            <div class="fetch-model-row">
+              <span class="fetch-model-tip">
+                {{
+                  remoteModelOptions.length
+                    ? t('model.remote_model_loaded', { count: remoteModelOptions.length })
+                    : t('model.fetch_model_list_first')
+                }}
+              </span>
+              <el-button type="primary" :loading="remoteModelLoading" @click="fetchRemoteModels">
+                {{ t('model.fetch_model_list') }}
+              </el-button>
+            </div>
+            <div class="section-divider"></div>
+            <div class="section-title">{{ t('model.model_selection') }}</div>
+            <el-form-item prop="base_model">
+              <template #label>
+                <span class="custom-require_danger">{{ t('model.basic_model') }}</span>
+              </template>
+              <el-select
+                v-model="modelForm.base_model"
+                style="width: 100%"
+                filterable
+                allow-create
+                default-first-option
+                :reserve-keyword="false"
+                @change="baseModelChange"
+              >
+                <el-option
+                  v-for="item in modelList"
+                  :key="item.name"
+                  :label="item.name"
+                  :value="item.name"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-scrollbar>
+    </template>
+    <template v-else>
     <div v-if="!editModel" class="model-name">{{ activeName }}</div>
     <el-scrollbar>
       <div class="form-content">
@@ -437,6 +586,7 @@ defineExpose({
         </el-button>
       </template>
     </el-drawer>
+    </template>
   </div>
 </template>
 
@@ -595,8 +745,94 @@ defineExpose({
 
   &.is-edit_model {
     width: 100%;
-    .form-content {
-      padding-bottom: 24px;
+
+    .edit-scrollbar {
+      height: 100%;
+    }
+
+    .edit-form-content {
+      padding: 38px 21px 80px;
+    }
+
+    .supplier-summary {
+      display: flex;
+      align-items: center;
+      padding-bottom: 22px;
+      border-bottom: 1px solid #e5e6eb;
+      margin-bottom: 24px;
+
+      .supplier-icon {
+        width: 32px;
+        height: 32px;
+        flex: none;
+      }
+
+      .supplier-copy {
+        min-width: 0;
+        margin-left: 12px;
+      }
+
+      .supplier-name {
+        font-weight: 600;
+        font-size: 16px;
+        line-height: 24px;
+        color: #0f172a;
+      }
+
+      .supplier-desc {
+        margin-top: 2px;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 22px;
+        color: #6b7280;
+      }
+    }
+
+    .section-title {
+      margin-bottom: 18px;
+      font-weight: 600;
+      font-size: 15px;
+      line-height: 22px;
+      color: #0f172a;
+    }
+
+    .section-divider {
+      height: 1px;
+      background: #e5e6eb;
+      margin: 20px 0 22px;
+    }
+
+    .fetch-model-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: -4px;
+      margin-bottom: 20px;
+    }
+
+    .fetch-model-tip {
+      min-width: 0;
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 22px;
+      color: #8f959e;
+    }
+
+    .custom-require_danger::after {
+      color: var(--ed-color-danger);
+      content: '*';
+      margin-left: 2px;
+    }
+
+    :deep(.ed-form-item--default) {
+      margin-bottom: 16px;
+    }
+
+    :deep(.ed-input__wrapper),
+    :deep(.ed-select__wrapper) {
+      min-height: 32px;
+      border-radius: 6px;
     }
   }
 }

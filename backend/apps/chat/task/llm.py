@@ -40,6 +40,7 @@ from apps.datasource.crud.analysis_context import (
     ensure_request_datasource_matches_chat,
 )
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
+from apps.datasource.crud.query_execution import call_exec_sql_compat, execute_scoped_query
 from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
@@ -1119,7 +1120,7 @@ class LLMService:
     def finish(self, session: Session):
         return finish_record(session=session, record_id=self.record.id)
 
-    def execute_sql(self, sql: str):
+    def execute_sql(self, sql: str, allow_row_permission_filter_star: bool = False):
         """Execute SQL query
 
         Args:
@@ -1131,6 +1132,33 @@ class LLMService:
         """
         AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
+            if isinstance(self.ds, CoreDatasource):
+                with session_maker() as session:
+                    result = execute_scoped_query(
+                        session=session,
+                        current_user=self.current_user,
+                        datasource_id=self.ds.id,
+                        sql=sql,
+                        purpose="smart_qa",
+                        row_limit=settings.SQL_QUERY_DEFAULT_ROW_LIMIT if self.enable_sql_row_limit else None,
+                        executor=lambda datasource, execute_sql_text, origin_column=False,
+                                        execution_timeout_seconds=None, fetch_limit=None: call_exec_sql_compat(
+                            exec_sql,
+                            ds=datasource,
+                            sql=execute_sql_text,
+                            origin_column=origin_column,
+                            execution_timeout_seconds=execution_timeout_seconds,
+                            fetch_limit=fetch_limit,
+                        ),
+                        apply_row_permissions=False,
+                        allow_row_permission_filter_star=allow_row_permission_filter_star,
+                        record_id=self.record.id,
+                        model_id=getattr(self.config, "model_id", None),
+                        custom_agent_id=getattr(self.chat_question, "custom_prompt_id", None),
+                    )
+                if result.get("status") == "failed":
+                    raise AppDBError(result.get("message") or "SQL execution failed")
+                return result
             return exec_sql(ds=self.ds, sql=sql, origin_column=False)
         except Exception as e:
             if isinstance(e, ParseSQLResultError):
@@ -1369,15 +1397,21 @@ class LLMService:
             self.current_logs[OperationEnum.EXECUTE_SQL] = start_log(session=_session,
                                                                      operate=OperationEnum.EXECUTE_SQL,
                                                                      record_id=self.record.id, local_operation=True)
-            result = self.execute_sql(sql=real_execute_sql)
+            result = self.execute_sql(
+                sql=real_execute_sql,
+                allow_row_permission_filter_star=sql_operate == OperationEnum.GENERATE_SQL_WITH_PERMISSIONS,
+            )
             self.current_logs[OperationEnum.EXECUTE_SQL] = end_log(session=_session,
                                                                    log=self.current_logs[OperationEnum.EXECUTE_SQL],
                                                                    full_message={'sql': real_execute_sql,
                                                                                  'count': len(result.get('data'))})
 
-            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
-            _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
-            result["data"] = _data
+            if result.get("formatted"):
+                _data = result.get("data") or []
+            else:
+                _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
+                _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
+                result["data"] = _data
 
             self.save_sql_data(session=_session, data_obj=result)
             if in_chat:

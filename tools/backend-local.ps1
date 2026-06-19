@@ -74,7 +74,7 @@ function Wait-BackendReady([int]$Port, [int]$TimeoutSeconds = 60) {
 
 function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:POSTGRES_SERVER = "127.0.0.1"
-    $env:POSTGRES_PORT = "15433"
+    $env:POSTGRES_PORT = "15432"
     $env:POSTGRES_DB = "zhishu_bi_single_ha"
     $env:POSTGRES_USER = "root"
     $env:POSTGRES_PASSWORD = "Password123@pg"

@@ -28,3 +28,12 @@ class AiModelCreator(AiModelItem):
     
 class AiModelEditor(AiModelCreator, BaseCreatorDTO):
     pass
+
+
+class AiModelRemoteListRequest(BaseModel):
+    api_domain: str = Field(description=f"{PLACEHOLDER_PREFIX}api_domain")
+    api_key: str = Field(default="", description=f"{PLACEHOLDER_PREFIX}api_key")
+
+
+class AiModelRemoteItem(BaseModel):
+    id: str
