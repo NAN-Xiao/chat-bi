@@ -1,7 +1,7 @@
 param(
     [ValidateSet("start", "stop", "restart", "status")]
     [string]$Action = "status",
-    [int[]]$BackendPorts = @(8000),
+    [int[]]$BackendPorts = @(8010),
     [ValidateSet("auto", "memory", "redis", "none")]
     [string]$CacheType = "auto",
     [string]$RedisHost = "127.0.0.1",
@@ -9,16 +9,17 @@ param(
     [string]$RedisServiceName = "",
     [string]$RedisServerPath = "",
     [string]$PostgresHost = "127.0.0.1",
-    [int]$PostgresPort = 15432,
+    [int]$PostgresPort = 15433,
     [string]$PostgresServiceName = "",
     [string]$PostgresBin = "",
     [string]$PostgresData = "",
     [string]$NginxHome = $env:NGINX_HOME,
-    [int]$NginxPort = 8080,
+    [int]$NginxPort = 8081,
     [switch]$StartWorker,
     [switch]$SkipWorker,
     [int]$Workers = 1,
     [switch]$StartMcp,
+    [int]$McpPort = 8011,
     [switch]$SkipDatabase,
     [switch]$SkipRedis,
     [switch]$SkipNginx
@@ -220,6 +221,8 @@ function Start-Backend {
         CacheType = $CacheType
         RedisHost = $RedisHost
         RedisPort = $RedisPort
+        FrontendHost = "http://localhost:5174"
+        McpPort = $McpPort
     }
     if ($StartMcp) {
         $backendParams.StartMcp = $true
@@ -233,6 +236,7 @@ function Stop-Backend {
         BackendPorts = $BackendPorts
         RedisHost = $RedisHost
         RedisPort = $RedisPort
+        McpPort = $McpPort
     }
     if ($StartMcp) {
         $backendParams.StartMcp = $true
@@ -269,7 +273,7 @@ function Start-Nginx {
         Write-Warning "Nginx not found: $nginxExe. Start skipped."
         return
     }
-    & $nginxScript -Action start -NginxHome $resolvedNginxHome -ListenPort $NginxPort -BackendPorts $BackendPorts
+    & $nginxScript -Action start -NginxHome $resolvedNginxHome -ListenPort $NginxPort -BackendPorts $BackendPorts -McpPort $McpPort
 }
 
 function Stop-Nginx {
@@ -282,7 +286,7 @@ function Stop-Nginx {
         Write-Host "Nginx stop skipped. Cannot find: $nginxExe"
         return
     }
-    & $nginxScript -Action stop -NginxHome $resolvedNginxHome -ListenPort $NginxPort -BackendPorts $BackendPorts
+    & $nginxScript -Action stop -NginxHome $resolvedNginxHome -ListenPort $NginxPort -BackendPorts $BackendPorts -McpPort $McpPort
 }
 
 function Show-StackStatus {
@@ -311,8 +315,8 @@ function Show-StackStatus {
     if ($StartMcp) {
         $rows += [pscustomobject]@{
             Component = "mcp"
-            Endpoint = "127.0.0.1:8001"
-            State = if (Test-TcpPort -HostName "127.0.0.1" -Port 8001) { "listening" } else { "closed" }
+            Endpoint = "127.0.0.1:$McpPort"
+            State = if (Test-TcpPort -HostName "127.0.0.1" -Port $McpPort) { "listening" } else { "closed" }
         }
     }
     if (-not $SkipWorker) {

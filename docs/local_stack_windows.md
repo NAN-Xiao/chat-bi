@@ -2,10 +2,10 @@
 
 `tools/stack-local.ps1` 用来把本地开发环境的核心服务串起来：
 
-- PostgreSQL：默认检查 `127.0.0.1:15432`。
+- PostgreSQL：默认检查 `127.0.0.1:15433`。
 - Redis：默认检查 `127.0.0.1:6379`。
-- backend：默认单副本 `8000`。
-- Nginx：默认监听 `8080`。
+- backend：默认单副本 `8010`。
+- Nginx：默认监听 `8081`。
 - worker：默认启动 1 个，用于消费 Redis 任务队列。
 
 脚本会优先探测端口。PostgreSQL 和 Redis 如果已经在运行，就不会重复启动；如果没运行，只有在你提供服务名或可执行文件路径时才会尝试拉起。
@@ -33,13 +33,13 @@
 多副本会让 backend 本地脚本自动切到 Redis 缓存：
 
 ```powershell
-.\tools\stack-local.ps1 -Action start -BackendPorts 8000,8002,8003 -StartWorker -Workers 2
+.\tools\stack-local.ps1 -Action start -BackendPorts 8010,8012,8013 -StartWorker -Workers 2
 ```
 
 Nginx 会把流量分发到这些 backend 端口：
 
 ```text
-http://127.0.0.1:8080/
+http://127.0.0.1:8081/
 ```
 
 ## 启动 PostgreSQL 或 Redis

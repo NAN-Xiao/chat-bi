@@ -13,7 +13,7 @@
 
 - Redis 应用侧基础接入：统一 client、连接池、健康检查、分布式锁工具。
 - `/health` 和 `/ready`：提供给 Nginx 或负载均衡做探活。
-- Nginx 本地配置：默认代理单副本 `8000`，也支持 `8000,8002,8003`。
+- Nginx 本地配置：当前 clone 默认代理单副本 `8010`，也支持 `8010,8012,8013`。
 - 后端本地启动脚本：默认开发单副本，多端口时启用多副本。
 - 任务队列第一版：Redis 队列、任务状态、worker 启动入口、`system.ping` 测试任务、字段同步和 embedding 刷新任务。
 - 本地一键编排脚本：`tools/stack-local.ps1` 串联 PostgreSQL、Redis、backend、Nginx 和 worker。
@@ -33,14 +33,14 @@
 开发默认：
 
 ```text
-frontend 5173
-backend 8000
-PostgreSQL 15432
+frontend 5174
+backend 8010
+PostgreSQL 15433
 Redis 6379 可选
-Nginx 8080 可选
+Nginx 8081 可选
 ```
 
-生产/压测目标：
+生产目标：
 
 ```text
 Nginx 80/443
@@ -61,7 +61,7 @@ worker 任务队列
 多副本压测或上线前模拟再显式开启：
 
 ```powershell
-.\tools\stack-local.ps1 -Action start -BackendPorts 8000,8002,8003 -StartWorker -Workers 2
+.\tools\stack-local.ps1 -Action start -BackendPorts 8010,8012,8013 -StartWorker -Workers 2
 ```
 
 当前已有业务动作依赖任务队列，`stack-local.ps1` 默认启动 1 个 worker；只有明确不测试队列时才使用 `-SkipWorker`。

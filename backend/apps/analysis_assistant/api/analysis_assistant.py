@@ -5,22 +5,27 @@ from datetime import datetime
 from typing import Any, Literal
 
 import orjson
+import sqlglot
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
+from sqlglot import exp
 from sqlmodel import select
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
-from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts
-from apps.data_training.curd.data_training import get_training_template
-from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
-from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
+from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, CustomPromptTypeEnum
+from apps.datasource.crud.analysis_context import (
+    collect_custom_agent_context,
+    collect_metric_knowledge,
+    resolve_datasource_context,
+)
+from apps.datasource.crud.datasource import get_table_schema, get_tables_sample_data
+from apps.datasource.crud.permission import get_row_permission_filters, is_normal_user
 from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import exec_sql
-from apps.system.crud.user import is_system_admin
-from apps.terminology.curd.terminology import get_terminology_template
+from apps.db.constant import DB
+from apps.db.db import exec_sql, get_sqlglot_dialect
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.utils import extract_nested_json
 
@@ -85,6 +90,94 @@ MAX_SQL_ROWS = 200
 MAX_FORECAST_QUERIES = 4
 
 
+def _db_info(datasource: CoreDatasource) -> DB:
+    return DB.get_db(getattr(datasource, "type", None), default_if_none=True)
+
+
+def _database_name(datasource: CoreDatasource) -> str:
+    return _db_info(datasource).db_name
+
+
+def _sqlglot_write_dialect(datasource: CoreDatasource) -> str | None:
+    ds_type = str(getattr(datasource, "type", "") or "")
+    dialect = get_sqlglot_dialect(ds_type)
+    if dialect:
+        return dialect
+    if ds_type.casefold() in {"pg", "excel"}:
+        return "postgres"
+    if ds_type.casefold() in {"redshift", "kingbase"}:
+        return "postgres"
+    if ds_type.casefold() == "oracle":
+        return "oracle"
+    if ds_type.casefold() == "ck":
+        return "clickhouse"
+    return None
+
+
+def _limit_instruction(datasource: CoreDatasource) -> str:
+    database_name = _database_name(datasource)
+    ds_type = str(getattr(datasource, "type", "") or "")
+    if ds_type.casefold() == "sqlserver":
+        syntax = f"使用 SELECT TOP {MAX_SQL_ROWS} ...，或 OFFSET/FETCH 分页语法；禁止使用 LIMIT。"
+    elif ds_type.casefold() == "oracle":
+        syntax = f"使用 FETCH FIRST {MAX_SQL_ROWS} ROWS ONLY；复杂聚合也可以在最外层使用 ROWNUM <= {MAX_SQL_ROWS}。"
+    else:
+        syntax = f"使用 LIMIT {MAX_SQL_ROWS}。"
+    return (
+        f"当前数据源数据库：{database_name}（type={ds_type or 'unknown'}）。"
+        f"生成和修正 SQL 必须使用该数据库方言，最多返回 {MAX_SQL_ROWS} 行；"
+        f"{syntax}"
+    )
+
+
+def _dialect_block(datasource: CoreDatasource) -> str:
+    db = _db_info(datasource)
+    return (
+        "数据库方言强制规则：\n"
+        f"- {_limit_instruction(datasource)}\n"
+        f"- 标识符引用请使用 {db.db_name} 的习惯写法（前缀 {db.prefix}，后缀 {db.suffix}），"
+        "不要混用其它数据库的专属语法。\n\n"
+    )
+
+
+def _clean_identifier(identifier: str) -> str:
+    value = str(identifier or "").strip()
+    if value.startswith("[") and value.endswith("]"):
+        return value[1:-1]
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("`") and value.endswith("`")):
+        return value[1:-1]
+    return value
+
+
+def _quote_identifier(identifier: str, datasource: CoreDatasource) -> str:
+    db = _db_info(datasource)
+    value = _clean_identifier(identifier)
+    if db.prefix == "[" and db.suffix == "]":
+        value = value.replace("]", "]]")
+    elif db.prefix == "`":
+        value = value.replace("`", "``")
+    elif db.prefix == '"':
+        value = value.replace('"', '""')
+    return f"{db.prefix}{value}{db.suffix}"
+
+
+def _quote_table_reference(table_ref: str, datasource: CoreDatasource) -> str:
+    parts = [_clean_identifier(part) for part in str(table_ref or "").split(".") if part.strip()]
+    return ".".join(_quote_identifier(part, datasource) for part in parts)
+
+
+def _profile_table_reference(raw_table: str, datasource: CoreDatasource) -> str:
+    ds_type = str(getattr(datasource, "type", "") or "").casefold()
+    table_ref = str(raw_table or "").strip()
+    if "." in table_ref and ds_type not in {"sqlserver", "oracle", "dm"}:
+        table_ref = table_ref.split(".")[-1].strip()
+    return _quote_table_reference(table_ref, datasource)
+
+
+def _normalise_aggregate_alias(expression: str, alias: str, datasource: CoreDatasource) -> str:
+    return f"{expression} AS {_quote_identifier(alias, datasource)}"
+
+
 PLAN_PROMPT = """请基于用户问题、页面上下文和数据库 schema，生成综合分析计划。
 
 你必须只输出一个合法 JSON 对象，不要输出 Markdown，不要输出额外解释。
@@ -98,7 +191,7 @@ JSON 格式：
       "id": "q1",
       "title": "图表标题",
       "purpose": "为什么要查这组数据",
-      "sql": "只读 SQL，必须是 PostgreSQL 语法，最多返回 200 行",
+      "sql": "只读 SQL，必须使用当前数据源数据库方言，最多返回 200 行",
       "chart_type": "line|column|bar|pie|metric|funnel|heatmap|scatter|sankey|treemap|table",
       "x": "结果集中作为维度或时间轴的字段别名",
       "y": "结果集中作为指标的字段别名",
@@ -116,8 +209,8 @@ JSON 格式：
 - 具体指标定义、字段选择、计算算法、时间窗口和异常判断必须优先遵循“统一业务口径”的术语与 SQL 示例；知识块没有覆盖时，才结合 schema 和样例数据做业务合理推断。
 - 如果用户提到“最近一个月/近期”等相对时间，并且上下文提供了真实数据时间边界，优先以相关数据表里的最大日期为基准，而不是系统当前日期。
 - 如果用户明确给出“最近 7 天/近 7 日/最近 N 天”等时间范围，SQL、标题和分析口径必须严格使用这个范围，不要擅自扩大成 30 天或最近一个月。
-- 如果问题是归因类，至少覆盖趋势、结构拆解、关键分组/渠道/产品/服务器等角度中的两个。
-- 图表类型应尽量可视化：核心单值指标用 metric，趋势用 line，结构/分布/占比用 bar/pie/treemap，转化路径用 funnel，留存 cohort 或二维分布用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey；只有无法确定维度和指标时才使用 table。
+- 如果问题是归因类，至少覆盖趋势、结构拆解、关键分组维度等角度中的两个；具体分组字段必须来自当前 schema 或语义层。
+- 图表类型应尽量可视化：核心单值指标用 metric，趋势用 line，结构/分布/占比用 bar/pie/treemap，步骤转化用 funnel，矩阵或二维分布用 heatmap，二维关系用 scatter，来源去向或路径流转用 sankey；只有无法确定维度和指标时才使用 table。
 """
 
 
@@ -128,8 +221,8 @@ FORECAST_PLAN_PROMPT = """请基于用户问题、页面上下文、数据库 sc
 JSON 格式：
 {
   "intro": "用业务语言说明用户想预测什么指标、目标对象是什么、你会如何使用已观测数据和历史规律进行预测。",
-  "forecast_metric": "预测指标，例如 retention、ltv、lifecycle_revenue、revenue、payer_rate、arpu、orders、other",
-  "forecast_target": "预测对象，例如某日新增用户 cohort、最近 7 天新增用户、未来 7 天流水等",
+  "forecast_metric": "预测指标，例如当前语义层定义的核心指标、金额、比率、均值、数量或 other",
+  "forecast_target": "预测对象，例如某个分组、最近 N 天目标群体、未来 N 天指标等",
   "forecast_method": "简要说明预测方法，必须说明已观测数据、历史基准、成熟样本、置信度如何使用",
   "steps": ["预测步骤1", "预测步骤2"],
   "queries": [
@@ -137,9 +230,9 @@ JSON 格式：
       "id": "q1",
       "title": "图表标题",
       "purpose": "为什么要查这组数据",
-      "sql": "只读 SQL，必须是 PostgreSQL 语法，最多返回 200 行",
+      "sql": "只读 SQL，必须使用当前数据源数据库方言，最多返回 200 行",
       "chart_type": "line|column|bar|pie|metric|funnel|heatmap|scatter|sankey|treemap|table",
-      "x": "结果集中作为时间、生命周期天数或维度的字段别名",
+      "x": "结果集中作为时间、序列位置或维度的字段别名",
       "y": "结果集中作为预测值或核心指标的字段别名",
       "series": "可选，结果集中作为分组系列的字段别名"
     }
@@ -156,13 +249,13 @@ JSON 格式：
 - 预测结果要区分已观测值、历史基准、预测值和置信度；数据不足时要明确说明不确定性，不要把无数据当成确定结论。
 - 查询结果中如果包含 confidence/confidence_level，取值必须与样本量、已观测天数和历史基准可用性一致；不要出现字段为 High 但总结又说 Low 的矛盾。
 - 查询结果中尽量包含 sample_size、actual_value、predicted_value、benchmark_value、forecast_basis、confidence 等字段；如果字段命名和业务不匹配，可用同义字段，但必须让图表和总结能区分实测与预测。
-- 折线图必须至少有两个时间点或生命周期天数；单个倍率、单个基准值、单行结果不要使用 line，应使用 table、metric 或 bar。
-- 趋势/生命周期曲线用 line；核心单值指标用 metric；分组对比用 bar/column；占比结构且指标可累加时可用 pie，层级/贡献结构可用 treemap；转化路径用 funnel；留存 cohort 或二维分布用 heatmap；二维关系用 scatter；流向/路径/资源转移用 sankey。
-- queries 数量 2 到 4 个：至少包含一个主预测曲线/预测表；如果用户需要归因或结构拆解，再包含渠道、设备、服务器、产品等维度。
+- 折线图必须至少有两个时间点或序列位置；单个倍率、单个基准值、单行结果不要使用 line，应使用 table、metric 或 bar。
+- 趋势或序列曲线用 line；核心单值指标用 metric；分组对比用 bar/column；占比结构且指标可累加时可用 pie，层级/贡献结构可用 treemap；步骤转化用 funnel；矩阵或二维分布用 heatmap；二维关系用 scatter；来源去向或路径流转用 sankey。
+- queries 数量 2 到 4 个：至少包含一个主预测曲线/预测表；如果用户需要归因或结构拆解，再包含当前 schema 或语义层中可用的关键维度。
 """
 
 
-SQL_REPAIR_PROMPT = """你是 PostgreSQL 查询修正器。请根据执行错误、原始 SQL 和 schema 修正 SQL。
+SQL_REPAIR_PROMPT = """你是当前数据源的 SQL 查询修正器。请根据执行错误、原始 SQL 和 schema 修正 SQL。
 
 你必须只输出一个合法 JSON 对象，不要输出 Markdown，不要输出额外解释。
 
@@ -281,7 +374,70 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return data
 
 
-def _normalise_sql(sql: str) -> str:
+def _contains_row_limit(sql: str) -> bool:
+    return bool(
+        re.search(r"\blimit\s+\d+\b", sql, flags=re.IGNORECASE)
+        or re.search(r"\btop\s+\(?\d+\)?\b", sql, flags=re.IGNORECASE)
+        or re.search(r"\bfetch\s+(?:first|next)\s+\d+\s+rows\s+only\b", sql, flags=re.IGNORECASE)
+        or re.search(r"\brownum\s*<=\s*\d+\b", sql, flags=re.IGNORECASE)
+    )
+
+
+def _clamp_common_limit_syntax(sql: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        value = int(match.group("value"))
+        if value <= MAX_SQL_ROWS:
+            return match.group(0)
+        suffix = match.groupdict().get("suffix") or ""
+        return f"{match.group('prefix')}{MAX_SQL_ROWS}{suffix}"
+
+    patterns = (
+        r"(?P<prefix>\blimit\s+)(?P<value>\d+)(?P<suffix>\b)(?!\s*,)",
+        r"(?P<prefix>\btop\s+\(?)(?P<value>\d+)(?P<suffix>\)?\b)",
+        r"(?P<prefix>\bfetch\s+(?:first|next)\s+)(?P<value>\d+)(?P<suffix>\s+rows\s+only\b)",
+        r"(?P<prefix>\brownum\s*<=\s*)(?P<value>\d+)(?P<suffix>\b)",
+    )
+    for pattern in patterns:
+        sql = re.sub(pattern, replace, sql, flags=re.IGNORECASE)
+    return sql
+
+
+def _limit_literal(limit: exp.Expression | None) -> exp.Literal | None:
+    if limit is None:
+        return None
+    value = limit.args.get("expression") or limit.args.get("count")
+    return value if isinstance(value, exp.Literal) else None
+
+
+def _enforce_max_limit(statement: exp.Expression) -> None:
+    limit = statement.args.get("limit")
+    if limit is None:
+        if not isinstance(statement, exp.Query):
+            raise ValueError("综合分析助手只允许执行查询语句")
+        statement.set("limit", exp.Limit(expression=exp.Literal.number(MAX_SQL_ROWS)))
+        return
+
+    literal = _limit_literal(limit)
+    if literal is None:
+        return
+    try:
+        value = int(str(literal.this))
+    except (TypeError, ValueError):
+        return
+    if value <= MAX_SQL_ROWS:
+        return
+    if "count" in limit.args:
+        limit.set("count", exp.Literal.number(MAX_SQL_ROWS))
+    else:
+        limit.set("expression", exp.Literal.number(MAX_SQL_ROWS))
+
+
+def _supports_limit_wrapper(datasource: CoreDatasource) -> bool:
+    ds_type = str(getattr(datasource, "type", "") or "")
+    return ds_type.casefold() not in {"sqlserver", "oracle"}
+
+
+def _normalise_sql(sql: str, datasource: CoreDatasource | None = None) -> str:
     sql = (sql or "").strip()
     sql = re.sub(r"^```(?:sql)?", "", sql, flags=re.IGNORECASE).strip()
     sql = re.sub(r"```$", "", sql).strip()
@@ -289,27 +445,39 @@ def _normalise_sql(sql: str) -> str:
         sql = sql[:-1].strip()
     if not re.match(r"^(select|with)\b", sql, flags=re.IGNORECASE):
         raise ValueError("综合分析助手只允许执行 SELECT/WITH 查询")
-    if not re.search(r"\blimit\s+\d+\b", sql, flags=re.IGNORECASE):
-        sql = f"select * from ({sql}) as analysis_query_limit limit {MAX_SQL_ROWS}"
+    if ";" in sql:
+        raise ValueError("综合分析助手每个数据块只允许执行一条 SELECT/WITH 查询")
+    sql = _clamp_common_limit_syntax(sql)
+    if datasource is None:
+        datasource = CoreDatasource(type="pg", name="", configuration="{}", create_by=0, recommended_config=0)
+    dialect = _sqlglot_write_dialect(datasource)
+    try:
+        statements = [statement for statement in sqlglot.parse(sql, dialect=dialect) if statement is not None]
+        if len(statements) != 1:
+            raise ValueError("综合分析助手每个数据块只允许执行一条 SELECT/WITH 查询")
+        statement = statements[0]
+        _enforce_max_limit(statement)
+        return statement.sql(dialect=dialect)
+    except ValueError:
+        raise
+    except Exception as exc:
+        if _contains_row_limit(sql):
+            return sql
+        if _supports_limit_wrapper(datasource):
+            return f"select * from ({sql}) as analysis_query_limit limit {MAX_SQL_ROWS}"
+        raise ValueError("SQL 解析失败，无法安全应用当前数据库的行数限制") from exc
     return sql
 
 
 def _get_datasource(
     session: SessionDep, current_user: CurrentUser, datasource_id: int | None
 ) -> CoreDatasource:
-    if datasource_id is not None:
-        datasource = session.get(CoreDatasource, datasource_id)
-        if not datasource or not has_datasource_access(session, current_user, datasource_id):
-            raise RuntimeError("当前用户无权访问该项目，或项目不存在")
-        return datasource
-
-    datasource_list = get_datasource_list(session=session, user=current_user)
-    if not datasource_list:
-        raise RuntimeError("当前没有可用项目，请联系管理员创建或分配项目")
-    if len(datasource_list) > 1:
-        raise RuntimeError("当前有多个项目，请先选择本次综合分析要使用的项目")
-    datasource = datasource_list[0]
-    return datasource
+    return resolve_datasource_context(
+        session,
+        current_user,
+        datasource_id,
+        require_explicit_when_multiple=True,
+    ).datasource
 
 
 def _apply_row_permissions(
@@ -330,7 +498,7 @@ def _apply_row_permissions(
     )
     if not filters:
         return sql
-    return _normalise_sql(apply_row_permission_filters(sql, datasource, filters))
+    return _normalise_sql(apply_row_permission_filters(sql, datasource, filters), datasource)
 
 
 def _prepare_sql_for_execution(
@@ -341,7 +509,7 @@ def _prepare_sql_for_execution(
     raw_sql: str,
     allowed_tables: list[str],
 ) -> str:
-    sql = _normalise_sql(raw_sql)
+    sql = _normalise_sql(raw_sql, datasource)
     _statements, tables_set, _permission_scope = validate_sql_scope(session, current_user, datasource, sql)
     tables = sorted(tables_set)
     unauthorized_tables = tables_set - set(allowed_tables)
@@ -361,22 +529,8 @@ def _collect_metric_knowledge(
     """Reuse the project's existing semantic layer (术语 terminology + 数据训练 SQL 示例)
     so the assistant shares the SAME metric definitions as 智能报表, instead of letting
     the LLM re-invent 口径 every time."""
-    parts: list[str] = []
-    if current_user is not None and is_normal_user(current_user):
-        return ""
-    try:
-        terminology_template, _terms = get_terminology_template(session, question, datasource_id)
-        if terminology_template and terminology_template.strip():
-            parts.append(terminology_template.strip())
-    except Exception:
-        traceback.print_exc()
-    try:
-        training_template, _examples = get_training_template(session, question, datasource_id)
-        if training_template and training_template.strip():
-            parts.append(training_template.strip())
-    except Exception:
-        traceback.print_exc()
-    return "\n\n".join(parts)
+    knowledge, _terms, _examples = collect_metric_knowledge(session, datasource_id, question)
+    return knowledge
 
 
 def _collect_custom_agent_context(
@@ -387,20 +541,22 @@ def _collect_custom_agent_context(
 ) -> tuple[str, int | None]:
     if not custom_prompt_id:
         return "", None
-    try:
-        prompt_text, _prompt_list, ai_model_id = find_custom_prompts(
+    for custom_prompt_type in (
+        CustomPromptTypeEnum.ANALYSIS,
+        CustomPromptTypeEnum.GENERATE_SQL,
+        CustomPromptTypeEnum.PREDICT_DATA,
+    ):
+        prompt_text, _prompt_list, ai_model_id = collect_custom_agent_context(
             session,
-            None,
             datasource_id,
-            CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
             custom_prompt_id,
-            getattr(current_user, "id", None),
-            is_system_admin(current_user),
+            current_user,
+            target_scope=CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+            custom_prompt_type=custom_prompt_type,
         )
-        return prompt_text.strip(), ai_model_id
-    except Exception:
-        traceback.print_exc()
-        return "", None
+        if prompt_text:
+            return prompt_text, ai_model_id
+    return "", None
 
 
 def _knowledge_block(knowledge: str) -> str:
@@ -463,7 +619,7 @@ def _collect_date_bounds(datasource: CoreDatasource, schema: str) -> str:
     for raw_table, body in table_blocks:
         if table_count >= 8:
             break
-        table_name = raw_table.strip().split(".")[-1].strip()
+        table_name = raw_table.strip()
         if not table_name:
             continue
         date_fields: list[str] = []
@@ -475,9 +631,10 @@ def _collect_date_bounds(datasource: CoreDatasource, schema: str) -> str:
             continue
         select_parts: list[str] = []
         for index, field in enumerate(date_fields):
-            select_parts.append(f'MAX("{field}")::text AS f{index}_max')
-            select_parts.append(f'MIN("{field}")::text AS f{index}_min')
-        sql = f'SELECT {", ".join(select_parts)} FROM {table_name}'
+            quoted_field = _quote_identifier(field, datasource)
+            select_parts.append(f"{_normalise_aggregate_alias(f'MAX({quoted_field})', f'f{index}_max', datasource)}")
+            select_parts.append(f"{_normalise_aggregate_alias(f'MIN({quoted_field})', f'f{index}_min', datasource)}")
+        sql = f"SELECT {', '.join(select_parts)} FROM {_profile_table_reference(table_name, datasource)}"
         try:
             result = exec_sql(datasource, sql, origin_column=False)
             data = result.get("data") or []
@@ -606,12 +763,11 @@ def _requested_metric_field(query: dict[str, Any], numeric: list[str], x_field: 
     text = _query_metric_text(query)
     available = [field for field in numeric if field != x_field]
     metric_groups: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
-        (("ltv", "生命周期价值", "生命周期收入", "长期价值"), ("ltv", "arpu", "predicted_value", "actual_value", "benchmark_value")),
-        (("流水", "收入", "金额", "付费收入", "支付金额", "revenue", "amount", "gmv"), ("revenue", "amount", "income", "gmv", "pay_amount", "paid_amount")),
-        (("转化", "渗透", "付费率", "rate", "conversion"), ("rate", "ratio", "conversion")),
-        (("arppu",), ("arppu",)),
-        (("arpu",), ("arpu",)),
-        (("用户数", "人数", "新增", "注册", "user", "payer"), ("users", "user_count", "payers", "payer_count", "new_users")),
+        (("预测", "预估", "forecast", "predict"), ("predicted", "forecast", "actual", "benchmark")),
+        (("金额", "收入", "流水", "revenue", "amount", "income", "gmv"), ("revenue", "amount", "income", "gmv")),
+        (("比率", "比例", "转化", "rate", "ratio", "conversion"), ("rate", "ratio", "conversion", "pct", "percent")),
+        (("均值", "平均", "average", "avg", "mean"), ("avg", "average", "mean", "per_")),
+        (("数量", "总数", "人数", "次数", "count", "total", "number"), ("count", "cnt", "total", "num", "users", "items", "orders")),
         (("订单", "次数", "count"), ("orders", "order_count", "cnt", "count")),
     ]
     for text_keywords, field_keywords in metric_groups:
@@ -634,7 +790,7 @@ def _choose_metric_field(query: dict[str, Any], numeric: list[str], x_field: str
         (
             field
             for field in available
-            if _field_matches(field, ("revenue", "amount", "income", "gmv", "pay_amount", "paid_amount"))
+            if _field_matches(field, ("revenue", "amount", "income", "gmv"))
         ),
         None,
     )
@@ -681,11 +837,11 @@ def _choose_visual_chart_type(
         return "metric"
     if any(keyword in text for keyword in ("漏斗", "转化路径", "转化漏斗", "funnel")):
         return "funnel"
-    if any(keyword in text for keyword in ("热力", "热力图", "cohort", "留存矩阵", "二维分布", "heatmap")):
+    if any(keyword in text for keyword in ("热力", "热力图", "矩阵", "二维分布", "heatmap", "matrix")):
         return "heatmap"
     if any(keyword in text for keyword in ("散点", "相关性", "关系分布", "scatter")):
         return "scatter"
-    if any(keyword in text for keyword in ("流向", "路径流转", "资源流", "桑基", "sankey")):
+    if any(keyword in text for keyword in ("流向", "路径流转", "来源去向", "桑基", "sankey")):
         return "sankey"
     if any(keyword in text for keyword in ("矩形树", "树图", "层级贡献", "treemap")):
         return "treemap"
@@ -693,7 +849,7 @@ def _choose_visual_chart_type(
     if _looks_like_time_field(x_field) or any(keyword in text for keyword in ("趋势", "变化", "按天", "每日", "time trend")):
         return "line"
 
-    structure_keywords = ("结构", "分布", "占比", "构成", "来源", "渠道", "商品", "类型", "档位", "偏好")
+    structure_keywords = ("结构", "分布", "占比", "构成", "来源", "类型", "类别", "分组")
     if any(keyword in text for keyword in structure_keywords):
         return "pie" if len(rows) <= 12 else "bar"
     return "bar"
@@ -713,7 +869,7 @@ def _is_pie_metric_suitable(query: dict[str, Any], y_field: str | None) -> bool:
     text = _query_metric_text(query)
     if any(
         keyword in text
-        for keyword in ("倍率", "倍数", "增长率", "预测", "预估", "ltv", "arpu", "arppu", "predicted", "forecast")
+        for keyword in ("倍率", "倍数", "增长率", "预测", "预估", "predicted", "forecast")
     ):
         return False
     return not _field_matches(
@@ -724,8 +880,6 @@ def _is_pie_metric_suitable(query: dict[str, Any], y_field: str | None) -> bool:
             "conversion",
             "avg",
             "average",
-            "arpu",
-            "arppu",
             "per_",
             "percent",
             "pct",
@@ -796,7 +950,7 @@ def _build_chart_config(query: dict[str, Any], result: dict[str, Any]) -> dict[s
             (
                 field
                 for field in fields
-                if _field_matches(field, ("users", "user_count", "players", "player_count", "converted_users", "count"))
+                if _field_matches(field, ("users", "user_count", "entity", "entity_count", "converted", "count"))
                 and field in numeric
             ),
             None,
@@ -861,33 +1015,9 @@ def _coerce_day_number(value: Any) -> int | None:
 def _value_range_error(fields: list[str], rows: list[dict[str, Any]]) -> str | None:
     """Metric-agnostic guardrails: catch impossible values regardless of what
     the user asked to analyse or predict."""
-    rate_keywords = (
-        "retention",
-        "留存",
-        "conversion",
-        "转化率",
-        "payer_rate",
-        "付费率",
-        "渗透",
-        "复购率",
-        "流失率",
-    )
+    rate_keywords = ("rate", "ratio", "conversion", "比率", "比例", "转化率", "流失率")
     pct_keywords = ("_pct", "percent", "百分")
-    count_keywords = (
-        "users",
-        "user_count",
-        "players",
-        "player_count",
-        "payers",
-        "payer_count",
-        "orders",
-        "order_count",
-        "cnt",
-        "人数",
-        "人次",
-        "订单数",
-        "会话数",
-    )
+    count_keywords = ("count", "cnt", "total", "num", "users", "items", "orders", "人数", "数量", "次数", "总数")
     multiplier_exclude = ("mult", "倍", "growth", "增长", "index", "_x", "delta", "diff", "change")
     for field in fields:
         lower = field.lower()
@@ -906,12 +1036,12 @@ def _value_range_error(fields: list[str], rows: list[dict[str, Any]]) -> str | N
             if is_rate and (value < -1e-6 or value > 100 + 1e-6):
                 return (
                     f"字段 {field} 出现超出合理区间的比率值 {value:.6g}；"
-                    "留存率/转化率/付费率等比率字段应落在 0~100%（或 0~1）之间，"
+                    "比率、转化率、占比等字段应落在 0~100%（或 0~1）之间，"
                     "请检查是否分母错误、口径混用，或把累计值/计数当成了比率。"
                 )
             if is_count and value < -1e-6:
                 return (
-                    f"字段 {field} 出现负的计数值 {value:.6g}；用户数/订单数/会话数等计数不可能为负，"
+                    f"字段 {field} 出现负的计数值 {value:.6g}；人数、订单数、次数等计数不可能为负，"
                     "请检查 join 或聚合逻辑是否错误。"
                 )
     return None
@@ -930,7 +1060,7 @@ def _wide_funnel_validation_error(
     count_fields = [
         field
         for field in numeric
-        if _field_matches(field, ("total_users", "new_users", "users", "user_count", "players", "player_count"))
+        if _field_matches(field, ("total", "users", "user_count", "items", "item_count", "count", "cnt"))
         and not _field_matches(field, ("pct", "rate", "ratio", "percent"))
     ]
     rate_fields = [
@@ -956,8 +1086,8 @@ def _wide_funnel_validation_error(
         return (
             "分维度漏斗结果异常：各分组样本量几乎都为 1，且关键转化率全部为 100%。"
             "这通常表示 SQL 聚合时 count(distinct) 的对象写成了步骤、布尔值或常量，"
-            "而不是同一 cohort 内的 distinct player_id。请先按玩家粒度生成每个用户的步骤完成状态，"
-            "再按渠道/设备/服务器等维度汇总人数和转化率。"
+            "而不是同一分析对象内的 distinct entity id。请先按实体粒度生成每个对象的步骤完成状态，"
+            "再按当前 schema 或语义层中的分组维度汇总数量和转化率。"
         )
     return None
 
@@ -983,7 +1113,7 @@ def _semantic_validation_error(query: dict[str, Any], result: dict[str, Any]) ->
             return wide_error
 
         y_field = _match_field(query.get("y"), fields)
-        preferred = ("users", "user_count", "players", "player_count", "converted_users", "count")
+        preferred = ("users", "user_count", "items", "item_count", "converted", "count", "cnt")
         preferred_y_field = next((field for field in fields if _field_matches(field, preferred) and field in numeric), None)
         if preferred_y_field:
             y_field = preferred_y_field
@@ -1053,7 +1183,7 @@ def _semantic_validation_error(query: dict[str, Any], result: dict[str, Any]) ->
                     group_text = "" if key == "__single_funnel__" else f"（分组 {key}）"
                     return (
                         f"漏斗人数{group_text}在步骤 {previous_label}={previous_value:.6g} 到 "
-                        f"{label}={value:.6g} 出现倒挂；漏斗必须按同 cohort 的递进 distinct player_id 计算，"
+                        f"{label}={value:.6g} 出现倒挂；漏斗必须按同一分析对象集合的递进 distinct entity id 计算，"
                         "后续步骤人数不能大于前序步骤。"
                     )
                 previous_value = value
@@ -1066,59 +1196,9 @@ def _semantic_validation_error(query: dict[str, Any], result: dict[str, Any]) ->
             group_text = "" if zero_tail_groups == ["__single_funnel__"] else f"（分组 {zero_tail_groups[0]} 等）"
             return (
                 f"漏斗人数{group_text}从第二步开始全部为 0；这通常表示使用了不存在的事件名、过窄的事件条件或错误 join。"
-                "请核对实际 event_name/attributes 枚举，并改用真实存在的递进步骤。"
+                "请核对实际步骤、状态或事件枚举，并改用真实存在的递进步骤。"
             )
         return None
-
-    if not any(keyword in text for keyword in ("ltv", "生命周期收入", "生命周期价值", "长期价值")):
-        return None
-
-    day_field = next(
-        (
-            field
-            for field in fields
-            if field.lower() in {"lifecycle_day", "lifecycle_day_number", "day_index", "day", "life_day"}
-        ),
-        None,
-    )
-    if not day_field:
-        return None
-
-    cumulative_fields = [
-        field
-        for field in fields
-        if any(keyword in field.lower() for keyword in ("ltv", "cumulative", "cum_"))
-        and not any(keyword in field.lower() for keyword in ("single", "daily", "day_revenue"))
-    ]
-    if not cumulative_fields:
-        return None
-
-    ordered_rows = sorted(
-        (
-            (_coerce_day_number(row.get(day_field)), row)
-            for row in rows
-        ),
-        key=lambda item: item[0] if item[0] is not None else 10**9,
-    )
-    ordered_rows = [(day, row) for day, row in ordered_rows if day is not None]
-    if len(ordered_rows) < 2:
-        return None
-
-    tolerance = 1e-6
-    for field in cumulative_fields:
-        previous_day: int | None = None
-        previous_value: float | None = None
-        for day, row in ordered_rows:
-            value = _coerce_float(row.get(field))
-            if value is None:
-                continue
-            if previous_value is not None and value + tolerance < previous_value:
-                return (
-                    f"累计字段 {field} 在 D{previous_day}={previous_value:.6g} 到 "
-                    f"D{day}={value:.6g} 出现下降；请检查是否混用了不同分组、分母或累计口径。"
-                )
-            previous_day = day
-            previous_value = value
     return None
 
 
@@ -1130,6 +1210,7 @@ def _repair_sql(
     error: Exception,
     schema: str,
     sample_data: str,
+    datasource: CoreDatasource,
     data_profile: str = "",
     knowledge: str = "",
     custom_agent: str = "",
@@ -1145,13 +1226,19 @@ def _repair_sql(
         f"样例数据：\n{sample_data[:6000]}\n\n"
         f"实际数据画像（必须优先使用这些真实枚举值，不要编造 event_name/status/属性值）：\n{data_profile[:12000]}"
     )
-    text = _llm_text(llm, [SystemMessage(content=SQL_REPAIR_PROMPT), HumanMessage(content=prompt)])
+    text = _llm_text(
+        llm,
+        [
+            SystemMessage(content=SQL_REPAIR_PROMPT + "\n\n" + _dialect_block(datasource)),
+            HumanMessage(content=prompt),
+        ],
+    )
     try:
         data = _extract_json_object(text)
         repaired_sql = str(data.get("sql") or "")
     except Exception:
         repaired_sql = text
-    return _normalise_sql(repaired_sql)
+    return _normalise_sql(repaired_sql, datasource)
 
 
 def _summarise_block(
@@ -1252,10 +1339,11 @@ def _build_plan(
     ]
     user_content = (
         f"今天日期：{now}\n"
-        f"项目：{datasource.name}（{datasource.type}）\n"
+        f"项目：{datasource.name}（{datasource.type} / {_database_name(datasource)}）\n"
         f"页面上下文：{context}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
+        f"{_dialect_block(datasource)}"
         f"{_context_blocks(knowledge, custom_agent)}"
         f"数据库 schema：\n{schema[:18000]}\n\n"
         f"样例数据：\n{sample_data[:6000]}\n\n"
@@ -1303,10 +1391,11 @@ def _build_forecast_plan(
     ]
     user_content = (
         f"今天日期：{now}\n"
-        f"项目：{datasource.name}（{datasource.type}）\n"
+        f"项目：{datasource.name}（{datasource.type} / {_database_name(datasource)}）\n"
         f"页面上下文：{context}\n"
         f"历史对话：{orjson.dumps(history).decode()}\n"
         f"用户问题：{question}\n\n"
+        f"{_dialect_block(datasource)}"
         f"{_context_blocks(knowledge, custom_agent)}"
         f"数据库 schema：\n{schema[:22000]}\n\n"
         f"样例数据：\n{sample_data[:8000]}\n\n"
@@ -1429,7 +1518,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     except Exception as first_error:
                         yield _trace("这个角度的数据口径需要校准，正在重新整理后再试。", block_id=block_id)
                         repaired_sql = _repair_sql(
-                            llm, question, raw_query, sql, first_error, schema, sample_data, data_profile, knowledge,
+                            llm, question, raw_query, sql, first_error, schema, sample_data, datasource, data_profile, knowledge,
                             custom_agent
                         )
                         sql = _prepare_sql_for_execution(
@@ -1442,7 +1531,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
                         repaired_sql = _repair_sql(
-                            llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data,
+                            llm, question, raw_query, sql, ValueError(semantic_error), schema, sample_data, datasource,
                             data_profile, knowledge, custom_agent
                         )
                         sql = _prepare_sql_for_execution(

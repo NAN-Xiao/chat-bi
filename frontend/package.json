@@ -10,7 +10,7 @@
     }
   },
   "scripts": {
-    "dev": "vue-tsc -b && vite --host 0.0.0.0",
+    "dev": "vue-tsc -b && vite --host 0.0.0.0 --port 5174 --strictPort",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.ts,.jsx,.tsx --fix"

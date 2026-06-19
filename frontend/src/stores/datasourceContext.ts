@@ -133,6 +133,13 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
         wsCache.delete(this.legacyCacheKey())
       }
     },
+
+    resetForUserChange() {
+      this.datasources = []
+      this.initialized = false
+      this.loading = false
+      this.clear(false)
+    },
   },
 })
 

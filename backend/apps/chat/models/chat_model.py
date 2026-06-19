@@ -363,6 +363,7 @@ class ChatQuestionBase(BaseModel):
     question: str = Body(description='用户提问')
     chat_id: int = Body(description='会话ID')
     custom_prompt_id: Optional[int] = Body(description='本次提问选择的自定义 Agent ID', default=None)
+    datasource_id: Optional[int | str] = Body(description='本次提问使用的数据源ID', default=None)
 
 
 class McpQuestion(ChatQuestionBase):

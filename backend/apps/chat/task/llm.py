@@ -32,8 +32,13 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, CustomPromptTypeEnum, find_custom_prompts
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
     ChatFinishStep, AxisObj, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
-from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
+from apps.datasource.crud.analysis_context import (
+    collect_custom_agent_context,
+    collect_terminology_context,
+    collect_training_context,
+    ensure_request_datasource_matches_chat,
+)
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
 from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
@@ -45,7 +50,6 @@ from apps.system.crud.parameter_manage import get_groups
 from apps.system.crud.user import is_system_admin
 from apps.system.models.system_model import SysArgModel
 from apps.system.schemas.system_schema import AssistantOutDsSchema
-from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
@@ -147,12 +151,21 @@ class LLMService:
         if not chat:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
         ds: CoreDatasource | AssistantOutDsSchema | None = None
+        try:
+            request_datasource_id = ensure_request_datasource_matches_chat(
+                session,
+                current_user,
+                chat,
+                chat_question.datasource_id,
+            )
+        except RuntimeError as exc:
+            raise SingleMessageError(str(exc))
         if not chat.datasource and chat_question.datasource_id:
-            _ds = session.get(CoreDatasource, chat_question.datasource_id)
+            _ds = session.get(CoreDatasource, request_datasource_id)
             if _ds:
                 if not has_datasource_access(session, current_user, _ds.id):
                     raise SingleMessageError(
-                        f"当前用户无权访问项目 {chat_question.datasource_id}")
+                        f"当前用户无权访问项目 {request_datasource_id}")
                 chat.datasource = _ds.id
                 chat.engine_type = _ds.type_name
                 # save chat
@@ -373,10 +386,6 @@ class LLMService:
         return format_chart_fields(chart_info)
 
     def filter_terminology_template(self, _session: Session, ds_id: int = None):
-        if is_normal_user(self.current_user):
-            self.chat_question.terminologies = ""
-            return
-
         calculate_ds_id = ds_id
         if self.current_assistant:
             if self.current_assistant.type == 1:
@@ -385,8 +394,11 @@ class LLMService:
                                                                   operate=OperationEnum.FILTER_TERMS,
                                                                   record_id=self.record.id, local_operation=True)
 
-        self.chat_question.terminologies, term_list = get_terminology_template(_session, self.chat_question.question,
-                                                                               calculate_ds_id)
+        self.chat_question.terminologies, term_list = collect_terminology_context(
+            _session,
+            calculate_ds_id,
+            self.chat_question.question,
+        )
         self.current_logs[OperationEnum.FILTER_TERMS] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.FILTER_TERMS],
                                                                 full_message=term_list)
@@ -404,14 +416,13 @@ class LLMService:
                                                                           operate=OperationEnum.FILTER_CUSTOM_PROMPT,
                                                                           record_id=self.record.id,
                                                                           local_operation=True)
-        self.chat_question.custom_prompt, prompt_list, _prompt_model_id = find_custom_prompts(
+        self.chat_question.custom_prompt, prompt_list, _prompt_model_id = collect_custom_agent_context(
             _session,
-            custom_prompt_type,
             calculate_ds_id,
-            CustomPromptTargetScopeEnum.SMART_QA,
             self.chat_question.custom_prompt_id,
-            self.current_user.id,
-            is_system_admin(self.current_user),
+            self.current_user,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            custom_prompt_type=custom_prompt_type,
         )
         self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
                                                                         log=self.current_logs[
@@ -419,10 +430,6 @@ class LLMService:
                                                                         full_message=prompt_list)
 
     def filter_training_template(self, _session: Session, ds_id: int = None):
-        if is_normal_user(self.current_user):
-            self.chat_question.data_training = ""
-            return
-
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,
                                                                         operate=OperationEnum.FILTER_SQL_EXAMPLE,
                                                                         record_id=self.record.id,
@@ -431,14 +438,17 @@ class LLMService:
         if self.current_assistant:
             if self.current_assistant.type == 1:
                 calculate_ds_id = None
-        if self.current_assistant and self.current_assistant.type == 1:
-            self.chat_question.data_training, example_list = get_training_template(_session,
-                                                                                   self.chat_question.question,
-                                                                                   None, self.current_assistant.id)
-        else:
-            self.chat_question.data_training, example_list = get_training_template(_session,
-                                                                                   self.chat_question.question,
-                                                                                   calculate_ds_id)
+        advanced_application_id = (
+            self.current_assistant.id
+            if self.current_assistant and self.current_assistant.type == 1
+            else None
+        )
+        self.chat_question.data_training, example_list = collect_training_context(
+            _session,
+            None if advanced_application_id else calculate_ds_id,
+            self.chat_question.question,
+            advanced_application_id=advanced_application_id,
+        )
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = end_log(session=_session,
                                                                       log=self.current_logs[
                                                                           OperationEnum.FILTER_SQL_EXAMPLE],

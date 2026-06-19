@@ -1,6 +1,6 @@
 # Windows 本地 Nginx 运行说明
 
-本地开发建议先用 Nginx zip 版，不占用 80 端口，默认监听 `8080`。
+本地开发建议先用 Nginx zip 版，不占用 80 端口，当前 clone 默认监听 `8081`。
 
 ## 安装
 
@@ -18,29 +18,29 @@ $env:NGINX_HOME = "D:\tools\nginx"
 
 ## 启动
 
-先确认后端已经启动，单副本用 `8000`：
+先确认后端已经启动，单副本用 `8010`：
 
 ```powershell
-.\tools\nginx-local.ps1 -Action start -NginxHome "D:\tools\nginx" -ListenPort 8080 -BackendPorts 8000
+.\tools\nginx-local.ps1 -Action start -NginxHome "D:\tools\nginx" -ListenPort 8081 -BackendPorts 8010
 ```
 
 多副本时：
 
 ```powershell
-.\tools\nginx-local.ps1 -Action start -NginxHome "D:\tools\nginx" -ListenPort 8080 -BackendPorts 8000,8002,8003
+.\tools\nginx-local.ps1 -Action start -NginxHome "D:\tools\nginx" -ListenPort 8081 -BackendPorts 8010,8012,8013
 ```
 
 后端可以用本地脚本启动。开发单副本：
 
 ```powershell
-.\tools\backend-local.ps1 -Action start -BackendPorts 8000
+.\tools\backend-local.ps1 -Action start -BackendPorts 8010
 ```
 
 多副本压测/生产模拟：
 
 ```powershell
-.\tools\backend-local.ps1 -Action start -BackendPorts 8000,8002,8003 -CacheType redis
-.\tools\nginx-local.ps1 -Action reload -NginxHome "D:\tools\nginx" -ListenPort 8080 -BackendPorts 8000,8002,8003
+.\tools\backend-local.ps1 -Action start -BackendPorts 8010,8012,8013 -CacheType redis
+.\tools\nginx-local.ps1 -Action reload -NginxHome "D:\tools\nginx" -ListenPort 8081 -BackendPorts 8010,8012,8013
 ```
 
 配置会生成到：
@@ -52,8 +52,8 @@ $env:NGINX_HOME = "D:\tools\nginx"
 ## 验证
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:8080/health -UseBasicParsing
-Invoke-WebRequest http://127.0.0.1:8080/ready -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1:8081/health -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1:8081/ready -UseBasicParsing
 ```
 
 ## 管理
@@ -64,4 +64,4 @@ Invoke-WebRequest http://127.0.0.1:8080/ready -UseBasicParsing
 .\tools\nginx-local.ps1 -Action stop -NginxHome "D:\tools\nginx"
 ```
 
-`8080` 是本地建议端口，因为这台机器的 `80` 端口已经被系统进程占用。
+`8081` 是当前 clone 的本地建议端口。

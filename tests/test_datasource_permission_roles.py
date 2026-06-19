@@ -11,6 +11,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from apps.datasource.crud import datasource as datasource_crud
 from apps.datasource.api import datasource as datasource_api
 from apps.datasource.crud import permission
+from apps.datasource.crud.analysis_context import resolve_datasource_context
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreTable, TableObj
 
@@ -392,6 +393,19 @@ def test_get_datasource_ids_with_min_role_filters_by_project_role():
         assert permission.get_datasource_ids_with_min_role(session, current_user, "admin") == set()
 
 
+def test_resolve_datasource_context_rejects_invalid_datasource_id():
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+
+    with Session(engine) as session:
+        try:
+            resolve_datasource_context(session, current_user, "not-a-number")
+        except RuntimeError as exc:
+            assert str(exc) == "项目 ID 无效"
+        else:
+            raise AssertionError("invalid datasource id should be rejected as a business error")
+
+
 def _insert_table_permission_fixture(session: Session):
     session.execute(text(
         """
@@ -535,6 +549,66 @@ def test_sql_permission_scope_denies_hidden_columns(monkeypatch):
             assert "amount" in str(exc)
         else:
             raise AssertionError("hidden column query should be rejected")
+
+
+def test_sql_permission_scope_allows_select_alias_order_by_for_project_viewer(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        _statements, tables, _scope = validate_sql_scope(
+            session,
+            current_user,
+            ds,
+            """
+            select order_id, count(*) as cohort_players
+            from orders
+            group by order_id
+            order by cohort_players desc
+            """,
+        )
+
+        assert tables == {"orders"}
+
+
+def test_sql_permission_scope_still_denies_real_hidden_columns_with_alias_order_by(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        try:
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                """
+                select amount, count(*) as cohort_players
+                from orders
+                group by amount
+                order by cohort_players desc
+                """,
+            )
+        except ValueError as exc:
+            assert "无权限字段" in str(exc)
+            assert "amount" in str(exc)
+            assert "cohort_players" not in str(exc)
+        else:
+            raise AssertionError("hidden column query should still be rejected")
 
 
 def test_user_schema_filters_relationships_outside_table_scope(monkeypatch):

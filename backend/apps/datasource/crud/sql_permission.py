@@ -143,6 +143,49 @@ def _star_uses_table_scope(star: exp.Star, selected_aliases: dict[str, str]) -> 
     return set(selected_aliases.values())
 
 
+def selected_output_names(select_expr: exp.Select) -> set[str]:
+    names: set[str] = set()
+    for expression in select_expr.expressions:
+        alias = normalize_identifier(expression.alias)
+        if alias:
+            names.add(alias)
+            continue
+        if isinstance(expression, exp.Column):
+            names.add(normalize_identifier(expression.name))
+    return {name for name in names if name}
+
+
+def _is_descendant_of(node: exp.Expression, ancestor: exp.Expression) -> bool:
+    parent = node.parent
+    while parent is not None:
+        if parent is ancestor:
+            return True
+        parent = parent.parent
+    return False
+
+
+def _nearest_select(node: exp.Expression) -> exp.Select | None:
+    parent = node.parent
+    while parent is not None:
+        if isinstance(parent, exp.Select):
+            return parent
+        parent = parent.parent
+    return None
+
+
+def _is_select_order_output_name(
+        column: exp.Column,
+        select_expr: exp.Select,
+        output_names: set[str],
+) -> bool:
+    if column.table:
+        return False
+    if normalize_identifier(column.name) not in output_names:
+        return False
+    order_expr = select_expr.args.get("order")
+    return order_expr is not None and _is_descendant_of(column, order_expr)
+
+
 def validate_sql_columns(
         statements: list[exp.Expression],
         permission_scope: dict[str, dict[str, Any]],
@@ -161,7 +204,10 @@ def validate_sql_columns(
         }
         for select_expr in statement.find_all(exp.Select):
             selected_aliases = selected_table_aliases(select_expr, cte_names)
+            output_names = selected_output_names(select_expr)
             for star in select_expr.find_all(exp.Star):
+                if _nearest_select(star) is not select_expr:
+                    continue
                 if isinstance(star.parent, exp.Count):
                     continue
                 if isinstance(star.parent, exp.Column) and isinstance(star.parent.parent, exp.Count):
@@ -169,7 +215,11 @@ def validate_sql_columns(
                 star_tables.update(_star_uses_table_scope(star, selected_aliases))
 
             for column in select_expr.find_all(exp.Column):
+                if _nearest_select(column) is not select_expr:
+                    continue
                 if isinstance(column.this, exp.Star):
+                    continue
+                if _is_select_order_output_name(column, select_expr, output_names):
                     continue
                 if not _column_can_resolve(column.name, column.table, selected_aliases, permission_scope):
                     denied_columns.add(column.sql())

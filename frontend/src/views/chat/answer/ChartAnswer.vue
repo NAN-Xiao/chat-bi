@@ -108,6 +108,7 @@ const sendMessage = async () => {
       question: currentRecord.question,
       chat_id: _currentChatId.value,
       custom_prompt_id: currentRecord.custom_prompt_id,
+      datasource_id: currentRecord.datasource || _currentChat.value.datasource,
     }
     const response = await questionApi.add(param, controller)
     const reader = response.body.getReader()

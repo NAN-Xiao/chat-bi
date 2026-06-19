@@ -12,7 +12,7 @@ from starlette.responses import JSONResponse
 
 from apps.chat.curd.chat import delete_chat_with_user, get_chart_data_with_user, get_chat_predict_data_with_user, \
     list_chats, get_chat_with_records, create_chat, rename_chat, \
-    delete_chat, get_chat_chart_data, get_chat_predict_data, get_chat_with_records_with_data, get_chat_record_by_id, \
+    delete_chat, get_chat_with_records_with_data, get_chat_record_by_id, \
     format_json_data, format_json_list_data, get_chart_config, list_recent_questions, get_chat as get_chat_exec, \
     rename_chat_with_user, get_chat_log_history, get_chart_data_with_user_live
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
@@ -247,6 +247,8 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
 
         if not record:
             return StreamingResponse(_return_empty(), media_type="text/event-stream")
+        if record.create_by != current_user.id:
+            return StreamingResponse(_return_empty(), media_type="text/event-stream")
 
         request_question = ChatQuestion(chat_id=record.chat_id, question=record.question if record.question else '')
 
@@ -294,6 +296,7 @@ async def question_answer(session: SessionDep, current_user: CurrentUser, reques
         chat_id=request_question.chat_id,
         question=request_question.question,
         custom_prompt_id=request_question.custom_prompt_id,
+        datasource_id=request_question.datasource_id,
     )
     return await question_answer_inner(session, current_user, question, current_assistant, embedding=True)
 
@@ -518,17 +521,32 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
     chat_record = session.get(ChatRecord, chat_record_id)
     if not chat_record:
         raise HTTPException(
-            status_code=500,
+            status_code=404,
             detail=f"ChatRecord with id {chat_record_id} not found"
         )
     if chat_record.create_by != current_user.id:
         raise HTTPException(
-            status_code=500,
+            status_code=403,
             detail=f"ChatRecord with id {chat_record_id} not Owned by the current user"
+        )
+    if chat_record.chat_id != chat_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ChatRecord with id {chat_record_id} does not belong to chat {chat_id}"
         )
     is_predict_data = chat_record.predict_record_id is not None
 
-    _origin_data = format_json_data(get_chat_chart_data(chat_record_id=chat_record_id, session=session))
+    _origin_result = get_chart_data_with_user(
+        chat_record_id=chat_record_id,
+        session=session,
+        current_user=current_user,
+    )
+    if _origin_result.get("status") == "failed":
+        raise HTTPException(
+            status_code=403,
+            detail=_origin_result.get("message") or "SQL 超出当前数据权限范围"
+        )
+    _origin_data = format_json_data(_origin_result)
 
     _base_field = _origin_data.get('fields')
     _data = _origin_data.get('data')
@@ -570,7 +588,17 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
 
     _predict_data = []
     if is_predict_data:
-        _predict_data = format_json_list_data(get_chat_predict_data(chat_record_id=chat_record_id, session=session))
+        _predict_result = get_chat_predict_data_with_user(
+            chat_record_id=chat_record_id,
+            session=session,
+            current_user=current_user,
+        )
+        if isinstance(_predict_result, dict) and _predict_result.get("status") == "failed":
+            raise HTTPException(
+                status_code=403,
+                detail=_predict_result.get("message") or "SQL 超出当前数据权限范围"
+            )
+        _predict_data = format_json_list_data(_predict_result)
 
     def inner():
 

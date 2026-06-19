@@ -16,7 +16,7 @@ import datetime
 import psycopg
 from psycopg.types.json import Jsonb
 
-DB = dict(host="127.0.0.1", port=15432, user="root", password="Password123@pg", dbname="zhishu_bi")
+DB = dict(host="127.0.0.1", port=15433, user="root", password="Password123@pg", dbname="zhishu_bi_single_ha")
 DATASOURCE_NAME = "SLG BI Mock"
 
 
@@ -24,6 +24,32 @@ DATASOURCE_NAME = "SLG BI Mock"
 # 术语口径：word 主词 / synonyms 同义词（用户问题里可能出现）/ description 统一口径定义
 # ---------------------------------------------------------------------------
 TERMS: list[tuple[str, list[str], str]] = [
+    (
+        "SLG BI Mock SQL写法",
+        ["SLG BI Mock 表引用", "SLG BI Mock schema", "SLG BI Mock 数据库名", "表名前缀"],
+        "当前 SLG BI Mock 数据源连接到 PostgreSQL 数据库 slg_bi_mock，业务表在连接默认 schema/search_path 下。"
+        "生成 SQL 时直接引用表名，例如 FROM dim_player p、FROM fact_sessions s；"
+        "不要把数据库名 slg_bi_mock 当作 schema 写成 slg_bi_mock.dim_player 或 \"slg_bi_mock\".\"dim_player\"，"
+        "否则 PostgreSQL 会把 slg_bi_mock 当作 schema 并报 relation does not exist。"
+        "如果未来数据源配置了真实 schema，应以该数据源配置和实际元数据为准；本规则只适用于 SLG BI Mock。",
+    ),
+    (
+        "SLG BI Mock 字段归属",
+        ["SLG BI Mock 字段位置", "SLG BI Mock 表字段", "渠道字段归属", "会话日期字段"],
+        "SLG BI Mock 中 dim_player 保存玩家维度字段，例如 channel、campaign、platform、country、install_date；"
+        "fact_payments 保存支付明细字段，例如 event_date、event_time、net_revenue_usd、payment_status、lifecycle_day，"
+        "没有 channel 字段。按渠道统计收入、付费人数、ARPU、ARPPU 或贡献率时，必须用 fact_payments 关联 dim_player 取得 channel。"
+        "fact_sessions 保存会话明细，日期来自 session_start::date，没有 event_date 字段；按会话日期统计 D1/Dn 活跃或留存时使用 session_start::date。"
+        "生成 SQL 时必须逐字使用 schema 中真实存在的字段，不要把其他表的字段挪到当前表上。",
+    ),
+    (
+        "SLG BI Mock 明细表口径",
+        ["SLG BI Mock 不用聚合表", "agg_daily_kpis", "daily_kpis", "明细表计算指标"],
+        "SLG BI Mock 是埋点/业务明细 mock 数据源，不存在 agg_daily_kpis、daily_kpis、*_kpis 等持久化聚合表。"
+        "DAU、收入、新增、留存、ARPU、ARPPU、付费率、LTV 等指标必须从 dim_player、fact_sessions、fact_payments、fact_events 等明细表在查询时计算。"
+        "如果用户问最近 N 天全服 DAU 和收入，DAU 从 fact_sessions 按 session_start::date 去重 player_id，"
+        "收入从 fact_payments 按 event_date 汇总 payment_status='success' 且 net_revenue_usd>0 的净收入，再按日期 outer join。",
+    ),
     (
         "DAU",
         ["日活", "日活跃用户", "日活跃", "活跃用户数", "活跃用户"],
@@ -234,6 +260,58 @@ EXAMPLES: list[tuple[str, str]] = [
         "```",
     ),
     (
+        "我知道6月以后每天新增用户的数量",
+        "新增用户按 dim_player.install_date 统计；当前 SLG BI Mock 示例 SQL 直接引用 dim_player，"
+        "不要写 slg_bi_mock.dim_player 或 \"slg_bi_mock\".\"dim_player\"。\n"
+        "```sql\n"
+        "SELECT p.install_date AS stat_date,\n"
+        "       count(DISTINCT p.player_id) AS new_users\n"
+        "FROM dim_player p\n"
+        "WHERE p.install_date >= DATE '2026-06-01'\n"
+        "GROUP BY p.install_date\n"
+        "ORDER BY p.install_date\n"
+        "LIMIT 1000;\n"
+        "```",
+    ),
+    (
+        "最近7天全服DAU和收入是多少？按日期列出。",
+        "SLG BI Mock 不存在 agg_daily_kpis 等聚合表，DAU 和收入必须从明细表按日期计算。"
+        "DAU 使用 fact_sessions.session_start::date 去重 player_id；收入使用 fact_payments.event_date 汇总成功支付净收入。\n"
+        "```sql\n"
+        "WITH obs AS (\n"
+        "  SELECT max(session_start::date) AS max_date FROM fact_sessions\n"
+        "),\n"
+        "days AS (\n"
+        "  SELECT generate_series(obs.max_date - 6, obs.max_date, interval '1 day')::date AS stat_date\n"
+        "  FROM obs\n"
+        "),\n"
+        "dau AS (\n"
+        "  SELECT s.session_start::date AS stat_date,\n"
+        "         count(DISTINCT s.player_id) AS dau\n"
+        "  FROM fact_sessions s CROSS JOIN obs\n"
+        "  WHERE s.session_start::date BETWEEN obs.max_date - 6 AND obs.max_date\n"
+        "  GROUP BY s.session_start::date\n"
+        "),\n"
+        "revenue AS (\n"
+        "  SELECT p.event_date AS stat_date,\n"
+        "         sum(p.net_revenue_usd) AS revenue_usd\n"
+        "  FROM fact_payments p CROSS JOIN obs\n"
+        "  WHERE p.event_date BETWEEN obs.max_date - 6 AND obs.max_date\n"
+        "    AND p.payment_status = 'success'\n"
+        "    AND p.net_revenue_usd > 0\n"
+        "  GROUP BY p.event_date\n"
+        ")\n"
+        "SELECT d.stat_date,\n"
+        "       coalesce(da.dau, 0) AS dau,\n"
+        "       round(coalesce(r.revenue_usd, 0), 2) AS revenue_usd\n"
+        "FROM days d\n"
+        "LEFT JOIN dau da ON da.stat_date = d.stat_date\n"
+        "LEFT JOIN revenue r ON r.stat_date = d.stat_date\n"
+        "ORDER BY d.stat_date\n"
+        "LIMIT 1000;\n"
+        "```",
+    ),
+    (
         "新增用户的次日/3日/7日/14日/30日留存率",
         "成熟 cohort 留存：每个 Dn 的分母只含 install_date <= 观察最大日期 - n 的玩家，"
         "分子是这些玩家在 lifecycle_day = n 于 fact_sessions 活跃的去重数。\n"
@@ -391,6 +469,90 @@ EXAMPLES: list[tuple[str, str]] = [
         "       round(coalesce(pay.payers, 0)::numeric / nullif(a.active_users, 0) * 100, 2) AS payer_rate_pct\n"
         "FROM act a LEFT JOIN pay ON pay.channel = a.channel\n"
         "ORDER BY revenue DESC;\n"
+        "```",
+    ),
+    (
+        "用CTE和窗口函数找最近30天净收入贡献最高的前5个渠道及贡献率",
+        "渠道字段在 dim_player.channel，不在 fact_payments。收入贡献要从 fact_payments 过滤成功净收入后关联 dim_player，"
+        "再用窗口函数计算总收入和贡献率。\n"
+        "```sql\n"
+        "WITH obs AS (\n"
+        "  SELECT max(event_date) AS max_date FROM fact_payments\n"
+        "),\n"
+        "channel_revenue AS (\n"
+        "  SELECT dp.channel,\n"
+        "         sum(fp.net_revenue_usd) AS channel_revenue\n"
+        "  FROM fact_payments fp\n"
+        "  JOIN dim_player dp ON dp.player_id = fp.player_id\n"
+        "  CROSS JOIN obs\n"
+        "  WHERE fp.event_date BETWEEN obs.max_date - 29 AND obs.max_date\n"
+        "    AND fp.payment_status = 'success'\n"
+        "    AND fp.net_revenue_usd > 0\n"
+        "  GROUP BY dp.channel\n"
+        "),\n"
+        "ranked AS (\n"
+        "  SELECT channel,\n"
+        "         channel_revenue,\n"
+        "         sum(channel_revenue) OVER () AS total_revenue,\n"
+        "         row_number() OVER (ORDER BY channel_revenue DESC) AS rn\n"
+        "  FROM channel_revenue\n"
+        ")\n"
+        "SELECT channel,\n"
+        "       round(channel_revenue, 2) AS channel_revenue,\n"
+        "       round(channel_revenue / nullif(total_revenue, 0) * 100, 2) AS contribution_pct\n"
+        "FROM ranked\n"
+        "WHERE rn <= 5\n"
+        "ORDER BY channel_revenue DESC\n"
+        "LIMIT 1000;\n"
+        "```",
+    ),
+    (
+        "查看渠道 d1 新用户的付费转化、ARPU 和净收入趋势",
+        "D1 日期来自 fact_sessions.session_start::date，不要写 fact_sessions.event_date。"
+        "渠道来自 dim_player.channel；D1 新用户基于 install_date cohort 且 lifecycle_day=1 的会话，"
+        "付费转化和收入从同一 cohort 在 lifecycle_day=1 的成功支付计算。\n"
+        "```sql\n"
+        "WITH d1_users AS (\n"
+        "  SELECT DISTINCT\n"
+        "         dp.player_id,\n"
+        "         dp.channel,\n"
+        "         fs.session_start::date AS stat_date\n"
+        "  FROM dim_player dp\n"
+        "  JOIN fact_sessions fs ON fs.player_id = dp.player_id\n"
+        "  WHERE fs.lifecycle_day = 1\n"
+        "    AND dp.install_date = fs.session_start::date - 1\n"
+        "),\n"
+        "d1_base AS (\n"
+        "  SELECT stat_date,\n"
+        "         channel,\n"
+        "         count(DISTINCT player_id) AS d1_new_users\n"
+        "  FROM d1_users\n"
+        "  GROUP BY stat_date, channel\n"
+        "),\n"
+        "d1_pay AS (\n"
+        "  SELECT u.stat_date,\n"
+        "         u.channel,\n"
+        "         count(DISTINCT fp.player_id) AS payers,\n"
+        "         sum(fp.net_revenue_usd) AS net_revenue\n"
+        "  FROM d1_users u\n"
+        "  JOIN fact_payments fp ON fp.player_id = u.player_id\n"
+        "   AND fp.lifecycle_day = 1\n"
+        "   AND fp.event_date = u.stat_date\n"
+        "   AND fp.payment_status = 'success'\n"
+        "   AND fp.net_revenue_usd > 0\n"
+        "  GROUP BY u.stat_date, u.channel\n"
+        ")\n"
+        "SELECT b.stat_date,\n"
+        "       b.channel,\n"
+        "       b.d1_new_users,\n"
+        "       coalesce(p.payers, 0) AS payers,\n"
+        "       round(coalesce(p.net_revenue, 0), 2) AS net_revenue,\n"
+        "       round(coalesce(p.payers, 0)::numeric / nullif(b.d1_new_users, 0) * 100, 2) AS payer_conversion_pct,\n"
+        "       round(coalesce(p.net_revenue, 0) / nullif(b.d1_new_users, 0), 4) AS arpu\n"
+        "FROM d1_base b\n"
+        "LEFT JOIN d1_pay p ON p.stat_date = b.stat_date AND p.channel = b.channel\n"
+        "ORDER BY b.stat_date, b.channel\n"
+        "LIMIT 1000;\n"
         "```",
     ),
     (
@@ -981,7 +1143,20 @@ def main() -> None:
         print(f"目标数据源: id={ds_id} name={DATASOURCE_NAME!r}")
 
         term_added = term_updated = 0
+        global_terms_disabled = 0
         for word, synonyms, description in TERMS:
+            cur.execute(
+                """
+                UPDATE terminology
+                SET enabled = FALSE
+                WHERE word = %s
+                  AND coalesce(specific_ds, FALSE) = FALSE
+                  AND enabled = TRUE
+                """,
+                (word,),
+            )
+            global_terms_disabled += cur.rowcount
+
             cur.execute(
                 """
                 SELECT id FROM terminology
@@ -1022,6 +1197,18 @@ def main() -> None:
                     continue
                 cur.execute(
                     """
+                    UPDATE terminology
+                    SET enabled = FALSE
+                    WHERE word = %s
+                      AND coalesce(specific_ds, FALSE) = FALSE
+                      AND enabled = TRUE
+                    """,
+                    (syn,),
+                )
+                global_terms_disabled += cur.rowcount
+
+                cur.execute(
+                    """
                     SELECT id FROM terminology
                     WHERE pid = %s AND word = %s
                     ORDER BY id LIMIT 1
@@ -1047,7 +1234,20 @@ def main() -> None:
                     )
 
         ex_added = ex_updated = 0
+        global_examples_disabled = 0
         for question, answer in EXAMPLES:
+            cur.execute(
+                """
+                UPDATE data_training
+                SET enabled = FALSE
+                WHERE question = %s
+                  AND datasource IS NULL
+                  AND enabled = TRUE
+                """,
+                (question,),
+            )
+            global_examples_disabled += cur.rowcount
+
             cur.execute(
                 "SELECT id FROM data_training WHERE question = %s AND datasource = %s ORDER BY id LIMIT 1",
                 (question, ds_id),
@@ -1075,7 +1275,9 @@ def main() -> None:
 
         conn.commit()
         print(f"术语: 新增 {term_added} 组（含同义词子记录），更新 {term_updated} 组")
+        print(f"已禁用同名全局术语: {global_terms_disabled} 条")
         print(f"数据训练: 新增 {ex_added} 条，更新 {ex_updated} 条")
+        print(f"已禁用同问题全局数据训练: {global_examples_disabled} 条")
         cur.execute(
             """
             SELECT count(*) FROM terminology

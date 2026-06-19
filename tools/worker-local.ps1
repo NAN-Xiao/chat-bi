@@ -14,6 +14,7 @@ $backendRoot = Join-Path $workspaceRoot "backend"
 $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
 $workerRuntime = Join-Path $runtimeRoot "task-workers"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
+$runtimeRootForEnv = ($runtimeRoot -replace "\\", "/")
 
 if (-not (Test-Path -LiteralPath $pythonExe)) {
     throw "Cannot find backend Python interpreter: $pythonExe"
@@ -27,8 +28,8 @@ function Get-PidFile([int]$Index) {
 
 function Set-WorkerEnvironment {
     $env:POSTGRES_SERVER = "127.0.0.1"
-    $env:POSTGRES_PORT = "15432"
-    $env:POSTGRES_DB = "zhishu_bi"
+    $env:POSTGRES_PORT = "15433"
+    $env:POSTGRES_DB = "zhishu_bi_single_ha"
     $env:POSTGRES_USER = "root"
     $env:POSTGRES_PASSWORD = "Password123@pg"
 
@@ -37,11 +38,12 @@ function Set-WorkerEnvironment {
     $env:REDIS_PORT = [string]$RedisPort
     $env:TASK_QUEUE_NAME = $QueueName
 
-    $env:BASE_DIR = "D:/work/AI/SQLBot/.codex-runtime/zhishu"
-    $env:UPLOAD_DIR = "D:/work/AI/SQLBot/.codex-runtime/file"
-    $env:MCP_IMAGE_PATH = "D:/work/AI/SQLBot/.codex-runtime/images"
-    $env:EXCEL_PATH = "D:/work/AI/SQLBot/.codex-runtime/excel"
-    $env:LOCAL_MODEL_PATH = "D:/work/AI/SQLBot/.codex-runtime/models"
+    $env:BASE_DIR = "$runtimeRootForEnv/zhishu"
+    $env:UPLOAD_DIR = "$runtimeRootForEnv/file"
+    $env:MCP_IMAGE_PATH = "$runtimeRootForEnv/images"
+    $env:EXCEL_PATH = "$runtimeRootForEnv/excel"
+    $env:LOCAL_MODEL_PATH = "$runtimeRootForEnv/models"
+    $env:MCP_IMAGE_HOST = "http://localhost:3001"
     $env:MCP_ENABLED = "false"
 }
 

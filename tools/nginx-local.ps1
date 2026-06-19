@@ -2,9 +2,9 @@ param(
     [ValidateSet("start", "reload", "stop", "test")]
     [string]$Action = "start",
     [string]$NginxHome = $env:NGINX_HOME,
-    [int]$ListenPort = 8080,
-    [int[]]$BackendPorts = @(8000),
-    [int]$McpPort = 8001
+    [int]$ListenPort = 8081,
+    [int[]]$BackendPorts = @(8010),
+    [int]$McpPort = 8011
 )
 
 $ErrorActionPreference = "Stop"

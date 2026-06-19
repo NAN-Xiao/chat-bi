@@ -1,16 +1,16 @@
 param(
     [ValidateSet("start", "stop", "restart", "status")]
     [string]$Action = "start",
-    [int[]]$BackendPorts = @(8000),
-    [string]$HostAddress = "127.0.0.1",
+    [int[]]$BackendPorts = @(8010),
+    [string]$HostAddress = "0.0.0.0",
     [ValidateSet("auto", "memory", "redis", "none")]
     [string]$CacheType = "auto",
     [string]$RedisHost = "127.0.0.1",
     [int]$RedisPort = 6379,
-    [string]$FrontendHost = "http://localhost:5173",
+    [string]$FrontendHost = "http://localhost:5174",
     [string]$CorsOrigins = "",
     [switch]$StartMcp,
-    [int]$McpPort = 8001,
+    [int]$McpPort = 8011,
     [switch]$ForcePortStop
 )
 
@@ -21,6 +21,7 @@ $backendRoot = Join-Path $workspaceRoot "backend"
 $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
 $replicaRuntime = Join-Path $runtimeRoot "backend-replicas"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
+$runtimeRootForEnv = ($runtimeRoot -replace "\\", "/")
 
 if (-not (Test-Path -LiteralPath $pythonExe)) {
     throw "Cannot find backend Python interpreter: $pythonExe"
@@ -73,8 +74,8 @@ function Wait-BackendReady([int]$Port, [int]$TimeoutSeconds = 60) {
 
 function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:POSTGRES_SERVER = "127.0.0.1"
-    $env:POSTGRES_PORT = "15432"
-    $env:POSTGRES_DB = "zhishu_bi"
+    $env:POSTGRES_PORT = "15433"
+    $env:POSTGRES_DB = "zhishu_bi_single_ha"
     $env:POSTGRES_USER = "root"
     $env:POSTGRES_PASSWORD = "Password123@pg"
 
@@ -84,18 +85,19 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     } else {
         $env:BACKEND_CORS_ORIGINS = @(
             $FrontendHost,
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:8080",
-            "http://127.0.0.1:8080"
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
+            "http://localhost:8081",
+            "http://127.0.0.1:8081"
         ) -join ","
     }
 
-    $env:BASE_DIR = "D:/work/AI/SQLBot/.codex-runtime/zhishu"
-    $env:UPLOAD_DIR = "D:/work/AI/SQLBot/.codex-runtime/file"
-    $env:MCP_IMAGE_PATH = "D:/work/AI/SQLBot/.codex-runtime/images"
-    $env:EXCEL_PATH = "D:/work/AI/SQLBot/.codex-runtime/excel"
-    $env:LOCAL_MODEL_PATH = "D:/work/AI/SQLBot/.codex-runtime/models"
+    $env:BASE_DIR = "$runtimeRootForEnv/zhishu"
+    $env:UPLOAD_DIR = "$runtimeRootForEnv/file"
+    $env:MCP_IMAGE_PATH = "$runtimeRootForEnv/images"
+    $env:EXCEL_PATH = "$runtimeRootForEnv/excel"
+    $env:LOCAL_MODEL_PATH = "$runtimeRootForEnv/models"
+    $env:MCP_IMAGE_HOST = "http://localhost:3001"
     $env:MCP_ENABLED = "false"
 
     $env:CACHE_TYPE = $ResolvedCacheType

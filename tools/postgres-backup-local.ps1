@@ -2,8 +2,8 @@ param(
     [ValidateSet("backup", "restore", "list")]
     [string]$Action = "backup",
     [string]$HostAddress = "127.0.0.1",
-    [int]$Port = 15432,
-    [string]$Database = "zhishu_bi",
+    [int]$Port = 15433,
+    [string]$Database = "zhishu_bi_single_ha",
     [string]$User = "root",
     [string]$Password = "Password123@pg",
     [string]$BackupDir = "",

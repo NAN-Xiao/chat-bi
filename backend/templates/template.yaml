@@ -138,7 +138,7 @@ template:
         </rule>
         <rule>
           如果问题是图表展示相关，可参考的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)、矩形树图(treemap), 返回的JSON内chart-type值则为 table/metric/column/bar/line/pie/funnel/heatmap/scatter/sankey/treemap 中的一个
-          图表类型选择原则推荐：核心单值指标用 metric，趋势 over time 用 line，分类对比用 column/bar，占比用 pie/treemap，转化路径用 funnel，留存 cohort 或二维分布用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
+          图表类型选择原则推荐：核心单值指标用 metric，趋势 over time 用 line，分类对比用 column/bar，占比用 pie/treemap，步骤转化用 funnel，矩阵或二维分布用 heatmap，二维关系用 scatter，来源去向或路径流转用 sankey，原始数据查看用 table
         </rule>
         <rule priority="high">
           <title>图表字段维度与指标数量限制规则</title>
@@ -432,7 +432,7 @@ template:
       <Rules>
         <rule>
           支持的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap), 提供给你的<chart-type>值则为 table/metric/column/bar/line/pie/funnel/heatmap/scatter/sankey/treemap 中的一个，若没有推荐类型，则由你自己选择一个合适的类型。
-          图表类型选择原则推荐：核心单值指标用 metric，趋势 over time 用 line，分类对比用 column/bar，占比用 pie/treemap，转化路径用 funnel，留存 cohort 或二维分布用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
+          图表类型选择原则推荐：核心单值指标用 metric，趋势 over time 用 line，分类对比用 column/bar，占比用 pie/treemap，步骤转化用 funnel，矩阵或二维分布用 heatmap，二维关系用 scatter，来源去向或路径流转用 sankey，原始数据查看用 table
         </rule>
         <rule>
           不需要你提供创建图表的代码，你只需要负责根据要求生成JSON配置项
@@ -509,32 +509,32 @@ template:
         <rule>
           如果需要指标卡，JSON格式应为：
           {{"type":"metric", "title": "标题", "axis": {{"y": [{{"name":"指标的{lang}名称","value":"SQL 查询指标列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}]}}}}
-          指标卡适合展示 DAU、收入、ARPU、ARPPU、付费率、留存率、LTV、崩溃率等核心汇总指标，可以有一个或多个 y 指标，不需要 x 或 series。
+          指标卡适合展示核心汇总指标，例如总量、金额、比率、均值或状态值，可以有一个或多个 y 指标，不需要 x 或 series。
         </rule>
         <rule>
           如果需要漏斗图，JSON格式应为：
           {{"type":"funnel", "title": "标题", "axis": {{"x": {{"name":"步骤的{lang}名称","value":"SQL 查询步骤列"}}, "y": {{"name":"指标的{lang}名称","value":"SQL 查询指标列"}}}}}}
-          漏斗图用于注册、创角、新手引导、首付、活动参与等转化路径，x 为步骤/阶段，y 为人数、次数或金额，SQL 必须按业务步骤顺序排序。
+          漏斗图用于步骤或阶段转化路径，x 为步骤/阶段，y 为人数、次数或金额，SQL 必须按业务步骤顺序排序。
         </rule>
         <rule>
           如果需要热力图，JSON格式应为：
           {{"type":"heatmap", "title": "标题", "axis": {{"x": {{"name":"横向维度的{lang}名称","value":"SQL 查询横向维度列"}}, "y": {{"name":"颜色指标的{lang}名称","value":"SQL 查询指标列"}}, "series": {{"name":"纵向维度的{lang}名称","value":"SQL 查询纵向维度列"}}}}}}
-          热力图用于留存 cohort、小时/星期活跃、SLG 地图坐标密度等二维分布，必须同时提供 x、series 和 y。
+          热力图用于矩阵、交叉维度或二维分布，必须同时提供 x、series 和 y。
         </rule>
         <rule>
           如果需要散点图，JSON格式应为：
           {{"type":"scatter", "title": "标题", "axis": {{"x": {{"name":"X轴指标的{lang}名称","value":"SQL 查询X轴列"}}, "y": {{"name":"Y轴指标的{lang}名称","value":"SQL 查询Y轴列"}}, "series": {{"name":"分类的{lang}名称","value":"SQL 查询分类列"}}}}}}
-          散点图用于战力与付费、CPI 与 LTV、活跃与收入等二维关系，series 可选。
+          散点图用于两个数值指标之间的关系分布，series 可选。
         </rule>
         <rule>
           如果需要桑基图，JSON格式应为：
           {{"type":"sankey", "title": "标题", "axis": {{"x": {{"name":"来源的{lang}名称","value":"SQL 查询来源列"}}, "y": {{"name":"流量指标的{lang}名称","value":"SQL 查询流量或金额列"}}, "series": {{"name":"去向的{lang}名称","value":"SQL 查询去向列"}}}}}}
-          桑基图用于资源流向、玩法路径、用户状态迁移、道具来源消耗等，必须提供来源 x、去向 series 和流量/金额 y。
+          桑基图用于来源去向、路径流转或状态迁移，必须提供来源 x、去向 series 和流量/金额 y。
         </rule>
         <rule>
           如果需要矩形树图，JSON格式应为：
           {{"type":"treemap", "title": "标题", "axis": {{"x": {{"name":"分类的{lang}名称","value":"SQL 查询分类列"}}, "y": {{"name":"贡献指标的{lang}名称","value":"SQL 查询可累加指标列"}}, "series": {{"name":"上层分类的{lang}名称","value":"SQL 查询上层分类列"}}}}}}
-          矩形树图用于商品、礼包、玩法、服务器、渠道等贡献结构；series 可选，用于形成二级层级。
+          矩形树图用于分类或层级贡献结构；series 可选，用于形成二级层级。
         </rule>
         <rule>
           如果SQL中没有分类列，那么JSON内的series字段不需要出现

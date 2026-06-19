@@ -35,10 +35,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = secrets.token_urlsafe(32)
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
-    FRONTEND_HOST: str = "http://localhost:5173"
+    FRONTEND_HOST: str = "http://localhost:5174"
     LOCAL_DEV_FRONTEND_HOSTS: tuple[str, ...] = (
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
     )
     ENABLE_LOCAL_DEV_CORS: bool = True
 
@@ -63,10 +63,10 @@ class Settings(BaseSettings):
         return self.CONTEXT_PATH + "/api/v1"
 
     POSTGRES_SERVER: str = 'localhost'
-    POSTGRES_PORT: int = 5432
+    POSTGRES_PORT: int = 15433
     POSTGRES_USER: str = 'root'
     POSTGRES_PASSWORD: str = "Password123@pg"
-    POSTGRES_DB: str = "zhishu_bi"
+    POSTGRES_DB: str = "zhishu_bi_single_ha"
     ZHISHU_DB_URL: str = ''
     # ZHISHU_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/zhishu'
 
@@ -132,7 +132,7 @@ class Settings(BaseSettings):
     MCP_IMAGE_PATH: str = '/opt/zhishu/images'
     EXCEL_PATH: str = '/opt/zhishu/data/excel'
     MCP_ENABLED: bool = False
-    MCP_IMAGE_HOST: str = 'http://localhost:3000'
+    MCP_IMAGE_HOST: str = 'http://localhost:3001'
     SERVER_IMAGE_HOST: str = 'http://YOUR_SERVE_IP:MCP_PORT/images/'
     SERVER_IMAGE_TIMEOUT: int = 15
     LLM_REQUEST_TIMEOUT: int = 45

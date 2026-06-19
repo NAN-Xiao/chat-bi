@@ -5,11 +5,22 @@ from types import SimpleNamespace
 
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
+import pytest
+from fastapi import HTTPException
+from starlette.responses import StreamingResponse
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
 
+from apps.chat.api import chat as chat_api
 from apps.chat.curd import chat as chat_crud
 from apps.chat.models.chat_model import Chat, ChatRecord
+
+
+async def _streaming_response_text(response: StreamingResponse) -> str:
+    chunks = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
+    return "".join(chunks)
 
 
 def _engine_with_chat_permission_tables():
@@ -210,6 +221,76 @@ def test_chat_cached_data_is_rechecked_against_current_permissions(monkeypatch):
     assert result["status"] == "failed"
     assert result["message"] == "SQL 超出当前数据权限范围"
     assert "amount" not in result["message"]
+
+
+def test_export_excel_rechecks_current_permissions_before_using_cached_data(monkeypatch):
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    exec_calls = []
+    monkeypatch.setattr(
+        chat_crud,
+        "exec_sql",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"fields": ["amount"], "data": [{"amount": 99}]},
+    )
+
+    with Session(engine) as session:
+        _insert_permission_fixture(session)
+        session.add(ChatRecord(
+            id=1,
+            chat_id=7,
+            create_by=2,
+            datasource=1,
+            sql="select amount from orders",
+            chart=json.dumps({"columns": [{"name": "amount", "value": "amount"}]}),
+            data=json.dumps({"fields": ["amount"], "data": [{"amount": 99}]}),
+        ))
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            import asyncio
+
+            asyncio.run(
+                chat_api.export_excel.__wrapped__(
+                    session,
+                    current_user,
+                    1,
+                    7,
+                    lambda key: key,
+                )
+            )
+
+    assert exec_calls == []
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "SQL 超出当前数据权限范围"
+
+
+def test_recommend_questions_does_not_use_records_owned_by_another_user(monkeypatch):
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+
+    async def _unexpected_create(*_args, **_kwargs):
+        raise AssertionError("LLMService.create should not run for another user's record")
+
+    monkeypatch.setattr(chat_api.LLMService, "create", _unexpected_create)
+
+    with Session(engine) as session:
+        session.add(ChatRecord(
+            id=1,
+            chat_id=7,
+            create_by=3,
+            datasource=1,
+            question="show amount",
+        ))
+        session.commit()
+
+        import asyncio
+
+        response = asyncio.run(chat_api.ask_recommend_questions(session, current_user, 1, None))
+        body = asyncio.run(_streaming_response_text(response))
+
+    assert '"content":"[]"' in body
+    assert '"type":"recommended_question"' in body
 
 
 def test_chat_history_scrubs_cached_artifacts_after_permission_change(monkeypatch):

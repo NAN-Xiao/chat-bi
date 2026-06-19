@@ -5,6 +5,7 @@ import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
 import { store } from './index'
 import { getCurrentRouter, getQueryString, getZhishuAddr, isPlatform } from '@/utils/utils'
+import { useDatasourceContextStore } from './datasourceContext'
 
 const { wsCache } = useCache()
 
@@ -79,6 +80,7 @@ export const UserStore = defineStore('user', {
   },
   actions: {
     async login(formData: { username: string; password: string }) {
+      useDatasourceContextStore().resetForUserChange()
       const res: any = await AuthApi.login(formData)
       this.setToken(res.access_token)
     },
@@ -89,6 +91,7 @@ export const UserStore = defineStore('user', {
         param = { ...param, ...wsCache.get('user.platformInfo') }
       }
       const res: any = await AuthApi.logout(param)
+      useDatasourceContextStore().resetForUserChange()
       this.clear()
       if (res) {
         window.location.href = res
@@ -208,6 +211,7 @@ export const UserStore = defineStore('user', {
         'platformInfo',
       ]
       keys.forEach((key) => wsCache.delete('user.' + key))
+      useDatasourceContextStore().resetForUserChange()
       this.$reset()
     },
   },
