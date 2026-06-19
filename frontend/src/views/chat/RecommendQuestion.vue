@@ -67,12 +67,28 @@ function clickQuestion(question: string): void {
 }
 
 const stopFlag = ref(false)
+const controllerRef = ref<AbortController>()
+const unmounted = ref(false)
+
+function setLoading(value: boolean) {
+  if (!unmounted.value) {
+    loading.value = value
+  }
+}
+
+function emitIfMounted(event: Parameters<typeof emits>[0], ...args: any[]) {
+  if (!unmounted.value) {
+    emits(event, ...args)
+  }
+}
 
 async function getRecommendQuestions(articles_number: number) {
   stopFlag.value = false
-  loading.value = true
+  setLoading(true)
+  let controller: AbortController | undefined
   try {
-    const controller: AbortController = new AbortController()
+    controller = new AbortController()
+    controllerRef.value = controller
     const params = articles_number ? '?articles_number=' + articles_number : ''
     const response = await chatApi.recommendQuestions(props.recordId, controller, params)
     const reader = response.body.getReader()
@@ -83,7 +99,7 @@ async function getRecommendQuestions(articles_number: number) {
     while (true) {
       if (stopFlag.value) {
         controller.abort()
-        loading.value = false
+        setLoading(false)
         break
       }
 
@@ -108,12 +124,18 @@ async function getRecommendQuestions(articles_number: number) {
         }
 
         if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
+          if (!unmounted.value) {
+            ElMessage({
+              message: data.msg,
+              type: 'error',
+              showClose: true,
+            })
+          }
           return
+        }
+
+        if (unmounted.value) {
+          continue
         }
 
         switch (data.type) {
@@ -138,19 +160,23 @@ async function getRecommendQuestions(articles_number: number) {
       }
     }
   } finally {
-    loading.value = false
-    emits('loadingOver')
+    if (controller && controllerRef.value === controller) {
+      controllerRef.value = undefined
+    }
+    setLoading(false)
+    emitIfMounted('loadingOver')
   }
 }
 
 function stop() {
   stopFlag.value = true
-  loading.value = false
-  emits('stop')
+  controllerRef.value?.abort()
+  setLoading(false)
+  emitIfMounted('stop')
 }
 
 onBeforeUnmount(() => {
-  stop()
+  unmounted.value = true
 })
 
 defineExpose({ getRecommendQuestions, id: () => props.recordId, stop })

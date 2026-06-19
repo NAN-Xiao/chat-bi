@@ -595,9 +595,20 @@ const showChatFooter = computed(() => {
   )
 })
 
+const releaseActiveView = (func?: (...p: any[]) => void, ...param: any[]) => {
+  loading.value = false
+  isTyping.value = false
+  getRecommendQuestionsLoading.value = false
+  clearInterval(scrollTime)
+  scrollTime = null
+  if (func && typeof func === 'function') {
+    func(...param)
+  }
+}
+
 const goEmpty = (func?: (...p: any[]) => void, ...param: any[]) => {
   inputMessage.value = ''
-  stop(func, ...param)
+  releaseActiveView(func, ...param)
 }
 
 let scrollTime: any
@@ -755,7 +766,7 @@ watch(
     if (!oldValue || value === oldValue) {
       return
     }
-    stop()
+    releaseActiveView()
     currentChat.value = new ChatInfo()
     currentChatId.value = undefined
     chatList.value = []
@@ -1170,6 +1181,7 @@ const assistantPrepareInit = () => {
 defineExpose({
   createNewChat,
   showFloatPopover,
+  stop,
 })
 
 const hiddenChatCreatorRef = ref()

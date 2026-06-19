@@ -84,17 +84,34 @@ const _loading = computed({
 })
 
 const stopFlag = ref(false)
+const controllerRef = ref<AbortController>()
+const unmounted = ref(false)
+
+function setLoading(value: boolean) {
+  if (!unmounted.value) {
+    _loading.value = value
+  }
+}
+
+function emitIfMounted(event: Parameters<typeof emits>[0], ...args: any[]) {
+  if (!unmounted.value) {
+    emits(event, ...args)
+  }
+}
 
 const sendMessage = async () => {
   stopFlag.value = false
-  _loading.value = true
+  setLoading(true)
 
-  if (index.value < 0) {
-    _loading.value = false
+  const recordIndex = index.value
+  if (recordIndex < 0) {
+    setLoading(false)
     return
   }
 
-  const currentRecord: ChatRecord = _currentChat.value.records[index.value]
+  const targetChat = _currentChat.value
+  const targetChatList = _chatList.value
+  const currentRecord: ChatRecord = targetChat.records[recordIndex]
 
   let error: boolean = false
   if (_currentChatId.value === undefined) {
@@ -102,13 +119,15 @@ const sendMessage = async () => {
   }
   if (error) return
 
+  let controller: AbortController | undefined
   try {
-    const controller: AbortController = new AbortController()
+    controller = new AbortController()
+    controllerRef.value = controller
     const param = {
       question: currentRecord.question,
       chat_id: _currentChatId.value,
       custom_prompt_id: currentRecord.custom_prompt_id,
-      datasource_id: currentRecord.datasource || _currentChat.value.datasource,
+      datasource_id: currentRecord.datasource || targetChat.datasource,
     }
     const response = await questionApi.add(param, controller)
     const reader = response.body.getReader()
@@ -127,7 +146,7 @@ const sendMessage = async () => {
 
       const { done, value } = await reader.read()
       if (done) {
-        _loading.value = false
+        setLoading(false)
         break
       }
 
@@ -147,74 +166,88 @@ const sendMessage = async () => {
         }
 
         if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          _loading.value = false
+          if (!unmounted.value) {
+            ElMessage({
+              message: data.msg,
+              type: 'error',
+              showClose: true,
+            })
+          }
+          setLoading(false)
           return
+        }
+
+        if (unmounted.value) {
+          continue
         }
 
         switch (data.type) {
           case 'id':
             currentRecord.id = data.id
-            _currentChat.value.records[index.value].id = data.id
+            targetChat.records[recordIndex].id = data.id
             break
           case 'regenerate_record_id':
             currentRecord.regenerate_record_id = data.regenerate_record_id
-            _currentChat.value.records[index.value].regenerate_record_id =
-              data.regenerate_record_id
+            targetChat.records[recordIndex].regenerate_record_id = data.regenerate_record_id
             break
           case 'question':
             currentRecord.question = data.question
-            _currentChat.value.records[index.value].question = data.question
+            targetChat.records[recordIndex].question = data.question
             break
           case 'info':
             console.info(data.msg)
             break
           case 'brief':
-            _currentChat.value.brief = data.brief
-            _chatList.value.forEach((c: Chat) => {
-              if (c.id === _currentChat.value.id) {
-                c.brief = _currentChat.value.brief
+            targetChat.brief = data.brief
+            targetChatList.forEach((c: Chat) => {
+              if (c.id === targetChat.id) {
+                c.brief = targetChat.brief
               }
             })
             break
           case 'error':
             currentRecord.error = data.content
-            emits('error', currentRecord.id)
+            emitIfMounted('error', currentRecord.id)
             break
           case 'sql-result':
             sql_answer += data.reasoning_content || ''
-            _currentChat.value.records[index.value].sql_answer = sql_answer
+            targetChat.records[recordIndex].sql_answer = sql_answer
             break
           case 'sql':
-            _currentChat.value.records[index.value].sql = data.content
+            targetChat.records[recordIndex].sql = data.content
             break
           case 'sql-data':
-            getChatData(_currentChat.value.records[index.value].id)
+            getChatData(targetChat.records[recordIndex].id, targetChat)
             break
           case 'chart-result':
             chart_answer += data.reasoning_content || ''
-            _currentChat.value.records[index.value].chart_answer = chart_answer
+            targetChat.records[recordIndex].chart_answer = chart_answer
             break
           case 'chart':
-            _currentChat.value.records[index.value].chart = data.content
+            targetChat.records[recordIndex].chart = data.content
             break
           case 'datasource':
-            if (!_currentChat.value.datasource) {
-              _currentChat.value.datasource = data.id
+            if (!targetChat.datasource) {
+              targetChat.datasource = data.id
             }
             break
           case 'finish':
-            emits('finish', currentRecord.id)
+            emitIfMounted('finish', currentRecord.id)
             break
         }
-        await nextTick()
+        if (!unmounted.value) {
+          await nextTick()
+        }
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    if (stopFlag.value || error?.name === 'AbortError') {
+      return
+    }
+    if (unmounted.value) {
+      console.error('Error:', error)
+      return
+    }
     if (!currentRecord.error) {
       currentRecord.error = ''
     }
@@ -223,39 +256,50 @@ const sendMessage = async () => {
     }
     currentRecord.error = currentRecord.error + 'Error:' + error
     console.error('Error:', error)
-    emits('error')
+    emitIfMounted('error')
   } finally {
-    _loading.value = false
+    if (controller && controllerRef.value === controller) {
+      controllerRef.value = undefined
+    }
+    setLoading(false)
   }
 }
 
 const loadingData = ref(false)
 
-function getChatData(recordId?: number) {
-  loadingData.value = true
+function getChatData(recordId?: number, targetChat: ChatInfo = _currentChat.value) {
+  if (!recordId) {
+    return
+  }
+  if (!unmounted.value) {
+    loadingData.value = true
+  }
   chatApi
     .get_chart_data(recordId)
     .then((response) => {
-      _currentChat.value.records.forEach((record) => {
+      targetChat.records.forEach((record) => {
         if (record.id === recordId) {
           record.data = response
         }
       })
     })
     .finally(() => {
-      loadingData.value = false
-      emits('scrollBottom')
+      if (!unmounted.value) {
+        loadingData.value = false
+        emits('scrollBottom')
+      }
     })
 }
 
 function stop() {
   stopFlag.value = true
-  _loading.value = false
-  emits('stop')
+  controllerRef.value?.abort()
+  setLoading(false)
+  emitIfMounted('stop')
 }
 
 onBeforeUnmount(() => {
-  stop()
+  unmounted.value = true
 })
 
 onMounted(() => {

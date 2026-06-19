@@ -78,16 +78,33 @@ const _loading = computed({
 })
 
 const stopFlag = ref(false)
+const controllerRef = ref<AbortController>()
+const unmounted = ref(false)
+
+function setLoading(value: boolean) {
+  if (!unmounted.value) {
+    _loading.value = value
+  }
+}
+
+function emitIfMounted(event: Parameters<typeof emits>[0], ...args: any[]) {
+  if (!unmounted.value) {
+    emits(event, ...args)
+  }
+}
+
 const sendMessage = async () => {
   stopFlag.value = false
-  _loading.value = true
+  setLoading(true)
 
-  if (index.value < 0) {
-    _loading.value = false
+  const recordIndex = index.value
+  if (recordIndex < 0) {
+    setLoading(false)
     return
   }
 
-  const currentRecord: ChatRecord = _currentChat.value.records[index.value]
+  const targetChat = _currentChat.value
+  const currentRecord: ChatRecord = targetChat.records[recordIndex]
 
   let error: boolean = false
   if (_currentChatId.value === undefined || currentRecord.analysis_record_id === undefined) {
@@ -95,8 +112,10 @@ const sendMessage = async () => {
   }
   if (error) return
 
+  let controller: AbortController | undefined
   try {
-    const controller: AbortController = new AbortController()
+    controller = new AbortController()
+    controllerRef.value = controller
     const response = await chatApi.analysis(currentRecord.analysis_record_id, controller)
     const reader = response.body.getReader()
     const decoder = new TextDecoder('utf-8')
@@ -109,13 +128,13 @@ const sendMessage = async () => {
     while (true) {
       if (stopFlag.value) {
         controller.abort()
-        _loading.value = false
+        setLoading(false)
         break
       }
 
       const { done, value } = await reader.read()
       if (done) {
-        _loading.value = false
+        setLoading(false)
         break
       }
 
@@ -135,41 +154,56 @@ const sendMessage = async () => {
         }
 
         if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          _loading.value = false
+          if (!unmounted.value) {
+            ElMessage({
+              message: data.msg,
+              type: 'error',
+              showClose: true,
+            })
+          }
+          setLoading(false)
           return
+        }
+
+        if (unmounted.value) {
+          continue
         }
 
         switch (data.type) {
           case 'id':
             currentRecord.id = data.id
-            _currentChat.value.records[index.value].id = data.id
+            targetChat.records[recordIndex].id = data.id
             break
           case 'info':
             console.info(data.msg)
             break
           case 'error':
             currentRecord.error = data.content
-            emits('error', currentRecord.id)
+            emitIfMounted('error', currentRecord.id)
             break
           case 'analysis-result':
             analysis_answer += data.content || ''
             analysis_answer_thinking += data.reasoning_content || ''
-            _currentChat.value.records[index.value].analysis = analysis_answer
-            _currentChat.value.records[index.value].analysis_thinking = analysis_answer_thinking
+            targetChat.records[recordIndex].analysis = analysis_answer
+            targetChat.records[recordIndex].analysis_thinking = analysis_answer_thinking
             break
           case 'analysis_finish':
-            emits('finish', currentRecord.id)
+            emitIfMounted('finish', currentRecord.id)
             break
         }
-        await nextTick()
+        if (!unmounted.value) {
+          await nextTick()
+        }
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    if (stopFlag.value || error?.name === 'AbortError') {
+      return
+    }
+    if (unmounted.value) {
+      console.error('Error:', error)
+      return
+    }
     if (!currentRecord.error) {
       currentRecord.error = ''
     }
@@ -178,19 +212,23 @@ const sendMessage = async () => {
     }
     currentRecord.error = currentRecord.error + 'Error:' + error
     console.error('Error:', error)
-    emits('error')
+    emitIfMounted('error')
   } finally {
-    _loading.value = false
+    if (controller && controllerRef.value === controller) {
+      controllerRef.value = undefined
+    }
+    setLoading(false)
   }
 }
 function stop() {
   stopFlag.value = true
-  _loading.value = false
-  emits('stop')
+  controllerRef.value?.abort()
+  setLoading(false)
+  emitIfMounted('stop')
 }
 
 onBeforeUnmount(() => {
-  stop()
+  unmounted.value = true
 })
 defineExpose({ sendMessage, index: () => index.value, chatList: () => _chatList.value, stop })
 </script>
