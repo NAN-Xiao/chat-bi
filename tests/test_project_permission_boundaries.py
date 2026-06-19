@@ -12,6 +12,7 @@ os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - 
 
 from apps.data_training.api import data_training as data_training_api
 from apps.data_training.models.data_training_model import DataTrainingInfo
+from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum
 from apps.system.schemas import permission as permission_schema
 from apps.terminology.api import terminology as terminology_api
 from apps.terminology.models.terminology_model import TerminologyInfo
@@ -158,9 +159,9 @@ def test_data_training_pager_rejects_unavailable_datasource(monkeypatch):
     assert exc.value.status_code == 403
 
 
-def test_data_training_maintenance_requires_tenant_or_system_admin(monkeypatch):
+def test_data_training_maintenance_respects_platform_and_tenant_scopes(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
-    system_admin = SimpleNamespace(id=1, isAdmin=True)
+    platform_admin = SimpleNamespace(id=1, system_role="system_admin", tenant_id=1, tenant_role="owner")
     tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=1, tenant_role="owner")
     monkeypatch.setattr(data_training_api, "has_datasource_access", lambda *args, **kwargs: True)
 
@@ -172,10 +173,18 @@ def test_data_training_maintenance_requires_tenant_or_system_admin(monkeypatch):
         )
     assert exc.value.status_code == 403
 
+    with pytest.raises(HTTPException) as platform_tenant_exc:
+        data_training_api._require_training_admin(
+            session=object(),
+            current_user=platform_admin,
+            info=DataTrainingInfo(datasource=1),
+        )
+    assert platform_tenant_exc.value.status_code == 403
+
     data_training_api._require_training_admin(
         session=object(),
-        current_user=system_admin,
-        info=DataTrainingInfo(datasource=1),
+        current_user=platform_admin,
+        info=DataTrainingInfo(scope=SemanticRecordScopeEnum.PLATFORM, datasource=1),
     )
     data_training_api._require_training_admin(
         session=object(),
@@ -241,9 +250,9 @@ def test_terminology_pager_rejects_unavailable_datasource(monkeypatch):
     assert exc.value.status_code == 403
 
 
-def test_terminology_maintenance_requires_tenant_or_system_admin(monkeypatch):
+def test_terminology_maintenance_respects_platform_and_tenant_scopes(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
-    system_admin = SimpleNamespace(id=1, isAdmin=True)
+    platform_admin = SimpleNamespace(id=1, system_role="system_admin", tenant_id=1, tenant_role="owner")
     tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=1, tenant_role="admin")
     monkeypatch.setattr(terminology_api, "has_datasource_access", lambda *args, **kwargs: True)
 
@@ -255,10 +264,22 @@ def test_terminology_maintenance_requires_tenant_or_system_admin(monkeypatch):
         )
     assert exc.value.status_code == 403
 
+    with pytest.raises(HTTPException) as platform_tenant_exc:
+        terminology_api._require_term_scope_admin(
+            session=object(),
+            current_user=platform_admin,
+            term=TerminologyInfo(specific_ds=True, datasource_ids=[1]),
+        )
+    assert platform_tenant_exc.value.status_code == 403
+
     terminology_api._require_term_scope_admin(
         session=object(),
-        current_user=system_admin,
-        term=TerminologyInfo(specific_ds=True, datasource_ids=[1]),
+        current_user=platform_admin,
+        term=TerminologyInfo(
+            scope=SemanticRecordScopeEnum.PLATFORM,
+            specific_ds=True,
+            datasource_ids=[1],
+        ),
     )
     terminology_api._require_term_scope_admin(
         session=object(),

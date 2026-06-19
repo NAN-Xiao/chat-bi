@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from apps.dashboard.crud import dashboard_service
+from apps.datasource.crud import query_executor
 import pytest
 from fastapi import HTTPException
 
@@ -570,19 +571,9 @@ def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: "Administrator")
     monkeypatch.setattr(
         dashboard_service,
-        "_extract_physical_tables",
-        lambda statements: {"chart_source"},
-    )
-    monkeypatch.setattr(
-        dashboard_service,
-        "_build_dashboard_permission_scope",
-        lambda *args, **kwargs: {"chart_source": {"fields": {"value"}}},
-    )
-    monkeypatch.setattr(
-        dashboard_service,
-        "exec_sql",
-        lambda ds, sql, origin_column=False: chart_calls.append((ds.id, sql))
-        or {"data": [{"value": 1}], "fields": ["value"]},
+        "_execute_dashboard_chart_sql",
+        lambda session, current_user, datasource_id, sql: chart_calls.append((datasource_id, sql))
+        or {"status": "success", "data": [{"value": 1}], "fields": ["value"], "message": ""},
     )
 
     with Session(engine) as session:
@@ -628,19 +619,9 @@ def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monk
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: "Administrator")
     monkeypatch.setattr(
         dashboard_service,
-        "_extract_physical_tables",
-        lambda statements: {"chart_source"},
-    )
-    monkeypatch.setattr(
-        dashboard_service,
-        "_build_dashboard_permission_scope",
-        lambda *args, **kwargs: {"chart_source": {"fields": {"value"}}},
-    )
-    monkeypatch.setattr(
-        dashboard_service,
-        "exec_sql",
-        lambda ds, sql, origin_column=False: chart_calls.append((ds.id, sql))
-        or {"data": [{"value": 1}], "fields": ["value"]},
+        "_execute_dashboard_chart_sql",
+        lambda session, current_user, datasource_id, sql: chart_calls.append((datasource_id, sql))
+        or {"status": "success", "data": [{"value": 1}], "fields": ["value"], "message": ""},
     )
 
     with Session(engine) as session:
@@ -897,7 +878,7 @@ def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     exec_calls = []
     monkeypatch.setattr(
-        dashboard_service,
+        query_executor,
         "exec_sql",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
         or {"data": [{"payment_id": 1}], "fields": ["payment_id"]},
@@ -946,7 +927,7 @@ def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch)
     current_user = SimpleNamespace(id=2, isAdmin=False)
     exec_calls = []
     monkeypatch.setattr(
-        dashboard_service,
+        query_executor,
         "exec_sql",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
         or {"data": [{"amount": 99}], "fields": ["amount"]},
@@ -974,7 +955,7 @@ def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     exec_calls = []
     monkeypatch.setattr(
-        dashboard_service,
+        query_executor,
         "exec_sql",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
         or {"data": [{"order_id": 1}], "fields": ["order_id"]},
@@ -1004,7 +985,7 @@ def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch
     current_user = SimpleNamespace(id=2, isAdmin=False)
     exec_calls = []
     monkeypatch.setattr(
-        dashboard_service,
+        query_executor,
         "exec_sql",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
         or {"data": [{"order_id": 1}], "fields": ["order_id"]},

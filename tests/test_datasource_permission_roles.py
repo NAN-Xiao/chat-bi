@@ -12,6 +12,7 @@ from apps.datasource.crud import datasource as datasource_crud
 from apps.datasource.api import datasource as datasource_api
 from apps.datasource.crud.binding import bind_tenant_to_datasource
 from apps.datasource.crud import permission
+from apps.datasource.crud import query_executor
 from apps.datasource.crud.permission_rules import delete_permission_records_for_datasources
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_AGENT_GUIDANCE, PERMISSION_DENIED_RESULT_MESSAGE
 from apps.datasource.crud.sql_permission import validate_sql_scope
@@ -692,7 +693,7 @@ def test_normal_user_sample_data_is_not_sent_to_model(monkeypatch):
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
     exec_calls = []
     monkeypatch.setattr(
-        datasource_crud,
+        query_executor,
         "exec_sql",
         lambda ds, sql, origin_column=True: exec_calls.append(sql)
         or {"fields": ["order_id"], "data": [{"order_id": 1}], "sql": sql},
@@ -1006,7 +1007,7 @@ def test_preview_denies_configured_denied_tables(monkeypatch):
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
     exec_calls = []
     monkeypatch.setattr(
-        datasource_crud,
+        query_executor,
         "exec_sql",
         lambda ds, sql, origin_column=True: exec_calls.append(sql)
         or {"fields": ["order_id"], "data": [{"order_id": 1}], "sql": sql},

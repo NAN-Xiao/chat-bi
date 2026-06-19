@@ -40,7 +40,7 @@ from apps.datasource.crud.permission_errors import (
     permission_denied_result,
 )
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
-from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
+from apps.datasource.crud.query_executor import execute_user_query_or_raise, prepare_query_sql
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql, get_version, check_connection
@@ -1116,7 +1116,7 @@ class LLMService:
     def finish(self, session: Session):
         return finish_record(session=session, record_id=self.record.id)
 
-    def execute_sql(self, sql: str):
+    def execute_sql(self, session: Session, sql: str):
         """Execute SQL query
 
         Args:
@@ -1128,6 +1128,15 @@ class LLMService:
         """
         AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
+            if isinstance(self.ds, CoreDatasource):
+                return execute_user_query_or_raise(
+                    session=session,
+                    current_user=self.current_user,
+                    datasource=self.ds,
+                    sql=sql,
+                    apply_row_permissions=False,
+                    validate_columns=False,
+                ).result
             return exec_sql(ds=self.ds, sql=sql, origin_column=False)
         except Exception as e:
             if isinstance(e, ParseSQLResultError):
@@ -1276,7 +1285,6 @@ class LLMService:
                         json_result['title'] = brief
 
             use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
-            is_page_embedded: bool = self.current_assistant and self.current_assistant.type == 4
             dynamic_sql_result = None
             app_temp_sql_text = None
             assistant_dynamic_sql = None
@@ -1286,52 +1294,30 @@ class LLMService:
             sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
 
             try:
-                if ((not self.current_assistant or is_page_embedded) and is_normal_user(
-                        self.current_user)) or use_dynamic_ds:
-                    sql_result = None
-
-                    if use_dynamic_ds:
-                        dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
-                        app_temp_sql_text = _get_temp_sql_text(dynamic_sql_result)
-                    else:
-                        statements, actual_tables, _permission_scope = validate_sql_scope(
-                            _session,
-                            self.current_user,
-                            self.ds,
-                            sql,
-                        )
-                        if not actual_tables.issubset(set(self.table_name_list)):
-                            raise SingleMessageError(
-                                f"SQL contains unauthorized tables: {', '.join(sorted(actual_tables - set(self.table_name_list)))}. "
-                                f"Allowed tables: {', '.join(self.table_name_list)}"
-                            )
-                        row_filters = get_row_permission_filters(
-                            session=_session,
-                            current_user=self.current_user,
-                            ds=self.ds,
-                            tables=sorted(actual_tables),
-                        )
-                        if row_filters:
-                            sql_result = apply_row_permission_filters(sql, self.ds, row_filters)
-
-                    if sql_result:
-                        AppLogUtil.info(sql_result)
-                        sql_operate = OperationEnum.GENERATE_SQL_WITH_PERMISSIONS
-                        sql = self.save_checked_sql(session=_session, sql=sql_result)
-                        if isinstance(self.ds, CoreDatasource):
-                            validate_sql_table_scope(_session, self.current_user, self.ds, sql)
-                    elif dynamic_sql_result and app_temp_sql_text:
+                if use_dynamic_ds:
+                    dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
+                    app_temp_sql_text = _get_temp_sql_text(dynamic_sql_result)
+                    if dynamic_sql_result and app_temp_sql_text:
                         sql_operate = OperationEnum.GENERATE_DYNAMIC_SQL
-                        assistant_dynamic_sql = self.check_save_sql(session=_session, res=app_temp_sql_text,
-                                                                    operate=sql_operate)
+                        assistant_dynamic_sql = self.check_save_sql(
+                            session=_session,
+                            res=app_temp_sql_text,
+                            operate=sql_operate,
+                        )
                     else:
                         sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
-                        if isinstance(self.ds, CoreDatasource):
-                            validate_sql_scope(_session, self.current_user, self.ds, sql)
                 else:
-                    sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
-                    if isinstance(self.ds, CoreDatasource):
-                        validate_sql_scope(_session, self.current_user, self.ds, sql)
+                    prepared_sql, _actual_tables = prepare_query_sql(
+                        session=_session,
+                        current_user=self.current_user,
+                        datasource=self.ds,
+                        sql=sql,
+                        allowed_tables=self.table_name_list,
+                    )
+                    if prepared_sql != sql:
+                        AppLogUtil.info(prepared_sql)
+                        sql_operate = OperationEnum.GENERATE_SQL_WITH_PERMISSIONS
+                    sql = self.save_checked_sql(session=_session, sql=prepared_sql)
             except Exception as permission_error:
                 if not looks_like_permission_scope_error(str(permission_error)):
                     raise
@@ -1392,7 +1378,7 @@ class LLMService:
                                                                      operate=OperationEnum.EXECUTE_SQL,
                                                                      record_id=self.record.id, local_operation=True)
             try:
-                result = self.execute_sql(sql=real_execute_sql)
+                result = self.execute_sql(session=_session, sql=real_execute_sql)
             except Exception as execute_error:
                 if not looks_like_permission_scope_error(str(execute_error)):
                     raise

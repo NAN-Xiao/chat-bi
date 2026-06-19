@@ -9,6 +9,7 @@ from sqlmodel import select
 from apps.datasource.crud.permission import can_access_table, current_tenant_id, get_accessible_datasource_ids, \
     get_column_permission_fields, get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, \
     is_normal_user
+from apps.datasource.crud.query_executor import execute_user_query_or_raise
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
 from apps.db.constant import DB
@@ -427,7 +428,16 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{table.table_name}"
             {where}
             LIMIT 100"""
-    return exec_sql(ds, sql, True)
+    return execute_user_query_or_raise(
+        session=session,
+        current_user=current_user,
+        datasource=ds,
+        sql=sql,
+        allowed_tables=[table.table_name],
+        origin_column=True,
+        apply_row_permissions=False,
+        validate_columns=False,
+    ).result
 
 
 def fieldEnum(session: SessionDep, id: int):

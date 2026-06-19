@@ -13,14 +13,14 @@ from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts
 from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
-from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
+from apps.datasource.crud.permission import has_datasource_access, is_normal_user
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
     PERMISSION_DENIED_ERROR_TYPE,
     PERMISSION_DENIED_RESULT_MESSAGE,
     looks_like_permission_scope_error,
 )
-from apps.datasource.crud.sql_permission import apply_row_permission_filters, validate_sql_scope, validate_sql_table_scope
+from apps.datasource.crud.query_executor import execute_user_query_or_raise, prepare_query_sql
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.db import exec_sql
 from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
@@ -413,27 +413,6 @@ def _get_datasource(
     return datasource
 
 
-def _apply_row_permissions(
-    llm,
-    session: SessionDep,
-    current_user: CurrentUser,
-    datasource: CoreDatasource,
-    sql: str,
-    tables: list[str],
-) -> str:
-    if not is_normal_user(current_user):
-        return sql
-    filters = get_row_permission_filters(
-        session=session,
-        current_user=current_user,
-        ds=datasource,
-        tables=tables,
-    )
-    if not filters:
-        return sql
-    return _normalise_sql(apply_row_permission_filters(sql, datasource, filters))
-
-
 def _prepare_sql_for_execution(
     llm,
     session: SessionDep,
@@ -443,17 +422,14 @@ def _prepare_sql_for_execution(
     allowed_tables: list[str],
 ) -> str:
     sql = _normalise_sql(raw_sql)
-    _statements, tables_set, _permission_scope = validate_sql_scope(session, current_user, datasource, sql)
-    tables = sorted(tables_set)
-    unauthorized_tables = tables_set - set(allowed_tables)
-    if unauthorized_tables:
-        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
-    sql = _apply_row_permissions(llm, session, current_user, datasource, sql, tables)
-    rewritten_tables = validate_sql_table_scope(session, current_user, datasource, sql)
-    unauthorized_tables = rewritten_tables - set(allowed_tables)
-    if unauthorized_tables:
-        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
-    return sql
+    prepared_sql, _tables = prepare_query_sql(
+        session=session,
+        current_user=current_user,
+        datasource=datasource,
+        sql=sql,
+        allowed_tables=allowed_tables,
+    )
+    return _normalise_sql(prepared_sql)
 
 
 def _collect_metric_knowledge(
@@ -1562,7 +1538,15 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                     block["sql"] = sql
                     raw_query["sql"] = sql
                     try:
-                        result = exec_sql(datasource, sql, origin_column=False)
+                        result = execute_user_query_or_raise(
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            sql=sql,
+                            allowed_tables=allowed_tables,
+                            apply_row_permissions=False,
+                            validate_columns=False,
+                        ).result
                     except Exception as first_error:
                         if looks_like_permission_scope_error(str(first_error)):
                             raise first_error
@@ -1576,7 +1560,15 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         )
                         block["sql"] = sql
                         raw_query["sql"] = sql
-                        result = exec_sql(datasource, sql, origin_column=False)
+                        result = execute_user_query_or_raise(
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            sql=sql,
+                            allowed_tables=allowed_tables,
+                            apply_row_permissions=False,
+                            validate_columns=False,
+                        ).result
                     semantic_error = _semantic_validation_error(raw_query, result)
                     if semantic_error:
                         yield _trace("这个角度的数据一致性检查未通过，正在按项目口径重新校准。", block_id=block_id)
@@ -1589,7 +1581,15 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                         )
                         block["sql"] = sql
                         raw_query["sql"] = sql
-                        result = exec_sql(datasource, sql, origin_column=False)
+                        result = execute_user_query_or_raise(
+                            session=session,
+                            current_user=current_user,
+                            datasource=datasource,
+                            sql=sql,
+                            allowed_tables=allowed_tables,
+                            apply_row_permissions=False,
+                            validate_columns=False,
+                        ).result
                         semantic_error = _semantic_validation_error(raw_query, result)
                         if semantic_error:
                             raise ValueError(semantic_error)

@@ -22,7 +22,7 @@ EXPECTED_COPY_SNIPPETS = {
         "setTitle(DEFAULT_BRAND_NAME)",
     ],
     "frontend/src/stores/chatConfig.ts": ["zhishu_name: '星通智数'"],
-    "frontend/src/components/layout/index.vue": ['<div class="logo">星通智数</div>'],
+    "frontend/src/components/layout/index.vue": ['<div class="logo" @click="goHome">星通智数</div>'],
     "frontend/src/views/chat/index.vue": ["t('embedded.i_am_zhishu')"],
     "frontend/src/i18n/zh-CN.json": ['"i_am_zhishu": "你好，我是星通智数"'],
     "frontend/src/views/work/index.vue": ["Hello, I'm 星通智数, happy to serve you!"],
