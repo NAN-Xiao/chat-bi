@@ -22,23 +22,24 @@
           {{ t('tenant.join_application_review') }}
           <span v-if="pendingReviewCount" class="button-badge">{{ pendingReviewCount }}</span>
         </el-button>
-        <el-button secondary @click="openBulkAddDialog">{{ t('tenant.bulk_add_members') }}</el-button>
-        <el-button type="primary" @click="openAddDialog">
+        <el-button secondary @click="openBulkInviteDialog">{{ t('tenant.bulk_invite') }}</el-button>
+        <el-button type="primary" @click="openInviteDialog">
           <template #icon>
             <icon_add_outlined />
           </template>
-          {{ t('tenant.add_user') }}
+          {{ t('tenant.send_invitation') }}
         </el-button>
       </div>
     </div>
 
-    <section class="member-panel">
-      <el-table
-        v-loading="memberLoading"
-        :data="memberRows"
-        class="member-table"
-        style="width: 100%"
-      >
+    <div class="member-content-stack">
+      <section class="member-panel">
+        <el-table
+          v-loading="memberLoading"
+          :data="pagedMemberRows"
+          class="member-table"
+          style="width: 100%"
+        >
         <el-table-column prop="account" :label="t('user.account')" min-width="200" show-overflow-tooltip />
         <el-table-column prop="member_remark" :label="t('tenant.member_remark')" min-width="220" show-overflow-tooltip>
           <template #default="scope">
@@ -87,8 +88,88 @@
         <template #empty>
           <EmptyBackground :description="t('tenant.no_members')" img-type="tree" />
         </template>
-      </el-table>
-    </section>
+        </el-table>
+        <div class="table-pagination">
+          <el-pagination
+            v-model:current-page="memberPage.currentPage"
+            v-model:page-size="memberPage.pageSize"
+            :page-sizes="[5, 10, 20]"
+            :total="memberRows.length"
+            small
+            layout="total, sizes, prev, pager, next"
+          />
+        </div>
+      </section>
+
+      <section class="member-panel invitation-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>{{ t('tenant.pending_invitations') }}</span>
+            <span v-if="pendingInvitationCount" class="panel-count">{{ pendingInvitationCount }}</span>
+          </div>
+          <el-button text :loading="applicationLoading" @click="loadApplications">
+            {{ t('common.refresh') }}
+          </el-button>
+        </div>
+        <el-table
+          v-loading="applicationLoading"
+          :data="pagedPendingInvitations"
+          class="invitation-table"
+          style="width: 100%"
+        >
+        <el-table-column prop="applicant_account" :label="t('tenant.invited_user')" min-width="180" show-overflow-tooltip>
+          <template #default="scope">
+            {{ formatInvitationTarget(scope.row) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="requested_role" :label="t('tenant.requested_role')" width="150">
+          <template #default="scope">
+            {{ formatTenantRole(scope.row.requested_role) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="inviter_account" :label="t('tenant.inviter')" min-width="160" show-overflow-tooltip>
+          <template #default="scope">
+            {{ formatInviter(scope.row) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="reason" :label="t('tenant.invitation_note')" min-width="180" show-overflow-tooltip>
+          <template #default="scope">
+            {{ scope.row.reason || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="create_time" :label="t('tenant.invited_at')" width="180">
+          <template #default="scope">
+            {{ formatOptionalTimestamp(scope.row.create_time) }}
+          </template>
+        </el-table-column>
+        <el-table-column fixed="right" :label="t('ds.actions')" width="120">
+          <template #default="scope">
+            <el-button
+              text
+              type="danger"
+              :loading="inviteCancelingId === String(scope.row.id)"
+              @click="cancelInvitation(scope.row)"
+            >
+              {{ t('tenant.cancel_invitation') }}
+            </el-button>
+          </template>
+        </el-table-column>
+        <template #empty>
+          <EmptyBackground :description="t('tenant.no_pending_invitations')" img-type="tree" />
+        </template>
+        </el-table>
+        <div class="table-pagination">
+          <el-pagination
+            v-model:current-page="invitationPage.currentPage"
+            v-model:page-size="invitationPage.pageSize"
+            :page-sizes="[5, 10, 20]"
+            :total="pendingInvitationCount"
+            small
+            layout="total, sizes, prev, pager, next"
+          />
+        </div>
+      </section>
+    </div>
 
     <el-drawer
       v-model="memberDialogVisible"
@@ -115,7 +196,16 @@
             :placeholder="t('user.invite_account_placeholder')"
           />
         </el-form-item>
-        <el-form-item :label="t('tenant.member_remark')">
+        <el-form-item v-if="memberDialogMode === 'invite'" :label="t('tenant.invitation_note')">
+          <el-input
+            v-model="memberForm.reason"
+            type="textarea"
+            :rows="3"
+            maxlength="2000"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item v-if="memberDialogMode === 'edit'" :label="t('tenant.member_remark')">
           <el-input
             v-model="memberForm.member_remark"
             maxlength="255"
@@ -133,7 +223,7 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="t('user.project_permission_config')">
+        <el-form-item v-if="memberDialogMode === 'edit'" :label="t('user.project_permission_config')">
           <div class="project-permission-panel">
             <div class="project-permission-toolbar">
               <el-select
@@ -263,7 +353,7 @@
         <div class="dialog-footer">
           <el-button secondary @click="closeMemberDialog">{{ t('common.cancel') }}</el-button>
           <el-button type="primary" :loading="memberSubmitting" @click="saveMember">
-            {{ t('common.save') }}
+            {{ memberDialogMode === 'invite' ? t('tenant.send_invitation') : t('common.save') }}
           </el-button>
         </div>
       </template>
@@ -272,12 +362,12 @@
     <el-dialog
       v-model="bulkDialogVisible"
       class="workspace-light-dialog"
-      :title="t('tenant.bulk_add_members')"
+      :title="t('tenant.bulk_invite')"
       width="560"
-      :before-close="closeBulkAddDialog"
+      :before-close="closeBulkInviteDialog"
     >
       <el-form label-position="top" class="form-content_error" @submit.prevent>
-        <el-form-item :label="t('tenant.bulk_member_accounts')">
+        <el-form-item :label="t('tenant.bulk_invite_accounts')">
           <el-input v-model="bulkForm.accountsText" type="textarea" :rows="6" maxlength="4000" />
         </el-form-item>
         <el-form-item :label="t('user.tenant_role')">
@@ -290,13 +380,16 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item :label="t('tenant.invitation_note')">
+          <el-input v-model="bulkForm.reason" type="textarea" :rows="3" maxlength="2000" />
+        </el-form-item>
       </el-form>
       <el-table v-if="bulkResults.length" :data="bulkResults" class="bulk-result-table">
         <el-table-column prop="account" :label="t('user.account')" min-width="160" show-overflow-tooltip />
         <el-table-column prop="status" :label="t('tenant.status')" width="110">
           <template #default="scope">
             <el-tag size="small" :type="scope.row.status === 'created' ? 'success' : 'danger'">
-              {{ scope.row.status === 'created' ? t('tenant.member_added') : t('tenant.member_add_failed') }}
+              {{ scope.row.status === 'created' ? t('tenant.invite_created') : t('tenant.invite_failed') }}
             </el-tag>
           </template>
         </el-table-column>
@@ -304,9 +397,9 @@
       </el-table>
       <template #footer>
         <div class="dialog-footer">
-          <el-button secondary @click="closeBulkAddDialog">{{ t('common.cancel') }}</el-button>
-          <el-button type="primary" :loading="bulkSubmitting" @click="submitBulkAdd">
-            {{ t('tenant.add_members') }}
+          <el-button secondary @click="closeBulkInviteDialog">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" :loading="bulkSubmitting" @click="submitBulkInvite">
+            {{ t('tenant.bulk_invite') }}
           </el-button>
         </div>
       </template>
@@ -318,7 +411,7 @@
       :title="t('tenant.join_application_review')"
       width="860"
     >
-      <el-table v-loading="applicationLoading" :data="accessRequests" class="access-table" style="width: 100%">
+      <el-table v-loading="applicationLoading" :data="joinApplications" class="access-table" style="width: 100%">
         <el-table-column prop="applicant_account" :label="t('user.account')" min-width="160" show-overflow-tooltip />
         <el-table-column prop="applicant_name" :label="t('user.name')" min-width="140" show-overflow-tooltip>
           <template #default="scope">
@@ -326,9 +419,9 @@
           </template>
         </el-table-column>
         <el-table-column prop="application_type" :label="t('tenant.access_type')" width="130">
-          <template #default="scope">
-            <el-tag size="small" :type="scope.row.application_type === 'invite' ? 'primary' : 'warning'">
-              {{ formatApplicationType(scope.row.application_type) }}
+          <template #default>
+            <el-tag size="small" type="warning">
+              {{ t('tenant.application_type_join') }}
             </el-tag>
           </template>
         </el-table-column>
@@ -340,10 +433,7 @@
         <el-table-column prop="reason" :label="t('tenant.apply_reason')" min-width="180" show-overflow-tooltip />
         <el-table-column fixed="right" :label="t('ds.actions')" width="150">
           <template #default="scope">
-            <div
-              v-if="scope.row.status === 'pending' && scope.row.application_type !== 'invite'"
-              class="review-actions"
-            >
+            <div v-if="scope.row.status === 'pending'" class="review-actions">
               <el-button
                 text
                 :loading="joinReviewLoadingId === String(scope.row.id)"
@@ -355,19 +445,10 @@
                 {{ t('tenant.reject') }}
               </el-button>
             </div>
-            <el-button
-              v-else-if="scope.row.status === 'pending'"
-              text
-              type="danger"
-              :loading="inviteCancelingId === String(scope.row.id)"
-              @click="cancelInvitation(scope.row)"
-            >
-              {{ t('tenant.cancel_invitation') }}
-            </el-button>
           </template>
         </el-table-column>
         <template #empty>
-          <EmptyBackground :description="t('tenant.no_access_requests')" img-type="tree" />
+          <EmptyBackground :description="t('tenant.no_join_applications')" img-type="tree" />
         </template>
       </el-table>
       <template #footer>
@@ -389,7 +470,7 @@ import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import {
   tenantApi,
   type TenantApplicationInfo,
-  type TenantBulkMemberResult,
+  type TenantBulkInviteResult,
   type TenantMemberInfo,
 } from '@/api/tenant'
 import { datasourceApi } from '@/api/datasource'
@@ -409,7 +490,7 @@ const memberDialogVisible = ref(false)
 const bulkDialogVisible = ref(false)
 const reviewDialogVisible = ref(false)
 const memberFormRef = ref()
-const memberDialogMode = ref<'add' | 'edit'>('add')
+const memberDialogMode = ref<'invite' | 'edit'>('invite')
 const editingUserId = ref<number | string>('')
 const joinReviewLoadingId = ref('')
 const inviteCancelingId = ref('')
@@ -418,11 +499,20 @@ const joinApplications = shallowRef<TenantApplicationInfo[]>([])
 const invitations = shallowRef<TenantApplicationInfo[]>([])
 const projectOptions = shallowRef<any[]>([])
 const permissionRuleGroups = shallowRef<any[]>([])
-const bulkResults = shallowRef<TenantBulkMemberResult[]>([])
+const bulkResults = shallowRef<TenantBulkInviteResult[]>([])
+const memberPage = reactive({
+  currentPage: 1,
+  pageSize: 5,
+})
+const invitationPage = reactive({
+  currentPage: 1,
+  pageSize: 5,
+})
 
 const memberForm = reactive({
   account: '',
   member_remark: '',
+  reason: '',
   tenant_role: 'member' as 'admin' | 'member',
   project_ids: [] as number[],
   project_role_map: {} as Record<number, string>,
@@ -432,6 +522,7 @@ const memberForm = reactive({
 const bulkForm = reactive({
   accountsText: '',
   tenant_role: 'member' as 'admin' | 'member',
+  reason: '',
 })
 
 const tenantRoleOptions = computed(() => [
@@ -445,16 +536,42 @@ const projectRoleOptions = computed(() => [
 ])
 
 const memberDialogTitle = computed(() =>
-  memberDialogMode.value === 'edit' ? t('tenant.edit_member') : t('tenant.add_user')
+  memberDialogMode.value === 'edit' ? t('tenant.edit_member') : t('tenant.send_invitation')
 )
 
-const accessRequests = computed(() =>
-  [...joinApplications.value, ...invitations.value].sort(
-    (a, b) => Number(b.create_time || 0) - Number(a.create_time || 0)
-  )
+const pendingInvitations = computed(() =>
+  invitations.value.filter((item) => item.status === 'pending')
 )
 
-const pendingReviewCount = computed(() => accessRequests.value.filter((item) => item.status === 'pending').length)
+const pendingInvitationCount = computed(() => pendingInvitations.value.length)
+
+const pendingReviewCount = computed(
+  () => joinApplications.value.filter((item) => item.status === 'pending').length
+)
+
+const paginateRows = <T>(rows: T[], page: { currentPage: number; pageSize: number }) => {
+  const currentPage = Math.max(1, Number(page.currentPage || 1))
+  const pageSize = Math.max(1, Number(page.pageSize || 5))
+  const start = (currentPage - 1) * pageSize
+  return rows.slice(start, start + pageSize)
+}
+
+const pagedMemberRows = computed(() => paginateRows(memberRows.value, memberPage))
+
+const pagedPendingInvitations = computed(() =>
+  paginateRows(pendingInvitations.value, invitationPage)
+)
+
+const normalizePage = (page: { currentPage: number; pageSize: number }, total: number) => {
+  const pageSize = Math.max(1, Number(page.pageSize || 5))
+  const maxPage = Math.max(1, Math.ceil(total / pageSize))
+  if (page.currentPage > maxPage) {
+    page.currentPage = maxPage
+  }
+  if (page.currentPage < 1) {
+    page.currentPage = 1
+  }
+}
 
 const memberRules = {
   account: [
@@ -538,10 +655,11 @@ const formatOptionalTimestamp = (value?: number | string | null) => {
   return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm:ss') : '-'
 }
 
-const formatApplicationType = (type?: string) => {
-  if (type === 'invite') return t('tenant.application_type_invite')
-  return t('tenant.application_type_join')
-}
+const formatInvitationTarget = (invitation: TenantApplicationInfo) =>
+  invitation.applicant_name || invitation.applicant_account || '-'
+
+const formatInviter = (invitation: TenantApplicationInfo) =>
+  invitation.inviter_name || invitation.inviter_account || '-'
 
 const formatProjectAccess = (row: TenantMemberInfo) => {
   const ids = toNumberList(row.project_ids)
@@ -751,6 +869,7 @@ const loadMembers = async () => {
   try {
     const [members] = await Promise.all([tenantApi.members(keyword.value.trim()), loadProjectOptions()])
     memberRows.value = members || []
+    normalizePage(memberPage, memberRows.value.length)
   } finally {
     memberLoading.value = false
   }
@@ -765,6 +884,7 @@ const loadApplications = async () => {
     ])
     joinApplications.value = joinRows || []
     invitations.value = invitationRows || []
+    normalizePage(invitationPage, pendingInvitations.value.length)
   } finally {
     applicationLoading.value = false
   }
@@ -772,6 +892,7 @@ const loadApplications = async () => {
 
 const handleSearch = ($event: any = {}) => {
   if ($event?.isComposing) return
+  memberPage.currentPage = 1
   loadMembers()
 }
 
@@ -779,6 +900,7 @@ const resetMemberForm = () => {
   Object.assign(memberForm, {
     account: '',
     member_remark: '',
+    reason: '',
     tenant_role: 'member',
     project_ids: [],
     project_role_map: {},
@@ -787,10 +909,9 @@ const resetMemberForm = () => {
   editingUserId.value = ''
 }
 
-const openAddDialog = async () => {
-  memberDialogMode.value = 'add'
+const openInviteDialog = () => {
+  memberDialogMode.value = 'invite'
   resetMemberForm()
-  await loadProjectOptions()
   memberDialogVisible.value = true
 }
 
@@ -823,6 +944,17 @@ const saveMember = () => {
     if (!valid) return
     memberSubmitting.value = true
     try {
+      if (memberDialogMode.value === 'invite') {
+        await tenantApi.invite({
+          account: memberForm.account.trim(),
+          requested_role: memberForm.tenant_role,
+          reason: memberForm.reason.trim(),
+        })
+        ElMessage.success(t('tenant.invitation_sent'))
+        closeMemberDialog()
+        await loadApplications()
+        return
+      }
       const projectIds = toNumberList(memberForm.project_ids)
       const payload = {
         member_remark: memberForm.member_remark.trim(),
@@ -830,10 +962,7 @@ const saveMember = () => {
         project_ids: projectIds,
         project_role_map: buildProjectRoleMap(projectIds, memberForm.project_role_map),
       }
-      const saved =
-        memberDialogMode.value === 'edit'
-          ? await tenantApi.updateMember(editingUserId.value, payload)
-          : await tenantApi.addMember({ account: memberForm.account.trim(), ...payload })
+      const saved = await tenantApi.updateMember(editingUserId.value, payload)
       await syncUserPermissionStrategies(saved.user_id)
       ElMessage.success(t('common.save_success'))
       closeMemberDialog()
@@ -844,16 +973,17 @@ const saveMember = () => {
   })
 }
 
-const openBulkAddDialog = () => {
+const openBulkInviteDialog = () => {
   Object.assign(bulkForm, {
     accountsText: '',
     tenant_role: 'member',
+    reason: '',
   })
   bulkResults.value = []
   bulkDialogVisible.value = true
 }
 
-const closeBulkAddDialog = () => {
+const closeBulkInviteDialog = () => {
   bulkDialogVisible.value = false
 }
 
@@ -863,22 +993,23 @@ const parseBulkAccounts = () =>
     .map((item) => item.trim())
     .filter(Boolean)
 
-const submitBulkAdd = async () => {
+const submitBulkInvite = async () => {
   const accounts = Array.from(new Set(parseBulkAccounts()))
   if (!accounts.length) {
-    ElMessage.warning(t('tenant.bulk_member_accounts_required'))
+    ElMessage.warning(t('tenant.bulk_invite_accounts_required'))
     return
   }
   bulkSubmitting.value = true
   try {
-    const results = await tenantApi.bulkAddMembers({
+    const results = await tenantApi.bulkInvite({
       accounts,
-      tenant_role: bulkForm.tenant_role,
+      requested_role: bulkForm.tenant_role,
+      reason: bulkForm.reason.trim(),
     })
     bulkResults.value = results || []
     const created = bulkResults.value.filter((item) => item.status === 'created').length
-    ElMessage.success(t('tenant.bulk_add_finished', { created, total: bulkResults.value.length }))
-    await loadMembers()
+    ElMessage.success(t('tenant.bulk_invite_finished', { created, total: bulkResults.value.length }))
+    await loadApplications()
   } finally {
     bulkSubmitting.value = false
   }
@@ -977,8 +1108,12 @@ onMounted(() => {
   height: 100%;
   position: relative;
   color-scheme: light;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 
   .tool-left {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1013,35 +1148,90 @@ onMounted(() => {
     line-height: 18px;
   }
 
+  .member-content-stack {
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
   .member-panel {
     min-width: 0;
     border: 1px solid #dee0e3;
     border-radius: 8px;
     background: #fff;
     overflow: hidden;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .member-table {
-    max-height: calc(100vh - 150px);
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: #b8c4d6 #f2f5f9;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
-  .member-table::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+  .member-table,
+  .invitation-table {
+    :deep(.ed-table__inner-wrapper),
+    :deep(.ed-table__body-wrapper),
+    :deep(.ed-scrollbar),
+    :deep(.ed-scrollbar__wrap) {
+      min-height: 0;
+    }
   }
 
-  .member-table::-webkit-scrollbar-track {
-    background: #f2f5f9;
+  .invitation-panel {
+    flex: 1 1 0;
+  }
+
+  .panel-header {
+    min-height: 48px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #dee0e3;
+    background: #f8f9fa;
+  }
+
+  .panel-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #1f2329;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .panel-count {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
     border-radius: 999px;
+    background: #eef3ff;
+    color: #245bdb;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
   }
 
-  .member-table::-webkit-scrollbar-thumb {
-    background: #b8c4d6;
-    border-radius: 999px;
-    border: 2px solid #f2f5f9;
+  .invitation-table {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .table-pagination {
+    flex: 0 0 48px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    border-top: 1px solid #eff0f1;
+    background: #fff;
   }
 
   .table-operate,
