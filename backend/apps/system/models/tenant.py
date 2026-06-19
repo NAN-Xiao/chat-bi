@@ -46,6 +46,7 @@ class TenantUserModel(SnowflakeBase, table=True):
     tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
     user_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
     role: str = Field(default="member", sa_column=Column(String(32), nullable=False, server_default="member"))
+    member_remark: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
     is_primary: bool = Field(default=False, sa_column=Column(Boolean(), nullable=False, server_default="false"))
     status: int = Field(default=1, sa_column=Column(BigInteger(), nullable=False, server_default="1"))
     create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
@@ -106,7 +107,6 @@ class TenantSecurityPolicyModel(SnowflakeBase, table=True):
     )
 
     tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
-    ip_whitelist: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
     sso_required: bool = Field(default=False, sa_column=Column(Boolean(), nullable=False, server_default="false"))
     session_timeout_minutes: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
     create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)

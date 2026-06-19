@@ -2,7 +2,7 @@ import base64
 from typing import Annotated
 from urllib.parse import unquote
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from sqlmodel import Session
 
 from apps.system.crud.tenant import TenantContext
@@ -22,7 +22,13 @@ async def get_current_user(request: Request) -> UserInfoDTO:
 CurrentUser = Annotated[UserInfoDTO, Depends(get_current_user)]
 
 async def get_current_tenant(request: Request) -> TenantContext:
-    return request.state.current_tenant
+    current_tenant = getattr(request.state, "current_tenant", None)
+    if current_tenant is None:
+        raise HTTPException(
+            status_code=403,
+            detail="当前账号尚未加入工作空间，请先创建或加入工作空间后再访问工作空间侧业务功能。",
+        )
+    return current_tenant
 
 CurrentTenant = Annotated[TenantContext, Depends(get_current_tenant)]
 

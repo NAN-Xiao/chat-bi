@@ -64,7 +64,7 @@ export interface TenantApplicationPayload {
   tenant_code?: string
   tenant_name?: string
   plan?: string
-  requested_role: string
+  requested_role?: string
   reason?: string
 }
 
@@ -96,7 +96,6 @@ export interface TenantDomainInfo {
 export interface TenantSecurityPolicyInfo {
   id?: number | string
   tenant_id: number | string
-  ip_whitelist?: string
   sso_required: boolean
   session_timeout_minutes?: number | null
   create_time?: number
@@ -125,6 +124,78 @@ export interface TenantBulkInviteResult {
   status: string
   message?: string
   application_id?: number | string
+}
+
+export interface TenantMemberInfo {
+  user_id: number | string
+  account: string
+  name?: string
+  member_remark?: string
+  tenant_role: string
+  is_primary?: boolean
+  create_time?: number
+  project_ids?: Array<number | string>
+  project_role_map?: Record<string, string>
+}
+
+export interface TenantBulkMemberResult {
+  account: string
+  status: string
+  message?: string
+  user_id?: number | string
+}
+
+export interface TenantOverviewSummaryInfo {
+  member_total: number
+  active_member_count: number
+  datasource_total: number
+  dashboard_total: number
+  pending_member_application_count: number
+}
+
+export interface TenantOverviewTrendPointInfo {
+  date: string
+  active_member_count: number
+  login_count: number
+}
+
+export interface TenantOverviewAssetItemInfo {
+  key: string
+  count: number
+}
+
+export interface TenantOverviewRoleItemInfo {
+  role: string
+  count: number
+}
+
+export interface TenantOverviewTodoInfo {
+  key: string
+  level: string
+  count?: number | null
+  route?: string | null
+}
+
+export interface TenantOverviewEventInfo {
+  id: string
+  title: string
+  description?: string | null
+  create_time: number
+  operator_name?: string | null
+  module?: string | null
+  resource_name?: string | null
+}
+
+export interface TenantOverviewInfo {
+  tenant_id: number | string
+  tenant_name: string
+  days: number
+  summary: TenantOverviewSummaryInfo
+  activity_trend: TenantOverviewTrendPointInfo[]
+  assets: TenantOverviewAssetItemInfo[]
+  role_distribution: TenantOverviewRoleItemInfo[]
+  todos: TenantOverviewTodoInfo[]
+  recent_events: TenantOverviewEventInfo[]
 }
 
 export interface TenantUsageQuery {
@@ -172,7 +243,10 @@ export const tenantApi = {
     request.post<TenantApplicationInfo>('/system/tenant/application', data),
   cancelApplication: (id: number | string) =>
     request.delete<TenantApplicationInfo>(`/system/tenant/application/${id}`),
-  reviewApplication: (id: number | string, data: { approved: boolean; review_comment?: string }) =>
+  reviewApplication: (
+    id: number | string,
+    data: { approved: boolean; tenant_code?: string; review_comment?: string }
+  ) =>
     request.post<TenantApplicationInfo>(`/system/tenant/application/${id}/review`, data),
   tenantApplications: (status?: string) =>
     request.get<TenantApplicationInfo[]>(
@@ -198,6 +272,30 @@ export const tenantApi = {
   transferOwner: (targetUserId: number | string) =>
     request.post<TenantInfo>('/system/tenant/owner/transfer', { target_user_id: targetUserId }),
   leave: (id: number | string) => request.post<TenantInfo[]>(`/system/tenant/${id}/leave`),
+  members: (keyword?: string) =>
+    request.get<TenantMemberInfo[]>(
+      `/system/tenant/member/list${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}`
+    ),
+  addMember: (data: {
+    account: string
+    member_remark?: string
+    tenant_role: 'admin' | 'member'
+    project_ids?: Array<number | string>
+    project_role_map?: Record<string, string>
+  }) => request.post<TenantMemberInfo>('/system/tenant/member', data),
+  bulkAddMembers: (data: { accounts: string[]; tenant_role: 'admin' | 'member' }) =>
+    request.post<TenantBulkMemberResult[]>('/system/tenant/member/bulk', data),
+  updateMember: (
+    userId: number | string,
+    data: {
+      member_remark?: string
+      tenant_role: 'admin' | 'member'
+      project_ids?: Array<number | string>
+      project_role_map?: Record<string, string>
+    }
+  ) => request.put<TenantMemberInfo>(`/system/tenant/member/${userId}`, data),
+  removeMember: (userId: number | string) =>
+    request.delete<TenantMemberInfo>(`/system/tenant/member/${userId}`),
   add: (data: {
     code: string
     name: string
@@ -229,6 +327,7 @@ export const tenantApi = {
   status: (id: number | string, status: number) =>
     request.patch<TenantInfo>(`/system/tenant/${id}/status`, { status }),
   delete: (id: number | string) => request.delete<TenantInfo>(`/system/tenant/${id}`),
+  overview: (days = 7) => request.get<TenantOverviewInfo>(`/system/tenant/overview?days=${days}`),
   usage: (params?: TenantUsageQuery) =>
     request.get<TenantUsageDailyInfo[]>(`/system/tenant/usage${buildTenantUsageQuery(params)}`),
   bindDomain: (data: { domain: string; auto_join_role: 'admin' | 'member' }) =>
@@ -244,7 +343,6 @@ export const tenantApi = {
   ) => request.post<TenantDomainInfo>(`/system/tenant/domain/${id}/review`, data),
   security: () => request.get<TenantSecurityPolicyInfo>('/system/tenant/security'),
   updateSecurity: (data: {
-    ip_whitelist?: string
     sso_required: boolean
     session_timeout_minutes?: number | null
   }) => request.put<TenantSecurityPolicyInfo>('/system/tenant/security', data),

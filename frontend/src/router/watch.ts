@@ -11,13 +11,12 @@ const { wsCache } = useCache()
 const whiteList = ['/login', '/admin-login']
 const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/401']
 const platformAdminHome = '/system/tenant'
+const tenantAdminSystemHome = '/system/overview'
 const tenantChatBIEntryPrefixes = [
   '/chat',
   '/dashboard',
   '/dashboard-store',
   '/custom-agent',
-  '/access',
-  '/account',
   '/as',
   '/canvas',
   '/dashboard-preview',
@@ -31,7 +30,13 @@ const tenantChatBIEntryPrefixes = [
 ]
 
 const defaultAuthenticatedPath = () =>
-  userStore.isSystemAdminUser ? platformAdminHome : '/chat'
+  userStore.isSystemAdminUser
+    ? platformAdminHome
+    : userStore.getTenantId
+      ? userStore.isTenantAdminUser
+        ? tenantAdminSystemHome
+        : '/chat'
+      : '/account/workspaces'
 
 const matchesPathPrefix = (path: string, prefix: string) =>
   path === prefix || path.startsWith(`${prefix}/`)
@@ -90,9 +95,15 @@ export const watchRouter = (router: Router) => {
 const accessCrossPermission = (to: any) => {
   if (!to?.path) return false
   const platformOnly = to.matched?.some((record: any) => record?.meta?.platformOnly)
+  const tenantAdminOnly = to.matched?.some((record: any) => record?.meta?.tenantAdminOnly)
+  const tenantBusiness = to.matched?.some((record: any) => record?.meta?.tenantBusiness)
+  const tenantSystemRoute = to.path.startsWith('/system') && (tenantAdminOnly || tenantBusiness)
   return (
     (userStore.isSystemAdminUser && isTenantChatBIRoute(to.path)) ||
-    (to.path.startsWith('/system') && !userStore.isSystemManagerUser) ||
+    (!userStore.isSystemAdminUser && !userStore.getTenantId && isTenantChatBIRoute(to.path)) ||
+    (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||
+    (tenantAdminOnly && !userStore.isTenantAdminUser) ||
+    (tenantBusiness && !userStore.getTenantId) ||
     (to.path.startsWith('/set') && !userStore.isSystemManagerUser) ||
     (platformOnly && !userStore.isSystemAdminUser)
   )

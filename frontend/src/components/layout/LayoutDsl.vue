@@ -122,7 +122,11 @@ onMounted(() => {
                 width="30"
                 alt=""
               />
-              <span v-if="!collapse">{{ $t('training.system_management') }}</span>
+              <span v-if="!collapse">{{
+                userStore.isSystemAdminUser
+                  ? $t('common.platform_manage')
+                  : $t('tenant.management')
+              }}</span>
             </div>
           </template>
           <template v-else>

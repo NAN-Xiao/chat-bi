@@ -8,10 +8,10 @@ class TenantDTO(BaseModel):
     code: str
     name: str
     role: str = "member"
-    plan: str = "default"
+    plan: Optional[str] = None
     status: int = 1
-    subscription_status: str = "active"
-    billing_mode: str = "manual"
+    subscription_status: Optional[str] = None
+    billing_mode: Optional[str] = None
     trial_end_time: Optional[int] = None
     current_period_end_time: Optional[int] = None
     contract_no: Optional[str] = None
@@ -93,6 +93,7 @@ class TenantInvitationCreator(BaseModel):
 
 class TenantApplicationReview(BaseModel):
     approved: bool
+    tenant_code: Optional[str] = Field(default=None, max_length=64)
     review_comment: Optional[str] = Field(default=None, max_length=2000)
 
 
@@ -145,7 +146,6 @@ class TenantDomainDTO(BaseModel):
 
 
 class TenantSecurityPolicyEditor(BaseModel):
-    ip_whitelist: Optional[str] = Field(default=None, max_length=4000)
     sso_required: bool = False
     session_timeout_minutes: Optional[int] = Field(default=None, ge=5, le=10080)
 
@@ -199,3 +199,95 @@ class TenantBulkInviteResult(BaseModel):
     status: str
     message: Optional[str] = None
     application_id: Optional[int] = None
+
+
+class TenantMemberDTO(BaseModel):
+    user_id: int
+    account: str
+    name: Optional[str] = None
+    member_remark: Optional[str] = None
+    tenant_role: str = "member"
+    is_primary: bool = False
+    create_time: int = 0
+    project_ids: list[int] = Field(default_factory=list)
+    project_role_map: dict[int, str] = Field(default_factory=dict)
+
+
+class TenantMemberCreator(BaseModel):
+    account: str = Field(min_length=1, max_length=100)
+    member_remark: Optional[str] = Field(default=None, max_length=255)
+    tenant_role: Literal["admin", "member"] = "member"
+    project_ids: Optional[list[int]] = None
+    project_role_map: Optional[dict[int, str]] = None
+
+
+class TenantMemberEditor(BaseModel):
+    member_remark: Optional[str] = Field(default=None, max_length=255)
+    tenant_role: Literal["admin", "member"] = "member"
+    project_ids: Optional[list[int]] = None
+    project_role_map: Optional[dict[int, str]] = None
+
+
+class TenantBulkMemberCreator(BaseModel):
+    accounts: list[str] = Field(min_length=1, max_length=200)
+    tenant_role: Literal["admin", "member"] = "member"
+
+
+class TenantBulkMemberResult(BaseModel):
+    account: str
+    status: str
+    message: Optional[str] = None
+    user_id: Optional[int] = None
+
+
+class TenantOverviewSummaryDTO(BaseModel):
+    member_total: int = 0
+    active_member_count: int = 0
+    datasource_total: int = 0
+    dashboard_total: int = 0
+    pending_member_application_count: int = 0
+
+
+class TenantOverviewTrendPointDTO(BaseModel):
+    date: str
+    active_member_count: int = 0
+    login_count: int = 0
+
+
+class TenantOverviewAssetItemDTO(BaseModel):
+    key: str
+    count: int = 0
+
+
+class TenantOverviewRoleItemDTO(BaseModel):
+    role: str
+    count: int = 0
+
+
+class TenantOverviewTodoDTO(BaseModel):
+    key: str
+    level: str = "normal"
+    count: Optional[int] = None
+    route: Optional[str] = None
+
+
+class TenantOverviewEventDTO(BaseModel):
+    id: str
+    title: str
+    description: Optional[str] = None
+    create_time: int = 0
+    operator_name: Optional[str] = None
+    module: Optional[str] = None
+    resource_name: Optional[str] = None
+
+
+class TenantOverviewDTO(BaseModel):
+    tenant_id: int
+    tenant_name: str
+    days: int = 7
+    summary: TenantOverviewSummaryDTO
+    activity_trend: list[TenantOverviewTrendPointDTO] = []
+    assets: list[TenantOverviewAssetItemDTO] = []
+    role_distribution: list[TenantOverviewRoleItemDTO] = []
+    todos: list[TenantOverviewTodoDTO] = []
+    recent_events: list[TenantOverviewEventDTO] = []

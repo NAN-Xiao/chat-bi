@@ -6,47 +6,79 @@ import { useUserStore } from '@/stores/user'
 const { t } = useI18n()
 const userStore = useUserStore()
 
+const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
+const isCollabAdmin = computed(() => userStore.isCollabAdminUser)
+const isTenantAdmin = computed(() => userStore.isTenantAdminUser)
+const isTenantOwner = computed(() => userStore.isTenantOwnerUser)
+const isManager = computed(() => userStore.isSystemManagerUser)
+const hasTenantContext = computed(() => !!userStore.getTenantId)
+
 const accessLevel = computed(() => {
-  if (userStore.isAdmin) {
+  if (isPlatformAdmin.value) {
     return {
-      label: t('access.full'),
+      label: t('access.platform_admin'),
       type: 'success',
-      description: t('access.full_description'),
+      description: t('access.platform_admin_description'),
+    }
+  }
+  if (isCollabAdmin.value) {
+    return {
+      label: t('access.collab_admin'),
+      type: 'success',
+      description: t('access.collab_admin_description'),
+    }
+  }
+  if (!hasTenantContext.value) {
+    return {
+      label: t('access.normal_user'),
+      type: 'info',
+      description: t('access.normal_user_description'),
+    }
+  }
+  if (isTenantAdmin.value) {
+    return {
+      label: isTenantOwner.value ? t('access.tenant_owner') : t('access.tenant_admin'),
+      type: 'success',
+      description: isTenantOwner.value
+        ? t('access.tenant_owner_description')
+        : t('access.tenant_admin_description'),
     }
   }
   return {
-    label: t('access.limited'),
+    label: t('access.tenant_member'),
     type: 'warning',
-    description: t('access.limited_description'),
+    description: t('access.tenant_member_description'),
   }
 })
 
 const capabilityList = computed(() => {
-  const isFull = userStore.isAdmin
-  const status = isFull ? t('access.full') : t('access.policy_open')
-  const dataStatus = isFull ? t('access.full') : t('access.limited')
-  const adminStatus = isFull ? t('access.full') : t('access.restricted')
+  const businessStatus = isPlatformAdmin.value ? t('access.restricted') : t('access.policy_open')
+  const noTenantBusinessStatus = hasTenantContext.value ? businessStatus : t('access.restricted')
+  const dataStatus = isManager.value && !isPlatformAdmin.value ? t('access.full') : t('access.limited')
+  const adminStatus = isManager.value ? t('access.policy_open') : t('access.restricted')
 
   return [
     {
       title: t('access.qa'),
-      status,
+      status: noTenantBusinessStatus,
       description: t('access.qa_description'),
     },
     {
       title: t('access.dashboard'),
-      status,
+      status: noTenantBusinessStatus,
       description: t('access.dashboard_description'),
     },
     {
       title: t('access.analysis_assistant'),
-      status,
+      status: noTenantBusinessStatus,
       description: t('access.analysis_assistant_description'),
     },
     {
       title: t('access.data_scope'),
-      status: dataStatus,
-      description: t('access.data_scope_description'),
+      status: hasTenantContext.value ? dataStatus : t('access.restricted'),
+      description: hasTenantContext.value
+        ? t('access.data_scope_description')
+        : t('access.no_tenant_data_scope_description'),
     },
     {
       title: t('access.admin_settings'),

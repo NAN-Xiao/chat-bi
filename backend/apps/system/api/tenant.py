@@ -1,10 +1,20 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import inspect
+from sqlalchemy import func, inspect, or_
 from sqlmodel import delete as sqlmodel_delete, select
 
+from apps.chat.curd.custom_prompt import CustomPromptVisibilityScopeEnum
+from apps.chat.models.custom_prompt_model import CustomPrompt
+from apps.dashboard.models.dashboard_model import CoreDashboard
+from apps.data_training.models.data_training_model import DataTraining
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
+from apps.datasource.crud.permission import (
+    list_user_datasource_ids,
+    list_user_datasource_roles,
+    update_user_datasources,
+)
+from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
     TENANT_ADMIN_ROLES,
@@ -24,6 +34,7 @@ from apps.system.crud.tenant import (
     create_tenant_invitation,
     delete_tenant,
     complete_tenant_data_request,
+    get_tenant_membership,
     leave_tenant,
     list_tenant_data_requests,
     list_tenants,
@@ -33,6 +44,7 @@ from apps.system.crud.tenant import (
     normalize_application_role,
     normalize_tenant_role,
     reject_tenant_application,
+    remove_user_from_tenant,
     review_tenant_data_request,
     review_tenant_domain,
     search_active_tenants,
@@ -50,6 +62,7 @@ from apps.system.crud.user import (
     is_high_privilege_user,
     is_super_admin,
 )
+from apps.system.models.system_model import AssistantModel
 from apps.system.models.tenant import (
     TenantApplicationModel,
     TenantDataRequestModel,
@@ -65,6 +78,8 @@ from apps.system.schemas.tenant_schema import (
     TenantApplicationReview,
     TenantBulkInviteCreator,
     TenantBulkInviteResult,
+    TenantBulkMemberCreator,
+    TenantBulkMemberResult,
     TenantDataRequestComplete,
     TenantDataRequestCreator,
     TenantDataRequestDTO,
@@ -73,9 +88,19 @@ from apps.system.schemas.tenant_schema import (
     TenantDomainDTO,
     TenantDomainReview,
     TenantInvitationCreator,
+    TenantMemberCreator,
+    TenantMemberDTO,
+    TenantMemberEditor,
     TenantCreator,
     TenantDTO,
     TenantEditor,
+    TenantOverviewAssetItemDTO,
+    TenantOverviewDTO,
+    TenantOverviewEventDTO,
+    TenantOverviewRoleItemDTO,
+    TenantOverviewSummaryDTO,
+    TenantOverviewTodoDTO,
+    TenantOverviewTrendPointDTO,
     TenantOwnerTransfer,
     TenantSecurityPolicyDTO,
     TenantSecurityPolicyEditor,
@@ -83,6 +108,7 @@ from apps.system.schemas.tenant_schema import (
     TenantStatus,
 )
 from apps.system.schemas.tenant_usage_schema import TenantUsageDailyDTO
+from apps.terminology.models.terminology_model import Terminology
 from common.audit.models.log_model import OperationModules, OperationStatus, OperationType, SystemLog
 from common.audit.schemas.request_context import RequestContext
 from common.core.deps import CurrentTenant, CurrentUser, SessionDep
@@ -249,29 +275,37 @@ def _tenant_owner_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, d
     return result
 
 
-def _tenant_dto(tenant: TenantModel, *, role: str = TENANT_ROLE_OWNER, owner: dict | None = None) -> TenantDTO:
+def _tenant_dto(
+    tenant: TenantModel,
+    *,
+    role: str = TENANT_ROLE_OWNER,
+    owner: dict | None = None,
+    include_operations: bool | None = None,
+) -> TenantDTO:
     owner = owner or {}
+    normalized_role = normalize_tenant_role(role)
+    show_operations = normalized_role in TENANT_ADMIN_ROLES if include_operations is None else include_operations
     return TenantDTO(
         id=int(tenant.id),
         code=tenant.code,
         name=tenant.name,
-        role=role,
-        plan=tenant.plan,
+        role=normalized_role,
+        plan=tenant.plan if show_operations else None,
         status=int(tenant.status),
-        subscription_status=getattr(tenant, "subscription_status", None) or "active",
-        billing_mode=getattr(tenant, "billing_mode", None) or "manual",
-        trial_end_time=getattr(tenant, "trial_end_time", None),
-        current_period_end_time=getattr(tenant, "current_period_end_time", None),
-        contract_no=getattr(tenant, "contract_no", None),
-        billing_contact=getattr(tenant, "billing_contact", None),
-        billing_email=getattr(tenant, "billing_email", None),
-        subscription_note=getattr(tenant, "subscription_note", None),
-        create_time=int(tenant.create_time or 0),
-        update_time=int(tenant.update_time or 0),
-        owner_user_id=owner.get("owner_user_id"),
-        owner_account=owner.get("owner_account"),
-        owner_name=owner.get("owner_name"),
-        owner_email=owner.get("owner_email"),
+        subscription_status=(getattr(tenant, "subscription_status", None) or "active") if show_operations else None,
+        billing_mode=(getattr(tenant, "billing_mode", None) or "manual") if show_operations else None,
+        trial_end_time=getattr(tenant, "trial_end_time", None) if show_operations else None,
+        current_period_end_time=getattr(tenant, "current_period_end_time", None) if show_operations else None,
+        contract_no=getattr(tenant, "contract_no", None) if show_operations else None,
+        billing_contact=getattr(tenant, "billing_contact", None) if show_operations else None,
+        billing_email=getattr(tenant, "billing_email", None) if show_operations else None,
+        subscription_note=getattr(tenant, "subscription_note", None) if show_operations else None,
+        create_time=int(tenant.create_time or 0) if show_operations else 0,
+        update_time=int(tenant.update_time or 0) if show_operations else 0,
+        owner_user_id=owner.get("owner_user_id") if show_operations else None,
+        owner_account=owner.get("owner_account") if show_operations else None,
+        owner_name=owner.get("owner_name") if show_operations else None,
+        owner_email=owner.get("owner_email") if show_operations else None,
     )
 
 
@@ -297,6 +331,47 @@ def _usage_dto(row) -> TenantUsageDailyDTO:
     )
 
 
+def _timestamp_to_millis(value) -> int:
+    if value in (None, ""):
+        return 0
+    if isinstance(value, datetime):
+        return int(value.timestamp() * 1000)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _overview_event_title(row: SystemLog) -> str:
+    detail = (getattr(row, "operation_detail", None) or "").strip()
+    if detail:
+        return detail
+    operation_type = getattr(row, "operation_type", None) or OperationType.VIEW.value
+    operation_map = {
+        OperationType.CREATE.value: "创建记录",
+        OperationType.UPDATE.value: "更新记录",
+        OperationType.UPDATE_STATUS.value: "更新状态",
+        OperationType.DELETE.value: "删除记录",
+        OperationType.LOGIN.value: "成员登录",
+        OperationType.IMPORT.value: "导入记录",
+        OperationType.EXPORT.value: "导出记录",
+    }
+    module_label = getattr(row, "module", None) or "system"
+    return f"{operation_map.get(operation_type, '执行操作')} · {module_label}"
+
+
+def _overview_event_description(row: SystemLog) -> str | None:
+    resource_name = (getattr(row, "resource_name", None) or "").strip()
+    remark = (getattr(row, "remark", None) or "").strip()
+    if resource_name and remark:
+        return f"{resource_name} · {remark[:160]}"
+    if resource_name:
+        return resource_name
+    if remark:
+        return remark[:200]
+    return None
+
+
 def _application_user_map(session: SessionDep, user_ids: list[int]) -> dict[int, dict]:
     if not user_ids or not _table_exists(session, UserModel.__tablename__):
         return {}
@@ -319,6 +394,7 @@ def _application_dto(
     *,
     applicant: dict | None = None,
     inviter: dict | None = None,
+    include_user_email: bool = True,
 ) -> TenantApplicationDTO:
     applicant = applicant or {}
     inviter = inviter or {}
@@ -328,11 +404,11 @@ def _application_dto(
         applicant_user_id=int(application.applicant_user_id),
         applicant_account=applicant.get("account"),
         applicant_name=applicant.get("name"),
-        applicant_email=applicant.get("email"),
+        applicant_email=applicant.get("email") if include_user_email else None,
         invited_by_user_id=application.invited_by_user_id,
         inviter_account=inviter.get("account"),
         inviter_name=inviter.get("name"),
-        inviter_email=inviter.get("email"),
+        inviter_email=inviter.get("email") if include_user_email else None,
         tenant_id=application.tenant_id,
         tenant_code=application.tenant_code,
         tenant_name=application.tenant_name,
@@ -348,7 +424,12 @@ def _application_dto(
     )
 
 
-def _application_dto_list(session: SessionDep, applications) -> list[TenantApplicationDTO]:
+def _application_dto_list(
+    session: SessionDep,
+    applications,
+    *,
+    include_user_email: bool = True,
+) -> list[TenantApplicationDTO]:
     user_ids = {
         int(application.applicant_user_id)
         for application in applications
@@ -365,6 +446,7 @@ def _application_dto_list(session: SessionDep, applications) -> list[TenantAppli
             application,
             applicant=user_map.get(int(application.applicant_user_id)),
             inviter=user_map.get(int(application.invited_by_user_id)) if application.invited_by_user_id else None,
+            include_user_email=include_user_email,
         )
         for application in applications
     ]
@@ -390,14 +472,12 @@ def _security_policy_dto(row: TenantSecurityPolicyModel | None, tenant_id: int) 
         return TenantSecurityPolicyDTO(
             id=None,
             tenant_id=int(tenant_id),
-            ip_whitelist=None,
             sso_required=False,
             session_timeout_minutes=None,
         )
     return TenantSecurityPolicyDTO(
         id=int(row.id),
         tenant_id=int(row.tenant_id),
-        ip_whitelist=row.ip_whitelist,
         sso_required=bool(row.sso_required),
         session_timeout_minutes=row.session_timeout_minutes,
         create_time=int(row.create_time or 0),
@@ -422,6 +502,78 @@ def _data_request_dto(row: TenantDataRequestModel) -> TenantDataRequestDTO:
         review_time=row.review_time,
         complete_time=row.complete_time,
     )
+
+
+def _tenant_member_dto(session: SessionDep, current_user: CurrentUser, user: UserModel, membership: TenantUserModel) -> TenantMemberDTO:
+    return TenantMemberDTO(
+        user_id=int(user.id),
+        account=user.account,
+        name=user.name,
+        member_remark=(getattr(membership, "member_remark", None) or None),
+        tenant_role=normalize_tenant_role(membership.role),
+        is_primary=bool(membership.is_primary),
+        create_time=int(membership.create_time or 0),
+        project_ids=list_user_datasource_ids(session, int(user.id), current_user),
+        project_role_map=list_user_datasource_roles(session, int(user.id), current_user),
+    )
+
+
+def _require_manageable_tenant_member(
+    session: SessionDep,
+    current_user: CurrentUser,
+    *,
+    tenant_id: int,
+    user_id: int,
+) -> tuple[UserModel, TenantUserModel]:
+    user = session.get(UserModel, int(user_id))
+    membership = get_tenant_membership(session, int(user_id), tenant_id=int(tenant_id))
+    if not user or not membership:
+        raise HTTPException(status_code=404, detail="Tenant member not found")
+    if is_high_privilege_user(user):
+        raise HTTPException(status_code=403, detail="Platform administrator cannot be managed as tenant member")
+    if normalize_tenant_role(membership.role) == TENANT_ROLE_OWNER and not is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only system admin can manage tenant owner")
+    return user, membership
+
+
+def _assign_existing_user_to_current_tenant(
+    session: SessionDep,
+    current_user: CurrentUser,
+    *,
+    tenant_id: int,
+    account: str,
+    tenant_role: str,
+    member_remark: str | None = None,
+    project_ids: list[int] | None = None,
+    project_role_map: dict[int, str] | None = None,
+) -> tuple[UserModel, TenantUserModel]:
+    normalized_account = (account or "").strip()
+    user = session.exec(select(UserModel).where(UserModel.account == normalized_account)).first()
+    if not user:
+        raise ValueError("User does not exist")
+    if is_high_privilege_user(user):
+        raise ValueError("Platform administrator cannot be added to tenant")
+    membership = get_tenant_membership(session, int(user.id), tenant_id=int(tenant_id))
+    if membership:
+        raise ValueError("User already belongs to tenant")
+    membership = assign_user_to_tenant(
+        session,
+        int(user.id),
+        tenant_id=int(tenant_id),
+        role=normalize_application_role(tenant_role, TENANT_APPLICATION_TYPE_JOIN),
+        is_primary=False,
+    )
+    membership.member_remark = (member_remark or "").strip() or None
+    session.add(membership)
+    if project_ids is not None:
+        update_user_datasources(
+            session,
+            current_user,
+            int(user.id),
+            project_ids,
+            project_role_map,
+        )
+    return user, membership
 
 
 def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserModel | None:
@@ -541,6 +693,478 @@ async def tenant_usage(
     return [_usage_dto(row) for row in rows]
 
 
+@router.get("/overview", response_model=TenantOverviewDTO)
+async def tenant_overview(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    days: int = Query(7, ge=7, le=30),
+):
+    if is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="Platform admin does not have tenant overview")
+    _require_current_tenant_admin(current_user)
+
+    tenant_id = int(current_tenant.id)
+    tenant_name = current_tenant.name or current_tenant.code
+
+    current_date = datetime.now()
+    start_date = current_date.date() - timedelta(days=days - 1)
+    start_datetime = datetime.combine(start_date, datetime.min.time())
+    previous_start_datetime = start_datetime - timedelta(days=days)
+
+    member_total = session.exec(
+        select(func.count())
+        .select_from(TenantUserModel)
+        .where(
+            TenantUserModel.tenant_id == tenant_id,
+            TenantUserModel.status == 1,
+        )
+    ).one() or 0
+
+    pending_member_application_count = session.exec(
+        select(func.count())
+        .select_from(TenantApplicationModel)
+        .where(
+            TenantApplicationModel.tenant_id == tenant_id,
+            TenantApplicationModel.application_type == TENANT_APPLICATION_TYPE_JOIN,
+            TenantApplicationModel.status == "pending",
+        )
+    ).one() or 0
+
+    datasource_total = session.exec(
+        select(func.count())
+        .select_from(CoreDatasource)
+        .where(CoreDatasource.tenant_id == tenant_id)
+    ).one() or 0
+
+    dashboard_total = 0
+    if _table_exists(session, CoreDashboard.__tablename__):
+        dashboard_total = session.exec(
+            select(func.count())
+            .select_from(CoreDashboard)
+            .where(
+                CoreDashboard.tenant_id == tenant_id,
+                CoreDashboard.node_type == "leaf",
+                or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
+            )
+        ).one() or 0
+
+    terminology_total = 0
+    if _table_exists(session, Terminology.__tablename__):
+        terminology_total = session.exec(
+            select(func.count())
+            .select_from(Terminology)
+            .where(
+                Terminology.tenant_id == tenant_id,
+                Terminology.scope == SemanticRecordScopeEnum.TENANT.value,
+                or_(Terminology.enabled == True, Terminology.enabled.is_(None)),
+            )
+        ).one() or 0
+
+    training_total = 0
+    if _table_exists(session, DataTraining.__tablename__):
+        training_total = session.exec(
+            select(func.count())
+            .select_from(DataTraining)
+            .where(
+                DataTraining.tenant_id == tenant_id,
+                DataTraining.scope == SemanticRecordScopeEnum.TENANT.value,
+                or_(DataTraining.enabled == True, DataTraining.enabled.is_(None)),
+            )
+        ).one() or 0
+
+    custom_agent_total = 0
+    if _table_exists(session, CustomPrompt.__tablename__):
+        custom_agent_total = session.exec(
+            select(func.count())
+            .select_from(CustomPrompt)
+            .where(
+                CustomPrompt.tenant_id == tenant_id,
+                or_(
+                    CustomPrompt.visibility_scope != CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value,
+                    CustomPrompt.visibility_scope.is_(None),
+                ),
+            )
+        ).one() or 0
+
+    embedded_total = 0
+    if _table_exists(session, AssistantModel.__tablename__):
+        embedded_total = session.exec(
+            select(func.count())
+            .select_from(AssistantModel)
+            .where(
+                AssistantModel.tenant_id == tenant_id,
+                AssistantModel.type == 4,
+            )
+        ).one() or 0
+
+    role_rows = session.exec(
+        select(TenantUserModel.role, func.count())
+        .where(
+            TenantUserModel.tenant_id == tenant_id,
+            TenantUserModel.status == 1,
+        )
+        .group_by(TenantUserModel.role)
+    ).all()
+
+    role_distribution = [
+        TenantOverviewRoleItemDTO(role=normalize_tenant_role(role), count=int(count or 0))
+        for role, count in role_rows
+    ]
+
+    login_rows = session.exec(
+        select(SystemLog.user_id, SystemLog.create_time)
+        .where(
+            SystemLog.tenant_id == tenant_id,
+            SystemLog.operation_type == OperationType.LOGIN.value,
+            SystemLog.create_time >= start_datetime,
+        )
+        .order_by(SystemLog.create_time.asc())
+    ).all()
+
+    active_member_ids = {
+        int(user_id)
+        for user_id, _create_time in login_rows
+        if user_id not in (None, "")
+    }
+
+    trend_map: dict[str, dict[str, int]] = {
+        (start_date + timedelta(days=index)).strftime("%Y-%m-%d"): {
+            "active_member_count": 0,
+            "login_count": 0,
+        }
+        for index in range(days)
+    }
+    daily_member_map: dict[str, set[int]] = {key: set() for key in trend_map}
+
+    for user_id, create_time in login_rows:
+        if create_time is None:
+            continue
+        day_key = create_time.strftime("%Y-%m-%d")
+        if day_key not in trend_map:
+            continue
+        trend_map[day_key]["login_count"] += 1
+        if user_id not in (None, ""):
+            daily_member_map[day_key].add(int(user_id))
+
+    activity_trend = []
+    for day_key, values in trend_map.items():
+        activity_trend.append(
+            TenantOverviewTrendPointDTO(
+                date=day_key,
+                active_member_count=len(daily_member_map[day_key]),
+                login_count=int(values["login_count"]),
+            )
+        )
+
+    previous_login_user_ids = {
+        int(user_id)
+        for user_id in session.exec(
+            select(SystemLog.user_id)
+            .where(
+                SystemLog.tenant_id == tenant_id,
+                SystemLog.operation_type == OperationType.LOGIN.value,
+                SystemLog.create_time >= previous_start_datetime,
+                SystemLog.create_time < start_datetime,
+                SystemLog.user_id.is_not(None),
+            )
+            .distinct()
+        ).all()
+        if user_id not in (None, "")
+    }
+
+    domain_binding_count = 0
+    if _table_exists(session, TenantDomainModel.__tablename__):
+        domain_binding_count = session.exec(
+            select(func.count())
+            .select_from(TenantDomainModel)
+            .where(
+                TenantDomainModel.tenant_id == tenant_id,
+                TenantDomainModel.status == "verified",
+            )
+        ).one() or 0
+
+    active_member_count = len(active_member_ids)
+    todos: list[TenantOverviewTodoDTO] = []
+    if pending_member_application_count > 0:
+        todos.append(
+            TenantOverviewTodoDTO(
+                key="pending_member_application_count",
+                level="warning",
+                count=int(pending_member_application_count),
+                route="/system/member-access",
+            )
+        )
+    if datasource_total <= 0:
+        todos.append(
+            TenantOverviewTodoDTO(
+                key="missing_datasource",
+                level="attention",
+                route="/system/project",
+            )
+        )
+    if dashboard_total <= 0:
+        todos.append(
+            TenantOverviewTodoDTO(
+                key="missing_dashboard",
+                level="normal",
+                route="/dashboard/index",
+            )
+        )
+    if domain_binding_count <= 0:
+        todos.append(
+            TenantOverviewTodoDTO(
+                key="unverified_domain",
+                level="normal",
+                route="/system/member-access",
+            )
+        )
+    if not todos:
+        todos.append(
+            TenantOverviewTodoDTO(
+                key="space_ready",
+                level="healthy",
+                route="/system/usage",
+            )
+        )
+
+    recent_event_rows = session.exec(
+        select(SystemLog)
+        .where(
+            SystemLog.tenant_id == tenant_id,
+            SystemLog.create_time >= start_datetime,
+        )
+        .order_by(SystemLog.create_time.desc())
+        .limit(8)
+    ).all()
+
+    recent_events = [
+        TenantOverviewEventDTO(
+            id=str(row.id),
+            title=_overview_event_title(row),
+            description=_overview_event_description(row),
+            create_time=_timestamp_to_millis(getattr(row, "create_time", None)),
+            operator_name=getattr(row, "user_name", None),
+            module=getattr(row, "module", None),
+            resource_name=getattr(row, "resource_name", None),
+        )
+        for row in recent_event_rows
+    ]
+
+    return TenantOverviewDTO(
+        tenant_id=tenant_id,
+        tenant_name=tenant_name,
+        days=days,
+        summary=TenantOverviewSummaryDTO(
+            member_total=int(member_total or 0),
+            active_member_count=active_member_count,
+            datasource_total=int(datasource_total or 0),
+            dashboard_total=int(dashboard_total or 0),
+            pending_member_application_count=int(pending_member_application_count or 0),
+        ),
+        activity_trend=activity_trend,
+        assets=[
+            TenantOverviewAssetItemDTO(key="datasource", count=int(datasource_total or 0)),
+            TenantOverviewAssetItemDTO(key="dashboard", count=int(dashboard_total or 0)),
+            TenantOverviewAssetItemDTO(key="terminology", count=int(terminology_total or 0)),
+            TenantOverviewAssetItemDTO(key="training", count=int(training_total or 0)),
+            TenantOverviewAssetItemDTO(key="custom_agent", count=int(custom_agent_total or 0)),
+            TenantOverviewAssetItemDTO(key="embedded", count=int(embedded_total or 0)),
+        ],
+        role_distribution=role_distribution,
+        todos=todos,
+        recent_events=recent_events,
+    )
+
+
+@router.get("/member/list", response_model=list[TenantMemberDTO])
+async def tenant_member_list(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    keyword: str | None = Query(None, max_length=100),
+):
+    _require_current_tenant_admin(current_user)
+    statement = (
+        select(UserModel, TenantUserModel)
+        .join(TenantUserModel, TenantUserModel.user_id == UserModel.id)
+        .where(
+            TenantUserModel.tenant_id == int(current_tenant.id),
+            TenantUserModel.status == 1,
+        )
+        .order_by(TenantUserModel.role, UserModel.account)
+    )
+    if keyword:
+        keyword_pattern = f"%{keyword.strip()}%"
+        statement = statement.where(
+            or_(
+                UserModel.account.ilike(keyword_pattern),
+                UserModel.name.ilike(keyword_pattern),
+                TenantUserModel.member_remark.ilike(keyword_pattern),
+            )
+        )
+    rows = session.exec(statement).all()
+    return [
+        _tenant_member_dto(session, current_user, user, membership)
+        for user, membership in rows
+        if not is_high_privilege_user(user)
+    ]
+
+
+@router.post("/member", response_model=TenantMemberDTO)
+async def add_tenant_member(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    creator: TenantMemberCreator,
+):
+    _require_current_tenant_admin(current_user)
+    try:
+        user, membership = _assign_existing_user_to_current_tenant(
+            session,
+            current_user,
+            tenant_id=int(current_tenant.id),
+            account=creator.account,
+            tenant_role=creator.tenant_role,
+            member_remark=creator.member_remark,
+            project_ids=creator.project_ids,
+            project_role_map=creator.project_role_map,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _write_tenant_audit(
+        session,
+        current_user,
+        operation_type=OperationType.CREATE,
+        detail="添加工作空间成员",
+        module=OperationModules.TENANT,
+        tenant_id=int(current_tenant.id),
+        resource_id=user.id,
+        resource_name=user.account,
+        remark=f"user_id={user.id}; tenant_role={membership.role}; member_remark_set={bool(membership.member_remark)}",
+    )
+    return _tenant_member_dto(session, current_user, user, membership)
+
+
+@router.post("/member/bulk", response_model=list[TenantBulkMemberResult])
+async def bulk_add_tenant_members(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    creator: TenantBulkMemberCreator,
+):
+    _require_current_tenant_admin(current_user)
+    results: list[TenantBulkMemberResult] = []
+    seen = set()
+    created_count = 0
+    for raw_account in creator.accounts:
+        account = (raw_account or "").strip()
+        if not account or account in seen:
+            continue
+        seen.add(account)
+        try:
+            user, _membership = _assign_existing_user_to_current_tenant(
+                session,
+                current_user,
+                tenant_id=int(current_tenant.id),
+                account=account,
+                tenant_role=creator.tenant_role,
+            )
+            created_count += 1
+            results.append(TenantBulkMemberResult(account=account, status="created", user_id=int(user.id)))
+        except ValueError as exc:
+            results.append(TenantBulkMemberResult(account=account, status="failed", message=str(exc)))
+    if created_count:
+        _write_tenant_audit(
+            session,
+            current_user,
+            operation_type=OperationType.CREATE,
+            detail="批量添加工作空间成员",
+            module=OperationModules.TENANT,
+            tenant_id=int(current_tenant.id),
+            resource_name=current_tenant.name,
+            remark=f"created={created_count}; total={len(results)}",
+        )
+    return results
+
+
+@router.put("/member/{user_id}", response_model=TenantMemberDTO)
+async def update_tenant_member(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    user_id: int,
+    editor: TenantMemberEditor,
+):
+    _require_current_tenant_admin(current_user)
+    user, membership = _require_manageable_tenant_member(
+        session,
+        current_user,
+        tenant_id=int(current_tenant.id),
+        user_id=user_id,
+    )
+    membership.role = normalize_application_role(editor.tenant_role, TENANT_APPLICATION_TYPE_JOIN)
+    membership.member_remark = (editor.member_remark or "").strip() or None
+    session.add(membership)
+    if editor.project_ids is not None:
+        update_user_datasources(
+            session,
+            current_user,
+            int(user.id),
+            editor.project_ids,
+            editor.project_role_map,
+        )
+    _write_tenant_audit(
+        session,
+        current_user,
+        operation_type=OperationType.UPDATE,
+        detail="更新工作空间成员属性",
+        module=OperationModules.TENANT,
+        tenant_id=int(current_tenant.id),
+        resource_id=user.id,
+        resource_name=user.account,
+        remark=f"user_id={user.id}; tenant_role={membership.role}; member_remark_set={bool(membership.member_remark)}",
+    )
+    return _tenant_member_dto(session, current_user, user, membership)
+
+
+@router.delete("/member/{user_id}", response_model=TenantMemberDTO)
+async def remove_tenant_member(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    user_id: int,
+):
+    _require_current_tenant_admin(current_user)
+    user, membership = _require_manageable_tenant_member(
+        session,
+        current_user,
+        tenant_id=int(current_tenant.id),
+        user_id=user_id,
+    )
+    try:
+        removed_membership = remove_user_from_tenant(session, int(user.id), tenant_id=int(current_tenant.id))
+        _remove_tenant_project_permissions(
+            session,
+            tenant_id=int(current_tenant.id),
+            user_id=int(user.id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _write_tenant_audit(
+        session,
+        current_user,
+        operation_type=OperationType.DELETE,
+        detail="移出工作空间成员",
+        module=OperationModules.TENANT,
+        tenant_id=int(current_tenant.id),
+        resource_id=user.id,
+        resource_name=user.account,
+        remark=f"user_id={user.id}; tenant_role={membership.role}",
+    )
+    return _tenant_member_dto(session, current_user, user, removed_membership)
+
+
 @router.post("/application", response_model=TenantApplicationDTO)
 async def submit_tenant_application(
     session: SessionDep,
@@ -561,7 +1185,7 @@ async def submit_tenant_application(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    detail = "提交企业创建申请" if application.application_type == TENANT_APPLICATION_TYPE_CREATE else "提交加入企业申请"
+    detail = "提交工作空间创建申请" if application.application_type == TENANT_APPLICATION_TYPE_CREATE else "提交加入工作空间申请"
     _write_tenant_audit(
         session,
         current_user,
@@ -613,7 +1237,7 @@ async def cancel_my_tenant_application(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    detail = "取消企业创建申请" if application.application_type == TENANT_APPLICATION_TYPE_CREATE else "取消加入企业申请"
+    detail = "取消工作空间创建申请" if application.application_type == TENANT_APPLICATION_TYPE_CREATE else "取消加入工作空间申请"
     _write_tenant_audit(
         session,
         current_user,
@@ -657,6 +1281,7 @@ async def review_tenant_application(
                 session,
                 application_id=application_id,
                 reviewer_user_id=int(current_user.id),
+                tenant_code=dto.tenant_code,
                 review_comment=dto.review_comment,
                 allowed_types={TENANT_APPLICATION_TYPE_CREATE},
             )
@@ -674,7 +1299,7 @@ async def review_tenant_application(
         session,
         current_user,
         operation_type=OperationType.UPDATE_STATUS,
-        detail="审核企业创建申请通过" if dto.approved else "审核企业创建申请拒绝",
+        detail="审核工作空间创建申请通过" if dto.approved else "审核工作空间创建申请拒绝",
         module=OperationModules.TENANT_APPLICATION,
         tenant_id=_application_audit_tenant_id(current_user, application),
         resource_id=application.id,
@@ -698,7 +1323,7 @@ async def tenant_join_applications(
         application_type=TENANT_APPLICATION_TYPE_JOIN,
         status=status,
     )
-    return _application_dto_list(session, applications)
+    return _application_dto_list(session, applications, include_user_email=False)
 
 
 @router.post("/application/tenant/{application_id}/review", response_model=TenantApplicationDTO)
@@ -740,14 +1365,14 @@ async def review_tenant_join_application(
         session,
         current_user,
         operation_type=OperationType.UPDATE_STATUS,
-        detail="审核加入企业申请通过" if dto.approved else "审核加入企业申请拒绝",
+        detail="审核加入工作空间申请通过" if dto.approved else "审核加入工作空间申请拒绝",
         module=OperationModules.TENANT_APPLICATION,
         tenant_id=int(current_tenant.id),
         resource_id=application.id,
         resource_name=application.tenant_name,
         remark=_application_audit_remark(application),
     )
-    return _application_dto_list(session, [application])[0]
+    return _application_dto_list(session, [application], include_user_email=False)[0]
 
 
 @router.post("/invitation", response_model=TenantApplicationDTO)
@@ -778,14 +1403,14 @@ async def invite_tenant_member(
         session,
         current_user,
         operation_type=OperationType.CREATE,
-        detail="邀请企业成员",
+        detail="邀请工作空间成员",
         module=OperationModules.TENANT_APPLICATION,
         tenant_id=int(current_tenant.id),
         resource_id=invitation.id,
         resource_name=invitation.tenant_name,
         remark=_application_audit_remark(invitation),
     )
-    return _application_dto_list(session, [invitation])[0]
+    return _application_dto_list(session, [invitation], include_user_email=False)[0]
 
 
 @router.post("/invitation/bulk", response_model=list[TenantBulkInviteResult])
@@ -838,7 +1463,7 @@ async def bulk_invite_tenant_members(
         session,
         current_user,
         operation_type=OperationType.IMPORT,
-        detail="批量邀请企业成员",
+        detail="批量邀请工作空间成员",
         module=OperationModules.TENANT_APPLICATION,
         tenant_id=int(current_tenant.id),
         resource_name=current_tenant.name,
@@ -861,7 +1486,7 @@ async def tenant_invitations(
         application_type=TENANT_APPLICATION_TYPE_INVITE,
         status=status,
     )
-    return _application_dto_list(session, applications)
+    return _application_dto_list(session, applications, include_user_email=False)
 
 
 @router.get("/invitation/my", response_model=list[TenantApplicationDTO])
@@ -904,7 +1529,7 @@ async def transfer_current_tenant_owner(
         session,
         current_user,
         operation_type=OperationType.UPDATE,
-        detail="转移企业所有者",
+        detail="转移工作空间所有者",
         module=OperationModules.TENANT,
         tenant_id=int(current_tenant.id),
         resource_id=target_user.id,
@@ -918,41 +1543,6 @@ async def transfer_current_tenant_owner(
         "owner_name": target_user.name,
         "owner_email": target_user.email,
     })
-
-
-@router.post("/{tenant_id}/leave", response_model=list[TenantDTO])
-async def leave_joined_tenant(
-    session: SessionDep,
-    current_user: CurrentUser,
-    tenant_id: int,
-):
-    if is_super_admin(current_user):
-        raise HTTPException(status_code=403, detail="Platform administrator cannot leave tenant from this endpoint")
-    tenant = session.get(TenantModel, int(tenant_id))
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant does not exist")
-    try:
-        leave_tenant(session, int(current_user.id), tenant_id=int(tenant_id))
-        _remove_tenant_project_permissions(
-            session,
-            tenant_id=int(tenant_id),
-            user_id=int(current_user.id),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _write_tenant_audit(
-        session,
-        current_user,
-        operation_type=OperationType.DELETE,
-        detail="退出企业",
-        module=OperationModules.TENANT,
-        tenant_id=int(tenant_id),
-        resource_id=current_user.id,
-        resource_name=_audit_user_name(current_user),
-        remark=f"tenant_code={tenant.code}; user_id={current_user.id}",
-    )
-    rows = list_user_tenant_memberships(session, int(current_user.id))
-    return _tenant_dto_list(session, [(tenant, membership.role) for tenant, membership in rows])
 
 
 @router.post("/invitation/{application_id}/respond", response_model=TenantApplicationDTO)
@@ -992,14 +1582,14 @@ async def respond_tenant_invitation(
         session,
         current_user,
         operation_type=OperationType.UPDATE_STATUS,
-        detail="接受企业邀请" if dto.approved else "拒绝企业邀请",
+        detail="接受工作空间邀请" if dto.approved else "拒绝工作空间邀请",
         module=OperationModules.TENANT_APPLICATION,
         tenant_id=_application_audit_tenant_id(current_user, application),
         resource_id=application.id,
         resource_name=application.tenant_name,
         remark=_application_audit_remark(application),
     )
-    return _application_dto_list(session, [application])[0]
+    return _application_dto_list(session, [application], include_user_email=False)[0]
 
 
 @router.delete("/invitation/{application_id}", response_model=TenantApplicationDTO)
@@ -1031,7 +1621,7 @@ async def cancel_tenant_invitation(
         session,
         current_user,
         operation_type=OperationType.UPDATE_STATUS,
-        detail="取消企业邀请",
+        detail="取消工作空间邀请",
         module=OperationModules.TENANT_APPLICATION,
         tenant_id=int(current_tenant.id),
         resource_id=application.id,
@@ -1063,7 +1653,7 @@ async def bind_tenant_domain(
         session,
         current_user,
         operation_type=OperationType.CREATE,
-        detail="提交企业邮箱域绑定",
+        detail="提交工作空间邮箱域绑定",
         module=OperationModules.TENANT,
         tenant_id=int(current_tenant.id),
         resource_id=row.id,
@@ -1115,7 +1705,7 @@ async def review_domain_binding(
         session,
         current_user,
         operation_type=OperationType.UPDATE_STATUS,
-        detail="审核企业邮箱域绑定",
+        detail="审核工作空间邮箱域绑定",
         module=OperationModules.TENANT,
         tenant_id=int(row.tenant_id),
         resource_id=row.id,
@@ -1150,7 +1740,6 @@ async def update_tenant_security_policy(
         row = upsert_tenant_security_policy(
             session,
             tenant_id=int(current_tenant.id),
-            ip_whitelist=editor.ip_whitelist,
             sso_required=editor.sso_required,
             session_timeout_minutes=editor.session_timeout_minutes,
         )
@@ -1160,12 +1749,12 @@ async def update_tenant_security_policy(
         session,
         current_user,
         operation_type=OperationType.UPDATE,
-        detail="更新企业安全策略",
+        detail="更新工作空间安全策略",
         module=OperationModules.TENANT,
         tenant_id=int(current_tenant.id),
         resource_id=row.id,
         resource_name=current_tenant.name,
-        remark=f"sso_required={row.sso_required}; has_ip_whitelist={bool(row.ip_whitelist)}",
+        remark=f"sso_required={row.sso_required}; session_timeout_minutes={row.session_timeout_minutes}",
     )
     return _security_policy_dto(row, int(current_tenant.id))
 
@@ -1195,7 +1784,7 @@ async def submit_tenant_data_request(
         session,
         current_user,
         operation_type=OperationType.CREATE,
-        detail="提交企业数据请求",
+        detail="提交工作空间数据请求",
         module=OperationModules.TENANT,
         tenant_id=int(current_tenant.id),
         resource_id=row.id,
@@ -1248,7 +1837,7 @@ async def review_data_request(
         session,
         current_user,
         operation_type=OperationType.UPDATE_STATUS,
-        detail="审核企业数据请求",
+        detail="审核工作空间数据请求",
         module=OperationModules.TENANT,
         tenant_id=int(row.tenant_id),
         resource_id=row.id,
@@ -1279,7 +1868,7 @@ async def complete_data_request(
         session,
         current_user,
         operation_type=OperationType.UPDATE_STATUS,
-        detail="完成企业数据请求",
+        detail="完成工作空间数据请求",
         module=OperationModules.TENANT,
         tenant_id=int(row.tenant_id),
         resource_id=row.id,
@@ -1287,6 +1876,41 @@ async def complete_data_request(
         remark=f"type={row.request_type}; status={row.status}",
     )
     return _data_request_dto(row)
+
+
+@router.post("/{tenant_id}/leave", response_model=list[TenantDTO])
+async def leave_joined_tenant(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+):
+    if is_super_admin(current_user):
+        raise HTTPException(status_code=403, detail="Platform administrator cannot leave tenant from this endpoint")
+    tenant = session.get(TenantModel, int(tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant does not exist")
+    try:
+        leave_tenant(session, int(current_user.id), tenant_id=int(tenant_id))
+        _remove_tenant_project_permissions(
+            session,
+            tenant_id=int(tenant_id),
+            user_id=int(current_user.id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _write_tenant_audit(
+        session,
+        current_user,
+        operation_type=OperationType.DELETE,
+        detail="退出工作空间",
+        module=OperationModules.TENANT,
+        tenant_id=int(tenant_id),
+        resource_id=current_user.id,
+        resource_name=_audit_user_name(current_user),
+        remark=f"tenant_code={tenant.code}; user_id={current_user.id}",
+    )
+    rows = list_user_tenant_memberships(session, int(current_user.id))
+    return _tenant_dto_list(session, [(tenant, membership.role) for tenant, membership in rows])
 
 
 @router.post("", response_model=TenantDTO)
@@ -1330,7 +1954,7 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
         session,
         current_user,
         operation_type=OperationType.CREATE,
-        detail="创建企业",
+        detail="创建工作空间",
         module=OperationModules.TENANT,
         tenant_id=int(tenant.id),
         resource_id=tenant.id,
@@ -1364,7 +1988,7 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
         session,
         current_user,
         operation_type=OperationType.UPDATE,
-        detail="更新企业",
+        detail="更新工作空间",
         module=OperationModules.TENANT,
         tenant_id=int(tenant.id),
         resource_id=tenant.id,
@@ -1385,7 +2009,7 @@ async def update_tenant_status(session: SessionDep, current_user: CurrentUser, t
         session,
         current_user,
         operation_type=OperationType.UPDATE_STATUS,
-        detail="更新企业状态",
+        detail="更新工作空间状态",
         module=OperationModules.TENANT,
         tenant_id=int(tenant.id),
         resource_id=tenant.id,
@@ -1406,7 +2030,7 @@ async def remove_tenant(session: SessionDep, current_user: CurrentUser, tenant_i
         session,
         current_user,
         operation_type=OperationType.DELETE,
-        detail="删除企业",
+        detail="删除工作空间",
         module=OperationModules.TENANT,
         tenant_id=int(tenant.id),
         resource_id=tenant.id,

@@ -205,7 +205,7 @@ const logout = async () => {
   }
 }
 const toSystem = () => {
-  router.push('/system')
+  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/system/overview')
 }
 const backMain = () => {
   router.push('/')
@@ -435,6 +435,29 @@ onMounted(() => {
     .page-content {
       flex: 1;
       overflow-y: auto;
+      color-scheme: light;
+      scrollbar-width: thin;
+      scrollbar-color: #b8c4d6 #edf2f8;
+    }
+
+    .page-content::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    .page-content::-webkit-scrollbar-track {
+      background: #edf2f8;
+      border-radius: 999px;
+    }
+
+    .page-content::-webkit-scrollbar-thumb {
+      background: #b8c4d6;
+      border-radius: 999px;
+      border: 2px solid #edf2f8;
+    }
+
+    .page-content::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
     }
 
     .sys-page-content {

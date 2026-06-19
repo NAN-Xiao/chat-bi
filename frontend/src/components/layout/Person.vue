@@ -9,6 +9,7 @@ import icon_logout_outlined from '@/assets/svg/icon_logout_outlined.svg'
 import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
+import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import PwdForm from './PwdForm.vue'
 import Apikey from './Apikey.vue'
@@ -41,7 +42,10 @@ const currentLanguage = computed(() => userStore.getLanguage)
 const isAdmin = computed(() => userStore.isSystemManagerUser)
 const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
 const isLocalUser = computed(() => !userStore.getOrigin)
-const currentTenantName = computed(() => userStore.getTenantName || t('common.default_tenant'))
+const hasTenantContext = computed(() => !!userStore.getTenantId)
+const currentTenantName = computed(() =>
+  hasTenantContext.value ? userStore.getTenantName : t('tenant.no_current_workspace')
+)
 const currentTenantRole = computed(() => formatTenantRole(userStore.getTenantRole))
 const tenantList = computed(() => userStore.getTenants)
 
@@ -84,12 +88,17 @@ const formatTenantRole = (role: string) => {
 
 const toSystem = () => {
   popoverRef.value.hide()
-  router.push('/system')
+  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/system/member-access')
 }
 
 const toMyWorkspaces = () => {
   popoverRef.value?.hide?.()
   router.push('/account/workspaces')
+}
+
+const toWorkspaceApplication = () => {
+  popoverRef.value?.hide?.()
+  router.push('/account/workspace-applications')
 }
 
 const loadTenants = async () => {
@@ -231,13 +240,16 @@ onMounted(() => {
             </el-scrollbar>
           </div>
         </el-popover>
-        <div v-else-if="!isPlatformAdmin" class="popover-item tenant-trigger static">
+        <div
+          v-else-if="!isPlatformAdmin && (hasTenantContext || tenantList.length === 0)"
+          class="popover-item tenant-trigger static"
+        >
           <el-icon size="16">
             <icon_member_outlined></icon_member_outlined>
           </el-icon>
           <div class="tenant-summary">
             <div :title="currentTenantName" class="tenant-name ellipsis">{{ currentTenantName }}</div>
-            <div class="tenant-role">{{ currentTenantRole }}</div>
+            <div v-if="hasTenantContext" class="tenant-role">{{ currentTenantRole }}</div>
           </div>
         </div>
         <div v-if="isAdmin && !inSysmenu" class="popover-item" @click="toSystem">
@@ -252,13 +264,19 @@ onMounted(() => {
           </el-icon>
           <div class="datasource-name">{{ $t('tenant.my_workspaces') }}</div>
         </div>
+        <div v-if="!isPlatformAdmin" class="popover-item" @click="toWorkspaceApplication">
+          <el-icon size="16">
+            <icon_add_outlined></icon_add_outlined>
+          </el-icon>
+          <div class="datasource-name">{{ $t('tenant.apply_workspace') }}</div>
+        </div>
         <div v-if="isLocalUser && !platFlag" class="popover-item" @click="openPwd">
           <el-icon size="16">
             <icon_key_outlined></icon_key_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('user.change_password') }}</div>
         </div>
-        <div class="popover-item" @click="openApikey">
+        <div v-if="!isPlatformAdmin" class="popover-item" @click="openApikey">
           <el-icon size="16">
             <icon_api_key></icon_api_key>
           </el-icon>

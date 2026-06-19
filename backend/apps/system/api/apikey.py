@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from sqlmodel import func, select
 from apps.system.crud.apikey_manage import clear_api_key_cache
 from apps.system.models.system_model import ApiKeyModel
+from apps.system.schemas.business_access import ensure_chatbi_business_user
 from apps.system.schemas.system_schema import ApikeyGridItem, ApikeyStatus
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.time import get_timestamp
@@ -14,6 +15,7 @@ from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
+    ensure_chatbi_business_user(current_user)
     tenant_id = getattr(current_user, "tenant_id", None)
     if not tenant_id:
         raise PermissionError("Current tenant is required")

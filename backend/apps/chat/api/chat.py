@@ -49,12 +49,12 @@ def _quota_message(state) -> str:
     if getattr(state, "reason", None) == "subscription_suspended":
         return (
             f"当前租户订阅状态为 {getattr(state, 'subscription_status', 'suspended')}，"
-            "高消耗功能已由平台管理员暂停。请联系企业管理员或平台管理员处理。"
+            "高消耗功能已由平台管理员暂停。请联系工作空间管理员或平台管理员处理。"
         )
     window_name = "每日" if state.window == "daily" else "每月"
     return (
         f"当前租户套餐的{window_name} {state.action} 用量已达上限"
-        f"（{state.used}/{state.limit}），请联系企业管理员或平台管理员调整套餐。"
+        f"（{state.used}/{state.limit}），请联系工作空间管理员或平台管理员调整套餐。"
     )
 
 

@@ -77,14 +77,23 @@ export const UserStore = defineStore('user', {
     isSystemAdminUser(): boolean {
       return this.systemRole === 'system_admin'
     },
+    isCollabAdminUser(): boolean {
+      return this.systemRole === 'collab_admin'
+    },
     isTenantAdminUser(): boolean {
       return ['owner', 'admin'].includes(String(this.tenantRole || '').trim().toLowerCase())
+    },
+    isTenantOwnerUser(): boolean {
+      return String(this.tenantRole || '').trim().toLowerCase() === 'owner'
+    },
+    isTenantMemberUser(): boolean {
+      return String(this.tenantRole || '').trim().toLowerCase() === 'member'
     },
     isSystemManagerUser(): boolean {
       return (
         this.isSystemAdmin ||
         this.isSystemAdminUser ||
-        this.systemRole === 'collab_admin' ||
+        this.isCollabAdminUser ||
         this.isTenantAdminUser
       )
     },
@@ -202,6 +211,8 @@ export const UserStore = defineStore('user', {
         this.tenants = Array.isArray(res) ? res : []
         if (!this.tenantId && this.tenants.length > 0) {
           this.setTenant(this.tenants[0])
+        } else if (this.tenantId && !this.tenants.some((tenant) => String(tenant.id) === String(this.tenantId))) {
+          this.setTenant(null)
         }
         return this.tenants
       } finally {

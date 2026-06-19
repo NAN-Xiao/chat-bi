@@ -103,12 +103,6 @@ class TokenMiddleware(BaseHTTPMiddleware):
         except (TypeError, ValueError):
             return token_tenant_id
 
-    def _request_ip(self, request: Request) -> str | None:
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request.client.host if request.client else None
-
     def _apply_session_auth_origin(self, user: UserInfoDTO, auth_origin: int | None) -> UserInfoDTO:
         if auth_origin is None:
             return user
@@ -130,12 +124,12 @@ class TokenMiddleware(BaseHTTPMiddleware):
             allow_header_override=allow_header_tenant_override,
         )
         tenant = resolve_current_tenant(session, user, requested_tenant_id=requested_tenant_id)
-        validate_tenant_security_policy(
-            session,
-            tenant_id=int(tenant.id),
-            user=user,
-            ip_address=self._request_ip(request),
-        )
+        if tenant is not None:
+            validate_tenant_security_policy(
+                session,
+                tenant_id=int(tenant.id),
+                user=user,
+            )
         request.state.current_tenant = tenant
         return attach_tenant_context(user, tenant)
 

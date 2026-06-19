@@ -56,6 +56,15 @@ const filterSystemRoutes = (arr: any[]): any[] => {
       if (item.meta?.platformOnly) {
         return null
       }
+      if (!userStore.getTenantId) {
+        return null
+      }
+      if (item.meta?.tenantAdminOnly && !userStore.isTenantAdminUser) {
+        return null
+      }
+      if (!item.meta?.tenantBusiness && !item.meta?.tenantAdminOnly && !children.length) {
+        return null
+      }
       return { ...item, children }
     })
     .filter(Boolean)
@@ -71,6 +80,10 @@ const mainMenuOrder = (path: string) => {
   return 100
 }
 
+const tenantOptionalMainRoutes = ['/access', '/account']
+const isTenantOptionalMainRoute = (path: string) =>
+  tenantOptionalMainRoutes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+
 const routerList = computed(() => {
   if (showSysmenu.value) {
     const [sysRouter] = formatRoute(
@@ -81,8 +94,13 @@ const routerList = computed(() => {
   if (userStore.isSystemAdminUser) {
     return []
   }
+  const hasTenantContext = !!userStore.getTenantId
   const list = router.getRoutes().filter((route) => {
+    if (!hasTenantContext && !isTenantOptionalMainRoute(route.path)) {
+      return false
+    }
     return (
+      !route.meta?.hidden &&
       !route.path.includes('embeddedPage') &&
       !route.path.includes('assistant') &&
       !route.path.includes('embeddedPage') &&

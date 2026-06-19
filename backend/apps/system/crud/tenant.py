@@ -1,4 +1,3 @@
-import ipaddress
 import json
 
 from pydantic import BaseModel
@@ -61,7 +60,6 @@ TENANT_APPLICATION_TYPES = {
     TENANT_APPLICATION_TYPE_JOIN,
     TENANT_APPLICATION_TYPE_INVITE,
 }
-TENANT_CREATE_APPLICATION_ROLES = {TENANT_ROLE_OWNER, TENANT_ROLE_ADMIN}
 TENANT_MEMBERSHIP_APPLICATION_ROLES = {TENANT_ROLE_ADMIN, TENANT_ROLE_MEMBER}
 TENANT_DOMAIN_STATUS_PENDING = "pending"
 TENANT_DOMAIN_STATUS_VERIFIED = "verified"
@@ -111,7 +109,7 @@ def normalize_application_role(role: str | None, application_type: str | None = 
     normalized = normalize_tenant_role(role)
     normalized_type = normalize_application_type(application_type)
     if normalized_type == TENANT_APPLICATION_TYPE_CREATE:
-        return normalized if normalized in TENANT_CREATE_APPLICATION_ROLES else TENANT_ROLE_OWNER
+        return TENANT_ROLE_OWNER
     return normalized if normalized in TENANT_MEMBERSHIP_APPLICATION_ROLES else TENANT_ROLE_MEMBER
 
 
@@ -237,6 +235,13 @@ def tenant_code_exists(session: Session, code: str) -> bool:
     if not normalized_code:
         return False
     return session.exec(select(TenantModel.id).where(TenantModel.code == normalized_code)).first() is not None
+
+
+def tenant_name_exists(session: Session, name: str) -> bool:
+    normalized_name = name.strip()
+    if not normalized_name:
+        return False
+    return session.exec(select(TenantModel.id).where(TenantModel.name == normalized_name)).first() is not None
 
 
 def create_tenant_domain(
@@ -454,14 +459,12 @@ def upsert_tenant_security_policy(
     session: Session,
     *,
     tenant_id: int,
-    ip_whitelist: str | None = None,
     sso_required: bool = False,
     session_timeout_minutes: int | None = None,
 ) -> TenantSecurityPolicyModel:
     tenant = session.get(TenantModel, int(tenant_id))
     if not tenant:
         raise ValueError("Tenant does not exist")
-    _parse_ip_whitelist(ip_whitelist)
     if session_timeout_minutes is not None and int(session_timeout_minutes) < 5:
         raise ValueError("Session timeout must be at least 5 minutes")
     now = get_timestamp()
@@ -469,14 +472,12 @@ def upsert_tenant_security_policy(
     if row is None:
         row = TenantSecurityPolicyModel(
             tenant_id=int(tenant_id),
-            ip_whitelist=_clean_optional_text(ip_whitelist),
             sso_required=bool(sso_required),
             session_timeout_minutes=session_timeout_minutes,
             create_time=now,
             update_time=now,
         )
     else:
-        row.ip_whitelist = _clean_optional_text(ip_whitelist)
         row.sso_required = bool(sso_required)
         row.session_timeout_minutes = session_timeout_minutes
         row.update_time = now
@@ -485,33 +486,12 @@ def upsert_tenant_security_policy(
     return row
 
 
-def _parse_ip_whitelist(value: str | None):
-    items = []
-    for raw in (value or "").replace(";", ",").split(","):
-        item = raw.strip()
-        if not item:
-            continue
-        try:
-            items.append(ipaddress.ip_network(item, strict=False))
-        except ValueError as exc:
-            raise ValueError(f"Invalid IP whitelist entry: {item}") from exc
-    return items
-
-
-def validate_tenant_security_policy(session: Session, *, tenant_id: int, user, ip_address: str | None) -> None:
+def validate_tenant_security_policy(session: Session, *, tenant_id: int, user) -> None:
     policy = get_tenant_security_policy(session, tenant_id=int(tenant_id))
     if not policy:
         return
     if _user_is_system_admin(user):
         return
-    whitelist = _parse_ip_whitelist(policy.ip_whitelist)
-    if whitelist:
-        try:
-            remote_ip = ipaddress.ip_address((ip_address or "").strip())
-        except ValueError as exc:
-            raise PermissionError("Request IP is not allowed by tenant security policy") from exc
-        if not any(remote_ip in network for network in whitelist):
-            raise PermissionError("Request IP is not allowed by tenant security policy")
     if bool(policy.sso_required) and int(getattr(user, "origin", 0) or 0) == 0:
         raise PermissionError("Tenant requires SSO login")
 
@@ -650,25 +630,22 @@ def create_tenant_application(
         raise ValueError("Tenant invitation must be created with invitation API")
 
     if normalized_type == TENANT_APPLICATION_TYPE_CREATE:
-        normalized_code = (tenant_code or "").strip().lower()
         normalized_name = (tenant_name or "").strip()
-        if not normalized_code:
-            raise ValueError("Tenant code is required")
         if not normalized_name:
             raise ValueError("Tenant name is required")
-        if tenant_code_exists(session, normalized_code):
-            raise ValueError("Tenant code already exists")
+        if tenant_name_exists(session, normalized_name):
+            raise ValueError("Tenant name already exists")
         existing_pending = session.exec(
             select(TenantApplicationModel.id).where(
                 TenantApplicationModel.application_type == TENANT_APPLICATION_TYPE_CREATE,
-                TenantApplicationModel.tenant_code == normalized_code,
+                TenantApplicationModel.tenant_name == normalized_name,
                 TenantApplicationModel.status == TENANT_APPLICATION_STATUS_PENDING,
             )
         ).first()
         if existing_pending:
-            raise ValueError("Tenant application for this code is already pending")
+            raise ValueError("Tenant application for this name is already pending")
         target_tenant_id = None
-        target_code = normalized_code
+        target_code = (tenant_code or "").strip().lower()
         target_name = normalized_name
         target_plan = plan.strip() or "default"
     else:
@@ -692,6 +669,12 @@ def create_tenant_application(
         target_name = tenant.name
         target_plan = tenant.plan
 
+    application_role = (
+        TENANT_ROLE_MEMBER
+        if normalized_type == TENANT_APPLICATION_TYPE_JOIN
+        else normalize_application_role(requested_role, normalized_type)
+    )
+
     application = TenantApplicationModel(
         application_type=normalized_type,
         applicant_user_id=applicant_user_id,
@@ -699,7 +682,7 @@ def create_tenant_application(
         tenant_code=target_code,
         tenant_name=target_name,
         plan=target_plan,
-        requested_role=normalize_application_role(requested_role, normalized_type),
+        requested_role=application_role,
         reason=(reason or "").strip() or None,
         status=TENANT_APPLICATION_STATUS_PENDING,
     )
@@ -778,6 +761,7 @@ def approve_tenant_application(
     *,
     application_id: int,
     reviewer_user_id: int,
+    tenant_code: str | None = None,
     review_comment: str | None = None,
     allowed_types: set[str] | None = None,
 ) -> tuple[TenantApplicationModel, TenantModel]:
@@ -792,11 +776,16 @@ def approve_tenant_application(
         raise ValueError("Tenant application type cannot be reviewed from this endpoint")
 
     if application_type == TENANT_APPLICATION_TYPE_CREATE:
-        if tenant_code_exists(session, application.tenant_code):
+        normalized_code = (tenant_code or application.tenant_code or "").strip().lower()
+        if not normalized_code:
+            raise ValueError("Tenant code is required")
+        if tenant_code_exists(session, normalized_code):
             raise ValueError("Tenant code already exists")
+        if tenant_name_exists(session, application.tenant_name):
+            raise ValueError("Tenant name already exists")
         tenant = create_tenant(
             session,
-            code=application.tenant_code,
+            code=normalized_code,
             name=application.tenant_name,
             plan=application.plan,
         )
@@ -808,17 +797,23 @@ def approve_tenant_application(
             is_primary=True,
         )
         application.tenant_id = int(tenant.id)
+        application.tenant_code = normalized_code
     else:
         tenant = get_active_tenant(session, tenant_id=application.tenant_id)
         if not tenant:
             raise ValueError("Tenant does not exist or is disabled")
         if user_belongs_to_tenant(session, int(application.applicant_user_id), int(tenant.id)):
             raise ValueError("User already belongs to tenant")
+        membership_role = (
+            TENANT_ROLE_MEMBER
+            if application_type == TENANT_APPLICATION_TYPE_JOIN
+            else normalize_application_role(application.requested_role, application_type)
+        )
         assign_user_to_tenant(
             session,
             int(application.applicant_user_id),
             tenant_id=int(tenant.id),
-            role=normalize_application_role(application.requested_role, application_type),
+            role=membership_role,
             is_primary=False,
         )
     now = get_timestamp()
@@ -888,7 +883,12 @@ def cancel_tenant_application(
     return application
 
 
-def list_user_tenant_memberships(session: Session, user_id: int) -> list[tuple[TenantModel, TenantUserModel]]:
+def list_user_tenant_memberships(
+    session: Session,
+    user_id: int,
+    *,
+    include_default: bool = False,
+) -> list[tuple[TenantModel, TenantUserModel]]:
     statement = (
         select(TenantModel, TenantUserModel)
         .join(TenantUserModel, TenantUserModel.tenant_id == TenantModel.id)
@@ -899,6 +899,8 @@ def list_user_tenant_memberships(session: Session, user_id: int) -> list[tuple[T
         )
         .order_by(TenantUserModel.is_primary.desc(), TenantModel.name)
     )
+    if not include_default:
+        statement = statement.where(TenantModel.id != DEFAULT_TENANT_ID)
     return list(session.exec(statement).all())
 
 
@@ -1043,11 +1045,13 @@ def resolve_current_tenant(
     user,
     *,
     requested_tenant_id: int | None = None,
-) -> TenantContext:
+) -> TenantContext | None:
     if not user or not getattr(user, "id", None):
         raise PermissionError("Authenticated user is required to resolve tenant")
 
     ensure_default_tenant(session)
+    if requested_tenant_id == DEFAULT_TENANT_ID and not _user_is_system_admin(user):
+        requested_tenant_id = None
     if requested_tenant_id:
         tenant = session.get(TenantModel, requested_tenant_id)
         if not tenant or tenant.status != 1:
@@ -1070,7 +1074,15 @@ def resolve_current_tenant(
 
     memberships = list_user_tenant_memberships(session, int(user.id))
     if not memberships:
-        return ensure_user_default_membership(session, user)
+        if _user_is_system_admin(user):
+            tenant = ensure_default_tenant(session)
+            return TenantContext(
+                id=int(tenant.id),
+                code=tenant.code,
+                name=tenant.name,
+                role=TENANT_ROLE_OWNER,
+            )
+        return None
 
     tenant, membership = memberships[0]
     return TenantContext(
@@ -1081,8 +1093,14 @@ def resolve_current_tenant(
     )
 
 
-def attach_tenant_context(user, tenant: TenantContext):
+def attach_tenant_context(user, tenant: TenantContext | None):
     user_copy = user.model_copy(deep=True) if hasattr(user, "model_copy") else user
+    if tenant is None:
+        user_copy.tenant_id = None
+        user_copy.tenant_code = None
+        user_copy.tenant_name = None
+        user_copy.tenant_role = None
+        return user_copy
     user_copy.tenant_id = tenant.id
     user_copy.tenant_code = tenant.code
     user_copy.tenant_name = tenant.name

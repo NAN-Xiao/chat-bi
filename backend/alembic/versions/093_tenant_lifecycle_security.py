@@ -51,7 +51,6 @@ def upgrade():
             "sys_tenant_security_policy",
             sa.Column("id", sa.BigInteger(), nullable=False),
             sa.Column("tenant_id", sa.BigInteger(), nullable=False),
-            sa.Column("ip_whitelist", sa.Text(), nullable=True),
             sa.Column("sso_required", sa.Boolean(), nullable=False, server_default="false"),
             sa.Column("session_timeout_minutes", sa.BigInteger(), nullable=True),
             sa.Column("create_time", sa.BigInteger(), nullable=False),

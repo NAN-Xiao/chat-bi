@@ -126,7 +126,7 @@
                   </el-form-item>
                 </el-form>
                 <div class="product-login-divider">
-                  <span>企业登录</span>
+                  <span>工作空间登录</span>
                 </div>
                 <el-button
                   class="product-login-feishu"
@@ -285,7 +285,7 @@
           <h2>让 AI 在正确的数据上下文里回答业务问题</h2>
           <p>
             星通智数把数据源权限、字段元数据、语义层和训练样例放在同一条路径上，
-            让自然语言问数更接近企业真实的数据治理方式。
+            让自然语言问数更接近真实业务场景中的数据治理方式。
           </p>
           <div class="home-ai-badges">
             <span v-for="item in homeAiBadges" :key="item">{{ item }}</span>
@@ -521,7 +521,7 @@ const accountBenefits = [
   '继续使用自然语言查询数据、追问结果和生成图表。',
   '统一连接数据源、语义口径、权限校验和看板资产。',
   '在同一个工作台管理推荐问题、术语、SQL 示例和数据看板。',
-  '面向企业团队沉淀可信分析过程，减少重复沟通和口径偏差。',
+  '面向工作空间团队沉淀可信分析过程，减少重复沟通和口径偏差。',
 ]
 const accountExploreCards = [
   {
@@ -705,6 +705,15 @@ const currentRedirect = () => {
   return value || undefined
 }
 
+const goLoginSuccess = async () => {
+  await userStore.info()
+  if (userStore.isSystemAdminUser) {
+    await router.push('/system/tenant')
+    return
+  }
+  toLoginSuccess(router)
+}
+
 const loadFeishuStatus = async () => {
   try {
     const res: any = await AuthApi.feishuStatus({ redirect: currentRedirect() })
@@ -737,7 +746,7 @@ const handleFeishuCallback = async () => {
     if (res.platform_info?.redirect) {
       await router.push(res.platform_info.redirect)
     } else {
-      toLoginSuccess(router)
+      await goLoginSuccess()
     }
     return true
   } finally {
@@ -760,7 +769,7 @@ const submitForm = () => {
   loginFormRef.value.validate((valid: boolean) => {
     if (valid) {
       userStore.login(loginForm.value).then(() => {
-        toLoginSuccess(router)
+        goLoginSuccess()
       })
     }
   })

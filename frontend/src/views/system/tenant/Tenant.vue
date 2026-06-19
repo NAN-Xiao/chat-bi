@@ -384,7 +384,7 @@ const filteredTenants = computed(() => {
         id: `application-${application.id}`,
         application_id: application.id,
         name: application.tenant_name,
-        code: application.tenant_code,
+        code: application.tenant_code || '-',
         plan: application.plan,
         subscription_status: '',
         current_period_end_time: null,
@@ -676,6 +676,7 @@ const reviewApplication = async (application: TenantApplicationInfo, approved: b
   reviewLoadingId.value = String(application.id)
   try {
     let reviewComment = ''
+    let tenantCode = ''
     if (!approved) {
       const result = await ElMessageBox.prompt(t('tenant.reject_reason'), t('tenant.reject'), {
         confirmButtonType: 'danger',
@@ -687,6 +688,25 @@ const reviewApplication = async (application: TenantApplicationInfo, approved: b
       })
       reviewComment = result.value || ''
     } else {
+      const result = await ElMessageBox.prompt(
+        t('tenant.approve_tenant_code_prompt', { msg: application.tenant_name }),
+        t('tenant.approve'),
+        {
+          confirmButtonType: 'primary',
+          confirmButtonText: t('tenant.approve'),
+          cancelButtonText: t('common.cancel'),
+          inputPlaceholder: t('tenant.approve_tenant_code_placeholder'),
+          inputPattern: /\S+/,
+          inputErrorMessage: t('tenant.code_required'),
+          customClass: 'confirm-no_icon',
+          autofocus: false,
+        }
+      )
+      tenantCode = (result.value || '').trim()
+      if (!tenantCode) {
+        ElMessage.error(t('tenant.code_required'))
+        return
+      }
       await ElMessageBox.confirm(t('tenant.approve_confirm', { msg: application.tenant_name }), {
         confirmButtonType: 'primary',
         confirmButtonText: t('tenant.approve'),
@@ -697,6 +717,7 @@ const reviewApplication = async (application: TenantApplicationInfo, approved: b
     }
     await tenantApi.reviewApplication(application.id, {
       approved,
+      tenant_code: tenantCode || undefined,
       review_comment: reviewComment,
     })
     ElMessage.success(t('common.save_success'))

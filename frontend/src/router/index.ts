@@ -30,16 +30,26 @@ import Parameter from '@/views/system/parameter/index.vue'
 import Permission from '@/views/system/permission/index.vue'
 import Tenant from '@/views/system/tenant/Tenant.vue'
 import TenantAccess from '@/views/system/tenant-access/TenantAccess.vue'
+import TenantOverview from '@/views/system/tenant-overview/TenantOverview.vue'
 import TenantUsage from '@/views/system/tenant-usage/TenantUsage.vue'
 import User from '@/views/system/user/User.vue'
 import MyWorkspaces from '@/views/account/workspaces/MyWorkspaces.vue'
+import WorkspaceApplications from '@/views/account/workspaces/WorkspaceApplications.vue'
 import Page401 from '@/views/error/index.vue'
 import ChatPreview from '@/views/chat/preview.vue'
 
 import { i18n } from '@/i18n'
+import { store } from '@/stores'
+import { UserStore } from '@/stores/user'
 import { watchRouter } from './watch'
 
 const t = i18n.global.t
+const resolveSystemHome = () => {
+  const userStore = UserStore(store)
+  if (userStore.isSystemAdminUser) return '/system/tenant'
+  if (userStore.isTenantAdminUser) return '/system/overview'
+  return '/system/project'
+}
 export const routes = [
   {
     path: '/',
@@ -125,6 +135,18 @@ export const routes = [
           title: t('tenant.my_workspaces'),
           iconActive: 'user',
           iconDeActive: 'noUser',
+        },
+      },
+      {
+        path: 'workspace-applications',
+        name: 'workspace-applications',
+        component: WorkspaceApplications,
+        props: { mode: 'create' },
+        meta: {
+          title: t('tenant.apply_workspace'),
+          iconActive: 'user',
+          iconDeActive: 'noUser',
+          hidden: true,
         },
       },
     ],
@@ -214,7 +236,7 @@ export const routes = [
     path: '/system',
     name: 'system',
     component: LayoutDsl,
-    redirect: '/system/user',
+    redirect: () => resolveSystemHome(),
     meta: { hidden: true },
     children: [
       {
@@ -225,7 +247,20 @@ export const routes = [
           title: t('user.user_management'),
           iconActive: 'user',
           iconDeActive: 'noUser',
+          platformOnly: true,
           platformOperation: true,
+        },
+      },
+      {
+        path: 'overview',
+        name: 'tenant-overview',
+        component: TenantOverview,
+        meta: {
+          title: t('tenant_overview.title'),
+          iconActive: 'dashboard',
+          iconDeActive: 'noDashboard',
+          tenantAdminOnly: true,
+          hideForPlatformAdmin: true,
         },
       },
       {
@@ -236,7 +271,7 @@ export const routes = [
           title: t('tenant.member_access'),
           iconActive: 'user',
           iconDeActive: 'noUser',
-          platformOperation: true,
+          tenantAdminOnly: true,
           hideForPlatformAdmin: true,
         },
       },
@@ -260,7 +295,7 @@ export const routes = [
           title: t('tenant_usage.title'),
           iconActive: 'log',
           iconDeActive: 'noLog',
-          platformOperation: true,
+          tenantAdminOnly: true,
           hideForPlatformAdmin: true,
         },
       },
@@ -340,6 +375,7 @@ export const routes = [
           title: t('audit.system_log'),
           iconActive: 'log',
           iconDeActive: 'noLog',
+          platformOnly: true,
           platformOperation: true,
         },
       },
@@ -351,7 +387,7 @@ export const routes = [
           title: t('professional.professional_terminology'),
           iconActive: 'set',
           iconDeActive: 'noSet',
-          platformOperation: true,
+          tenantBusiness: true,
         },
       },
       {
@@ -362,7 +398,7 @@ export const routes = [
           title: t('training.data_training'),
           iconActive: 'set',
           iconDeActive: 'noSet',
-          platformOperation: true,
+          tenantBusiness: true,
         },
       },
       {
@@ -373,6 +409,7 @@ export const routes = [
           title: t('prompt.customize_prompt_words'),
           iconActive: 'embedded',
           iconDeActive: 'noEmbedded',
+          platformOnly: true,
           platformOperation: true,
         },
       },

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import jwt
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 from starlette.requests import Request
@@ -26,6 +27,10 @@ def _engine():
 
 def _user(user_id=1, tenant_id=10):
     return SimpleNamespace(id=user_id, tenant_id=tenant_id)
+
+
+def _platform_admin(user_id=1, tenant_id=10):
+    return SimpleNamespace(id=user_id, tenant_id=tenant_id, system_role="system_admin")
 
 
 def test_api_keys_are_created_and_listed_inside_current_tenant():
@@ -52,6 +57,15 @@ def test_api_keys_are_created_and_listed_inside_current_tenant():
 
         visible = asyncio.run(apikey_api.grid(session=session, current_user=_user(1, 10)))
         assert [item.access_key for item in visible] == [row.access_key]
+
+
+def test_platform_admin_cannot_manage_tenant_api_keys():
+    engine = _engine()
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(apikey_api.create.__wrapped__(session=session, current_user=_platform_admin()))
+
+        assert exc.value.status_code == 403
 
 
 def test_api_key_status_and_delete_require_current_tenant():

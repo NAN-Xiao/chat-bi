@@ -170,7 +170,7 @@ def test_feishu_login_binds_existing_local_user_without_breaking_password_login(
 
         db_user = BaseUserDTO.model_validate(stored_user.model_dump())
         with pytest.raises(PermissionError, match="SSO"):
-            validate_tenant_security_policy(session, tenant_id=200, user=db_user, ip_address="127.0.0.1")
+            validate_tenant_security_policy(session, tenant_id=200, user=db_user)
 
         db_user.origin = payload["auth_origin"]
-        validate_tenant_security_policy(session, tenant_id=200, user=db_user, ip_address="127.0.0.1")
+        validate_tenant_security_policy(session, tenant_id=200, user=db_user)

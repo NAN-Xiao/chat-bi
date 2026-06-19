@@ -20,17 +20,12 @@
           <el-table-column prop="name" :label="t('tenant.name')" min-width="180" show-overflow-tooltip>
             <template #default="scope">
               <div class="workspace-name">{{ scope.row.name || scope.row.code }}</div>
-              <div class="muted">{{ scope.row.id }} / {{ scope.row.code }}</div>
+              <div class="muted">{{ scope.row.code }}</div>
             </template>
           </el-table-column>
           <el-table-column prop="role" :label="t('user.tenant_role')" width="140">
             <template #default="scope">
               {{ formatTenantRole(scope.row.role) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="plan" :label="t('tenant.plan')" width="120">
-            <template #default="scope">
-              <el-tag size="small" type="info">{{ formatPlan(scope.row.plan) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column fixed="right" :label="t('ds.actions')" width="190">
@@ -66,120 +61,19 @@
             </template>
           </el-table-column>
           <template #empty>
-            <EmptyBackground :description="t('tenant.no_joined_workspaces')" img-type="tree" />
+            <EmptyBackground
+              :description="t('tenant.no_joined_workspaces')"
+              img-type="tree"
+              class="joined-empty"
+            >
+              <el-button type="danger" class="join-workspace-empty-button" @click="openJoinDialog">
+                {{ t('tenant.join_workspace') }}
+              </el-button>
+            </EmptyBackground>
           </template>
         </el-table>
       </section>
 
-      <section class="workspace-section application-section">
-        <div class="section-head">
-          <span>{{ t('tenant.apply_workspace') }}</span>
-        </div>
-        <el-form
-          ref="applicationFormRef"
-          :model="applicationForm"
-          :rules="applicationRules"
-          label-position="top"
-          class="form-content_error"
-          @submit.prevent
-        >
-          <el-radio-group
-            v-model="applicationMode"
-            class="application-mode"
-            @change="changeApplicationMode"
-          >
-            <el-radio-button label="create">{{ t('tenant.application_type_create') }}</el-radio-button>
-            <el-radio-button label="join">{{ t('tenant.application_type_join') }}</el-radio-button>
-          </el-radio-group>
-          <el-form-item prop="tenant_name" :label="t('tenant.name')">
-            <el-input
-              v-if="applicationMode === 'create'"
-              v-model="applicationForm.tenant_name"
-              maxlength="255"
-              clearable
-            />
-            <el-input
-              v-else
-              v-model="applicationForm.tenant_name"
-              disabled
-              :placeholder="t('tenant.search_tenant_first')"
-            />
-          </el-form-item>
-          <el-form-item prop="tenant_code" :label="t('tenant.code')">
-            <el-input
-              v-if="applicationMode === 'create'"
-              v-model="applicationForm.tenant_code"
-              maxlength="64"
-              clearable
-            />
-            <el-input
-              v-else
-              v-model="applicationForm.tenant_code"
-              maxlength="64"
-              clearable
-              :placeholder="t('tenant.join_search_placeholder')"
-              @keydown.enter.exact.prevent="searchTenantTargets"
-            >
-              <template #append>
-                <el-button :loading="tenantSearchLoading" @click="searchTenantTargets">
-                  {{ t('common.search') }}
-                </el-button>
-              </template>
-            </el-input>
-            <div v-if="applicationMode === 'join' && tenantSearchResults.length" class="tenant-search-results">
-              <button
-                v-for="tenant in tenantSearchResults"
-                :key="tenant.id"
-                type="button"
-                class="tenant-search-result"
-                :class="String(applicationForm.tenant_id) === String(tenant.id) && 'selected'"
-                :disabled="tenant.already_joined"
-                @click="selectTenantTarget(tenant)"
-              >
-                <span class="tenant-search-name">{{ tenant.name }}</span>
-                <span class="tenant-search-code">{{ tenant.id }} / {{ tenant.code }}</span>
-                <span v-if="tenant.already_joined" class="tenant-search-state">
-                  {{ t('tenant.already_joined') }}
-                </span>
-              </button>
-            </div>
-          </el-form-item>
-          <el-form-item prop="requested_role" :label="t('tenant.requested_role')">
-            <el-select v-model="applicationForm.requested_role" style="width: 240px">
-              <el-option
-                v-for="item in applicationMode === 'create' ? createRoleOptions : joinRoleOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item v-if="applicationMode === 'create'" prop="plan" :label="t('tenant.plan')">
-            <el-select v-model="applicationForm.plan" style="width: 240px">
-              <el-option
-                v-for="item in planOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="t('tenant.apply_reason')">
-            <el-input
-              v-model="applicationForm.reason"
-              type="textarea"
-              maxlength="2000"
-              :rows="4"
-              show-word-limit
-            />
-          </el-form-item>
-          <div class="form-actions">
-            <el-button type="primary" :loading="applicationSubmitting" @click="submitApplication">
-              {{ t('common.confirm') }}
-            </el-button>
-          </div>
-        </el-form>
-      </section>
     </div>
 
     <div class="workspace-grid lower-grid">
@@ -268,6 +162,81 @@
         </el-table>
       </section>
     </div>
+
+    <el-dialog
+      v-model="joinDialogVisible"
+      class="workspace-light-dialog join-workspace-dialog"
+      :title="t('tenant.join_workspace')"
+      width="640"
+      destroy-on-close
+    >
+      <el-form
+        ref="joinFormRef"
+        :model="joinForm"
+        :rules="joinRules"
+        label-position="top"
+        class="form-content_error"
+        @submit.prevent
+      >
+        <el-form-item prop="tenant_name" :label="t('tenant.name')">
+          <el-input
+            v-model="joinForm.tenant_name"
+            disabled
+            :placeholder="t('tenant.search_tenant_first')"
+          />
+        </el-form-item>
+        <el-form-item prop="tenant_code" :label="t('tenant.code')">
+          <el-input
+            v-model="joinForm.tenant_code"
+            maxlength="64"
+            clearable
+            :placeholder="t('tenant.join_search_placeholder')"
+            @keydown.enter.exact.prevent="searchTenantTargets"
+          >
+            <template #append>
+              <el-button :loading="tenantSearchLoading" @click="searchTenantTargets">
+                {{ t('common.search') }}
+              </el-button>
+            </template>
+          </el-input>
+          <div v-if="tenantSearchResults.length" class="tenant-search-results">
+            <button
+              v-for="tenant in tenantSearchResults"
+              :key="tenant.id"
+              type="button"
+              class="tenant-search-result"
+              :class="String(joinForm.tenant_id) === String(tenant.id) && 'selected'"
+              :disabled="tenant.already_joined"
+              @click="selectTenantTarget(tenant)"
+            >
+              <span class="tenant-search-name">{{ tenant.name }}</span>
+              <span class="tenant-search-code">{{ tenant.code }}</span>
+              <span v-if="tenant.already_joined" class="tenant-search-state">
+                {{ t('tenant.already_joined') }}
+              </span>
+            </button>
+          </div>
+        </el-form-item>
+        <el-form-item prop="requested_role" :label="t('tenant.requested_role')">
+          <el-input :model-value="t('tenant.request_role_member')" disabled style="width: 240px" />
+        </el-form-item>
+        <el-form-item :label="t('tenant.apply_reason')">
+          <el-input
+            v-model="joinForm.reason"
+            type="textarea"
+            maxlength="2000"
+            :rows="4"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button secondary @click="closeJoinDialog">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="joinSubmitting" @click="submitJoinApplication">
+          {{ t('common.confirm') }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -294,67 +263,36 @@ const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
 const dashboardStore = dashboardStoreWithOut()
 
-const applicationFormRef = ref()
-const applicationMode = ref<'create' | 'join'>('create')
-const applicationSubmitting = ref(false)
-const tenantSearchLoading = ref(false)
 const tenantSwitchingId = ref('')
 const tenantLeavingId = ref('')
 const applicationCancelingId = ref('')
 const invitationRespondingId = ref('')
-const tenantSearchResults = shallowRef<TenantSearchInfo[]>([])
+const joinDialogVisible = ref(false)
+const tenantSearchLoading = ref(false)
+const joinSubmitting = ref(false)
+const joinFormRef = ref()
 const applications = shallowRef<TenantApplicationInfo[]>([])
 const invitations = shallowRef<TenantApplicationInfo[]>([])
+const tenantSearchResults = shallowRef<TenantSearchInfo[]>([])
 
-const applicationForm = reactive({
+const joinForm = reactive({
   tenant_id: '',
   tenant_code: '',
   tenant_name: '',
-  plan: 'default',
-  requested_role: 'owner',
+  requested_role: 'member',
   reason: '',
 })
 
 const tenantList = computed(() => userStore.getTenants)
-const currentTenantName = computed(() => userStore.getTenantName || t('common.default_tenant'))
+const currentTenantName = computed(() => userStore.getTenantName || '')
 const pendingApplications = computed(() =>
   applications.value.filter((item) => item.status === 'pending' && item.application_type !== 'invite')
 )
 const pendingInvitations = computed(() => invitations.value.filter((item) => item.status === 'pending'))
-
-const planOptions = computed(() => [
-  { value: 'default', label: t('tenant.plan_default') },
-  { value: 'basic', label: t('tenant.plan_basic') },
-  { value: 'enterprise', label: t('tenant.plan_enterprise') },
-])
-
-const createRoleOptions = computed(() => [
-  { value: 'owner', label: t('tenant.request_role_owner') },
-  { value: 'admin', label: t('tenant.request_role_admin') },
-])
-
-const joinRoleOptions = computed(() => [
-  { value: 'member', label: t('tenant.request_role_member') },
-  { value: 'admin', label: t('tenant.request_role_admin') },
-])
-
-const applicationRules = computed(() => ({
+const joinRules = computed(() => ({
   tenant_code: [{ required: true, message: t('tenant.code_required'), trigger: 'blur' }],
-  tenant_name: [
-    {
-      required: applicationMode.value === 'create',
-      message: t('tenant.name_required'),
-      trigger: 'blur',
-    },
-  ],
   requested_role: [{ required: true, message: t('tenant.request_role_required'), trigger: 'change' }],
 }))
-
-const formatPlan = (plan?: string) => {
-  const key = `tenant.plan_${plan || 'default'}`
-  const label = t(key)
-  return label === key ? plan || t('tenant.plan_default') : label
-}
 
 const formatTenantRole = (role?: string) => {
   const key = `common.tenant_role_${role || 'member'}`
@@ -392,39 +330,6 @@ const applicationStatusType = (status?: string) => {
   return 'warning'
 }
 
-const resetApplicationForm = () => {
-  tenantSearchResults.value = []
-  Object.assign(applicationForm, {
-    tenant_id: '',
-    tenant_code: '',
-    tenant_name: '',
-    plan: 'default',
-    requested_role: applicationMode.value === 'create' ? 'owner' : 'member',
-    reason: '',
-  })
-}
-
-const changeApplicationMode = () => {
-  resetApplicationForm()
-}
-
-const selectTenantTarget = (tenant: TenantSearchInfo) => {
-  applicationForm.tenant_id = String(tenant.id || '')
-  applicationForm.tenant_code = tenant.code || String(tenant.id || '')
-  applicationForm.tenant_name = tenant.name || tenant.code || ''
-}
-
-const searchTenantTargets = async () => {
-  const keyword = applicationForm.tenant_code.trim()
-  if (!keyword) return
-  tenantSearchLoading.value = true
-  try {
-    tenantSearchResults.value = await tenantApi.search(keyword)
-  } finally {
-    tenantSearchLoading.value = false
-  }
-}
-
 const loadApplications = async () => {
   applications.value = await tenantApi.myApplications()
 }
@@ -435,42 +340,6 @@ const loadInvitations = async () => {
 
 const refreshAll = async () => {
   await Promise.all([userStore.loadTenants(true), loadApplications(), loadInvitations()])
-}
-
-const submitApplication = () => {
-  applicationFormRef.value?.validate(async (valid: boolean) => {
-    if (!valid) return
-    applicationSubmitting.value = true
-    const mode = applicationMode.value
-    try {
-      if (mode === 'create') {
-        await tenantApi.submitApplication({
-          application_type: 'create',
-          tenant_code: applicationForm.tenant_code,
-          tenant_name: applicationForm.tenant_name,
-          plan: applicationForm.plan,
-          requested_role: applicationForm.requested_role,
-          reason: applicationForm.reason,
-        })
-      } else {
-        const target = applicationForm.tenant_code.trim()
-        await tenantApi.submitApplication({
-          application_type: 'join',
-          tenant_id: applicationForm.tenant_id || (/^\d+$/.test(target) ? target : undefined),
-          tenant_code: applicationForm.tenant_id ? undefined : target,
-          requested_role: applicationForm.requested_role,
-          reason: applicationForm.reason,
-        })
-      }
-      ElMessage.success(
-        mode === 'join' ? t('tenant.join_application_submitted') : t('tenant.application_submitted')
-      )
-      resetApplicationForm()
-      await loadApplications()
-    } finally {
-      applicationSubmitting.value = false
-    }
-  })
 }
 
 const cancelApplication = async (application: TenantApplicationInfo) => {
@@ -493,6 +362,66 @@ const respondInvitation = async (invitation: TenantApplicationInfo, approved: bo
   } finally {
     invitationRespondingId.value = ''
   }
+}
+
+const resetJoinForm = () => {
+  tenantSearchResults.value = []
+  Object.assign(joinForm, {
+    tenant_id: '',
+    tenant_code: '',
+    tenant_name: '',
+    requested_role: 'member',
+    reason: '',
+  })
+}
+
+const openJoinDialog = () => {
+  resetJoinForm()
+  joinDialogVisible.value = true
+}
+
+const closeJoinDialog = () => {
+  joinDialogVisible.value = false
+}
+
+const selectTenantTarget = (tenant: TenantSearchInfo) => {
+  joinForm.tenant_id = String(tenant.id || '')
+  joinForm.tenant_code = tenant.code || String(tenant.id || '')
+  joinForm.tenant_name = tenant.name || tenant.code || ''
+}
+
+const searchTenantTargets = async () => {
+  const keyword = joinForm.tenant_code.trim()
+  if (!keyword) return
+  tenantSearchLoading.value = true
+  try {
+    tenantSearchResults.value = await tenantApi.search(keyword)
+  } finally {
+    tenantSearchLoading.value = false
+  }
+}
+
+const submitJoinApplication = () => {
+  joinFormRef.value?.validate(async (valid: boolean) => {
+    if (!valid) return
+    joinSubmitting.value = true
+    try {
+      const target = joinForm.tenant_code.trim()
+      await tenantApi.submitApplication({
+        application_type: 'join',
+        tenant_id: joinForm.tenant_id || (/^\d+$/.test(target) ? target : undefined),
+        tenant_code: joinForm.tenant_id ? undefined : target,
+        requested_role: 'member',
+        reason: joinForm.reason,
+      })
+      ElMessage.success(t('tenant.join_application_submitted'))
+      closeJoinDialog()
+      resetJoinForm()
+      await loadApplications()
+    } finally {
+      joinSubmitting.value = false
+    }
+  })
 }
 
 const switchTenant = async (tenant: TenantInfo) => {
@@ -590,7 +519,7 @@ onMounted(() => {
 
   .workspace-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+    grid-template-columns: 1fr;
     gap: 16px;
   }
 
@@ -621,26 +550,21 @@ onMounted(() => {
     color: #1f2329;
   }
 
-  .application-section {
-    padding-bottom: 16px;
-
-    .ed-form {
-      padding: 16px 16px 0;
-    }
-  }
-
-  .application-mode {
-    margin-bottom: 16px;
-  }
-
-  .form-actions {
-    display: flex;
-    justify-content: flex-end;
-  }
-
   .workspace-table {
     max-height: 360px;
     overflow-y: auto;
+  }
+
+  .joined-empty {
+    min-height: 240px;
+    padding-top: 20px;
+  }
+
+  .join-workspace-empty-button {
+    min-width: 112px;
+    height: 36px;
+    margin-top: 2px;
+    font-weight: 500;
   }
 
   .workspace-name {
@@ -664,6 +588,12 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+
+  .invitation-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .tenant-search-results {
@@ -720,12 +650,6 @@ onMounted(() => {
     grid-column: 2;
     grid-row: 1 / span 2;
     align-self: center;
-  }
-
-  .invitation-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
   }
 }
 
