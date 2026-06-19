@@ -14,12 +14,23 @@ class AiModelItem(BaseModel):
     default_model: bool = Field(default=False, description=f"{PLACEHOLDER_PREFIX}default_model")
 
 class AiModelGridItem(AiModelItem, BaseCreatorDTO):
-    pass
+    usage_count: int = Field(default=0, description=f"{PLACEHOLDER_PREFIX}usage_count")
+    total_tokens: int = Field(default=0, description=f"{PLACEHOLDER_PREFIX}total_tokens")
 
 class AiModelConfigItem(BaseModel):
     key: str = Field(description=f"{PLACEHOLDER_PREFIX}arg_name")
     val: object = Field(description=f"{PLACEHOLDER_PREFIX}arg_val")
     name: str = Field(description=f"{PLACEHOLDER_PREFIX}arg_show_name")
+
+
+class AiModelRemoteListRequest(BaseModel):
+    api_domain: str = Field(description=f"{PLACEHOLDER_PREFIX}api_domain")
+    api_key: str = Field(description=f"{PLACEHOLDER_PREFIX}api_key")
+
+
+class AiModelRemoteModel(BaseModel):
+    id: str = Field(description=f"{PLACEHOLDER_PREFIX}model_id")
+    name: str = Field(description=f"{PLACEHOLDER_PREFIX}model_name")
     
 class AiModelCreator(AiModelItem):
     api_domain: str = Field(description=f"{PLACEHOLDER_PREFIX}api_domain")

@@ -15,5 +15,7 @@ export const modelApi = {
   query: (id: number) => request.get(`/system/aimodel/${id}`),
   setDefault: (id: number) => request.put(`/system/aimodel/default/${id}`),
   check: (data: any) => request.fetchStream('/system/aimodel/status', data),
+  fetchModels: (data: { api_domain: string; api_key: string }) =>
+    request.post('/system/aimodel/models', data),
   listAvailable: () => request.get('/system/aimodel/list/available'),
 }

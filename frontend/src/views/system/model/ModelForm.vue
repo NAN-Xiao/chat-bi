@@ -1,18 +1,12 @@
 <script lang="ts" setup>
-import { ref, reactive, onMounted, nextTick, computed } from 'vue'
-import arrow_down from '@/assets/svg/arrow-down.svg'
-import dashboard_info from '@/assets/svg/dashboard-info.svg'
-import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
-import icon_delete from '@/assets/svg/icon_delete.svg'
-import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
-import ParamsForm from './ParamsForm.vue'
-import { modelTypeOptions } from '@/entity/CommonEntity.ts'
-import { base_model_options, get_supplier } from '@/entity/supplier'
+import { computed, nextTick, reactive, ref } from 'vue'
+import { modelApi } from '@/api/system'
+import icon_common_openai from '@/assets/model/icon_common_openai.png'
 import { useI18n } from 'vue-i18n'
 
 withDefaults(
   defineProps<{
-    activeName: string
+    activeName?: string
     editModel: boolean
   }>(),
   {
@@ -21,84 +15,35 @@ withDefaults(
   }
 )
 
-interface ParamsFormData {
-  key?: string
-  val?: string
-  name?: string
-  id?: string
+interface RemoteModel {
+  id: string
+  name: string
 }
+
+const GENERIC_OPENAI_SUPPLIER_ID = 15
 const { t } = useI18n()
+const emits = defineEmits(['submit'])
+
+const modelRef = ref()
+const modelFetchLoading = ref(false)
+const hasFetchedModels = ref(false)
+const remoteModels = ref<RemoteModel[]>([])
+const selectedRemoteModelIds = ref<string[]>([])
 
 const modelForm = reactive({
   id: '',
-  supplier: 0,
+  supplier: GENERIC_OPENAI_SUPPLIER_ID,
   name: '',
   model_type: 0,
   base_model: '',
   api_key: '',
   api_domain: '',
-  config_list: [],
+  config_list: [] as Array<any>,
   protocol: 1,
+  default_model: false,
 })
-const isCreate = ref(false)
-const modelRef = ref()
-const paramsFormRef = ref()
-const advancedSetting = ref([] as ParamsFormData[])
-const paramsFormDrawer = ref(false)
-const configExpand = ref(true)
-let tempConfigMap = new Map<string, Array<any>>()
-
-const modelSelected = computed(() => {
-  return !!modelForm.base_model
-})
-const currentSupplier = computed(() => {
-  if (!modelForm.supplier) {
-    return null
-  }
-  return get_supplier(modelForm.supplier)
-})
-const modelList = computed(() => {
-  if (!modelForm.supplier) {
-    return []
-  }
-  return base_model_options(modelForm.supplier, modelForm.model_type)
-})
-const handleParamsEdite = (ele?: any) => {
-  isCreate.value = false
-  paramsFormDrawer.value = true
-  nextTick(() => {
-    paramsFormRef.value.initForm(ele)
-  })
-}
-
-const handleParamsCreate = () => {
-  isCreate.value = true
-  paramsFormDrawer.value = true
-  nextTick(() => {
-    paramsFormRef.value.initForm()
-  })
-}
-
-const handleParamsDel = (item: any) => {
-  advancedSetting.value = advancedSetting.value.filter((ele) => ele.id !== item.id)
-}
-const currentPage = ref(1)
-const advancedSettingPagination = computed(() => {
-  return advancedSetting.value.slice(currentPage.value * 5 - 5, currentPage.value * 5)
-})
-
-const handleCurrentChange = (val: any) => {
-  currentPage.value = val
-}
 
 const rules = computed(() => ({
-  model_type: [
-    {
-      required: true,
-      message: 'type',
-      trigger: 'change',
-    },
-  ],
   api_domain: [
     {
       required: true,
@@ -106,179 +51,150 @@ const rules = computed(() => ({
       trigger: 'blur',
     },
   ],
-  base_model: [{ required: true, message: t('model.the_basic_model_de'), trigger: 'change' }],
-  name: [
-    { required: true, message: t('model.the_basic_model'), trigger: 'blur' },
-    {
-      max: 100,
-      message: t('model.length_max_error', { msg: t('model.model_name'), max: 100 }),
-      trigger: 'blur',
-    },
-  ],
   api_key: [
     {
-      required: !currentSupplier.value?.is_private,
+      required: true,
       message: t('datasource.please_enter') + t('common.empty') + 'API Key',
       trigger: 'blur',
     },
   ],
+  base_model: [{ required: true, message: t('model.please_select_model'), trigger: 'change' }],
 }))
 
-onMounted(() => {
-  setTimeout(() => {
-    modelRef.value.clearValidate()
-  }, 100)
+const selectedCountText = computed(() =>
+  t('model.selected_models_count', { count: selectedRemoteModelIds.value.length })
+)
+const fetchStatusText = computed(() => {
+  if (modelFetchLoading.value) return t('model.fetching_model_list')
+  if (hasFetchedModels.value)
+    return t('model.fetch_model_success', { count: remoteModels.value.length })
+  return t('model.fetch_model_list_first')
+})
+const modelSelectPlaceholder = computed(() =>
+  remoteModels.value.length ? t('model.please_select_model') : t('model.fetch_model_list_first')
+)
+const modelSelectEmptyText = computed(() =>
+  hasFetchedModels.value ? t('model.no_remote_models') : t('model.fetch_model_list_first')
+)
+
+const resetForm = () => {
+  Object.assign(modelForm, {
+    id: '',
+    supplier: GENERIC_OPENAI_SUPPLIER_ID,
+    name: '',
+    model_type: 0,
+    base_model: '',
+    api_key: '',
+    api_domain: '',
+    config_list: [],
+    protocol: 1,
+    default_model: false,
+  })
+  remoteModels.value = []
+  selectedRemoteModelIds.value = []
+  hasFetchedModels.value = false
+  nextTick(() => {
+    modelRef.value?.clearValidate()
+  })
+}
+
+const initForm = (item?: any) => {
+  resetForm()
+  if (!item) return
+  Object.assign(modelForm, {
+    ...item,
+    supplier: Number(item.supplier || GENERIC_OPENAI_SUPPLIER_ID),
+    model_type: Number(item.model_type || 0),
+    protocol: Number(item.protocol || 1),
+    config_list: item.config_list || [],
+  })
+  if (modelForm.base_model) {
+    remoteModels.value = [{ id: modelForm.base_model, name: modelForm.base_model }]
+  }
+}
+
+const fetchRemoteModels = async () => {
+  if (!modelForm.api_domain || !modelForm.api_key) {
+    ElMessage.warning(t('model.enter_endpoint_and_key'))
+    return
+  }
+  modelFetchLoading.value = true
+  try {
+    const res = await modelApi.fetchModels({
+      api_domain: modelForm.api_domain,
+      api_key: modelForm.api_key,
+    })
+    const list = (res || []).map((item: RemoteModel | string) => {
+      if (typeof item === 'string') {
+        return { id: item, name: item }
+      }
+      return { id: item.id, name: item.name || item.id }
+    })
+    if (
+      modelForm.base_model &&
+      !list.some((item: RemoteModel) => item.id === modelForm.base_model)
+    ) {
+      list.unshift({ id: modelForm.base_model, name: modelForm.base_model })
+    }
+    remoteModels.value = list
+    selectedRemoteModelIds.value = []
+    hasFetchedModels.value = true
+    ElMessage.success(t('model.fetch_model_success', { count: list.length }))
+  } finally {
+    modelFetchLoading.value = false
+  }
+}
+
+const buildModelPayload = (modelName: string) => ({
+  ...modelForm,
+  id: modelForm.id || undefined,
+  supplier: modelForm.supplier || GENERIC_OPENAI_SUPPLIER_ID,
+  model_type: 0,
+  protocol: 1,
+  name: modelName,
+  base_model: modelName,
+  config_list: modelForm.config_list || [],
 })
 
-const addParams = () => {
-  paramsFormRef.value.submit()
-}
-
-const duplicateName = async (item: any) => {
-  const arr = advancedSetting.value.filter((ele: any) => ele.id !== item.id)
-  const names = arr.map((ele: any) => ele.name)
-  const keys = arr.map((ele: any) => ele.key)
-  if (names.includes(item.name)) {
-    ElMessage.error(t('embedded.duplicate_name'))
-    return
-  }
-
-  if (keys.includes(item.key)) {
-    ElMessage.error(t('embedded.repeating_parameters'))
-    return
-  }
-
-  if (isCreate.value) {
-    advancedSetting.value.push({ ...item, id: +new Date() })
-    beforeClose()
-    tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
-    return
-  }
-  for (const key in advancedSetting.value) {
-    const element = advancedSetting.value[key]
-    if (element.id === item.id) {
-      Object.assign(element, { ...item })
-    }
-  }
-  tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
-  beforeClose()
-}
-
-const submit = (item: any) => {
-  duplicateName(item)
-}
-
-const beforeClose = () => {
-  paramsFormRef.value.close()
-  paramsFormDrawer.value = false
-}
-const supplierChang = (supplier: any) => {
-  modelForm.supplier = supplier.id
-  const config = supplier.model_config[modelForm.model_type || 0]
-  modelForm.api_domain = config.api_domain
-  modelForm.base_model = ''
-  modelForm.protocol = supplier.type === 'vllm' ? 2 : 1
-  advancedSetting.value = []
-}
-let curId = +new Date()
-const initForm = (item?: any) => {
-  modelForm.id = ''
-  modelRef.value.clearValidate()
-  tempConfigMap = new Map<string, Array<any>>()
-  if (item) {
-    Object.assign(modelForm, { ...item })
-    if (item?.config_list?.length) {
-      advancedSetting.value = item.config_list
-      advancedSetting.value.forEach((ele: any) => {
-        if (!ele.id) {
-          ele.id = curId
-          curId += 1
-        }
-      })
-    } else {
-      advancedSetting.value = []
-    }
-    tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
-  }
-}
-const formatAdvancedSetting = (list: Array<any>) => {
-  const setting_list = [
-    ...list.map((item) => {
-      return { id: ++curId, name: item.name, key: item.key, val: item.val } as any
-    }),
-  ]
-  advancedSetting.value = setting_list
-}
-const baseModelChange = (val: string) => {
-  if (!val || !modelForm.supplier) {
-    return
-  }
-  const current_model = modelList.value?.find((model: any) => model.name == val)
-  if (current_model) {
-    modelForm.api_domain = current_model.api_domain || getSupplierDomain() || ''
-  }
-  const current_config_list = tempConfigMap.get(`${modelForm.supplier}-${modelForm.base_model}`)
-  if (current_config_list) {
-    formatAdvancedSetting(current_config_list)
-    return
-  }
-  const defaultArgs = getModelDefaultArgs()
-  if (defaultArgs?.size) {
-    const defaultArgsList = [...defaultArgs.values()]
-    formatAdvancedSetting(defaultArgsList)
-    tempConfigMap.set(`${modelForm.supplier}-${modelForm.base_model}`, [...advancedSetting.value])
-  }
-}
-const getSupplierDomain = () => {
-  return currentSupplier.value?.model_config[modelForm.model_type || 0].api_domain
-}
-const getModelDefaultArgs = () => {
-  if (!modelForm.supplier || !modelForm.base_model) {
-    return null
-  }
-  const model_config = currentSupplier.value?.model_config[modelForm.model_type || 0]
-  const common_args = model_config?.common_args || []
-  const current_model = modelList.value?.find((model: any) => model.name == modelForm.base_model)
-
-  if (current_model?.args?.length) {
-    const modelArgs = current_model.args
-    common_args.push(...modelArgs)
-  }
-  const argMap = common_args.reduce((acc: any, item: any) => {
-    acc.set(item.key, { ...item, name: item.key })
-    return acc
-  }, new Map())
-  return argMap
-}
-const emits = defineEmits(['submit'])
-
 const submitModel = () => {
-  modelRef.value.validate((res: any) => {
-    if (res) {
-      emits('submit', {
-        ...modelForm,
-        config_list: [
-          ...advancedSetting.value.map((item) => {
-            return { key: item.key, name: item.name, val: item.val }
-          }),
-        ],
-      })
+  modelRef.value.validate((valid: boolean) => {
+    if (!valid) return
+    if (modelForm.id) {
+      if (!modelForm.base_model) {
+        ElMessage.warning(t('model.please_select_model'))
+        return
+      }
+      emits('submit', buildModelPayload(modelForm.base_model))
+      return
     }
+    if (!selectedRemoteModelIds.value.length) {
+      ElMessage.warning(t('model.please_select_model'))
+      return
+    }
+    emits(
+      'submit',
+      selectedRemoteModelIds.value.map((id) => buildModelPayload(id))
+    )
   })
 }
 
 defineExpose({
   initForm,
   submitModel,
-  supplierChang,
 })
 </script>
 
 <template>
-  <div class="model-form" :class="editModel && 'is-edit_model'">
-    <div v-if="!editModel" class="model-name">{{ activeName }}</div>
+  <div class="model-form">
     <el-scrollbar>
       <div class="form-content">
+        <div class="model-provider">
+          <img :src="icon_common_openai" width="32" height="32" />
+          <div class="provider-main">
+            <div class="provider-name">{{ t('supplier.generic_openai') }}</div>
+            <div class="provider-desc">{{ t('model.openai_compatible_endpoint') }}</div>
+          </div>
+        </div>
         <el-form
           ref="modelRef"
           :rules="rules"
@@ -287,180 +203,93 @@ defineExpose({
           style="width: 100%"
           @submit.prevent
         >
-          <el-form-item class="custom-require flex-inline" prop="name">
-            <template #label
-              ><span class="custom-require_danger">{{ t('model.model_name') }}</span>
-              <el-tooltip effect="dark" :content="t('model.custom_model_name')" placement="right">
-                <el-icon style="margin-left: 4px" size="16">
-                  <dashboard_info></dashboard_info>
-                </el-icon>
-              </el-tooltip>
-            </template>
-            <el-input
-              v-model="modelForm.name"
-              clearable
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('model.model_name')
-              "
-            />
-          </el-form-item>
-          <el-form-item prop="type" :label="t('model.model_type')">
-            <el-select v-model="modelForm.model_type" style="width: 100%" disabled>
-              <el-option
-                v-for="item in modelTypeOptions"
-                :key="item.value"
-                :label="item.i18nKey ? $t(item.i18nKey) : item.label"
-                :value="item.value"
+          <div class="drawer-section">
+            <div class="section-title">{{ t('model.connection_config') }}</div>
+            <el-form-item prop="api_domain" :label="t('model.api_domain_name')">
+              <el-input
+                v-model="modelForm.api_domain"
+                clearable
+                :placeholder="t('model.api_domain_placeholder')"
               />
-            </el-select>
-          </el-form-item>
-          <el-form-item class="custom-require" prop="base_model">
-            <template #label
-              ><span class="custom-require_danger">{{ t('model.basic_model') }}</span>
-              <span class="enter">{{ t('model.enter_to_add') }}</span>
-            </template>
-            <el-select
-              v-model="modelForm['base_model']"
-              style="width: 100%"
-              filterable
-              allow-create
-              default-first-option
-              :reserve-keyword="false"
-              @change="baseModelChange"
+            </el-form-item>
+            <el-form-item prop="api_key" label="API Key">
+              <el-input
+                v-model="modelForm.api_key"
+                clearable
+                :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
+                type="password"
+                show-password
+              />
+            </el-form-item>
+            <div class="model-fetch-row">
+              <span class="fetch-status">{{ fetchStatusText }}</span>
+              <el-button type="primary" :loading="modelFetchLoading" @click="fetchRemoteModels">
+                {{ t('model.fetch_model_list') }}
+              </el-button>
+            </div>
+          </div>
+          <div class="drawer-section model-select-section">
+            <div class="section-title">{{ t('model.model_selection') }}</div>
+            <el-form-item v-if="editModel" prop="base_model" :label="t('model.basic_model')">
+              <el-select
+                v-model="modelForm.base_model"
+                filterable
+                :no-data-text="modelSelectEmptyText"
+                popper-class="model-select-popper"
+                :placeholder="modelSelectPlaceholder"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="item in remoteModels"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item
+              v-if="!editModel"
+              class="model-select-item"
+              :label="t('model.basic_model')"
             >
-              <el-option
-                v-for="item in modelList"
-                :key="item.name"
-                :label="item.name"
-                :value="item.name"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item v-if="modelSelected" prop="api_domain" :label="t('model.api_domain_name')">
-            <el-input
-              v-model="modelForm.api_domain"
-              clearable
-              :placeholder="
-                $t('datasource.please_enter') + $t('common.empty') + $t('model.api_domain_name')
-              "
-            />
-          </el-form-item>
-          <el-form-item v-if="modelSelected" prop="api_key" label="API Key">
-            <el-input
-              v-model="modelForm.api_key"
-              clearable
-              :placeholder="$t('datasource.please_enter') + $t('common.empty') + 'API Key'"
-              type="password"
-              show-password
-            />
-          </el-form-item>
+              <el-select
+                v-model="selectedRemoteModelIds"
+                multiple
+                filterable
+                collapse-tags
+                collapse-tags-tooltip
+                :max-collapse-tags="3"
+                :no-data-text="modelSelectEmptyText"
+                popper-class="model-select-popper"
+                :placeholder="modelSelectPlaceholder"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="item in remoteModels"
+                  :key="item.id"
+                  :label="item.name"
+                  :value="item.id"
+                />
+              </el-select>
+              <div class="model-select-tip">{{ selectedCountText }}</div>
+            </el-form-item>
+          </div>
         </el-form>
-        <div
-          v-if="modelSelected"
-          class="advance-setting"
-          :class="configExpand && 'expand'"
-          @click="configExpand = !configExpand"
-        >
-          {{ t('model.advanced_settings') }}
-          <el-icon size="16">
-            <arrow_down></arrow_down>
-          </el-icon>
-        </div>
-        <div v-if="modelSelected && configExpand" class="model-params">
-          {{ t('model.model_parameters') }}
-          <span class="btn" @click="handleParamsCreate">
-            <el-icon size="16">
-              <icon_add_outlined></icon_add_outlined>
-            </el-icon>
-            {{ t('model.add') }}
-          </span>
-        </div>
-
-        <div
-          v-if="modelSelected && configExpand"
-          class="params-table"
-          :class="!advancedSettingPagination.length && 'bottom-border'"
-        >
-          <el-table :data="advancedSettingPagination" style="width: 100%">
-            <el-table-column prop="key" :label="t('model.parameters')" width="280" />
-            <el-table-column prop="name" :label="t('model.display_name')" width="280" />
-            <el-table-column prop="val" show-overflow-tooltip :label="t('model.parameter_value')" />
-            <el-table-column
-              fixed="right"
-              width="80"
-              class-name="operation-column_text"
-              :label="$t('ds.actions')"
-            >
-              <template #default="scope">
-                <el-button text type="primary" @click="handleParamsEdite(scope.row)">
-                  <el-icon size="16">
-                    <icon_edit_outlined></icon_edit_outlined>
-                  </el-icon>
-                </el-button>
-                <el-button text type="primary" @click="handleParamsDel(scope.row)">
-                  <el-icon size="16">
-                    <icon_delete></icon_delete>
-                  </el-icon>
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-        <div
-          v-if="modelSelected && advancedSetting.length > 5 && configExpand"
-          class="params-table_pagination"
-        >
-          <el-pagination
-            :default-page-size="5"
-            layout="prev, pager, next"
-            :total="advancedSetting.length"
-            @current-change="handleCurrentChange"
-          />
-        </div>
       </div>
     </el-scrollbar>
-    <el-drawer
-      v-model="paramsFormDrawer"
-      :size="600"
-      :before-close="beforeClose"
-      :title="
-        isCreate
-          ? $t('model.add') + $t('common.empty') + $t('model.parameters')
-          : $t('datasource.edit') + $t('common.empty') + $t('model.parameters')
-      "
-    >
-      <ParamsForm ref="paramsFormRef" @submit="submit"></ParamsForm>
-      <template #footer>
-        <el-button secondary @click="beforeClose"> {{ $t('common.cancel') }} </el-button>
-        <el-button type="primary" @click="addParams">
-          {{ isCreate ? t('model.add') : t('common.save') }}
-        </el-button>
-      </template>
-    </el-drawer>
   </div>
 </template>
 
 <style lang="less" scoped>
 .model-form {
-  width: calc(100% - 280px);
-  position: absolute;
-  right: 0;
-  top: 56px;
-  height: calc(100% - 120px);
-  .model-name {
-    height: 56px;
-    width: 100%;
-    padding-left: 24px;
-    border-bottom: 1px solid #1f232926;
-    font-weight: 500;
-    font-size: 16px;
-    line-height: 24px;
-    display: flex;
-    align-items: center;
-  }
+  height: 100%;
+
   & > .ed-scrollbar {
+    height: 100%;
+
     .form-content {
-      width: 800px;
+      width: calc(100% - 48px);
+      max-width: 680px;
       margin: 0 auto;
       padding-top: 24px;
       height: 100%;
@@ -468,136 +297,119 @@ defineExpose({
 
       .ed-form-item--default {
         margin-bottom: 16px;
-
-        &.is-error {
-          margin-bottom: 40px;
-        }
-      }
-
-      :deep(
-        .custom-require.ed-form-item.is-required:not(.is-no-asterisk).asterisk-right
-          > .ed-form-item__label:after
-      ) {
-        display: none;
-      }
-
-      :deep(.flex-inline .ed-form-item__label) {
-        display: inline-flex;
-        align-items: center;
-      }
-
-      .enter {
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
-        color: #ff8800;
-        margin-left: 8px;
-      }
-
-      .custom-require_danger::after {
-        color: var(--ed-color-danger);
-        content: '*';
-        margin-left: 2px;
-      }
-
-      .advance-setting {
-        display: flex;
-        align-items: center;
-        font-weight: 500;
-        font-size: 14px;
-        line-height: 22px;
-        cursor: pointer;
-
-        .ed-icon {
-          margin-left: 8px;
-        }
-
-        &.expand {
-          .ed-icon {
-            transform: rotate(180deg);
-          }
-        }
-      }
-
-      .model-params {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
-        margin: 16px 0 8px 0;
-
-        .btn {
-          height: 26px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0 4px;
-          border-radius: 6px;
-          cursor: pointer;
-
-          &:hover {
-            background-color: #1f23291a;
-          }
-        }
-
-        .ed-icon {
-          margin-right: 4px;
-        }
-      }
-
-      .params-table {
-        border-radius: 6px;
-        border: 1px solid #dee0e3;
-        border-top: none;
-        border-bottom: none;
-        overflow-y: auto;
-
-        &.bottom-border {
-          border-bottom: 1px solid #dee0e3;
-        }
-        :deep(.ed-table .ed-table__cell) {
-          padding: 7px 0;
-        }
-
-        :deep(.ed-table .cell) {
-          line-height: 24px;
-        }
-      }
-
-      .params-table_pagination {
-        margin-top: 8px;
-
-        .ed-pagination {
-          justify-content: flex-end;
-        }
-
-        :deep(.ed-pager li.number:hover) {
-          background-color: var(--ed-color-primary-1a, #1cba901a);
-        }
-      }
-
-      .operation-column_text {
-        .ed-button {
-          color: #646a73;
-          height: 24px;
-        }
-        .ed-button:not(.is-disabled):hover {
-          background: #1f23291a;
-        }
-        .ed-button + .ed-button {
-          margin-left: 8px;
-        }
       }
     }
   }
+}
 
-  &.is-edit_model {
-    width: 100%;
-    .form-content {
-      padding-bottom: 24px;
-    }
+.model-provider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0 18px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 22px;
+
+  img {
+    flex: 0 0 auto;
+  }
+}
+
+.provider-main {
+  min-width: 0;
+}
+
+.provider-name {
+  color: #1f2329;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.provider-desc {
+  color: #8f959e;
+  font-size: 14px;
+  line-height: 22px;
+  margin-top: 2px;
+}
+
+.drawer-section {
+  padding-bottom: 20px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.model-select-section {
+  border-bottom: none;
+}
+
+.section-title {
+  color: #1f2329;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 24px;
+  margin-bottom: 16px;
+}
+
+.model-fetch-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 2px 0 0;
+}
+
+.fetch-status {
+  color: #8f959e;
+  flex: 1;
+  font-size: 14px;
+  line-height: 22px;
+  min-width: 0;
+}
+
+.model-select-tip {
+  color: #8f959e;
+  font-size: 14px;
+  line-height: 22px;
+  margin-top: 8px;
+}
+
+:deep(.ed-form-item__label),
+:deep(.el-form-item__label) {
+  font-size: 15px;
+  line-height: 24px;
+}
+
+:deep(.ed-input__inner),
+:deep(.el-input__inner),
+:deep(.ed-select__placeholder),
+:deep(.el-select__placeholder),
+:deep(.ed-select__selected-item),
+:deep(.el-select__selected-item) {
+  font-size: 15px !important;
+}
+
+:deep(.ed-input__wrapper),
+:deep(.el-input__wrapper),
+:deep(.ed-select__wrapper),
+:deep(.el-select__wrapper) {
+  font-size: 15px !important;
+}
+</style>
+
+<style lang="less">
+.model-select-popper {
+  .ed-select-dropdown__item,
+  .el-select-dropdown__item {
+    font-size: 15px;
+    height: 38px;
+    line-height: 38px;
+  }
+
+  .ed-select-dropdown__empty,
+  .el-select-dropdown__empty {
+    font-size: 15px;
+    line-height: 24px;
   }
 }
 </style>

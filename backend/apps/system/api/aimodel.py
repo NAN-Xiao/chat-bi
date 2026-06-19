@@ -1,10 +1,13 @@
 import json
 
+import httpx
 from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import BigInteger, Text, case, cast
 from sqlmodel import func, select, update
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, _normalize_api_base_url
+from apps.chat.models.chat_model import ChatLog
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.models.system_model import AiModelBrief, AiModelDetail
@@ -13,6 +16,8 @@ from apps.system.schemas.ai_model_schema import (
     AiModelCreator,
     AiModelEditor,
     AiModelGridItem,
+    AiModelRemoteListRequest,
+    AiModelRemoteModel,
 )
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationModules, OperationType
@@ -31,6 +36,75 @@ async def _encrypt_ai_model_secrets(data: dict) -> dict:
         if key in encrypted and encrypted[key] is not None:
             encrypted[key] = await zhishu_encrypt(encrypted[key])
     return encrypted
+
+
+def _chat_log_total_tokens_expr():
+    token_usage_type = func.jsonb_typeof(ChatLog.token_usage)
+    object_total_tokens = cast(
+        func.coalesce(func.nullif(ChatLog.token_usage.op("->>")("total_tokens"), ""), "0"),
+        BigInteger,
+    )
+    number_total_tokens = cast(cast(ChatLog.token_usage, Text), BigInteger)
+    return case(
+        (token_usage_type == "object", object_total_tokens),
+        (token_usage_type == "number", number_total_tokens),
+        else_=0,
+    )
+
+
+def _extract_remote_models(payload: object) -> list[AiModelRemoteModel]:
+    if isinstance(payload, dict):
+        raw_models = payload.get("data") or payload.get("models") or []
+    elif isinstance(payload, list):
+        raw_models = payload
+    else:
+        raw_models = []
+
+    models: list[AiModelRemoteModel] = []
+    seen: set[str] = set()
+    for item in raw_models:
+        if isinstance(item, dict):
+            model_id = item.get("id") or item.get("name") or item.get("model")
+        else:
+            model_id = item
+        if model_id is None:
+            continue
+        model_name = str(model_id).strip()
+        if not model_name or model_name in seen:
+            continue
+        seen.add(model_name)
+        models.append(AiModelRemoteModel(id=model_name, name=model_name))
+    return sorted(models, key=lambda model: model.name.lower())
+
+
+@router.post("/models", response_model=list[AiModelRemoteModel], include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['platform_admin']))
+async def list_remote_models(info: AiModelRemoteListRequest, trans: Trans):
+    try:
+        base_url = _normalize_api_base_url(info.api_domain)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    models_url = f"{base_url.rstrip('/')}/models"
+    headers = {"Authorization": f"Bearer {info.api_key.strip()}"} if info.api_key else {}
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(models_url, headers=headers)
+            response.raise_for_status()
+        return _extract_remote_models(response.json())
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text[:500] if exc.response is not None else str(exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to fetch model list from /models: {detail}",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to fetch model list from /models: {exc}",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid /models response.") from exc
 
 
 @router.post("/status", include_in_schema=False)
@@ -117,7 +191,33 @@ async def query(
         statement = statement.where(AiModelDetail.name.like(f"%{keyword}%"))
     statement = statement.order_by(AiModelDetail.default_model.desc(), AiModelDetail.name, AiModelDetail.create_time)
     items = session.exec(statement).all()
-    return items
+    model_ids = [item.id for item in items]
+    usage_map: dict[int, dict[str, int]] = {}
+    if model_ids:
+        usage_rows = session.exec(
+            select(
+                ChatLog.ai_modal_id,
+                func.count(ChatLog.id),
+                func.coalesce(func.sum(_chat_log_total_tokens_expr()), 0),
+            )
+            .where(ChatLog.ai_modal_id.in_(model_ids))
+            .group_by(ChatLog.ai_modal_id)
+        ).all()
+        usage_map = {
+            int(model_id): {
+                "usage_count": int(usage_count or 0),
+                "total_tokens": int(total_tokens or 0),
+            }
+            for model_id, usage_count, total_tokens in usage_rows
+            if model_id is not None
+        }
+    return [
+        AiModelGridItem(
+            **item._asdict(),
+            **usage_map.get(int(item.id), {}),
+        )
+        for item in items
+    ]
 
 
 @router.get("/{id}", response_model=AiModelEditor, summary=f"{PLACEHOLDER_PREFIX}system_model_query",

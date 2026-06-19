@@ -4,14 +4,13 @@ import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
+import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
-import ModelList from './ModelList.vue'
-import ModelListSide from './ModelListSide.vue'
 import ModelForm from './ModelForm.vue'
 import { modelApi } from '@/api/system'
-import Card from './Card.vue'
 import { getModelTypeName } from '@/entity/CommonEntity.ts'
 import { useI18n } from 'vue-i18n'
 import { get_supplier } from '@/entity/supplier'
@@ -24,6 +23,8 @@ interface Model {
   id?: string
   default_model: boolean
   supplier: number
+  usage_count?: number
+  total_tokens?: number
 }
 
 const { t } = useI18n()
@@ -32,13 +33,7 @@ const defaultModelKeywords = ref('')
 const modelConfigvVisible = ref(false)
 const searchLoading = ref(false)
 const editModel = ref(false)
-const activeStep = ref(0)
-const activeName = ref('')
-const activeNameI18nKey = ref('')
-const activeType = ref('')
 const modelFormRef = ref()
-const cardRefs = ref<any[]>([])
-const showCardError = ref(false) // if you don`t want card mask error, just change this to false
 reactive({
   form: {
     id: '',
@@ -73,77 +68,45 @@ const defaultModelListWithSearch = computed(() => {
   })
 })
 
-const modelCheckHandler = async (item: any) => {
-  const response = await modelApi.check(item)
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let checkTimeout = false
-  setTimeout(() => {
-    checkTimeout = true
-  }, 9000)
-  let checkMsg = ''
-  while (true) {
-    if (checkTimeout) {
-      break
-    }
-    const { done, value } = await reader.read()
-    if (done) break
-    const lines = decoder.decode(value).trim().split('\n')
-    for (const line of lines) {
-      const data = JSON.parse(line)
-      if (data.error) {
-        checkMsg += data.error
-      } else if (data.content) {
-        console.debug(data.content)
-      }
-    }
-  }
-  if (!checkMsg) {
-    return
-  }
-  console.error(checkMsg)
-  if (!showCardError.value) {
-    ElMessage.error(checkMsg)
-    return
-  }
-  nextTick(() => {
-    const index = modelListWithSearch.value.findIndex((el: any) => el.id === item.id)
-    if (index > -1) {
-      const currentRef = cardRefs.value[index]
-      currentRef?.showErrorMask(checkMsg)
-    }
-  })
-}
-const duplicateName = async (item: any) => {
+const saveModelPayload = async (payload: any | any[]) => {
+  const items = Array.isArray(payload) ? payload : [payload]
+  if (!items.length) return
   const res = await modelApi.queryAll()
-  const names = res.filter((ele: any) => ele.id !== item.id).map((ele: any) => ele.name)
-  if (names.includes(item.name)) {
-    ElMessage.error(t('embedded.duplicate_name'))
+  const selectedNames = items.map((item: any) => item.name)
+  const duplicateSelectedNames = selectedNames.filter(
+    (name: string, index: number) => selectedNames.indexOf(name) !== index
+  )
+  if (duplicateSelectedNames.length) {
+    ElMessage.error(t('model.duplicate_model_names', { names: duplicateSelectedNames.join(', ') }))
     return
   }
-  const param = {
-    ...item,
-  }
-  if (!item.id) {
-    modelApi.add(param).then(() => {
-      beforeClose()
-      search()
-      ElMessage({
-        type: 'success',
-        message: t('project.add_successfully'),
-      })
-      modelCheckHandler(item)
-    })
+  const duplicateNames = items
+    .filter((item: any) =>
+      res.some((ele: any) => String(ele.id) !== String(item.id || '') && ele.name === item.name)
+    )
+    .map((item: any) => item.name)
+  if (duplicateNames.length) {
+    ElMessage.error(t('model.duplicate_model_names', { names: duplicateNames.join(', ') }))
     return
   }
-  modelApi.edit(param).then(() => {
+
+  if (items.length > 1 || !items[0].id) {
+    await Promise.all(items.map((item: any) => modelApi.add(item)))
     beforeClose()
     search()
     ElMessage({
       type: 'success',
-      message: t('common.save_success'),
+      message: t('model.add_models_success', { count: items.length }),
     })
-    modelCheckHandler(item)
+    return
+  }
+
+  await modelApi.edit(items[0])
+  beforeClose()
+  search()
+  ElMessage({
+    type: 'success',
+    message: t('common.save_success'),
   })
 }
 
@@ -175,16 +138,14 @@ const formatKeywords = (item: string) => {
   return highlightKeyword(item, defaultModelKeywords.value, 'isSearch')
 }
 const handleAddModel = () => {
-  activeStep.value = 0
   editModel.value = false
   modelConfigvVisible.value = true
+  nextTick(() => {
+    modelFormRef.value?.initForm()
+  })
 }
 const handleEditModel = (row: any) => {
-  activeStep.value = 1
   editModel.value = true
-  activeType.value = row.supplier
-  activeName.value = row.supplier_item.name
-  activeNameI18nKey.value = row.supplier_item.i18nKey
   modelApi.query(row.id).then((res: any) => {
     modelConfigvVisible.value = true
     nextTick(() => {
@@ -249,34 +210,12 @@ const deleteHandler = (item: any) => {
   })
 }
 
-const clickModel = (ele: any) => {
-  activeStep.value = 1
-  supplierChang(ele)
-}
-
-const supplierChang = (ele: any) => {
-  activeName.value = ele.name
-  activeNameI18nKey.value = ele.i18nKey
-  nextTick(() => {
-    modelFormRef.value.supplierChang({ ...ele })
-  })
-}
-
 const cancel = () => {
   beforeClose()
 }
 
-const preStep = () => {
-  activeStep.value = 0
-}
-
 const saveModel = () => {
   modelFormRef.value.submitModel()
-}
-const setCardRef = (el: any, index: number) => {
-  if (el) {
-    cardRefs.value[index] = el
-  }
 }
 const search = () => {
   searchLoading.value = true
@@ -292,19 +231,42 @@ const search = () => {
 search()
 
 const submit = (item: any) => {
-  duplicateName(item)
+  saveModelPayload(item)
+}
+
+const getSupplierItem = (row: any) => {
+  return get_supplier(Number(row?.supplier || 0))
+}
+
+const supplierName = (row: any) => {
+  const supplier = getSupplierItem(row)
+  if (!supplier) return '-'
+  return supplier.i18nKey ? t(supplier.i18nKey) : supplier.name
+}
+
+const modelTypeText = (row: Model) => {
+  const modelType = getModelTypeName(row.model_type)
+  return modelType.startsWith('modelType.') ? t(modelType) : modelType || '-'
+}
+
+const formatUsageNumber = (value?: number | string) => {
+  const numberValue = Number(value || 0)
+  if (!Number.isFinite(numberValue)) {
+    return '0'
+  }
+  return new Intl.NumberFormat().format(numberValue)
 }
 </script>
 
 <template>
-  <div class="model-config no-padding">
-    <div class="model-methods">
-      <span class="title">{{ t('model.ai_model_configuration') }}</span>
-      <div class="button-input">
+  <div class="zhishu-table-container professional-container">
+    <div class="tool-left">
+      <span class="page-title">{{ t('model.ai_model_configuration') }}</span>
+      <div class="search-bar">
         <el-input
           v-model="keywords"
           clearable
-          style="width: 240px; margin-right: 12px"
+          class="model-search-input"
           :placeholder="$t('datasource.search')"
         >
           <template #prefix>
@@ -365,56 +327,131 @@ const submit = (item: any) => {
         </el-button>
       </div>
     </div>
-    <EmptyBackground
-      v-if="!!keywords && !modelListWithSearch.length"
-      :description="$t('datasource.relevant_content_found')"
-      img-type="tree"
-    />
-    <div v-else class="card-content">
-      <div class="model-card-grid">
-        <div
-          v-for="(ele, index) in modelListWithSearch"
-          :key="ele.id"
-          class="model-card-item"
-        >
-          <card
-            :id="ele.id"
-            :ref="(el: any) => setCardRef(el, index)"
-            :key="ele.id"
-            :name="ele.name"
-            :supplier="ele.supplier"
-            :model-type="getModelTypeName(ele['model_type'])"
-            :base-model="ele['base_model']"
-            :is-default="ele['default_model']"
-            @edit="handleEditModel(ele)"
-            @del="deleteHandler"
-            @default="handleDefault(ele)"
-          ></card>
-        </div>
-      </div>
-    </div>
-    <template v-if="!keywords && !modelListWithSearch.length && !searchLoading">
-      <EmptyBackground
-        class="datasource-yet"
-        :description="$t('common.no_model_yet')"
-        img-type="noneWhite"
-      />
 
-      <div style="text-align: center; margin-top: -10px">
-        <el-button type="primary" @click="handleAddModel">
-          <template #icon>
-            <icon_add_outlined></icon_add_outlined>
+    <div class="zhishu-table_user">
+      <el-table v-loading="searchLoading" :data="modelListWithSearch" style="width: 100%">
+        <el-table-column prop="name" :label="t('model.model_name')" min-width="280">
+          <template #default="scope">
+            <div class="model-name-cell">
+              <img
+                v-if="getSupplierItem(scope.row)?.icon"
+                :src="getSupplierItem(scope.row)?.icon"
+                width="28"
+                height="28"
+              />
+              <div class="model-name-content">
+                <div class="model-primary-text ellipsis" :title="scope.row.name">
+                  {{ scope.row.name }}
+                </div>
+                <div class="model-secondary-text ellipsis" :title="scope.row.base_model">
+                  {{ scope.row.base_model || '-' }}
+                </div>
+              </div>
+            </div>
           </template>
-          {{ t('model.add_model') }}
-        </el-button>
-      </div>
-    </template>
+        </el-table-column>
+        <el-table-column :label="t('model.supplier')" width="190">
+          <template #default="scope">
+            <span>{{ supplierName(scope.row) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('model.model_type')" width="180">
+          <template #default="scope">
+            <span>{{ modelTypeText(scope.row) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="base_model"
+          :label="t('model.basic_model')"
+          min-width="260"
+          show-overflow-tooltip
+        />
+        <el-table-column :label="t('model.default_model')" width="140">
+          <template #default="scope">
+            <span
+              class="model-status-text"
+              :class="scope.row.default_model ? 'is-default' : 'is-muted'"
+            >
+              {{ scope.row.default_model ? t('model.default_model') : '-' }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('model.usage')" width="170">
+          <template #default="scope">
+            <div class="model-usage-cell">
+              <span>{{ t('model.calls') }} {{ formatUsageNumber(scope.row.usage_count) }}</span>
+              <span>{{ t('model.tokens') }} {{ formatUsageNumber(scope.row.total_tokens) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column fixed="right" :label="t('ds.actions')" width="180">
+          <template #default="scope">
+            <div class="table-operate">
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="
+                  scope.row.default_model
+                    ? t('common.the_default_model')
+                    : t('common.as_default_model')
+                "
+                placement="top"
+              >
+                <el-icon
+                  class="action-btn"
+                  :class="{ disabled: scope.row.default_model }"
+                  size="16"
+                  @click="handleDefault(scope.row)"
+                >
+                  <icon_admin_outlined />
+                </el-icon>
+              </el-tooltip>
+              <div class="line"></div>
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="$t('dashboard.edit')"
+                placement="top"
+              >
+                <el-icon class="action-btn" size="16" @click="handleEditModel(scope.row)">
+                  <IconOpeEdit />
+                </el-icon>
+              </el-tooltip>
+              <div class="line"></div>
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="$t('dashboard.delete')"
+                placement="top"
+              >
+                <el-icon
+                  class="action-btn"
+                  :class="{ disabled: scope.row.default_model }"
+                  size="16"
+                  @click="deleteHandler(scope.row)"
+                >
+                  <IconOpeDelete />
+                </el-icon>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+        <template #empty>
+          <EmptyBackground
+            :description="
+              keywords ? $t('datasource.relevant_content_found') : $t('common.no_model_yet')
+            "
+            img-type="tree"
+          />
+        </template>
+      </el-table>
+    </div>
     <el-drawer
       v-model="modelConfigvVisible"
       :close-on-click-modal="false"
-      size="calc(100% - 100px)"
-      modal-class="model-drawer-fullscreen"
-      direction="btt"
+      size="640px"
+      modal-class="model-drawer-right"
+      direction="rtl"
       destroy-on-close
       :before-close="beforeClose"
       :show-close="false"
@@ -422,43 +459,21 @@ const submit = (item: any) => {
       <template #header="{ close }">
         <span style="white-space: nowrap">{{
           editModel
-            ? $t('dashboard.edit') + $t('common.empty') + $t(activeNameI18nKey)
+            ? $t('dashboard.edit') + $t('common.empty') + t('model.ai_model_configuration')
             : t('model.add_model')
         }}</span>
-        <div v-if="!editModel" class="flex-center" style="width: 100%">
-          <el-steps custom style="max-width: 500px; flex: 1" :active="activeStep" align-center>
-            <el-step>
-              <template #title> {{ t('model.select_supplier') }} </template>
-            </el-step>
-            <el-step>
-              <template #title> {{ t('model.add_model') }} </template>
-            </el-step>
-          </el-steps>
-        </div>
         <el-icon class="ed-dialog__headerbtn mrt" style="cursor: pointer" @click="close">
           <icon_close_outlined></icon_close_outlined>
         </el-icon>
       </template>
-      <ModelList v-if="activeStep === 0" @click-model="clickModel"></ModelList>
-      <ModelListSide
-        v-if="activeStep === 1 && !editModel"
-        :active-name="activeName"
-        :active-type="activeType"
-        @click-model="supplierChang"
-      ></ModelListSide>
       <ModelForm
-        v-if="activeStep === 1 && modelConfigvVisible"
+        v-if="modelConfigvVisible"
         ref="modelFormRef"
-        :active-name="activeName"
-        :active-type="activeType"
         :edit-model="editModel"
         @submit="submit"
       ></ModelForm>
-      <template v-if="activeStep !== 0" #footer>
+      <template #footer>
         <el-button secondary @click="cancel"> {{ $t('common.cancel') }} </el-button>
-        <el-button v-if="!editModel" secondary @click="preStep">
-          {{ $t('ds.previous') }}
-        </el-button>
         <el-button type="primary" @click="saveModel"> {{ $t('common.save') }} </el-button>
       </template>
     </el-drawer>
@@ -466,57 +481,171 @@ const submit = (item: any) => {
 </template>
 
 <style lang="less" scoped>
-.model-config {
-  height: calc(100% - 16px);
-  padding: 16px 0 16px 0;
+.zhishu-table-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
 
-  .datasource-yet {
-    padding-bottom: 0;
-    height: auto;
-    padding-top: 200px;
-  }
-  .model-methods {
+  .tool-left {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
-    padding: 0 24px 0 24px;
-    .title {
+    gap: 16px;
+
+    .page-title {
+      flex: 0 0 auto;
       font-weight: 500;
       font-size: 20px;
       line-height: 28px;
+      white-space: nowrap;
     }
   }
 
-  .card-content {
-    max-height: calc(100% - 40px);
+  .search-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+
+    .model-search-input {
+      width: 240px;
+      margin-right: 12px;
+    }
+  }
+
+  .zhishu-table_user {
+    width: 100%;
+    max-height: calc(100vh - 156px);
     overflow-y: auto;
-    padding: 0 8px 0 24px;
 
-    .model-card-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
-      align-items: start;
+    :deep(.ed-popper.is-dark) {
+      max-width: 400px;
     }
-  }
-}
 
-@media (max-width: 1199px) {
-  .model-config {
-    .card-content {
-      .model-card-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    :deep(.ed-table) {
+      --el-table-header-bg-color: #f5f7fa;
+      --el-table-border-color: #ebeef5;
+      --el-table-header-text-color: #606266;
+      background: #fff;
+
+      th {
+        font-weight: 600;
+        font-size: 14px;
+        height: 48px;
+      }
+
+      td {
+        height: 58px;
+      }
+
+      .cell {
+        font-size: 15px;
+        line-height: 24px;
       }
     }
-  }
-}
 
-@media (max-width: 767px) {
-  .model-config {
-    .card-content {
-      .model-card-grid {
-        grid-template-columns: minmax(0, 1fr);
+    .model-name-cell {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+
+      img {
+        flex: 0 0 auto;
+        margin-right: 12px;
+      }
+    }
+
+    .model-name-content {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      gap: 2px;
+    }
+
+    .model-primary-text {
+      max-width: 100%;
+      color: #1f2329;
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 24px;
+    }
+
+    .model-secondary-text {
+      max-width: 100%;
+      color: #8f959e;
+      font-size: 14px;
+      line-height: 22px;
+    }
+
+    .model-status-text {
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 24px;
+
+      &.is-default {
+        color: #245bdb;
+      }
+
+      &.is-muted {
+        color: #8f959e;
+        font-weight: 400;
+      }
+    }
+
+    .model-usage-cell {
+      display: flex;
+      flex-direction: column;
+      color: #646a73;
+      font-size: 14px;
+      line-height: 22px;
+      gap: 2px;
+    }
+
+    .table-operate {
+      display: flex;
+      align-items: center;
+      height: 24px;
+      line-height: 24px;
+
+      .line {
+        margin: 0 10px 0 12px;
+        height: 16px;
+        width: 1px;
+        background-color: #1f232926;
+      }
+
+      .ed-icon {
+        position: relative;
+        cursor: pointer;
+        color: #646a73;
+
+        &.disabled {
+          cursor: not-allowed;
+          color: #b8bdc6;
+
+          &::after {
+            display: none !important;
+          }
+        }
+
+        &::after {
+          content: '';
+          background-color: #1f23291a;
+          position: absolute;
+          border-radius: 6px;
+          width: 24px;
+          height: 24px;
+          transform: translate(-50%, -50%);
+          top: 50%;
+          left: 50%;
+          display: none;
+        }
+
+        &:hover {
+          &::after {
+            display: block;
+          }
+        }
       }
     }
   }
@@ -544,7 +673,7 @@ const submit = (item: any) => {
       overflow-y: auto;
     }
     .popover-item {
-      height: 32px;
+      height: 36px;
       display: flex;
       align-items: center;
       padding-left: 12px;
@@ -559,8 +688,8 @@ const submit = (item: any) => {
 
       &.empty {
         font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
+        font-size: 15px;
+        line-height: 24px;
         color: #8f959e;
         cursor: default;
       }
@@ -568,8 +697,8 @@ const submit = (item: any) => {
       .model-name {
         margin-left: 8px;
         font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
+        font-size: 15px;
+        line-height: 24px;
         max-width: 220px;
       }
 
@@ -593,7 +722,7 @@ const submit = (item: any) => {
   }
 }
 
-.model-drawer-fullscreen {
+.model-drawer-right {
   .ed-drawer__body {
     padding: 0;
   }

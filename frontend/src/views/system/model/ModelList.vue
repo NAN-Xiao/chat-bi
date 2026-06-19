@@ -63,7 +63,8 @@ const handleModelClick = (item: any) => {
 
 <style lang="less" scoped>
 .model-list {
-  width: 800px;
+  width: calc(100% - 48px);
+  max-width: 800px;
   margin: 0 auto;
   max-height: 100%;
   padding-top: 24px;
@@ -79,12 +80,8 @@ const handleModelClick = (item: any) => {
     display: flex;
     height: calc(100% - 40px);
     flex-wrap: wrap;
-    .model:nth-child(odd) {
-      margin-left: 0;
-    }
-
     .model {
-      width: 392px;
+      width: calc((100% - 16px) / 2);
       height: 64px;
       display: flex;
       align-items: center;
@@ -94,14 +91,18 @@ const handleModelClick = (item: any) => {
       border-radius: 12px;
       margin-left: 16px;
       cursor: pointer;
+
+      &:nth-child(odd) {
+        margin-left: 0;
+      }
       &:hover {
         box-shadow: 0px 6px 24px 0px #1f232914;
       }
       .name {
         margin-left: 12px;
         font-weight: 500;
-        font-size: 14px;
-        line-height: 22px;
+        font-size: 15px;
+        line-height: 24px;
       }
     }
   }
