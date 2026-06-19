@@ -711,6 +711,10 @@ const goLoginSuccess = async () => {
     await router.push('/system/tenant')
     return
   }
+  if (!userStore.hasActiveWorkspace) {
+    await router.push('/account/workspaces')
+    return
+  }
   toLoginSuccess(router)
 }
 

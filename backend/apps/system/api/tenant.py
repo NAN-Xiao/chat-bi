@@ -55,7 +55,7 @@ from apps.system.crud.tenant import (
     get_tenant_security_policy,
     user_belongs_to_tenant,
 )
-from apps.system.crud.tenant_usage import list_tenant_usage_daily
+from apps.system.crud.tenant_usage import list_tenant_usage_by_user, list_tenant_usage_daily
 from apps.system.crud.user import (
     SYSTEM_ROLE_VIEWER,
     check_email_format,
@@ -107,7 +107,7 @@ from apps.system.schemas.tenant_schema import (
     TenantSearchDTO,
     TenantStatus,
 )
-from apps.system.schemas.tenant_usage_schema import TenantUsageDailyDTO
+from apps.system.schemas.tenant_usage_schema import TenantUsageDailyDTO, TenantUsageUserDTO
 from apps.terminology.models.terminology_model import Terminology
 from common.audit.models.log_model import OperationModules, OperationStatus, OperationType, SystemLog
 from common.audit.schemas.request_context import RequestContext
@@ -281,6 +281,7 @@ def _tenant_dto(
     role: str = TENANT_ROLE_OWNER,
     owner: dict | None = None,
     include_operations: bool | None = None,
+    join_time: int | None = None,
 ) -> TenantDTO:
     owner = owner or {}
     normalized_role = normalize_tenant_role(role)
@@ -306,14 +307,15 @@ def _tenant_dto(
         owner_account=owner.get("owner_account") if show_operations else None,
         owner_name=owner.get("owner_name") if show_operations else None,
         owner_email=owner.get("owner_email") if show_operations else None,
+        join_time=int(join_time or 0),
     )
 
 
-def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str]]) -> list[TenantDTO]:
-    owner_map = _tenant_owner_map(session, [int(tenant.id) for tenant, _role in rows])
+def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int | None]]) -> list[TenantDTO]:
+    owner_map = _tenant_owner_map(session, [int(tenant.id) for tenant, _role, _join_time in rows])
     return [
-        _tenant_dto(tenant, role=role, owner=owner_map.get(int(tenant.id)))
-        for tenant, role in rows
+        _tenant_dto(tenant, role=role, owner=owner_map.get(int(tenant.id)), join_time=join_time)
+        for tenant, role, join_time in rows
     ]
 
 
@@ -329,6 +331,10 @@ def _usage_dto(row) -> TenantUsageDailyDTO:
         task_count=int(row.task_count or 0),
         update_time=int(row.update_time or 0),
     )
+
+
+def _usage_user_dto(row: dict) -> TenantUsageUserDTO:
+    return TenantUsageUserDTO(**row)
 
 
 def _timestamp_to_millis(value) -> int:
@@ -629,9 +635,9 @@ async def current_tenant(current_tenant: CurrentTenant):
 async def tenant_list(session: SessionDep, current_user: CurrentUser):
     if is_super_admin(current_user):
         tenants = list_tenants(session)
-        return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER) for tenant in tenants])
+        return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER, None) for tenant in tenants])
     rows = list_user_tenant_memberships(session, int(current_user.id))
-    return _tenant_dto_list(session, [(tenant, membership.role) for tenant, membership in rows])
+    return _tenant_dto_list(session, [(tenant, membership.role, membership.create_time) for tenant, membership in rows])
 
 
 @router.get("/search", response_model=list[TenantSearchDTO])
@@ -661,7 +667,7 @@ async def search_tenants(
 async def admin_tenant_list(session: SessionDep, current_user: CurrentUser):
     _require_platform_admin(current_user)
     tenants = list_tenants(session, include_disabled=True)
-    return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER) for tenant in tenants])
+    return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER, None) for tenant in tenants])
 
 
 @router.get("/usage", response_model=list[TenantUsageDailyDTO])
@@ -691,6 +697,33 @@ async def tenant_usage(
         limit=limit,
     )
     return [_usage_dto(row) for row in rows]
+
+
+@router.get("/usage/user", response_model=list[TenantUsageUserDTO])
+async def tenant_usage_by_user(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    tenant_id: int | None = None,
+    start_date: str | None = Query(default=None, max_length=10),
+    end_date: str | None = Query(default=None, max_length=10),
+    limit: int = Query(100, ge=1, le=500),
+):
+    if is_super_admin(current_user):
+        scoped_tenant_id = tenant_id if tenant_id is not None else int(current_tenant.id)
+    else:
+        _require_current_tenant_admin(current_user)
+        scoped_tenant_id = int(current_tenant.id)
+        if tenant_id is not None and int(tenant_id) != scoped_tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant usage access denied")
+    rows = list_tenant_usage_by_user(
+        session,
+        tenant_id=int(scoped_tenant_id),
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+    )
+    return [_usage_user_dto(row) for row in rows]
 
 
 @router.get("/overview", response_model=TenantOverviewDTO)
@@ -1910,7 +1943,7 @@ async def leave_joined_tenant(
         remark=f"tenant_code={tenant.code}; user_id={current_user.id}",
     )
     rows = list_user_tenant_memberships(session, int(current_user.id))
-    return _tenant_dto_list(session, [(tenant, membership.role) for tenant, membership in rows])
+    return _tenant_dto_list(session, [(tenant, membership.role, membership.create_time) for tenant, membership in rows])
 
 
 @router.post("", response_model=TenantDTO)

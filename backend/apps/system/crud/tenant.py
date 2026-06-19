@@ -1095,14 +1095,22 @@ def resolve_current_tenant(
 
 def attach_tenant_context(user, tenant: TenantContext | None):
     user_copy = user.model_copy(deep=True) if hasattr(user, "model_copy") else user
+    is_platform_admin = _user_is_system_admin(user_copy)
+    user_copy.global_role = "platform_admin" if is_platform_admin else "normal_user"
     if tenant is None:
         user_copy.tenant_id = None
         user_copy.tenant_code = None
         user_copy.tenant_name = None
         user_copy.tenant_role = None
+        user_copy.workspace_role = None
+        user_copy.has_workspace = False
+        user_copy.workspace_status = "platform_admin" if is_platform_admin else "workspace_required"
         return user_copy
     user_copy.tenant_id = tenant.id
     user_copy.tenant_code = tenant.code
     user_copy.tenant_name = tenant.name
     user_copy.tenant_role = tenant.role
+    user_copy.workspace_role = tenant.role
+    user_copy.has_workspace = not is_platform_admin
+    user_copy.workspace_status = "platform_admin" if is_platform_admin else "active"
     return user_copy

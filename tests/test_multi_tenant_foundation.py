@@ -18,6 +18,7 @@ from apps.system.crud.tenant import (
     auto_assign_tenants_by_email_domain,
     create_tenant_invitation,
     assign_user_to_tenant,
+    attach_tenant_context,
     ensure_default_tenant,
     resolve_current_tenant,
     validate_tenant_security_policy,
@@ -169,6 +170,55 @@ def test_user_can_resolve_requested_tenant_when_member():
 
         assert tenant.id == 200
         assert tenant.role == TENANT_ROLE_ADMIN
+
+
+def test_regular_user_can_hold_different_roles_in_multiple_workspaces():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=300, code="tenant-c", name="Tenant C", status=1, plan="default"))
+        session.flush()
+        assign_user_to_tenant(session, 100, tenant_id=200, role="owner", is_primary=True)
+        assign_user_to_tenant(session, 100, tenant_id=300, role=TENANT_ROLE_MEMBER, is_primary=False)
+
+        owner_context = resolve_current_tenant(session, _user(100), requested_tenant_id=200)
+        member_context = resolve_current_tenant(session, _user(100), requested_tenant_id=300)
+
+        assert owner_context.id == 200
+        assert owner_context.role == "owner"
+        assert member_context.id == 300
+        assert member_context.role == TENANT_ROLE_MEMBER
+
+
+def test_attached_workspace_context_exposes_global_and_workspace_roles():
+    user = BaseUserDTO(
+        id=100,
+        account="demo",
+        name="Demo",
+        email="demo@example.com",
+        password="secret",
+        status=1,
+        origin=0,
+        system_role="viewer",
+    )
+
+    attached = attach_tenant_context(
+        user,
+        SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role=TENANT_ROLE_ADMIN),
+    )
+    no_workspace = attach_tenant_context(user, None)
+    platform_admin = attach_tenant_context(_user(1, "system_admin"), None)
+
+    assert attached.global_role == "normal_user"
+    assert attached.has_workspace is True
+    assert attached.workspace_status == "active"
+    assert attached.tenant_role == TENANT_ROLE_ADMIN
+    assert attached.workspace_role == TENANT_ROLE_ADMIN
+    assert no_workspace.global_role == "normal_user"
+    assert no_workspace.has_workspace is False
+    assert no_workspace.workspace_status == "workspace_required"
+    assert platform_admin.global_role == "platform_admin"
+    assert platform_admin.workspace_status == "platform_admin"
 
 
 def test_system_admin_can_resolve_active_tenant_for_platform_operations():
@@ -385,7 +435,7 @@ def test_user_submits_tenant_application_and_platform_admin_approves_workspace()
         audit_log = session.exec(
             select(SystemLog).where(
                 SystemLog.tenant_id == int(reviewed.tenant_id),
-                SystemLog.operation_detail == "审核企业创建申请通过",
+                SystemLog.operation_detail == "审核工作空间创建申请通过",
             )
         ).first()
         assert audit_log is not None
@@ -689,7 +739,7 @@ def test_tenant_admin_invites_existing_user_and_user_accepts():
         audit_log = session.exec(
             select(SystemLog).where(
                 SystemLog.tenant_id == 200,
-                SystemLog.operation_detail == "接受企业邀请",
+                SystemLog.operation_detail == "接受工作空间邀请",
             )
         ).first()
         assert audit_log is not None
@@ -760,7 +810,7 @@ def test_bulk_invite_records_per_account_results_and_audit():
         audit_log = session.exec(
             select(SystemLog).where(
                 SystemLog.tenant_id == 200,
-                SystemLog.operation_detail == "批量邀请企业成员",
+                SystemLog.operation_detail == "批量邀请工作空间成员",
             )
         ).first()
         assert audit_log is not None
@@ -978,7 +1028,7 @@ def test_tenant_owner_can_transfer_ownership_to_active_member():
         audit_log = session.exec(
             select(SystemLog).where(
                 SystemLog.tenant_id == 200,
-                SystemLog.operation_detail == "转移企业所有者",
+                SystemLog.operation_detail == "转移工作空间所有者",
             )
         ).first()
         assert audit_log is not None
@@ -1027,7 +1077,7 @@ def test_user_leaves_joined_tenant_and_loses_tenant_project_permissions():
         audit_log = session.exec(
             select(SystemLog).where(
                 SystemLog.tenant_id == 200,
-                SystemLog.operation_detail == "退出企业",
+                SystemLog.operation_detail == "退出工作空间",
             )
         ).first()
         assert audit_log is not None

@@ -21,6 +21,7 @@ export interface TenantInfo {
   owner_account?: string
   owner_name?: string
   owner_email?: string
+  join_time?: number
 }
 
 export interface TenantSearchInfo {
@@ -206,6 +207,18 @@ export interface TenantUsageQuery {
   limit?: number
 }
 
+export interface TenantUsageUserInfo {
+  tenant_id: number | string
+  user_id: number | string
+  user_account?: string | null
+  user_name?: string | null
+  request_count: number
+  success_count: number
+  failure_count: number
+  total_tokens: number
+  last_used_time: number
+}
+
 const buildTenantUsageQuery = (params: TenantUsageQuery = {}) => {
   const searchParams = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
@@ -330,6 +343,8 @@ export const tenantApi = {
   overview: (days = 7) => request.get<TenantOverviewInfo>(`/system/tenant/overview?days=${days}`),
   usage: (params?: TenantUsageQuery) =>
     request.get<TenantUsageDailyInfo[]>(`/system/tenant/usage${buildTenantUsageQuery(params)}`),
+  usageByUser: (params?: TenantUsageQuery) =>
+    request.get<TenantUsageUserInfo[]>(`/system/tenant/usage/user${buildTenantUsageQuery(params)}`),
   bindDomain: (data: { domain: string; auto_join_role: 'admin' | 'member' }) =>
     request.post<TenantDomainInfo>('/system/tenant/domain', data),
   domains: () => request.get<TenantDomainInfo[]>('/system/tenant/domain/list'),

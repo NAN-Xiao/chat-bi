@@ -1,83 +1,120 @@
 <script lang="ts" setup>
 import { computed, onMounted, ref } from 'vue'
 import icon_expand_down_filled from '@/assets/svg/icon_expand-down_filled.svg'
-import icon_moments_categories_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
+import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { highlightKeyword } from '@/utils/xss'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useUserStore } from '@/stores/user'
 import { useEmitt } from '@/utils/useEmitt'
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
+import { type TenantInfo } from '@/api/tenant'
 
 const datasourceContext = useDatasourceContextStore()
+const userStore = useUserStore()
+const dashboardStore = dashboardStoreWithOut()
 const { t } = useI18n()
 defineProps({
   collapse: { type: [Boolean], required: true },
 })
 
 const router = useRouter()
-const currentProject = computed(() => ({
-  id: datasourceContext.datasourceId,
-  name: datasourceContext.datasourceName,
+const popoverRef = ref()
+const workspaceKeywords = ref('')
+const workspaceSwitchingId = ref('')
+const tenantList = computed(() => userStore.getTenants)
+const currentWorkspace = computed(() => ({
+  id: userStore.getTenantId,
+  name: userStore.getTenantName,
+  role: userStore.getTenantRole,
 }))
-const defaultDatasourceList = computed(() => datasourceContext.datasources)
-const projectKeywords = ref('')
-const defaultProjectListWithSearch = computed(() => {
-  if (!projectKeywords.value) return defaultDatasourceList.value
-  return defaultDatasourceList.value.filter((ele) =>
-    ele.name.toLowerCase().includes(projectKeywords.value.toLowerCase())
+const currentWorkspaceName = computed(
+  () => currentWorkspace.value.name || t('tenant.no_current_workspace')
+)
+const workspaceListWithSearch = computed(() => {
+  const keyword = workspaceKeywords.value.trim().toLowerCase()
+  if (!keyword) return tenantList.value
+  return tenantList.value.filter((tenant) =>
+    `${tenant.name || ''} ${tenant.code || ''}`.toLowerCase().includes(keyword)
   )
 })
 const formatKeywords = (item: string) => {
   // Use XSS-safe highlight function
-  return highlightKeyword(item, projectKeywords.value, 'isSearch')
+  return highlightKeyword(item, workspaceKeywords.value, 'isSearch')
 }
 
 const emit = defineEmits(['selectProject'])
 
-const handleDefaultProjectChange = (item: any) => {
-  if (
-    currentProject.value?.id &&
-    item.id.toString() === currentProject.value.id.toString()
-  ) {
+const formatTenantRole = (role?: string) => {
+  const key = `common.tenant_role_${role || 'member'}`
+  const label = t(key)
+  return label === key ? role || t('common.tenant_role_member') : label
+}
+
+const handleWorkspaceChange = async (tenant: TenantInfo) => {
+  const tenantId = String(tenant.id || '')
+  if (!tenantId || tenantId === String(userStore.getTenantId || '')) {
+    popoverRef.value?.hide?.()
     return
   }
-  datasourceContext.setDatasource(
-    Number(item.id),
-    item.name,
-    item.type || '',
-    item.type_name || '',
-    item.project_role || '',
-    item.can_create_dashboard === true,
-    item.can_manage_dashboard === true,
-    item.can_manage_project === true
-  )
-  ElMessage.success(t('common.switch_success'))
-  router.push('/chat/index')
-  useEmitt().emitter.emit('datasource-context-change', item)
-  emit('selectProject', item)
+  workspaceSwitchingId.value = tenantId
+  try {
+    await userStore.switchTenant(tenantId)
+    datasourceContext.clear(true)
+    await datasourceContext.loadDatasources(true)
+    dashboardStore.canvasDataInit()
+    useEmitt().emitter.emit('datasource-context-change', null)
+    emit('selectProject', null)
+    ElMessage.success(t('common.switch_success'))
+    popoverRef.value?.hide?.()
+    router.push('/chat/index')
+  } finally {
+    workspaceSwitchingId.value = ''
+  }
+}
+
+const toWorkspaceApplication = () => {
+  popoverRef.value?.hide?.()
+  router.push('/account/workspace-applications')
+}
+
+const refreshWorkspaces = async () => {
+  await userStore.loadTenants(true)
+  if (userStore.hasActiveWorkspace) {
+    await datasourceContext.loadDatasources(true)
+  } else {
+    datasourceContext.clear(false)
+  }
 }
 
 onMounted(async () => {
-  await datasourceContext.loadDatasources()
+  await refreshWorkspaces()
 })
 </script>
 
 <template>
   <el-popover
+    ref="popoverRef"
     trigger="click"
-    popper-class="system-project"
+    popper-class="system-workspace-selector"
     :placement="collapse ? 'right' : 'bottom'"
+    @show="refreshWorkspaces"
   >
     <template #reference>
-      <button class="project-selector" :class="collapse && 'collapse'">
+      <button
+        class="workspace-selector"
+        :class="collapse && 'collapse'"
+        :title="currentWorkspaceName"
+      >
         <el-icon size="18">
-          <icon_moments_categories_outlined></icon_moments_categories_outlined>
+          <icon_member_outlined></icon_member_outlined>
         </el-icon>
-        <span v-if="!collapse" :title="currentProject?.name || ''" class="name ellipsis">{{
-          currentProject?.name || ''
+        <span v-if="!collapse" :title="currentWorkspaceName" class="name ellipsis">{{
+          currentWorkspaceName
         }}</span>
         <el-icon v-if="!collapse" style="transform: scale(0.5)" class="expand" size="24">
           <icon_expand_down_filled></icon_expand_down_filled>
@@ -85,10 +122,10 @@ onMounted(async () => {
     ></template>
     <div class="popover">
       <el-input
-        v-model="projectKeywords"
+        v-model="workspaceKeywords"
         clearable
         style="width: 100%; margin-right: 12px"
-        :placeholder="$t('datasource.search_by_name')"
+        :placeholder="$t('tenant.search_placeholder')"
       >
         <template #prefix>
           <el-icon>
@@ -99,28 +136,40 @@ onMounted(async () => {
       <div class="popover-content">
         <el-scrollbar max-height="400px">
           <div
-            v-for="ele in defaultProjectListWithSearch"
-            :key="ele.name"
+            v-for="tenant in workspaceListWithSearch"
+            :key="tenant.id"
             class="popover-item"
-            :class="currentProject?.id?.toString() === ele.id?.toString() && 'isActive'"
-            @click="handleDefaultProjectChange(ele)"
+            :class="String(userStore.getTenantId) === String(tenant.id) && 'isActive'"
+            @click="handleWorkspaceChange(tenant)"
           >
             <el-icon size="16">
-              <icon_moments_categories_outlined></icon_moments_categories_outlined>
+              <icon_member_outlined></icon_member_outlined>
             </el-icon>
-            <div
-              :title="ele.name"
-              class="datasource-name ellipsis"
-              v-html="formatKeywords(ele.name)"
-            ></div>
-            <el-icon size="16" class="done">
+            <div class="workspace-option-main">
+              <div
+                :title="tenant.name || tenant.code"
+                class="workspace-name ellipsis"
+                v-html="formatKeywords(tenant.name || tenant.code || '')"
+              ></div>
+              <div class="workspace-meta ellipsis">
+                {{ tenant.code }} · {{ formatTenantRole(tenant.role) }}
+              </div>
+            </div>
+            <el-icon
+              v-if="workspaceSwitchingId !== String(tenant.id)"
+              size="16"
+              class="done"
+            >
               <icon_done_outlined></icon_done_outlined>
             </el-icon>
           </div>
         </el-scrollbar>
 
-        <div v-if="!defaultProjectListWithSearch.length" class="popover-item empty">
-          {{ $t('model.relevant_results_found') }}
+        <div v-if="!workspaceListWithSearch.length" class="workspace-empty">
+          <div>{{ $t('tenant.no_joined_workspaces') }}</div>
+          <el-button text type="primary" @click="toWorkspaceApplication">
+            {{ $t('tenant.apply_workspace') }}
+          </el-button>
         </div>
       </div>
     </div>
@@ -128,7 +177,7 @@ onMounted(async () => {
 </template>
 
 <style lang="less" scoped>
-.project-selector {
+.workspace-selector {
   background: var(--theme-control-bg);
   border-radius: 8px;
   border: 1px solid var(--theme-shell-border);
@@ -164,6 +213,19 @@ onMounted(async () => {
     margin-left: auto;
   }
 
+  :deep(.ed-icon),
+  :deep(svg) {
+    color: inherit;
+  }
+
+  :deep(svg [fill]) {
+    fill: currentColor;
+  }
+
+  :deep(svg [stroke]) {
+    stroke: currentColor;
+  }
+
   &:hover {
     background: var(--theme-hover-bg);
     border-color: var(--theme-shell-border);
@@ -177,7 +239,7 @@ onMounted(async () => {
 </style>
 
 <style lang="less">
-.system-project.system-project {
+.system-workspace-selector.system-workspace-selector {
   --ed-popover-border-radius: 6px;
   padding: 4px 0;
   width: 280px !important;
@@ -204,9 +266,10 @@ onMounted(async () => {
       padding: 4px;
     }
     .popover-item {
-      height: 32px;
+      min-height: 44px;
       display: flex;
       align-items: center;
+      gap: 8px;
       padding-left: 12px;
       padding-right: 8px;
       margin-bottom: 2px;
@@ -225,12 +288,24 @@ onMounted(async () => {
         cursor: default;
       }
 
-      .datasource-name {
-        margin-left: 8px;
+      .workspace-option-main {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .workspace-name {
         font-weight: 400;
         font-size: 14px;
-        line-height: 22px;
-        max-width: 180px;
+        line-height: 20px;
+        max-width: 190px;
+      }
+
+      .workspace-meta {
+        margin-top: 1px;
+        max-width: 190px;
+        font-size: 12px;
+        line-height: 16px;
+        color: var(--theme-text-secondary);
       }
 
       .done {
@@ -249,6 +324,19 @@ onMounted(async () => {
           display: block;
         }
       }
+    }
+
+    .workspace-empty {
+      min-height: 72px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 12px;
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 22px;
+      color: var(--theme-text-secondary);
     }
   }
 }

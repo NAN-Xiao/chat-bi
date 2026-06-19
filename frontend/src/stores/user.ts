@@ -19,11 +19,15 @@ interface UserState {
   time: number
   origin: number
   systemRole: string
+  globalRole: string
   isSystemAdmin: boolean
   tenantId: string
   tenantCode: string
   tenantName: string
   tenantRole: string
+  workspaceRole: string
+  hasWorkspace: boolean
+  workspaceStatus: string
   tenants: TenantInfo[]
   tenantLoading: boolean
   platformInfo: any | null
@@ -42,11 +46,15 @@ export const UserStore = defineStore('user', {
       time: 0,
       origin: 0,
       systemRole: 'viewer',
+      globalRole: 'normal_user',
       isSystemAdmin: false,
       tenantId: '',
       tenantCode: '',
       tenantName: '',
       tenantRole: '',
+      workspaceRole: '',
+      hasWorkspace: false,
+      workspaceStatus: 'workspace_required',
       tenants: [],
       tenantLoading: false,
       platformInfo: null,
@@ -75,19 +83,19 @@ export const UserStore = defineStore('user', {
       return this.time
     },
     isSystemAdminUser(): boolean {
-      return this.systemRole === 'system_admin'
+      return this.globalRole === 'platform_admin' || this.systemRole === 'system_admin'
     },
     isCollabAdminUser(): boolean {
       return this.systemRole === 'collab_admin'
     },
     isTenantAdminUser(): boolean {
-      return ['owner', 'admin'].includes(String(this.tenantRole || '').trim().toLowerCase())
+      return ['owner', 'admin'].includes(String(this.workspaceRole || this.tenantRole || '').trim().toLowerCase())
     },
     isTenantOwnerUser(): boolean {
-      return String(this.tenantRole || '').trim().toLowerCase() === 'owner'
+      return String(this.workspaceRole || this.tenantRole || '').trim().toLowerCase() === 'owner'
     },
     isTenantMemberUser(): boolean {
-      return String(this.tenantRole || '').trim().toLowerCase() === 'member'
+      return String(this.workspaceRole || this.tenantRole || '').trim().toLowerCase() === 'member'
     },
     isSystemManagerUser(): boolean {
       return (
@@ -113,7 +121,18 @@ export const UserStore = defineStore('user', {
       return this.tenantName || this.tenantCode
     },
     getTenantRole(): string {
-      return this.tenantRole
+      return this.workspaceRole || this.tenantRole
+    },
+    getGlobalRole(): string {
+      return this.globalRole
+    },
+    getWorkspaceStatus(): string {
+      return this.workspaceStatus
+    },
+    hasActiveWorkspace(): boolean {
+      if (this.isSystemAdminUser || !this.tenantId) return false
+      if (this.workspaceStatus && this.workspaceStatus !== 'active') return false
+      return this.hasWorkspace || !!this.tenantId
     },
     getTenants(): TenantInfo[] {
       return this.tenants
@@ -166,11 +185,15 @@ export const UserStore = defineStore('user', {
         'time',
         'origin',
         'systemRole',
+        'globalRole',
         'isSystemAdmin',
         'tenantId',
         'tenantCode',
         'tenantName',
         'tenantRole',
+        'workspaceRole',
+        'hasWorkspace',
+        'workspaceStatus',
       ] as const
 
       keys.forEach((key) => {
@@ -181,13 +204,17 @@ export const UserStore = defineStore('user', {
           tenantCode: 'tenant_code',
           tenantName: 'tenant_name',
           tenantRole: 'tenant_role',
+          workspaceRole: 'workspace_role',
+          hasWorkspace: 'has_workspace',
+          workspaceStatus: 'workspace_status',
+          globalRole: 'global_role',
         }
         const resolvedKey = tenantKeyMap[key] || dkey
         const rawValue = res_data[resolvedKey]
         const value = rawValue ?? ''
         if (key === 'exp' || key === 'time' || key === 'origin') {
           this[key] = Number(value)
-        } else if (key === 'isSystemAdmin') {
+        } else if (key === 'isSystemAdmin' || key === 'hasWorkspace') {
           this[key] = Boolean(value)
         } else {
           this[key] = String(value)
@@ -209,7 +236,9 @@ export const UserStore = defineStore('user', {
       try {
         const res = await tenantApi.list()
         this.tenants = Array.isArray(res) ? res : []
-        if (!this.tenantId && this.tenants.length > 0) {
+        if (this.isSystemAdminUser) {
+          this.setTenant(null)
+        } else if (!this.tenantId && this.tenants.length > 0) {
           this.setTenant(this.tenants[0])
         } else if (this.tenantId && !this.tenants.some((tenant) => String(tenant.id) === String(this.tenantId))) {
           this.setTenant(null)
@@ -257,10 +286,20 @@ export const UserStore = defineStore('user', {
       this.tenantCode = tenantCode
       this.tenantName = tenantName
       this.tenantRole = tenantRole
+      this.workspaceRole = tenantRole
+      this.hasWorkspace = !this.isSystemAdminUser && !!tenantId
+      this.workspaceStatus = this.isSystemAdminUser
+        ? 'platform_admin'
+        : tenantId
+          ? 'active'
+          : 'workspace_required'
       wsCache.set('user.tenantId', tenantId)
       wsCache.set('user.tenantCode', tenantCode)
       wsCache.set('user.tenantName', tenantName)
       wsCache.set('user.tenantRole', tenantRole)
+      wsCache.set('user.workspaceRole', tenantRole)
+      wsCache.set('user.hasWorkspace', this.hasWorkspace)
+      wsCache.set('user.workspaceStatus', this.workspaceStatus)
     },
     setToken(token: string) {
       wsCache.set('user.token', token)
@@ -322,11 +361,15 @@ export const UserStore = defineStore('user', {
         'time',
         'origin',
         'systemRole',
+        'globalRole',
         'isSystemAdmin',
         'tenantId',
         'tenantCode',
         'tenantName',
         'tenantRole',
+        'workspaceRole',
+        'hasWorkspace',
+        'workspaceStatus',
         'platformInfo',
       ]
       keys.forEach((key) => wsCache.delete('user.' + key))

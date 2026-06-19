@@ -32,7 +32,7 @@ const tenantChatBIEntryPrefixes = [
 const defaultAuthenticatedPath = () =>
   userStore.isSystemAdminUser
     ? platformAdminHome
-    : userStore.getTenantId
+    : userStore.hasActiveWorkspace
       ? userStore.isTenantAdminUser
         ? tenantAdminSystemHome
         : '/chat'
@@ -68,6 +68,13 @@ export const watchRouter = (router: Router) => {
     if (!userStore.getUid) {
       try {
         await userStore.info()
+        if (!userStore.isSystemAdminUser) {
+          try {
+            await userStore.loadTenants()
+          } catch (error) {
+            console.warn('Failed to load workspace list before route access check', error)
+          }
+        }
         generateDynamicRouters(router)
       } catch {
         userStore.clear()
@@ -100,10 +107,10 @@ const accessCrossPermission = (to: any) => {
   const tenantSystemRoute = to.path.startsWith('/system') && (tenantAdminOnly || tenantBusiness)
   return (
     (userStore.isSystemAdminUser && isTenantChatBIRoute(to.path)) ||
-    (!userStore.isSystemAdminUser && !userStore.getTenantId && isTenantChatBIRoute(to.path)) ||
+    (!userStore.isSystemAdminUser && !userStore.hasActiveWorkspace && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||
     (tenantAdminOnly && !userStore.isTenantAdminUser) ||
-    (tenantBusiness && !userStore.getTenantId) ||
+    (tenantBusiness && !userStore.hasActiveWorkspace) ||
     (to.path.startsWith('/set') && !userStore.isSystemManagerUser) ||
     (platformOnly && !userStore.isSystemAdminUser)
   )

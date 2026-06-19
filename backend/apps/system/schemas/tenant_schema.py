@@ -24,6 +24,7 @@ class TenantDTO(BaseModel):
     owner_account: Optional[str] = None
     owner_name: Optional[str] = None
     owner_email: Optional[str] = None
+    join_time: int = 0
 
 
 class TenantSearchDTO(BaseModel):

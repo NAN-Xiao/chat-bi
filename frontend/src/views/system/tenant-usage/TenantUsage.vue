@@ -12,41 +12,9 @@
           :range-separator="t('tenant_usage.to')"
           clearable
         />
-        <el-select
-          v-if="isPlatformAdmin"
-          v-model="filters.tenant_id"
-          class="tenant-select"
-          :placeholder="t('tenant_usage.all_tenants')"
-          clearable
-          filterable
-        >
-          <el-option
-            v-for="tenant in tenants"
-            :key="String(tenant.id)"
-            :label="tenant.name || tenant.code"
-            :value="String(tenant.id)"
-          >
-            <span>{{ tenant.name || tenant.code }}</span>
-            <span class="option-meta">{{ tenant.code }}</span>
-          </el-option>
-        </el-select>
-        <div v-else class="current-tenant">
+        <div class="current-tenant">
           {{ currentTenantName }}
         </div>
-        <el-select
-          v-model="filters.metric"
-          class="metric-select"
-          :placeholder="t('tenant_usage.all_metrics')"
-          clearable
-          filterable
-        >
-          <el-option
-            v-for="metric in metricOptions"
-            :key="metric.value"
-            :label="metric.label"
-            :value="metric.value"
-          />
-        </el-select>
         <el-button type="primary" :loading="loading" @click="loadUsage">
           <template #icon>
             <icon_searchOutline_outlined />
@@ -85,17 +53,17 @@
 
         <div class="overview-visual">
           <div class="chart-card-head">
-            <span>{{ t('tenant_usage.token_trend') }}</span>
-            <span class="muted">{{ t('tenant_usage.by_day') }}</span>
+            <span>{{ t('tenant_usage.user_token_ranking') }}</span>
+            <span class="muted">{{ t('tenant_usage.by_user') }}</span>
           </div>
           <div class="chart-surface chart-surface-hero">
             <ChartComponent
-              v-if="usageRows.length"
-              :id="'tenant-usage-overview-trend'"
-              type="line"
-              :data="dailyRows"
-              :x="dateAxis"
-              :y="tokenTrendAxis"
+              v-if="userChartRows.length"
+              :id="'tenant-usage-user-ranking'"
+              type="bar"
+              :data="userChartRows"
+              :x="userTokenXAxis"
+              :y="userTokenYAxis"
             />
             <div v-else class="hero-empty-state" :aria-label="t('tenant_usage.empty')">
               <div class="hero-empty-grid" aria-hidden="true">
@@ -179,6 +147,24 @@
 
       <section class="chart-card">
         <div class="chart-card-head">
+          <span>{{ t('tenant_usage.token_trend') }}</span>
+          <span class="muted">{{ t('tenant_usage.by_day') }}</span>
+        </div>
+        <div class="chart-surface">
+          <ChartComponent
+            v-if="usageRows.length"
+            :id="'tenant-usage-token-trend'"
+            type="line"
+            :data="dailyRows"
+            :x="dateAxis"
+            :y="tokenTrendAxis"
+          />
+          <EmptyBackground v-else :description="t('tenant_usage.empty')" img-type="tree" />
+        </div>
+      </section>
+
+      <section class="chart-card">
+        <div class="chart-card-head">
           <span>{{ t('tenant_usage.token_breakdown') }}</span>
           <span class="muted">{{ t('tenant_usage.top_by_tokens') }}</span>
         </div>
@@ -197,17 +183,17 @@
 
       <section class="chart-card">
         <div class="chart-card-head">
-          <span>{{ tertiaryChartTitle }}</span>
-          <span class="muted">{{ tertiaryChartHint }}</span>
+          <span>{{ t('tenant_usage.task_trend') }}</span>
+          <span class="muted">{{ t('tenant_usage.by_day') }}</span>
         </div>
         <div class="chart-surface">
           <ChartComponent
-            v-if="showTenantRanking ? tenantRankingRows.length > 0 : usageRows.length > 0"
-            :id="'tenant-usage-tertiary'"
-            :type="showTenantRanking ? 'bar' : 'line'"
-            :data="showTenantRanking ? tenantRankingRows : dailyRows"
-            :x="showTenantRanking ? tenantRankingXAxis : dateAxis"
-            :y="showTenantRanking ? tenantRankingYAxis : taskTrendAxis"
+            v-if="usageRows.length"
+            :id="'tenant-usage-task-trend'"
+            type="line"
+            :data="dailyRows"
+            :x="dateAxis"
+            :y="taskTrendAxis"
           />
           <EmptyBackground v-else :description="t('tenant_usage.empty')" img-type="tree" />
         </div>
@@ -215,38 +201,27 @@
     </div>
 
     <div class="section-head">
-      <span>{{ t('tenant_usage.detail') }}</span>
-      <span class="muted">{{ t('tenant_usage.row_count', { count: usageRows.length }) }}</span>
+      <span>{{ t('tenant_usage.user_detail') }}</span>
+      <span class="muted">{{ t('tenant_usage.row_count', { count: userUsageRows.length }) }}</span>
     </div>
 
     <el-table
       v-loading="loading"
-      :data="usageRows"
+      :data="userUsageRows"
       class="usage-table"
       style="width: 100%"
-      :default-sort="{ prop: 'usage_date', order: 'descending' }"
+      :default-sort="{ prop: 'total_tokens', order: 'descending' }"
     >
-      <el-table-column prop="usage_date" :label="t('tenant_usage.usage_date')" width="130" sortable />
       <el-table-column
-        prop="tenant_id"
-        :label="t('tenant_usage.tenant')"
-        min-width="170"
+        prop="user_label"
+        :label="t('tenant_usage.user')"
+        min-width="220"
         show-overflow-tooltip
       >
         <template #default="scope">
-          <span>{{ tenantLabel(scope.row.tenant_id) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column
-        prop="metric"
-        :label="t('tenant_usage.metric')"
-        min-width="210"
-        show-overflow-tooltip
-      >
-        <template #default="scope">
-          <div class="metric-cell">
-            <span>{{ metricLabel(scope.row.metric) }}</span>
-            <span class="metric-key">{{ scope.row.metric }}</span>
+          <div class="user-cell">
+            <span>{{ scope.row.user_label }}</span>
+            <span class="user-key">#{{ scope.row.user_id }}</span>
           </div>
         </template>
       </el-table-column>
@@ -266,12 +241,9 @@
       <el-table-column prop="total_tokens" :label="t('tenant_usage.tokens')" width="130" align="right" sortable>
         <template #default="scope">{{ formatNumber(scope.row.total_tokens) }}</template>
       </el-table-column>
-      <el-table-column prop="task_count" :label="t('tenant_usage.tasks')" width="110" align="right" sortable>
-        <template #default="scope">{{ formatNumber(scope.row.task_count) }}</template>
-      </el-table-column>
-      <el-table-column prop="update_time" :label="t('tenant.update_time')" width="180" sortable>
+      <el-table-column prop="last_used_time" :label="t('tenant_usage.last_used_time')" width="180" sortable>
         <template #default="scope">
-          <span>{{ formatTimestamp(Number(scope.row.update_time || 0), 'YYYY-MM-DD HH:mm:ss') }}</span>
+          <span>{{ formatUsageTime(scope.row.last_used_time) }}</span>
         </template>
       </el-table-column>
       <template #empty>
@@ -283,7 +255,7 @@
 
 <script setup lang="ts">
 import dayjs from 'dayjs'
-import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_chart_preview from '@/assets/svg/icon_chart_preview.svg'
@@ -292,7 +264,7 @@ import icon_error from '@/assets/svg/icon_error.svg'
 import icon_dashboard_outlined from '@/assets/svg/chart/icon_dashboard_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
-import { tenantApi, type TenantInfo, type TenantUsageDailyInfo } from '@/api/tenant'
+import { tenantApi, type TenantUsageDailyInfo, type TenantUsageUserInfo } from '@/api/tenant'
 import type { ChartAxis } from '@/views/chat/component/BaseChart.ts'
 import { useUserStore } from '@/stores/user'
 import { formatTimestamp } from '@/utils/date'
@@ -307,20 +279,12 @@ const props = defineProps({
 const embedded = computed(() => props.embedded)
 const userStore = useUserStore()
 const loading = ref(false)
-const tenants = shallowRef<TenantInfo[]>([])
 const usageRows = shallowRef<TenantUsageDailyInfo[]>([])
+const rawUserUsageRows = shallowRef<TenantUsageUserInfo[]>([])
 const dateRange = ref<[string, string] | null>([
-  dayjs().subtract(13, 'day').format('YYYY-MM-DD'),
+  dayjs().subtract(6, 'day').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
 ])
-
-const filters = reactive<{
-  tenant_id: string | number | ''
-  metric: string
-}>({
-  tenant_id: '',
-  metric: '',
-})
 
 const metricOptions = computed(() => [
   { value: 'chat.generate_sql', label: t('tenant_usage.metric_chat_generate_sql') },
@@ -342,30 +306,10 @@ const metricLabelMap = computed(() =>
   }, {})
 )
 
-const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
 const currentTenantName = computed(() => userStore.getTenantName || t('tenant.default_tenant'))
+const currentScopeLabel = computed(() => currentTenantName.value)
 
-const tenantMap = computed(() =>
-  tenants.value.reduce<Record<string, TenantInfo>>((result, tenant) => {
-    result[String(tenant.id)] = tenant
-    return result
-  }, {})
-)
-
-const selectedTenant = computed(() =>
-  filters.tenant_id ? tenantMap.value[String(filters.tenant_id)] || null : null
-)
-
-const currentScopeLabel = computed(() => {
-  if (selectedTenant.value) {
-    return selectedTenant.value.name || selectedTenant.value.code
-  }
-  return isPlatformAdmin.value ? t('tenant_usage.all_tenants') : currentTenantName.value
-})
-
-const selectedMetricLabel = computed(() =>
-  filters.metric ? metricLabel(filters.metric) : t('tenant_usage.all_metrics')
-)
+const selectedMetricLabel = computed(() => t('tenant_usage.current_workspace_scope'))
 
 const summary = computed(() =>
   usageRows.value.reduce(
@@ -465,45 +409,6 @@ const metricBreakdownRows = computed(() => {
     .slice(0, 8)
 })
 
-const tenantRankingRows = computed(() => {
-  const byTenant = usageRows.value.reduce<Record<string, any>>((result, row) => {
-    const key = String(row.tenant_id)
-    if (!result[key]) {
-      result[key] = {
-        tenant_id: key,
-        tenant_label: tenantLabel(row.tenant_id),
-        request_count: 0,
-        success_count: 0,
-        failure_count: 0,
-        total_tokens: 0,
-        task_count: 0,
-      }
-    }
-    result[key].request_count += Number(row.request_count || 0)
-    result[key].success_count += Number(row.success_count || 0)
-    result[key].failure_count += Number(row.failure_count || 0)
-    result[key].total_tokens += Number(row.total_tokens || 0)
-    result[key].task_count += Number(row.task_count || 0)
-    return result
-  }, {})
-
-  return Object.values(byTenant)
-    .sort((a, b) => b.total_tokens - a.total_tokens || b.request_count - a.request_count)
-    .slice(0, 8)
-})
-
-const showTenantRanking = computed(
-  () => isPlatformAdmin.value && !filters.tenant_id && tenantRankingRows.value.length > 1
-)
-
-const tertiaryChartTitle = computed(() =>
-  showTenantRanking.value ? t('tenant_usage.tenant_token_ranking') : t('tenant_usage.task_trend')
-)
-
-const tertiaryChartHint = computed(() =>
-  showTenantRanking.value ? t('tenant_usage.top_by_tokens') : t('tenant_usage.by_day')
-)
-
 const formatNumber = (value?: number | string) => Number(value || 0).toLocaleString()
 
 const formatPercent = (value: number) => `${(value * 100).toFixed(value * 100 >= 10 ? 1 : 2)}%`
@@ -513,13 +418,25 @@ const metricLabel = (metric?: string) => {
   return metricLabelMap.value[metric] || metric
 }
 
-const tenantLabel = (tenantId: string | number) => {
-  const tenant = tenantMap.value[String(tenantId)]
-  if (tenant) return `${tenant.name || tenant.code} #${tenant.id}`
-  if (!isPlatformAdmin.value && String(tenantId) === String(userStore.getTenantId || '')) {
-    return `${currentTenantName.value} #${tenantId}`
-  }
-  return `#${tenantId}`
+const userLabel = (row: TenantUsageUserInfo) => {
+  const account = row.user_account || ''
+  const name = row.user_name || ''
+  if (name && account) return `${name} (${account})`
+  return name || account || `#${row.user_id}`
+}
+
+const userUsageRows = computed(() =>
+  rawUserUsageRows.value.map((row) => ({
+    ...row,
+    user_label: userLabel(row),
+  }))
+)
+
+const userChartRows = computed(() => userUsageRows.value.slice(0, 12))
+
+const formatUsageTime = (value?: number | string) => {
+  const timestamp = Number(value || 0)
+  return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm:ss') : '-'
 }
 
 const averageDailyRequests = computed(() =>
@@ -528,10 +445,6 @@ const averageDailyRequests = computed(() =>
 
 const averageDailyTasks = computed(() =>
   dailyRows.value.length ? summary.value.task_count / dailyRows.value.length : 0
-)
-
-const averageDailyTokens = computed(() =>
-  dailyRows.value.length ? summary.value.total_tokens / dailyRows.value.length : 0
 )
 
 const successRateValue = computed(() =>
@@ -563,8 +476,8 @@ const dateRangeLabel = computed(() => {
 
 const overviewHighlights = computed(() => [
   {
-    label: t('tenant_usage.daily_average_tokens'),
-    value: formatNumber(Math.round(averageDailyTokens.value)),
+    label: t('tenant_usage.active_users'),
+    value: formatNumber(userUsageRows.value.length),
   },
   {
     label: t('tenant_usage.token_per_request'),
@@ -674,60 +587,49 @@ const metricBreakdownYAxis = computed<ChartAxis[]>(() => [
   { name: t('tenant_usage.tokens'), value: 'total_tokens' },
 ])
 
-const tenantRankingXAxis = computed<ChartAxis[]>(() => [
-  { name: t('tenant_usage.tenant'), value: 'tenant_label' },
-])
-
-const tenantRankingYAxis = computed<ChartAxis[]>(() => [
-  { name: t('tenant_usage.tokens'), value: 'total_tokens' },
-])
-
 const taskTrendAxis = computed<ChartAxis[]>(() => [
   { name: t('tenant_usage.tasks'), value: 'task_count' },
 ])
 
-const loadTenants = async () => {
-  if (isPlatformAdmin.value) {
-    tenants.value = await tenantApi.adminList()
-    return
-  }
-  tenants.value = userStore.getTenantId
-    ? [
-        {
-          id: userStore.getTenantId,
-          code: userStore.tenantCode,
-          name: currentTenantName.value,
-          role: userStore.getTenantRole,
-        },
-      ]
-    : []
-}
+const userTokenXAxis = computed<ChartAxis[]>(() => [
+  { name: t('tenant_usage.user'), value: 'user_label' },
+])
+
+const userTokenYAxis = computed<ChartAxis[]>(() => [
+  { name: t('tenant_usage.tokens'), value: 'total_tokens' },
+])
 
 const loadUsage = async () => {
   loading.value = true
   try {
     const [startDate, endDate] = dateRange.value || []
-    usageRows.value = await tenantApi.usage({
-      tenant_id: filters.tenant_id || undefined,
+    const query = {
       start_date: startDate,
       end_date: endDate,
-      metric: filters.metric || undefined,
-      limit: 1000,
-    })
+    }
+    const [dailyRowsResult, userRowsResult] = await Promise.all([
+      tenantApi.usage({
+        ...query,
+        limit: 1000,
+      }),
+      tenantApi.usageByUser({
+        ...query,
+        limit: 100,
+      }),
+    ])
+    usageRows.value = dailyRowsResult
+    rawUserUsageRows.value = userRowsResult
   } finally {
     loading.value = false
   }
 }
 
 const resetFilters = () => {
-  filters.tenant_id = ''
-  filters.metric = ''
-  dateRange.value = [dayjs().subtract(13, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')]
+  dateRange.value = [dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')]
   loadUsage()
 }
 
 onMounted(async () => {
-  await loadTenants()
   await loadUsage()
 })
 </script>
@@ -770,14 +672,6 @@ onMounted(async () => {
     gap: 10px;
   }
 
-  .tenant-select {
-    width: 220px;
-  }
-
-  .metric-select {
-    width: 230px;
-  }
-
   .current-tenant {
     max-width: 220px;
     height: 32px;
@@ -791,13 +685,6 @@ onMounted(async () => {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .option-meta {
-    float: right;
-    color: #8f959e;
-    font-size: 12px;
-    margin-left: 20px;
   }
 
   .overview-shell {
@@ -1182,14 +1069,14 @@ onMounted(async () => {
     overflow-y: auto;
   }
 
-  .metric-cell {
+  .user-cell {
     display: flex;
     flex-direction: column;
     min-width: 0;
     line-height: 20px;
   }
 
-  .metric-key {
+  .user-key {
     color: #8f959e;
     font-size: 12px;
   }

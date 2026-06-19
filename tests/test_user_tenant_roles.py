@@ -66,6 +66,7 @@ def _engine():
                 tenant_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
                 role VARCHAR(32) NOT NULL DEFAULT 'member',
+                member_remark VARCHAR(255),
                 is_primary BOOLEAN NOT NULL DEFAULT FALSE,
                 status INTEGER NOT NULL DEFAULT 1,
                 create_time INTEGER NOT NULL

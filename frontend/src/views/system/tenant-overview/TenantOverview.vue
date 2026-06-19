@@ -35,11 +35,16 @@
             <span>{{ t('tenant_overview.summary_active_members') }}</span>
             <strong>{{ formatNumber(summary.active_member_count) }}</strong>
           </div>
-          <div class="hero-highlight">
+          <button v-if="hasPendingApplications" type="button" class="hero-highlight is-actionable" @click="openReviewDialog">
             <span>{{ t('tenant_overview.summary_pending') }}</span>
             <strong :class="{ danger: summary.pending_member_application_count > 0 }">
               {{ formatNumber(summary.pending_member_application_count) }}
             </strong>
+            <em>{{ t('tenant_overview.action_review_applications') }}</em>
+          </button>
+          <div v-else class="hero-highlight">
+            <span>{{ t('tenant_overview.summary_pending') }}</span>
+            <strong>{{ formatNumber(summary.pending_member_application_count) }}</strong>
           </div>
         </div>
         <div class="hero-focus-card">
@@ -48,14 +53,20 @@
             <span class="muted">{{ t('tenant_overview.todos_hint') }}</span>
           </div>
           <div v-if="heroFocusItems.length" class="hero-focus-list">
-            <div v-for="item in heroFocusItems" :key="item.key" class="hero-focus-item">
+            <div
+              v-for="item in heroFocusItems"
+              :key="item.key"
+              class="hero-focus-item"
+            >
               <span :class="['todo-level', `is-${item.level || 'normal'}`]">
                 {{ todoLevelLabel(item.level) }}
               </span>
               <span class="hero-focus-text">{{ todoLabel(item.key) }}</span>
-              <strong v-if="item.count !== undefined && item.count !== null" class="hero-focus-count">
-                {{ formatNumber(item.count) }}
-              </strong>
+              <span v-if="item.count !== undefined && item.count !== null" class="hero-focus-tail">
+                <strong v-if="item.count !== undefined && item.count !== null" class="hero-focus-count">
+                  {{ formatNumber(item.count) }}
+                </strong>
+              </span>
             </div>
           </div>
           <div v-else class="hero-focus-empty">
@@ -130,7 +141,7 @@
           <span>{{ t('tenant_overview.assets_title') }}</span>
           <span class="muted">{{ t('tenant_overview.assets_hint') }}</span>
         </div>
-        <div class="chart-surface">
+        <div class="chart-surface chart-surface-assets">
           <ChartComponent
             v-if="assetRows.length"
             :id="'tenant-overview-assets'"
@@ -171,7 +182,11 @@
           <span class="muted">{{ t('tenant_overview.todos_hint') }}</span>
         </div>
         <div v-if="todoRows.length" class="todo-list">
-          <div v-for="item in todoRows" :key="item.key" class="todo-item">
+          <div
+            v-for="item in todoRows"
+            :key="item.key"
+            class="todo-item"
+          >
             <div class="todo-main">
               <div class="todo-title">{{ todoLabel(item.key) }}</div>
               <div class="todo-meta">
@@ -181,9 +196,6 @@
                 </span>
               </div>
             </div>
-            <el-button v-if="item.route" text @click="goRoute(item.route)">
-              {{ t('tenant_overview.jump_to') }}
-            </el-button>
           </div>
         </div>
         <EmptyBackground v-else :description="t('tenant_overview.empty')" img-type="tree" />
@@ -210,14 +222,78 @@
         <EmptyBackground v-else :description="t('tenant_overview.empty')" img-type="tree" />
       </section>
     </div>
+
+    <el-dialog
+      v-model="reviewDialogVisible"
+      class="workspace-light-dialog access-review-dialog"
+      :title="t('tenant.join_application_review')"
+      width="860"
+    >
+      <el-table v-loading="applicationLoading" :data="accessRequests" class="access-table" style="width: 100%">
+        <el-table-column prop="applicant_account" :label="t('user.account')" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="applicant_name" :label="t('user.name')" min-width="140" show-overflow-tooltip>
+          <template #default="scope">
+            {{ scope.row.applicant_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="application_type" :label="t('tenant.access_type')" width="130">
+          <template #default="scope">
+            <el-tag size="small" :type="scope.row.application_type === 'invite' ? 'primary' : 'warning'">
+              {{ formatApplicationType(scope.row.application_type) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="requested_role" :label="t('tenant.requested_role')" width="130">
+          <template #default="scope">
+            {{ formatTenantRole(scope.row.requested_role) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="reason" :label="t('tenant.apply_reason')" min-width="180" show-overflow-tooltip />
+        <el-table-column fixed="right" :label="t('ds.actions')" width="150">
+          <template #default="scope">
+            <div
+              v-if="scope.row.status === 'pending' && scope.row.application_type !== 'invite'"
+              class="review-actions"
+            >
+              <el-button
+                text
+                :loading="joinReviewLoadingId === String(scope.row.id)"
+                @click="reviewJoinApplication(scope.row, true)"
+              >
+                {{ t('tenant.approve') }}
+              </el-button>
+              <el-button text type="danger" @click="reviewJoinApplication(scope.row, false)">
+                {{ t('tenant.reject') }}
+              </el-button>
+            </div>
+            <el-button
+              v-else-if="scope.row.status === 'pending'"
+              text
+              type="danger"
+              :loading="inviteCancelingId === String(scope.row.id)"
+              @click="cancelInvitation(scope.row)"
+            >
+              {{ t('tenant.cancel_invitation') }}
+            </el-button>
+          </template>
+        </el-table-column>
+        <template #empty>
+          <EmptyBackground :description="t('tenant.no_access_requests')" img-type="tree" />
+        </template>
+      </el-table>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button secondary @click="reviewDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef } from 'vue'
-import { ElMessage } from 'element-plus-secondary'
+import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import icon_refresh_outlined from '@/assets/embedded/icon_refresh_outlined.svg'
 import icon_chart_preview from '@/assets/svg/icon_chart_preview.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
@@ -226,18 +302,23 @@ import icon_user from '@/assets/svg/icon_user.svg'
 import icon_dashboard_outlined from '@/assets/svg/chart/icon_dashboard_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
-import { tenantApi, type TenantOverviewInfo } from '@/api/tenant'
+import { tenantApi, type TenantApplicationInfo, type TenantOverviewInfo } from '@/api/tenant'
 import type { ChartAxis } from '@/views/chat/component/BaseChart.ts'
 import { useUserStore } from '@/stores/user'
 import { formatTimestamp } from '@/utils/date'
 
 const { t } = useI18n()
-const router = useRouter()
 const userStore = useUserStore()
 
 const loading = ref(false)
+const applicationLoading = ref(false)
 const selectedDays = ref(7)
 const overview = shallowRef<TenantOverviewInfo | null>(null)
+const reviewDialogVisible = ref(false)
+const joinReviewLoadingId = ref('')
+const inviteCancelingId = ref('')
+const joinApplications = shallowRef<TenantApplicationInfo[]>([])
+const invitations = shallowRef<TenantApplicationInfo[]>([])
 
 const rangeOptions = computed(() => [
   { value: 7, label: t('tenant_overview.range_7') },
@@ -285,6 +366,12 @@ const roleRows = computed(() =>
 const todoRows = computed(() => overview.value?.todos || [])
 const recentEvents = computed(() => overview.value?.recent_events || [])
 const heroFocusItems = computed(() => todoRows.value.slice(0, 2))
+const hasPendingApplications = computed(() => Number(summary.value.pending_member_application_count || 0) > 0)
+const accessRequests = computed(() =>
+  [...joinApplications.value, ...invitations.value].sort(
+    (a, b) => Number(b.create_time || 0) - Number(a.create_time || 0)
+  )
+)
 
 const summaryCards = computed(() => [
   {
@@ -406,10 +493,98 @@ const todoLevelLabel = (level?: string) => {
   }
 }
 
+const formatApplicationType = (type?: string) => {
+  if (type === 'invite') return t('tenant.application_type_invite')
+  return t('tenant.application_type_join')
+}
+
+const formatTenantRole = (role?: string) => {
+  if (role === 'owner') return t('user.tenant_role_owner')
+  if (role === 'admin') return t('user.tenant_role_admin')
+  return t('user.tenant_role_member')
+}
+
 const formatEventTime = (timestamp?: number) => formatTimestamp(Number(timestamp || 0), 'YYYY-MM-DD HH:mm:ss')
 
-const goRoute = (path: string) => {
-  router.push(path)
+const loadApplications = async () => {
+  applicationLoading.value = true
+  try {
+    const [joinRows, invitationRows] = await Promise.all([
+      tenantApi.tenantApplications('pending'),
+      tenantApi.invitations('pending'),
+    ])
+    joinApplications.value = joinRows || []
+    invitations.value = invitationRows || []
+  } finally {
+    applicationLoading.value = false
+  }
+}
+
+const openReviewDialog = async () => {
+  reviewDialogVisible.value = true
+  await loadApplications()
+}
+
+const reviewJoinApplication = async (application: TenantApplicationInfo, approved: boolean) => {
+  joinReviewLoadingId.value = String(application.id)
+  try {
+    let reviewComment = ''
+    if (approved) {
+      await ElMessageBox.confirm(
+        t('tenant.approve_join_confirm', {
+          msg: application.applicant_name || application.applicant_account,
+        }),
+        {
+          confirmButtonType: 'primary',
+          confirmButtonText: t('tenant.approve'),
+          cancelButtonText: t('common.cancel'),
+          customClass: 'confirm-no_icon',
+          autofocus: false,
+        }
+      )
+    } else {
+      const result = await ElMessageBox.prompt(t('tenant.reject_reason'), t('tenant.reject'), {
+        confirmButtonType: 'danger',
+        confirmButtonText: t('tenant.reject'),
+        cancelButtonText: t('common.cancel'),
+        inputType: 'textarea',
+        customClass: 'confirm-no_icon',
+        autofocus: false,
+      })
+      reviewComment = result.value || ''
+    }
+    await tenantApi.reviewTenantApplication(application.id, {
+      approved,
+      review_comment: reviewComment,
+    })
+    ElMessage.success(t('common.save_success'))
+    await Promise.all([loadApplications(), loadOverview()])
+  } finally {
+    joinReviewLoadingId.value = ''
+  }
+}
+
+const cancelInvitation = async (invitation: TenantApplicationInfo) => {
+  inviteCancelingId.value = String(invitation.id)
+  try {
+    await ElMessageBox.confirm(
+      t('tenant.cancel_invitation_confirm', {
+        msg: invitation.applicant_name || invitation.applicant_account,
+      }),
+      {
+        confirmButtonType: 'danger',
+        confirmButtonText: t('tenant.cancel_invitation'),
+        cancelButtonText: t('common.cancel'),
+        customClass: 'confirm-no_icon',
+        autofocus: false,
+      }
+    )
+    await tenantApi.cancelInvitation(invitation.id)
+    ElMessage.success(t('common.operation_success'))
+    await Promise.all([loadApplications(), loadOverview()])
+  } finally {
+    inviteCancelingId.value = ''
+  }
 }
 
 const loadOverview = async () => {
@@ -575,6 +750,7 @@ onMounted(async () => {
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.92);
     border: 1px solid #e6edf6;
+    text-align: left;
 
     span {
       display: block;
@@ -589,6 +765,15 @@ onMounted(async () => {
       font-size: 26px;
       line-height: 32px;
       color: var(--theme-text-primary);
+    }
+
+    em {
+      display: block;
+      margin-top: 8px;
+      font-style: normal;
+      font-size: 12px;
+      line-height: 18px;
+      color: #2f6bff;
     }
   }
 
@@ -630,6 +815,7 @@ onMounted(async () => {
     border-radius: 8px;
     background: #f8fbff;
     border: 1px solid #edf2f8;
+    text-align: left;
   }
 
   .hero-focus-text {
@@ -645,6 +831,12 @@ onMounted(async () => {
     font-size: 18px;
     line-height: 24px;
     font-weight: 600;
+  }
+
+  .hero-focus-tail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .hero-focus-empty {
@@ -678,6 +870,7 @@ onMounted(async () => {
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.94)),
       var(--theme-card-bg, #ffffff);
+    text-align: left;
   }
 
   .summary-card-top {
@@ -733,6 +926,24 @@ onMounted(async () => {
     color: var(--theme-text-primary);
   }
 
+  .is-actionable {
+    appearance: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease,
+      background 160ms ease;
+
+    &:hover {
+      border-color: rgba(47, 107, 255, 0.35);
+      box-shadow: 0 12px 28px rgba(47, 107, 255, 0.1);
+      transform: translateY(-1px);
+    }
+  }
+
   .danger {
     color: #f56c6c !important;
   }
@@ -782,6 +993,10 @@ onMounted(async () => {
     height: auto;
   }
 
+  .chart-surface-assets {
+    height: 230px;
+  }
+
   .ops-grid {
     display: grid;
     grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.15fr);
@@ -814,6 +1029,7 @@ onMounted(async () => {
     border-radius: 8px;
     background: var(--theme-hover-bg, #f8fafc);
     border: 1px solid rgba(15, 23, 42, 0.05);
+    text-align: left;
   }
 
   .todo-main,
@@ -954,6 +1170,11 @@ onMounted(async () => {
     .chart-surface,
     .chart-surface-hero {
       height: 260px;
+    }
+
+    .todo-item {
+      align-items: flex-start;
+      flex-direction: column;
     }
   }
 }

@@ -4,12 +4,14 @@ import calendar
 import json
 from typing import Any
 
-from sqlalchemy import func, inspect
+from sqlalchemy import BigInteger, Text, case, cast, func, inspect
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import Session, select
 
+from apps.chat.models.chat_model import ChatLog, ChatRecord
 from apps.system.models.tenant_usage import TenantUsageDailyModel
+from apps.system.models.user import UserModel
 from common.core.config import settings
 from common.utils.time import get_timestamp
 from common.utils.utils import AppLogUtil
@@ -71,6 +73,46 @@ def token_total(token_usage: Any) -> int:
     if isinstance(token_usage, (int, float)):
         return int(token_usage)
     return 0
+
+
+def _chat_log_total_tokens_expr(session: Session):
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        token_usage_type = func.jsonb_typeof(ChatLog.token_usage)
+        object_total_tokens = cast(
+            func.coalesce(func.nullif(ChatLog.token_usage.op("->>")("total_tokens"), ""), "0"),
+            BigInteger,
+        )
+        number_total_tokens = cast(cast(ChatLog.token_usage, Text), BigInteger)
+        return case(
+            (token_usage_type == "object", object_total_tokens),
+            (token_usage_type == "number", number_total_tokens),
+            else_=0,
+        )
+    if dialect == "sqlite":
+        token_usage_type = func.json_type(ChatLog.token_usage)
+        object_total_tokens = cast(
+            func.coalesce(func.nullif(func.json_extract(ChatLog.token_usage, "$.total_tokens"), ""), 0),
+            BigInteger,
+        )
+        number_total_tokens = cast(ChatLog.token_usage, BigInteger)
+        return case(
+            (token_usage_type == "object", object_total_tokens),
+            (token_usage_type.in_(("integer", "real")), number_total_tokens),
+            else_=0,
+        )
+    return 0
+
+
+def _datetime_to_millis(value) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, datetime):
+        return int(value.timestamp() * 1000)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _table_exists(session: Session) -> bool:
@@ -246,6 +288,90 @@ def list_tenant_usage_daily(
     if metric:
         statement = statement.where(TenantUsageDailyModel.metric == metric)
     return list(session.exec(statement.limit(max(1, min(int(limit or 500), 5000)))).all())
+
+
+def list_tenant_usage_by_user(
+    session: Session,
+    *,
+    tenant_id: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    try:
+        inspector = inspect(session.connection())
+        if not inspector.has_table(ChatLog.__tablename__) or not inspector.has_table(ChatRecord.__tablename__):
+            return []
+    except Exception:
+        return []
+
+    filters = [
+        ChatLog.tenant_id == int(tenant_id),
+        ChatRecord.tenant_id == int(tenant_id),
+        ChatLog.pid == ChatRecord.id,
+        ChatLog.local_operation == False,  # noqa: E712
+        ChatLog.token_usage.is_not(None),
+    ]
+    if start_date:
+        filters.append(func.date(ChatLog.finish_time) >= start_date)
+    if end_date:
+        filters.append(func.date(ChatLog.finish_time) <= end_date)
+
+    token_expr = _chat_log_total_tokens_expr(session)
+    has_user_table = False
+    try:
+        has_user_table = inspect(session.connection()).has_table(UserModel.__tablename__)
+    except Exception:
+        has_user_table = False
+
+    statement = (
+        select(
+            ChatRecord.create_by.label("user_id"),
+            func.coalesce(func.sum(token_expr), 0).label("total_tokens"),
+            func.count(ChatLog.id).label("request_count"),
+            func.coalesce(func.sum(case((ChatLog.error == True, 0), else_=1)), 0).label("success_count"),  # noqa: E712
+            func.coalesce(func.sum(case((ChatLog.error == True, 1), else_=0)), 0).label("failure_count"),  # noqa: E712
+            func.max(ChatLog.finish_time).label("last_used_time"),
+        )
+        .select_from(ChatLog)
+        .join(ChatRecord, ChatLog.pid == ChatRecord.id)
+        .where(*filters)
+        .where(ChatRecord.create_by.is_not(None))
+        .group_by(ChatRecord.create_by)
+        .having(func.coalesce(func.sum(token_expr), 0) > 0)
+        .order_by(func.coalesce(func.sum(token_expr), 0).desc(), func.count(ChatLog.id).desc())
+        .limit(max(1, min(int(limit or 100), 500)))
+    )
+    rows = session.exec(statement).all()
+    user_ids = [int(row.user_id) for row in rows if row.user_id is not None]
+    user_map: dict[int, dict[str, str | None]] = {}
+    if has_user_table and user_ids:
+        user_rows = session.exec(
+            select(UserModel.id, UserModel.account, UserModel.name).where(UserModel.id.in_(user_ids))
+        ).all()
+        user_map = {
+            int(user_id): {
+                "account": account,
+                "name": name,
+            }
+            for user_id, account, name in user_rows
+        }
+
+    return [
+        {
+            "tenant_id": int(tenant_id),
+            "user_id": int(row.user_id),
+            "user_account": user_map.get(int(row.user_id), {}).get("account"),
+            "user_name": user_map.get(int(row.user_id), {}).get("name"),
+            "request_count": int(row.request_count or 0),
+            "success_count": int(row.success_count or 0),
+            "failure_count": int(row.failure_count or 0),
+            "total_tokens": int(row.total_tokens or 0),
+            "last_used_time": _datetime_to_millis(row.last_used_time),
+        }
+        for row in rows
+        if row.user_id is not None
+    ]
 
 
 def sum_tenant_usage(

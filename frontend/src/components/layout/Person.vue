@@ -39,15 +39,19 @@ defineProps({
 const name = computed(() => userStore.getName)
 const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
-const isAdmin = computed(() => userStore.isSystemManagerUser)
 const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
 const isLocalUser = computed(() => !userStore.getOrigin)
-const hasTenantContext = computed(() => !!userStore.getTenantId)
-const currentTenantName = computed(() =>
-  hasTenantContext.value ? userStore.getTenantName : t('tenant.no_current_workspace')
-)
-const currentTenantRole = computed(() => formatTenantRole(userStore.getTenantRole))
 const tenantList = computed(() => userStore.getTenants)
+const adminTenantList = computed(() =>
+  tenantList.value.filter((tenant) => canManageTenant(tenant.role))
+)
+const hasAdminTenant = computed(() => adminTenantList.value.length > 0)
+const showAdminWorkspaceEntry = computed(
+  () => !isPlatformAdmin.value && hasAdminTenant.value
+)
+const showWorkspaceApplicationEntry = computed(
+  () => !isPlatformAdmin.value && !userStore.hasActiveWorkspace
+)
 
 const isClient = computed(() => {
   return !!wsCache.get('zhishu-platform-client')
@@ -86,14 +90,13 @@ const formatTenantRole = (role: string) => {
   return label === key ? role || t('common.tenant_role_member') : label
 }
 
+const canManageTenant = (role?: string) => {
+  return ['owner', 'admin'].includes(String(role || '').trim().toLowerCase())
+}
+
 const toSystem = () => {
   popoverRef.value.hide()
   router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/system/member-access')
-}
-
-const toMyWorkspaces = () => {
-  popoverRef.value?.hide?.()
-  router.push('/account/workspaces')
 }
 
 const toWorkspaceApplication = () => {
@@ -111,19 +114,21 @@ const loadTenants = async () => {
 
 const switchTenant = async (tenant: TenantInfo) => {
   const tenantId = String(tenant.id || '')
-  if (!tenantId || tenantId === String(userStore.getTenantId || '')) {
+  if (!tenantId) {
     return
   }
   tenantSwitchingId.value = tenantId
   try {
-    await userStore.switchTenant(tenantId)
-    datasourceContext.clear(true)
-    await datasourceContext.loadDatasources(true)
-    dashboardStore.canvasDataInit()
-    useEmitt().emitter.emit('datasource-context-change', null)
-    ElMessage.success(t('common.switch_success'))
+    if (tenantId !== String(userStore.getTenantId || '')) {
+      await userStore.switchTenant(tenantId)
+      datasourceContext.clear(true)
+      await datasourceContext.loadDatasources(true)
+      dashboardStore.canvasDataInit()
+      useEmitt().emitter.emit('datasource-context-change', null)
+      ElMessage.success(t('common.switch_success'))
+    }
     popoverRef.value?.hide?.()
-    router.push(isPlatformAdmin.value ? '/system/tenant' : '/chat/index')
+    router.push('/system/overview')
   } finally {
     tenantSwitchingId.value = ''
   }
@@ -188,33 +193,34 @@ onMounted(() => {
           <div :title="name" class="top ellipsis">{{ name }}</div>
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
+        <div v-if="isPlatformAdmin && !inSysmenu" class="popover-item" @click="toSystem">
+          <el-icon style="color: var(--theme-text-secondary)" size="16">
+            <icon_admin_outlined></icon_admin_outlined>
+          </el-icon>
+          <div class="datasource-name">{{ $t('common.platform_manage') }}</div>
+        </div>
         <el-popover
-          v-if="!isPlatformAdmin && tenantList.length > 1"
+          v-if="showAdminWorkspaceEntry && adminTenantList.length > 1"
           :teleported="false"
           popper-class="system-tenant"
           placement="right"
         >
           <template #reference>
-            <div class="popover-item tenant-trigger">
+            <div class="popover-item">
               <el-icon size="16">
                 <icon_member_outlined></icon_member_outlined>
               </el-icon>
-              <div class="tenant-summary">
-                <div :title="currentTenantName" class="tenant-name ellipsis">
-                  {{ currentTenantName }}
-                </div>
-                <div class="tenant-role">{{ currentTenantRole }}</div>
-              </div>
+              <div class="datasource-name">{{ $t('tenant.my_workspaces') }}</div>
               <el-icon class="right" size="16">
                 <icon_right_outlined></icon_right_outlined>
               </el-icon>
             </div>
           </template>
           <div class="tenant-popover">
-            <div class="tenant-title">{{ $t('common.switch_tenant') }}</div>
+            <div class="tenant-title">{{ $t('tenant.my_workspaces') }}</div>
             <el-scrollbar max-height="300px">
               <div
-                v-for="tenant in tenantList"
+                v-for="tenant in adminTenantList"
                 :key="tenant.id"
                 class="tenant-option"
                 :class="String(userStore.getTenantId) === String(tenant.id) && 'isActive'"
@@ -227,7 +233,9 @@ onMounted(() => {
                   <div :title="tenant.name || tenant.code" class="tenant-name ellipsis">
                     {{ tenant.name || tenant.code }}
                   </div>
-                  <div class="tenant-code ellipsis">{{ tenant.code }}</div>
+                  <div class="tenant-code ellipsis">
+                    {{ tenant.code }} · {{ formatTenantRole(tenant.role) }}
+                  </div>
                 </div>
                 <el-icon
                   v-if="tenantSwitchingId !== String(tenant.id)"
@@ -241,30 +249,20 @@ onMounted(() => {
           </div>
         </el-popover>
         <div
-          v-else-if="!isPlatformAdmin && (hasTenantContext || tenantList.length === 0)"
-          class="popover-item tenant-trigger static"
+          v-else-if="showAdminWorkspaceEntry && adminTenantList.length === 1"
+          class="popover-item"
+          @click="switchTenant(adminTenantList[0])"
         >
-          <el-icon size="16">
-            <icon_member_outlined></icon_member_outlined>
-          </el-icon>
-          <div class="tenant-summary">
-            <div :title="currentTenantName" class="tenant-name ellipsis">{{ currentTenantName }}</div>
-            <div v-if="hasTenantContext" class="tenant-role">{{ currentTenantRole }}</div>
-          </div>
-        </div>
-        <div v-if="isAdmin && !inSysmenu" class="popover-item" @click="toSystem">
-          <el-icon style="color: var(--theme-text-secondary)" size="16">
-            <icon_admin_outlined></icon_admin_outlined>
-          </el-icon>
-          <div class="datasource-name">{{ $t('common.system_manage') }}</div>
-        </div>
-        <div v-if="!isPlatformAdmin" class="popover-item" @click="toMyWorkspaces">
           <el-icon size="16">
             <icon_member_outlined></icon_member_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('tenant.my_workspaces') }}</div>
         </div>
-        <div v-if="!isPlatformAdmin" class="popover-item" @click="toWorkspaceApplication">
+        <div
+          v-if="showWorkspaceApplicationEntry"
+          class="popover-item"
+          @click="toWorkspaceApplication"
+        >
           <el-icon size="16">
             <icon_add_outlined></icon_add_outlined>
           </el-icon>
@@ -475,38 +473,6 @@ onMounted(() => {
       }
       .datasource-name {
         margin-left: 8px;
-      }
-
-      &.tenant-trigger {
-        height: 44px;
-        cursor: pointer;
-
-        &.static {
-          cursor: default;
-
-          &:hover {
-            background: transparent;
-          }
-        }
-      }
-
-      .tenant-summary {
-        min-width: 0;
-        margin-left: 8px;
-        flex: 1;
-
-        .tenant-name {
-          font-weight: 500;
-          font-size: 14px;
-          line-height: 20px;
-          color: var(--theme-text-primary);
-        }
-
-        .tenant-role {
-          font-size: 12px;
-          line-height: 16px;
-          color: var(--theme-text-secondary);
-        }
       }
 
       &.mr4 {

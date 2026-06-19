@@ -8,15 +8,22 @@
       <el-button secondary @click="refreshAll">{{ t('common.refresh') }}</el-button>
     </div>
 
-    <div class="workspace-grid">
+    <div class="workspace-grid joined-grid">
       <section class="workspace-section joined-section">
         <div class="section-head">
           <span>{{ t('tenant.joined_workspaces') }}</span>
-          <el-tag v-if="currentTenantName" size="small" type="info">
-            {{ t('tenant.current_workspace') }}: {{ currentTenantName }}
-          </el-tag>
+          <div v-if="currentTenantName" class="current-workspace-label">
+            <el-icon size="16">
+              <icon_member_outlined></icon_member_outlined>
+            </el-icon>
+            <span>{{ t('tenant.current_workspace') }}: {{ currentTenantName }}</span>
+          </div>
         </div>
-        <el-table :data="tenantList" class="workspace-table" style="width: 100%">
+        <el-table
+          :data="joinedWorkspacePageRows"
+          class="workspace-table joined-workspace-table"
+          style="width: 100%"
+        >
           <el-table-column prop="name" :label="t('tenant.name')" min-width="180" show-overflow-tooltip>
             <template #default="scope">
               <div class="workspace-name">{{ scope.row.name || scope.row.code }}</div>
@@ -28,18 +35,14 @@
               {{ formatTenantRole(scope.row.role) }}
             </template>
           </el-table-column>
-          <el-table-column fixed="right" :label="t('ds.actions')" width="190">
+          <el-table-column prop="join_time" :label="t('tenant.join_time')" width="180">
+            <template #default="scope">
+              {{ formatDateTime(scope.row.join_time) }}
+            </template>
+          </el-table-column>
+          <el-table-column fixed="right" :label="t('ds.actions')" width="120">
             <template #default="scope">
               <div class="workspace-actions">
-                <el-button
-                  v-if="String(scope.row.id) !== String(userStore.getTenantId)"
-                  text
-                  :loading="tenantSwitchingId === String(scope.row.id)"
-                  @click="switchTenant(scope.row)"
-                >
-                  {{ t('tenant.switch_workspace') }}
-                </el-button>
-                <span v-else class="active-text">{{ t('tenant.active_workspace') }}</span>
                 <el-tooltip
                   :disabled="normalizeTenantRole(scope.row.role) !== 'owner'"
                   :content="t('tenant.transfer_owner_before_leave')"
@@ -72,20 +75,50 @@
             </EmptyBackground>
           </template>
         </el-table>
+        <div class="table-pagination">
+          <el-pagination
+            v-model:current-page="joinedWorkspacePage.currentPage"
+            v-model:page-size="joinedWorkspacePage.pageSize"
+            :page-sizes="[5, 10, 20]"
+            :total="tenantList.length"
+            small
+            layout="total, sizes, prev, pager, next"
+          />
+        </div>
       </section>
 
     </div>
 
-    <div class="workspace-grid lower-grid">
-      <section class="workspace-section">
+    <div class="workspace-grid request-grid">
+      <section class="workspace-section request-section">
         <div class="section-head">
-          <span>{{ t('tenant.my_pending_applications') }}</span>
+          <span>{{ t('tenant.my_workspace_requests') }}</span>
+          <button type="button" class="join-workspace-link" @click="openJoinDialog">
+            <el-icon size="15">
+              <icon_add_outlined></icon_add_outlined>
+            </el-icon>
+            <span>{{ t('tenant.join_workspace') }}</span>
+          </button>
         </div>
-        <el-table :data="pendingApplications" class="workspace-table" style="width: 100%">
+        <el-table
+          :data="workspaceRequestPageRows"
+          class="workspace-table request-table"
+          style="width: 100%"
+        >
+          <el-table-column prop="requestType" :label="t('tenant.request_type')" width="150">
+            <template #default="scope">
+              <div class="request-type-cell">
+                <el-icon size="16">
+                  <icon_member_outlined></icon_member_outlined>
+                </el-icon>
+                <span>{{ scope.row.requestTypeLabel }}</span>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column prop="tenant_name" :label="t('tenant.name')" min-width="160" show-overflow-tooltip>
             <template #default="scope">
               <div>{{ scope.row.tenant_name || scope.row.tenant_code }}</div>
-              <div class="muted">{{ formatApplicationType(scope.row.application_type) }}</div>
+              <div class="muted">{{ scope.row.secondaryText }}</div>
             </template>
           </el-table-column>
           <el-table-column prop="requested_role" :label="t('tenant.requested_role')" width="140">
@@ -95,55 +128,34 @@
           </el-table-column>
           <el-table-column prop="status" :label="t('tenant.application_status')" width="120">
             <template #default="scope">
-              <el-tag size="small" :type="applicationStatusType(scope.row.status)">
-                {{ formatApplicationStatus(scope.row.status) }}
-              </el-tag>
+              <div class="request-status" :class="requestStatusClass(scope.row.status)">
+                <span class="status-icon" aria-hidden="true"></span>
+                <span>{{ formatApplicationStatus(scope.row.status) }}</span>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column fixed="right" :label="t('ds.actions')" width="120">
+          <el-table-column prop="joinTimeStatus" :label="t('tenant.join_time')" width="190">
             <template #default="scope">
-              <el-button
-                v-if="scope.row.status === 'pending'"
-                text
-                :loading="applicationCancelingId === String(scope.row.id)"
-                @click="cancelApplication(scope.row)"
-              >
-                {{ t('tenant.cancel_application') }}
-              </el-button>
-              <span v-else class="muted">-</span>
+              <div class="request-time-cell">
+                <div
+                  class="request-time-status"
+                  :class="scope.row.status === 'pending' && 'is-pending'"
+                >
+                  {{ formatRequestJoinStatus(scope.row) }}
+                </div>
+                <div class="request-time-detail">{{ formatRequestJoinTime(scope.row) }}</div>
+              </div>
             </template>
           </el-table-column>
-          <template #empty>
-            <span class="empty-text">{{ t('tenant.no_pending_applications') }}</span>
-          </template>
-        </el-table>
-      </section>
-
-      <section class="workspace-section">
-        <div class="section-head">
-          <span>{{ t('tenant.my_invitations') }}</span>
-        </div>
-        <el-table :data="pendingInvitations" class="workspace-table" style="width: 100%">
-          <el-table-column prop="tenant_name" :label="t('tenant.name')" min-width="160" show-overflow-tooltip>
+          <el-table-column fixed="right" :label="t('ds.actions')" width="170">
             <template #default="scope">
-              <div>{{ scope.row.tenant_name || scope.row.tenant_code }}</div>
-              <div class="muted">{{ scope.row.inviter_name || scope.row.inviter_account || '-' }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="requested_role" :label="t('tenant.requested_role')" width="140">
-            <template #default="scope">
-              {{ formatRequestedRole(scope.row.requested_role) }}
-            </template>
-          </el-table-column>
-          <el-table-column fixed="right" :label="t('ds.actions')" width="160">
-            <template #default="scope">
-              <div class="invitation-actions">
+              <div v-if="scope.row.requestType === 'invitation' && scope.row.status === 'pending'" class="request-actions">
                 <el-button
                   text
                   :loading="invitationRespondingId === String(scope.row.id)"
                   @click="respondInvitation(scope.row, true)"
                 >
-                  {{ t('tenant.accept_invitation') }}
+                  {{ t('tenant.approve_action') }}
                 </el-button>
                 <el-button
                   text
@@ -151,15 +163,34 @@
                   :disabled="invitationRespondingId === String(scope.row.id)"
                   @click="respondInvitation(scope.row, false)"
                 >
-                  {{ t('tenant.reject_invitation') }}
+                  {{ t('tenant.reject_action') }}
                 </el-button>
               </div>
+              <el-button
+                v-else-if="scope.row.status === 'pending'"
+                text
+                :loading="applicationCancelingId === String(scope.row.id)"
+                @click="cancelApplication(scope.row)"
+              >
+                {{ t('tenant.withdraw_action') }}
+              </el-button>
+              <span v-else class="muted">-</span>
             </template>
           </el-table-column>
           <template #empty>
-            <span class="empty-text">{{ t('tenant.no_invitations') }}</span>
+            <span class="empty-text">{{ t('tenant.no_workspace_requests') }}</span>
           </template>
         </el-table>
+        <div class="table-pagination">
+          <el-pagination
+            v-model:current-page="requestPage.currentPage"
+            v-model:page-size="requestPage.pageSize"
+            :page-sizes="[5, 10, 20]"
+            :total="workspaceRequestRows.length"
+            small
+            layout="total, sizes, prev, pager, next"
+          />
+        </div>
       </section>
     </div>
 
@@ -241,10 +272,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
+import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import {
   tenantApi,
@@ -256,14 +288,13 @@ import { useUserStore } from '@/stores/user'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { useEmitt } from '@/utils/useEmitt'
+import { formatTimestamp } from '@/utils/date'
 
-const router = useRouter()
 const { t } = useI18n()
 const userStore = useUserStore()
 const datasourceContext = useDatasourceContextStore()
 const dashboardStore = dashboardStoreWithOut()
 
-const tenantSwitchingId = ref('')
 const tenantLeavingId = ref('')
 const applicationCancelingId = ref('')
 const invitationRespondingId = ref('')
@@ -274,6 +305,14 @@ const joinFormRef = ref()
 const applications = shallowRef<TenantApplicationInfo[]>([])
 const invitations = shallowRef<TenantApplicationInfo[]>([])
 const tenantSearchResults = shallowRef<TenantSearchInfo[]>([])
+const joinedWorkspacePage = reactive({
+  currentPage: 1,
+  pageSize: 5,
+})
+const requestPage = reactive({
+  currentPage: 1,
+  pageSize: 5,
+})
 
 const joinForm = reactive({
   tenant_id: '',
@@ -285,10 +324,39 @@ const joinForm = reactive({
 
 const tenantList = computed(() => userStore.getTenants)
 const currentTenantName = computed(() => userStore.getTenantName || '')
-const pendingApplications = computed(() =>
-  applications.value.filter((item) => item.status === 'pending' && item.application_type !== 'invite')
+const joinedWorkspacePageRows = computed(() => {
+  const start = (joinedWorkspacePage.currentPage - 1) * joinedWorkspacePage.pageSize
+  return tenantList.value.slice(start, start + joinedWorkspacePage.pageSize)
+})
+const maxJoinedWorkspacePage = computed(() =>
+  Math.max(1, Math.ceil(tenantList.value.length / joinedWorkspacePage.pageSize))
 )
-const pendingInvitations = computed(() => invitations.value.filter((item) => item.status === 'pending'))
+const workspaceRequestRows = computed(() =>
+  [
+    ...applications.value
+      .filter((item) => item.application_type !== 'invite')
+      .map((item) => ({
+        ...item,
+        requestType: 'application',
+        requestTypeLabel: formatApplicationType(item.application_type),
+        secondaryText: formatApplicationStatus(item.status),
+      })),
+    ...invitations.value.map((item) => ({
+      ...item,
+      requestType: 'invitation',
+      application_type: item.application_type || 'invite',
+      requestTypeLabel: t('tenant.application_type_invite'),
+      secondaryText: item.inviter_name || item.inviter_account || '-',
+    })),
+  ]
+)
+const workspaceRequestPageRows = computed(() => {
+  const start = (requestPage.currentPage - 1) * requestPage.pageSize
+  return workspaceRequestRows.value.slice(start, start + requestPage.pageSize)
+})
+const maxRequestPage = computed(() =>
+  Math.max(1, Math.ceil(workspaceRequestRows.value.length / requestPage.pageSize))
+)
 const joinRules = computed(() => ({
   tenant_code: [{ required: true, message: t('tenant.code_required'), trigger: 'blur' }],
   requested_role: [{ required: true, message: t('tenant.request_role_required'), trigger: 'change' }],
@@ -323,11 +391,45 @@ const formatApplicationStatus = (status?: string) => {
   return label === key ? status || '-' : label
 }
 
-const applicationStatusType = (status?: string) => {
-  if (status === 'approved') return 'success'
-  if (status === 'rejected') return 'danger'
-  if (status === 'cancelled') return 'info'
-  return 'warning'
+const requestStatusClass = (status?: string) => {
+  if (status === 'approved') return 'status-approved'
+  if (status === 'rejected') return 'status-rejected'
+  if (status === 'cancelled') return 'status-cancelled'
+  return 'status-pending'
+}
+
+const normalizeTimestamp = (value?: number | string | null) => {
+  const timestamp = Number(value || 0)
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : 0
+}
+
+const formatDateTime = (value?: number | string | null) => {
+  const timestamp = normalizeTimestamp(value)
+  return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm') : '-'
+}
+
+const requestResolvedTime = (row: TenantApplicationInfo) =>
+  normalizeTimestamp(row.review_time) || normalizeTimestamp(row.update_time)
+
+const requestCreatedAt = (row: TenantApplicationInfo) => formatDateTime(row.create_time)
+
+const formatRequestJoinStatus = (row: TenantApplicationInfo & { requestType?: string }) => {
+  if (row.status === 'approved') return t('tenant.joined_workspace_status')
+  if (row.status === 'pending' && row.requestType === 'invitation') {
+    return t('tenant.invitation_waiting_response')
+  }
+  return formatApplicationStatus(row.status)
+}
+
+const formatRequestJoinTime = (row: TenantApplicationInfo & { requestType?: string }) => {
+  if (row.status === 'pending') {
+    const label = row.requestType === 'invitation' ? t('tenant.invited_at') : t('tenant.submitted_at')
+    return `${label} ${requestCreatedAt(row)}`
+  }
+  if (row.status === 'approved') {
+    return `${t('tenant.joined_at')} ${formatDateTime(requestResolvedTime(row) || row.update_time || row.create_time)}`
+  }
+  return `${t('tenant.resolved_at')} ${formatDateTime(requestResolvedTime(row))}`
 }
 
 const loadApplications = async () => {
@@ -341,6 +443,24 @@ const loadInvitations = async () => {
 const refreshAll = async () => {
   await Promise.all([userStore.loadTenants(true), loadApplications(), loadInvitations()])
 }
+
+watch(
+  () => [tenantList.value.length, joinedWorkspacePage.pageSize],
+  () => {
+    if (joinedWorkspacePage.currentPage > maxJoinedWorkspacePage.value) {
+      joinedWorkspacePage.currentPage = maxJoinedWorkspacePage.value
+    }
+  }
+)
+
+watch(
+  () => [workspaceRequestRows.value.length, requestPage.pageSize],
+  () => {
+    if (requestPage.currentPage > maxRequestPage.value) {
+      requestPage.currentPage = maxRequestPage.value
+    }
+  }
+)
 
 const cancelApplication = async (application: TenantApplicationInfo) => {
   applicationCancelingId.value = String(application.id)
@@ -424,25 +544,6 @@ const submitJoinApplication = () => {
   })
 }
 
-const switchTenant = async (tenant: TenantInfo) => {
-  const tenantId = String(tenant.id || '')
-  if (!tenantId || tenantId === String(userStore.getTenantId || '')) {
-    return
-  }
-  tenantSwitchingId.value = tenantId
-  try {
-    await userStore.switchTenant(tenantId)
-    datasourceContext.clear(true)
-    await datasourceContext.loadDatasources(true)
-    dashboardStore.canvasDataInit()
-    useEmitt().emitter.emit('datasource-context-change', null)
-    ElMessage.success(t('common.switch_success'))
-    router.push('/chat/index')
-  } finally {
-    tenantSwitchingId.value = ''
-  }
-}
-
 const leaveWorkspace = async (tenant: TenantInfo) => {
   const tenantId = String(tenant.id || '')
   if (!tenantId || normalizeTenantRole(tenant.role) === 'owner') {
@@ -493,7 +594,10 @@ onMounted(() => {
 .my-workspaces {
   width: 100%;
   height: 100%;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 
   .page-head {
     display: flex;
@@ -518,18 +622,27 @@ onMounted(() => {
   }
 
   .workspace-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 16px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
-  .lower-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin-top: 16px;
+  .joined-grid {
+    flex: 1 1 0;
+    margin-bottom: 16px;
+  }
+
+  .request-grid {
+    flex: 1 1 0;
+    min-height: 0;
   }
 
   .workspace-section {
     min-width: 0;
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     border: 1px solid #dee0e3;
     border-radius: 8px;
     background: #fff;
@@ -550,14 +663,63 @@ onMounted(() => {
     color: #1f2329;
   }
 
+  .current-workspace-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    color: #1f5fbf;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+
+    .ed-icon {
+      flex: 0 0 auto;
+      color: inherit;
+    }
+
+    svg [fill] {
+      fill: currentColor;
+    }
+
+    svg [stroke] {
+      stroke: currentColor;
+    }
+  }
+
+  .joined-section {
+    min-height: 0;
+  }
+
   .workspace-table {
-    max-height: 360px;
-    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+
+    :deep(.ed-table__inner-wrapper),
+    :deep(.ed-table__body-wrapper),
+    :deep(.ed-scrollbar),
+    :deep(.ed-scrollbar__wrap) {
+      min-height: 0;
+    }
+  }
+
+  .request-section {
+    min-height: 0;
+  }
+
+  .table-pagination {
+    flex: 0 0 48px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    border-top: 1px solid #eff0f1;
+    background: #fff;
   }
 
   .joined-empty {
-    min-height: 240px;
-    padding-top: 20px;
+    min-height: 220px;
+    padding-top: 12px;
   }
 
   .join-workspace-empty-button {
@@ -565,6 +727,36 @@ onMounted(() => {
     height: 36px;
     margin-top: 2px;
     font-weight: 500;
+  }
+
+  .join-workspace-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--ed-color-primary);
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+    cursor: pointer;
+
+    .ed-icon {
+      color: inherit;
+    }
+
+    svg [fill] {
+      fill: currentColor;
+    }
+
+    svg [stroke] {
+      stroke: currentColor;
+    }
+
+    &:hover {
+      color: #1d4ed8;
+    }
   }
 
   .workspace-name {
@@ -590,10 +782,154 @@ onMounted(() => {
     gap: 6px;
   }
 
-  .invitation-actions {
+  .request-type-cell,
+  .request-actions {
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+
+  .request-type-cell {
+    color: #1f2329;
+
+    .ed-icon {
+      color: #646a73;
+    }
+
+    svg [fill] {
+      fill: currentColor;
+    }
+
+    svg [stroke] {
+      stroke: currentColor;
+    }
+  }
+
+  .request-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+    color: #646a73;
+  }
+
+  .status-icon {
+    position: relative;
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    color: currentColor;
+  }
+
+  .status-pending {
+    color: #d46b08;
+
+    .status-icon {
+      border: 1.5px solid currentColor;
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 2.5px;
+        width: 1.5px;
+        height: 5px;
+        border-radius: 1px;
+        background: currentColor;
+      }
+
+      &::after {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 6.5px;
+        width: 4px;
+        height: 1.5px;
+        border-radius: 1px;
+        background: currentColor;
+      }
+    }
+  }
+
+  .status-approved {
+    color: #24714d;
+
+    .status-icon::before {
+      content: '';
+      position: absolute;
+      left: 2px;
+      top: 3px;
+      width: 9px;
+      height: 5px;
+      border-left: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: rotate(-45deg);
+    }
+  }
+
+  .status-rejected {
+    color: #c02a2a;
+
+    .status-icon::before,
+    .status-icon::after {
+      content: '';
+      position: absolute;
+      left: 2px;
+      top: 6px;
+      width: 10px;
+      height: 2px;
+      border-radius: 1px;
+      background: currentColor;
+    }
+
+    .status-icon::before {
+      transform: rotate(45deg);
+    }
+
+    .status-icon::after {
+      transform: rotate(-45deg);
+    }
+  }
+
+  .status-cancelled {
+    color: #646a73;
+
+    .status-icon::before {
+      content: '';
+      position: absolute;
+      left: 2px;
+      top: 6px;
+      width: 10px;
+      height: 2px;
+      border-radius: 1px;
+      background: currentColor;
+    }
+  }
+
+  .request-time-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .request-time-status {
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+    color: #646a73;
+
+    &.is-pending {
+      color: #d46b08;
+    }
+  }
+
+  .request-time-detail {
+    font-size: 12px;
+    line-height: 18px;
+    color: #8f959e;
   }
 
   .tenant-search-results {
@@ -655,10 +991,6 @@ onMounted(() => {
 
 @media (max-width: 1200px) {
   .my-workspaces {
-    .workspace-grid,
-    .lower-grid {
-      grid-template-columns: 1fr;
-    }
   }
 }
 </style>

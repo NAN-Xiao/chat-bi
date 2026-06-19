@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
@@ -12,6 +13,7 @@ os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - 
 from apps.system.api import tenant as tenant_api
 from apps.system.crud.tenant_usage import (
     check_tenant_usage_quota,
+    list_tenant_usage_by_user,
     list_tenant_usage_daily,
     record_tenant_usage,
     token_total,
@@ -31,6 +33,46 @@ def _engine_with_usage_and_tenant_tables():
     engine = create_engine("sqlite://")
     TenantModel.__table__.create(engine)
     TenantUsageDailyModel.__table__.create(engine)
+    return engine
+
+
+def _engine_with_chat_usage_tables():
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE sys_user (id INTEGER PRIMARY KEY, account TEXT, name TEXT)"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE chat_record (
+                    id INTEGER PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL,
+                    chat_id INTEGER,
+                    create_by INTEGER,
+                    create_time DATETIME,
+                    finish_time DATETIME,
+                    engine_type TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE chat_log (
+                    id INTEGER PRIMARY KEY,
+                    tenant_id INTEGER NOT NULL,
+                    type TEXT,
+                    operate TEXT,
+                    pid INTEGER,
+                    token_usage TEXT,
+                    local_operation BOOLEAN DEFAULT 0,
+                    error BOOLEAN DEFAULT 0,
+                    start_time DATETIME,
+                    finish_time DATETIME
+                )
+                """
+            )
+        )
     return engine
 
 
@@ -83,6 +125,50 @@ def test_token_total_accepts_common_usage_shapes():
     assert token_total(7) == 7
     assert token_total({"input_tokens": 1}) == 0
     assert token_total(None) == 0
+
+
+def test_tenant_usage_by_user_scopes_current_workspace_only():
+    engine = _engine_with_chat_usage_tables()
+
+    with Session(engine) as session:
+        session.exec(text("INSERT INTO sys_user (id, account, name) VALUES (7, 'alice', 'Alice')"))
+        session.exec(
+            text(
+                """
+                INSERT INTO chat_record (id, tenant_id, chat_id, create_by, create_time, finish_time, engine_type)
+                VALUES
+                    (101, 200, 1, 7, '2026-06-18 09:00:00', '2026-06-18 09:01:00', 'postgres'),
+                    (102, 300, 2, 7, '2026-06-18 10:00:00', '2026-06-18 10:01:00', 'postgres')
+                """
+            )
+        )
+        session.exec(
+            text(
+                """
+                INSERT INTO chat_log (
+                    id, tenant_id, type, operate, pid, token_usage, local_operation, error, start_time, finish_time
+                )
+                VALUES
+                    (201, 200, '0', '0', 101, '{"total_tokens": 120}', 0, 0, '2026-06-18 09:00:00', '2026-06-18 09:01:00'),
+                    (202, 300, '0', '0', 102, '{"total_tokens": 900}', 0, 0, '2026-06-18 10:00:00', '2026-06-18 10:01:00')
+                """
+            )
+        )
+        session.commit()
+
+        rows = list_tenant_usage_by_user(
+            session,
+            tenant_id=200,
+            start_date="2026-06-18",
+            end_date="2026-06-18",
+        )
+
+    assert len(rows) == 1
+    assert rows[0]["tenant_id"] == 200
+    assert rows[0]["user_id"] == 7
+    assert rows[0]["user_account"] == "alice"
+    assert rows[0]["total_tokens"] == 120
+    assert rows[0]["request_count"] == 1
 
 
 def test_usage_quota_blocks_when_daily_action_limit_is_reached(monkeypatch):
