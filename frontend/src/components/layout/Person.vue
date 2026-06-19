@@ -40,6 +40,7 @@ const name = computed(() => userStore.getName)
 const account = computed(() => userStore.getAccount)
 const currentLanguage = computed(() => userStore.getLanguage)
 const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
+const isPlatformWorkspaceDelegate = computed(() => userStore.isPlatformWorkspaceDelegate)
 const isLocalUser = computed(() => !userStore.getOrigin)
 const tenantList = computed(() => userStore.getTenants)
 const adminTenantList = computed(() =>
@@ -95,7 +96,13 @@ const canManageTenant = (role?: string) => {
 }
 
 const toSystem = () => {
-  popoverRef.value.hide()
+  popoverRef.value?.hide?.()
+  if (isPlatformWorkspaceDelegate.value) {
+    userStore.exitPlatformWorkspaceDelegate().finally(() => {
+      router.push('/system/tenant')
+    })
+    return
+  }
   router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/system/member-access')
 }
 
@@ -193,7 +200,11 @@ onMounted(() => {
           <div :title="name" class="top ellipsis">{{ name }}</div>
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
-        <div v-if="isPlatformAdmin && !inSysmenu" class="popover-item" @click="toSystem">
+        <div
+          v-if="isPlatformAdmin && (!inSysmenu || isPlatformWorkspaceDelegate)"
+          class="popover-item"
+          @click="toSystem"
+        >
           <el-icon style="color: var(--theme-text-secondary)" size="16">
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>

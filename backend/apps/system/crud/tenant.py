@@ -1052,18 +1052,29 @@ def resolve_current_tenant(
     user,
     *,
     requested_tenant_id: int | None = None,
+    platform_workspace_delegate: bool = False,
 ) -> TenantContext | None:
     if not user or not getattr(user, "id", None):
         raise PermissionError("Authenticated user is required to resolve tenant")
 
     ensure_default_tenant(session)
-    if requested_tenant_id == DEFAULT_TENANT_ID and not _user_is_system_admin(user):
+    user_is_platform_admin = _user_is_platform_admin(user)
+    if requested_tenant_id == DEFAULT_TENANT_ID and not user_is_platform_admin:
         requested_tenant_id = None
     if requested_tenant_id:
         tenant = session.get(TenantModel, requested_tenant_id)
-        if not tenant or tenant.status != 1:
+        if not tenant or (not user_is_platform_admin and tenant.status != 1):
             raise PermissionError("Tenant is disabled or does not exist")
-        if _user_is_system_admin(user) or user_belongs_to_tenant(session, int(user.id), requested_tenant_id):
+        if getattr(tenant, "status", 1) == TENANT_STATUS_DELETED:
+            raise PermissionError("Tenant is disabled or does not exist")
+        if user_is_platform_admin and platform_workspace_delegate:
+            return TenantContext(
+                id=int(tenant.id),
+                code=tenant.code,
+                name=tenant.name,
+                role=TENANT_ROLE_OWNER,
+            )
+        if user_is_platform_admin or user_belongs_to_tenant(session, int(user.id), requested_tenant_id):
             membership = session.exec(
                 select(TenantUserModel).where(
                     TenantUserModel.tenant_id == requested_tenant_id,
@@ -1081,7 +1092,7 @@ def resolve_current_tenant(
 
     memberships = list_user_tenant_memberships(session, int(user.id))
     if not memberships:
-        if _user_is_system_admin(user):
+        if user_is_platform_admin:
             tenant = ensure_default_tenant(session)
             return TenantContext(
                 id=int(tenant.id),
@@ -1100,7 +1111,7 @@ def resolve_current_tenant(
     )
 
 
-def attach_tenant_context(user, tenant: TenantContext | None):
+def attach_tenant_context(user, tenant: TenantContext | None, *, platform_workspace_delegate: bool = False):
     user_copy = user.model_copy(deep=True) if hasattr(user, "model_copy") else user
     is_platform_admin = _user_is_platform_admin(user_copy)
     user_copy.global_role = "platform_admin" if is_platform_admin else "normal_user"
@@ -1118,6 +1129,13 @@ def attach_tenant_context(user, tenant: TenantContext | None):
     user_copy.tenant_name = tenant.name
     user_copy.tenant_role = tenant.role
     user_copy.workspace_role = tenant.role
-    user_copy.has_workspace = not is_platform_admin
-    user_copy.workspace_status = "platform_admin" if is_platform_admin else "active"
+    delegated = bool(is_platform_admin and platform_workspace_delegate)
+    user_copy.has_workspace = delegated or not is_platform_admin
+    user_copy.workspace_status = (
+        "platform_workspace_delegate"
+        if delegated
+        else "platform_admin"
+        if is_platform_admin
+        else "active"
+    )
     return user_copy

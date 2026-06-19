@@ -1,6 +1,7 @@
 import json
 import os
 import datetime
+import asyncio
 from types import SimpleNamespace
 
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
@@ -8,6 +9,7 @@ os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - 
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
 
+from apps.chat.api import chat as chat_api
 from apps.chat.curd import chat as chat_crud
 from apps.chat.models.chat_model import Chat, ChatRecord
 from apps.chat.task.llm import format_chart_data_for_agent_prompt
@@ -223,16 +225,9 @@ def test_db_permission_errors_are_detected_and_warning_is_preserved():
     assert result["agent_guidance"] == payload["agent_guidance"]
 
 
-def test_chat_cached_data_is_rechecked_against_current_permissions(monkeypatch):
+def test_chat_cached_data_is_rechecked_against_current_permissions():
     engine = _engine_with_chat_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)
-    exec_calls = []
-    monkeypatch.setattr(
-        chat_crud,
-        "exec_sql",
-        lambda ds, sql, origin_column=False: exec_calls.append(sql)
-        or {"fields": ["amount"], "data": [{"amount": 99}]},
-    )
 
     with Session(engine) as session:
         _insert_permission_fixture(session)
@@ -248,21 +243,15 @@ def test_chat_cached_data_is_rechecked_against_current_permissions(monkeypatch):
 
         result = chat_crud.get_chart_data_with_user(session, current_user, 1)
 
-    assert exec_calls == []
     assert result["status"] == "failed"
     assert result["error_type"] == "permission_denied"
     assert result["message"] == "SQL 超出当前数据权限范围"
     assert "amount" not in result["message"]
 
 
-def test_chat_history_scrubs_cached_artifacts_after_permission_change(monkeypatch):
+def test_chat_history_scrubs_cached_artifacts_after_permission_change():
     engine = _engine_with_chat_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)
-    monkeypatch.setattr(
-        chat_crud,
-        "exec_sql",
-        lambda ds, sql, origin_column=False: {"fields": ["amount"], "data": [{"amount": 99}]},
-    )
 
     with Session(engine) as session:
         _insert_permission_fixture(session)
@@ -298,6 +287,44 @@ def test_chat_history_scrubs_cached_artifacts_after_permission_change(monkeypatc
     assert record["data"]["fields"] == []
     assert record["data"]["data"] == []
     assert record["data"]["error_type"] == "permission_denied"
+
+
+def test_chat_excel_export_rechecks_current_permissions():
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    trans = lambda key: key
+
+    with Session(engine) as session:
+        _insert_permission_fixture(session)
+        session.add(ChatRecord(
+            id=1,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            sql="select amount from orders",
+            chart=json.dumps({"axis": {"y": {"name": "amount", "value": "amount"}}}),
+            data=json.dumps({"fields": ["amount"], "data": [{"amount": 99}]}),
+        ))
+        session.commit()
+
+        caught = None
+        try:
+            asyncio.run(
+                chat_api.export_excel.__wrapped__(
+                    session=session,
+                    current_user=current_user,
+                    chat_record_id=1,
+                    chat_id=1,
+                    trans=trans,
+                )
+            )
+        except chat_api.HTTPException as exc:
+            caught = exc
+
+    assert caught is not None
+    assert caught.status_code == 500
+    assert caught.detail == "SQL 超出当前数据权限范围"
+    assert "amount" not in caught.detail
 
 
 def test_normal_user_chat_log_history_hides_internal_messages():
@@ -359,14 +386,9 @@ def test_chat_detail_requires_current_tenant():
             raise AssertionError("cross-tenant chat detail should be denied")
 
 
-def test_chat_record_data_requires_current_tenant(monkeypatch):
+def test_chat_record_data_requires_current_tenant():
     engine = _engine_with_chat_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=2)
-    monkeypatch.setattr(
-        chat_crud,
-        "exec_sql",
-        lambda ds, sql, origin_column=False: {"fields": ["amount"], "data": [{"amount": 99}]},
-    )
 
     with Session(engine) as session:
         _insert_permission_fixture(session)

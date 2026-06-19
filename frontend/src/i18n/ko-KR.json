@@ -67,6 +67,8 @@
     "stop_service_second_confirm": "\"{msg}\" 조직의 서비스 중지를 다시 확인해 주세요. 이 작업은 조직 사용자 접근에 즉시 영향을 줍니다.",
     "confirm_stop_service": "중지 확인",
     "restore_service_confirm": "\"{msg}\" 조직의 서비스를 복구하시겠습니까? 복구 후 해당 조직 사용자는 다시 업무 공간에 들어갈 수 있습니다.",
+    "enter_workspace_admin": "워크스페이스 관리로 이동",
+    "return_to_platform": "플랫폼 관리로 돌아가기",
     "delete_tenant": "조직 삭제",
     "delete_tenant_confirm": "\"{msg}\" 조직을 삭제하시겠습니까? 먼저 서비스를 중지해야 하며, 삭제 후 플랫폼 운영 목록에서 제거됩니다.",
     "delete_tenant_code_confirm": "삭제를 확인하려면 조직 코드 \"{code}\"를 입력하세요.",

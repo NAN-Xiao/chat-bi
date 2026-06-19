@@ -216,18 +216,60 @@ logrotate -f /etc/logrotate.d/zhishu
 
 ## 上线验收
 
-- `GET /health` 返回 `200`。
-- `GET /ready` 返回 `200`，且 cache 为 Redis `ok`。
-- `GET /api/v1/system/tasks/health` 由系统管理员访问时返回 pending/processing/registered tasks。
+上线前必须留存验收记录，包括执行人、执行时间、环境标识、版本号、命令输出或截图、失败项处理结论。
+任一 P0/P1 项未通过时不得对企业客户开放生产流量。
+
+### P0 发布门禁
+
+- 后端测试：`python -m pytest -q` 通过；前端：`npm run build` 通过。
+- 依赖审计：`npm audit --omit=dev` 和 `pip-audit` 无高危生产阻断漏洞。
+- 生产配置：`APP_ENV=production python scripts/production_check.py` 返回 `Production settings check passed.`。
+- 数据库迁移：`APP_ENV=production python -m scripts.db_migrate` 或 `systemctl start zhishu-migrate` 在启动 API 副本前成功完成，且 `AUTO_RUN_MIGRATIONS=false`。
+- 健康检查：`GET /health` 返回 `200`；`GET /ready` 返回 `200`，且 cache 为 Redis `ok`。
+- Redis：`CACHE_TYPE=redis`，登录限流、租户限流、任务队列和任务状态均使用 Redis，不允许生产使用进程内存兜底。
+- 密钥：`SECRET_KEY`、`SENSITIVE_CONFIG_ENCRYPTION_KEY`、数据库密码、Redis 密码、模型 API Key 均来自生产环境变量，且不是开发默认值。
+- 敏感字段：管理员新建或更新数据源/大模型配置后，数据库中对应敏感字段以 `fernet:v1:` 开头。
+- Nginx/TLS：外部只暴露 `80/443`，TLS 证书有效，HTTP 自动跳转 HTTPS，后端 API 副本只监听内网或受控网段。
+
+### P0 数据与权限验收
+
+- 两个测试租户分别创建用户、数据源、术语、SQL 示例、对话、看板和自定义 Agent；任一普通用户不能列出、读取、导出或执行另一租户资产。
+- 普通用户不能看到未授权数据源、连接配置、其他用户任务、其他用户对话和其他租户用量。
+- Smart Q&A、仪表盘加载/预览、分析助手、推荐问题、自定义 Agent 相关入口都必须先验证当前租户和数据源授权，再读取 schema、语义层、样例数据或执行 SQL。
+- SQL 执行入口必须经过统一查询执行器或等效的 `check_sql_read`、数据源访问、表权限、列权限、行权限校验；不得从用户可达入口直接调用底层 `exec_sql`。
+- 字段权限回归：给普通用户隐藏一个敏感字段后，历史 ChatBI 记录、实时图表刷新、仪表盘图表、分析助手查询和 Excel 导出都不得返回该字段或旧缓存数据。
+- 表权限回归：移除用户对某张表的访问后，已保存 SQL、仪表盘图表、分享图表和历史对话都应返回权限错误，而不是继续展示缓存数据。
+- 行权限回归：配置一条行级过滤规则后，Smart Q&A、仪表盘和分析助手返回行数必须与手工加过滤条件的 SQL 一致。
+- SQL 安全回归：`INSERT/UPDATE/DELETE/DROP/ALTER/COPY/CALL/SET`、多语句写入、危险函数和无法解析表范围的 SQL 都必须被拒绝。
+
+### P1 多租户商业化验收
+
 - `GET /api/v1/system/tenant/usage` 由平台管理员或企业管理员访问时返回租户日用量记录，普通成员不能跨租户查看。
+- 产生一次 ChatBI、分析助手和任务队列调用后，`sys_tenant_usage_daily` 中出现对应租户的日聚合记录。
+- 将测试租户套餐限额调低后，超额请求返回 `quota_exceeded`；其他租户仍可正常使用。
+- 单个租户超过 ChatBI/分析助手/推荐问题每分钟限额时被限流，其他租户仍可正常请求。
+- 平台管理员把租户设置为 `suspended` 或 `cancelled` 后，高消耗能力被拦截；`past_due` 仅作为运营状态，不自动停服。
+- 企业邮箱域从 `pending` 到 `verified` 后，同域邮箱用户登录会自动加入该租户；`disabled` 域不会自动归属。
+- 租户 IP 白名单会阻止非白名单来源；强制 SSO 会阻止本地账号；平台管理员支持流程不被阻断。
+- 租户注销、数据导出、数据删除请求从提交到审核到完成均有审计记录，且完成后不会自动停用租户或自动删除业务表。
+
+### P1 高可用与运维验收
+
+- Nginx upstream 至少配置两个 backend，连续访问 `/ready` 可看到请求被健康副本承接。
+- 停掉任意一个 backend 副本，Nginx 仍能把请求转到其他健康副本。
+- `GET /api/v1/system/tasks/health` 由系统管理员访问时返回 pending/processing/registered tasks。
+- 创建一个 `system.ping` 任务，worker 能消费并返回 `succeeded`。
 - 停掉一个 worker 后，超时任务能恢复到 pending 或最终 failed。
-- 普通用户无法访问未授权数据源、连接配置、其他用户任务。
-- 单个租户超过 ChatBI/分析助手限额时被限流，其他租户仍可正常请求。
-- 依赖审计无生产阻断漏洞。
-- `APP_ENV=production python scripts/production_check.py` 返回 `Production settings check passed.`
-- `APP_ENV=production python -m scripts.db_migrate` 或 `systemctl start zhishu-migrate` 在启动 API 副本前成功完成。
-- 管理员新建或更新数据源/大模型配置后，数据库中对应敏感字段以 `fernet:v1:` 开头。
+- 配置 `TASK_QUEUE_MAX_PENDING_PER_TENANT` 和 `TASK_QUEUE_MAX_PROCESSING_PER_TENANT`，验证单个租户不能占满队列或 worker。
+- PostgreSQL 备份文件实际生成，`.sha256` 校验通过，并恢复到非生产库成功。
 - `logrotate -d /etc/logrotate.d/zhishu` 通过，日志和备份目录有磁盘使用率告警。
+- 应用、Nginx、Redis、PostgreSQL、worker 的日志纳入采集；至少配置 5xx、登录失败激增、Redis 不可用、worker 积压、磁盘空间、备份失败告警。
+
+### P2 体验与限制验收
+
+- 前端静态资源走生产 Nginx 路径，刷新深链页面不 404，上传/下载/导出路径可用。
+- 大文件上传超过限制时返回明确错误，合法 Excel/CSV 导入文件按租户目录隔离。
+- 当前暂不承诺跨 Region 主备、多活、Kubernetes、Helm、对象存储和多机器共享文件目录；如生产部署跨机器，必须先补共享存储或对象存储方案。
 
 ## 暂不纳入
 

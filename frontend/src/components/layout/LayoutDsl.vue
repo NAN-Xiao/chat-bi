@@ -68,11 +68,21 @@ const handleFoldExpand = () => {
 }
 
 const toProjectList = () => {
+  if (userStore.isPlatformWorkspaceDelegate) {
+    userStore.exitPlatformWorkspaceDelegate().finally(() => {
+      router.push('/system/tenant')
+    })
+    return
+  }
   router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/chat/index')
 }
 
 const toChatIndex = () => {
-  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/chat/index')
+  router.push(
+    userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+      ? '/system/tenant'
+      : '/chat/index'
+  )
 }
 
 const route = useRoute()
@@ -123,7 +133,7 @@ onMounted(() => {
                 alt=""
               />
               <span v-if="!collapse">{{
-                userStore.isSystemAdminUser
+                userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
                   ? $t('common.platform_manage')
                   : $t('tenant.management')
               }}</span>
@@ -264,7 +274,7 @@ onMounted(() => {
       <Menu :collapse="collapseCopy"></Menu>
       <div class="bottom">
         <div
-          v-if="showSysmenu && !userStore.isSystemAdminUser"
+          v-if="showSysmenu && (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate)"
           class="back-to-project"
           :class="collapse && 'collapse'"
           @click="toProjectList"
@@ -272,7 +282,13 @@ onMounted(() => {
           <el-icon size="18">
             <icon_moments_categories_outlined></icon_moments_categories_outlined>
           </el-icon>
-          {{ collapse ? '' : $t('project.return_to_project') }}
+          {{
+            collapse
+              ? ''
+              : userStore.isPlatformWorkspaceDelegate
+                ? $t('tenant.return_to_platform')
+                : $t('project.return_to_project')
+          }}
         </div>
         <div class="side-account-area">
           <Person :collapse="collapse" :in-sysmenu="showSysmenu"></Person>

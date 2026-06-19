@@ -67,6 +67,8 @@
     "stop_service_second_confirm": "Confirm again to stop service for \"{msg}\". This will affect organization users immediately.",
     "confirm_stop_service": "Confirm stop",
     "restore_service_confirm": "Restore service for \"{msg}\"? Users in this organization can enter the workspace again.",
+    "enter_workspace_admin": "Enter workspace admin",
+    "return_to_platform": "Return to platform",
     "delete_tenant": "Delete organization",
     "delete_tenant_confirm": "Delete organization \"{msg}\"? Service must be stopped first. The organization will be removed from the platform operations list.",
     "delete_tenant_code_confirm": "Enter organization code \"{code}\" to confirm deletion.",

@@ -19,7 +19,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
-from apps.system.crud.user import is_platform_admin
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -63,7 +63,7 @@ def _current_tenant_id(current_user: CurrentUser) -> int:
 
 
 def _can_manage_all_assistants(current_user: CurrentUser) -> bool:
-    return is_platform_admin(current_user)
+    return is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
 
 
 def _tenant_scoped_assistant_statement(statement, current_user: CurrentUser):

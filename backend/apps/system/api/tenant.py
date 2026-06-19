@@ -62,6 +62,7 @@ from apps.system.crud.user import (
     check_email_format,
     is_high_privilege_user,
     is_platform_admin,
+    is_platform_workspace_delegate,
     is_super_admin,
 )
 from apps.system.models.system_model import AssistantModel
@@ -211,15 +212,29 @@ def _require_platform_admin(current_user: CurrentUser) -> None:
 
 
 def _require_current_tenant_admin(current_user: CurrentUser) -> None:
+    if is_platform_admin(current_user):
+        if is_platform_workspace_delegate(current_user):
+            return
+        raise HTTPException(status_code=403, detail="Only tenant admin can manage tenant members")
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
-    if not is_super_admin(current_user) and tenant_role not in TENANT_ADMIN_ROLES:
+    if tenant_role not in TENANT_ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Only tenant admin can manage tenant members")
 
 
 def _require_current_tenant_owner(current_user: CurrentUser) -> None:
-    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
-    if not is_super_admin(current_user) and tenant_role != TENANT_ROLE_OWNER:
+    if is_platform_admin(current_user):
+        if is_platform_workspace_delegate(current_user):
+            return
         raise HTTPException(status_code=403, detail="Only tenant owner can perform this operation")
+    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+    if tenant_role != TENANT_ROLE_OWNER:
+        raise HTTPException(status_code=403, detail="Only tenant owner can perform this operation")
+
+
+def _non_platform_member_filter(session: SessionDep):
+    if not _table_exists(session, UserModel.__tablename__):
+        return []
+    return [UserModel.system_role.not_in(("system_admin", "collab_admin"))]
 
 
 def _table_exists(session: SessionDep, table_name: str) -> bool:
@@ -261,6 +276,7 @@ def _tenant_owner_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, d
             TenantUserModel.role == TENANT_ROLE_OWNER,
             TenantUserModel.status == 1,
             UserModel.status == 1,
+            *_non_platform_member_filter(session),
         )
         .order_by(TenantUserModel.is_primary.desc(), UserModel.account)
     ).all()
@@ -303,14 +319,21 @@ def _tenant_member_stats_map(session: SessionDep, tenant_ids: list[int]) -> dict
     ids = [int(tenant_id) for tenant_id in tenant_ids]
     if not ids:
         return {}
-    rows = session.exec(
+    statement = (
         select(TenantUserModel.tenant_id, TenantUserModel.role, func.count())
         .where(
             TenantUserModel.tenant_id.in_(ids),
             TenantUserModel.status == 1,
         )
         .group_by(TenantUserModel.tenant_id, TenantUserModel.role)
-    ).all()
+    )
+    if _table_exists(session, UserModel.__tablename__):
+        statement = (
+            statement
+            .join(UserModel, UserModel.id == TenantUserModel.user_id)
+            .where(UserModel.system_role.not_in(("system_admin", "collab_admin")))
+        )
+    rows = session.exec(statement).all()
     result: dict[int, dict] = {}
     for tenant_id, role, count in rows:
         tenant_stats = result.setdefault(
@@ -752,7 +775,11 @@ async def tenant_usage(
     metric: str | None = Query(default=None, max_length=128),
     limit: int = Query(500, ge=1, le=5000),
 ):
-    if is_platform_admin(current_user):
+    if is_platform_workspace_delegate(current_user):
+        scoped_tenant_id = int(current_tenant.id)
+        if tenant_id is not None and int(tenant_id) != scoped_tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant usage access denied")
+    elif is_platform_admin(current_user):
         scoped_tenant_id = tenant_id
     else:
         _require_current_tenant_admin(current_user)
@@ -780,7 +807,11 @@ async def tenant_usage_by_user(
     end_date: str | None = Query(default=None, max_length=10),
     limit: int = Query(100, ge=1, le=500),
 ):
-    if is_platform_admin(current_user):
+    if is_platform_workspace_delegate(current_user):
+        scoped_tenant_id = int(current_tenant.id)
+        if tenant_id is not None and int(tenant_id) != scoped_tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant usage access denied")
+    elif is_platform_admin(current_user):
         scoped_tenant_id = tenant_id if tenant_id is not None else int(current_tenant.id)
     else:
         _require_current_tenant_admin(current_user)
@@ -804,7 +835,7 @@ async def tenant_overview(
     current_tenant: CurrentTenant,
     days: int = Query(7, ge=7, le=30),
 ):
-    if is_platform_admin(current_user):
+    if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user):
         raise HTTPException(status_code=403, detail="Platform admin does not have tenant overview")
     _require_current_tenant_admin(current_user)
 
@@ -816,14 +847,21 @@ async def tenant_overview(
     start_datetime = datetime.combine(start_date, datetime.min.time())
     previous_start_datetime = start_datetime - timedelta(days=days)
 
-    member_total = session.exec(
+    member_statement = (
         select(func.count())
         .select_from(TenantUserModel)
         .where(
             TenantUserModel.tenant_id == tenant_id,
             TenantUserModel.status == 1,
         )
-    ).one() or 0
+    )
+    if _table_exists(session, UserModel.__tablename__):
+        member_statement = (
+            member_statement
+            .join(UserModel, UserModel.id == TenantUserModel.user_id)
+            .where(UserModel.system_role.not_in(("system_admin", "collab_admin")))
+        )
+    member_total = session.exec(member_statement).one() or 0
 
     pending_member_application_count = session.exec(
         select(func.count())
@@ -902,14 +940,21 @@ async def tenant_overview(
             )
         ).one() or 0
 
-    role_rows = session.exec(
+    role_statement = (
         select(TenantUserModel.role, func.count())
         .where(
             TenantUserModel.tenant_id == tenant_id,
             TenantUserModel.status == 1,
         )
         .group_by(TenantUserModel.role)
-    ).all()
+    )
+    if _table_exists(session, UserModel.__tablename__):
+        role_statement = (
+            role_statement
+            .join(UserModel, UserModel.id == TenantUserModel.user_id)
+            .where(UserModel.system_role.not_in(("system_admin", "collab_admin")))
+        )
+    role_rows = session.exec(role_statement).all()
 
     role_distribution = [
         TenantOverviewRoleItemDTO(role=normalize_tenant_role(role), count=int(count or 0))
@@ -1087,6 +1132,7 @@ async def tenant_member_list(
         .where(
             TenantUserModel.tenant_id == int(current_tenant.id),
             TenantUserModel.status == 1,
+            *_non_platform_member_filter(session),
         )
         .order_by(TenantUserModel.role, UserModel.account)
     )
@@ -1898,7 +1944,11 @@ async def tenant_data_request_list(
     status: str | None = None,
     tenant_id: int | None = None,
 ):
-    if is_platform_admin(current_user):
+    if is_platform_workspace_delegate(current_user):
+        scoped_tenant_id = int(current_tenant.id)
+        if tenant_id is not None and int(tenant_id) != scoped_tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant data request access denied")
+    elif is_platform_admin(current_user):
         scoped_tenant_id = tenant_id
     else:
         _require_current_tenant_admin(current_user)

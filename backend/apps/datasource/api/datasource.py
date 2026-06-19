@@ -40,7 +40,7 @@ from apps.datasource.crud.binding import bind_datasource_to_tenant
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_platform_admin, is_system_admin
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.models.tenant import TenantModel
 from apps.system.schemas.business_access import (
     ensure_chatbi_business_user,
@@ -83,7 +83,10 @@ def _tenant_excel_path(current_user: CurrentUser) -> str:
 
 def _can_manage_tenant_projects(user: CurrentUser) -> bool:
     tenant_role = normalize_tenant_role(getattr(user, "tenant_role", None))
-    return not is_platform_admin(user) and (is_system_admin(user) or tenant_role in TENANT_ADMIN_ROLES)
+    return (
+        is_platform_workspace_delegate(user)
+        or (not is_platform_admin(user) and (is_system_admin(user) or tenant_role in TENANT_ADMIN_ROLES))
+    )
 
 
 def _require_platform_project_admin(user: CurrentUser) -> None:
@@ -190,7 +193,7 @@ def _datasource_list_items(
         role = get_datasource_role(session, user, datasource.id)
         datasource_tenant_id = int(datasource.tenant_id) if datasource.tenant_id else None
         bound_tenant_id = datasource_tenant_id if datasource_tenant_id != DEFAULT_TENANT_ID else None
-        can_platform_manage_project = is_platform_admin(user)
+        can_platform_manage_project = is_platform_admin(user) and not is_platform_workspace_delegate(user)
         can_manage_tenant_projects = _can_manage_tenant_projects(user)
         item = {
             "id": datasource.id,
@@ -328,12 +331,12 @@ async def get_datasource(
     if datasource is None:
         return None
     data = datasource.model_dump()
-    if is_platform_admin(user):
+    if is_platform_admin(user) and not is_platform_workspace_delegate(user):
         data["configuration"] = decrypt_datasource_configuration_for_output(data.get("configuration"))
     else:
         data["configuration"] = None
     data["tenant_name"] = _tenant_name_map(session, [datasource.tenant_id]).get(int(datasource.tenant_id or 0))
-    data["can_manage_metadata"] = is_platform_admin(user)
+    data["can_manage_metadata"] = is_platform_admin(user) and not is_platform_workspace_delegate(user)
     return data
 
 

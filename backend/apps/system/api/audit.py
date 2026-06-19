@@ -8,7 +8,7 @@ from sqlalchemy import func, or_
 from sqlmodel import select
 
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
-from apps.system.crud.user import is_super_admin
+from apps.system.crud.user import is_platform_workspace_delegate, is_super_admin
 from apps.system.models.tenant import TenantUserModel
 from apps.system.models.user import UserModel
 from apps.system.schemas.permission import AppPermission, require_permissions
@@ -78,7 +78,7 @@ def _current_tenant_id(current_user: CurrentUser) -> int:
 
 
 def _apply_tenant_scope(stmt, current_user: CurrentUser):
-    if is_super_admin(current_user):
+    if is_super_admin(current_user) and not is_platform_workspace_delegate(current_user):
         return stmt
     return stmt.where(SystemLog.tenant_id == _current_tenant_id(current_user))
 
@@ -191,7 +191,7 @@ async def get_options():
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def users(session: SessionDep, current_user: CurrentUser):
     stmt = select(UserModel.id, UserModel.name)
-    if not is_super_admin(current_user):
+    if not is_super_admin(current_user) or is_platform_workspace_delegate(current_user):
         stmt = (
             stmt
             .join(TenantUserModel, TenantUserModel.user_id == UserModel.id)

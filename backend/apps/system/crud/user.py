@@ -43,6 +43,14 @@ def is_platform_admin(user) -> bool:
     return is_system_admin(user)
 
 
+def is_platform_workspace_delegate(user) -> bool:
+    return (
+        is_platform_admin(user)
+        and getattr(user, "tenant_id", None) not in (None, "")
+        and getattr(user, "workspace_status", None) == "platform_workspace_delegate"
+    )
+
+
 def is_super_admin(user) -> bool:
     if user is None or not hasattr(user, "system_role"):
         return False

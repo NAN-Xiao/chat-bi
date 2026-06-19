@@ -374,3 +374,52 @@ def test_tenant_usage_endpoint_allows_platform_admin_filter(monkeypatch):
     assert len(rows) == 1
     assert rows[0].tenant_id == 300
     assert rows[0].task_count == 2
+
+
+def test_tenant_usage_endpoint_scopes_platform_workspace_delegate(monkeypatch):
+    monkeypatch.setattr(settings, "TENANT_USAGE_METERING_ENABLED", True)
+    engine = _engine_with_usage_table()
+
+    with Session(engine) as session:
+        record_tenant_usage(session, tenant_id=200, metric="task.enqueued", usage_date="2026-06-18", task_count=1)
+        record_tenant_usage(session, tenant_id=300, metric="task.enqueued", usage_date="2026-06-18", task_count=2)
+        session.commit()
+
+        platform_delegate = SimpleNamespace(
+            id=1,
+            system_role="system_admin",
+            tenant_id=200,
+            tenant_role="owner",
+            workspace_status="platform_workspace_delegate",
+        )
+        current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+        rows = asyncio.run(
+            tenant_api.tenant_usage(
+                session=session,
+                current_user=platform_delegate,
+                current_tenant=current_tenant,
+                start_date=None,
+                end_date=None,
+                metric=None,
+                limit=500,
+            )
+        )
+
+        assert len(rows) == 1
+        assert rows[0].tenant_id == 200
+        assert rows[0].task_count == 1
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(
+                tenant_api.tenant_usage(
+                    session=session,
+                    current_user=platform_delegate,
+                    current_tenant=current_tenant,
+                    tenant_id=300,
+                    start_date=None,
+                    end_date=None,
+                    metric=None,
+                    limit=500,
+                )
+            )
+        assert exc.value.status_code == 403

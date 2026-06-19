@@ -6,6 +6,12 @@ import { useCache } from '@/utils/useCache'
 import { i18n } from '@/i18n'
 import { store } from './index'
 import { getCurrentRouter, getQueryString, getZhishuAddr, isPlatform } from '@/utils/utils'
+import {
+  clearPlatformWorkspaceDelegateContext,
+  isPlatformWorkspaceDelegateSession,
+  setPlatformWorkspaceDelegateContext,
+  type PlatformWorkspaceDelegateTenant,
+} from '@/utils/platformWorkspaceDelegate'
 
 const { wsCache } = useCache()
 
@@ -88,6 +94,9 @@ export const UserStore = defineStore('user', {
         ['system_admin', 'collab_admin'].includes(String(this.systemRole || '').trim().toLowerCase())
       )
     },
+    isPlatformWorkspaceDelegate(): boolean {
+      return this.workspaceStatus === 'platform_workspace_delegate'
+    },
     isSuperAdminUser(): boolean {
       return String(this.systemRole || '').trim().toLowerCase() === 'system_admin'
     },
@@ -136,6 +145,7 @@ export const UserStore = defineStore('user', {
       return this.workspaceStatus
     },
     hasActiveWorkspace(): boolean {
+      if (this.isPlatformWorkspaceDelegate) return !!this.tenantId
       if (this.isSystemAdminUser || !this.tenantId) return false
       if (this.workspaceStatus && this.workspaceStatus !== 'active') return false
       return this.hasWorkspace || !!this.tenantId
@@ -242,6 +252,9 @@ export const UserStore = defineStore('user', {
       try {
         const res = await tenantApi.list()
         this.tenants = Array.isArray(res) ? res : []
+        if (this.isPlatformWorkspaceDelegate) {
+          return this.tenants
+        }
         if (this.isSystemAdminUser) {
           this.setTenant(null)
         } else if (!this.tenantId && this.tenants.length > 0) {
@@ -293,12 +306,14 @@ export const UserStore = defineStore('user', {
       this.tenantName = tenantName
       this.tenantRole = tenantRole
       this.workspaceRole = tenantRole
-      this.hasWorkspace = !this.isSystemAdminUser && !!tenantId
-      this.workspaceStatus = this.isSystemAdminUser
-        ? 'platform_admin'
-        : tenantId
-          ? 'active'
-          : 'workspace_required'
+      this.hasWorkspace = (this.isPlatformWorkspaceDelegate || !this.isSystemAdminUser) && !!tenantId
+      this.workspaceStatus = this.isPlatformWorkspaceDelegate
+        ? 'platform_workspace_delegate'
+        : this.isSystemAdminUser
+          ? 'platform_admin'
+          : tenantId
+            ? 'active'
+            : 'workspace_required'
       wsCache.set('user.tenantId', tenantId)
       wsCache.set('user.tenantCode', tenantCode)
       wsCache.set('user.tenantName', tenantName)
@@ -306,6 +321,30 @@ export const UserStore = defineStore('user', {
       wsCache.set('user.workspaceRole', tenantRole)
       wsCache.set('user.hasWorkspace', this.hasWorkspace)
       wsCache.set('user.workspaceStatus', this.workspaceStatus)
+    },
+    async enterPlatformWorkspaceDelegate(tenant: PlatformWorkspaceDelegateTenant): Promise<void> {
+      if (!setPlatformWorkspaceDelegateContext(tenant)) return
+      this.tenantId = String(tenant.id || '')
+      this.tenantCode = tenant.code ? String(tenant.code) : ''
+      this.tenantName = tenant.name ? String(tenant.name) : ''
+      this.tenantRole = 'owner'
+      this.workspaceRole = 'owner'
+      this.hasWorkspace = true
+      this.workspaceStatus = 'platform_workspace_delegate'
+      if (this.token || wsCache.get('user.token')) {
+        await this.info()
+      }
+    },
+    async exitPlatformWorkspaceDelegate(): Promise<void> {
+      if (!this.isPlatformWorkspaceDelegate && !isPlatformWorkspaceDelegateSession()) return
+      clearPlatformWorkspaceDelegateContext()
+      this.workspaceStatus = 'platform_admin'
+      this.workspaceRole = ''
+      this.tenantRole = ''
+      this.hasWorkspace = false
+      if (this.token || wsCache.get('user.token')) {
+        await this.info()
+      }
     },
     setToken(token: string) {
       wsCache.set('user.token', token)
@@ -357,6 +396,7 @@ export const UserStore = defineStore('user', {
       this.platformInfo = info
     },
     clear() {
+      clearPlatformWorkspaceDelegateContext()
       const keys: string[] = [
         'token',
         'uid',

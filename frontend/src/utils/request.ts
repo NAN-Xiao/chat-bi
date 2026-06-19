@@ -13,6 +13,11 @@ import { getLocale } from './utils'
 import { useAssistantStore } from '@/stores/assistant'
 import { useRouter } from 'vue-router'
 import JSONBig from 'json-bigint'
+import {
+  getPlatformWorkspaceDelegateTenantId,
+  isPlatformWorkspaceDelegateSession,
+  PLATFORM_WORKSPACE_DELEGATE_HEADER,
+} from '@/utils/platformWorkspaceDelegate'
 // import { i18n } from '@/i18n'
 // const t = i18n.global.t
 const assistantStore = useAssistantStore()
@@ -98,9 +103,13 @@ class HttpService {
         if (token && config.headers) {
           config.headers['X-ZHISHU-TOKEN'] = `Bearer ${token}`
         }
-        const tenantId = wsCache.get('user.tenantId')
+        const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
+        const tenantId = delegateTenantId || wsCache.get('user.tenantId')
         if (tenantId && config.headers) {
           config.headers['X-ZHISHU-TENANT-ID'] = String(tenantId)
+        }
+        if (isPlatformWorkspaceDelegateSession() && config.headers) {
+          config.headers[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
         }
         if (assistantStore.getToken) {
           const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
@@ -296,9 +305,13 @@ class HttpService {
     if (token) {
       heads['X-ZHISHU-TOKEN'] = `Bearer ${token}`
     }
-    const tenantId = wsCache.get('user.tenantId')
+    const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
+    const tenantId = delegateTenantId || wsCache.get('user.tenantId')
     if (tenantId) {
       heads['X-ZHISHU-TENANT-ID'] = String(tenantId)
+    }
+    if (isPlatformWorkspaceDelegateSession()) {
+      heads[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
     }
     if (assistantStore.getToken) {
       const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '

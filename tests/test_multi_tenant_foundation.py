@@ -96,7 +96,8 @@ def _engine():
             CREATE TABLE core_datasource_user (
                 id INTEGER PRIMARY KEY,
                 ds_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL
+                user_id INTEGER NOT NULL,
+                role VARCHAR(32) DEFAULT 'viewer'
             )
             """
         ))
@@ -233,6 +234,40 @@ def test_system_admin_can_resolve_active_tenant_for_platform_operations():
         assert tenant.role == "owner"
 
 
+def test_platform_workspace_delegate_can_resolve_disabled_workspace():
+    engine = _engine()
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=0, plan="default"))
+        session.commit()
+
+        tenant = resolve_current_tenant(
+            session,
+            _user(1, "system_admin"),
+            requested_tenant_id=200,
+            platform_workspace_delegate=True,
+        )
+        attached = attach_tenant_context(
+            BaseUserDTO(
+                id=1,
+                account="admin",
+                name="Admin",
+                email="admin@example.com",
+                password="secret",
+                status=1,
+                origin=0,
+                system_role="system_admin",
+            ),
+            tenant,
+            platform_workspace_delegate=True,
+        )
+
+        assert tenant.id == 200
+        assert tenant.role == "owner"
+        assert attached.has_workspace is True
+        assert attached.workspace_status == "platform_workspace_delegate"
+        assert attached.workspace_role == "owner"
+
+
 def test_user_token_payload_includes_current_tenant():
     user = BaseUserDTO(
         id=100,
@@ -322,6 +357,18 @@ def test_platform_admin_tenant_list_includes_member_stats():
         session.add(TenantUserModel(id=202, tenant_id=200, user_id=101, role="admin", is_primary=False, status=1))
         session.add(TenantUserModel(id=203, tenant_id=200, user_id=102, role="member", is_primary=False, status=1))
         session.add(TenantUserModel(id=204, tenant_id=200, user_id=103, role="member", is_primary=False, status=0))
+        session.execute(text(
+            """
+            INSERT INTO sys_user (id, account, name, password, status, origin, create_time, system_role)
+            VALUES
+                (100, 'owner-100', 'Owner 100', 'x', 1, 0, 0, 'viewer'),
+                (101, 'admin-101', 'Admin 101', 'x', 1, 0, 0, 'viewer'),
+                (102, 'member-102', 'Member 102', 'x', 1, 0, 0, 'viewer'),
+                (103, 'member-103', 'Member 103', 'x', 1, 0, 0, 'viewer'),
+                (104, 'platform-admin', 'Platform Admin', 'x', 1, 0, 0, 'system_admin')
+            """
+        ))
+        session.add(TenantUserModel(id=205, tenant_id=200, user_id=104, role="owner", is_primary=False, status=1))
         session.commit()
 
         tenants = asyncio.run(tenant_api.admin_tenant_list(session, _user(1, "system_admin")))
@@ -329,6 +376,39 @@ def test_platform_admin_tenant_list_includes_member_stats():
         tenant = next(row for row in tenants if row.code == "tenant-b")
         assert tenant.admin_count == 2
         assert tenant.member_count == 1
+        assert tenant.owner_user_id == 100
+
+
+def test_tenant_member_list_hides_platform_admin_members():
+    engine = _engine()
+    current_user = SimpleNamespace(
+        id=1,
+        system_role="system_admin",
+        tenant_id=200,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=10, role="owner", is_primary=True, status=1))
+        session.add(TenantUserModel(id=202, tenant_id=200, user_id=11, role="member", is_primary=False, status=1))
+        session.add(TenantUserModel(id=203, tenant_id=200, user_id=1, role="owner", is_primary=False, status=1))
+        session.exec(text(
+            """
+            INSERT INTO sys_user
+                (id, account, name, password, email, status, origin, create_time, language, system_role)
+            VALUES
+                (1, 'platform-admin', 'Platform Admin', '', 'platform@example.com', 1, 0, 1, 'zh-CN', 'system_admin'),
+                (10, 'owner', 'Owner', '', 'owner@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                (11, 'member', 'Member', '', 'member@example.com', 1, 0, 1, 'zh-CN', 'viewer')
+            """
+        ))
+        session.commit()
+
+        members = asyncio.run(tenant_api.tenant_member_list(session, current_user, current_tenant, keyword=None))
+
+        assert [member.account for member in members] == ["member", "owner"]
 
 
 def test_platform_admin_manages_tenant_lifecycle():
@@ -939,6 +1019,54 @@ def test_data_export_request_creates_manifest_after_platform_review():
         ]
         assert reviewed.status == "approved"
         assert export_row_scope == [{"table": "tenant_export_rows", "rows": 2}]
+
+
+def test_platform_workspace_delegate_data_request_list_is_tenant_scoped():
+    engine = _engine()
+    current_user = SimpleNamespace(
+        id=1,
+        system_role="system_admin",
+        tenant_id=200,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=300, code="tenant-c", name="Tenant C", status=1, plan="basic"))
+        session.add(
+            TenantDataRequestModel(
+                id=401,
+                tenant_id=200,
+                requested_by_user_id=10,
+                request_type="export",
+                status="pending",
+            )
+        )
+        session.add(
+            TenantDataRequestModel(
+                id=402,
+                tenant_id=300,
+                requested_by_user_id=11,
+                request_type="export",
+                status="pending",
+            )
+        )
+        session.commit()
+
+        rows = asyncio.run(tenant_api.tenant_data_request_list(session, current_user, current_tenant))
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(
+                tenant_api.tenant_data_request_list(
+                    session,
+                    current_user,
+                    current_tenant,
+                    tenant_id=300,
+                )
+            )
+
+        assert [row.id for row in rows] == [401]
+        assert exc.value.status_code == 403
 
 
 def test_tenant_delete_request_is_manual_and_does_not_delete_data_on_completion():

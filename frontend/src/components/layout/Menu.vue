@@ -41,7 +41,7 @@ const filterSystemRoutes = (arr: any[]): any[] => {
   return arr
     .map((item: any) => {
       const children = item.children?.length ? filterSystemRoutes(item.children) : []
-      if (userStore.isSystemAdminUser) {
+      if (userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate) {
         if (item.meta?.hideForPlatformAdmin) {
           return null
         }

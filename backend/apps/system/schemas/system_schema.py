@@ -43,7 +43,12 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
     tenant_role: Optional[str] = None
     global_role: Literal["platform_admin", "normal_user"] = "normal_user"
     has_workspace: bool = False
-    workspace_status: Literal["active", "workspace_required", "platform_admin"] = "workspace_required"
+    workspace_status: Literal[
+        "active",
+        "workspace_required",
+        "platform_admin",
+        "platform_workspace_delegate",
+    ] = "workspace_required"
     workspace_role: Optional[str] = None
 
     def to_dict(self):
@@ -115,7 +120,12 @@ class UserInfoDTO(UserEditor):
     tenant_ids: list[int] = Field(default_factory=list)
     global_role: Literal["platform_admin", "normal_user"] = "normal_user"
     has_workspace: bool = False
-    workspace_status: Literal["active", "workspace_required", "platform_admin"] = "workspace_required"
+    workspace_status: Literal[
+        "active",
+        "workspace_required",
+        "platform_admin",
+        "platform_workspace_delegate",
+    ] = "workspace_required"
     workspace_role: Optional[str] = None
 
 

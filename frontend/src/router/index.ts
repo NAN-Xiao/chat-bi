@@ -46,6 +46,7 @@ import { watchRouter } from './watch'
 const t = i18n.global.t
 const resolveSystemHome = () => {
   const userStore = UserStore(store)
+  if (userStore.isPlatformWorkspaceDelegate) return '/system/overview'
   if (userStore.isSystemAdminUser) return '/system/tenant'
   if (userStore.isTenantAdminUser) return '/system/overview'
   return '/chat'

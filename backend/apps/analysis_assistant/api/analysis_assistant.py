@@ -22,7 +22,7 @@ from apps.datasource.crud.permission_errors import (
 )
 from apps.datasource.crud.query_executor import execute_user_query_or_raise, prepare_query_sql
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import exec_sql
+from apps.db.constant import DB
 from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
 from apps.system.crud.user import is_system_admin
 from apps.system.schemas.business_access import require_chatbi_business_user
@@ -542,17 +542,43 @@ def _profile_result_as_text(title: str, result: dict[str, Any], limit: int = 80)
     return f"{title}：{orjson.dumps(rows[:limit]).decode()}"
 
 
-def _collect_date_bounds(datasource: CoreDatasource, schema: str) -> str:
+def _quote_identifier(datasource: CoreDatasource, identifier: str) -> str:
+    db = DB.get_db(datasource.type, default_if_none=True)
+    escaped = str(identifier).replace(db.suffix, db.suffix * 2)
+    return f"{db.prefix}{escaped}{db.suffix}"
+
+
+def _profile_table_expression(datasource: CoreDatasource, raw_table: str) -> tuple[str, str]:
+    parts = [part.strip() for part in raw_table.strip().split(".") if part.strip()]
+    table_name = parts[-1] if parts else ""
+    if not table_name:
+        return "", ""
+    no_schema_types = {"mysql", "es", "sqlite", "hive", "doris", "starrocks"}
+    if len(parts) > 1 and str(datasource.type).lower() not in no_schema_types:
+        table_expr = ".".join(_quote_identifier(datasource, part) for part in parts[-2:])
+    else:
+        table_expr = _quote_identifier(datasource, table_name)
+    return table_name, table_expr
+
+
+def _collect_date_bounds(
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource,
+    schema: str,
+    allowed_tables: list[str],
+) -> str:
     """Read the real MIN/MAX of every date/time column so the model grounds
     "最近 N 天 / 观察截止日" on actual data instead of the system clock."""
+    allowed_table_set = {str(table).lower() for table in allowed_tables}
     table_blocks = re.findall(r"# Table:\s*([^\n,]+)[^\n]*\n\[\n(.*?)\n\]", schema, flags=re.DOTALL)
     lines: list[str] = []
     table_count = 0
     for raw_table, body in table_blocks:
         if table_count >= 8:
             break
-        table_name = raw_table.strip().split(".")[-1].strip()
-        if not table_name:
+        table_name, table_expr = _profile_table_expression(datasource, raw_table)
+        if not table_name or table_name.lower() not in allowed_table_set:
             continue
         date_fields: list[str] = []
         for fname, ftype in re.findall(r"\(([^:()]+):([^,()]+)", body):
@@ -563,12 +589,22 @@ def _collect_date_bounds(datasource: CoreDatasource, schema: str) -> str:
             continue
         select_parts: list[str] = []
         for index, field in enumerate(date_fields):
-            select_parts.append(f'MAX("{field}")::text AS f{index}_max')
-            select_parts.append(f'MIN("{field}")::text AS f{index}_min')
-        sql = f'SELECT {", ".join(select_parts)} FROM {table_name}'
+            field_expr = _quote_identifier(datasource, field)
+            select_parts.append(f"MAX({field_expr}) AS f{index}_max")
+            select_parts.append(f"MIN({field_expr}) AS f{index}_min")
+        sql = f"SELECT {', '.join(select_parts)} FROM {table_expr}"
         try:
-            result = exec_sql(datasource, sql, origin_column=False)
-            data = result.get("data") or []
+            query_result = execute_user_query_or_raise(
+                session=session,
+                current_user=current_user,
+                datasource=datasource,
+                sql=sql,
+                allowed_tables=[table_name],
+                origin_column=False,
+                apply_row_permissions=True,
+                validate_columns=False,
+            )
+            data = query_result.result.get("data") or []
             if not data:
                 continue
             row = data[0]
@@ -590,8 +626,14 @@ def _collect_date_bounds(datasource: CoreDatasource, schema: str) -> str:
     return header + "\n" + "\n".join(lines)
 
 
-def _get_data_profile(datasource: CoreDatasource, schema: str) -> str:
-    return _collect_date_bounds(datasource, schema)[:12000]
+def _get_data_profile(
+    session: SessionDep,
+    current_user: CurrentUser,
+    datasource: CoreDatasource,
+    schema: str,
+    allowed_tables: list[str],
+) -> str:
+    return _collect_date_bounds(session, current_user, datasource, schema, allowed_tables)[:12000]
 
 
 def _is_forecast_question(question: str) -> bool:
@@ -1483,7 +1525,13 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
             if not allowed_tables:
                 raise RuntimeError("当前用户在该项目下没有可分析的数据表权限")
             sample_data = "" if is_normal_user(current_user) else get_tables_sample_data(session, current_user, datasource)
-            data_profile = "" if is_normal_user(current_user) else _get_data_profile(datasource, schema)
+            data_profile = "" if is_normal_user(current_user) else _get_data_profile(
+                session,
+                current_user,
+                datasource,
+                schema,
+                allowed_tables,
+            )
             knowledge = _collect_metric_knowledge(session, datasource.id, question, current_user)
             if knowledge.strip():
                 yield _trace("已加载本项目配置的统一业务口径（术语定义与标准 SQL 示例），将据此对齐指标算法。")

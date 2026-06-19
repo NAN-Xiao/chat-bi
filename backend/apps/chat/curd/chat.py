@@ -18,7 +18,6 @@ from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
-from apps.db.db import exec_sql
 from apps.system.crud.tenant_usage import record_tenant_usage_detached, token_total
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
 from apps.system.schemas.system_schema import AssistantOutDsSchema
@@ -448,28 +447,6 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
     if row is None or row.datasource is None or not row.sql:
         return {'status': 'failed', 'fields': [], 'data': [], 'message': '记录不存在或没有可执行 SQL'}
     return _execute_dashboard_chart_sql(session, current_user, row.datasource, row.sql)
-
-def get_chart_data_ds(session: SessionDep,ds_id,sql):
-    json_result: Dict[str, Any] = {'status': 'success','fields':[],'data':[],'message':''}
-    try:
-        datasource = get_ds(session,ds_id)
-        if datasource is None:
-            json_result['status'] = 'failed'
-            json_result['message'] = '项目不存在'
-            return json_result
-        else:
-            result = exec_sql(ds=datasource,sql=sql, origin_column=False)
-            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
-            _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
-            json_result['fields'] = list(_data[0].keys()) if _data else result.get('fields', [])
-            json_result['data'] = _data
-            return json_result
-    except Exception as e:
-        AppLogUtil.error(f"Function failed: {e}")
-        json_result['status'] = 'failed'
-        json_result['message'] = f"{e}"
-        pass
-    return json_result
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id))

@@ -67,6 +67,8 @@
     "stop_service_second_confirm": "请再次确认停止工作空间「{msg}」的服务。该操作会立即影响工作空间成员访问。",
     "confirm_stop_service": "确认停止",
     "restore_service_confirm": "确认恢复工作空间「{msg}」的服务？恢复后该工作空间下的用户可重新进入业务空间。",
+    "enter_workspace_admin": "进入工作空间后台",
+    "return_to_platform": "返回平台管理",
     "delete_tenant": "删除工作空间",
     "delete_tenant_confirm": "确认删除工作空间「{msg}」？删除前必须已停止服务，删除后该工作空间将从平台运营列表移除。",
     "delete_tenant_code_confirm": "请输入工作空间编码「{code}」确认删除。",

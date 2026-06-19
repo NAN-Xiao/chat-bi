@@ -151,7 +151,7 @@
             <span>{{ formatOptionalTimestamp(scope.row.create_time) }}</span>
           </template>
         </el-table-column>
-        <el-table-column fixed="right" :label="t('ds.actions')" width="180">
+        <el-table-column fixed="right" :label="t('ds.actions')" width="220">
           <template #default="scope">
             <div v-if="scope.row.row_type === 'application'" class="review-actions">
               <el-button
@@ -167,6 +167,17 @@
               </el-button>
             </div>
             <div v-else class="table-operate">
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="t('tenant.enter_workspace_admin')"
+                placement="top"
+              >
+                <el-icon class="action-btn" size="16" @click="openWorkspaceAdmin(scope.row.source)">
+                  <icon_into_item_outlined />
+                </el-icon>
+              </el-tooltip>
+              <div class="line"></div>
               <el-tooltip
                 :offset="14"
                 effect="dark"
@@ -387,6 +398,7 @@
 <script setup lang="ts">
 import dayjs from 'dayjs'
 import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import SuccessFilled from '@/assets/svg/gou_icon.svg'
@@ -396,6 +408,7 @@ import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { datasourceApi } from '@/api/datasource'
@@ -407,8 +420,13 @@ import {
 } from '@/api/tenant'
 import { useUserStore } from '@/stores/user'
 import { formatTimestamp } from '@/utils/date'
+import {
+  PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY,
+  PLATFORM_WORKSPACE_DELEGATE_TENANT_QUERY_KEY,
+} from '@/utils/platformWorkspaceDelegate'
 
 const { t } = useI18n()
+const router = useRouter()
 const userStore = useUserStore()
 const keyword = ref('')
 const drawerVisible = ref(false)
@@ -666,6 +684,19 @@ const openDrawer = (tenant: TenantInfo | null) => {
 const closeDrawer = () => {
   Object.assign(form, defaultForm)
   drawerVisible.value = false
+}
+
+const openWorkspaceAdmin = (tenant: TenantInfo) => {
+  const route = router.resolve({
+    path: '/system/overview',
+    query: {
+      [PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY]: '1',
+      [PLATFORM_WORKSPACE_DELEGATE_TENANT_QUERY_KEY]: String(tenant.id),
+      tenant_code: tenant.code || '',
+      tenant_name: tenant.name || '',
+    },
+  })
+  window.open(route.href, '_blank', 'noopener')
 }
 
 const openProjectBinding = async (tenant: TenantInfo) => {

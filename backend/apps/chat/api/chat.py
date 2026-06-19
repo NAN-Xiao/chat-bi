@@ -700,15 +700,17 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
         )
     is_predict_data = chat_record.predict_record_id is not None
 
-    _origin_data = format_json_data(get_chat_chart_data(chat_record_id=chat_record_id, session=session))
+    _origin_data = format_json_data(
+        get_chart_data_with_user(chat_record_id=chat_record_id, session=session, current_user=current_user)
+    )
 
     _base_field = _origin_data.get('fields')
     _data = _origin_data.get('data')
 
-    if not _data:
+    if _origin_data.get("status") == "failed" or not _data:
         raise HTTPException(
             status_code=500,
-            detail=trans("i18n_excel_export.data_is_empty")
+            detail=_origin_data.get("message") or trans("i18n_excel_export.data_is_empty")
         )
 
     chart_info = get_chart_config(session, chat_record_id)
@@ -742,7 +744,13 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
 
     _predict_data = []
     if is_predict_data:
-        _predict_data = format_json_list_data(get_chat_predict_data(chat_record_id=chat_record_id, session=session))
+        _predict_data = format_json_list_data(
+            get_chat_predict_data_with_user(
+                chat_record_id=chat_record_id,
+                session=session,
+                current_user=current_user,
+            )
+        )
 
     def inner():
 

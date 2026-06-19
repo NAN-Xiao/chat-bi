@@ -23,6 +23,7 @@ from apps.system.crud.tenant import (
     validate_tenant_security_policy,
 )
 from apps.system.crud.user import get_user_by_account, get_user_info
+from apps.system.crud.user import is_platform_admin
 from apps.system.models.system_model import ApiKeyModel, AssistantModel
 from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core import security
@@ -118,12 +119,23 @@ class TokenMiddleware(BaseHTTPMiddleware):
         *,
         allow_header_tenant_override: bool = True,
     ) -> UserInfoDTO:
+        platform_workspace_delegate = (
+            request.headers.get("X-ZHISHU-PLATFORM-WORKSPACE-DELEGATE") == "1"
+            and is_platform_admin(user)
+        )
         requested_tenant_id = self._tenant_id_from_request(
             request,
             token_tenant_id,
             allow_header_override=allow_header_tenant_override,
         )
-        tenant = resolve_current_tenant(session, user, requested_tenant_id=requested_tenant_id)
+        if is_platform_admin(user) and not platform_workspace_delegate:
+            requested_tenant_id = None
+        tenant = resolve_current_tenant(
+            session,
+            user,
+            requested_tenant_id=requested_tenant_id,
+            platform_workspace_delegate=platform_workspace_delegate,
+        )
         if tenant is not None:
             validate_tenant_security_policy(
                 session,
@@ -131,7 +143,11 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 user=user,
             )
         request.state.current_tenant = tenant
-        return attach_tenant_context(user, tenant)
+        return attach_tenant_context(
+            user,
+            tenant,
+            platform_workspace_delegate=platform_workspace_delegate,
+        )
 
     def _assistant_tenant_id_from_payload(self, payload: dict, assistant_info: AssistantModel) -> int:
         assistant_tenant_id = int(getattr(assistant_info, "tenant_id", None) or DEFAULT_TENANT_ID)

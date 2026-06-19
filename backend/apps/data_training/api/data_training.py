@@ -21,7 +21,7 @@ from apps.data_training.models.data_training_model import DataTraining
 from apps.data_training.models.data_training_model import DataTrainingInfo
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_platform_admin, is_system_admin
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum, normalize_semantic_scope
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
@@ -38,12 +38,14 @@ router = APIRouter(
 
 
 def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
-    if is_platform_admin(current_user):
+    if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user):
         return None
     return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
 
 
 def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
+    if is_platform_workspace_delegate(current_user):
+        return True
     if is_platform_admin(current_user):
         return False
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
@@ -51,15 +53,23 @@ def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
 
 
 def _can_manage_platform_semantic_layer(current_user: CurrentUser) -> bool:
-    return is_platform_admin(current_user)
+    return is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
 
 
 def _request_scope(current_user: CurrentUser) -> SemanticRecordScopeEnum:
-    return SemanticRecordScopeEnum.PLATFORM if is_platform_admin(current_user) else SemanticRecordScopeEnum.TENANT
+    return (
+        SemanticRecordScopeEnum.PLATFORM
+        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+        else SemanticRecordScopeEnum.TENANT
+    )
 
 
 def _request_tenant_id(current_user: CurrentUser) -> int:
-    return DEFAULT_TENANT_ID if is_platform_admin(current_user) else current_tenant_id(current_user)
+    return (
+        DEFAULT_TENANT_ID
+        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+        else current_tenant_id(current_user)
+    )
 
 
 def _require_training_admin(session: SessionDep, current_user: CurrentUser, info: DataTrainingInfo):
@@ -108,7 +118,11 @@ def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, 
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
                 question: Optional[str] = Query(None, description="搜索问题(可选)"),
                 datasource: Optional[int] = Query(None, description="数据源ID(可选)")):
-    scope = _request_scope(current_user) if is_platform_admin(current_user) else None
+    scope = (
+        _request_scope(current_user)
+        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+        else None
+    )
     datasource_ids = _visible_datasource_ids(session, current_user)
     if datasource is not None:
         if datasource_ids is not None and datasource not in datasource_ids:
@@ -176,7 +190,7 @@ async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentU
             question,
             datasource_ids,
             _request_tenant_id(current_user),
-            _request_scope(current_user) if is_platform_admin(current_user) else None,
+            _request_scope(current_user) if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user) else None,
             _can_manage_platform_semantic_layer(current_user),
             _can_manage_tenant_semantic_layer(current_user),
         )

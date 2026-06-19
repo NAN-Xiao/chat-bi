@@ -839,6 +839,38 @@ def test_analysis_assistant_db_permission_failure_is_structured_and_sanitized():
     assert "secret_orders" not in block["warning"]
 
 
+def test_analysis_assistant_data_profile_uses_query_executor(monkeypatch):
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_role="admin", tenant_id=1)
+    datasource = SimpleNamespace(id=1, type="pg")
+    calls = []
+
+    def fake_execute_user_query_or_raise(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            result={
+                "fields": ["f0_max", "f0_min"],
+                "data": [{"f0_max": "2026-01-31", "f0_min": "2026-01-01"}],
+            }
+        )
+
+    monkeypatch.setattr(analysis_assistant_api, "execute_user_query_or_raise", fake_execute_user_query_or_raise)
+
+    profile = analysis_assistant_api._get_data_profile(
+        session=object(),
+        current_user=current_user,
+        datasource=datasource,
+        schema="# Table: public.orders\n[\n(order_date:timestamp),\n(amount:numeric)\n]\n",
+        allowed_tables=["orders"],
+    )
+
+    assert "orders.order_date" in profile
+    assert calls
+    assert calls[0]["allowed_tables"] == ["orders"]
+    assert calls[0]["apply_row_permissions"] is True
+    assert "::text" not in calls[0]["sql"]
+    assert 'MAX("order_date") AS f0_max' in calls[0]["sql"]
+
+
 def test_user_schema_filters_relationships_outside_table_scope(monkeypatch):
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False)

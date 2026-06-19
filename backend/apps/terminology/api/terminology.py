@@ -16,7 +16,7 @@ from apps.datasource.crud.permission import (
 )
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_platform_admin, is_system_admin
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum, normalize_semantic_scope
 from apps.terminology.curd.terminology import page_terminology, create_terminology, update_terminology, \
     delete_terminology, enable_terminology, get_all_terminology, batch_create_terminology
@@ -35,12 +35,14 @@ router = APIRouter(
 
 
 def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
-    if is_platform_admin(current_user):
+    if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user):
         return None
     return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
 
 
 def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
+    if is_platform_workspace_delegate(current_user):
+        return True
     if is_platform_admin(current_user):
         return False
     tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
@@ -48,15 +50,23 @@ def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
 
 
 def _can_manage_platform_semantic_layer(current_user: CurrentUser) -> bool:
-    return is_platform_admin(current_user)
+    return is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
 
 
 def _request_scope(current_user: CurrentUser) -> SemanticRecordScopeEnum:
-    return SemanticRecordScopeEnum.PLATFORM if is_platform_admin(current_user) else SemanticRecordScopeEnum.TENANT
+    return (
+        SemanticRecordScopeEnum.PLATFORM
+        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+        else SemanticRecordScopeEnum.TENANT
+    )
 
 
 def _request_tenant_id(current_user: CurrentUser) -> int:
-    return DEFAULT_TENANT_ID if is_platform_admin(current_user) else current_tenant_id(current_user)
+    return (
+        DEFAULT_TENANT_ID
+        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+        else current_tenant_id(current_user)
+    )
 
 
 def _require_term_scope_admin(session: SessionDep, current_user: CurrentUser, term: TerminologyInfo | Terminology):
@@ -100,13 +110,17 @@ def _require_term_ids_admin(session: SessionDep, current_user: CurrentUser, ids:
 async def pager(session: SessionDep, current_user: CurrentUser, current_page: int, page_size: int,
     word: Optional[str] = Query(None, description="搜索术语(可选)"),
                 dslist: Optional[list[int]] = Query(None, description="数据集ID集合(可选)")):
-    scope = _request_scope(current_user) if is_platform_admin(current_user) else None
+    scope = (
+        _request_scope(current_user)
+        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+        else None
+    )
     visible_ids = _visible_datasource_ids(session, current_user)
     if dslist and visible_ids is not None and not set(dslist).issubset(visible_ids):
         raise HTTPException(status_code=403, detail="Datasource access is required")
     current_page, page_size, total_count, total_pages, _list = page_terminology(session, current_page, page_size, word,
                                                                                 dslist, visible_ids,
-                                                                                True if is_platform_admin(current_user) else is_system_admin(current_user),
+                                                                                True if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user) else is_system_admin(current_user),
                                                                                 _request_tenant_id(current_user),
                                                                                 scope,
                                                                                 _can_manage_platform_semantic_layer(current_user),
@@ -165,9 +179,9 @@ async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentU
             session,
             word,
             scoped_visible_ids,
-            True if is_platform_admin(current_user) else is_system_admin(current_user),
+            True if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user) else is_system_admin(current_user),
             _request_tenant_id(current_user),
-            _request_scope(current_user) if is_platform_admin(current_user) else None,
+            _request_scope(current_user) if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user) else None,
             _can_manage_platform_semantic_layer(current_user),
             _can_manage_tenant_semantic_layer(current_user),
         )

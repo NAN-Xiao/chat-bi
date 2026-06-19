@@ -210,3 +210,29 @@ def test_b2b_multi_tenant_architecture_direction_is_documented():
     assert "multi-tenant" in redis_template
     assert "不是云上多租户 SaaS" not in readiness_doc
     assert "云上多租户租户模型" not in readiness_doc
+
+
+def test_production_launch_acceptance_checklist_is_documented():
+    readiness_doc = (REPO_ROOT / "docs/single_tenant_production_readiness.md").read_text(encoding="utf-8")
+
+    assert "P0 发布门禁" in readiness_doc
+    assert "P0 数据与权限验收" in readiness_doc
+    assert "P1 多租户商业化验收" in readiness_doc
+    assert "P1 高可用与运维验收" in readiness_doc
+    assert "上线前必须留存验收记录" in readiness_doc
+    assert "不得从用户可达入口直接调用底层 `exec_sql`" in readiness_doc
+    assert "字段权限回归" in readiness_doc
+    assert "历史 ChatBI 记录、实时图表刷新、仪表盘图表、分析助手查询和 Excel 导出" in readiness_doc
+    assert "quota_exceeded" in readiness_doc
+    assert "worker 积压" in readiness_doc
+
+
+def test_sql_execution_permission_refactor_has_no_known_dead_helper_bypasses():
+    chat_crud = (REPO_ROOT / "backend/apps/chat/curd/chat.py").read_text(encoding="utf-8")
+    analysis_assistant = (
+        REPO_ROOT / "backend/apps/analysis_assistant/api/analysis_assistant.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def get_chart_data_ds" not in chat_crud
+    assert "from apps.db.db import exec_sql" not in analysis_assistant
+    assert "exec_sql(datasource" not in analysis_assistant

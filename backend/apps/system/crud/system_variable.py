@@ -9,7 +9,7 @@ from sqlmodel import select
 
 from apps.system.models.system_variable_model import SystemVariable
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
-from apps.system.crud.user import is_platform_admin
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginationParams
@@ -23,14 +23,14 @@ def _current_tenant_id(user: CurrentUser | None) -> int:
 
 
 def _visible_variable_condition(user: CurrentUser):
-    if is_platform_admin(user):
+    if is_platform_admin(user) and not is_platform_workspace_delegate(user):
         return None
     tenant_id = _current_tenant_id(user)
     return or_(SystemVariable.type == 'system', SystemVariable.tenant_id == tenant_id)
 
 
 def _custom_variable_condition(user: CurrentUser):
-    if is_platform_admin(user):
+    if is_platform_admin(user) and not is_platform_workspace_delegate(user):
         return SystemVariable.type != 'system'
     return and_(SystemVariable.type != 'system', SystemVariable.tenant_id == _current_tenant_id(user))
 
@@ -45,7 +45,10 @@ def _assert_custom_variable_access(record: SystemVariable | None, user: CurrentU
         raise HTTPException(status_code=404, detail="变量不存在")
     if record.type == 'system':
         raise HTTPException(status_code=403, detail="内置变量不可编辑")
-    if not is_platform_admin(user) and int(record.tenant_id or DEFAULT_TENANT_ID) != _current_tenant_id(user):
+    if (
+        (not is_platform_admin(user) or is_platform_workspace_delegate(user))
+        and int(record.tenant_id or DEFAULT_TENANT_ID) != _current_tenant_id(user)
+    ):
         raise HTTPException(status_code=404, detail="变量不存在")
 
 

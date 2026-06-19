@@ -4,6 +4,11 @@ import { useUserStore } from '@/stores/user'
 import type { Router } from 'vue-router'
 import { generateDynamicRouters } from './dynamic'
 import { toLoginPage } from '@/utils/utils'
+import {
+  applyPlatformWorkspaceDelegateRouteQuery,
+  clearPlatformWorkspaceDelegateContext,
+  isPlatformWorkspaceDelegateSession,
+} from '@/utils/platformWorkspaceDelegate'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
@@ -30,7 +35,9 @@ const tenantChatBIEntryPrefixes = [
 ]
 
 const defaultAuthenticatedPath = () =>
-  userStore.isSystemAdminUser
+  userStore.isPlatformWorkspaceDelegate
+    ? tenantAdminSystemHome
+    : userStore.isSystemAdminUser
     ? platformAdminHome
     : userStore.hasActiveWorkspace
       ? userStore.isTenantAdminUser
@@ -47,6 +54,12 @@ const isTenantChatBIRoute = (path: string) =>
 export const watchRouter = (router: Router) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
     await appearanceStore.setAppearance()
+    const shouldEnterDelegate = applyPlatformWorkspaceDelegateRouteQuery(to.query || {})
+    const shouldExitDelegate =
+      !shouldEnterDelegate &&
+      to.path === platformAdminHome &&
+      isPlatformWorkspaceDelegateSession() &&
+      to.query?.platform_workspace_delegate !== '1'
     if (to.path.startsWith('/login') && userStore.getUid) {
       next(to?.query?.redirect || '/')
       return
@@ -65,10 +78,29 @@ export const watchRouter = (router: Router) => {
       next(toLoginPage(to.fullPath))
       return
     }
-    if (!userStore.getUid) {
+    if (shouldEnterDelegate || shouldExitDelegate) {
+      try {
+        if (shouldExitDelegate) {
+          clearPlatformWorkspaceDelegateContext()
+        }
+        await userStore.info()
+        if (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate) {
+          try {
+            await userStore.loadTenants(true)
+          } catch (error) {
+            console.warn('Failed to load workspace list before route access check', error)
+          }
+        }
+        generateDynamicRouters(router)
+      } catch {
+        userStore.clear()
+        next(toLoginPage(to.fullPath))
+        return
+      }
+    } else if (!userStore.getUid) {
       try {
         await userStore.info()
-        if (!userStore.isSystemAdminUser) {
+        if (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate) {
           try {
             await userStore.loadTenants()
           } catch (error) {
@@ -101,12 +133,15 @@ export const watchRouter = (router: Router) => {
 
 const accessCrossPermission = (to: any) => {
   if (!to?.path) return false
+  const platformDelegate = userStore.isPlatformWorkspaceDelegate
   const platformOnly = to.matched?.some((record: any) => record?.meta?.platformOnly)
   const tenantAdminOnly = to.matched?.some((record: any) => record?.meta?.tenantAdminOnly)
   const tenantBusiness = to.matched?.some((record: any) => record?.meta?.tenantBusiness)
   const tenantSystemRoute = to.path.startsWith('/system') && (tenantAdminOnly || tenantBusiness)
   return (
-    (userStore.isSystemAdminUser && isTenantChatBIRoute(to.path)) ||
+    (userStore.isSystemAdminUser && !platformDelegate && isTenantChatBIRoute(to.path)) ||
+    (platformDelegate && !to.path.startsWith('/system') && isTenantChatBIRoute(to.path)) ||
+    (platformDelegate && platformOnly) ||
     (!userStore.isSystemAdminUser && !userStore.hasActiveWorkspace && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||
     (tenantAdminOnly && !userStore.isTenantAdminUser) ||
