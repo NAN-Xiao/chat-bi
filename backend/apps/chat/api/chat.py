@@ -20,14 +20,70 @@ from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, Chat
 from apps.chat.task.llm import LLMService
 from apps.datasource.crud.permission import has_datasource_access
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.crud.parameter_manage import get_groups
+from apps.system.models.system_model import SysArgModel
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
+from common.core.chat_generation_limiter import (
+    ChatGenerationConcurrencyError,
+    acquire_chat_generation_lease,
+)
 from common.utils.command_utils import parse_quick_command
 from common.utils.data_format import DataFormat
 from common.audit.models.log_model import OperationType, OperationModules
 from common.audit.schemas.logger_decorator import LogConfig, system_log
+from common.core.config import settings
 
 router = APIRouter(tags=["Data Q&A"], prefix="/chat")
+
+
+def _concurrency_error_response(e: ChatGenerationConcurrencyError, stream: bool = True):
+    message = str(e)
+    if stream:
+        def _err():
+            yield 'data:' + orjson.dumps({
+                'content': message,
+                'msg': message,
+                'type': 'error',
+                'code': 429,
+                'retry_after': e.retry_after_seconds,
+            }).decode() + '\n\n'
+
+        return StreamingResponse(_err(), media_type="text/event-stream")
+    return JSONResponse(
+        content={'message': message, 'retry_after': e.retry_after_seconds},
+        status_code=429,
+    )
+
+
+def _bool_arg(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "off"}:
+        return False
+    return default
+
+
+def _int_arg(value: str | None, default: int, *, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(float(str(value).strip())))
+    except (TypeError, ValueError):
+        return default
+
+
+async def _chat_generation_limit_config(session: SessionDep) -> tuple[bool, int]:
+    enabled = settings.CHAT_GENERATION_CONCURRENCY_LIMIT_ENABLED
+    max_concurrent = settings.CHAT_MAX_CONCURRENT_GENERATIONS_PER_USER
+    chat_params: list[SysArgModel] = await get_groups(session, "chat")
+    for config in chat_params:
+        if config.pkey == "chat.generation_concurrency_limit_enabled":
+            enabled = _bool_arg(config.pval, enabled)
+        elif config.pkey == "chat.max_concurrent_generations_per_user":
+            max_concurrent = _int_arg(config.pval, max_concurrent)
+    return enabled, max_concurrent
 
 
 @router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
@@ -398,12 +454,25 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
                      current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True, stream: bool = True,
                      finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False,
                      return_img: bool = True):
+    lease = None
     try:
+        limit_enabled, max_concurrent = await _chat_generation_limit_config(session)
+        lease = await acquire_chat_generation_lease(
+            current_user.id,
+            enabled=limit_enabled,
+            limit=max_concurrent,
+        )
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
                                               embedding=embedding)
         llm_service.init_record(session=session)
+        llm_service.set_generation_lease(lease)
         llm_service.run_task_async(in_chat=in_chat, stream=stream, finish_step=finish_step, return_img=return_img)
+        lease = None
+    except ChatGenerationConcurrencyError as e:
+        return _concurrency_error_response(e, stream)
     except Exception as e:
+        if lease:
+            await lease.release()
         traceback.print_exc()
 
         if stream:
@@ -444,7 +513,14 @@ async def analysis_or_predict_question(session: SessionDep, current_user: Curren
 
 async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str,
                               current_assistant: CurrentAssistant, in_chat: bool = True, stream: bool = True):
+    lease = None
     try:
+        limit_enabled, max_concurrent = await _chat_generation_limit_config(session)
+        lease = await acquire_chat_generation_lease(
+            current_user.id,
+            enabled=limit_enabled,
+            limit=max_concurrent,
+        )
         if action_type != 'analysis' and action_type != 'predict':
             raise Exception(f"Type {action_type} Not Found")
         record: ChatRecord | None = None
@@ -480,8 +556,14 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         )
 
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant)
+        llm_service.set_generation_lease(lease)
         llm_service.run_analysis_or_predict_task_async(session, action_type, record, in_chat, stream)
+        lease = None
+    except ChatGenerationConcurrencyError as e:
+        return _concurrency_error_response(e, stream)
     except Exception as e:
+        if lease:
+            await lease.release()
         traceback.print_exc()
         if stream:
             def _err(_e: Exception):

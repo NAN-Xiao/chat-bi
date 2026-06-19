@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     SERVER_IMAGE_TIMEOUT: int = 15
     LLM_REQUEST_TIMEOUT: int = 45
     LLM_MAX_RETRIES: int = 1
+    CHAT_GENERATION_CONCURRENCY_LIMIT_ENABLED: bool = True
+    CHAT_MAX_CONCURRENT_GENERATIONS_PER_USER: int = 1
+    CHAT_GENERATION_CONCURRENCY_SLOT_TTL_SECONDS: int = 10 * 60
 
     SENTRY_DSN: str | None = None
     SENTRY_ENVIRONMENT: str | None = None
@@ -195,6 +198,7 @@ class Settings(BaseSettings):
                      'PRODUCTION_CHECKS_ENABLED',
                      'ENABLE_LOCAL_DEV_CORS',
                      'LOGIN_RATE_LIMIT_ENABLED',
+                     'CHAT_GENERATION_CONCURRENCY_LIMIT_ENABLED',
                      mode='before')
     @classmethod
     def lowercase_bool(cls, v: Any) -> Any:

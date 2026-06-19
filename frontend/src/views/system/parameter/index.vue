@@ -13,9 +13,20 @@ const state = reactive({
     'chat.limit_rows': false,
     'chat.show_sql': false,
     'chat.show_log': false,
+    'chat.generation_concurrency_limit_enabled': true,
+    'chat.max_concurrent_generations_per_user': 1,
   }),
 })
 provide('parameterForm', state.parameterForm)
+
+const normalizeMaxConcurrentGenerations = (count: unknown) => {
+  const value = Number(count)
+  if (!Number.isFinite(value) || value < 1) {
+    return 1
+  }
+  return Math.floor(value)
+}
+
 const loadData = () => {
   request.get('/system/parameter').then((res: any) => {
     if (res) {
@@ -29,6 +40,8 @@ const loadData = () => {
             if (item.pval && item.pval.trim().length > 0) {
               state.parameterForm[item.pkey] = item.pval
             }
+          } else if (item.pkey === 'chat.max_concurrent_generations_per_user') {
+            state.parameterForm[item.pkey] = normalizeMaxConcurrentGenerations(formatArg(item.pval))
           } else {
             state.parameterForm[item.pkey] = formatArg(item.pval)
           }
@@ -44,6 +57,11 @@ const onContextRecordCountChange = (count: number) => {
     state.parameterForm['chat.context_record_count'] = 0
   }
   state.parameterForm['chat.context_record_count'] = Math.floor(count)
+}
+
+const onMaxConcurrentGenerationsChange = (count: number | undefined) => {
+  state.parameterForm['chat.max_concurrent_generations_per_user'] =
+    normalizeMaxConcurrentGenerations(count)
 }
 
 const beforeChange = (): Promise<boolean> => {
@@ -65,11 +83,10 @@ const beforeChange = (): Promise<boolean> => {
 }
 const buildParam = () => {
   const changedItemArray = Object.keys(state.parameterForm).map((key: string) => {
+    const value = state.parameterForm[key]
     return {
       pkey: key,
-      pval: Object.prototype.hasOwnProperty.call(state.parameterForm, 'key')
-        ? state.parameterForm[key].toString()
-        : state.parameterForm[key],
+      pval: value === undefined || value === null ? value : value.toString(),
     }
   })
   const formData = new FormData()
@@ -187,6 +204,50 @@ onMounted(() => {
                 min="0"
                 step="1"
                 @change="onContextRecordCountChange"
+              />
+            </div>
+          </div>
+        </el-row>
+        <el-row>
+          <div class="card-item">
+            <div class="label">
+              {{ t('parameter.generation_concurrency_limit') }}
+              <el-tooltip
+                effect="dark"
+                :content="t('parameter.generation_concurrency_limit_hint')"
+                placement="top"
+              >
+                <el-icon size="16">
+                  <icon_info_outlined_1></icon_info_outlined_1>
+                </el-icon>
+              </el-tooltip>
+            </div>
+            <div class="value">
+              <el-switch
+                v-model="state.parameterForm['chat.generation_concurrency_limit_enabled']"
+              />
+            </div>
+          </div>
+          <div class="card-item" style="margin-left: 16px">
+            <div class="label">
+              {{ t('parameter.max_concurrent_generations_per_user') }}
+              <el-tooltip
+                effect="dark"
+                :content="t('parameter.max_concurrent_generations_per_user_hint')"
+                placement="top"
+              >
+                <el-icon size="16">
+                  <icon_info_outlined_1></icon_info_outlined_1>
+                </el-icon>
+              </el-tooltip>
+            </div>
+            <div class="value">
+              <el-input-number
+                v-model.number="state.parameterForm['chat.max_concurrent_generations_per_user']"
+                min="1"
+                step="1"
+                :disabled="!state.parameterForm['chat.generation_concurrency_limit_enabled']"
+                @change="onMaxConcurrentGenerationsChange"
               />
             </div>
           </div>

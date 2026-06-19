@@ -53,6 +53,7 @@ from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
+from common.core.chat_generation_limiter import ChatGenerationLease
 from common.error import SingleMessageError, AppDBError, ParseSQLResultError, AppDBConnectionError
 from common.utils.data_format import DataFormat
 from common.utils.locale import I18n, I18nHelper
@@ -117,6 +118,7 @@ class LLMService:
     current_assistant: Optional[CurrentAssistant] = None
     out_ds_instance: Optional[AssistantOutDs] = None
     change_title: bool = False
+    generation_lease: Optional[ChatGenerationLease] = None
 
     generate_sql_logs: List[ChatLog]
     generate_chart_logs: List[ChatLog]
@@ -380,6 +382,16 @@ class LLMService:
 
     def set_articles_number(self, articles_number: int):
         self.articles_number = articles_number
+
+    def set_generation_lease(self, lease: Optional[ChatGenerationLease]):
+        self.generation_lease = lease
+
+    def release_generation_lease(self):
+        if not self.generation_lease:
+            return
+        lease = self.generation_lease
+        self.generation_lease = None
+        lease.release_sync()
 
     def get_fields_from_chart(self, _session: Session):
         chart_info = get_chart_config(_session, self.record.id)
@@ -1177,8 +1189,11 @@ class LLMService:
 
     def run_task_cache(self, in_chat: bool = True, stream: bool = True,
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
-        for chunk in self.run_task(in_chat, stream, finish_step, return_img):
-            self.chunk_list.append(chunk)
+        try:
+            for chunk in self.run_task(in_chat, stream, finish_step, return_img):
+                self.chunk_list.append(chunk)
+        finally:
+            self.release_generation_lease()
 
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
@@ -1536,8 +1551,11 @@ class LLMService:
         self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type, in_chat, stream)
 
     def run_analysis_or_predict_task_cache(self, action_type: str, in_chat: bool = True, stream: bool = True):
-        for chunk in self.run_analysis_or_predict_task(action_type, in_chat, stream):
-            self.chunk_list.append(chunk)
+        try:
+            for chunk in self.run_analysis_or_predict_task(action_type, in_chat, stream):
+                self.chunk_list.append(chunk)
+        finally:
+            self.release_generation_lease()
 
     def run_analysis_or_predict_task(self, action_type: str, in_chat: bool = True, stream: bool = True):
         json_result: Dict[str, Any] = {'success': True}

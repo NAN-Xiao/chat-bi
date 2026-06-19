@@ -9,6 +9,8 @@ interface ChatConfig {
   limit_rows: boolean
   show_sql: boolean
   show_log: boolean
+  generation_concurrency_limit_enabled: boolean
+  max_concurrent_generations_per_user: number
 }
 
 export const chatConfigStore = defineStore('chatConfigStore', {
@@ -19,6 +21,8 @@ export const chatConfigStore = defineStore('chatConfigStore', {
       limit_rows: true,
       show_sql: true,
       show_log: true,
+      generation_concurrency_limit_enabled: true,
+      max_concurrent_generations_per_user: 1,
     }
   },
   getters: {
@@ -37,6 +41,12 @@ export const chatConfigStore = defineStore('chatConfigStore', {
     getLimitRows(): boolean {
       return this.limit_rows
     },
+    getGenerationConcurrencyLimitEnabled(): boolean {
+      return this.generation_concurrency_limit_enabled
+    },
+    getMaxConcurrentGenerationsPerUser(): number {
+      return this.max_concurrent_generations_per_user
+    },
   },
   actions: {
     fetchGlobalConfig() {
@@ -54,6 +64,15 @@ export const chatConfigStore = defineStore('chatConfigStore', {
             }
             if (item.pkey === 'chat.limit_rows') {
               this.limit_rows = formatArg(item.pval)
+            }
+            if (item.pkey === 'chat.generation_concurrency_limit_enabled') {
+              this.generation_concurrency_limit_enabled = formatArg(item.pval)
+            }
+            if (item.pkey === 'chat.max_concurrent_generations_per_user') {
+              const count = Number(formatArg(item.pval))
+              this.max_concurrent_generations_per_user = Number.isFinite(count)
+                ? Math.max(1, Math.floor(count))
+                : 1
             }
             if (item.pkey === 'chat.zhishu_name') {
               if (item.pval && item.pval.trim().length > 0) {
