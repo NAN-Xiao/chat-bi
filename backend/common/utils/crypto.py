@@ -8,8 +8,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from common.core.config import settings
 
 _AES_KEY = b"Zhishu1234567890"
-_LEGACY_AES_KEYS = (b"SQLBot1234567890",)
 _FERNET_PREFIX = "fernet:v1:"
+_AES_KEY_SIZES = {16, 24, 32}
 
 
 def _encryption_secret() -> str:
@@ -31,6 +31,53 @@ def _legacy_ecb_encrypt(text: str) -> str:
     return base64.b64encode(encrypted).decode("utf-8")
 
 
+def _valid_aes_key(key: bytes) -> bytes | None:
+    return key if len(key) in _AES_KEY_SIZES else None
+
+
+def _decode_legacy_key_token(token: str) -> bytes | None:
+    if token.startswith("base64:"):
+        try:
+            return _valid_aes_key(base64.b64decode(token.removeprefix("base64:"), validate=True))
+        except Exception:
+            return None
+
+    if token.startswith("hex:"):
+        try:
+            return _valid_aes_key(bytes.fromhex(token.removeprefix("hex:")))
+        except Exception:
+            return None
+
+    try:
+        decoded = _valid_aes_key(base64.b64decode(token, validate=True))
+        if decoded:
+            return decoded
+    except Exception:
+        pass
+
+    try:
+        decoded = _valid_aes_key(bytes.fromhex(token))
+        if decoded:
+            return decoded
+    except Exception:
+        pass
+
+    return _valid_aes_key(token.encode("utf-8"))
+
+
+def get_legacy_config_aes_keys() -> tuple[bytes, ...]:
+    raw_value = settings.LEGACY_CONFIG_AES_KEYS or ""
+    keys: list[bytes] = []
+    for token in raw_value.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        key = _decode_legacy_key_token(token)
+        if key and key not in keys:
+            keys.append(key)
+    return tuple(keys)
+
+
 def _legacy_ecb_decrypt_with_key(text: str, key: bytes) -> str:
     cipher = AES.new(key, AES.MODE_ECB)
     decrypted = cipher.decrypt(base64.b64decode(text))
@@ -41,7 +88,7 @@ def _legacy_ecb_decrypt(text: str) -> str:
     try:
         return _legacy_ecb_decrypt_with_key(text, _AES_KEY)
     except Exception:
-        for legacy_key in _LEGACY_AES_KEYS:
+        for legacy_key in get_legacy_config_aes_keys():
             try:
                 return _legacy_ecb_decrypt_with_key(text, legacy_key)
             except Exception:

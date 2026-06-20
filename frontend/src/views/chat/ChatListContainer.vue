@@ -2,7 +2,7 @@
 import { Search } from '@element-plus/icons-vue'
 import ChatList from '@/views/chat/ChatList.vue'
 import { useI18n } from 'vue-i18n'
-import { computed, nextTick, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Chat, chatApi, ChatInfo } from '@/api/chat.ts'
 import { filter, includes } from 'lodash-es'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
@@ -167,27 +167,25 @@ function onClickHistory(chat: Chat) {
 }
 
 function goHistory(chat: Chat) {
-  nextTick(() => {
-    if (chat !== undefined && chat.id !== undefined) {
-      _currentChat.value = new ChatInfo(chat)
-      _currentChatId.value = chat.id
-      _loading.value = true
-      chatApi
-        .get(chat.id)
-        .then((res) => {
-          const info = chatApi.toChatInfo(res)
-          if (info && info.id === _currentChatId.value) {
-            _currentChat.value = info
+  if (chat !== undefined && chat.id !== undefined) {
+    _currentChat.value = new ChatInfo(chat)
+    _currentChatId.value = chat.id
+    _loading.value = true
+    chatApi
+      .get(chat.id)
+      .then((res) => {
+        const info = chatApi.toChatInfo(res)
+        if (info && info.id === _currentChatId.value) {
+          _currentChat.value = info
 
-            // scrollToBottom()
-            emits('onClickHistory', info)
-          }
-        })
-        .finally(() => {
-          _loading.value = false
-        })
-    }
-  })
+          // scrollToBottom()
+          emits('onClickHistory', info)
+        }
+      })
+      .finally(() => {
+        _loading.value = false
+      })
+  }
 }
 
 function onChatDeleted(id: number) {

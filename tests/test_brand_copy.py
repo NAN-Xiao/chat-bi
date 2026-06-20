@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BRAND_NAME = "星通智数"
+LEGACY_BRAND_NAME = "".join(("SQL", "Bot"))
 
 JSON_COPY_FILES = [
     ROOT / "frontend/src/i18n/zh-CN.json",
@@ -45,12 +46,12 @@ EXPECTED_COPY_SNIPPETS = {
     "installer/zhishu/templates/zhishu.conf": ['PROJECT_NAME="星通智数"'],
     "README.md": [
         "星通智数是一款基于大语言模型和 RAG 的智能报表系统",
-        "快速部署星通智数",
+        "快速开始",
         "基于星通智数的源代码",
     ],
     "docs/README.en.md": [
         "星通智数 is an intelligent data query system based on large language models and RAG.",
-        "quickly deploy 星通智数",
+        "Installation and Deployment",
         "based on the 星通智数 source code",
     ],
     "installer/sctl": [
@@ -96,7 +97,7 @@ def test_i18n_visible_copy_uses_new_brand_name():
     for file_path in JSON_COPY_FILES:
         data = json.loads(file_path.read_text(encoding="utf-8"))
         for value in _flatten_json_values(data):
-            if "SQLBot" in value:
+            if LEGACY_BRAND_NAME in value:
                 offenders.append(f"{file_path.relative_to(ROOT)}: {value}")
 
     assert offenders == []

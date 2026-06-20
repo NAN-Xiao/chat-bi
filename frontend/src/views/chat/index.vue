@@ -111,7 +111,7 @@
           'assistant-chat-main': !isCompletePage && !pageEmbedded,
         }"
       >
-        <div v-if="computedMessages.length == 0 && !loading" class="welcome-content-block">
+        <div v-if="showWelcomeContent" class="welcome-content-block">
           <div class="welcome-content">
             <template v-if="isCompletePage">
               <div class="smart-qa-welcome">
@@ -166,7 +166,7 @@
 
           </div>
         </div>
-        <div v-else-if="computedMessages.length == 0 && loading" class="welcome-content-block">
+        <div v-else-if="showEmptyLoadingContent" class="welcome-content-block">
           <div style="display: flex; align-items: center; height: 30px">
             <img
               v-if="logoAssistant || loginBg"
@@ -591,10 +591,14 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
 
   return messages
 })
+const hasChatMessages = computed(() => computedMessages.value.length > 0)
+const isLoadingSelectedChat = computed(() => loading.value && currentChatId.value !== undefined)
+const showWelcomeContent = computed(() => !hasChatMessages.value && !isLoadingSelectedChat.value)
+const showEmptyLoadingContent = computed(() => !hasChatMessages.value && isLoadingSelectedChat.value)
 
 const showChatFooter = computed(() => {
   return (
-    computedMessages.value.length > 0 ||
+    hasChatMessages.value ||
     currentChat.value.records.length === 0 ||
     (!isCompletePage.value && !selectAssistantDs.value) ||
     currentChatId.value === undefined

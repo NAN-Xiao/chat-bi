@@ -235,7 +235,22 @@ const sendMessage = async () => {
 
 const loadingData = ref(false)
 
+function hasRecordData(record?: ChatRecord) {
+  if (!record?.data) {
+    return false
+  }
+  if (typeof record.data === 'string') {
+    return record.data.trim().length > 0
+  }
+  return Array.isArray(record.data?.data) ? record.data.data.length > 0 : !!record.data
+}
+
 function getChatData(recordId?: number) {
+  const currentRecord = _currentChat.value.records.find((record) => record.id === recordId)
+  if (hasRecordData(currentRecord)) {
+    return
+  }
+
   loadingData.value = true
   chatApi
     .get_chart_data(recordId)

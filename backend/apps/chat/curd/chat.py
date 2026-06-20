@@ -404,6 +404,15 @@ def get_chat_chart_config(session: SessionDep, chat_record_id: int):
     return {}
 
 
+def _loads_record_data(data: str | None):
+    if not data:
+        return None
+    try:
+        return orjson.loads(data)
+    except Exception:
+        return None
+
+
 def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
     stmt = select(
         ChatRecord.datasource,
@@ -420,15 +429,9 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
     )
     res = session.execute(stmt)
     for row in res:
-        if row.datasource and row.sql:
-            return get_chart_data_with_user_live(
-                session=session,
-                current_user=current_user,
-                chat_record_id=chat_record_id,
-            )
         source_record_id = row.analysis_record_id or row.predict_record_id
         if row.datasource and source_record_id:
-            result = get_chart_data_with_user_live(
+            result = get_chart_data_with_user(
                 session=session,
                 current_user=current_user,
                 chat_record_id=source_record_id,
@@ -436,12 +439,25 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
             if result.get("status") == "failed":
                 return _failed_permission_data()
             return result
+
+        if row.datasource and row.sql:
+            if not _record_allowed_by_current_permissions(session, current_user, row):
+                return _failed_permission_data()
+            data = _loads_record_data(row.data)
+            if data is not None:
+                return data
+            return get_chart_data_with_user_live(
+                session=session,
+                current_user=current_user,
+                chat_record_id=chat_record_id,
+            )
+
         if row.datasource and row.data and is_normal_user(current_user):
             return _failed_permission_data()
-        try:
-            return orjson.loads(row.data)
-        except Exception:
-            pass
+
+        data = _loads_record_data(row.data)
+        if data is not None:
+            return data
     return {}
 
 def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):

@@ -4,10 +4,9 @@ import json
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 
-from common.utils.crypto import decrypt_sensitive_text, encrypt_sensitive_text
+from common.utils.crypto import decrypt_sensitive_text, encrypt_sensitive_text, get_legacy_config_aes_keys
 
 key = b"Zhishu1234567890"
-legacy_keys = (b"SQLBot1234567890",)
 _FERNET_PREFIX = "fernet:v1:"
 
 
@@ -28,7 +27,7 @@ def _legacy_aes_encrypt(data: str) -> str:
 
 def _legacy_aes_decrypt(encrypted_data: str) -> str:
     raw = base64.b64decode(encrypted_data)
-    for candidate_key in (key, *legacy_keys):
+    for candidate_key in (key, *get_legacy_config_aes_keys()):
         try:
             cipher = AES.new(candidate_key, AES.MODE_ECB)
             text = cipher.decrypt(raw)

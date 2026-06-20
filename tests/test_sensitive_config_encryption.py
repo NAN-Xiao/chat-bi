@@ -1,6 +1,9 @@
 import asyncio
+import base64
 
 import pytest
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
 
 from apps.datasource.utils.utils import (
     aes_decrypt,
@@ -16,10 +19,20 @@ from common.utils.crypto import (
 )
 
 
+CONFIGURED_LEGACY_AES_KEY = b"LegacyTestKey123"
+
+
+def _legacy_ecb_encrypt_with_key(text: str, key: bytes) -> str:
+    cipher = AES.new(key, AES.MODE_ECB)
+    encrypted = cipher.encrypt(pad(text.encode("utf-8"), AES.block_size))
+    return base64.b64encode(encrypted).decode("utf-8")
+
+
 @pytest.fixture(autouse=True)
 def stable_encryption_key(monkeypatch):
     monkeypatch.setattr(settings, "SENSITIVE_CONFIG_ENCRYPTION_KEY", "s" * 48)
     monkeypatch.setattr(settings, "DATASOURCE_CONFIG_ENCRYPTION_KEY", None)
+    monkeypatch.setattr(settings, "LEGACY_CONFIG_AES_KEYS", "")
 
 
 def test_sensitive_text_uses_versioned_server_side_encryption():
@@ -36,9 +49,29 @@ def test_sensitive_text_keeps_legacy_aes_readable():
     assert decrypt_sensitive_text(legacy) == "legacy-secret"
 
 
+def test_sensitive_text_reads_configured_legacy_aes_key(monkeypatch):
+    monkeypatch.setattr(settings, "LEGACY_CONFIG_AES_KEYS", CONFIGURED_LEGACY_AES_KEY.decode("utf-8"))
+    legacy = _legacy_ecb_encrypt_with_key("legacy-secret", CONFIGURED_LEGACY_AES_KEY)
+
+    assert decrypt_sensitive_text(legacy) == "legacy-secret"
+
+
 def test_datasource_configuration_encrypts_and_reads_legacy_values():
     plain = '{"host":"db.example.com","password":"secret"}'
     legacy = legacy_aes_encrypt_for_tests(plain)
+
+    assert aes_decrypt(legacy) == plain
+
+    encrypted = encrypt_datasource_configuration(legacy)
+
+    assert encrypted.startswith("fernet:v1:")
+    assert aes_decrypt(encrypted) == plain
+
+
+def test_datasource_configuration_reads_configured_legacy_aes_key(monkeypatch):
+    monkeypatch.setattr(settings, "LEGACY_CONFIG_AES_KEYS", f"base64:{base64.b64encode(CONFIGURED_LEGACY_AES_KEY).decode('utf-8')}")
+    plain = '{"host":"db.example.com","password":"secret"}'
+    legacy = _legacy_ecb_encrypt_with_key(plain, CONFIGURED_LEGACY_AES_KEY)
 
     assert aes_decrypt(legacy) == plain
 
