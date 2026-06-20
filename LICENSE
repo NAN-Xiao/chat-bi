@@ -1,14 +1,9 @@
 # Open Source License
 
-星通智数 is licensed under a modified version of the GNU General Public License version 3 (GPLv3), with the following additional conditions:
+This project is licensed under the GNU General Public License version 3 (GPLv3).
 
-1. LOGO and copyright information: In the process of using 星通智数's frontend, you may not remove or modify the LOGO or copyright information in the 星通智数 console or applications.
+You may copy, distribute, and modify this software under the terms of the GPLv3. Derivative works must preserve the same license obligations required by GPLv3.
 
-2. As a contributor, you should agree that:
+The full GPLv3 license text is available at https://www.gnu.org/licenses/gpl-3.0.html.
 
-a. The producer can adjust the open-source agreement to be more strict or relaxed as deemed necessary.
-b. Your contributed code may be used for commercial purposes, including but not limited to its cloud business operations.
-
-Apart from the specific conditions mentioned above, all other rights and restrictions follow the GPLv3. Detailed information about the GPLv3 can be found at https://www.gnu.org/licenses/gpl-3.0.html.
-
-© 2025 FIT2CLOUD, Inc.
+Copyright (c) 2025 Chat BI Contributors.

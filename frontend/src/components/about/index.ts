@@ -1,4 +1,4 @@
-export interface F2CLicense {
+export interface VendorLicense {
   isv: string
   status: string
   corporation: string
