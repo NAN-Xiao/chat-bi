@@ -13,7 +13,7 @@ from apps.datasource.crud.query_executor import execute_user_query_or_raise
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
 from apps.db.constant import DB
-from apps.db.db import get_tables, get_fields, exec_sql, check_connection
+from apps.db.db import get_tables, get_fields, _unsafe_exec_sql_after_validation, check_connection
 from apps.db.engine import get_engine_config, get_engine_conn
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
@@ -70,7 +70,7 @@ def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise
 def _datasource_tenant_id(session: SessionDep, ds_id: int | None) -> int | None:
     if ds_id is None:
         return None
-    return session.exec(select(CoreDatasource.tenant_id).where(CoreDatasource.id == ds_id)).first()
+    return session.execute(select(CoreDatasource.tenant_id).where(CoreDatasource.id == ds_id)).scalar()
 
 
 def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
@@ -200,9 +200,8 @@ def getFieldsByDs(session: SessionDep, ds: CoreDatasource, table_name: str):
     return fields
 
 
-def execSql(session: SessionDep, id: int, sql: str):
-    ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
-    return exec_sql(ds, sql, True)
+def execute_internal_metadata_query(ds: CoreDatasource, sql: str, origin_column: bool = True):
+    return _unsafe_exec_sql_after_validation(ds, sql, origin_column)
 
 
 def sync_single_fields(
@@ -457,7 +456,7 @@ def fieldEnum(session: SessionDep, id: int):
 
     db = DB.get_db(ds.type)
     sql = f"""SELECT DISTINCT {db.prefix}{field.field_name}{db.suffix} FROM {db.prefix}{table.table_name}{db.suffix}"""
-    res = exec_sql(ds, sql, True)
+    res = execute_internal_metadata_query(ds, sql, True)
     return [item.get(res.get('fields')[0]) for item in res.get('data')]
 
 
@@ -542,7 +541,7 @@ def get_table_sample_data(ds: CoreDatasource, table_name: str, fields: list) -> 
         query = f"SELECT {','.join(field_names)} FROM {prefix}{table_name}{suffix} LIMIT 3"
 
     try:
-        result = exec_sql(ds=ds, sql=query, origin_column=True)
+        result = execute_internal_metadata_query(ds=ds, sql=query, origin_column=True)
         if result and result.get('data') and len(result['data']) > 0:
             import json
             # Truncate long string values for readability

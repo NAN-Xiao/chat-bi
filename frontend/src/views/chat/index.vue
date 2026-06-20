@@ -699,14 +699,27 @@ const createNewChat = async () => {
 }
 
 function getChatList(callback?: () => void) {
+  const requestTenantId = userStore.getTenantId || 'default'
+  const requestDatasourceId = datasourceContext.datasourceId
   loading.value = true
   chatApi
-    .list(datasourceContext.datasourceId)
+    .list(requestDatasourceId)
     .then((res) => {
+      if (
+        (userStore.getTenantId || 'default') !== requestTenantId ||
+        datasourceContext.datasourceId !== requestDatasourceId
+      ) {
+        return
+      }
       chatList.value = chatApi.toChatInfoList(res)
     })
     .finally(() => {
-      loading.value = false
+      if (
+        (userStore.getTenantId || 'default') === requestTenantId &&
+        datasourceContext.datasourceId === requestDatasourceId
+      ) {
+        loading.value = false
+      }
       if (callback && typeof callback === 'function') {
         callback()
       }

@@ -229,10 +229,38 @@ def test_production_launch_acceptance_checklist_is_documented():
 
 def test_sql_execution_permission_refactor_has_no_known_dead_helper_bypasses():
     chat_crud = (REPO_ROOT / "backend/apps/chat/curd/chat.py").read_text(encoding="utf-8")
+    chat_task = (REPO_ROOT / "backend/apps/chat/task/llm.py").read_text(encoding="utf-8")
     analysis_assistant = (
         REPO_ROOT / "backend/apps/analysis_assistant/api/analysis_assistant.py"
     ).read_text(encoding="utf-8")
+    backend_apps_python = [
+        path for path in (REPO_ROOT / "backend/apps").rglob("*.py")
+        if "__pycache__" not in path.parts
+    ]
 
     assert "def get_chart_data_ds" not in chat_crud
+    assert "from apps.db.db import exec_sql" not in chat_task
     assert "from apps.db.db import exec_sql" not in analysis_assistant
     assert "exec_sql(datasource" not in analysis_assistant
+    assert "apply_row_permissions=False" not in chat_task
+    assert "apply_row_permissions=False" not in analysis_assistant
+    for path in backend_apps_python:
+        text = path.read_text(encoding="utf-8")
+        assert "from apps.db.db import exec_sql" not in text
+        assert "def exec_sql" not in text
+        assert "def execSql" not in text
+
+
+def test_low_level_sql_adapter_is_only_used_by_controlled_wrappers():
+    allowed = {
+        REPO_ROOT / "backend/apps/db/db.py",
+        REPO_ROOT / "backend/apps/datasource/crud/query_executor.py",
+        REPO_ROOT / "backend/apps/datasource/crud/datasource.py",
+    }
+
+    for path in (REPO_ROOT / "backend/apps").rglob("*.py"):
+        if "__pycache__" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "_unsafe_exec_sql_after_validation" in text:
+            assert path in allowed

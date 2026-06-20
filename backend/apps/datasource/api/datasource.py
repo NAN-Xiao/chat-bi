@@ -504,27 +504,6 @@ async def sync_fields(session: SessionDep,
     )
 
 
-class TestObj(BaseModel):
-    sql: str = None
-
-
-# not used, just do test
-""" @router.post("/execSql/{id}", include_in_schema=False)
-async def exec_sql(session: SessionDep, id: int, obj: TestObj):
-    def inner():
-        data = execSql(session, id, obj.sql)
-        try:
-            data_obj = data.get('data')
-            # print(orjson.dumps(data, option=orjson.OPT_NON_STR_KEYS).decode())
-            print(orjson.dumps(data_obj).decode())
-        except Exception:
-            traceback.print_exc()
-
-        return data
-
-    return await asyncio.to_thread(inner) """
-
-
 @router.post("/tableList/{id}", response_model=List[CoreTable], summary=f"{PLACEHOLDER_PREFIX}ds_table_list")
 @require_permissions(permission=AppPermission(type='ds', keyExpression="id"))
 async def table_list(session: SessionDep, current_user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):

@@ -180,24 +180,6 @@
           <EmptyBackground v-else :description="t('tenant_usage.empty')" img-type="tree" />
         </div>
       </section>
-
-      <section class="chart-card">
-        <div class="chart-card-head">
-          <span>{{ t('tenant_usage.task_trend') }}</span>
-          <span class="muted">{{ t('tenant_usage.by_day') }}</span>
-        </div>
-        <div class="chart-surface">
-          <ChartComponent
-            v-if="usageRows.length"
-            :id="'tenant-usage-task-trend'"
-            type="line"
-            :data="dailyRows"
-            :x="dateAxis"
-            :y="taskTrendAxis"
-          />
-          <EmptyBackground v-else :description="t('tenant_usage.empty')" img-type="tree" />
-        </div>
-      </section>
     </div>
 
     <div class="section-head">
@@ -585,10 +567,6 @@ const metricBreakdownXAxis = computed<ChartAxis[]>(() => [
 
 const metricBreakdownYAxis = computed<ChartAxis[]>(() => [
   { name: t('tenant_usage.tokens'), value: 'total_tokens' },
-])
-
-const taskTrendAxis = computed<ChartAxis[]>(() => [
-  { name: t('tenant_usage.tasks'), value: 'task_count' },
 ])
 
 const userTokenXAxis = computed<ChartAxis[]>(() => [

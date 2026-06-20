@@ -383,6 +383,51 @@ def test_load_resource_denies_cross_tenant_dashboard():
     assert exc_info.value.status_code == 404
 
 
+def test_list_resource_is_scoped_to_current_workspace_even_for_same_creator(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=20)
+    monkeypatch.setattr(dashboard_service, "get_accessible_datasource_ids", lambda *args, **kwargs: None)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="tenant-10-dashboard",
+                tenant_id=10,
+                name="租户十看板",
+                pid="root",
+                datasource=None,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="tenant-20-dashboard",
+                tenant_id=20,
+                name="租户二十看板",
+                pid="root",
+                datasource=None,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=101,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(),
+            current_user=current_user,
+        )
+
+    assert [node.id for node in tree] == ["tenant-20-dashboard"]
+
+
 def test_list_resource_marks_project_editor_can_edit(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False)
@@ -879,7 +924,7 @@ def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
-        "exec_sql",
+        "_unsafe_exec_sql_after_validation",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
         or {"data": [{"payment_id": 1}], "fields": ["payment_id"]},
     )
@@ -928,7 +973,7 @@ def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch)
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
-        "exec_sql",
+        "_unsafe_exec_sql_after_validation",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
         or {"data": [{"amount": 99}], "fields": ["amount"]},
     )
@@ -956,7 +1001,7 @@ def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
-        "exec_sql",
+        "_unsafe_exec_sql_after_validation",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
         or {"data": [{"order_id": 1}], "fields": ["order_id"]},
     )
@@ -986,7 +1031,7 @@ def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
-        "exec_sql",
+        "_unsafe_exec_sql_after_validation",
         lambda ds, sql, origin_column=False: exec_calls.append(sql)
         or {"data": [{"order_id": 1}], "fields": ["order_id"]},
     )
@@ -1349,6 +1394,42 @@ def test_use_shared_resource_creates_dashboard_copy(monkeypatch):
 
     assert record.name == "共享图表包"
     assert record.datasource == 1
+    assert record.create_by == "5"
+
+
+def test_use_shared_resource_binds_copy_to_current_workspace(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=5, isAdmin=False, tenant_id=20)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboardShare(
+                id="share-1",
+                tenant_id=20,
+                name="空间看板",
+                datasource=1,
+                share_type="dashboard",
+                source_dashboard_id="dashboard-1",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+                create_by="1",
+                update_by="1",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        record = dashboard_service.use_shared_resource(
+            session=session,
+            user=current_user,
+            request=SharedDashboardUseRequest(id="share-1"),
+        )
+
+    assert record.tenant_id == 20
     assert record.create_by == "5"
 
 

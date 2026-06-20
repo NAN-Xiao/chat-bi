@@ -1,6 +1,6 @@
 services:
   zhishu:
-    image: dataease/zhishu
+    image: zhishu:latest
     container_name: zhishu
     restart: always
     privileged: true

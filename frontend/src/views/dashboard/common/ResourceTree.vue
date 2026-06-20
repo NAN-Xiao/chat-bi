@@ -27,12 +27,14 @@ import { useI18n } from 'vue-i18n'
 import treeSort from '@/views/dashboard/utils/treeSortUtils.ts'
 import { useCache } from '@/utils/useCache.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useUserStore } from '@/stores/user'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
 const { wsCache } = useCache()
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
+const userStore = useUserStore()
 const resourceGroupOptRef = ref(null)
 
 defineProps({
@@ -137,14 +139,22 @@ const nodeClick = (data: SQTreeNode, node: any) => {
 
 const getTree = async () => {
   await datasourceContext.loadDatasources()
+  const requestTenantId = userStore.getTenantId || 'default'
+  const requestDatasourceId = datasourceContext.datasourceId
   state.originResourceTree = []
-  if (!datasourceContext.datasourceId) {
+  if (!requestDatasourceId) {
     state.resourceTree = []
     afterTreeInit()
     return
   }
-  const params = { datasource: datasourceContext.datasourceId }
+  const params = { datasource: requestDatasourceId }
   dashboardApi.list_resource(params).then((res: SQTreeNode[]) => {
+    if (
+      (userStore.getTenantId || 'default') !== requestTenantId ||
+      datasourceContext.datasourceId !== requestDatasourceId
+    ) {
+      return
+    }
     state.originResourceTree = res || []
     state.resourceTree = _.cloneDeep(state.originResourceTree)
     handleSortTypeChange('name_asc')

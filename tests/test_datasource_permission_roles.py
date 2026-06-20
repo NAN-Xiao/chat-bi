@@ -201,6 +201,16 @@ def test_datasource_role_defaults_to_viewer_for_existing_membership():
         assert permission.has_datasource_role(session, current_user, 1, "project_editor") is False
 
 
+def test_datasource_tenant_id_returns_scalar_value():
+    engine = _engine_with_permission_tables()
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=11))
+        session.commit()
+
+        assert datasource_crud._datasource_tenant_id(session, 1) == 11
+
+
 def test_platform_admin_datasource_list_can_view_all_projects():
     engine = _engine_with_permission_tables()
     system_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
@@ -694,7 +704,7 @@ def test_normal_user_sample_data_is_not_sent_to_model(monkeypatch):
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
-        "exec_sql",
+        "_unsafe_exec_sql_after_validation",
         lambda ds, sql, origin_column=True: exec_calls.append(sql)
         or {"fields": ["order_id"], "data": [{"order_id": 1}], "sql": sql},
     )
@@ -1040,7 +1050,7 @@ def test_preview_denies_configured_denied_tables(monkeypatch):
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
-        "exec_sql",
+        "_unsafe_exec_sql_after_validation",
         lambda ds, sql, origin_column=True: exec_calls.append(sql)
         or {"fields": ["order_id"], "data": [{"order_id": 1}], "sql": sql},
     )

@@ -582,7 +582,13 @@ def convert_value(value, datetime_format='space'):
         return value
 
 
-def exec_sql(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
+def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
+    """Low-level datasource execution adapter.
+
+    Do not call this from user-facing analysis code. Route user SQL through
+    apps.datasource.crud.query_executor so datasource/table/field/row
+    permissions and audit-friendly normalization are applied first.
+    """
     while sql.endswith(';'):
         sql = sql[:-1]
     # check execute sql only contain read operations

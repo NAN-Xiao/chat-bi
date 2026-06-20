@@ -53,7 +53,14 @@ def _same_tenant(row, current_user: CurrentUser | None) -> bool:
 def _record_tenant_id(session: SessionDep, record_id: int | None) -> int:
     if not record_id:
         return DEFAULT_TENANT_ID
-    tenant_id = session.exec(select(ChatRecord.tenant_id).where(ChatRecord.id == record_id)).first()
+    tenant_id = session.execute(select(ChatRecord.tenant_id).where(ChatRecord.id == record_id)).scalar()
+    return int(tenant_id or DEFAULT_TENANT_ID)
+
+
+def _chat_tenant_id(session: SessionDep, chat_id: int | None) -> int:
+    if not chat_id:
+        return DEFAULT_TENANT_ID
+    tenant_id = session.execute(select(Chat.tenant_id).where(Chat.id == chat_id)).scalar()
     return int(tenant_id or DEFAULT_TENANT_ID)
 
 
@@ -908,14 +915,14 @@ def get_chat_brief_generate(session: SessionDep, chat_id: int):
 
 
 def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
-    tenant_id = session.exec(select(Chat.tenant_id).where(Chat.id == chart_id)).first()
+    tenant_id = _chat_tenant_id(session, chart_id)
     stmt = select(ChatLog).where(
         and_(
             ChatLog.pid.in_(select(ChatRecord.id).where(and_(
                 ChatRecord.chat_id == chart_id,
-                ChatRecord.tenant_id == int(tenant_id or DEFAULT_TENANT_ID),
+                ChatRecord.tenant_id == tenant_id,
             ))),
-            ChatLog.tenant_id == int(tenant_id or DEFAULT_TENANT_ID),
+            ChatLog.tenant_id == tenant_id,
             ChatLog.type == TypeEnum.CHAT,
             ChatLog.operate == OperationEnum.GENERATE_SQL,
         )).order_by(
@@ -929,14 +936,14 @@ def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
 
 
 def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
-    tenant_id = session.exec(select(Chat.tenant_id).where(Chat.id == chart_id)).first()
+    tenant_id = _chat_tenant_id(session, chart_id)
     stmt = select(ChatLog).where(
         and_(
             ChatLog.pid.in_(select(ChatRecord.id).where(and_(
                 ChatRecord.chat_id == chart_id,
-                ChatRecord.tenant_id == int(tenant_id or DEFAULT_TENANT_ID),
+                ChatRecord.tenant_id == tenant_id,
             ))),
-            ChatLog.tenant_id == int(tenant_id or DEFAULT_TENANT_ID),
+            ChatLog.tenant_id == tenant_id,
             ChatLog.type == TypeEnum.CHAT,
             ChatLog.operate == OperationEnum.GENERATE_CHART,
         )).order_by(
@@ -1433,6 +1440,7 @@ def get_old_questions(session: SessionDep, datasource: int, current_user: Curren
     ]
     if current_user is not None:
         conditions.append(ChatRecord.create_by == current_user.id)
+        conditions.append(ChatRecord.tenant_id == _current_tenant_id(current_user))
     stmt = select(ChatRecord.question).where(and_(*conditions)).order_by(
         ChatRecord.create_time.desc()).limit(20)
     result = session.execute(stmt)

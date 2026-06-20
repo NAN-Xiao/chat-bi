@@ -1163,7 +1163,7 @@ onMounted(async () => {
 
     &:first-child {
       width: 72px;
-      background: #f2c811;
+      background: #f3c712;
     }
 
     &:nth-child(2) {
@@ -1260,7 +1260,7 @@ onMounted(async () => {
     flex: 1;
     min-width: 10px;
     border-radius: 3px 3px 0 0;
-    background: #f2c811;
+    background: #f3c712;
 
     &:nth-child(3n + 1) {
       background: #0078d4;
@@ -1499,7 +1499,7 @@ onMounted(async () => {
 
       &:first-child {
         width: 64px;
-        background: #f2c811;
+        background: #f3c712;
       }
 
       &:nth-child(2) {
@@ -1580,7 +1580,7 @@ onMounted(async () => {
     flex: 1;
     min-width: 8px;
     border-radius: 3px 3px 0 0;
-    background: #f2c811;
+    background: #f3c712;
 
     &:nth-child(3n + 1) {
       background: #0078d4;
@@ -1663,7 +1663,7 @@ onMounted(async () => {
     display: grid;
     place-items: center;
     border-radius: 4px;
-    background: #f2c811;
+    background: #f3c712;
     color: #0b1f44;
     font-size: 13px;
     font-weight: 900;
@@ -1934,7 +1934,7 @@ onMounted(async () => {
   place-items: center;
   border-radius: 4px;
   color: #111827 !important;
-  background: #f2c811;
+  background: #f3c712;
   font-size: 13px !important;
   font-weight: 900;
 }
@@ -2032,7 +2032,7 @@ onMounted(async () => {
   gap: 14px;
 
   article {
-    border-top: 3px solid #f2c811;
+    border-top: 3px solid #f3c712;
     border-radius: 0 0 8px 8px;
     padding: 18px 16px 20px;
     background: #ffffff;
@@ -2236,7 +2236,7 @@ onMounted(async () => {
     display: grid;
     place-items: center;
     border-radius: 4px;
-    background: #f2c811;
+    background: #f3c712;
     color: #0b1f44;
     font-size: 13px;
     font-weight: 900;
@@ -2278,7 +2278,7 @@ onMounted(async () => {
     height: 12px;
     margin-top: 4px;
     border-radius: 50%;
-    background: #f2c811;
+    background: #f3c712;
     box-shadow: 0 0 0 5px rgba(242, 200, 17, 0.18);
   }
 
@@ -2333,7 +2333,7 @@ onMounted(async () => {
 
     &:first-child {
       width: 88%;
-      background: #f2c811;
+      background: #f3c712;
     }
 
     &:nth-child(2) {
@@ -2366,7 +2366,7 @@ onMounted(async () => {
     display: grid;
     place-items: center;
     border-radius: 4px;
-    background: #f2c811;
+    background: #f3c712;
     color: #0b1f44;
     font-size: 13px;
     font-weight: 900;
@@ -2453,7 +2453,7 @@ onMounted(async () => {
     background: #8cf4d0;
 
     &:nth-child(3n + 1) {
-      background: #f2c811;
+      background: #f3c712;
     }
 
     &:nth-child(3n + 2) {

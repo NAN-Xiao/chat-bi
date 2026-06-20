@@ -362,6 +362,112 @@ def test_normal_user_chat_log_history_hides_internal_messages():
     assert result.steps[1].message == {"count": 3}
 
 
+def test_chat_log_history_queries_use_scalar_tenant_id():
+    engine = _engine_with_chat_permission_tables()
+
+    with Session(engine) as session:
+        session.add(Chat(
+            id=1,
+            tenant_id=11,
+            create_by=2,
+            create_time=datetime.datetime(2026, 6, 18),
+            datasource=1,
+            engine_type="PostgreSQL",
+            brief="retention",
+        ))
+        session.add(ChatRecord(
+            id=10,
+            tenant_id=11,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            question="6月18号用户留存数据",
+        ))
+        session.execute(
+            text(
+                """
+                INSERT INTO chat_log (id, tenant_id, type, operate, pid, messages, local_operation, error)
+                VALUES
+                    (101, 11, '0', '0', 10, :sql_message, 0, 0),
+                    (102, 11, '0', '1', 10, :chart_message, 0, 0)
+                """
+            ),
+            {
+                "sql_message": json.dumps([{"role": "user", "content": "retention"}]),
+                "chart_message": json.dumps([{"role": "assistant", "content": "chart"}]),
+            },
+        )
+        session.commit()
+
+        assert chat_crud._record_tenant_id(session, 10) == 11
+        sql_logs = chat_crud.list_generate_sql_logs(session, 1)
+        chart_logs = chat_crud.list_generate_chart_logs(session, 1)
+
+    assert [log.id for log in sql_logs] == [101]
+    assert [log.id for log in chart_logs] == [102]
+
+
+def test_chat_list_is_scoped_to_current_workspace_even_for_same_user(monkeypatch):
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=20)
+    monkeypatch.setattr(chat_crud, "get_accessible_datasource_ids", lambda *args, **kwargs: None)
+
+    with Session(engine) as session:
+        session.add(Chat(
+            id=1,
+            tenant_id=10,
+            create_by=2,
+            create_time=datetime.datetime(2026, 6, 18),
+            datasource=None,
+            engine_type="",
+            brief="tenant-10-record",
+        ))
+        session.add(Chat(
+            id=2,
+            tenant_id=20,
+            create_by=2,
+            create_time=datetime.datetime(2026, 6, 19),
+            datasource=None,
+            engine_type="",
+            brief="tenant-20-record",
+        ))
+        session.commit()
+
+        result = chat_crud.list_chats(session, current_user)
+
+    assert [chat.id for chat in result] == [2]
+
+
+def test_old_questions_are_scoped_to_current_workspace_even_for_same_user():
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=20)
+
+    with Session(engine) as session:
+        session.add(ChatRecord(
+            id=1,
+            tenant_id=10,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            question="tenant 10 question",
+            create_time=datetime.datetime(2026, 6, 18),
+        ))
+        session.add(ChatRecord(
+            id=2,
+            tenant_id=20,
+            chat_id=2,
+            create_by=2,
+            datasource=1,
+            question="tenant 20 question",
+            create_time=datetime.datetime(2026, 6, 19),
+        ))
+        session.commit()
+
+        result = chat_crud.get_old_questions(session, 1, current_user)
+
+    assert result == ["tenant 20 question"]
+
+
 def test_chat_detail_requires_current_tenant():
     engine = _engine_with_chat_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=2)

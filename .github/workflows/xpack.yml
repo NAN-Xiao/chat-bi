@@ -57,7 +57,7 @@ jobs:
       - name: Check out xpack repo
         uses: actions/checkout@v4
         with:
-          repository: dataease/zhishu-xpack
+          repository: NAN-Xiao/chat-bi-xpack
           ref: ${{ inputs.xpack_branch }}
           path: ./zhishu-xpack
           token: ${{ secrets.GH_TOKEN }}

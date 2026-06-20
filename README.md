@@ -1,15 +1,5 @@
-<p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/zhishu/zhishu.png" alt="星通智数" width="300" /></p>
+<h1 align="center">星通智数</h1>
 <h3 align="center">基于大模型和 RAG 的智能报表系统</h3>
-
-<p align="center">
-  <a href="https://trendshift.io/repositories/14540" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14540" alt="dataease%2Fzhishu | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/dataease/zhishu/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/zhishu" alt="Latest release"></a>
-  <a href="https://github.com/dataease/zhishu"><img src="https://img.shields.io/github/stars/dataease/zhishu?color=%231890FF&style=flat-square" alt="Stars"></a>    
-  <a href="https://hub.docker.com/r/dataease/zhishu"><img src="https://img.shields.io/docker/pulls/dataease/zhishu?label=downloads" alt="Download"></a><br/>
-</p>
 
 <p align="center">
   <a href="README.md"><img alt="中文(简体)" src="https://img.shields.io/badge/中文(简体)-d9d9d9"></a>
@@ -17,8 +7,7 @@
 </p>
 <hr/>
 
-
-星通智数是一款基于大语言模型和 RAG 的智能报表系统，由 DataEase 开源项目组匠心出品。借助星通智数，用户可以实现对话式数据分析（ChatBI），快速提炼获取所需的数据信息及可视化图表，并且支持进一步开展智能分析。
+星通智数是一款基于大语言模型和 RAG 的智能报表系统。借助星通智数，用户可以实现对话式数据分析（ChatBI），快速提炼获取所需的数据信息及可视化图表，并且支持进一步开展智能分析。
 
 ## 工作原理
 
@@ -28,7 +17,7 @@
 
 - **开箱即用**：仅需简单配置大模型与数据源，无需复杂开发，即可快速开启智能报表；依托大模型自然语言理解与 SQL 生成能力，结合 RAG 技术，实现高质量 Text-to-SQL 转换。
 - **安全可控**：提供工作空间级资源隔离机制，构建清晰数据边界，保障数据访问安全；支持细粒度数据权限配置，强化权限管控能力，确保使用过程合规可控。
-- **易于集成**：支持多种集成方式，提供 Web 嵌入、弹窗嵌入、MCP 调用等能力；能够快速嵌入到 n8n、Dify、MaxKB、DataEase 等应用，让各类应用快速拥有智能报表能力。
+- **易于集成**：支持多种集成方式，提供 Web 嵌入、弹窗嵌入、MCP 调用等能力；能够快速嵌入到现有业务系统和智能体平台，让各类应用快速拥有智能报表能力。
 - **越问越准**：支持自定义提示词、术语库配置，可维护 SQL 示例校准逻辑，精准匹配业务场景；高效运营，基于用户交互数据持续迭代优化，报表效果随使用逐步提升，越问越准。
 
 ## 支持的大模型服务商
@@ -66,12 +55,8 @@ docker run -d \
   -v ./data/zhishu/logs:/opt/zhishu/app/logs \
   -v ./data/postgresql:/var/lib/postgresql/data \
   --privileged=true \
-  dataease/zhishu
+  zhishu:latest
 ```
-
-你也可以通过 [1Panel 应用商店](https://apps.fit2cloud.com/1panel) 快速部署星通智数。
-
-如果是内网环境，你可以通过 [离线安装包方式](https://community.fit2cloud.com/#/products/zhishu/downloads) 部署星通智数。
 
 ### 访问方式
 
@@ -91,27 +76,12 @@ docker run -d \
     <img alt="q&a" src="https://github.com/user-attachments/assets/55526514-52f3-4cfe-98ec-08a986259280"   />
   </tr>
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=dataease/zhishu&type=Date)](https://www.star-history.com/#dataease/zhishu&Date)
-
-## 飞致云旗下的其他明星项目
-
-- [DataEase](https://github.com/dataease/dataease/) - 人人可用的开源 BI 工具
-- [1Panel](https://github.com/1panel-dev/1panel/) - 现代化、开源的 Linux 服务器运维管理面板
-- [MaxKB](https://github.com/1panel-dev/MaxKB/) - 强大易用的企业级智能体平台
-- [JumpServer](https://github.com/jumpserver/jumpserver/) - 广受欢迎的开源堡垒机
-- [Cordys CRM](https://github.com/1Panel-dev/CordysCRM) - 新一代的开源 AI CRM 系统
-- [Halo](https://github.com/halo-dev/halo/) - 强大易用的开源建站工具
-- [MeterSphere](https://github.com/metersphere/metersphere/) - 新一代的开源持续测试工具
-
 ## License
 
-本仓库遵循 [FIT2CLOUD Open Source License](LICENSE) 开源协议，该许可证本质上是 GPLv3，但有一些额外的限制。
+本仓库遵循 [Open Source License](LICENSE) 开源协议，该许可证本质上是 GPLv3，但有一些额外的限制。
 
 你可以基于星通智数的源代码进行二次开发，但是需要遵守以下规定：
 
 - 不能替换和修改星通智数的 Logo 和版权信息；
 - 二次开发后的衍生作品必须遵守 GPL V3 的开源义务。
 
-如需商业授权，请联系 support@fit2cloud.com 。

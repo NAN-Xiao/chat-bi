@@ -12,11 +12,14 @@ from apps.datasource.crud.permission_errors import (
 )
 from apps.datasource.crud.sql_permission import (
     apply_row_permission_filters,
+    extract_physical_tables,
+    parse_sql_statements,
     validate_sql_scope,
     validate_sql_table_scope,
 )
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import check_sql_read, exec_sql
+from apps.db.db import check_sql_read, _unsafe_exec_sql_after_validation
+from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentUser, SessionDep
 from common.utils.data_format import DataFormat
 from common.utils.utils import AppLogUtil
@@ -28,7 +31,7 @@ USER_QUERY_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
 @dataclass
 class QueryExecutionResult:
     result: dict[str, Any]
-    datasource: CoreDatasource
+    datasource: CoreDatasource | AssistantOutDsSchema
     requested_sql: str
     executed_sql: str
     tables: set[str]
@@ -59,6 +62,25 @@ def safe_query_error_type(current_user: CurrentUser, message: str) -> str | None
     return None
 
 
+def _validate_allowed_tables(actual_tables: set[str], allowed_tables: list[str] | set[str] | None) -> None:
+    if allowed_tables is None:
+        return
+    allowed_table_set = {str(table).lower() for table in allowed_tables}
+    unauthorized_tables = {table for table in actual_tables if table.lower() not in allowed_table_set}
+    if unauthorized_tables:
+        raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
+
+
+def _normalize_query_result(result: dict[str, Any], origin_column: bool) -> dict[str, Any]:
+    data = DataFormat.convert_large_numbers_in_object_array(result.get("data"))
+    if not origin_column:
+        data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
+    result["data"] = data
+    if data:
+        result["fields"] = list(data[0].keys())
+    return result
+
+
 def prepare_query_sql(
         session: SessionDep,
         current_user: CurrentUser,
@@ -83,11 +105,7 @@ def prepare_query_sql(
     else:
         actual_tables = validate_sql_table_scope(session, current_user, datasource, sql)
 
-    if allowed_tables is not None:
-        allowed_table_set = {str(table).lower() for table in allowed_tables}
-        unauthorized_tables = {table for table in actual_tables if table.lower() not in allowed_table_set}
-        if unauthorized_tables:
-            raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
+    _validate_allowed_tables(actual_tables, allowed_tables)
 
     executed_sql = sql
     if apply_row_permissions and is_normal_user(current_user):
@@ -103,13 +121,32 @@ def prepare_query_sql(
             if not is_safe:
                 raise ValueError(f"SQL can only contain read operations: {error_reason}")
             rewritten_tables = validate_sql_table_scope(session, current_user, datasource, executed_sql)
-            if allowed_tables is not None:
-                allowed_table_set = {str(table).lower() for table in allowed_tables}
-                unauthorized_tables = {table for table in rewritten_tables if table.lower() not in allowed_table_set}
-                if unauthorized_tables:
-                    raise ValueError(f"SQL 包含无权限表：{', '.join(sorted(unauthorized_tables))}")
+            _validate_allowed_tables(rewritten_tables, allowed_tables)
 
     return executed_sql, actual_tables
+
+
+def validate_user_query_sql_or_raise(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource: CoreDatasource,
+        sql: str,
+        *,
+        allowed_tables: list[str] | set[str] | None = None,
+) -> tuple[str, set[str]]:
+    if datasource is None:
+        raise ValueError("项目不存在")
+    if getattr(datasource, "id", None) is not None and not has_datasource_access(session, current_user, datasource.id):
+        raise ValueError("You do not have permission to access this datasource")
+    return prepare_query_sql(
+        session=session,
+        current_user=current_user,
+        datasource=datasource,
+        sql=sql,
+        allowed_tables=allowed_tables,
+        apply_row_permissions=False,
+        validate_columns=True,
+    )
 
 
 def execute_user_query_or_raise(
@@ -137,19 +174,65 @@ def execute_user_query_or_raise(
         apply_row_permissions=apply_row_permissions,
         validate_columns=validate_columns,
     )
-    result = exec_sql(ds=datasource, sql=executed_sql, origin_column=origin_column)
-    data = DataFormat.convert_large_numbers_in_object_array(result.get("data"))
-    if not origin_column:
-        data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
-    result["data"] = data
-    if data:
-        result["fields"] = list(data[0].keys())
+    result = _unsafe_exec_sql_after_validation(ds=datasource, sql=executed_sql, origin_column=origin_column)
+    result = _normalize_query_result(result, origin_column)
     return QueryExecutionResult(
         result=result,
         datasource=datasource,
         requested_sql=sql,
         executed_sql=executed_sql,
         tables=tables,
+    )
+
+
+def execute_user_analysis_query_or_raise(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource: CoreDatasource,
+        sql: str,
+        *,
+        allowed_tables: list[str] | set[str] | None = None,
+        origin_column: bool = False,
+) -> QueryExecutionResult:
+    return execute_user_query_or_raise(
+        session=session,
+        current_user=current_user,
+        datasource=datasource,
+        sql=sql,
+        allowed_tables=allowed_tables,
+        origin_column=origin_column,
+    )
+
+
+def execute_external_user_query_or_raise(
+        datasource: AssistantOutDsSchema,
+        sql: str,
+        *,
+        allowed_tables: list[str] | set[str] | None = None,
+        origin_column: bool = False,
+        scope_sql: str | None = None,
+) -> QueryExecutionResult:
+    if datasource is None:
+        raise ValueError("项目不存在")
+
+    is_safe, error_reason = check_sql_read(sql, datasource)
+    if not is_safe:
+        raise ValueError(f"SQL can only contain read operations: {error_reason}")
+
+    statements = parse_sql_statements(scope_sql or sql, datasource.type)
+    actual_tables = extract_physical_tables(statements)
+    if not actual_tables:
+        raise ValueError("SQL 解析失败，无法确认查询表范围")
+    _validate_allowed_tables(actual_tables, allowed_tables)
+
+    result = _unsafe_exec_sql_after_validation(ds=datasource, sql=sql, origin_column=origin_column)
+    result = _normalize_query_result(result, origin_column)
+    return QueryExecutionResult(
+        result=result,
+        datasource=datasource,
+        requested_sql=scope_sql or sql,
+        executed_sql=sql,
+        tables=actual_tables,
     )
 
 

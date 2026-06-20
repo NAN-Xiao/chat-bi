@@ -58,14 +58,18 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
     },
 
     async loadDatasources(force = false) {
-      if (this.loading || (this.initialized && !force)) {
+      if ((this.loading && !force) || (this.initialized && !force)) {
         return
       }
       this.loading = true
+      const userStore = useUserStore()
+      const requestTenantId = userStore.getTenantId || 'default'
       try {
         const res = await datasourceApi.accessibleList()
+        if ((useUserStore().getTenantId || 'default') !== requestTenantId) {
+          return
+        }
         this.datasources = Array.isArray(res) ? res : []
-        const userStore = useUserStore()
         const tenantScopedCachedId = wsCache.get(this.cacheKey())
         const legacyCachedId = userStore.getTenantId ? undefined : wsCache.get(this.legacyCacheKey())
         const cachedId = Number(tenantScopedCachedId || legacyCachedId)

@@ -42,6 +42,7 @@ jobs:
         env:
           TAG_NAME: ${{ github.event.inputs.dockerImageTag }}
           DOCKER_DOWNLOAD_SERVER: ${{ secrets.DOCKER_DOWNLOAD_SERVER }}
+          DOCKER_SERVICE_URL: ${{ secrets.DOCKER_SERVICE_URL }}
           ALIYUN_REGISTRY_HOST: ${{ secrets.ALIYUN_REGISTRY_HOST }}
           ALIYUN_OSS_BUCKET: ${{ secrets.ALIYUN_OSS_BUCKET }}
           ALIYUN_OSS_BUCKET_ENDPOINT: ${{ secrets.ALIYUN_OSS_BUCKET_ENDPOINT }}
@@ -72,7 +73,7 @@ jobs:
               exit 2
           fi
 
-          DOCKER_IMAGE=${ALIYUN_REGISTRY_HOST}/dataease/zhishu
+          DOCKER_IMAGE=${ALIYUN_REGISTRY_HOST}/zhishu
           cd installer
           
           echo ${TAG_NAME} > ./zhishu/templates/version
@@ -94,7 +95,7 @@ jobs:
           rm -rf ${DOCKER_VERSION}.tgz
           mv docker bin && mkdir docker && mv bin docker/
           mv docker-compose docker/bin
-          wget https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/docker/docker.service
+          wget ${DOCKER_SERVICE_URL}
           mkdir docker/service && mv docker.service docker/service/
 
           if [[ $ARCH == 'x86_64' ]]; then

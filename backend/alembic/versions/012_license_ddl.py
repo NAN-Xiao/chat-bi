@@ -21,7 +21,7 @@ def upgrade():
         'license',
         sa.Column('id', sa.BigInteger(), primary_key=True, nullable=False),
         sa.Column('license_key', sa.Text(), default="", nullable=False),
-        sa.Column('f2c_license', sa.Text(), default="", nullable=False),
+        sa.Column('license_payload', sa.Text(), default="", nullable=False),
         sa.Column('create_time', sa.BigInteger(), default=0, nullable=False),
         sa.Column('update_time', sa.BigInteger(), default=0, nullable=False)
     )

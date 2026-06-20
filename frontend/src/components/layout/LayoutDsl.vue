@@ -548,11 +548,35 @@ onMounted(() => {
       border-radius: 0;
       border: 0;
       box-shadow: none;
+      color-scheme: light;
       overflow-x: auto;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #b8c4d6 #edf2f8;
 
       &:has(.no-padding) {
         padding: 0;
       }
+    }
+
+    .content::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    .content::-webkit-scrollbar-track {
+      background: #edf2f8;
+      border-radius: 999px;
+    }
+
+    .content::-webkit-scrollbar-thumb {
+      background: #b8c4d6;
+      border-radius: 999px;
+      border: 2px solid #edf2f8;
+    }
+
+    .content::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
     }
   }
 }

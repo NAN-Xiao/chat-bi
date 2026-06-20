@@ -1,14 +1,5 @@
-<p align="center"><img src="https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/zhishu/zhishu.png" alt="星通智数" width="300" /></p>
+<h1 align="center">星通智数</h1>
 <h3 align="center">Intelligent Questioning System Based on Large Models and RAG</h3>
-<p align="center">
-  <a href="https://trendshift.io/repositories/14540" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14540" alt="dataease%2Fzhishu | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/dataease/zhishu/releases/latest"><img src="https://img.shields.io/github/v/release/dataease/zhishu" alt="Latest release"></a>
-  <a href="https://github.com/dataease/zhishu"><img src="https://img.shields.io/github/stars/dataease/zhishu?color=%231890FF&style=flat-square" alt="Stars"></a>    
-  <a href="https://hub.docker.com/r/dataease/zhishu"><img src="https://img.shields.io/docker/pulls/dataease/zhishu?label=downloads" alt="Download"></a><br/>
-</p>
 
 <p align="center">
   <a href="README.md"><img alt="中文(简体)" src="https://img.shields.io/badge/中文(简体)-d9d9d9"></a>
@@ -27,7 +18,7 @@
 
 - **Out-of-the-Box Functionality:** Simply configure the large model and data source; no complex development is required to quickly enable intelligent data collection. Leveraging the large model's natural language understanding and SQL generation capabilities, combined with RAG technology, it achieves high-quality Text-to-SQL conversion.
 - **Secure and Controllable:** Provides a workspace-level resource isolation mechanism, building clear data boundaries and ensuring data access security. Supports fine-grained data permission configuration, strengthening permission control capabilities and ensuring compliance and controllability during use.
-- **Easy Integration:** Supports multiple integration methods, providing capabilities such as web embedding, pop-up embedding, and MCP invocation. It can be quickly embedded into applications such as n8n, Dify, MaxKB, and DataEase, allowing various applications to quickly acquire intelligent data collection capabilities.
+- **Easy Integration:** Supports multiple integration methods, providing capabilities such as web embedding, pop-up embedding, and MCP invocation. It can be quickly embedded into existing business systems and agent platforms, allowing various applications to quickly acquire intelligent data collection capabilities.
 - **Increasingly Accurate with Use:** Supports customizable prompts and terminology library configurations, maintainable SQL example calibration logic, and accurate matching of business scenarios. Efficient operation, based on continuous iteration and optimization using user interaction data, the data collection effect gradually improves with use, becoming more accurate with each use.
 
 ## Supported LLM Providers
@@ -65,13 +56,8 @@ docker run -d \
   -v ./data/zhishu/logs:/opt/zhishu/app/logs \
   -v ./data/postgresql:/var/lib/postgresql/data \
   --privileged=true \
-  dataease/zhishu
+  zhishu:latest
 ```
-
-You can also quickly deploy 星通智数 through the [1Panel app store](https://apps.fit2cloud.com/1panel).
-
-If you are in an intranet environment, you can deploy 星通智数 via the [offline installation package](https://community.fit2cloud.com/#/products/zhishu/downloads).
-
 
 ### Access methods
 
@@ -88,23 +74,9 @@ If you are in an intranet environment, you can deploy 星通智数 via the [offl
     
   </tr>
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=dataease/zhishu&type=Date)](https://www.star-history.com/#dataease/zhishu&Date)
-
-## Other star projects under FIT2CLOUD
-
-- [DataEase](https://github.com/dataease/dataease/) - Open source BI tools
-- [1Panel](https://github.com/1panel-dev/1panel/) - A modern, open-source Linux server operation and maintenance management panel
-- [MaxKB](https://github.com/1panel-dev/MaxKB/) - Powerful and easy-to-use enterprise-grade intelligent agent platform
-- [JumpServer](https://github.com/jumpserver/jumpserver/) - Popular open source bastion hosts
-- [Cordys CRM](https://github.com/1Panel-dev/CordysCRM) - A new generation of open-source AI CRM systems
-- [Halo](https://github.com/halo-dev/halo/) - Powerful and easy-to-use open-source website building tools
-- [MeterSphere](https://github.com/metersphere/metersphere/) - Next-generation open-source continuous testing tools
-
 ## License
 
-This repository is licensed under the [FIT2CLOUD Open Source License](LICENSE), which is essentially GPLv3 but with some additional restrictions.
+This repository is licensed under the [Open Source License](LICENSE), which is essentially GPLv3 but with some additional restrictions.
 
 You may conduct secondary development based on the 星通智数 source code, but you must adhere to the following:
 
@@ -112,4 +84,3 @@ You may conduct secondary development based on the 星通智数 source code, but
 
 - Derivative works resulting from secondary development must comply with the open-source obligations of GPL v3.
 
-For commercial licensing, please contact support@fit2cloud.com.

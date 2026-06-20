@@ -3,6 +3,8 @@ import type { G2Spec } from '@antv/g2'
 import { endsWith, replace } from 'lodash-es'
 
 const AUTO_VALUE_FIELD = 'zhishu_auto_quota'
+const AUTO_COUNT_VALUE_FIELD = 'zhishu_auto_count_quota'
+const AUTO_PERCENT_VALUE_FIELD = 'zhishu_auto_percent_quota'
 const AUTO_SERIES_FIELD = 'zhishu_auto_series'
 const AUTO_PERCENT_FIELD = 'zhishu_auto_is_percent'
 
@@ -11,12 +13,11 @@ const PERCENT_KEYWORDS = [
   'ratio',
   'percent',
   'pct',
-  'retention',
-  'conversion',
-  '留存',
-  '转化率',
-  '付费率',
-  '流失率',
+  'share',
+  'proportion',
+  'percentage',
+  '比率',
+  '率',
   '占比',
   '比例',
   '百分',
@@ -27,15 +28,11 @@ const AVERAGE_KEYWORDS = [
   'avg',
   'average',
   'mean',
-  'arpu',
-  'arppu',
-  'per user',
-  'per payer',
-  'per pay',
+  'per ',
+  'per_',
   '平均',
   '人均',
-  '每用户',
-  '每付费',
+  '每',
   '单均',
   '客单',
 ]
@@ -160,7 +157,8 @@ export interface MixedUnitChartData {
   percentAxes: ChartAxis[]
   countData: ChartData[]
   percentData: ChartData[]
-  valueField: string
+  countValueField: string
+  percentValueField: string
   seriesField: string
 }
 
@@ -168,7 +166,8 @@ function buildMetricRows(
   x: Array<ChartAxis>,
   metricAxes: Array<ChartAxis>,
   data: Array<ChartData>,
-  percent: boolean
+  percent: boolean,
+  valueField: string
 ): ChartData[] {
   const rows: ChartData[] = []
   const percentMultipliers = new Map(
@@ -186,7 +185,7 @@ function buildMetricRows(
       }
 
       const row: ChartData = {
-        [AUTO_VALUE_FIELD]: value,
+        [valueField]: value,
         [AUTO_SERIES_FIELD]: metricAxis.name,
         [AUTO_PERCENT_FIELD]: percent,
       }
@@ -222,8 +221,8 @@ export function buildMixedUnitData(
     return undefined
   }
 
-  const countData = buildMetricRows(x, countAxes, data, false)
-  const percentData = buildMetricRows(x, percentAxes, data, true)
+  const countData = buildMetricRows(x, countAxes, data, false, AUTO_COUNT_VALUE_FIELD)
+  const percentData = buildMetricRows(x, percentAxes, data, true, AUTO_PERCENT_VALUE_FIELD)
 
   if (countData.length === 0 || percentData.length === 0) {
     return undefined
@@ -234,7 +233,8 @@ export function buildMixedUnitData(
     percentAxes,
     countData,
     percentData,
-    valueField: AUTO_VALUE_FIELD,
+    countValueField: AUTO_COUNT_VALUE_FIELD,
+    percentValueField: AUTO_PERCENT_VALUE_FIELD,
     seriesField: AUTO_SERIES_FIELD,
   }
 }
@@ -402,9 +402,10 @@ export function buildMixedUnitComboOptions(
   mixedData: MixedUnitChartData,
   showLabel: boolean
 ): G2Spec {
-  const valueField = mixedData.valueField
+  const countValueField = mixedData.countValueField
+  const percentValueField = mixedData.percentValueField
   const seriesField = mixedData.seriesField
-  const percentScale = buildPercentScale(mixedData.percentData, valueField)
+  const percentScale = buildPercentScale(mixedData.percentData, percentValueField)
 
   const xAxisOptions = {
     title: false,
@@ -423,10 +424,10 @@ export function buildMixedUnitComboOptions(
     ? [
         {
           text: (datum: ChartData) => {
-            const value = datum[valueField]
+            const value = datum[countValueField]
             return value === undefined || value === null ? '' : String(formatNumber(value))
           },
-          position: (datum: ChartData) => (datum[valueField] < 0 ? 'bottom' : 'top'),
+          position: (datum: ChartData) => (datum[countValueField] < 0 ? 'bottom' : 'top'),
           transform: [{ type: 'contrastReverse' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
         },
       ]
@@ -436,7 +437,7 @@ export function buildMixedUnitComboOptions(
     ? [
         {
           text: (datum: ChartData) => {
-            const value = datum[valueField]
+            const value = datum[percentValueField]
             return value === undefined || value === null ? '' : `${formatNumber(value)}%`
           },
           style: {
@@ -451,6 +452,7 @@ export function buildMixedUnitComboOptions(
   return {
     ...baseOptions,
     type: 'view',
+    paddingRight: 56,
     interaction: {
       elementHighlight: { background: true, region: true },
       tooltip: { series: true, shared: true },
@@ -461,7 +463,7 @@ export function buildMixedUnitComboOptions(
         data: mixedData.countData,
         encode: {
           x: xAxis.value,
-          y: valueField,
+          y: countValueField,
           color: seriesField,
         },
         scale: {
@@ -481,15 +483,15 @@ export function buildMixedUnitComboOptions(
           },
         },
         style: {
-          radiusTopLeft: (datum: ChartData) => (datum[valueField] > 0 ? 4 : 0),
-          radiusTopRight: (datum: ChartData) => (datum[valueField] > 0 ? 4 : 0),
-          radiusBottomLeft: (datum: ChartData) => (datum[valueField] < 0 ? 4 : 0),
-          radiusBottomRight: (datum: ChartData) => (datum[valueField] < 0 ? 4 : 0),
+          radiusTopLeft: (datum: ChartData) => (datum[countValueField] > 0 ? 4 : 0),
+          radiusTopRight: (datum: ChartData) => (datum[countValueField] > 0 ? 4 : 0),
+          radiusBottomLeft: (datum: ChartData) => (datum[countValueField] < 0 ? 4 : 0),
+          radiusBottomRight: (datum: ChartData) => (datum[countValueField] < 0 ? 4 : 0),
         },
         labels: countLabels,
         tooltip: (datum: ChartData) => ({
           name: datum[seriesField],
-          value: String(formatNumber(datum[valueField])),
+          value: String(formatNumber(datum[countValueField])),
         }),
       },
       {
@@ -497,12 +499,15 @@ export function buildMixedUnitComboOptions(
         data: mixedData.percentData,
         encode: {
           x: xAxis.value,
-          y: valueField,
+          y: percentValueField,
           color: seriesField,
           shape: 'smooth',
         },
         scale: {
-          y: percentScale,
+          y: {
+            ...percentScale,
+            independent: true,
+          },
         },
         axis: {
           x: false,
@@ -515,7 +520,7 @@ export function buildMixedUnitComboOptions(
         labels: percentLabels,
         tooltip: (datum: ChartData) => ({
           name: datum[seriesField],
-          value: `${formatNumber(datum[valueField])}%`,
+          value: `${formatNumber(datum[percentValueField])}%`,
         }),
       },
       {
@@ -523,12 +528,15 @@ export function buildMixedUnitComboOptions(
         data: mixedData.percentData,
         encode: {
           x: xAxis.value,
-          y: valueField,
+          y: percentValueField,
           color: seriesField,
           size: 1.5,
         },
         scale: {
-          y: percentScale,
+          y: {
+            ...percentScale,
+            independent: true,
+          },
         },
         style: {
           fill: 'white',

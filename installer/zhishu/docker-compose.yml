@@ -1,6 +1,6 @@
 services:
   zhishu:
-    image: registry.cn-qingdao.aliyuncs.com/dataease/zhishu:ZHISHU_TAG
+    image: ${ZHISHU_IMAGE_REPOSITORY}:ZHISHU_TAG
     container_name: zhishu
     restart: always
     privileged: true

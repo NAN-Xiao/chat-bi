@@ -1,11 +1,11 @@
 <template>
-  <div class="de-tinymce-container ed-textarea__inner">
-    <editor :id="tinymceId" v-model="myValue" class="de-tinymce-content" :init="init" />
+  <div class="rich-text-tinymce-container ed-textarea__inner">
+    <editor :id="tinymceId" v-model="myValue" class="rich-text-tinymce-content" :init="init" />
   </div>
 </template>
 <script lang="ts" setup>
 import { ref, toRefs, watch } from 'vue'
-import { formatDataEaseBi } from '@/utils/url'
+import { formatAssetUrl } from '@/utils/url'
 import tinymce from 'tinymce/tinymce' // tinymce默认hidden，不引入不显示
 import Editor from '@tinymce/tinymce-vue' // 编辑器引入
 import 'tinymce/themes/silver/theme' // 编辑器主题
@@ -54,10 +54,10 @@ const tinymceId = 'tinymce-view-pf'
 const init = ref({
   selector: '#' + tinymceId,
   toolbar_items_size: 'small',
-  language_url: formatDataEaseBi('./tinymce-dataease-private/langs/zh_CN.js'), // 汉化路径是自定义的，一般放在public或static里面
+  language_url: formatAssetUrl('./tinymce-private/langs/zh_CN.js'), // 汉化路径是自定义的，一般放在public或static里面
   language: 'zh_CN',
-  skin_url: formatDataEaseBi('./tinymce-dataease-private/skins/ui/oxide'), // 皮肤
-  content_css: formatDataEaseBi('./tinymce-dataease-private/skins/content/default/content.css'),
+  skin_url: formatAssetUrl('./tinymce-private/skins/ui/oxide'), // 皮肤
+  content_css: formatAssetUrl('./tinymce-private/skins/content/default/content.css'),
   plugins:
     'advlist autolink link image lists charmap  media wordcount table contextmenu directionality pagebreak', // 插件
   // 工具栏
@@ -79,7 +79,7 @@ tinymce.init({})
 </script>
 
 <style lang="less" scoped>
-.de-tinymce-container {
+.rich-text-tinymce-container {
   --ed-input-text-color: var(--ed-text-color-regular);
   --ed-input-border: var(--ed-border);
   --ed-input-hover-border: var(--ed-border-color-hover);
@@ -96,7 +96,7 @@ tinymce.init({})
   --ed-input-width: 100%;
   width: 100%;
   height: 80px;
-  .de-tinymce-content {
+  .rich-text-tinymce-content {
     width: 100%;
     height: 100%;
     overflow-y: auto;

@@ -40,10 +40,14 @@ from apps.datasource.crud.permission_errors import (
     permission_denied_result,
 )
 from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
-from apps.datasource.crud.query_executor import execute_user_query_or_raise, prepare_query_sql
+from apps.datasource.crud.query_executor import (
+    execute_external_user_query_or_raise,
+    execute_user_analysis_query_or_raise,
+    validate_user_query_sql_or_raise,
+)
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import exec_sql, get_version, check_connection
+from apps.db.db import get_version, check_connection
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
@@ -1116,7 +1120,13 @@ class LLMService:
     def finish(self, session: Session):
         return finish_record(session=session, record_id=self.record.id)
 
-    def execute_sql(self, session: Session, sql: str):
+    def execute_sql(
+            self,
+            session: Session,
+            sql: str,
+            scope_sql: str | None = None,
+            scope_allowed_tables: list[str] | set[str] | None = None,
+    ):
         """Execute SQL query
 
         Args:
@@ -1129,15 +1139,19 @@ class LLMService:
         AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
             if isinstance(self.ds, CoreDatasource):
-                return execute_user_query_or_raise(
+                return execute_user_analysis_query_or_raise(
                     session=session,
                     current_user=self.current_user,
                     datasource=self.ds,
                     sql=sql,
-                    apply_row_permissions=False,
-                    validate_columns=False,
+                    allowed_tables=self.table_name_list,
                 ).result
-            return exec_sql(ds=self.ds, sql=sql, origin_column=False)
+            return execute_external_user_query_or_raise(
+                datasource=self.ds,
+                sql=sql,
+                allowed_tables=scope_allowed_tables or self.table_name_list,
+                scope_sql=scope_sql or self.chat_question.sql,
+            ).result
         except Exception as e:
             if isinstance(e, ParseSQLResultError):
                 raise e
@@ -1307,17 +1321,14 @@ class LLMService:
                     else:
                         sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
                 else:
-                    prepared_sql, _actual_tables = prepare_query_sql(
+                    checked_sql, _actual_tables = validate_user_query_sql_or_raise(
                         session=_session,
                         current_user=self.current_user,
                         datasource=self.ds,
                         sql=sql,
                         allowed_tables=self.table_name_list,
                     )
-                    if prepared_sql != sql:
-                        AppLogUtil.info(prepared_sql)
-                        sql_operate = OperationEnum.GENERATE_SQL_WITH_PERMISSIONS
-                    sql = self.save_checked_sql(session=_session, sql=prepared_sql)
+                    sql = self.save_checked_sql(session=_session, sql=checked_sql)
             except Exception as permission_error:
                 if not looks_like_permission_scope_error(str(permission_error)):
                     raise
@@ -1360,7 +1371,15 @@ class LLMService:
 
             # execute sql
             real_execute_sql = sql
+            execute_scope_sql = sql
+            execute_allowed_tables = self.table_name_list
             if app_temp_sql_text and assistant_dynamic_sql:
+                execute_scope_sql = assistant_dynamic_sql
+                execute_allowed_tables = [
+                    f"app_dynamic_temp_table_{origin_table}"
+                    for origin_table in dynamic_sql_result
+                    if origin_table != APP_TEMP_SQL_TEXT_KEY
+                ]
                 _remove_temp_sql_text(dynamic_sql_result)
                 for origin_table, subsql in dynamic_sql_result.items():
                     assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}',
@@ -1378,7 +1397,12 @@ class LLMService:
                                                                      operate=OperationEnum.EXECUTE_SQL,
                                                                      record_id=self.record.id, local_operation=True)
             try:
-                result = self.execute_sql(session=_session, sql=real_execute_sql)
+                result = self.execute_sql(
+                    session=_session,
+                    sql=real_execute_sql,
+                    scope_sql=execute_scope_sql,
+                    scope_allowed_tables=execute_allowed_tables,
+                )
             except Exception as execute_error:
                 if not looks_like_permission_scope_error(str(execute_error)):
                     raise

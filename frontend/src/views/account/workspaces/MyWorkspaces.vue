@@ -574,6 +574,9 @@ const leaveWorkspace = async (tenant: TenantInfo) => {
         useEmitt().emitter.emit('datasource-context-change', null)
       } else {
         userStore.setTenant(null)
+        datasourceContext.clear(true)
+        dashboardStore.canvasDataInit()
+        useEmitt().emitter.emit('datasource-context-change', null)
       }
     } else {
       await userStore.loadTenants(true)

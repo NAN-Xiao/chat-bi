@@ -70,7 +70,7 @@ function _healthcheck() {
    echo
 }
 function _get_current_version() {
-   zhishu_current_version=$(grep "^    image:.*zhishu:" ${ZHISHU_RUNNING_BASE}/docker-compose.yml | awk -F'zhishu:' '{print $2}')
+   zhishu_current_version=$(grep "^    image:.*:" ${ZHISHU_RUNNING_BASE}/docker-compose.yml | head -n 1 | awk -F':' '{print $NF}')
    if test -z $zhishu_current_version; then
       echo "获取当前版本失败，请检查当前版本是否正确"
       exit 1
