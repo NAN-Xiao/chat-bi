@@ -6,20 +6,23 @@ import { computed, ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { concat } from 'lodash-es'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
-import ICON_BAR from '@/assets/svg/chart/icon_bar_outlined.svg'
-import ICON_COLUMN from '@/assets/svg/chart/icon_dashboard_outlined.svg'
-import ICON_LINE from '@/assets/svg/chart/icon_chart-line.svg'
-import ICON_PIE from '@/assets/svg/chart/icon_pie_outlined.svg'
-import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
-import icon_sql_outlined from '@/assets/svg/icon_sql_outlined.svg'
-import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
+import {
+  DataAnalysis,
+  DataBoard,
+  Document,
+  Download,
+  Fold,
+  FullScreen,
+  Grid,
+  Histogram,
+  PieChart,
+  PriceTag,
+  ScaleToOriginal,
+  TrendCharts,
+} from '@element-plus/icons-vue'
 import icon_file_image_colorful from '@/assets/svg/icon_file-image_colorful.svg'
 import icon_file_excel_colorful from '@/assets/svg/icon_file-excel_colorful.svg'
-import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
-import icon_window_max_outlined from '@/assets/svg/icon_window-max_outlined.svg'
-import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
-import ICON_STYLE from '@/assets/svg/icon_style-set_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import SQLComponent from '@/views/chat/component/SQLComponent.vue'
 import { useAssistantStore } from '@/stores/assistant'
@@ -176,39 +179,39 @@ const chartTypeList = computed(() => {
         _list.push({
           value: 'column',
           name: t('chat.chart_type.column'),
-          icon: ICON_COLUMN,
+          icon: Histogram,
         })
         _list.push({
           value: 'bar',
           name: t('chat.chart_type.bar'),
-          icon: ICON_BAR,
+          icon: DataAnalysis,
         })
         _list.push({
           value: 'line',
           name: t('chat.chart_type.line'),
-          icon: ICON_LINE,
+          icon: TrendCharts,
         })
         break
       case 'pie':
-        pushChartType('pie', ICON_PIE)
+        pushChartType('pie', PieChart)
         break
       case 'metric':
-        pushChartType('metric', ICON_TABLE)
+        pushChartType('metric', DataBoard)
         break
       case 'funnel':
-        pushChartType('funnel', ICON_BAR)
+        pushChartType('funnel', DataAnalysis)
         break
       case 'heatmap':
-        pushChartType('heatmap', ICON_COLUMN)
+        pushChartType('heatmap', Grid)
         break
       case 'scatter':
-        pushChartType('scatter', ICON_LINE)
+        pushChartType('scatter', TrendCharts)
         break
       case 'sankey':
-        pushChartType('sankey', ICON_COLUMN)
+        pushChartType('sankey', DataAnalysis)
         break
       case 'treemap':
-        pushChartType('treemap', ICON_PIE)
+        pushChartType('treemap', PieChart)
         break
     }
   }
@@ -406,7 +409,7 @@ watch(
         (isPredict && message?.record?.chart && data.length > 0))
     "
     v-loading.fullscreen.lock="loading"
-    class="chart-component-container"
+    class="chart-component-container smart-chart-answer"
     :class="{ 'full-screen': enlarge }"
   >
     <div class="header-bar">
@@ -437,8 +440,8 @@ watch(
               text
               @click="changeTable"
             >
-              <el-icon size="16">
-                <ICON_TABLE />
+              <el-icon size="17">
+                <Grid />
               </el-icon>
             </el-button>
           </el-tooltip>
@@ -460,8 +463,8 @@ watch(
               text
               @click="showLabel = !showLabel"
             >
-              <el-icon size="16">
-                <ICON_STYLE />
+              <el-icon size="17">
+                <PriceTag />
               </el-icon>
             </el-button>
           </el-tooltip>
@@ -470,8 +473,8 @@ watch(
         <div v-if="message?.record?.sql && showSQLBtn">
           <el-tooltip effect="dark" :offset="8" :content="t('chat.show_sql')" placement="top">
             <el-button class="tool-btn" text @click="showSql">
-              <el-icon size="16">
-                <icon_sql_outlined />
+              <el-icon size="17">
+                <Document />
               </el-icon>
             </el-button>
           </el-tooltip>
@@ -492,8 +495,8 @@ watch(
                   placement="top"
                 >
                   <el-button class="tool-btn" text>
-                    <el-icon size="16">
-                      <icon_export_outlined />
+                    <el-icon size="17">
+                      <Download />
                     </el-icon>
                   </el-button>
                 </el-tooltip>
@@ -525,8 +528,8 @@ watch(
         <div v-if="message?.record?.chart && !isAssistant && !dataPermissionDenied">
           <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
             <el-button class="tool-btn" text @click="addToDashboard">
-              <el-icon size="16">
-                <icon_into_item_outlined />
+              <el-icon size="17">
+                <DataBoard />
               </el-icon>
             </el-button>
           </el-tooltip>
@@ -540,8 +543,9 @@ watch(
             placement="top"
           >
             <el-button class="tool-btn" text @click="openFullScreen">
-              <el-icon size="16">
-                <icon_window_max_outlined />
+              <el-icon size="17">
+                <FullScreen v-if="isCompletePage" />
+                <ScaleToOriginal v-else />
               </el-icon>
             </el-button>
           </el-tooltip>
@@ -554,8 +558,8 @@ watch(
             placement="top"
           >
             <el-button class="tool-btn" text @click="closeFullScreen">
-              <el-icon size="16">
-                <icon_window_mini_outlined />
+              <el-icon size="17">
+                <Fold />
               </el-icon>
             </el-button>
           </el-tooltip>
@@ -647,6 +651,29 @@ watch(
   padding: 24px;
 }
 
+.smart-chart-answer {
+  .chart-base-container {
+    border: 0;
+    box-shadow: none;
+    background: #ffffff;
+  }
+
+  .chart-select-container {
+    border-color: #e4ebf4 !important;
+    background: #ffffff !important;
+  }
+
+  .buttons-bar .divider {
+    border-color: #e1e8f2 !important;
+  }
+
+  .chart-active,
+  .chat-select_type.active {
+    background: #f2f7ff !important;
+    color: #3f73e6 !important;
+  }
+}
+
 .export_to_select.export_to_select {
   padding: 4px 0;
   width: 120px !important;
@@ -717,12 +744,15 @@ watch(
 <style scoped lang="less">
 .chart-component-container {
   width: 100%;
-  padding: 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--workspace-border, #dce6f2);
+  border: 1px solid #dce6f2;
   border-radius: 8px;
-  background: var(--workspace-card-bg, #ffffff);
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(36, 64, 102, 0.05);
+  color: #18263a;
+  font-family: Inter, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
 
   &.full-screen {
     border: unset;
@@ -731,35 +761,46 @@ watch(
     height: 100%;
 
     .header-bar {
-      border-bottom: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
-      height: 55px;
-      padding: 16px 24px;
+      height: 56px;
+      padding: 14px 24px;
+      border-bottom: 1px solid #e4ebf4;
     }
 
     .chart-block {
       margin: unset;
-      padding: 16px;
+      padding: 16px 20px 20px;
       height: calc(100% - 56px);
     }
   }
 
   .header-bar {
-    height: 32px;
+    min-height: 34px;
+    padding: 12px 16px;
     display: flex;
-
     align-items: center;
     flex-direction: row;
-    gap: 16px;
+    gap: 12px;
+    border-bottom: 1px solid #e6edf6;
+    border-radius: 8px 8px 0 0;
+    background: #ffffff;
 
     .tool-btn {
-      width: 24px;
-      height: 24px;
-
-      font-size: 16px;
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      padding: 0;
+      font-size: 17px;
       font-weight: 400;
-      line-height: 24px;
-      border-radius: 6px;
-      color: var(--workspace-text-secondary, var(--theme-text-secondary));
+      line-height: 30px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #5f7088;
+      transition:
+        background-color 0.16s ease,
+        border-color 0.16s ease,
+        color 0.16s ease,
+        box-shadow 0.16s ease;
 
       .tool-btn-inner {
         display: flex;
@@ -768,34 +809,37 @@ watch(
       }
 
       &:hover {
-        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
-        color: var(--workspace-text-primary, var(--theme-text-primary));
+        background: #f5f8fd;
+        border-color: #dce6f2;
+        color: #34516f;
       }
 
       &:active {
-        background: var(--workspace-active-bg, var(--theme-active-bg));
+        background: #ecf3ff;
       }
     }
 
     .chart-active {
-      background: var(--ed-color-primary-1a, rgba(28, 186, 144, 0.1));
-      color: var(--ed-color-primary, rgba(28, 186, 144, 1));
-      border-radius: 6px;
+      background: #edf4ff;
+      color: #346fe8;
+      border-color: rgba(79, 125, 243, 0.28);
+      border-radius: 7px;
+      box-shadow: 0 2px 6px rgba(79, 125, 243, 0.1);
 
       :deep(.ed-select__wrapper) {
         background: transparent;
       }
 
       :deep(.ed-select__input) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: #346fe8;
       }
 
       :deep(.ed-select__placeholder) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: #346fe8;
       }
 
       :deep(.ed-select__caret) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: #346fe8;
       }
     }
 
@@ -805,52 +849,57 @@ watch(
       overflow: hidden;
       text-overflow: ellipsis;
 
-      color: var(--workspace-text-primary, var(--theme-text-primary));
-      font-weight: 500;
-      font-size: 16px;
-      line-height: 24px;
+      color: #132238;
+      font-weight: 600;
+      font-size: 15px;
+      line-height: 22px;
+      letter-spacing: 0;
+      padding-left: 10px;
+      border-left: 3px solid #4f7df3;
     }
 
     .buttons-bar {
       display: flex;
       flex-direction: row;
       align-items: center;
-
-      gap: 16px;
+      gap: 8px;
+      flex: 0 0 auto;
 
       .divider {
         width: 1px;
-        height: 16px;
-        border-left: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
+        height: 18px;
+        margin: 0 2px;
+        border-left: 1px solid #e1e8f2;
       }
     }
 
     .chart-select-container {
-      padding: 3px;
+      padding: 2px;
       display: flex;
       flex-direction: row;
       gap: 4px;
-      border-radius: 6px;
-
-      border: 1px solid var(--workspace-border, rgba(217, 220, 223, 1));
+      border-radius: 9px;
+      border: 1px solid #e4ebf4;
+      background: #ffffff;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
 
       .chart-select {
-        min-width: 40px;
-        width: 40px;
-        height: 24px;
+        min-width: 44px;
+        width: 44px;
+        height: 30px;
 
         :deep(.ed-select__wrapper) {
           padding: 4px;
-          min-height: 24px;
+          min-height: 30px;
           box-shadow: unset;
-          border-radius: 6px;
+          border-radius: 7px;
 
           &:hover {
-            background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+            background: #f6f9fd;
           }
 
           &:active {
-            background: var(--workspace-active-bg, var(--theme-active-bg));
+            background: #e8f0fb;
           }
         }
 
@@ -862,14 +911,14 @@ watch(
   }
 
   .chart-block {
-    height: 352px;
+    height: 356px;
     width: 100%;
-
-    margin-top: 16px;
+    padding: 14px 16px 16px;
+    background: #ffffff;
   }
 
   .data-permission-warning {
-    margin-top: 16px;
+    margin: 16px;
     padding: 12px 14px;
     border: 1px solid #f3d19e;
     border-radius: 6px;
@@ -880,6 +929,7 @@ watch(
   }
 
   .over-limit-hint {
+    padding: 0 16px 12px;
     min-height: 24px;
     line-height: 24px;
     font-size: 14px;

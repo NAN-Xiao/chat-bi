@@ -44,7 +44,7 @@ export class Scatter extends BaseG2Chart {
       axis: {
         x: {
           title: false,
-          labelFontSize: 12,
+          labelFontSize: 11,
           labelAutoHide: true,
           labelAutoRotate: false,
         },

@@ -86,7 +86,7 @@ export class Bar extends BaseG2Chart {
       axis: {
         x: {
           title: false, // x[0].name,
-          labelFontSize: 12,
+          labelFontSize: 11,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,
@@ -98,7 +98,7 @@ export class Bar extends BaseG2Chart {
         },
         y: {
           title: false, // y[0].name,
-          labelFontSize: 12,
+          labelFontSize: 11,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,

@@ -126,11 +126,13 @@ defineExpose({
 
 <style scoped lang="less">
 .chart-base-container {
+  box-sizing: border-box;
   height: 100%;
   width: 100%;
+  padding: 12px 14px 10px;
   border-radius: 8px;
-  background: var(--workspace-card-bg, #ffffff);
-  border: 1px solid var(--workspace-border, #dce6f2);
-  box-shadow: var(--workspace-card-shadow, 0 8px 24px rgba(17, 37, 73, 0.07));
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  border: 1px solid #dfe8f3;
+  box-shadow: 0 10px 24px rgba(36, 64, 102, 0.06);
 }
 </style>

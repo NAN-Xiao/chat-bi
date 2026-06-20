@@ -409,7 +409,7 @@ export function buildMixedUnitComboOptions(
 
   const xAxisOptions = {
     title: false,
-    labelFontSize: 12,
+    labelFontSize: 11,
     labelAutoHide: {
       type: 'hide',
       keepHeader: true,

@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import { computed, ref } from 'vue'
-import icon_expand_down_filled from '@/assets/svg/icon_down_outlined.svg'
+import { ArrowDown } from '@element-plus/icons-vue'
 const props = defineProps({
   chartTypeList: {
     type: Array<any>,
@@ -50,8 +50,8 @@ const handleDefaultChatChange = (val: any) => {
         @click="firstItem"
       >
         <component :is="currentIcon" />
-        <el-icon class="expand" size="12">
-          <icon_expand_down_filled></icon_expand_down_filled>
+        <el-icon class="expand" size="11">
+          <ArrowDown />
         </el-icon>
       </div>
     </template>
@@ -80,11 +80,12 @@ const handleDefaultChatChange = (val: any) => {
 
 <style lang="less">
 .chat-type_select.chat-type_select {
-  padding: 4px 0;
-  width: 120px !important;
-  min-width: 120px !important;
-  box-shadow: var(--workspace-card-shadow, 0 8px 24px rgba(17, 37, 73, 0.07));
-  border: 1px solid var(--workspace-border, #dce6f2);
+  padding: 6px 0;
+  width: 132px !important;
+  min-width: 132px !important;
+  box-shadow: 0 14px 34px rgba(24, 46, 86, 0.14);
+  border: 1px solid #e2e8f2;
+  border-radius: 8px;
   background: var(--workspace-card-bg, #ffffff);
 
   .popover {
@@ -95,16 +96,18 @@ const handleDefaultChatChange = (val: any) => {
 
       .title {
         width: 100%;
-        height: 32px;
+        height: 28px;
         margin-bottom: 2px;
         display: flex;
         align-items: center;
         padding-left: 8px;
-        color: var(--workspace-text-tertiary, #8a97aa);
+        color: #8090a6;
+        font-size: 12px;
+        font-weight: 500;
       }
     }
     .popover-item {
-      height: 32px;
+      height: 30px;
       display: flex;
       align-items: center;
       padding-left: 12px;
@@ -117,14 +120,14 @@ const handleDefaultChatChange = (val: any) => {
         margin-bottom: 0;
       }
       &:hover {
-        background: var(--workspace-control-hover-bg, #e9f1ff);
+        background: #f2f6fc;
       }
 
       .model-name {
         margin-left: 8px;
-        font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
+        font-weight: 500;
+        font-size: 13px;
+        line-height: 20px;
         max-width: 220px;
       }
 
@@ -147,27 +150,34 @@ const handleDefaultChatChange = (val: any) => {
 
 <style lang="less" scoped>
 .chat-select_type {
-  width: 40px;
-  height: 24px;
-  border-radius: 6px;
-  padding-left: 4px;
+  width: 44px;
+  height: 30px;
+  border-radius: 7px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
+  justify-content: center;
   cursor: pointer;
-  color: var(--workspace-text-secondary, var(--theme-text-secondary));
+  color: #60728c;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
 
   .expand {
-    margin-left: 4px;
+    margin-left: 3px;
+    opacity: 0.76;
   }
 
   &:hover {
-    background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
-    color: var(--workspace-text-primary, var(--theme-text-primary));
+    background: #f5f8fd;
+    color: #34516f;
   }
 
   &.active {
-    background: var(--workspace-primary-soft-bg, var(--ed-color-primary-1a));
-    color: var(--ed-color-primary, #2f6bff);
+    background: #edf4ff;
+    color: #346fe8;
+    box-shadow: inset 0 0 0 1px rgba(79, 125, 243, 0.22);
   }
 }
 </style>

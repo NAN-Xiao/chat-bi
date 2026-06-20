@@ -1347,17 +1347,21 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 }
 
 .chart-frame {
+  box-sizing: border-box;
   height: 240px;
   min-height: 240px;
   margin-bottom: 10px;
-  border: 1px solid var(--assistant-dock-border-soft);
+  padding: 12px 14px 10px;
+  border: 0;
   border-radius: 6px;
-  background: var(--assistant-dock-bg);
+  background: #ffffff;
   overflow: hidden;
 
   &.table {
     height: 280px;
     min-height: 280px;
+    padding: 0;
+    border: 1px solid var(--assistant-dock-border-soft);
   }
 }
 

@@ -75,7 +75,7 @@ export class Line extends BaseG2Chart {
       axis: {
         x: {
           title: false, // x[0].name,
-          labelFontSize: 12,
+          labelFontSize: 11,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,
