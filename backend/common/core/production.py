@@ -7,6 +7,7 @@ from common.core.config import settings
 from common.utils.utils import AppLogUtil
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+_DEVELOPMENT_DEFAULT_PASSWORDS = {"Zhishu@123456", "elex@123"}
 
 
 def _env_present(name: str) -> bool:
@@ -53,7 +54,7 @@ def validate_production_settings() -> list[str]:
 
     if not _env_present("SECRET_KEY") or len(settings.SECRET_KEY) < 32:
         errors.append("SECRET_KEY must be set from environment and be at least 32 characters.")
-    if settings.DEFAULT_PWD == "Zhishu@123456":
+    if settings.DEFAULT_PWD in _DEVELOPMENT_DEFAULT_PASSWORDS:
         errors.append("DEFAULT_PWD must be changed from the development default.")
     if settings.POSTGRES_PASSWORD == "Password123@pg":
         errors.append("POSTGRES_PASSWORD must be changed from the development default.")

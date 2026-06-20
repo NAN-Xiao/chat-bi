@@ -18,7 +18,7 @@ services:
       POSTGRES_PASSWORD: Password123@pg
       # Project basic settings
       PROJECT_NAME: "星通智数"
-      DEFAULT_PWD: "Zhishu@123456"
+      DEFAULT_PWD: "elex@123"
       # MCP settings
       MCP_ENABLED: "false"
       SERVER_IMAGE_HOST: http://YOUR_SERVE_IP:MCP_PORT/images/

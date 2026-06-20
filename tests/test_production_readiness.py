@@ -65,7 +65,7 @@ def test_production_settings_reject_development_defaults(monkeypatch):
     monkeypatch.setattr(settings, "AUTO_RUN_MIGRATIONS", True)
     monkeypatch.setattr(settings, "SENSITIVE_CONFIG_ENCRYPTION_KEY", None)
     monkeypatch.setattr(settings, "DATASOURCE_CONFIG_ENCRYPTION_KEY", None)
-    monkeypatch.setattr(settings, "DEFAULT_PWD", "Zhishu@123456")
+    monkeypatch.setattr(settings, "DEFAULT_PWD", "elex@123")
     monkeypatch.setattr(settings, "POSTGRES_PASSWORD", "Password123@pg")
     monkeypatch.setattr(settings, "CACHE_TYPE", "memory")
     monkeypatch.setattr(settings, "REDIS_PASSWORD", None)
@@ -121,7 +121,7 @@ def test_disabled_production_checks_return_errors_without_raising(monkeypatch):
     monkeypatch.setattr(settings, "SENSITIVE_CONFIG_ENCRYPTION_KEY", None)
     monkeypatch.setattr(settings, "DATASOURCE_CONFIG_ENCRYPTION_KEY", None)
     monkeypatch.setattr(settings, "CACHE_TYPE", "memory")
-    monkeypatch.setattr(settings, "DEFAULT_PWD", "Zhishu@123456")
+    monkeypatch.setattr(settings, "DEFAULT_PWD", "elex@123")
 
     errors = validate_production_settings()
 

@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     # ZHISHU_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/zhishu'
 
     TOKEN_KEY: str = "X-ZHISHU-TOKEN"
-    DEFAULT_PWD: str = "Zhishu@123456"
+    DEFAULT_PWD: str = "elex@123"
     ASSISTANT_TOKEN_KEY: str = "X-ZHISHU-ASSISTANT-TOKEN"
     SENSITIVE_CONFIG_ENCRYPTION_KEY: str | None = None
     DATASOURCE_CONFIG_ENCRYPTION_KEY: str | None = None

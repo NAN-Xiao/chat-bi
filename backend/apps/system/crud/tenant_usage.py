@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from dataclasses import dataclass
 import calendar
 import json
@@ -113,6 +113,17 @@ def _datetime_to_millis(value) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _parse_iso_date(value: str | date | None) -> date | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        return None
 
 
 def _table_exists(session: Session) -> bool:
@@ -312,10 +323,12 @@ def list_tenant_usage_by_user(
         ChatLog.local_operation == False,  # noqa: E712
         ChatLog.token_usage.is_not(None),
     ]
-    if start_date:
-        filters.append(func.date(ChatLog.finish_time) >= start_date)
-    if end_date:
-        filters.append(func.date(ChatLog.finish_time) <= end_date)
+    parsed_start_date = _parse_iso_date(start_date)
+    parsed_end_date = _parse_iso_date(end_date)
+    if parsed_start_date:
+        filters.append(func.date(ChatLog.finish_time) >= parsed_start_date)
+    if parsed_end_date:
+        filters.append(func.date(ChatLog.finish_time) <= parsed_end_date)
 
     token_expr = _chat_log_total_tokens_expr(session)
     has_user_table = False
