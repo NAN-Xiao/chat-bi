@@ -6,7 +6,6 @@ import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_database_colorful from '@/assets/embedded/icon_database_colorful.png'
 import icon_web_site_colorful from '@/assets/embedded/icon_web-site_colorful.png'
-import floating_window from '@/assets/embedded/window.png'
 import full_window from '@/assets/embedded/Card.png'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
@@ -1052,7 +1051,14 @@ const saveHandler = () => {
           @click="activeMode = 'floating'"
         >
           <div class="title">{{ $t('embedded.floating_window_mode') }}</div>
-          <img :src="floating_window" width="180px" height="120px" alt="" />
+          <div class="floating-preview" aria-hidden="true">
+            <div class="floating-preview-window">
+              <div class="floating-preview-header"></div>
+              <div class="floating-preview-line long"></div>
+              <div class="floating-preview-line"></div>
+            </div>
+            <div class="floating-preview-bubble"></div>
+          </div>
         </div>
       </div>
       <div v-if="activeMode === 'floating'" class="code-bg">
@@ -1509,6 +1515,77 @@ const saveHandler = () => {
         font-size: 14px;
         line-height: 22px;
         margin-bottom: 8px;
+      }
+
+      .floating-preview {
+        position: relative;
+        width: 180px;
+        height: 120px;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #f7fbff 0%, #edf4ff 100%);
+      }
+
+      .floating-preview-window {
+        position: absolute;
+        top: 20px;
+        left: 18px;
+        width: 118px;
+        height: 78px;
+        padding: 12px;
+        border: 1px solid #dce6f2;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 10px 24px rgba(24, 46, 86, 0.1);
+      }
+
+      .floating-preview-header {
+        width: 54px;
+        height: 8px;
+        margin-bottom: 12px;
+        border-radius: 999px;
+        background: #4f7df3;
+      }
+
+      .floating-preview-line {
+        width: 58px;
+        height: 6px;
+        margin-top: 8px;
+        border-radius: 999px;
+        background: #d8e3f3;
+
+        &.long {
+          width: 82px;
+        }
+      }
+
+      .floating-preview-bubble {
+        position: absolute;
+        right: 24px;
+        bottom: 20px;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: #4f7df3;
+        box-shadow: 0 10px 18px rgba(79, 125, 243, 0.24);
+
+        &::before,
+        &::after {
+          content: '';
+          position: absolute;
+          left: 10px;
+          width: 14px;
+          height: 2px;
+          border-radius: 999px;
+          background: #ffffff;
+        }
+
+        &::before {
+          top: 12px;
+        }
+
+        &::after {
+          top: 19px;
+        }
       }
 
       &.active {
