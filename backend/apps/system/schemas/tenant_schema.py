@@ -260,6 +260,7 @@ class TenantOverviewSummaryDTO(BaseModel):
 class TenantOverviewTrendPointDTO(BaseModel):
     date: str
     active_member_count: int = 0
+    activity_count: int = 0
     login_count: int = 0
 
 
@@ -290,6 +291,14 @@ class TenantOverviewEventDTO(BaseModel):
     resource_name: Optional[str] = None
 
 
+class TenantOverviewMemberActivityDTO(BaseModel):
+    user_id: int
+    account: Optional[str] = None
+    name: Optional[str] = None
+    tenant_role: str = "member"
+    last_active_time: int = 0
+
+
 class TenantOverviewDTO(BaseModel):
     tenant_id: int
     tenant_name: str
@@ -300,3 +309,4 @@ class TenantOverviewDTO(BaseModel):
     role_distribution: list[TenantOverviewRoleItemDTO] = []
     todos: list[TenantOverviewTodoDTO] = []
     recent_events: list[TenantOverviewEventDTO] = []
+    member_last_activities: list[TenantOverviewMemberActivityDTO] = []

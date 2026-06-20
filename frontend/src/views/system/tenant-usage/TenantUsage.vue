@@ -387,6 +387,7 @@ const metricBreakdownRows = computed(() => {
   }, {})
 
   return Object.values(byMetric)
+    .filter((row) => !nonLlmTokenMetrics.has(row.metric))
     .sort((a, b) => b.total_tokens - a.total_tokens || b.request_count - a.request_count)
     .slice(0, 8)
 })
@@ -399,6 +400,8 @@ const metricLabel = (metric?: string) => {
   if (!metric) return '-'
   return metricLabelMap.value[metric] || metric
 }
+
+const nonLlmTokenMetrics = new Set(['chat.execute_sql'])
 
 const userLabel = (row: TenantUsageUserInfo) => {
   const account = row.user_account || ''

@@ -145,6 +145,9 @@ export class Bar extends BaseG2Chart {
                 if (value === undefined || value === null) {
                   return ''
                 }
+                if (this.hideZeroLabel && Number(value) === 0) {
+                  return ''
+                }
                 return `${formatNumber(value)}${_data.isPercent ? '%' : ''}`
               },
               position: (data: any) => {

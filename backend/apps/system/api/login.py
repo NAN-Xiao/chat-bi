@@ -79,6 +79,8 @@ async def local_login(
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     user = attach_tenant_context(user, tenant)
+    request.state.current_user = user
+    request.state.current_tenant = tenant
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     user_dict = user.to_dict()
     return Token(access_token=create_access_token(

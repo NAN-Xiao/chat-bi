@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +16,7 @@ from apps.system.crud.tenant import (
     TENANT_APPLICATION_TYPE_JOIN,
     TENANT_ROLE_ADMIN,
     TENANT_ROLE_MEMBER,
+    TenantContext,
     auto_assign_tenants_by_email_domain,
     create_tenant_invitation,
     assign_user_to_tenant,
@@ -25,6 +27,7 @@ from apps.system.crud.tenant import (
     user_belongs_to_tenant,
 )
 from apps.system.api import tenant as tenant_api
+from apps.system.api import login as login_api
 from apps.system.models.tenant import (
     TenantApplicationModel,
     TenantDataRequestModel,
@@ -115,6 +118,150 @@ def _engine():
 
 def _user(user_id: int, role: str = "viewer"):
     return SimpleNamespace(id=user_id, system_role=role)
+
+
+def test_tenant_overview_active_members_include_owner_admin_and_member():
+    engine = _engine()
+    endpoint = tenant_api.tenant_overview
+
+    with Session(engine) as session:
+        session.exec(
+            text(
+                """
+                INSERT INTO sys_tenant (id, code, name, status, create_time, update_time)
+                VALUES (200, 'tenant-a', 'Tenant A', 1, 1, 1)
+                """
+            )
+        )
+        session.exec(
+            text(
+                """
+                INSERT INTO sys_user (id, account, name, password, email, status, origin, create_time, language, system_role)
+                VALUES
+                    (11, 'owner', 'Owner', 'x', 'owner@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                    (12, 'admin', 'Admin', 'x', 'admin@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                    (13, 'member', 'Member', 'x', 'member@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                    (14, 'outsider', 'Outsider', 'x', 'outsider@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                    (15, 'collab', 'Collab Admin', 'x', 'collab@example.com', 1, 0, 1, 'zh-CN', 'collab_admin')
+                """
+            )
+        )
+        session.exec(
+            text(
+                """
+                INSERT INTO sys_tenant_user (id, tenant_id, user_id, role, status, create_time)
+                VALUES
+                    (201, 200, 11, 'owner', 1, 1),
+                    (202, 200, 12, 'admin', 1, 1),
+                    (203, 200, 13, 'member', 1, 1),
+                    (204, 200, 15, 'admin', 1, 1)
+                """
+            )
+        )
+        login_time = datetime.now()
+        for user_id in (11, 12, 13, 14, 15):
+            session.add(
+                SystemLog(
+                    tenant_id=200,
+                    operation_type="login",
+                    operation_detail="login",
+                    user_id=user_id,
+                    user_name=f"user-{user_id}",
+                    operation_status="success",
+                    create_time=login_time,
+                )
+            )
+        session.add(
+            SystemLog(
+                tenant_id=200,
+                operation_type="update",
+                operation_detail="use workspace",
+                user_id=12,
+                user_name="user-12",
+                operation_status="success",
+                create_time=login_time + timedelta(minutes=1),
+            )
+        )
+        session.add(
+            SystemLog(
+                tenant_id=200,
+                operation_type="create",
+                operation_detail="use workspace",
+                user_id=11,
+                user_name="user-11",
+                operation_status="success",
+                create_time=login_time + timedelta(minutes=2),
+            )
+        )
+        session.commit()
+
+        result = asyncio.run(
+            endpoint(
+                session=session,
+                current_user=SimpleNamespace(id=11, system_role="viewer", tenant_id=200, tenant_role="owner"),
+                current_tenant=SimpleNamespace(id=200, code="tenant-a", name="Tenant A", role="owner"),
+                days=7,
+            )
+        )
+
+    assert result.summary.member_total == 3
+    assert result.summary.active_member_count == 2
+    assert sum(item.activity_count for item in result.activity_trend) == 2
+    assert sum(item.login_count for item in result.activity_trend) == 3
+    assert {item.role: item.count for item in result.role_distribution} == {
+        "owner": 1,
+        "admin": 1,
+        "member": 1,
+    }
+    assert [item.user_id for item in result.member_last_activities] == [11, 12, 13]
+    assert result.member_last_activities[0].last_active_time > result.member_last_activities[1].last_active_time
+    assert result.member_last_activities[2].last_active_time == 0
+
+
+def test_local_login_sets_resolved_tenant_on_request_state(monkeypatch):
+    async def _unlocked_login_state(*_args, **_kwargs):
+        return SimpleNamespace(locked=False, retry_after_seconds=0)
+
+    async def _clear_login_state(*_args, **_kwargs):
+        return None
+
+    request = SimpleNamespace(
+        headers={"X-ZHISHU-TENANT-ID": "200"},
+        state=SimpleNamespace(),
+        client=SimpleNamespace(host="127.0.0.1"),
+    )
+    user = BaseUserDTO(
+        id=11,
+        account="owner",
+        name="Owner",
+        password="x",
+        status=1,
+        origin=0,
+        system_role="viewer",
+        language="zh-CN",
+    )
+    tenant = TenantContext(id=200, code="tenant-a", name="Tenant A", role="owner")
+
+    monkeypatch.setattr(login_api, "authenticate", lambda **_kwargs: user)
+    monkeypatch.setattr(login_api, "auto_assign_tenants_by_email_domain", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(login_api, "resolve_current_tenant", lambda *_args, **_kwargs: tenant)
+    monkeypatch.setattr(login_api, "create_access_token", lambda *_args, **_kwargs: "token")
+    monkeypatch.setattr(login_api, "get_login_limit_state", _unlocked_login_state)
+    monkeypatch.setattr(login_api, "clear_login_failures", _clear_login_state)
+
+    result = asyncio.run(
+        login_api.local_login.__wrapped__(
+            session=SimpleNamespace(),
+            trans=lambda key, **_kwargs: key,
+            request=request,
+            form_data=SimpleNamespace(username="owner", password="secret"),
+        )
+    )
+
+    assert result.access_token == "token"
+    assert request.state.current_user.tenant_id == 200
+    assert request.state.current_user.tenant_role == "owner"
+    assert request.state.current_tenant.id == 200
 
 
 def test_default_tenant_is_created_once():

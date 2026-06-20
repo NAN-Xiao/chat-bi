@@ -510,8 +510,9 @@ onMounted(() => {
       }
 
       .bottom {
-        left: 12px;
-        width: calc(100% - 24px);
+        left: 50%;
+        width: 40px;
+        transform: translateX(-50%);
         .ed-icon {
           margin-right: 0;
         }
@@ -519,6 +520,7 @@ onMounted(() => {
 
       .side-account-area {
         align-items: center;
+        width: 40px;
         gap: 8px;
 
         .default-avatar {

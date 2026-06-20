@@ -72,6 +72,10 @@ FROM ${ZHISHU_RUNTIME_IMAGE}
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
 
+# This runtime image is the all-in-one evaluation image. It starts PostgreSQL
+# from start.sh and carries development database defaults for first-run demos.
+# Production deployments must override secrets and follow the external
+# PostgreSQL/Redis/Nginx/worker baseline in docs/single_tenant_production_readiness.md.
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
 ENV ZHISHU_HOME=/opt/zhishu

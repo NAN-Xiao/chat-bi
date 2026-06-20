@@ -100,6 +100,7 @@ from apps.system.schemas.tenant_schema import (
     TenantOverviewAssetItemDTO,
     TenantOverviewDTO,
     TenantOverviewEventDTO,
+    TenantOverviewMemberActivityDTO,
     TenantOverviewRoleItemDTO,
     TenantOverviewSummaryDTO,
     TenantOverviewTodoDTO,
@@ -961,40 +962,87 @@ async def tenant_overview(
         for role, count in role_rows
     ]
 
-    login_rows = session.exec(
+    activity_statement = (
         select(SystemLog.user_id, SystemLog.create_time)
+        .join(
+            TenantUserModel,
+            (TenantUserModel.user_id == SystemLog.user_id)
+            & (TenantUserModel.tenant_id == tenant_id)
+            & (TenantUserModel.status == 1),
+        )
+        .where(
+            SystemLog.tenant_id == tenant_id,
+            SystemLog.operation_type != OperationType.LOGIN.value,
+            SystemLog.create_time >= start_datetime,
+            SystemLog.user_id.is_not(None),
+        )
+        .order_by(SystemLog.create_time.asc())
+    )
+    if _table_exists(session, UserModel.__tablename__):
+        activity_statement = (
+            activity_statement
+            .join(UserModel, UserModel.id == SystemLog.user_id)
+            .where(UserModel.system_role.not_in(("system_admin", "collab_admin")))
+        )
+    activity_rows = session.exec(activity_statement).all()
+
+    login_statement = (
+        select(SystemLog.user_id, SystemLog.create_time)
+        .join(
+            TenantUserModel,
+            (TenantUserModel.user_id == SystemLog.user_id)
+            & (TenantUserModel.tenant_id == tenant_id)
+            & (TenantUserModel.status == 1),
+        )
         .where(
             SystemLog.tenant_id == tenant_id,
             SystemLog.operation_type == OperationType.LOGIN.value,
             SystemLog.create_time >= start_datetime,
+            SystemLog.user_id.is_not(None),
         )
         .order_by(SystemLog.create_time.asc())
-    ).all()
+    )
+    if _table_exists(session, UserModel.__tablename__):
+        login_statement = (
+            login_statement
+            .join(UserModel, UserModel.id == SystemLog.user_id)
+            .where(UserModel.system_role.not_in(("system_admin", "collab_admin")))
+        )
+    login_rows = session.exec(login_statement).all()
 
     active_member_ids = {
         int(user_id)
-        for user_id, _create_time in login_rows
+        for user_id, _create_time in activity_rows
         if user_id not in (None, "")
     }
 
     trend_map: dict[str, dict[str, int]] = {
         (start_date + timedelta(days=index)).strftime("%Y-%m-%d"): {
             "active_member_count": 0,
+            "activity_count": 0,
             "login_count": 0,
         }
         for index in range(days)
     }
     daily_member_map: dict[str, set[int]] = {key: set() for key in trend_map}
 
-    for user_id, create_time in login_rows:
+    for user_id, create_time in activity_rows:
+        if create_time is None:
+            continue
+        day_key = create_time.strftime("%Y-%m-%d")
+        if day_key not in trend_map:
+            continue
+        trend_map[day_key]["activity_count"] += 1
+        if user_id not in (None, ""):
+            daily_member_map[day_key].add(int(user_id))
+
+    for _user_id, create_time in login_rows:
         if create_time is None:
             continue
         day_key = create_time.strftime("%Y-%m-%d")
         if day_key not in trend_map:
             continue
         trend_map[day_key]["login_count"] += 1
-        if user_id not in (None, ""):
-            daily_member_map[day_key].add(int(user_id))
 
     activity_trend = []
     for day_key, values in trend_map.items():
@@ -1002,25 +1050,10 @@ async def tenant_overview(
             TenantOverviewTrendPointDTO(
                 date=day_key,
                 active_member_count=len(daily_member_map[day_key]),
+                activity_count=int(values["activity_count"]),
                 login_count=int(values["login_count"]),
             )
         )
-
-    previous_login_user_ids = {
-        int(user_id)
-        for user_id in session.exec(
-            select(SystemLog.user_id)
-            .where(
-                SystemLog.tenant_id == tenant_id,
-                SystemLog.operation_type == OperationType.LOGIN.value,
-                SystemLog.create_time >= previous_start_datetime,
-                SystemLog.create_time < start_datetime,
-                SystemLog.user_id.is_not(None),
-            )
-            .distinct()
-        ).all()
-        if user_id not in (None, "")
-    }
 
     domain_binding_count = 0
     if _table_exists(session, TenantDomainModel.__tablename__):
@@ -1092,6 +1125,55 @@ async def tenant_overview(
         for row in recent_event_rows
     ]
 
+    last_activity_subquery = (
+        select(
+            SystemLog.user_id.label("user_id"),
+            func.max(SystemLog.create_time).label("last_active_time"),
+        )
+        .where(
+            SystemLog.tenant_id == tenant_id,
+            SystemLog.operation_type != OperationType.LOGIN.value,
+            SystemLog.user_id.is_not(None),
+        )
+        .group_by(SystemLog.user_id)
+        .subquery()
+    )
+    member_activity_rows = []
+    if _table_exists(session, UserModel.__tablename__):
+        member_activity_rows = session.exec(
+            select(
+                TenantUserModel.user_id,
+                UserModel.account,
+                UserModel.name,
+                TenantUserModel.role,
+                last_activity_subquery.c.last_active_time,
+            )
+            .join(UserModel, UserModel.id == TenantUserModel.user_id)
+            .outerjoin(last_activity_subquery, last_activity_subquery.c.user_id == TenantUserModel.user_id)
+            .where(
+                TenantUserModel.tenant_id == tenant_id,
+                TenantUserModel.status == 1,
+                UserModel.system_role.not_in(("system_admin", "collab_admin")),
+            )
+            .order_by(
+                last_activity_subquery.c.last_active_time.desc().nulls_last(),
+                TenantUserModel.role,
+                UserModel.account,
+            )
+            .limit(8)
+        ).all()
+
+    member_last_activities = [
+        TenantOverviewMemberActivityDTO(
+            user_id=int(user_id),
+            account=account,
+            name=name,
+            tenant_role=normalize_tenant_role(role),
+            last_active_time=_timestamp_to_millis(last_active_time),
+        )
+        for user_id, account, name, role, last_active_time in member_activity_rows
+    ]
+
     return TenantOverviewDTO(
         tenant_id=tenant_id,
         tenant_name=tenant_name,
@@ -1115,6 +1197,7 @@ async def tenant_overview(
         role_distribution=role_distribution,
         todos=todos,
         recent_events=recent_events,
+        member_last_activities=member_last_activities,
     )
 
 

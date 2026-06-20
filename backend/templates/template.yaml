@@ -469,10 +469,11 @@ template:
         </rule>
         <rule>
           <strong>图表配置决策流程：</strong>
-          <strong>1. 先判断SQL查询结果中是否存在分类字段（非时间、非数值的离散字段）</strong>
-          <strong>2. 如果存在分类字段 → 必须使用series配置，此时y轴只能有一个指标字段</strong>
-          <strong>3. 如果不存在分类字段，但存在多个指标字段 → 必须使用multi-quota配置</strong>
-          <strong>4. 如果只有一个指标字段且无分类字段 → 直接配置y轴，不使用series和multi-quota</strong>
+          <strong>1. 先识别用户问题中明确要求展示的全部指标字段；不得为了适配某一种图表而静默丢弃用户要求的指标</strong>
+          <strong>2. 优先把主分析维度放在x轴；只有存在第二个分类维度用于颜色/分组时，才使用series配置</strong>
+          <strong>3. 如果结果中只有一个维度字段和多个指标字段，且这些指标都需要展示，可使用multi-quota配置；不要把唯一维度误当成series</strong>
+          <strong>4. 如果结果中同时存在分类/时间维度和多个不同单位指标（例如数量、金额、比率、人均值），或单张图无法完整表达全部指标 → 必须使用table，保证全部指标可见</strong>
+          <strong>5. 如果只有一个指标字段 → 直接配置y轴，不使用series和multi-quota</strong>
         </rule>
         <rule>
           如果需要柱状图，JSON格式应为<strong>（series为可选字段，仅当有分类字段时使用）</strong>：
@@ -554,9 +555,10 @@ template:
         </rule>
         <rule>
           对于柱状图/条形图/折线图：
-          1. 如果SQL查询中存在多个指标字段（如多个数值度量列）且不存在分类字段，则必须提供multi-quota配置，形如："multi-quota":{{"name":"指标类型","value":["指标字段1","指标字段2",...]}}
-          2. 如果SQL查询中存在多个指标字段且同时存在分类字段，则以分类字段为主，选取多指标字段中的其中一个作为指标即可，不需要multi-quota配置
-          3. 如果只有一个指标字段，无论是否存在分类字段，都不需要multi-quota配置
+          1. 如果SQL查询中存在多个指标字段（如多个数值度量列）且不存在第二个分类字段，则可以提供multi-quota配置，形如："multi-quota":{{"name":"指标类型","value":["指标字段1","指标字段2",...]}}
+          2. 如果SQL查询中存在多个用户明确要求的指标字段，不能只选其中一个指标生成图表；若multi-quota不能清晰表达，应改用table展示全部指标
+          3. 如果SQL查询中存在多个指标字段且同时存在第二个分类字段，单张柱状图/条形图/折线图通常无法同时表达series和multi-quota；除非用户明确只看一个指标，否则必须使用table
+          4. 如果只有一个指标字段，无论是否存在分类字段，都不需要multi-quota配置
           <strong>重要提醒：multi-quota和series是互斥的配置，一个图表配置中只能使用其中之一，不能同时存在</strong>
         </rule>
         <rule>

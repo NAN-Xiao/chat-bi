@@ -1,3 +1,9 @@
+# Installer compose for evaluation/demo packages.
+#
+# Render conf/zhishu.conf with strong private values before exposing this stack
+# outside a trusted test network. Production deployments should follow the
+# repository production baseline instead of relying on the all-in-one container
+# defaults.
 services:
   zhishu:
     image: ${ZHISHU_IMAGE_REPOSITORY}:ZHISHU_TAG

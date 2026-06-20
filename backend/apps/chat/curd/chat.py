@@ -37,7 +37,6 @@ CHAT_USAGE_METRICS = {
     OperationEnum.CHOOSE_DATASOURCE: "chat.choose_datasource",
     OperationEnum.GENERATE_SQL_WITH_PERMISSIONS: "chat.generate_sql_with_permissions",
     OperationEnum.GENERATE_DYNAMIC_SQL: "chat.generate_dynamic_sql",
-    OperationEnum.EXECUTE_SQL: "chat.execute_sql",
 }
 
 
@@ -69,7 +68,7 @@ def _record_chat_usage_from_log(log: ChatLog, *, success: bool) -> None:
     if not metric:
         return
     total_tokens = token_total(log.token_usage)
-    if log.local_operation and log.operate != OperationEnum.EXECUTE_SQL:
+    if log.local_operation:
         return
     record_tenant_usage_detached(
         tenant_id=int(log.tenant_id or DEFAULT_TENANT_ID),

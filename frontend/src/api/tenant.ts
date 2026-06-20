@@ -161,6 +161,7 @@ export interface TenantOverviewSummaryInfo {
 export interface TenantOverviewTrendPointInfo {
   date: string
   active_member_count: number
+  activity_count: number
   login_count: number
 }
 
@@ -191,6 +192,14 @@ export interface TenantOverviewEventInfo {
   resource_name?: string | null
 }
 
+export interface TenantOverviewMemberActivityInfo {
+  user_id: number | string
+  account?: string | null
+  name?: string | null
+  tenant_role: string
+  last_active_time: number
+}
+
 export interface TenantOverviewInfo {
   tenant_id: number | string
   tenant_name: string
@@ -201,6 +210,7 @@ export interface TenantOverviewInfo {
   role_distribution: TenantOverviewRoleItemInfo[]
   todos: TenantOverviewTodoInfo[]
   recent_events: TenantOverviewEventInfo[]
+  member_last_activities?: TenantOverviewMemberActivityInfo[]
 }
 
 export interface TenantUsageQuery {

@@ -113,7 +113,11 @@
             <div class="summary-note">{{ item.note }}</div>
           </div>
         </div>
-        <div class="summary-value" :class="{ danger: item.emphasize }">{{ formatNumber(item.value) }}</div>
+        <div class="summary-value" :class="{ danger: item.emphasize }">{{ item.value }}</div>
+        <div class="summary-progress" aria-hidden="true">
+          <span :style="{ width: `${item.progress}%` }" />
+        </div>
+        <div class="summary-subvalue">{{ item.subValue }}</div>
       </div>
     </div>
 
@@ -150,6 +154,7 @@
             :x="assetXAxis"
             :y="assetYAxis"
             :show-label="true"
+            :hide-zero-label="true"
           />
           <EmptyBackground v-else :description="t('tenant_overview.empty')" img-type="tree" />
         </div>
@@ -203,18 +208,17 @@
 
       <section class="ops-card ops-card-wide">
         <div class="chart-card-head">
-          <span>{{ t('tenant_overview.events_title') }}</span>
-          <span class="muted">{{ t('tenant_overview.events_hint') }}</span>
+          <span>{{ t('tenant_overview.member_activity_title') }}</span>
+          <span class="muted">{{ t('tenant_overview.member_activity_hint') }}</span>
         </div>
-        <div v-if="recentEvents.length" class="event-list">
-          <div v-for="item in recentEvents" :key="item.id" class="event-item">
-            <div class="event-time">{{ formatEventTime(item.create_time) }}</div>
+        <div v-if="memberActivityRows.length" class="event-list">
+          <div v-for="item in memberActivityRows" :key="item.user_id" class="event-item">
+            <div class="event-time">{{ formatMemberActivityTime(item.last_active_time) }}</div>
             <div class="event-content">
-              <div class="event-title">{{ item.title }}</div>
-              <div v-if="item.description" class="event-description">{{ item.description }}</div>
+              <div class="event-title">{{ memberDisplayName(item) }}</div>
+              <div class="event-description">{{ formatTenantRole(item.tenant_role) }}</div>
               <div class="event-meta">
-                <span v-if="item.operator_name">{{ t('tenant_overview.event_operator') }}: {{ item.operator_name }}</span>
-                <span v-if="item.module">{{ t('tenant_overview.event_module') }}: {{ item.module }}</span>
+                <span>{{ t('user.account') }}: {{ item.account || '-' }}</span>
               </div>
             </div>
           </div>
@@ -364,7 +368,7 @@ const roleRows = computed(() =>
 )
 
 const todoRows = computed(() => overview.value?.todos || [])
-const recentEvents = computed(() => overview.value?.recent_events || [])
+const memberActivityRows = computed(() => overview.value?.member_last_activities || [])
 const heroFocusItems = computed(() => todoRows.value.slice(0, 2))
 const hasPendingApplications = computed(() => Number(summary.value.pending_member_application_count || 0) > 0)
 const accessRequests = computed(() =>
@@ -373,63 +377,141 @@ const accessRequests = computed(() =>
   )
 )
 
+const assetCount = (key: string) => Number(assetRows.value.find((item) => item.key === key)?.count || 0)
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, Math.round(value)))
+
+const ratioPercent = (numerator: number, denominator: number) =>
+  denominator > 0 ? clampPercent((numerator / denominator) * 100) : 0
+
+const formatPercentValue = (value: number) => `${clampPercent(value)}%`
+
+const activityRate = computed(() =>
+  ratioPercent(Number(summary.value.active_member_count || 0), Number(summary.value.member_total || 0))
+)
+
+const reusableAssetCount = computed(() =>
+  ['dashboard', 'terminology', 'training', 'custom_agent', 'embedded'].reduce(
+    (result, key) => result + assetCount(key),
+    0
+  )
+)
+
+const assetUsability = computed(() => {
+  const readinessChecks = [
+    Number(summary.value.datasource_total || 0) > 0,
+    Number(summary.value.dashboard_total || 0) > 0,
+    assetCount('custom_agent') > 0 || assetCount('embedded') > 0,
+  ]
+  return ratioPercent(readinessChecks.filter(Boolean).length, readinessChecks.length)
+})
+
+const analysisMaturity = computed(() => {
+  const maturityChecks = [
+    Number(summary.value.dashboard_total || 0) > 0,
+    assetCount('terminology') > 0,
+    assetCount('training') > 0,
+  ]
+  return ratioPercent(maturityChecks.filter(Boolean).length, maturityChecks.length)
+})
+
+const pendingResolutionRate = computed(() =>
+  Number(summary.value.pending_member_application_count || 0) > 0 ? 0 : 100
+)
+
+const managerCoverage = computed(() => {
+  const total = roleRows.value.reduce((result, item) => result + Number(item.count || 0), 0)
+  const managers = roleRows.value
+    .filter((item) => item.role === 'owner' || item.role === 'admin')
+    .reduce((result, item) => result + Number(item.count || 0), 0)
+  return ratioPercent(managers, total)
+})
+
 const summaryCards = computed(() => [
   {
-    key: 'member_total',
-    label: t('tenant_overview.summary_members'),
-    note: t('tenant_overview.roles_hint'),
-    value: summary.value.member_total,
+    key: 'activity_rate',
+    label: t('tenant_overview.efficiency_activity_rate'),
+    note: t('tenant_overview.efficiency_activity_rate_hint', { days: selectedDays.value }),
+    value: formatPercentValue(activityRate.value),
+    subValue: t('tenant_overview.efficiency_active_members_ratio', {
+      active: formatNumber(summary.value.active_member_count),
+      total: formatNumber(summary.value.member_total),
+    }),
+    progress: activityRate.value,
     icon: icon_user,
     color: '#2f6bff',
     softColor: 'rgba(47, 107, 255, 0.12)',
     emphasize: false,
   },
   {
-    key: 'active_member_count',
-    label: t('tenant_overview.summary_active_members'),
-    note: t('tenant_overview.summary_active_hint', { days: selectedDays.value }),
-    value: summary.value.active_member_count,
+    key: 'asset_usability',
+    label: t('tenant_overview.efficiency_asset_usability'),
+    note: t('tenant_overview.efficiency_asset_usability_hint'),
+    value: formatPercentValue(assetUsability.value),
+    subValue: t('tenant_overview.efficiency_reusable_assets', {
+      count: formatNumber(reusableAssetCount.value),
+    }),
+    progress: assetUsability.value,
     icon: icon_done_outlined,
     color: '#39c98a',
     softColor: 'rgba(57, 201, 138, 0.14)',
     emphasize: false,
   },
   {
-    key: 'datasource_total',
-    label: t('tenant_overview.summary_datasources'),
-    note: t('tenant_overview.summary_datasource_hint'),
-    value: summary.value.datasource_total,
+    key: 'analysis_maturity',
+    label: t('tenant_overview.efficiency_analysis_maturity'),
+    note: t('tenant_overview.efficiency_analysis_maturity_hint'),
+    value: formatPercentValue(analysisMaturity.value),
+    subValue: t('tenant_overview.efficiency_analysis_assets', {
+      dashboards: formatNumber(assetCount('dashboard')),
+      terminology: formatNumber(assetCount('terminology')),
+      training: formatNumber(assetCount('training')),
+    }),
+    progress: analysisMaturity.value,
     icon: icon_chart_preview,
     color: '#f5b74f',
     softColor: 'rgba(245, 183, 79, 0.16)',
     emphasize: false,
   },
   {
-    key: 'dashboard_total',
-    label: t('tenant_overview.summary_dashboards'),
-    note: t('tenant_overview.summary_dashboard_hint'),
-    value: summary.value.dashboard_total,
+    key: 'pending_resolution_rate',
+    label: t('tenant_overview.efficiency_pending_resolution'),
+    note: t('tenant_overview.efficiency_pending_resolution_hint'),
+    value: formatPercentValue(pendingResolutionRate.value),
+    subValue: t('tenant_overview.efficiency_pending_count', {
+      count: formatNumber(summary.value.pending_member_application_count),
+    }),
+    progress: pendingResolutionRate.value,
     icon: icon_dashboard_outlined,
     color: '#8c6bff',
     softColor: 'rgba(140, 107, 255, 0.14)',
-    emphasize: false,
+    emphasize: Number(summary.value.pending_member_application_count || 0) > 0,
   },
   {
-    key: 'pending_member_application_count',
-    label: t('tenant_overview.summary_pending'),
-    note: t('tenant_overview.summary_pending_hint'),
-    value: summary.value.pending_member_application_count,
+    key: 'manager_coverage',
+    label: t('tenant_overview.efficiency_manager_coverage'),
+    note: t('tenant_overview.efficiency_manager_coverage_hint'),
+    value: formatPercentValue(managerCoverage.value),
+    subValue: t('tenant_overview.efficiency_manager_member_ratio', {
+      managers: formatNumber(
+        roleRows.value
+          .filter((item) => item.role === 'owner' || item.role === 'admin')
+          .reduce((result, item) => result + Number(item.count || 0), 0)
+      ),
+      total: formatNumber(summary.value.member_total),
+    }),
+    progress: managerCoverage.value,
     icon: icon_error,
     color: '#f56c6c',
     softColor: 'rgba(245, 108, 108, 0.14)',
-    emphasize: summary.value.pending_member_application_count > 0,
+    emphasize: managerCoverage.value <= 0 && Number(summary.value.member_total || 0) > 0,
   },
 ])
 
 const activityXAxis = computed<ChartAxis[]>(() => [{ name: 'date', value: 'date' }])
 const activityYAxis = computed<ChartAxis[]>(() => [
   { name: t('tenant_overview.trend_active_members'), value: 'active_member_count', 'multi-quota': true },
-  { name: t('tenant_overview.trend_login_count'), value: 'login_count', 'multi-quota': true },
+  { name: t('tenant_overview.trend_activity_count'), value: 'activity_count', 'multi-quota': true },
 ])
 const assetXAxis = computed<ChartAxis[]>(() => [{ name: t('tenant_overview.assets_title'), value: 'label' }])
 const assetYAxis = computed<ChartAxis[]>(() => [{ name: 'count', value: 'count' }])
@@ -504,7 +586,13 @@ const formatTenantRole = (role?: string) => {
   return t('user.tenant_role_member')
 }
 
-const formatEventTime = (timestamp?: number) => formatTimestamp(Number(timestamp || 0), 'YYYY-MM-DD HH:mm:ss')
+const memberDisplayName = (member: { name?: string | null; account?: string | null; user_id?: number | string }) =>
+  member.name || member.account || `#${member.user_id}`
+
+const formatMemberActivityTime = (timestamp?: number) => {
+  const value = Number(timestamp || 0)
+  return value ? formatTimestamp(value, 'YYYY-MM-DD HH:mm:ss') : t('tenant_overview.member_activity_never')
+}
 
 const loadApplications = async () => {
   applicationLoading.value = true
@@ -919,11 +1007,37 @@ onMounted(async () => {
   }
 
   .summary-value {
-    margin-top: 24px;
+    margin-top: 22px;
     font-size: 30px;
     line-height: 36px;
     font-weight: 600;
     color: var(--theme-text-primary);
+  }
+
+  .summary-progress {
+    margin-top: 12px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(142, 154, 175, 0.14);
+    overflow: hidden;
+
+    span {
+      display: block;
+      height: 100%;
+      min-width: 6px;
+      max-width: 100%;
+      border-radius: inherit;
+      background: var(--card-color);
+      transition: width 180ms ease;
+    }
+  }
+
+  .summary-subvalue {
+    margin-top: 10px;
+    color: var(--theme-text-secondary);
+    font-size: 12px;
+    line-height: 18px;
+    word-break: break-word;
   }
 
   .is-actionable {
@@ -999,7 +1113,7 @@ onMounted(async () => {
 
   .ops-grid {
     display: grid;
-    grid-template-columns: minmax(320px, 0.85fr) minmax(0, 1.15fr);
+    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.9fr) minmax(300px, 0.9fr);
     gap: 16px;
   }
 
@@ -1009,6 +1123,7 @@ onMounted(async () => {
   }
 
   .ops-card-wide {
+    grid-column: span 2;
     min-width: 0;
   }
 
@@ -1110,6 +1225,14 @@ onMounted(async () => {
     .analytics-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .ops-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .ops-card-wide {
+      grid-column: span 1;
+    }
   }
 
   @media (max-width: 1080px) {
@@ -1119,6 +1242,10 @@ onMounted(async () => {
     .analytics-grid {
       grid-template-columns: 1fr;
       flex-direction: column;
+    }
+
+    .ops-card-wide {
+      grid-column: auto;
     }
 
     .tool-left {

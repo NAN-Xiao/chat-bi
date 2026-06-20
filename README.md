@@ -39,9 +39,11 @@
 
 ## 快速开始
 
-### 安装部署
+### Docker 体验部署
 
-准备一台 Linux 服务器，安装好 [Docker](https://docs.docker.com/get-docker/)，执行以下一键安装脚本：
+以下命令用于本地体验、功能评估或离线演示。该单容器镜像内置 PostgreSQL，并使用默认初始账号、默认数据库密码和直连 `8000/8001` 端口，**不要直接作为生产部署方案**。
+
+准备一台 Linux 服务器，安装好 [Docker](https://docs.docker.com/get-docker/)，执行：
 
 ```bash
 docker run -d \
@@ -63,6 +65,18 @@ docker run -d \
 - 在浏览器中打开: http://<你的服务器IP>:8000/
 - 用户名: admin
 - 密码: elex@123
+
+首次体验后请立即在系统内修改管理员密码。暴露到公网、接入企业数据或提供给客户使用前，必须改走生产基线。
+
+### 生产部署
+
+生产环境不要使用上面的快速体验命令，也不要直接使用根目录 `docker-compose.yaml` 中的默认配置。正式上线前请按 [B2B 多租户高可用生产基线](docs/single_tenant_production_readiness.md) 执行，至少完成以下事项：
+
+- 使用 Nginx 统一暴露 `80/443` 和 TLS，后端只监听内网或受控网段。
+- 使用独立 PostgreSQL、Redis、backend API 副本和 worker，生产开启 `CACHE_TYPE=redis`。
+- 从私有环境变量提供 `SECRET_KEY`、`SENSITIVE_CONFIG_ENCRYPTION_KEY`、数据库密码、Redis 密码和模型 API Key，禁止使用开发默认值。
+- 设置 `APP_ENV=production`、`PRODUCTION_CHECKS_ENABLED=true`、`AUTO_RUN_MIGRATIONS=false`，迁移作为发布步骤单独执行。
+- 上线前通过后端测试、前端构建、依赖审计、生产配置检查、数据库备份恢复、多租户权限和 worker 故障恢复验收。
 
 ### 联系我们
 

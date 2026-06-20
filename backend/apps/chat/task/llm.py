@@ -6,6 +6,7 @@ import urllib.parse
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, List, Optional, Union, Dict, Iterator
 
 import orjson
@@ -105,6 +106,203 @@ def _get_temp_sql_text(dynamic_sql_result: Optional[dict[str, Any]]) -> Optional
 
 def _remove_temp_sql_text(dynamic_sql_result: dict[str, Any]) -> None:
     dynamic_sql_result.pop(APP_TEMP_SQL_TEXT_KEY, None)
+
+
+def _normalize_chart_field_name(value: Any) -> str:
+    return str(value or "").strip().strip('`"[]').lower()
+
+
+def _is_chart_numeric_value(value: Any) -> bool:
+    if value is None or isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float, Decimal)):
+        return True
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return False
+        if text.endswith("%"):
+            text = text[:-1].strip()
+        text = text.replace(",", "")
+        try:
+            float(text)
+            return True
+        except ValueError:
+            return False
+    return False
+
+
+def _chart_axis_values(chart: dict[str, Any]) -> set[str]:
+    values: set[str] = set()
+    chart_type = str(chart.get("type") or "").lower()
+    for column in chart.get("columns") or []:
+        if isinstance(column, dict) and column.get("value"):
+            values.add(_normalize_chart_field_name(column.get("value")))
+
+    axis = chart.get("axis") or {}
+    for key in ("x", "series"):
+        axis_item = axis.get(key)
+        if isinstance(axis_item, dict) and axis_item.get("value"):
+            values.add(_normalize_chart_field_name(axis_item.get("value")))
+
+    y_axis = axis.get("y")
+    if isinstance(y_axis, list):
+        displayed_y_axis = y_axis[:1] if axis.get("series") and chart_type != "metric" else y_axis
+        for y_item in displayed_y_axis:
+            if isinstance(y_item, dict) and y_item.get("value"):
+                values.add(_normalize_chart_field_name(y_item.get("value")))
+    elif isinstance(y_axis, dict) and y_axis.get("value"):
+        values.add(_normalize_chart_field_name(y_axis.get("value")))
+
+    if not axis.get("series"):
+        multi_quota = axis.get("multi-quota") or {}
+        multi_values = multi_quota.get("value") if isinstance(multi_quota, dict) else None
+        if isinstance(multi_values, list):
+            values.update(_normalize_chart_field_name(value) for value in multi_values if value)
+        elif multi_values:
+            values.add(_normalize_chart_field_name(multi_values))
+    return values
+
+
+def _build_complete_table_chart(fields: list[Any], title: str | None = None) -> dict[str, Any]:
+    columns = []
+    for field in fields or []:
+        field_name = str(field)
+        columns.append({"name": field_name, "value": field_name})
+    return {
+        "type": "table",
+        "title": title or "数据明细",
+        "columns": columns,
+    }
+
+
+def _is_rate_metric_field(field: str) -> bool:
+    normalized = _normalize_chart_field_name(field)
+    return any(
+        token in normalized
+        for token in (
+            "rate",
+            "ratio",
+            "pct",
+            "percent",
+            "percentage",
+            "retention",
+            "conversion",
+            "arpu",
+            "arppu",
+            "ltv",
+            "率",
+            "占比",
+            "比例",
+            "留存",
+            "转化",
+            "人均",
+        )
+    )
+
+
+def _is_supporting_metric_field(field: str) -> bool:
+    normalized = _normalize_chart_field_name(field)
+    return any(
+        token in normalized
+        for token in (
+            "cohort",
+            "base",
+            "total",
+            "size",
+            "count",
+            "num",
+            "users",
+            "user_count",
+            "retained",
+            "active",
+            "payer",
+            "玩家数",
+            "用户数",
+            "人数",
+            "次数",
+            "数量",
+            "分母",
+            "分子",
+        )
+    )
+
+
+def _is_numeric_dimension_field(field: str) -> bool:
+    normalized = _normalize_chart_field_name(field)
+    return any(
+        token in normalized
+        for token in (
+            "id",
+            "index",
+            "rank",
+            "order",
+            "sort",
+            "seq",
+            "sequence",
+            "day_index",
+            "lifecycle_day",
+            "week",
+            "month",
+            "year",
+            "日期",
+            "序号",
+            "排序",
+            "排名",
+        )
+    )
+
+
+def _is_supporting_only_gap(covered_metrics: list[str], missing_metrics: list[str]) -> bool:
+    if not covered_metrics or not missing_metrics:
+        return False
+    return any(_is_rate_metric_field(field) for field in covered_metrics) and all(
+        _is_supporting_metric_field(field) for field in missing_metrics
+    )
+
+
+def _ensure_chart_covers_metric_fields(
+    chart: dict[str, Any],
+    fields: list[Any] | None,
+    rows: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Avoid silently reducing a multi-metric answer to a single-metric chart."""
+    if chart.get("type") == "table" or not fields or not rows:
+        return chart
+
+    sample_rows = [row for row in rows[:20] if isinstance(row, dict)]
+    if not sample_rows:
+        return chart
+
+    metric_fields: list[str] = []
+    for field in fields:
+        field_key = str(field)
+        if _is_numeric_dimension_field(field_key):
+            continue
+        values = [row.get(field_key) for row in sample_rows if field_key in row]
+        non_empty_values = [
+            value for value in values if value is not None and not (isinstance(value, str) and not value.strip())
+        ]
+        if non_empty_values and any(_is_chart_numeric_value(value) for value in non_empty_values):
+            metric_fields.append(field_key)
+
+    if len(metric_fields) <= 1:
+        return chart
+
+    used_values = _chart_axis_values(chart)
+    covered_metrics = [
+        field for field in metric_fields if _normalize_chart_field_name(field) in used_values
+    ]
+    missing_metrics = [
+        field for field in metric_fields if _normalize_chart_field_name(field) not in used_values
+    ]
+    if len(covered_metrics) < len(metric_fields):
+        if _is_supporting_only_gap(covered_metrics, missing_metrics):
+            return chart
+        title = chart.get("title") or "指标对比"
+        return _build_complete_table_chart(fields, title=title)
+
+    return chart
 
 
 
@@ -1016,7 +1214,12 @@ class LLMService:
         self.chat_question.sql = sql
         return sql
 
-    def check_save_chart(self, session: Session, res: str) -> Dict[str, Any]:
+    def check_save_chart(
+        self,
+        session: Session,
+        res: str,
+        result: Optional[dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
 
         json_str = extract_nested_json(res)
         if json_str is None:
@@ -1072,6 +1275,13 @@ class LLMService:
 
         if error:
             raise SingleMessageError(message)
+
+        if result:
+            chart = _ensure_chart_covers_metric_fields(
+                chart,
+                result.get("fields"),
+                result.get("data"),
+            )
 
         save_chart(session=session, chart=orjson.dumps(chart).decode(), record_id=self.record.id)
 
@@ -1491,7 +1701,7 @@ class LLMService:
 
             # filter chart
             AppLogUtil.info(full_chart_text)
-            chart = self.check_save_chart(session=_session, res=full_chart_text)
+            chart = self.check_save_chart(session=_session, res=full_chart_text, result=result)
             AppLogUtil.info(chart)
 
             if not stream:

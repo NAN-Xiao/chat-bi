@@ -127,6 +127,40 @@ def test_token_total_accepts_common_usage_shapes():
     assert token_total(None) == 0
 
 
+def test_chat_usage_metering_skips_sql_execution_metric(monkeypatch):
+    from apps.chat.curd import chat as chat_crud
+    from apps.chat.models.chat_model import ChatLog, OperationEnum, TypeEnum
+
+    recorded: list[dict] = []
+    monkeypatch.setattr(chat_crud, "record_tenant_usage_detached", lambda **kwargs: recorded.append(kwargs) or True)
+
+    chat_crud._record_chat_usage_from_log(
+        ChatLog(
+            tenant_id=10,
+            type=TypeEnum.CHAT,
+            operate=OperationEnum.GENERATE_SQL,
+            pid=1,
+            token_usage={"total_tokens": 42},
+            local_operation=False,
+        ),
+        success=True,
+    )
+    chat_crud._record_chat_usage_from_log(
+        ChatLog(
+            tenant_id=10,
+            type=TypeEnum.CHAT,
+            operate=OperationEnum.EXECUTE_SQL,
+            pid=1,
+            token_usage={},
+            local_operation=True,
+        ),
+        success=True,
+    )
+
+    assert [row["metric"] for row in recorded] == ["chat.generate_sql"]
+    assert recorded[0]["total_tokens"] == 42
+
+
 def test_tenant_usage_by_user_scopes_current_workspace_only():
     engine = _engine_with_chat_usage_tables()
 

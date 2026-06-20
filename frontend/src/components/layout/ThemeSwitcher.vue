@@ -160,6 +160,7 @@ onMounted(() => {
 .theme-toggle-icon {
   width: 16px;
   height: 16px;
+  display: block;
 }
 
 .theme-toggle-track {

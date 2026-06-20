@@ -371,9 +371,19 @@ onMounted(() => {
     min-width: 40px;
     padding: 0;
     margin-left: 0;
+    justify-content: center;
     position: relative;
     margin-top: 0;
     margin-bottom: 0;
+
+    .ed-icon {
+      display: inline-grid;
+      place-items: center;
+    }
+
+    .ed-icon svg {
+      display: block;
+    }
 
     .default-avatar {
       position: absolute;

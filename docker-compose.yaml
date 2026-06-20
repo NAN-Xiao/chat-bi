@@ -1,3 +1,13 @@
+# Demo-only compose file.
+#
+# This stack is for local evaluation and offline demos. It uses the all-in-one
+# image defaults, including an in-container PostgreSQL instance, development
+# credentials, and direct 8000/8001 exposure.
+#
+# Do not use this file as production orchestration. For production, follow
+# docs/single_tenant_production_readiness.md and provide private environment
+# values through deploy/env.production.example plus external PostgreSQL, Redis,
+# Nginx, API replicas, and workers.
 services:
   zhishu:
     image: zhishu:latest
