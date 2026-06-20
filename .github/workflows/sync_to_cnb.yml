@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
 jobs:
   sync:
+    if: ${{ vars.CNB_TARGET_URL != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,7 +16,7 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:${{ github.workspace }} \
             -w ${{ github.workspace }} \
-            -e PLUGIN_TARGET_URL="https://cnb.cool/dataease/zhishu.git" \
+            -e PLUGIN_TARGET_URL="${{ vars.CNB_TARGET_URL }}" \
             -e PLUGIN_AUTH_TYPE="https" \
             -e PLUGIN_USERNAME="cnb" \
             -e PLUGIN_PASSWORD=${{ secrets.CNB_PASSWORD }} \

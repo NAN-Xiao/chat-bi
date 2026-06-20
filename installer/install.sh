@@ -152,7 +152,11 @@ function install_docker() {
            chmod 644 /etc/systemd/system/docker.service
        else
            log_content "在线安装 docker"
-           curl -fsSL https://resource.fit2cloud.com/get-docker-linux.sh -o get-docker.sh 2>&1 | tee -a ${CURRENT_DIR}/install.log
+           if [[ -z "${DOCKER_INSTALL_SCRIPT_URL}" ]]; then
+              log_content "未配置 DOCKER_INSTALL_SCRIPT_URL，无法在线安装 Docker"
+              exit 1
+           fi
+           curl -fsSL "${DOCKER_INSTALL_SCRIPT_URL}" -o get-docker.sh 2>&1 | tee -a ${CURRENT_DIR}/install.log
            if [[ ! -f get-docker.sh ]];then
               log_content "docker 在线安装脚本下载失败，请稍候重试"
               exit 1
@@ -206,7 +210,11 @@ function install_docker_compose() {
               chmod +x /usr/bin/docker-compose
            else
               log_content "在线安装 docker-compose"
-              curl -L https://resource.fit2cloud.com/docker/compose/releases/download/v2.16.0/docker-compose-$(uname -s | tr A-Z a-z)-$(uname -m) -o /usr/local/bin/docker-compose 2>&1 | tee -a ${CURRENT_DIR}/install.log
+              if [[ -z "${DOCKER_COMPOSE_DOWNLOAD_URL}" ]]; then
+                 log_content "未配置 DOCKER_COMPOSE_DOWNLOAD_URL，无法在线安装 Docker Compose"
+                 exit 1
+              fi
+              curl -L "${DOCKER_COMPOSE_DOWNLOAD_URL}" -o /usr/local/bin/docker-compose 2>&1 | tee -a ${CURRENT_DIR}/install.log
               if [[ ! -f /usr/local/bin/docker-compose ]];then
                   log_content "docker-compose 下载失败，请稍候重试"
                   exit 1
@@ -233,7 +241,7 @@ function load_images() {
     log_title "加载星通智数镜像"
     cd ${CURRENT_DIR}
 
-    for i in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep dataease); do
+    for i in $(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "${ZHISHU_IMAGE_REPOSITORY_PATTERN:-chat-bi|zhishu}"); do
        current_images[${#current_images[@]}]=${i##*/}
     done
 
@@ -248,8 +256,7 @@ function load_images() {
            fi
        done
     else
-       ZHISHUVERSION=$(cat ${CURRENT_DIR}/zhishu/templates/version)
-       curl -sfL https://resource.fit2cloud.com/installation-log.sh | sh -s zhishu ${INSTALL_TYPE} ${ZHISHUVERSION}
+       log_content "未发现离线 images 目录，跳过镜像预加载"
     fi
 }
 

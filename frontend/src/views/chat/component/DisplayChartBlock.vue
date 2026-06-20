@@ -2,7 +2,7 @@
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type { ChatMessage } from '@/api/chat.ts'
 import { computed, nextTick, ref } from 'vue'
-import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import type { ChartInsightsConfig, ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
@@ -29,6 +29,7 @@ const chartObject = computed<{
     }
   }
   columns: Array<{ name: string; value: string }>
+  insights?: ChartInsightsConfig
 }>(() => {
   if (props.message?.record?.chart) {
     return JSON.parse(props.message.record.chart)
@@ -119,6 +120,7 @@ defineExpose({
       :data="data"
       :multi-quota-name="multiQuotaName"
       :show-label="showLabel"
+      :insights="chartObject?.insights"
     />
     <el-empty v-else :description="loadingData ? t('chat.loading_data') : t('chat.no_data')" />
   </div>

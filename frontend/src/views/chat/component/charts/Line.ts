@@ -7,10 +7,13 @@ import {
   checkIsPercent,
   formatNumber,
   getAxesWithFilter,
+  getTrendSummary,
+  isBaselinePercentTrend,
   processMultiQuotaData,
   sortDataByXAxis,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { createTrendInsight } from '@/views/chat/component/charts/insight.ts'
 
 export class Line extends BaseG2Chart {
   constructor(id: string) {
@@ -45,15 +48,10 @@ export class Line extends BaseG2Chart {
       return
     }
 
-    const multiQuota = axes.multiQuota.length > 0 ? axes.multiQuota : axes.y.map((item) => item.value)
+    const multiQuota =
+      axes.multiQuota.length > 0 ? axes.multiQuota : axes.y.map((item) => item.value)
     if (axes.series.length === 0 && multiQuota.length > 1) {
-      config = processMultiQuotaData(
-        axes.x,
-        config.y,
-        multiQuota,
-        axes.multiQuotaName,
-        config.data
-      )
+      config = processMultiQuotaData(axes.x, config.y, multiQuota, axes.multiQuotaName, config.data)
     }
 
     const x = axes.x
@@ -61,6 +59,27 @@ export class Line extends BaseG2Chart {
     const series = config.series
 
     const _data = checkIsPercent(y, config.data)
+    const baselinePercentTrend = _data.isPercent && isBaselinePercentTrend(_data.data, y[0])
+    const insightEnabled =
+      this.insightsEnabled && !baselinePercentTrend && series.length === 0 && _data.data.length > 1
+    const trendSummary = insightEnabled ? getTrendSummary(_data.data, y[0]) : undefined
+    const latestDatum = trendSummary?.latest
+    const maxDatum = trendSummary?.max
+
+    if (insightEnabled && trendSummary) {
+      this.setInsight(
+        createTrendInsight({
+          valueLabel: y[0].name || y[0].value,
+          latestValue: trendSummary.latestValue,
+          changePercent: trendSummary.changePercent,
+          maxLabel: maxDatum ? String(maxDatum[x[0].value] ?? '') : undefined,
+          maxValue: trendSummary.maxValue,
+          isPercent: _data.isPercent,
+        })
+      )
+    } else {
+      this.clearInsight()
+    }
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
 
@@ -139,7 +158,29 @@ export class Line extends BaseG2Chart {
                   ],
                 },
               ]
-            : [],
+            : insightEnabled
+              ? [
+                  {
+                    text: (data: any) => {
+                      if (data === latestDatum) {
+                        return `最新 ${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`
+                      }
+                      if (data === maxDatum && maxDatum !== latestDatum) {
+                        return `最高 ${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`
+                      }
+                      return ''
+                    },
+                    style: {
+                      dx: -10,
+                      dy: -12,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      fill: '#1b2a41',
+                    },
+                    transform: [{ type: 'exceedAdjust' }, { type: 'overlapHide' }],
+                  },
+                ]
+              : [],
           tooltip: (data: any) => {
             if (series.length > 0) {
               return {

@@ -291,6 +291,7 @@ function addToDashboard() {
       yAxis: yAxis,
       series: axis?.series ? [axis?.series] : [],
       multiQuotaName: axis?.['multi-quota']?.name,
+      insights: chartBaseInfo?.insights,
     }
   }
 

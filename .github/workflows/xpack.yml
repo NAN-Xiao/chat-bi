@@ -44,6 +44,7 @@ on:
           
 jobs:
   build:
+    if: ${{ vars.XPACK_REPOSITORY != '' }}
     runs-on: ${{ matrix.os }}
     environment: zhishu-xpack-env
     defaults:
@@ -57,7 +58,7 @@ jobs:
       - name: Check out xpack repo
         uses: actions/checkout@v4
         with:
-          repository: dataease/zhishu-xpack
+          repository: ${{ vars.XPACK_REPOSITORY }}
           ref: ${{ inputs.xpack_branch }}
           path: ./zhishu-xpack
           token: ${{ secrets.GH_TOKEN }}

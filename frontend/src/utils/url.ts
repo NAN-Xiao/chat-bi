@@ -1,3 +1,3 @@
-export const formatDataEaseBi = (url: string) => {
+export const formatStaticAssetUrl = (url: string) => {
   return url
 }

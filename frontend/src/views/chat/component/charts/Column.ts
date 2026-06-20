@@ -7,9 +7,11 @@ import {
   checkIsPercent,
   formatNumber,
   getAxesWithFilter,
+  getCategorySummary,
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
+import { createCategoryInsight } from '@/views/chat/component/charts/insight.ts'
 
 export class Column extends BaseG2Chart {
   constructor(id: string) {
@@ -44,15 +46,10 @@ export class Column extends BaseG2Chart {
       return
     }
 
-    const multiQuota = axes.multiQuota.length > 0 ? axes.multiQuota : axes.y.map((item) => item.value)
+    const multiQuota =
+      axes.multiQuota.length > 0 ? axes.multiQuota : axes.y.map((item) => item.value)
     if (axes.series.length === 0 && multiQuota.length > 1) {
-      config = processMultiQuotaData(
-        axes.x,
-        config.y,
-        multiQuota,
-        axes.multiQuotaName,
-        config.data
-      )
+      config = processMultiQuotaData(axes.x, config.y, multiQuota, axes.multiQuotaName, config.data)
     }
 
     const x = axes.x
@@ -60,6 +57,24 @@ export class Column extends BaseG2Chart {
     const series = config.series
 
     const _data = checkIsPercent(y, config.data)
+    const insightEnabled = this.insightsEnabled && series.length === 0 && _data.data.length > 0
+    const categorySummary = insightEnabled ? getCategorySummary(_data.data, x[0], y[0]) : undefined
+    const maxDatum = categorySummary?.max
+
+    if (insightEnabled && categorySummary) {
+      this.setInsight(
+        createCategoryInsight({
+          valueLabel: y[0].name || y[0].value,
+          total: categorySummary.total,
+          average: categorySummary.average,
+          maxLabel: categorySummary.maxLabel,
+          maxValue: categorySummary.maxValue,
+          isPercent: _data.isPercent,
+        })
+      )
+    } else {
+      this.clearInsight()
+    }
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
 
@@ -167,7 +182,30 @@ export class Column extends BaseG2Chart {
               ],
             },
           ]
-        : [],
+        : insightEnabled
+          ? [
+              {
+                text: (data: any) => {
+                  if (data !== maxDatum) {
+                    return ''
+                  }
+                  return `最高 ${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`
+                },
+                position: (data: any) => {
+                  if (data[y[0].value] < 0) {
+                    return 'bottom'
+                  }
+                  return 'top'
+                },
+                style: {
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fill: '#1b2a41',
+                },
+                transform: [{ type: 'exceedAdjust' }, { type: 'overlapHide' }],
+              },
+            ]
+          : [],
     } as G2Spec)
 
     if (series.length > 0) {

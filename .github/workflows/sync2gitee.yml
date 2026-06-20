@@ -5,10 +5,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Mirror the Github organization repos to Gitee.
+        if: ${{ vars.GITEE_SRC_ORG != '' && vars.GITEE_DST_ORG != '' }}
         uses: Yikun/hub-mirror-action@master
         with:
-          src: 'github/dataease'
-          dst: 'gitee/fit2cloud-feizhiyun'
+          src: github/${{ vars.GITEE_SRC_ORG }}
+          dst: gitee/${{ vars.GITEE_DST_ORG }}
           dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
           dst_token:  ${{ secrets.GITEE_TOKEN }}
           static_list: "星通智数"

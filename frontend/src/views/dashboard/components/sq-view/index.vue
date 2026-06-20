@@ -198,6 +198,7 @@ defineExpose({
         :series="viewInfo.chart?.series"
         :data="viewInfo.data?.data"
         :multi-quota-name="viewInfo.chart?.multiQuotaName"
+        :insights="viewInfo.chart?.insights"
       />
     </div>
     <el-dialog
@@ -353,11 +354,11 @@ defineExpose({
           border-radius: 6px;
 
           &:hover {
-              background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
-            }
-            &:active {
-              background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
-            }
+            background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
+          }
+          &:active {
+            background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
+          }
         }
         :deep(.ed-select__caret) {
           font-size: 12px !important;
@@ -400,19 +401,19 @@ defineExpose({
     width: 40px;
     height: 24px;
 
-      :deep(.ed-select__wrapper) {
+    :deep(.ed-select__wrapper) {
       padding: 4px;
       min-height: 24px;
       box-shadow: unset;
       border-radius: 6px;
 
-        &:hover {
-          background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
-        }
-        &:active {
-          background: var(--workspace-active-bg, rgba(31, 35, 41, 0.1));
-        }
+      &:hover {
+        background: var(--workspace-control-hover-bg, rgba(31, 35, 41, 0.1));
       }
+      &:active {
+        background: var(--workspace-active-bg, rgba(31, 35, 41, 0.1));
+      }
+    }
     :deep(.ed-select__caret) {
       font-size: 12px !important;
     }

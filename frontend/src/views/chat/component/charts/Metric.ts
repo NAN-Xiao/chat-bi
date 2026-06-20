@@ -1,6 +1,11 @@
 import { BaseChart } from '@/views/chat/component/BaseChart.ts'
-import { formatNumber } from '@/views/chat/component/charts/utils.ts'
+import {
+  formatChangePercent,
+  formatNumber,
+  getTrendSummary,
+} from '@/views/chat/component/charts/utils.ts'
 import { chartPalette } from '@/views/chat/component/charts/theme.ts'
+import { getChangeTone } from '@/views/chat/component/charts/insight.ts'
 
 export class Metric extends BaseChart {
   container: HTMLElement | null = null
@@ -15,7 +20,7 @@ export class Metric extends BaseChart {
       return
     }
 
-    const firstRow = this.data[0] || {}
+    const firstRow = this.data[this.data.length - 1] || {}
     const valueAxes = this.axis.filter((axis) => axis.type === 'y')
     const fallbackAxes = this.axis.filter((axis) => !axis.hidden)
     const axes = (valueAxes.length > 0 ? valueAxes : fallbackAxes).slice(0, 6)
@@ -86,6 +91,26 @@ export class Metric extends BaseChart {
 
       card.appendChild(label)
       card.appendChild(value)
+
+      const summary =
+        this.insightsEnabled && this.data.length > 1 ? getTrendSummary(this.data, axis) : undefined
+      if (summary?.changePercent !== null && summary?.changePercent !== undefined) {
+        const trend = document.createElement('div')
+        const tone = getChangeTone(summary.changePercent)
+        trend.textContent = `较上一项 ${formatChangePercent(summary.changePercent)}`
+        Object.assign(trend.style, {
+          color: tone === 'positive' ? '#28b879' : tone === 'negative' ? '#f56c6c' : '#8a97aa',
+          fontSize: '12px',
+          fontWeight: '600',
+          lineHeight: '18px',
+          marginTop: '6px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        })
+        card.appendChild(trend)
+      }
+
       card.appendChild(accent)
       wrapper.appendChild(card)
     })

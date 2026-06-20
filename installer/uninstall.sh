@@ -32,9 +32,9 @@ if test ! -z "$(docker images -f dangling=true -q)"; then
    docker rmi $(docker images -f dangling=true -q)
 fi
 
-if test -n "$(docker images | grep 'registry.cn-qingdao.aliyuncs.com/dataease/zhishu')"; then
+if test -n "$(docker images | grep -E "${ZHISHU_IMAGE_REPOSITORY_PATTERN:-chat-bi|zhishu}")"; then
    echo "清理星通智数镜像"
-   docker rmi $(docker images | grep "registry.cn-qingdao.aliyuncs.com/dataease/zhishu" | awk -F' ' '{print $1":"$2}')
+   docker rmi $(docker images | grep -E "${ZHISHU_IMAGE_REPOSITORY_PATTERN:-chat-bi|zhishu}" | awk -F' ' '{print $1":"$2}')
 fi
 
 # 清理星通智数运行目录及命令行工具 sctl

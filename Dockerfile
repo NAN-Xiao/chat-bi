@@ -1,5 +1,7 @@
-# Build zhishu
-FROM --platform=${BUILDPLATFORM} registry.cn-qingdao.aliyuncs.com/dataease/zhishu-base:latest AS zhishu-ui-builder
+# Build application image.
+ARG BASE_IMAGE=chat-bi/zhishu-python-pg:latest
+ARG RUNTIME_IMAGE=chat-bi/zhishu-python-pg:latest
+FROM --platform=${BUILDPLATFORM} ${BASE_IMAGE} AS zhishu-ui-builder
 ENV ZHISHU_HOME=/opt/zhishu
 ENV APP_HOME=${ZHISHU_HOME}/app
 ENV UI_HOME=${ZHISHU_HOME}/frontend
@@ -11,7 +13,7 @@ COPY frontend /tmp/frontend
 RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
 
 
-FROM registry.cn-qingdao.aliyuncs.com/dataease/zhishu-base:latest AS zhishu-builder
+FROM ${BASE_IMAGE} AS zhishu-builder
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
 ENV ZHISHU_HOME=/opt/zhishu
@@ -43,7 +45,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --extra cpu
 
 # Build g2-ssr
-FROM registry.cn-qingdao.aliyuncs.com/dataease/zhishu-base:latest AS ssr-builder
+FROM ${BASE_IMAGE} AS ssr-builder
 
 WORKDIR /app
 
@@ -64,7 +66,7 @@ COPY g2-ssr/charts/* /app/charts/
 RUN npm install
 
 # Runtime stage
-FROM registry.cn-qingdao.aliyuncs.com/dataease/zhishu-python-pg:latest
+FROM ${RUNTIME_IMAGE}
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone

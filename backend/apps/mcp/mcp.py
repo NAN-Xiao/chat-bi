@@ -149,7 +149,7 @@ async def mcp_assistant(session: SessionDep, chat: McpAssistant):
 
     # build assistant param
     configuration = {"endpoint": chat.url}
-    # authorization = [{"key": "x-de-token",
+    # authorization = [{"key": "x-assistant-token",
     #                 "value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1aWQiOjEsIm9pZCI6MSwiZXhwIjoxNzU4NTEyMDA2fQ.3NR-pgnADLdXZtI3dXX5-LuxfGYRvYD9kkr2de7KRP0",
     #                 "target": "header"}]
     mcp_assistant_header = AssistantHeader(id=1, name='mcp_assist', domain='', type=1,

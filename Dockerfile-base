@@ -1,5 +1,6 @@
+ARG POSTGRES_BASE_IMAGE=postgres:17.6-bookworm
 FROM python:3.11-slim-bookworm AS python-builder
-FROM registry.cn-qingdao.aliyuncs.com/dataease/postgres:17.6
+FROM ${POSTGRES_BASE_IMAGE}
 
 # python environment
 COPY --from=python-builder /usr/local /usr/local
@@ -24,7 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && curl -qL https://www.npmjs.com/install.sh | sh - \
     && apt-get install -y nodejs \
-    && curl -L --connect-timeout 60 -m 1800 https://fit2cloud-support.oss-cn-beijing.aliyuncs.com/xpack-license/get-validator-linux | sh \
     && rm -rf /var/lib/apt/lists/* \
     && chmod g+xr /usr/bin/ld.so \
     && chmod g+x /usr/local/bin/python*
@@ -51,8 +51,16 @@ RUN apt-get update && \
 # Download DM library
 ENV DM_HOME=/opt/dmdbms
 ENV LD_LIBRARY_PATH=$DM_HOME/bin:$LD_LIBRARY_PATH
-RUN curl -L -o dm.zip https://resource-fit2cloud-com.oss-cn-hangzhou.aliyuncs.com/zhishu/dm/$TARGETARCH.zip && \
-    mkdir -p $DM_HOME/bin && \
-    unzip dm.zip -d $DM_HOME/bin && \
-    chmod -R +x $DM_HOME/bin && \
-    rm -rf dm.zip
+ARG DM_DRIVER_URL_TEMPLATE=""
+RUN if [ -n "$DM_DRIVER_URL_TEMPLATE" ]; then \
+      curl -L -o dm.zip "$(printf "$DM_DRIVER_URL_TEMPLATE" "$TARGETARCH")"; \
+    else \
+      echo "DM_DRIVER_URL_TEMPLATE is not set, skipping DM driver download"; \
+      touch dm.zip; \
+    fi && \
+    if [ -s dm.zip ]; then \
+      mkdir -p $DM_HOME/bin && \
+      unzip dm.zip -d $DM_HOME/bin && \
+      chmod -R +x $DM_HOME/bin; \
+    fi && \
+    rm -f dm.zip

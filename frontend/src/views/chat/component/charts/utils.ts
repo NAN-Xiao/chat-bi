@@ -130,9 +130,7 @@ export function isPercentAxis(axis: ChartAxis, data: Array<ChartData>): boolean 
 }
 
 function getPercentMultiplier(axis: ChartAxis, data: Array<ChartData>): number {
-  const values = data
-    .map((datum) => datum?.[axis.value])
-    .filter((value) => !isBlankValue(value))
+  const values = data.map((datum) => datum?.[axis.value]).filter((value) => !isBlankValue(value))
 
   if (values.some((value) => typeof value === 'string' && endsWith(value.trim(), '%'))) {
     return 1
@@ -267,6 +265,42 @@ interface CheckedData {
   data: Array<ChartData>
 }
 
+export interface SeriesSummaryItem {
+  name: string
+  rawValue: any
+  value: number
+  percent: number
+  color?: string
+}
+
+export interface PieSummary {
+  total: number
+  items: SeriesSummaryItem[]
+  valueLabel: string
+}
+
+export interface TrendSummary {
+  latest?: ChartData
+  previous?: ChartData
+  latestValue: number | null
+  previousValue: number | null
+  change: number | null
+  changePercent: number | null
+  max?: ChartData
+  maxValue: number | null
+  min?: ChartData
+  minValue: number | null
+}
+
+export interface CategorySummary {
+  total: number
+  average: number | null
+  count: number
+  max?: ChartData
+  maxValue: number | null
+  maxLabel?: string
+}
+
 export function getAxesWithFilter(axes: ChartAxis[]): {
   x: ChartAxis[]
   y: ChartAxis[] // 过滤后的 y
@@ -392,6 +426,180 @@ export function checkIsPercent(valueAxes: Array<ChartAxis>, data: Array<ChartDat
   return result
 }
 
+export function formatMetricValue(
+  value: any,
+  options: { isPercent?: boolean; suffix?: string } = {}
+): string {
+  if (value === null || value === undefined || value === '') {
+    return '-'
+  }
+
+  const formatted = formatNumber(value)
+  return `${formatted}${options.isPercent ? '%' : (options.suffix ?? '')}`
+}
+
+export function formatPercentValue(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '-'
+  }
+  const fixedValue = Math.abs(value) >= 10 ? value.toFixed(1) : value.toFixed(2)
+  return `${formatNumber(fixedValue)}%`
+}
+
+export function formatChangePercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '-'
+  }
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${formatPercentValue(value)}`
+}
+
+export function getSeriesSummary(
+  data: Array<ChartData>,
+  seriesAxis: ChartAxis,
+  valueAxis: ChartAxis
+): PieSummary {
+  const items = data
+    .map((datum) => {
+      const value = toNullableNumber(datum[valueAxis.value])
+      return {
+        name: String(datum[seriesAxis.value] ?? '-'),
+        rawValue: datum[valueAxis.value],
+        value: value ?? 0,
+        percent: 0,
+      }
+    })
+    .filter((item) => item.value !== 0)
+
+  const total = items.reduce((sum, item) => sum + item.value, 0)
+  const safeTotal = total === 0 ? 1 : total
+  items.forEach((item) => {
+    item.percent = (item.value / safeTotal) * 100
+  })
+
+  return {
+    total,
+    items,
+    valueLabel: valueAxis.name || valueAxis.value,
+  }
+}
+
+export function getTrendSummary(data: Array<ChartData>, valueAxis: ChartAxis): TrendSummary {
+  const values = data
+    .map((datum, index) => ({
+      datum,
+      index,
+      value: toNullableNumber(datum[valueAxis.value]),
+    }))
+    .filter(
+      (item): item is { datum: ChartData; index: number; value: number } => item.value !== null
+    )
+
+  if (values.length === 0) {
+    return {
+      latestValue: null,
+      previousValue: null,
+      change: null,
+      changePercent: null,
+      maxValue: null,
+      minValue: null,
+    }
+  }
+
+  const latest = values[values.length - 1]
+  const previous = values.length > 1 ? values[values.length - 2] : undefined
+  const max = values.reduce(
+    (result, item) => (item.value > result.value ? item : result),
+    values[0]
+  )
+  const min = values.reduce(
+    (result, item) => (item.value < result.value ? item : result),
+    values[0]
+  )
+  const change = previous ? latest.value - previous.value : null
+  const changePercent =
+    previous && previous.value !== 0 && latest.value !== 0
+      ? ((latest.value - previous.value) / Math.abs(previous.value)) * 100
+      : null
+
+  return {
+    latest: latest.datum,
+    previous: previous?.datum,
+    latestValue: latest.value,
+    previousValue: previous?.value ?? null,
+    change,
+    changePercent,
+    max: max.datum,
+    maxValue: max.value,
+    min: min.datum,
+    minValue: min.value,
+  }
+}
+
+export function isBaselinePercentTrend(data: Array<ChartData>, valueAxis: ChartAxis): boolean {
+  const values = data
+    .map((datum) => toNullableNumber(datum[valueAxis.value]))
+    .filter((value): value is number => value !== null)
+
+  if (values.length < 3) {
+    return false
+  }
+
+  const first = values[0]
+  const maxValue = Math.max(...values)
+  const hasDrop = values.slice(1).some((value) => value < first)
+
+  return first >= 99 && Math.abs(first - maxValue) < 0.0001 && hasDrop
+}
+
+export function getCategorySummary(
+  data: Array<ChartData>,
+  categoryAxis: ChartAxis,
+  valueAxis: ChartAxis
+): CategorySummary {
+  const values = data
+    .map((datum) => ({
+      datum,
+      value: toNullableNumber(datum[valueAxis.value]),
+    }))
+    .filter((item): item is { datum: ChartData; value: number } => item.value !== null)
+
+  if (values.length === 0) {
+    return {
+      total: 0,
+      average: null,
+      count: 0,
+      maxValue: null,
+    }
+  }
+
+  const max = values.reduce(
+    (result, item) => (item.value > result.value ? item : result),
+    values[0]
+  )
+  const total = values.reduce((sum, item) => sum + item.value, 0)
+  return {
+    total,
+    average: total / values.length,
+    count: values.length,
+    max: max.datum,
+    maxValue: max.value,
+    maxLabel: String(max.datum[categoryAxis.value] ?? '-'),
+  }
+}
+
+export function findNumericSizeAxis(
+  axes: Array<ChartAxis>,
+  data: Array<ChartData>,
+  usedValues: string[]
+): ChartAxis | undefined {
+  const usedValueSet = new Set(usedValues)
+  const candidates = axes.filter((axis) => !axis.hidden && !usedValueSet.has(axis.value))
+  return candidates.find((axis) =>
+    data.some((datum) => toNullableNumber(datum?.[axis.value]) !== null)
+  )
+}
+
 function parseSortableAxisValue(value: any): number | string | null {
   if (value === null || value === undefined || value === '') {
     return null
@@ -418,7 +626,9 @@ function parseSortableAxisValue(value: any): number | string | null {
     }
   }
 
-  const dayMatch = text.match(/(?:^|[^\d])(?:d|day|第)?\s*([+-]?\d+(?:\.\d+)?)\s*(?:日|天|day|d)?(?:$|[^\d])/i)
+  const dayMatch = text.match(
+    /(?:^|[^\d])(?:d|day|第)?\s*([+-]?\d+(?:\.\d+)?)\s*(?:日|天|day|d)?(?:$|[^\d])/i
+  )
   if (dayMatch) {
     const dayValue = Number(dayMatch[1])
     if (Number.isFinite(dayValue)) {
@@ -451,10 +661,12 @@ export function sortDataByXAxis(data: Array<ChartData>, xAxis?: ChartAxis): Arra
       if (typeof left.sortValue === 'number' && typeof right.sortValue === 'number') {
         return left.sortValue - right.sortValue || left.index - right.index
       }
-      return String(left.sortValue).localeCompare(String(right.sortValue), undefined, {
-        numeric: true,
-        sensitivity: 'base',
-      }) || left.index - right.index
+      return (
+        String(left.sortValue).localeCompare(String(right.sortValue), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        }) || left.index - right.index
+      )
     })
     .map((row) => row.datum)
 }
@@ -490,7 +702,11 @@ export function buildMixedUnitComboOptions(
             return value === undefined || value === null ? '' : String(formatNumber(value))
           },
           position: (datum: ChartData) => (datum[valueField] < 0 ? 'bottom' : 'top'),
-          transform: [{ type: 'contrastReverse' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
+          transform: [
+            { type: 'contrastReverse' },
+            { type: 'exceedAdjust' },
+            { type: 'overlapHide' },
+          ],
         },
       ]
     : []
@@ -506,7 +722,11 @@ export function buildMixedUnitComboOptions(
             dx: -10,
             dy: -12,
           },
-          transform: [{ type: 'contrastReverse' }, { type: 'exceedAdjust' }, { type: 'overlapHide' }],
+          transform: [
+            { type: 'contrastReverse' },
+            { type: 'exceedAdjust' },
+            { type: 'overlapHide' },
+          ],
         },
       ]
     : []

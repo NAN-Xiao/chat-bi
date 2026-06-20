@@ -3,6 +3,7 @@ import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
+  findNumericSizeAxis,
   formatNumber,
   getAxesWithFilter,
 } from '@/views/chat/component/charts/utils.ts'
@@ -26,6 +27,14 @@ export class Scatter extends BaseG2Chart {
     const y = axes.y
     const series = axes.series
     const _data = checkIsPercent(y, data)
+    const sizeAxis =
+      this.insightsEnabled && axes.x[0] && axes.y[0]
+        ? findNumericSizeAxis(this.axis, data, [
+            axes.x[0].value,
+            axes.y[0].value,
+            ...(series[0]?.value ? [series[0].value] : []),
+          ])
+        : undefined
 
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
@@ -35,7 +44,7 @@ export class Scatter extends BaseG2Chart {
         x: x[0].value,
         y: y[0].value,
         color: series.length > 0 ? series[0].value : undefined,
-        size: 4,
+        size: sizeAxis ? sizeAxis.value : 4,
       },
       style: {
         fillOpacity: 0.72,
@@ -56,6 +65,18 @@ export class Scatter extends BaseG2Chart {
       scale: {
         x: { nice: true },
         y: { nice: true, type: 'linear' },
+        ...(sizeAxis
+          ? {
+              size: {
+                range: [5, 26],
+              },
+            }
+          : {}),
+      },
+      legend: {
+        ...(sizeAxis
+          ? { size: { title: sizeAxis.name || sizeAxis.value, position: 'right' } }
+          : {}),
       },
       interaction: {
         tooltip: { shared: false },
@@ -71,7 +92,7 @@ export class Scatter extends BaseG2Chart {
         : [],
       tooltip: (datum: any) => ({
         name: series.length > 0 ? datum[series[0].value] : y[0].name,
-        value: `${x[0].name}: ${formatNumber(datum[x[0].value])}, ${y[0].name}: ${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
+        value: `${x[0].name}: ${formatNumber(datum[x[0].value])}, ${y[0].name}: ${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}${sizeAxis ? `, ${sizeAxis.name}: ${formatNumber(datum[sizeAxis.value])}` : ''}`,
       }),
     } as G2Spec)
 

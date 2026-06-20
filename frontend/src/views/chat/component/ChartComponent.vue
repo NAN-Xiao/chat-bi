@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { getChartInstance } from '@/views/chat/component/index.ts'
-import type { BaseChart, ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import type {
+  BaseChart,
+  ChartAxis,
+  ChartData,
+  ChartInsightsConfig,
+} from '@/views/chat/component/BaseChart.ts'
 import { useEmitt } from '@/utils/useEmitt.ts'
 
 const params = withDefaults(
@@ -15,6 +20,7 @@ const params = withDefaults(
     series?: Array<ChartAxis>
     multiQuotaName?: string | undefined
     showLabel?: boolean
+    insights?: ChartInsightsConfig
   }>(),
   {
     data: () => [],
@@ -24,6 +30,7 @@ const params = withDefaults(
     series: () => [],
     multiQuotaName: undefined,
     showLabel: false,
+    insights: undefined,
   }
 )
 
@@ -68,6 +75,7 @@ function renderChart() {
   chartInstance = getChartInstance(params.type, chartId.value)
   if (chartInstance) {
     chartInstance.showLabel = params.showLabel
+    chartInstance.insights = params.insights
     chartInstance.init(axis.value, params.data)
     chartInstance.render()
   }
@@ -91,6 +99,7 @@ watch(
     data: params.data,
     multiQuotaName: params.multiQuotaName,
     showLabel: params.showLabel,
+    insights: params.insights,
   }),
   () => {
     nextTick(() => {
