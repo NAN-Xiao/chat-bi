@@ -493,6 +493,12 @@ export const chatApi = {
   predict: (record_id: number | undefined, controller?: AbortController) => {
     return request.fetchStream(`/chat/record/${record_id}/predict`, {}, controller)
   },
+  stopGeneration: (record_id: number | undefined) => {
+    if (!record_id) {
+      return Promise.resolve({ success: false, released: false })
+    }
+    return request.post(`/chat/record/${record_id}/stop`, {})
+  },
   recommendQuestions: (
     record_id: number | undefined,
     controller?: AbortController,

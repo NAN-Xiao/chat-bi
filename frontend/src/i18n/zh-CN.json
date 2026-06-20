@@ -89,6 +89,8 @@
     "generation_concurrency_limit_hint": "开启后，同一用户同时生成的智能报表数量会受到限制，切换页面不会取消已开始的生成。",
     "max_concurrent_generations_per_user": "单用户最大并发生成数",
     "max_concurrent_generations_per_user_hint": "达到上限后，用户需要等待当前智能报表生成完成后再发起新问题。",
+    "generation_total_timeout_seconds": "单次生成总超时（秒）",
+    "generation_total_timeout_seconds_hint": "从问题开始到回答完成的整次生成硬上限，超时后服务端会停止生成并释放并发占位。",
     "prompt": "提示",
     "disabling_successfully": "关闭成功",
     "closed_by_default": "在报表窗口中，控制模型思考过程默认展开或者关闭",

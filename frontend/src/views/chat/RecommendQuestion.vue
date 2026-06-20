@@ -27,7 +27,7 @@ const props = withDefaults(
 const emits = defineEmits(['clickQuestion', 'update:currentChat', 'stop', 'loadingOver'])
 
 const loading = ref(false)
-const RECOMMEND_QUESTION_TIMEOUT_MS = 15000
+const RECOMMEND_QUESTION_TIMEOUT_MS = 120000
 
 const _currentChat = computed({
   get() {
@@ -83,7 +83,7 @@ function emitIfMounted(event: Parameters<typeof emits>[0], ...args: any[]) {
   }
 }
 
-async function getRecommendQuestions(articles_number: number) {
+async function getRecommendQuestions(articles_number: number = 4) {
   stopFlag.value = false
   setLoading(true)
   let controller: AbortController | undefined
@@ -101,7 +101,7 @@ async function getRecommendQuestions(articles_number: number) {
     const decoder = new TextDecoder('utf-8')
 
     let tempResult = ''
-    let shouldCloseStream = false
+    let hasRecommendedQuestions = false
 
     while (true) {
       if (stopFlag.value) {
@@ -162,25 +162,26 @@ async function getRecommendQuestions(articles_number: number) {
                   }
                 }
               }
-              shouldCloseStream = true
+              hasRecommendedQuestions = true
             }
             break
           case 'recommended_question_finish':
           case 'error':
-            shouldCloseStream = true
+            stopFlag.value = true
             break
         }
 
-        if (shouldCloseStream) {
+        if (stopFlag.value) {
           break
         }
       }
 
-      if (shouldCloseStream) {
-        await streamReader.cancel().catch(() => undefined)
-        controller.abort()
+      if (stopFlag.value) {
         break
       }
+    }
+    if (!hasRecommendedQuestions && tempResult.trim()) {
+      console.debug('Recommend questions ended without valid payload:', tempResult)
     }
   } catch (error: any) {
     if (!stopFlag.value && error?.name !== 'AbortError') {

@@ -89,6 +89,8 @@
     "generation_concurrency_limit_hint": "開啟後，同一使用者同時生成的智慧問數數量會受到限制，切換頁面不會取消已開始的生成。",
     "max_concurrent_generations_per_user": "單使用者最大並發生成數",
     "max_concurrent_generations_per_user_hint": "達到上限後，使用者需要等待目前智慧問數生成完成後再發起新問題。",
+    "generation_total_timeout_seconds": "單次生成總逾時（秒）",
+    "generation_total_timeout_seconds_hint": "從問題開始到回答完成的整次生成硬上限，逾時後服務端會停止生成並釋放並發占位。",
     "prompt": "提示",
     "disabling_successfully": "關閉成功",
     "closed_by_default": "在問數視窗中，控制模型思考過程預設展開或者關閉",

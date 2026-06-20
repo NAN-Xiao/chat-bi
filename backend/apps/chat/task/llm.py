@@ -1,13 +1,16 @@
 import concurrent
 import json
 import os
+import queue
+import threading
+import time
 import traceback
 import urllib.parse
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
 from dis import specialized
-from typing import Any, List, Optional, Union, Dict, Iterator
+from typing import Any, Callable, List, Optional, Union, Dict, Iterator
 
 import orjson
 import pandas as pd
@@ -54,6 +57,11 @@ from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
+from common.core.chat_generation_control import (
+    is_chat_generation_stop_requested_sync,
+    register_chat_generation_sync,
+    unregister_chat_generation_sync,
+)
 from common.core.chat_generation_limiter import ChatGenerationLease
 from common.error import SingleMessageError, AppDBError, ParseSQLResultError, AppDBConnectionError
 from common.utils.data_format import DataFormat
@@ -62,7 +70,7 @@ from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjs
 
 warnings.filterwarnings("ignore")
 
-executor = ThreadPoolExecutor(max_workers=200)
+executor = ThreadPoolExecutor(max_workers=max(1, settings.CHAT_GENERATION_WORKER_MAX_THREADS))
 
 dynamic_ds_types = [1, 3]
 dynamic_subsql_prefix = 'select * from app_dynamic_temp_table_'
@@ -124,7 +132,7 @@ class LLMService:
     generate_sql_logs: List[ChatLog]
     generate_chart_logs: List[ChatLog]
     current_logs: dict[OperationEnum, ChatLog]
-    chunk_list: List[str]
+    chunk_list: "queue.Queue[Any]"
     future: Future
 
     trans: I18nHelper = None
@@ -134,6 +142,8 @@ class LLMService:
 
     enable_sql_row_limit: bool = settings.GENERATE_SQL_QUERY_LIMIT_ENABLED
     base_message_round_count_limit: int = settings.GENERATE_SQL_QUERY_HISTORY_ROUND_COUNT
+    generation_total_timeout_seconds: int = settings.CHAT_GENERATION_TOTAL_TIMEOUT_SECONDS
+    persist_stream_timeout_error: bool = True
 
     def __init__(self, session: Session, current_user: CurrentUser, chat_question: ChatQuestion,
                  current_assistant: Optional[CurrentAssistant] = None, no_reasoning: bool = False,
@@ -143,9 +153,11 @@ class LLMService:
         self.generate_sql_logs = []
         self.generate_chart_logs = []
         self.current_logs = {}
-        self.chunk_list = []
+        self.chunk_list = queue.Queue()
         self.current_user = current_user
         self.current_assistant = current_assistant
+        self.stop_event = threading.Event()
+        self.stop_reason: Optional[str] = None
 
         self.table_name_list = []
 
@@ -206,11 +218,10 @@ class LLMService:
         self.chat_question = chat_question
         self.config = config
         if no_reasoning:
-            # only work while using qwen
-            if self.config.additional_params:
-                if self.config.additional_params.get('extra_body'):
-                    if self.config.additional_params.get('extra_body').get('enable_thinking'):
-                        del self.config.additional_params['extra_body']['enable_thinking']
+            # Disable model-side thinking for lightweight follow-up tasks such as recommended questions.
+            extra_body = self.config.additional_params.setdefault('extra_body', {})
+            if isinstance(extra_body, dict):
+                extra_body['enable_thinking'] = False
 
         self.chat_question.ai_modal_id = self.config.model_id
         self.chat_question.ai_modal_name = self.config.model_name
@@ -387,12 +398,60 @@ class LLMService:
     def set_generation_lease(self, lease: Optional[ChatGenerationLease]):
         self.generation_lease = lease
 
+    def set_generation_total_timeout(self, seconds: int):
+        self.generation_total_timeout_seconds = max(1, int(seconds or settings.CHAT_GENERATION_TOTAL_TIMEOUT_SECONDS))
+
+    def generation_record_id(self) -> Optional[int]:
+        return getattr(self.record, "id", None)
+
+    def register_generation(self):
+        register_chat_generation_sync(self.generation_record_id(), self.generation_lease)
+
+    def unregister_generation(self):
+        unregister_chat_generation_sync(self.generation_record_id())
+
     def release_generation_lease(self):
         if not self.generation_lease:
             return
         lease = self.generation_lease
         self.generation_lease = None
         lease.release_sync()
+
+    def request_stop(self, reason: str = "生成已停止"):
+        if not self.stop_reason:
+            self.stop_reason = reason
+        self.stop_event.set()
+        try:
+            self.future.cancel()
+        except Exception:
+            pass
+        self.release_generation_lease()
+
+    def is_stop_requested(self) -> bool:
+        if self.stop_event.is_set():
+            return True
+        if is_chat_generation_stop_requested_sync(self.generation_record_id()):
+            if not self.stop_reason:
+                self.stop_reason = "生成已停止"
+            self.stop_event.set()
+            return True
+        return False
+
+    def ensure_not_stopped(self):
+        if self.is_stop_requested():
+            raise SingleMessageError(self.stop_reason or "生成已停止")
+
+    def save_error_in_new_session(self, message: str):
+        if not self.persist_stream_timeout_error:
+            return
+        record_id = self.generation_record_id()
+        if not record_id:
+            return
+        try:
+            with session_maker() as session:
+                save_error_message(session=session, record_id=record_id, message=message)
+        except Exception:
+            AppLogUtil.exception(f"Failed to save chat generation error for record {record_id}")
 
     def get_fields_from_chart(self, _session: Session):
         chart_info = get_chart_config(_session, self.record.id)
@@ -493,6 +552,7 @@ class LLMService:
         return tables
 
     def generate_analysis(self, _session: Session):
+        self.ensure_not_stopped()
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
         data = get_chat_chart_data(_session, self.record.id)
@@ -517,7 +577,7 @@ class LLMService:
         full_thinking_text = ''
         full_analysis_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(analysis_msg), token_usage)
+        res = process_stream(self.llm.stream(analysis_msg), token_usage, stop_requested=self.is_stop_requested)
         for chunk in res:
             if chunk.get('content'):
                 full_analysis_text += chunk.get('content')
@@ -537,6 +597,7 @@ class LLMService:
                                            answer=orjson.dumps({'content': full_analysis_text}).decode())
 
     def generate_predict(self, _session: Session):
+        self.ensure_not_stopped()
         fields = self.get_fields_from_chart(_session)
         self.chat_question.fields = orjson.dumps(fields).decode()
         data = get_chat_chart_data(_session, self.record.id)
@@ -558,7 +619,7 @@ class LLMService:
         full_thinking_text = ''
         full_predict_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(predict_msg), token_usage)
+        res = process_stream(self.llm.stream(predict_msg), token_usage, stop_requested=self.is_stop_requested)
         for chunk in res:
             if chunk.get('content'):
                 full_predict_text += chunk.get('content')
@@ -577,6 +638,7 @@ class LLMService:
                                                                 token_usage=token_usage)
 
     def generate_recommend_questions_task(self, _session: Session):
+        self.ensure_not_stopped()
 
         # get schema
         if self.ds and not self.chat_question.db_schema:
@@ -614,7 +676,7 @@ class LLMService:
         full_thinking_text = ''
         full_guess_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(guess_msg), token_usage)
+        res = process_stream(self.llm.stream(guess_msg), token_usage, stop_requested=self.is_stop_requested)
         for chunk in res:
             if chunk.get('content'):
                 full_guess_text += chunk.get('content')
@@ -637,6 +699,7 @@ class LLMService:
         yield {'recommended_question': self.record.recommended_question}
 
     def select_datasource(self, _session: Session):
+        self.ensure_not_stopped()
         datasource_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         datasource_msg.append(SystemPromptMessage(self.chat_question.datasource_sys_question()))
         if self.current_assistant and self.current_assistant.type != 4:
@@ -679,7 +742,7 @@ class LLMService:
                                                                            full_message=_serialize_prompt_messages(datasource_msg))
 
             token_usage = {}
-            res = process_stream(self.llm.stream(datasource_msg), token_usage)
+            res = process_stream(self.llm.stream(datasource_msg), token_usage, stop_requested=self.is_stop_requested)
             for chunk in res:
                 if chunk.get('content'):
                     full_text += chunk.get('content')
@@ -769,6 +832,7 @@ class LLMService:
             raise _error
 
     def generate_sql(self, _session: Session):
+        self.ensure_not_stopped()
         # append current question
         self.sql_message.append(HumanMessage(
             self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -783,7 +847,7 @@ class LLMService:
         full_thinking_text = ''
         full_sql_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(self.sql_message), token_usage)
+        res = process_stream(self.llm.stream(self.sql_message), token_usage, stop_requested=self.is_stop_requested)
         for chunk in res:
             if chunk.get('content'):
                 full_sql_text += chunk.get('content')
@@ -802,6 +866,7 @@ class LLMService:
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
 
     def generate_with_sub_sql(self, session: Session, sql, sub_mappings: list):
+        self.ensure_not_stopped()
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
         self.chat_question.sql = sql
         self.chat_question.sub_query = sub_query
@@ -819,7 +884,7 @@ class LLMService:
         full_thinking_text = ''
         full_dynamic_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(dynamic_sql_msg), token_usage)
+        res = process_stream(self.llm.stream(dynamic_sql_msg), token_usage, stop_requested=self.is_stop_requested)
         for chunk in res:
             if chunk.get('content'):
                 full_dynamic_text += chunk.get('content')
@@ -854,6 +919,7 @@ class LLMService:
         return result_dict
 
     def build_table_filter(self, session: Session, sql: str, filters: list):
+        self.ensure_not_stopped()
         filter = json.dumps(filters, ensure_ascii=False)
         self.chat_question.sql = sql
         self.chat_question.filter = filter
@@ -870,7 +936,7 @@ class LLMService:
         full_thinking_text = ''
         full_filter_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(permission_sql_msg), token_usage)
+        res = process_stream(self.llm.stream(permission_sql_msg), token_usage, stop_requested=self.is_stop_requested)
         for chunk in res:
             if chunk.get('content'):
                 full_filter_text += chunk.get('content')
@@ -907,6 +973,7 @@ class LLMService:
         return self.build_table_filter(session=_session, sql=sql, filters=filters)
 
     def generate_chart(self, _session: Session, chart_type: Optional[str] = '', schema: Optional[str] = ''):
+        self.ensure_not_stopped()
         # append current question
         self.chart_message.append(HumanMessage(self.chat_question.chart_user_question(chart_type, schema)))
 
@@ -919,7 +986,7 @@ class LLMService:
         full_thinking_text = ''
         full_chart_text = ''
         token_usage = {}
-        res = process_stream(self.llm.stream(self.chart_message), token_usage)
+        res = process_stream(self.llm.stream(self.chart_message), token_usage, stop_requested=self.is_stop_requested)
         for chunk in res:
             if chunk.get('content'):
                 full_chart_text += chunk.get('content')
@@ -1130,6 +1197,7 @@ class LLMService:
         Returns:
             Query results
         """
+        self.ensure_not_stopped()
         AppLogUtil.info(f"Executing SQL on ds_id {self.ds.id}: {sql}")
         try:
             if isinstance(self.ds, CoreDatasource):
@@ -1169,59 +1237,100 @@ class LLMService:
 
     def pop_chunk(self):
         try:
-            chunk = self.chunk_list.pop(0)
-            return chunk
-        except IndexError as e:
+            return self.chunk_list.get_nowait()
+        except queue.Empty:
             return None
 
     def await_result(self):
         idle_rounds = 0
         max_idle_rounds = max(1, settings.LLM_REQUEST_TIMEOUT * 2)
-        while self.is_running():
-            emitted = False
-            while True:
-                chunk = self.pop_chunk()
-                if chunk is not None:
-                    emitted = True
-                    yield chunk
-                else:
-                    break
-            if emitted:
-                idle_rounds = 0
-            else:
-                idle_rounds += 1
-                if idle_rounds >= max_idle_rounds:
+        total_timeout = max(1, int(self.generation_total_timeout_seconds or 1))
+        started_at = time.monotonic()
+
+        def _timed_out() -> bool:
+            return time.monotonic() - started_at >= total_timeout
+
+        try:
+            while self.is_running():
+                if _timed_out():
+                    message = f'生成超时，已超过系统允许的 {total_timeout} 秒上限，请缩小问题范围或稍后重试。'
                     AppLogUtil.error(
-                        f"LLM stream idle timeout after {settings.LLM_REQUEST_TIMEOUT}s for record {self.record.id}"
+                        f"Chat generation total timeout after {total_timeout}s for record {self.record.id}"
                     )
-                    try:
-                        self.future.cancel()
-                    except Exception:
-                        pass
+                    self.request_stop(message)
+                    self.save_error_in_new_session(message)
                     yield 'data:' + orjson.dumps({
-                        'content': 'LLM 请求超时，当前模型未在限定时间内返回内容，请检查模型服务或稍后重试。',
+                        'content': message,
                         'type': 'error'
                     }).decode() + '\n\n'
                     return
-        while True:
-            chunk = self.pop_chunk()
-            if chunk is None:
-                break
-            yield chunk
+
+                emitted = False
+                while True:
+                    chunk = self.pop_chunk()
+                    if chunk is not None:
+                        if _timed_out():
+                            message = f'生成超时，已超过系统允许的 {total_timeout} 秒上限，请缩小问题范围或稍后重试。'
+                            AppLogUtil.error(
+                                f"Chat generation total timeout after {total_timeout}s for record {self.record.id}"
+                            )
+                            self.request_stop()
+                            self.save_error_in_new_session(message)
+                            yield 'data:' + orjson.dumps({
+                                'content': message,
+                                'type': 'error'
+                            }).decode() + '\n\n'
+                            return
+                        emitted = True
+                        yield chunk
+                    else:
+                        break
+                if emitted:
+                    idle_rounds = 0
+                    continue
+
+                if self.is_stop_requested():
+                    self.release_generation_lease()
+                    yield 'data:' + orjson.dumps({'type': 'finish', 'stopped': True}).decode() + '\n\n'
+                    return
+
+                idle_rounds += 1
+                if idle_rounds >= max_idle_rounds:
+                    message = 'LLM 请求超时，当前模型未在限定时间内返回内容，请检查模型服务或稍后重试。'
+                    AppLogUtil.error(
+                        f"LLM stream idle timeout after {settings.LLM_REQUEST_TIMEOUT}s for record {self.record.id}"
+                    )
+                    self.request_stop(message)
+                    self.save_error_in_new_session(message)
+                    yield 'data:' + orjson.dumps({
+                        'content': message,
+                        'type': 'error'
+                    }).decode() + '\n\n'
+                    return
+            while True:
+                chunk = self.pop_chunk()
+                if chunk is None:
+                    break
+                yield chunk
+        finally:
+            if not self.is_running():
+                self.unregister_generation()
 
     def run_task_async(self, in_chat: bool = True, stream: bool = True,
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
         if in_chat:
             stream = True
+        self.register_generation()
         self.future = executor.submit(self.run_task_cache, in_chat, stream, finish_step, return_img)
 
     def run_task_cache(self, in_chat: bool = True, stream: bool = True,
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
         try:
             for chunk in self.run_task(in_chat, stream, finish_step, return_img):
-                self.chunk_list.append(chunk)
+                self.chunk_list.put(chunk)
         finally:
             self.release_generation_lease()
+            self.unregister_generation()
 
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
@@ -1229,15 +1338,19 @@ class LLMService:
         _session = None
         try:
             _session = session_maker()
+            self.ensure_not_stopped()
             if self.ds:
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
                 self.filter_terminology_template(_session, ds_id)
 
+                self.ensure_not_stopped()
                 self.filter_training_template(_session, ds_id)
 
+                self.ensure_not_stopped()
                 self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
 
+                self.ensure_not_stopped()
                 self.init_messages(_session)
 
             # return id
@@ -1274,6 +1387,7 @@ class LLMService:
                 self.validate_history_ds(_session)
 
             # check connection
+            self.ensure_not_stopped()
             connected = check_connection(ds=self.ds, trans=None)
             if not connected:
                 raise AppDBConnectionError('Connect DB failed')
@@ -1287,6 +1401,7 @@ class LLMService:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'sql-result'}).decode() + '\n\n'
+            self.ensure_not_stopped()
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
             # filter sql
@@ -1317,6 +1432,7 @@ class LLMService:
             # row permission
 
             sql_operate = OperationEnum.GENERATE_SQL
+            self.ensure_not_stopped()
             sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
 
             if ((not self.current_assistant or is_page_embedded) and is_normal_user(
@@ -1366,6 +1482,7 @@ class LLMService:
                 if isinstance(self.ds, CoreDatasource):
                     validate_sql_scope(_session, self.current_user, self.ds, sql)
 
+            self.ensure_not_stopped()
             AppLogUtil.info('sql: ' + sql)
 
             if not stream:
@@ -1379,6 +1496,7 @@ class LLMService:
                     yield f'```sql\n{format_sql}\n```\n\n'
 
             # execute sql
+            self.ensure_not_stopped()
             real_execute_sql = sql
             if app_temp_sql_text and assistant_dynamic_sql:
                 _remove_temp_sql_text(dynamic_sql_result)
@@ -1401,6 +1519,7 @@ class LLMService:
                 sql=real_execute_sql,
                 allow_row_permission_filter_star=sql_operate == OperationEnum.GENERATE_SQL_WITH_PERMISSIONS,
             )
+            self.ensure_not_stopped()
             self.current_logs[OperationEnum.EXECUTE_SQL] = end_log(session=_session,
                                                                    log=self.current_logs[OperationEnum.EXECUTE_SQL],
                                                                    full_message={'sql': real_execute_sql,
@@ -1414,6 +1533,7 @@ class LLMService:
                 result["data"] = _data
 
             self.save_sql_data(session=_session, data_obj=result)
+            self.ensure_not_stopped()
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
             if not stream:
@@ -1445,6 +1565,7 @@ class LLMService:
                 return
 
             # generate chart
+            self.ensure_not_stopped()
             used_tables_schema, used_tables = self.out_ds_instance.get_db_schema(
                 self.ds.id, self.chat_question.question, embedding=False,
                 table_list=tables) if self.out_ds_instance else get_table_schema(
@@ -1462,6 +1583,7 @@ class LLMService:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'chart-result'}).decode() + '\n\n'
+            self.ensure_not_stopped()
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
 
@@ -1525,7 +1647,8 @@ class LLMService:
                 yield json_result
 
         except Exception as e:
-            traceback.print_exc()
+            if not (isinstance(e, SingleMessageError) and str(e) == "生成已停止"):
+                traceback.print_exc()
             error_msg: str
             if isinstance(e, SingleMessageError):
                 error_msg = str(e)
@@ -1537,7 +1660,7 @@ class LLMService:
                     {'message': 'Execute SQL Failed', 'traceback': str(e), 'type': 'exec-sql-err'}).decode()
             else:
                 error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
-            if _session:
+            if _session and not self.is_stop_requested():
                 self.save_error(session=_session, message=error_msg)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
@@ -1550,18 +1673,20 @@ class LLMService:
                     json_result['message'] = error_msg
                     yield json_result
         finally:
-            self.finish(_session)
+            if _session:
+                self.finish(_session)
             session_maker.remove()
 
     def run_recommend_questions_task_async(self):
+        self.persist_stream_timeout_error = False
         self.future = executor.submit(self.run_recommend_questions_task_cache)
 
     def run_recommend_questions_task_cache(self):
         try:
             for chunk in self.run_recommend_questions_task():
-                self.chunk_list.append(chunk)
+                self.chunk_list.put(chunk)
         finally:
-            self.chunk_list.append(
+            self.chunk_list.put(
                 'data:' + orjson.dumps({'type': 'recommended_question_finish'}).decode() + '\n\n'
             )
 
@@ -1575,7 +1700,7 @@ class LLMService:
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('recommended_question'),
                          'type': 'recommended_question'}).decode() + '\n\n'
-                else:
+                elif chunk.get('content'):
                     yield 'data:' + orjson.dumps(
                         {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                          'type': 'recommended_question_result'}).decode() + '\n\n'
@@ -1587,20 +1712,23 @@ class LLMService:
     def run_analysis_or_predict_task_async(self, session: Session, action_type: str, base_record: ChatRecord,
                                            in_chat: bool = True, stream: bool = True):
         self.set_record(save_analysis_predict_record(session, base_record, action_type))
+        self.register_generation()
         self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type, in_chat, stream)
 
     def run_analysis_or_predict_task_cache(self, action_type: str, in_chat: bool = True, stream: bool = True):
         try:
             for chunk in self.run_analysis_or_predict_task(action_type, in_chat, stream):
-                self.chunk_list.append(chunk)
+                self.chunk_list.put(chunk)
         finally:
             self.release_generation_lease()
+            self.unregister_generation()
 
     def run_analysis_or_predict_task(self, action_type: str, in_chat: bool = True, stream: bool = True):
         json_result: Dict[str, Any] = {'success': True}
         _session = None
         try:
             _session = session_maker()
+            self.ensure_not_stopped()
             if in_chat:
                 yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
             else:
@@ -1623,6 +1751,7 @@ class LLMService:
                     else:
                         if stream:
                             yield chunk.get('content')
+                self.ensure_not_stopped()
                 if in_chat:
                     yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
                     yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
@@ -1642,10 +1771,12 @@ class LLMService:
                         yield 'data:' + orjson.dumps(
                             {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
                              'type': 'predict-result'}).decode() + '\n\n'
+                self.ensure_not_stopped()
                 if in_chat:
                     yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
 
                 has_data = self.check_save_predict_data(session=_session, res=full_text)
+                self.ensure_not_stopped()
                 if has_data:
                     if in_chat:
                         yield 'data:' + orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
@@ -1672,6 +1803,7 @@ class LLMService:
 
                         # generate picture
                         try:
+                            self.ensure_not_stopped()
                             if chart.get('type') != 'table':
                                 # yield '### generated chart picture\n\n'
 
@@ -1709,13 +1841,14 @@ class LLMService:
             if not stream:
                 yield json_result
         except Exception as e:
-            traceback.print_exc()
+            if not (isinstance(e, SingleMessageError) and str(e) == "生成已停止"):
+                traceback.print_exc()
             error_msg: str
             if isinstance(e, SingleMessageError):
                 error_msg = str(e)
             else:
                 error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
-            if _session:
+            if _session and not self.is_stop_requested():
                 self.save_error(session=_session, message=error_msg)
             if in_chat:
                 yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
@@ -1854,6 +1987,7 @@ def get_token_usage(chunk: BaseMessageChunk, token_usage: dict = None):
 
 def process_stream(res: Iterator[BaseMessageChunk],
                    token_usage: Dict[str, Any] = None,
+                   stop_requested: Optional[Callable[[], bool]] = None,
                    enable_tag_parsing: bool = settings.PARSE_REASONING_BLOCK_ENABLED,
                    start_tag: str = settings.DEFAULT_REASONING_CONTENT_START,
                    end_tag: str = settings.DEFAULT_REASONING_CONTENT_END
@@ -1865,6 +1999,8 @@ def process_stream(res: Iterator[BaseMessageChunk],
     pending_start_tag = ''  # 用于缓存可能被截断的开始标签部分
 
     for chunk in res:
+        if stop_requested and stop_requested():
+            raise SingleMessageError("生成已停止")
         AppLogUtil.info(chunk)
         reasoning_content_chunk = ''
         content = chunk.content

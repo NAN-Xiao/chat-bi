@@ -425,10 +425,12 @@
             circle
             type="primary"
             class="input-icon"
-            :disabled="isTyping"
-            @click.stop="($event: any) => sendMessage(undefined, $event)"
+            @click.stop="isTyping ? stop() : sendMessage(undefined, $event)"
           >
-            <el-icon size="16">
+            <el-icon v-if="isTyping" size="16">
+              <icon_close_outlined />
+            </el-icon>
+            <el-icon v-else size="16">
               <icon_send_filled />
             </el-icon>
           </el-button>
@@ -471,6 +473,7 @@ import icon_screen_outlined from '@/assets/svg/icon_screen_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import logo_fold from '@/assets/svg/logo-custom_small.svg'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
+import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
 import { useAssistantStore } from '@/stores/assistant'
 import { onClickOutside } from '@vueuse/core'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'

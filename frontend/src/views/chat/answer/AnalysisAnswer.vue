@@ -222,6 +222,10 @@ const sendMessage = async () => {
 }
 function stop() {
   stopFlag.value = true
+  const recordId = props.message?.record?.id
+  void chatApi.stopGeneration(recordId).catch((error) => {
+    console.error('Stop analysis generation failed:', error)
+  })
   controllerRef.value?.abort()
   setLoading(false)
   emitIfMounted('stop')

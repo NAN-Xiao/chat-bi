@@ -89,6 +89,8 @@
     "generation_concurrency_limit_hint": "활성화하면 같은 사용자가 동시에 실행할 수 있는 스마트 데이터 조회 생성 수가 제한됩니다. 페이지를 전환해도 이미 시작된 생성은 취소되지 않습니다.",
     "max_concurrent_generations_per_user": "사용자별 최대 동시 생성 수",
     "max_concurrent_generations_per_user_hint": "한도에 도달하면 사용자는 현재 스마트 데이터 조회 생성이 완료될 때까지 기다린 후 새 질문을 시작해야 합니다.",
+    "generation_total_timeout_seconds": "단일 생성 전체 타임아웃(초)",
+    "generation_total_timeout_seconds_hint": "질문 시작부터 답변 완료까지 한 번의 전체 생성에 적용되는 하드 제한입니다. 시간이 초과되면 서버가 생성을 중지하고 동시 실행 슬롯을 해제합니다.",
     "prompt": "프롬프트",
     "disabling_successfully": "비활성화 완료",
     "closed_by_default": "질문 수 창에서 모델 사고 프로세스를 기본적으로 확장할지 또는 닫을지 여부를 제어합니다.",

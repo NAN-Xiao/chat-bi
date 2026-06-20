@@ -11,6 +11,7 @@ interface ChatConfig {
   show_log: boolean
   generation_concurrency_limit_enabled: boolean
   max_concurrent_generations_per_user: number
+  generation_total_timeout_seconds: number
 }
 
 export const chatConfigStore = defineStore('chatConfigStore', {
@@ -23,6 +24,7 @@ export const chatConfigStore = defineStore('chatConfigStore', {
       show_log: true,
       generation_concurrency_limit_enabled: true,
       max_concurrent_generations_per_user: 1,
+      generation_total_timeout_seconds: 300,
     }
   },
   getters: {
@@ -46,6 +48,9 @@ export const chatConfigStore = defineStore('chatConfigStore', {
     },
     getMaxConcurrentGenerationsPerUser(): number {
       return this.max_concurrent_generations_per_user
+    },
+    getGenerationTotalTimeoutSeconds(): number {
+      return this.generation_total_timeout_seconds
     },
   },
   actions: {
@@ -73,6 +78,12 @@ export const chatConfigStore = defineStore('chatConfigStore', {
               this.max_concurrent_generations_per_user = Number.isFinite(count)
                 ? Math.max(1, Math.floor(count))
                 : 1
+            }
+            if (item.pkey === 'chat.generation_total_timeout_seconds') {
+              const count = Number(formatArg(item.pval))
+              this.generation_total_timeout_seconds = Number.isFinite(count)
+                ? Math.max(1, Math.floor(count))
+                : 300
             }
             if (item.pkey === 'chat.zhishu_name') {
               if (item.pval && item.pval.trim().length > 0) {

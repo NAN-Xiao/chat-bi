@@ -14,7 +14,7 @@ from apps.chat.curd.chat import delete_chat_with_user, get_chart_data_with_user,
     list_chats, get_chat_with_records, create_chat, rename_chat, \
     delete_chat, get_chat_with_records_with_data, get_chat_record_by_id, \
     format_json_data, format_json_list_data, get_chart_config, list_recent_questions, get_chat as get_chat_exec, \
-    rename_chat_with_user, get_chat_log_history, get_chart_data_with_user_live
+    rename_chat_with_user, get_chat_log_history, get_chart_data_with_user_live, save_error_message
 from apps.chat.models.chat_model import CreateChat, ChatRecord, RenameChat, ChatQuestion, AxisObj, QuickCommand, \
     ChatInfo, Chat, ChatFinishStep, ChatQuestionBase
 from apps.chat.task.llm import LLMService
@@ -24,6 +24,7 @@ from apps.system.crud.parameter_manage import get_groups
 from apps.system.models.system_model import SysArgModel
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
+from common.core.chat_generation_control import request_chat_generation_stop
 from common.core.chat_generation_limiter import (
     ChatGenerationConcurrencyError,
     acquire_chat_generation_lease,
@@ -67,9 +68,12 @@ def _bool_arg(value: str | None, default: bool) -> bool:
     return default
 
 
-def _int_arg(value: str | None, default: int, *, minimum: int = 1) -> int:
+def _int_arg(value: str | None, default: int, *, minimum: int = 1, maximum: int | None = None) -> int:
     try:
-        return max(minimum, int(float(str(value).strip())))
+        parsed = max(minimum, int(float(str(value).strip())))
+        if maximum is not None:
+            parsed = min(maximum, parsed)
+        return parsed
     except (TypeError, ValueError):
         return default
 
@@ -84,6 +88,15 @@ async def _chat_generation_limit_config(session: SessionDep) -> tuple[bool, int]
         elif config.pkey == "chat.max_concurrent_generations_per_user":
             max_concurrent = _int_arg(config.pval, max_concurrent)
     return enabled, max_concurrent
+
+
+async def _chat_generation_total_timeout_config(session: SessionDep) -> int:
+    total_timeout = settings.CHAT_GENERATION_TOTAL_TIMEOUT_SECONDS
+    chat_params: list[SysArgModel] = await get_groups(session, "chat")
+    for config in chat_params:
+        if config.pkey == "chat.generation_total_timeout_seconds":
+            total_timeout = _int_arg(config.pval, total_timeout, minimum=1, maximum=600)
+    return total_timeout
 
 
 @router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
@@ -323,6 +336,21 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
     return StreamingResponse(llm_service.await_result(), media_type="text/event-stream")
 
 
+@router.post("/record/{chat_record_id}/stop", summary=f"{PLACEHOLDER_PREFIX}stop_chat_generation")
+async def stop_chat_generation(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    record = get_chat_record_by_id(session, chat_record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Chat record not found")
+    if record.create_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Chat record is not owned by the current user")
+
+    released = await request_chat_generation_stop(chat_record_id)
+    if not record.finish:
+        save_error_message(session=session, record_id=chat_record_id, message=record.error or "生成已停止")
+
+    return {"success": True, "released": released}
+
+
 @router.get("/recent_questions/{datasource_id}", response_model=List[str],
             summary=f"{PLACEHOLDER_PREFIX}get_recommend_questions")
 # @require_permissions(permission=AppPermission(type='ds', keyExpression="datasource_id"))
@@ -457,15 +485,18 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
     lease = None
     try:
         limit_enabled, max_concurrent = await _chat_generation_limit_config(session)
+        total_timeout = await _chat_generation_total_timeout_config(session)
         lease = await acquire_chat_generation_lease(
             current_user.id,
             enabled=limit_enabled,
             limit=max_concurrent,
+            ttl_seconds=total_timeout + 60,
         )
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant,
                                               embedding=embedding)
         llm_service.init_record(session=session)
         llm_service.set_generation_lease(lease)
+        llm_service.set_generation_total_timeout(total_timeout)
         llm_service.run_task_async(in_chat=in_chat, stream=stream, finish_step=finish_step, return_img=return_img)
         lease = None
     except ChatGenerationConcurrencyError as e:
@@ -516,10 +547,12 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
     lease = None
     try:
         limit_enabled, max_concurrent = await _chat_generation_limit_config(session)
+        total_timeout = await _chat_generation_total_timeout_config(session)
         lease = await acquire_chat_generation_lease(
             current_user.id,
             enabled=limit_enabled,
             limit=max_concurrent,
+            ttl_seconds=total_timeout + 60,
         )
         if action_type != 'analysis' and action_type != 'predict':
             raise Exception(f"Type {action_type} Not Found")
@@ -557,6 +590,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant)
         llm_service.set_generation_lease(lease)
+        llm_service.set_generation_total_timeout(total_timeout)
         llm_service.run_analysis_or_predict_task_async(session, action_type, record, in_chat, stream)
         lease = None
     except ChatGenerationConcurrencyError as e:

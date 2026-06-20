@@ -15,17 +15,22 @@ const state = reactive({
     'chat.show_log': false,
     'chat.generation_concurrency_limit_enabled': true,
     'chat.max_concurrent_generations_per_user': 1,
+    'chat.generation_total_timeout_seconds': 300,
   }),
 })
 provide('parameterForm', state.parameterForm)
 
-const normalizeMaxConcurrentGenerations = (count: unknown) => {
+const normalizePositiveInteger = (count: unknown, defaultValue: number, maxValue?: number) => {
   const value = Number(count)
   if (!Number.isFinite(value) || value < 1) {
-    return 1
+    return defaultValue
   }
-  return Math.floor(value)
+  const normalized = Math.floor(value)
+  return maxValue ? Math.min(maxValue, normalized) : normalized
 }
+
+const normalizeMaxConcurrentGenerations = (count: unknown) => normalizePositiveInteger(count, 1)
+const normalizeGenerationTimeout = (count: unknown) => normalizePositiveInteger(count, 300, 600)
 
 const loadData = () => {
   request.get('/system/parameter').then((res: any) => {
@@ -42,6 +47,8 @@ const loadData = () => {
             }
           } else if (item.pkey === 'chat.max_concurrent_generations_per_user') {
             state.parameterForm[item.pkey] = normalizeMaxConcurrentGenerations(formatArg(item.pval))
+          } else if (item.pkey === 'chat.generation_total_timeout_seconds') {
+            state.parameterForm[item.pkey] = normalizeGenerationTimeout(formatArg(item.pval))
           } else {
             state.parameterForm[item.pkey] = formatArg(item.pval)
           }
@@ -62,6 +69,10 @@ const onContextRecordCountChange = (count: number) => {
 const onMaxConcurrentGenerationsChange = (count: number | undefined) => {
   state.parameterForm['chat.max_concurrent_generations_per_user'] =
     normalizeMaxConcurrentGenerations(count)
+}
+
+const onGenerationTimeoutChange = (count: number | undefined) => {
+  state.parameterForm['chat.generation_total_timeout_seconds'] = normalizeGenerationTimeout(count)
 }
 
 const beforeChange = (): Promise<boolean> => {
@@ -248,6 +259,31 @@ onMounted(() => {
                 step="1"
                 :disabled="!state.parameterForm['chat.generation_concurrency_limit_enabled']"
                 @change="onMaxConcurrentGenerationsChange"
+              />
+            </div>
+          </div>
+        </el-row>
+        <el-row>
+          <div class="card-item">
+            <div class="label">
+              {{ t('parameter.generation_total_timeout_seconds') }}
+              <el-tooltip
+                effect="dark"
+                :content="t('parameter.generation_total_timeout_seconds_hint')"
+                placement="top"
+              >
+                <el-icon size="16">
+                  <icon_info_outlined_1></icon_info_outlined_1>
+                </el-icon>
+              </el-tooltip>
+            </div>
+            <div class="value">
+              <el-input-number
+                v-model.number="state.parameterForm['chat.generation_total_timeout_seconds']"
+                min="1"
+                max="600"
+                step="10"
+                @change="onGenerationTimeoutChange"
               />
             </div>
           </div>

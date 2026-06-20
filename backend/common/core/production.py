@@ -120,6 +120,16 @@ def validate_production_settings() -> list[str]:
         or settings.CHAT_MAX_CONCURRENT_GENERATIONS_PER_USER > 2
     ):
         errors.append("CHAT_MAX_CONCURRENT_GENERATIONS_PER_USER must be between 1 and 2 in production.")
+    if (
+        settings.CHAT_GENERATION_TOTAL_TIMEOUT_SECONDS <= 0
+        or settings.CHAT_GENERATION_TOTAL_TIMEOUT_SECONDS > 600
+    ):
+        errors.append("CHAT_GENERATION_TOTAL_TIMEOUT_SECONDS must be between 1 and 600 seconds in production.")
+    if (
+        settings.CHAT_GENERATION_WORKER_MAX_THREADS <= 0
+        or settings.CHAT_GENERATION_WORKER_MAX_THREADS > 200
+    ):
+        errors.append("CHAT_GENERATION_WORKER_MAX_THREADS must be between 1 and 200 in production.")
 
     for name in ("BASE_DIR", "UPLOAD_DIR", "EXCEL_PATH", "MCP_IMAGE_PATH", "LOG_DIR"):
         if not _is_absolute_path(str(getattr(settings, name))):

@@ -89,6 +89,8 @@
     "generation_concurrency_limit_hint": "When enabled, each user can run only a limited number of Smart Q&A generations at the same time. Switching pages will not cancel an active generation.",
     "max_concurrent_generations_per_user": "Max Concurrent Generations Per User",
     "max_concurrent_generations_per_user_hint": "After the limit is reached, users must wait for the current Smart Q&A generation to finish before asking a new question.",
+    "generation_total_timeout_seconds": "Generation Total Timeout (s)",
+    "generation_total_timeout_seconds_hint": "Hard limit for one full generation from question start to answer finish. The server stops generation and releases the concurrency slot after timeout.",
     "prompt": "Prompt",
     "disabling_successfully": "Disabling Successfully",
     "closed_by_default": "In the Question Count window, control whether the model thinking process is expanded or closed by default.",

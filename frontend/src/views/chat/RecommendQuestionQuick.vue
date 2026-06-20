@@ -26,7 +26,7 @@ const { currentChat } = toRefs(props)
 const emits = defineEmits(['clickQuestion', 'stop', 'loadingOver'])
 
 const loading = ref(false)
-const RECOMMEND_QUESTION_TIMEOUT_MS = 15000
+const RECOMMEND_QUESTION_TIMEOUT_MS = 120000
 
 const questions = ref<string | undefined>('[]')
 
@@ -64,7 +64,7 @@ function emitIfMounted(event: Parameters<typeof emits>[0], ...args: any[]) {
   }
 }
 
-async function getRecommendQuestions(articles_number: number, isRetrieve: false) {
+async function getRecommendQuestions(articles_number: number = 4, isRetrieve: boolean = false) {
   recommendedApi.get_datasource_recommended_base(props.datasource).then((res) => {
     if (res.recommended_config === 2) {
       questions.value = res.questions
@@ -94,7 +94,7 @@ async function getRecommendQuestionsLLM(articles_number: number) {
     const decoder = new TextDecoder('utf-8')
 
     let tempResult = ''
-    let shouldCloseStream = false
+    let hasRecommendedQuestions = false
 
     while (true) {
       if (stopFlag.value) {
@@ -150,25 +150,26 @@ async function getRecommendQuestionsLLM(articles_number: number) {
               currentChat.value.recommended_question = data.content
               currentChat.value.recommended_generate = true
               await nextTick()
-              shouldCloseStream = true
+              hasRecommendedQuestions = true
             }
             break
           case 'recommended_question_finish':
           case 'error':
-            shouldCloseStream = true
+            stopFlag.value = true
             break
         }
 
-        if (shouldCloseStream) {
+        if (stopFlag.value) {
           break
         }
       }
 
-      if (shouldCloseStream) {
-        await streamReader.cancel().catch(() => undefined)
-        controller.abort()
+      if (stopFlag.value) {
         break
       }
+    }
+    if (!hasRecommendedQuestions && tempResult.trim()) {
+      console.debug('Recommend questions ended without valid payload:', tempResult)
     }
   } catch (error: any) {
     if (!stopFlag.value && error?.name !== 'AbortError') {

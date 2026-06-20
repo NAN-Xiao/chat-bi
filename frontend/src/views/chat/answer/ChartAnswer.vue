@@ -293,6 +293,10 @@ function getChatData(recordId?: number, targetChat: ChatInfo = _currentChat.valu
 
 function stop() {
   stopFlag.value = true
+  const recordId = props.message?.record?.id || props.recordId
+  void chatApi.stopGeneration(recordId).catch((error) => {
+    console.error('Stop generation failed:', error)
+  })
   controllerRef.value?.abort()
   setLoading(false)
   emitIfMounted('stop')
