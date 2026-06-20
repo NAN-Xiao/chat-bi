@@ -16,6 +16,7 @@ const params = withDefaults(
     multiQuotaName?: string | undefined
     showLabel?: boolean
     hideZeroLabel?: boolean
+    hideValueAxis?: boolean
   }>(),
   {
     data: () => [],
@@ -26,6 +27,7 @@ const params = withDefaults(
     multiQuotaName: undefined,
     showLabel: false,
     hideZeroLabel: false,
+    hideValueAxis: false,
   }
 )
 
@@ -71,6 +73,7 @@ function renderChart() {
   if (chartInstance) {
     chartInstance.showLabel = params.showLabel
     chartInstance.hideZeroLabel = params.hideZeroLabel
+    chartInstance.hideValueAxis = params.hideValueAxis
     chartInstance.init(axis.value, params.data)
     chartInstance.render()
   }
@@ -95,6 +98,7 @@ watch(
     multiQuotaName: params.multiQuotaName,
     showLabel: params.showLabel,
     hideZeroLabel: params.hideZeroLabel,
+    hideValueAxis: params.hideValueAxis,
   }),
   () => {
     nextTick(() => {

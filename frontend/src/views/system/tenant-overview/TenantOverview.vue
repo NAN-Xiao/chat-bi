@@ -153,8 +153,7 @@
             :data="assetRows"
             :x="assetXAxis"
             :y="assetYAxis"
-            :show-label="true"
-            :hide-zero-label="true"
+            :hide-value-axis="true"
           />
           <EmptyBackground v-else :description="t('tenant_overview.empty')" img-type="tree" />
         </div>
@@ -1072,6 +1071,8 @@ onMounted(async () => {
   .chart-card {
     padding: 18px;
     min-height: 360px;
+    display: flex;
+    flex-direction: column;
   }
 
   .chart-card-wide {
@@ -1108,7 +1109,9 @@ onMounted(async () => {
   }
 
   .chart-surface-assets {
-    height: 230px;
+    flex: 1 1 auto;
+    min-height: 300px;
+    height: auto;
   }
 
   .ops-grid {

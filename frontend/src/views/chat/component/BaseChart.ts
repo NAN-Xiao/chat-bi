@@ -30,6 +30,7 @@ export abstract class BaseChart {
   data: Array<ChartData> = []
   showLabel: boolean = false
   hideZeroLabel: boolean = false
+  hideValueAxis: boolean = false
 
   constructor(id: string, name: string) {
     this.id = id

@@ -98,6 +98,10 @@ export class Bar extends BaseG2Chart {
         },
         y: {
           title: false, // y[0].name,
+          grid: this.hideValueAxis ? false : undefined,
+          label: this.hideValueAxis ? false : undefined,
+          tick: this.hideValueAxis ? false : undefined,
+          line: this.hideValueAxis ? false : undefined,
           labelFontSize: 11,
           labelAutoHide: {
             type: 'hide',
