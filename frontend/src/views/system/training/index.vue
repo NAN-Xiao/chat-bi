@@ -30,7 +30,9 @@ interface Form {
 const { t } = useI18n()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
-const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
+const isPlatformAdmin = computed(
+  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
 const multipleSelectionAll = ref<any[]>([])
 const keywords = ref('')
 const oldKeywords = ref('')

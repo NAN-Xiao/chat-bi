@@ -60,7 +60,7 @@
         </el-table-column>
         <el-table-column :label="t('tenant.project_access')" min-width="220" show-overflow-tooltip>
           <template #default="scope">
-            {{ formatProjectAccess(scope.row) }}
+            {{ formatDatasourceAccess(scope.row) }}
           </template>
         </el-table-column>
         <el-table-column prop="create_time" :label="t('tenant.join_time')" width="180">
@@ -224,44 +224,30 @@
           </el-select>
         </el-form-item>
         <el-form-item v-if="memberDialogMode === 'edit'" :label="t('user.project_permission_config')">
-          <div class="project-permission-panel">
-            <div class="project-permission-toolbar">
-              <el-select
-                v-model="memberForm.project_ids"
-                multiple
-                filterable
-                collapse-tags
-                collapse-tags-tooltip
-                popper-class="tenant-light-popper"
-                style="width: 420px"
-                :placeholder="t('user.select_accessible_projects')"
-                @change="handleProjectIdsChange"
-              >
-                <el-option
-                  v-for="item in projectOptions"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="Number(item.id)"
-                />
-              </el-select>
-              <span class="project-permission-count">
-                {{ t('user.selected_project_count', { msg: selectedProjectRows.length }) }}
+          <div class="datasource-permission-panel">
+            <div class="datasource-permission-toolbar">
+              <div class="bound-datasource-title">
+                <span class="bound-datasource-label">{{ t('tenant.bound_datasource') }}</span>
+                <span class="bound-datasource-name">{{ boundDatasourceName }}</span>
+              </div>
+              <span class="datasource-permission-count">
+                {{ boundDatasourceTableRows.length ? t('tenant.datasource_bound') : t('permission.no_data_source_bound') }}
               </span>
             </div>
 
             <el-table
-              :data="selectedProjectRows"
+              :data="boundDatasourceTableRows"
               :empty-text="t('user.no_project_permission')"
-              class="project-permission-table"
+              class="datasource-permission-table"
               style="width: 100%"
             >
               <el-table-column :label="t('permission.data_source')" min-width="160">
                 <template #default="scope">
-                  <div class="project-cell">
-                    <div class="project-name ellipsis" :title="scope.row.name">
+                  <div class="datasource-cell">
+                    <div class="datasource-name ellipsis" :title="scope.row.name">
                       {{ scope.row.name }}
                     </div>
-                    <div class="project-type ellipsis" :title="scope.row.type_name || scope.row.type">
+                    <div class="datasource-type ellipsis" :title="scope.row.type_name || scope.row.type">
                       {{ scope.row.type_name || scope.row.type || '-' }}
                     </div>
                   </div>
@@ -269,8 +255,8 @@
               </el-table-column>
               <el-table-column :label="t('user.database_scope')" min-width="150">
                 <template #default="scope">
-                  <span class="database-label" :title="formatProjectDatabase(scope.row)">
-                    {{ formatProjectDatabase(scope.row) }}
+                  <span class="database-label" :title="formatDatasourceDatabase(scope.row)">
+                    {{ formatDatasourceDatabase(scope.row) }}
                   </span>
                 </template>
               </el-table-column>
@@ -282,7 +268,7 @@
                     style="width: 112px"
                   >
                     <el-option
-                      v-for="item in projectRoleOptions"
+                      v-for="item in datasourceRoleOptions"
                       :key="item.value"
                       :label="item.label"
                       :value="item.value"
@@ -303,7 +289,7 @@
                     :placeholder="t('user.select_permission_strategy')"
                   >
                     <el-option
-                      v-for="item in getPermissionStrategiesByProject(scope.row.id)"
+                      v-for="item in getPermissionStrategiesByDatasource(scope.row.id)"
                       :key="item.id"
                       :label="item.name"
                       :value="Number(item.id)"
@@ -323,7 +309,7 @@
               <el-table-column :label="t('user.permission_summary')" min-width="170">
                 <template #default="scope">
                   <div class="permission-summary">
-                    <template v-if="getSelectedStrategiesByProject(scope.row.id).length">
+                    <template v-if="getSelectedStrategiesByDatasource(scope.row.id).length">
                       <div class="summary-line" :title="formatTableAccessSummary(scope.row.id)">
                         {{ formatTableAccessSummary(scope.row.id) }}
                       </div>
@@ -336,13 +322,6 @@
                     </template>
                     <span v-else class="muted">{{ t('user.project_access_only') }}</span>
                   </div>
-                </template>
-              </el-table-column>
-              <el-table-column :label="t('ds.actions')" width="76" fixed="right">
-                <template #default="scope">
-                  <el-button text @click="removeProjectAccess(scope.row.id)">
-                    {{ t('project.remove') }}
-                  </el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -471,6 +450,7 @@ import {
   tenantApi,
   type TenantApplicationInfo,
   type TenantBulkInviteResult,
+  type TenantInfo,
   type TenantMemberInfo,
 } from '@/api/tenant'
 import { datasourceApi } from '@/api/datasource'
@@ -497,8 +477,9 @@ const inviteCancelingId = ref('')
 const memberRows = shallowRef<TenantMemberInfo[]>([])
 const joinApplications = shallowRef<TenantApplicationInfo[]>([])
 const invitations = shallowRef<TenantApplicationInfo[]>([])
-const projectOptions = shallowRef<any[]>([])
+const datasourceOptions = shallowRef<any[]>([])
 const permissionRuleGroups = shallowRef<any[]>([])
+const currentTenant = shallowRef<TenantInfo | null>(null)
 const bulkResults = shallowRef<TenantBulkInviteResult[]>([])
 const memberPage = reactive({
   currentPage: 1,
@@ -514,6 +495,7 @@ const memberForm = reactive({
   member_remark: '',
   reason: '',
   tenant_role: 'member' as 'admin' | 'member',
+  // API compatibility: project_* fields carry datasource permissions for tenant members.
   project_ids: [] as number[],
   project_role_map: {} as Record<number, string>,
   project_permission_map: {} as Record<number, number[]>,
@@ -530,10 +512,30 @@ const tenantRoleOptions = computed(() => [
   { value: 'admin', label: t('user.tenant_role_admin') },
 ])
 
-const projectRoleOptions = computed(() => [
-  { value: 'viewer', label: t('datasource.project_role_viewer') },
-  { value: 'editor', label: t('datasource.project_role_editor') },
+const datasourceRoleOptions = computed(() => [
+  { value: 'viewer', label: t('datasource.datasource_role_viewer') },
+  { value: 'editor', label: t('datasource.datasource_role_editor') },
 ])
+
+const boundDatasourceId = computed(() => {
+  const id = currentTenant.value?.bound_datasource_id || currentTenant.value?.bound_project_id
+  const value = Number(id)
+  return id !== undefined && id !== null && id !== '' && !Number.isNaN(value) ? value : null
+})
+
+const boundDatasourceName = computed(() =>
+  currentTenant.value?.bound_datasource_name ||
+  currentTenant.value?.bound_project_name ||
+  t('permission.no_data_source_bound')
+)
+
+const boundDatasourceRows = computed(() => {
+  const id = boundDatasourceId.value
+  if (!id) return []
+  const existing = datasourceOptions.value.find((item: any) => Number(item.id) === id)
+  if (existing) return [existing]
+  return [{ id, name: boundDatasourceName.value }]
+})
 
 const memberDialogTitle = computed(() =>
   memberDialogMode.value === 'edit' ? t('tenant.edit_member') : t('tenant.send_invitation')
@@ -612,16 +614,16 @@ const parseJsonValue = (value: any, fallback: any) => {
   }
 }
 
-const normalizeProjectRole = (role: any) => {
+const normalizeDatasourceRole = (role: any) => {
   const value = String(role || '').trim().toLowerCase()
   return value === 'editor' ? 'editor' : 'viewer'
 }
 
-const buildProjectRoleMap = (projectIds: number[], value: any = {}) => {
+const buildDatasourceRoleMap = (datasourceIds: number[], value: any = {}) => {
   const source = parseJsonValue(value, {})
   const result: Record<number, string> = {}
-  projectIds.forEach((id: number) => {
-    result[id] = normalizeProjectRole(source?.[id] || source?.[String(id)])
+  datasourceIds.forEach((id: number) => {
+    result[id] = normalizeDatasourceRole(source?.[id] || source?.[String(id)])
   })
   return result
 }
@@ -661,46 +663,39 @@ const formatInvitationTarget = (invitation: TenantApplicationInfo) =>
 const formatInviter = (invitation: TenantApplicationInfo) =>
   invitation.inviter_name || invitation.inviter_account || '-'
 
-const formatProjectAccess = (row: TenantMemberInfo) => {
-  const ids = toNumberList(row.project_ids)
-  if (!ids.length) return t('tenant.no_project_access_short')
-  const names = projectOptions.value
-    .filter((item: any) => ids.includes(Number(item.id)))
-    .map((item: any) => item.name)
-  if (!names.length) return t('tenant.project_count', { msg: ids.length })
-  return names.length > 3
-    ? t('tenant.project_access_summary_more', { msg: names.slice(0, 3).join('、'), count: names.length - 3 })
-    : names.join('、')
+const formatDatasourceAccess = (row: TenantMemberInfo) => {
+  const id = boundDatasourceId.value
+  if (!id) return t('permission.no_data_source_bound')
+  const roleMap = parseJsonValue(row.project_role_map, {})
+  const role = normalizeDatasourceRole(roleMap?.[id] || roleMap?.[String(id)])
+  return `${boundDatasourceName.value} / ${formatDatasourceRole(role)}`
 }
 
-const selectedProjectRows = computed(() => {
-  const ids = toNumberList(memberForm.project_ids)
-  return projectOptions.value.filter((item: any) => ids.includes(Number(item.id)))
-})
+const boundDatasourceTableRows = computed(() => boundDatasourceRows.value)
 
-const getProjectIdsFromRule = (rule: any): number[] => {
+const getDatasourceIdsFromRule = (rule: any): number[] => {
   const ids = (rule.permissions || [])
     .map((item: any) => Number(item.ds_id))
     .filter((item: number) => !Number.isNaN(item))
   return Array.from(new Set<number>(ids))
 }
 
-const getPermissionStrategiesByProject = (projectId: any) => {
-  const id = Number(projectId)
-  return permissionRuleGroups.value.filter((rule: any) => getProjectIdsFromRule(rule).includes(id))
+const getPermissionStrategiesByDatasource = (datasourceId: any) => {
+  const id = Number(datasourceId)
+  return permissionRuleGroups.value.filter((rule: any) => getDatasourceIdsFromRule(rule).includes(id))
 }
 
-const getSelectedStrategiesByProject = (projectId: any) => {
-  const id = Number(projectId)
+const getSelectedStrategiesByDatasource = (datasourceId: any) => {
+  const id = Number(datasourceId)
   const selectedIds = toNumberList(memberForm.project_permission_map?.[id])
-  return getPermissionStrategiesByProject(id).filter((rule: any) =>
+  return getPermissionStrategiesByDatasource(id).filter((rule: any) =>
     selectedIds.includes(Number(rule.id))
   )
 }
 
-const formatRuleGroupSummary = (rule: any, projectId?: any) => {
-  const id = Number(projectId)
-  const permissions = projectId
+const formatRuleGroupSummary = (rule: any, datasourceId?: any) => {
+  const id = Number(datasourceId)
+  const permissions = datasourceId
     ? (rule.permissions || []).filter((item: any) => Number(item.ds_id) === id)
     : rule.permissions || []
   const rowCount = permissions.filter((item: any) => item.type === 'row').length
@@ -713,15 +708,15 @@ const formatRuleGroupSummary = (rule: any, projectId?: any) => {
   return parts.length ? parts.join(' / ') : t('permission.no_rule')
 }
 
-const getRuleProjectPermissions = (rule: any, projectId: any) => {
-  const id = Number(projectId)
+const getRuleDatasourcePermissions = (rule: any, datasourceId: any) => {
+  const id = Number(datasourceId)
   return (rule.permissions || []).filter((item: any) => Number(item.ds_id) === id)
 }
 
-const formatTableAccessSummary = (projectId: any) => {
+const formatTableAccessSummary = (datasourceId: any) => {
   const tableNames = new Set<string>()
-  getSelectedStrategiesByProject(projectId).forEach((rule: any) => {
-    getRuleProjectPermissions(rule, projectId).forEach((permission: any) => {
+  getSelectedStrategiesByDatasource(datasourceId).forEach((rule: any) => {
+    getRuleDatasourcePermissions(rule, datasourceId).forEach((permission: any) => {
       if (permission.table_name) tableNames.add(permission.table_name)
     })
   })
@@ -732,10 +727,10 @@ const formatTableAccessSummary = (projectId: any) => {
     : t('user.allowed_table_summary', { msg: names.join('、') })
 }
 
-const formatFieldAccessSummary = (projectId: any) => {
+const formatFieldAccessSummary = (datasourceId: any) => {
   let restrictedCount = 0
-  getSelectedStrategiesByProject(projectId).forEach((rule: any) => {
-    getRuleProjectPermissions(rule, projectId).forEach((permission: any) => {
+  getSelectedStrategiesByDatasource(datasourceId).forEach((rule: any) => {
+    getRuleDatasourcePermissions(rule, datasourceId).forEach((permission: any) => {
       if (permission.type !== 'column') return
       const list = Array.isArray(permission.permission_list)
         ? permission.permission_list
@@ -748,52 +743,46 @@ const formatFieldAccessSummary = (projectId: any) => {
     : t('user.no_field_restriction')
 }
 
-const formatRowAccessSummary = (projectId: any) => {
+const formatRowAccessSummary = (datasourceId: any) => {
   let rowCount = 0
-  getSelectedStrategiesByProject(projectId).forEach((rule: any) => {
-    rowCount += getRuleProjectPermissions(rule, projectId).filter((item: any) => item.type === 'row').length
+  getSelectedStrategiesByDatasource(datasourceId).forEach((rule: any) => {
+    rowCount += getRuleDatasourcePermissions(rule, datasourceId).filter((item: any) => item.type === 'row').length
   })
   return rowCount ? t('user.row_filter_summary', { msg: rowCount }) : t('user.no_row_filter')
 }
 
-const formatProjectDatabase = (project: any) => {
-  if (!project?.configuration) return project?.type_name || project?.type || '-'
+const formatDatasourceDatabase = (datasource: any) => {
+  if (!datasource?.configuration) return datasource?.type_name || datasource?.type || '-'
   try {
-    const conf = JSON.parse(decrypted(project.configuration) || '{}')
-    const database = conf.database || conf.dataBase || conf.filename || project.name
+    const conf = JSON.parse(decrypted(datasource.configuration) || '{}')
+    const database = conf.database || conf.dataBase || conf.filename || datasource.name
     const schema = conf.dbSchema || conf.schema
     const host = conf.host && conf.port ? `${conf.host}:${conf.port}` : conf.host
-    return [database, schema, host].filter(Boolean).join(' / ') || project.name
+    return [database, schema, host].filter(Boolean).join(' / ') || datasource.name
   } catch (e) {
-    return project?.name || '-'
+    return datasource?.name || '-'
   }
 }
 
-const handleProjectIdsChange = (value: any[]) => {
-  const ids = toNumberList(value)
+const formatDatasourceRole = (role: any) => {
+  const normalized = normalizeDatasourceRole(role)
+  return datasourceRoleOptions.value.find((item) => item.value === normalized)?.label || normalized
+}
+
+const syncBoundDatasourceSelection = () => {
+  const ids = boundDatasourceId.value ? [boundDatasourceId.value] : []
   memberForm.project_ids = ids
   const nextMap: Record<number, number[]> = {}
   ids.forEach((id: number) => {
     nextMap[id] = toNumberList(memberForm.project_permission_map?.[id])
   })
   memberForm.project_permission_map = nextMap
-  memberForm.project_role_map = buildProjectRoleMap(ids, memberForm.project_role_map)
+  memberForm.project_role_map = buildDatasourceRoleMap(ids, memberForm.project_role_map)
 }
 
-const removeProjectAccess = (projectId: any) => {
-  const id = Number(projectId)
-  memberForm.project_ids = toNumberList(memberForm.project_ids).filter((item: number) => item !== id)
-  const nextMap = { ...(memberForm.project_permission_map || {}) }
-  delete nextMap[id]
-  memberForm.project_permission_map = nextMap
-  const nextRoleMap = { ...(memberForm.project_role_map || {}) }
-  delete nextRoleMap[id]
-  memberForm.project_role_map = nextRoleMap
-}
-
-const buildUserProjectPermissionMap = (userId: any, projectIds: number[]) => {
+const buildUserDatasourcePermissionMap = (userId: any, datasourceIds: number[]) => {
   const result: Record<number, number[]> = {}
-  projectIds.forEach((id: number) => {
+  datasourceIds.forEach((id: number) => {
     result[id] = []
   })
   if (!userId) return result
@@ -801,9 +790,9 @@ const buildUserProjectPermissionMap = (userId: any, projectIds: number[]) => {
   permissionRuleGroups.value.forEach((rule: any) => {
     const users = toNumberList(rule.users || rule.user_list)
     if (!users.includes(Number(userId))) return
-    getProjectIdsFromRule(rule).forEach((projectId: number) => {
-      if (!projectIds.includes(projectId)) return
-      result[projectId] = Array.from(new Set<number>([...(result[projectId] || []), Number(rule.id)]))
+    getDatasourceIdsFromRule(rule).forEach((datasourceId: number) => {
+      if (!datasourceIds.includes(datasourceId)) return
+      result[datasourceId] = Array.from(new Set<number>([...(result[datasourceId] || []), Number(rule.id)]))
     })
   })
   return result
@@ -841,7 +830,7 @@ const syncUserPermissionStrategies = (userId: any): Promise<void> => {
   const requests: Promise<any>[] = []
 
   permissionRuleGroups.value.forEach((rule: any) => {
-    if (!getProjectIdsFromRule(rule).length) return
+    if (!getDatasourceIdsFromRule(rule).length) return
     const currentUsers = toNumberList(rule.users || rule.user_list)
     const shouldInclude = selectedRuleIds.has(Number(rule.id))
     const nextUsers = shouldInclude
@@ -858,16 +847,21 @@ const syncUserPermissionStrategies = (userId: any): Promise<void> => {
   return Promise.all(requests).then(() => undefined)
 }
 
-const loadProjectOptions = async () => {
-  const [projects, permissions] = await Promise.all([datasourceApi.accessibleList(), getPermissionList()])
-  projectOptions.value = projects || []
+const loadDatasourcePermissionContext = async () => {
+  const [tenant, datasources, permissions] = await Promise.all([
+    tenantApi.current(),
+    datasourceApi.accessibleList(),
+    getPermissionList(),
+  ])
+  currentTenant.value = tenant || null
+  datasourceOptions.value = datasources || []
   permissionRuleGroups.value = permissions || []
 }
 
 const loadMembers = async () => {
   memberLoading.value = true
   try {
-    const [members] = await Promise.all([tenantApi.members(keyword.value.trim()), loadProjectOptions()])
+    const [members] = await Promise.all([tenantApi.members(keyword.value.trim()), loadDatasourcePermissionContext()])
     memberRows.value = members || []
     normalizePage(memberPage, memberRows.value.length)
   } finally {
@@ -921,16 +915,17 @@ const openEditDialog = async (row: TenantMemberInfo) => {
     return
   }
   memberDialogMode.value = 'edit'
-  await loadProjectOptions()
-  const projectIds = toNumberList(row.project_ids)
+  await loadDatasourcePermissionContext()
+  const datasourceIds = boundDatasourceId.value ? [boundDatasourceId.value] : []
   Object.assign(memberForm, {
     account: row.account,
     member_remark: row.member_remark || '',
     tenant_role: normalizeTenantRole(row.tenant_role) === 'admin' ? 'admin' : 'member',
-    project_ids: projectIds,
-    project_role_map: buildProjectRoleMap(projectIds, row.project_role_map),
-    project_permission_map: buildUserProjectPermissionMap(row.user_id, projectIds),
+    project_ids: datasourceIds,
+    project_role_map: buildDatasourceRoleMap(datasourceIds, row.project_role_map),
+    project_permission_map: buildUserDatasourcePermissionMap(row.user_id, datasourceIds),
   })
+  syncBoundDatasourceSelection()
   editingUserId.value = row.user_id
   memberDialogVisible.value = true
 }
@@ -955,15 +950,15 @@ const saveMember = () => {
         await loadApplications()
         return
       }
-      const projectIds = toNumberList(memberForm.project_ids)
+      const datasourceIds = boundDatasourceId.value ? [boundDatasourceId.value] : []
       const payload = {
         member_remark: memberForm.member_remark.trim(),
         tenant_role: memberForm.tenant_role,
-        project_ids: projectIds,
-        project_role_map: buildProjectRoleMap(projectIds, memberForm.project_role_map),
+        project_ids: datasourceIds,
+        project_role_map: buildDatasourceRoleMap(datasourceIds, memberForm.project_role_map),
       }
       const saved = await tenantApi.updateMember(editingUserId.value, payload)
-      await syncUserPermissionStrategies(saved.user_id)
+      await syncUserPermissionStrategies(saved?.user_id || editingUserId.value)
       ElMessage.success(t('common.save_success'))
       closeMemberDialog()
       await loadMembers()
@@ -1301,15 +1296,19 @@ onMounted(() => {
     border-top: 1px solid #dee0e3;
   }
 
-  .project-permission-panel {
+  .ed-form-item__label,
+  .datasource-permission-panel {
+    color: #1f2329 !important;
+  }
+
+  .datasource-permission-panel {
     width: 100%;
     border: 1px solid #dee0e3;
     border-radius: 6px;
     overflow: hidden;
     background: #fff;
-    color: #1f2329;
 
-    .project-permission-toolbar {
+    .datasource-permission-toolbar {
       min-height: 48px;
       padding: 8px 12px;
       display: flex;
@@ -1320,29 +1319,23 @@ onMounted(() => {
       background: #f8f9fa;
     }
 
-    .project-permission-count {
+    .datasource-permission-count {
       color: #646a73;
       font-size: 13px;
       white-space: nowrap;
     }
 
-    .project-permission-table {
-      .ed-table__cell {
-        vertical-align: top;
-      }
-    }
-
-    .project-cell {
+    .datasource-cell {
       min-width: 0;
     }
 
-    .project-name {
+    .datasource-name {
       font-weight: 500;
       color: #1f2329;
       line-height: 22px;
     }
 
-    .project-type,
+    .datasource-type,
     .database-label,
     .muted {
       color: #8f959e;

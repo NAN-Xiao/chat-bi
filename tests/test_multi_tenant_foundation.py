@@ -46,6 +46,7 @@ from apps.system.schemas.tenant_schema import (
     TenantDataRequestReview,
     TenantDomainCreator,
     TenantDomainReview,
+    TenantMemberEditor,
     TenantSecurityPolicyEditor,
     TenantEditor,
     TenantOwnerTransfer,
@@ -90,7 +91,18 @@ def _engine():
             CREATE TABLE core_datasource (
                 id INTEGER PRIMARY KEY,
                 tenant_id INTEGER NOT NULL DEFAULT 1,
-                name VARCHAR(128) NOT NULL
+                name VARCHAR(128) NOT NULL,
+                description VARCHAR(512),
+                type VARCHAR(64),
+                type_name VARCHAR(64),
+                configuration TEXT,
+                create_time DATETIME,
+                create_by INTEGER,
+                status VARCHAR(64),
+                num VARCHAR(256),
+                table_relation TEXT,
+                embedding TEXT,
+                recommended_config INTEGER
             )
             """
         ))
@@ -100,7 +112,43 @@ def _engine():
                 id INTEGER PRIMARY KEY,
                 ds_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
-                role VARCHAR(32) DEFAULT 'viewer'
+                role VARCHAR(32) DEFAULT 'viewer',
+                create_by INTEGER,
+                create_time DATETIME
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE ds_permission (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR,
+                enable BOOLEAN NOT NULL,
+                auth_target_type VARCHAR,
+                auth_target_id INTEGER,
+                type VARCHAR NOT NULL,
+                ds_id INTEGER,
+                table_id INTEGER,
+                expression_tree TEXT,
+                permissions TEXT,
+                white_list_user TEXT,
+                create_time DATETIME
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE ds_rules (
+                id INTEGER PRIMARY KEY,
+                enable BOOLEAN NOT NULL,
+                name VARCHAR NOT NULL,
+                description VARCHAR,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
+                scope VARCHAR(32) NOT NULL DEFAULT 'TENANT',
+                permission_list TEXT,
+                user_list TEXT,
+                white_list_user TEXT,
+                create_time DATETIME
             )
             """
         ))
@@ -110,6 +158,61 @@ def _engine():
                 id INTEGER PRIMARY KEY,
                 tenant_id INTEGER NOT NULL,
                 value VARCHAR(32)
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE sys_tenant_usage_daily (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                usage_date VARCHAR(10) NOT NULL,
+                metric VARCHAR(128) NOT NULL,
+                request_count INTEGER NOT NULL DEFAULT 0,
+                success_count INTEGER NOT NULL DEFAULT 0,
+                failure_count INTEGER NOT NULL DEFAULT 0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                task_count INTEGER NOT NULL DEFAULT 0,
+                create_time INTEGER NOT NULL DEFAULT 0,
+                update_time INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE chat_log (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
+                type VARCHAR(3),
+                operate VARCHAR(3),
+                pid INTEGER,
+                ai_modal_id INTEGER,
+                base_modal VARCHAR(255),
+                messages TEXT,
+                reasoning_content TEXT,
+                start_time DATETIME,
+                finish_time DATETIME,
+                token_usage JSON,
+                local_operation BOOLEAN DEFAULT 0,
+                error BOOLEAN DEFAULT 0
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE ai_model (
+                id INTEGER PRIMARY KEY,
+                supplier INTEGER NOT NULL DEFAULT 1,
+                name VARCHAR(255) NOT NULL,
+                model_type INTEGER NOT NULL DEFAULT 1,
+                base_model VARCHAR(255) NOT NULL,
+                default_model BOOLEAN NOT NULL DEFAULT 0,
+                api_key TEXT,
+                api_domain TEXT,
+                protocol INTEGER NOT NULL DEFAULT 1,
+                config TEXT,
+                status INTEGER NOT NULL DEFAULT 1,
+                create_time INTEGER DEFAULT 0
             )
             """
         ))
@@ -526,6 +629,132 @@ def test_platform_admin_tenant_list_includes_member_stats():
         assert tenant.owner_user_id == 100
 
 
+def test_platform_admin_platform_overview_aggregates_saas_scope():
+    engine = _engine()
+    today = datetime.now().date().isoformat()
+    finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_user = _user(1, "system_admin")
+    delegate_user = SimpleNamespace(
+        id=1,
+        system_role="system_admin",
+        tenant_id=200,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+
+    with Session(engine) as session:
+        session.add(TenantModel(id=DEFAULT_TENANT_ID, code=DEFAULT_TENANT_CODE, name="Default", status=1))
+        now_millis = int(datetime.now().timestamp() * 1000)
+        session.add(
+            TenantModel(
+                id=200,
+                code="tenant-b",
+                name="Tenant B",
+                status=1,
+                plan="basic",
+                subscription_status="active",
+                billing_mode="contract",
+                contract_no="CTR-001",
+                create_time=now_millis,
+            )
+        )
+        session.add(
+            TenantModel(
+                id=300,
+                code="tenant-c",
+                name="Tenant C",
+                status=0,
+                plan="default",
+                subscription_status="past_due",
+                create_time=1,
+            )
+        )
+        session.execute(text(
+            """
+            INSERT INTO sys_user (id, account, name, password, status, origin, create_time, system_role)
+            VALUES
+                (1, 'platform-admin', 'Platform Admin', 'x', 1, 0, 0, 'system_admin'),
+                (100, 'owner-100', 'Owner 100', 'x', 1, 0, :now_millis, 'viewer'),
+                (101, 'disabled-101', 'Disabled 101', 'x', 0, 0, 0, 'viewer')
+            """
+        ), {"now_millis": now_millis})
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=100, role="owner", is_primary=True, status=1))
+        session.exec(text(
+            """
+            INSERT INTO core_datasource (id, tenant_id, name)
+            VALUES
+                (101, 1, 'Platform Pool DS'),
+                (102, 200, 'Tenant B DS')
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO sys_tenant_usage_daily (
+                id, tenant_id, usage_date, metric, request_count, success_count, failure_count, total_tokens
+            )
+            VALUES
+                (501, 200, :today, 'chat', 3, 2, 1, 120),
+                (502, 1, :today, 'chat', 99, 99, 0, 999)
+            """
+        ), {"today": today})
+        session.exec(text(
+            """
+            INSERT INTO ai_model (
+                id, supplier, name, model_type, base_model, api_domain, protocol, config, status
+            )
+            VALUES (701, 1, 'Qwen Test', 1, 'qwen-test', 'https://example.test', 1, '{}', 1)
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO chat_log (
+                id, tenant_id, type, operate, ai_modal_id, finish_time, token_usage, local_operation, error
+            )
+            VALUES
+                (801, 200, '0', '0', 701, :finish_time, '{"total_tokens": 30}', 0, 0),
+                (802, 200, '0', '0', 701, :finish_time, '{"total_tokens": 70}', 0, 0),
+                (803, 1, '0', '0', 701, :finish_time, '{"total_tokens": 900}', 0, 0)
+            """
+        ), {"finish_time": finish_time})
+        session.commit()
+
+        overview = asyncio.run(tenant_api.platform_overview(session, current_user, days=7))
+
+        assert overview.summary.tenant_total == 2
+        assert overview.summary.active_tenant_count == 1
+        assert overview.summary.disabled_tenant_count == 1
+        assert overview.summary.user_total == 3
+        assert overview.summary.active_user_count == 2
+        assert overview.summary.platform_admin_count == 1
+        assert overview.summary.new_tenant_count == 1
+        assert overview.summary.new_user_count == 1
+        assert overview.summary.paying_tenant_count == 1
+        assert overview.summary.past_due_tenant_count == 1
+        assert overview.summary.contract_tenant_count == 1
+        assert overview.summary.active_usage_tenant_count == 1
+        assert overview.summary.revenue_data_ready is False
+        assert overview.summary.revenue_amount is None
+        assert overview.summary.datasource_total == 2
+        assert overview.summary.bound_datasource_count == 1
+        assert overview.summary.request_count == 3
+        assert overview.summary.failure_count == 1
+        assert overview.summary.total_tokens == 120
+        assert [(item.key, item.count) for item in overview.datasource_distribution] == [
+            ("bound", 1),
+            ("unbound", 1),
+        ]
+        assert {item.key: item.count for item in overview.plan_distribution} == {"basic": 1, "default": 1}
+        assert overview.top_tenant_usage[0].tenant_id == 200
+        assert overview.top_tenant_usage[0].total_tokens == 120
+        assert overview.model_usage[0].model_name == "Qwen Test"
+        assert overview.model_usage[0].total_tokens == 100
+        assert {tenant.id for tenant in overview.recent_tenants} == {200, 300}
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(tenant_api.platform_overview(session, delegate_user, days=7))
+        assert exc.value.status_code == 403
+
+
 def test_tenant_member_list_hides_platform_admin_members():
     engine = _engine()
     current_user = SimpleNamespace(
@@ -558,9 +787,57 @@ def test_tenant_member_list_hides_platform_admin_members():
         assert [member.account for member in members] == ["member", "owner"]
 
 
+def test_tenant_member_datasource_permissions_are_limited_to_bound_datasource():
+    engine = _engine()
+    current_user = SimpleNamespace(id=10, system_role="viewer", tenant_id=200, tenant_role="admin")
+    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    with Session(engine) as session:
+        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantUserModel(id=201, tenant_id=200, user_id=10, role="admin", is_primary=True, status=1))
+        session.add(TenantUserModel(id=202, tenant_id=200, user_id=11, role="member", is_primary=False, status=1))
+        session.exec(text(
+            """
+            INSERT INTO sys_user
+                (id, account, name, password, email, status, origin, create_time, language, system_role)
+            VALUES
+                (10, 'tenant-admin', 'Tenant Admin', '', 'admin@example.com', 1, 0, 1, 'zh-CN', 'viewer'),
+                (11, 'member', 'Member', '', 'member@example.com', 1, 0, 1, 'zh-CN', 'viewer')
+            """
+        ))
+        session.exec(text(
+            """
+            INSERT INTO core_datasource (id, tenant_id, name)
+            VALUES
+                (301, 200, 'Bound DS'),
+                (302, 1, 'Platform DS')
+            """
+        ))
+        session.commit()
+
+        updated = asyncio.run(tenant_api.update_tenant_member(
+            session,
+            current_user,
+            current_tenant,
+            11,
+            TenantMemberEditor(
+                tenant_role="member",
+                project_ids=[301, 302],
+                project_role_map={301: "editor", 302: "editor"},
+            ),
+        ))
+
+        rows = session.exec(text(
+            "SELECT ds_id, role FROM core_datasource_user WHERE user_id = 11 ORDER BY ds_id"
+        )).all()
+        assert rows == [(301, "editor")]
+        assert updated.project_ids == [301]
+        assert updated.project_role_map == {301: "editor"}
+
+
 def test_platform_admin_manages_tenant_lifecycle():
     engine = _engine()
     with Session(engine) as session:
+        session.exec(text("INSERT INTO core_datasource (id, tenant_id, name) VALUES (101, 1, 'Primary DS')"))
         tenant = asyncio.run(tenant_api.add_tenant(
             session,
             _user(1, "system_admin"),
@@ -576,6 +853,7 @@ def test_platform_admin_manages_tenant_lifecycle():
                 billing_contact="Ops",
                 billing_email="ops@example.com",
                 subscription_note="pilot",
+                datasource_id=101,
             ),
         ))
         assert tenant.code == "tenant-b"
@@ -585,7 +863,12 @@ def test_platform_admin_manages_tenant_lifecycle():
         assert tenant.current_period_end_time == 2000
         assert tenant.contract_no == "CTR-001"
         assert tenant.status == 1
+        assert tenant.bound_datasource_id == 101
+        assert tenant.bound_datasource_name == "Primary DS"
+        assert session.exec(text("SELECT tenant_id FROM core_datasource WHERE id = 101")).scalar_one() == tenant.id
 
+        session.exec(text("INSERT INTO core_datasource (id, tenant_id, name) VALUES (102, 1, 'Replacement DS')"))
+        session.commit()
         edited = asyncio.run(tenant_api.edit_tenant(
             session,
             _user(1, "system_admin"),
@@ -601,6 +884,7 @@ def test_platform_admin_manages_tenant_lifecycle():
                 billing_contact="Finance",
                 billing_email="finance@example.com",
                 subscription_note="manual follow-up required",
+                datasource_id=102,
             ),
         ))
         assert edited.name == "Tenant Beta"
@@ -608,6 +892,30 @@ def test_platform_admin_manages_tenant_lifecycle():
         assert edited.subscription_status == "past_due"
         assert edited.current_period_end_time == 3000
         assert edited.subscription_note == "manual follow-up required"
+        assert edited.bound_datasource_id == 102
+        assert session.exec(text("SELECT tenant_id FROM core_datasource WHERE id = 101")).scalar_one() == DEFAULT_TENANT_ID
+        assert session.exec(text("SELECT tenant_id FROM core_datasource WHERE id = 102")).scalar_one() == tenant.id
+
+        unbound = asyncio.run(tenant_api.edit_tenant(
+            session,
+            _user(1, "system_admin"),
+            tenant.id,
+            TenantEditor(
+                name="Tenant Beta",
+                plan="enterprise",
+                subscription_status="past_due",
+                billing_mode="manual",
+                trial_end_time=None,
+                current_period_end_time=3000,
+                contract_no="CTR-002",
+                billing_contact="Finance",
+                billing_email="finance@example.com",
+                subscription_note="manual follow-up required",
+                datasource_id=None,
+            ),
+        ))
+        assert unbound.bound_datasource_id is None
+        assert session.exec(text("SELECT tenant_id FROM core_datasource WHERE id = 102")).scalar_one() == DEFAULT_TENANT_ID
 
         disabled = asyncio.run(tenant_api.update_tenant_status(
             session,

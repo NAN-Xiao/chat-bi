@@ -205,13 +205,13 @@ const logout = async () => {
   }
 }
 const toSystem = () => {
-  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/system/overview')
+  router.push(userStore.isSystemAdminUser ? '/system/platform-overview' : '/system/overview')
 }
 const backMain = () => {
   router.push('/')
 }
 const goHome = () => {
-  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/chat/index')
+  router.push(userStore.isSystemAdminUser ? '/system/platform-overview' : '/chat/index')
 }
 const switchLayout = () => {
   topLayout.value = !topLayout.value

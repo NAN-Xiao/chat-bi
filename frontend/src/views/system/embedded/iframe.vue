@@ -6,7 +6,6 @@ import icon_close_outlined from '@/assets/svg/operate/ope-close.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_database_colorful from '@/assets/embedded/icon_database_colorful.png'
 import icon_web_site_colorful from '@/assets/embedded/icon_web-site_colorful.png'
-import full_window from '@/assets/embedded/Card.png'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_copy_outlined from '@/assets/embedded/icon_copy_outlined.svg'
@@ -1043,7 +1042,17 @@ const saveHandler = () => {
           @click="activeMode = 'full'"
         >
           <div class="title">{{ $t('professional.full_screen_mode') }}</div>
-          <img :src="full_window" width="180px" height="120px" alt="" />
+          <div class="full-preview" aria-hidden="true">
+            <div class="full-preview-sidebar"></div>
+            <div class="full-preview-main">
+              <div class="full-preview-topbar"></div>
+              <div class="full-preview-chart"></div>
+              <div class="full-preview-grid">
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
         </div>
         <div
           class="floating"
@@ -1523,6 +1532,58 @@ const saveHandler = () => {
         height: 120px;
         border-radius: 10px;
         background: linear-gradient(180deg, #f7fbff 0%, #edf4ff 100%);
+      }
+
+      .full-preview {
+        display: flex;
+        width: 180px;
+        height: 120px;
+        overflow: hidden;
+        border: 1px solid #dce6f2;
+        border-radius: 10px;
+        background: #ffffff;
+        box-shadow: 0 10px 24px rgba(24, 46, 86, 0.08);
+      }
+
+      .full-preview-sidebar {
+        width: 36px;
+        background: #1f2a44;
+      }
+
+      .full-preview-main {
+        flex: 1;
+        padding: 10px;
+        background: linear-gradient(180deg, #f7fbff 0%, #eef4ff 100%);
+      }
+
+      .full-preview-topbar {
+        width: 72px;
+        height: 8px;
+        border-radius: 999px;
+        background: #4f7df3;
+      }
+
+      .full-preview-chart {
+        height: 38px;
+        margin-top: 12px;
+        border-radius: 8px;
+        background:
+          linear-gradient(135deg, rgba(79, 125, 243, 0.9), rgba(57, 201, 138, 0.68)),
+          #dbe7ff;
+      }
+
+      .full-preview-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 8px;
+
+        span {
+          height: 22px;
+          border-radius: 6px;
+          background: #ffffff;
+          border: 1px solid #dce6f2;
+        }
       }
 
       .floating-preview-window {

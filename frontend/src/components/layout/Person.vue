@@ -99,11 +99,11 @@ const toSystem = () => {
   popoverRef.value?.hide?.()
   if (isPlatformWorkspaceDelegate.value) {
     userStore.exitPlatformWorkspaceDelegate().finally(() => {
-      router.push('/system/tenant')
+      router.push('/system/platform-overview')
     })
     return
   }
-  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/system/member-access')
+  router.push(userStore.isSystemAdminUser ? '/system/platform-overview' : '/system/member-access')
 }
 
 const toWorkspaceApplication = () => {

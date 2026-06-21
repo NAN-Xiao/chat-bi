@@ -1,37 +1,52 @@
 <script lang="ts" setup>
+import { computed } from 'vue'
 import delIcon from '@/assets/svg/icon_delete.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import Lock from '@/assets/permission/icon_custom-tools_colorful.svg'
-withDefaults(
+const props = withDefaults(
   defineProps<{
     name: string
     type: string
     num: string
-    projectSummary?: string
+    dataSourceSummary?: string
     id?: string
+    scope?: string
+    canEdit?: boolean
+    canDelete?: boolean
+    readonly?: boolean
   }>(),
   {
     name: '-',
     type: '-',
     id: '-',
     num: '-',
-    projectSummary: '-',
+    dataSourceSummary: '-',
+    scope: '',
+    canEdit: true,
+    canDelete: true,
+    readonly: false,
   }
 )
 
 const emits = defineEmits(['edit', 'del', 'setUser', 'setRule'])
+const normalizedScope = computed(() => String(props.scope || '').toUpperCase())
+const isPlatformRule = computed(() => normalizedScope.value === 'PLATFORM')
+const hasActions = computed(() => props.canEdit || props.canDelete)
 
 const handleEdit = () => {
+  if (!props.canEdit) return
   emits('edit')
 }
 
 const handleDel = () => {
+  if (!props.canDelete) return
   emits('del')
 }
 
 const setUser = () => {
+  if (!props.canEdit) return
   emits('setUser')
 }
 
@@ -48,7 +63,20 @@ const setUser = () => {
       </el-icon>
       <div class="info">
         <div class="name ellipsis" :title="name">{{ name }}</div>
-        <div class="sub-title">{{ $t('permission.permission_rule') }}</div>
+        <div class="sub-title">
+          <span>{{ $t('permission.permission_rule') }}</span>
+          <span
+            v-if="normalizedScope"
+            class="scope-tag"
+            :class="{ platform: isPlatformRule }"
+          >
+            {{
+              isPlatformRule
+                ? $t('permission.scope_platform')
+                : $t('permission.scope_workspace')
+            }}
+          </span>
+        </div>
       </div>
     </div>
 
@@ -58,9 +86,9 @@ const setUser = () => {
         <span class="value ellipsis"> {{ $t('permission.2', { msg: num }) }}</span>
       </div>
       <div class="type-value">
-        <span class="type">{{ $t('permission.project_database') }}</span>
-        <span class="value ellipsis" :title="projectSummary">
-          {{ projectSummary }}
+        <span class="type">{{ $t('permission.rule_data_source') }}</span>
+        <span class="value ellipsis" :title="dataSourceSummary">
+          {{ dataSourceSummary }}
         </span>
       </div>
       <div class="type-value">
@@ -76,7 +104,7 @@ const setUser = () => {
         </el-icon>
         {{ $t('permission.2', { msg: num }) }}
       </div>
-      <div class="methods" @click.stop>
+      <div v-if="hasActions" class="methods" @click.stop>
         <el-popover
           trigger="click"
           :teleported="true"
@@ -88,20 +116,20 @@ const setUser = () => {
               <icon_more_outlined></icon_more_outlined>
             </button>
           </template>
-          <div class="content">
-            <div class="item" @click.stop="handleEdit">
+          <div class="content" :class="{ 'has-delete': canEdit && canDelete }">
+            <div v-if="canEdit" class="item" @click.stop="handleEdit">
               <el-icon size="16">
                 <icon_key_outlined></icon_key_outlined>
               </el-icon>
               {{ $t('permission.set_rule') }}
             </div>
-            <div class="item" @click.stop="setUser">
+            <div v-if="canEdit" class="item" @click.stop="setUser">
               <el-icon size="16">
                 <icon_member_outlined></icon_member_outlined>
               </el-icon>
               {{ $t('permission.set_user') }}
             </div>
-            <div class="item" @click.stop="handleDel">
+            <div v-if="canDelete" class="item" @click.stop="handleDel">
               <el-icon size="16">
                 <delIcon></delIcon>
               </el-icon>
@@ -161,6 +189,26 @@ const setUser = () => {
       font-size: 12px;
       line-height: 20px;
       color: var(--workspace-text-secondary, #66758f);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .scope-tag {
+      flex: 0 0 auto;
+      height: 18px;
+      padding: 0 6px;
+      border-radius: 4px;
+      background: #eef3ff;
+      color: #2f6bff;
+      font-size: 12px;
+      line-height: 18px;
+
+      &.platform {
+        background: #f1f6ee;
+        color: #3f7a26;
+      }
     }
   }
 
@@ -297,7 +345,7 @@ const setUser = () => {
   .content {
     position: relative;
 
-    &::after {
+    &.has-delete::after {
       position: absolute;
       content: '';
       top: 80px;

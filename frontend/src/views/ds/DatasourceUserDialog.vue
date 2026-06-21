@@ -1,14 +1,14 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="$t('datasource.project_authorization')"
-    modal-class="project-user-dialog"
+    :title="$t('datasource.datasource_authorization')"
+    modal-class="datasource-user-dialog"
     width="840"
   >
-    <p class="lighter project-name">
-      {{ $t('datasource.project_authorization_desc', { msg: project?.name || '' }) }}
+    <p class="lighter datasource-name">
+      {{ $t('datasource.datasource_authorization_desc', { msg: datasource?.name || '' }) }}
     </p>
-    <div v-loading="loading" class="flex border project-user-picker">
+    <div v-loading="loading" class="flex border datasource-user-picker">
       <div class="p-16 border-r">
         <el-input
           v-model="search"
@@ -140,15 +140,15 @@ const visible = ref(false)
 const loading = ref(false)
 const saving = ref(false)
 const search = ref('')
-const project = ref<any>(null)
+const datasource = ref<any>(null)
 const users = ref<any[]>([])
 const selectedUsers = ref<any[]>([])
 const checkedUsers = ref<any[]>([])
 const checkAll = ref(false)
 const isIndeterminate = ref(false)
 const roleOptions = [
-  { label: t('datasource.project_role_viewer'), value: 'viewer' },
-  { label: t('datasource.project_role_editor'), value: 'editor' },
+  { label: t('datasource.datasource_role_viewer'), value: 'viewer' },
+  { label: t('datasource.datasource_role_editor'), value: 'editor' },
 ]
 
 const usersWithKeywords = computed(() => {
@@ -206,7 +206,7 @@ const handleCheckedUsersChange = (value: CheckboxValueType[]) => {
 }
 
 const open = async (row: any) => {
-  project.value = row
+  datasource.value = row
   visible.value = true
   loading.value = true
   search.value = ''
@@ -215,7 +215,7 @@ const open = async (row: any) => {
   checkAll.value = false
   isIndeterminate.value = false
   try {
-    const [userPage, projectUsers] = await Promise.all([
+    const [userPage, datasourceUsers] = await Promise.all([
       userApi.pager('', 1, 1000),
       datasourceApi.users(row.id),
     ])
@@ -223,10 +223,12 @@ const open = async (row: any) => {
       (user: any) => !['system_admin', 'collab_admin'].includes(user.system_role)
     )
     const authorizedRoles = new Map(
-      (projectUsers?.users || []).map((user: any) => [Number(user.id), user.role || 'viewer'])
+      (datasourceUsers?.users || []).map((user: any) => [Number(user.id), user.role || 'viewer'])
     )
     const authorizedIds = new Set(
-      (projectUsers?.user_ids || Array.from(authorizedRoles.keys())).map((id: any) => Number(id))
+      (datasourceUsers?.user_ids || Array.from(authorizedRoles.keys())).map((id: any) =>
+        Number(id)
+      )
     )
     selectedUsers.value = users.value
       .filter((user: any) => authorizedIds.has(Number(user.id)))
@@ -253,10 +255,10 @@ const clearAll = () => {
 const emits = defineEmits(['refresh'])
 
 const handleConfirm = () => {
-  if (!project.value?.id) return
+  if (!datasource.value?.id) return
   saving.value = true
   datasourceApi
-    .updateUsers(project.value.id, {
+    .updateUsers(datasource.value.id, {
       user_ids: selectedUsers.value.map((user: any) => Number(user.id)),
       users: selectedUsers.value.map((user: any) => ({
         id: Number(user.id),
@@ -279,12 +281,12 @@ defineExpose({
 </script>
 
 <style lang="less">
-.project-user-dialog {
-  .project-name {
+.datasource-user-dialog {
+  .datasource-name {
     margin-bottom: 12px;
   }
 
-  .project-user-picker {
+  .datasource-user-picker {
     height: 428px;
     border-radius: 6px;
   }

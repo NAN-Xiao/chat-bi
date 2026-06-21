@@ -14,6 +14,10 @@ from common.core.deps import SessionDep, CurrentUser, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginationParams
 
+VARIABLE_TYPE_SYSTEM = "system"
+VARIABLE_TYPE_PLATFORM = "platform"
+VARIABLE_TYPE_CUSTOM = "custom"
+
 
 def _current_tenant_id(user: CurrentUser | None) -> int:
     try:
@@ -22,40 +26,83 @@ def _current_tenant_id(user: CurrentUser | None) -> int:
         return DEFAULT_TENANT_ID
 
 
+def _is_platform_operation(user: CurrentUser) -> bool:
+    return is_platform_admin(user) and not is_platform_workspace_delegate(user)
+
+
 def _visible_variable_condition(user: CurrentUser):
-    if is_platform_admin(user) and not is_platform_workspace_delegate(user):
-        return None
+    if _is_platform_operation(user):
+        return or_(
+            SystemVariable.type == VARIABLE_TYPE_SYSTEM,
+            SystemVariable.type == VARIABLE_TYPE_PLATFORM,
+        )
     tenant_id = _current_tenant_id(user)
-    return or_(SystemVariable.type == 'system', SystemVariable.tenant_id == tenant_id)
+    return or_(
+        SystemVariable.type == VARIABLE_TYPE_SYSTEM,
+        SystemVariable.type == VARIABLE_TYPE_PLATFORM,
+        and_(
+            SystemVariable.type != VARIABLE_TYPE_SYSTEM,
+            SystemVariable.type != VARIABLE_TYPE_PLATFORM,
+            SystemVariable.tenant_id == tenant_id,
+        ),
+    )
 
 
 def _custom_variable_condition(user: CurrentUser):
-    if is_platform_admin(user) and not is_platform_workspace_delegate(user):
-        return SystemVariable.type != 'system'
-    return and_(SystemVariable.type != 'system', SystemVariable.tenant_id == _current_tenant_id(user))
+    if _is_platform_operation(user):
+        return SystemVariable.type == VARIABLE_TYPE_PLATFORM
+    return and_(
+        SystemVariable.type != VARIABLE_TYPE_SYSTEM,
+        SystemVariable.type != VARIABLE_TYPE_PLATFORM,
+        SystemVariable.tenant_id == _current_tenant_id(user),
+    )
 
 
-def _apply_scope(stmt, user: CurrentUser):
+def _apply_scope(stmt, user: CurrentUser, include_system: bool = True):
     condition = _visible_variable_condition(user)
+    if not include_system:
+        condition = and_(condition, SystemVariable.type != VARIABLE_TYPE_SYSTEM)
     return stmt.where(condition) if condition is not None else stmt
 
 
 def _assert_custom_variable_access(record: SystemVariable | None, user: CurrentUser) -> None:
     if record is None:
         raise HTTPException(status_code=404, detail="变量不存在")
-    if record.type == 'system':
+    if record.type == VARIABLE_TYPE_SYSTEM:
         raise HTTPException(status_code=403, detail="内置变量不可编辑")
-    if (
-        (not is_platform_admin(user) or is_platform_workspace_delegate(user))
-        and int(record.tenant_id or DEFAULT_TENANT_ID) != _current_tenant_id(user)
-    ):
+    if _is_platform_operation(user):
+        if record.type != VARIABLE_TYPE_PLATFORM:
+            raise HTTPException(status_code=404, detail="变量不存在")
+        return
+    if record.type == VARIABLE_TYPE_PLATFORM:
+        raise HTTPException(status_code=403, detail="平台变量不可编辑")
+    if int(record.tenant_id or DEFAULT_TENANT_ID) != _current_tenant_id(user):
         raise HTTPException(status_code=404, detail="变量不存在")
+
+
+def _variable_response(data: SystemVariable, user: CurrentUser) -> dict:
+    editable = False
+    if _is_platform_operation(user):
+        editable = data.type == VARIABLE_TYPE_PLATFORM
+    else:
+        editable = (
+            data.type not in (VARIABLE_TYPE_SYSTEM, VARIABLE_TYPE_PLATFORM)
+            and int(data.tenant_id or DEFAULT_TENANT_ID) == _current_tenant_id(user)
+        )
+    result = data.model_dump()
+    result["can_edit"] = editable
+    result["can_delete"] = editable
+    return result
 
 
 def save(session: SessionDep, user: CurrentUser, trans: Trans, variable: SystemVariable):
     if variable.id is None:
-        variable.type = 'custom'
-        variable.tenant_id = _current_tenant_id(user)
+        if _is_platform_operation(user):
+            variable.type = VARIABLE_TYPE_PLATFORM
+            variable.tenant_id = DEFAULT_TENANT_ID
+        else:
+            variable.type = VARIABLE_TYPE_CUSTOM
+            variable.tenant_id = _current_tenant_id(user)
         checkName(session, trans, user, variable)
         variable.create_time = datetime.datetime.now()
         variable.create_by = user.id
@@ -64,7 +111,7 @@ def save(session: SessionDep, user: CurrentUser, trans: Trans, variable: SystemV
     else:
         record = session.query(SystemVariable).filter(SystemVariable.id == variable.id).first()
         _assert_custom_variable_access(record, user)
-        variable.type = 'custom'
+        variable.type = record.type
         variable.tenant_id = int(record.tenant_id or _current_tenant_id(user))
         checkName(session, trans, user, variable)
         update_data = variable.model_dump(exclude_unset=True)
@@ -96,17 +143,16 @@ def list_all(session: SessionDep, trans: Trans, user: CurrentUser, variable: Sys
     if search_name is None:
         stmt = select(SystemVariable).order_by(SystemVariable.type.desc(), SystemVariable.name.asc())
     else:
-        stmt = select(SystemVariable).where(
-            and_(SystemVariable.name.ilike(f'%{search_name}%'), SystemVariable.type != 'system')).order_by(
+        stmt = select(SystemVariable).where(SystemVariable.name.ilike(f'%{search_name}%')).order_by(
             SystemVariable.type.desc(), SystemVariable.name.asc())
-    records = session.exec(_apply_scope(stmt, user)).all()
+    records = session.exec(_apply_scope(stmt, user, include_system=search_name is None)).all()
 
     res = []
     for r in records:
         data = SystemVariable(**r.__dict__)
-        if data.type == 'system':
+        if data.type == VARIABLE_TYPE_SYSTEM:
             data.name = trans(data.name)
-        res.append(data)
+        res.append(_variable_response(data, user))
     return res
 
 
@@ -119,10 +165,9 @@ async def list_page(session: SessionDep, trans: Trans, user: CurrentUser, pageNu
     if search_name is None:
         stmt = select(SystemVariable).order_by(SystemVariable.type.desc(), SystemVariable.name.asc())
     else:
-        stmt = select(SystemVariable).where(
-            and_(SystemVariable.name.ilike(f'%{search_name}%'), SystemVariable.type != 'system')).order_by(
+        stmt = select(SystemVariable).where(SystemVariable.name.ilike(f'%{search_name}%')).order_by(
             SystemVariable.type.desc(), SystemVariable.name.asc())
-    stmt = _apply_scope(stmt, user)
+    stmt = _apply_scope(stmt, user, include_system=search_name is None)
 
     variable_page = await paginator.get_paginated_response(
         stmt=stmt,
@@ -132,9 +177,9 @@ async def list_page(session: SessionDep, trans: Trans, user: CurrentUser, pageNu
     res = []
     for r in variable_page.items:
         data = r if isinstance(r, SystemVariable) else SystemVariable(**r)
-        if data.type == 'system':
+        if data.type == VARIABLE_TYPE_SYSTEM:
             data.name = trans(data.name)
-        res.append(data)
+        res.append(_variable_response(data, user))
 
     return {"items": res, "page": variable_page.page, "size": variable_page.size, "total": variable_page.total,
             "total_pages": variable_page.total_pages}
@@ -144,7 +189,7 @@ def checkName(session: SessionDep, trans: Trans, user: CurrentUser, variable: Sy
     tenant_id = int(getattr(variable, "tenant_id", None) or _current_tenant_id(user))
     filters = [
         SystemVariable.name == variable.name,
-        SystemVariable.type != 'system',
+        _custom_variable_condition(user),
         SystemVariable.tenant_id == tenant_id,
     ]
     if variable.id is None:

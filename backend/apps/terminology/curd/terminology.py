@@ -5,7 +5,7 @@ from typing import List, Optional, Any
 from xml.dom.minidom import parseString
 
 import dicttoxml
-from sqlalchemy import and_, or_, select, func, delete, update, union, text, BigInteger
+from sqlalchemy import and_, or_, select, func, delete, update, union, text, BigInteger, literal
 from sqlalchemy.orm import aliased
 
 from apps.ai_model.embedding import EmbeddingModelCache
@@ -78,9 +78,13 @@ def _semantic_scope_condition(tenant_id: int, scope: SemanticRecordScopeEnum | s
     normalized_scope = normalize_semantic_scope(scope) if scope else None
     if normalized_scope == SemanticRecordScopeEnum.PLATFORM:
         return _platform_scope_condition()
-    if normalized_scope == SemanticRecordScopeEnum.TENANT:
-        return _tenant_scope_condition(tenant_id)
-    return or_(_tenant_scope_condition(tenant_id), _platform_scope_condition())
+    return _tenant_scope_condition(tenant_id)
+
+
+def _runtime_scope_condition(tenant_id: int, include_platform: bool = True):
+    if include_platform:
+        return or_(_tenant_scope_condition(tenant_id), _platform_scope_condition())
+    return _tenant_scope_condition(tenant_id)
 
 
 def build_terminology_query(session: SessionDep, name: Optional[str] = None,
@@ -883,6 +887,39 @@ AND (
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
 """
+embedding_sql_tenant_only = f"""
+SELECT id, pid, word, similarity
+FROM
+(SELECT id, pid, word, tenant_id, scope, specific_ds, datasource_ids, enabled,
+( 1 - (embedding <=> :embedding_array) ) AS similarity
+FROM terminology AS child
+) TEMP
+WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} AND enabled = true
+AND COALESCE(scope, 'TENANT') = 'TENANT'
+AND tenant_id = :tenant_id
+AND (specific_ds = false OR specific_ds IS NULL)
+ORDER BY similarity DESC
+LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
+"""
+
+embedding_sql_with_datasource_tenant_only = f"""
+SELECT id, pid, word, similarity
+FROM
+(SELECT id, pid, word, tenant_id, scope, specific_ds, datasource_ids, enabled,
+( 1 - (embedding <=> :embedding_array) ) AS similarity
+FROM terminology AS child
+) TEMP
+WHERE similarity > {settings.EMBEDDING_TERMINOLOGY_SIMILARITY} AND enabled = true
+AND COALESCE(scope, 'TENANT') = 'TENANT'
+AND tenant_id = :tenant_id
+AND (
+    (specific_ds = false OR specific_ds IS NULL)
+     OR
+    (specific_ds = true AND datasource_ids IS NOT NULL AND datasource_ids @> jsonb_build_array(:datasource))
+)
+ORDER BY similarity DESC
+LIMIT {settings.EMBEDDING_TERMINOLOGY_TOP_COUNT}
+"""
 
 
 def _resolve_runtime_tenant_id(session: SessionDep, datasource: int | None = None, tenant_id: int | None = None) -> int:
@@ -900,6 +937,7 @@ def select_terminology_by_word(
         word: str,
         datasource: int = None,
         tenant_id: int | None = None,
+        include_platform: bool = True,
 ):
     if word.strip() == "":
         return []
@@ -915,8 +953,8 @@ def select_terminology_by_word(
         )
         .where(
             and_(
-                _semantic_scope_condition(resolved_tenant_id),
-                text(":sentence ILIKE '%' || word || '%'"),
+                _runtime_scope_condition(resolved_tenant_id, include_platform),
+                literal(word).ilike("%" + Terminology.word + "%"),
                 Terminology.enabled == True,
             )
         )
@@ -937,7 +975,7 @@ def select_terminology_by_word(
         stmt = stmt.where(or_(Terminology.specific_ds == False, Terminology.specific_ds.is_(None)))
 
     # 执行查询
-    params: dict[str, Any] = {'sentence': word}
+    params: dict[str, Any] = {}
     if datasource is not None:
         params['datasource'] = datasource
 
@@ -954,14 +992,16 @@ def select_terminology_by_word(
                 embedding = model.embed_query(word)
 
                 if datasource is not None:
-                    results = session.execute(text(embedding_sql_with_datasource),
+                    embedding_query = embedding_sql_with_datasource if include_platform else embedding_sql_with_datasource_tenant_only
+                    results = session.execute(text(embedding_query),
                                               {
                                                   'embedding_array': str(embedding),
                                                   'datasource': datasource,
                                                   'tenant_id': resolved_tenant_id,
                                               }).fetchall()
                 else:
-                    results = session.execute(text(embedding_sql),
+                    embedding_query = embedding_sql if include_platform else embedding_sql_tenant_only
+                    results = session.execute(text(embedding_query),
                                               {
                                                   'embedding_array': str(embedding),
                                                   'tenant_id': resolved_tenant_id,
@@ -989,7 +1029,7 @@ def select_terminology_by_word(
 
     t_list = session.query(Terminology.id, Terminology.pid, Terminology.word, Terminology.description).filter(
         and_(
-            _semantic_scope_condition(resolved_tenant_id),
+            _runtime_scope_condition(resolved_tenant_id, include_platform),
             or_(Terminology.id.in_(_ids), Terminology.pid.in_(_ids)),
         )
     ).all()
@@ -1050,8 +1090,9 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'terminologies') -> str:
 
 def get_terminology_template(session: SessionDep, question: str,
                              datasource: Optional[int] = None,
-                             tenant_id: Optional[int] = None) -> tuple[str, list[dict]]:
-    _results = select_terminology_by_word(session, question, datasource, tenant_id)
+                             tenant_id: Optional[int] = None,
+                             include_platform: bool = True) -> tuple[str, list[dict]]:
+    _results = select_terminology_by_word(session, question, datasource, tenant_id, include_platform)
     if _results and len(_results) > 0:
         terminology = to_xml_string(_results)
         template = get_base_terminology_template().format(terminologies=terminology)

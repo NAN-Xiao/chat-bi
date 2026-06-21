@@ -13,15 +13,20 @@ from apps.chat.models.chat_model import AxisObj
 from apps.data_training.curd.data_training import page_data_training, create_training, update_training, delete_training, \
     enable_training, get_all_data_training, batch_create_training
 from apps.datasource.crud.permission import (
-    current_tenant_id,
     get_datasource_ids_with_min_role,
     has_datasource_access,
 )
 from apps.data_training.models.data_training_model import DataTraining
 from apps.data_training.models.data_training_model import DataTrainingInfo
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
-from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
+from apps.system.crud.user import is_system_admin
+from apps.system.schemas.access_context import (
+    can_manage_platform_scope,
+    can_manage_workspace_scope,
+    is_global_platform_context,
+    management_scope,
+    management_tenant_id,
+)
 from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum, normalize_semantic_scope
 from common.core.config import settings
 from common.core.deps import SessionDep, CurrentUser, Trans
@@ -38,38 +43,25 @@ router = APIRouter(
 
 
 def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> Optional[set[int]]:
-    if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user):
+    if is_global_platform_context(current_user):
         return None
     return get_datasource_ids_with_min_role(session, current_user, "project_viewer")
 
 
 def _can_manage_tenant_semantic_layer(current_user: CurrentUser) -> bool:
-    if is_platform_workspace_delegate(current_user):
-        return True
-    if is_platform_admin(current_user):
-        return False
-    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
-    return is_system_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
+    return can_manage_workspace_scope(current_user)
 
 
 def _can_manage_platform_semantic_layer(current_user: CurrentUser) -> bool:
-    return is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+    return can_manage_platform_scope(current_user)
 
 
 def _request_scope(current_user: CurrentUser) -> SemanticRecordScopeEnum:
-    return (
-        SemanticRecordScopeEnum.PLATFORM
-        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
-        else SemanticRecordScopeEnum.TENANT
-    )
+    return management_scope(current_user)
 
 
 def _request_tenant_id(current_user: CurrentUser) -> int:
-    return (
-        DEFAULT_TENANT_ID
-        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
-        else current_tenant_id(current_user)
-    )
+    return management_tenant_id(current_user)
 
 
 def _require_training_admin(session: SessionDep, current_user: CurrentUser, info: DataTrainingInfo):
@@ -120,7 +112,7 @@ async def pager(session: SessionDep, current_user: CurrentUser, current_page: in
                 datasource: Optional[int] = Query(None, description="数据源ID(可选)")):
     scope = (
         _request_scope(current_user)
-        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+        if is_global_platform_context(current_user)
         else None
     )
     datasource_ids = _visible_datasource_ids(session, current_user)
@@ -190,7 +182,7 @@ async def export_excel(session: SessionDep, trans: Trans, current_user: CurrentU
             question,
             datasource_ids,
             _request_tenant_id(current_user),
-            _request_scope(current_user) if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user) else None,
+            _request_scope(current_user) if is_global_platform_context(current_user) else None,
             _can_manage_platform_semantic_layer(current_user),
             _can_manage_tenant_semantic_layer(current_user),
         )

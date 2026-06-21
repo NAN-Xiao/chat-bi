@@ -16,10 +16,12 @@ import { getList, savePermissions, delPermissions } from '@/api/permissions'
 import { datasourceApi } from '@/api/datasource'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
+import { useUserStore } from '@/stores/user'
 
 const { t } = useI18n()
+const userStore = useUserStore()
 const keywords = ref('')
-const projectFilter = ref('')
+const dataSourceFilter = ref('')
 const activeStep = ref(0)
 const dialogFormVisible = ref(false)
 const ruleConfigvVisible = ref(false)
@@ -28,8 +30,8 @@ const termFormRef = ref()
 const columnFormRef = ref()
 const drawerTitle = ref('')
 const dialogTitle = ref('')
-const activeDs = ref(null)
-const activeTable = ref(null)
+const activeDs = ref<any>(null)
+const activeTable = ref<any>(null)
 const ruleList = ref<any[]>([])
 
 const defaultPermission = {
@@ -61,43 +63,55 @@ const dsListOptions = ref<any[]>([])
 const ROW_PERMISSION_TYPE = 1
 const COLUMN_PERMISSION_TYPE = 0
 const TABLE_PERMISSION_TYPE = 2
-const permissionProjectIds = (row: any) => {
+const isGlobalPlatformAdmin = computed(
+  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
+const isWorkspacePermissionContext = computed(() => !isGlobalPlatformAdmin.value)
+const canCreateRuleGroup = computed(() => userStore.isSystemManagerUser)
+const canEditRuleGroup = (row: any) => row?.can_edit !== false
+const canDeleteRuleGroup = (row: any) => row?.can_delete !== false
+const readonlyRuleMessage = () => {
+  ElMessage.warning(t('permission.readonly_rule_group'))
+}
+const loadDatasourceOptions = () =>
+  isGlobalPlatformAdmin.value ? datasourceApi.list() : datasourceApi.accessibleList()
+const permissionDataSourceIds = (row: any) => {
   const ids = (row.permissions || [])
     .map((item: any) => Number(item.ds_id))
     .filter((item: number) => !Number.isNaN(item))
   return [...new Set(ids)]
 }
-const permissionProjectNames = (row: any) => {
-  const projectMap = new Map<number, string>()
+const permissionDataSourceNames = (row: any) => {
+  const dataSourceMap = new Map<number, string>()
   ;(row.permissions || []).forEach((item: any) => {
     const id = Number(item.ds_id)
     if (Number.isNaN(id)) return
-    projectMap.set(id, item.ds_name || `ID ${id}`)
+    dataSourceMap.set(id, item.ds_name || `ID ${id}`)
   })
-  return [...projectMap.values()]
+  return [...dataSourceMap.values()]
 }
-const formatPermissionProjectSummary = (row: any) => {
-  const names = permissionProjectNames(row)
-  return names.length ? names.join('、') : t('permission.no_project_bound')
+const formatPermissionDataSourceSummary = (row: any) => {
+  const names = permissionDataSourceNames(row)
+  return names.length ? names.join('、') : t('permission.no_data_source_bound')
 }
-const permissionProjectOptions = computed(() => {
-  const projectMap = new Map<number, string>()
+const permissionDataSourceOptions = computed(() => {
+  const dataSourceMap = new Map<number, string>()
   ruleList.value.forEach((rule: any) => {
     ;(rule.permissions || []).forEach((item: any) => {
       const id = Number(item.ds_id)
       if (Number.isNaN(id)) return
-      projectMap.set(id, item.ds_name || `ID ${id}`)
+      dataSourceMap.set(id, item.ds_name || `ID ${id}`)
     })
   })
-  return [...projectMap.entries()].map(([id, name]) => ({ id, name }))
+  return [...dataSourceMap.entries()].map(([id, name]) => ({ id, name }))
 })
 const ruleListWithSearch = computed(() => {
   return ruleList.value.filter((ele) => {
     const matchedKeyword =
       !keywords.value || ele.name.toLowerCase().includes(keywords.value.toLowerCase())
-    const matchedProject =
-      !projectFilter.value || permissionProjectIds(ele).includes(Number(projectFilter.value))
-    return matchedKeyword && matchedProject
+    const matchedDataSource =
+      !dataSourceFilter.value || permissionDataSourceIds(ele).includes(Number(dataSourceFilter.value))
+    return matchedKeyword && matchedDataSource
   })
 })
 const tableColumnData = computed<any[]>(() => {
@@ -198,10 +212,20 @@ const saveAuthTree = (val: any) => {
 const getDsList = (row: any) => {
   activeDs.value = null
   activeTable.value = null
-  datasourceApi
-    .list()
+  loadDatasourceOptions()
     .then((res: any) => {
       dsListOptions.value = res || []
+      if (!row && isWorkspacePermissionContext.value) {
+        const datasource = dsListOptions.value[0]
+        if (!datasource) {
+          ElMessage.warning(t('permission.no_data_source_bound'))
+          dialogFormVisible.value = false
+          return
+        }
+        activeDs.value = datasource
+        handleInitDsIdChange(datasource)
+        return
+      }
       if (!row?.ds_id) return
       dsListOptions.value.forEach((ele) => {
         if (+ele.id === +row.ds_id) {
@@ -210,8 +234,8 @@ const getDsList = (row: any) => {
       })
     })
     .finally(() => {
-      if (!row && columnForm.type === 'row') {
-        authTreeRef.value.init(columnForm.expression_tree)
+      if (!row && columnForm.type === 'row' && dialogFormVisible.value) {
+        authTreeRef.value?.init(columnForm.expression_tree)
       }
     })
 
@@ -292,15 +316,17 @@ let time: any
 const handleInitDsIdChange = (val: any) => {
   columnForm.ds_id = val.id
   columnForm.ds_name = val.name
+  columnForm.table_id = ''
+  columnForm.table_name = ''
+  activeTable.value = null
+  fieldListOptions.value = []
+  columnForm.permissions = []
   time = setTimeout(() => {
     clearTimeout(time)
-    columnFormRef.value.clearValidate('table_id')
+    columnFormRef.value?.clearValidate('table_id')
   }, 0)
   datasourceApi.tableList(val.id).then((res: any) => {
     tableListOptions.value = res || []
-    activeTable.value = null
-    fieldListOptions.value = []
-    columnForm.permissions = []
     if (authTreeRef.value) {
       authTreeRef.value.init({})
     }
@@ -386,6 +412,10 @@ const handleSearch = () => {
 }
 handleSearch()
 const addHandler = () => {
+  if (!canCreateRuleGroup.value) {
+    ElMessage.warning(t('permission.no_rule_group_create_permission'))
+    return
+  }
   editRule.value = 0
   setDrawerTitle()
   isCreate.value = true
@@ -406,6 +436,10 @@ const editForm = (row: any) => {
   }
 }
 const handleEditRule = (row: any) => {
+  if (!canEditRuleGroup(row)) {
+    readonlyRuleMessage()
+    return
+  }
   editRule.value = 1
   isCreate.value = false
   setDrawerTitle()
@@ -428,6 +462,10 @@ const deleteRuleHandler = (row: any) => {
 }
 
 const deleteHandler = (row: any) => {
+  if (!canDeleteRuleGroup(row)) {
+    readonlyRuleMessage()
+    return
+  }
   ElMessageBox.confirm(t('permission.rule_group_1', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
@@ -445,6 +483,10 @@ const deleteHandler = (row: any) => {
   })
 }
 const setUser = (row: any) => {
+  if (!canEditRuleGroup(row)) {
+    readonlyRuleMessage()
+    return
+  }
   editRule.value = 2
   setDrawerTitle()
   isCreate.value = false
@@ -523,7 +565,7 @@ const saveHandler = () => {
   })
 }
 const preview = () => {
-  currentPermission.user = selectPermissionRef.value.checkTableList.map((ele: any) => ele.id)
+  currentPermission.users = selectedUserIds()
   activeStep.value = 0
 }
 const next = () => {
@@ -537,7 +579,14 @@ const next = () => {
   })
 }
 const saveLoading = ref(false)
+const selectedUserIds = () =>
+  (selectPermissionRef.value?.checkTableList || []).map((ele: any) => ele.id)
+
 const save = () => {
+  if (currentPermission.id && !canEditRuleGroup(currentPermission)) {
+    readonlyRuleMessage()
+    return
+  }
   const { id, name, permissions, users } = cloneDeep(currentPermission)
 
   const permissionsObj = permissions.map((ele: any) => {
@@ -562,10 +611,7 @@ const save = () => {
     id,
     name,
     permissions: permissionsObj,
-    users:
-      isCreate.value || activeStep.value === 1
-        ? selectPermissionRef.value.checkTableList.map((ele: any) => ele.id)
-        : users,
+    users: activeStep.value === 1 ? selectedUserIds() : users,
   }
   if (!id) {
     delete obj.id
@@ -586,7 +632,7 @@ const save = () => {
     })
 }
 const savePermission = () => {
-  if (!isCreate.value && activeStep.value === 0) {
+  if (activeStep.value === 0) {
     termFormRef.value.validate((res: any) => {
       if (res) {
         save()
@@ -622,14 +668,14 @@ const columnRules = {
       <span class="page-title">{{ $t('project.permission_configuration') }}</span>
       <div>
         <el-select
-          v-model="projectFilter"
+          v-model="dataSourceFilter"
           clearable
           filterable
           style="width: 220px; margin-right: 12px"
-          :placeholder="$t('permission.filter_project')"
+          :placeholder="$t('permission.filter_data_source')"
         >
           <el-option
-            v-for="item in permissionProjectOptions"
+            v-for="item in permissionDataSourceOptions"
             :key="item.id"
             :label="item.name"
             :value="item.id"
@@ -648,7 +694,7 @@ const columnRules = {
           </template>
         </el-input>
 
-        <el-button type="primary" @click="addHandler()">
+        <el-button v-if="canCreateRuleGroup" type="primary" @click="addHandler()">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -658,7 +704,7 @@ const columnRules = {
     </div>
 
     <EmptyBackground
-      v-if="(!!keywords || !!projectFilter) && !ruleListWithSearch.length"
+      v-if="(!!keywords || !!dataSourceFilter) && !ruleListWithSearch.length"
       :description="$t('datasource.relevant_content_found')"
       img-type="tree"
     />
@@ -681,7 +727,11 @@ const columnRules = {
             :name="ele.name"
             :type="ele.users.length"
             :num="ele.permissions.length"
-            :project-summary="formatPermissionProjectSummary(ele)"
+            :data-source-summary="formatPermissionDataSourceSummary(ele)"
+            :scope="ele.scope"
+            :readonly="ele.readonly"
+            :can-edit="canEditRuleGroup(ele)"
+            :can-delete="canDeleteRuleGroup(ele)"
             @edit="handleEditRule(ele)"
             @del="deleteHandler(ele)"
             @set-user="setUser(ele)"
@@ -689,7 +739,7 @@ const columnRules = {
         </el-col>
       </el-row>
     </div>
-    <template v-if="!keywords && !projectFilter && !ruleListWithSearch.length && !searchLoading">
+    <template v-if="!keywords && !dataSourceFilter && !ruleListWithSearch.length && !searchLoading">
       <EmptyBackground
         class="ed-empty_200"
         :description="$t('permission.no_permission_rule')"
@@ -697,7 +747,7 @@ const columnRules = {
       />
 
       <div style="text-align: center; margin-top: -10px">
-        <el-button type="primary" @click="addHandler()">
+        <el-button v-if="canCreateRuleGroup" type="primary" @click="addHandler()">
           <template #icon>
             <icon_add_outlined></icon_add_outlined>
           </template>
@@ -869,14 +919,10 @@ const columnRules = {
         <el-button v-if="activeStep === 1 && isCreate" secondary @click="preview">
           {{ t('ds.previous') }}
         </el-button>
-        <el-button v-if="activeStep === 0 && isCreate" type="primary" @click="next">
+        <el-button v-if="activeStep === 0 && isCreate" secondary @click="next">
           {{ t('common.next') }}
         </el-button>
-        <el-button
-          v-if="(isCreate && activeStep === 1) || !isCreate"
-          type="primary"
-          @click="savePermission"
-        >
+        <el-button type="primary" @click="savePermission">
           {{ $t('common.save') }}
         </el-button>
       </template>
@@ -912,6 +958,7 @@ const columnRules = {
         </el-form-item>
         <el-form-item prop="table_id" :label="t('permission.data_table')">
           <el-select
+            v-if="isGlobalPlatformAdmin"
             v-model="activeDs"
             filterable
             style="width: 416px"
@@ -933,10 +980,17 @@ const columnRules = {
               </div>
             </el-option>
           </el-select>
+          <div v-else-if="columnForm.ds_name" class="bound-datasource-inline">
+            <span>{{ $t('permission.data_source') }}</span>
+            <strong>{{ columnForm.ds_name }}</strong>
+          </div>
           <el-select
             v-model="activeTable"
             filterable
-            style="width: 416px; margin-left: auto"
+            :style="{
+              width: isGlobalPlatformAdmin ? '416px' : '100%',
+              marginLeft: isGlobalPlatformAdmin ? 'auto' : '0',
+            }"
             :disabled="!columnForm.ds_id"
             value-key="id"
             :placeholder="
@@ -1180,6 +1234,32 @@ const columnRules = {
     align-items: center;
     overflow-y: auto;
     margin-top: -16px;
+  }
+
+  .bound-datasource-inline {
+    width: 100%;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 12px;
+    border: 1px solid #dee0e3;
+    border-radius: 6px;
+    background: #f5f6f7;
+    margin-bottom: 12px;
+
+    span {
+      color: #646a73;
+    }
+
+    strong {
+      min-width: 0;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 
   .table-permission-summary {

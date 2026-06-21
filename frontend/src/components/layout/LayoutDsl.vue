@@ -70,17 +70,17 @@ const handleFoldExpand = () => {
 const toProjectList = () => {
   if (userStore.isPlatformWorkspaceDelegate) {
     userStore.exitPlatformWorkspaceDelegate().finally(() => {
-      router.push('/system/tenant')
+      router.push('/system/platform-overview')
     })
     return
   }
-  router.push(userStore.isSystemAdminUser ? '/system/tenant' : '/chat/index')
+  router.push(userStore.isSystemAdminUser ? '/system/platform-overview' : '/chat/index')
 }
 
 const toChatIndex = () => {
   router.push(
     userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
-      ? '/system/tenant'
+      ? '/system/platform-overview'
       : '/chat/index'
   )
 }

@@ -16,25 +16,21 @@ const props = withDefaults(
     num: string
     description?: string
     id?: string
-    projectRole?: string
+    datasourceRole?: string
     authorizedUserCount?: number | string
-    canManageProject?: boolean
-    canMaintainProject?: boolean
-    canBindWorkspace?: boolean
-    tenantName?: string
+    canManageDatasource?: boolean
+    canMaintainDatasource?: boolean
   }>(),
   {
     name: '-',
     type: '-',
     description: '-',
     id: '-',
-    projectRole: '',
+    datasourceRole: '',
     authorizedUserCount: 0,
     typeName: '-',
-    canManageProject: false,
-    canMaintainProject: false,
-    canBindWorkspace: false,
-    tenantName: '',
+    canManageDatasource: false,
+    canMaintainDatasource: false,
   }
 )
 
@@ -45,7 +41,6 @@ const emits = defineEmits([
   'showTable',
   'recommendation',
   'members',
-  'binding',
 ])
 const icon = computed(() => {
   return (dsTypeWithImg.find((ele) => props.type === ele.type) || {}).img
@@ -60,10 +55,6 @@ const handleRecommendation = () => {
 
 const handleMembers = () => {
   emits('members')
-}
-
-const handleBinding = () => {
-  emits('binding')
 }
 
 const handleDel = () => {
@@ -99,10 +90,6 @@ const dataTableDetail = () => {
           $t('datasource.authorized_user_count', { msg: authorizedUserCount })
         }}</span>
       </div>
-      <div v-if="canBindWorkspace" class="detail-row">
-        <span class="label">{{ $t('datasource.bound_workspace') }}</span>
-        <span class="value ellipsis">{{ tenantName || $t('permission.no_project_bound') }}</span>
-      </div>
       <div class="detail-row detail-row-table">
         <el-icon class="table-icon" size="14">
           <icon_form_outlined></icon_form_outlined>
@@ -114,7 +101,7 @@ const dataTableDetail = () => {
 
     <div class="methods" @click.stop>
       <el-popover
-        v-if="canManageProject || canMaintainProject || canBindWorkspace"
+        v-if="canManageDatasource || canMaintainDatasource"
         trigger="click"
         :teleported="true"
         popper-class="popover-card_ds"
@@ -126,31 +113,25 @@ const dataTableDetail = () => {
           </button>
         </template>
         <div class="content">
-          <div v-if="canMaintainProject" class="item" @click.stop="handleEdit">
+          <div v-if="canMaintainDatasource" class="item" @click.stop="handleEdit">
             <el-icon size="16">
               <edit></edit>
             </el-icon>
             {{ $t('datasource.edit') }}
           </div>
-          <div v-if="canMaintainProject" class="item" @click.stop="handleRecommendation">
+          <div v-if="canMaintainDatasource" class="item" @click.stop="handleRecommendation">
             <el-icon size="16">
               <icon_recommended_problem></icon_recommended_problem>
             </el-icon>
             {{ $t('datasource.recommended_problem_configuration') }}
           </div>
-          <div v-if="canBindWorkspace" class="item" @click.stop="handleBinding">
+          <div v-if="canManageDatasource" class="item" @click.stop="handleMembers">
             <el-icon size="16">
               <icon_member_outlined></icon_member_outlined>
             </el-icon>
-            {{ $t('datasource.workspace_binding') }}
+            {{ $t('datasource.datasource_authorization') }}
           </div>
-          <div v-if="canManageProject" class="item" @click.stop="handleMembers">
-            <el-icon size="16">
-              <icon_member_outlined></icon_member_outlined>
-            </el-icon>
-            {{ $t('datasource.project_authorization') }}
-          </div>
-          <div v-if="canMaintainProject" class="item" @click.stop="handleDel">
+          <div v-if="canMaintainDatasource" class="item" @click.stop="handleDel">
             <el-icon size="16">
               <delIcon></delIcon>
             </el-icon>

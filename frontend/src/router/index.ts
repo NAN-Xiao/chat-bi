@@ -28,6 +28,7 @@ import Prompt from '@/views/system/prompt/index.vue'
 import Audit from '@/views/system/audit/index.vue'
 import Parameter from '@/views/system/parameter/index.vue'
 import Permission from '@/views/system/permission/index.vue'
+import PlatformOverview from '@/views/system/platform-overview/PlatformOverview.vue'
 import Tenant from '@/views/system/tenant/Tenant.vue'
 import TenantAccess from '@/views/system/tenant-access/TenantAccess.vue'
 import TenantOverview from '@/views/system/tenant-overview/TenantOverview.vue'
@@ -47,7 +48,7 @@ const t = i18n.global.t
 const resolveSystemHome = () => {
   const userStore = UserStore(store)
   if (userStore.isPlatformWorkspaceDelegate) return '/system/overview'
-  if (userStore.isSystemAdminUser) return '/system/tenant'
+  if (userStore.isSystemAdminUser) return '/system/platform-overview'
   if (userStore.isTenantAdminUser) return '/system/overview'
   return '/chat'
 }
@@ -241,6 +242,18 @@ export const routes = [
     meta: { hidden: true },
     children: [
       {
+        path: 'platform-overview',
+        name: 'platform-overview',
+        component: PlatformOverview,
+        meta: {
+          title: t('platform_overview.title'),
+          iconActive: 'dashboard',
+          iconDeActive: 'noDashboard',
+          platformOnly: true,
+          platformOperation: true,
+        },
+      },
+      {
         path: 'user',
         name: 'user',
         component: User,
@@ -301,8 +314,8 @@ export const routes = [
         },
       },
       {
-        path: 'project',
-        name: 'project',
+        path: 'datasource',
+        name: 'datasource',
         component: Datasource,
         meta: {
           title: t('ds.title'),
@@ -311,6 +324,11 @@ export const routes = [
           platformOnly: true,
           platformOperation: true,
         },
+      },
+      {
+        path: 'project',
+        redirect: '/system/datasource',
+        hidden: true,
       },
       {
         path: 'model',
@@ -345,7 +363,12 @@ export const routes = [
             path: 'permission',
             name: 'permission',
             component: Permission,
-            meta: { title: t('project.permission_configuration'), tenantBusiness: true },
+            meta: {
+              title: t('project.permission_configuration'),
+              tenantBusiness: true,
+              tenantAdminOnly: true,
+              platformOperation: true,
+            },
           },
           {
             path: 'professional',
@@ -395,6 +418,7 @@ export const routes = [
           iconActive: 'set',
           iconDeActive: 'noSet',
           tenantBusiness: true,
+          platformOperation: true,
         },
       },
       {
@@ -406,6 +430,7 @@ export const routes = [
           iconActive: 'set',
           iconDeActive: 'noSet',
           tenantBusiness: true,
+          platformOperation: true,
         },
       },
       {
@@ -441,6 +466,8 @@ export const routes = [
           iconActive: 'set',
           iconDeActive: 'noSet',
           tenantAdminOnly: true,
+          tenantBusiness: true,
+          platformOperation: true,
         },
       },
     ],

@@ -801,8 +801,8 @@ const systemRoleOptions = computed(() => [
     : []),
 ])
 const projectRoleOptions = computed(() => [
-  { value: 'viewer', label: t('datasource.project_role_viewer') },
-  { value: 'editor', label: t('datasource.project_role_editor') },
+  { value: 'viewer', label: t('datasource.datasource_role_viewer') },
+  { value: 'editor', label: t('datasource.datasource_role_editor') },
 ])
 const state = reactive<any>({
   tableData: [],

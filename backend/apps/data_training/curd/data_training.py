@@ -5,7 +5,7 @@ from typing import List, Optional
 from xml.dom.minidom import parseString
 
 import dicttoxml
-from sqlalchemy import and_, select, func, delete, update, or_
+from sqlalchemy import and_, select, func, delete, update, or_, literal
 from sqlalchemy import text
 
 from apps.ai_model.embedding import EmbeddingModelCache
@@ -56,9 +56,13 @@ def _semantic_scope_condition(tenant_id: int, scope: SemanticRecordScopeEnum | s
     normalized_scope = normalize_semantic_scope(scope) if scope else None
     if normalized_scope == SemanticRecordScopeEnum.PLATFORM:
         return _platform_scope_condition()
-    if normalized_scope == SemanticRecordScopeEnum.TENANT:
-        return _tenant_scope_condition(tenant_id)
-    return or_(_tenant_scope_condition(tenant_id), _platform_scope_condition())
+    return _tenant_scope_condition(tenant_id)
+
+
+def _runtime_scope_condition(tenant_id: int, include_platform: bool = True):
+    if include_platform:
+        return or_(_tenant_scope_condition(tenant_id), _platform_scope_condition())
+    return _tenant_scope_condition(tenant_id)
 
 
 def build_data_training_query(session: SessionDep, name: Optional[str] = None,
@@ -76,10 +80,7 @@ def build_data_training_query(session: SessionDep, name: Optional[str] = None,
     parent_ids_subquery = parent_ids_subquery.where(_semantic_scope_condition(resolved_tenant_id, scope))
     if datasource_ids is not None:
         parent_ids_subquery = parent_ids_subquery.where(
-            or_(
-                and_(_tenant_scope_condition(resolved_tenant_id), DataTraining.datasource.in_(list(datasource_ids))),
-                _platform_scope_condition(),
-            )
+            and_(_tenant_scope_condition(resolved_tenant_id), DataTraining.datasource.in_(list(datasource_ids)))
         )
 
     # 计算总数
@@ -650,11 +651,42 @@ and (
 ORDER BY similarity DESC
 LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
 """
+embedding_sql_tenant_only = f"""
+SELECT id, datasource, question, similarity
+FROM
+(SELECT id, tenant_id, scope, datasource, advanced_application, question, enabled,
+( 1 - (embedding <=> :embedding_array) ) AS similarity
+FROM data_training AS child
+) TEMP
+WHERE similarity > {settings.EMBEDDING_DATA_TRAINING_SIMILARITY}
+and enabled = true
+and COALESCE(scope, 'TENANT') = 'TENANT'
+and tenant_id = :tenant_id
+and datasource = :datasource
+ORDER BY similarity DESC
+LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
+"""
+embedding_sql_in_advanced_application_tenant_only = f"""
+SELECT id, advanced_application, question, similarity
+FROM
+(SELECT id, tenant_id, scope, datasource, advanced_application, question, enabled,
+( 1 - (embedding <=> :embedding_array) ) AS similarity
+FROM data_training AS child
+) TEMP
+WHERE similarity > {settings.EMBEDDING_DATA_TRAINING_SIMILARITY}
+and enabled = true
+and COALESCE(scope, 'TENANT') = 'TENANT'
+and tenant_id = :tenant_id
+and advanced_application = :advanced_application
+ORDER BY similarity DESC
+LIMIT {settings.EMBEDDING_DATA_TRAINING_TOP_COUNT}
+"""
 
 
 def select_training_by_question(session: SessionDep, question: str, datasource: Optional[int] = None,
                                 advanced_application_id: Optional[int] = None,
-                                tenant_id: Optional[int] = None):
+                                tenant_id: Optional[int] = None,
+                                include_platform: bool = True):
     if question.strip() == "":
         return []
 
@@ -674,24 +706,33 @@ def select_training_by_question(session: SessionDep, question: str, datasource: 
         )
         .where(
             and_(
-                _semantic_scope_condition(resolved_tenant_id),
-                or_(text(":sentence ILIKE '%' || question || '%'"), text("question ILIKE '%' || :sentence || '%'")),
+                _runtime_scope_condition(resolved_tenant_id, include_platform),
+                or_(
+                    literal(question).ilike("%" + DataTraining.question + "%"),
+                    DataTraining.question.ilike(f"%{question}%"),
+                ),
                 DataTraining.enabled == True,
             )
         )
     )
     if advanced_application_id is not None:
-        stmt = stmt.where(or_(
-            and_(_tenant_scope_condition(resolved_tenant_id), DataTraining.advanced_application == advanced_application_id),
-            and_(_platform_scope_condition(), DataTraining.datasource.is_(None), DataTraining.advanced_application.is_(None)),
-        ))
+        scope_conditions = [
+            and_(_tenant_scope_condition(resolved_tenant_id), DataTraining.advanced_application == advanced_application_id)
+        ]
+        if include_platform:
+            scope_conditions.append(
+                and_(_platform_scope_condition(), DataTraining.datasource.is_(None), DataTraining.advanced_application.is_(None))
+            )
+        stmt = stmt.where(or_(*scope_conditions))
     else:
-        stmt = stmt.where(or_(
-            and_(_tenant_scope_condition(resolved_tenant_id), DataTraining.datasource == datasource),
-            and_(_platform_scope_condition(), DataTraining.datasource.is_(None), DataTraining.advanced_application.is_(None)),
-        ))
+        scope_conditions = [and_(_tenant_scope_condition(resolved_tenant_id), DataTraining.datasource == datasource)]
+        if include_platform:
+            scope_conditions.append(
+                and_(_platform_scope_condition(), DataTraining.datasource.is_(None), DataTraining.advanced_application.is_(None))
+            )
+        stmt = stmt.where(or_(*scope_conditions))
 
-    results = session.execute(stmt, {'sentence': question}).fetchall()
+    results = session.execute(stmt).fetchall()
 
     for row in results:
         _list.append(DataTraining(id=row.id, question=row.question))
@@ -704,12 +745,14 @@ def select_training_by_question(session: SessionDep, question: str, datasource: 
                 embedding = model.embed_query(question)
 
                 if advanced_application_id is not None:
-                    results = session.execute(text(embedding_sql_in_advanced_application),
+                    embedding_query = embedding_sql_in_advanced_application if include_platform else embedding_sql_in_advanced_application_tenant_only
+                    results = session.execute(text(embedding_query),
                                               {'embedding_array': str(embedding),
                                                'advanced_application': advanced_application_id,
                                                'tenant_id': resolved_tenant_id})
                 else:
-                    results = session.execute(text(embedding_sql),
+                    embedding_query = embedding_sql if include_platform else embedding_sql_tenant_only
+                    results = session.execute(text(embedding_query),
                                               {
                                                   'embedding_array': str(embedding),
                                                   'datasource': datasource,
@@ -734,8 +777,9 @@ def select_training_by_question(session: SessionDep, question: str, datasource: 
     if len(_ids) == 0:
         return []
 
+    final_scope_condition = _runtime_scope_condition(resolved_tenant_id, include_platform)
     t_list = session.query(DataTraining.id, DataTraining.question, DataTraining.description).filter(
-        and_(_semantic_scope_condition(resolved_tenant_id), DataTraining.id.in_(_ids))).all()
+        and_(final_scope_condition, DataTraining.id.in_(_ids))).all()
 
     for row in t_list:
         _map[row.id] = {'question': row.question, 'suggestion-answer': row.description}
@@ -779,10 +823,11 @@ def to_xml_string(_dict: list[dict] | dict, root: str = 'sql-examples') -> str:
 
 def get_training_template(session: SessionDep, question: str, datasource: Optional[int] = None,
                           advanced_application_id: Optional[int] = None,
-                          tenant_id: Optional[int] = None) -> tuple[str, list[dict]]:
+                          tenant_id: Optional[int] = None,
+                          include_platform: bool = True) -> tuple[str, list[dict]]:
     if not datasource and not advanced_application_id:
         return '', []
-    _results = select_training_by_question(session, question, datasource, advanced_application_id, tenant_id)
+    _results = select_training_by_question(session, question, datasource, advanced_application_id, tenant_id, include_platform)
     if _results and len(_results) > 0:
         data_training = to_xml_string(_results)
         template = get_base_data_training_template().format(data_training=data_training)

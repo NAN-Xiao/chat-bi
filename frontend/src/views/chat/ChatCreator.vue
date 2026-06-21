@@ -162,7 +162,7 @@ onBeforeUnmount(() => {
 
 const handleAddDatasource = () => {
   hideDs()
-  router.push('/system/project')
+  router.push('/system/datasource')
 }
 
 defineExpose({

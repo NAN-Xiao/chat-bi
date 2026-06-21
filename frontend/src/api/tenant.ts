@@ -21,6 +21,8 @@ export interface TenantInfo {
   owner_account?: string
   owner_name?: string
   owner_email?: string
+  bound_datasource_id?: number | string | null
+  bound_datasource_name?: string | null
   bound_project_id?: number | string | null
   bound_project_name?: string | null
   admin_count?: number
@@ -213,6 +215,89 @@ export interface TenantOverviewInfo {
   member_last_activities?: TenantOverviewMemberActivityInfo[]
 }
 
+export interface PlatformOverviewSummaryInfo {
+  tenant_total: number
+  active_tenant_count: number
+  disabled_tenant_count: number
+  user_total: number
+  active_user_count: number
+  platform_admin_count: number
+  new_tenant_count: number
+  new_user_count: number
+  paying_tenant_count: number
+  trial_tenant_count: number
+  past_due_tenant_count: number
+  suspended_tenant_count: number
+  cancelled_tenant_count: number
+  contract_tenant_count: number
+  active_usage_tenant_count: number
+  revenue_data_ready: boolean
+  revenue_amount?: number | null
+  datasource_total: number
+  bound_datasource_count: number
+  dashboard_total: number
+  pending_workspace_application_count: number
+  pending_data_request_count: number
+  request_count: number
+  total_tokens: number
+  failure_count: number
+}
+
+export interface PlatformOverviewTrendPointInfo {
+  date: string
+  tenant_created_count: number
+  user_created_count: number
+  active_tenant_count: number
+  request_count: number
+  failure_count: number
+  total_tokens: number
+}
+
+export interface PlatformOverviewDistributionItemInfo {
+  key: string
+  label?: string | null
+  count: number
+}
+
+export interface PlatformOverviewTenantUsageInfo {
+  tenant_id: number | string
+  tenant_name?: string | null
+  request_count: number
+  total_tokens: number
+  failure_count: number
+}
+
+export interface PlatformOverviewModelUsageInfo {
+  model_id?: number | string | null
+  model_name: string
+  request_count: number
+  total_tokens: number
+}
+
+export interface PlatformOverviewRecentTenantInfo {
+  id: number | string
+  code: string
+  name: string
+  plan: string
+  status: number
+  subscription_status: string
+  create_time: number
+  bound_datasource_name?: string | null
+  owner_account?: string | null
+}
+
+export interface PlatformOverviewInfo {
+  days: number
+  summary: PlatformOverviewSummaryInfo
+  tenant_trend: PlatformOverviewTrendPointInfo[]
+  subscription_distribution: PlatformOverviewDistributionItemInfo[]
+  plan_distribution: PlatformOverviewDistributionItemInfo[]
+  datasource_distribution: PlatformOverviewDistributionItemInfo[]
+  top_tenant_usage: PlatformOverviewTenantUsageInfo[]
+  model_usage: PlatformOverviewModelUsageInfo[]
+  recent_tenants: PlatformOverviewRecentTenantInfo[]
+}
+
 export interface TenantUsageQuery {
   tenant_id?: number | string
   start_date?: string
@@ -335,6 +420,7 @@ export const tenantApi = {
     billing_contact?: string
     billing_email?: string
     subscription_note?: string
+    datasource_id?: number | string | null
   }) => request.post<TenantInfo>('/system/tenant', data),
   edit: (
     id: number | string,
@@ -349,15 +435,18 @@ export const tenantApi = {
       billing_contact?: string
       billing_email?: string
       subscription_note?: string
+      datasource_id?: number | string | null
     }
   ) => request.put<TenantInfo>(`/system/tenant/${id}`, data),
   status: (id: number | string, status: number) =>
     request.patch<TenantInfo>(`/system/tenant/${id}/status`, { status }),
-  updateProjectBinding: (
+  updateDatasourceBinding: (
     id: number | string,
     data: { datasource_id?: number | string | null }
-  ) => request.put<TenantInfo>(`/system/tenant/${id}/project-binding`, data),
+  ) => request.put<TenantInfo>(`/system/tenant/${id}/datasource-binding`, data),
   delete: (id: number | string) => request.delete<TenantInfo>(`/system/tenant/${id}`),
+  platformOverview: (days = 7) =>
+    request.get<PlatformOverviewInfo>(`/system/tenant/platform-overview?days=${days}`),
   overview: (days = 7) => request.get<TenantOverviewInfo>(`/system/tenant/overview?days=${days}`),
   usage: (params?: TenantUsageQuery) =>
     request.get<TenantUsageDailyInfo[]>(`/system/tenant/usage${buildTenantUsageQuery(params)}`),

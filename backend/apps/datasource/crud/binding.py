@@ -73,7 +73,7 @@ def bind_tenant_to_datasource(
 ) -> CoreDatasource | None:
     target_tenant_id = int(tenant_id)
     if target_tenant_id == DEFAULT_TENANT_ID:
-        raise HTTPException(status_code=400, detail="默认工作空间不能绑定项目")
+        raise HTTPException(status_code=400, detail="默认工作空间不能绑定数据源")
     tenant = session.get(TenantModel, target_tenant_id)
     if tenant is None or int(getattr(tenant, "status", 1)) < 0:
         raise HTTPException(status_code=404, detail="工作空间不存在")
@@ -89,5 +89,5 @@ def bind_tenant_to_datasource(
 
     datasource = session.get(CoreDatasource, int(datasource_id))
     if datasource is None:
-        raise HTTPException(status_code=404, detail="项目不存在")
+        raise HTTPException(status_code=404, detail="数据源不存在")
     return bind_datasource_to_tenant(session, user, datasource, target_tenant_id)

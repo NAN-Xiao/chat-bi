@@ -15,7 +15,8 @@ const userStore = useUserStore()
 const { wsCache } = useCache()
 const whiteList = ['/login', '/admin-login']
 const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/401']
-const platformAdminHome = '/system/tenant'
+const platformAdminHome = '/system/platform-overview'
+const platformTenantManagementPath = '/system/tenant'
 const tenantAdminSystemHome = '/system/overview'
 const tenantChatBIEntryPrefixes = [
   '/chat',
@@ -57,7 +58,7 @@ export const watchRouter = (router: Router) => {
     const shouldEnterDelegate = applyPlatformWorkspaceDelegateRouteQuery(to.query || {})
     const shouldExitDelegate =
       !shouldEnterDelegate &&
-      to.path === platformAdminHome &&
+      (to.path === platformAdminHome || to.path === platformTenantManagementPath) &&
       isPlatformWorkspaceDelegateSession() &&
       to.query?.platform_workspace_delegate !== '1'
     if (to.path.startsWith('/login') && userStore.getUid) {
@@ -135,17 +136,20 @@ const accessCrossPermission = (to: any) => {
   if (!to?.path) return false
   const platformDelegate = userStore.isPlatformWorkspaceDelegate
   const platformOnly = to.matched?.some((record: any) => record?.meta?.platformOnly)
+  const platformOperation = to.matched?.some((record: any) => record?.meta?.platformOperation)
   const tenantAdminOnly = to.matched?.some((record: any) => record?.meta?.tenantAdminOnly)
   const tenantBusiness = to.matched?.some((record: any) => record?.meta?.tenantBusiness)
   const tenantSystemRoute = to.path.startsWith('/system') && (tenantAdminOnly || tenantBusiness)
+  const platformAdminOperation =
+    userStore.isSystemAdminUser && !platformDelegate && platformOperation
   return (
-    (userStore.isSystemAdminUser && !platformDelegate && isTenantChatBIRoute(to.path)) ||
+    (userStore.isSystemAdminUser && !platformDelegate && isTenantChatBIRoute(to.path) && !platformAdminOperation) ||
     (platformDelegate && !to.path.startsWith('/system') && isTenantChatBIRoute(to.path)) ||
     (platformDelegate && platformOnly) ||
     (!userStore.isSystemAdminUser && !userStore.hasActiveWorkspace && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||
-    (tenantAdminOnly && !userStore.isTenantAdminUser) ||
-    (tenantBusiness && !userStore.hasActiveWorkspace) ||
+    (tenantAdminOnly && !userStore.isTenantAdminUser && !platformAdminOperation) ||
+    (tenantBusiness && !userStore.hasActiveWorkspace && !platformAdminOperation) ||
     (to.path.startsWith('/set') && !userStore.isSystemManagerUser) ||
     (platformOnly && !userStore.isSystemAdminUser)
   )

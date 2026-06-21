@@ -11,7 +11,6 @@ from apps.data_training.models.data_training_model import DataTraining
 from apps.datasource.crud.binding import bind_tenant_to_datasource
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
 from apps.datasource.crud.permission import (
-    list_user_datasource_ids,
     list_user_datasource_roles,
     update_user_datasources,
 )
@@ -56,7 +55,7 @@ from apps.system.crud.tenant import (
     get_tenant_security_policy,
     user_belongs_to_tenant,
 )
-from apps.system.crud.tenant_usage import list_tenant_usage_by_user, list_tenant_usage_daily
+from apps.system.crud.tenant_usage import _chat_log_total_tokens_expr, list_tenant_usage_by_user, list_tenant_usage_daily
 from apps.system.crud.user import (
     SYSTEM_ROLE_VIEWER,
     check_email_format,
@@ -65,7 +64,9 @@ from apps.system.crud.user import (
     is_platform_workspace_delegate,
     is_super_admin,
 )
-from apps.system.models.system_model import AssistantModel
+from apps.system.models.system_model import AiModelDetail, AssistantModel
+from apps.system.models.tenant_usage import TenantUsageDailyModel
+from apps.chat.models.chat_model import ChatLog
 from apps.system.models.tenant import (
     TenantApplicationModel,
     TenantDataRequestModel,
@@ -95,6 +96,7 @@ from apps.system.schemas.tenant_schema import (
     TenantMemberDTO,
     TenantMemberEditor,
     TenantCreator,
+    TenantDatasourceBindingEditor,
     TenantDTO,
     TenantEditor,
     TenantOverviewAssetItemDTO,
@@ -105,8 +107,14 @@ from apps.system.schemas.tenant_schema import (
     TenantOverviewSummaryDTO,
     TenantOverviewTodoDTO,
     TenantOverviewTrendPointDTO,
+    PlatformOverviewDTO,
+    PlatformOverviewDistributionItemDTO,
+    PlatformOverviewModelUsageDTO,
+    PlatformOverviewRecentTenantDTO,
+    PlatformOverviewSummaryDTO,
+    PlatformOverviewTenantUsageDTO,
+    PlatformOverviewTrendPointDTO,
     TenantOwnerTransfer,
-    TenantProjectBindingEditor,
     TenantSecurityPolicyDTO,
     TenantSecurityPolicyEditor,
     TenantSearchDTO,
@@ -131,6 +139,10 @@ def _audit_user_name(current_user: CurrentUser) -> str | None:
         or getattr(current_user, "username", None)
         or getattr(current_user, "account", None)
     )
+
+
+def _model_fields_set(model) -> set[str]:
+    return set(getattr(model, "model_fields_set", None) or getattr(model, "__fields_set__", set()) or set())
 
 
 def _audit_tenant_id(current_user: CurrentUser, tenant_id: int | None = None) -> int:
@@ -295,7 +307,7 @@ def _tenant_owner_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, d
     return result
 
 
-def _tenant_bound_project_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
+def _tenant_bound_datasource_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
     ids = [int(tenant_id) for tenant_id in tenant_ids if int(tenant_id) != DEFAULT_TENANT_ID]
     if not ids or not _table_exists(session, CoreDatasource.__tablename__):
         return {}
@@ -309,11 +321,57 @@ def _tenant_bound_project_map(session: SessionDep, tenant_ids: list[int]) -> dic
         result.setdefault(
             int(tenant_id),
             {
+                "bound_datasource_id": int(datasource_id),
+                "bound_datasource_name": datasource_name,
                 "bound_project_id": int(datasource_id),
                 "bound_project_name": datasource_name,
             },
         )
     return result
+
+
+def _tenant_bound_datasource_id(session: SessionDep, tenant_id: int) -> int | None:
+    if int(tenant_id) == DEFAULT_TENANT_ID or not _table_exists(session, CoreDatasource.__tablename__):
+        return None
+    datasource_id = session.exec(
+        select(CoreDatasource.id)
+        .where(CoreDatasource.tenant_id == int(tenant_id))
+        .order_by(CoreDatasource.id)
+    ).first()
+    return int(datasource_id) if datasource_id is not None else None
+
+
+def _scope_member_datasource_payload_to_bound_datasource(
+    session: SessionDep,
+    *,
+    tenant_id: int,
+    datasource_ids: list[int] | None,
+    datasource_role_map: dict[int, str] | None = None,
+) -> tuple[list[int] | None, dict[int, str] | None]:
+    if datasource_ids is None:
+        return None, datasource_role_map
+
+    bound_datasource_id = _tenant_bound_datasource_id(session, int(tenant_id))
+    if bound_datasource_id is None:
+        return [], {}
+
+    requested_ids: set[int] = set()
+    for datasource_id in datasource_ids or []:
+        try:
+            requested_ids.add(int(datasource_id))
+        except (TypeError, ValueError):
+            continue
+    if bound_datasource_id not in requested_ids:
+        return [], {}
+
+    role_map = datasource_role_map or {}
+    return [bound_datasource_id], {
+        bound_datasource_id: (
+            role_map.get(bound_datasource_id)
+            or role_map.get(str(bound_datasource_id))
+            or "viewer"
+        )
+    }
 
 
 def _tenant_member_stats_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, dict]:
@@ -357,13 +415,13 @@ def _tenant_dto(
     *,
     role: str = TENANT_ROLE_OWNER,
     owner: dict | None = None,
-    project: dict | None = None,
+    datasource: dict | None = None,
     member_stats: dict | None = None,
     include_operations: bool | None = None,
     join_time: int | None = None,
 ) -> TenantDTO:
     owner = owner or {}
-    project = project or {}
+    datasource = datasource or {}
     member_stats = member_stats or {}
     normalized_role = normalize_tenant_role(role)
     show_operations = normalized_role in TENANT_ADMIN_ROLES if include_operations is None else include_operations
@@ -388,8 +446,10 @@ def _tenant_dto(
         owner_account=owner.get("owner_account") if show_operations else None,
         owner_name=owner.get("owner_name") if show_operations else None,
         owner_email=owner.get("owner_email") if show_operations else None,
-        bound_project_id=project.get("bound_project_id") if show_operations else None,
-        bound_project_name=project.get("bound_project_name") if show_operations else None,
+        bound_datasource_id=datasource.get("bound_datasource_id") if show_operations else None,
+        bound_datasource_name=datasource.get("bound_datasource_name") if show_operations else None,
+        bound_project_id=datasource.get("bound_project_id") if show_operations else None,
+        bound_project_name=datasource.get("bound_project_name") if show_operations else None,
         admin_count=int(member_stats.get("admin_count") or 0) if show_operations else 0,
         member_count=int(member_stats.get("member_count") or 0) if show_operations else 0,
         join_time=int(join_time or 0),
@@ -399,19 +459,33 @@ def _tenant_dto(
 def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int | None]]) -> list[TenantDTO]:
     tenant_ids = [int(tenant.id) for tenant, _role, _join_time in rows]
     owner_map = _tenant_owner_map(session, tenant_ids)
-    project_map = _tenant_bound_project_map(session, tenant_ids)
+    datasource_map = _tenant_bound_datasource_map(session, tenant_ids)
     member_stats_map = _tenant_member_stats_map(session, tenant_ids)
     return [
         _tenant_dto(
             tenant,
             role=role,
             owner=owner_map.get(int(tenant.id)),
-            project=project_map.get(int(tenant.id)),
+            datasource=datasource_map.get(int(tenant.id)),
             member_stats=member_stats_map.get(int(tenant.id)),
             join_time=join_time,
         )
         for tenant, role, join_time in rows
     ]
+
+
+def _tenant_admin_dto(session: SessionDep, tenant: TenantModel) -> TenantDTO:
+    tenant_id = int(tenant.id)
+    owner = _tenant_owner_map(session, [tenant_id]).get(tenant_id)
+    datasource = _tenant_bound_datasource_map(session, [tenant_id]).get(tenant_id)
+    member_stats = _tenant_member_stats_map(session, [tenant_id]).get(tenant_id)
+    return _tenant_dto(
+        tenant,
+        owner=owner,
+        datasource=datasource,
+        member_stats=member_stats,
+        include_operations=True,
+    )
 
 
 def _usage_dto(row) -> TenantUsageDailyDTO:
@@ -440,6 +514,36 @@ def _timestamp_to_millis(value) -> int:
     try:
         return int(value)
     except (TypeError, ValueError):
+        return 0
+
+
+def _millis_to_datetime(value: int | None) -> datetime | None:
+    if value in (None, ""):
+        return None
+    try:
+        return datetime.fromtimestamp(int(value) / 1000)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _platform_date_key_from_millis(value: int | None) -> str | None:
+    parsed = _millis_to_datetime(value)
+    return parsed.strftime("%Y-%m-%d") if parsed else None
+
+
+def _platform_date_key_from_usage(value: str | None) -> str | None:
+    raw = (value or "").strip()
+    return raw[:10] if raw else None
+
+
+def _platform_start_millis(value: datetime) -> int:
+    return int(value.timestamp() * 1000)
+
+
+def _platform_count(session: SessionDep, statement) -> int:
+    try:
+        return int(session.exec(statement).one() or 0)
+    except Exception:
         return 0
 
 
@@ -606,6 +710,14 @@ def _data_request_dto(row: TenantDataRequestModel) -> TenantDataRequestDTO:
 
 
 def _tenant_member_dto(session: SessionDep, current_user: CurrentUser, user: UserModel, membership: TenantUserModel) -> TenantMemberDTO:
+    bound_datasource_id = _tenant_bound_datasource_id(session, int(membership.tenant_id))
+    datasource_roles = list_user_datasource_roles(session, int(user.id), current_user)
+    datasource_ids = [bound_datasource_id] if bound_datasource_id is not None else []
+    datasource_role_map = (
+        {bound_datasource_id: datasource_roles.get(bound_datasource_id) or "viewer"}
+        if bound_datasource_id is not None
+        else {}
+    )
     return TenantMemberDTO(
         user_id=int(user.id),
         account=user.account,
@@ -614,8 +726,8 @@ def _tenant_member_dto(session: SessionDep, current_user: CurrentUser, user: Use
         tenant_role=normalize_tenant_role(membership.role),
         is_primary=bool(membership.is_primary),
         create_time=int(membership.create_time or 0),
-        project_ids=list_user_datasource_ids(session, int(user.id), current_user),
-        project_role_map=list_user_datasource_roles(session, int(user.id), current_user),
+        project_ids=datasource_ids,
+        project_role_map=datasource_role_map,
     )
 
 
@@ -645,8 +757,8 @@ def _assign_existing_user_to_current_tenant(
     account: str,
     tenant_role: str,
     member_remark: str | None = None,
-    project_ids: list[int] | None = None,
-    project_role_map: dict[int, str] | None = None,
+    datasource_ids: list[int] | None = None,
+    datasource_role_map: dict[int, str] | None = None,
 ) -> tuple[UserModel, TenantUserModel]:
     normalized_account = (account or "").strip()
     user = session.exec(select(UserModel).where(UserModel.account == normalized_account)).first()
@@ -666,13 +778,19 @@ def _assign_existing_user_to_current_tenant(
     )
     membership.member_remark = (member_remark or "").strip() or None
     session.add(membership)
-    if project_ids is not None:
+    if datasource_ids is not None:
+        datasource_ids, datasource_role_map = _scope_member_datasource_payload_to_bound_datasource(
+            session,
+            tenant_id=int(tenant_id),
+            datasource_ids=datasource_ids,
+            datasource_role_map=datasource_role_map,
+        )
         update_user_datasources(
             session,
             current_user,
             int(user.id),
-            project_ids,
-            project_role_map,
+            datasource_ids or [],
+            datasource_role_map,
         )
     return user, membership
 
@@ -717,12 +835,17 @@ def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserMode
 
 
 @router.get("/current", response_model=TenantDTO)
-async def current_tenant(current_tenant: CurrentTenant):
+async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
+    datasource = _tenant_bound_datasource_map(session, [int(current_tenant.id)]).get(int(current_tenant.id))
     return TenantDTO(
         id=current_tenant.id,
         code=current_tenant.code,
         name=current_tenant.name,
         role=current_tenant.role,
+        bound_datasource_id=datasource.get("bound_datasource_id") if datasource else None,
+        bound_datasource_name=datasource.get("bound_datasource_name") if datasource else None,
+        bound_project_id=datasource.get("bound_project_id") if datasource else None,
+        bound_project_name=datasource.get("bound_project_name") if datasource else None,
     )
 
 
@@ -756,6 +879,377 @@ async def search_tenants(
         )
         for tenant in tenants
     ]
+
+
+@router.get("/platform-overview", response_model=PlatformOverviewDTO)
+async def platform_overview(
+    session: SessionDep,
+    current_user: CurrentUser,
+    days: int = Query(7, ge=7, le=90),
+):
+    _require_platform_admin(current_user)
+    if is_platform_workspace_delegate(current_user):
+        raise HTTPException(status_code=403, detail="Platform overview is only available in platform context")
+
+    now = datetime.now()
+    start_date = now.date() - timedelta(days=days - 1)
+    start_datetime = datetime.combine(start_date, datetime.min.time())
+    start_millis = _platform_start_millis(start_datetime)
+    date_keys = [(start_date + timedelta(days=index)).strftime("%Y-%m-%d") for index in range(days)]
+    tenant_filters = [
+        TenantModel.id != DEFAULT_TENANT_ID,
+        TenantModel.status >= 0,
+    ]
+
+    tenant_total = _platform_count(
+        session,
+        select(func.count()).select_from(TenantModel).where(*tenant_filters),
+    )
+    active_tenant_count = _platform_count(
+        session,
+        select(func.count()).select_from(TenantModel).where(*tenant_filters, TenantModel.status == 1),
+    )
+    disabled_tenant_count = _platform_count(
+        session,
+        select(func.count()).select_from(TenantModel).where(*tenant_filters, TenantModel.status == 0),
+    )
+    user_total = _platform_count(session, select(func.count()).select_from(UserModel))
+    active_user_count = _platform_count(
+        session,
+        select(func.count()).select_from(UserModel).where(UserModel.status == 1),
+    )
+    new_user_count = _platform_count(
+        session,
+        select(func.count()).select_from(UserModel).where(UserModel.create_time >= start_millis),
+    )
+    platform_admin_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(UserModel)
+        .where(UserModel.system_role.in_(("system_admin", "collab_admin"))),
+    )
+    new_tenant_count = _platform_count(
+        session,
+        select(func.count()).select_from(TenantModel).where(*tenant_filters, TenantModel.create_time >= start_millis),
+    )
+    paying_tenant_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(TenantModel)
+        .where(
+            *tenant_filters,
+            TenantModel.subscription_status == "active",
+            or_(
+                TenantModel.plan != "default",
+                TenantModel.billing_mode == "contract",
+                TenantModel.contract_no.is_not(None),
+            ),
+        ),
+    )
+    trial_tenant_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(TenantModel)
+        .where(*tenant_filters, TenantModel.subscription_status == "trialing"),
+    )
+    past_due_tenant_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(TenantModel)
+        .where(*tenant_filters, TenantModel.subscription_status == "past_due"),
+    )
+    suspended_tenant_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(TenantModel)
+        .where(*tenant_filters, TenantModel.subscription_status == "suspended"),
+    )
+    cancelled_tenant_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(TenantModel)
+        .where(*tenant_filters, TenantModel.subscription_status == "cancelled"),
+    )
+    contract_tenant_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(TenantModel)
+        .where(
+            *tenant_filters,
+            or_(
+                TenantModel.billing_mode == "contract",
+                TenantModel.contract_no.is_not(None),
+            ),
+        ),
+    )
+    datasource_total = _platform_count(session, select(func.count()).select_from(CoreDatasource))
+    bound_tenant_count = _platform_count(
+        session,
+        select(func.count(func.distinct(CoreDatasource.tenant_id)))
+        .select_from(CoreDatasource)
+        .where(CoreDatasource.tenant_id != DEFAULT_TENANT_ID),
+    )
+    dashboard_total = 0
+    if _table_exists(session, CoreDashboard.__tablename__):
+        dashboard_total = _platform_count(
+            session,
+            select(func.count())
+            .select_from(CoreDashboard)
+            .where(
+                CoreDashboard.tenant_id != DEFAULT_TENANT_ID,
+                CoreDashboard.node_type == "leaf",
+                or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
+            ),
+        )
+
+    pending_workspace_application_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(TenantApplicationModel)
+        .where(
+            TenantApplicationModel.application_type == TENANT_APPLICATION_TYPE_CREATE,
+            TenantApplicationModel.status == "pending",
+        ),
+    )
+    pending_data_request_count = _platform_count(
+        session,
+        select(func.count())
+        .select_from(TenantDataRequestModel)
+        .where(TenantDataRequestModel.status == "pending"),
+    )
+
+    usage_rows = []
+    if _table_exists(session, TenantUsageDailyModel.__tablename__):
+        usage_rows = session.exec(
+            select(
+                TenantUsageDailyModel.tenant_id,
+                TenantUsageDailyModel.usage_date,
+                func.coalesce(func.sum(TenantUsageDailyModel.request_count), 0).label("request_count"),
+                func.coalesce(func.sum(TenantUsageDailyModel.failure_count), 0).label("failure_count"),
+                func.coalesce(func.sum(TenantUsageDailyModel.total_tokens), 0).label("total_tokens"),
+            )
+            .where(
+                TenantUsageDailyModel.tenant_id != DEFAULT_TENANT_ID,
+                TenantUsageDailyModel.usage_date >= start_date.isoformat(),
+                TenantUsageDailyModel.usage_date <= now.date().isoformat(),
+            )
+            .group_by(TenantUsageDailyModel.tenant_id, TenantUsageDailyModel.usage_date)
+        ).all()
+
+    trend_map: dict[str, dict[str, int]] = {
+        key: {
+            "tenant_created_count": 0,
+            "user_created_count": 0,
+            "active_tenant_count": 0,
+            "request_count": 0,
+            "failure_count": 0,
+            "total_tokens": 0,
+        }
+        for key in date_keys
+    }
+    tenant_usage_map: dict[int, dict[str, int]] = {}
+    active_tenant_day_map: dict[str, set[int]] = {key: set() for key in date_keys}
+    for tenant_id, usage_date, request_count, failure_count, total_tokens in usage_rows:
+        day_key = _platform_date_key_from_usage(usage_date)
+        if day_key in trend_map:
+            trend_map[day_key]["request_count"] += int(request_count or 0)
+            trend_map[day_key]["failure_count"] += int(failure_count or 0)
+            trend_map[day_key]["total_tokens"] += int(total_tokens or 0)
+            if tenant_id is not None and int(request_count or 0) > 0:
+                active_tenant_day_map[day_key].add(int(tenant_id))
+        if tenant_id is not None:
+            bucket = tenant_usage_map.setdefault(
+                int(tenant_id),
+                {"request_count": 0, "failure_count": 0, "total_tokens": 0},
+            )
+            bucket["request_count"] += int(request_count or 0)
+            bucket["failure_count"] += int(failure_count or 0)
+            bucket["total_tokens"] += int(total_tokens or 0)
+
+    created_tenant_rows = session.exec(
+        select(TenantModel.create_time).where(
+            *tenant_filters,
+            TenantModel.create_time >= start_millis,
+        )
+    ).all()
+    for create_time in created_tenant_rows:
+        day_key = _platform_date_key_from_millis(create_time)
+        if day_key in trend_map:
+            trend_map[day_key]["tenant_created_count"] += 1
+
+    created_user_rows = session.exec(
+        select(UserModel.create_time).where(UserModel.create_time >= start_millis)
+    ).all()
+    for create_time in created_user_rows:
+        day_key = _platform_date_key_from_millis(create_time)
+        if day_key in trend_map:
+            trend_map[day_key]["user_created_count"] += 1
+    for day_key, tenant_ids in active_tenant_day_map.items():
+        trend_map[day_key]["active_tenant_count"] = len(tenant_ids)
+
+    subscription_rows = session.exec(
+        select(TenantModel.subscription_status, func.count(TenantModel.id))
+        .where(*tenant_filters)
+        .group_by(TenantModel.subscription_status)
+    ).all()
+    subscription_distribution = [
+        PlatformOverviewDistributionItemDTO(key=status or "active", count=int(count or 0))
+        for status, count in subscription_rows
+    ]
+    plan_rows = session.exec(
+        select(TenantModel.plan, func.count(TenantModel.id))
+        .where(*tenant_filters)
+        .group_by(TenantModel.plan)
+    ).all()
+    plan_distribution = [
+        PlatformOverviewDistributionItemDTO(key=plan or "default", count=int(count or 0))
+        for plan, count in plan_rows
+    ]
+
+    datasource_distribution = [
+        PlatformOverviewDistributionItemDTO(key="bound", count=int(bound_tenant_count or 0)),
+        PlatformOverviewDistributionItemDTO(
+            key="unbound",
+            count=max(0, int(tenant_total or 0) - int(bound_tenant_count or 0)),
+        ),
+    ]
+
+    tenant_name_rows = (
+        session.exec(
+            select(TenantModel.id, TenantModel.name).where(TenantModel.id.in_(list(tenant_usage_map.keys())))
+        ).all()
+        if tenant_usage_map
+        else []
+    )
+    tenant_name_map = {int(tenant_id): name for tenant_id, name in tenant_name_rows}
+    top_tenant_usage = [
+        PlatformOverviewTenantUsageDTO(
+            tenant_id=tenant_id,
+            tenant_name=tenant_name_map.get(tenant_id),
+            request_count=values["request_count"],
+            total_tokens=values["total_tokens"],
+            failure_count=values["failure_count"],
+        )
+        for tenant_id, values in sorted(
+            tenant_usage_map.items(),
+            key=lambda item: (item[1]["request_count"], item[1]["total_tokens"]),
+            reverse=True,
+        )[:8]
+    ]
+
+    model_usage = []
+    if _table_exists(session, ChatLog.__tablename__):
+        token_expr = _chat_log_total_tokens_expr(session)
+        model_rows = session.exec(
+            select(
+                ChatLog.ai_modal_id,
+                func.count(ChatLog.id),
+                func.coalesce(func.sum(token_expr), 0),
+            )
+            .where(
+                ChatLog.tenant_id != DEFAULT_TENANT_ID,
+                ChatLog.local_operation == False,  # noqa: E712
+                ChatLog.finish_time >= start_datetime,
+            )
+            .group_by(ChatLog.ai_modal_id)
+            .order_by(func.coalesce(func.sum(token_expr), 0).desc(), func.count(ChatLog.id).desc())
+            .limit(8)
+        ).all()
+        model_ids = [int(model_id) for model_id, _count, _tokens in model_rows if model_id is not None]
+        model_name_map = {}
+        if model_ids and _table_exists(session, AiModelDetail.__tablename__):
+            model_name_rows = session.exec(
+                select(AiModelDetail.id, AiModelDetail.name).where(AiModelDetail.id.in_(model_ids))
+            ).all()
+            model_name_map = {int(model_id): name for model_id, name in model_name_rows}
+        model_usage = [
+            PlatformOverviewModelUsageDTO(
+                model_id=int(model_id) if model_id is not None else None,
+                model_name=model_name_map.get(int(model_id), str(model_id)) if model_id is not None else "default",
+                request_count=int(request_count or 0),
+                total_tokens=int(total_tokens or 0),
+            )
+            for model_id, request_count, total_tokens in model_rows
+        ]
+
+    recent_rows = session.exec(
+        select(TenantModel)
+        .where(*tenant_filters)
+        .order_by(TenantModel.create_time.desc(), TenantModel.id.desc())
+        .limit(8)
+    ).all()
+    recent_ids = [int(row.id) for row in recent_rows]
+    datasource_map = _tenant_bound_datasource_map(session, recent_ids)
+    owner_map = _tenant_owner_map(session, recent_ids)
+    recent_tenants = [
+        PlatformOverviewRecentTenantDTO(
+            id=int(row.id),
+            code=row.code,
+            name=row.name,
+            plan=row.plan,
+            status=int(row.status),
+            subscription_status=getattr(row, "subscription_status", None) or "active",
+            create_time=int(row.create_time or 0),
+            bound_datasource_name=(datasource_map.get(int(row.id)) or {}).get("bound_datasource_name"),
+            owner_account=(owner_map.get(int(row.id)) or {}).get("owner_account"),
+        )
+        for row in recent_rows
+    ]
+
+    request_count = sum(item["request_count"] for item in trend_map.values())
+    failure_count = sum(item["failure_count"] for item in trend_map.values())
+    total_tokens = sum(item["total_tokens"] for item in trend_map.values())
+    active_usage_tenant_count = sum(
+        1 for values in tenant_usage_map.values() if int(values.get("request_count") or 0) > 0
+    )
+    return PlatformOverviewDTO(
+        days=days,
+        summary=PlatformOverviewSummaryDTO(
+            tenant_total=tenant_total,
+            active_tenant_count=active_tenant_count,
+            disabled_tenant_count=disabled_tenant_count,
+            user_total=user_total,
+            active_user_count=active_user_count,
+            platform_admin_count=platform_admin_count,
+            new_tenant_count=new_tenant_count,
+            new_user_count=new_user_count,
+            paying_tenant_count=paying_tenant_count,
+            trial_tenant_count=trial_tenant_count,
+            past_due_tenant_count=past_due_tenant_count,
+            suspended_tenant_count=suspended_tenant_count,
+            cancelled_tenant_count=cancelled_tenant_count,
+            contract_tenant_count=contract_tenant_count,
+            active_usage_tenant_count=active_usage_tenant_count,
+            revenue_data_ready=False,
+            revenue_amount=None,
+            datasource_total=datasource_total,
+            bound_datasource_count=bound_tenant_count,
+            dashboard_total=dashboard_total,
+            pending_workspace_application_count=pending_workspace_application_count,
+            pending_data_request_count=pending_data_request_count,
+            request_count=request_count,
+            total_tokens=total_tokens,
+            failure_count=failure_count,
+        ),
+        tenant_trend=[
+            PlatformOverviewTrendPointDTO(
+                date=day_key,
+                tenant_created_count=values["tenant_created_count"],
+                user_created_count=values["user_created_count"],
+                active_tenant_count=values["active_tenant_count"],
+                request_count=values["request_count"],
+                failure_count=values["failure_count"],
+                total_tokens=values["total_tokens"],
+            )
+            for day_key, values in trend_map.items()
+        ],
+        subscription_distribution=subscription_distribution,
+        plan_distribution=plan_distribution,
+        datasource_distribution=datasource_distribution,
+        top_tenant_usage=top_tenant_usage,
+        model_usage=model_usage,
+        recent_tenants=recent_tenants,
+    )
 
 
 @router.get("/admin/list", response_model=list[TenantDTO])
@@ -1252,8 +1746,8 @@ async def add_tenant_member(
             account=creator.account,
             tenant_role=creator.tenant_role,
             member_remark=creator.member_remark,
-            project_ids=creator.project_ids,
-            project_role_map=creator.project_role_map,
+            datasource_ids=creator.project_ids,
+            datasource_role_map=creator.project_role_map,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1332,12 +1826,18 @@ async def update_tenant_member(
     membership.member_remark = (editor.member_remark or "").strip() or None
     session.add(membership)
     if editor.project_ids is not None:
+        datasource_ids, datasource_role_map = _scope_member_datasource_payload_to_bound_datasource(
+            session,
+            tenant_id=int(current_tenant.id),
+            datasource_ids=editor.project_ids,
+            datasource_role_map=editor.project_role_map,
+        )
         update_user_datasources(
             session,
             current_user,
             int(user.id),
-            editor.project_ids,
-            editor.project_role_map,
+            datasource_ids or [],
+            datasource_role_map,
         )
     _write_tenant_audit(
         session,
@@ -2142,33 +2642,50 @@ async def leave_joined_tenant(
     return _tenant_dto_list(session, [(tenant, membership.role, membership.create_time) for tenant, membership in rows])
 
 
-@router.put("/{tenant_id}/project-binding", response_model=TenantDTO)
-async def update_tenant_project_binding(
+async def _update_tenant_datasource_binding(
     session: SessionDep,
     current_user: CurrentUser,
     tenant_id: int,
-    editor: TenantProjectBindingEditor,
-):
+    editor: TenantDatasourceBindingEditor,
+) -> TenantDTO:
     _require_platform_admin(current_user)
     tenant = session.get(TenantModel, int(tenant_id))
     if tenant is None or int(getattr(tenant, "status", 1)) < 0:
         raise HTTPException(status_code=404, detail="Tenant does not exist")
     bind_tenant_to_datasource(session, current_user, int(tenant_id), editor.datasource_id)
     tenant = session.get(TenantModel, int(tenant_id))
-    owner = _tenant_owner_map(session, [int(tenant_id)]).get(int(tenant_id))
-    project = _tenant_bound_project_map(session, [int(tenant_id)]).get(int(tenant_id))
     _write_tenant_audit(
         session,
         current_user,
         operation_type=OperationType.UPDATE,
-        detail="更新工作空间绑定项目",
+        detail="更新工作空间绑定数据源",
         module=OperationModules.TENANT,
         tenant_id=int(tenant_id),
         resource_id=tenant_id,
         resource_name=tenant.name if tenant else str(tenant_id),
         remark=f"datasource_id={editor.datasource_id or 'none'}",
     )
-    return _tenant_dto(tenant, owner=owner, project=project)
+    return _tenant_admin_dto(session, tenant)
+
+
+@router.put("/{tenant_id}/datasource-binding", response_model=TenantDTO, include_in_schema=False)
+async def update_tenant_datasource_binding(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+    editor: TenantDatasourceBindingEditor,
+):
+    return await _update_tenant_datasource_binding(session, current_user, tenant_id, editor)
+
+
+@router.put("/{tenant_id}/project-binding", response_model=TenantDTO, include_in_schema=False)
+async def update_tenant_legacy_project_binding(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+    editor: TenantDatasourceBindingEditor,
+):
+    return await _update_tenant_datasource_binding(session, current_user, tenant_id, editor)
 
 
 @router.post("", response_model=TenantDTO)
@@ -2198,8 +2715,11 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
                 role=TENANT_ROLE_OWNER,
                 is_primary=True,
             )
+        if creator.datasource_id:
+            bind_tenant_to_datasource(session, current_user, int(tenant.id), creator.datasource_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    tenant = session.get(TenantModel, int(tenant.id))
     owner = None
     if owner_user:
         owner = {
@@ -2219,12 +2739,14 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
         resource_name=tenant.name,
         remark=f"tenant_code={tenant.code}; plan={tenant.plan}",
     )
-    return _tenant_dto(tenant, owner=owner)
+    datasource = _tenant_bound_datasource_map(session, [int(tenant.id)]).get(int(tenant.id))
+    return _tenant_dto(tenant, owner=owner, datasource=datasource)
 
 
 @router.put("/{tenant_id}", response_model=TenantDTO)
 async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id: int, editor: TenantEditor):
     _require_platform_admin(current_user)
+    editor_fields = _model_fields_set(editor)
     try:
         tenant = update_tenant(
             session,
@@ -2240,6 +2762,9 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
             billing_email=editor.billing_email,
             subscription_note=editor.subscription_note,
         )
+        if "datasource_id" in editor_fields:
+            bind_tenant_to_datasource(session, current_user, int(tenant.id), editor.datasource_id)
+            tenant = session.get(TenantModel, int(tenant.id))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _write_tenant_audit(
@@ -2251,9 +2776,12 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
         tenant_id=int(tenant.id),
         resource_id=tenant.id,
         resource_name=tenant.name,
-        remark=f"tenant_code={tenant.code}; plan={tenant.plan}",
+        remark=(
+            f"tenant_code={tenant.code}; plan={tenant.plan}; "
+            f"datasource_id={editor.datasource_id if 'datasource_id' in editor_fields else 'unchanged'}"
+        ),
     )
-    return _tenant_dto(tenant)
+    return _tenant_admin_dto(session, tenant)
 
 
 @router.patch("/{tenant_id}/status", response_model=TenantDTO)

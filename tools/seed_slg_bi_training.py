@@ -1422,12 +1422,16 @@ def main() -> None:
     now = datetime.datetime.now()
     with psycopg.connect(**DB) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id FROM core_datasource WHERE name = %s ORDER BY id LIMIT 1", (DATASOURCE_NAME,))
+        cur.execute(
+            "SELECT id, tenant_id FROM core_datasource WHERE name = %s ORDER BY id LIMIT 1",
+            (DATASOURCE_NAME,),
+        )
         row = cur.fetchone()
         if not row:
             raise SystemExit(f"未找到数据源 {DATASOURCE_NAME!r}，请确认 core_datasource 已存在该记录。")
         ds_id = row[0]
-        print(f"目标数据源: id={ds_id} name={DATASOURCE_NAME!r}")
+        tenant_id = row[1]
+        print(f"目标数据源: id={ds_id} tenant_id={tenant_id} name={DATASOURCE_NAME!r}")
 
         term_added = term_updated = 0
         touched_term_parent_ids: set[int] = set()
@@ -1436,11 +1440,13 @@ def main() -> None:
                 """
                 SELECT id FROM terminology
                 WHERE pid IS NULL AND word = %s
+                  AND tenant_id = %s
+                  AND scope = 'TENANT'
                   AND specific_ds = TRUE
                   AND datasource_ids @> jsonb_build_array(%s)
                 ORDER BY id LIMIT 1
                 """,
-                (word, ds_id),
+                (word, tenant_id, ds_id),
             )
             existing = cur.fetchone()
             if existing:
@@ -1448,24 +1454,26 @@ def main() -> None:
                 cur.execute(
                     """
                     UPDATE terminology
-                    SET description = %s,
+                    SET tenant_id = %s,
+                        scope = 'TENANT',
+                        description = %s,
                         specific_ds = TRUE,
                         datasource_ids = %s,
                         enabled = TRUE,
                         embedding = NULL
                     WHERE id = %s
                     """,
-                    (description, Jsonb([ds_id]), parent_id),
+                    (tenant_id, description, Jsonb([ds_id]), parent_id),
                 )
                 term_updated += 1
             else:
                 cur.execute(
                     """
-                    INSERT INTO terminology (pid, create_time, word, description, specific_ds, datasource_ids, enabled, embedding)
-                    VALUES (NULL, %s, %s, %s, TRUE, %s, TRUE, NULL)
+                    INSERT INTO terminology (tenant_id, scope, pid, create_time, word, description, specific_ds, datasource_ids, enabled, embedding)
+                    VALUES (%s, 'TENANT', NULL, %s, %s, %s, TRUE, %s, TRUE, NULL)
                     RETURNING id
                     """,
-                    (now, word, description, Jsonb([ds_id])),
+                    (tenant_id, now, word, description, Jsonb([ds_id])),
                 )
                 parent_id = cur.fetchone()[0]
                 term_added += 1
@@ -1488,29 +1496,31 @@ def main() -> None:
                     cur.execute(
                         """
                         UPDATE terminology
-                        SET specific_ds = TRUE,
+                        SET tenant_id = %s,
+                            scope = 'TENANT',
+                            specific_ds = TRUE,
                             datasource_ids = %s,
                             enabled = TRUE,
                             embedding = NULL
                         WHERE id = %s
                         """,
-                        (Jsonb([ds_id]), syn_row[0]),
+                        (tenant_id, Jsonb([ds_id]), syn_row[0]),
                     )
                 else:
                     cur.execute(
                         """
-                        INSERT INTO terminology (pid, create_time, word, description, specific_ds, datasource_ids, enabled, embedding)
-                        VALUES (%s, %s, %s, NULL, TRUE, %s, TRUE, NULL)
+                        INSERT INTO terminology (tenant_id, scope, pid, create_time, word, description, specific_ds, datasource_ids, enabled, embedding)
+                        VALUES (%s, 'TENANT', %s, %s, %s, NULL, TRUE, %s, TRUE, NULL)
                         """,
-                        (parent_id, now, syn, Jsonb([ds_id])),
+                        (tenant_id, parent_id, now, syn, Jsonb([ds_id])),
                     )
 
         ex_added = ex_updated = 0
         touched_training_ids: set[int] = set()
         for question, answer in EXAMPLES:
             cur.execute(
-                "SELECT id FROM data_training WHERE question = %s AND datasource = %s ORDER BY id LIMIT 1",
-                (question, ds_id),
+                "SELECT id FROM data_training WHERE question = %s AND tenant_id = %s AND scope = 'TENANT' AND datasource = %s ORDER BY id LIMIT 1",
+                (question, tenant_id, ds_id),
             )
             existing = cur.fetchone()
             if existing:
@@ -1518,20 +1528,20 @@ def main() -> None:
                 cur.execute(
                     """
                     UPDATE data_training
-                    SET description = %s, enabled = TRUE, embedding = NULL
+                    SET tenant_id = %s, scope = 'TENANT', description = %s, enabled = TRUE, embedding = NULL
                     WHERE id = %s
                     """,
-                    (answer, training_id),
+                    (tenant_id, answer, training_id),
                 )
                 ex_updated += 1
             else:
                 cur.execute(
                     """
-                    INSERT INTO data_training (datasource, create_time, question, description, enabled, embedding)
-                    VALUES (%s, %s, %s, %s, TRUE, NULL)
+                    INSERT INTO data_training (tenant_id, scope, datasource, create_time, question, description, enabled, embedding)
+                    VALUES (%s, 'TENANT', %s, %s, %s, %s, TRUE, NULL)
                     RETURNING id
                     """,
-                    (ds_id, now, question, answer),
+                    (tenant_id, ds_id, now, question, answer),
                 )
                 training_id = cur.fetchone()[0]
                 ex_added += 1

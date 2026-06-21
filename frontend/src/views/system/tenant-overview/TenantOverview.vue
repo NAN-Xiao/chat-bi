@@ -122,24 +122,6 @@
     </div>
 
     <div class="analytics-grid">
-      <section class="chart-card chart-card-wide">
-        <div class="chart-card-head">
-          <span>{{ t('tenant_overview.activity_title') }}</span>
-          <span class="muted">{{ t('tenant_overview.activity_hint') }}</span>
-        </div>
-        <div class="chart-surface">
-          <ChartComponent
-            v-if="activityTrendRows.length"
-            :id="'tenant-overview-activity'"
-            type="line"
-            :data="activityTrendRows"
-            :x="activityXAxis"
-            :y="activityYAxis"
-          />
-          <EmptyBackground v-else :description="t('tenant_overview.empty')" img-type="tree" />
-        </div>
-      </section>
-
       <section class="chart-card">
         <div class="chart-card-head">
           <span>{{ t('tenant_overview.assets_title') }}</span>
@@ -1063,7 +1045,7 @@ onMounted(async () => {
 
   .analytics-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.9fr) minmax(300px, 0.9fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
     margin-bottom: 18px;
   }
@@ -1073,10 +1055,6 @@ onMounted(async () => {
     min-height: 360px;
     display: flex;
     flex-direction: column;
-  }
-
-  .chart-card-wide {
-    min-width: 0;
   }
 
   .chart-card-head {

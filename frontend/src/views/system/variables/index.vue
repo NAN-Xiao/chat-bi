@@ -30,8 +30,11 @@ const iconMap = {
   datetime: field_time,
 }
 
+const canEditVariable = (row: any) => row?.can_edit ?? row?.type !== 'system'
+const canDeleteVariable = (row: any) => row?.can_delete ?? row?.type !== 'system'
+
 const selectable = (row: any) => {
-  return ![1, 2, 3].includes(row.id)
+  return canDeleteVariable(row)
 }
 onMounted(() => {
   search()
@@ -87,7 +90,7 @@ const deleteBatchUser = () => {
   })
 }
 const deleteHandler = (row: any) => {
-  if (row.type === 'system') return
+  if (!canDeleteVariable(row)) return
 
   ElMessageBox.confirm(t('embedded.delete', { msg: row.name }), {
     confirmButtonType: 'danger',
@@ -268,7 +271,7 @@ const saveHandler = () => {
 const editHandler = (row: any) => {
   pageForm.value.id = null
   if (row) {
-    if (row.type === 'system') return
+    if (!canEditVariable(row)) return
     const { id, name, var_type, value } = row
     pageForm.value.id = id
     pageForm.value.name = name
@@ -372,8 +375,13 @@ const handleCurrentChange = (val: number) => {
                   </el-icon>
                   {{ scope.row.name }}
                 </div>
-                <div v-if="scope.row.type === 'system'" class="system-flag">
-                  {{ t('variables.system') }}
+                <div
+                  v-if="scope.row.type === 'system' || scope.row.type === 'platform'"
+                  class="system-flag"
+                >
+                  {{
+                    scope.row.type === 'platform' ? t('variables.platform') : t('variables.system')
+                  }}
                 </div>
               </div>
             </template>
@@ -400,7 +408,7 @@ const handleCurrentChange = (val: number) => {
                 >
                   <el-icon
                     class="action-btn"
-                    :class="scope.row.type === 'system' && 'not-allow'"
+                    :class="!canEditVariable(scope.row) && 'not-allow'"
                     size="16"
                     @click="editHandler(scope.row)"
                   >
@@ -415,7 +423,7 @@ const handleCurrentChange = (val: number) => {
                 >
                   <el-icon
                     class="action-btn"
-                    :class="scope.row.type === 'system' && 'not-allow'"
+                    :class="!canDeleteVariable(scope.row) && 'not-allow'"
                     size="16"
                     @click="deleteHandler(scope.row)"
                   >

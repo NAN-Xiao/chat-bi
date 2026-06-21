@@ -12,16 +12,19 @@ from apps.datasource.crud.permission_rules import (
 )
 from apps.datasource.crud.row_permission import transFilterTree
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable
-from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.models.tenant import TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
 from apps.system.crud.user import (
     SYSTEM_ADMIN_ROLES,
-    is_platform_admin,
-    is_platform_workspace_delegate,
     is_system_admin,
 )
 from apps.system.models.user import UserModel
+from apps.system.schemas.access_context import (
+    current_tenant_id,
+    has_workspace_context,
+    is_global_platform_context,
+    can_manage_workspace_scope,
+)
 
 PROJECT_ROLE_VIEWER = "viewer"
 PROJECT_ROLE_EDITOR = "editor"
@@ -39,18 +42,6 @@ REQUIRED_PROJECT_ROLE_ALIASES = {
     "project_viewer": PROJECT_ROLE_VIEWER,
     "project_editor": PROJECT_ROLE_EDITOR,
 }
-
-
-def current_tenant_id(current_user: CurrentUser | None) -> int | None:
-    if current_user is None:
-        return None
-    tenant_id = getattr(current_user, "tenant_id", None)
-    if tenant_id is None or tenant_id == "":
-        return DEFAULT_TENANT_ID
-    try:
-        return int(tenant_id)
-    except (TypeError, ValueError):
-        return None
 
 
 def _supports_table(session: SessionDep, table_name: str) -> bool:
@@ -78,7 +69,7 @@ def _supports_tenant_user_filter(session: SessionDep) -> bool:
 
 
 def _apply_datasource_tenant_filter(statement, session: SessionDep, current_user: CurrentUser | None):
-    if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user):
+    if is_global_platform_context(current_user):
         return statement
     tenant_id = current_tenant_id(current_user)
     if tenant_id is None or not _supports_datasource_tenant_filter(session):
@@ -147,7 +138,7 @@ def list_project_assignable_user_ids(
     tenant_id = current_tenant_id(current_user)
     if (
         tenant_id is not None
-        and (not is_platform_admin(current_user) or is_platform_workspace_delegate(current_user))
+        and not is_global_platform_context(current_user)
         and _supports_tenant_user_filter(session)
     ):
         statement = statement.join(TenantUserModel, TenantUserModel.user_id == UserModel.id).where(
@@ -217,7 +208,7 @@ def list_datasource_user_counts(
     tenant_id = current_tenant_id(current_user)
     if (
         tenant_id is not None
-        and (not is_platform_admin(current_user) or is_platform_workspace_delegate(current_user))
+        and not is_global_platform_context(current_user)
         and _supports_tenant_user_filter(session)
     ):
         statement = (
@@ -273,16 +264,23 @@ def get_datasource_ids_with_min_role(
         current_user: CurrentUser,
         min_role: str = PROJECT_ROLE_VIEWER,
 ) -> Optional[set[int]]:
+    required_rank = required_project_role_rank(min_role)
+    if required_rank <= 0:
+        return set()
+
     if _is_datasource_scope_admin(current_user):
         statement = select(CoreDatasource.id).order_by(CoreDatasource.id)
         statement = _apply_datasource_tenant_filter(statement, session, current_user)
         rows = session.exec(statement).all()
         return {int(_first_column_value(row)) for row in rows if _first_column_value(row) is not None}
 
+    if required_rank <= PROJECT_ROLE_ORDER[PROJECT_ROLE_VIEWER]:
+        statement = select(CoreDatasource.id).order_by(CoreDatasource.id)
+        statement = _apply_datasource_tenant_filter(statement, session, current_user)
+        rows = session.exec(statement).all()
+        return {int(_first_column_value(row)) for row in rows if _first_column_value(row) is not None}
+
     result: set[int] = set()
-    required_rank = required_project_role_rank(min_role)
-    if required_rank <= 0:
-        return result
 
     statement = (
         select(CoreDatasourceUser)
@@ -417,8 +415,7 @@ def _rule_contains_permission(rule: Any, permission_id) -> bool:
 
 
 def _is_datasource_scope_admin(current_user: CurrentUser) -> bool:
-    tenant_role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
-    return is_system_admin(current_user) or tenant_role in TENANT_ADMIN_ROLES
+    return is_system_admin(current_user) or can_manage_workspace_scope(current_user)
 
 
 def _first_column_value(row):
@@ -446,9 +443,9 @@ def get_datasource_role(session: SessionDep, current_user: CurrentUser, datasour
         CoreDatasourceUser.ds_id == datasource_id,
         CoreDatasourceUser.user_id == current_user.id,
     ).first()
-    if row is None:
-        return None
-    return normalize_project_role(getattr(row, "role", None))
+    if row is not None:
+        return normalize_project_role(getattr(row, "role", None))
+    return PROJECT_ROLE_VIEWER if has_workspace_context(current_user) else None
 
 
 def has_datasource_role(
@@ -561,7 +558,12 @@ def get_user_permission_rules(
     if not is_normal_user(current_user):
         return []
 
-    rules = list_rule_records(session, enable=True)
+    rules = list_rule_records(
+        session,
+        enable=True,
+        tenant_id=current_tenant_id(current_user),
+        include_platform=True,
+    )
 
     if datasource_id is None:
         return [rule for rule in rules if _rule_contains_user(rule, current_user)]

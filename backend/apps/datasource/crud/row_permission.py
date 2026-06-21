@@ -95,7 +95,10 @@ def transTreeItem(session: SessionDep, current_user: CurrentUser, item: Dict, ds
                 sys_variable = session.query(SystemVariable).filter(SystemVariable.id == variable_id).first()
                 if sys_variable is None:
                     return None
-                if sys_variable.type != 'system' and int(sys_variable.tenant_id or DEFAULT_TENANT_ID) != int(ds.tenant_id or DEFAULT_TENANT_ID):
+                if (
+                        sys_variable.type not in ('system', 'platform')
+                        and int(sys_variable.tenant_id or DEFAULT_TENANT_ID) != int(ds.tenant_id or DEFAULT_TENANT_ID)
+                ):
                     return None
 
                 # do inner system variable

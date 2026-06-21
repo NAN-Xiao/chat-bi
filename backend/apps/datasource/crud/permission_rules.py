@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Integer, MetaData, String, Table, Text
-from sqlalchemy import and_, delete, insert, select, update
+from sqlalchemy import and_, delete, insert, or_, select, update
 
 from apps.datasource.models.datasource import CoreDatasource, CoreTable
 from apps.system.models.user import UserModel
@@ -12,6 +12,10 @@ from common.core.deps import SessionDep
 
 
 _metadata = MetaData()
+DEFAULT_RULE_TENANT_ID = 1
+RULE_SCOPE_TENANT = "TENANT"
+RULE_SCOPE_PLATFORM = "PLATFORM"
+RULE_SCOPES = {RULE_SCOPE_TENANT, RULE_SCOPE_PLATFORM}
 
 ds_rules_table = Table(
     "ds_rules",
@@ -20,6 +24,8 @@ ds_rules_table = Table(
     Column("enable", Boolean, nullable=False),
     Column("name", String, nullable=False),
     Column("description", String, nullable=True),
+    Column("tenant_id", BigInteger, nullable=False, default=DEFAULT_RULE_TENANT_ID),
+    Column("scope", String(32), nullable=False, default=RULE_SCOPE_TENANT),
     Column("permission_list", Text, nullable=True),
     Column("user_list", Text, nullable=True),
     Column("white_list_user", Text, nullable=True),
@@ -75,6 +81,18 @@ def _json_text(value: Any, fallback: Any) -> str:
     return json.dumps(parsed, ensure_ascii=False)
 
 
+def normalize_rule_scope(value: Any) -> str:
+    normalized = str(value or RULE_SCOPE_TENANT).strip().upper()
+    return normalized if normalized in RULE_SCOPES else RULE_SCOPE_TENANT
+
+
+def _rule_tenant_id(value: Any) -> int:
+    try:
+        return int(value or DEFAULT_RULE_TENANT_ID)
+    except (TypeError, ValueError):
+        return DEFAULT_RULE_TENANT_ID
+
+
 def _int_list(value: Any) -> list[int]:
     result: list[int] = []
     for item in parse_json_list(value):
@@ -86,10 +104,14 @@ def _int_list(value: Any) -> list[int]:
 
 
 def _rule_values(rule_data: dict[str, Any], permission_ids: list[int]) -> dict[str, Any]:
+    scope = normalize_rule_scope(rule_data.get("scope"))
+    tenant_id = DEFAULT_RULE_TENANT_ID if scope == RULE_SCOPE_PLATFORM else _rule_tenant_id(rule_data.get("tenant_id"))
     return {
         "enable": bool(rule_data.get("enable", True)),
         "name": rule_data.get("name") or "",
         "description": rule_data.get("description") or "",
+        "tenant_id": tenant_id,
+        "scope": scope,
         "permission_list": json.dumps(permission_ids, ensure_ascii=False),
         "user_list": json.dumps(_int_list(rule_data.get("users", rule_data.get("user_list"))), ensure_ascii=False),
         "white_list_user": _json_text(rule_data.get("white_list_user"), []),
@@ -142,10 +164,35 @@ def list_permission_records(
     return [_row_to_obj(row) for row in rows]
 
 
-def list_rule_records(session: SessionDep, *, enable: bool | None = None) -> list[SimpleNamespace]:
+def list_rule_records(
+    session: SessionDep,
+    *,
+    enable: bool | None = None,
+    tenant_id: int | None = None,
+    include_platform: bool = False,
+    scope: str | None = None,
+) -> list[SimpleNamespace]:
     stmt = select(ds_rules_table)
+    conditions = []
     if enable is not None:
-        stmt = stmt.where(ds_rules_table.c.enable.is_(enable))
+        conditions.append(ds_rules_table.c.enable.is_(enable))
+    if scope:
+        conditions.append(ds_rules_table.c.scope == normalize_rule_scope(scope))
+    elif tenant_id is not None:
+        tenant_conditions = [
+            and_(
+                ds_rules_table.c.tenant_id == int(tenant_id),
+                or_(
+                    ds_rules_table.c.scope == RULE_SCOPE_TENANT,
+                    ds_rules_table.c.scope.is_(None),
+                ),
+            )
+        ]
+        if include_platform:
+            tenant_conditions.append(ds_rules_table.c.scope == RULE_SCOPE_PLATFORM)
+        conditions.append(or_(*tenant_conditions))
+    if conditions:
+        stmt = stmt.where(and_(*conditions))
     rows = session.execute(stmt.order_by(ds_rules_table.c.id)).mappings().all()
     return [_row_to_obj(row) for row in rows]
 
@@ -212,6 +259,8 @@ def rule_record_to_dict(session: SessionDep, rule: SimpleNamespace) -> dict[str,
         "enable": rule.enable,
         "name": rule.name,
         "description": rule.description,
+        "tenant_id": _rule_tenant_id(getattr(rule, "tenant_id", None)),
+        "scope": normalize_rule_scope(getattr(rule, "scope", None)),
         "permission_list": permission_ids,
         "user_list": users,
         "white_list_user": parse_json_list(rule.white_list_user),
@@ -243,7 +292,11 @@ def save_rule_dto(session: SessionDep, rule_data: dict[str, Any]) -> dict[str, A
             submitted_ids.append(int(permission.get("id")))
         except (TypeError, ValueError):
             continue
-    existing_ids = _existing_permission_ids(session, submitted_ids)
+    old_permission_id_set = set(old_permission_ids)
+    existing_ids = _existing_permission_ids(
+        session,
+        [permission_id for permission_id in submitted_ids if permission_id in old_permission_id_set],
+    )
 
     next_permission_ids: list[int] = []
     for permission in submitted_permissions:

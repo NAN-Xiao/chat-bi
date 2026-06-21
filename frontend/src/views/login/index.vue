@@ -708,7 +708,7 @@ const currentRedirect = () => {
 const goLoginSuccess = async () => {
   await userStore.info()
   if (userStore.isSystemAdminUser) {
-    await router.push('/system/tenant')
+    await router.push('/system/platform-overview')
     return
   }
   if (!userStore.hasActiveWorkspace) {

@@ -24,6 +24,8 @@ class TenantDTO(BaseModel):
     owner_account: Optional[str] = None
     owner_name: Optional[str] = None
     owner_email: Optional[str] = None
+    bound_datasource_id: Optional[int] = None
+    bound_datasource_name: Optional[str] = None
     bound_project_id: Optional[int] = None
     bound_project_name: Optional[str] = None
     admin_count: int = 0
@@ -57,6 +59,7 @@ class TenantCreator(BaseModel):
     owner_account: Optional[str] = Field(default=None, max_length=100)
     owner_name: Optional[str] = Field(default=None, max_length=100)
     owner_email: Optional[str] = Field(default=None, max_length=100)
+    datasource_id: Optional[int] = None
 
 
 class TenantEditor(BaseModel):
@@ -70,13 +73,14 @@ class TenantEditor(BaseModel):
     billing_contact: Optional[str] = Field(default=None, max_length=128)
     billing_email: Optional[str] = Field(default=None, max_length=128)
     subscription_note: Optional[str] = Field(default=None, max_length=2000)
+    datasource_id: Optional[int] = None
 
 
 class TenantStatus(BaseModel):
     status: int = Field(ge=0, le=1)
 
 
-class TenantProjectBindingEditor(BaseModel):
+class TenantDatasourceBindingEditor(BaseModel):
     datasource_id: Optional[int] = None
 
 
@@ -310,3 +314,86 @@ class TenantOverviewDTO(BaseModel):
     todos: list[TenantOverviewTodoDTO] = []
     recent_events: list[TenantOverviewEventDTO] = []
     member_last_activities: list[TenantOverviewMemberActivityDTO] = []
+
+
+class PlatformOverviewSummaryDTO(BaseModel):
+    tenant_total: int = 0
+    active_tenant_count: int = 0
+    disabled_tenant_count: int = 0
+    user_total: int = 0
+    active_user_count: int = 0
+    platform_admin_count: int = 0
+    new_tenant_count: int = 0
+    new_user_count: int = 0
+    paying_tenant_count: int = 0
+    trial_tenant_count: int = 0
+    past_due_tenant_count: int = 0
+    suspended_tenant_count: int = 0
+    cancelled_tenant_count: int = 0
+    contract_tenant_count: int = 0
+    active_usage_tenant_count: int = 0
+    revenue_data_ready: bool = False
+    revenue_amount: Optional[float] = None
+    datasource_total: int = 0
+    bound_datasource_count: int = 0
+    dashboard_total: int = 0
+    pending_workspace_application_count: int = 0
+    pending_data_request_count: int = 0
+    request_count: int = 0
+    total_tokens: int = 0
+    failure_count: int = 0
+
+
+class PlatformOverviewTrendPointDTO(BaseModel):
+    date: str
+    tenant_created_count: int = 0
+    user_created_count: int = 0
+    active_tenant_count: int = 0
+    request_count: int = 0
+    failure_count: int = 0
+    total_tokens: int = 0
+
+
+class PlatformOverviewDistributionItemDTO(BaseModel):
+    key: str
+    label: Optional[str] = None
+    count: int = 0
+
+
+class PlatformOverviewTenantUsageDTO(BaseModel):
+    tenant_id: int
+    tenant_name: Optional[str] = None
+    request_count: int = 0
+    total_tokens: int = 0
+    failure_count: int = 0
+
+
+class PlatformOverviewModelUsageDTO(BaseModel):
+    model_id: Optional[int] = None
+    model_name: str
+    request_count: int = 0
+    total_tokens: int = 0
+
+
+class PlatformOverviewRecentTenantDTO(BaseModel):
+    id: int
+    code: str
+    name: str
+    plan: str = "default"
+    status: int = 1
+    subscription_status: str = "active"
+    create_time: int = 0
+    bound_datasource_name: Optional[str] = None
+    owner_account: Optional[str] = None
+
+
+class PlatformOverviewDTO(BaseModel):
+    days: int = 7
+    summary: PlatformOverviewSummaryDTO
+    tenant_trend: list[PlatformOverviewTrendPointDTO] = []
+    subscription_distribution: list[PlatformOverviewDistributionItemDTO] = []
+    plan_distribution: list[PlatformOverviewDistributionItemDTO] = []
+    datasource_distribution: list[PlatformOverviewDistributionItemDTO] = []
+    top_tenant_usage: list[PlatformOverviewTenantUsageDTO] = []
+    model_usage: list[PlatformOverviewModelUsageDTO] = []
+    recent_tenants: list[PlatformOverviewRecentTenantDTO] = []

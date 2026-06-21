@@ -26,9 +26,6 @@ export const datasourceApi = {
   saveTable: (data: any) => request.post('/datasource/editTable', data),
   saveField: (data: any) => request.post('/datasource/editField', data),
   getDs: (id: number) => request.post(`/datasource/get/${id}`),
-  binding: (id: number | string) => request.get(`/datasource/${id}/binding`),
-  updateBinding: (id: number | string, data: { tenant_id?: number | string | null }) =>
-    request.put(`/datasource/${id}/binding`, data),
   users: (id: number | string) => request.get(`/datasource/${id}/users`),
   updateUsers: (id: number | string, data: any) => request.put(`/datasource/${id}/users`, data),
   cancelRequests: () => request.cancelRequests(),

@@ -45,7 +45,7 @@ const filterSystemRoutes = (arr: any[]): any[] => {
         if (item.meta?.hideForPlatformAdmin) {
           return null
         }
-        if (item.meta?.tenantBusiness) {
+        if (item.meta?.tenantBusiness && !item.meta?.platformOperation) {
           return null
         }
         if (item.meta?.platformOperation || item.meta?.platformOnly || children.length) {

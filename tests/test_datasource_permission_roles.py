@@ -3,6 +3,9 @@ import json
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
+
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
 from sqlalchemy import text
@@ -10,6 +13,7 @@ from sqlmodel import Session, create_engine
 
 from apps.datasource.crud import datasource as datasource_crud
 from apps.datasource.api import datasource as datasource_api
+from apps.datasource.api import permission as permission_api
 from apps.datasource.crud.binding import bind_tenant_to_datasource
 from apps.datasource.crud import permission
 from apps.datasource.crud import query_executor
@@ -106,6 +110,8 @@ def _engine_with_permission_tables():
                 enable BOOLEAN NOT NULL,
                 name VARCHAR NOT NULL,
                 description VARCHAR,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
+                scope VARCHAR(32) NOT NULL DEFAULT 'TENANT',
                 permission_list TEXT,
                 user_list TEXT,
                 white_list_user TEXT,
@@ -287,28 +293,29 @@ def test_datasource_editor_satisfies_dashboard_edit_role():
         assert permission.has_datasource_role(session, current_user, 1, "project_admin") is False
 
 
-def test_datasource_creator_is_not_implicitly_project_member_without_membership_row():
+def test_workspace_member_can_view_current_tenant_project_without_membership_row():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
 
     with Session(engine) as session:
-        session.add(_datasource(1, create_by=2))
+        session.add(_datasource(1, create_by=3, tenant_id=1))
         session.commit()
 
-        assert permission.get_datasource_role(session, current_user, 1) is None
-        assert permission.has_datasource_role(session, current_user, 1, "project_viewer") is False
+        assert permission.get_datasource_role(session, current_user, 1) == "viewer"
+        assert permission.has_datasource_role(session, current_user, 1, "project_viewer") is True
+        assert permission.get_accessible_datasource_ids(session, current_user) == {1}
 
 
-def test_missing_datasource_membership_does_not_default_to_viewer():
+def test_workspace_member_without_project_membership_cannot_edit_project():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
 
     with Session(engine) as session:
-        session.add(_datasource(1))
+        session.add(_datasource(1, tenant_id=1))
         session.commit()
 
-        assert permission.get_datasource_role(session, current_user, 1) is None
-        assert permission.has_datasource_role(session, current_user, 1, "project_viewer") is False
+        assert permission.get_datasource_role(session, current_user, 1) == "viewer"
+        assert permission.has_datasource_role(session, current_user, 1, "project_editor") is False
 
 
 def test_datasource_list_hides_connection_config_for_normal_users():
@@ -557,7 +564,7 @@ def test_get_datasource_ids_with_min_role_filters_by_project_role():
         session.add(CoreDatasourceUser(ds_id=3, user_id=2, role="admin"))
         session.commit()
 
-        assert permission.get_datasource_ids_with_min_role(session, current_user, "viewer") == {1, 2, 3}
+        assert permission.get_datasource_ids_with_min_role(session, current_user, "viewer") == {1, 2, 3, 4}
         assert permission.get_datasource_ids_with_min_role(session, current_user, "editor") == {2, 3}
         assert permission.get_datasource_ids_with_min_role(session, current_user, "admin") == set()
 
@@ -581,6 +588,314 @@ def _insert_table_permission_fixture(session: Session):
             (110, 1, 11, 1, 'payment_id', 'int', 'payment_id', 'payment_id', 1)
         """
     ))
+
+
+def _insert_permission_scope_fixture(session: Session):
+    session.add(_datasource(1, tenant_id=2))
+    session.add(_datasource(2, tenant_id=3))
+    session.execute(text(
+        """
+        INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment)
+        VALUES
+            (10, 1, 1, 'orders', 'orders', 'orders'),
+            (20, 2, 1, 'events', 'events', 'events')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO ds_permission
+            (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+        VALUES
+            (1000, 'platform workspace 2 table', 1, 'user', 'table', 1, 10, '{}', '[]', '[]'),
+            (1001, 'workspace 2 table', 1, 'user', 'table', 1, 10, '{}', '[]', '[]'),
+            (1002, 'platform workspace 3 table', 1, 'user', 'table', 2, 20, '{}', '[]', '[]'),
+            (1003, 'workspace 3 table', 1, 'user', 'table', 2, 20, '{}', '[]', '[]')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO ds_rules
+            (id, enable, name, description, tenant_id, scope, permission_list, user_list, white_list_user)
+        VALUES
+            (2000, 1, 'platform rule', '', 1, 'PLATFORM', '[1000,1002]', '[2]', '[]'),
+            (2001, 1, 'workspace 2 rule', '', 2, 'TENANT', '[1001]', '[2]', '[]'),
+            (2002, 1, 'workspace 3 rule', '', 3, 'TENANT', '[1003]', '[2]', '[]')
+        """
+    ))
+
+
+def test_permission_rule_groups_are_scoped_like_platform_and_workspace_config():
+    engine = _engine_with_permission_tables()
+    platform_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+    other_workspace_admin = SimpleNamespace(id=6, system_role="viewer", tenant_id=3, tenant_role="admin")
+
+    with Session(engine) as session:
+        _insert_permission_scope_fixture(session)
+        session.commit()
+
+        workspace_rules = asyncio.run(permission_api.p_list.__wrapped__(session, workspace_admin))
+        assert [rule["id"] for rule in workspace_rules] == [2000, 2001]
+        platform_rule = workspace_rules[0]
+        assert platform_rule["scope"] == "PLATFORM"
+        assert platform_rule["permission_list"] == [1000]
+        assert platform_rule["can_edit"] is False
+        assert platform_rule["can_delete"] is False
+        tenant_rule = workspace_rules[1]
+        assert tenant_rule["scope"] == "TENANT"
+        assert tenant_rule["tenant_id"] == 2
+        assert tenant_rule["can_edit"] is True
+        assert tenant_rule["can_delete"] is True
+
+        other_workspace_rules = asyncio.run(permission_api.p_list.__wrapped__(session, other_workspace_admin))
+        assert [rule["id"] for rule in other_workspace_rules] == [2000, 2002]
+        assert other_workspace_rules[0]["permission_list"] == [1002]
+
+        platform_rules = asyncio.run(permission_api.p_list.__wrapped__(session, platform_admin))
+        assert [rule["id"] for rule in platform_rules] == [2000]
+        assert platform_rules[0]["can_edit"] is True
+        assert platform_rules[0]["can_delete"] is True
+
+
+def test_workspace_admin_cannot_change_platform_permission_rule_group():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+
+    with Session(engine) as session:
+        _insert_permission_scope_fixture(session)
+        session.commit()
+
+        with pytest.raises(HTTPException) as update_exc:
+            asyncio.run(permission_api.save_rule.__wrapped__(
+                session,
+                workspace_admin,
+                {
+                    "id": 2000,
+                    "name": "changed",
+                    "permissions": [
+                        {"name": "changed", "type": "table", "ds_id": 1, "table_id": 10},
+                    ],
+                    "users": [2],
+                },
+            ))
+        assert update_exc.value.status_code == 403
+
+        with pytest.raises(HTTPException) as delete_exc:
+            asyncio.run(permission_api.delete.__wrapped__(session, workspace_admin, 2000))
+        assert delete_exc.value.status_code == 403
+
+
+def test_workspace_admin_can_add_and_delete_workspace_permission_rule_group():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=2))
+        session.execute(text(
+            """
+            INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment)
+            VALUES (10, 1, 1, 'orders', 'orders', 'orders')
+            """
+        ))
+        session.commit()
+
+        saved = asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            workspace_admin,
+            {
+                "name": "workspace created rule",
+                "permissions": [
+                    {"name": "orders denied", "type": "table", "ds_id": 1, "table_id": 10},
+                ],
+                "users": [2],
+            },
+        ))
+        assert saved["scope"] == "TENANT"
+        assert saved["tenant_id"] == 2
+        assert saved["can_edit"] is True
+        saved_id = int(saved["id"])
+        row = session.execute(
+            text("SELECT tenant_id, scope FROM ds_rules WHERE id = :id"),
+            {"id": saved_id},
+        ).first()
+        assert row == (2, "TENANT")
+
+        assert asyncio.run(permission_api.delete.__wrapped__(session, workspace_admin, saved_id)) is True
+        assert session.execute(text("SELECT id FROM ds_rules WHERE id = :id"), {"id": saved_id}).first() is None
+
+
+def test_permission_rule_group_can_be_created_without_users():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=2))
+        session.execute(text(
+            """
+            INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment)
+            VALUES (10, 1, 1, 'orders', 'orders', 'orders')
+            """
+        ))
+        session.commit()
+
+        saved = asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            workspace_admin,
+            {
+                "name": "workspace rule without users",
+                "permissions": [
+                    {"name": "orders denied", "type": "table", "ds_id": 1, "table_id": 10},
+                ],
+            },
+        ))
+
+        saved_id = int(saved["id"])
+        assert saved["users"] == []
+        assert saved["user_list"] == []
+        assert saved["can_edit"] is True
+        row = session.execute(
+            text("SELECT tenant_id, scope, user_list FROM ds_rules WHERE id = :id"),
+            {"id": saved_id},
+        ).first()
+        assert row == (2, "TENANT", "[]")
+
+
+def test_workspace_permission_rule_can_infer_bound_datasource_from_table():
+    engine = _engine_with_permission_tables()
+    workspace_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=2, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=2))
+        session.execute(text(
+            """
+            INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment)
+            VALUES (10, 1, 1, 'orders', 'orders', 'orders')
+            """
+        ))
+        session.commit()
+
+        saved = asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            workspace_admin,
+            {
+                "name": "workspace rule without datasource id",
+                "permissions": [
+                    {"name": "orders denied", "type": "table", "table_id": 10},
+                ],
+            },
+        ))
+
+        saved_id = int(saved["id"])
+        assert saved["permissions"][0]["ds_id"] == 1
+        assert saved["permissions"][0]["ds_name"] is not None
+        row = session.execute(
+            text(
+                """
+                SELECT p.ds_id
+                FROM ds_permission p
+                JOIN ds_rules r ON r.permission_list = '[' || p.id || ']'
+                WHERE r.id = :id
+                """
+            ),
+            {"id": saved_id},
+        ).first()
+        assert row == (1,)
+
+
+def test_platform_admin_can_manage_platform_permission_rule_group():
+    engine = _engine_with_permission_tables()
+    platform_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=2))
+        session.execute(text(
+            """
+            INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment)
+            VALUES (10, 1, 1, 'orders', 'orders', 'orders')
+            """
+        ))
+        session.commit()
+
+        saved = asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            platform_admin,
+            {
+                "name": "platform created rule",
+                "permissions": [
+                    {"name": "orders denied", "type": "table", "ds_id": 1, "table_id": 10},
+                ],
+                "users": [2],
+            },
+        ))
+        saved_id = int(saved["id"])
+        assert saved["scope"] == "PLATFORM"
+        assert saved["tenant_id"] == 1
+        assert saved["can_edit"] is True
+        assert saved["can_delete"] is True
+        row = session.execute(
+            text("SELECT tenant_id, scope FROM ds_rules WHERE id = :id"),
+            {"id": saved_id},
+        ).first()
+        assert row == (1, "PLATFORM")
+
+        edited = asyncio.run(permission_api.save_rule.__wrapped__(
+            session,
+            platform_admin,
+            {
+                "id": saved_id,
+                "name": "platform edited rule",
+                "permissions": [
+                    {"name": "orders still denied", "type": "table", "ds_id": 1, "table_id": 10},
+                ],
+                "users": [2],
+            },
+        ))
+        assert edited["id"] == saved_id
+        assert edited["name"] == "platform edited rule"
+        assert edited["scope"] == "PLATFORM"
+
+        assert asyncio.run(permission_api.delete.__wrapped__(session, platform_admin, saved_id)) is True
+        assert session.execute(text("SELECT id FROM ds_rules WHERE id = :id"), {"id": saved_id}).first() is None
+
+
+def test_user_permission_rules_do_not_cross_workspace_scope():
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=2, tenant_role="member")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=2))
+        _insert_table_permission_fixture(session)
+        session.execute(text(
+            """
+            INSERT INTO ds_permission
+                (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+            VALUES
+                (1000, 'orders columns', 1, 'user', 'column', 1, 10, '{}', '[]', '[]')
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO ds_rules
+                (id, enable, name, description, tenant_id, scope, permission_list, user_list, white_list_user)
+            VALUES
+                (2000, 1, 'other workspace rule', '', 3, 'TENANT', '[1000]', '[2]', '[]')
+            """
+        ))
+        session.commit()
+
+        assert permission.get_user_permission_rules(session, current_user, 1) == []
+
+        session.execute(text(
+            """
+            INSERT INTO ds_rules
+                (id, enable, name, description, tenant_id, scope, permission_list, user_list, white_list_user)
+            VALUES
+                (2001, 1, 'platform rule', '', 1, 'PLATFORM', '[1000]', '[2]', '[]')
+            """
+        ))
+        session.commit()
+
+        assert [rule.id for rule in permission.get_user_permission_rules(session, current_user, 1)] == [2001]
 
 
 def test_delete_permission_records_for_datasources_removes_only_target_project_rules():

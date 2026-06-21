@@ -27,13 +27,13 @@ from apps.chat.curd.custom_prompt_manage import (
 from apps.chat.models.chat_model import AxisObj
 from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo, CustomPromptOption
 from apps.datasource.crud.permission import (
-    current_tenant_id,
     get_datasource_ids_with_min_role,
     has_datasource_role,
 )
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_collab_admin, is_platform_admin
+from apps.system.schemas.access_context import current_tenant_id
 from apps.system.models.user import UserModel
 from apps.system.models.system_model import AiModelDetail
 from common.audit.models.log_model import OperationModules, OperationType
