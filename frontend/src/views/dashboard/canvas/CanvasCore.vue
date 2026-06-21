@@ -481,24 +481,6 @@ function setPlayerGridFrame(
   return getItemGridFrame(item)
 }
 
-function movePlayerToFrame(item: CanvasItem, frame: { x: number; y: number }) {
-  const nextFrame = normalizeGridFrame({
-    x: frame.x,
-    y: frame.y,
-    sizeX: item.sizeX,
-    sizeY: item.sizeY,
-  })
-
-  movePlayer(item, nextFrame)
-  rebuildPositionBox()
-
-  if (item.component === 'SQView') {
-    useEmittLazy(`view-render-${item.id}`)
-  }
-
-  return getItemGridFrame(item)
-}
-
 function removeItemById(id: number) {
   const index = canvasComponentData.value.findIndex((item) => item.id === id)
   if (index >= 0) {
@@ -1068,7 +1050,12 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
         sizeX: moveItem.sizeX,
         sizeY: moveItem.sizeY,
       })
-      infoBox.value.lastValidFrame = candidateFrame
+      infoBox.value.dropFrame = candidateFrame
+      const canPlaceFrame = canPlaceGridFrame(moveItem, candidateFrame)
+      if (canPlaceFrame) {
+        infoBox.value.lastValidFrame = candidateFrame
+      }
+      infoBox.value.cloneItem.classList.toggle('invalidDrop', !canPlaceFrame)
       const validStyle = getSnappedItemStyle(
         candidateFrame.x,
         candidateFrame.y,
@@ -1082,13 +1069,6 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       //If the current canvas is locked, no component movement will be performed
       if (canvasLocked.value) return
-
-      debounce(() => {
-        const movedFrame = movePlayerToFrame(moveItem, candidateFrame)
-        infoBox.value.lastValidFrame = movedFrame
-        infoBox.value.oldX = movedFrame.x
-        infoBox.value.oldY = movedFrame.y
-      }, 10)
     }
   }
 
@@ -1144,8 +1124,13 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       }
     }
     if (infoBox.value.moveItem) {
-      if (infoBox.value.lastValidFrame) {
-        movePlayerToFrame(infoBox.value.moveItem, infoBox.value.lastValidFrame)
+      const dropFrame = infoBox.value.dropFrame
+      const frameToApply =
+        dropFrame && canPlaceGridFrame(infoBox.value.moveItem, dropFrame)
+          ? dropFrame
+          : infoBox.value.lastValidFrame
+      if (frameToApply) {
+        setPlayerGridFrame(infoBox.value.moveItem, frameToApply)
       }
       props.dragEnd(e, infoBox.value.moveItem, infoBox.value.moveItem._dragId)
       infoBox.value.moveItem.show = true
