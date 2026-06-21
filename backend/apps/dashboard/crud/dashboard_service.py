@@ -2,7 +2,7 @@
 
 from fastapi import HTTPException
 from orjson import orjson
-from sqlalchemy import select, and_, or_, text
+from sqlalchemy import String, cast, select, and_, or_, text
 
 from apps.dashboard.models.dashboard_model import (
     CoreDashboard,
@@ -26,6 +26,7 @@ from apps.datasource.crud.permission import (
 from apps.datasource.crud.query_executor import execute_user_query
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.models.user import UserModel
+from apps.system.models.tenant import TenantUserModel
 from apps.system.crud.user import is_system_admin
 from common.core.deps import SessionDep, CurrentUser
 import uuid
@@ -158,7 +159,41 @@ def _load_shared_dashboard_or_404(
         raise HTTPException(status_code=404, detail="Shared dashboard does not exist")
     if current_user is not None and not _same_tenant(current_user, record):
         _tenant_not_found("Shared dashboard does not exist")
+    if current_user is not None and not _share_created_by_active_workspace_member(session, current_user, record):
+        _tenant_not_found("Shared dashboard does not exist")
     return record
+
+
+def _active_workspace_member_share_creator_filter(current_user: CurrentUser):
+    return CoreDashboardShare.create_by.in_(
+        select(cast(TenantUserModel.user_id, String)).where(
+            and_(
+                TenantUserModel.tenant_id == _current_tenant_id(current_user),
+                TenantUserModel.status == 1,
+            )
+        )
+    )
+
+
+def _share_created_by_active_workspace_member(
+        session: SessionDep,
+        current_user: CurrentUser,
+        share: CoreDashboardShare,
+) -> bool:
+    if not share.create_by:
+        return False
+    try:
+        creator_id = int(share.create_by)
+    except (TypeError, ValueError):
+        return False
+    statement = select(TenantUserModel.id).where(
+        and_(
+            TenantUserModel.tenant_id == _current_tenant_id(current_user),
+            TenantUserModel.user_id == creator_id,
+            TenantUserModel.status == 1,
+        )
+    )
+    return session.exec(statement).first() is not None
 
 
 def _parse_canvas_view_info(canvas_view_info: str | bytes | None) -> dict:
@@ -778,7 +813,11 @@ def share_resource(session: SessionDep, user: CurrentUser, request: DashboardSha
 
 
 def list_shared_resources(session: SessionDep, current_user: CurrentUser, query: DashboardShareListQuery):
-    filters = [_active_share_filter(), CoreDashboardShare.tenant_id == _current_tenant_id(current_user)]
+    filters = [
+        _active_share_filter(),
+        CoreDashboardShare.tenant_id == _current_tenant_id(current_user),
+        _active_workspace_member_share_creator_filter(current_user),
+    ]
     keyword = (query.keyword or "").strip()
     if keyword:
         filters.append(CoreDashboardShare.name.ilike(f"%{keyword}%"))

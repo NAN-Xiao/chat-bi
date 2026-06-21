@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import iconFilter from '@/assets/svg/icon-filter_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
@@ -10,10 +10,12 @@ import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import Card from './Card.vue'
 import { dashboardApi } from '@/api/dashboard'
+import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+const userStore = useUserStore()
 
 const loading = ref(false)
 const usingId = ref('')
@@ -21,6 +23,8 @@ const previewDialogVisible = ref(false)
 const previewLoading = ref(false)
 const keywords = ref('')
 const currentTypeFilter = ref('')
+const currentWorkspaceId = computed(() => userStore.getTenantId)
+let listRequestSeq = 0
 const state = reactive({
   list: [] as any[],
   previewInfo: null as any,
@@ -67,19 +71,39 @@ const showDashboardPreview = computed(() => {
   )
 })
 
+const resetPreview = () => {
+  previewDialogVisible.value = false
+  previewLoading.value = false
+  state.previewInfo = null
+  state.previewComponentId = ''
+  state.previewComponentData = []
+  state.previewCanvasStyleData = {}
+  state.previewCanvasViewInfo = {}
+}
+
 const loadList = async () => {
+  const requestSeq = ++listRequestSeq
+  const requestWorkspaceId = currentWorkspaceId.value
   loading.value = true
   try {
     const list = await dashboardApi.share_list(
       { keyword: keywords.value },
       { requestOptions: { silent: true } }
     )
+    if (requestSeq !== listRequestSeq || requestWorkspaceId !== currentWorkspaceId.value) {
+      return
+    }
     state.list = Array.isArray(list) ? list : []
   } catch (error) {
     console.error(error)
+    if (requestSeq !== listRequestSeq || requestWorkspaceId !== currentWorkspaceId.value) {
+      return
+    }
     state.list = []
   } finally {
-    loading.value = false
+    if (requestSeq === listRequestSeq && requestWorkspaceId === currentWorkspaceId.value) {
+      loading.value = false
+    }
   }
 }
 
@@ -149,6 +173,13 @@ const toggleTypeFilter = (value: string) => {
 }
 
 onMounted(() => {
+  loadList()
+})
+
+watch(currentWorkspaceId, () => {
+  listRequestSeq++
+  state.list = []
+  resetPreview()
   loadList()
 })
 </script>
