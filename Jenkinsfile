@@ -27,7 +27,7 @@ pipeline {
     NGINX_PORT = '80'
     NGINX_ROOT = '/home/chat-bi/nginx/html'
     NGINX_CONF_PATH = '/etc/nginx/conf.d/chat-bi.conf'
-    INSTALL_CONF_FILE = '/home/chat-bi/install.conf'
+    INSTALL_CONF_FILE = 'installer/install.conf'
     RUNTIME_ENV_FILE = '/home/chat-bi/chat-bi.runtime.env'
     WEB_PORT = '8000'
     MCP_PORT = '8001'
@@ -79,8 +79,8 @@ pipeline {
           fi
           test -w "$APP_HOME" || { echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"; exit 1; }
           if [ ! -f "$INSTALL_CONF_FILE" ]; then
-            echo "缺少运行配置文件：$INSTALL_CONF_FILE"
-            echo "请先按仓库 installer/install.conf 模板在服务器上创建该文件，并填写 ZHISHU_API_PORTS、ZHISHU_WORKER_IDS、Redis、数据库和密钥配置。"
+            echo "缺少仓库配置文件：$INSTALL_CONF_FILE"
+            echo "请先在仓库 installer/install.conf 中维护部署配置。"
             exit 1
           fi
 
