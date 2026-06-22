@@ -90,6 +90,9 @@ pipeline {
           chmod o+rx "$APP_HOME" "$APP_HOME/nginx" "$NGINX_ROOT" || true
           find "$NGINX_ROOT" -type d -exec chmod o+rx {} + || true
           find "$NGINX_ROOT" -type f -exec chmod o+r {} + || true
+          if command -v chcon >/dev/null 2>&1; then
+            chcon -R -t httpd_sys_content_t "$NGINX_ROOT" || true
+          fi
           find "$NGINX_ROOT" -maxdepth 2 -type f | head
         '''
       }
