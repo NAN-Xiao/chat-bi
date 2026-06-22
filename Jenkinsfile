@@ -11,6 +11,9 @@ pipeline {
   parameters {
     string(name: 'BRANCH_NAME', defaultValue: '单用户高可用', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
+    choice(name: 'PYTHON_DEPENDENCY_EXTRA', choices: ['cpu', 'cu128', 'none'], description: 'Python 依赖类型：默认 cpu，cu128 仅用于 GPU/CUDA 环境，none 表示不启用 torch extra')
+    booleanParam(name: 'EXPORT_IMAGE_TAR', defaultValue: false, description: '是否导出镜像 tar 到 /home/chat-bi。默认关闭以缩短发布耗时')
+    booleanParam(name: 'CLEAN_DANGLING_IMAGES', defaultValue: false, description: '是否清理悬空镜像。默认关闭以保留 Docker 构建缓存')
   }
 
   environment {
@@ -46,6 +49,7 @@ pipeline {
           env.BUILD_AT = sh(script: "TZ=Asia/Shanghai date +'%Y-%m-%dT%H:%M'", returnStdout: true).trim()
           env.GITHUB_COMMIT = shortCommit
           env.FRONTEND_API_BASE_URL = "./api/v1"
+          env.EFFECTIVE_PYTHON_DEPENDENCY_EXTRA = params.PYTHON_DEPENDENCY_EXTRA == 'none' ? '' : params.PYTHON_DEPENDENCY_EXTRA
         }
         sh '''
           set -eux
@@ -58,6 +62,9 @@ pipeline {
           command -v git
           command -v docker
           docker version
+          echo "Python 依赖类型：${EFFECTIVE_PYTHON_DEPENDENCY_EXTRA:-none}"
+          echo "是否导出镜像 tar：${EXPORT_IMAGE_TAR}"
+          echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES}"
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/sqlbot/excel" "$APP_HOME/data/sqlbot/file" "$APP_HOME/data/sqlbot/images" "$APP_HOME/data/sqlbot/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
             exit 1
@@ -78,6 +85,7 @@ pipeline {
             --build-arg SQLBOT_BASE_IMAGE="$SQLBOT_BASE_IMAGE" \
             --build-arg SQLBOT_RUNTIME_IMAGE="$SQLBOT_RUNTIME_IMAGE" \
             --build-arg VITE_API_BASE_URL="$FRONTEND_API_BASE_URL" \
+            --build-arg PYTHON_DEPENDENCY_EXTRA="$EFFECTIVE_PYTHON_DEPENDENCY_EXTRA" \
             .
         '''
       }
@@ -161,6 +169,9 @@ EOF
     }
 
     stage('保存镜像到 /home/chat-bi') {
+      when {
+        expression { return params.EXPORT_IMAGE_TAR }
+      }
       steps {
         sh '''
           set -eux
@@ -285,12 +296,13 @@ EOF
       steps {
         sh '''
           set -eu
-          KEEP_COUNT=3
+          IMAGE_KEEP_COUNT=2
+          TAR_KEEP_COUNT=1
           RUNNING_IMAGE_ID="$(docker inspect --format='{{.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)"
 
           docker images "$IMAGE_REPOSITORY" --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}' \
             | sort -k3,4r \
-            | awk -v keep="$KEEP_COUNT" -v running_id="$RUNNING_IMAGE_ID" '
+            | awk -v keep="$IMAGE_KEEP_COUNT" -v running_id="$RUNNING_IMAGE_ID" '
                 NR <= keep {
                   print "保留镜像：" $1
                   next
@@ -320,15 +332,28 @@ EOF
           echo "当前保留的 $IMAGE_REPOSITORY 镜像："
           docker images "$IMAGE_REPOSITORY"
 
-          echo "清理旧镜像归档文件，只保留最近 $KEEP_COUNT 个："
+          echo "清理退出容器，避免失败构建残留占用磁盘："
+          docker container prune -f || true
+
+          if [ "$CLEAN_DANGLING_IMAGES" = "true" ]; then
+            echo "按参数清理悬空镜像。注意：这可能降低下一次 Docker 构建缓存命中率。"
+            docker image prune -f || true
+          else
+            echo "跳过悬空镜像清理，以保留 Docker 构建缓存。磁盘紧张时可手动打开 CLEAN_DANGLING_IMAGES。"
+          fi
+
+          echo "清理旧镜像归档文件，只保留最近 $TAR_KEEP_COUNT 个："
           find "$APP_HOME" -maxdepth 1 -name 'chat-bi-*.tar' -type f -printf '%T@ %p\n' \
             | sort -nr \
-            | awk -v keep="$KEEP_COUNT" 'NR > keep { print substr($0, index($0, " ") + 1) }' \
+            | awk -v keep="$TAR_KEEP_COUNT" 'NR > keep { print substr($0, index($0, " ") + 1) }' \
             | while IFS= read -r tar_file; do
                 [ -n "$tar_file" ] || continue
                 echo "删除旧镜像归档：$tar_file"
                 rm -f "$tar_file"
               done
+
+          echo "Docker 磁盘使用情况："
+          docker system df
         '''
       }
     }
@@ -336,7 +361,7 @@ EOF
 
   post {
     success {
-      echo "发布完成：${env.IMAGE}，镜像文件：${env.IMAGE_TAR}"
+      echo "发布完成：${env.IMAGE}，镜像归档：${params.EXPORT_IMAGE_TAR ? env.IMAGE_TAR : '未导出'}"
     }
     failure {
       sh '''

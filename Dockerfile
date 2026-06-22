@@ -26,6 +26,7 @@ RUN cd /tmp/frontend && npm run build && mv dist ${UI_HOME}/dist
 
 
 FROM ${SQLBOT_BASE_IMAGE} AS sqlbot-builder
+ARG PYTHON_DEPENDENCY_EXTRA=cpu
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
 ENV SQLBOT_HOME=/opt/sqlbot
@@ -44,11 +45,18 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 WORKDIR ${APP_HOME}
 
-COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
-COPY ./backend ${APP_HOME}
+COPY backend/pyproject.toml backend/uv.lock ${APP_HOME}/
 
 # Install runtime dependencies without installing this app as a Python package.
-RUN uv sync --frozen --no-install-project --no-dev
+# 默认使用 CPU 版 PyTorch，避免在普通服务器构建时拉取 CUDA/NVIDIA 大依赖。
+RUN if [ -n "$PYTHON_DEPENDENCY_EXTRA" ]; then \
+      uv sync --frozen --no-install-project --no-dev --extra "$PYTHON_DEPENDENCY_EXTRA"; \
+    else \
+      uv sync --frozen --no-install-project --no-dev; \
+    fi
+
+COPY ./backend ${APP_HOME}
+COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
 
 # Build g2-ssr
 FROM ${SQLBOT_BASE_IMAGE} AS ssr-builder
