@@ -38,7 +38,7 @@
     "token_expired": "토큰이 만료됨",
     "only_project_role": "프로젝트 보기 또는 편집 권한이 필요합니다!",
     "permission_resource_limit": "권한이 없거나 리소스를 찾을 수 없습니다!",
-    "platform_admin_chatbi_forbidden": "플랫폼 관리자는 SaaS 플랫폼 운영 관리를 위한 역할이며 테넌트 측 ChatBI 업무 기능에 접근할 수 없습니다."
+    "platform_admin_chatbi_forbidden": "SaaS 관리자는 SaaS 콘솔 운영 관리를 위한 역할이며 워크스페이스 측 ChatBI 업무 기능에 접근할 수 없습니다."
   },
   "i18n_llm": {
     "validate_error": "검증 실패 [{msg}]",

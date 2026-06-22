@@ -424,6 +424,16 @@
             :custom-prompt-types="['GENERATE_SQL']"
           />
 
+          <DataSkillSelector
+            v-if="isCompletePage"
+            v-model="selectedDataSkillId"
+            class="skill-select"
+            :disabled="isTyping"
+            :datasource-id="currentAgentDatasourceId"
+            :datasource-name="currentAgentDatasourceName"
+            target-scope="SMART_QA"
+          />
+
           <el-button
             circle
             type="primary"
@@ -466,6 +476,7 @@ import RecommendQuestion from './RecommendQuestion.vue'
 import ChatListContainer from './ChatListContainer.vue'
 import ChatCreator from '@/views/chat/ChatCreator.vue'
 import AgentSelector from '@/components/custom-agent/AgentSelector.vue'
+import DataSkillSelector from '@/components/data-skill/DataSkillSelector.vue'
 import ChatTokenTime from '@/views/chat/ChatTokenTime.vue'
 import ErrorInfo from './ErrorInfo.vue'
 import ChatToolBar from './ChatToolBar.vue'
@@ -532,6 +543,7 @@ const isPhone = computed(() => {
 })
 const inputMessage = ref('')
 const selectedCustomPromptId = ref<string | number | null>(null)
+const selectedDataSkillId = ref<string | number | null>(null)
 const currentAgentDatasourceId = computed(() => currentChat.value.datasource || datasourceContext.datasourceId)
 const currentAgentDatasourceName = computed(() => {
   if (currentChat.value.datasource_name) return currentChat.value.datasource_name
@@ -783,6 +795,7 @@ watch(
     currentChatId.value = undefined
     chatList.value = []
     selectedCustomPromptId.value = null
+    selectedDataSkillId.value = null
     getChatList()
   }
 )
@@ -937,6 +950,7 @@ const sendMessage = async (
   currentRecord.datasource = currentChat.value.datasource || datasourceContext.datasourceId
   currentRecord.regenerate_record_id = regenerate_record_id
   currentRecord.custom_prompt_id = selectedCustomPromptId.value || undefined
+  currentRecord.data_skill_id = selectedDataSkillId.value || undefined
   currentRecord.sql_answer = ''
   currentRecord.sql = ''
   currentRecord.chart_answer = ''
@@ -1020,6 +1034,7 @@ async function clickAnalysis(id?: number) {
   currentRecord.data = baseRecord.data
   currentRecord.analysis_record_id = id
   currentRecord.custom_prompt_id = baseRecord.custom_prompt_id
+  currentRecord.data_skill_id = baseRecord.data_skill_id
   currentRecord.analysis = ''
 
   currentChat.value.records.push(currentRecord)
@@ -1100,6 +1115,7 @@ async function clickPredict(id?: number) {
   currentRecord.data = baseRecord.data
   currentRecord.predict_record_id = id
   currentRecord.custom_prompt_id = baseRecord.custom_prompt_id
+  currentRecord.data_skill_id = baseRecord.data_skill_id
   currentRecord.predict = ''
   currentRecord.predict_data = ''
 
@@ -1464,6 +1480,14 @@ onMounted(async () => {
         :deep(.ed-select__placeholder) {
           font-size: 12px;
         }
+      }
+
+      .skill-select {
+        position: absolute;
+        left: 138px;
+        bottom: 12px;
+        width: 116px;
+        z-index: 2;
       }
     }
   }

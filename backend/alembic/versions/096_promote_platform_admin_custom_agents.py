@@ -56,6 +56,6 @@ def upgrade():
 
 
 def downgrade():
-    # Data promotion is intentionally irreversible: demoting platform Agents
-    # would hide them again from platform-admin management surfaces.
+    # Data promotion is intentionally irreversible: demoting SaaS Agents
+    # would hide them again from SaaS admin management surfaces.
     pass

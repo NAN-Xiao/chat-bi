@@ -87,7 +87,7 @@ def test_platform_admin_can_maintain_platform_terminology(monkeypatch):
             trans=_trans,
             info=TerminologyInfo(
                 word="Common KPI",
-                description="Shared platform-level term.",
+                description="Shared SaaS-level term.",
                 other_words=["Shared KPI"],
                 specific_ds=True,
                 datasource_ids=[999],

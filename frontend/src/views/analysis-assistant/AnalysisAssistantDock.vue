@@ -15,6 +15,7 @@ import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.sv
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import AgentSelector from '@/components/custom-agent/AgentSelector.vue'
+import DataSkillSelector from '@/components/data-skill/DataSkillSelector.vue'
 
 interface DockMessage extends AnalysisAssistantMessage {
   id: number
@@ -75,6 +76,7 @@ const analysisContext = useDatasourceContextStore()
 const messages = ref<DockMessage[]>([])
 const inputMessage = ref('')
 const selectedCustomPromptId = ref<string | number | null>(null)
+const selectedDataSkillId = ref<string | number | null>(null)
 const scrollRef = ref()
 const inputRef = ref()
 const isStreaming = ref(false)
@@ -592,6 +594,7 @@ const sendMessage = async ($event: any = {}) => {
       pageContext.value,
       analysisContext.datasourceId,
       selectedCustomPromptId.value,
+      selectedDataSkillId.value,
       streamController.value
     )
     if (!response.ok) {
@@ -888,6 +891,14 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
             target-scope="ANALYSIS_ASSISTANT"
             create-type="ANALYSIS"
             :custom-prompt-types="['GENERATE_SQL', 'ANALYSIS', 'PREDICT_DATA']"
+          />
+          <DataSkillSelector
+            v-model="selectedDataSkillId"
+            class="skill-select"
+            :disabled="isStreaming"
+            :datasource-id="analysisContext.datasourceId"
+            :datasource-name="analysisContext.datasourceName"
+            target-scope="ANALYSIS_ASSISTANT"
           />
           <el-button
             v-if="!isStreaming"
@@ -1506,6 +1517,14 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
     :deep(.ed-select__placeholder) {
       font-size: 12px;
     }
+  }
+
+  .skill-select {
+    position: absolute;
+    left: 136px;
+    bottom: 8px;
+    z-index: 2;
+    width: 116px;
   }
 
   .send-btn {

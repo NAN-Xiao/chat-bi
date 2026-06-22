@@ -68,7 +68,7 @@ def _require_training_admin(session: SessionDep, current_user: CurrentUser, info
     scope = normalize_semantic_scope(info.scope)
     if scope == SemanticRecordScopeEnum.PLATFORM:
         if not _can_manage_platform_semantic_layer(current_user):
-            raise HTTPException(status_code=403, detail="Platform admin access is required")
+            raise HTTPException(status_code=403, detail="SaaS admin access is required")
     else:
         if not _can_manage_tenant_semantic_layer(current_user):
             raise HTTPException(status_code=403, detail="Tenant admin access is required")
@@ -92,7 +92,7 @@ def _require_training_ids_admin(session: SessionDep, current_user: CurrentUser, 
     scope = _request_scope(current_user)
     if scope == SemanticRecordScopeEnum.PLATFORM:
         if not _can_manage_platform_semantic_layer(current_user):
-            raise HTTPException(status_code=403, detail="Platform admin access is required")
+            raise HTTPException(status_code=403, detail="SaaS admin access is required")
     elif not _can_manage_tenant_semantic_layer(current_user):
         raise HTTPException(status_code=403, detail="Tenant admin access is required")
     rows = session.exec(

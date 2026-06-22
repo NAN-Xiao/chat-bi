@@ -11,7 +11,7 @@
         </div>
         <div class="power-login-brand-copy">
           <strong>{{ productName }}</strong>
-          <span>ChatBI 数据问答与看板平台</span>
+          <span>ChatBI 数据问答与看板 SaaS</span>
         </div>
       </button>
 
@@ -26,7 +26,7 @@
     </header>
 
     <div v-if="!isLoginFormPage" class="home-announcement-strip">
-      <span>星通智数平台主页</span>
+      <span>星通智数 SaaS 主页</span>
       <strong>用 ChatBI、语义层和数据看板，把可信分析带给每个团队。</strong>
       <button type="button" @click="goLoginPage">进入工作台</button>
     </div>
@@ -141,7 +141,7 @@
         </aside>
       </div>
 
-      <section class="account-login-more" aria-label="平台能力">
+      <section class="account-login-more" aria-label="SaaS 能力">
         <h2>更多方式探索 {{ productName }}</h2>
         <div class="account-login-more-grid">
           <article v-for="item in accountExploreCards" :key="item.title">
@@ -170,7 +170,7 @@
           <span>数据源权限、语义层和 SQL 生成统一收敛</span>
         </div>
 
-        <div class="power-login-status-row" aria-label="平台能力">
+        <div class="power-login-status-row" aria-label="SaaS 能力">
           <span v-for="item in statusChips" :key="item" class="power-login-status-chip">
             <i class="power-login-dot"></i>
             {{ item }}
@@ -251,9 +251,9 @@
         </div>
       </section>
 
-      <section class="home-section home-proof-section" aria-label="平台指标">
+      <section class="home-section home-proof-section" aria-label="SaaS 指标">
         <div class="home-section-head home-section-head-center">
-          <span>平台总览</span>
+          <span>SaaS 总览</span>
           <h2>从数据连接到业务答案，形成可运营的分析闭环</h2>
         </div>
         <div class="home-proof-grid">
@@ -377,7 +377,7 @@
             <span>Smart Q&amp;A</span>
             <h3>从“帮我取数”走向“共同沉淀分析资产”</h3>
             <p>
-              业务用户可以直接提出问题，平台在授权数据源内生成 SQL 和图表；
+              业务用户可以直接提出问题，SaaS 在授权数据源内生成 SQL 和图表；
               数据团队则把高频问题、指标口径和查询样例沉淀到语义层。
             </p>
             <div class="home-story-chart" aria-hidden="true">

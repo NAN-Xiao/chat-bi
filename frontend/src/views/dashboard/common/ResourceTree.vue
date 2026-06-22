@@ -165,10 +165,13 @@ const getTree = async () => {
 const hasData = computed<boolean>(() => state.resourceTree.length > 0)
 const canCreateDashboard = computed<boolean>(() => datasourceContext.canCreateDashboard)
 const canManageNode = (data: SQTreeNode) => data.can_edit === true
+const canShareNode = (data: SQTreeNode) => data.can_share === true || data.is_shared === true
+const hasNodeMenu = (data: SQTreeNode) =>
+  canManageNode(data) || (data.node_type === 'leaf' && canShareNode(data))
 const nodeMenuList = (data: SQTreeNode) => {
-  const list = [...state.baseMenuList]
-  if (data.node_type === 'leaf') {
-    list.splice(2, 0, {
+  const list = canManageNode(data) ? [...state.baseMenuList] : []
+  if (data.node_type === 'leaf' && canShareNode(data)) {
+    list.splice(canManageNode(data) ? 2 : 0, 0, {
       label: data.is_shared ? t('dashboard.cancel_share') : t('dashboard.share'),
       command: data.is_shared ? 'unshare' : 'share',
       svgName: data.is_shared ? icon_close_outlined : icon_export_outlined,
@@ -309,6 +312,7 @@ const operation = async (opt: string, data: SQTreeNode) => {
   } else if (opt === 'edit') {
     resourceEdit(data.id)
   } else if (opt === 'share') {
+    if (!canShareNode(data)) return
     const previewImage = selectedNodeKey.value === data.id ? await captureDashboardSharePreview() : ''
     dashboardApi
       .share({
@@ -539,7 +543,7 @@ defineExpose({
                 <Icon><icon_add_outlined class="svg-icon" /></Icon>
               </el-icon>
               <HandleMore
-                v-if="canManageNode(data)"
+                v-if="hasNodeMenu(data)"
                 :menu-list="nodeMenuList(data)"
                 :icon-name="icon_more_outlined"
                 placement="bottom-end"

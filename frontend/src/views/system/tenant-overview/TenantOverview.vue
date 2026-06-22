@@ -372,7 +372,7 @@ const activityRate = computed(() =>
 )
 
 const reusableAssetCount = computed(() =>
-  ['dashboard', 'terminology', 'training', 'custom_agent', 'embedded'].reduce(
+  ['dashboard', 'data_skill', 'custom_agent', 'embedded'].reduce(
     (result, key) => result + assetCount(key),
     0
   )
@@ -390,8 +390,7 @@ const assetUsability = computed(() => {
 const analysisMaturity = computed(() => {
   const maturityChecks = [
     Number(summary.value.dashboard_total || 0) > 0,
-    assetCount('terminology') > 0,
-    assetCount('training') > 0,
+    assetCount('data_skill') > 0,
   ]
   return ratioPercent(maturityChecks.filter(Boolean).length, maturityChecks.length)
 })
@@ -445,8 +444,7 @@ const summaryCards = computed(() => [
     value: formatPercentValue(analysisMaturity.value),
     subValue: t('tenant_overview.efficiency_analysis_assets', {
       dashboards: formatNumber(assetCount('dashboard')),
-      terminology: formatNumber(assetCount('terminology')),
-      training: formatNumber(assetCount('training')),
+      skills: formatNumber(assetCount('data_skill')),
     }),
     progress: analysisMaturity.value,
     icon: icon_chart_preview,
@@ -513,6 +511,8 @@ const assetLabel = (key?: string) => {
       return t('tenant_overview.asset_datasource')
     case 'dashboard':
       return t('tenant_overview.asset_dashboard')
+    case 'data_skill':
+      return t('tenant_overview.asset_terminology')
     case 'terminology':
       return t('tenant_overview.asset_terminology')
     case 'training':

@@ -58,6 +58,7 @@ export class ChatRecord {
   predict_record_id?: number
   regenerate_record_id?: number
   custom_prompt_id?: number | string
+  data_skill_id?: number | string
   duration?: number
   total_tokens?: number
 
@@ -88,6 +89,7 @@ export class ChatRecord {
     predict_record_id: number | undefined,
     regenerate_record_id: number | undefined,
     custom_prompt_id: number | string | undefined,
+    data_skill_id: number | string | undefined,
     duration: number | undefined,
     total_tokens: number | undefined
   )
@@ -117,6 +119,7 @@ export class ChatRecord {
     predict_record_id?: number,
     regenerate_record_id?: number,
     custom_prompt_id?: number | string,
+    data_skill_id?: number | string,
     duration?: number,
     total_tokens?: number
   ) {
@@ -145,6 +148,7 @@ export class ChatRecord {
     this.predict_record_id = predict_record_id
     this.regenerate_record_id = regenerate_record_id
     this.custom_prompt_id = custom_prompt_id
+    this.data_skill_id = data_skill_id
     this.duration = duration
     this.total_tokens = total_tokens
   }
@@ -290,6 +294,7 @@ const toChatRecord = (data?: any): ChatRecord | undefined => {
     data.predict_record_id,
     data.regenerate_record_id,
     data.custom_prompt_id,
+    data.data_skill_id,
     data.duration,
     data.total_tokens
   )

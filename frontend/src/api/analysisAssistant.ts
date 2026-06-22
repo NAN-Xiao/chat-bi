@@ -13,11 +13,18 @@ export const analysisAssistantApi = {
     context?: string,
     datasourceId?: number,
     customPromptId?: number | string | null,
+    dataSkillId?: number | string | null,
     controller?: AbortController
   ) =>
     request.fetchStream(
       '/analysis-assistant/chat',
-      { messages, context, datasource_id: datasourceId, custom_prompt_id: customPromptId },
+      {
+        messages,
+        context,
+        datasource_id: datasourceId,
+        custom_prompt_id: customPromptId,
+        data_skill_id: dataSkillId,
+      },
       controller
     ),
 }

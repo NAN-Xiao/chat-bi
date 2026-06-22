@@ -169,7 +169,7 @@ async def enqueue_task(
         if getattr(quota_state, "reason", None) == "subscription_suspended":
             raise RuntimeError(
                 f"Tenant {resolved_tenant_id} subscription is {quota_state.subscription_status}; "
-                "task enqueue is suspended by platform administrator."
+                "task enqueue is suspended by SaaS administrator."
             )
         raise RuntimeError(
             f"Tenant {resolved_tenant_id} task quota exceeded "

@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import io
 import os
 from typing import Optional
@@ -25,14 +26,19 @@ from apps.chat.curd.custom_prompt_manage import (
     update_custom_prompt,
 )
 from apps.chat.models.chat_model import AxisObj
-from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo, CustomPromptOption
+from apps.chat.models.custom_prompt_model import (
+    CustomPrompt,
+    CustomPromptInfo,
+    CustomPromptOption,
+    CustomPromptUserPreference,
+)
 from apps.datasource.crud.permission import (
     get_datasource_ids_with_min_role,
     has_datasource_role,
 )
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
-from apps.system.crud.user import is_collab_admin, is_platform_admin
+from apps.system.crud.user import is_collab_admin, is_platform_admin, is_platform_workspace_delegate
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.models.user import UserModel
 from apps.system.models.system_model import AiModelDetail
@@ -62,6 +68,8 @@ def _visible_datasource_ids(session: SessionDep, current_user: CurrentUser) -> O
 
 
 def _can_manage_all_prompts(session: SessionDep, current_user: CurrentUser) -> bool:
+    if is_platform_workspace_delegate(current_user):
+        return False
     if is_collab_admin(current_user):
         return True
     try:
@@ -72,6 +80,8 @@ def _can_manage_all_prompts(session: SessionDep, current_user: CurrentUser) -> b
 
 
 def _can_manage_platform_public_prompts(session: SessionDep, current_user: CurrentUser) -> bool:
+    if is_platform_workspace_delegate(current_user):
+        return False
     if is_platform_admin(current_user):
         return True
     try:
@@ -106,7 +116,7 @@ def _require_prompt_manage(session: SessionDep, current_user: CurrentUser, promp
     if _is_platform_public_scope(getattr(prompt, "visibility_scope", None)):
         if _can_manage_platform_public_prompts(session, current_user):
             return
-        raise HTTPException(status_code=403, detail="Only platform admin can maintain platform Agents")
+        raise HTTPException(status_code=403, detail="Only SaaS admin can maintain SaaS Agents")
     if _can_manage_all_prompts(session, current_user):
         return
     if (
@@ -211,7 +221,7 @@ def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, inf
         return
 
     if _is_platform_public_scope(info.visibility_scope):
-        raise HTTPException(status_code=403, detail="Only platform admin can maintain platform Agents")
+        raise HTTPException(status_code=403, detail="Only SaaS admin can maintain SaaS Agents")
 
     if _is_user_private_scope(info.visibility_scope):
         info.tenant_id = current_tid
@@ -352,6 +362,7 @@ async def pager(
         page_size: int,
         name: Optional[str] = Query(None),
         visibility_scope: Optional[str] = Query(None),
+        effective_only: bool = Query(False),
 ):
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
@@ -376,6 +387,7 @@ async def pager(
         tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
         visibility_scope=_parse_visibility_scope(visibility_scope),
         platform_only=can_manage_platform_public,
+        effective_only=effective_only,
     )
     return {
         "current_page": current_page,
@@ -455,6 +467,64 @@ async def get_one(session: SessionDep, current_user: CurrentUser, prompt_id: int
         if info.specific_ds and not has_datasource_role(session, current_user, info.datasource_ids, "project_viewer"):
             raise HTTPException(status_code=403, detail="Datasource access is required")
     return info
+
+
+@router.put("/{prompt_id}/activation")
+async def set_activation(
+        session: SessionDep,
+        current_user: CurrentUser,
+        prompt_id: int,
+        enabled: bool = Query(...),
+        scope: str = Query("user"),
+):
+    prompt = session.get(CustomPrompt, prompt_id)
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Custom prompt not found")
+
+    can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
+    can_manage_all = _can_manage_all_prompts(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
+    info = get_custom_prompt(
+        session,
+        prompt_id,
+        current_user_id=int(current_user.id),
+        can_manage_all=can_manage_all,
+        can_manage_public=can_manage_public,
+        can_manage_platform_public=can_manage_platform_public,
+        tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
+    )
+    if info.specific_ds and not has_datasource_role(session, current_user, info.datasource_ids, "project_viewer"):
+        raise HTTPException(status_code=403, detail="Datasource access is required")
+
+    if scope == "global":
+        _require_prompt_manage(session, current_user, prompt)
+        prompt.active = bool(enabled)
+        session.add(prompt)
+        session.commit()
+        return {"active": bool(prompt.active), "user_enabled": bool(info.user_enabled)}
+
+    if scope != "user":
+        raise HTTPException(status_code=400, detail="Unsupported activation scope")
+    if not prompt.active and enabled:
+        raise HTTPException(status_code=403, detail="This Skill is disabled globally")
+
+    row = session.exec(
+        select(CustomPromptUserPreference).where(
+            CustomPromptUserPreference.custom_prompt_id == int(prompt_id),
+            CustomPromptUserPreference.user_id == int(current_user.id),
+        )
+    ).first()
+    if not row:
+        row = CustomPromptUserPreference(
+            tenant_id=_workspace_tenant_id(current_user),
+            custom_prompt_id=int(prompt_id),
+            user_id=int(current_user.id),
+        )
+    row.enabled = bool(enabled)
+    row.update_time = datetime.datetime.now()
+    session.add(row)
+    session.commit()
+    return {"active": bool(prompt.active), "user_enabled": bool(row.enabled)}
 
 
 @router.put("")

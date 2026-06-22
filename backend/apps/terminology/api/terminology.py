@@ -65,7 +65,7 @@ def _require_term_scope_admin(session: SessionDep, current_user: CurrentUser, te
     scope = normalize_semantic_scope(getattr(term, "scope", None))
     if scope == SemanticRecordScopeEnum.PLATFORM:
         if not _can_manage_platform_semantic_layer(current_user):
-            raise HTTPException(status_code=403, detail="Platform admin access is required")
+            raise HTTPException(status_code=403, detail="SaaS admin access is required")
     else:
         if not _can_manage_tenant_semantic_layer(current_user):
             raise HTTPException(status_code=403, detail="Tenant admin access is required")

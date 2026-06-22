@@ -38,7 +38,7 @@
     "token_expired": "Token expired",
     "only_project_role": "Project viewer or editor access required!",
     "permission_resource_limit": "Access denied or resource not found!",
-    "platform_admin_chatbi_forbidden": "Platform administrators are for SaaS operations and cannot access tenant-side ChatBI business features."
+    "platform_admin_chatbi_forbidden": "SaaS administrators are for SaaS console operations and cannot access workspace-side ChatBI business features."
   },
   "i18n_llm": {
     "validate_error": "Validation failed [{msg}]",

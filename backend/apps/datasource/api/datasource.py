@@ -96,7 +96,7 @@ def _can_manage_tenant_projects(user: CurrentUser) -> bool:
 
 def _require_platform_project_admin(user: CurrentUser) -> None:
     if not is_platform_admin(user):
-        raise HTTPException(status_code=403, detail="Only platform admin can manage projects")
+        raise HTTPException(status_code=403, detail="Only SaaS admin can manage projects")
 
 
 def _require_schema_metadata_admin(user: CurrentUser) -> None:
@@ -662,7 +662,7 @@ async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
 async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, data: TableObj,
                        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     if is_platform_workspace_delegate(current_user):
-        raise HTTPException(status_code=403, detail="Only platform admin can preview datasource rows")
+        raise HTTPException(status_code=403, detail="Only SaaS admin can preview datasource rows")
 
     def inner():
         try:

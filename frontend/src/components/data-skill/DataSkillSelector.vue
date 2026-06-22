@@ -3,20 +3,15 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
 import { Search } from '@element-plus/icons-vue'
-import { promptApi } from '@/api/prompt'
-import { modelApi } from '@/api/system'
+import { dataSkillApi } from '@/api/dataSkill'
 import icon_ai from '@/assets/svg/icon_ai.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
-
-const CUSTOM_PROMPT_TYPES = ['GENERATE_SQL', 'ANALYSIS', 'PREDICT_DATA']
 
 const props = withDefaults(
   defineProps<{
     modelValue?: string | number | null
     targetScope?: 'SMART_QA' | 'ANALYSIS_ASSISTANT' | 'ALL' | string
-    customPromptTypes?: string[]
-    createType?: string
     datasourceId?: string | number | null
     datasourceName?: string
     disabled?: boolean
@@ -24,8 +19,6 @@ const props = withDefaults(
   {
     modelValue: null,
     targetScope: 'SMART_QA',
-    customPromptTypes: () => ['GENERATE_SQL'],
-    createType: 'GENERATE_SQL',
     datasourceId: null,
     datasourceName: '',
     disabled: false,
@@ -42,17 +35,16 @@ const { t } = useI18n()
 
 const popoverVisible = ref(false)
 const keyword = ref('')
-const agentList = ref<any[]>([])
+const skillList = ref<any[]>([])
 const loading = ref(false)
-const aiModelOptions = ref<any[]>([])
-const agentFormRef = ref()
-const agentDialogVisible = ref(false)
-const agentDialogTitle = ref('')
-const savingAgent = ref(false)
+const skillFormRef = ref()
+const skillDialogVisible = ref(false)
+const skillDialogTitle = ref('')
+const savingSkill = ref(false)
 
-const defaultAgentForm = {
+const defaultSkillForm = {
   id: null as number | string | null,
-  type: 'GENERATE_SQL',
+  type: 'DATA_SKILL',
   name: '',
   description: '',
   target_scope: 'SMART_QA',
@@ -63,20 +55,20 @@ const defaultAgentForm = {
   datasource_ids: [] as number[],
   visibility_scope: 'USER_PRIVATE',
 }
-const agentForm = ref(cloneDeep(defaultAgentForm))
+const skillForm = ref(cloneDeep(defaultSkillForm))
 
-const agentRules = {
+const skillRules = {
   name: [
     {
       required: true,
-      message: t('datasource.please_enter') + t('common.empty') + t('prompt.prompt_word_name'),
+      message: t('datasource.please_enter') + t('common.empty') + t('data_skill.skill_name'),
       trigger: 'blur',
     },
   ],
   prompt: [
     {
       required: true,
-      message: t('prompt.replaced_with'),
+      message: t('data_skill.content_placeholder'),
       trigger: 'blur',
     },
   ],
@@ -90,18 +82,18 @@ const datasourceIdValue = computed(() => {
   return Number.isFinite(value) ? value : null
 })
 
-const usablePromptTypes = computed(() => {
-  const types = props.customPromptTypes?.length ? props.customPromptTypes : CUSTOM_PROMPT_TYPES
-  return types.filter((item) => CUSTOM_PROMPT_TYPES.includes(item))
-})
-
-const canCreateAgent = computed(() => true)
-
-const selectedAgent = computed(() =>
-  agentList.value.find((item) => String(item.id) === String(props.modelValue))
+const selectedSkill = computed(() =>
+  skillList.value.find((item) => String(item.id) === String(props.modelValue))
 )
 
-const selectedLabel = computed(() => selectedAgent.value?.name || t('prompt.default_agent'))
+const selectedLabel = computed(() => selectedSkill.value?.name || t('data_skill.default_skill'))
+
+const autoSkillDescription = computed(() => {
+  if (skillList.value.length > 0) {
+    return t('chat.find_data_skill_title', [skillList.value.length])
+  }
+  return targetScopeText(props.targetScope)
+})
 
 const targetScopeText = (scope?: string | null) => {
   if (scope === 'ANALYSIS_ASSISTANT') return t('prompt.target_scope_analysis_assistant')
@@ -109,19 +101,11 @@ const targetScopeText = (scope?: string | null) => {
   return t('prompt.target_scope_smart_qa')
 }
 
-const typeTitle = (type?: string) => {
-  if (type === 'ANALYSIS') return t('prompt.data_analysis')
-  if (type === 'PREDICT_DATA') return t('prompt.data_prediction')
-  return t('prompt.ask_sql')
-}
-
-const modelText = (row: any) => row?.ai_model_name || t('prompt.default_ai_model')
-
 const sourceText = (row: any) => {
-  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('access.saas_agent')
-  if (row?.visibility_scope === 'ADMIN_PUBLIC') return t('access.workspace_agent')
-  if (row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner) return t('access.my_agent')
-  return t('access.workspace_agent')
+  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('data_skill.saas_skill')
+  if (row?.visibility_scope === 'ADMIN_PUBLIC') return t('data_skill.workspace_skill')
+  if (row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner) return t('data_skill.my_skill')
+  return t('data_skill.workspace_skill')
 }
 
 const sourceClass = (row: any) => {
@@ -160,7 +144,7 @@ const isVisibleInPersonalEntry = (row: any) => {
   return row?.visibility_scope !== 'USER_PRIVATE' || row?.is_owner === true
 }
 
-const canManageAgent = (row: any) => {
+const canManageSkill = (row: any) => {
   return row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true
 }
 
@@ -169,6 +153,7 @@ const buildListQuery = () => {
   if (datasourceIdValue.value) {
     params.append('dslist', String(datasourceIdValue.value))
   }
+  params.append('effective_only', 'true')
   if (keyword.value.trim()) {
     params.append('name', keyword.value.trim())
   }
@@ -176,47 +161,41 @@ const buildListQuery = () => {
   return query ? `?${query}` : ''
 }
 
-const selectAgent = (value: string | number | null) => {
+const selectSkill = (value: string | number | null) => {
   emit('update:modelValue', value)
   emit('change', value)
   popoverVisible.value = false
 }
 
-const loadAiModels = () => {
-  modelApi.listAvailable().then((res: any) => {
-    aiModelOptions.value = res || []
-  })
-}
-
-const loadAgents = async () => {
+const loadSkills = async () => {
   loading.value = true
   try {
-    const query = buildListQuery()
-    const responses = await Promise.all(
-      usablePromptTypes.value.map((type) =>
-        promptApi.getList(1, 100, type, query).catch(() => ({ data: [] }))
+    const res: any = await dataSkillApi.getList(1, 100, buildListQuery()).catch(() => ({ data: [] }))
+    skillList.value = (res?.data || [])
+      .filter(
+        (row: any) =>
+          row?.active === true &&
+          row?.user_enabled !== false &&
+          row?.effective_active !== false &&
+          matchesTargetScope(row) &&
+          isVisibleInPersonalEntry(row)
       )
-    )
-    agentList.value = responses
-      .flatMap((res: any) => res?.data || [])
-      .filter((row: any) => row?.active === true && matchesTargetScope(row) && isVisibleInPersonalEntry(row))
       .sort(sortBySourceAndTime)
 
     if (
       props.modelValue &&
-      !agentList.value.some((item) => String(item.id) === String(props.modelValue))
+      !skillList.value.some((item) => String(item.id) === String(props.modelValue))
     ) {
-      selectAgent(null)
+      selectSkill(null)
     }
   } finally {
     loading.value = false
   }
 }
 
-const resetAgentForm = () => {
-  agentForm.value = {
-    ...cloneDeep(defaultAgentForm),
-    type: props.createType || usablePromptTypes.value[0] || 'GENERATE_SQL',
+const resetSkillForm = () => {
+  skillForm.value = {
+    ...cloneDeep(defaultSkillForm),
     target_scope: props.targetScope || 'SMART_QA',
     specific_ds: false,
     datasource_ids: [],
@@ -224,94 +203,88 @@ const resetAgentForm = () => {
   }
 }
 
-const openCreateAgent = () => {
-  resetAgentForm()
-  agentDialogTitle.value = t('prompt.add_prompt_word')
-  agentDialogVisible.value = true
+const openCreateSkill = () => {
+  resetSkillForm()
+  skillDialogTitle.value = t('data_skill.add_skill')
+  skillDialogVisible.value = true
   popoverVisible.value = false
 }
 
-const openEditAgent = (row: any) => {
-  if (!canManageAgent(row)) return
-  agentForm.value = {
-    ...cloneDeep(defaultAgentForm),
+const openEditSkill = (row: any) => {
+  if (!canManageSkill(row)) return
+  skillForm.value = {
+    ...cloneDeep(defaultSkillForm),
     ...cloneDeep(row),
+    type: 'DATA_SKILL',
     target_scope: row.target_scope || props.targetScope || 'SMART_QA',
     specific_ds: false,
     datasource_ids: [],
     visibility_scope: 'USER_PRIVATE',
   }
-  agentDialogTitle.value = t('prompt.edit_prompt_word')
-  agentDialogVisible.value = true
+  skillDialogTitle.value = t('data_skill.edit_skill')
+  skillDialogVisible.value = true
   popoverVisible.value = false
 }
 
-const closeAgentForm = () => {
-  agentDialogVisible.value = false
-  resetAgentForm()
+const closeSkillForm = () => {
+  skillDialogVisible.value = false
+  resetSkillForm()
 }
 
 const buildSavePayload = () => {
-  const payload = cloneDeep(agentForm.value)
-  payload.type = payload.type || props.createType || usablePromptTypes.value[0] || 'GENERATE_SQL'
+  const payload = cloneDeep(skillForm.value)
+  payload.type = 'DATA_SKILL'
   payload.target_scope = payload.target_scope || props.targetScope || 'SMART_QA'
-
   payload.visibility_scope = 'USER_PRIVATE'
   payload.specific_ds = false
   payload.datasource_ids = []
   return payload
 }
 
-const saveAgent = () => {
-  agentFormRef.value?.validate((valid: boolean) => {
-    if (!valid || savingAgent.value) return
+const saveSkill = () => {
+  skillFormRef.value?.validate((valid: boolean) => {
+    if (!valid || savingSkill.value) return
 
-    savingAgent.value = true
-    promptApi
-      .updateEmbedded(buildSavePayload())
+    savingSkill.value = true
+    dataSkillApi
+      .save(buildSavePayload())
       .then(() => {
         ElMessage.success(t('common.save_success'))
-        closeAgentForm()
-        loadAgents()
+        closeSkillForm()
+        loadSkills()
         emit('saved')
       })
       .finally(() => {
-        savingAgent.value = false
+        savingSkill.value = false
       })
   })
 }
 
 watch(
-  () => [
-    props.datasourceId,
-    props.targetScope,
-    (props.customPromptTypes || []).join(','),
-    keyword.value,
-  ],
+  () => [props.datasourceId, props.targetScope, keyword.value],
   () => {
-    loadAgents()
+    loadSkills()
   }
 )
 
 onMounted(() => {
-  loadAiModels()
-  resetAgentForm()
-  loadAgents()
+  resetSkillForm()
+  loadSkills()
 })
 </script>
 
 <template>
-  <div class="agent-selector" @click.stop>
+  <div class="data-skill-selector" @click.stop>
     <el-popover
       v-model:visible="popoverVisible"
       :disabled="props.disabled"
-      :width="360"
+      :width="380"
       placement="top-start"
       trigger="click"
-      popper-class="agent-selector-popover"
+      popper-class="data-skill-selector-popover"
     >
       <template #reference>
-        <button class="agent-selector-trigger" :disabled="props.disabled" type="button">
+        <button class="data-skill-selector-trigger" :disabled="props.disabled" type="button">
           <el-icon class="trigger-icon" size="16">
             <icon_ai />
           </el-icon>
@@ -319,25 +292,19 @@ onMounted(() => {
         </button>
       </template>
 
-      <div class="agent-panel">
-        <div class="agent-panel-header">
+      <div class="skill-panel">
+        <div class="skill-panel-header">
           <div>
-            <div class="agent-panel-title">{{ t('access.custom_agents') }}</div>
-            <div class="agent-panel-subtitle">
+            <div class="skill-panel-title">{{ t('data_skill.title') }}</div>
+            <div class="skill-panel-subtitle">
               {{ props.datasourceName || t('access.user_permission_scope') }}
             </div>
           </div>
-          <el-button
-            size="small"
-            type="primary"
-            class="agent-create-btn"
-            :disabled="!canCreateAgent"
-            @click.stop="openCreateAgent"
-          >
+          <el-button size="small" type="primary" class="skill-create-btn" @click.stop="openCreateSkill">
             <template #icon>
               <icon_add_outlined />
             </template>
-            {{ t('prompt.add_prompt_word') }}
+            {{ t('data_skill.add_skill') }}
           </el-button>
         </div>
 
@@ -345,62 +312,61 @@ onMounted(() => {
           v-model="keyword"
           clearable
           size="small"
-          class="agent-search"
+          class="skill-search"
           :prefix-icon="Search"
           :placeholder="t('dashboard.search')"
           @click.stop
         />
 
-        <div v-loading="loading" class="agent-list">
+        <div v-loading="loading" class="skill-list">
           <div
-            class="agent-option is-default"
+            class="skill-option is-default"
             :class="{ selected: !props.modelValue }"
             role="button"
             tabindex="0"
-            @click.stop="selectAgent(null)"
+            @click.stop="selectSkill(null)"
           >
-            <div class="agent-option-main">
-              <span class="agent-option-name">{{ t('prompt.default_agent') }}</span>
-              <span class="agent-option-desc">{{ targetScopeText(props.targetScope) }}</span>
+            <div class="skill-option-main">
+              <span class="skill-option-name">{{ t('data_skill.default_skill') }}</span>
+              <span class="skill-option-desc">{{ autoSkillDescription }}</span>
             </div>
           </div>
 
-          <div v-if="!agentList.length && !loading" class="agent-empty">
-            {{ t('prompt.no_prompt_words') }}
+          <div v-if="!skillList.length && !loading" class="skill-empty">
+            {{ t('data_skill.no_skill') }}
           </div>
 
           <div
-            v-for="agent in agentList"
-            :key="agent.id"
-            class="agent-option"
-            :class="[sourceClass(agent), { selected: String(agent.id) === String(props.modelValue) }]"
+            v-for="skill in skillList"
+            :key="skill.id"
+            class="skill-option"
+            :class="[sourceClass(skill), { selected: String(skill.id) === String(props.modelValue) }]"
             role="button"
             tabindex="0"
-            @click.stop="selectAgent(agent.id)"
+            @click.stop="selectSkill(skill.id)"
           >
-            <div class="agent-option-main">
-              <div class="agent-option-title">
-                <span class="agent-option-name ellipsis" :title="agent.name">{{ agent.name }}</span>
-                <span class="agent-source-pill">{{ sourceText(agent) }}</span>
+            <div class="skill-option-main">
+              <div class="skill-option-title">
+                <span class="skill-option-name ellipsis" :title="skill.name">{{ skill.name }}</span>
+                <span class="skill-source-pill">{{ sourceText(skill) }}</span>
               </div>
-              <div class="agent-option-desc ellipsis" :title="agent.description || typeTitle(agent.type)">
-                {{ agent.description || typeTitle(agent.type) }}
+              <div class="skill-option-desc ellipsis" :title="skill.description || t('data_skill.empty_description')">
+                {{ skill.description || t('data_skill.empty_description') }}
               </div>
-              <div class="agent-option-meta">
-                <span>{{ typeTitle(agent.type) }}</span>
-                <span>{{ modelText(agent) }}</span>
+              <div class="skill-option-meta">
+                <span>{{ targetScopeText(skill.target_scope) }}</span>
               </div>
             </div>
             <el-tooltip
-              v-if="canManageAgent(agent)"
+              v-if="canManageSkill(skill)"
               :content="t('datasource.edit')"
               placement="top"
             >
               <el-button
-                class="agent-edit-btn"
+                class="skill-edit-btn"
                 link
                 type="primary"
-                @click.stop="openEditAgent(agent)"
+                @click.stop="openEditSkill(skill)"
               >
                 <el-icon size="15">
                   <IconOpeEdit />
@@ -413,57 +379,40 @@ onMounted(() => {
     </el-popover>
 
     <el-drawer
-      v-model="agentDialogVisible"
-      :title="agentDialogTitle"
+      v-model="skillDialogVisible"
+      :title="skillDialogTitle"
       destroy-on-close
-      size="600px"
-      :before-close="closeAgentForm"
-      modal-class="agent-selector-drawer"
+      size="640px"
+      :before-close="closeSkillForm"
+      modal-class="data-skill-selector-drawer"
     >
       <el-form
-        ref="agentFormRef"
-        :model="agentForm"
-        :rules="agentRules"
+        ref="skillFormRef"
+        :model="skillForm"
+        :rules="skillRules"
         label-width="180px"
         label-position="top"
         class="form-content_error"
         @submit.prevent
       >
-        <el-form-item prop="name" :label="t('prompt.prompt_word_name')">
+        <el-form-item prop="name" :label="t('data_skill.skill_name')">
           <el-input
-            v-model="agentForm.name"
+            v-model="skillForm.name"
             maxlength="50"
             clearable
-            :placeholder="t('datasource.please_enter') + t('common.empty') + t('prompt.prompt_word_name')"
+            :placeholder="t('data_skill.skill_name_placeholder')"
           />
         </el-form-item>
-        <el-form-item prop="description" :label="t('prompt.agent_description')">
+        <el-form-item prop="description" :label="t('data_skill.description')">
           <el-input
-            v-model="agentForm.description"
-            :placeholder="t('prompt.agent_description_placeholder')"
+            v-model="skillForm.description"
+            :placeholder="t('data_skill.description_placeholder')"
             :autosize="{ minRows: 2, maxRows: 4 }"
             type="textarea"
           />
         </el-form-item>
-        <el-form-item prop="ai_model_id" :label="t('prompt.ai_model')">
-          <el-select
-            v-model="agentForm.ai_model_id"
-            clearable
-            filterable
-            :placeholder="t('prompt.select_ai_model_placeholder')"
-            style="width: 100%"
-          >
-            <el-option :label="t('prompt.default_ai_model')" :value="null" />
-            <el-option
-              v-for="model in aiModelOptions"
-              :key="model.id"
-              :label="model.default_model ? `${model.name}（${t('prompt.default_ai_model')}）` : model.name"
-              :value="model.id"
-            />
-          </el-select>
-        </el-form-item>
         <el-form-item prop="target_scope" :label="t('prompt.target_scope')">
-          <el-radio-group v-model="agentForm.target_scope">
+          <el-radio-group v-model="skillForm.target_scope">
             <el-radio :value="'SMART_QA'">{{ t('prompt.target_scope_smart_qa') }}</el-radio>
             <el-radio :value="'ANALYSIS_ASSISTANT'">
               {{ t('prompt.target_scope_analysis_assistant') }}
@@ -473,7 +422,7 @@ onMounted(() => {
         </el-form-item>
         <el-form-item prop="active" :label="t('prompt.active_status')">
           <el-switch
-            v-model="agentForm.active"
+            v-model="skillForm.active"
             :active-text="t('prompt.active_enabled')"
             :inactive-text="t('prompt.active_disabled')"
           />
@@ -481,19 +430,19 @@ onMounted(() => {
         <el-form-item :label="t('training.effective_data_sources')">
           <div class="fixed-project">{{ t('access.user_permission_scope') }}</div>
         </el-form-item>
-        <el-form-item prop="prompt" :label="t('prompt.prompt_word_content')">
+        <el-form-item prop="prompt" :label="t('data_skill.markdown_content')">
           <el-input
-            v-model="agentForm.prompt"
-            :placeholder="t('prompt.replaced_with')"
-            :autosize="{ minRows: 6, maxRows: 14 }"
+            v-model="skillForm.prompt"
+            :placeholder="t('data_skill.content_placeholder')"
+            :autosize="{ minRows: 10, maxRows: 20 }"
             type="textarea"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <div v-loading="savingAgent" class="dialog-footer">
-          <el-button secondary @click="closeAgentForm">{{ t('common.cancel') }}</el-button>
-          <el-button type="primary" @click="saveAgent">{{ t('common.save') }}</el-button>
+        <div v-loading="savingSkill" class="dialog-footer">
+          <el-button secondary @click="closeSkillForm">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" @click="saveSkill">{{ t('common.save') }}</el-button>
         </div>
       </template>
     </el-drawer>
@@ -501,11 +450,11 @@ onMounted(() => {
 </template>
 
 <style lang="less" scoped>
-.agent-selector {
+.data-skill-selector {
   width: 116px;
 }
 
-.agent-selector-trigger {
+.data-skill-selector-trigger {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -526,7 +475,7 @@ onMounted(() => {
 
   .trigger-icon {
     flex: 0 0 auto;
-    color: #3370ff;
+    color: #1c8f72;
   }
 
   .trigger-label {
@@ -538,11 +487,11 @@ onMounted(() => {
   }
 }
 
-.agent-panel {
+.skill-panel {
   width: 100%;
 }
 
-.agent-panel-header {
+.skill-panel-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -550,15 +499,15 @@ onMounted(() => {
   margin-bottom: 10px;
 }
 
-.agent-panel-title {
+.skill-panel-title {
   color: #1f2329;
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
 }
 
-.agent-panel-subtitle {
-  max-width: 190px;
+.skill-panel-subtitle {
+  max-width: 200px;
   margin-top: 2px;
   color: #86909c;
   font-size: 12px;
@@ -568,24 +517,24 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.agent-create-btn {
+.skill-create-btn {
   flex: 0 0 auto;
 }
 
-.agent-search {
+.skill-search {
   margin-bottom: 10px;
 }
 
-.agent-list {
+.skill-list {
   min-height: 104px;
   max-height: 320px;
   overflow-y: auto;
 }
 
-.agent-option {
-  --agent-source-color: #667085;
-  --agent-source-bg: #f2f4f7;
-  --agent-source-border: #d0d5dd;
+.skill-option {
+  --skill-source-color: #667085;
+  --skill-source-bg: #f2f4f7;
+  --skill-source-border: #d0d5dd;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -597,60 +546,60 @@ onMounted(() => {
   cursor: pointer;
 
   &:hover {
-    background: var(--agent-source-bg);
+    background: var(--skill-source-bg);
   }
 
   &.selected {
-    border-color: var(--agent-source-color);
-    background: var(--agent-source-bg);
+    border-color: var(--skill-source-color);
+    background: var(--skill-source-bg);
   }
 
-  & + .agent-option {
+  & + .skill-option {
     margin-top: 6px;
   }
 
   &.is-saas {
-    --agent-source-color: #7a5af8;
-    --agent-source-bg: #f3f0ff;
-    --agent-source-border: #d8ccff;
-    border-left-color: var(--agent-source-color);
+    --skill-source-color: #7a5af8;
+    --skill-source-bg: #f3f0ff;
+    --skill-source-border: #d8ccff;
+    border-left-color: var(--skill-source-color);
   }
 
   &.is-workspace {
-    --agent-source-color: #1570ef;
-    --agent-source-bg: #eaf2ff;
-    --agent-source-border: #b9d6ff;
-    border-left-color: var(--agent-source-color);
+    --skill-source-color: #1570ef;
+    --skill-source-bg: #eaf2ff;
+    --skill-source-border: #b9d6ff;
+    border-left-color: var(--skill-source-color);
   }
 
   &.is-personal {
-    --agent-source-color: #12a076;
-    --agent-source-bg: #e9f8f2;
-    --agent-source-border: #a9e7d0;
-    border-left-color: var(--agent-source-color);
+    --skill-source-color: #12a076;
+    --skill-source-bg: #e9f8f2;
+    --skill-source-border: #a9e7d0;
+    border-left-color: var(--skill-source-color);
   }
 }
 
-.agent-option-main {
+.skill-option-main {
   min-width: 0;
   flex: 1;
 }
 
-.agent-option-title {
+.skill-option-title {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
 
-.agent-source-pill {
+.skill-source-pill {
   flex: 0 0 auto;
   max-width: 92px;
   padding: 0 5px;
-  border: 1px solid var(--agent-source-border);
+  border: 1px solid var(--skill-source-border);
   border-radius: 4px;
-  background: var(--agent-source-bg);
-  color: var(--agent-source-color);
+  background: var(--skill-source-bg);
+  color: var(--skill-source-color);
   font-size: 11px;
   font-weight: 500;
   line-height: 18px;
@@ -659,7 +608,7 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.agent-option-name {
+.skill-option-name {
   min-width: 0;
   color: #1f2329;
   font-size: 13px;
@@ -667,14 +616,14 @@ onMounted(() => {
   line-height: 20px;
 }
 
-.agent-option-desc {
+.skill-option-desc {
   margin-top: 2px;
   color: #646a73;
   font-size: 12px;
   line-height: 18px;
 }
 
-.agent-option-meta {
+.skill-option-meta {
   display: flex;
   gap: 8px;
   margin-top: 3px;
@@ -683,14 +632,14 @@ onMounted(() => {
   line-height: 18px;
 }
 
-.agent-edit-btn {
+.skill-edit-btn {
   flex: 0 0 auto;
   width: 24px;
   height: 24px;
   padding: 0;
 }
 
-.agent-empty {
+.skill-empty {
   padding: 24px 0;
   color: #8f959e;
   text-align: center;
@@ -715,12 +664,12 @@ onMounted(() => {
 </style>
 
 <style lang="less">
-.agent-selector-popover.agent-selector-popover {
+.data-skill-selector-popover.data-skill-selector-popover {
   padding: 12px;
   border-radius: 8px;
 }
 
-.agent-selector-drawer {
+.data-skill-selector-drawer {
   .ed-drawer__body {
     padding: 20px 24px;
   }

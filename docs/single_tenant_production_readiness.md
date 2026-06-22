@@ -1,6 +1,6 @@
 # B2B 多租户高可用生产基线
 
-这份基线面向 B2B 商业化 ChatBI 产品：同一套平台服务多个企业租户，核心目标是租户隔离、权限清晰、ChatBI 功能完整、可横向扩展、部署和运维友好。
+这份基线面向 B2B 商业化 ChatBI 产品：同一套 SaaS 服务多个企业租户，核心目标是租户隔离、权限清晰、ChatBI 功能完整、可横向扩展、部署和运维友好。
 
 当前仓库支持的生产形态是“共享系统库 + 租户级业务隔离 + 多 API 副本 + Redis 共享状态 + 独立 worker”。它可以用于单客户私有化部署，也可以作为多企业托管部署的第一阶段；所有新增业务能力都必须默认带 `tenant_id`、数据源授权和租户用量治理。
 
@@ -10,9 +10,9 @@
 - Redis：生产必须启用 `CACHE_TYPE=redis`，配置密码、AOF、内存上限和 `noeviction`。
 - 租户级限流：生产必须启用 `TENANT_RATE_LIMIT_ENABLED=true`，并为 ChatBI 问答、分析助手和推荐问题配置每分钟上限；可通过 `TENANT_RATE_LIMIT_PLAN_OVERRIDES` 按 `default/basic/enterprise` 等套餐覆盖限额，防止单个租户占满模型、数据库和 worker 资源。
 - 租户用量计量与套餐配额：生产必须启用 `TENANT_USAGE_METERING_ENABLED=true` 和 `TENANT_USAGE_QUOTA_ENABLED=true`，并完成数据库迁移创建 `sys_tenant_usage_daily`，用于按天汇总 ChatBI、分析助手、任务队列、Token 和失败计数；可通过 `TENANT_USAGE_QUOTA_PLAN_LIMITS` 配置 `default/basic/enterprise` 等套餐的 daily/monthly 用量上限。
-- 商业订阅状态：生产租户通过 `subscription_status`、服务期、试用期、合同编号和商务联系人进行人工运营管理。欠费或到期不得自动停服，必须由平台管理员审核后手动设置 `suspended` 或 `cancelled`，才会暂停 ChatBI 生成、分析助手和任务队列等高消耗能力。
-- 租户生命周期与数据请求：租户注销、数据导出、数据删除必须走 `sys_tenant_data_request` 的提交、平台审核、完成记录流程。完成记录不自动停用租户、不自动删除业务数据，平台管理员需按运维清单手动执行。
-- 企业域名与安全策略：企业邮箱域必须经平台管理员验证后才允许自动归属；租户级 IP 白名单和强制 SSO 策略必须在 tenant context 解析时执行。当前 SSO 强制登录基于用户登录来源拦截本地账号，完整 IdP 配置仍是后续项。
+- 商业订阅状态：生产租户通过 `subscription_status`、服务期、试用期、合同编号和商务联系人进行人工运营管理。欠费或到期不得自动停服，必须由 SaaS 管理员审核后手动设置 `suspended` 或 `cancelled`，才会暂停 ChatBI 生成、分析助手和任务队列等高消耗能力。
+- 租户生命周期与数据请求：租户注销、数据导出、数据删除必须走 `sys_tenant_data_request` 的提交、SaaS 审核、完成记录流程。完成记录不自动停用租户、不自动删除业务数据，SaaS 管理员需按运维清单手动执行。
+- 企业域名与安全策略：企业邮箱域必须经 SaaS 管理员验证后才允许自动归属；租户级 IP 白名单和强制 SSO 策略必须在 tenant context 解析时执行。当前 SSO 强制登录基于用户登录来源拦截本地账号，完整 IdP 配置仍是后续项。
 - 任务队列：worker 独立进程运行；任务使用 Redis pending/processing 队列，worker 中断后由超时恢复机制重投，并配置租户级 pending/processing 上限。
 - 数据库备份：PostgreSQL 至少每天全量备份，保留 7-14 天，并每次上线前确认恢复命令可用。
 - 日志监控：`LOG_LEVEL=INFO`，关闭 `SQL_DEBUG`，Nginx、API、worker、Redis、PostgreSQL 日志都纳入采集。
@@ -33,9 +33,9 @@
 - 数据源连接配置和大模型 `api_key/api_domain` 新写入时使用服务端版本化 Fernet 加密；旧固定 AES 密文仍可读取。
 - 生产配置检查要求 `SENSITIVE_CONFIG_ENCRYPTION_KEY`、`SECRET_KEY`、数据库密码、Redis 密码等从环境变量提供，且不能使用开发默认值。
 - 生产配置检查覆盖 Redis、任务队列、CORS、默认密码、登录限流、上传大小、绝对路径和生产 API 启动自动迁移禁用。
-- 租户用量计量和套餐配额已加入生产配置检查；`/api/v1/system/tenant/usage` 可供平台管理员或企业管理员查看授权范围内的日聚合用量。
-- 平台管理员租户管理页已支持维护套餐、订阅状态、服务期、试用期、合同编号、商务联系人和备注；`past_due` 仅作为运营跟进状态，不会自动停止服务。
-- 平台管理员租户管理页已支持邮箱域审核、租户注销/数据导出/数据删除请求审核和完成记录；企业准入页支持邮箱域提交、租户级安全策略、数据请求提交和批量邀请。
+- 租户用量计量和套餐配额已加入生产配置检查；`/api/v1/system/tenant/usage` 可供 SaaS 管理员或企业管理员查看授权范围内的日聚合用量。
+- SaaS 管理员租户管理页已支持维护套餐、订阅状态、服务期、试用期、合同编号、商务联系人和备注；`past_due` 仅作为运营跟进状态，不会自动停止服务。
+- SaaS 管理员租户管理页已支持邮箱域审核、租户注销/数据导出/数据删除请求审核和完成记录；企业准入页支持邮箱域提交、租户级安全策略、数据请求提交和批量邀请。
 - 企业 owner/admin 已纳入本租户数据源管理员、语义层管理员和 SQL 示例管理员模型；普通成员仍必须通过项目授权访问 ChatBI、看板和分析助手。
 - 数据源 Excel/CSV 临时导入文件已按租户目录隔离，避免共享 `EXCEL_PATH` 下通过文件名跨租户引用临时文件。
 - 登录失败限流支持 Redis，开发环境可回退进程内存；生产仍要求 `CACHE_TYPE=redis`。
@@ -59,7 +59,7 @@
 - 配置 `TENANT_CHAT_REQUESTS_PER_MINUTE`、`TENANT_ANALYSIS_REQUESTS_PER_MINUTE`、`TENANT_RECOMMEND_REQUESTS_PER_MINUTE` 和可选的 `TENANT_RATE_LIMIT_PLAN_OVERRIDES`，并确认不同套餐超过上限时接口返回 `429` 或 SSE `error` 事件。
 - 确认 `TENANT_USAGE_METERING_ENABLED=true`、`TENANT_USAGE_QUOTA_ENABLED=true`，并在产生一次 ChatBI、分析助手或任务队列调用后，`sys_tenant_usage_daily` 中出现对应租户的日聚合记录；将测试租户套餐限额调低后，超额请求应返回 `quota_exceeded`。
 - 验证一个测试租户的邮箱域从 `pending` 到 `verified` 后，同域邮箱用户登录会自动加入该租户；`disabled` 域不会再自动归属。
-- 验证租户 IP 白名单会阻止非白名单来源，强制 SSO 会阻止本地账号；平台管理员仍能进入租户管理和审核流程。
+- 验证租户 IP 白名单会阻止非白名单来源，强制 SSO 会阻止本地账号；SaaS 管理员仍能进入租户管理和审核流程。
 - 验证租户注销、数据导出、数据删除请求从提交到审核到完成均有审计记录，且完成后不会自动停用租户或自动删除业务表。
 - 日志采集、告警接收人、磁盘空间和备份保留策略确认。
 
@@ -244,13 +244,13 @@ logrotate -f /etc/logrotate.d/zhishu
 
 ### P1 多租户商业化验收
 
-- `GET /api/v1/system/tenant/usage` 由平台管理员或企业管理员访问时返回租户日用量记录，普通成员不能跨租户查看。
+- `GET /api/v1/system/tenant/usage` 由 SaaS 管理员或企业管理员访问时返回租户日用量记录，普通成员不能跨租户查看。
 - 产生一次 ChatBI、分析助手和任务队列调用后，`sys_tenant_usage_daily` 中出现对应租户的日聚合记录。
 - 将测试租户套餐限额调低后，超额请求返回 `quota_exceeded`；其他租户仍可正常使用。
 - 单个租户超过 ChatBI/分析助手/推荐问题每分钟限额时被限流，其他租户仍可正常请求。
-- 平台管理员把租户设置为 `suspended` 或 `cancelled` 后，高消耗能力被拦截；`past_due` 仅作为运营状态，不自动停服。
+- SaaS 管理员把租户设置为 `suspended` 或 `cancelled` 后，高消耗能力被拦截；`past_due` 仅作为运营状态，不自动停服。
 - 企业邮箱域从 `pending` 到 `verified` 后，同域邮箱用户登录会自动加入该租户；`disabled` 域不会自动归属。
-- 租户 IP 白名单会阻止非白名单来源；强制 SSO 会阻止本地账号；平台管理员支持流程不被阻断。
+- 租户 IP 白名单会阻止非白名单来源；强制 SSO 会阻止本地账号；SaaS 管理员支持流程不被阻断。
 - 租户注销、数据导出、数据删除请求从提交到审核到完成均有审计记录，且完成后不会自动停用租户或自动删除业务表。
 
 ### P1 高可用与运维验收

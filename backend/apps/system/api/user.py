@@ -599,7 +599,7 @@ async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Tr
     if status not in [0, 1]:
         return {"message": "status not supported"}
     if not is_super_admin(current_user):
-        raise HTTPException(status_code=403, detail="Only system admin can change platform account status")
+        raise HTTPException(status_code=403, detail="Only system admin can change SaaS account status")
     if not is_super_admin(current_user):
         _require_user_in_current_tenant(session, current_user, statusDto.id)
     if status == 0 and not is_super_admin(current_user):

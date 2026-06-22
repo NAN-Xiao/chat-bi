@@ -118,6 +118,18 @@ const editingViewInfo = computed(() => {
   }
   return props.canvasViewInfo?.[editingViewId.value] || null
 })
+const dashboardCanEdit = computed(() => {
+  const value = props.dashboardInfo?.canEdit ?? dashboardStore.dashboardInfo?.canEdit
+  return value !== false
+})
+const dashboardCanShare = computed(() => {
+  const value =
+    props.dashboardInfo?.canShare ??
+    dashboardStore.dashboardInfo?.canShare ??
+    props.dashboardInfo?.canEdit ??
+    dashboardStore.dashboardInfo?.canEdit
+  return value === true
+})
 
 const editSql = (id: string) => {
   editingViewId.value = id
@@ -1393,7 +1405,8 @@ defineExpose({
       <CanvasShape
         v-for="(item, index) in canvasComponentData"
         :key="'item' + index"
-        :can-edit="!fullscreenFlag"
+        :can-edit="!fullscreenFlag && dashboardCanEdit"
+        :can-share="!fullscreenFlag && dashboardCanShare"
         :active="curComponentId === item.id"
         :config-item="item"
         :draggable="draggable"

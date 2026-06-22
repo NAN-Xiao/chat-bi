@@ -38,7 +38,7 @@
     "token_expired": "Token 已过期",
     "only_project_role": "需要项目查看者或编辑者权限！",
     "permission_resource_limit": "没有操作权限或资源不存在！",
-    "platform_admin_chatbi_forbidden": "平台管理员用于 SaaS 平台运营管理，不能访问租户侧 ChatBI 业务功能。"
+    "platform_admin_chatbi_forbidden": "SaaS 管理员用于 SaaS 后台运营管理，不能访问工作空间侧 ChatBI 业务功能。"
   },
   "i18n_llm": {
     "validate_error": "校验失败[{msg}]",

@@ -44,12 +44,15 @@ const drawerMainRef = ref()
 const { t } = useI18n()
 const { copy } = useClipboard({ legacy: true })
 const userStore = useUserStore()
-const isPlatformAdmin = computed(() => userStore.isSystemAdminUser)
+const isPlatformAdmin = computed(
+  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
 
 const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
 const currentType = ref('GENERATE_SQL')
+const scopeFilter = ref('')
 const options = ref<any[]>([])
 const aiModelOptions = ref<any[]>([])
 const fieldList = ref<any[]>([])
@@ -123,6 +126,7 @@ const loadAiModels = () => {
 }
 
 onMounted(() => {
+  scopeFilter.value = isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
   loadDatasources()
   loadAiModels()
   search()
@@ -132,7 +136,9 @@ const getFileName = () => `${typeTitle()}.xlsx`
 
 const configParams = () => {
   const params = new URLSearchParams()
-  params.set('visibility_scope', isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
+  if (scopeFilter.value) {
+    params.set('visibility_scope', scopeFilter.value)
+  }
   if (keywords.value) {
     params.set('name', keywords.value)
   }
@@ -175,7 +181,9 @@ const exportExcel = () => {
   }).then(() => {
     searchLoading.value = true
     const params: Record<string, string> = {}
-    params.visibility_scope = isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
+    if (scopeFilter.value) {
+      params.visibility_scope = scopeFilter.value
+    }
     if (keywords.value) {
       params.name = keywords.value
     }
@@ -414,6 +422,20 @@ const targetScopeText = (scope?: string | null) => {
   return t('prompt.target_scope_smart_qa')
 }
 
+const layerOptions = computed(() => {
+  const adminScope = isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
+  return [
+    { label: t('permission.scope_platform'), value: 'PLATFORM_PUBLIC' },
+    { label: t('permission.scope_workspace'), value: 'ADMIN_PUBLIC' },
+  ].filter((item) => item.value === adminScope)
+})
+
+const sourceText = (row: any) => {
+  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('access.saas_agent')
+  if (row?.visibility_scope === 'USER_PRIVATE') return t('access.my_agent')
+  return t('access.workspace_agent')
+}
+
 const canManageAgent = (row: any) => {
   return row.can_manage === true
 }
@@ -469,6 +491,14 @@ const copyCode = () => {
             </el-icon>
           </template>
         </el-input>
+        <el-select v-model="scopeFilter" class="scope-filter" @change="search">
+          <el-option
+            v-for="item in layerOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
         <el-button secondary @click="exportExcel">
           <template #icon>
             <icon_export_outlined />
@@ -522,7 +552,7 @@ const copyCode = () => {
                 </el-icon>
                 <div class="info">
                   <div class="name ellipsis" :title="item.name">{{ item.name }}</div>
-                  <div class="sub-title">{{ typeTitle(item.type) }}</div>
+                  <div class="sub-title">{{ sourceText(item) }} · {{ typeTitle(item.type) }}</div>
                 </div>
               </div>
 
@@ -775,6 +805,11 @@ const copyCode = () => {
           {{ pageForm.description || t('prompt.agent_empty_description') }}
         </div>
       </el-form-item>
+      <el-form-item :label="t('access.agent_source')">
+        <div class="content">
+          {{ sourceText(pageForm) }}
+        </div>
+      </el-form-item>
       <el-form-item :label="t('prompt.ai_model')">
         <div class="content">
           {{ modelText(pageForm) }}
@@ -885,6 +920,10 @@ const copyCode = () => {
     gap: 8px;
     flex-wrap: wrap;
     justify-content: flex-end;
+
+    .scope-filter {
+      width: 132px;
+    }
   }
 
   .agent-content {

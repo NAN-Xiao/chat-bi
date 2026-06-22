@@ -50,12 +50,12 @@ def _quota_message(state) -> str:
     if getattr(state, "reason", None) == "subscription_suspended":
         return (
             f"当前租户订阅状态为 {getattr(state, 'subscription_status', 'suspended')}，"
-            "高消耗功能已由平台管理员暂停。请联系工作空间管理员或平台管理员处理。"
+            "高消耗功能已由 SaaS 管理员暂停。请联系工作空间管理员或 SaaS 管理员处理。"
         )
     window_name = "每日" if state.window == "daily" else "每月"
     return (
         f"当前租户套餐的{window_name} {state.action} 用量已达上限"
-        f"（{state.used}/{state.limit}），请联系工作空间管理员或平台管理员调整套餐。"
+        f"（{state.used}/{state.limit}），请联系工作空间管理员或 SaaS 管理员调整套餐。"
     )
 
 
@@ -446,6 +446,7 @@ async def question_answer(session: SessionDep, current_user: CurrentUser, reques
         chat_id=request_question.chat_id,
         question=request_question.question,
         custom_prompt_id=request_question.custom_prompt_id,
+        data_skill_id=request_question.data_skill_id,
     )
     return await question_answer_inner(session, current_user, question, current_assistant, embedding=True)
 
@@ -615,7 +616,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         stmt = select(ChatRecord.id, ChatRecord.tenant_id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource,
                       ChatRecord.engine_type,
                       ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.chart, ChatRecord.data,
-                      ChatRecord.custom_prompt_id).where(
+                      ChatRecord.custom_prompt_id, ChatRecord.data_skill_id).where(
             and_(
                 ChatRecord.id == chat_record_id,
                 ChatRecord.create_by == current_user.id,
@@ -626,7 +627,8 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             record = ChatRecord(id=r.id, tenant_id=r.tenant_id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
                                 engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by,
                                 chart=r.chart,
-                                data=r.data, custom_prompt_id=r.custom_prompt_id)
+                                data=r.data, custom_prompt_id=r.custom_prompt_id,
+                                data_skill_id=r.data_skill_id)
 
         if not record:
             raise Exception(f"Chat record with id {chat_record_id} not found")
@@ -642,6 +644,7 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
             chat_id=record.chat_id,
             question=record.question,
             custom_prompt_id=record.custom_prompt_id,
+            data_skill_id=record.data_skill_id,
         )
 
         llm_service = await LLMService.create(session, current_user, request_question, current_assistant)

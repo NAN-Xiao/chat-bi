@@ -29,6 +29,7 @@ const agentDialogTitle = ref('')
 const selectedAgent = ref<any | null>(null)
 const savingAgent = ref(false)
 const agentKeyword = ref('')
+const scopeFilter = ref('')
 
 const defaultAgentForm = {
   id: null as number | string | null,
@@ -80,9 +81,41 @@ const targetScopeText = (scope?: string | null) => {
 const modelText = (row: any) => row?.ai_model_name || t('prompt.default_ai_model')
 
 const sourceText = (row: any) => {
+  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('access.saas_agent')
+  if (row?.visibility_scope === 'ADMIN_PUBLIC') return t('access.workspace_agent')
   if (row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner) return t('access.my_agent')
-  return t('access.admin_agent')
+  return t('access.workspace_agent')
 }
+
+const sourceClass = (row: any) => {
+  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return 'is-saas'
+  if (row?.visibility_scope === 'USER_PRIVATE') return 'is-personal'
+  return 'is-workspace'
+}
+
+const sourceRank = (row: any) => {
+  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return 0
+  if (row?.visibility_scope === 'USER_PRIVATE') return 2
+  return 1
+}
+
+const createTimeValue = (row: any) => {
+  const value = row?.create_time ? new Date(row.create_time).getTime() : 0
+  return Number.isFinite(value) ? value : 0
+}
+
+const sortBySourceAndTime = (a: any, b: any) => {
+  const sourceDiff = sourceRank(a) - sourceRank(b)
+  if (sourceDiff !== 0) return sourceDiff
+  return createTimeValue(b) - createTimeValue(a)
+}
+
+const layerOptions = computed(() => [
+  { label: t('prompt.target_scope_all'), value: '' },
+  { label: t('permission.scope_platform'), value: 'PLATFORM_PUBLIC' },
+  { label: t('permission.scope_workspace'), value: 'ADMIN_PUBLIC' },
+  { label: t('access.user_permission_scope'), value: 'USER_PRIVATE' },
+])
 
 const scopeText = (row: any) => {
   if (row?.visibility_scope === 'USER_PRIVATE') return t('access.user_permission_scope')
@@ -111,6 +144,9 @@ const buildAgentQuery = () => {
   if (currentDatasourceId.value) {
     params.append('dslist', String(currentDatasourceId.value))
   }
+  if (scopeFilter.value) {
+    params.append('visibility_scope', scopeFilter.value)
+  }
   if (agentKeyword.value.trim()) {
     params.append('name', agentKeyword.value.trim())
   }
@@ -136,11 +172,7 @@ const loadAgents = async () => {
     agentList.value = responses
       .flatMap((res: any) => res?.data || [])
       .filter(isVisibleInPersonalEntry)
-      .sort((a: any, b: any) => {
-        const left = a.create_time ? new Date(a.create_time).getTime() : 0
-        const right = b.create_time ? new Date(b.create_time).getTime() : 0
-        return right - left
-      })
+      .sort(sortBySourceAndTime)
   } finally {
     agentLoading.value = false
   }
@@ -235,6 +267,10 @@ watch(currentDatasourceId, () => {
 watch(agentKeyword, () => {
   loadAgents()
 })
+
+watch(scopeFilter, () => {
+  loadAgents()
+})
 </script>
 
 <template>
@@ -254,6 +290,14 @@ watch(agentKeyword, () => {
           :prefix-icon="Search"
           :placeholder="t('dashboard.search')"
         />
+        <el-select v-model="scopeFilter" class="scope-filter">
+          <el-option
+            v-for="item in layerOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
         <el-button type="primary" @click="openCreateAgent">
           <template #icon>
             <icon_add_outlined />
@@ -281,7 +325,11 @@ watch(agentKeyword, () => {
                 :xl="6"
                 class="mb-16"
               >
-                <article class="agent-card" @click="openAgentDetail(agent)">
+                <article
+                  class="agent-card"
+                  :class="sourceClass(agent)"
+                  @click="openAgentDetail(agent)"
+                >
                   <div class="name-icon">
                     <el-icon class="icon-primary" size="32">
                       <icon_ai />
@@ -289,9 +337,7 @@ watch(agentKeyword, () => {
                     <div class="info">
                       <div class="title-line">
                         <span class="name ellipsis" :title="agent.name">{{ agent.name }}</span>
-                        <el-tag size="small" effect="plain" round>
-                          {{ sourceText(agent) }}
-                        </el-tag>
+                        <span class="agent-source-pill">{{ sourceText(agent) }}</span>
                       </div>
                       <div class="sub-title">{{ typeTitle(agent.type) }}</div>
                     </div>
@@ -590,13 +636,22 @@ watch(agentKeyword, () => {
     width: 240px;
   }
 
+  .scope-filter {
+    width: 132px;
+  }
+
   .agent-card {
+    --agent-source-color: #667085;
+    --agent-source-bg: #f2f4f7;
+    --agent-source-border: #d0d5dd;
+    --agent-source-card-bg: #ffffff;
     width: 100%;
     height: 246px;
-    border: 1px solid var(--workspace-border, #e2eaf4);
-    padding: 16px 54px 20px 16px;
+    border: 1px solid var(--agent-source-border);
+    border-left: 2px solid var(--agent-source-color);
+    padding: 16px 54px 20px 14px;
     border-radius: 8px;
-    background: #ffffff;
+    background: var(--agent-source-card-bg);
     box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
     cursor: pointer;
     display: flex;
@@ -608,9 +663,30 @@ watch(agentKeyword, () => {
       border-color 0.12s ease;
 
     &:hover {
-      border-color: var(--workspace-border, #e2eaf4);
+      border-color: var(--agent-source-color);
       box-shadow: 0 16px 36px rgba(24, 46, 86, 0.11);
       transform: translateY(-2px) scale(1.012);
+    }
+
+    &.is-saas {
+      --agent-source-color: #7a5af8;
+      --agent-source-bg: #f3f0ff;
+      --agent-source-border: #d8ccff;
+      --agent-source-card-bg: #fcfbff;
+    }
+
+    &.is-workspace {
+      --agent-source-color: #1570ef;
+      --agent-source-bg: #eaf2ff;
+      --agent-source-border: #b9d6ff;
+      --agent-source-card-bg: #fbfdff;
+    }
+
+    &.is-personal {
+      --agent-source-color: #12a076;
+      --agent-source-bg: #e9f8f2;
+      --agent-source-border: #a9e7d0;
+      --agent-source-card-bg: #fbfffd;
     }
 
     .name-icon {
@@ -650,6 +726,22 @@ watch(agentKeyword, () => {
         align-items: center;
         gap: 8px;
         min-width: 0;
+      }
+
+      .agent-source-pill {
+        flex: 0 0 auto;
+        max-width: 92px;
+        padding: 0 5px;
+        border: 1px solid var(--agent-source-border);
+        border-radius: 4px;
+        background: var(--agent-source-bg);
+        color: var(--agent-source-color);
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 18px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .name {

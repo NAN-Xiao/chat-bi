@@ -9,7 +9,12 @@ from apps.chat.curd.custom_prompt import (
     CustomPromptTypeEnum,
     CustomPromptVisibilityScopeEnum,
 )
-from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo, CustomPromptOption
+from apps.chat.models.custom_prompt_model import (
+    CustomPrompt,
+    CustomPromptInfo,
+    CustomPromptOption,
+    CustomPromptUserPreference,
+)
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_model import AiModelDetail
@@ -162,6 +167,7 @@ def _to_info(
         can_manage_all: bool = False,
         can_manage_public: bool = False,
         can_manage_platform_public: bool = False,
+        user_enabled: Optional[bool] = True,
 ) -> CustomPromptInfo:
     datasource_ids = _normalize_ids(row.datasource_ids)
     ds_names = ds_names or {}
@@ -190,6 +196,8 @@ def _to_info(
             can_manage_platform_public,
         ),
         prompt_visible=prompt_visible,
+        user_enabled=True if user_enabled is None else bool(user_enabled),
+        effective_active=bool(row.active) and (True if user_enabled is None else bool(user_enabled)),
         visibility_scope=visibility_scope,
         prompt=row.prompt if prompt_visible else None,
         specific_ds=bool(row.specific_ds),
@@ -291,6 +299,7 @@ def _build_query(
         can_manage_platform_public: bool = False,
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None = None,
         platform_only: bool = False,
+        effective_only: bool = False,
 ):
     prompt_type = _normalize_type(custom_prompt_type)
     resolved_tenant_id = _tenant_id(tenant_id)
@@ -303,15 +312,15 @@ def _build_query(
     if platform_only:
         visibility_conditions = [_platform_public_visibility_condition()]
     stmt = select(CustomPrompt).where(CustomPrompt.type == prompt_type.value, or_(*visibility_conditions))
+    if effective_only:
+        stmt = stmt.where(CustomPrompt.active == True)
+        stmt = _apply_user_enabled_filter(stmt, current_user_id)
     if visibility_scope:
         normalized_visibility = _normalize_visibility_scope(visibility_scope)
         if normalized_visibility == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
             stmt = stmt.where(_platform_public_visibility_condition())
         elif normalized_visibility == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC:
-            stmt = stmt.where(or_(
-                and_(CustomPrompt.tenant_id == resolved_tenant_id, _tenant_public_visibility_condition()),
-                _platform_public_visibility_condition(),
-            ))
+            stmt = stmt.where(and_(CustomPrompt.tenant_id == resolved_tenant_id, _tenant_public_visibility_condition()))
         else:
             stmt = stmt.where(_private_visibility_condition(current_user_id))
 
@@ -359,6 +368,35 @@ def _target_scope_condition(target_scope: CustomPromptTargetScopeEnum | str):
     return or_(*conditions)
 
 
+def _user_enabled_map(
+        session: SessionDep,
+        prompt_ids: list[int],
+        current_user_id: Optional[int],
+) -> dict[int, bool]:
+    if not prompt_ids or current_user_id is None:
+        return {}
+    rows = session.execute(
+        select(
+            CustomPromptUserPreference.custom_prompt_id,
+            CustomPromptUserPreference.enabled,
+        ).where(
+            CustomPromptUserPreference.user_id == int(current_user_id),
+            CustomPromptUserPreference.custom_prompt_id.in_(prompt_ids),
+        )
+    ).all()
+    return {int(row.custom_prompt_id): bool(row.enabled) for row in rows}
+
+
+def _apply_user_enabled_filter(stmt, current_user_id: Optional[int]):
+    if current_user_id is None:
+        return stmt
+    disabled_for_user = select(CustomPromptUserPreference.custom_prompt_id).where(
+        CustomPromptUserPreference.user_id == int(current_user_id),
+        CustomPromptUserPreference.enabled == False,
+    )
+    return stmt.where(CustomPrompt.id.not_in(disabled_for_user))
+
+
 def list_custom_prompt_options(
         session: SessionDep,
         target_scope: CustomPromptTargetScopeEnum | str,
@@ -384,6 +422,7 @@ def list_custom_prompt_options(
         _target_scope_condition(target_scope),
         or_(*visibility_conditions),
     )
+    stmt = _apply_user_enabled_filter(stmt, current_user_id)
     if custom_prompt_type:
         stmt = stmt.where(CustomPrompt.type == _normalize_type(custom_prompt_type).value)
 
@@ -424,6 +463,7 @@ def page_custom_prompts(
         can_manage_platform_public: bool = False,
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None = None,
         platform_only: bool = False,
+        effective_only: bool = False,
 ):
     stmt = _build_query(
         custom_prompt_type=custom_prompt_type,
@@ -438,6 +478,7 @@ def page_custom_prompts(
         can_manage_platform_public=can_manage_platform_public,
         visibility_scope=visibility_scope,
         platform_only=platform_only,
+        effective_only=effective_only,
     )
     total_count = session.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
     page_size = max(10, page_size)
@@ -459,6 +500,7 @@ def page_custom_prompts(
             ai_model_ids.append(ai_model_id)
     ds_names = _datasource_name_map(session, list(dict.fromkeys(datasource_ids)))
     ai_model_names = _ai_model_name_map(session, list(dict.fromkeys(ai_model_ids)))
+    user_enabled = _user_enabled_map(session, [int(row.id) for row in rows if row.id], current_user_id)
 
     return current_page, page_size, total_count, total_pages, [
         _to_info(
@@ -469,6 +511,7 @@ def page_custom_prompts(
             can_manage_all,
             can_manage_public,
             can_manage_platform_public,
+            user_enabled.get(int(row.id), True) if row.id else True,
         )
         for row in rows
     ]
@@ -488,6 +531,7 @@ def get_all_custom_prompts(
         can_manage_platform_public: bool = False,
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None = None,
         platform_only: bool = False,
+        effective_only: bool = False,
 ) -> list[CustomPromptInfo]:
     stmt = _build_query(
         custom_prompt_type=custom_prompt_type,
@@ -502,6 +546,7 @@ def get_all_custom_prompts(
         can_manage_platform_public=can_manage_platform_public,
         visibility_scope=visibility_scope,
         platform_only=platform_only,
+        effective_only=effective_only,
     )
     rows = session.execute(stmt.order_by(CustomPrompt.create_time.desc(), CustomPrompt.id.desc())).scalars().all()
 
@@ -514,6 +559,7 @@ def get_all_custom_prompts(
             ai_model_ids.append(ai_model_id)
     ds_names = _datasource_name_map(session, list(dict.fromkeys(datasource_ids)))
     ai_model_names = _ai_model_name_map(session, list(dict.fromkeys(ai_model_ids)))
+    user_enabled = _user_enabled_map(session, [int(row.id) for row in rows if row.id], current_user_id)
 
     return [
         _to_info(
@@ -524,6 +570,7 @@ def get_all_custom_prompts(
             can_manage_all,
             can_manage_public,
             can_manage_platform_public,
+            user_enabled.get(int(row.id), True) if row.id else True,
         )
         for row in rows
     ]
@@ -564,6 +611,7 @@ def get_custom_prompt(
         can_manage_all,
         can_manage_public,
         can_manage_platform_public,
+        _user_enabled_map(session, [int(row.id)], current_user_id).get(int(row.id), True) if row.id else True,
     )
 
 

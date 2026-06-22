@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Identity, String, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Identity, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -38,6 +38,22 @@ class CustomPrompt(SQLModel, table=True):
     datasource_ids: Optional[list[int]] = Field(default=[], sa_column=Column(JSONB))
 
 
+class CustomPromptUserPreference(SQLModel, table=True):
+    __tablename__ = "custom_prompt_user_preference"
+    __table_args__ = (
+        UniqueConstraint("custom_prompt_id", "user_id", name="uq_custom_prompt_user_preference_prompt_user"),
+        Index("idx_custom_prompt_user_preference_user", "user_id"),
+        Index("idx_custom_prompt_user_preference_prompt", "custom_prompt_id"),
+    )
+
+    id: Optional[int] = Field(sa_column=Column(BigInteger, Identity(always=True), primary_key=True))
+    tenant_id: int = Field(default=1, sa_column=Column(BigInteger, nullable=False, server_default="1"))
+    custom_prompt_id: int = Field(sa_column=Column(BigInteger, nullable=False))
+    user_id: int = Field(sa_column=Column(BigInteger, nullable=False))
+    enabled: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="true"))
+    update_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
+
+
 class CustomPromptInfo(BaseModel):
     id: Optional[int] = None
     tenant_id: Optional[int] = None
@@ -52,6 +68,8 @@ class CustomPromptInfo(BaseModel):
     can_manage: Optional[bool] = False
     is_owner: Optional[bool] = False
     prompt_visible: Optional[bool] = True
+    user_enabled: Optional[bool] = True
+    effective_active: Optional[bool] = True
     visibility_scope: Optional[CustomPromptVisibilityScopeEnum] = CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
     prompt: Optional[str] = None
     specific_ds: Optional[bool] = False

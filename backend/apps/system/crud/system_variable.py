@@ -75,7 +75,7 @@ def _assert_custom_variable_access(record: SystemVariable | None, user: CurrentU
             raise HTTPException(status_code=404, detail="变量不存在")
         return
     if record.type == VARIABLE_TYPE_PLATFORM:
-        raise HTTPException(status_code=403, detail="平台变量不可编辑")
+        raise HTTPException(status_code=403, detail="SaaS 变量不可编辑")
     if record.tenant_id in (None, "") or int(record.tenant_id) != _current_tenant_id(user):
         raise HTTPException(status_code=404, detail="变量不存在")
 

@@ -74,13 +74,14 @@ const mainMenuOrder = (path: string) => {
   if (path.includes('/chat')) return 10
   if (path.includes('/dashboard') && !path.includes('/dashboard-store')) return 20
   if (path.includes('/access')) return 30
-  if (path.includes('/account')) return 35
-  if (path.includes('/custom-agent')) return 40
-  if (path.includes('/dashboard-store')) return 50
+  if (path === '/as' || path.startsWith('/as/')) return 40
+  if (path.includes('/custom-agent')) return 50
+  if (path.includes('/data-skills')) return 60
+  if (path.includes('/dashboard-store')) return 70
   return 100
 }
 
-const tenantOptionalMainRoutes = ['/access', '/account']
+const tenantOptionalMainRoutes = ['/access']
 const isTenantOptionalMainRoute = (path: string) =>
   tenantOptionalMainRoutes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 
@@ -117,6 +118,7 @@ const routerList = computed(() => {
       route.path !== '/login' &&
       route.path !== '/admin-login' &&
       route.path !== '/chatPreview' &&
+      !route.path.includes('/account') &&
       !route.path.includes('/system') &&
       !route.redirect &&
       route.path !== '/:pathMatch(.*)*' &&

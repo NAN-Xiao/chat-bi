@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, inspect, or_
 from sqlmodel import delete as sqlmodel_delete, select
 
-from apps.chat.curd.custom_prompt import CustomPromptVisibilityScopeEnum
+from apps.chat.curd.custom_prompt import CustomPromptTypeEnum, CustomPromptVisibilityScopeEnum
 from apps.chat.models.custom_prompt_model import CustomPrompt
 from apps.dashboard.models.dashboard_model import CoreDashboard
 from apps.data_training.models.data_training_model import DataTraining
@@ -221,7 +221,7 @@ def _write_tenant_audit(
 
 def _require_platform_admin(current_user: CurrentUser) -> None:
     if not is_platform_admin(current_user):
-        raise HTTPException(status_code=403, detail="Only platform admin can manage tenants")
+        raise HTTPException(status_code=403, detail="Only SaaS admin can manage tenants")
 
 
 def _require_current_tenant_admin(current_user: CurrentUser) -> None:
@@ -743,7 +743,7 @@ def _require_manageable_tenant_member(
     if not user or not membership:
         raise HTTPException(status_code=404, detail="Tenant member not found")
     if is_high_privilege_user(user):
-        raise HTTPException(status_code=403, detail="Platform administrator cannot be managed as tenant member")
+        raise HTTPException(status_code=403, detail="SaaS administrator cannot be managed as tenant member")
     if normalize_tenant_role(membership.role) == TENANT_ROLE_OWNER and not is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="Only system admin can manage tenant owner")
     return user, membership
@@ -765,7 +765,7 @@ def _assign_existing_user_to_current_tenant(
     if not user:
         raise ValueError("User does not exist")
     if is_high_privilege_user(user):
-        raise ValueError("Platform administrator cannot be added to tenant")
+        raise ValueError("SaaS administrator cannot be added to tenant")
     membership = get_tenant_membership(session, int(user.id), tenant_id=int(tenant_id))
     if membership:
         raise ValueError("User already belongs to tenant")
@@ -801,7 +801,7 @@ def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserMode
         if not user:
             raise ValueError("Tenant owner user does not exist")
         if is_high_privilege_user(user):
-            raise ValueError("Platform administrator cannot be tenant owner")
+            raise ValueError("SaaS administrator cannot be tenant owner")
         return user
 
     owner_account = (creator.owner_account or "").strip()
@@ -811,7 +811,7 @@ def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserMode
     existing = session.exec(select(UserModel).where(UserModel.account == owner_account)).first()
     if existing:
         if is_high_privilege_user(existing):
-            raise ValueError("Platform administrator cannot be tenant owner")
+            raise ValueError("SaaS administrator cannot be tenant owner")
         return existing
 
     owner_name = (creator.owner_name or "").strip()
@@ -889,7 +889,7 @@ async def platform_overview(
 ):
     _require_platform_admin(current_user)
     if is_platform_workspace_delegate(current_user):
-        raise HTTPException(status_code=403, detail="Platform overview is only available in platform context")
+        raise HTTPException(status_code=403, detail="SaaS overview is only available in SaaS context")
 
     now = datetime.now()
     start_date = now.date() - timedelta(days=days - 1)
@@ -1331,7 +1331,7 @@ async def tenant_overview(
     days: int = Query(7, ge=7, le=30),
 ):
     if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user):
-        raise HTTPException(status_code=403, detail="Platform admin does not have tenant overview")
+        raise HTTPException(status_code=403, detail="SaaS admin does not have tenant overview")
     _require_current_tenant_admin(current_user)
 
     tenant_id = int(current_tenant.id)
@@ -1411,6 +1411,7 @@ async def tenant_overview(
         ).one() or 0
 
     custom_agent_total = 0
+    data_skill_total = 0
     if _table_exists(session, CustomPrompt.__tablename__):
         custom_agent_total = session.exec(
             select(func.count())
@@ -1418,9 +1419,26 @@ async def tenant_overview(
             .where(
                 CustomPrompt.tenant_id == tenant_id,
                 or_(
+                    CustomPrompt.type != CustomPromptTypeEnum.DATA_SKILL.value,
+                    CustomPrompt.type.is_(None),
+                ),
+                or_(
                     CustomPrompt.visibility_scope != CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value,
                     CustomPrompt.visibility_scope.is_(None),
                 ),
+            )
+        ).one() or 0
+        data_skill_total = session.exec(
+            select(func.count())
+            .select_from(CustomPrompt)
+            .where(
+                CustomPrompt.tenant_id == tenant_id,
+                CustomPrompt.type == CustomPromptTypeEnum.DATA_SKILL.value,
+                or_(
+                    CustomPrompt.visibility_scope != CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value,
+                    CustomPrompt.visibility_scope.is_(None),
+                ),
+                or_(CustomPrompt.active == True, CustomPrompt.active.is_(None)),
             )
         ).one() or 0
 
@@ -1683,8 +1701,10 @@ async def tenant_overview(
         assets=[
             TenantOverviewAssetItemDTO(key="datasource", count=int(datasource_total or 0)),
             TenantOverviewAssetItemDTO(key="dashboard", count=int(dashboard_total or 0)),
-            TenantOverviewAssetItemDTO(key="terminology", count=int(terminology_total or 0)),
-            TenantOverviewAssetItemDTO(key="training", count=int(training_total or 0)),
+            TenantOverviewAssetItemDTO(
+                key="data_skill",
+                count=int(terminology_total or 0) + int(training_total or 0) + int(data_skill_total or 0),
+            ),
             TenantOverviewAssetItemDTO(key="custom_agent", count=int(custom_agent_total or 0)),
             TenantOverviewAssetItemDTO(key="embedded", count=int(embedded_total or 0)),
         ],
@@ -2112,7 +2132,7 @@ async def invite_tenant_member(
     if not user:
         raise HTTPException(status_code=404, detail="User does not exist")
     if is_high_privilege_user(user):
-        raise HTTPException(status_code=400, detail="Platform administrator cannot be invited to tenant")
+        raise HTTPException(status_code=400, detail="SaaS administrator cannot be invited to tenant")
     try:
         invitation = create_tenant_invitation(
             session,
@@ -2162,7 +2182,7 @@ async def bulk_invite_tenant_members(
                 TenantBulkInviteResult(
                     account=account,
                     status="failed",
-                    message="Platform administrator cannot be invited to tenant",
+                    message="SaaS administrator cannot be invited to tenant",
                 )
             )
             continue
@@ -2241,7 +2261,7 @@ async def transfer_current_tenant_owner(
     if not target_user or int(target_user.status) != 1:
         raise HTTPException(status_code=404, detail="Target user does not exist")
     if is_high_privilege_user(target_user):
-        raise HTTPException(status_code=400, detail="Platform administrator cannot be tenant owner")
+        raise HTTPException(status_code=400, detail="SaaS administrator cannot be tenant owner")
     try:
         transfer_tenant_owner(
             session,
@@ -2614,7 +2634,7 @@ async def leave_joined_tenant(
     tenant_id: int,
 ):
     if is_platform_admin(current_user):
-        raise HTTPException(status_code=403, detail="Platform administrator cannot leave tenant from this endpoint")
+        raise HTTPException(status_code=403, detail="SaaS administrator cannot leave tenant from this endpoint")
     tenant = session.get(TenantModel, int(tenant_id))
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant does not exist")

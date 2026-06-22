@@ -31,6 +31,7 @@ export const dashboardStore = defineStore('dashboard', {
         contentId: null,
         type: null,
         canEdit: false,
+        canShare: false,
       },
     }
   },
@@ -68,7 +69,7 @@ export const dashboardStore = defineStore('dashboard', {
     },
     updateDashboardInfo(params: any) {
       Object.keys(params).forEach((key: string) => {
-        if (params[key]) {
+        if (params[key] !== undefined) {
           // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
           this.dashboardInfo[key] = params[key]
         }
@@ -101,6 +102,7 @@ export const dashboardStore = defineStore('dashboard', {
         contentId: null,
         type: null,
         canEdit: false,
+        canShare: false,
       }
     },
   },

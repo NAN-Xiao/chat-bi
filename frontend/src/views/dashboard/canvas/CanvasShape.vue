@@ -16,6 +16,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  canShare: {
+    type: Boolean,
+    default: true,
+  },
   active: {
     type: Boolean,
     default: false,
@@ -76,7 +80,9 @@ const dragDandleValue = computed(() => props.canEdit && !props.configItem.editin
   >
     <component-bar
       :config-item="configItem"
-      :active="active && canEdit"
+      :active="active && (canEdit || canShare)"
+      :can-edit="canEdit"
+      :can-share="canShare"
       :show-position="'canvas'"
       :canvas-id="canvasId"
       @enlarge-view="() => emits('enlargeView')"

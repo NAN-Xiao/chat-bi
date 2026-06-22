@@ -28,10 +28,14 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error, format_json_data, format_chart_fields, get_chat_brief_generate, get_chat_predict_data, \
     get_chat_chart_config, trigger_log_error
-from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, CustomPromptTypeEnum, find_custom_prompts
+from apps.chat.curd.custom_prompt import (
+    CustomPromptTargetScopeEnum,
+    CustomPromptTypeEnum,
+    find_custom_prompts,
+    find_data_skills,
+)
 from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
     ChatFinishStep, AxisObj, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
-from apps.data_training.curd.data_training import get_training_template
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
@@ -56,7 +60,6 @@ from apps.system.crud.user import is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.models.system_model import SysArgModel
 from apps.system.schemas.system_schema import AssistantOutDsSchema
-from apps.terminology.curd.terminology import get_terminology_template
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
@@ -517,13 +520,9 @@ class LLMService:
         if _system_templates.get('custom_prompt'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['custom_prompt']))
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的额外信息，我会进行参考。'))
-        if _system_templates.get('terminologies'):
-            self.sql_message.append(HumanPromptMessage(content=_system_templates['terminologies']))
-            self.sql_message.append(AIPromptMessage(content='我已确认您提供的术语信息，我会进行参考。'))
-        if _system_templates.get('data_training'):
-            self.sql_message.append(HumanPromptMessage(content=_system_templates['data_training']))
-            self.sql_message.append(AIPromptMessage(content='我已确认您提供的SQL示例，我会进行参考。'))
-
+        if _system_templates.get('data_skill'):
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['data_skill']))
+            self.sql_message.append(AIPromptMessage(content='我已确认您提供的数据 Skill，我会优先参考其中的业务口径与查询范式。'))
         if last_sql_messages is not None and len(last_sql_messages) > 0:
             last_rounds = get_last_conversation_rounds(last_sql_messages, rounds=count_limit)
 
@@ -584,26 +583,6 @@ class LLMService:
         chart_info = get_chart_config(_session, self.record.id)
         return format_chart_fields(chart_info)
 
-    def filter_terminology_template(self, _session: Session, ds_id: int = None):
-        if is_normal_user(self.current_user):
-            self.chat_question.terminologies = ""
-            return
-
-        calculate_ds_id = ds_id
-        if self.current_assistant:
-            if self.current_assistant.type == 1:
-                calculate_ds_id = None
-        self.current_logs[OperationEnum.FILTER_TERMS] = start_log(session=_session,
-                                                                  operate=OperationEnum.FILTER_TERMS,
-                                                                  record_id=self.record.id, local_operation=True)
-
-        self.chat_question.terminologies, term_list = get_terminology_template(_session, self.chat_question.question,
-                                                                               calculate_ds_id,
-                                                                               require_current_tenant_id(self.current_user))
-        self.current_logs[OperationEnum.FILTER_TERMS] = end_log(session=_session,
-                                                                log=self.current_logs[OperationEnum.FILTER_TERMS],
-                                                                full_message=term_list)
-
     def filter_custom_prompts(self, _session: Session, custom_prompt_type: CustomPromptTypeEnum, ds_id: int = None):
         if not self.chat_question.custom_prompt_id:
             self.chat_question.custom_prompt = ""
@@ -632,33 +611,43 @@ class LLMService:
                                                                             OperationEnum.FILTER_CUSTOM_PROMPT],
                                                                         full_message=prompt_list)
 
-    def filter_training_template(self, _session: Session, ds_id: int = None):
-        if is_normal_user(self.current_user):
-            self.chat_question.data_training = ""
-            return
-
-        self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = start_log(session=_session,
-                                                                        operate=OperationEnum.FILTER_SQL_EXAMPLE,
-                                                                        record_id=self.record.id,
-                                                                        local_operation=True)
+    def filter_data_skills(
+            self,
+            _session: Session,
+            ds_id: int = None,
+            target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
+    ):
         calculate_ds_id = ds_id
         if self.current_assistant:
             if self.current_assistant.type == 1:
                 calculate_ds_id = None
-        if self.current_assistant and self.current_assistant.type == 1:
-            self.chat_question.data_training, example_list = get_training_template(_session,
-                                                                                   self.chat_question.question,
-                                                                                   None, self.current_assistant.id,
-                                                                                   require_current_tenant_id(self.current_user))
-        else:
-            self.chat_question.data_training, example_list = get_training_template(_session,
-                                                                                   self.chat_question.question,
-                                                                                   calculate_ds_id,
-                                                                                   tenant_id=require_current_tenant_id(self.current_user))
-        self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = end_log(session=_session,
-                                                                      log=self.current_logs[
-                                                                          OperationEnum.FILTER_SQL_EXAMPLE],
-                                                                      full_message=example_list)
+        self.current_logs[OperationEnum.FILTER_DATA_SKILL] = start_log(session=_session,
+                                                                       operate=OperationEnum.FILTER_DATA_SKILL,
+                                                                       record_id=self.record.id,
+                                                                       local_operation=True)
+        self.chat_question.data_skill, skill_list, _skill_model_id = find_data_skills(
+            _session,
+            calculate_ds_id,
+            target_scope,
+            self.chat_question.data_skill_id,
+            self.current_user.id,
+            is_system_admin(self.current_user),
+            require_current_tenant_id(self.current_user),
+        )
+        self.current_logs[OperationEnum.FILTER_DATA_SKILL] = end_log(session=_session,
+                                                                     log=self.current_logs[
+                                                                         OperationEnum.FILTER_DATA_SKILL],
+                                                                     full_message=skill_list)
+
+    def load_data_skills(
+            self,
+            _session: Session,
+            ds_id: int = None,
+            target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
+    ):
+        self.filter_data_skills(_session, ds_id, target_scope)
+        self.chat_question.terminologies = ""
+        self.chat_question.data_training = ""
 
     def choose_table_schema(self, _session: Session):
         self.current_logs[OperationEnum.CHOOSE_TABLE] = start_log(session=_session,
@@ -694,7 +683,7 @@ class LLMService:
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-        self.filter_terminology_template(_session, ds_id)
+        self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
 
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS, ds_id)
 
@@ -736,6 +725,7 @@ class LLMService:
         self.chat_question.data = format_chart_data_for_agent_prompt(data)
 
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+        self.filter_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, ds_id)
 
         predict_msg: List[Union[BaseMessage, dict[str, Any]]] = []
@@ -950,9 +940,7 @@ class LLMService:
         if self.ds:
             ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-            self.filter_terminology_template(_session, ds_id)
-
-            self.filter_training_template(_session, ds_id)
+            self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
 
             self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
 
@@ -1432,9 +1420,7 @@ class LLMService:
             if self.ds:
                 ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
 
-                self.filter_terminology_template(_session, ds_id)
-
-                self.filter_training_template(_session, ds_id)
+                self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
 
                 self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
 

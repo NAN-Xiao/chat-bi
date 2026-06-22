@@ -534,6 +534,7 @@ def test_list_resource_marks_project_viewer_cannot_edit(monkeypatch):
 
     assert len(tree) == 1
     assert tree[0].can_edit is False
+    assert tree[0].can_share is False
 
 
 def test_list_resource_marks_creator_can_edit_with_project_viewer_role(monkeypatch):
@@ -566,6 +567,7 @@ def test_list_resource_marks_creator_can_edit_with_project_viewer_role(monkeypat
 
     assert len(tree) == 1
     assert tree[0].can_edit is True
+    assert tree[0].can_share is True
 
 
 def test_list_resource_marks_current_user_shared_dashboard(monkeypatch):
@@ -615,6 +617,7 @@ def test_list_resource_marks_current_user_shared_dashboard(monkeypatch):
     assert len(tree) == 1
     assert tree[0].is_shared is True
     assert tree[0].share_id == "share-1"
+    assert tree[0].can_share is True
 
 
 def test_list_resource_includes_legacy_dashboard_when_canvas_uses_selected_datasource(monkeypatch):
@@ -1196,6 +1199,45 @@ def test_share_chart_creates_chart_snapshot(monkeypatch):
     assert share.source_view_id == "chart-1"
     assert json.loads(share.component_data)[0]["id"] == "chart-1"
     assert json.loads(share.canvas_view_info)["chart-1"]["chart"]["title"] == "图表 A"
+
+
+def test_project_viewer_cannot_share_other_users_dashboard(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="别人的看板",
+                pid="root",
+                datasource=1,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.share_resource(
+                session=session,
+                user=current_user,
+                request=DashboardShareRequest(
+                    dashboard_id="dashboard-1",
+                    share_type="dashboard",
+                ),
+            )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "You do not have permission to share this dashboard"
 
 
 def test_list_shared_resources_marks_permission_status(monkeypatch):

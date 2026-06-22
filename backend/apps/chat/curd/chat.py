@@ -38,6 +38,7 @@ CHAT_USAGE_METRICS = {
     OperationEnum.CHOOSE_DATASOURCE: "chat.choose_datasource",
     OperationEnum.GENERATE_SQL_WITH_PERMISSIONS: "chat.generate_sql_with_permissions",
     OperationEnum.GENERATE_DYNAMIC_SQL: "chat.generate_dynamic_sql",
+    OperationEnum.FILTER_DATA_SKILL: "chat.data_skill",
 }
 
 
@@ -188,6 +189,7 @@ def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | 
 
     stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource, ChatRecord.engine_type,
                   ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.custom_prompt_id,
+                  ChatRecord.data_skill_id,
                   ChatRecord.tenant_id).where(
         and_(ChatRecord.id == record_id))
     if tenant_id is not None:
@@ -196,7 +198,8 @@ def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | 
     for r in result:
         record = ChatRecord(id=r.id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
                             engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by,
-                            custom_prompt_id=r.custom_prompt_id, tenant_id=r.tenant_id)
+                            custom_prompt_id=r.custom_prompt_id, data_skill_id=r.data_skill_id,
+                            tenant_id=r.tenant_id)
     return record
 
 
@@ -563,7 +566,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                    ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                    ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                    ChatRecord.regenerate_record_id,
-                   ChatRecord.custom_prompt_id,
+                   ChatRecord.custom_prompt_id, ChatRecord.data_skill_id,
                    ChatRecord.recommended_question, ChatRecord.first_chat,
                    ChatRecord.finish, ChatRecord.error,
                    sql_alias_log.reasoning_content.label('sql_reasoning_content'),
@@ -595,7 +598,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                       ChatRecord.chart_answer, ChatRecord.chart, ChatRecord.analysis, ChatRecord.predict,
                       ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                       ChatRecord.regenerate_record_id,
-                      ChatRecord.custom_prompt_id,
+                      ChatRecord.custom_prompt_id, ChatRecord.data_skill_id,
                       ChatRecord.recommended_question, ChatRecord.first_chat,
                       ChatRecord.finish, ChatRecord.error, ChatRecord.data, ChatRecord.predict_data).where(
             and_(
@@ -681,6 +684,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              predict_record_id=row.predict_record_id,
                                              regenerate_record_id=row.regenerate_record_id,
                                              custom_prompt_id=row.custom_prompt_id,
+                                             data_skill_id=row.data_skill_id,
                                              recommended_question=row.recommended_question, first_chat=row.first_chat,
                                              finish=row.finish, error=row.error, data=data_value,
                                              sql_reasoning_content=row.sql_reasoning_content,
@@ -705,6 +709,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              predict_record_id=row.predict_record_id,
                                              regenerate_record_id=row.regenerate_record_id,
                                              custom_prompt_id=row.custom_prompt_id,
+                                             data_skill_id=row.data_skill_id,
                                              recommended_question=row.recommended_question, first_chat=row.first_chat,
                                              finish=row.finish, error=row.error, data=data_value,
                                              predict_data=predict_data_value)
@@ -1079,6 +1084,7 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     record.ai_modal_id = question.ai_modal_id
     record.regenerate_record_id = question.regenerate_record_id
     record.custom_prompt_id = question.custom_prompt_id
+    record.data_skill_id = question.data_skill_id
 
     result = ChatRecord(**record.model_dump())
 
@@ -1100,6 +1106,7 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
     record.engine_type = base_record.engine_type
     record.ai_modal_id = base_record.ai_modal_id
     record.custom_prompt_id = base_record.custom_prompt_id
+    record.data_skill_id = base_record.data_skill_id
     record.create_time = datetime.datetime.now()
     record.create_by = base_record.create_by
     record.chart = base_record.chart

@@ -24,6 +24,7 @@ export const load_resource_prepare = (params: any, callBack: (obj: any) => void)
         updateTime: canvasInfo.update_time,
         contentId: canvasInfo.content_id,
         canEdit: canvasInfo.can_edit,
+        canShare: canvasInfo.can_share ?? canvasInfo.can_edit,
       }
       const canvasDataResult = JSON.parse(canvasInfo.component_data)
       const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)

@@ -1,6 +1,6 @@
 # B2B Multi-Tenant ChatBI Architecture
 
-This document records the current product direction for 星通智数 as a commercial B2B ChatBI platform.
+This document records the current product direction for 星通智数 as a commercial B2B ChatBI SaaS.
 
 ## Product Scope
 
@@ -18,32 +18,32 @@ SLG fixtures are demo data only. Runtime code must stay datasource-agnostic and 
 
 - `sys_tenant` stores enterprise tenants, plan information, and manual subscription lifecycle fields.
 - `sys_tenant_user` stores membership and tenant roles: `owner`, `admin`, `member`.
-- `sys_tenant_domain` stores tenant email domains. Domains start as `pending`; only platform-verified domains can auto-assign users by email suffix during login/token validation.
+- `sys_tenant_domain` stores tenant email domains. Domains start as `pending`; only SaaS-verified domains can auto-assign users by email suffix during login/token validation.
 - `sys_tenant_security_policy` stores tenant-level security controls such as IP whitelist, SSO-required flag, and session timeout metadata.
 - `sys_tenant_data_request` stores tenant cancellation, export, and deletion requests. These requests are auditable workflows, not automatic data mutation jobs.
-- Request tenant context is resolved from verified login tokens, API keys, or embedded assistant tokens. A user can only switch to a tenant they belong to, except platform administrators.
+- Request tenant context is resolved from verified login tokens, API keys, or embedded assistant tokens. A user can only switch to a tenant they belong to, except SaaS administrators.
 - Core business assets carry tenant scope: datasource, terminology, SQL examples, custom Agents, ChatBI conversations, chat records, chat logs, dashboards, dashboard shares, API keys, assistants, audit logs, and tenant usage records.
 
 ## Commercial Lifecycle
 
 - SaaS Beta uses manual commercial operations first: `plan`, `subscription_status`, service period, trial period, contract number, billing contact, and operator notes are stored on the tenant.
 - `past_due` is an operational warning state only. Expired trial or service dates must not automatically stop service.
-- High-cost capabilities such as Smart Q&A generation, analysis assistant requests, and task enqueueing are blocked only when a platform administrator deliberately sets `subscription_status` to `suspended` or `cancelled`.
+- High-cost capabilities such as Smart Q&A generation, analysis assistant requests, and task enqueueing are blocked only when a SaaS administrator deliberately sets `subscription_status` to `suspended` or `cancelled`.
 - Normal login, tenant management, historical browsing, and renewal handling should remain available when a tenant is past due.
-- Tenant cancellation, data export, and data deletion use request/review/complete workflows. Tenant owners can request cancellation or deletion; tenant owners/admins can request export; platform administrators must approve or reject and then mark approved work complete.
-- Completing a cancellation or deletion request does not automatically disable the tenant or delete database rows. Platform operations must perform the agreed offline steps and then record completion.
+- Tenant cancellation, data export, and data deletion use request/review/complete workflows. Tenant owners can request cancellation or deletion; tenant owners/admins can request export; SaaS administrators must approve or reject and then mark approved work complete.
+- Completing a cancellation or deletion request does not automatically disable the tenant or delete database rows. SaaS operations must perform the agreed offline steps and then record completion.
 - Export approval currently produces a tenant-scoped manifest of tables and row counts for tables with `tenant_id`; actual file generation remains a controlled follow-up operation.
 
 ## Permission Model
 
-- Platform administrator: manages platform-wide configuration, tenant approval, production operations, and can switch tenant context for support.
+- SaaS administrator: manages SaaS-wide configuration, tenant approval, production operations, and can switch tenant context for support.
 - Tenant `owner/admin`: manages current-tenant users, datasources, public custom Agents, terminology, SQL examples, dashboards, and tenant usage.
 - Tenant `member`: can only access explicitly assigned datasources.
-- Datasource `viewer/editor`: controls project usage and dashboard editing. It does not grant platform administration.
+- Datasource `viewer/editor`: controls project usage and dashboard editing. It does not grant SaaS administration.
 - Smart Q&A, dashboards, custom Agents, and analysis assistant must all validate tenant and datasource access before reading schema, semantic records, examples, history, SQL, chart data, or execution results.
 - Row and column permissions are applied to normal users during schema exposure, SQL validation, SQL execution, chart reload, dashboard load, and analysis assistant execution.
 - Tenant owner/admin can submit member invitations in bulk. Each account produces an individual result and the action is written to tenant audit logs.
-- Tenant security policy is enforced during tenant context attachment. Platform administrators bypass tenant IP/SSO policy for support and operations. SSO provider integration is not complete yet; `sso_required` currently blocks local-login users for that tenant.
+- Tenant security policy is enforced during tenant context attachment. SaaS administrators bypass tenant IP/SSO policy for support and operations. SSO provider integration is not complete yet; `sso_required` currently blocks local-login users for that tenant.
 
 ## High Availability
 

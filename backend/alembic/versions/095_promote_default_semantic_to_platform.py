@@ -28,7 +28,7 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 def upgrade():
     # Keep existing default-tenant semantic records tenant-scoped. Workspaces and
-    # platform-level semantic records must be maintained independently so demo
+    # SaaS-level semantic records must be maintained independently so demo
     # examples do not become global prompt context.
     pass
 

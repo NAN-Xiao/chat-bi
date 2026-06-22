@@ -21,6 +21,9 @@ const list = computed(() => {
   return (props.item?.message as Array<any>) ?? []
 })
 const title = computed(() => {
+  if (props.item?.operate_key === 'FILTER_DATA_SKILL') {
+    return t('chat.find_data_skill_title', [list.value.length])
+  }
   return t('chat.find_custom_prompt_title', [list.value.length])
 })
 </script>

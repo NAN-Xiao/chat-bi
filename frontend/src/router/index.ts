@@ -10,6 +10,7 @@ import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
 import Access from '@/views/access/index.vue'
 import CustomAgent from '@/views/custom-agent/index.vue'
+import DataSkills from '@/views/data-skills/index.vue'
 import DashboardStore from '@/views/dashboard/store/index.vue'
 import Datasource from '@/views/ds/Datasource.vue'
 import Model from '@/views/system/model/Model.vue'
@@ -22,8 +23,6 @@ import assistantTest from '@/views/system/embedded/Test.vue'
 import assistant from '@/views/embedded/index.vue'
 import EmbeddedPage from '@/views/embedded/page.vue'
 import EmbeddedCommon from '@/views/embedded/common.vue'
-import Professional from '@/views/system/professional/index.vue'
-import Training from '@/views/system/training/index.vue'
 import Prompt from '@/views/system/prompt/index.vue'
 import Audit from '@/views/system/audit/index.vue'
 import Parameter from '@/views/system/parameter/index.vue'
@@ -174,6 +173,24 @@ export const routes = [
     ],
   },
   {
+    path: '/data-skills',
+    component: LayoutDsl,
+    redirect: '/data-skills/index',
+    children: [
+      {
+        path: 'index',
+        name: 'data-skills',
+        component: DataSkills,
+        props: { mode: 'personal' },
+        meta: {
+          title: t('data_skill.title'),
+          iconActive: 'terminology',
+          iconDeActive: 'noTerminology',
+        },
+      },
+    ],
+  },
+  {
     path: '/dashboard-store',
     component: LayoutDsl,
     redirect: '/dashboard-store/index',
@@ -207,12 +224,12 @@ export const routes = [
   },
   {
     path: '/set/professional',
-    redirect: '/system/professional',
+    redirect: '/system/data-skills',
     hidden: true,
   },
   {
     path: '/set/training',
-    redirect: '/system/training',
+    redirect: '/system/data-skills',
     hidden: true,
   },
   {
@@ -389,13 +406,33 @@ export const routes = [
           },
           {
             path: 'professional',
-            redirect: '/system/professional',
+            redirect: '/system/data-skills',
             hidden: true,
+            meta: {
+              tenantBusiness: true,
+              tenantAdminOnly: true,
+              platformOperation: true,
+            },
           },
           {
             path: 'training',
-            redirect: '/system/training',
+            redirect: '/system/data-skills',
             hidden: true,
+            meta: {
+              tenantBusiness: true,
+              tenantAdminOnly: true,
+              platformOperation: true,
+            },
+          },
+          {
+            path: 'data-skills',
+            redirect: '/system/data-skills',
+            hidden: true,
+            meta: {
+              tenantBusiness: true,
+              tenantAdminOnly: true,
+              platformOperation: true,
+            },
           },
           {
             path: 'prompt',
@@ -427,26 +464,36 @@ export const routes = [
         },
       },
       {
-        path: 'professional',
-        name: 'professional',
-        component: Professional,
+        path: 'data-skills',
+        name: 'system-data-skills',
+        component: DataSkills,
+        props: { mode: 'admin' },
         meta: {
-          title: t('professional.professional_terminology'),
+          title: t('data_skill.admin_title'),
           iconActive: 'terminology',
           iconDeActive: 'noTerminology',
           tenantBusiness: true,
+          tenantAdminOnly: true,
+          platformOperation: true,
+        },
+      },
+      {
+        path: 'professional',
+        redirect: '/system/data-skills',
+        hidden: true,
+        meta: {
+          tenantBusiness: true,
+          tenantAdminOnly: true,
           platformOperation: true,
         },
       },
       {
         path: 'training',
-        name: 'training',
-        component: Training,
+        redirect: '/system/data-skills',
+        hidden: true,
         meta: {
-          title: t('training.data_training'),
-          iconActive: 'sql',
-          iconDeActive: 'noSql',
           tenantBusiness: true,
+          tenantAdminOnly: true,
           platformOperation: true,
         },
       },
@@ -458,7 +505,8 @@ export const routes = [
           title: t('prompt.customize_prompt_words'),
           iconActive: 'agent',
           iconDeActive: 'noAgent',
-          platformOnly: true,
+          tenantBusiness: true,
+          tenantAdminOnly: true,
           platformOperation: true,
         },
       },

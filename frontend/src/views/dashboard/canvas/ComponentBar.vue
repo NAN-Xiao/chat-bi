@@ -34,6 +34,14 @@ const props = defineProps({
     type: String,
     default: 'canvas-main',
   },
+  canEdit: {
+    type: Boolean,
+    default: true,
+  },
+  canShare: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const { configItem } = toRefs(props)
@@ -46,18 +54,21 @@ const doPreview = () => {
 const doEditSql = (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
+  if (!props.canEdit) return
   emits('editSql')
 }
 
 const doDeleteComponent = (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
+  if (!props.canEdit) return
   useEmitt().emitter.emit(`editor-delete-${props.canvasId}`, configItem.value.id)
 }
 
 const doShareComponent = async (e: MouseEvent) => {
   e.stopPropagation()
   e.preventDefault()
+  if (!props.canShare) return
   const previewImage = await captureElementSharePreview(
     document.getElementById(`canvas-item-${configItem.value.id}`) ||
       document.getElementById(`wrapper-outer-id-${configItem.value.id}`) ||
@@ -96,18 +107,19 @@ const doShareComponent = async (e: MouseEvent) => {
               >{{ t('dashboard.preview') }}</el-dropdown-item
             >
             <el-dropdown-item
-              v-if="configItem.component === 'SQView'"
+              v-if="configItem.component === 'SQView' && canEdit"
               :icon="icon_sql_outlined"
               @click="doEditSql"
               >{{ t('dashboard.edit_sql') }}</el-dropdown-item
             >
             <el-dropdown-item
-              v-if="configItem.component === 'SQView'"
+              v-if="configItem.component === 'SQView' && canShare"
               :icon="icon_export_outlined"
               @click="doShareComponent"
               >{{ t('dashboard.share') }}</el-dropdown-item
             >
             <el-dropdown-item
+              v-if="canEdit"
               :divided="configItem.component === 'SQView'"
               :icon="icon_delete"
               @click="doDeleteComponent"

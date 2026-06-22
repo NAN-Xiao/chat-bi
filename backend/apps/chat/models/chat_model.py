@@ -47,6 +47,7 @@ class OperationEnum(Enum):
     FILTER_CUSTOM_PROMPT = '11'
     EXECUTE_SQL = '12'
     GENERATE_PICTURE = '13'
+    FILTER_DATA_SKILL = '14'
 
 
 class ChatFinishStep(Enum):
@@ -141,6 +142,7 @@ class ChatRecord(SQLModel, table=True):
     predict_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     regenerate_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     custom_prompt_id: int = Field(sa_column=Column(BigInteger, nullable=True))
+    data_skill_id: int = Field(sa_column=Column(BigInteger, nullable=True))
 
 
 class ChatRecordResult(BaseModel):
@@ -169,6 +171,7 @@ class ChatRecordResult(BaseModel):
     predict_record_id: Optional[int] = None
     regenerate_record_id: Optional[int] = None
     custom_prompt_id: Optional[int] = None
+    data_skill_id: Optional[int] = None
     sql_reasoning_content: Optional[str] = None
     chart_reasoning_content: Optional[str] = None
     analysis_reasoning_content: Optional[str] = None
@@ -243,6 +246,8 @@ class AiModelQuestion(BaseModel):
     data_training: str = ""
     custom_prompt: str = ""
     custom_prompt_id: Optional[int] = None
+    data_skill: str = ""
+    data_skill_id: Optional[int] = None
     error_msg: str = ""
     regenerate_record_id: Optional[int] = None
     sample_data: str = ""
@@ -279,17 +284,13 @@ class AiModelQuestion(BaseModel):
         templates['schema'] = _base_template['generate_basic_info'].format(engine=self.engine, schema=self.db_schema,
                                                                            sample_data=self.sample_data)
 
-        if self.terminologies:
-            templates['terminologies'] = _base_template['generate_terminologies_info'].format(
-                terminologies=self.terminologies)
-
-        if self.data_training:
-            templates['data_training'] = _base_template['generate_data_training_info'].format(
-                data_training=self.data_training)
-
         if self.custom_prompt:
             templates['custom_prompt'] = _base_template['generate_custom_prompt_info'].format(
                 custom_prompt=self.custom_prompt)
+
+        if self.data_skill:
+            templates['data_skill'] = _base_template['generate_data_skill_info'].format(
+                data_skill=self.data_skill)
 
         return templates
 
@@ -311,17 +312,20 @@ class AiModelQuestion(BaseModel):
 
     def chart_user_question(self, chart_type: Optional[str] = '', schema: Optional[str] = ''):
         return get_chart_template()['user'].format(lang=self.lang, sql=self.sql, question=self.question, rule=self.rule,
-                                                   chart_type=chart_type, schema=schema)
+                                                   chart_type=chart_type, schema=schema, data_skill=self.data_skill)
 
     def analysis_sys_question(self):
         return get_analysis_template()['system'].format(lang=self.lang, terminologies=self.terminologies,
-                                                        custom_prompt=self.custom_prompt, zhishu_name=self.zhishu_name)
+                                                        custom_prompt=self.custom_prompt,
+                                                        data_skill=self.data_skill,
+                                                        zhishu_name=self.zhishu_name)
 
     def analysis_user_question(self):
         return get_analysis_template()['user'].format(fields=self.fields, data=self.data)
 
     def predict_sys_question(self):
         return get_predict_template()['system'].format(lang=self.lang, custom_prompt=self.custom_prompt,
+                                                       data_skill=self.data_skill,
                                                        zhishu_name=self.zhishu_name)
 
     def predict_user_question(self):
@@ -377,6 +381,7 @@ class ChatQuestionBase(BaseModel):
     question: str = Body(description='用户提问')
     chat_id: int = Body(description='会话ID')
     custom_prompt_id: Optional[int] = Body(description='本次提问选择的自定义 Agent ID', default=None)
+    data_skill_id: Optional[int] = Body(description='本次提问选择的数据 Skill ID', default=None)
 
 
 class McpQuestion(ChatQuestionBase):
