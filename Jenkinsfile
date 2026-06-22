@@ -11,6 +11,7 @@ pipeline {
   parameters {
     string(name: 'BRANCH_NAME', defaultValue: 'single_ha_t1', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
+    booleanParam(name: 'CLEAN_OLD_IMAGES', defaultValue: false, description: '是否清理旧版本镜像。默认关闭以缩短发布耗时')
     booleanParam(name: 'CLEAN_DANGLING_IMAGES', defaultValue: false, description: '是否清理悬空镜像。默认关闭以保留 Docker 构建缓存')
   }
 
@@ -50,6 +51,7 @@ pipeline {
           env.GITHUB_COMMIT = shortCommit
           env.FRONTEND_API_BASE_URL = "./api/v1"
           env.PYTHON_DEPENDENCY_EXTRA = "cpu"
+          env.CLEAN_OLD_IMAGES = params.CLEAN_OLD_IMAGES.toString()
           env.CLEAN_DANGLING_IMAGES = params.CLEAN_DANGLING_IMAGES.toString()
         }
         sh '''
@@ -72,6 +74,7 @@ pipeline {
             docker buildx version
           fi
           echo "Python 依赖类型：${PYTHON_DEPENDENCY_EXTRA:-cpu}"
+          echo "是否清理旧版本镜像：${CLEAN_OLD_IMAGES:-false}"
           echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES:-false}"
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/sqlbot/excel" "$APP_HOME/data/sqlbot/file" "$APP_HOME/data/sqlbot/images" "$APP_HOME/data/sqlbot/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
@@ -256,13 +259,49 @@ EOF
           worker_ids="$ZHISHU_WORKER_IDS"
 
           SYSTEMD_SSH_TARGET="${SYSTEMD_SSH_TARGET:-root@${FRONTEND_HOST}}"
-          remote_systemctl() {
+          api_services=""
+          for api_port in $api_ports; do
+            api_services="$api_services chat-bi-api@${api_port}.service"
+          done
+          worker_services=""
+          for worker_id in $worker_ids; do
+            worker_services="$worker_services chat-bi-worker@${worker_id}.service"
+          done
+          remote_systemd_batch() {
             ssh \
               -o BatchMode=yes \
               -o StrictHostKeyChecking=no \
               -o UserKnownHostsFile=/root/.ssh/known_hosts \
               "$SYSTEMD_SSH_TARGET" \
-              systemctl "$@"
+              "API_PORTS='$api_ports' API_SERVICES='$api_services' WORKER_SERVICES='$worker_services' bash -s" <<'REMOTE_SYSTEMD'
+set -euo pipefail
+echo "停止旧 systemd 实例..."
+systemctl stop chat-bi-mcp.service $API_SERVICES $WORKER_SERVICES >/dev/null 2>&1 || true
+
+echo "启动 API 副本和 worker..."
+systemctl restart $API_SERVICES $WORKER_SERVICES
+
+deadline=$(( $(date +%s) + 45 ))
+while true; do
+  all_ok=1
+  for service in $API_SERVICES $WORKER_SERVICES; do
+    systemctl is-active --quiet "$service" || all_ok=0
+  done
+  for port in $API_PORTS; do
+    timeout 1 bash -lc "</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1 || all_ok=0
+  done
+  if [ "$all_ok" -eq 1 ]; then
+    echo "systemd 服务和 API 端口已就绪。"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    echo "等待 systemd 服务或 API 端口就绪超时。"
+    systemctl --no-pager --plain status $API_SERVICES $WORKER_SERVICES || true
+    exit 1
+  fi
+  sleep 1
+done
+REMOTE_SYSTEMD
           }
 
           cat > "$APP_HOME/chat-bi-systemd.env" <<EOF
@@ -289,30 +328,8 @@ EOF
 
           echo "停止旧单容器实例和旧 systemd 实例..."
           docker rm -f "$CONTAINER_NAME" "${CONTAINER_NAME}-previous" >/dev/null 2>&1 || true
-          remote_systemctl stop "chat-bi-mcp.service" >/dev/null 2>&1 || true
           docker rm -f chat-bi-mcp >/dev/null 2>&1 || true
-          for api_port in $api_ports; do
-            remote_systemctl stop "chat-bi-api@${api_port}.service" >/dev/null 2>&1 || true
-          done
-          for worker_id in $worker_ids; do
-            remote_systemctl stop "chat-bi-worker@${worker_id}.service" >/dev/null 2>&1 || true
-          done
-
-          echo "启动 API 副本和 worker..."
-          for api_port in $api_ports; do
-            remote_systemctl restart "chat-bi-api@${api_port}.service"
-          done
-          for worker_id in $worker_ids; do
-            remote_systemctl restart "chat-bi-worker@${worker_id}.service"
-          done
-
-          sleep 15
-          for api_port in $api_ports; do
-            remote_systemctl is-active --quiet "chat-bi-api@${api_port}.service"
-          done
-          for worker_id in $worker_ids; do
-            remote_systemctl is-active --quiet "chat-bi-worker@${worker_id}.service"
-          done
+          remote_systemd_batch
 
           docker ps --filter "name=^/chat-bi-"
         '''
@@ -374,34 +391,38 @@ EOF
           RUNNING_IMAGE_IDS="$(docker ps --filter 'name=^/chat-bi-(api|worker)-' --format '{{.ID}}' \
             | xargs -r docker inspect --format='{{.Image}}' 2>/dev/null || true)"
 
-          docker images "$IMAGE_REPOSITORY" --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}' \
-            | sort -k3,4r \
-            | awk -v keep="$IMAGE_KEEP_COUNT" -v running_ids="$RUNNING_IMAGE_IDS" '
-                NR <= keep {
-                  print "保留镜像：" $1
-                  next
-                }
-                running_ids != "" && index(running_ids, $2) > 0 {
-                  print "跳过运行中镜像：" $1
-                  next
-                }
-                {
-                  print $1
-                }
-              ' \
-            | while IFS= read -r image; do
-                case "$image" in
-                  保留镜像：*|跳过运行中镜像：*)
-                    echo "$image"
-                    ;;
-                  "")
-                    ;;
-                  *)
-                    echo "删除旧镜像：$image"
-                    docker rmi "$image" || true
-                    ;;
-                esac
-              done
+          if [ "${CLEAN_OLD_IMAGES:-false}" = "true" ]; then
+            docker images "$IMAGE_REPOSITORY" --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}' \
+              | sort -k3,4r \
+              | awk -v keep="$IMAGE_KEEP_COUNT" -v running_ids="$RUNNING_IMAGE_IDS" '
+                  NR <= keep {
+                    print "保留镜像：" $1
+                    next
+                  }
+                  running_ids != "" && index(running_ids, $2) > 0 {
+                    print "跳过运行中镜像：" $1
+                    next
+                  }
+                  {
+                    print $1
+                  }
+                ' \
+              | while IFS= read -r image; do
+                  case "$image" in
+                    保留镜像：*|跳过运行中镜像：*)
+                      echo "$image"
+                      ;;
+                    "")
+                      ;;
+                    *)
+                      echo "删除旧镜像：$image"
+                      docker rmi "$image" || true
+                      ;;
+                  esac
+                done
+          else
+            echo "跳过旧版本镜像清理。磁盘紧张时可手动打开 CLEAN_OLD_IMAGES。"
+          fi
 
           echo "当前保留的 $IMAGE_REPOSITORY 镜像："
           docker images "$IMAGE_REPOSITORY"
@@ -416,15 +437,19 @@ EOF
             echo "跳过悬空镜像清理，以保留 Docker 构建缓存。磁盘紧张时可手动打开 CLEAN_DANGLING_IMAGES。"
           fi
 
-          echo "清理旧镜像归档文件，只保留最近 $TAR_KEEP_COUNT 个："
-          find "$APP_HOME" -maxdepth 1 -name 'chat-bi-*.tar' -type f -printf '%T@ %p\n' \
-            | sort -nr \
-            | awk -v keep="$TAR_KEEP_COUNT" 'NR > keep { print substr($0, index($0, " ") + 1) }' \
-            | while IFS= read -r tar_file; do
-                [ -n "$tar_file" ] || continue
-                echo "删除旧镜像归档：$tar_file"
-                rm -f "$tar_file"
-              done
+          if [ "${CLEAN_OLD_IMAGES:-false}" = "true" ]; then
+            echo "清理旧镜像归档文件，只保留最近 $TAR_KEEP_COUNT 个："
+            find "$APP_HOME" -maxdepth 1 -name 'chat-bi-*.tar' -type f -printf '%T@ %p\n' \
+              | sort -nr \
+              | awk -v keep="$TAR_KEEP_COUNT" 'NR > keep { print substr($0, index($0, " ") + 1) }' \
+              | while IFS= read -r tar_file; do
+                  [ -n "$tar_file" ] || continue
+                  echo "删除旧镜像归档：$tar_file"
+                  rm -f "$tar_file"
+                done
+          else
+            echo "跳过旧镜像归档文件清理。"
+          fi
 
           echo "Docker 磁盘使用情况："
           docker system df
