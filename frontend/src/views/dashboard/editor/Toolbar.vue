@@ -84,7 +84,7 @@ const props = defineProps({
   },
 })
 
-const canEditDashboard = computed(() => dashboardInfo.value.canEdit !== false)
+const canEditDashboard = computed(() => dashboardInfo.value.canEdit === true)
 
 const groupOptFinish = (result: any) => {
   let url = window.location.href

@@ -120,6 +120,7 @@ const editingViewInfo = computed(() => {
 })
 
 const editSql = (id: string) => {
+  if (!canEditDashboard.value) return
   editingViewId.value = id
   sqlEditorVisible.value = true
 }
@@ -143,6 +144,11 @@ const {
   draggable,
   resizable,
 } = toRefs(props)
+const canEditDashboard = computed(() => props.dashboardInfo?.canEdit === true)
+const canShareDashboard = computed(
+  () => props.dashboardInfo?.canShare === true || props.dashboardInfo?.canEdit === true
+)
+const canInteractWithLayout = computed(() => !fullscreenFlag.value && canEditDashboard.value)
 
 // DOM ref
 const containerRef = ref<HTMLElement | null>(null)
@@ -481,25 +487,8 @@ function setPlayerGridFrame(
   return getItemGridFrame(item)
 }
 
-function movePlayerToFrame(item: CanvasItem, frame: { x: number; y: number }) {
-  const nextFrame = normalizeGridFrame({
-    x: frame.x,
-    y: frame.y,
-    sizeX: item.sizeX,
-    sizeY: item.sizeY,
-  })
-
-  movePlayer(item, nextFrame)
-  rebuildPositionBox()
-
-  if (item.component === 'SQView') {
-    useEmittLazy(`view-render-${item.id}`)
-  }
-
-  return getItemGridFrame(item)
-}
-
 function removeItemById(id: number) {
+  if (!canEditDashboard.value) return
   const index = canvasComponentData.value.findIndex((item) => item.id === id)
   if (index >= 0) {
     removeItem(index)
@@ -511,6 +500,7 @@ function removeItemById(id: number) {
 }
 
 function removeItem(index: number) {
+  if (!canEditDashboard.value) return
   const item = canvasComponentData.value[index] as CanvasItem
   removeItemFromPositionBox(item)
   const belowItems = findBelowItems(item) as CanvasItem[]
@@ -809,6 +799,7 @@ function findBelowItems(item: CanvasItem) {
 }
 
 function startResize(e: MouseEvent, point: string, item: CanvasItem, index: number) {
+  if (!canInteractWithLayout.value) return
   if (!resizable.value) return
   dashboardStore.setCurComponent(item)
   props.resizeStart(e, item, index)
@@ -932,8 +923,9 @@ function normalizeResizeFrame(x: number, y: number, sizeX: number, sizeY: number
 
 function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   canvasLocked.value = false // Reset canvas lock status
-  if (!draggable.value) return
   dashboardStore.setCurComponent(item)
+  if (!canInteractWithLayout.value) return
+  if (!draggable.value) return
   if (!infoBox.value) {
     infoBox.value = {} // Reinitialize
   }
@@ -1068,7 +1060,12 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
         sizeX: moveItem.sizeX,
         sizeY: moveItem.sizeY,
       })
-      infoBox.value.lastValidFrame = candidateFrame
+      infoBox.value.dropFrame = candidateFrame
+      const canPlaceFrame = canPlaceGridFrame(moveItem, candidateFrame)
+      if (canPlaceFrame) {
+        infoBox.value.lastValidFrame = candidateFrame
+      }
+      infoBox.value.cloneItem.classList.toggle('invalidDrop', !canPlaceFrame)
       const validStyle = getSnappedItemStyle(
         candidateFrame.x,
         candidateFrame.y,
@@ -1082,13 +1079,6 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
 
       //If the current canvas is locked, no component movement will be performed
       if (canvasLocked.value) return
-
-      debounce(() => {
-        const movedFrame = movePlayerToFrame(moveItem, candidateFrame)
-        infoBox.value.lastValidFrame = movedFrame
-        infoBox.value.oldX = movedFrame.x
-        infoBox.value.oldY = movedFrame.y
-      }, 10)
     }
   }
 
@@ -1144,8 +1134,13 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
       }
     }
     if (infoBox.value.moveItem) {
-      if (infoBox.value.lastValidFrame) {
-        movePlayerToFrame(infoBox.value.moveItem, infoBox.value.lastValidFrame)
+      const dropFrame = infoBox.value.dropFrame
+      const frameToApply =
+        dropFrame && canPlaceGridFrame(infoBox.value.moveItem, dropFrame)
+          ? dropFrame
+          : infoBox.value.lastValidFrame
+      if (frameToApply) {
+        setPlayerGridFrame(infoBox.value.moveItem, frameToApply)
       }
       props.dragEnd(e, infoBox.value.moveItem, infoBox.value.moveItem._dragId)
       infoBox.value.moveItem.show = true
@@ -1214,6 +1209,7 @@ const forceComputed = () => {
 }
 
 function addItemBox(item: CanvasItem) {
+  if (!canEditDashboard.value) return
   canvasComponentData.value.push(item)
   forceComputed()
   nextTick(() => {
@@ -1408,7 +1404,8 @@ defineExpose({
       <CanvasShape
         v-for="(item, index) in canvasComponentData"
         :key="'item' + index"
-        :can-edit="!fullscreenFlag"
+        :can-edit="canInteractWithLayout"
+        :can-share="canShareDashboard"
         :active="curComponentId === item.id"
         :config-item="item"
         :draggable="draggable"
@@ -1430,7 +1427,7 @@ defineExpose({
           :view-info="canvasViewInfo[item.id]"
           :canvas-view-info="canvasViewInfo"
           :show-position="'canvas'"
-          :disabled="fullscreenFlag"
+          :disabled="!canInteractWithLayout"
           @parent-add-item-box="(subItem: any) => addItemBox(subItem)"
         >
         </component>

@@ -675,7 +675,8 @@ export function buildMixedUnitComboOptions(
   baseOptions: G2Spec,
   xAxis: ChartAxis,
   mixedData: MixedUnitChartData,
-  showLabel: boolean
+  showLabel: boolean,
+  transposed = false
 ): G2Spec {
   const valueField = mixedData.valueField
   const seriesField = mixedData.seriesField
@@ -684,6 +685,8 @@ export function buildMixedUnitComboOptions(
   const xAxisOptions = {
     title: false,
     labelFontSize: 12,
+    labelFill: '#7a89a0',
+    labelFontWeight: 400,
     labelAutoHide: {
       type: 'hide',
       keepHeader: true,
@@ -701,7 +704,12 @@ export function buildMixedUnitComboOptions(
             const value = datum[valueField]
             return value === undefined || value === null ? '' : String(formatNumber(value))
           },
-          position: (datum: ChartData) => (datum[valueField] < 0 ? 'bottom' : 'top'),
+          position: (datum: ChartData) => {
+            if (transposed) {
+              return datum[valueField] < 0 ? 'left' : 'right'
+            }
+            return datum[valueField] < 0 ? 'bottom' : 'top'
+          },
           transform: [
             { type: 'contrastReverse' },
             { type: 'exceedAdjust' },
@@ -734,8 +742,9 @@ export function buildMixedUnitComboOptions(
   return {
     ...baseOptions,
     type: 'view',
+    coordinate: transposed ? { transform: [{ type: 'transpose' }] } : undefined,
     interaction: {
-      elementHighlight: { background: true, region: true },
+      elementHighlight: { background: true },
       tooltip: { series: true, shared: true },
     },
     children: [
@@ -764,10 +773,13 @@ export function buildMixedUnitComboOptions(
           },
         },
         style: {
-          radiusTopLeft: (datum: ChartData) => (datum[valueField] > 0 ? 4 : 0),
-          radiusTopRight: (datum: ChartData) => (datum[valueField] > 0 ? 4 : 0),
-          radiusBottomLeft: (datum: ChartData) => (datum[valueField] < 0 ? 4 : 0),
-          radiusBottomRight: (datum: ChartData) => (datum[valueField] < 0 ? 4 : 0),
+          maxWidth: 24,
+          inset: 1.5,
+          fillOpacity: 0.92,
+          radiusTopLeft: (datum: ChartData) => (datum[valueField] > 0 ? 5 : 0),
+          radiusTopRight: (datum: ChartData) => (datum[valueField] > 0 ? 5 : 0),
+          radiusBottomLeft: (datum: ChartData) => (datum[valueField] < 0 ? 5 : 0),
+          radiusBottomRight: (datum: ChartData) => (datum[valueField] < 0 ? 5 : 0),
         },
         labels: countLabels,
         tooltip: (datum: ChartData) => ({
@@ -796,6 +808,11 @@ export function buildMixedUnitComboOptions(
           },
         },
         labels: percentLabels,
+        style: {
+          lineWidth: 2.4,
+          lineCap: 'round',
+          lineJoin: 'round',
+        },
         tooltip: (datum: ChartData) => ({
           name: datum[seriesField],
           value: `${formatNumber(datum[valueField])}%`,
@@ -815,6 +832,7 @@ export function buildMixedUnitComboOptions(
         },
         style: {
           fill: 'white',
+          lineWidth: 1.6,
         },
         axis: false,
         tooltip: false,

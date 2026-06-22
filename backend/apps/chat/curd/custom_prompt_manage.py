@@ -50,6 +50,33 @@ def _normalize_visibility_scope(
         raise HTTPException(status_code=400, detail="Unsupported custom prompt visibility scope")
 
 
+def _normalize_type_list(values: Optional[list[CustomPromptTypeEnum | str]]) -> list[str]:
+    result: list[str] = []
+    for value in values or []:
+        normalized = _normalize_type(value).value
+        if normalized not in result:
+            result.append(normalized)
+    return result
+
+
+def _normalize_target_scope_list(values: Optional[list[CustomPromptTargetScopeEnum | str]]) -> list[str]:
+    result: list[str] = []
+    for value in values or []:
+        normalized = _normalize_target_scope(value).value
+        if normalized not in result:
+            result.append(normalized)
+    return result
+
+
+def _normalize_visibility_scope_list(values: Optional[list[CustomPromptVisibilityScopeEnum | str]]) -> list[str]:
+    result: list[str] = []
+    for value in values or []:
+        normalized = _normalize_visibility_scope(value).value
+        if normalized not in result:
+            result.append(normalized)
+    return result
+
+
 def _normalize_ids(datasource_ids: Optional[list[int]]) -> list[int]:
     result: list[int] = []
     for item in datasource_ids or []:
@@ -240,16 +267,45 @@ def _visible_conditions(
 
 
 def _build_query(
-        custom_prompt_type: CustomPromptTypeEnum | str,
+        custom_prompt_type: Optional[CustomPromptTypeEnum | str],
         name: Optional[str] = None,
         dslist: Optional[list[int]] = None,
         accessible_datasource_ids: Optional[set[int]] = None,
         include_global: bool = True,
         current_user_id: Optional[int] = None,
         can_manage_all: bool = False,
+        custom_prompt_types: Optional[list[CustomPromptTypeEnum | str]] = None,
+        target_scopes: Optional[list[CustomPromptTargetScopeEnum | str]] = None,
+        visibility_scopes: Optional[list[CustomPromptVisibilityScopeEnum | str]] = None,
+        active_values: Optional[list[bool]] = None,
 ):
-    prompt_type = _normalize_type(custom_prompt_type)
-    stmt = select(CustomPrompt).where(CustomPrompt.type == prompt_type.value)
+    stmt = select(CustomPrompt)
+    if custom_prompt_type is not None:
+        prompt_type = _normalize_type(custom_prompt_type)
+        stmt = stmt.where(CustomPrompt.type == prompt_type.value)
+    else:
+        prompt_types = _normalize_type_list(custom_prompt_types)
+        if prompt_types:
+            stmt = stmt.where(CustomPrompt.type.in_(prompt_types))
+
+    normalized_target_scopes = _normalize_target_scope_list(target_scopes)
+    if normalized_target_scopes:
+        scope_conditions = [CustomPrompt.target_scope.in_(normalized_target_scopes)]
+        if CustomPromptTargetScopeEnum.SMART_QA.value in normalized_target_scopes:
+            scope_conditions.append(CustomPrompt.target_scope.is_(None))
+        stmt = stmt.where(or_(*scope_conditions))
+
+    normalized_visibility_scopes = _normalize_visibility_scope_list(visibility_scopes)
+    if normalized_visibility_scopes:
+        visibility_conditions = [CustomPrompt.visibility_scope.in_(normalized_visibility_scopes)]
+        if CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value in normalized_visibility_scopes:
+            visibility_conditions.append(CustomPrompt.visibility_scope.is_(None))
+        stmt = stmt.where(or_(*visibility_conditions))
+
+    if active_values is not None:
+        normalized_active = list(dict.fromkeys(bool(item) for item in active_values))
+        if len(normalized_active) == 1:
+            stmt = stmt.where(CustomPrompt.active == normalized_active[0])
 
     if name and name.strip():
         keyword = f"%{name.strip()}%"
@@ -339,7 +395,7 @@ def list_custom_prompt_options(
 
 def page_custom_prompts(
         session: SessionDep,
-        custom_prompt_type: CustomPromptTypeEnum | str,
+        custom_prompt_type: Optional[CustomPromptTypeEnum | str],
         current_page: int = 1,
         page_size: int = 10,
         name: Optional[str] = None,
@@ -348,6 +404,10 @@ def page_custom_prompts(
         include_global: bool = True,
         current_user_id: Optional[int] = None,
         can_manage_all: bool = False,
+        custom_prompt_types: Optional[list[CustomPromptTypeEnum | str]] = None,
+        target_scopes: Optional[list[CustomPromptTargetScopeEnum | str]] = None,
+        visibility_scopes: Optional[list[CustomPromptVisibilityScopeEnum | str]] = None,
+        active_values: Optional[list[bool]] = None,
 ):
     stmt = _build_query(
         custom_prompt_type,
@@ -357,6 +417,10 @@ def page_custom_prompts(
         include_global,
         current_user_id,
         can_manage_all,
+        custom_prompt_types,
+        target_scopes,
+        visibility_scopes,
+        active_values,
     )
     total_count = session.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
     page_size = max(10, page_size)
@@ -387,13 +451,17 @@ def page_custom_prompts(
 
 def get_all_custom_prompts(
         session: SessionDep,
-        custom_prompt_type: CustomPromptTypeEnum | str,
+        custom_prompt_type: Optional[CustomPromptTypeEnum | str],
         name: Optional[str] = None,
         dslist: Optional[list[int]] = None,
         accessible_datasource_ids: Optional[set[int]] = None,
         include_global: bool = True,
         current_user_id: Optional[int] = None,
         can_manage_all: bool = False,
+        custom_prompt_types: Optional[list[CustomPromptTypeEnum | str]] = None,
+        target_scopes: Optional[list[CustomPromptTargetScopeEnum | str]] = None,
+        visibility_scopes: Optional[list[CustomPromptVisibilityScopeEnum | str]] = None,
+        active_values: Optional[list[bool]] = None,
 ) -> list[CustomPromptInfo]:
     stmt = _build_query(
         custom_prompt_type,
@@ -403,6 +471,10 @@ def get_all_custom_prompts(
         include_global,
         current_user_id,
         can_manage_all,
+        custom_prompt_types,
+        target_scopes,
+        visibility_scopes,
+        active_values,
     )
     rows = session.execute(stmt.order_by(CustomPrompt.create_time.desc(), CustomPrompt.id.desc())).scalars().all()
 
@@ -570,7 +642,7 @@ def delete_custom_prompts(
 
 def batch_create_custom_prompts(
         session: SessionDep,
-        info_list: list[CustomPromptInfo],
+        info_list: list[CustomPromptInfo | dict],
         current_user_id: Optional[int] = None,
 ):
     failed_records = []
@@ -583,7 +655,11 @@ def batch_create_custom_prompts(
         if row.name
     }
 
-    for info in info_list:
+    for item in info_list:
+        if isinstance(item, dict) and "data" in item and "errors" in item:
+            failed_records.append({"data": item["data"], "errors": item["errors"]})
+            continue
+        info = item
         try:
             specific_ds = bool(info.specific_ds)
             datasource_ids = _normalize_ids(info.datasource_ids)

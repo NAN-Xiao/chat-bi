@@ -10,6 +10,9 @@ param(
     [string]$RedisServerPath = "",
     [string]$PostgresHost = "127.0.0.1",
     [int]$PostgresPort = 15432,
+    [string]$PostgresDatabase = "zhishu_bi_single_ha",
+    [string]$PostgresUser = "root",
+    [string]$PostgresPassword = "Password123@pg",
     [string]$PostgresServiceName = "",
     [string]$PostgresBin = "",
     [string]$PostgresData = "",
@@ -219,6 +222,11 @@ function Start-Backend {
         Action = "start"
         BackendPorts = $BackendPorts
         CacheType = $CacheType
+        PostgresHost = $PostgresHost
+        PostgresPort = $PostgresPort
+        PostgresDatabase = $PostgresDatabase
+        PostgresUser = $PostgresUser
+        PostgresPassword = $PostgresPassword
         RedisHost = $RedisHost
         RedisPort = $RedisPort
         FrontendHost = "http://localhost:5174"
@@ -234,6 +242,11 @@ function Stop-Backend {
     $backendParams = @{
         Action = "stop"
         BackendPorts = $BackendPorts
+        PostgresHost = $PostgresHost
+        PostgresPort = $PostgresPort
+        PostgresDatabase = $PostgresDatabase
+        PostgresUser = $PostgresUser
+        PostgresPassword = $PostgresPassword
         RedisHost = $RedisHost
         RedisPort = $RedisPort
         McpPort = $McpPort
@@ -252,14 +265,14 @@ function Start-Workers {
         Write-Warning "Task worker start skipped because Redis is not listening on ${RedisHost}:$RedisPort"
         return
     }
-    & $workerScript -Action start -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort
+    & $workerScript -Action start -Workers $Workers -PostgresHost $PostgresHost -PostgresPort $PostgresPort -PostgresDatabase $PostgresDatabase -PostgresUser $PostgresUser -PostgresPassword $PostgresPassword -RedisHost $RedisHost -RedisPort $RedisPort
 }
 
 function Stop-Workers {
     if ($SkipWorker) {
         return
     }
-    & $workerScript -Action stop -Workers $Workers -RedisHost $RedisHost -RedisPort $RedisPort
+    & $workerScript -Action stop -Workers $Workers -PostgresHost $PostgresHost -PostgresPort $PostgresPort -PostgresDatabase $PostgresDatabase -PostgresUser $PostgresUser -PostgresPassword $PostgresPassword -RedisHost $RedisHost -RedisPort $RedisPort
 }
 
 function Start-Nginx {

@@ -5,6 +5,11 @@ param(
     [string]$HostAddress = "0.0.0.0",
     [ValidateSet("auto", "memory", "redis", "none")]
     [string]$CacheType = "auto",
+    [string]$PostgresHost = "127.0.0.1",
+    [int]$PostgresPort = 15432,
+    [string]$PostgresDatabase = "zhishu_bi_single_ha",
+    [string]$PostgresUser = "root",
+    [string]$PostgresPassword = "Password123@pg",
     [string]$RedisHost = "127.0.0.1",
     [int]$RedisPort = 6379,
     [string]$FrontendHost = "http://localhost:5174",
@@ -50,6 +55,42 @@ function Get-PortOwner([int]$Port) {
     return $connection.OwningProcess
 }
 
+function Get-ProcessInfo([int]$ProcessId) {
+    return Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
+}
+
+function Get-ProcessSummary([int]$ProcessId) {
+    $processInfo = Get-ProcessInfo -ProcessId $ProcessId
+    if (-not $processInfo) {
+        return "pid=$ProcessId"
+    }
+    return "pid=$ProcessId name=$($processInfo.Name) cmd=$($processInfo.CommandLine)"
+}
+
+function Test-ProcessTreeInWorkspace([int]$ProcessId) {
+    $seen = @{}
+    $currentPid = $ProcessId
+    while ($currentPid -and -not $seen.ContainsKey($currentPid)) {
+        $seen[$currentPid] = $true
+        $processInfo = Get-ProcessInfo -ProcessId $currentPid
+        if (-not $processInfo) {
+            return $false
+        }
+        $processText = "$($processInfo.ExecutablePath) $($processInfo.CommandLine)"
+        if ($processText.IndexOf($workspaceRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            return $true
+        }
+        $currentPid = [int]$processInfo.ParentProcessId
+    }
+    return $false
+}
+
+function Assert-PortOwnerInWorkspace([string]$Name, [int]$Port, [int]$OwnerPid) {
+    if (-not (Test-ProcessTreeInWorkspace -ProcessId $OwnerPid)) {
+        throw "$Name port $Port is already used outside this workspace: $(Get-ProcessSummary -ProcessId $OwnerPid)"
+    }
+}
+
 function Get-PidFile([string]$Name) {
     return Join-Path $replicaRuntime "$Name.pid"
 }
@@ -78,11 +119,11 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:SECRET_KEY = $localSecretKey
     $env:SENSITIVE_CONFIG_ENCRYPTION_KEY = $localSensitiveConfigKey
 
-    $env:POSTGRES_SERVER = "127.0.0.1"
-    $env:POSTGRES_PORT = "15432"
-    $env:POSTGRES_DB = "zhishu_bi_single_ha"
-    $env:POSTGRES_USER = "root"
-    $env:POSTGRES_PASSWORD = "Password123@pg"
+    $env:POSTGRES_SERVER = $PostgresHost
+    $env:POSTGRES_PORT = [string]$PostgresPort
+    $env:POSTGRES_DB = $PostgresDatabase
+    $env:POSTGRES_USER = $PostgresUser
+    $env:POSTGRES_PASSWORD = $PostgresPassword
 
     $env:FRONTEND_HOST = $FrontendHost
     if ($CorsOrigins) {
@@ -116,6 +157,7 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
 function Start-UvicornApp([string]$Name, [string]$AppTarget, [int]$Port, [string]$ResolvedCacheType) {
     $owner = Get-PortOwner -Port $Port
     if ($owner) {
+        Assert-PortOwnerInWorkspace -Name $Name -Port $Port -OwnerPid $owner
         $healthy = Test-BackendHealth -Port $Port
         Write-Host "$Name port $Port is already listening by pid $owner. healthy=$healthy"
         return
@@ -168,10 +210,14 @@ function Stop-ByPidFile([string]$Name, [int]$Port) {
         if ($pidValue) {
             $process = Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue
             if ($process) {
-                Stop-Process -Id $process.Id -Force
-                $process.WaitForExit(5000)
-                Write-Host "Stopped $Name $Port pid=$($process.Id)"
-                $stopped = $true
+                if (Test-ProcessTreeInWorkspace -ProcessId $process.Id) {
+                    Stop-Process -Id $process.Id -Force
+                    $process.WaitForExit(5000)
+                    Write-Host "Stopped $Name $Port pid=$($process.Id)"
+                    $stopped = $true
+                } else {
+                    Write-Warning "$pidFile points outside this workspace; refusing to stop $(Get-ProcessSummary -ProcessId $process.Id)"
+                }
             }
         }
         Remove-Item -LiteralPath $pidFile -ErrorAction SilentlyContinue
@@ -180,6 +226,7 @@ function Stop-ByPidFile([string]$Name, [int]$Port) {
     if (-not $stopped -and ($ForcePortStop -or $Action -eq "restart")) {
         $owner = Get-PortOwner -Port $Port
         if ($owner) {
+            Assert-PortOwnerInWorkspace -Name $Name -Port $Port -OwnerPid $owner
             $process = Get-Process -Id $owner -ErrorAction SilentlyContinue
             Stop-Process -Id $owner -Force
             if ($process) {

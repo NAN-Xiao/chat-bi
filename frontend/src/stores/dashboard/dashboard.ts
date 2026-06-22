@@ -31,6 +31,7 @@ export const dashboardStore = defineStore('dashboard', {
         contentId: null,
         type: null,
         canEdit: false,
+        canShare: false,
       },
     }
   },
@@ -101,6 +102,7 @@ export const dashboardStore = defineStore('dashboard', {
         contentId: null,
         type: null,
         canEdit: false,
+        canShare: false,
       }
     },
   },

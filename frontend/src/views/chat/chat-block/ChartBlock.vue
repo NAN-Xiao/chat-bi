@@ -408,15 +408,13 @@ watch(
       </div>
       <div class="buttons-bar">
         <div class="chart-select-container">
-          <el-tooltip effect="dark" :offset="8" :content="t('chat.type')" placement="top">
-            <ChartPopover
-              v-if="chartTypeList.length > 0"
-              :chart-type-list="chartTypeList"
-              :chart-type="chartType"
-              :title="t('chat.type')"
-              @type-change="onTypeChange"
-            ></ChartPopover>
-          </el-tooltip>
+          <ChartPopover
+            v-if="chartTypeList.length > 0"
+            :chart-type-list="chartTypeList"
+            :chart-type="chartType"
+            :title="t('chat.type')"
+            @type-change="onTypeChange"
+          ></ChartPopover>
 
           <el-tooltip
             effect="dark"
@@ -706,12 +704,14 @@ watch(
 <style scoped lang="less">
 .chart-component-container {
   width: 100%;
-  padding: 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--workspace-border, #dce6f2);
+  overflow: hidden;
+  border: 1px solid rgba(211, 224, 241, 0.92);
   border-radius: 8px;
-  background: var(--workspace-card-bg, #ffffff);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 14px 34px rgba(29, 53, 87, 0.06), 0 2px 8px rgba(29, 53, 87, 0.04);
 
   &.full-screen {
     border: unset;
@@ -720,35 +720,38 @@ watch(
     height: 100%;
 
     .header-bar {
-      border-bottom: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
-      height: 55px;
-      padding: 16px 24px;
+      height: 56px;
+      padding: 14px 24px;
+      border-bottom: 1px solid rgba(222, 232, 245, 0.86);
     }
 
     .chart-block {
       margin: unset;
-      padding: 16px;
+      padding: 18px 20px 20px;
       height: calc(100% - 56px);
     }
   }
 
   .header-bar {
-    height: 32px;
+    min-height: 48px;
+    padding: 12px 14px 10px 16px;
     display: flex;
-
     align-items: center;
     flex-direction: row;
-    gap: 16px;
+    gap: 14px;
+    border-bottom: 1px solid rgba(232, 240, 249, 0.92);
+    background: rgba(255, 255, 255, 0.86);
 
     .tool-btn {
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
 
       font-size: 16px;
       font-weight: 400;
-      line-height: 24px;
+      line-height: 28px;
       border-radius: 6px;
-      color: var(--workspace-text-secondary, var(--theme-text-secondary));
+      color: #6d7c93;
 
       .tool-btn-inner {
         display: flex;
@@ -757,18 +760,18 @@ watch(
       }
 
       &:hover {
-        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
-        color: var(--workspace-text-primary, var(--theme-text-primary));
+        background: #f1f6ff;
+        color: #263a59;
       }
 
       &:active {
-        background: var(--workspace-active-bg, var(--theme-active-bg));
+        background: #e6efff;
       }
     }
 
     .chart-active {
-      background: var(--ed-color-primary-1a, rgba(28, 186, 144, 0.1));
-      color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+      background: #eaf1ff;
+      color: var(--ed-color-primary, #2f6bff);
       border-radius: 6px;
 
       :deep(.ed-select__wrapper) {
@@ -776,15 +779,15 @@ watch(
       }
 
       :deep(.ed-select__input) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: var(--ed-color-primary, #2f6bff);
       }
 
       :deep(.ed-select__placeholder) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: var(--ed-color-primary, #2f6bff);
       }
 
       :deep(.ed-select__caret) {
-        color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+        color: var(--ed-color-primary, #2f6bff);
       }
     }
 
@@ -794,10 +797,11 @@ watch(
       overflow: hidden;
       text-overflow: ellipsis;
 
-      color: var(--workspace-text-primary, var(--theme-text-primary));
-      font-weight: 500;
-      font-size: 16px;
-      line-height: 24px;
+      color: #13223a;
+      font-weight: 600;
+      font-size: 15px;
+      line-height: 22px;
+      letter-spacing: 0;
     }
 
     .buttons-bar {
@@ -805,23 +809,24 @@ watch(
       flex-direction: row;
       align-items: center;
 
-      gap: 16px;
+      gap: 10px;
 
       .divider {
         width: 1px;
-        height: 16px;
-        border-left: 1px solid var(--workspace-border, rgba(31, 35, 41, 0.15));
+        height: 18px;
+        border-left: 1px solid rgba(211, 224, 241, 0.92);
       }
     }
 
     .chart-select-container {
-      padding: 3px;
+      padding: 2px;
       display: flex;
       flex-direction: row;
-      gap: 4px;
-      border-radius: 6px;
+      gap: 2px;
+      border-radius: 7px;
 
-      border: 1px solid var(--workspace-border, rgba(217, 220, 223, 1));
+      border: 1px solid rgba(208, 222, 241, 0.95);
+      background: #f8fbff;
 
       .chart-select {
         min-width: 40px;
@@ -853,13 +858,14 @@ watch(
   .chart-block {
     height: 352px;
     width: 100%;
-
-    margin-top: 16px;
+    padding: 10px 16px 16px;
   }
   .over-limit-hint {
     min-height: 24px;
     line-height: 24px;
     font-size: 14px;
+    padding: 0 16px 14px;
+    color: var(--workspace-text-secondary, #66758f);
   }
 }
 

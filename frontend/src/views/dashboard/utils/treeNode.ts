@@ -8,6 +8,7 @@ export interface SQTreeNode {
   node_type: string
   datasource?: number | string
   can_edit?: boolean
+  can_share?: boolean
   is_shared?: boolean
   share_id?: string
   children?: SQTreeNode[]

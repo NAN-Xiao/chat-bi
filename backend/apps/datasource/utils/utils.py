@@ -2,12 +2,11 @@ import base64
 import json
 
 from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
+from Crypto.Util.Padding import pad
 
 from common.utils.crypto import decrypt_sensitive_text, encrypt_sensitive_text
 
 key = b"Zhishu1234567890"
-legacy_keys = (b"SQLBot1234567890",)
 _FERNET_PREFIX = "fernet:v1:"
 
 
@@ -24,19 +23,6 @@ def _legacy_aes_encrypt(data: str) -> str:
     cipher = AES.new(key, AES.MODE_ECB)
     encrypted = cipher.encrypt(pad(raw, AES.block_size))
     return base64.b64encode(encrypted).decode("utf-8")
-
-
-def _legacy_aes_decrypt(encrypted_data: str) -> str:
-    raw = base64.b64decode(encrypted_data)
-    for candidate_key in (key, *legacy_keys):
-        try:
-            cipher = AES.new(candidate_key, AES.MODE_ECB)
-            text = cipher.decrypt(raw)
-            decrypted_text = unpad(text, AES.block_size)
-            return decrypted_text.decode("utf-8")
-        except Exception:
-            continue
-    raise ValueError("Invalid encrypted datasource configuration")
 
 
 def aes_encrypt(data):

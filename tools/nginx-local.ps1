@@ -57,17 +57,73 @@ $config = $config.Replace("__MCP_PORT__", [string]$McpPort)
 $prefix = To-NginxPath $NginxHome
 $conf = To-NginxPath $generatedConf
 
+function Get-PortOwner([int]$Port) {
+    $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $connection) {
+        return $null
+    }
+    return $connection.OwningProcess
+}
+
+function Get-ProcessInfo([int]$ProcessId) {
+    return Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
+}
+
+function Get-ProcessSummary([int]$ProcessId) {
+    $processInfo = Get-ProcessInfo -ProcessId $ProcessId
+    if (-not $processInfo) {
+        return "pid=$ProcessId"
+    }
+    return "pid=$ProcessId name=$($processInfo.Name) cmd=$($processInfo.CommandLine)"
+}
+
+function Test-ProcessTreeInWorkspace([int]$ProcessId) {
+    $seen = @{}
+    $currentPid = $ProcessId
+    while ($currentPid -and -not $seen.ContainsKey($currentPid)) {
+        $seen[$currentPid] = $true
+        $processInfo = Get-ProcessInfo -ProcessId $currentPid
+        if (-not $processInfo) {
+            return $false
+        }
+        $processText = "$($processInfo.ExecutablePath) $($processInfo.CommandLine)"
+        if ($processText.IndexOf($workspaceRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            return $true
+        }
+        $currentPid = [int]$processInfo.ParentProcessId
+    }
+    return $false
+}
+
+function Assert-PortOwnerInWorkspace([int]$Port, [int]$OwnerPid) {
+    if (-not (Test-ProcessTreeInWorkspace -ProcessId $OwnerPid)) {
+        throw "Nginx port $Port is already used outside this workspace: $(Get-ProcessSummary -ProcessId $OwnerPid)"
+    }
+}
+
 if ($Action -eq "test") {
     & $nginxExe -p $prefix -c $conf -t
     exit $LASTEXITCODE
 }
 
 if ($Action -eq "stop") {
+    $owner = Get-PortOwner -Port $ListenPort
+    if (-not $owner) {
+        Write-Host "Nginx stop skipped. Port $ListenPort is not listening."
+        exit 0
+    }
+    Assert-PortOwnerInWorkspace -Port $ListenPort -OwnerPid $owner
     & $nginxExe -p $prefix -c $conf -s stop
     exit $LASTEXITCODE
 }
 
 if ($Action -eq "reload") {
+    $owner = Get-PortOwner -Port $ListenPort
+    if (-not $owner) {
+        throw "Nginx reload requested, but port $ListenPort is not listening."
+    }
+    Assert-PortOwnerInWorkspace -Port $ListenPort -OwnerPid $owner
     & $nginxExe -p $prefix -c $conf -t
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
@@ -81,8 +137,9 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-$running = Get-Process nginx -ErrorAction SilentlyContinue
-if ($running) {
+$owner = Get-PortOwner -Port $ListenPort
+if ($owner) {
+    Assert-PortOwnerInWorkspace -Port $ListenPort -OwnerPid $owner
     & $nginxExe -p $prefix -c $conf -s reload
 } else {
     Start-Process -FilePath $nginxExe -ArgumentList "-p", $prefix, "-c", $conf -WorkingDirectory $NginxHome -WindowStyle Hidden
