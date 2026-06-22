@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Build sqlbot
 ARG SQLBOT_BASE_IMAGE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
 ARG SQLBOT_RUNTIME_IMAGE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
@@ -15,12 +16,13 @@ ENV npm_config_color=false
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 COPY frontend/package*.json /tmp/frontend/
-RUN npm config set registry https://registry.npmmirror.com \
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set registry https://registry.npmmirror.com \
     && npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000 \
     && cd /tmp/frontend \
-    && npm ci --no-audit --no-fund
+    && npm ci --prefer-offline --no-audit --no-fund
 COPY frontend /tmp/frontend
 RUN cd /tmp/frontend && npm run build && mv dist ${UI_HOME}/dist
 
@@ -49,7 +51,8 @@ COPY backend/pyproject.toml backend/uv.lock ${APP_HOME}/
 
 # Install runtime dependencies without installing this app as a Python package.
 # 默认使用 CPU 版 PyTorch，避免在普通服务器构建时拉取 CUDA/NVIDIA 大依赖。
-RUN if [ -n "$PYTHON_DEPENDENCY_EXTRA" ]; then \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ -n "$PYTHON_DEPENDENCY_EXTRA" ]; then \
       uv sync --frozen --no-install-project --no-dev --extra "$PYTHON_DEPENDENCY_EXTRA"; \
     else \
       uv sync --frozen --no-install-project --no-dev; \
@@ -78,7 +81,8 @@ RUN npm config set fund false \
     && npm config set progress false
 
 COPY g2-ssr/package*.json /app/
-RUN npm ci --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit --no-fund
 COPY g2-ssr/app.js /app/
 COPY g2-ssr/charts/* /app/charts/
 
