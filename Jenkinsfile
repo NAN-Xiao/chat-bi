@@ -95,7 +95,7 @@ pipeline {
       }
     }
 
-    stage('配置宿主机 Nginx') {
+    stage('检查宿主机 Nginx 配置') {
       steps {
         sh '''
           set -eux
@@ -156,32 +156,28 @@ server {
 }
 EOF
 
-          if [ -w "$(dirname "$NGINX_CONF_PATH")" ]; then
-            install -m 0644 "$APP_HOME/chat-bi-nginx.conf" "$NGINX_CONF_PATH"
-            nginx -t
-            nginx -s reload
-          elif command -v sudo >/dev/null 2>&1; then
-            sudo install -m 0644 "$APP_HOME/chat-bi-nginx.conf" "$NGINX_CONF_PATH"
-            sudo nginx -t
-            sudo nginx -s reload
-          else
-            echo "无法写入 $NGINX_CONF_PATH，请手动复制 $APP_HOME/chat-bi-nginx.conf 到该路径后执行 nginx -t && nginx -s reload"
+          echo "项目 Nginx 参考配置已生成：$APP_HOME/chat-bi-nginx.conf"
+          cat "$APP_HOME/chat-bi-nginx.conf"
+
+          if [ ! -f "$NGINX_CONF_PATH" ]; then
+            echo "没有找到宿主机 Nginx 配置：$NGINX_CONF_PATH"
+            echo "请先由 root 在 Linux 服务器执行："
+            echo "  cp $APP_HOME/chat-bi-nginx.conf $NGINX_CONF_PATH"
+            echo "  nginx -t && nginx -s reload"
             exit 1
           fi
 
-          echo "当前项目 Nginx 配置："
-          cat "$APP_HOME/chat-bi-nginx.conf"
-          echo "Nginx 已加载配置检查："
-          if command -v sudo >/dev/null 2>&1; then
-            sudo nginx -T 2>&1 | grep -E "server_name ${FRONTEND_HOST}|root ${NGINX_ROOT}|proxy_pass http://127.0.0.1:${WEB_PORT}" || {
-              echo "Nginx 当前加载配置中没有找到 chat-bi 关键配置，请检查 $NGINX_CONF_PATH 是否被 nginx.conf include。"
+          if [ -r "$NGINX_CONF_PATH" ]; then
+            grep -q "root ${NGINX_ROOT};" "$NGINX_CONF_PATH" || {
+              echo "$NGINX_CONF_PATH 中没有找到 root ${NGINX_ROOT};"
+              exit 1
+            }
+            grep -q "proxy_pass http://127.0.0.1:${WEB_PORT}/api/v1/;" "$NGINX_CONF_PATH" || {
+              echo "$NGINX_CONF_PATH 中没有找到后端反向代理配置。"
               exit 1
             }
           else
-            nginx -T 2>&1 | grep -E "server_name ${FRONTEND_HOST}|root ${NGINX_ROOT}|proxy_pass http://127.0.0.1:${WEB_PORT}" || {
-              echo "Nginx 当前加载配置中没有找到 chat-bi 关键配置，请检查 $NGINX_CONF_PATH 是否被 nginx.conf include。"
-              exit 1
-            }
+            echo "Jenkins 用户无法读取 $NGINX_CONF_PATH，跳过文件内容检查。后续会通过 http://127.0.0.1:${NGINX_PORT}/ 做访问校验。"
           fi
         '''
       }
