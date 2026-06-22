@@ -71,7 +71,6 @@ export interface TenantApplicationPayload {
   tenant_code?: string
   tenant_name?: string
   plan?: string
-  requested_role?: string
   reason?: string
 }
 
@@ -346,7 +345,10 @@ export const tenantApi = {
   search: (keyword: string) =>
     request.get<TenantSearchInfo[]>(`/system/tenant/search?keyword=${encodeURIComponent(keyword)}`),
   adminList: () => request.get<TenantInfo[]>('/system/tenant/admin/list'),
-  myApplications: () => request.get<TenantApplicationInfo[]>('/system/tenant/application/my'),
+  myApplications: (status?: string) =>
+    request.get<TenantApplicationInfo[]>(
+      `/system/tenant/application/my${status ? `?status=${status}` : ''}`
+    ),
   adminApplications: (status?: string) =>
     request.get<TenantApplicationInfo[]>(
       `/system/tenant/application/admin/list${status ? `?status=${status}` : ''}`
@@ -376,7 +378,10 @@ export const tenantApi = {
     request.get<TenantApplicationInfo[]>(
       `/system/tenant/invitation/list${status ? `?status=${status}` : ''}`
     ),
-  myInvitations: () => request.get<TenantApplicationInfo[]>('/system/tenant/invitation/my'),
+  myInvitations: (status?: string) =>
+    request.get<TenantApplicationInfo[]>(
+      `/system/tenant/invitation/my${status ? `?status=${status}` : ''}`
+    ),
   respondInvitation: (id: number | string, data: { approved: boolean; review_comment?: string }) =>
     request.post<TenantApplicationInfo>(`/system/tenant/invitation/${id}/respond`, data),
   cancelInvitation: (id: number | string) =>

@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus-secondary'
 import { useUserStore } from '@/stores/user'
-import type { TenantInfo } from '@/api/tenant'
+import { tenantApi, type TenantApplicationInfo, type TenantInfo } from '@/api/tenant'
+import { formatTimestamp } from '@/utils/date'
 
 type WorkspaceRoleKey = 'owner' | 'admin' | 'member'
 
 const { t } = useI18n()
 const userStore = useUserStore()
+const pendingInvitations = shallowRef<TenantApplicationInfo[]>([])
+const pendingApplications = shallowRef<TenantApplicationInfo[]>([])
+const invitationRespondingId = ref('')
 
 const workspaceList = computed<TenantInfo[]>(() => userStore.getTenants || [])
 const currentWorkspaceId = computed(() => String(userStore.getTenantId || ''))
 const joinedWorkspaceCount = computed(() => workspaceList.value.length)
+const pendingInvitationCount = computed(() => pendingInvitations.value.length)
+const pendingApplicationCount = computed(() => pendingApplications.value.length)
+const pendingRequestCount = computed(() => pendingInvitationCount.value + pendingApplicationCount.value)
 const isPlatformOnlyAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
 )
@@ -46,6 +54,25 @@ const formatWorkspaceMeta = (workspace: TenantInfo) => {
     workspace.owner_name ? t('access.workspace_owner_meta', { owner: workspace.owner_name }) : '',
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+const normalizeTimestamp = (value?: number | string | null) => {
+  const timestamp = Number(value || 0)
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : 0
+}
+
+const formatDateTime = (value?: number | string | null) => {
+  const timestamp = normalizeTimestamp(value)
+  return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm') : '-'
+}
+
+const invitationInviterLabel = (invitation: TenantApplicationInfo) =>
+  invitation.inviter_name || invitation.inviter_account || '-'
+
+const formatApplicationType = (type?: string) => {
+  if (type === 'join') return t('tenant.application_type_join')
+  if (type === 'invite') return t('tenant.application_type_invite')
+  return t('tenant.application_type_create')
 }
 
 const currentWorkspaceLabel = computed(() => {
@@ -133,9 +160,44 @@ const roleGroups = computed(() => {
   }))
 })
 
+const loadPendingInvitations = async () => {
+  if (isPlatformOnlyAdmin.value) {
+    pendingInvitations.value = []
+    return
+  }
+  const rows = await tenantApi.myInvitations('pending')
+  pendingInvitations.value = rows.filter((item) => item.status === 'pending')
+}
+
+const loadPendingApplications = async () => {
+  if (isPlatformOnlyAdmin.value) {
+    pendingApplications.value = []
+    return
+  }
+  const rows = await tenantApi.myApplications('pending')
+  pendingApplications.value = rows.filter(
+    (item) => item.status === 'pending' && item.application_type !== 'invite'
+  )
+}
+
+const refreshAccessData = async () => {
+  await Promise.all([userStore.loadTenants(true), loadPendingApplications(), loadPendingInvitations()])
+}
+
+const respondInvitation = async (invitation: TenantApplicationInfo, approved: boolean) => {
+  invitationRespondingId.value = String(invitation.id)
+  try {
+    await tenantApi.respondInvitation(invitation.id, { approved })
+    await refreshAccessData()
+    ElMessage.success(t('common.operation_success'))
+  } finally {
+    invitationRespondingId.value = ''
+  }
+}
+
 onMounted(() => {
-  userStore.loadTenants().catch((error) => {
-    console.warn('Failed to load workspace identities', error)
+  refreshAccessData().catch((error) => {
+    console.warn('Failed to load workspace access data', error)
   })
 })
 </script>
@@ -162,6 +224,86 @@ onMounted(() => {
         <div v-for="group in roleGroups" :key="group.key" class="summary-stat">
           <div class="summary-stat-value">{{ group.items.length }}</div>
           <div class="summary-stat-label">{{ group.shortLabel }}</div>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="pendingRequestCount" class="access-section invitation-section">
+      <div class="section-heading">
+        <div>
+          <div class="section-title">{{ t('tenant.my_workspace_requests') }}</div>
+          <div class="section-description">
+            {{ t('access.pending_workspace_requests_description') }}
+          </div>
+        </div>
+        <el-tag type="warning" effect="light" round>
+          {{ t('access.workspace_count', { count: pendingRequestCount }) }}
+        </el-tag>
+      </div>
+
+      <div class="invitation-list">
+        <div v-for="application in pendingApplications" :key="`application-${application.id}`" class="invitation-row">
+          <div class="invitation-main">
+            <div class="workspace-title-row">
+              <span class="workspace-name">
+                {{ application.tenant_name || application.tenant_code }}
+              </span>
+              <el-tag type="info" effect="plain" round>
+                {{ formatApplicationType(application.application_type) }}
+              </el-tag>
+              <el-tag type="warning" effect="plain" round>
+                {{ t('tenant.application_status_pending') }}
+              </el-tag>
+            </div>
+            <div class="invitation-meta">
+              <span>{{ t('tenant.submitted_at') }} {{ formatDateTime(application.create_time) }}</span>
+              <span>{{ t('tenant.requested_role') }}: {{ roleLabel(application.requested_role) }}</span>
+            </div>
+            <div v-if="application.reason" class="invitation-reason">
+              {{ t('tenant.apply_reason') }}: {{ application.reason }}
+            </div>
+          </div>
+        </div>
+
+        <div v-for="invitation in pendingInvitations" :key="invitation.id" class="invitation-row">
+          <div class="invitation-main">
+            <div class="workspace-title-row">
+              <span class="workspace-name">
+                {{ invitation.tenant_name || invitation.tenant_code }}
+              </span>
+              <el-tag type="info" effect="plain" round>
+                {{ t('tenant.application_type_invite') }}
+              </el-tag>
+              <el-tag type="warning" effect="plain" round>
+                {{ t('tenant.application_status_pending') }}
+              </el-tag>
+            </div>
+            <div class="invitation-meta">
+              <span>{{ t('tenant.inviter') }}: {{ invitationInviterLabel(invitation) }}</span>
+              <span>{{ t('tenant.invited_at') }} {{ formatDateTime(invitation.create_time) }}</span>
+              <span>{{ t('tenant.requested_role') }}: {{ roleLabel(invitation.requested_role) }}</span>
+            </div>
+            <div v-if="invitation.reason" class="invitation-reason">
+              {{ t('tenant.invitation_note') }}: {{ invitation.reason }}
+            </div>
+          </div>
+          <div class="invitation-actions">
+            <el-button
+              type="primary"
+              :loading="invitationRespondingId === String(invitation.id)"
+              @click="respondInvitation(invitation, true)"
+            >
+              {{ t('tenant.accept_invitation') }}
+            </el-button>
+            <el-button
+              text
+              type="danger"
+              :disabled="invitationRespondingId === String(invitation.id)"
+              @click="respondInvitation(invitation, false)"
+            >
+              {{ t('tenant.reject_invitation') }}
+            </el-button>
+          </div>
         </div>
       </div>
     </section>
@@ -480,6 +622,52 @@ onMounted(() => {
     line-height: 20px;
   }
 
+  .invitation-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .invitation-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 76px;
+    padding: 12px 14px;
+    border: 1px solid #eff0f1;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .invitation-main {
+    min-width: 0;
+  }
+
+  .invitation-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-top: 4px;
+    color: #646a73;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .invitation-reason {
+    margin-top: 6px;
+    color: #86909c;
+    font-size: 12px;
+    line-height: 18px;
+    word-break: break-word;
+  }
+
+  .invitation-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
   .access-notice {
     padding: 20px 24px;
     background: #f7faf9;
@@ -521,13 +709,20 @@ onMounted(() => {
 @media (max-width: 640px) {
   .access-page {
     .access-header,
-    .workspace-row {
+    .workspace-row,
+    .invitation-row {
       align-items: flex-start;
       flex-direction: column;
     }
 
     .summary-stats {
       grid-template-columns: 1fr;
+    }
+
+    .invitation-actions {
+      width: 100%;
+      justify-content: flex-start;
+      flex-wrap: wrap;
     }
   }
 }

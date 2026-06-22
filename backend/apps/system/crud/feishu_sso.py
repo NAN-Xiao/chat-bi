@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from apps.system.crud.tenant import auto_assign_tenants_by_email_domain
+from apps.system.crud.tenant import auto_assign_tenants_by_email_domain, ensure_user_sample_workspace_membership
 from apps.system.models.system_model import AuthenticationModel
 from apps.system.models.user import UserModel, UserPlatformModel
 from apps.system.schemas.sso import FeishuSsoConfigDTO, FeishuSsoConfigEditor
@@ -411,6 +411,7 @@ def bind_or_create_feishu_user(session: Session, identity: FeishuIdentity) -> Ba
         user = session.get(UserModel, int(binding.uid))
         if not user:
             raise ValueError("Bound Feishu user does not exist")
+        ensure_user_sample_workspace_membership(session, user)
         return BaseUserDTO.model_validate(user.model_dump())
 
     user = _find_user_by_email(session, identity.email)
@@ -432,6 +433,7 @@ def bind_or_create_feishu_user(session: Session, identity: FeishuIdentity) -> Ba
 
     _bind_platform(session, user_id=int(user.id), identity=identity)
     auto_assign_tenants_by_email_domain(session, user)
+    ensure_user_sample_workspace_membership(session, user)
     return BaseUserDTO.model_validate(user.model_dump())
 
 

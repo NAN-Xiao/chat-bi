@@ -2,7 +2,7 @@ import datetime
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, case, delete, func, or_, select
 
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
@@ -250,6 +250,29 @@ def _platform_public_visibility_condition():
     return CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
 
 
+def _source_order_expression():
+    return case(
+        (CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value, 0),
+        (CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value, 2),
+        else_=1,
+    )
+
+
+def _split_legacy_data_skill_condition():
+    return or_(
+        CustomPrompt.prompt.contains("<!-- data-skill-source:terminology:"),
+        CustomPrompt.prompt.contains("<!-- data-skill-source:data-training:"),
+        CustomPrompt.prompt.contains("<!-- data-skill-source:custom-prompt-generate-sql:"),
+        CustomPrompt.prompt.contains("<!-- data-skill-source:legacy-semantic:"),
+    )
+
+
+def _apply_hidden_generated_skill_filter(stmt, prompt_type: CustomPromptTypeEnum):
+    if prompt_type != CustomPromptTypeEnum.DATA_SKILL:
+        return stmt
+    return stmt.where(~_split_legacy_data_skill_condition())
+
+
 def _tenant_id(tenant_id: int | str | None) -> int:
     return require_tenant_id(tenant_id)
 
@@ -312,6 +335,7 @@ def _build_query(
     if platform_only:
         visibility_conditions = [_platform_public_visibility_condition()]
     stmt = select(CustomPrompt).where(CustomPrompt.type == prompt_type.value, or_(*visibility_conditions))
+    stmt = _apply_hidden_generated_skill_filter(stmt, prompt_type)
     if effective_only:
         stmt = stmt.where(CustomPrompt.active == True)
         stmt = _apply_user_enabled_filter(stmt, current_user_id)
@@ -424,7 +448,9 @@ def list_custom_prompt_options(
     )
     stmt = _apply_user_enabled_filter(stmt, current_user_id)
     if custom_prompt_type:
-        stmt = stmt.where(CustomPrompt.type == _normalize_type(custom_prompt_type).value)
+        prompt_type = _normalize_type(custom_prompt_type)
+        stmt = stmt.where(CustomPrompt.type == prompt_type.value)
+        stmt = _apply_hidden_generated_skill_filter(stmt, prompt_type)
 
     if datasource_id is not None:
         if accessible_datasource_ids is not None and int(datasource_id) not in accessible_datasource_ids:
@@ -436,7 +462,7 @@ def list_custom_prompt_options(
         stmt = stmt.where(or_(*ds_conditions) if ds_conditions else False)
 
     rows = session.execute(
-        stmt.order_by(CustomPrompt.create_time.desc(), CustomPrompt.id.desc())
+        stmt.order_by(_source_order_expression(), CustomPrompt.create_time.desc(), CustomPrompt.id.desc())
     ).scalars().all()
     ai_model_ids: list[int] = []
     for row in rows:
@@ -486,7 +512,7 @@ def page_custom_prompts(
     current_page = max(1, min(current_page, total_pages)) if total_pages > 0 else 1
 
     rows = session.execute(
-        stmt.order_by(CustomPrompt.create_time.desc(), CustomPrompt.id.desc())
+        stmt.order_by(_source_order_expression(), CustomPrompt.create_time.desc(), CustomPrompt.id.desc())
         .offset((current_page - 1) * page_size)
         .limit(page_size)
     ).scalars().all()
@@ -548,7 +574,9 @@ def get_all_custom_prompts(
         platform_only=platform_only,
         effective_only=effective_only,
     )
-    rows = session.execute(stmt.order_by(CustomPrompt.create_time.desc(), CustomPrompt.id.desc())).scalars().all()
+    rows = session.execute(
+        stmt.order_by(_source_order_expression(), CustomPrompt.create_time.desc(), CustomPrompt.id.desc())
+    ).scalars().all()
 
     datasource_ids: list[int] = []
     ai_model_ids: list[int] = []

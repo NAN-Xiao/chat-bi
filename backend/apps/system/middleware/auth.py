@@ -18,6 +18,7 @@ from apps.system.crud.tenant import (
     TenantContext,
     auto_assign_tenants_by_email_domain,
     attach_tenant_context,
+    ensure_user_sample_workspace_membership,
     get_active_tenant,
     resolve_current_tenant,
     validate_tenant_security_policy,
@@ -231,7 +232,9 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 if session_user.status != 1:
                     message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
                     raise Exception(message)
-                if auto_assign_tenants_by_email_domain(session, session_user):
+                changed = bool(auto_assign_tenants_by_email_domain(session, session_user))
+                changed = bool(ensure_user_sample_workspace_membership(session, session_user)) or changed
+                if changed:
                     session.commit()
                 session_user = self._attach_tenant(
                     request,
@@ -269,7 +272,9 @@ class TokenMiddleware(BaseHTTPMiddleware):
                     message = trans('i18n_login.user_disable', msg = trans('i18n_concat_admin'))
                     raise Exception(message)
                 session_user = self._apply_session_auth_origin(session_user, token_data.auth_origin)
-                if auto_assign_tenants_by_email_domain(session, session_user):
+                changed = bool(auto_assign_tenants_by_email_domain(session, session_user))
+                changed = bool(ensure_user_sample_workspace_membership(session, session_user)) or changed
+                if changed:
                     session.commit()
                 session_user = self._attach_tenant(request, session, session_user, token_data.tenant_id)
                 return True, session_user

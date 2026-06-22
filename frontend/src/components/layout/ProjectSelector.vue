@@ -4,6 +4,7 @@ import icon_expand_down_filled from '@/assets/svg/icon_expand-down_filled.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
+import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -167,9 +168,15 @@ onMounted(async () => {
 
         <div v-if="!workspaceListWithSearch.length" class="workspace-empty">
           <div>{{ $t('tenant.no_joined_workspaces') }}</div>
-          <el-button text type="primary" @click="toWorkspaceApplication">
-            {{ $t('tenant.apply_workspace') }}
-          </el-button>
+        </div>
+
+        <div class="workspace-quick-actions">
+          <button type="button" class="workspace-action-item" @click="toWorkspaceApplication">
+            <el-icon size="16">
+              <icon_add_outlined></icon_add_outlined>
+            </el-icon>
+            <span class="workspace-action-text">{{ $t('tenant.apply_or_join_workspace') }}</span>
+          </button>
         </div>
       </div>
     </div>
@@ -327,16 +334,53 @@ onMounted(async () => {
     }
 
     .workspace-empty {
-      min-height: 72px;
+      min-height: 44px;
       display: flex;
-      flex-direction: column;
       justify-content: center;
-      gap: 6px;
       padding: 10px 12px;
       font-weight: 400;
       font-size: 14px;
       line-height: 22px;
       color: var(--theme-text-secondary);
+    }
+
+    .workspace-quick-actions {
+      padding: 4px 0 0;
+      margin-top: 4px;
+      border-top: 1px solid var(--theme-shell-border);
+
+      .workspace-action-item {
+        width: 100%;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        padding: 10px 8px 10px 12px;
+        margin: 0;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--ed-color-primary);
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 20px;
+        text-align: left;
+        box-sizing: border-box;
+
+        &:hover {
+          background: var(--theme-hover-bg);
+        }
+      }
+
+      .workspace-action-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
     }
   }
 }

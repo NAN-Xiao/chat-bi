@@ -16,12 +16,16 @@ from apps.system.crud.tenant import (
     TENANT_APPLICATION_TYPE_JOIN,
     TENANT_ROLE_ADMIN,
     TENANT_ROLE_MEMBER,
+    SAMPLE_TENANT_CODE,
+    SAMPLE_TENANT_NAME,
     TenantContext,
     auto_assign_tenants_by_email_domain,
     create_tenant_invitation,
     assign_user_to_tenant,
     attach_tenant_context,
     ensure_default_tenant,
+    ensure_sample_workspace,
+    ensure_user_sample_workspace_membership,
     resolve_current_tenant,
     validate_tenant_security_policy,
     user_belongs_to_tenant,
@@ -347,6 +351,7 @@ def test_local_login_sets_resolved_tenant_on_request_state(monkeypatch):
 
     monkeypatch.setattr(login_api, "authenticate", lambda **_kwargs: user)
     monkeypatch.setattr(login_api, "auto_assign_tenants_by_email_domain", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(login_api, "ensure_user_sample_workspace_membership", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(login_api, "resolve_current_tenant", lambda *_args, **_kwargs: tenant)
     monkeypatch.setattr(login_api, "create_access_token", lambda *_args, **_kwargs: "token")
     monkeypatch.setattr(login_api, "get_login_limit_state", _unlocked_login_state)
@@ -376,6 +381,42 @@ def test_default_tenant_is_created_once():
         assert first.id == DEFAULT_TENANT_ID
         assert first.code == DEFAULT_TENANT_CODE
         assert second.id == first.id
+
+
+def test_sample_workspace_is_created_once():
+    engine = _engine()
+    with Session(engine) as session:
+        first = ensure_sample_workspace(session)
+        second = ensure_sample_workspace(session)
+
+        assert first.code == SAMPLE_TENANT_CODE
+        assert first.name == SAMPLE_TENANT_NAME
+        assert first.status == 1
+        assert second.id == first.id
+
+
+def test_new_regular_user_defaults_to_sample_workspace_membership():
+    engine = _engine()
+    with Session(engine) as session:
+        membership = ensure_user_sample_workspace_membership(session, _user(100))
+        tenant = resolve_current_tenant(session, _user(100))
+
+        assert membership is not None
+        assert membership.role == TENANT_ROLE_MEMBER
+        assert membership.is_primary is True
+        assert tenant is not None
+        assert tenant.code == SAMPLE_TENANT_CODE
+        assert tenant.role == TENANT_ROLE_MEMBER
+
+
+def test_sample_workspace_role_follows_saas_role():
+    engine = _engine()
+    with Session(engine) as session:
+        owner_membership = ensure_user_sample_workspace_membership(session, _user(1, "system_admin"))
+        admin_membership = ensure_user_sample_workspace_membership(session, _user(2, "collab_admin"))
+
+        assert owner_membership.role == "owner"
+        assert admin_membership.role == "admin"
 
 
 def test_user_without_membership_has_no_current_tenant():
@@ -957,7 +998,6 @@ def test_user_submits_tenant_application_and_platform_admin_approves_workspace()
             TenantApplicationCreator(
                 tenant_name="Tenant B",
                 plan="enterprise",
-                requested_role="owner",
                 reason="Need a company workspace",
             ),
         ))
@@ -1005,7 +1045,6 @@ def test_rejected_tenant_application_does_not_create_workspace():
             applicant,
             TenantApplicationCreator(
                 tenant_name="Tenant B",
-                requested_role="admin",
             ),
         ))
 
@@ -1031,7 +1070,6 @@ def test_create_tenant_application_always_grants_owner_role():
             applicant,
             TenantApplicationCreator(
                 tenant_name="Tenant B",
-                requested_role="admin",
             ),
         ))
 
@@ -1063,7 +1101,6 @@ def test_create_tenant_application_approval_requires_platform_assigned_code():
             applicant,
             TenantApplicationCreator(
                 tenant_name="Tenant B",
-                requested_role="owner",
             ),
         ))
 
@@ -1092,7 +1129,6 @@ def test_create_tenant_application_rejects_existing_tenant_name():
                 applicant,
                 TenantApplicationCreator(
                     tenant_name="Tenant B",
-                    requested_role="owner",
                 ),
             ))
 
@@ -1110,7 +1146,6 @@ def test_create_tenant_application_rejects_pending_duplicate_name():
             first_applicant,
             TenantApplicationCreator(
                 tenant_name="Tenant B",
-                requested_role="owner",
             ),
         ))
 
@@ -1120,7 +1155,6 @@ def test_create_tenant_application_rejects_pending_duplicate_name():
                 second_applicant,
                 TenantApplicationCreator(
                     tenant_name="Tenant B",
-                    requested_role="owner",
                 ),
             ))
 
@@ -1148,7 +1182,6 @@ def test_user_searches_tenant_and_applies_to_join_by_id():
             TenantApplicationCreator(
                 application_type=TENANT_APPLICATION_TYPE_JOIN,
                 tenant_id=200,
-                requested_role="admin",
                 reason="Please add me",
             ),
         ))
@@ -1212,7 +1245,7 @@ def test_legacy_join_application_requesting_admin_is_approved_as_member():
         assert membership.role == "member"
 
 
-def test_tenant_join_search_does_not_fuzzy_disclose_tenant_names_or_codes():
+def test_tenant_join_search_supports_fuzzy_name_and_code_lookup():
     engine = _engine()
     applicant = _user(100)
     with Session(engine) as session:
@@ -1227,8 +1260,8 @@ def test_tenant_join_search_does_not_fuzzy_disclose_tenant_names_or_codes():
 
         assert [row.id for row in by_code] == [200]
         assert [row.id for row in by_id] == [300]
-        assert by_name == []
-        assert by_partial_code == []
+        assert [row.id for row in by_name] == [300]
+        assert [row.id for row in by_partial_code] == [200]
 
 
 def test_pending_join_application_can_be_cancelled_by_applicant():
@@ -1244,7 +1277,6 @@ def test_pending_join_application_can_be_cancelled_by_applicant():
             TenantApplicationCreator(
                 application_type=TENANT_APPLICATION_TYPE_JOIN,
                 tenant_id=200,
-                requested_role="member",
             ),
         ))
 

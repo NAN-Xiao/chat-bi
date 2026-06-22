@@ -547,6 +547,126 @@ def test_data_skills_auto_match_all_active_skills_when_no_skill_is_selected():
         assert platform_id and revenue_id and retention_id and personal_id
 
 
+def test_data_skill_runtime_hides_split_legacy_semantic_skills_after_combining():
+    engine = _engine()
+    with Session(engine) as session:
+        combined_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="数据 Skill：Tenant A Project",
+                description="由旧版术语和 SQL 示例合并生成；适用于数据项目「Tenant A Project」。原始记录保留不删除。",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                active=True,
+                specific_ds=True,
+                datasource_ids=[501],
+                prompt=(
+                    "<!-- data-skill-source:legacy-semantic:ADMIN_PUBLIC:10:501 -->\n"
+                    "# 数据 Skill：Tenant A Project\n\n"
+                    "## 术语与口径\n"
+                    "<!-- legacy-terminology:1 -->\n"
+                    "- **收入**：使用 paid_amount\n\n"
+                    "## SQL 示例\n"
+                    "<!-- legacy-data-training:1 -->\n"
+                    "### 问题：收入趋势\n\n"
+                    "````sql\n"
+                    "select date(created_at), sum(paid_amount) from fact_payment group by 1;\n"
+                    "````"
+                ),
+            ),
+        ))
+        terminology_split_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="术语 Skill：收入",
+                description="由旧版术语配置自动生成；原术语记录保留不删除。",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                active=True,
+                specific_ds=True,
+                datasource_ids=[501],
+                prompt="<!-- data-skill-source:terminology:1 -->\n# 术语 Skill：收入\nUse paid_amount.",
+            ),
+        ))
+        sql_split_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="SQL Skill：收入趋势",
+                description="由旧版 SQL 示例自动生成；原 SQL 示例记录保留不删除。",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                active=True,
+                specific_ds=True,
+                datasource_ids=[501],
+                prompt=(
+                    "<!-- data-skill-source:data-training:1 -->\n"
+                    "# SQL Skill：收入趋势\n"
+                    "select sum(paid_amount) from fact_payment;"
+                ),
+            ),
+        ))
+        sql_prompt_split_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="SQL 提示词 Skill：报表agent",
+                description="由旧版 SQL 提示词自动生成；原提示词记录保留不删除。",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                active=True,
+                prompt=(
+                    "<!-- data-skill-source:custom-prompt-generate-sql:10 -->\n"
+                    "# SQL 提示词 Skill：报表agent\n"
+                    "Prefer report SQL style."
+                ),
+            ),
+        ))
+        themed_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="Tenant A 空间数据 Skill：收入付费与 LTV",
+                description="由旧版术语和 SQL 示例按主题生成。",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                active=True,
+                specific_ds=True,
+                datasource_ids=[501],
+                prompt=(
+                    "<!-- data-skill-source:semantic-theme:tenant:10:501:revenue-ltv -->\n"
+                    "# Tenant A 空间数据 Skill：收入付费与 LTV\n"
+                    "Use paid_amount."
+                ),
+            ),
+        ))
+
+        skill_text, logs, _model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            skill_id=None,
+            current_user_id=3,
+            tenant_id=10,
+        )
+
+        assert "Tenant A 空间数据 Skill：收入付费与 LTV" in skill_text
+        assert "paid_amount" in skill_text
+        assert "数据 Skill：Tenant A Project" not in skill_text
+        assert "SQL Skill：收入趋势" not in skill_text
+        assert "术语 Skill：收入" not in skill_text
+        assert "SQL 提示词 Skill：报表agent" not in skill_text
+        assert len(logs) == 1
+        assert combined_id and terminology_split_id and sql_split_id and sql_prompt_split_id and themed_id
+
+
 def test_explicit_visibility_filter_returns_one_skill_layer_only():
     engine = _engine()
     with Session(engine) as session:

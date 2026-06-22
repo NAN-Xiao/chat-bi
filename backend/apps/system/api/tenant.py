@@ -34,6 +34,7 @@ from apps.system.crud.tenant import (
     create_tenant_invitation,
     delete_tenant,
     complete_tenant_data_request,
+    ensure_user_sample_workspace_membership,
     get_tenant_membership,
     leave_tenant,
     list_tenant_data_requests,
@@ -831,6 +832,7 @@ def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserMode
     )
     session.add(user)
     session.flush()
+    ensure_user_sample_workspace_membership(session, user)
     return user
 
 
@@ -1925,7 +1927,6 @@ async def submit_tenant_application(
             tenant_code=creator.tenant_code,
             tenant_name=creator.tenant_name,
             plan=creator.plan,
-            requested_role=normalize_application_role(creator.requested_role, creator.application_type),
             reason=creator.reason,
         )
     except ValueError as exc:

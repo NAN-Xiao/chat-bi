@@ -2,6 +2,10 @@ import { dashboardApi } from '@/api/dashboard.ts'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { storeToRefs } from 'pinia'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import {
+  clearDashboardCanvasDraft,
+  getDashboardCanvasSourceKey,
+} from '@/views/dashboard/utils/canvasDraft.ts'
 
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
@@ -47,6 +51,7 @@ export const initCanvasData = (params: any, callBack: () => void) => {
     dashboardStore.setCanvasStyleData(result?.canvasStyleResult)
     dashboardStore.setComponentData(result?.canvasDataResult)
     dashboardStore.setCanvasViewInfo(result?.canvasViewInfoPreview)
+    dashboardStore.setCanvasEditingSourceKey(getDashboardCanvasSourceKey(result?.dashboardInfo?.id))
     callBack()
   })
 }
@@ -100,6 +105,7 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
           canvas_view_info: JSON.stringify(commonParams.canvasViewInfo),
         }
         dashboardApi.create_canvas(requestParams).then((res: any) => {
+          const previousSourceKey = dashboardStore.canvasEditingSourceKey
           dashboardStore.updateDashboardInfo({
             id: res.id,
             pid: requestBaseParams.pid,
@@ -108,6 +114,10 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
             dataState: 'ready',
             canEdit: true,
           })
+          clearDashboardCanvasDraft(previousSourceKey)
+          clearDashboardCanvasDraft(getDashboardCanvasSourceKey(res.id))
+          dashboardStore.setCanvasEditingSourceKey(getDashboardCanvasSourceKey(res.id))
+          dashboardStore.markCanvasSaved()
           callBack(res)
         })
       } else if (requestBaseParams.opt === 'newFolder') {
@@ -126,6 +136,8 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
           canvas_view_info: JSON.stringify(commonParams.canvasViewInfo),
         }
         dashboardApi.update_canvas(requestParams).then((res: any) => {
+          clearDashboardCanvasDraft(dashboardStore.canvasEditingSourceKey)
+          dashboardStore.markCanvasSaved()
           callBack(res)
         })
       }

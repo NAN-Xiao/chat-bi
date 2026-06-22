@@ -77,6 +77,26 @@ def _prompt_log_text(name: str, description: str, system_prompt: str, label: str
     return "\n".join(parts)
 
 
+def _source_order_sql(alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    return (
+        "CASE "
+        f"WHEN {prefix}visibility_scope = 'PLATFORM_PUBLIC' THEN 0 "
+        f"WHEN {prefix}visibility_scope = 'USER_PRIVATE' THEN 2 "
+        "ELSE 1 END"
+    )
+
+
+def _is_split_legacy_data_skill(row) -> bool:
+    prompt = row.get("prompt") or ""
+    return (
+        "<!-- data-skill-source:terminology:" in prompt
+        or "<!-- data-skill-source:data-training:" in prompt
+        or "<!-- data-skill-source:custom-prompt-generate-sql:" in prompt
+        or "<!-- data-skill-source:legacy-semantic:" in prompt
+    )
+
+
 def find_custom_prompts(
         session: Session,
         custom_prompt_type: Optional[CustomPromptTypeEnum] = None,
@@ -127,7 +147,7 @@ def find_custom_prompts(
                 OR target_scope = :all_scope
                 OR (target_scope IS NULL AND :target_scope = :smart_qa_scope)
               )
-            ORDER BY create_time, id
+            ORDER BY {_source_order_sql()}, create_time DESC, id DESC
             """
         ),
         params,
@@ -236,7 +256,7 @@ def find_data_skills(
                     AND pref.enabled = :disabled_pref
                 )
               )
-            ORDER BY create_time, id
+            ORDER BY {_source_order_sql()}, create_time DESC, id DESC
             """
         ),
         params,
@@ -245,6 +265,9 @@ def find_data_skills(
     skill_rows: list[dict[str, str]] = []
     ai_model_id: Optional[int] = None
     for row in rows:
+        if _is_split_legacy_data_skill(row):
+            continue
+
         visibility_scope = row.get("visibility_scope") or CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value
         if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
             if current_user_id is None or str(row.get("create_by")) != str(current_user_id):

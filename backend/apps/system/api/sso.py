@@ -74,8 +74,10 @@ async def feishu_login_callback(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     user = attach_tenant_context(user, tenant)
-    request.state.current_user = user
-    request.state.current_tenant = tenant
+    request_state = getattr(request, "state", None)
+    if request_state is not None:
+        request_state.current_user = user
+        request_state.current_tenant = tenant
     user_dict = user.to_dict()
     user_dict["auth_origin"] = FEISHU_ORIGIN
     return Token(

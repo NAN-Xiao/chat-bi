@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TenantDTO(BaseModel):
@@ -89,12 +89,13 @@ class TenantOwnerTransfer(BaseModel):
 
 
 class TenantApplicationCreator(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     application_type: Literal["create", "join"] = "create"
     tenant_id: Optional[int] = None
     tenant_code: Optional[str] = Field(default=None, max_length=64)
     tenant_name: Optional[str] = Field(default=None, max_length=255)
     plan: str = Field(default="default", max_length=64)
-    requested_role: str = Field(default="owner", max_length=32)
     reason: Optional[str] = Field(default=None, max_length=2000)
 
 

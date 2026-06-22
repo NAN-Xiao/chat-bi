@@ -9,7 +9,8 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 
 from apps.system.api import user as user_api
-from apps.system.models.tenant import TenantUserModel
+from apps.system.crud.tenant import SAMPLE_TENANT_CODE, TENANT_ROLE_ADMIN
+from apps.system.models.tenant import TenantModel, TenantUserModel
 from apps.system.models.user import UserModel, UserPlatformModel
 from apps.system.schemas.system_schema import UserCreator, UserEditor, UserStatus
 
@@ -220,7 +221,7 @@ def test_tenant_admin_creates_enterprise_admin_without_platform_role():
         assert membership.role == "admin"
 
 
-def test_platform_admin_creates_platform_user_without_tenant_membership():
+def test_platform_admin_creates_platform_user_with_sample_workspace_membership():
     engine = _engine()
     with Session(engine) as session:
         created = asyncio.run(user_api.create(
@@ -237,14 +238,17 @@ def test_platform_admin_creates_platform_user_without_tenant_membership():
         ))
 
         db_user = session.get(UserModel, created.id)
-        membership = session.exec(
-            select(TenantUserModel).where(
+        row = session.exec(
+            select(TenantModel, TenantUserModel)
+            .join(TenantUserModel, TenantUserModel.tenant_id == TenantModel.id)
+            .where(
                 TenantUserModel.user_id == created.id,
             )
-        ).first()
+        ).one()
 
         assert db_user.system_role == "collab_admin"
-        assert membership is None
+        assert row[0].code == SAMPLE_TENANT_CODE
+        assert row[1].role == TENANT_ROLE_ADMIN
 
 
 def test_tenant_admin_updates_tenant_role_without_escalating_platform_role():

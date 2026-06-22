@@ -15,6 +15,7 @@ from apps.system.crud.tenant import (
     TENANT_ROLE_MEMBER,
     TENANT_ROLE_OWNER,
     assign_user_to_tenant,
+    ensure_user_sample_workspace_membership,
     normalize_tenant_role,
     remove_user_from_tenant,
 )
@@ -470,6 +471,7 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
             creator.project_ids,
             creator.project_role_map,
         )
+    ensure_user_sample_workspace_membership(session, user_model)
     return user_model
 
 
@@ -529,6 +531,7 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
             editor.project_ids,
             editor.project_role_map,
         )
+    ensure_user_sample_workspace_membership(session, user_model)
 
 @router.delete("/{id}", summary=f"{PLACEHOLDER_PREFIX}user_del_api", description=f"{PLACEHOLDER_PREFIX}user_del_api")
 @require_permissions(permission=AppPermission(role=['admin']))

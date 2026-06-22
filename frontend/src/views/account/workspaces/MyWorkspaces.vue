@@ -248,9 +248,6 @@
             </button>
           </div>
         </el-form-item>
-        <el-form-item prop="requested_role" :label="t('tenant.requested_role')">
-          <el-input :model-value="t('tenant.request_role_member')" disabled style="width: 240px" />
-        </el-form-item>
         <el-form-item :label="t('tenant.apply_reason')">
           <el-input
             v-model="joinForm.reason"
@@ -318,7 +315,6 @@ const joinForm = reactive({
   tenant_id: '',
   tenant_code: '',
   tenant_name: '',
-  requested_role: 'member',
   reason: '',
 })
 
@@ -359,7 +355,6 @@ const maxRequestPage = computed(() =>
 )
 const joinRules = computed(() => ({
   tenant_code: [{ required: true, message: t('tenant.code_required'), trigger: 'blur' }],
-  requested_role: [{ required: true, message: t('tenant.request_role_required'), trigger: 'change' }],
 }))
 
 const formatTenantRole = (role?: string) => {
@@ -490,7 +485,6 @@ const resetJoinForm = () => {
     tenant_id: '',
     tenant_code: '',
     tenant_name: '',
-    requested_role: 'member',
     reason: '',
   })
 }
@@ -531,7 +525,6 @@ const submitJoinApplication = () => {
         application_type: 'join',
         tenant_id: joinForm.tenant_id || (/^\d+$/.test(target) ? target : undefined),
         tenant_code: joinForm.tenant_id ? undefined : target,
-        requested_role: 'member',
         reason: joinForm.reason,
       })
       ElMessage.success(t('tenant.join_application_submitted'))

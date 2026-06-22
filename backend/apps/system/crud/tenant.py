@@ -1,7 +1,7 @@
 import json
 
 from pydantic import BaseModel
-from sqlalchemy import column as sa_column, func, inspect, table as sa_table
+from sqlalchemy import column as sa_column, func, inspect, or_, table as sa_table
 from sqlmodel import Session, select
 
 from apps.system.models.tenant import (
@@ -17,11 +17,14 @@ from common.utils.time import get_timestamp
 DEFAULT_TENANT_ID = 1
 DEFAULT_TENANT_CODE = "default"
 DEFAULT_TENANT_NAME = "默认租户"
+SAMPLE_TENANT_CODE = "sample-workspace"
+SAMPLE_TENANT_NAME = "示例工作空间"
 TENANT_ROLE_OWNER = "owner"
 TENANT_ROLE_ADMIN = "admin"
 TENANT_ROLE_MEMBER = "member"
 TENANT_ADMIN_ROLES = {TENANT_ROLE_OWNER, TENANT_ROLE_ADMIN}
 SYSTEM_ROLE_SYSTEM_ADMIN = "system_admin"
+SYSTEM_ROLE_COLLAB_ADMIN = "collab_admin"
 TENANT_SUBSCRIPTION_TRIALING = "trialing"
 TENANT_SUBSCRIPTION_ACTIVE = "active"
 TENANT_SUBSCRIPTION_PAST_DUE = "past_due"
@@ -158,7 +161,7 @@ def _user_is_system_admin(user) -> bool:
 def _user_is_platform_admin(user) -> bool:
     return (getattr(user, "system_role", "") or "").strip().lower() in {
         SYSTEM_ROLE_SYSTEM_ADMIN,
-        "collab_admin",
+        SYSTEM_ROLE_COLLAB_ADMIN,
     }
 
 
@@ -177,6 +180,108 @@ def ensure_default_tenant(session: Session) -> TenantModel:
     session.add(tenant)
     session.flush()
     return tenant
+
+
+def sample_workspace_role_for_user(user) -> str:
+    system_role = (getattr(user, "system_role", "") or "").strip().lower()
+    if system_role == SYSTEM_ROLE_SYSTEM_ADMIN:
+        return TENANT_ROLE_OWNER
+    if system_role == SYSTEM_ROLE_COLLAB_ADMIN:
+        return TENANT_ROLE_ADMIN
+    return TENANT_ROLE_MEMBER
+
+
+def _ensure_sample_workspace_state(session: Session) -> tuple[TenantModel, bool]:
+    tenant = session.exec(select(TenantModel).where(TenantModel.code == SAMPLE_TENANT_CODE)).first()
+    changed = False
+    if tenant is None:
+        tenant = TenantModel(
+            code=SAMPLE_TENANT_CODE,
+            name=SAMPLE_TENANT_NAME,
+            status=1,
+            plan="default",
+            subscription_status=TENANT_SUBSCRIPTION_ACTIVE,
+            billing_mode=BILLING_MODE_MANUAL,
+        )
+        session.add(tenant)
+        session.flush()
+        return tenant, True
+
+    if tenant.name != SAMPLE_TENANT_NAME:
+        tenant.name = SAMPLE_TENANT_NAME
+        changed = True
+    if int(tenant.status or 0) != 1:
+        tenant.status = 1
+        changed = True
+    if (tenant.plan or "").strip() != "default":
+        tenant.plan = "default"
+        changed = True
+    if normalize_subscription_status(getattr(tenant, "subscription_status", None)) != TENANT_SUBSCRIPTION_ACTIVE:
+        tenant.subscription_status = TENANT_SUBSCRIPTION_ACTIVE
+        changed = True
+    if normalize_billing_mode(getattr(tenant, "billing_mode", None)) != BILLING_MODE_MANUAL:
+        tenant.billing_mode = BILLING_MODE_MANUAL
+        changed = True
+    if changed:
+        tenant.update_time = get_timestamp()
+        session.add(tenant)
+        session.flush()
+    return tenant, changed
+
+
+def ensure_sample_workspace(session: Session) -> TenantModel:
+    tenant, _changed = _ensure_sample_workspace_state(session)
+    return tenant
+
+
+def _user_has_active_primary_tenant(session: Session, user_id: int) -> bool:
+    return session.exec(
+        select(TenantUserModel.id).where(
+            TenantUserModel.user_id == int(user_id),
+            TenantUserModel.status == 1,
+            TenantUserModel.is_primary == True,  # noqa: E712
+        )
+    ).first() is not None
+
+
+def ensure_user_sample_workspace_membership(session: Session, user) -> TenantUserModel | None:
+    user_id = getattr(user, "id", None)
+    if not user_id:
+        return None
+    tenant, tenant_changed = _ensure_sample_workspace_state(session)
+    role = sample_workspace_role_for_user(user)
+    should_be_primary = not _user_has_active_primary_tenant(session, int(user_id))
+    membership = session.exec(
+        select(TenantUserModel).where(
+            TenantUserModel.tenant_id == int(tenant.id),
+            TenantUserModel.user_id == int(user_id),
+        )
+    ).first()
+    changed = tenant_changed
+    if membership is None:
+        membership = TenantUserModel(
+            tenant_id=int(tenant.id),
+            user_id=int(user_id),
+            role=role,
+            is_primary=should_be_primary,
+            status=1,
+        )
+        changed = True
+    else:
+        if normalize_tenant_role(membership.role) != role:
+            membership.role = role
+            changed = True
+        if int(membership.status or 0) != 1:
+            membership.status = 1
+            changed = True
+        if should_be_primary and not bool(membership.is_primary):
+            membership.is_primary = True
+            changed = True
+    if not changed:
+        return None
+    session.add(membership)
+    session.flush()
+    return membership
 
 
 def _clean_optional_text(value: str | None) -> str | None:
@@ -372,19 +477,20 @@ def search_active_tenants(session: Session, *, keyword: str, limit: int = 20) ->
     normalized = (keyword or "").strip().lower()
     if not normalized:
         return []
-    filters = [TenantModel.code == normalized]
+    keyword_pattern = f"%{normalized}%"
+    filters = [
+        func.lower(TenantModel.code).like(keyword_pattern),
+        func.lower(TenantModel.name).like(keyword_pattern),
+    ]
     if normalized.isdigit():
         filters.append(TenantModel.id == int(normalized))
     statement = (
         select(TenantModel)
         .where(TenantModel.status == 1)
+        .where(or_(*filters))
         .order_by(TenantModel.name, TenantModel.code)
         .limit(limit)
     )
-    if len(filters) == 1:
-        statement = statement.where(filters[0])
-    else:
-        statement = statement.where(filters[0] | filters[1])
     return list(session.exec(statement).all())
 
 
@@ -1089,6 +1195,15 @@ def resolve_current_tenant(
                 role=normalize_tenant_role(membership.role if membership else TENANT_ROLE_OWNER),
             )
         raise PermissionError("User does not belong to tenant")
+
+    if user_is_platform_admin and not platform_workspace_delegate:
+        tenant = ensure_default_tenant(session)
+        return TenantContext(
+            id=int(tenant.id),
+            code=tenant.code,
+            name=tenant.name,
+            role=TENANT_ROLE_OWNER,
+        )
 
     memberships = list_user_tenant_memberships(session, int(user.id))
     if not memberships:

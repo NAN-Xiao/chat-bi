@@ -145,7 +145,10 @@ export const routes = [
         path: 'workspace-applications',
         name: 'workspace-applications',
         component: WorkspaceApplications,
-        props: { mode: 'create' },
+        props: (route: any) => ({
+          mode: route.query?.mode === 'join' ? 'join' : 'create',
+          allowSwitch: true,
+        }),
         meta: {
           title: t('tenant.apply_workspace'),
           iconActive: 'user',
