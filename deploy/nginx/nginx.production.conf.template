@@ -27,8 +27,8 @@ http {
     upstream zhishu_backend {
         least_conn;
         server 127.0.0.1:8000 max_fails=3 fail_timeout=10s;
-        # Add replicas only after CACHE_TYPE=redis and shared file storage are ready:
-        # server 127.0.0.1:8002 max_fails=3 fail_timeout=10s;
+        server 127.0.0.1:8002 max_fails=3 fail_timeout=10s;
+        # Add more replicas only after CACHE_TYPE=redis and shared file storage are ready:
         # server 127.0.0.1:8003 max_fails=3 fail_timeout=10s;
     }
 

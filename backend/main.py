@@ -52,7 +52,10 @@ def run_migrations():
 async def lifespan(app: FastAPI):
     validate_production_settings()
     init_observability()
-    run_migrations()
+    if settings.AUTO_MIGRATE_ON_STARTUP:
+        run_migrations()
+    else:
+        AppLogUtil.info("跳过启动自动迁移，当前由独立迁移步骤负责")
     await init_app_cache()
     init_dynamic_cors(app)
     AppLogUtil.info("✅ 星通智数 初始化完成")

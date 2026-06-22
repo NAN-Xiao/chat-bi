@@ -10,7 +10,7 @@ services:
       - 8001:8001
     environment:
       # Database configuration
-      POSTGRES_SERVER: localhost
+      POSTGRES_SERVER: 10.1.5.193
       POSTGRES_PORT: 5432
       POSTGRES_DB: sqlbot
       POSTGRES_USER: root

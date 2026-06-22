@@ -27,6 +27,8 @@ pipeline {
     NGINX_PORT = '80'
     NGINX_ROOT = '/home/chat-bi/nginx/html'
     NGINX_CONF_PATH = '/etc/nginx/conf.d/chat-bi.conf'
+    INSTALL_CONF_FILE = '/home/chat-bi/install.conf'
+    RUNTIME_ENV_FILE = '/home/chat-bi/chat-bi.runtime.env'
     WEB_PORT = '8000'
     MCP_PORT = '8001'
   }
@@ -76,6 +78,87 @@ pipeline {
             exit 1
           fi
           test -w "$APP_HOME" || { echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"; exit 1; }
+          if [ ! -f "$INSTALL_CONF_FILE" ]; then
+            cat > "$INSTALL_CONF_FILE" <<EOF
+ZHISHU_BASE=/home/chat-bi
+ZHISHU_WEB_PORT=8000
+ZHISHU_MCP_PORT=8001
+ZHISHU_EXTERNAL_DB=true
+ZHISHU_DB_HOST=10.1.5.193
+ZHISHU_DB_PORT=5432
+ZHISHU_DB_DB=zhishu_bi
+ZHISHU_DB_USER=root
+ZHISHU_DB_PASSWORD=Password123@pg
+ZHISHU_DEFAULT_PWD=elex@123
+ZHISHU_SECRET_KEY=jenkins-chat-bi-secret-change-me
+ZHISHU_CORS_ORIGINS=http://${FRONTEND_HOST}
+ZHISHU_LOG_LEVEL=INFO
+ZHISHU_CACHE_TYPE=memory
+ZHISHU_REDIS_HOST=127.0.0.1
+ZHISHU_REDIS_PORT=6379
+ZHISHU_REDIS_DB=0
+ZHISHU_REDIS_USERNAME=
+ZHISHU_REDIS_PASSWORD=
+ZHISHU_REDIS_SSL=false
+ZHISHU_REDIS_KEY_PREFIX=zhishu
+ZHISHU_TASK_QUEUE_NAME=default
+ZHISHU_TASK_QUEUE_RESULT_TTL_SECONDS=86400
+ZHISHU_TASK_QUEUE_POLL_TIMEOUT_SECONDS=5
+ZHISHU_TASK_QUEUE_MAX_ATTEMPTS=1
+ZHISHU_EMBEDDING_MODEL=text-embedding-v4
+ZHISHU_EMBEDDING_API_BASE_URL=
+ZHISHU_EMBEDDING_API_KEY=
+ZHISHU_MCP_ENABLED=false
+ZHISHU_SERVER_IMAGE_HOST=http://${FRONTEND_HOST}/images/
+ZHISHU_ACCESS_TOKEN_EXPIRE_MINUTES=11520
+ZHISHU_CONTEXT_PATH=
+EOF
+            chmod 600 "$INSTALL_CONF_FILE"
+            echo "已生成安装风格配置模板：$INSTALL_CONF_FILE。生产发布前请确认数据库名、账号密码和密钥。"
+          fi
+
+          set +x
+          set -a
+          . "$INSTALL_CONF_FILE"
+          set +a
+          {
+            echo "PROJECT_NAME=星通智数"
+            echo "POSTGRES_SERVER=${ZHISHU_DB_HOST}"
+            echo "POSTGRES_PORT=${ZHISHU_DB_PORT}"
+            echo "POSTGRES_DB=${ZHISHU_DB_DB}"
+            echo "POSTGRES_USER=${ZHISHU_DB_USER}"
+            echo "POSTGRES_PASSWORD=${ZHISHU_DB_PASSWORD}"
+            echo "SECRET_KEY=${ZHISHU_SECRET_KEY}"
+            echo "DEFAULT_PWD=${ZHISHU_DEFAULT_PWD}"
+            echo "FRONTEND_HOST=http://${FRONTEND_HOST}"
+            echo "BACKEND_CORS_ORIGINS=${ZHISHU_CORS_ORIGINS}"
+            echo "SERVER_IMAGE_HOST=${ZHISHU_SERVER_IMAGE_HOST}"
+            echo "LOG_LEVEL=${ZHISHU_LOG_LEVEL}"
+            echo "SQL_DEBUG=false"
+            echo "LOG_DIR=/opt/sqlbot/app/logs"
+            echo "LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
+            echo "CACHE_TYPE=${ZHISHU_CACHE_TYPE}"
+            echo "REDIS_HOST=${ZHISHU_REDIS_HOST}"
+            echo "REDIS_PORT=${ZHISHU_REDIS_PORT}"
+            echo "REDIS_DB=${ZHISHU_REDIS_DB}"
+            echo "REDIS_USERNAME=${ZHISHU_REDIS_USERNAME}"
+            echo "REDIS_PASSWORD=${ZHISHU_REDIS_PASSWORD}"
+            echo "REDIS_SSL=${ZHISHU_REDIS_SSL}"
+            echo "REDIS_KEY_PREFIX=${ZHISHU_REDIS_KEY_PREFIX}"
+            echo "TASK_QUEUE_NAME=${ZHISHU_TASK_QUEUE_NAME}"
+            echo "TASK_QUEUE_RESULT_TTL_SECONDS=${ZHISHU_TASK_QUEUE_RESULT_TTL_SECONDS}"
+            echo "TASK_QUEUE_POLL_TIMEOUT_SECONDS=${ZHISHU_TASK_QUEUE_POLL_TIMEOUT_SECONDS}"
+            echo "TASK_QUEUE_MAX_ATTEMPTS=${ZHISHU_TASK_QUEUE_MAX_ATTEMPTS}"
+            echo "EMBEDDING_MODEL=${ZHISHU_EMBEDDING_MODEL}"
+            echo "EMBEDDING_API_BASE_URL=${ZHISHU_EMBEDDING_API_BASE_URL}"
+            echo "EMBEDDING_API_KEY=${ZHISHU_EMBEDDING_API_KEY}"
+            echo "MCP_ENABLED=${ZHISHU_MCP_ENABLED}"
+            echo "ACCESS_TOKEN_EXPIRE_MINUTES=${ZHISHU_ACCESS_TOKEN_EXPIRE_MINUTES}"
+            echo "CONTEXT_PATH=${ZHISHU_CONTEXT_PATH}"
+          } > "$RUNTIME_ENV_FILE"
+          chmod 600 "$RUNTIME_ENV_FILE"
+          set -x
+          grep -E '^(POSTGRES_SERVER|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|FRONTEND_HOST|BACKEND_CORS_ORIGINS|CACHE_TYPE)=' "$RUNTIME_ENV_FILE" || true
         '''
       }
     }
@@ -103,6 +186,13 @@ pipeline {
       steps {
         sh '''
           set -eux
+          set +x
+          set -a
+          . "$INSTALL_CONF_FILE"
+          set +a
+          set -x
+          web_port="${ZHISHU_WEB_PORT:-$WEB_PORT}"
+          mcp_port="${ZHISHU_MCP_PORT:-$MCP_PORT}"
           DOLLAR='$'
           cat > "$APP_HOME/chat-bi-nginx.conf" <<EOF
 server {
@@ -119,7 +209,7 @@ server {
     }
 
     location /api/v1/ {
-        proxy_pass http://127.0.0.1:${WEB_PORT}/api/v1/;
+        proxy_pass http://127.0.0.1:${web_port}/api/v1/;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -127,7 +217,7 @@ server {
     }
 
     location = /openapi.json {
-        proxy_pass http://127.0.0.1:${WEB_PORT}/openapi.json;
+        proxy_pass http://127.0.0.1:${web_port}/openapi.json;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -135,7 +225,7 @@ server {
     }
 
     location /docs {
-        proxy_pass http://127.0.0.1:${WEB_PORT}/docs;
+        proxy_pass http://127.0.0.1:${web_port}/docs;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -143,7 +233,7 @@ server {
     }
 
     location /images/ {
-        proxy_pass http://127.0.0.1:${MCP_PORT}/images/;
+        proxy_pass http://127.0.0.1:${mcp_port}/images/;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -151,7 +241,7 @@ server {
     }
 
     location /mcp {
-        proxy_pass http://127.0.0.1:${MCP_PORT};
+        proxy_pass http://127.0.0.1:${mcp_port};
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -180,6 +270,13 @@ EOF
       steps {
         sh '''
           set -eux
+          set +x
+          set -a
+          . "$INSTALL_CONF_FILE"
+          set +a
+          set -x
+          web_port="${ZHISHU_WEB_PORT:-$WEB_PORT}"
+          mcp_port="${ZHISHU_MCP_PORT:-$MCP_PORT}"
           backup_container="${CONTAINER_NAME}-previous"
           docker rm -f "$backup_container" >/dev/null 2>&1 || true
 
@@ -203,25 +300,14 @@ EOF
           if ! docker run -d \
             --name "$CONTAINER_NAME" \
             --restart unless-stopped \
-            -p "${WEB_PORT}:8000" \
-            -p "${MCP_PORT}:8001" \
+            -p "${web_port}:8000" \
+            -p "${mcp_port}:8001" \
             -v "$APP_HOME/data/sqlbot/excel:/opt/sqlbot/data/excel" \
             -v "$APP_HOME/data/sqlbot/file:/opt/sqlbot/data/file" \
             -v "$APP_HOME/data/sqlbot/images:/opt/sqlbot/images" \
             -v "$APP_HOME/data/sqlbot/logs:/opt/sqlbot/app/logs" \
             -v "$APP_HOME/data/postgresql:/var/lib/postgresql/data" \
-            -e POSTGRES_SERVER="localhost" \
-            -e POSTGRES_PORT="5432" \
-            -e POSTGRES_DB="sqlbot" \
-            -e POSTGRES_USER="root" \
-            -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-Password123@pg}" \
-            -e SECRET_KEY="${SECRET_KEY:-jenkins-chat-bi-secret}" \
-            -e DEFAULT_PWD="${DEFAULT_PWD:-elex@123}" \
-            -e FRONTEND_HOST="http://${FRONTEND_HOST}" \
-            -e BACKEND_CORS_ORIGINS="http://${FRONTEND_HOST}" \
-            -e SERVER_IMAGE_HOST="http://${FRONTEND_HOST}/images/" \
-            -e LOG_DIR="/opt/sqlbot/app/logs" \
-            -e LOG_FORMAT="%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s" \
+            --env-file "$RUNTIME_ENV_FILE" \
             "$IMAGE"; then
             restore_previous 1
           fi

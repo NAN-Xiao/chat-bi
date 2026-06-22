@@ -1,6 +1,6 @@
 [Unit]
 Description=星通智数 API replica on port %i
-After=network-online.target postgresql.service redis.service
+After=network-online.target postgresql.service redis.service zhishu-migrate.service
 Wants=network-online.target
 
 [Service]
@@ -9,6 +9,7 @@ User=zhishu
 Group=zhishu
 WorkingDirectory=/opt/zhishu/backend
 EnvironmentFile=/etc/zhishu/zhishu.env
+Environment=AUTO_MIGRATE_ON_STARTUP=false
 ExecStart=/opt/zhishu/backend/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port %i --workers 1
 Restart=always
 RestartSec=5

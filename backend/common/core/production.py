@@ -64,6 +64,8 @@ def validate_production_settings() -> list[str]:
         errors.append("SENSITIVE_CONFIG_ENCRYPTION_KEY must be at least 32 characters.")
     if settings.CACHE_TYPE != "redis":
         errors.append("CACHE_TYPE must be redis for production single-tenant deployments.")
+    if settings.AUTO_MIGRATE_ON_STARTUP:
+        errors.append("AUTO_MIGRATE_ON_STARTUP must be false in production; run Alembic as a separate deployment step.")
 
     redis_url = settings.CACHE_REDIS_URL or settings.REDIS_URL
     if not settings.REDIS_PASSWORD and not _redis_url_has_auth(redis_url):
