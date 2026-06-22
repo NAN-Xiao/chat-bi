@@ -9,9 +9,8 @@ import axios, {
 } from 'axios'
 
 import { useCache } from '@/utils/useCache'
-import { getLocale } from './utils'
+import { getLocale, toLoginPage } from './utils'
 import { useAssistantStore } from '@/stores/assistant'
-import { useRouter } from 'vue-router'
 import JSONBig from 'json-bigint'
 import {
   getPlatformWorkspaceDelegateTenantId,
@@ -22,7 +21,16 @@ import {
 // const t = i18n.global.t
 const assistantStore = useAssistantStore()
 const { wsCache } = useCache()
-const router = useRouter()
+
+const pushAppRoute = async (route: any, fallbackHash: string) => {
+  try {
+    const { default: router } = await import('@/router')
+    await router.push(route)
+  } catch (error) {
+    console.warn('Failed to route inside app', error)
+    window.location.hash = fallbackHash
+  }
+}
 // Response data structure
 export interface ApiResponse<T = unknown> {
   code: number
@@ -221,11 +229,10 @@ class HttpService {
           // Redirect to login page if needed
           if (assistantStore.getAssistant) {
             wsCache.delete('user.token')
-            if (router?.push) {
-              router.push(`/401?title=${encodeURIComponent(errorMessage)}`)
-            } else {
-              window.location.href = `/#/401?title=${encodeURIComponent(errorMessage)}`
-            }
+            pushAppRoute(
+              `/401?title=${encodeURIComponent(errorMessage)}`,
+              `/401?title=${encodeURIComponent(errorMessage)}`
+            )
             return
           }
           ElMessage({
@@ -235,7 +242,15 @@ class HttpService {
           })
           setTimeout(() => {
             wsCache.delete('user.token')
-            window.location.reload()
+            import('@/router')
+              .then(({ default: router }) => {
+                const currentRoute = router.currentRoute.value
+                return router.push(toLoginPage(currentRoute?.fullPath || ''))
+              })
+              .catch((routeError) => {
+                console.warn('Failed to route to login inside app', routeError)
+                window.location.hash = '/login'
+              })
           }, 2000)
           return
         // break

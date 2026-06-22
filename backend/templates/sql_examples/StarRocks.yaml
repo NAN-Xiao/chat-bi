@@ -23,7 +23,7 @@ template:
     <rule>必须为每个表生成别名（不加AS）</rule>
     {multi_table_condition}
     <rule>禁止使用星号(*)，必须明确字段名</rule>
-    <rule>中文/特殊字符字段需保留原名并添加英文别名</rule>
+    <rule>输出列必须添加面向用户的可读展示别名；别名可使用用户语言，含中文/特殊字符时按当前数据库引擎规则加引号</rule>
     <rule>函数字段必须加别名</rule>
     <rule>百分比显示为：CONCAT(ROUND(x*100,2),'%')</rule>
     <rule>避免与StarRocks关键字冲突（如`rank`/`partition`/`values`）</rule>
@@ -44,7 +44,7 @@ template:
         <input>查询 test.orders 表的前100条订单（含中文字段）</input>
         <output-bad>
           SELECT * FROM test.orders LIMIT 100  -- 错误：使用星号
-          SELECT `订单ID`, `金额` FROM `test`.`orders` `t1`  -- 错误：缺少英文别名
+          SELECT `订单ID`, `金额` FROM `test`.`orders` `t1`  -- 错误：缺少输出别名
         </output-bad>
         <output-good>
           SELECT 

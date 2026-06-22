@@ -13,8 +13,10 @@ import { findNewComponentFromList } from '@/views/dashboard/components/component
 import { guid } from '@/utils/canvas.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { applyRecommendedChartComponentSize } from '@/views/dashboard/utils/chartSizing.ts'
+import { useRouter } from 'vue-router'
 
 const { t } = useI18n()
+const router = useRouter()
 const datasourceContext = useDatasourceContextStore()
 const resource = ref(null)
 
@@ -141,8 +143,10 @@ const saveResource = (params: any, commonParams: any) => {
 
 const callbackExportSuc = (curOptDashboardIdValue: any) => {
   // do open dashboard
-  const url = `#/canvas?resourceId=${curOptDashboardIdValue}`
-  window.open(url, '_self')
+  router.push({
+    path: '/canvas',
+    query: { resourceId: curOptDashboardIdValue },
+  })
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type

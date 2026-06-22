@@ -150,8 +150,8 @@ const changeLanguage = (lang: string) => {
   const param = {
     language: lang,
   }
-  userApi.language(param).then(() => {
-    window.location.reload()
+  userApi.language(param).catch((error) => {
+    console.warn('Failed to save language preference', error)
   })
 }
 

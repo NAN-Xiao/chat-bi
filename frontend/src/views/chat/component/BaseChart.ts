@@ -1,9 +1,17 @@
 export interface ChartAxis {
-  name: string
+  name?: string
   value: string
   type?: 'x' | 'y' | 'series' | 'other-info'
   'multi-quota'?: boolean
   hidden?: boolean
+}
+
+export function axisLabel(axis?: Pick<ChartAxis, 'name' | 'value'> | null): string {
+  return String(axis?.name || axis?.value || '').trim()
+}
+
+export function axisValue(axis?: Pick<ChartAxis, 'name' | 'value'> | null): string {
+  return String(axis?.value || axis?.name || '').trim()
 }
 
 export interface ChartData {

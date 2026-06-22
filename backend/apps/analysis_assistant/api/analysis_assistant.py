@@ -45,6 +45,7 @@ from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.business_access import require_chatbi_business_user
 from common.core.deps import CurrentUser, SessionDep
 from common.core.tenant_rate_limiter import consume_tenant_rate_limit, resolve_tenant_rate_limit
+from common.utils.chart_config import sanitize_chart_display_names
 from common.utils.utils import extract_nested_json
 
 router = APIRouter(
@@ -165,7 +166,9 @@ JSON 格式：
 - queries 数量 2 到 4 个，除非问题确实只需要 1 个查询。
 - SQL 只能 SELECT 或 WITH，不允许 INSERT/UPDATE/DELETE/DDL。
 - 不要查询不存在于 schema 的表或字段。
-- 所有输出字段必须使用英文小写别名，便于图表绑定。
+- SELECT 输出别名就是图表、表头和指标卡可见的字段名；优先使用用户语言中的自然业务名作为输出别名，例如 PostgreSQL 中使用 `AS "付费人数"`。
+- SQL 中真实表名、字段名必须严格来自 schema；只有 SELECT 输出别名可以使用中文、空格或业务展示名，并且这类别名必须按 PostgreSQL 语法加双引号。
+- x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - ORDER BY、GROUP BY、HAVING 中引用的字段必须来自当前查询可见字段；ORDER BY 使用的别名必须在最终 SELECT 列表中真实输出。
 - 具体指标定义、字段选择、计算算法、时间窗口和异常判断必须严格遵循用户本次选择的 Data Skill，或用户本次明确给出的规则。
 - 如果 Data Skill 没有覆盖某个业务指标、分母、表/字段选择、时间窗口或判断规则，不要把 schema、样例数据、行业经验或历史回答推断成确定口径；应在计划中说明需要补充或选择合适的数据 Skill，或只生成不依赖该缺失业务口径的基础探索查询。
@@ -207,7 +210,10 @@ JSON 格式：
 - 如果预测目标缺少业务口径，不要自行发明预测算法或分母定义；应说明需要补充或选择合适的数据 Skill，或只输出数据不足/口径不足的原因。
 - 用户问题如果给出目标对象、时间范围或预测周期，必须按原文理解，不要擅自扩大、缩小或改写。
 - SQL 只能 SELECT 或 WITH，不允许 INSERT/UPDATE/DELETE/DDL，不要创建表、视图或持久化聚合。
-- 不要查询不存在于 schema 的表或字段，所有输出字段使用英文小写别名。
+- 不要查询不存在于 schema 的表或字段。
+- SELECT 输出别名就是图表、表头和指标卡可见的字段名；优先使用用户语言中的自然业务名作为输出别名，例如 PostgreSQL 中使用 `AS "预测值"`、`AS "置信度"`。
+- SQL 中真实表名、字段名必须严格来自 schema；只有 SELECT 输出别名可以使用中文、空格或业务展示名，并且这类别名必须按 PostgreSQL 语法加双引号。
+- x、y、series 必须与最终 SELECT 输出字段别名完全一致；不要再生成一套用户无法编辑的隐藏字段名映射。
 - 预测必须尽量基于明细事实表在查询时计算，不要假设存在 agg/kpi/snapshot 表。
 - 预测结果要区分已观测值、历史基准、预测值和置信度；数据不足时要明确说明不确定性，不要把无数据当成确定结论。
 - 查询结果中如果包含 confidence/confidence_level，取值必须与样本量、已观测天数和历史基准可用性一致；不要出现字段为 High 但总结又说 Low 的矛盾。
@@ -232,7 +238,7 @@ JSON 格式：
 - 不要查询不存在于 schema 的表或字段。
 - 保持原分析目的和时间范围，不要扩大或缩小口径。
 - ORDER BY 使用的字段或别名必须在最终 SELECT 中存在；如果排序字段是计算值，要在 SELECT 中输出同名别名，或改用实际存在的输出别名。
-- 输出字段使用英文小写别名，便于图表绑定。
+- 输出字段别名应保持或恢复为面向用户的业务展示名；如果使用中文、空格或特殊字符别名，必须按 PostgreSQL 语法加双引号，并确保图表字段配置能用同名别名取数。
 - PostgreSQL 中不要在同一层 SELECT 里把 `GROUP BY lifecycle_day` 和 `SUM(amount) OVER (ORDER BY lifecycle_day)` 混用；应先在 CTE/子查询里按 lifecycle_day 聚合出 daily_amount，再在外层用窗口函数累计 daily_amount。
 - 如果需要累计去重人数，不能用当日 `COUNT(DISTINCT subject_id)` 冒充累计人数；应先得到每个主体的首次达成日，再按日期序列统计 `first_day <= lifecycle_day` 的去重主体。
 - 具体指标定义、字段选择、枚举值含义和业务算法必须依据随后的统一业务口径或用户本次明确规则；修复执行错误时不要引入 schema、样例数据或实际数据画像推断出的新业务口径。
@@ -353,6 +359,8 @@ def _serialise_conversation_messages(request: AnalysisAssistantConversationSave)
         if item.get("role") not in {"user", "assistant"}:
             continue
         item["content"] = str(item.get("content") or "")
+        if item.get("blocks"):
+            item["blocks"] = sanitize_chart_display_names(item["blocks"])
         messages.append(item)
     return messages
 
@@ -1278,10 +1286,6 @@ def _is_forecast_question(question: str) -> bool:
     return any(keyword in lowered for keyword in forecast_keywords)
 
 
-def _field_label(field: str) -> str:
-    return field.replace("_", " ")
-
-
 def _is_number(value: Any) -> bool:
     if value is None or value == "":
         return False
@@ -1549,7 +1553,7 @@ def _is_pie_metric_suitable(query: dict[str, Any], y_field: str | None) -> bool:
 def _build_chart_config(query: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     fields = [str(field) for field in result.get("fields") or []]
     rows = result.get("data") or []
-    columns = [{"name": _field_label(field), "value": field} for field in fields]
+    columns = [{"value": field} for field in fields]
 
     chart_type = str(query.get("chart_type") or "table").lower()
     if chart_type not in CHART_TYPES:
@@ -1646,17 +1650,17 @@ def _build_chart_config(query: dict[str, Any], result: dict[str, Any]) -> dict[s
 
     if chart_type == "metric" and y_field:
         metric_fields = [field for field in numeric if field != x_field] or [y_field]
-        chart["axis"]["y"] = [{"name": _field_label(field), "value": field} for field in metric_fields]
+        chart["axis"]["y"] = [{"value": field} for field in metric_fields]
     elif chart_type != "table" and x_field and y_field:
-        chart["axis"]["x"] = {"name": _field_label(x_field), "value": x_field}
-        chart["axis"]["y"] = {"name": _field_label(y_field), "value": y_field}
+        chart["axis"]["x"] = {"value": x_field}
+        chart["axis"]["y"] = {"value": y_field}
         if chart_type == "pie":
             pie_series_field = series_field if series_field and series_field not in numeric else x_field
-            chart["axis"]["series"] = {"name": _field_label(pie_series_field), "value": pie_series_field}
+            chart["axis"]["series"] = {"value": pie_series_field}
         elif chart_type in {"heatmap", "sankey"} and series_field:
-            chart["axis"]["series"] = {"name": _field_label(series_field), "value": series_field}
+            chart["axis"]["series"] = {"value": series_field}
         elif series_field and series_field not in {x_field, y_field}:
-            chart["axis"]["series"] = {"name": _field_label(series_field), "value": series_field}
+            chart["axis"]["series"] = {"value": series_field}
     return chart
 
 
@@ -2415,6 +2419,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             datasource=datasource,
                             sql=sql,
                             allowed_tables=allowed_tables,
+                            origin_column=True,
                         ).result
                     except Exception as first_error:
                         if looks_like_permission_scope_error(str(first_error)):
@@ -2435,6 +2440,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             datasource=datasource,
                             sql=sql,
                             allowed_tables=allowed_tables,
+                            origin_column=True,
                         ).result
                     semantic_error = _semantic_validation_error(raw_query, result)
                     if semantic_error:
@@ -2454,6 +2460,7 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                             datasource=datasource,
                             sql=sql,
                             allowed_tables=allowed_tables,
+                            origin_column=True,
                         ).result
                         semantic_error = _semantic_validation_error(raw_query, result)
                         if semantic_error:

@@ -1,5 +1,5 @@
 import { BaseChart } from '@/views/chat/component/BaseChart.ts'
-import type { ChartAxis } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis } from '@/views/chat/component/BaseChart.ts'
 import {
   formatNumber,
   isPercentAxis,
@@ -50,7 +50,7 @@ export class Metric extends BaseChart {
   }
 
   private displayAxisName(axis: ChartAxis) {
-    const rawName = String(axis.name || '').trim()
+    const rawName = axisLabel(axis)
     const rawValue = String(axis.value || '').trim()
     const normalize = (text: string) =>
       text
@@ -69,7 +69,7 @@ export class Metric extends BaseChart {
   }
 
   private isCompareAxis(axis: ChartAxis) {
-    const text = `${axis.name ?? ''} ${axis.value ?? ''}`.toLowerCase()
+    const text = `${axisLabel(axis)} ${axis.value ?? ''}`.toLowerCase()
     return [
       'mom',
       'yoy',

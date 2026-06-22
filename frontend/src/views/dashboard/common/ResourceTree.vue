@@ -251,7 +251,10 @@ function onClickSideBarBtn() {
 
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const resourceEdit = (resourceId) => {
-  window.open(`#/canvas?resourceId=${resourceId}`, '_self')
+  router.push({
+    path: '/canvas',
+    query: { resourceId },
+  })
 }
 
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -309,13 +312,15 @@ const addOperation = (params: any) => {
     if (!folder || !canManageNode(folder)) return
   }
   if (params.opt === 'newLeaf') {
-    const datasourceQuery = datasourceContext.datasourceId
-      ? `&datasource=${datasourceContext.datasourceId}`
-      : ''
-    const newCanvasUrl =
-      '#/canvas?opt=create' + (params?.id ? `&pid=${params?.id}` : '') + datasourceQuery
-    window.open(newCanvasUrl, '_self')
     dashboardStore.canvasDataInit()
+    router.push({
+      path: '/canvas',
+      query: {
+        opt: 'create',
+        ...(params?.id ? { pid: params.id } : {}),
+        ...(datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}),
+      },
+    })
   } else {
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit(params)

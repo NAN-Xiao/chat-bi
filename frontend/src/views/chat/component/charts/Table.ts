@@ -1,4 +1,4 @@
-import { BaseChart, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, BaseChart, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
 import {
   copyToClipboard,
   type S2DataConfig,
@@ -120,7 +120,7 @@ export class Table extends BaseChart {
         this.axis?.map((a) => {
           return {
             field: a.value,
-            name: a.name,
+            name: axisLabel(a),
             formatter: (value: any) => {
               const formatted = formatNumber(value)
               return String(formatted)

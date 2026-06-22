@@ -1,5 +1,5 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
   buildMixedUnitComboOptions,
@@ -33,7 +33,7 @@ const NON_STACKABLE_KEYWORDS = [
 ]
 
 function isStackableMetric(axis: ChartAxis) {
-  const text = `${axis.name || ''} ${axis.value || ''}`.toLowerCase()
+  const text = `${axisLabel(axis)} ${axis.value || ''}`.toLowerCase()
   return !NON_STACKABLE_KEYWORDS.some((keyword) => text.includes(keyword))
 }
 
@@ -170,7 +170,7 @@ export class Line extends BaseG2Chart {
               }
             } else {
               return {
-                name: y[0].name,
+                name: axisLabel(y[0]),
                 value: `${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`,
               }
             }

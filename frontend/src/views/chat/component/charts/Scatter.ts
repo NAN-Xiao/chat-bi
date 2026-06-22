@@ -1,5 +1,5 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
@@ -70,8 +70,8 @@ export class Scatter extends BaseG2Chart {
           ]
         : [],
       tooltip: (datum: any) => ({
-        name: series.length > 0 ? datum[series[0].value] : y[0].name,
-        value: `${x[0].name}: ${formatNumber(datum[x[0].value])}, ${y[0].name}: ${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
+        name: series.length > 0 ? datum[series[0].value] : axisLabel(y[0]),
+        value: `${axisLabel(x[0])}: ${formatNumber(datum[x[0].value])}, ${axisLabel(y[0])}: ${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
       }),
     } as G2Spec)
 

@@ -82,7 +82,7 @@ function unique(values: Array<string | undefined | null>) {
 }
 
 function toAxis(field: string): ChartAxis {
-  return { name: field, value: field }
+  return { value: field }
 }
 
 function toAxes(fields: string[]): ChartAxis[] {
@@ -141,7 +141,7 @@ function initEditor() {
   form.x = axisValues(chart.xAxis)[0] || ''
   form.y = axisValues(chart.yAxis)
   form.series = axisValues(chart.series)[0] || ''
-  form.multiQuotaName = chart.multiQuotaName || t('dashboard.metric_type')
+  form.multiQuotaName = t('dashboard.metric_type')
   preview.fields = fields
   preview.data = viewInfo.data?.data || []
   preview.status = viewInfo.status || 'success'
@@ -221,7 +221,6 @@ function buildChart() {
     xAxis: [],
     yAxis: [],
     series: [],
-    multiQuotaName: undefined,
   }
 
   if (form.chartType === 'table') {
@@ -243,9 +242,6 @@ function buildChart() {
   chart.xAxis = toAxes([form.x].filter(Boolean) as string[])
   chart.yAxis = toAxes(form.series ? form.y.slice(0, 1) : form.y)
   chart.series = toAxes([form.series].filter(Boolean) as string[])
-  if (chart.yAxis.length > 1 && chart.series.length === 0) {
-    chart.multiQuotaName = form.multiQuotaName || t('dashboard.metric_type')
-  }
   return chart
 }
 

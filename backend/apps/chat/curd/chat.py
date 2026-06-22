@@ -313,11 +313,7 @@ def get_chart_config(session: SessionDep, chart_record_id: int):
 
 def _format_column(column: dict) -> str:
     """格式化单个column字段"""
-    value = column.get('value', '')
-    name = column.get('name', '')
-    if value != name and name:
-        return f"{value}({name})"
-    return value
+    return column.get('value') or column.get('name') or ''
 
 
 def format_chart_fields(chart_info: dict) -> list:

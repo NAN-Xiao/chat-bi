@@ -1613,6 +1613,13 @@ SQL 口径：
 - 渠道/国家收入贡献：`channel`, `country`, `payers`, `revenue`, `revenue_share_pct`, `arppu`；图表的主 y 轴必须使用 `revenue` 或 `revenue_share_pct`，不要用 `payers` 代表收入贡献。
 - 图表：每日付费节奏可用柱/线；累计收入、累计付费率、LTV 用折线；商品/渠道收入占比可用饼图但只能表达单一收入占比指标；若同时比较收入、人数、ARPPU，优先用表格或柱图。
 
+字段展示名约定：
+- 自动生成图表配置时，SELECT 输出别名优先直接使用中文业务名，例如 PostgreSQL 写 `AS "付费人数"`、`AS "净收入"`；图表配置的 value 必须与 SQL 输出别名完全一致。
+- 只有在数据库或外部工具明确不支持中文/特殊字符别名时，才退回英文小写别名，并通过 field_labels/chart.name 使用中文展示名。
+- `lifecycle_day`/`x_lifecycle_day` 对应中文输出别名“生命周期日”；`cohort_users` 对应“新增用户数”；`daily_payers`/`payers`/`payer_count`/`y_payer_count` 对应“付费人数”；`cumulative_payers` 对应“累计付费人数”。
+- `revenue`/`daily_revenue`/`y_revenue` 对应“净收入”；`total_revenue`/`total_net_revenue` 对应“总净收入”；`cumulative_revenue` 对应“累计净收入”。
+- `payer_rate_pct`/`daily_pay_rate_pct` 对应“付费率”；`cumulative_payer_rate_pct` 对应“累计付费率”；`revenue_share_pct` 对应“收入占比”；`orders` 对应“订单数”；`arppu` 对应“ARPPU”；`ltv` 对应“LTV”。
+
 新增 cohort 后续付费参考 SQL：
 ```sql
 WITH cohort_params AS (

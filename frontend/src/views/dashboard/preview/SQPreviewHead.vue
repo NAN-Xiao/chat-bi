@@ -3,13 +3,22 @@ import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 const { t } = useI18n()
+const router = useRouter()
 
 const preview = () => {
-  window.open(`#/dashboard-preview?resourceId=${props.dashboardInfo.id}`, '_blank')
+  const route = router.resolve({
+    path: '/dashboard-preview',
+    query: { resourceId: props.dashboardInfo.id },
+  })
+  window.open(route.href, '_blank', 'noopener')
 }
 const edit = () => {
-  window.open(`#/canvas?resourceId=${props.dashboardInfo.id}`, '_self')
+  router.push({
+    path: '/canvas',
+    query: { resourceId: props.dashboardInfo.id },
+  })
 }
 const props = defineProps({
   dashboardInfo: {

@@ -35,7 +35,7 @@ template:
         ⚠️ 注意：示例中的表名、字段名均为演示虚构，实际使用时需替换为用户提供的真实标识符。
         🔍 重点观察：
           1. 双引号包裹所有数据库对象的规范用法
-          2. 中英别名/百分比/函数等特殊字段的处理
+          2. 展示别名/百分比/函数等特殊字段的处理
           3. 关键字冲突的规避方式
       </intro>
       <example>
@@ -89,3 +89,4 @@ template:
     {"success":true,"sql":"SELECT \"country\" AS \"country_name\", \"gdp\" AS \"gdp_usd\" FROM \"Sample_Database\".\"sample_country_gdp\" WHERE \"year\" = '2025' AND \"country\" = '中国'","tables":["sample_country_gdp"],"chart-type":"table"}
   example_answer_3_with_limit: |
     {"success":true,"sql":"SELECT \"country\" AS \"country_name\", \"gdp\" AS \"gdp_usd\" FROM \"Sample_Database\".\"sample_country_gdp\" WHERE \"year\" = '2025' AND \"country\" = '中国' LIMIT 1000","tables":["sample_country_gdp"],"chart-type":"table"}
+

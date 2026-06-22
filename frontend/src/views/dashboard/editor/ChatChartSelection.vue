@@ -179,7 +179,6 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
             xAxis: axis?.x ? [axis?.x] : [],
             yAxis: yAxis,
             series: axis?.series ? [axis?.series] : [],
-            multiQuotaName: axis?.['multi-quota']?.name,
           }
           chartInfoList.value.push(recordeInfo)
         }

@@ -31,10 +31,21 @@ from apps.system.models.user import UserModel
 from apps.system.models.tenant import TenantUserModel
 from apps.system.crud.user import is_system_admin
 from common.core.deps import SessionDep, CurrentUser
+from common.utils.chart_config import sanitize_chart_display_names
 import uuid
 import time
 
 from common.utils.tree_utils import build_tree_generic
+
+
+def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | bytes | None:
+    if not canvas_view_info:
+        return canvas_view_info
+    try:
+        canvas_view_obj = orjson.loads(canvas_view_info)
+    except Exception:
+        return canvas_view_info
+    return orjson.dumps(sanitize_chart_display_names(canvas_view_obj)).decode()
 
 
 def _user_id(current_user: CurrentUser) -> str:
@@ -303,7 +314,7 @@ def _execute_dashboard_chart_sql(
         current_user=current_user,
         datasource_id=datasource_id,
         sql=sql,
-        origin_column=False,
+        origin_column=True,
     )
 
 
@@ -718,7 +729,7 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     record.node_type = dashboard.node_type
     record.component_data = dashboard.component_data
     record.canvas_style_data = dashboard.canvas_style_data
-    record.canvas_view_info = dashboard.canvas_view_info
+    record.canvas_view_info = _sanitize_canvas_view_info(dashboard.canvas_view_info)
     session.add(record)
     session.flush()
     session.refresh(record)
@@ -743,7 +754,7 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     record.update_time = int(time.time())
     record.component_data = dashboard.component_data
     record.canvas_style_data = dashboard.canvas_style_data
-    record.canvas_view_info = dashboard.canvas_view_info
+    record.canvas_view_info = _sanitize_canvas_view_info(dashboard.canvas_view_info)
     session.add(record)
     session.commit()
     session.refresh(record)

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import html2canvas from 'html2canvas'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
@@ -53,7 +53,6 @@ interface AnalysisChartConfig {
     y?: ChartAxis | ChartAxis[]
     series?: ChartAxis
     'multi-quota'?: {
-      name?: string
       value?: string[]
     }
   }
@@ -82,6 +81,7 @@ const emits = defineEmits<{
 }>()
 
 const route = useRoute()
+const router = useRouter()
 const analysisContext = useDatasourceContextStore()
 const messages = ref<DockMessage[]>([])
 const inputMessage = ref('')
@@ -625,7 +625,7 @@ const getChartSeries = (chart?: AnalysisChartConfig) => {
   return []
 }
 
-const getMultiQuotaName = (chart?: AnalysisChartConfig) => chart?.axis?.['multi-quota']?.name
+const getMultiQuotaName = (_chart?: AnalysisChartConfig) => '指标类型'
 
 const getPreviewRows = (block: AnalysisBlock) => (block.data || []).slice(0, 6)
 
@@ -818,7 +818,6 @@ const buildDashboardChartInfo = (block: AnalysisBlock, componentId: string) => {
       xAxis: getChartXAxis(chart),
       yAxis,
       series: getChartSeries(chart),
-      multiQuotaName: getMultiQuotaName(chart),
     },
   }
 }
@@ -875,7 +874,11 @@ const generateDashboardFromMessage = async (message: DockMessage) => {
               'button',
               {
                 class: 'analysis-open-dashboard-btn',
-                onClick: () => window.open(`#/canvas?resourceId=${createdDashboard.id}`, '_self'),
+                onClick: () =>
+                  router.push({
+                    path: '/canvas',
+                    query: { resourceId: createdDashboard.id },
+                  }),
               },
               '打开看板'
             )

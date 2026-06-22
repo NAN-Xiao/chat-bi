@@ -3,7 +3,7 @@ import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import ChartInsightHeader from '@/views/chat/component/ChartInsightHeader.vue'
 import type { ChatMessage } from '@/api/chat.ts'
 import { computed, nextTick, ref } from 'vue'
-import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import { useI18n } from 'vue-i18n'
 import { buildInsightColumns, resolveInsightLayout } from '@/views/chat/component/chartInsight.ts'
 
@@ -22,15 +22,14 @@ const chartObject = computed<{
   type: ChartTypes
   title: string
   axis: {
-    x: { name: string; value: string }
-    y: { name: string; value: string } | Array<{ name: string; value: string }>
-    series: { name: string; value: string }
+    x: ChartAxis
+    y: ChartAxis | Array<ChartAxis>
+    series: ChartAxis
     'multi-quota': {
-      name: string
       value: Array<string>
     }
   }
-  columns: Array<{ name: string; value: string }>
+  columns: Array<ChartAxis>
 }>(() => {
   if (props.message?.record?.chart) {
     return JSON.parse(props.message.record.chart)
@@ -72,7 +71,7 @@ const series = computed(() => {
 })
 
 const multiQuotaName = computed(() => {
-  return chartObject.value?.axis?.['multi-quota']?.name
+  return t('dashboard.metric_type')
 })
 
 const isTableChart = computed(() => props.chartType === 'table')

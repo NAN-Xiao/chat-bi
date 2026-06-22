@@ -8,7 +8,7 @@ import cloneDeep from 'lodash/cloneDeep'
 import { storeToRefs } from 'pinia'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import router from '@/router'
-import { initCanvasData } from '@/views/dashboard/utils/canvasUtils.ts'
+import { load_resource_prepare } from '@/views/dashboard/utils/canvasUtils.ts'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import {
@@ -27,9 +27,9 @@ const { dashboardInfo, componentData, canvasStyleData, canvasViewInfo, fullscree
 
 const dataInitState = ref(true)
 const state = reactive({
-  routerPid: null,
-  resourceId: null,
-  opt: null,
+  routerPid: null as string | null,
+  resourceId: null as string | null,
+  opt: null as string | null,
   datasource: null as number | string | null | undefined,
 })
 
@@ -37,13 +37,104 @@ const dashboardEditorInnerRef = ref(null)
 let canvasStateReady = false
 let applyingCanvasState = false
 let draftSaveTimer: number | null = null
+let routeLoadVersion = 0
 
 const loadCanvasResource = (id: string | number) =>
-  new Promise<void>((resolve) => {
-    initCanvasData({ id }, function () {
-      resolve()
+  new Promise<any>((resolve) => {
+    load_resource_prepare({ id }, function (result: any) {
+      resolve(result)
     })
   })
+
+const firstQueryValue = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value[0] ? String(value[0]) : null
+  }
+  return value ? String(value) : null
+}
+
+const syncRouteState = () => {
+  const query = router.currentRoute.value.query
+  state.opt = firstQueryValue(query.opt)
+  state.resourceId = firstQueryValue(query.resourceId)
+  state.routerPid = firstQueryValue(query.pid)
+  state.datasource = firstQueryValue(query.datasource) || datasourceContext.datasourceId
+}
+
+const applyLoadedCanvasResource = async (resourceId: string | number, result: any) => {
+  await pauseCanvasStateWatch(() => {
+    dashboardStore.setDashboardInfo(result?.dashboardInfo)
+    dashboardStore.setCanvasStyleData(result?.canvasStyleResult || {})
+    dashboardStore.setComponentData(result?.canvasDataResult || [])
+    dashboardStore.setCanvasViewInfo(result?.canvasViewInfoPreview || {})
+    dashboardStore.setCanvasEditingSourceKey(
+      getDashboardCanvasSourceKey(result?.dashboardInfo?.id || resourceId)
+    )
+  })
+}
+
+const loadCanvasFromRoute = async () => {
+  const loadVersion = ++routeLoadVersion
+  persistCanvasDraft()
+  canvasStateReady = false
+  await datasourceContext.loadDatasources()
+  if (loadVersion !== routeLoadVersion) return
+
+  syncRouteState()
+  const sourceKey =
+    state.opt === 'create'
+      ? getCreateCanvasSourceKey(state.datasource, state.routerPid)
+      : getDashboardCanvasSourceKey(state.resourceId)
+  if (
+    sourceKey &&
+    dashboardStore.canvasEditingSourceKey === sourceKey &&
+    dashboardStore.hasUnsavedCanvasChanges
+  ) {
+    canvasStateReady = true
+    return
+  }
+
+  dataInitState.value = false
+  try {
+    if (state.opt === 'create') {
+      const createSourceKey = getCreateCanvasSourceKey(state.datasource, state.routerPid)
+      await pauseCanvasStateWatch(() => {
+        dashboardStore.canvasDataInit()
+        dashboardStore.updateDashboardInfo({
+          dataState: 'prepare',
+          name: t('dashboard.new_dashboard'),
+          pid: state.routerPid,
+          datasource: state.datasource,
+          canEdit: true,
+          canShare: true,
+        })
+        dashboardStore.setCanvasEditingSourceKey(createSourceKey)
+      })
+      const restored = await restoreCanvasDraft(createSourceKey)
+      if (!restored) {
+        dashboardStore.markCanvasSaved()
+      }
+    } else if (state.resourceId && sourceKey) {
+      const resourceId = state.resourceId
+      const result = await loadCanvasResource(resourceId)
+      if (loadVersion !== routeLoadVersion) return
+      await applyLoadedCanvasResource(resourceId, result)
+      const restored = await restoreCanvasDraft(sourceKey)
+      if (!restored) {
+        dashboardStore.markCanvasSaved()
+      }
+    } else {
+      await pauseCanvasStateWatch(() => {
+        dashboardStore.canvasDataInit()
+      })
+    }
+  } finally {
+    if (loadVersion === routeLoadVersion) {
+      dataInitState.value = true
+      canvasStateReady = true
+    }
+  }
+}
 
 const pauseCanvasStateWatch = async (task: () => void | Promise<void>) => {
   applyingCanvasState = true
@@ -188,59 +279,17 @@ const maxYComponentCount = () => {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', handleBeforeUnload)
-  await datasourceContext.loadDatasources()
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  state.opt = router.currentRoute.value.query.opt
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  state.resourceId = router.currentRoute.value.query.resourceId
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  state.routerPid = router.currentRoute.value.query.pid
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  state.datasource = router.currentRoute.value.query.datasource || datasourceContext.datasourceId
-  const sourceKey =
-    state.opt === 'create'
-      ? getCreateCanvasSourceKey(state.datasource, state.routerPid)
-      : getDashboardCanvasSourceKey(state.resourceId)
-  if (
-    sourceKey &&
-    dashboardStore.canvasEditingSourceKey === sourceKey &&
-    dashboardStore.hasUnsavedCanvasChanges
-  ) {
-    canvasStateReady = true
-    return
-  }
-  if (state.opt === 'create') {
-    const createSourceKey = getCreateCanvasSourceKey(state.datasource, state.routerPid)
-    await pauseCanvasStateWatch(() => {
-      dashboardStore.canvasDataInit()
-      dashboardStore.updateDashboardInfo({
-        dataState: 'prepare',
-        name: t('dashboard.new_dashboard'),
-        pid: state.routerPid,
-        datasource: state.datasource,
-        canEdit: true,
-        canShare: true,
-      })
-      dashboardStore.setCanvasEditingSourceKey(createSourceKey)
-    })
-    const restored = await restoreCanvasDraft(createSourceKey)
-    if (!restored) {
-      dashboardStore.markCanvasSaved()
-    }
-  } else if (state.resourceId && sourceKey) {
-    const resourceId = state.resourceId
-    dataInitState.value = false
-    await pauseCanvasStateWatch(async () => {
-      await loadCanvasResource(resourceId)
-    })
-    const restored = await restoreCanvasDraft(sourceKey)
-    if (!restored) {
-      dashboardStore.markCanvasSaved()
-    }
-    dataInitState.value = true
-  }
-  canvasStateReady = true
+  await loadCanvasFromRoute()
 })
+
+watch(
+  () => router.currentRoute.value.fullPath,
+  () => {
+    if (router.currentRoute.value.path === '/canvas') {
+      loadCanvasFromRoute()
+    }
+  }
+)
 
 onBeforeUnmount(() => {
   persistCanvasDraft()

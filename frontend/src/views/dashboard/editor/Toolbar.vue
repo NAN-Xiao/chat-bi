@@ -87,9 +87,10 @@ const props = defineProps({
 const canEditDashboard = computed(() => dashboardInfo.value.canEdit !== false)
 
 const groupOptFinish = (result: any) => {
-  let url = window.location.href
-  url = url.replace(/(#\/[^?]*)(?:\?[^#]*)?/, `$1?resourceId=${result.resourceId}`)
-  window.history.replaceState({ path: url }, '', url)
+  router.replace({
+    path: '/canvas',
+    query: { resourceId: result.resourceId },
+  })
 }
 
 const chartSelectionFinish = () => {}

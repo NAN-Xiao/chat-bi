@@ -409,7 +409,7 @@ function buildLatestStats(): Array<StatItem> {
     const seen = new Set<string>()
     const stats: Array<StatItem> = []
     latestRows.value.forEach((row) => {
-      const label = stringifyValue(row[seriesAxis.value!.value]) || seriesAxis.value!.name
+      const label = stringifyValue(row[seriesAxis.value!.value]) || displayAxisName(seriesAxis.value)
       if (!label || seen.has(label)) {
         return
       }
@@ -455,7 +455,7 @@ function buildTrendSeriesStats(axis: ChartAxis): Array<StatItem> {
   const stats: Array<StatItem & { rawValue: number }> = []
   latestRows.value.forEach((row) => {
     const currentValue = numericValue(row, axis)
-    const label = stringifyValue(row[seriesAxis.value!.value]) || seriesAxis.value!.name
+    const label = stringifyValue(row[seriesAxis.value!.value]) || displayAxisName(seriesAxis.value)
     if (!label || seen.has(label) || currentValue === null) {
       return
     }
@@ -643,7 +643,7 @@ function buildRankedStats(includeTotal = true): Array<StatItem> {
     stats.push({
       label: item.label,
       value: formatChartValue(item.row[axis.value], axis),
-      subLabel: share === null ? axis.name : t('chat.insight_share', [formatPercent(share)]),
+      subLabel: share === null ? displayAxisName(axis) : t('chat.insight_share', [formatPercent(share)]),
       color: chartPalette[(index + stats.length) % chartPalette.length],
     })
   })

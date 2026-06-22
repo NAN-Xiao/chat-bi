@@ -116,6 +116,47 @@ def _normalize_chart_field_name(value: Any) -> str:
     return str(value or "").strip().strip('`"[]').lower()
 
 
+def _clean_chart_value(value: Any) -> str:
+    return str(value or "").strip().strip('`"[]')
+
+
+def _sanitize_chart_axis_binding(axis_item: Any) -> None:
+    if not isinstance(axis_item, dict):
+        return
+    value = _clean_chart_value(axis_item.get("value") or axis_item.get("name"))
+    if value:
+        axis_item["value"] = value
+    axis_item.pop("name", None)
+
+
+def _sanitize_chart_bindings(chart: dict[str, Any]) -> dict[str, Any]:
+    for column in chart.get("columns") or []:
+        _sanitize_chart_axis_binding(column)
+
+    axis = chart.get("axis")
+    if isinstance(axis, dict):
+        for key in ("x", "series"):
+            _sanitize_chart_axis_binding(axis.get(key))
+
+        y_axis = axis.get("y")
+        if isinstance(y_axis, list):
+            for item in y_axis:
+                _sanitize_chart_axis_binding(item)
+        else:
+            _sanitize_chart_axis_binding(y_axis)
+
+        multi_quota = axis.get("multi-quota")
+        if isinstance(multi_quota, dict):
+            values = multi_quota.get("value")
+            if isinstance(values, list):
+                multi_quota["value"] = [_clean_chart_value(value) for value in values if _clean_chart_value(value)]
+            elif values:
+                multi_quota["value"] = _clean_chart_value(values)
+            multi_quota.pop("name", None)
+
+    return chart
+
+
 def _is_chart_numeric_value(value: Any) -> bool:
     if value is None or isinstance(value, bool):
         return False
@@ -172,7 +213,7 @@ def _build_complete_table_chart(fields: list[Any], title: str | None = None) -> 
     columns = []
     for field in fields or []:
         field_name = str(field)
-        columns.append({"name": field_name, "value": field_name})
+        columns.append({"value": field_name})
     return {
         "type": "table",
         "title": title or "数据明细",
@@ -1224,35 +1265,7 @@ class LLMService:
         try:
             data = orjson.loads(json_str)
             if data['type'] and data['type'] != 'error':
-                # todo type check
-                chart = data
-                if chart.get('columns'):
-                    for v in chart.get('columns'):
-                        v['value'] = v.get('value').lower()
-                if chart.get('axis'):
-                    if chart.get('axis').get('x'):
-                        chart.get('axis').get('x')['value'] = chart.get('axis').get('x').get('value').lower()
-                    y_axis = chart.get('axis').get('y')
-                    if y_axis:
-                        if isinstance(y_axis, list):
-                            # 数组格式: y: [{name, value}, ...]
-                            for item in y_axis:
-                                if item.get('value'):
-                                    item['value'] = item['value'].lower()
-                        elif isinstance(y_axis, dict) and y_axis.get('value'):
-                            # 旧格式: y: {name, value}
-                            y_axis['value'] = y_axis['value'].lower()
-                    if chart.get('axis').get('series'):
-                        chart.get('axis').get('series')['value'] = chart.get('axis').get('series').get('value').lower()
-                if chart.get('axis') and chart['axis'].get('multi-quota'):
-                    multi_quota = chart['axis']['multi-quota']
-                    if multi_quota.get('value'):
-                        if isinstance(multi_quota['value'], list):
-                            # 将数组中的每个值转换为小写
-                            multi_quota['value'] = [v.lower() if v else v for v in multi_quota['value']]
-                        elif isinstance(multi_quota['value'], str):
-                            # 如果是字符串，也转换为小写
-                            multi_quota['value'] = multi_quota['value'].lower()
+                chart = _sanitize_chart_bindings(data)
             elif data['type'] == 'error':
                 message = data['reason']
                 error = True
@@ -1345,12 +1358,14 @@ class LLMService:
                     datasource=self.ds,
                     sql=sql,
                     allowed_tables=self.table_name_list,
+                    origin_column=True,
                 ).result
             return execute_external_user_query_or_raise(
                 datasource=self.ds,
                 sql=sql,
                 allowed_tables=scope_allowed_tables or self.table_name_list,
                 scope_sql=scope_sql or self.chat_question.sql,
+                origin_column=True,
             ).result
         except Exception as e:
             if isinstance(e, ParseSQLResultError):
@@ -2024,21 +2039,21 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
         # 获取multi-quota字段列表
         if axis_data.get('multi-quota') and 'value' in axis_data.get('multi-quota'):
             multi_quota_fields = axis_data.get('multi-quota').get('value', [])
-            multi_quota_name = axis_data.get('multi-quota').get('name')
+            multi_quota_name = axis_data.get('multi-quota').get('name') or '指标类型'
 
     axis = []
     for v in columns:
-        axis.append({'name': v.get('name'), 'value': v.get('value')})
+        axis.append({'name': v.get('name') or v.get('value'), 'value': v.get('value') or v.get('name')})
     if x:
-        axis.append({'name': x.get('name'), 'value': x.get('value'), 'type': 'x'})
+        axis.append({'name': x.get('name') or x.get('value'), 'value': x.get('value') or x.get('name'), 'type': 'x'})
     if y:
         y_list = y if isinstance(y, list) else [y]
 
         for y_item in y_list:
             if isinstance(y_item, dict) and 'value' in y_item:
                 y_obj = {
-                    'name': y_item.get('name'),
-                    'value': y_item.get('value'),
+                    'name': y_item.get('name') or y_item.get('value'),
+                    'value': y_item.get('value') or y_item.get('name'),
                     'type': 'y'
                 }
                 # 如果是multi-quota字段，添加标志
@@ -2046,7 +2061,7 @@ def request_picture(chat_id: int, record_id: int, chart: dict, data: dict):
                     y_obj['multi-quota'] = True
                 axis.append(y_obj)
     if series:
-        axis.append({'name': series.get('name'), 'value': series.get('value'), 'type': 'series'})
+        axis.append({'name': series.get('name') or series.get('value'), 'value': series.get('value') or series.get('name'), 'type': 'series'})
     if multi_quota_name:
         axis.append({'name': multi_quota_name, 'value': multi_quota_name, 'type': 'other-info'})
 

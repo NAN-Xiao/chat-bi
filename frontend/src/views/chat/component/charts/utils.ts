@@ -1,4 +1,5 @@
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { endsWith, replace } from 'lodash-es'
 
@@ -110,7 +111,7 @@ export function toNullableNumber(value: any, multiplier = 1): number | null {
 }
 
 function axisText(axis: ChartAxis): string {
-  return `${axis.name ?? ''} ${axis.value ?? ''}`.toLowerCase()
+  return axisLabel(axis).toLowerCase()
 }
 
 function isAverageAxis(axis: ChartAxis): boolean {
@@ -186,7 +187,7 @@ function buildMetricRows(
 
       const row: ChartData = {
         [valueField]: value,
-        [AUTO_SERIES_FIELD]: metricAxis.name,
+        [AUTO_SERIES_FIELD]: axisLabel(metricAxis),
         [AUTO_PERCENT_FIELD]: percent,
       }
       for (const xAxis of x) {
@@ -318,7 +319,7 @@ export function processMultiQuotaData(
   const _list: Array<ChartData> = []
   const _map: { [propName: string]: string } = {}
   y.forEach((axis) => {
-    _map[axis.value] = axis.name
+    _map[axis.value] = axisLabel(axis)
   })
   for (const datum of data) {
     multiQuota.forEach((quota) => {
@@ -340,7 +341,7 @@ export function processMultiQuotaData(
 
   return {
     data: _list,
-    y: [{ name: AUTO_VALUE_FIELD, value: AUTO_VALUE_FIELD, type: 'y' } as ChartAxis],
+    y: [{ value: AUTO_VALUE_FIELD, type: 'y' } as ChartAxis],
     series: [{ name: multiQuotaName, value: AUTO_SERIES_FIELD, type: 'series' } as ChartAxis],
   }
 }

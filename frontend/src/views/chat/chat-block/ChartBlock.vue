@@ -5,7 +5,7 @@ import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
 import { computed, ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { concat } from 'lodash-es'
-import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import {
   DataAnalysis,
   DataBoard,
@@ -132,11 +132,11 @@ const chartObject = computed<{
   type: ChartTypes
   title: string
   axis: {
-    x: { name: string; value: string }
-    y: { name: string; value: string }
-    series: { name: string; value: string }
+    x: ChartAxis
+    y: ChartAxis | ChartAxis[]
+    series: ChartAxis
   }
-  columns: Array<{ name: string; value: string }>
+  columns: Array<ChartAxis>
 }>(() => {
   if (props.message?.record?.chart) {
     return JSON.parse(props.message.record.chart)
@@ -329,7 +329,6 @@ function addToDashboard() {
       xAxis: axis?.x ? [axis?.x] : [],
       yAxis: yAxis,
       series: axis?.series ? [axis?.series] : [],
-      multiQuotaName: axis?.['multi-quota']?.name,
     }
   }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { getChartInstance } from '@/views/chat/component/index.ts'
-import type { BaseChart, ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisValue, type BaseChart, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
 import { useEmitt } from '@/utils/useEmitt.ts'
 
 const params = withDefaults(
@@ -39,39 +39,41 @@ const axis = computed(() => {
   const _list: Array<ChartAxis> = []
   const usedValues = new Set<string>()
   const pushAxis = (axis: ChartAxis) => {
-    const roleKey = `${axis.type || 'column'}:${axis.value}`
-    if (axis.value && usedValues.has(roleKey)) {
+    const value = axisValue(axis)
+    if (!value) {
       return
     }
-    if (axis.value) {
-      usedValues.add(roleKey)
+    const normalizedAxis: ChartAxis = { ...axis, value }
+    const roleKey = `${normalizedAxis.type || 'column'}:${value}`
+    if (usedValues.has(roleKey)) {
+      return
     }
-    _list.push(axis)
+    usedValues.add(roleKey)
+    _list.push(normalizedAxis)
   }
   params.x.forEach((column) => {
-    pushAxis({ name: column.name, value: column.value, type: 'x' })
+    pushAxis({ ...column, value: axisValue(column), type: 'x' })
   })
   params.y.forEach((column) => {
     pushAxis({
-      name: column.name,
-      value: column.value,
+      ...column,
+      value: axisValue(column),
       type: 'y',
       'multi-quota': column['multi-quota'],
     })
   })
   params.series.forEach((column) => {
-    pushAxis({ name: column.name, value: column.value, type: 'series' })
+    pushAxis({ ...column, value: axisValue(column), type: 'series' })
   })
   if (params.multiQuotaName) {
     pushAxis({
-      name: params.multiQuotaName,
       value: params.multiQuotaName,
       type: 'other-info',
       hidden: true,
     })
   }
   params.columns.forEach((column) => {
-    pushAxis({ name: column.name, value: column.value })
+    pushAxis({ ...column, value: axisValue(column) })
   })
   return _list
 })

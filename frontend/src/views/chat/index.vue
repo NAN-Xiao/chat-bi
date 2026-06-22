@@ -1264,8 +1264,7 @@ function jumpCreatChat() {
     nextTick(() => {
       hiddenChatCreatorRef.value?.createChat(_id)
     })
-    const newUrl = window.location.hash.replace(/\?.*$/, '')
-    history.replaceState({}, '', newUrl)
+    router.replace('/chat/index')
   }
 }
 

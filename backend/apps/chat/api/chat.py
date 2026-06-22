@@ -724,27 +724,27 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
     fields = []
     if chart_info.get('columns') and len(chart_info.get('columns')) > 0:
         for column in chart_info.get('columns'):
-            fields.append(AxisObj(name=column.get('name'), value=column.get('value')))
+            fields.append(AxisObj(name=column.get('name') or column.get('value'), value=column.get('value') or column.get('name')))
     # 处理 axis
     if axis := chart_info.get('axis'):
         # 处理 x 轴
         if x_axis := axis.get('x'):
             if 'name' in x_axis or 'value' in x_axis:
-                fields.append(AxisObj(name=x_axis.get('name'), value=x_axis.get('value')))
+                fields.append(AxisObj(name=x_axis.get('name') or x_axis.get('value'), value=x_axis.get('value') or x_axis.get('name')))
 
         # 处理 y 轴 - 兼容数组和对象格式
         if y_axis := axis.get('y'):
             if isinstance(y_axis, list):
                 for column in y_axis:
                     if 'name' in column or 'value' in column:
-                        fields.append(AxisObj(name=column.get('name'), value=column.get('value')))
+                        fields.append(AxisObj(name=column.get('name') or column.get('value'), value=column.get('value') or column.get('name')))
             elif isinstance(y_axis, dict) and ('name' in y_axis or 'value' in y_axis):
-                fields.append(AxisObj(name=y_axis.get('name'), value=y_axis.get('value')))
+                fields.append(AxisObj(name=y_axis.get('name') or y_axis.get('value'), value=y_axis.get('value') or y_axis.get('name')))
 
         # 处理 series
         if series := axis.get('series'):
             if 'name' in series or 'value' in series:
-                fields.append(AxisObj(name=series.get('name'), value=series.get('value')))
+                fields.append(AxisObj(name=series.get('name') or series.get('value'), value=series.get('value') or series.get('name')))
 
     _predict_data = []
     if is_predict_data:

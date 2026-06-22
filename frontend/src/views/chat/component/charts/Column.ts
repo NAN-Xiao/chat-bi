@@ -1,5 +1,5 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
   buildMixedUnitComboOptions,
@@ -139,7 +139,7 @@ export class Column extends BaseG2Chart {
           }
         } else {
           return {
-            name: y[0].name,
+            name: axisLabel(y[0]),
             value: `${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`,
           }
         }

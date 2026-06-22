@@ -129,9 +129,19 @@ template:
           <title>标识符處理优先级</title>
           <requirements>
             <requirement>1. 首先从<m-schema>中複製标识符到SQL中</requirement>
-            <requirement>2. 生成其他回应文本（如brief、message）</requirement>
-            <requirement>3. 根据用户语言要求，只对非SQL部分的文本进行语言转换</requirement>
-            <requirement>4. 绝对不触及SQL中的标识符</requirement>
+            <requirement>2. 为 SELECT 输出列生成面向用户的业务别名；输出别名可以使用用户语言，例如 PostgreSQL 中 `AS "付费人数"`，MySQL 中 `AS `付费人数``</requirement>
+            <requirement>3. 生成其他回应文本（如brief、message）</requirement>
+            <requirement>4. 根据用户语言要求，只对非SQL数据库标识符部分的文本进行语言转换</requirement>
+            <requirement>5. 绝对不触及SQL中的真实数据库标识符；SELECT 输出别名不属于数据库真实字段，可作为图表可见字段名使用</requirement>
+          </requirements>
+        </rule>
+        <rule priority="high" id="display-alias-policy">
+          <title>SQL输出别名即图表展示名</title>
+          <requirements>
+            <requirement>SELECT 输出列别名会直接成为图表、表格和指标卡可选择字段；优先使用用户语言中的自然业务名作为输出别名。</requirement>
+            <requirement>如果输出别名使用中文、空格、括号、百分号等非普通标识符字符，必须按当前数据库引擎规则加引号，例如 PostgreSQL/Oracle/ClickHouse/DM/Redshift/Elasticsearch 使用双引号，MySQL/Doris/Hive/StarRocks 使用反引号，SQL Server 使用方括号。</requirement>
+            <requirement>图表 JSON 中的 value 必须与 SQL 输出别名完全一致；如果 SQL 写 `AS "付费人数"`，图表 value 就必须是 `付费人数`。</requirement>
+            <requirement>除非数据库引擎不支持对应别名，否则不要为了内部绑定强制改成英文别名；用户后续编辑 SQL alias 应能直接改变图表显示字段。</requirement>
           </requirements>
         </rule>
         <rule>
@@ -461,11 +471,17 @@ template:
           涉及业务指标、字段展示名、图表类型偏好、维度/指标映射或结果解释时，必须优先遵循本次选择的<Data-Skills>；旧版术语和SQL示例不会再单独提供，不能把未出现在<Data-Skills>或用户本次问题中的业务口径当作确定规则。
         </rule>
         <rule>
+          图表配置不需要生成 name 字段；字段 value 才是绑定 SQL 结果和前端展示的唯一字段，必须与 SQL 输出别名完全一致。如果 SQL 已经使用 `AS "付费人数"`，图表 value 就是“付费人数”。
+        </rule>
+        <rule>
+          字段展示名必须通过 SQL 输出别名表达，并优先来自<Data-Skills>、schema 字段注释或用户原文里的业务术语；如果缺少明确业务术语，只能使用通用、可读的{lang}名称，例如“日期”“分类”“数量”“金额”“比例”等。
+        </rule>
+        <rule>
           你需要在JSON内生成一个图表的标题，放在"title"字段内，这个标题需要尽量精简
         </rule>
         <rule>
           如果需要表格，JSON格式应为：
-          {{"type":"table", "title": "标题", "columns": [{{"name":"{lang}字段名1", "value": "SQL 查询列 1(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, {{"name": "{lang}字段名 2", "value": "SQL 查询列 2(有别名用别名,去掉外层的反引号、双引号、方括号)"}}]}}
+          {{"type":"table", "title": "标题", "columns": [{{"value": "SQL 查询列 1(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, {{"value": "SQL 查询列 2(有别名用别名,去掉外层的反引号、双引号、方括号)"}}]}}
           必须从 SQL 查询列中提取“columns”
         </rule>
         <rule>
@@ -484,7 +500,7 @@ template:
         </rule>
         <rule>
           如果需要柱状图，JSON格式应为<strong>（series为可选字段，仅当有分类字段时使用）</strong>：
-          {{"type":"column", "title": "标题", "axis": {{"x": {{"name":"维度轴的{lang}名称", "value": "SQL 查询维度轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "y": [{{"name":"数值轴的{lang}名称","value": "SQL 查询数值轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}], "series": {{"name":"分类的{lang}名称","value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
+          {{"type":"column", "title": "标题", "axis": {{"x": {{"value": "SQL 查询维度轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "y": [{{"value": "SQL 查询数值轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}], "series": {{"value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
           <strong>柱状图配置说明：</strong>
           <strong>1. x轴：维度轴，通常放置分类或时间字段（如日期、产品类别）</strong>
           <strong>2. y轴：数值轴，放置需要展示的数值指标</strong>
@@ -497,7 +513,7 @@ template:
           <strong>⚠️ 重要：条形图是柱状图的视觉旋转，但数据映射逻辑保持不变！</strong>
           <strong>必须遵循：x轴 = 维度轴（分类），y轴 = 数值轴（指标）</strong>
           <strong>不要将条形图的横向展示误解为x轴是数值！</strong>
-          {{"type":"bar", "title": "标题", "axis": {{"x": {{"name":"维度轴的{lang}名称", "value": "SQL 查询维度轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "y": [{{"name":"数值轴的{lang}名称","value": "SQL 查询数值轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}], "series": {{"name":"分类的{lang}名称","value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
+          {{"type":"bar", "title": "标题", "axis": {{"x": {{"value": "SQL 查询维度轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "y": [{{"value": "SQL 查询数值轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}], "series": {{"value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
           <strong>条形图配置原则：</strong>
           <strong>1. 条形图只是视觉展示不同，数据逻辑与柱状图相同</strong>
           <strong>2. x轴必须是维度字段（分类、时间等）</strong>
@@ -508,7 +524,7 @@ template:
         </rule>
         <rule>
           如果需要折线图，JSON格式应为<strong>（series为可选字段，仅当有分类字段时使用）</strong>：
-          {{"type":"line", "title": "标题", "axis": {{"x": {{"name":"维度轴的{lang}名称","value": "SQL 查询维度轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "y": [{{"name":"数值轴的{lang}名称","value": "SQL 查询数值轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}], "series": {{"name":"分类的{lang}名称","value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
+          {{"type":"line", "title": "标题", "axis": {{"x": {{"value": "SQL 查询维度轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "y": [{{"value": "SQL 查询数值轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}], "series": {{"value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
           <strong>折线图配置说明：</strong>
           <strong>1. x轴：维度轴，通常放置时间字段（如日期、月份）</strong>
           <strong>2. y轴：数值轴，放置需要展示趋势的数值指标</strong>
@@ -518,7 +534,7 @@ template:
         </rule>
         <rule>
           如果需要饼图，JSON格式应为：
-          {{"type":"pie", "title": "标题", "axis": {{"y": {{"name":"数值轴的{lang}名称","value":"SQL 查询数值的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "series": {{"name":"分类的{lang}名称","value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
+          {{"type":"pie", "title": "标题", "axis": {{"y": {{"value":"SQL 查询数值的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "series": {{"value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
           <strong>饼图配置说明：</strong>
           <strong>1. y轴：数值字段，表示各部分的大小</strong>
           <strong>2. series：分类字段，表示各部分的名称</strong>
@@ -526,32 +542,32 @@ template:
         </rule>
         <rule>
           如果需要指标卡，JSON格式应为：
-          {{"type":"metric", "title": "标题", "axis": {{"y": [{{"name":"指标的{lang}名称","value":"SQL 查询指标列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}]}}}}
+          {{"type":"metric", "title": "标题", "axis": {{"y": [{{"value":"SQL 查询指标列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}]}}}}
           指标卡适合展示单个或少量核心汇总指标，例如总量、均值、比率、状态值或其它已由语义层定义的关键指标，可以有一个或多个 y 指标，不需要 x 或 series。
         </rule>
         <rule>
           如果需要漏斗图，JSON格式应为：
-          {{"type":"funnel", "title": "标题", "axis": {{"x": {{"name":"步骤的{lang}名称","value":"SQL 查询步骤列"}}, "y": {{"name":"指标的{lang}名称","value":"SQL 查询指标列"}}}}}}
+          {{"type":"funnel", "title": "标题", "axis": {{"x": {{"value":"SQL 查询步骤列"}}, "y": {{"value":"SQL 查询指标列"}}}}}}
           漏斗图用于已定义顺序的步骤、阶段或路径分析，x 为步骤/阶段，y 为数量、次数或金额等指标，SQL 必须按语义层或用户明确给出的步骤顺序排序。
         </rule>
         <rule>
           如果需要热力图，JSON格式应为：
-          {{"type":"heatmap", "title": "标题", "axis": {{"x": {{"name":"横向维度的{lang}名称","value":"SQL 查询横向维度列"}}, "y": {{"name":"颜色指标的{lang}名称","value":"SQL 查询指标列"}}, "series": {{"name":"纵向维度的{lang}名称","value":"SQL 查询纵向维度列"}}}}}}
+          {{"type":"heatmap", "title": "标题", "axis": {{"x": {{"value":"SQL 查询横向维度列"}}, "y": {{"value":"SQL 查询指标列"}}, "series": {{"value":"SQL 查询纵向维度列"}}}}}}
           热力图用于二维分布、矩阵或坐标密度展示，必须同时提供 x、series 和 y。
         </rule>
         <rule>
           如果需要散点图，JSON格式应为：
-          {{"type":"scatter", "title": "标题", "axis": {{"x": {{"name":"X轴指标的{lang}名称","value":"SQL 查询X轴列"}}, "y": {{"name":"Y轴指标的{lang}名称","value":"SQL 查询Y轴列"}}, "series": {{"name":"分类的{lang}名称","value":"SQL 查询分类列"}}}}}}
+          {{"type":"scatter", "title": "标题", "axis": {{"x": {{"value":"SQL 查询X轴列"}}, "y": {{"value":"SQL 查询Y轴列"}}, "series": {{"value":"SQL 查询分类列"}}}}}}
           散点图用于两个数值指标之间的二维关系，series 可选。
         </rule>
         <rule>
           如果需要桑基图，JSON格式应为：
-          {{"type":"sankey", "title": "标题", "axis": {{"x": {{"name":"来源的{lang}名称","value":"SQL 查询来源列"}}, "y": {{"name":"流量指标的{lang}名称","value":"SQL 查询流量或金额列"}}, "series": {{"name":"去向的{lang}名称","value":"SQL 查询去向列"}}}}}}
+          {{"type":"sankey", "title": "标题", "axis": {{"x": {{"value":"SQL 查询来源列"}}, "y": {{"value":"SQL 查询流量或金额列"}}, "series": {{"value":"SQL 查询去向列"}}}}}}
           桑基图用于来源到去向的流向、路径或状态迁移展示，必须提供来源 x、去向 series 和流量/金额 y。
         </rule>
         <rule>
           如果需要矩形树图，JSON格式应为：
-          {{"type":"treemap", "title": "标题", "axis": {{"x": {{"name":"分类的{lang}名称","value":"SQL 查询分类列"}}, "y": {{"name":"贡献指标的{lang}名称","value":"SQL 查询可累加指标列"}}, "series": {{"name":"上层分类的{lang}名称","value":"SQL 查询上层分类列"}}}}}}
+          {{"type":"treemap", "title": "标题", "axis": {{"x": {{"value":"SQL 查询分类列"}}, "y": {{"value":"SQL 查询可累加指标列"}}, "series": {{"value":"SQL 查询上层分类列"}}}}}}
           矩形树图用于分类贡献或层级结构展示；series 可选，用于形成二级层级。
         </rule>
         <rule>
@@ -562,7 +578,7 @@ template:
         </rule>
         <rule>
           对于柱状图/条形图/折线图：
-          1. 如果SQL查询中存在多个指标字段（如多个数值度量列）且不存在第二个分类字段，则可以提供multi-quota配置，形如："multi-quota":{{"name":"指标类型","value":["指标字段1","指标字段2",...]}}
+          1. 如果SQL查询中存在多个指标字段（如多个数值度量列）且不存在第二个分类字段，则可以提供multi-quota配置，形如："multi-quota":{{"value":["指标字段1","指标字段2",...]}}
           2. 如果SQL查询中存在多个用户明确要求的指标字段，不能只选其中一个指标生成图表；若multi-quota不能清晰表达，应改用table展示全部指标
           3. 如果SQL查询中存在多个指标字段且同时存在第二个分类字段，单张柱状图/条形图/折线图通常无法同时表达series和multi-quota；除非用户明确只看一个指标，否则必须使用table
           4. 如果只有一个指标字段，无论是否存在分类字段，都不需要multi-quota配置
@@ -585,7 +601,7 @@ template:
               <chart-type></chart-type>
             </input>
             <output>
-              {{"type":"table","title":"所有用户信息","columns":[{{"name":"邮箱","value":"email"}},{{"name":"ID","value":"id"}},{{"name":"账号","value":"account"}},{{"name":"启用状态","value":"enable"}},{{"name":"创建时间","value":"create_time"}},{{"name":"语言","value":"language"}},{{"name":"所属组织ID","value":"default_oid"}},{{"name":"姓名","value":"name"}},{{"name":"Phone","value":"phone"}}]}}
+              {{"type":"table","title":"所有用户信息","columns":[{{"value":"email"}},{{"value":"id"}},{{"value":"account"}},{{"value":"enable"}},{{"value":"create_time"}},{{"value":"language"}},{{"value":"default_oid"}},{{"value":"name"}},{{"value":"phone"}}]}}
             </output>
           </example>
           <example>
@@ -595,7 +611,7 @@ template:
               <chart-type> pie </chart-type>
             </input>
             <output>
-              {{"type":"pie","title":"组织人数统计","axis":{{"y":{{"name":"人数","value":"user_count"}},"series":{{"name":"组织名称","value":"org_name"}}}}}}
+              {{"type":"pie","title":"组织人数统计","axis":{{"y":{{"value":"user_count"}},"series":{{"value":"org_name"}}}}}}
             </output>
           </example>
           <example>
@@ -606,7 +622,7 @@ template:
             </input>
             <output>
               // 无分类字段，但有多个指标字段的情况
-              {{"type":"line","title":"指标趋势","axis":{{"x":{{"name":"日期","value":"date"}},"y":[{{"name":"指标A","value":"metric_a"}}, {{"name":"指标B","value":"metric_b"}}], "multi-quota":{{"name":"指标类型","value":["metric_a","metric_b"]}}}}}}
+              {{"type":"line","title":"指标趋势","axis":{{"x":{{"value":"date"}},"y":[{{"value":"metric_a"}}, {{"value":"metric_b"}}], "multi-quota":{{"value":["metric_a","metric_b"]}}}}}}
             </output>
           </example>
         </chat-examples>

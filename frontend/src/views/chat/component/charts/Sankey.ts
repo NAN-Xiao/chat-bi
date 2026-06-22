@@ -1,5 +1,5 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { formatNumber, getAxesWithFilter, toNumber } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
@@ -65,7 +65,7 @@ export class Sankey extends BaseG2Chart {
           title: (datum: any) => datum.key,
           items: [
             (datum: any) => ({
-              name: value.name,
+              name: axisLabel(value),
               value: formatNumber(datum.value),
             }),
           ],

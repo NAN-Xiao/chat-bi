@@ -73,8 +73,7 @@ def _validate_allowed_tables(actual_tables: set[str], allowed_tables: list[str] 
 
 def _normalize_query_result(result: dict[str, Any], origin_column: bool) -> dict[str, Any]:
     data = DataFormat.convert_large_numbers_in_object_array(result.get("data"))
-    if not origin_column:
-        data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
+    data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
     result["data"] = data
     if data:
         result["fields"] = list(data[0].keys())
