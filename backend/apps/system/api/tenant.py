@@ -17,6 +17,7 @@ from apps.datasource.crud.permission import (
 from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
+    SAMPLE_TENANT_NAME,
     TENANT_ADMIN_ROLES,
     TENANT_APPLICATION_TYPE_CREATE,
     TENANT_APPLICATION_TYPE_INVITE,
@@ -473,6 +474,7 @@ def _tenant_dto(
         admin_count=int(member_stats.get("admin_count") or 0) if show_operations else 0,
         member_count=int(member_stats.get("member_count") or 0) if show_operations else 0,
         join_time=int(join_time or 0),
+        is_system_default=tenant.name == SAMPLE_TENANT_NAME,
     )
 
 

@@ -65,6 +65,21 @@ const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.val
   border: 1px solid var(--workspace-border-soft, #eff4fa);
   border-radius: 12px;
   box-shadow: none;
+  transform-origin: left center;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+  will-change: transform;
+
+  &:hover {
+    z-index: 20;
+    border-color: rgba(47, 107, 255, 0.22);
+    box-shadow:
+      0 8px 20px rgba(18, 34, 66, 0.1),
+      0 3px 8px rgba(18, 34, 66, 0.06);
+    transform: translateY(-2px) scale(1.01);
+  }
 
   &.is-frameless {
     border: none;

@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import icon_expand_down_filled from '@/assets/svg/icon_expand-down_filled.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
+import icon_workspace_outlined from '@/assets/svg/icon_moments-categories_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
@@ -39,12 +39,25 @@ const currentWorkspaceName = computed(
 )
 const tenantDisplayId = (tenant?: Partial<TenantInfo> | null) =>
   String(tenant?.public_id || '')
+const isSystemDefaultWorkspace = (tenant?: Partial<TenantInfo> | null) =>
+  Boolean(tenant?.is_system_default) || tenant?.name === '示例工作空间'
 const workspaceListWithSearch = computed(() => {
   const keyword = workspaceKeywords.value.trim().toLowerCase()
-  if (!keyword) return tenantList.value
-  return tenantList.value.filter((tenant) =>
+  const list = tenantList.value.filter((tenant) => !isSystemDefaultWorkspace(tenant))
+  if (!keyword) return list
+  return list.filter((tenant) =>
     `${tenant.name || ''} ${tenantDisplayId(tenant)}`.toLowerCase().includes(keyword)
   )
+})
+const systemDefaultWorkspace = computed(() =>
+  tenantList.value.find((tenant) => isSystemDefaultWorkspace(tenant))
+)
+const systemDefaultWorkspaceVisible = computed(() => {
+  const tenant = systemDefaultWorkspace.value
+  if (!tenant) return false
+  const keyword = workspaceKeywords.value.trim().toLowerCase()
+  if (!keyword) return true
+  return `${tenant.name || ''} ${tenantDisplayId(tenant)}`.toLowerCase().includes(keyword)
 })
 const formatKeywords = (item: string) => {
   // Use XSS-safe highlight function
@@ -115,7 +128,7 @@ onMounted(async () => {
         :title="currentWorkspaceName"
       >
         <el-icon size="18">
-          <icon_member_outlined></icon_member_outlined>
+          <icon_workspace_outlined></icon_workspace_outlined>
         </el-icon>
         <span v-if="!collapse" :title="currentWorkspaceName" class="name ellipsis">{{
           currentWorkspaceName
@@ -147,7 +160,7 @@ onMounted(async () => {
             @click="handleWorkspaceChange(tenant)"
           >
             <el-icon size="16">
-              <icon_member_outlined></icon_member_outlined>
+              <icon_workspace_outlined></icon_workspace_outlined>
             </el-icon>
             <div class="workspace-option-main">
               <div
@@ -169,8 +182,40 @@ onMounted(async () => {
           </div>
         </el-scrollbar>
 
-        <div v-if="!workspaceListWithSearch.length" class="workspace-empty">
+        <div
+          v-if="!workspaceListWithSearch.length && !systemDefaultWorkspaceVisible"
+          class="workspace-empty"
+        >
           <div>{{ $t('tenant.no_joined_workspaces') }}</div>
+        </div>
+
+        <div
+          v-if="systemDefaultWorkspaceVisible && systemDefaultWorkspace"
+          class="workspace-quick-actions workspace-system-default"
+        >
+          <button
+            type="button"
+            class="workspace-action-item"
+            :class="
+              String(userStore.getTenantId) === String(systemDefaultWorkspace.id) && 'isActive'
+            "
+            @click="handleWorkspaceChange(systemDefaultWorkspace)"
+          >
+            <el-icon size="16">
+              <icon_workspace_outlined></icon_workspace_outlined>
+            </el-icon>
+            <span
+              class="workspace-action-text"
+              v-html="formatKeywords(systemDefaultWorkspace.name || $t('common.default_tenant'))"
+            ></span>
+            <el-icon
+              v-if="String(userStore.getTenantId) === String(systemDefaultWorkspace.id)"
+              size="16"
+              class="action-done"
+            >
+              <icon_done_outlined></icon_done_outlined>
+            </el-icon>
+          </button>
         </div>
 
         <div class="workspace-quick-actions">
@@ -379,10 +424,16 @@ onMounted(async () => {
       }
 
       .workspace-action-text {
+        flex: 1;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+
+      .action-done {
+        flex: 0 0 auto;
+        margin-left: auto;
       }
     }
   }

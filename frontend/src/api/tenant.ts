@@ -28,6 +28,7 @@ export interface TenantInfo {
   admin_count?: number
   member_count?: number
   join_time?: number
+  is_system_default?: boolean
 }
 
 export interface TenantSearchInfo {

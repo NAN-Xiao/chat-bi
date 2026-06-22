@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, func, select
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts, find_data_skills
@@ -26,6 +27,12 @@ from apps.datasource.crud.query_executor import (
 )
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
+from apps.analysis_assistant.models import (
+    AnalysisAssistantConversation,
+    AnalysisAssistantConversationDetail,
+    AnalysisAssistantConversationSave,
+    AnalysisAssistantConversationSummary,
+)
 from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
 from apps.system.crud.user import is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
@@ -282,6 +289,52 @@ def _sse(payload: dict[str, Any]) -> str:
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
     return require_current_tenant_id(current_user)
+
+
+def _normalise_conversation_title(title: str | None, messages: list[dict]) -> str:
+    candidate = (title or "").strip()
+    if not candidate:
+        for message in messages:
+            if message.get("role") == "user" and str(message.get("content") or "").strip():
+                candidate = str(message.get("content") or "").strip()
+                break
+    if not candidate:
+        candidate = "新分析对话"
+    return candidate[:128]
+
+
+def _serialise_conversation_messages(request: AnalysisAssistantConversationSave) -> list[dict]:
+    messages = []
+    for message in request.messages or []:
+        item = message.model_dump(exclude_none=True)
+        if item.get("role") not in {"user", "assistant"}:
+            continue
+        item["content"] = str(item.get("content") or "")
+        messages.append(item)
+    return messages
+
+
+def _conversation_summary(record: AnalysisAssistantConversation) -> AnalysisAssistantConversationSummary:
+    messages = record.messages if isinstance(record.messages, list) else []
+    return AnalysisAssistantConversationSummary(
+        id=record.id,
+        title=record.title,
+        datasource_id=record.datasource_id,
+        datasource_name=record.datasource_name,
+        custom_prompt_id=record.custom_prompt_id,
+        data_skill_id=record.data_skill_id,
+        message_count=len(messages),
+        create_time=record.create_time,
+        update_time=record.update_time,
+    )
+
+
+def _conversation_detail(record: AnalysisAssistantConversation) -> AnalysisAssistantConversationDetail:
+    summary = _conversation_summary(record)
+    return AnalysisAssistantConversationDetail(
+        **summary.model_dump(),
+        messages=record.messages if isinstance(record.messages, list) else [],
+    )
 
 
 def _rate_limit_message(retry_after_seconds: int) -> str:

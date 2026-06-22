@@ -31,6 +31,7 @@ class TenantDTO(BaseModel):
     admin_count: int = 0
     member_count: int = 0
     join_time: int = 0
+    is_system_default: bool = False
 
 
 class TenantSearchDTO(BaseModel):
