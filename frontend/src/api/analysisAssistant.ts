@@ -98,6 +98,8 @@ export const analysisAssistantApi = {
     data: AnalysisAssistantConversationSave
   ): Promise<AnalysisAssistantConversationDetail> =>
     request.post('/analysis-assistant/history', data),
+  deleteHistory: (id: number): Promise<void> =>
+    request.delete(`/analysis-assistant/history/${id}`),
   exportReport: (data: AnalysisAssistantExportRequest): Promise<Blob> =>
     request.post('/analysis-assistant/export', data, {
       responseType: 'blob',

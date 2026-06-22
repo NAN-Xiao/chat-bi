@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import html2canvas from 'html2canvas'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import { dashboardApi } from '@/api/dashboard'
+import { findNewComponentFromList } from '@/views/dashboard/components/component-list.ts'
+import { guid } from '@/utils/canvas.ts'
 import {
   analysisAssistantApi,
   type AnalysisAssistantExportBlock,
@@ -13,8 +16,9 @@ import {
   type AnalysisAssistantMessage,
   type AnalysisAssistantRole,
 } from '@/api/analysisAssistant'
-import { CirclePlus, Clock, Download, RefreshRight } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus-secondary'
+import { CirclePlus, Clock, DataBoard, Delete, Download, RefreshRight } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus-secondary'
+import cloneDeep from 'lodash/cloneDeep'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
@@ -90,8 +94,10 @@ const historyLoading = ref(false)
 const historyList = ref<AnalysisAssistantConversationSummary[]>([])
 const currentConversationId = ref<number | null>(null)
 const savingHistory = ref(false)
+const deletingHistoryId = ref<number | null>(null)
 const streamController = ref<AbortController>()
 const exporting = ref(false)
+const generatingDashboard = ref(false)
 const dockWidth = ref(360)
 let messageId = 0
 let streamBuffer = ''
@@ -563,6 +569,36 @@ const loadConversation = async (conversation: AnalysisAssistantConversationSumma
   }
 }
 
+const deleteHistoryConversation = async (conversation: AnalysisAssistantConversationSummary) => {
+  if (isStreaming.value || deletingHistoryId.value) return
+  const title = conversation.title || '新分析对话'
+  try {
+    await ElMessageBox.confirm(`确定删除历史对话「${title}」吗？删除后无法恢复。`, {
+      confirmButtonType: 'danger',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+    })
+  } catch {
+    return
+  }
+
+  deletingHistoryId.value = conversation.id
+  try {
+    await analysisAssistantApi.deleteHistory(conversation.id)
+    historyList.value = historyList.value.filter((item) => item.id !== conversation.id)
+    if (currentConversationId.value === conversation.id) {
+      clearMessages()
+    }
+    ElMessage.success('删除成功')
+  } catch (e) {
+    console.error(e)
+  } finally {
+    deletingHistoryId.value = null
+  }
+}
+
 const formatHistoryTime = (value?: string) => {
   if (!value) return ''
   const date = new Date(value)
@@ -593,6 +629,9 @@ const getMultiQuotaName = (chart?: AnalysisChartConfig) => chart?.axis?.['multi-
 const getPreviewRows = (block: AnalysisBlock) => (block.data || []).slice(0, 6)
 
 const isTableChart = (block: AnalysisBlock) => block.chart?.type === 'table'
+
+const getDashboardChartBlocks = (message: DockMessage) =>
+  (message.blocks || []).filter((block) => block.chart && block.data?.length && !block.error)
 
 const getTableRows = (block: AnalysisBlock) => block.data || []
 
@@ -627,6 +666,8 @@ const formatCell = (value: any) => {
 
 const canUseMessageActions = (message: DockMessage) =>
   message.role === 'assistant' && !message.loading && !message.error && hasStructuredContent(message)
+
+const canGenerateDashboard = (message: DockMessage) => getDashboardChartBlocks(message).length > 0
 
 const findPreviousUserQuestion = (assistantIndex: number) => {
   for (let index = assistantIndex - 1; index >= 0; index -= 1) {
@@ -739,6 +780,120 @@ const writeExportFile = async (blob: Blob, file: Awaited<ReturnType<typeof pickE
     return
   }
   saveBlob(blob, file.filename)
+}
+
+const uniqueDashboardName = (message: DockMessage) => {
+  const baseName = (getExportBaseName(message) || '综合分析看板').slice(0, 40)
+  const now = new Date()
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0'),
+  ].join('')
+  return `${baseName} 看板 ${stamp}`.slice(0, 64)
+}
+
+const buildDashboardChartInfo = (block: AnalysisBlock, componentId: string) => {
+  const chart = block.chart
+  const yAxis = getChartYAxis(chart).map((item) => ({
+    ...item,
+    'multi-quota': chart?.axis?.['multi-quota']?.value?.includes(item.value) || false,
+  }))
+  return {
+    id: componentId,
+    data: {
+      data: block.data || [],
+    },
+    sql: block.sql || '',
+    datasource: analysisContext.datasourceId,
+    chart: {
+      type: chart?.type || 'table',
+      sourceType: chart?.type || 'table',
+      title: chart?.title || block.title || '图表',
+      columns: chart?.columns || [],
+      xAxis: getChartXAxis(chart),
+      yAxis,
+      series: getChartSeries(chart),
+      multiQuotaName: getMultiQuotaName(chart),
+    },
+  }
+}
+
+const generateDashboardFromMessage = async (message: DockMessage) => {
+  if (isStreaming.value || generatingDashboard.value) return
+  const blocks = getDashboardChartBlocks(message)
+  if (!blocks.length) {
+    ElMessage.warning('暂无可生成看板的图表')
+    return
+  }
+  if (!analysisContext.datasourceId) {
+    ElMessage.warning('请先选择项目后再生成看板')
+    return
+  }
+
+  generatingDashboard.value = true
+  try {
+    const componentTemplate = findNewComponentFromList('SQView')
+    if (!componentTemplate) {
+      throw new Error('看板图表组件不可用')
+    }
+    const componentData: any[] = []
+    const canvasViewInfo: Record<string, any> = {}
+    const columns = blocks.length === 1 ? 1 : 2
+    const sizeX = columns === 1 ? 36 : 18
+    const sizeY = 14
+    blocks.forEach((block, index) => {
+      const component = cloneDeep(componentTemplate)
+      const componentId = guid()
+      component.id = componentId
+      component.x = (index % columns) * sizeX + 1
+      component.y = Math.floor(index / columns) * (sizeY + 1) + 1
+      component.sizeX = sizeX
+      component.sizeY = isTableChart(block) ? 16 : sizeY
+      componentData.push(component)
+      canvasViewInfo[componentId] = buildDashboardChartInfo(block, componentId)
+    })
+
+    const dashboardName = uniqueDashboardName(message)
+    const createdDashboard = await dashboardApi.create_canvas({
+      opt: 'newLeaf',
+      pid: 'root',
+      name: dashboardName,
+      datasource: analysisContext.datasourceId,
+      level: 1,
+      node_type: 'leaf',
+      type: 'dashboard',
+      component_data: JSON.stringify(componentData),
+      canvas_style_data: JSON.stringify({}),
+      canvas_view_info: JSON.stringify(canvasViewInfo),
+    })
+    ElMessage({
+      type: 'success',
+      message: h('span', null, [
+        h('span', `已生成看板「${dashboardName}」`),
+        createdDashboard?.id
+          ? h(
+              'button',
+              {
+                class: 'analysis-open-dashboard-btn',
+                onClick: () => window.open(`#/canvas?resourceId=${createdDashboard.id}`, '_self'),
+              },
+              '打开看板'
+            )
+          : null,
+      ]),
+      showClose: true,
+      duration: 3000,
+    })
+  } catch (error: any) {
+    console.error(error)
+    ElMessage.error(error?.message || '生成看板失败')
+  } finally {
+    generatingDashboard.value = false
+  }
 }
 
 const exportCurrentMessage = async (message: DockMessage) => {
@@ -1059,21 +1214,38 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 暂无历史对话
               </div>
               <div v-else class="history-list">
-                <button
+                <div
                   v-for="conversation in historyList"
                   :key="conversation.id"
-                  type="button"
                   class="history-item"
                   :class="{ active: currentConversationId === conversation.id }"
-                  @click="loadConversation(conversation)"
                 >
-                  <span class="history-title">{{ conversation.title || '新分析对话' }}</span>
-                  <span class="history-meta">
-                    <span>{{ conversation.datasource_name || analysisContext.datasourceName || '未绑定项目' }}</span>
-                    <span>{{ formatHistoryTime(conversation.update_time) }}</span>
-                    <span>{{ conversation.message_count }} 条</span>
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    class="history-item-main"
+                    :disabled="isStreaming || deletingHistoryId === conversation.id"
+                    @click="loadConversation(conversation)"
+                  >
+                    <span class="history-title">{{ conversation.title || '新分析对话' }}</span>
+                    <span class="history-meta">
+                      <span>{{ conversation.datasource_name || analysisContext.datasourceName || '未绑定项目' }}</span>
+                      <span>{{ formatHistoryTime(conversation.update_time) }}</span>
+                      <span>{{ conversation.message_count }} 条</span>
+                    </span>
+                  </button>
+                  <el-tooltip effect="dark" content="删除历史" placement="top">
+                    <button
+                      type="button"
+                      class="history-delete-btn"
+                      :disabled="isStreaming || deletingHistoryId === conversation.id"
+                      @click.stop="deleteHistoryConversation(conversation)"
+                    >
+                      <el-icon>
+                        <Delete />
+                      </el-icon>
+                    </button>
+                  </el-tooltip>
+                </div>
               </div>
             </div>
           </el-popover>
@@ -1241,6 +1413,17 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                     <RefreshRight />
                   </el-icon>
                   <span>重新生成</span>
+                </button>
+                <button
+                  class="message-action-btn"
+                  type="button"
+                  :disabled="isStreaming || generatingDashboard || !canGenerateDashboard(message)"
+                  @click="generateDashboardFromMessage(message)"
+                >
+                  <el-icon>
+                    <DataBoard />
+                  </el-icon>
+                  <span>一键生成看板</span>
                 </button>
                 <button
                   class="message-action-btn"
@@ -1596,18 +1779,14 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 }
 
 .history-item {
+  position: relative;
   width: 100%;
   min-height: 58px;
-  padding: 9px 10px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--assistant-dock-text-primary);
-  cursor: pointer;
-  text-align: left;
   display: flex;
-  flex-direction: column;
-  gap: 5px;
 
   &:hover,
   &.active {
@@ -1618,6 +1797,68 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   & + & {
     margin-top: 4px;
   }
+}
+
+.history-item-main {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 42px 9px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+}
+
+.history-delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--assistant-dock-text-tertiary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+
+  :deep(.ed-icon),
+  :deep(svg) {
+    width: 15px;
+    height: 15px;
+  }
+
+  &:hover {
+    background: rgba(248, 113, 113, 0.12);
+    color: #dc2626;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+}
+
+.history-item:hover .history-delete-btn,
+.history-delete-btn:focus-visible,
+.history-item.active .history-delete-btn {
+  opacity: 1;
 }
 
 .history-title {

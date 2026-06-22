@@ -573,6 +573,19 @@ async def get_history(conversation_id: int, current_user: CurrentUser, session: 
     return _conversation_detail(record)
 
 
+@router.delete("/history/{conversation_id}", include_in_schema=False)
+async def delete_history(conversation_id: int, current_user: CurrentUser, session: SessionDep):
+    record = _get_owned_conversation(
+        session,
+        current_user,
+        conversation_id,
+        verify_datasource_access=False,
+    )
+    session.delete(record)
+    session.commit()
+    return {"success": True}
+
+
 @router.post(
     "/history",
     response_model=AnalysisAssistantConversationDetail,
