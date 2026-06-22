@@ -163,7 +163,7 @@ pipeline {
       }
     }
 
-    stage('生成并安装 Nginx 配置') {
+    stage('生成 Nginx 参考配置') {
       steps {
         sh '''
           set -eux
@@ -235,27 +235,13 @@ EOF
           echo "项目 Nginx 参考配置已生成：$APP_HOME/chat-bi-nginx.conf"
           cat "$APP_HOME/chat-bi-nginx.conf"
 
-          if [ "$(id -u)" -eq 0 ]; then
-            SUDO=""
-          elif command -v sudo >/dev/null 2>&1; then
-            SUDO="sudo"
-          else
-            echo "需要 root 或 sudo 权限写入 $NGINX_CONF_PATH 并 reload Nginx。"
-            exit 1
-          fi
-          $SUDO mkdir -p "$(dirname "$NGINX_CONF_PATH")"
-          $SUDO cp "$APP_HOME/chat-bi-nginx.conf" "$NGINX_CONF_PATH"
-          $SUDO nginx -t
-          if command -v systemctl >/dev/null 2>&1; then
-            $SUDO systemctl reload nginx
-          else
-            $SUDO nginx -s reload
-          fi
+          echo "跳过 Nginx 安装和 reload：当前 Jenkins 运行环境不负责管理宿主机 Nginx。"
+          echo "如需更新宿主机配置，请人工比对并应用：$APP_HOME/chat-bi-nginx.conf -> $NGINX_CONF_PATH"
         '''
       }
     }
 
-    stage('安装并重启 systemd 服务') {
+    stage('迁移并重启 systemd 服务') {
       steps {
         sh '''
           set -eux
@@ -285,52 +271,7 @@ RUNTIME_ENV_FILE=$RUNTIME_ENV_FILE
 EOF
           chmod 600 "$APP_HOME/chat-bi-systemd.env"
 
-          cat > "$APP_HOME/chat-bi-api@.service" <<'EOF'
-[Unit]
-Description=Chat BI API replica on port %i
-After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
-
-[Service]
-Type=simple
-EnvironmentFile=/home/chat-bi/chat-bi-systemd.env
-ExecStartPre=-/usr/bin/docker rm -f chat-bi-api-%i
-ExecStart=/usr/bin/docker run --rm --name chat-bi-api-%i --env-file ${RUNTIME_ENV_FILE} -e APP_ROLE=api -e API_PORT=%i -e AUTO_MIGRATE_ON_STARTUP=false -p 127.0.0.1:%i:8000 -v ${APP_HOME}/data/sqlbot/excel:/opt/sqlbot/data/excel -v ${APP_HOME}/data/sqlbot/file:/opt/sqlbot/data/file -v ${APP_HOME}/data/sqlbot/images:/opt/sqlbot/images -v ${APP_HOME}/data/sqlbot/logs:/opt/sqlbot/app/logs ${IMAGE}
-ExecStop=/usr/bin/docker stop chat-bi-api-%i
-Restart=always
-RestartSec=5
-TimeoutStopSec=30
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-          cat > "$APP_HOME/chat-bi-worker@.service" <<'EOF'
-[Unit]
-Description=Chat BI Task Worker %i
-After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
-
-[Service]
-Type=simple
-EnvironmentFile=/home/chat-bi/chat-bi-systemd.env
-ExecStartPre=-/usr/bin/docker rm -f chat-bi-worker-%i
-ExecStart=/usr/bin/docker run --rm --name chat-bi-worker-%i --env-file ${RUNTIME_ENV_FILE} -e APP_ROLE=worker -e WORKER_INSTANCE=%i -e AUTO_MIGRATE_ON_STARTUP=false -v ${APP_HOME}/data/sqlbot/excel:/opt/sqlbot/data/excel -v ${APP_HOME}/data/sqlbot/file:/opt/sqlbot/data/file -v ${APP_HOME}/data/sqlbot/images:/opt/sqlbot/images -v ${APP_HOME}/data/sqlbot/logs:/opt/sqlbot/app/logs ${IMAGE}
-ExecStop=/usr/bin/docker stop chat-bi-worker-%i
-Restart=always
-RestartSec=5
-TimeoutStopSec=30
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-          $SUDO cp "$APP_HOME/chat-bi-api@.service" /etc/systemd/system/chat-bi-api@.service
-          $SUDO cp "$APP_HOME/chat-bi-worker@.service" /etc/systemd/system/chat-bi-worker@.service
-          $SUDO rm -f /etc/systemd/system/chat-bi-mcp.service
-          $SUDO systemctl daemon-reload
+          echo "跳过 systemd unit 安装：chat-bi-api@.service 和 chat-bi-worker@.service 已由宿主机预先配置。"
 
           echo "执行数据库迁移..."
           docker rm -f chat-bi-migrate >/dev/null 2>&1 || true
@@ -358,11 +299,9 @@ EOF
 
           echo "启动 API 副本和 worker..."
           for api_port in $api_ports; do
-            $SUDO systemctl enable "chat-bi-api@${api_port}.service"
             $SUDO systemctl restart "chat-bi-api@${api_port}.service"
           done
           for worker_id in $worker_ids; do
-            $SUDO systemctl enable "chat-bi-worker@${worker_id}.service"
             $SUDO systemctl restart "chat-bi-worker@${worker_id}.service"
           done
 
