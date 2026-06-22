@@ -47,8 +47,8 @@ WORKDIR ${APP_HOME}
 COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
 COPY ./backend ${APP_HOME}
 
-# Install dependencies
-RUN uv sync --frozen
+# Install runtime dependencies without installing this app as a Python package.
+RUN uv sync --frozen --no-install-project --no-dev
 
 # Build g2-ssr
 FROM ${SQLBOT_BASE_IMAGE} AS ssr-builder
