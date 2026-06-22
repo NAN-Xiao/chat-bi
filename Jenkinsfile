@@ -84,6 +84,15 @@ pipeline {
           tmp_container="$(docker create "$IMAGE")"
           trap 'docker rm -f "$tmp_container" >/dev/null 2>&1 || true' EXIT
 
+          case "$NGINX_ROOT" in
+            "$APP_HOME"/nginx/html|"$APP_HOME"/nginx/html/*)
+              ;;
+            *)
+              echo "NGINX_ROOT 路径异常：$NGINX_ROOT"
+              exit 1
+              ;;
+          esac
+
           rm -rf "$NGINX_ROOT"
           mkdir -p "$NGINX_ROOT"
           docker cp "$tmp_container:/opt/sqlbot/frontend/dist/." "$NGINX_ROOT"
@@ -187,7 +196,6 @@ EOF
           docker run -d \
             --name "$CONTAINER_NAME" \
             --restart unless-stopped \
-            --privileged=true \
             -p "${WEB_PORT}:8000" \
             -p "${MCP_PORT}:8001" \
             -v "$APP_HOME/data/sqlbot/excel:/opt/sqlbot/data/excel" \
@@ -195,9 +203,16 @@ EOF
             -v "$APP_HOME/data/sqlbot/images:/opt/sqlbot/images" \
             -v "$APP_HOME/data/sqlbot/logs:/opt/sqlbot/app/logs" \
             -v "$APP_HOME/data/postgresql:/var/lib/postgresql/data" \
+            -e POSTGRES_SERVER="localhost" \
+            -e POSTGRES_PORT="5432" \
+            -e POSTGRES_DB="sqlbot" \
+            -e POSTGRES_USER="root" \
+            -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-Password123@pg}" \
             -e SECRET_KEY="${SECRET_KEY:-jenkins-chat-bi-secret}" \
+            -e DEFAULT_PWD="${DEFAULT_PWD:-elex@123}" \
             -e FRONTEND_HOST="http://${FRONTEND_HOST}" \
             -e BACKEND_CORS_ORIGINS="http://${FRONTEND_HOST}" \
+            -e SERVER_IMAGE_HOST="http://${FRONTEND_HOST}/images/" \
             -e LOG_DIR="/opt/sqlbot/app/logs" \
             -e LOG_FORMAT="%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s" \
             "$IMAGE"
@@ -207,7 +222,7 @@ EOF
       }
     }
 
-    stage('清理旧镜像') {
+    stage('清理旧构建产物') {
       steps {
         sh '''
           set -eu
@@ -245,6 +260,16 @@ EOF
 
           echo "当前保留的 $IMAGE_REPOSITORY 镜像："
           docker images "$IMAGE_REPOSITORY"
+
+          echo "清理旧镜像归档文件，只保留最近 $KEEP_COUNT 个："
+          find "$APP_HOME" -maxdepth 1 -name 'chat-bi-*.tar' -type f -printf '%T@ %p\n' \
+            | sort -nr \
+            | awk -v keep="$KEEP_COUNT" 'NR > keep { print substr($0, index($0, " ") + 1) }' \
+            | while IFS= read -r tar_file; do
+                [ -n "$tar_file" ] || continue
+                echo "删除旧镜像归档：$tar_file"
+                rm -f "$tar_file"
+              done
         '''
       }
     }

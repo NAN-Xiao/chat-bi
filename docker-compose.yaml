@@ -3,7 +3,6 @@ services:
     image: "${SQLBOT_IMAGE:-dataease/sqlbot}"
     container_name: sqlbot
     restart: always
-    privileged: true
     networks:
       - sqlbot-network
     ports:
@@ -18,9 +17,9 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-Password123@pg}"
       # Project basic settings
       PROJECT_NAME: "星通智数"
-      DEFAULT_PWD: "${DEFAULT_PWD:-SQLBot@123456}"
+      DEFAULT_PWD: "${DEFAULT_PWD:-elex@123}"
       # MCP settings
-      SERVER_IMAGE_HOST: "${SERVER_IMAGE_HOST:-http://YOUR_SERVE_IP:MCP_PORT/images/}"
+      SERVER_IMAGE_HOST: "${SERVER_IMAGE_HOST:-http://localhost:8001/images/}"
       # Auth & Security
       SECRET_KEY: "${SECRET_KEY:-y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s}"
       # CORS settings

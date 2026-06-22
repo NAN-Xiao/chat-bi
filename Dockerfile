@@ -45,13 +45,9 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 WORKDIR ${APP_HOME}
 
 COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
-# Install dependencies
-COPY backend/pyproject.toml backend/uv.lock ${APP_HOME}/
-RUN uv sync --frozen --no-install-project
-
 COPY ./backend ${APP_HOME}
 
-# Final sync to ensure all dependencies are installed
+# Install dependencies
 RUN uv sync --frozen
 
 # Build g2-ssr
