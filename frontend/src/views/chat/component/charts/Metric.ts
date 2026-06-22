@@ -37,14 +37,14 @@ export class Metric extends BaseChart {
       const card = document.createElement('div')
       Object.assign(card.style, {
         minWidth: '0',
-        border: '1px solid #dce6f2',
+        border: '0',
         borderRadius: '8px',
         background: '#fff',
         padding: '16px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        boxShadow: '0 8px 20px rgba(17, 37, 73, 0.06)',
+        boxShadow: 'none',
       })
 
       const label = document.createElement('div')
