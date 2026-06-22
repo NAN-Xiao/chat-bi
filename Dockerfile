@@ -9,6 +9,8 @@ ENV APP_HOME=${SQLBOT_HOME}/app
 ENV UI_HOME=${SQLBOT_HOME}/frontend
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV DEBIAN_FRONTEND=noninteractive
+ENV NO_COLOR=1
+ENV npm_config_color=false
 
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
@@ -34,6 +36,8 @@ ENV PATH="${APP_HOME}/.venv/bin:$PATH"
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 ENV DEBIAN_FRONTEND=noninteractive
+ENV NO_COLOR=1
+ENV npm_config_color=false
 
 # Create necessary directories
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
@@ -54,6 +58,8 @@ RUN uv sync --frozen --extra cpu
 FROM ${SQLBOT_BASE_IMAGE} AS ssr-builder
 
 WORKDIR /app
+ENV NO_COLOR=1
+ENV npm_config_color=false
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -83,6 +89,7 @@ ENV PYTHONUNBUFFERED=1
 ENV SQLBOT_HOME=/opt/sqlbot
 ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
+ENV NO_COLOR=1
 
 ENV POSTGRES_DB=sqlbot
 ENV POSTGRES_USER=root

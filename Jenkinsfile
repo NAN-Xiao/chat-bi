@@ -14,7 +14,7 @@ pipeline {
 
   environment {
     DOCKER_BUILDKIT = '0'
-    GIT_URL = 'https://github.com/dongjinchao/chat-bi.git'
+    GIT_URL = 'https://github.com/NAN-Xiao/chat-bi.git'
     APP_HOME = '/home/chai-bi'
     CONTAINER_NAME = 'chat-bi'
     IMAGE_REPOSITORY = 'chat-bi/sqlbot'
@@ -99,6 +99,7 @@ pipeline {
       steps {
         sh '''
           set -eux
+          DOLLAR='$'
           cat > "$APP_HOME/chat-bi-nginx.conf" <<EOF
 server {
     listen ${NGINX_PORT};
@@ -110,47 +111,47 @@ server {
     client_max_body_size 200m;
 
     location / {
-        try_files \$uri \$uri/ /index.html;
+        try_files ${DOLLAR}uri ${DOLLAR}uri/ /index.html;
     }
 
     location /api/v1/ {
         proxy_pass http://127.0.0.1:${WEB_PORT}/api/v1/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host ${DOLLAR}host;
+        proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+        proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
     }
 
     location = /openapi.json {
         proxy_pass http://127.0.0.1:${WEB_PORT}/openapi.json;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host ${DOLLAR}host;
+        proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+        proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
     }
 
     location /docs {
         proxy_pass http://127.0.0.1:${WEB_PORT}/docs;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host ${DOLLAR}host;
+        proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+        proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
     }
 
     location /images/ {
         proxy_pass http://127.0.0.1:${MCP_PORT}/images/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host ${DOLLAR}host;
+        proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+        proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
     }
 
     location /mcp {
         proxy_pass http://127.0.0.1:${MCP_PORT};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host ${DOLLAR}host;
+        proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
+        proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
     }
 }
 EOF
@@ -166,6 +167,21 @@ EOF
           else
             echo "无法写入 $NGINX_CONF_PATH，请手动复制 $APP_HOME/chat-bi-nginx.conf 到该路径后执行 nginx -t && nginx -s reload"
             exit 1
+          fi
+
+          echo "当前项目 Nginx 配置："
+          cat "$APP_HOME/chat-bi-nginx.conf"
+          echo "Nginx 已加载配置检查："
+          if command -v sudo >/dev/null 2>&1; then
+            sudo nginx -T 2>&1 | grep -E "server_name ${FRONTEND_HOST}|root ${NGINX_ROOT}|proxy_pass http://127.0.0.1:${WEB_PORT}" || {
+              echo "Nginx 当前加载配置中没有找到 chat-bi 关键配置，请检查 $NGINX_CONF_PATH 是否被 nginx.conf include。"
+              exit 1
+            }
+          else
+            nginx -T 2>&1 | grep -E "server_name ${FRONTEND_HOST}|root ${NGINX_ROOT}|proxy_pass http://127.0.0.1:${WEB_PORT}" || {
+              echo "Nginx 当前加载配置中没有找到 chat-bi 关键配置，请检查 $NGINX_CONF_PATH 是否被 nginx.conf include。"
+              exit 1
+            }
           fi
         '''
       }
@@ -207,7 +223,7 @@ EOF
           for i in $(seq 1 60); do
             if curl -fsS "http://127.0.0.1:${WEB_PORT}/openapi.json" >/dev/null; then
               curl -fsS -H "Host: ${FRONTEND_HOST}" "http://127.0.0.1:${NGINX_PORT}/openapi.json" >/dev/null
-              curl -fsS -H "Host: ${FRONTEND_HOST}" "http://127.0.0.1:${NGINX_PORT}/" >/dev/null
+              curl -fsS -H "Host: ${FRONTEND_HOST}" "http://127.0.0.1:${NGINX_PORT}/" | grep -q "星通智数"
               docker ps --filter "name=$CONTAINER_NAME"
               exit 0
             fi
