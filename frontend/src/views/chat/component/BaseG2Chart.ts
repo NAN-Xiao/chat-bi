@@ -1,6 +1,50 @@
 import { BaseChart } from '@/views/chat/component/BaseChart.ts'
-import { Chart } from '@antv/g2'
+import { Chart, type G2Spec } from '@antv/g2'
 import { chartTheme } from '@/views/chat/component/charts/theme.ts'
+
+const TOOLTIP_MOUNT_SELECTOR = 'body'
+
+function hasVisibleTooltip(options: Record<string, any>): boolean {
+  if (!options || typeof options !== 'object') {
+    return false
+  }
+  if (options.tooltip !== undefined && options.tooltip !== false) {
+    return true
+  }
+  if (options.interaction?.tooltip !== undefined && options.interaction.tooltip !== false) {
+    return true
+  }
+  return Array.isArray(options.children) && options.children.some(hasVisibleTooltip)
+}
+
+function withFloatingTooltip(options: G2Spec): G2Spec {
+  const chartOptions = options as Record<string, any>
+  const children = Array.isArray(chartOptions.children)
+    ? chartOptions.children.map((child) =>
+        child && typeof child === 'object' ? withFloatingTooltip(child as G2Spec) : child
+      )
+    : chartOptions.children
+
+  if (!hasVisibleTooltip({ ...chartOptions, children })) {
+    return { ...chartOptions, children } as G2Spec
+  }
+
+  const currentInteraction = chartOptions.interaction || {}
+  const currentTooltip = currentInteraction.tooltip
+  const tooltip =
+    currentTooltip && typeof currentTooltip === 'object'
+      ? { mount: TOOLTIP_MOUNT_SELECTOR, ...currentTooltip }
+      : { mount: TOOLTIP_MOUNT_SELECTOR }
+
+  return {
+    ...chartOptions,
+    children,
+    interaction: {
+      ...currentInteraction,
+      tooltip,
+    },
+  } as G2Spec
+}
 
 export abstract class BaseG2Chart extends BaseChart {
   chart: Chart
@@ -17,6 +61,7 @@ export abstract class BaseG2Chart extends BaseChart {
   }
 
   render() {
+    this.chart?.options(withFloatingTooltip(this.chart.options() as G2Spec))
     this.chart?.render()
   }
 

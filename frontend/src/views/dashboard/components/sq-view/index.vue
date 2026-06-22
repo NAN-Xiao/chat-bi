@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
+import ChartInsightHeader from '@/views/chat/component/ChartInsightHeader.vue'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
 const props = defineProps({
@@ -19,9 +20,10 @@ const props = defineProps({
   },
 })
 
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
+import { buildInsightColumns, resolveInsightDisplay } from '@/views/chat/component/chartInsight.ts'
 import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
 import ICON_COLUMN from '@/assets/svg/chart/icon_dashboard_outlined.svg'
 import ICON_BAR from '@/assets/svg/chart/icon_bar_outlined.svg'
@@ -29,8 +31,12 @@ import ICON_LINE from '@/assets/svg/chart/icon_chart-line.svg'
 import ICON_PIE from '@/assets/svg/chart/icon_pie_outlined.svg'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
 const { t } = useI18n()
+const containerRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
+const frameSize = ref({ width: 0, height: 0 })
+let resizeObserver: ResizeObserver | undefined
+let renderTimer: number | undefined
 
 const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -119,6 +125,66 @@ const chartType = computed<ChartTypes>({
   },
 })
 
+const isDashboardSurface = computed(() => props.showPosition !== 'multiplexing')
+const showInsightHeader = computed(() => {
+  const type = chartType.value
+  return type !== 'table' && type !== 'metric' && props.viewInfo.data?.data?.length > 0
+})
+const insightColumns = computed(() =>
+  buildInsightColumns(props.viewInfo.data?.data, [
+    ...(props.viewInfo.chart?.xAxis || []),
+    ...(props.viewInfo.chart?.yAxis || []),
+    ...(props.viewInfo.chart?.series || []),
+    ...(props.viewInfo.chart?.columns || []),
+  ])
+)
+const insightDisplay = computed(() =>
+  resolveInsightDisplay({
+    chartType: chartType.value,
+    data: props.viewInfo.data?.data,
+    x: props.viewInfo.chart?.xAxis,
+    y: props.viewInfo.chart?.yAxis,
+    series: props.viewInfo.chart?.series,
+    width: frameSize.value.width,
+    height: frameSize.value.height,
+    dashboard: isDashboardSurface.value,
+  })
+)
+const canShowInsightHeader = computed(() => {
+  if (!showInsightHeader.value) {
+    return false
+  }
+  return insightDisplay.value.show
+})
+const insightDensity = computed(() => insightDisplay.value.density)
+const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
+const insightMaxStats = computed(() => insightDisplay.value.maxStats)
+
+function measureFrame() {
+  const el = containerRef.value
+  if (!el) {
+    return
+  }
+  const nextSize = {
+    width: Math.round(el.clientWidth),
+    height: Math.round(el.clientHeight),
+  }
+  if (nextSize.width === frameSize.value.width && nextSize.height === frameSize.value.height) {
+    return
+  }
+  frameSize.value = nextSize
+}
+
+function scheduleRenderChart() {
+  if (renderTimer) {
+    window.clearTimeout(renderTimer)
+  }
+  renderTimer = window.setTimeout(() => {
+    renderTimer = undefined
+    nextTick(renderChart)
+  }, 80)
+}
+
 watch(
   () => [props.viewInfo?.chart?.type, props.viewInfo?.chart?.sourceType],
   ([type, sourceType]) => {
@@ -142,6 +208,23 @@ onMounted(() => {
   // eslint-disable-next-line vue/no-mutating-props
   props.viewInfo.chart['sourceType'] =
     props.viewInfo.chart['sourceType'] ?? props.viewInfo.chart.type
+  nextTick(() => {
+    measureFrame()
+    if (containerRef.value) {
+      resizeObserver = new ResizeObserver(() => {
+        measureFrame()
+        scheduleRenderChart()
+      })
+      resizeObserver.observe(containerRef.value)
+    }
+  })
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  if (renderTimer) {
+    window.clearTimeout(renderTimer)
+  }
 })
 
 defineExpose({
@@ -151,7 +234,11 @@ defineExpose({
 </script>
 
 <template>
-  <div class="chart-base-container">
+  <div
+    ref="containerRef"
+    class="chart-base-container"
+    :class="`insight-density-${insightDensity}`"
+  >
     <div class="header-bar">
       <div class="title">
         {{ viewInfo.chart.title }}
@@ -183,22 +270,54 @@ defineExpose({
         <div class="divider" />
       </div>
     </div>
-    <div class="chart-show-area">
+    <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="viewInfo.status === 'failed'" class="error-info">
         {{ viewInfo.message }}
       </div>
-      <ChartComponent
-        v-else-if="viewInfo.id"
-        :id="outerId || viewInfo.id"
-        ref="chartRef"
-        :type="chartType"
-        :columns="viewInfo.chart.columns"
+      <ChartInsightHeader
+        v-else-if="canShowInsightHeader && effectiveInsightLayout === 'top'"
+        compact
+        :density="insightDensity"
+        :max-stats="insightMaxStats"
+        :chart-type="chartType"
+        :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
         :x="viewInfo.chart?.xAxis"
         :y="viewInfo.chart?.yAxis"
         :series="viewInfo.chart?.series"
         :data="viewInfo.data?.data"
-        :multi-quota-name="viewInfo.chart?.multiQuotaName"
+        :sql="viewInfo.sql"
       />
+      <div
+        v-if="viewInfo.status !== 'failed' && viewInfo.id"
+        class="chart-content-row"
+        :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
+      >
+        <ChartInsightHeader
+          v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
+          compact
+          :density="insightDensity"
+          layout="side"
+          :max-stats="insightMaxStats"
+          :chart-type="chartType"
+          :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
+          :x="viewInfo.chart?.xAxis"
+          :y="viewInfo.chart?.yAxis"
+          :series="viewInfo.chart?.series"
+          :data="viewInfo.data?.data"
+          :sql="viewInfo.sql"
+        />
+        <ChartComponent
+          :id="outerId || viewInfo.id"
+          ref="chartRef"
+          :type="chartType"
+          :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
+          :x="viewInfo.chart?.xAxis"
+          :y="viewInfo.chart?.yAxis"
+          :series="viewInfo.chart?.series"
+          :data="viewInfo.data?.data"
+          :multi-quota-name="viewInfo.chart?.multiQuotaName"
+        />
+      </div>
     </div>
     <el-dialog
       v-if="enlargeDialogVisible"
@@ -365,11 +484,63 @@ defineExpose({
       }
     }
   }
+
+  &.insight-density-mini,
+  &.insight-density-basic {
+    padding: 10px 12px !important;
+
+    .header-bar {
+      min-height: 28px;
+      margin-bottom: 6px;
+
+      .title {
+        font-size: 14px;
+        line-height: 22px;
+      }
+    }
+  }
+
+  &.insight-density-basic {
+    padding: 8px 10px !important;
+
+    .header-bar {
+      min-height: 24px;
+      margin-bottom: 4px;
+    }
+  }
 }
 
 .chart-show-area {
   width: 100%;
   height: calc(100% - 46px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
+  :deep(.chart-container) {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .chart-content-row {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    &.side-layout {
+      flex-direction: row;
+      align-items: stretch;
+    }
+  }
+}
+
+.insight-density-mini .chart-show-area {
+  height: calc(100% - 34px);
+}
+
+.insight-density-basic .chart-show-area {
+  height: calc(100% - 28px);
 }
 
 .buttons-bar {

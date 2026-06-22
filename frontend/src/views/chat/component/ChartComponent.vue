@@ -37,14 +37,22 @@ const chartId = computed(() => {
 
 const axis = computed(() => {
   const _list: Array<ChartAxis> = []
-  params.columns.forEach((column) => {
-    _list.push({ name: column.name, value: column.value })
-  })
+  const usedValues = new Set<string>()
+  const pushAxis = (axis: ChartAxis) => {
+    const roleKey = `${axis.type || 'column'}:${axis.value}`
+    if (axis.value && usedValues.has(roleKey)) {
+      return
+    }
+    if (axis.value) {
+      usedValues.add(roleKey)
+    }
+    _list.push(axis)
+  }
   params.x.forEach((column) => {
-    _list.push({ name: column.name, value: column.value, type: 'x' })
+    pushAxis({ name: column.name, value: column.value, type: 'x' })
   })
   params.y.forEach((column) => {
-    _list.push({
+    pushAxis({
       name: column.name,
       value: column.value,
       type: 'y',
@@ -52,16 +60,19 @@ const axis = computed(() => {
     })
   })
   params.series.forEach((column) => {
-    _list.push({ name: column.name, value: column.value, type: 'series' })
+    pushAxis({ name: column.name, value: column.value, type: 'series' })
   })
   if (params.multiQuotaName) {
-    _list.push({
+    pushAxis({
       name: params.multiQuotaName,
       value: params.multiQuotaName,
       type: 'other-info',
       hidden: true,
     })
   }
+  params.columns.forEach((column) => {
+    pushAxis({ name: column.name, value: column.value })
+  })
   return _list
 })
 

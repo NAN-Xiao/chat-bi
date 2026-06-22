@@ -165,6 +165,7 @@ const emits = defineEmits(['parentAddItemBox'])
 .dashboard-editor-main {
   --dashboard-grid-line-color: rgba(31, 35, 41, 0.08);
   --dashboard-grid-bg: #f7f9fb;
+  --dashboard-item-gap: 12px;
   width: 100%;
   height: 100%;
   overflow-y: auto;
@@ -197,7 +198,7 @@ const emits = defineEmits(['parentAddItemBox'])
 
 .is-tab-editor {
   --dashboard-grid-bg: #ffffff;
-  --dashboard-item-gap: 8px;
+  --dashboard-item-gap: 12px;
   background-color: #ffffff !important;
 
   :deep(.dragAndResize) {

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
+import ChartInsightHeader from '@/views/chat/component/ChartInsightHeader.vue'
 import type { ChatMessage } from '@/api/chat.ts'
 import { computed, nextTick, ref } from 'vue'
 import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import { useI18n } from 'vue-i18n'
+import { buildInsightColumns, resolveInsightLayout } from '@/views/chat/component/chartInsight.ts'
 
 const props = defineProps<{
   id?: number | string
@@ -74,6 +76,26 @@ const multiQuotaName = computed(() => {
 })
 
 const isTableChart = computed(() => props.chartType === 'table')
+const showInsightHeader = computed(() => {
+  return props.chartType !== 'table' && props.chartType !== 'metric' && props.data?.length > 0
+})
+const insightColumns = computed(() =>
+  buildInsightColumns(props.data, [
+    ...xAxis.value,
+    ...yAxis.value,
+    ...series.value,
+    ...(chartObject.value?.columns || []),
+  ])
+)
+const insightLayout = computed(() =>
+  resolveInsightLayout({
+    chartType: props.chartType,
+    data: props.data,
+    x: xAxis.value,
+    y: yAxis.value,
+    series: series.value,
+  })
+)
 
 const chartRef = ref()
 
@@ -108,20 +130,51 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="message.record?.chart" class="chart-base-container" :class="{ 'is-table-chart': isTableChart }">
-    <ChartComponent
-      v-if="message.record.id && data?.length > 0"
-      :id="id ?? 'default_chat_id'"
-      ref="chartRef"
-      :type="chartType"
-      :columns="chartObject?.columns"
+  <div
+    v-if="message.record?.chart"
+    class="chart-base-container"
+    :class="{ 'is-table-chart': isTableChart, 'has-side-insight': insightLayout === 'side' }"
+  >
+    <ChartInsightHeader
+      v-if="showInsightHeader && insightLayout === 'top'"
+      :chart-type="chartType"
+      :data="data"
+      :columns="[...(chartObject?.columns || []), ...insightColumns]"
       :x="xAxis"
       :y="yAxis"
       :series="series"
-      :data="data"
-      :multi-quota-name="multiQuotaName"
-      :show-label="showLabel"
+      :sql="message.record?.sql"
     />
+    <div
+      v-if="message.record.id && data?.length > 0"
+      class="chart-content-row"
+      :class="{ 'side-layout': insightLayout === 'side' }"
+    >
+      <ChartInsightHeader
+        v-if="showInsightHeader && insightLayout === 'side'"
+        layout="side"
+        :max-stats="4"
+        :chart-type="chartType"
+        :data="data"
+        :columns="[...(chartObject?.columns || []), ...insightColumns]"
+        :x="xAxis"
+        :y="yAxis"
+        :series="series"
+        :sql="message.record?.sql"
+      />
+      <ChartComponent
+        :id="id ?? 'default_chat_id'"
+        ref="chartRef"
+        :type="chartType"
+        :columns="[...(chartObject?.columns || []), ...insightColumns]"
+        :x="xAxis"
+        :y="yAxis"
+        :series="series"
+        :data="data"
+        :multi-quota-name="multiQuotaName"
+        :show-label="showLabel"
+      />
+    </div>
     <el-empty v-else :description="loadingData ? t('chat.loading_data') : t('chat.no_data')" />
   </div>
 </template>
@@ -132,6 +185,9 @@ defineExpose({
   height: 100%;
   width: 100%;
   padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-radius: 8px;
   background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
   border: 1px solid #dfe8f3;
@@ -139,6 +195,23 @@ defineExpose({
 
   &.is-table-chart {
     padding: 12px 22px 6px 14px;
+  }
+
+  .chart-content-row {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .chart-content-row.side-layout {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  :deep(.chart-container) {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 }
 </style>

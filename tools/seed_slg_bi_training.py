@@ -1601,22 +1601,10 @@ ORDER BY m.lifecycle_day;
 SQL 口径：
 - 正式收入默认 `sum(net_revenue_usd)`，必须过滤 `payment_status='success' AND net_revenue_usd > 0`。
 - `amount_usd` 是订单原始金额/标价，不可当正式收入。
-- 付费用户为成功净收入订单的 `count(distinct player_id)`。
-- 计算总收入时不能写 `SELECT DISTINCT player_id, net_revenue_usd` 后再求和；同一玩家多笔相同金额订单会被错误去重。应保留订单粒度，或按 `order_id` 去重后再汇总金额。
-- 分日、分商品、分渠道后的 `payers` 都是组内去重，不能相加得到总体付费用户；总体付费用户必须在同一 cohort 或窗口内重新 `count(distinct player_id)`。
-- 分析“某一天/某批新增用户的后续付费情况”时，必须按用户指定日期或日期窗口锁定 `dim_player.install_date` cohort，并同时输出 cohort 基数、累计去重付费用户、累计收入、累计付费率、LTV；日付费人数和日收入只能解释节奏，不能代表累计转化。
-- 生命周期付费趋势 SQL 不能只返回有付费的 `lifecycle_day`；必须补齐观察窗口内的日期序列，无付费日期返回 0，累计字段保持不下降。
-- PostgreSQL 计算累计收入时，必须先按 `lifecycle_day` 聚合出 `daily_revenue`，再在外层用 `sum(daily_revenue) over (order by lifecycle_day)` 计算 `cumulative_revenue`；不要在同一层把 `GROUP BY lifecycle_day` 和 `sum(net_revenue_usd) over (...)` 混用。
-- 累计付费人数必须先求每个玩家的 `first_pay_day`，再按日期序列统计 `first_pay_day <= lifecycle_day` 的去重玩家；不要把当日付费人数命名为 `cumulative_payers`。
-- 只查 `daily_payers`/`daily_revenue` 时，结论只能描述每日节奏，不能描述累计收入、累计 LTV 或总体价值；需要总体结论时必须另算 `cumulative_payers`、`cumulative_revenue`、`ltv`。
-- `daily_revenue` 是当日聚合收入，不能写成“单笔收入/单笔支付”；只有 SQL 输出 `order_id` 或明确 `orders=1` 时才可描述单笔。
-- 解释收入峰值时必须比较完整 D0-Dn 的 `daily_revenue`；前几日里较高只能称为“早期高点”，不能称为全周期最高峰。
-- 面向业务用户的最终结论不要提 `rows`、`summary`、样例行截断或数据块内部过程。
-- 渠道/国家/商品拆解如果用 `LEFT JOIN` 保留未付费人群，收入需 `COALESCE(SUM(...), 0)`，排序要 `ORDER BY revenue DESC NULLS LAST` 或先按付费事实聚合后再关联维度；不要让 `NULL` 收入的未付费分组排在真实付费分组前面。
-- 如果分维数据块显示全部 `payers=0`/`revenue=NULL`，但整体概览已有付费用户或收入，必须先修正分维 SQL，不能把这种矛盾解释为数据同步异常或业务结论。
-- 未付费用户不是流失用户；除非问题明确要求流失并定义连续不活跃阈值，否则只能称为“未付费/未转化用户”。
+- 付费用户为成功净收入订单的 `count(distinct player_id)`；订单明细保留 `order_id` 粒度。
+- 分析“某一天/某批新增用户的后续付费情况”时，目标 cohort 使用 `dim_player.install_date` 锁定，生命周期使用 `fact_payments.lifecycle_day`，收入使用 `net_revenue_usd`。
 - 首付用户优先用 `is_first_pay=true`，或用玩家最早成功支付日推导。
-- ARPU = 净收入 / 指定用户分母；ARPPU = 净收入 / 付费用户数。跨维度汇总时回到收入和人数重新计算，不要平均各组 ARPU。
+- ARPU/ARPPU 的收入分子均使用成功净收入 `net_revenue_usd`。
 
 推荐输出：
 - 指标卡：`cohort_users`, `cumulative_payers`, `total_revenue`, `payer_rate_pct`, `ltv`, `arppu`。

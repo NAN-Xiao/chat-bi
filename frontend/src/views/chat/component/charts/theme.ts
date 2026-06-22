@@ -116,6 +116,7 @@ export const chartTheme = {
         color: '#18263a',
         'font-family': chartFontFamily,
         'font-size': '12px',
+        'z-index': 3000,
       },
     },
   },

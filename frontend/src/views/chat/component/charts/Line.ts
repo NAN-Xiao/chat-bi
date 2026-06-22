@@ -11,6 +11,32 @@ import {
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
+const NON_STACKABLE_KEYWORDS = [
+  'rate',
+  'ratio',
+  'percent',
+  'pct',
+  'share',
+  'avg',
+  'average',
+  'mean',
+  'per_',
+  'per ',
+  '比率',
+  '率',
+  '占比',
+  '比例',
+  '百分',
+  '平均',
+  '人均',
+  '每',
+]
+
+function isStackableMetric(axis: ChartAxis) {
+  const text = `${axis.name || ''} ${axis.value || ''}`.toLowerCase()
+  return !NON_STACKABLE_KEYWORDS.some((keyword) => text.includes(keyword))
+}
+
 export class Line extends BaseG2Chart {
   constructor(id: string) {
     super(id, 'line')
@@ -60,6 +86,7 @@ export class Line extends BaseG2Chart {
     const series = config.series
 
     const _data = checkIsPercent(y, config.data)
+    const stackBySeries = series.length > 0 && !_data.isPercent && isStackableMetric(y[0])
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
 
@@ -104,19 +131,15 @@ export class Line extends BaseG2Chart {
       children: [
         {
           type: 'area',
-          encode: {
-            shape: 'smooth',
-          },
+          transform: stackBySeries ? [{ type: 'stackY' }] : undefined,
           style: {
-            fillOpacity: 0.09,
+            fillOpacity: stackBySeries ? 0.66 : 0.09,
           },
           tooltip: false,
         },
         {
           type: 'line',
-          encode: {
-            shape: 'smooth',
-          },
+          transform: stackBySeries ? [{ type: 'stackY' }] : undefined,
           labels: this.showLabel
             ? [
                 {
@@ -155,6 +178,7 @@ export class Line extends BaseG2Chart {
         },
         {
           type: 'point',
+          transform: stackBySeries ? [{ type: 'stackY' }] : undefined,
           style: {
             fill: 'white',
             lineWidth: 1.8,

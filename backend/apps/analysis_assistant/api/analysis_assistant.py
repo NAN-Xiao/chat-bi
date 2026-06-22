@@ -1393,6 +1393,74 @@ def _looks_like_time_field(field: str | None) -> bool:
     return _field_matches(field, ("date", "day", "week", "month", "time", "dt"))
 
 
+def _time_series_trend_requested(query: dict[str, Any]) -> bool:
+    text = " ".join(
+        str(query.get(key) or "")
+        for key in ("title", "purpose", "chart_type", "_user_question", "x", "series")
+    ).lower()
+    return any(
+        keyword in text
+        for keyword in (
+            "趋势",
+            "变化",
+            "每日",
+            "每天",
+            "按天",
+            "按日",
+            "逐日",
+            "每周",
+            "按周",
+            "逐周",
+            "每月",
+            "按月",
+            "逐月",
+            "daily",
+            "per day",
+            "by day",
+            "weekly",
+            "monthly",
+            "trend",
+            "over time",
+        )
+    )
+
+
+def _category_total_requested(query: dict[str, Any]) -> bool:
+    text = " ".join(
+        str(query.get(key) or "")
+        for key in ("title", "purpose", "chart_type", "_user_question")
+    ).lower()
+    return any(
+        keyword in text
+        for keyword in (
+            "总数",
+            "合计",
+            "汇总",
+            "占比",
+            "结构",
+            "构成",
+            "分布",
+            "排行",
+            "排名",
+            "top",
+            "total",
+            "sum",
+            "share",
+            "proportion",
+            "composition",
+            "ranking",
+        )
+    )
+
+
+def _first_time_field(fields: list[str]) -> str | None:
+    return next((field for field in fields if _looks_like_time_field(field)), None)
+
+
+def _first_category_field(fields: list[str], numeric: list[str], exclude: set[str]) -> str | None:
+    return next((field for field in fields if field not in numeric and field not in exclude), None)
+
+
 def _looks_like_metric_card(query: dict[str, Any], rows: list[dict[str, Any]]) -> bool:
     text = " ".join(str(query.get(key) or "") for key in ("title", "purpose", "chart_type")).lower()
     return len(rows) <= 3 and any(
@@ -1504,6 +1572,17 @@ def _build_chart_config(query: dict[str, Any], result: dict[str, Any]) -> dict[s
 
     if rows and len(fields) >= 2 and x_field and y_field:
         chart_type = _choose_visual_chart_type(chart_type, query, rows, x_field)
+
+    time_field = _first_time_field(fields)
+    if time_field and rows and len(fields) >= 3 and numeric:
+        trend_series_field = _first_category_field(fields, numeric, {time_field, y_field} if y_field else {time_field})
+        if trend_series_field and (_time_series_trend_requested(query) or _looks_like_time_field(x_field)):
+            if not _category_total_requested(query) or _time_series_trend_requested(query):
+                x_field = time_field
+                series_field = series_field or trend_series_field
+                y_field = y_field or _choose_metric_field(query, numeric, x_field)
+                if y_field:
+                    chart_type = "line"
 
     if (
         chart_type in {"table", "bar", "column"}

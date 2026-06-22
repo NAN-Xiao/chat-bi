@@ -13,6 +13,7 @@ const userStore = useUserStore()
 const pendingInvitations = shallowRef<TenantApplicationInfo[]>([])
 const pendingApplications = shallowRef<TenantApplicationInfo[]>([])
 const invitationRespondingId = ref('')
+const applicationCancelingId = ref('')
 
 const workspaceList = computed<TenantInfo[]>(() => userStore.getTenants || [])
 const currentWorkspaceId = computed(() => String(userStore.getTenantId || ''))
@@ -196,6 +197,17 @@ const respondInvitation = async (invitation: TenantApplicationInfo, approved: bo
   }
 }
 
+const cancelApplication = async (application: TenantApplicationInfo) => {
+  applicationCancelingId.value = String(application.id)
+  try {
+    await tenantApi.cancelApplication(application.id)
+    await refreshAccessData()
+    ElMessage.success(t('common.operation_success'))
+  } finally {
+    applicationCancelingId.value = ''
+  }
+}
+
 onMounted(() => {
   refreshAccessData().catch((error) => {
     console.warn('Failed to load workspace access data', error)
@@ -260,6 +272,16 @@ onMounted(() => {
             <div v-if="application.reason" class="invitation-reason">
               {{ t('tenant.apply_reason') }}: {{ application.reason }}
             </div>
+          </div>
+          <div class="invitation-actions">
+            <el-button
+              text
+              type="danger"
+              :loading="applicationCancelingId === String(application.id)"
+              @click="cancelApplication(application)"
+            >
+              {{ t('tenant.withdraw_action') }}
+            </el-button>
           </div>
         </div>
 

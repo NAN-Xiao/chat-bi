@@ -99,9 +99,10 @@ const state = reactive({
 
 const { handleDrop, handleDragStart } = treeDraggableChart(state, 'resourceTree', 'dashboard')
 
-const routerDashboardId = router.currentRoute.value.query.dashboardId
-if (routerDashboardId) {
-  selectedNodeKey.value = routerDashboardId
+const routeDashboardId =
+  router.currentRoute.value.query.resourceId || router.currentRoute.value.query.dashboardId
+if (routeDashboardId) {
+  selectedNodeKey.value = Array.isArray(routeDashboardId) ? routeDashboardId[0] : routeDashboardId
   returnMounted.value = true
 }
 const nodeExpand = (data: any) => {

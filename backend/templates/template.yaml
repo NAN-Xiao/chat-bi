@@ -150,6 +150,11 @@ template:
           图表类型选择原则推荐：核心单值指标用 metric，趋势 over time 用 line，分类对比用 column/bar，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
         </rule>
         <rule priority="high">
+          当用户要求按某个分类维度统计某个时间窗口内的每日/按天/按日/每周/按周/每月/按月指标时，必须保留“时间粒度字段 + 分类字段 + 单一指标字段”三列进行聚合，SQL 需要同时按时间粒度字段和分类字段 GROUP BY，并按时间字段、分类字段排序。
+          这种问题的图表类型应优先使用折线图(line)，分类字段作为 series，而不是把整个时间窗口汇总成分类总数后画饼图(pie)或柱状图(column/bar)。
+          只有当用户明确要求“总数、占比、构成、分布、排行、Top N 总量”且没有要求每日/按天/按周期趋势时，才可以把时间窗口汇总为分类总数。
+        </rule>
+        <rule priority="high">
           <title>图表字段维度与指标数量限制规则</title>
           <requirements>
             <requirement-group chart="column/bar/line">
@@ -438,6 +443,11 @@ template:
           支持的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap), 提供给你的<chart-type>值则为 table/metric/column/bar/line/pie/funnel/heatmap/scatter/sankey/treemap 中的一个，若没有推荐类型，则由你自己选择一个合适的类型。
           图表类型选择原则推荐：核心单值指标用 metric，趋势 over time 用 line，分类对比用 column/bar，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
         </rule>
+        <rule priority="high">
+          如果 SQL 结果同时包含一个时间粒度字段（如日期、日、周、月、date、day、week、month）、一个离散分类字段和一个数值指标字段，且用户问题表达的是最近一段时间内每日/按天/按日/每周/按周/每月/按月的分类趋势，则必须生成折线图(line)配置：
+          x 使用时间粒度字段，y 使用数值指标字段，series 使用分类字段。
+          不要因为存在分类字段就改成饼图(pie)或柱状图(column/bar)；饼图/柱状图只适合用户要求分类总数、占比、构成、分布或排行时使用。
+        </rule>
         <rule>
           不需要你提供创建图表的代码，你只需要负责根据要求生成JSON配置项
         </rule>
@@ -467,7 +477,7 @@ template:
         <rule>
           <strong>图表配置决策流程：</strong>
           <strong>1. 先识别用户问题中明确要求展示的全部指标字段；不得为了适配某一种图表而静默丢弃用户要求的指标</strong>
-          <strong>2. 优先把主分析维度放在x轴；只有存在第二个分类维度用于颜色/分组时，才使用series配置</strong>
+          <strong>2. 优先把主分析维度放在x轴；当主分析维度是时间字段且还有一个分类字段时，必须把分类字段放入series，用于展示各分类随时间变化的趋势</strong>
           <strong>3. 如果结果中只有一个维度字段和多个指标字段，且这些指标都需要展示，可使用multi-quota配置；不要把唯一维度误当成series</strong>
           <strong>4. 如果结果中同时存在分类/时间维度和多个不同单位指标（例如数量、金额、比率、人均值），或单张图无法完整表达全部指标 → 必须使用table，保证全部指标可见</strong>
           <strong>5. 如果只有一个指标字段 → 直接配置y轴，不使用series和multi-quota</strong>

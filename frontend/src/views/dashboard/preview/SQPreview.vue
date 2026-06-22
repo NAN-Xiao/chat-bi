@@ -4,7 +4,7 @@ import elementResizeDetectorMaker from 'element-resize-detector'
 const dashboardStore = dashboardStoreWithOut()
 const { curComponent } = storeToRefs(dashboardStore)
 
-import { onMounted, toRefs, ref, computed, reactive } from 'vue'
+import { onMounted, toRefs, ref, computed, reactive, onBeforeUnmount } from 'vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { storeToRefs } from 'pinia'
 import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue'
@@ -56,7 +56,7 @@ const props = defineProps({
   },
 })
 
-const { componentData, showPosition, canvasId } = toRefs(props)
+const { showPosition, canvasId } = toRefs(props)
 const domId = 'preview-' + canvasId.value
 const previewCanvas = ref(null)
 const renderReady = ref(true)
@@ -71,12 +71,16 @@ const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
+let resizeObserver: ResizeObserver | undefined
 const canvasStyle = computed(() => {
   if (props.inTab) {
     return { background: '#ffffff' }
   }
   return { background: 'var(--workspace-panel-bg, var(--theme-panel-bg))' }
 })
+const displayComponentData = computed(() =>
+  Array.isArray(props.componentData) ? props.componentData : []
+)
 
 const restore = () => {}
 
@@ -96,8 +100,8 @@ const sizeInit = () => {
     const screenWidth = previewCanvas.value.offsetWidth
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenHeight = previewCanvas.value.offsetHeight
-    baseMarginLeft.value = 6
-    baseMarginTop.value = 6
+    baseMarginLeft.value = 10
+    baseMarginTop.value = 10
     baseWidth.value =
       (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
     baseHeight.value =
@@ -110,8 +114,16 @@ const sizeInit = () => {
 
 onMounted(() => {
   sizeInit()
+  if (previewCanvas.value) {
+    resizeObserver = new ResizeObserver(sizeInit)
+    resizeObserver.observe(previewCanvas.value)
+  }
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   elementResizeDetectorMaker().listenTo(document.getElementById(domId), sizeInit)
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
 })
 
 defineExpose({
@@ -130,7 +142,7 @@ defineExpose({
   >
     <template v-if="renderReady">
       <SQComponentWrapper
-        v-for="(item, index) in componentData"
+        v-for="(item, index) in displayComponentData"
         :key="index"
         :active="!!curComponent && item.id === curComponent['id']"
         :config-item="item"

@@ -501,7 +501,6 @@ export function buildMixedUnitComboOptions(
           x: xAxis.value,
           y: percentValueField,
           color: seriesField,
-          shape: 'smooth',
         },
         scale: {
           y: {

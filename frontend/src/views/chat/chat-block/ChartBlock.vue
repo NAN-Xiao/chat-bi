@@ -175,8 +175,13 @@ const chatTableBlockHeight = computed(() => {
   )
 })
 const chartBlockStyle = computed(() => {
-  if (props.enlarge || !isTableChart.value) {
+  if (props.enlarge) {
     return undefined
+  }
+  if (!isTableChart.value) {
+    return {
+      height: '430px',
+    }
   }
   return {
     height: `${chatTableBlockHeight.value}px`,
