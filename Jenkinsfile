@@ -61,6 +61,14 @@ pipeline {
           command -v git
           command -v docker
           docker version
+          if ! docker buildx version; then
+            mkdir -p /root/.docker/cli-plugins
+            if [ -x "$APP_HOME/docker-buildx" ]; then
+              cp "$APP_HOME/docker-buildx" /root/.docker/cli-plugins/docker-buildx
+              chmod +x /root/.docker/cli-plugins/docker-buildx
+            fi
+            docker buildx version
+          fi
           echo "Python 依赖类型：${PYTHON_DEPENDENCY_EXTRA:-cpu}"
           echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES:-false}"
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/sqlbot/excel" "$APP_HOME/data/sqlbot/file" "$APP_HOME/data/sqlbot/images" "$APP_HOME/data/sqlbot/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
@@ -76,7 +84,9 @@ pipeline {
       steps {
         sh '''
           set -eux
-          docker build \
+          docker buildx inspect --bootstrap
+          docker buildx build \
+            --load \
             --tag "$IMAGE" \
             --build-arg BUILD_AT="$BUILD_AT" \
             --build-arg GITHUB_COMMIT="$GITHUB_COMMIT" \
