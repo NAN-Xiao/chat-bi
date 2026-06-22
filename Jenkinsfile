@@ -11,7 +11,6 @@ pipeline {
   parameters {
     string(name: 'BRANCH_NAME', defaultValue: '单用户高可用', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
-    choice(name: 'PYTHON_DEPENDENCY_EXTRA', choices: ['cpu', 'cu128', 'none'], description: 'Python 依赖类型：默认 cpu，cu128 仅用于 GPU/CUDA 环境，none 表示不启用 torch extra')
     booleanParam(name: 'CLEAN_DANGLING_IMAGES', defaultValue: false, description: '是否清理悬空镜像。默认关闭以保留 Docker 构建缓存')
   }
 
@@ -48,7 +47,7 @@ pipeline {
           env.BUILD_AT = sh(script: "TZ=Asia/Shanghai date +'%Y-%m-%dT%H:%M'", returnStdout: true).trim()
           env.GITHUB_COMMIT = shortCommit
           env.FRONTEND_API_BASE_URL = "./api/v1"
-          env.EFFECTIVE_PYTHON_DEPENDENCY_EXTRA = params.PYTHON_DEPENDENCY_EXTRA == 'none' ? '' : params.PYTHON_DEPENDENCY_EXTRA
+          env.PYTHON_DEPENDENCY_EXTRA = "cpu"
           env.CLEAN_DANGLING_IMAGES = params.CLEAN_DANGLING_IMAGES.toString()
         }
         sh '''
@@ -62,7 +61,7 @@ pipeline {
           command -v git
           command -v docker
           docker version
-          echo "Python 依赖类型：${EFFECTIVE_PYTHON_DEPENDENCY_EXTRA:-none}"
+          echo "Python 依赖类型：${PYTHON_DEPENDENCY_EXTRA:-cpu}"
           echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES:-false}"
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/sqlbot/excel" "$APP_HOME/data/sqlbot/file" "$APP_HOME/data/sqlbot/images" "$APP_HOME/data/sqlbot/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
@@ -84,7 +83,7 @@ pipeline {
             --build-arg SQLBOT_BASE_IMAGE="$SQLBOT_BASE_IMAGE" \
             --build-arg SQLBOT_RUNTIME_IMAGE="$SQLBOT_RUNTIME_IMAGE" \
             --build-arg VITE_API_BASE_URL="$FRONTEND_API_BASE_URL" \
-            --build-arg PYTHON_DEPENDENCY_EXTRA="$EFFECTIVE_PYTHON_DEPENDENCY_EXTRA" \
+            --build-arg PYTHON_DEPENDENCY_EXTRA="$PYTHON_DEPENDENCY_EXTRA" \
             .
         '''
       }
