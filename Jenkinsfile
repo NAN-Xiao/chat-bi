@@ -12,7 +12,6 @@ pipeline {
     string(name: 'BRANCH_NAME', defaultValue: '单用户高可用', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
     choice(name: 'PYTHON_DEPENDENCY_EXTRA', choices: ['cpu', 'cu128', 'none'], description: 'Python 依赖类型：默认 cpu，cu128 仅用于 GPU/CUDA 环境，none 表示不启用 torch extra')
-    booleanParam(name: 'EXPORT_IMAGE_TAR', defaultValue: false, description: '是否导出镜像 tar 到 /home/chat-bi。默认关闭以缩短发布耗时')
     booleanParam(name: 'CLEAN_DANGLING_IMAGES', defaultValue: false, description: '是否清理悬空镜像。默认关闭以保留 Docker 构建缓存')
   }
 
@@ -46,12 +45,10 @@ pipeline {
           def shortCommit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
           env.EFFECTIVE_IMAGE_TAG = params.IMAGE_TAG?.trim() ? params.IMAGE_TAG.trim() : "${env.BUILD_NUMBER}-${shortCommit}"
           env.IMAGE = "${env.IMAGE_REPOSITORY}:${env.EFFECTIVE_IMAGE_TAG}"
-          env.IMAGE_TAR = "${env.APP_HOME}/chat-bi-${env.EFFECTIVE_IMAGE_TAG}.tar"
           env.BUILD_AT = sh(script: "TZ=Asia/Shanghai date +'%Y-%m-%dT%H:%M'", returnStdout: true).trim()
           env.GITHUB_COMMIT = shortCommit
           env.FRONTEND_API_BASE_URL = "./api/v1"
           env.EFFECTIVE_PYTHON_DEPENDENCY_EXTRA = params.PYTHON_DEPENDENCY_EXTRA == 'none' ? '' : params.PYTHON_DEPENDENCY_EXTRA
-          env.EXPORT_IMAGE_TAR = params.EXPORT_IMAGE_TAR.toString()
           env.CLEAN_DANGLING_IMAGES = params.CLEAN_DANGLING_IMAGES.toString()
         }
         sh '''
@@ -66,7 +63,6 @@ pipeline {
           command -v docker
           docker version
           echo "Python 依赖类型：${EFFECTIVE_PYTHON_DEPENDENCY_EXTRA:-none}"
-          echo "是否导出镜像 tar：${EXPORT_IMAGE_TAR:-false}"
           echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES:-false}"
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/sqlbot/excel" "$APP_HOME/data/sqlbot/file" "$APP_HOME/data/sqlbot/images" "$APP_HOME/data/sqlbot/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
@@ -167,19 +163,6 @@ EOF
           else
             echo "当前执行环境无法读取 $NGINX_CONF_PATH，跳过自动比对。"
           fi
-        '''
-      }
-    }
-
-    stage('保存镜像到 /home/chat-bi') {
-      when {
-        expression { return params.EXPORT_IMAGE_TAR }
-      }
-      steps {
-        sh '''
-          set -eux
-          docker save "$IMAGE" -o "$IMAGE_TAR"
-          ls -lh "$IMAGE_TAR"
         '''
       }
     }
@@ -364,7 +347,7 @@ EOF
 
   post {
     success {
-      echo "发布完成：${env.IMAGE}，镜像归档：${params.EXPORT_IMAGE_TAR ? env.IMAGE_TAR : '未导出'}"
+      echo "发布完成：${env.IMAGE}，镜像未导出 tar"
     }
     failure {
       sh '''
