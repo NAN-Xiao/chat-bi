@@ -26,8 +26,8 @@
         >
           <el-table-column prop="name" :label="t('tenant.name')" min-width="180" show-overflow-tooltip>
             <template #default="scope">
-              <div class="workspace-name">{{ scope.row.name || scope.row.code }}</div>
-              <div class="muted">{{ scope.row.code }}</div>
+              <div class="workspace-name">{{ scope.row.name || '-' }}</div>
+              <div class="muted">{{ t('tenant.tenant_id') }} {{ tenantDisplayId(scope.row) }}</div>
             </template>
           </el-table-column>
           <el-table-column prop="role" :label="t('user.tenant_role')" width="140">
@@ -117,7 +117,7 @@
           </el-table-column>
           <el-table-column prop="tenant_name" :label="t('tenant.name')" min-width="160" show-overflow-tooltip>
             <template #default="scope">
-              <div>{{ scope.row.tenant_name || scope.row.tenant_code }}</div>
+              <div>{{ scope.row.tenant_name || '-' }}</div>
               <div class="muted">{{ scope.row.secondaryText }}</div>
             </template>
           </el-table-column>
@@ -216,10 +216,10 @@
             :placeholder="t('tenant.search_tenant_first')"
           />
         </el-form-item>
-        <el-form-item prop="tenant_code" :label="t('tenant.code')">
+        <el-form-item prop="tenant_keyword" :label="t('tenant.workspace_search_label')">
           <el-input
-            v-model="joinForm.tenant_code"
-            maxlength="64"
+            v-model="joinForm.tenant_keyword"
+            maxlength="100"
             clearable
             :placeholder="t('tenant.join_search_placeholder')"
             @keydown.enter.exact.prevent="searchTenantTargets"
@@ -241,7 +241,7 @@
               @click="selectTenantTarget(tenant)"
             >
               <span class="tenant-search-name">{{ tenant.name }}</span>
-              <span class="tenant-search-code">{{ tenant.code }}</span>
+              <span class="tenant-search-id">{{ t('tenant.tenant_id') }} {{ tenantDisplayId(tenant) }}</span>
               <span v-if="tenant.already_joined" class="tenant-search-state">
                 {{ t('tenant.already_joined') }}
               </span>
@@ -313,13 +313,15 @@ const requestPage = reactive({
 
 const joinForm = reactive({
   tenant_id: '',
-  tenant_code: '',
+  tenant_keyword: '',
   tenant_name: '',
   reason: '',
 })
 
 const tenantList = computed(() => userStore.getTenants)
 const currentTenantName = computed(() => userStore.getTenantName || '')
+const tenantDisplayId = (tenant?: Partial<TenantInfo | TenantSearchInfo> | null) =>
+  String(tenant?.public_id || '')
 const joinedWorkspacePageRows = computed(() => {
   const start = (joinedWorkspacePage.currentPage - 1) * joinedWorkspacePage.pageSize
   return tenantList.value.slice(start, start + joinedWorkspacePage.pageSize)
@@ -354,7 +356,7 @@ const maxRequestPage = computed(() =>
   Math.max(1, Math.ceil(workspaceRequestRows.value.length / requestPage.pageSize))
 )
 const joinRules = computed(() => ({
-  tenant_code: [{ required: true, message: t('tenant.code_required'), trigger: 'blur' }],
+  tenant_keyword: [{ required: true, message: t('tenant.search_tenant_first'), trigger: 'blur' }],
 }))
 
 const formatTenantRole = (role?: string) => {
@@ -483,7 +485,7 @@ const resetJoinForm = () => {
   tenantSearchResults.value = []
   Object.assign(joinForm, {
     tenant_id: '',
-    tenant_code: '',
+    tenant_keyword: '',
     tenant_name: '',
     reason: '',
   })
@@ -500,12 +502,12 @@ const closeJoinDialog = () => {
 
 const selectTenantTarget = (tenant: TenantSearchInfo) => {
   joinForm.tenant_id = String(tenant.id || '')
-  joinForm.tenant_code = tenant.code || String(tenant.id || '')
-  joinForm.tenant_name = tenant.name || tenant.code || ''
+  joinForm.tenant_keyword = tenant.name || tenantDisplayId(tenant)
+  joinForm.tenant_name = tenant.name || ''
 }
 
 const searchTenantTargets = async () => {
-  const keyword = joinForm.tenant_code.trim()
+  const keyword = joinForm.tenant_keyword.trim()
   if (!keyword) return
   tenantSearchLoading.value = true
   try {
@@ -520,11 +522,9 @@ const submitJoinApplication = () => {
     if (!valid) return
     joinSubmitting.value = true
     try {
-      const target = joinForm.tenant_code.trim()
       await tenantApi.submitApplication({
         application_type: 'join',
-        tenant_id: joinForm.tenant_id || (/^\d+$/.test(target) ? target : undefined),
-        tenant_code: joinForm.tenant_id ? undefined : target,
+        tenant_id: joinForm.tenant_id,
         reason: joinForm.reason,
       })
       ElMessage.success(t('tenant.join_application_submitted'))
@@ -543,7 +543,7 @@ const leaveWorkspace = async (tenant: TenantInfo) => {
     return
   }
   try {
-    await ElMessageBox.confirm(t('tenant.leave_workspace_confirm', { msg: tenant.name || tenant.code }), {
+    await ElMessageBox.confirm(t('tenant.leave_workspace_confirm', { msg: tenant.name || tenant.id }), {
       confirmButtonType: 'danger',
       confirmButtonText: t('tenant.leave_workspace'),
       cancelButtonText: t('common.cancel'),
@@ -971,7 +971,7 @@ onMounted(() => {
     font-weight: 500;
   }
 
-  .tenant-search-code,
+  .tenant-search-id,
   .tenant-search-state {
     color: #8f959e;
     font-size: 12px;

@@ -179,7 +179,7 @@
             <div class="rank-main">
               <div class="rank-title">{{ item.tenant_name || `#${item.tenant_id}` }}</div>
               <div class="rank-meta">
-                {{ t('tenant.tenant_id') }}: {{ item.tenant_id || '-' }}
+                {{ t('tenant.tenant_id') }}: {{ item.tenant_public_id || '-' }}
                 ·
                 {{ formatNumber(item.request_count) }} {{ t('platform_overview.requests') }}
                 · {{ formatNumber(item.failure_count) }} {{ t('platform_overview.failures') }}
@@ -199,7 +199,7 @@
         </div>
         <el-table :data="recentTenants" class="recent-table" style="width: 100%">
           <el-table-column prop="id" :label="t('tenant.tenant_id')" width="190" show-overflow-tooltip>
-            <template #default="scope">{{ scope.row.id || '-' }}</template>
+            <template #default="scope">{{ scope.row.public_id || '-' }}</template>
           </el-table-column>
           <el-table-column prop="name" :label="t('tenant.name')" min-width="180" show-overflow-tooltip>
             <template #default="scope">

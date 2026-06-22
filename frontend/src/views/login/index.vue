@@ -1690,6 +1690,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   border: 1px solid var(--theme-shell-border);
   border-radius: 8px;
   background: var(--theme-panel-bg);
@@ -1698,6 +1699,7 @@ onMounted(async () => {
 }
 
 .product-login-card-head {
+  width: min(100%, 420px);
   margin-bottom: 30px;
 
   > span {
@@ -1724,8 +1726,16 @@ onMounted(async () => {
   line-height: 1.8;
 }
 
-.product-login-form {
+.login-form {
   width: min(100%, 420px);
+}
+
+.default-login-tabs {
+  width: 100%;
+}
+
+.product-login-form {
+  width: 100%;
   color: var(--theme-text-primary);
 
   .product-login-field {

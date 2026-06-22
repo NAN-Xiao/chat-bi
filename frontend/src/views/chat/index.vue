@@ -183,7 +183,7 @@
           </div>
         </div>
         <el-scrollbar
-          v-if="computedMessages.length > 0"
+          v-if="hasRealChatRecords"
           ref="chatListRef"
           class="no-horizontal"
           @scroll="handleScroll"
@@ -603,10 +603,13 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
 
   return messages
 })
+const hasRealChatRecords = computed(() =>
+  currentChat.value.records.some((record) => !record.first_chat && !!record.question?.trim())
+)
 const hasChatMessages = computed(() => computedMessages.value.length > 0)
 const isLoadingSelectedChat = computed(() => loading.value && currentChatId.value !== undefined)
-const showWelcomeContent = computed(() => !hasChatMessages.value && !isLoadingSelectedChat.value)
-const showEmptyLoadingContent = computed(() => !hasChatMessages.value && isLoadingSelectedChat.value)
+const showWelcomeContent = computed(() => !hasRealChatRecords.value && !isLoadingSelectedChat.value)
+const showEmptyLoadingContent = computed(() => !hasRealChatRecords.value && isLoadingSelectedChat.value)
 
 const showChatFooter = computed(() => {
   return (

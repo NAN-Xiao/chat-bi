@@ -45,12 +45,13 @@ const roleLabel = (role?: string) => {
   return t('access.role_member_label')
 }
 
-const formatWorkspaceName = (workspace: TenantInfo) =>
-  workspace.name || workspace.code || String(workspace.id || '')
+const formatWorkspaceName = (workspace: TenantInfo) => workspace.name || String(workspace.id || '')
+const tenantDisplayId = (workspace?: Partial<TenantInfo> | null) =>
+  String(workspace?.public_id || '')
 
 const formatWorkspaceMeta = (workspace: TenantInfo) => {
   const parts = [
-    workspace.code,
+    tenantDisplayId(workspace) ? `${t('tenant.tenant_id')} ${tenantDisplayId(workspace)}` : '',
     workspace.owner_name ? t('access.workspace_owner_meta', { owner: workspace.owner_name }) : '',
   ].filter(Boolean)
   return parts.join(' · ')
@@ -246,7 +247,7 @@ onMounted(() => {
           <div class="invitation-main">
             <div class="workspace-title-row">
               <span class="workspace-name">
-                {{ application.tenant_name || application.tenant_code }}
+                {{ application.tenant_name || '-' }}
               </span>
               <el-tag type="info" effect="plain" round>
                 {{ formatApplicationType(application.application_type) }}
@@ -269,7 +270,7 @@ onMounted(() => {
           <div class="invitation-main">
             <div class="workspace-title-row">
               <span class="workspace-name">
-                {{ invitation.tenant_name || invitation.tenant_code }}
+                {{ invitation.tenant_name || '-' }}
               </span>
               <el-tag type="info" effect="plain" round>
                 {{ t('tenant.application_type_invite') }}

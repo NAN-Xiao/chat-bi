@@ -2,7 +2,7 @@ import { request } from '@/utils/request'
 
 export interface TenantInfo {
   id: number | string
-  code: string
+  public_id?: string
   name: string
   role: string
   plan?: string
@@ -32,7 +32,7 @@ export interface TenantInfo {
 
 export interface TenantSearchInfo {
   id: number | string
-  code: string
+  public_id?: string
   name: string
   plan?: string
   status?: number
@@ -52,7 +52,7 @@ export interface TenantApplicationInfo {
   inviter_name?: string
   inviter_email?: string
   tenant_id?: number | string
-  tenant_code: string
+  tenant_public_id?: string
   tenant_name: string
   plan: string
   requested_role: string
@@ -68,7 +68,6 @@ export interface TenantApplicationInfo {
 export interface TenantApplicationPayload {
   application_type?: 'create' | 'join'
   tenant_id?: number | string
-  tenant_code?: string
   tenant_name?: string
   plan?: string
   reason?: string
@@ -203,6 +202,7 @@ export interface TenantOverviewMemberActivityInfo {
 
 export interface TenantOverviewInfo {
   tenant_id: number | string
+  tenant_public_id?: string | null
   tenant_name: string
   days: number
   summary: TenantOverviewSummaryInfo
@@ -260,6 +260,7 @@ export interface PlatformOverviewDistributionItemInfo {
 
 export interface PlatformOverviewTenantUsageInfo {
   tenant_id: number | string
+  tenant_public_id?: string | null
   tenant_name?: string | null
   request_count: number
   total_tokens: number
@@ -275,7 +276,7 @@ export interface PlatformOverviewModelUsageInfo {
 
 export interface PlatformOverviewRecentTenantInfo {
   id: number | string
-  code: string
+  public_id?: string
   name: string
   plan: string
   status: number
@@ -359,7 +360,7 @@ export const tenantApi = {
     request.delete<TenantApplicationInfo>(`/system/tenant/application/${id}`),
   reviewApplication: (
     id: number | string,
-    data: { approved: boolean; tenant_code?: string; review_comment?: string }
+    data: { approved: boolean; review_comment?: string }
   ) =>
     request.post<TenantApplicationInfo>(`/system/tenant/application/${id}/review`, data),
   tenantApplications: (status?: string) =>
@@ -414,7 +415,6 @@ export const tenantApi = {
   removeMember: (userId: number | string) =>
     request.delete<TenantMemberInfo>(`/system/tenant/member/${userId}`),
   add: (data: {
-    code: string
     name: string
     plan?: string
     subscription_status?: string

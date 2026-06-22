@@ -28,7 +28,7 @@ interface UserState {
   globalRole: string
   isSystemAdmin: boolean
   tenantId: string
-  tenantCode: string
+  tenantPublicId: string
   tenantName: string
   tenantRole: string
   workspaceRole: string
@@ -55,7 +55,7 @@ export const UserStore = defineStore('user', {
       globalRole: 'normal_user',
       isSystemAdmin: false,
       tenantId: '',
-      tenantCode: '',
+      tenantPublicId: '',
       tenantName: '',
       tenantRole: '',
       workspaceRole: '',
@@ -132,8 +132,11 @@ export const UserStore = defineStore('user', {
     getTenantId(): string {
       return this.tenantId
     },
+    getTenantPublicId(): string {
+      return this.tenantPublicId
+    },
     getTenantName(): string {
-      return this.tenantName || this.tenantCode
+      return this.tenantName || this.tenantPublicId || this.tenantId
     },
     getTenantRole(): string {
       return this.workspaceRole || this.tenantRole
@@ -204,7 +207,7 @@ export const UserStore = defineStore('user', {
         'globalRole',
         'isSystemAdmin',
         'tenantId',
-        'tenantCode',
+        'tenantPublicId',
         'tenantName',
         'tenantRole',
         'workspaceRole',
@@ -217,7 +220,7 @@ export const UserStore = defineStore('user', {
           key === 'uid' ? 'id' : key === 'systemRole' ? 'system_role' : key === 'isSystemAdmin' ? 'isAdmin' : key
         const tenantKeyMap: Record<string, string> = {
           tenantId: 'tenant_id',
-          tenantCode: 'tenant_code',
+          tenantPublicId: 'tenant_public_id',
           tenantName: 'tenant_name',
           tenantRole: 'tenant_role',
           workspaceRole: 'workspace_role',
@@ -274,14 +277,13 @@ export const UserStore = defineStore('user', {
       }
       const previousTenant: TenantInfo = {
         id: this.tenantId,
-        code: this.tenantCode,
+        public_id: this.tenantPublicId,
         name: this.tenantName,
         role: this.tenantRole,
       }
       const targetTenant =
         this.tenants.find((tenant) => String(tenant.id) === nextTenantId) || ({
           id: nextTenantId,
-          code: '',
           name: '',
           role: '',
         } as TenantInfo)
@@ -298,11 +300,11 @@ export const UserStore = defineStore('user', {
     },
     setTenant(tenant: Partial<TenantInfo> | null) {
       const tenantId = tenant?.id ? String(tenant.id) : ''
-      const tenantCode = tenant?.code ? String(tenant.code) : ''
+      const tenantPublicId = tenant?.public_id ? String(tenant.public_id) : ''
       const tenantName = tenant?.name ? String(tenant.name) : ''
       const tenantRole = tenant?.role ? String(tenant.role) : ''
       this.tenantId = tenantId
-      this.tenantCode = tenantCode
+      this.tenantPublicId = tenantPublicId
       this.tenantName = tenantName
       this.tenantRole = tenantRole
       this.workspaceRole = tenantRole
@@ -315,7 +317,7 @@ export const UserStore = defineStore('user', {
             ? 'active'
             : 'workspace_required'
       wsCache.set('user.tenantId', tenantId)
-      wsCache.set('user.tenantCode', tenantCode)
+      wsCache.set('user.tenantPublicId', tenantPublicId)
       wsCache.set('user.tenantName', tenantName)
       wsCache.set('user.tenantRole', tenantRole)
       wsCache.set('user.workspaceRole', tenantRole)
@@ -325,7 +327,7 @@ export const UserStore = defineStore('user', {
     async enterPlatformWorkspaceDelegate(tenant: PlatformWorkspaceDelegateTenant): Promise<void> {
       if (!setPlatformWorkspaceDelegateContext(tenant)) return
       this.tenantId = String(tenant.id || '')
-      this.tenantCode = tenant.code ? String(tenant.code) : ''
+      this.tenantPublicId = tenant.public_id ? String(tenant.public_id) : ''
       this.tenantName = tenant.name ? String(tenant.name) : ''
       this.tenantRole = 'owner'
       this.workspaceRole = 'owner'
@@ -410,7 +412,7 @@ export const UserStore = defineStore('user', {
         'globalRole',
         'isSystemAdmin',
         'tenantId',
-        'tenantCode',
+        'tenantPublicId',
         'tenantName',
         'tenantRole',
         'workspaceRole',

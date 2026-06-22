@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine
 
@@ -19,7 +19,7 @@ def _engine():
 def test_tenant_must_be_disabled_before_soft_delete():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=10, code="tenant-a", name="Tenant A", status=1))
+        session.add(TenantModel(id=10, name="Tenant A", status=1))
         session.commit()
 
         with pytest.raises(ValueError, match="disabled"):
@@ -39,7 +39,6 @@ def test_default_tenant_cannot_be_deleted():
         session.add(
             TenantModel(
                 id=DEFAULT_TENANT_ID,
-                code="default",
                 name="Default",
                 status=0,
             )
@@ -48,3 +47,4 @@ def test_default_tenant_cannot_be_deleted():
 
         with pytest.raises(ValueError, match="Default tenant cannot be deleted"):
             delete_tenant(session, tenant_id=DEFAULT_TENANT_ID)
+

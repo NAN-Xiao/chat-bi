@@ -64,11 +64,17 @@ const emit = defineEmits(['handleCommand'])
   box-shadow: 0px 4px 8px 0px #1f23291a !important;
   border-radius: 6px;
   border: 1px solid #dee0e3 !important;
-  width: 120px !important;
+  width: max-content !important;
   min-width: 120px !important;
+  max-width: min(280px, calc(100vw - 24px)) !important;
   padding: 0 !important;
 
+  .ed-dropdown-menu {
+    min-width: 120px;
+  }
+
   .handle-icon {
+    flex: 0 0 auto;
     color: #646a73;
     margin-right: 8px;
   }
@@ -79,9 +85,12 @@ const emit = defineEmits(['handleCommand'])
 
   .ed-dropdown-menu__item {
     position: relative;
-    padding-left: 12px;
+    min-width: 120px;
+    max-width: min(280px, calc(100vw - 24px));
+    padding: 0 12px;
     background: none;
     color: #1f2329;
+    white-space: nowrap;
     &:focus {
       background: none;
       color: #1f2329;
@@ -92,7 +101,7 @@ const emit = defineEmits(['handleCommand'])
 
       &::after {
         content: '';
-        width: 112px;
+        width: calc(100% - 8px);
         height: 32px;
         border-radius: 6px;
         position: absolute;

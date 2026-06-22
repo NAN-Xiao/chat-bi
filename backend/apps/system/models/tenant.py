@@ -1,19 +1,36 @@
+import secrets
+
 from sqlalchemy import BigInteger, Boolean, Column, Index, String, Text, UniqueConstraint
 from sqlmodel import Field
 
 from common.core.models import SnowflakeBase
 from common.utils.time import get_timestamp
 
+TENANT_PUBLIC_ID_PREFIX = "WS"
+TENANT_PUBLIC_ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+TENANT_PUBLIC_ID_DIGITS = "23456789"
+
+
+def generate_tenant_public_id() -> str:
+    body = "".join(secrets.choice(TENANT_PUBLIC_ID_ALPHABET) for _ in range(8))
+    if not any(char.isdigit() for char in body):
+        index = secrets.randbelow(len(body))
+        body = f"{body[:index]}{secrets.choice(TENANT_PUBLIC_ID_DIGITS)}{body[index + 1:]}"
+    return f"{TENANT_PUBLIC_ID_PREFIX}{body}"
+
 
 class TenantModel(SnowflakeBase, table=True):
     __tablename__ = "sys_tenant"
     __table_args__ = (
-        UniqueConstraint("code", name="uq_sys_tenant_code"),
+        UniqueConstraint("public_id", name="uq_sys_tenant_public_id"),
         Index("idx_sys_tenant_status", "status"),
         Index("idx_sys_tenant_subscription_status", "subscription_status"),
     )
 
-    code: str = Field(sa_column=Column(String(64), nullable=False))
+    public_id: str = Field(
+        default_factory=generate_tenant_public_id,
+        sa_column=Column(String(32), nullable=False),
+    )
     name: str = Field(sa_column=Column(String(255), nullable=False))
     status: int = Field(default=1, sa_column=Column(BigInteger(), nullable=False, server_default="1"))
     plan: str = Field(default="default", sa_column=Column(String(64), nullable=False, server_default="default"))
@@ -60,14 +77,12 @@ class TenantApplicationModel(SnowflakeBase, table=True):
         Index("idx_sys_tenant_application_status", "status"),
         Index("idx_sys_tenant_application_tenant_id", "tenant_id"),
         Index("idx_sys_tenant_application_type_status", "application_type", "status"),
-        Index("idx_sys_tenant_application_tenant_code", "tenant_code"),
     )
 
     applicant_user_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
     invited_by_user_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
     application_type: str = Field(default="create", sa_column=Column(String(32), nullable=False, server_default="create"))
     tenant_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
-    tenant_code: str = Field(sa_column=Column(String(64), nullable=False))
     tenant_name: str = Field(sa_column=Column(String(255), nullable=False))
     plan: str = Field(default="default", sa_column=Column(String(64), nullable=False, server_default="default"))
     requested_role: str = Field(default="owner", sa_column=Column(String(32), nullable=False, server_default="owner"))

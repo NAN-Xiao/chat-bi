@@ -54,6 +54,7 @@ from apps.system.crud.tenant import (
     update_tenant,
     upsert_tenant_security_policy,
     get_tenant_security_policy,
+    ensure_tenant_public_id,
     user_belongs_to_tenant,
 )
 from apps.system.crud.tenant_usage import _chat_log_total_tokens_expr, list_tenant_usage_by_user, list_tenant_usage_daily
@@ -173,7 +174,7 @@ def _application_audit_remark(application: TenantApplicationModel) -> str:
     parts = [
         f"type={application.application_type}",
         f"status={application.status}",
-        f"tenant_code={application.tenant_code}",
+        f"tenant_id={application.tenant_id}",
         f"requested_role={application.requested_role}",
         f"applicant_user_id={application.applicant_user_id}",
     ]
@@ -411,6 +412,24 @@ def _tenant_member_stats_map(session: SessionDep, tenant_ids: list[int]) -> dict
     return result
 
 
+def _tenant_public_id(tenant: TenantModel | None) -> str:
+    if tenant is None:
+        return ""
+    return str(getattr(tenant, "public_id", None) or "")
+
+
+def _tenant_public_id_map(session: SessionDep, tenant_ids: list[int]) -> dict[int, str]:
+    ids = [int(tenant_id) for tenant_id in tenant_ids if tenant_id is not None]
+    if not ids:
+        return {}
+    rows = session.exec(select(TenantModel).where(TenantModel.id.in_(ids))).all()
+    result: dict[int, str] = {}
+    for tenant in rows:
+        ensure_tenant_public_id(session, tenant)
+        result[int(tenant.id)] = _tenant_public_id(tenant)
+    return result
+
+
 def _tenant_dto(
     tenant: TenantModel,
     *,
@@ -428,7 +447,7 @@ def _tenant_dto(
     show_operations = normalized_role in TENANT_ADMIN_ROLES if include_operations is None else include_operations
     return TenantDTO(
         id=int(tenant.id),
-        code=tenant.code,
+        public_id=_tenant_public_id(tenant),
         name=tenant.name,
         role=normalized_role,
         plan=tenant.plan if show_operations else None,
@@ -458,6 +477,8 @@ def _tenant_dto(
 
 
 def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int | None]]) -> list[TenantDTO]:
+    for tenant, _role, _join_time in rows:
+        ensure_tenant_public_id(session, tenant)
     tenant_ids = [int(tenant.id) for tenant, _role, _join_time in rows]
     owner_map = _tenant_owner_map(session, tenant_ids)
     datasource_map = _tenant_bound_datasource_map(session, tenant_ids)
@@ -476,6 +497,7 @@ def _tenant_dto_list(session: SessionDep, rows: list[tuple[TenantModel, str, int
 
 
 def _tenant_admin_dto(session: SessionDep, tenant: TenantModel) -> TenantDTO:
+    ensure_tenant_public_id(session, tenant)
     tenant_id = int(tenant.id)
     owner = _tenant_owner_map(session, [tenant_id]).get(tenant_id)
     datasource = _tenant_bound_datasource_map(session, [tenant_id]).get(tenant_id)
@@ -600,6 +622,7 @@ def _application_dto(
     *,
     applicant: dict | None = None,
     inviter: dict | None = None,
+    tenant_public_id: str | None = None,
     include_user_email: bool = True,
 ) -> TenantApplicationDTO:
     applicant = applicant or {}
@@ -616,7 +639,7 @@ def _application_dto(
         inviter_name=inviter.get("name"),
         inviter_email=inviter.get("email") if include_user_email else None,
         tenant_id=application.tenant_id,
-        tenant_code=application.tenant_code,
+        tenant_public_id=tenant_public_id,
         tenant_name=application.tenant_name,
         plan=application.plan,
         requested_role=application.requested_role,
@@ -647,11 +670,18 @@ def _application_dto_list(
         if getattr(application, "invited_by_user_id", None)
     )
     user_map = _application_user_map(session, list(user_ids))
+    tenant_ids = {
+        int(application.tenant_id)
+        for application in applications
+        if getattr(application, "tenant_id", None)
+    }
+    tenant_public_id_map = _tenant_public_id_map(session, list(tenant_ids))
     return [
         _application_dto(
             application,
             applicant=user_map.get(int(application.applicant_user_id)),
             inviter=user_map.get(int(application.invited_by_user_id)) if application.invited_by_user_id else None,
+            tenant_public_id=tenant_public_id_map.get(int(application.tenant_id)) if application.tenant_id else None,
             include_user_email=include_user_email,
         )
         for application in applications
@@ -839,9 +869,11 @@ def _resolve_owner_user(session: SessionDep, creator: TenantCreator) -> UserMode
 @router.get("/current", response_model=TenantDTO)
 async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
     datasource = _tenant_bound_datasource_map(session, [int(current_tenant.id)]).get(int(current_tenant.id))
+    tenant = session.get(TenantModel, int(current_tenant.id))
+    ensure_tenant_public_id(session, tenant)
     return TenantDTO(
         id=current_tenant.id,
-        code=current_tenant.code,
+        public_id=_tenant_public_id(tenant),
         name=current_tenant.name,
         role=current_tenant.role,
         bound_datasource_id=datasource.get("bound_datasource_id") if datasource else None,
@@ -872,7 +904,7 @@ async def search_tenants(
     return [
         TenantSearchDTO(
             id=int(tenant.id),
-            code=tenant.code,
+            public_id=_tenant_public_id(tenant),
             name=tenant.name,
             plan=tenant.plan,
             status=int(tenant.status),
@@ -1118,15 +1150,20 @@ async def platform_overview(
 
     tenant_name_rows = (
         session.exec(
-            select(TenantModel.id, TenantModel.name).where(TenantModel.id.in_(list(tenant_usage_map.keys())))
+            select(TenantModel).where(TenantModel.id.in_(list(tenant_usage_map.keys())))
         ).all()
         if tenant_usage_map
         else []
     )
-    tenant_name_map = {int(tenant_id): name for tenant_id, name in tenant_name_rows}
+    tenant_name_map = {int(tenant.id): tenant.name for tenant in tenant_name_rows}
+    tenant_public_id_map = {}
+    for tenant in tenant_name_rows:
+        ensure_tenant_public_id(session, tenant)
+        tenant_public_id_map[int(tenant.id)] = _tenant_public_id(tenant)
     top_tenant_usage = [
         PlatformOverviewTenantUsageDTO(
             tenant_id=tenant_id,
+            tenant_public_id=tenant_public_id_map.get(tenant_id),
             tenant_name=tenant_name_map.get(tenant_id),
             request_count=values["request_count"],
             total_tokens=values["total_tokens"],
@@ -1186,7 +1223,7 @@ async def platform_overview(
     recent_tenants = [
         PlatformOverviewRecentTenantDTO(
             id=int(row.id),
-            code=row.code,
+            public_id=_tenant_public_id(row),
             name=row.name,
             plan=row.plan,
             status=int(row.status),
@@ -1337,7 +1374,7 @@ async def tenant_overview(
     _require_current_tenant_admin(current_user)
 
     tenant_id = int(current_tenant.id)
-    tenant_name = current_tenant.name or current_tenant.code
+    tenant_name = current_tenant.name or str(current_tenant.id)
 
     current_date = datetime.now()
     start_date = current_date.date() - timedelta(days=days - 1)
@@ -1690,6 +1727,7 @@ async def tenant_overview(
 
     return TenantOverviewDTO(
         tenant_id=tenant_id,
+        tenant_public_id=getattr(current_tenant, "public_id", None),
         tenant_name=tenant_name,
         days=days,
         summary=TenantOverviewSummaryDTO(
@@ -1924,7 +1962,6 @@ async def submit_tenant_application(
             applicant_user_id=int(current_user.id),
             application_type=creator.application_type,
             tenant_id=creator.tenant_id,
-            tenant_code=creator.tenant_code,
             tenant_name=creator.tenant_name,
             plan=creator.plan,
             reason=creator.reason,
@@ -2027,7 +2064,6 @@ async def review_tenant_application(
                 session,
                 application_id=application_id,
                 reviewer_user_id=int(current_user.id),
-                tenant_code=dto.tenant_code,
                 review_comment=dto.review_comment,
                 allowed_types={TENANT_APPLICATION_TYPE_CREATE},
             )
@@ -2280,7 +2316,7 @@ async def transfer_current_tenant_owner(
         tenant_id=int(current_tenant.id),
         resource_id=target_user.id,
         resource_name=target_user.name,
-        remark=f"tenant_code={current_tenant.code}; target_user_id={target_user.id}",
+        remark=f"tenant_id={current_tenant.id}; target_user_id={target_user.id}",
     )
     tenant = session.get(TenantModel, int(current_tenant.id))
     return _tenant_dto(tenant, owner={
@@ -2657,7 +2693,7 @@ async def leave_joined_tenant(
         tenant_id=int(tenant_id),
         resource_id=current_user.id,
         resource_name=_audit_user_name(current_user),
-        remark=f"tenant_code={tenant.code}; user_id={current_user.id}",
+        remark=f"tenant_id={tenant.id}; user_id={current_user.id}",
     )
     rows = list_user_tenant_memberships(session, int(current_user.id))
     return _tenant_dto_list(session, [(tenant, membership.role, membership.create_time) for tenant, membership in rows])
@@ -2716,7 +2752,6 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
         owner_user = _resolve_owner_user(session, creator)
         tenant = create_tenant(
             session,
-            code=creator.code,
             name=creator.name,
             plan=creator.plan,
             subscription_status=creator.subscription_status,
@@ -2758,7 +2793,7 @@ async def add_tenant(session: SessionDep, current_user: CurrentUser, creator: Te
         tenant_id=int(tenant.id),
         resource_id=tenant.id,
         resource_name=tenant.name,
-        remark=f"tenant_code={tenant.code}; plan={tenant.plan}",
+        remark=f"tenant_id={tenant.id}; plan={tenant.plan}",
     )
     datasource = _tenant_bound_datasource_map(session, [int(tenant.id)]).get(int(tenant.id))
     return _tenant_dto(tenant, owner=owner, datasource=datasource)
@@ -2798,7 +2833,7 @@ async def edit_tenant(session: SessionDep, current_user: CurrentUser, tenant_id:
         resource_id=tenant.id,
         resource_name=tenant.name,
         remark=(
-            f"tenant_code={tenant.code}; plan={tenant.plan}; "
+            f"tenant_id={tenant.id}; plan={tenant.plan}; "
             f"datasource_id={editor.datasource_id if 'datasource_id' in editor_fields else 'unchanged'}"
         ),
     )
@@ -2821,7 +2856,7 @@ async def update_tenant_status(session: SessionDep, current_user: CurrentUser, t
         tenant_id=int(tenant.id),
         resource_id=tenant.id,
         resource_name=tenant.name,
-        remark=f"tenant_code={tenant.code}; status={tenant.status}",
+        remark=f"tenant_id={tenant.id}; status={tenant.status}",
     )
     return _tenant_dto(tenant)
 
@@ -2842,6 +2877,6 @@ async def remove_tenant(session: SessionDep, current_user: CurrentUser, tenant_i
         tenant_id=int(tenant.id),
         resource_id=tenant.id,
         resource_name=tenant.name,
-        remark=f"tenant_code={tenant.code}; soft_deleted=true",
+        remark=f"tenant_id={tenant.id}; soft_deleted=true",
     )
     return _tenant_dto(tenant)

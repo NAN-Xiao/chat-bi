@@ -11,7 +11,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from apps.system.crud.apikey_manage import get_api_key
 from apps.system.crud.assistant import get_assistant_info, get_assistant_user
 from apps.system.crud.tenant import (
-    DEFAULT_TENANT_CODE,
     DEFAULT_TENANT_ID,
     DEFAULT_TENANT_NAME,
     TENANT_ROLE_MEMBER,
@@ -173,14 +172,14 @@ class TokenMiddleware(BaseHTTPMiddleware):
         if tenant:
             context = TenantContext(
                 id=int(tenant.id),
-                code=tenant.code,
+                public_id=getattr(tenant, "public_id", None),
                 name=tenant.name,
                 role=TENANT_ROLE_MEMBER,
             )
         elif tenant_id == DEFAULT_TENANT_ID:
             context = TenantContext(
                 id=DEFAULT_TENANT_ID,
-                code=DEFAULT_TENANT_CODE,
+                public_id=None,
                 name=DEFAULT_TENANT_NAME,
                 role=TENANT_ROLE_MEMBER,
             )

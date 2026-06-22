@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class TenantDTO(BaseModel):
     id: int
-    code: str
+    public_id: str
     name: str
     role: str = "member"
     plan: Optional[str] = None
@@ -35,7 +35,7 @@ class TenantDTO(BaseModel):
 
 class TenantSearchDTO(BaseModel):
     id: int
-    code: str
+    public_id: str
     name: str
     plan: str = "default"
     status: int = 1
@@ -44,7 +44,6 @@ class TenantSearchDTO(BaseModel):
 
 
 class TenantCreator(BaseModel):
-    code: str = Field(min_length=2, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     plan: str = Field(default="default", max_length=64)
     subscription_status: str = Field(default="active", max_length=32)
@@ -93,7 +92,6 @@ class TenantApplicationCreator(BaseModel):
 
     application_type: Literal["create", "join"] = "create"
     tenant_id: Optional[int] = None
-    tenant_code: Optional[str] = Field(default=None, max_length=64)
     tenant_name: Optional[str] = Field(default=None, max_length=255)
     plan: str = Field(default="default", max_length=64)
     reason: Optional[str] = Field(default=None, max_length=2000)
@@ -107,7 +105,6 @@ class TenantInvitationCreator(BaseModel):
 
 class TenantApplicationReview(BaseModel):
     approved: bool
-    tenant_code: Optional[str] = Field(default=None, max_length=64)
     review_comment: Optional[str] = Field(default=None, max_length=2000)
 
 
@@ -123,7 +120,7 @@ class TenantApplicationDTO(BaseModel):
     inviter_name: Optional[str] = None
     inviter_email: Optional[str] = None
     tenant_id: Optional[int] = None
-    tenant_code: str
+    tenant_public_id: Optional[str] = None
     tenant_name: str
     plan: str = "default"
     requested_role: str = "owner"
@@ -306,6 +303,7 @@ class TenantOverviewMemberActivityDTO(BaseModel):
 
 class TenantOverviewDTO(BaseModel):
     tenant_id: int
+    tenant_public_id: Optional[str] = None
     tenant_name: str
     days: int = 7
     summary: TenantOverviewSummaryDTO
@@ -363,6 +361,7 @@ class PlatformOverviewDistributionItemDTO(BaseModel):
 
 class PlatformOverviewTenantUsageDTO(BaseModel):
     tenant_id: int
+    tenant_public_id: Optional[str] = None
     tenant_name: Optional[str] = None
     request_count: int = 0
     total_tokens: int = 0
@@ -378,7 +377,7 @@ class PlatformOverviewModelUsageDTO(BaseModel):
 
 class PlatformOverviewRecentTenantDTO(BaseModel):
     id: int
-    code: str
+    public_id: str
     name: str
     plan: str = "default"
     status: int = 1

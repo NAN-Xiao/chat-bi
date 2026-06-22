@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import inspect
 from types import SimpleNamespace
 
@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 
 from apps.system.api import user as user_api
-from apps.system.crud.tenant import SAMPLE_TENANT_CODE, TENANT_ROLE_ADMIN
+from apps.system.crud.tenant import SAMPLE_TENANT_NAME, TENANT_ROLE_ADMIN
 from apps.system.models.tenant import TenantModel, TenantUserModel
 from apps.system.models.user import UserModel, UserPlatformModel
 from apps.system.schemas.system_schema import UserCreator, UserEditor, UserStatus
@@ -43,7 +43,7 @@ def _engine():
             """
             CREATE TABLE sys_tenant (
                 id INTEGER PRIMARY KEY,
-                code VARCHAR(64) NOT NULL UNIQUE,
+                public_id VARCHAR(32) NOT NULL,
                 name VARCHAR(255) NOT NULL,
                 status INTEGER NOT NULL DEFAULT 1,
                 plan VARCHAR(64) NOT NULL DEFAULT 'default',
@@ -119,10 +119,10 @@ def _engine():
         conn.execute(text(
             """
             INSERT INTO sys_tenant
-                (id, code, name, status, plan, subscription_status, billing_mode, create_time, update_time)
+                (id, public_id, name, status, plan, subscription_status, billing_mode, create_time, update_time)
             VALUES
-                (10, 'tenant-a', 'Tenant A', 1, 'default', 'active', 'manual', 1, 1),
-                (20, 'tenant-b', 'Tenant B', 1, 'default', 'active', 'manual', 1, 1)
+                (10, 'WSTENANT2A', 'Tenant A', 1, 'default', 'active', 'manual', 1, 1),
+                (20, 'WSTENANT2B', 'Tenant B', 1, 'default', 'active', 'manual', 1, 1)
             """
         ))
         conn.execute(text(
@@ -247,7 +247,7 @@ def test_platform_admin_creates_platform_user_with_sample_workspace_membership()
         ).one()
 
         assert db_user.system_role == "collab_admin"
-        assert row[0].code == SAMPLE_TENANT_CODE
+        assert row[0].name == SAMPLE_TENANT_NAME
         assert row[1].role == TENANT_ROLE_ADMIN
 
 
@@ -466,3 +466,4 @@ def test_platform_admin_delete_removes_global_user_and_identity_bindings():
         assert session.get(UserModel, 5) is None
         assert session.exec(select(TenantUserModel).where(TenantUserModel.user_id == 5)).first() is None
         assert session.exec(select(UserPlatformModel).where(UserPlatformModel.uid == 5)).first() is None
+

@@ -11,13 +11,12 @@ from apps.system.models.tenant import (
     TenantModel,
     TenantSecurityPolicyModel,
     TenantUserModel,
+    generate_tenant_public_id,
 )
 from common.utils.time import get_timestamp
 
 DEFAULT_TENANT_ID = 1
-DEFAULT_TENANT_CODE = "default"
 DEFAULT_TENANT_NAME = "默认租户"
-SAMPLE_TENANT_CODE = "sample-workspace"
 SAMPLE_TENANT_NAME = "示例工作空间"
 TENANT_ROLE_OWNER = "owner"
 TENANT_ROLE_ADMIN = "admin"
@@ -91,7 +90,7 @@ TENANT_STATUS_DELETED = -1
 
 class TenantContext(BaseModel):
     id: int
-    code: str
+    public_id: str | None = None
     name: str
     role: str = TENANT_ROLE_MEMBER
 
@@ -166,13 +165,14 @@ def _user_is_platform_admin(user) -> bool:
 
 
 def ensure_default_tenant(session: Session) -> TenantModel:
-    tenant = session.exec(select(TenantModel).where(TenantModel.code == DEFAULT_TENANT_CODE)).first()
+    tenant = session.get(TenantModel, DEFAULT_TENANT_ID)
     if tenant:
+        ensure_tenant_public_id(session, tenant)
         return tenant
 
     tenant = TenantModel(
         id=DEFAULT_TENANT_ID,
-        code=DEFAULT_TENANT_CODE,
+        public_id=generate_unique_tenant_public_id(session),
         name=DEFAULT_TENANT_NAME,
         status=1,
         plan="default",
@@ -192,11 +192,11 @@ def sample_workspace_role_for_user(user) -> str:
 
 
 def _ensure_sample_workspace_state(session: Session) -> tuple[TenantModel, bool]:
-    tenant = session.exec(select(TenantModel).where(TenantModel.code == SAMPLE_TENANT_CODE)).first()
+    tenant = session.exec(select(TenantModel).where(TenantModel.name == SAMPLE_TENANT_NAME)).first()
     changed = False
     if tenant is None:
         tenant = TenantModel(
-            code=SAMPLE_TENANT_CODE,
+            public_id=generate_unique_tenant_public_id(session),
             name=SAMPLE_TENANT_NAME,
             status=1,
             plan="default",
@@ -207,6 +207,9 @@ def _ensure_sample_workspace_state(session: Session) -> tuple[TenantModel, bool]
         session.flush()
         return tenant, True
 
+    if not getattr(tenant, "public_id", None):
+        tenant.public_id = generate_unique_tenant_public_id(session)
+        changed = True
     if tenant.name != SAMPLE_TENANT_NAME:
         tenant.name = SAMPLE_TENANT_NAME
         changed = True
@@ -302,10 +305,27 @@ def _table_exists(session: Session, table_name: str) -> bool:
         return False
 
 
+def generate_unique_tenant_public_id(session: Session) -> str:
+    for _attempt in range(20):
+        public_id = generate_tenant_public_id()
+        exists = session.exec(select(TenantModel.id).where(TenantModel.public_id == public_id)).first()
+        if not exists:
+            return public_id
+    raise RuntimeError("Unable to generate a unique tenant public id")
+
+
+def ensure_tenant_public_id(session: Session, tenant: TenantModel | None) -> TenantModel | None:
+    if tenant is None or getattr(tenant, "public_id", None):
+        return tenant
+    tenant.public_id = generate_unique_tenant_public_id(session)
+    session.add(tenant)
+    session.flush()
+    return tenant
+
+
 def create_tenant(
     session: Session,
     *,
-    code: str,
     name: str,
     plan: str = "default",
     subscription_status: str = TENANT_SUBSCRIPTION_ACTIVE,
@@ -317,15 +337,12 @@ def create_tenant(
     billing_email: str | None = None,
     subscription_note: str | None = None,
 ) -> TenantModel:
-    normalized_code = code.strip().lower()
-    if not normalized_code:
-        raise ValueError("Tenant code is required")
-    existing = session.exec(select(TenantModel).where(TenantModel.code == normalized_code)).first()
-    if existing:
-        raise ValueError("Tenant code already exists")
+    normalized_name = name.strip()
+    if not normalized_name:
+        raise ValueError("Tenant name is required")
     tenant = TenantModel(
-        code=normalized_code,
-        name=name.strip(),
+        public_id=generate_unique_tenant_public_id(session),
+        name=normalized_name,
         plan=plan.strip() or "default",
         status=1,
         subscription_status=normalize_subscription_status(subscription_status),
@@ -340,13 +357,6 @@ def create_tenant(
     session.add(tenant)
     session.flush()
     return tenant
-
-
-def tenant_code_exists(session: Session, code: str) -> bool:
-    normalized_code = code.strip().lower()
-    if not normalized_code:
-        return False
-    return session.exec(select(TenantModel.id).where(TenantModel.code == normalized_code)).first() is not None
 
 
 def tenant_name_exists(session: Session, name: str) -> bool:
@@ -450,7 +460,7 @@ def auto_assign_tenants_by_email_domain(session: Session, user) -> list[TenantUs
 
 
 def list_tenants(session: Session, *, include_disabled: bool = False) -> list[TenantModel]:
-    statement = select(TenantModel).order_by(TenantModel.name, TenantModel.code)
+    statement = select(TenantModel).order_by(TenantModel.name, TenantModel.id)
     if not include_disabled:
         statement = statement.where(TenantModel.status == 1)
     else:
@@ -458,19 +468,12 @@ def list_tenants(session: Session, *, include_disabled: bool = False) -> list[Te
     return list(session.exec(statement).all())
 
 
-def get_active_tenant(session: Session, tenant_id: int | None = None, code: str | None = None) -> TenantModel | None:
+def get_active_tenant(session: Session, tenant_id: int | None = None) -> TenantModel | None:
     if tenant_id:
         tenant = session.get(TenantModel, int(tenant_id))
+        ensure_tenant_public_id(session, tenant)
         return tenant if tenant and int(tenant.status) == 1 else None
-    normalized_code = (code or "").strip().lower()
-    if not normalized_code:
-        return None
-    return session.exec(
-        select(TenantModel).where(
-            TenantModel.code == normalized_code,
-            TenantModel.status == 1,
-        )
-    ).first()
+    return None
 
 
 def search_active_tenants(session: Session, *, keyword: str, limit: int = 20) -> list[TenantModel]:
@@ -479,16 +482,14 @@ def search_active_tenants(session: Session, *, keyword: str, limit: int = 20) ->
         return []
     keyword_pattern = f"%{normalized}%"
     filters = [
-        func.lower(TenantModel.code).like(keyword_pattern),
         func.lower(TenantModel.name).like(keyword_pattern),
+        func.lower(TenantModel.public_id).like(keyword_pattern),
     ]
-    if normalized.isdigit():
-        filters.append(TenantModel.id == int(normalized))
     statement = (
         select(TenantModel)
         .where(TenantModel.status == 1)
         .where(or_(*filters))
-        .order_by(TenantModel.name, TenantModel.code)
+        .order_by(TenantModel.name, TenantModel.id)
         .limit(limit)
     )
     return list(session.exec(statement).all())
@@ -732,7 +733,6 @@ def create_tenant_application(
     applicant_user_id: int,
     application_type: str = TENANT_APPLICATION_TYPE_CREATE,
     tenant_id: int | None = None,
-    tenant_code: str | None = None,
     tenant_name: str | None = None,
     plan: str = "default",
     requested_role: str = TENANT_ROLE_OWNER,
@@ -758,11 +758,10 @@ def create_tenant_application(
         if existing_pending:
             raise ValueError("Tenant application for this name is already pending")
         target_tenant_id = None
-        target_code = (tenant_code or "").strip().lower()
         target_name = normalized_name
         target_plan = plan.strip() or "default"
     else:
-        tenant = get_active_tenant(session, tenant_id=tenant_id, code=tenant_code)
+        tenant = get_active_tenant(session, tenant_id=tenant_id)
         if not tenant:
             raise ValueError("Tenant does not exist or is disabled")
         if user_belongs_to_tenant(session, int(applicant_user_id), int(tenant.id)):
@@ -778,7 +777,6 @@ def create_tenant_application(
         if existing_pending:
             raise ValueError("Tenant join application is already pending")
         target_tenant_id = int(tenant.id)
-        target_code = tenant.code
         target_name = tenant.name
         target_plan = tenant.plan
 
@@ -792,7 +790,6 @@ def create_tenant_application(
         application_type=normalized_type,
         applicant_user_id=applicant_user_id,
         tenant_id=target_tenant_id,
-        tenant_code=target_code,
         tenant_name=target_name,
         plan=target_plan,
         requested_role=application_role,
@@ -834,7 +831,6 @@ def create_tenant_invitation(
         applicant_user_id=int(invitee_user_id),
         invited_by_user_id=int(invited_by_user_id),
         tenant_id=int(tenant.id),
-        tenant_code=tenant.code,
         tenant_name=tenant.name,
         plan=tenant.plan,
         requested_role=normalize_application_role(requested_role, TENANT_APPLICATION_TYPE_INVITE),
@@ -874,7 +870,6 @@ def approve_tenant_application(
     *,
     application_id: int,
     reviewer_user_id: int,
-    tenant_code: str | None = None,
     review_comment: str | None = None,
     allowed_types: set[str] | None = None,
 ) -> tuple[TenantApplicationModel, TenantModel]:
@@ -889,16 +884,10 @@ def approve_tenant_application(
         raise ValueError("Tenant application type cannot be reviewed from this endpoint")
 
     if application_type == TENANT_APPLICATION_TYPE_CREATE:
-        normalized_code = (tenant_code or application.tenant_code or "").strip().lower()
-        if not normalized_code:
-            raise ValueError("Tenant code is required")
-        if tenant_code_exists(session, normalized_code):
-            raise ValueError("Tenant code already exists")
         if tenant_name_exists(session, application.tenant_name):
             raise ValueError("Tenant name already exists")
         tenant = create_tenant(
             session,
-            code=normalized_code,
             name=application.tenant_name,
             plan=application.plan,
         )
@@ -910,7 +899,6 @@ def approve_tenant_application(
             is_primary=True,
         )
         application.tenant_id = int(tenant.id)
-        application.tenant_code = normalized_code
     else:
         tenant = get_active_tenant(session, tenant_id=application.tenant_id)
         if not tenant:
@@ -1150,7 +1138,13 @@ def ensure_user_default_membership(session: Session, user) -> TenantContext:
         is_primary=True,
     )
     tenant = session.get(TenantModel, membership.tenant_id) or ensure_default_tenant(session)
-    return TenantContext(id=int(tenant.id), code=tenant.code, name=tenant.name, role=membership.role)
+    ensure_tenant_public_id(session, tenant)
+    return TenantContext(
+        id=int(tenant.id),
+        public_id=getattr(tenant, "public_id", None),
+        name=tenant.name,
+        role=membership.role,
+    )
 
 
 def resolve_current_tenant(
@@ -1174,9 +1168,10 @@ def resolve_current_tenant(
         if getattr(tenant, "status", 1) == TENANT_STATUS_DELETED:
             raise PermissionError("Tenant is disabled or does not exist")
         if user_is_platform_admin and platform_workspace_delegate:
+            ensure_tenant_public_id(session, tenant)
             return TenantContext(
                 id=int(tenant.id),
-                code=tenant.code,
+                public_id=getattr(tenant, "public_id", None),
                 name=tenant.name,
                 role=TENANT_ROLE_OWNER,
             )
@@ -1188,9 +1183,10 @@ def resolve_current_tenant(
                     TenantUserModel.status == 1,
                 )
             ).first()
+            ensure_tenant_public_id(session, tenant)
             return TenantContext(
                 id=int(tenant.id),
-                code=tenant.code,
+                public_id=getattr(tenant, "public_id", None),
                 name=tenant.name,
                 role=normalize_tenant_role(membership.role if membership else TENANT_ROLE_OWNER),
             )
@@ -1200,7 +1196,7 @@ def resolve_current_tenant(
         tenant = ensure_default_tenant(session)
         return TenantContext(
             id=int(tenant.id),
-            code=tenant.code,
+            public_id=getattr(tenant, "public_id", None),
             name=tenant.name,
             role=TENANT_ROLE_OWNER,
         )
@@ -1211,16 +1207,17 @@ def resolve_current_tenant(
             tenant = ensure_default_tenant(session)
             return TenantContext(
                 id=int(tenant.id),
-                code=tenant.code,
+                public_id=getattr(tenant, "public_id", None),
                 name=tenant.name,
                 role=TENANT_ROLE_OWNER,
             )
         return None
 
     tenant, membership = memberships[0]
+    ensure_tenant_public_id(session, tenant)
     return TenantContext(
         id=int(tenant.id),
-        code=tenant.code,
+        public_id=getattr(tenant, "public_id", None),
         name=tenant.name,
         role=normalize_tenant_role(membership.role),
     )
@@ -1232,7 +1229,7 @@ def attach_tenant_context(user, tenant: TenantContext | None, *, platform_worksp
     user_copy.global_role = "platform_admin" if is_platform_admin else "normal_user"
     if tenant is None:
         user_copy.tenant_id = None
-        user_copy.tenant_code = None
+        user_copy.tenant_public_id = None
         user_copy.tenant_name = None
         user_copy.tenant_role = None
         user_copy.workspace_role = None
@@ -1240,7 +1237,7 @@ def attach_tenant_context(user, tenant: TenantContext | None, *, platform_worksp
         user_copy.workspace_status = "platform_admin" if is_platform_admin else "workspace_required"
         return user_copy
     user_copy.tenant_id = tenant.id
-    user_copy.tenant_code = tenant.code
+    user_copy.tenant_public_id = getattr(tenant, "public_id", None)
     user_copy.tenant_name = tenant.name
     user_copy.tenant_role = tenant.role
     user_copy.workspace_role = tenant.role

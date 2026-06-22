@@ -30,17 +30,20 @@ const workspaceSwitchingId = ref('')
 const tenantList = computed(() => userStore.getTenants)
 const currentWorkspace = computed(() => ({
   id: userStore.getTenantId,
+  public_id: userStore.getTenantPublicId,
   name: userStore.getTenantName,
   role: userStore.getTenantRole,
 }))
 const currentWorkspaceName = computed(
   () => currentWorkspace.value.name || t('tenant.no_current_workspace')
 )
+const tenantDisplayId = (tenant?: Partial<TenantInfo> | null) =>
+  String(tenant?.public_id || '')
 const workspaceListWithSearch = computed(() => {
   const keyword = workspaceKeywords.value.trim().toLowerCase()
   if (!keyword) return tenantList.value
   return tenantList.value.filter((tenant) =>
-    `${tenant.name || ''} ${tenant.code || ''}`.toLowerCase().includes(keyword)
+    `${tenant.name || ''} ${tenantDisplayId(tenant)}`.toLowerCase().includes(keyword)
   )
 })
 const formatKeywords = (item: string) => {
@@ -148,12 +151,12 @@ onMounted(async () => {
             </el-icon>
             <div class="workspace-option-main">
               <div
-                :title="tenant.name || tenant.code"
+                :title="tenant.name || String(tenant.id || '')"
                 class="workspace-name ellipsis"
-                v-html="formatKeywords(tenant.name || tenant.code || '')"
+                v-html="formatKeywords(tenant.name || String(tenant.id || ''))"
               ></div>
               <div class="workspace-meta ellipsis">
-                {{ tenant.code }} · {{ formatTenantRole(tenant.role) }}
+                {{ $t('tenant.tenant_id') }} {{ tenantDisplayId(tenant) }} · {{ formatTenantRole(tenant.role) }}
               </div>
             </div>
             <el-icon

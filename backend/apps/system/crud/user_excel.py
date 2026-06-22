@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse, FileResponse
 import os
 from openai import BaseModel
 import pandas as pd
+from sqlmodel import select
+
 from apps.system.models.user import UserModel
 from common.core.deps import SessionDep
 from common.utils.file_utils import AppFileUtils
@@ -114,14 +116,16 @@ async def batchUpload(session: SessionDep, trans, file) -> UploadResultDTO:
     i18n_head_list = get_i18n_head_list()
     if not validate_head(trans=trans, head_i18n_list=i18n_head_list, head_list=head_list):
         raise HTTPException(400, "Excel header validation failed")
-    success_list = []
+    success_rows = []
     error_list = []
     for row in df.itertuples():
         row_validator = validate_row(trans=trans, head_i18n_list=i18n_head_list, row=row)
         if row_validator.success:
-            success_list.append(row_validator.dict_data)
+            success_rows.append(row_validator)
         else:
             error_list.append(row_validator)
+    validate_unique_users(session, trans, success_rows, error_list)
+    success_list = [row.dict_data for row in success_rows if row.success]
     error_file_id = None
     if error_list:
         error_file_id = generate_error_file(error_list, head_list)
@@ -131,6 +135,44 @@ async def batchUpload(session: SessionDep, trans, file) -> UploadResultDTO:
         session.add_all(user_po_list)
         session.commit()
     return result    
+
+
+def validate_unique_users(
+    session: SessionDep,
+    trans,
+    success_rows: list[RowValidator],
+    error_list: list[RowValidator],
+) -> None:
+    account_index = 0
+    name_index = 1
+    accounts = [str(row.dict_data.get("account") or "").strip() for row in success_rows]
+    names = [str(row.dict_data.get("name") or "").strip() for row in success_rows]
+    account_counts = {value: accounts.count(value) for value in set(accounts) if value}
+    name_counts = {value: names.count(value) for value in set(names) if value}
+    existing_accounts = set()
+    existing_names = set()
+    if accounts:
+        existing_accounts = set(session.exec(select(UserModel.account).where(UserModel.account.in_(accounts))).all())
+    if names:
+        existing_names = set(session.exec(select(UserModel.name).where(UserModel.name.in_(names))).all())
+
+    for row in success_rows:
+        account = str(row.dict_data.get("account") or "").strip()
+        name = str(row.dict_data.get("name") or "").strip()
+        if account in existing_accounts or account_counts.get(account, 0) > 1:
+            row.success = False
+            row.error_info[account_index] = trans(
+                "i18n_exist",
+                msg=f"{trans('i18n_user.account')} [{account}]",
+            )
+        if name in existing_names or name_counts.get(name, 0) > 1:
+            row.success = False
+            row.error_info[name_index] = trans(
+                "i18n_exist",
+                msg=f"{trans('i18n_user.name')} [{name}]",
+            )
+        if not row.success:
+            error_list.append(row)
 
 def get_i18n_head_list():
     return [

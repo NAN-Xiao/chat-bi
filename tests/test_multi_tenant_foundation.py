@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -10,13 +10,12 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine, select
 
 from apps.system.crud.tenant import (
-    DEFAULT_TENANT_CODE,
     DEFAULT_TENANT_ID,
+    DEFAULT_TENANT_NAME,
     TENANT_APPLICATION_TYPE_INVITE,
     TENANT_APPLICATION_TYPE_JOIN,
     TENANT_ROLE_ADMIN,
     TENANT_ROLE_MEMBER,
-    SAMPLE_TENANT_CODE,
     SAMPLE_TENANT_NAME,
     TenantContext,
     auto_assign_tenants_by_email_domain,
@@ -235,8 +234,8 @@ def test_tenant_overview_active_members_include_owner_admin_and_member():
         session.exec(
             text(
                 """
-                INSERT INTO sys_tenant (id, code, name, status, create_time, update_time)
-                VALUES (200, 'tenant-a', 'Tenant A', 1, 1, 1)
+                INSERT INTO sys_tenant (id, public_id, name, status, create_time, update_time)
+                VALUES (200, 'WSTENANT2A', 'Tenant A', 1, 1, 1)
                 """
             )
         )
@@ -306,7 +305,7 @@ def test_tenant_overview_active_members_include_owner_admin_and_member():
             endpoint(
                 session=session,
                 current_user=SimpleNamespace(id=11, system_role="viewer", tenant_id=200, tenant_role="owner"),
-                current_tenant=SimpleNamespace(id=200, code="tenant-a", name="Tenant A", role="owner"),
+                current_tenant=SimpleNamespace(id=200, name="Tenant A", role="owner"),
                 days=7,
             )
         )
@@ -347,7 +346,7 @@ def test_local_login_sets_resolved_tenant_on_request_state(monkeypatch):
         system_role="viewer",
         language="zh-CN",
     )
-    tenant = TenantContext(id=200, code="tenant-a", name="Tenant A", role="owner")
+    tenant = TenantContext(id=200, name="Tenant A", role="owner")
 
     monkeypatch.setattr(login_api, "authenticate", lambda **_kwargs: user)
     monkeypatch.setattr(login_api, "auto_assign_tenants_by_email_domain", lambda *_args, **_kwargs: None)
@@ -379,7 +378,7 @@ def test_default_tenant_is_created_once():
         second = ensure_default_tenant(session)
 
         assert first.id == DEFAULT_TENANT_ID
-        assert first.code == DEFAULT_TENANT_CODE
+        assert first.name == DEFAULT_TENANT_NAME
         assert second.id == first.id
 
 
@@ -389,7 +388,7 @@ def test_sample_workspace_is_created_once():
         first = ensure_sample_workspace(session)
         second = ensure_sample_workspace(session)
 
-        assert first.code == SAMPLE_TENANT_CODE
+        assert first.name == SAMPLE_TENANT_NAME
         assert first.name == SAMPLE_TENANT_NAME
         assert first.status == 1
         assert second.id == first.id
@@ -405,7 +404,7 @@ def test_new_regular_user_defaults_to_sample_workspace_membership():
         assert membership.role == TENANT_ROLE_MEMBER
         assert membership.is_primary is True
         assert tenant is not None
-        assert tenant.code == SAMPLE_TENANT_CODE
+        assert tenant.name == SAMPLE_TENANT_NAME
         assert tenant.role == TENANT_ROLE_MEMBER
 
 
@@ -444,7 +443,7 @@ def test_regular_user_default_tenant_header_does_not_create_membership():
 def test_user_cannot_resolve_another_tenant_without_membership():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="default"))
         session.commit()
 
         with pytest.raises(PermissionError):
@@ -454,7 +453,7 @@ def test_user_cannot_resolve_another_tenant_without_membership():
 def test_user_can_resolve_requested_tenant_when_member():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="default"))
         session.flush()
         assign_user_to_tenant(session, 100, tenant_id=200, role=TENANT_ROLE_ADMIN, is_primary=True)
 
@@ -467,8 +466,8 @@ def test_user_can_resolve_requested_tenant_when_member():
 def test_regular_user_can_hold_different_roles_in_multiple_workspaces():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
-        session.add(TenantModel(id=300, code="tenant-c", name="Tenant C", status=1, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=300, name="Tenant C", status=1, plan="default"))
         session.flush()
         assign_user_to_tenant(session, 100, tenant_id=200, role="owner", is_primary=True)
         assign_user_to_tenant(session, 100, tenant_id=300, role=TENANT_ROLE_MEMBER, is_primary=False)
@@ -496,7 +495,7 @@ def test_attached_workspace_context_exposes_global_and_workspace_roles():
 
     attached = attach_tenant_context(
         user,
-        SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role=TENANT_ROLE_ADMIN),
+        SimpleNamespace(id=200, name="Tenant B", role=TENANT_ROLE_ADMIN),
     )
     no_workspace = attach_tenant_context(user, None)
     platform_admin = attach_tenant_context(_user(1, "system_admin"), None)
@@ -516,7 +515,7 @@ def test_attached_workspace_context_exposes_global_and_workspace_roles():
 def test_system_admin_can_resolve_active_tenant_for_platform_operations():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="default"))
         session.commit()
 
         tenant = resolve_current_tenant(session, _user(1, "system_admin"), requested_tenant_id=200)
@@ -528,7 +527,7 @@ def test_system_admin_can_resolve_active_tenant_for_platform_operations():
 def test_platform_workspace_delegate_can_resolve_disabled_workspace():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=0, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=0, plan="default"))
         session.commit()
 
         tenant = resolve_current_tenant(
@@ -582,13 +581,13 @@ def test_user_token_payload_includes_current_tenant():
 def test_platform_admin_lists_all_active_tenants():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
-        session.add(TenantModel(id=300, code="tenant-c", name="Tenant C", status=0, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=300, name="Tenant C", status=0, plan="default"))
         session.commit()
 
         tenants = asyncio.run(tenant_api.tenant_list(session, _user(1, "system_admin")))
 
-        assert {tenant.code for tenant in tenants} == {"tenant-b"}
+        assert {tenant.name for tenant in tenants} == {"Tenant B"}
         assert all(tenant.role == "owner" for tenant in tenants)
 
 
@@ -598,7 +597,6 @@ def test_tenant_member_list_hides_operations_fields():
         session.add(
             TenantModel(
                 id=200,
-                code="tenant-b",
                 name="Tenant B",
                 status=1,
                 plan="enterprise",
@@ -617,7 +615,7 @@ def test_tenant_member_list_hides_operations_fields():
 
         assert len(tenants) == 1
         tenant = tenants[0]
-        assert tenant.code == "tenant-b"
+        assert tenant.name == "Tenant B"
         assert tenant.role == "member"
         assert tenant.plan is None
         assert tenant.billing_mode is None
@@ -631,7 +629,7 @@ def test_tenant_member_list_hides_operations_fields():
 def test_only_platform_admin_can_use_tenant_admin_list():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="default"))
         session.commit()
 
         with pytest.raises(HTTPException) as exc:
@@ -643,7 +641,7 @@ def test_only_platform_admin_can_use_tenant_admin_list():
 def test_platform_admin_tenant_list_includes_member_stats():
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="default"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=100, role="owner", is_primary=True, status=1))
         session.add(TenantUserModel(id=202, tenant_id=200, user_id=101, role="admin", is_primary=False, status=1))
         session.add(TenantUserModel(id=203, tenant_id=200, user_id=102, role="member", is_primary=False, status=1))
@@ -664,7 +662,7 @@ def test_platform_admin_tenant_list_includes_member_stats():
 
         tenants = asyncio.run(tenant_api.admin_tenant_list(session, _user(1, "system_admin")))
 
-        tenant = next(row for row in tenants if row.code == "tenant-b")
+        tenant = next(row for row in tenants if row.name == "Tenant B")
         assert tenant.admin_count == 2
         assert tenant.member_count == 1
         assert tenant.owner_user_id == 100
@@ -684,12 +682,11 @@ def test_platform_admin_platform_overview_aggregates_saas_scope():
     )
 
     with Session(engine) as session:
-        session.add(TenantModel(id=DEFAULT_TENANT_ID, code=DEFAULT_TENANT_CODE, name="Default", status=1))
+        session.add(TenantModel(id=DEFAULT_TENANT_ID, name="Default", status=1))
         now_millis = int(datetime.now().timestamp() * 1000)
         session.add(
             TenantModel(
                 id=200,
-                code="tenant-b",
                 name="Tenant B",
                 status=1,
                 plan="basic",
@@ -702,7 +699,6 @@ def test_platform_admin_platform_overview_aggregates_saas_scope():
         session.add(
             TenantModel(
                 id=300,
-                code="tenant-c",
                 name="Tenant C",
                 status=0,
                 plan="default",
@@ -805,9 +801,9 @@ def test_tenant_member_list_hides_platform_admin_members():
         tenant_role="owner",
         workspace_status="platform_workspace_delegate",
     )
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="owner")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=10, role="owner", is_primary=True, status=1))
         session.add(TenantUserModel(id=202, tenant_id=200, user_id=11, role="member", is_primary=False, status=1))
         session.add(TenantUserModel(id=203, tenant_id=200, user_id=1, role="owner", is_primary=False, status=1))
@@ -831,9 +827,9 @@ def test_tenant_member_list_hides_platform_admin_members():
 def test_tenant_member_datasource_permissions_are_limited_to_bound_datasource():
     engine = _engine()
     current_user = SimpleNamespace(id=10, system_role="viewer", tenant_id=200, tenant_role="admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=10, role="admin", is_primary=True, status=1))
         session.add(TenantUserModel(id=202, tenant_id=200, user_id=11, role="member", is_primary=False, status=1))
         session.exec(text(
@@ -883,7 +879,6 @@ def test_platform_admin_manages_tenant_lifecycle():
             session,
             _user(1, "system_admin"),
             tenant_api.TenantCreator(
-                code="tenant-b",
                 name="Tenant B",
                 plan="basic",
                 subscription_status="trialing",
@@ -897,7 +892,7 @@ def test_platform_admin_manages_tenant_lifecycle():
                 datasource_id=101,
             ),
         ))
-        assert tenant.code == "tenant-b"
+        assert tenant.name == "Tenant B"
         assert tenant.plan == "basic"
         assert tenant.subscription_status == "trialing"
         assert tenant.billing_mode == "contract"
@@ -967,7 +962,7 @@ def test_platform_admin_manages_tenant_lifecycle():
         assert disabled.status == 0
 
         admin_rows = asyncio.run(tenant_api.admin_tenant_list(session, _user(1, "system_admin")))
-        assert {row.code for row in admin_rows} == {"tenant-b"}
+        assert {row.name for row in admin_rows} == {"Tenant Beta"}
 
 
 def test_default_tenant_cannot_be_disabled():
@@ -1004,18 +999,16 @@ def test_user_submits_tenant_application_and_platform_admin_approves_workspace()
 
         assert application.status == "pending"
         assert application.applicant_user_id == 100
-        assert application.tenant_code == ""
 
         reviewed = asyncio.run(tenant_api.review_tenant_application(
             session,
             platform_admin,
             int(application.id),
-            TenantApplicationReview(approved=True, tenant_code="tenant-b", review_comment="ok"),
+            TenantApplicationReview(approved=True, review_comment="ok"),
         ))
 
         assert reviewed.status == "approved"
         assert reviewed.tenant_id is not None
-        assert reviewed.tenant_code == "tenant-b"
         assert user_belongs_to_tenant(session, 100, int(reviewed.tenant_id))
         membership = session.exec(
             select(TenantUserModel).where(
@@ -1056,7 +1049,7 @@ def test_rejected_tenant_application_does_not_create_workspace():
         ))
 
         assert reviewed.status == "rejected"
-        assert session.exec(select(TenantModel).where(TenantModel.code == "tenant-b")).first() is None
+        assert session.exec(select(TenantModel).where(TenantModel.name == "Tenant B")).first() is None
         assert not user_belongs_to_tenant(session, 100, 200)
 
 
@@ -1079,7 +1072,7 @@ def test_create_tenant_application_always_grants_owner_role():
             session,
             platform_admin,
             int(application.id),
-            TenantApplicationReview(approved=True, tenant_code="tenant-b", review_comment="ok"),
+            TenantApplicationReview(approved=True, review_comment="ok"),
         ))
 
         membership = session.exec(
@@ -1091,7 +1084,7 @@ def test_create_tenant_application_always_grants_owner_role():
         assert membership.role == "owner"
 
 
-def test_create_tenant_application_approval_requires_platform_assigned_code():
+def test_create_tenant_application_approval_generates_public_id():
     engine = _engine()
     applicant = _user(100)
     platform_admin = _user(1, "system_admin")
@@ -1104,23 +1097,26 @@ def test_create_tenant_application_approval_requires_platform_assigned_code():
             ),
         ))
 
-        with pytest.raises(HTTPException) as exc:
-            asyncio.run(tenant_api.review_tenant_application(
-                session,
-                platform_admin,
-                int(application.id),
-                TenantApplicationReview(approved=True, review_comment="ok"),
-            ))
+        reviewed = asyncio.run(tenant_api.review_tenant_application(
+            session,
+            platform_admin,
+            int(application.id),
+            TenantApplicationReview(approved=True, review_comment="ok"),
+        ))
 
-        assert exc.value.status_code == 400
-        assert "Tenant code is required" in str(exc.value.detail)
+        assert reviewed.status == "approved"
+        assert reviewed.tenant_id is not None
+        tenant = session.get(TenantModel, int(reviewed.tenant_id))
+        assert tenant is not None
+        assert tenant.public_id
+        assert not tenant.public_id.isdigit()
 
 
 def test_create_tenant_application_rejects_existing_tenant_name():
     engine = _engine()
     applicant = _user(100)
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.commit()
 
         with pytest.raises(HTTPException) as exc:
@@ -1162,18 +1158,19 @@ def test_create_tenant_application_rejects_pending_duplicate_name():
         assert "Tenant application for this name is already pending" in str(exc.value.detail)
 
 
-def test_user_searches_tenant_and_applies_to_join_by_id():
+def test_user_searches_tenant_and_applies_to_join_by_public_id():
     engine = _engine()
     applicant = _user(100)
     tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, public_id="WSTENANT2B", name="Tenant B", status=1, plan="basic"))
         session.commit()
 
-        search_rows = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="200"))
+        search_rows = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="TENANT2B"))
         assert len(search_rows) == 1
         assert search_rows[0].id == 200
+        assert search_rows[0].public_id == "WSTENANT2B"
         assert search_rows[0].already_joined is False
 
         application = asyncio.run(tenant_api.submit_tenant_application(
@@ -1211,14 +1208,13 @@ def test_user_searches_tenant_and_applies_to_join_by_id():
 def test_legacy_join_application_requesting_admin_is_approved_as_member():
     engine = _engine()
     tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         application = TenantApplicationModel(
             application_type=TENANT_APPLICATION_TYPE_JOIN,
             applicant_user_id=100,
             tenant_id=200,
-            tenant_code="tenant-b",
             tenant_name="Tenant B",
             plan="basic",
             requested_role="admin",
@@ -1245,30 +1241,28 @@ def test_legacy_join_application_requesting_admin_is_approved_as_member():
         assert membership.role == "member"
 
 
-def test_tenant_join_search_supports_fuzzy_name_and_code_lookup():
+def test_tenant_join_search_supports_fuzzy_name_and_id_lookup():
     engine = _engine()
     applicant = _user(100)
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant Beta", status=1, plan="basic"))
-        session.add(TenantModel(id=300, code="finance-prod", name="Finance Production", status=1, plan="basic"))
+        session.add(TenantModel(id=200, public_id="WSTENANT2B", name="Tenant Beta", status=1, plan="basic"))
+        session.add(TenantModel(id=300, public_id="WSFINANCE2", name="Finance Production", status=1, plan="basic"))
         session.commit()
 
-        by_code = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="tenant-b"))
-        by_id = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="300"))
+        by_public_id = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="FINANCE2"))
         by_name = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="Finance"))
-        by_partial_code = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="tenant"))
+        by_partial_name = asyncio.run(tenant_api.search_tenants(session, applicant, keyword="Tenant"))
 
-        assert [row.id for row in by_code] == [200]
-        assert [row.id for row in by_id] == [300]
+        assert [row.id for row in by_public_id] == [300]
         assert [row.id for row in by_name] == [300]
-        assert [row.id for row in by_partial_code] == [200]
+        assert [row.id for row in by_partial_name] == [200]
 
 
 def test_pending_join_application_can_be_cancelled_by_applicant():
     engine = _engine()
     applicant = _user(100)
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.commit()
 
         application = asyncio.run(tenant_api.submit_tenant_application(
@@ -1294,9 +1288,9 @@ def test_tenant_admin_invites_existing_user_and_user_accepts():
     engine = _engine()
     tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
     invitee = _user(100)
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=2, role="admin", is_primary=True, status=1))
         invitation = create_tenant_invitation(
             session,
@@ -1336,9 +1330,9 @@ def test_tenant_admin_invites_existing_user_and_user_accepts():
 def test_tenant_admin_can_cancel_pending_invitation():
     engine = _engine()
     tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         invitation = create_tenant_invitation(
             session,
             tenant_id=200,
@@ -1362,7 +1356,7 @@ def test_tenant_admin_can_cancel_pending_invitation():
 def test_bulk_invite_records_per_account_results_and_audit():
     engine = _engine()
     tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
         session.exec(text(
             """
@@ -1374,7 +1368,7 @@ def test_bulk_invite_records_per_account_results_and_audit():
                 (4, 'platform-admin', 'Platform Admin', '', 'platform@example.com', 1, 0, 1, 'zh-CN', 'system_admin')
             """
         ))
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=2, role="admin", is_primary=True, status=1))
         session.commit()
 
@@ -1405,10 +1399,10 @@ def test_verified_email_domain_auto_assigns_user_after_platform_review_only():
     engine = _engine()
     tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
     platform_admin = _user(1, "system_admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     new_user = SimpleNamespace(id=100, email="new.employee@acme.example")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=2, role="admin", is_primary=True, status=1))
         session.commit()
 
@@ -1440,9 +1434,9 @@ def test_verified_email_domain_auto_assigns_user_after_platform_review_only():
 def test_tenant_security_policy_blocks_local_login_but_not_platform_admin():
     engine = _engine()
     tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin", origin=0)
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.commit()
 
         policy = asyncio.run(tenant_api.update_tenant_security_policy(
@@ -1473,9 +1467,9 @@ def test_data_export_request_creates_manifest_after_platform_review():
     engine = _engine()
     tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
     platform_admin = _user(1, "system_admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.exec(text(
             """
             INSERT INTO tenant_export_rows (id, tenant_id, value)
@@ -1517,10 +1511,10 @@ def test_platform_workspace_delegate_data_request_list_is_tenant_scoped():
         tenant_role="owner",
         workspace_status="platform_workspace_delegate",
     )
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="owner")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
-        session.add(TenantModel(id=300, code="tenant-c", name="Tenant C", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=300, name="Tenant C", status=1, plan="basic"))
         session.add(
             TenantDataRequestModel(
                 id=401,
@@ -1561,9 +1555,9 @@ def test_tenant_delete_request_is_manual_and_does_not_delete_data_on_completion(
     tenant_owner = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="owner")
     tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=200, tenant_role="admin")
     platform_admin = _user(1, "system_admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="owner")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=2, role="owner", is_primary=True, status=1))
         session.exec(text("INSERT INTO tenant_export_rows (id, tenant_id, value) VALUES (1, 200, 'keep')"))
         session.commit()
@@ -1625,7 +1619,7 @@ def test_tenant_delete_request_is_manual_and_does_not_delete_data_on_completion(
 def test_tenant_owner_can_transfer_ownership_to_active_member():
     engine = _engine()
     tenant_owner = SimpleNamespace(id=10, system_role="viewer", tenant_id=200, tenant_role="owner")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="owner")
     with Session(engine) as session:
         session.exec(text(
             """
@@ -1636,7 +1630,7 @@ def test_tenant_owner_can_transfer_ownership_to_active_member():
                 (11, 'member', 'Member', '', 'member@example.com', 1, 0, 1, 'zh-CN', 'viewer')
             """
         ))
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=10, role="owner", is_primary=True, status=1))
         session.add(TenantUserModel(id=202, tenant_id=200, user_id=11, role="member", is_primary=False, status=1))
         session.commit()
@@ -1670,7 +1664,7 @@ def test_tenant_owner_can_transfer_ownership_to_active_member():
 def test_tenant_admin_cannot_transfer_ownership():
     engine = _engine()
     tenant_admin = SimpleNamespace(id=10, system_role="viewer", tenant_id=200, tenant_role="admin")
-    current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+    current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
     with Session(engine) as session:
         with pytest.raises(HTTPException) as exc:
             asyncio.run(tenant_api.transfer_current_tenant_owner(
@@ -1687,8 +1681,8 @@ def test_user_leaves_joined_tenant_and_loses_tenant_project_permissions():
     engine = _engine()
     current_user = SimpleNamespace(id=100, system_role="viewer", tenant_id=1, tenant_role="member", name="Member")
     with Session(engine) as session:
-        session.add(TenantModel(id=1, code="default", name="Default", status=1, plan="default"))
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=1, name="Default", status=1, plan="default"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=101, tenant_id=1, user_id=100, role="member", is_primary=True, status=1))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=100, role="member", is_primary=False, status=1))
         session.exec(text("INSERT INTO core_datasource (id, tenant_id, name) VALUES (301, 200, 'Tenant DS')"))
@@ -1720,7 +1714,7 @@ def test_last_tenant_owner_cannot_leave_before_transferring_ownership():
     engine = _engine()
     current_user = SimpleNamespace(id=100, system_role="viewer", tenant_id=200, tenant_role="owner")
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="tenant-b", name="Tenant B", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Tenant B", status=1, plan="basic"))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=100, role="owner", is_primary=True, status=1))
         session.commit()
 
@@ -1732,3 +1726,4 @@ def test_last_tenant_owner_cannot_leave_before_transferring_ownership():
             select(TenantUserModel).where(TenantUserModel.tenant_id == 200, TenantUserModel.user_id == 100)
         ).one()
         assert membership.status == 1
+

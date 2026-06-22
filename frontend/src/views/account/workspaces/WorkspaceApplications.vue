@@ -35,12 +35,12 @@
             </el-form-item>
             <el-form-item
               v-if="applicationMode === 'join'"
-              prop="tenant_code"
+              prop="tenant_keyword"
               :label="t('tenant.workspace_search_label')"
             >
               <el-input
-                v-model="applicationForm.tenant_code"
-                maxlength="64"
+                v-model="applicationForm.tenant_keyword"
+                maxlength="100"
                 clearable
                 :placeholder="t('tenant.join_search_placeholder')"
                 @keydown.enter.exact.prevent="searchTenantTargets"
@@ -62,7 +62,7 @@
                 >
                   <div class="tenant-search-main">
                     <span class="tenant-search-name">{{ tenant.name }}</span>
-                    <span class="tenant-search-code">{{ tenant.code }}</span>
+                    <span class="tenant-search-id">{{ t('tenant.tenant_id') }} {{ tenantDisplayId(tenant) }}</span>
                   </div>
                   <el-button
                     v-if="!tenant.already_joined"
@@ -109,7 +109,7 @@
     >
       <div v-if="selectedTenantTarget" class="join-target-summary">
         <div class="join-target-name">{{ selectedTenantTarget.name }}</div>
-        <div class="join-target-code">{{ selectedTenantTarget.code }}</div>
+        <div class="join-target-id">{{ t('tenant.tenant_id') }} {{ tenantDisplayId(selectedTenantTarget) }}</div>
       </div>
       <el-form label-position="top" class="form-content_error" @submit.prevent>
         <el-form-item :label="t('tenant.apply_reason')">
@@ -163,19 +163,21 @@ const joinReason = ref('')
 const selectedTenantTarget = shallowRef<TenantSearchInfo | null>(null)
 const tenantSearchResults = shallowRef<TenantSearchInfo[]>([])
 const allowModeSwitch = computed(() => props.allowSwitch)
+const tenantDisplayId = (tenant?: Partial<TenantSearchInfo> | null) =>
+  String(tenant?.public_id || '')
 
 const applicationForm = reactive({
   tenant_id: '',
-  tenant_code: '',
+  tenant_keyword: '',
   tenant_name: '',
   reason: '',
 })
 
 const applicationRules = computed(() => ({
-  tenant_code: [
+  tenant_keyword: [
     {
       required: applicationMode.value === 'join',
-      message: t('tenant.code_required'),
+      message: t('tenant.search_tenant_first'),
       trigger: 'blur',
     },
   ],
@@ -194,7 +196,7 @@ const resetApplicationForm = () => {
   closeJoinReasonDialog()
   Object.assign(applicationForm, {
     tenant_id: '',
-    tenant_code: '',
+    tenant_keyword: '',
     tenant_name: '',
     reason: '',
   })
@@ -214,8 +216,8 @@ watch(
 
 const openJoinReasonDialog = (tenant: TenantSearchInfo) => {
   applicationForm.tenant_id = String(tenant.id || '')
-  applicationForm.tenant_code = tenant.code || String(tenant.id || '')
-  applicationForm.tenant_name = tenant.name || tenant.code || ''
+  applicationForm.tenant_keyword = tenant.name || tenantDisplayId(tenant)
+  applicationForm.tenant_name = tenant.name || ''
   selectedTenantTarget.value = tenant
   joinReason.value = ''
   joinReasonDialogVisible.value = true
@@ -228,7 +230,7 @@ const closeJoinReasonDialog = () => {
 }
 
 const searchTenantTargets = async () => {
-  const keyword = applicationForm.tenant_code.trim()
+  const keyword = applicationForm.tenant_keyword.trim()
   if (!keyword) return
   tenantSearchLoading.value = true
   hasSearched.value = true
@@ -373,7 +375,7 @@ const submitApplication = () => {
     font-weight: 500;
   }
 
-  .tenant-search-code,
+  .tenant-search-id,
   .tenant-search-state {
     color: #8f959e;
     font-size: 12px;
@@ -413,7 +415,7 @@ const submitApplication = () => {
     font-weight: 500;
   }
 
-  .join-target-code {
+  .join-target-id {
     margin-top: 2px;
     color: #8f959e;
     font-size: 12px;

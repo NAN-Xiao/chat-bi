@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
@@ -113,7 +113,7 @@ def test_feishu_state_uses_millisecond_ttl(monkeypatch):
 def test_feishu_login_binds_existing_local_user_without_breaking_password_login(monkeypatch):
     engine = _engine()
     with Session(engine) as session:
-        session.add(TenantModel(id=200, code="acme", name="Acme", status=1, plan="basic"))
+        session.add(TenantModel(id=200, name="Acme", status=1, plan="basic"))
         session.add(
             TenantDomainModel(
                 id=300,
@@ -174,3 +174,4 @@ def test_feishu_login_binds_existing_local_user_without_breaking_password_login(
 
         db_user.origin = payload["auth_origin"]
         validate_tenant_security_policy(session, tenant_id=200, user=db_user)
+

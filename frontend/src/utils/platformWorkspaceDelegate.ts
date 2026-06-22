@@ -8,12 +8,12 @@ const { wsCache: sessionCache } = useCache('sessionStorage')
 
 const DELEGATE_FLAG_KEY = 'user.platformWorkspaceDelegate'
 const DELEGATE_TENANT_ID_KEY = 'user.platformWorkspaceDelegateTenantId'
-const DELEGATE_TENANT_CODE_KEY = 'user.platformWorkspaceDelegateTenantCode'
+const DELEGATE_TENANT_PUBLIC_ID_KEY = 'user.platformWorkspaceDelegateTenantPublicId'
 const DELEGATE_TENANT_NAME_KEY = 'user.platformWorkspaceDelegateTenantName'
 
 export interface PlatformWorkspaceDelegateTenant {
   id: number | string
-  code?: string
+  public_id?: string
   name?: string
 }
 
@@ -31,7 +31,7 @@ export const setPlatformWorkspaceDelegateContext = (
   if (!tenantId) return false
   sessionCache.set(DELEGATE_FLAG_KEY, '1')
   sessionCache.set(DELEGATE_TENANT_ID_KEY, tenantId)
-  sessionCache.set(DELEGATE_TENANT_CODE_KEY, tenant.code ? String(tenant.code) : '')
+  sessionCache.set(DELEGATE_TENANT_PUBLIC_ID_KEY, tenant.public_id ? String(tenant.public_id) : '')
   sessionCache.set(DELEGATE_TENANT_NAME_KEY, tenant.name ? String(tenant.name) : '')
   return true
 }
@@ -39,7 +39,7 @@ export const setPlatformWorkspaceDelegateContext = (
 export const clearPlatformWorkspaceDelegateContext = () => {
   sessionCache.delete(DELEGATE_FLAG_KEY)
   sessionCache.delete(DELEGATE_TENANT_ID_KEY)
-  sessionCache.delete(DELEGATE_TENANT_CODE_KEY)
+  sessionCache.delete(DELEGATE_TENANT_PUBLIC_ID_KEY)
   sessionCache.delete(DELEGATE_TENANT_NAME_KEY)
 }
 
@@ -55,7 +55,7 @@ export const applyPlatformWorkspaceDelegateRouteQuery = (query: Record<string, u
   if (!enabled || !tenantId) return false
   return setPlatformWorkspaceDelegateContext({
     id: tenantId,
-    code: firstQueryValue(query.tenant_code),
+    public_id: firstQueryValue(query.tenant_public_id),
     name: firstQueryValue(query.tenant_name),
   })
 }

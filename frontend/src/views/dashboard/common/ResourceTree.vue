@@ -186,11 +186,12 @@ const getTree = async () => {
 const hasData = computed<boolean>(() => state.resourceTree.length > 0)
 const canCreateDashboard = computed<boolean>(() => datasourceContext.canCreateDashboard)
 const canManageNode = (data: SQTreeNode) => data.can_edit === true
-const canShareNode = (data: SQTreeNode) => data.can_share === true || data.is_shared === true
+const canShareNode = (data: SQTreeNode) =>
+  data.node_type === 'leaf' && (data.can_share === true || data.can_edit === true || data.is_shared === true)
 const canSetDefaultNode = (data: SQTreeNode) => data.node_type === 'leaf' && data.can_set_default === true
 const hasNodeMenu = (data: SQTreeNode) =>
   !props.defaultMode &&
-  (canManageNode(data) || (data.node_type === 'leaf' && canShareNode(data)) || canSetDefaultNode(data))
+  (canManageNode(data) || canShareNode(data) || canSetDefaultNode(data))
 const nodeMenuList = (data: SQTreeNode) => {
   const list = canManageNode(data) ? [...state.baseMenuList] : []
   if (canSetDefaultNode(data)) {
@@ -460,7 +461,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="resource-tree">
+  <div class="resource-tree" :class="{ 'is-default-mode': defaultMode }">
     <div class="tree-header">
       <div class="icon-methods">
         <span class="title">{{
@@ -695,6 +696,12 @@ defineExpose({
     padding: 0 14px;
   }
 
+  &.is-default-mode {
+    .custom-tree {
+      padding-top: 8px;
+    }
+  }
+
   .icon-methods {
     display: flex;
     align-items: center;
@@ -924,9 +931,9 @@ defineExpose({
   }
 
   :deep(.ed-tree-node__content) {
-    margin: 0 16px 2px;
+    margin: 0 14px 2px;
     height: 40px;
-    padding: 8px;
+    padding: 8px 0 8px 6px;
     border-radius: 6px;
     font-size: 14px;
     line-height: 22px;
@@ -970,6 +977,10 @@ defineExpose({
   :deep(.ed-tree-node) {
     margin-bottom: 2px;
   }
+
+  :deep(.ed-tree-node__expand-icon.is-leaf) {
+    display: none;
+  }
 }
 
 .custom-tree-node {
@@ -987,7 +998,9 @@ defineExpose({
   }
 
   .label-tooltip {
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
     margin-left: 8px;
     font-size: 14px;
     font-weight: 400;
@@ -1030,7 +1043,7 @@ defineExpose({
 
   &:hover {
     .label-tooltip {
-      width: calc(100% - 96px);
+      width: auto;
     }
 
     .icon-more {

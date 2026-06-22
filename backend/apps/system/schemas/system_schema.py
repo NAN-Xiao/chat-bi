@@ -38,7 +38,7 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
     name: str
     system_role: str = "viewer"
     tenant_id: Optional[int] = None
-    tenant_code: Optional[str] = None
+    tenant_public_id: Optional[str] = None
     tenant_name: Optional[str] = None
     tenant_role: Optional[str] = None
     global_role: Literal["platform_admin", "normal_user"] = "normal_user"
@@ -115,7 +115,7 @@ class UserInfoDTO(UserEditor):
     language: str = "zh-CN"
     weight: int = 0
     isAdmin: bool = False
-    tenant_code: Optional[str] = None
+    tenant_public_id: Optional[str] = None
     tenant_name: Optional[str] = None
     tenant_ids: list[int] = Field(default_factory=list)
     global_role: Literal["platform_admin", "normal_user"] = "normal_user"

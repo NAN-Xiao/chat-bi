@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import os
 from collections import defaultdict
 
@@ -110,7 +110,7 @@ def test_resolve_tenant_rate_limit_uses_tenant_plan_override(monkeypatch):
     )
 
     with Session(engine) as session:
-        session.add(TenantModel(id=42, code="tenant-42", name="Tenant 42", status=1, plan="enterprise"))
+        session.add(TenantModel(id=42, name="Tenant 42", status=1, plan="enterprise"))
         session.commit()
 
         limit = tenant_rate_limiter.resolve_tenant_rate_limit(session, 42, "analysis")
@@ -125,9 +125,10 @@ def test_resolve_tenant_rate_limit_falls_back_to_global_limit(monkeypatch):
     monkeypatch.setattr(settings, "TENANT_RATE_LIMIT_PLAN_OVERRIDES", "")
 
     with Session(engine) as session:
-        session.add(TenantModel(id=43, code="tenant-43", name="Tenant 43", status=1, plan="unknown"))
+        session.add(TenantModel(id=43, name="Tenant 43", status=1, plan="unknown"))
         session.commit()
 
         limit = tenant_rate_limiter.resolve_tenant_rate_limit(session, 43, "chat")
 
     assert limit == 5
+

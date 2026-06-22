@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import os
 from datetime import datetime
 from types import SimpleNamespace
@@ -242,7 +242,7 @@ def test_usage_quota_uses_tenant_plan_and_action_metric_group(monkeypatch):
     engine = _engine_with_usage_and_tenant_tables()
 
     with Session(engine) as session:
-        session.add(TenantModel(id=20, code="tenant-basic", name="Tenant Basic", status=1, plan="basic"))
+        session.add(TenantModel(id=20, name="Tenant Basic", status=1, plan="basic"))
         record_tenant_usage(
             session,
             tenant_id=20,
@@ -282,7 +282,6 @@ def test_past_due_subscription_does_not_auto_stop_high_cost_features(monkeypatch
         session.add(
             TenantModel(
                 id=30,
-                code="tenant-past-due",
                 name="Tenant Past Due",
                 status=1,
                 plan="basic",
@@ -307,7 +306,6 @@ def test_suspended_subscription_blocks_high_cost_features_even_without_quota(mon
         session.add(
             TenantModel(
                 id=31,
-                code="tenant-suspended",
                 name="Tenant Suspended",
                 status=1,
                 plan="enterprise",
@@ -348,7 +346,7 @@ def test_tenant_usage_endpoint_scopes_tenant_admin(monkeypatch):
         session.commit()
 
         tenant_admin = SimpleNamespace(id=2, system_role="viewer", tenant_id=200, tenant_role="admin")
-        current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="admin")
+        current_tenant = SimpleNamespace(id=200, name="Tenant B", role="admin")
         rows = asyncio.run(
             tenant_api.tenant_usage(
                 session=session,
@@ -391,7 +389,7 @@ def test_tenant_usage_endpoint_allows_platform_admin_filter(monkeypatch):
         session.commit()
 
         platform_admin = SimpleNamespace(id=1, system_role="system_admin", tenant_id=1, tenant_role="owner")
-        current_tenant = SimpleNamespace(id=1, code="default", name="Default", role="owner")
+        current_tenant = SimpleNamespace(id=1, name="Default", role="owner")
         rows = asyncio.run(
             tenant_api.tenant_usage(
                 session=session,
@@ -426,7 +424,7 @@ def test_tenant_usage_endpoint_scopes_platform_workspace_delegate(monkeypatch):
             tenant_role="owner",
             workspace_status="platform_workspace_delegate",
         )
-        current_tenant = SimpleNamespace(id=200, code="tenant-b", name="Tenant B", role="owner")
+        current_tenant = SimpleNamespace(id=200, name="Tenant B", role="owner")
         rows = asyncio.run(
             tenant_api.tenant_usage(
                 session=session,
@@ -457,3 +455,4 @@ def test_tenant_usage_endpoint_scopes_platform_workspace_delegate(monkeypatch):
                 )
             )
         assert exc.value.status_code == 403
+

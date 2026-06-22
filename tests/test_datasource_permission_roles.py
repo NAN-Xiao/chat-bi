@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import asyncio
 from types import SimpleNamespace
@@ -144,7 +144,7 @@ def _engine_with_permission_tables():
             """
             CREATE TABLE sys_tenant (
                 id INTEGER PRIMARY KEY,
-                code VARCHAR(64) NOT NULL,
+                public_id VARCHAR(32) NOT NULL,
                 name VARCHAR(255) NOT NULL,
                 status INTEGER NOT NULL DEFAULT 1,
                 plan VARCHAR(64) DEFAULT 'default',
@@ -175,10 +175,10 @@ def _engine_with_permission_tables():
         conn.execute(text(
             """
             INSERT INTO sys_tenant
-                (id, code, name, status, plan, subscription_status, billing_mode, create_time, update_time)
+                (id, public_id, name, status, plan, subscription_status, billing_mode, create_time, update_time)
             VALUES
-                (1, 'default', 'Default', 1, 'default', 'active', 'manual', 1, 1),
-                (2, 'workspace-2', 'Workspace 2', 1, 'default', 'active', 'manual', 1, 1)
+                (1, 'WSDEFAULT2', 'Default', 1, 'default', 'active', 'manual', 1, 1),
+                (2, 'WSWORKSP2', 'Workspace 2', 1, 'default', 'active', 'manual', 1, 1)
             """
         ))
     return engine
@@ -1489,3 +1489,4 @@ def test_preview_denies_configured_denied_tables(monkeypatch):
         assert "orders" in exec_calls[0]
         assert "amount" not in exec_calls[0]
         assert denied == {"fields": [], "data": [], "sql": ""}
+

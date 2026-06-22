@@ -85,6 +85,9 @@ const languageList = computed(() => [
 const popoverRef = ref()
 const tenantSwitchingId = ref('')
 
+const tenantDisplayId = (tenant?: Partial<TenantInfo> | null) =>
+  String(tenant?.public_id || '')
+
 const formatTenantRole = (role: string) => {
   const key = `common.tenant_role_${role || 'member'}`
   const label = t(key)
@@ -241,11 +244,11 @@ onMounted(() => {
                   <icon_member_outlined></icon_member_outlined>
                 </el-icon>
                 <div class="tenant-option-main">
-                  <div :title="tenant.name || tenant.code" class="tenant-name ellipsis">
-                    {{ tenant.name || tenant.code }}
+                  <div :title="tenant.name || String(tenant.id || '')" class="tenant-name ellipsis">
+                    {{ tenant.name || tenant.id }}
                   </div>
-                  <div class="tenant-code ellipsis">
-                    {{ tenant.code }} · {{ formatTenantRole(tenant.role) }}
+                  <div class="tenant-meta ellipsis">
+                    {{ $t('tenant.tenant_id') }} {{ tenantDisplayId(tenant) }} · {{ formatTenantRole(tenant.role) }}
                   </div>
                 </div>
                 <el-icon
@@ -557,7 +560,7 @@ onMounted(() => {
       font-weight: 500;
     }
 
-    .tenant-code {
+    .tenant-meta {
       font-size: 12px;
       line-height: 16px;
       color: var(--theme-text-secondary);

@@ -38,7 +38,11 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="code" :label="t('tenant.code')" width="220" show-overflow-tooltip />
+        <el-table-column prop="id" :label="t('tenant.tenant_id')" width="220" show-overflow-tooltip>
+          <template #default="scope">
+            <span>{{ scope.row.row_type === 'tenant' ? tenantDisplayId(scope.row) : '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column :label="t('tenant.owner_or_applicant')" min-width="210">
           <template #default="scope">
             <div class="table-two-line-cell">
@@ -251,9 +255,6 @@
         <el-form-item prop="name" :label="t('tenant.name')">
           <el-input v-model="form.name" maxlength="255" clearable />
         </el-form-item>
-        <el-form-item prop="code" :label="t('tenant.code')">
-          <el-input v-model="form.code" :disabled="!!form.id" maxlength="64" clearable />
-        </el-form-item>
         <el-form-item prop="plan" :label="t('tenant.plan')">
           <el-select v-model="form.plan" style="width: 240px">
             <el-option
@@ -398,7 +399,6 @@ const usageRows = shallowRef<TenantUsageDailyInfo[]>([])
 const datasourceOptions = shallowRef<any[]>([])
 const defaultForm = {
   id: '',
-  code: '',
   name: '',
   plan: 'default',
   subscription_status: 'active',
@@ -435,7 +435,6 @@ const billingModeOptions = computed(() => [
 
 const rules = computed(() => ({
   name: [{ required: true, message: t('tenant.name_required'), trigger: 'blur' }],
-  code: [{ required: true, message: t('tenant.code_required'), trigger: 'blur' }],
   plan: [{ required: true, message: t('tenant.plan_required'), trigger: 'change' }],
   subscription_status: [
     { required: true, message: t('tenant.subscription_status_required'), trigger: 'change' },
@@ -452,7 +451,6 @@ const filteredTenants = computed(() => {
         id: `application-${application.id}`,
         application_id: application.id,
         name: application.tenant_name,
-        code: application.tenant_code || '-',
         plan: application.plan,
         subscription_status: '',
         current_period_end_time: null,
@@ -479,7 +477,7 @@ const filteredTenants = computed(() => {
   ]
   if (!value) return rows
   return rows.filter((row) =>
-    [row.name, row.code].some((item) =>
+    [row.name, row.row_type === 'tenant' ? tenantDisplayId(row) : ''].some((item) =>
       String(item || '')
         .toLowerCase()
         .includes(value)
@@ -488,6 +486,9 @@ const filteredTenants = computed(() => {
 })
 
 const enterpriseRows = filteredTenants
+
+const tenantDisplayId = (tenant?: { id?: number | string; public_id?: string } | null) =>
+  String(tenant?.public_id || '')
 
 const tenantUsageMap = computed(() => {
   return usageRows.value.reduce<
@@ -505,8 +506,8 @@ const tenantUsageMap = computed(() => {
   }, {})
 })
 
-const isDefaultTenant = (tenant: TenantInfo) => String(tenant.code || '') === 'default'
-const isDefaultTenantForm = computed(() => String(form.code || '') === 'default')
+const isDefaultTenant = (tenant: TenantInfo) => Number(tenant.id) === 1
+const isDefaultTenantForm = computed(() => Number(form.id) === 1)
 
 const normalizeBoundDatasourceId = (tenant?: TenantInfo | null) =>
   tenant?.bound_datasource_id || tenant?.bound_project_id || ''
@@ -651,7 +652,7 @@ const openWorkspaceAdmin = (tenant: TenantInfo) => {
     query: {
       [PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY]: '1',
       [PLATFORM_WORKSPACE_DELEGATE_TENANT_QUERY_KEY]: String(tenant.id),
-      tenant_code: tenant.code || '',
+      tenant_public_id: tenantDisplayId(tenant),
       tenant_name: tenant.name || '',
     },
   })
@@ -679,10 +680,7 @@ const saveTenant = () => {
       if (form.id) {
         await tenantApi.edit(form.id, payload)
       } else {
-        await tenantApi.add({
-          ...payload,
-          code: form.code,
-        })
+        await tenantApi.add(payload)
       }
       ElMessage.success(t('common.save_success'))
       closeDrawer()
@@ -752,19 +750,19 @@ const deleteTenantHandler = async (tenant: TenantInfo) => {
     autofocus: false,
   })
   const result = await ElMessageBox.prompt(
-    t('tenant.delete_tenant_code_confirm', { code: tenant.code }),
+    t('tenant.delete_tenant_id_confirm', { id: tenantDisplayId(tenant) }),
     t('tenant.delete_tenant'),
     {
       confirmButtonType: 'danger',
       confirmButtonText: t('tenant.confirm_delete_tenant'),
       cancelButtonText: t('common.cancel'),
-      inputPlaceholder: tenant.code,
+      inputPlaceholder: tenantDisplayId(tenant),
       customClass: 'confirm-no_icon',
       autofocus: false,
     }
   )
-  if ((result.value || '').trim() !== String(tenant.code || '').trim()) {
-    ElMessage.error(t('tenant.delete_tenant_code_mismatch'))
+  if ((result.value || '').trim() !== tenantDisplayId(tenant).trim()) {
+    ElMessage.error(t('tenant.delete_tenant_id_mismatch'))
     return
   }
   deleteLoadingId.value = String(tenant.id)
@@ -781,7 +779,6 @@ const reviewApplication = async (application: TenantApplicationInfo, approved: b
   reviewLoadingId.value = String(application.id)
   try {
     let reviewComment = ''
-    let tenantCode = ''
     if (!approved) {
       const result = await ElMessageBox.prompt(t('tenant.reject_reason'), t('tenant.reject'), {
         confirmButtonType: 'danger',
@@ -793,25 +790,6 @@ const reviewApplication = async (application: TenantApplicationInfo, approved: b
       })
       reviewComment = result.value || ''
     } else {
-      const result = await ElMessageBox.prompt(
-        t('tenant.approve_tenant_code_prompt', { msg: application.tenant_name }),
-        t('tenant.approve'),
-        {
-          confirmButtonType: 'primary',
-          confirmButtonText: t('tenant.approve'),
-          cancelButtonText: t('common.cancel'),
-          inputPlaceholder: t('tenant.approve_tenant_code_placeholder'),
-          inputPattern: /\S+/,
-          inputErrorMessage: t('tenant.code_required'),
-          customClass: 'confirm-no_icon',
-          autofocus: false,
-        }
-      )
-      tenantCode = (result.value || '').trim()
-      if (!tenantCode) {
-        ElMessage.error(t('tenant.code_required'))
-        return
-      }
       await ElMessageBox.confirm(t('tenant.approve_confirm', { msg: application.tenant_name }), {
         confirmButtonType: 'primary',
         confirmButtonText: t('tenant.approve'),
@@ -822,7 +800,6 @@ const reviewApplication = async (application: TenantApplicationInfo, approved: b
     }
     await tenantApi.reviewApplication(application.id, {
       approved,
-      tenant_code: tenantCode || undefined,
       review_comment: reviewComment,
     })
     ElMessage.success(t('common.save_success'))

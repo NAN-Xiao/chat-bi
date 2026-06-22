@@ -115,7 +115,6 @@ def _user_active_tenant_summary(session: SessionDep, user_ids: list[int]) -> dic
         select(
             TenantUserModel.user_id,
             TenantUserModel.tenant_id,
-            TenantModel.code,
             TenantModel.name,
             TenantUserModel.role,
         )
@@ -128,13 +127,13 @@ def _user_active_tenant_summary(session: SessionDep, user_ids: list[int]) -> dic
         .order_by(TenantUserModel.is_primary.desc(), TenantModel.name)
     ).all()
     summary: dict[int, dict] = {}
-    for user_id, tenant_id, code, name, role in rows:
+    for user_id, tenant_id, name, role in rows:
         item = summary.setdefault(
             int(user_id),
             {"tenant_ids": [], "tenant_names": [], "tenant_roles": {}},
         )
         item["tenant_ids"].append(int(tenant_id))
-        item["tenant_names"].append(name or code)
+        item["tenant_names"].append(name or str(tenant_id))
         item["tenant_roles"][str(tenant_id)] = normalize_tenant_role(role)
     return summary
 
@@ -203,8 +202,36 @@ def _should_assign_tenant_from_payload(current_user: CurrentUser, tenant_id: int
     return not is_platform_admin(current_user) or tenant_id is not None
 
 
+def _clean_user_value(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def _normalize_user_identity(user_payload: UserCreator | UserEditor) -> None:
+    user_payload.account = _clean_user_value(user_payload.account)
+    user_payload.name = _clean_user_value(user_payload.name)
+    user_payload.email = _clean_user_value(user_payload.email)
+
+
 def _existing_user_by_account(session: SessionDep, account: str) -> UserModel | None:
-    return session.exec(select(UserModel).where(UserModel.account == account)).first()
+    return session.exec(select(UserModel).where(UserModel.account == _clean_user_value(account))).first()
+
+
+def _existing_user_by_name(session: SessionDep, name: str, exclude_user_id: int | None = None) -> UserModel | None:
+    statement = select(UserModel).where(UserModel.name == _clean_user_value(name))
+    if exclude_user_id is not None:
+        statement = statement.where(UserModel.id != int(exclude_user_id))
+    return session.exec(statement).first()
+
+
+def _require_unique_user_name(
+    session: SessionDep,
+    trans: Trans,
+    name: str,
+    exclude_user_id: int | None = None,
+) -> None:
+    normalized_name = _clean_user_value(name)
+    if _existing_user_by_name(session, normalized_name, exclude_user_id=exclude_user_id):
+        raise Exception(trans('i18n_exist', msg=f"{trans('i18n_user.name')} [{normalized_name}]"))
 
 
 async def _join_existing_user_to_tenant(
@@ -437,9 +464,11 @@ async def user_create(session: SessionDep, current_user: CurrentUser, creator: U
     return await create(session=session, current_user=current_user, creator=creator, trans=trans)
 
 async def create(session: SessionDep, current_user: CurrentUser, creator: UserCreator, trans: Trans):
+    _normalize_user_identity(creator)
     existing_user = _existing_user_by_account(session, creator.account)
     if existing_user:
         return await _join_existing_user_to_tenant(session, current_user, existing_user, creator)
+    _require_unique_user_name(session, trans, creator.name)
     """ if check_email_exists(session=session, email=creator.email):
         raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.email')} [{creator.email}]")) """
     if not check_email_format(creator.email):
@@ -484,12 +513,14 @@ async def create(session: SessionDep, current_user: CurrentUser, creator: UserCr
     resource_id_expr="editor.id"
 ))
 async def update(session: SessionDep, current_user: CurrentUser, editor: UserEditor, trans: Trans):
+    _normalize_user_identity(editor)
     user_model: UserModel = get_db_user(session = session, user_id = editor.id)
     if not user_model:
         raise Exception(f"User with id [{editor.id}] not found!")
     _require_user_in_current_tenant(session, current_user, editor.id)
     if editor.account != user_model.account:
         raise Exception("account cannot be changed!")
+    _require_unique_user_name(session, trans, editor.name, exclude_user_id=int(user_model.id))
     """ if editor.email != user_model.email and check_email_exists(session=session, email=editor.email):
         raise Exception(trans('i18n_exist', msg = f"{trans('i18n_user.email')} [{editor.email}]")) """
     if not check_email_format(editor.email):

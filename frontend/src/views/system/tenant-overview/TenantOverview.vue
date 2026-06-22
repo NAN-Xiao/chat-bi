@@ -361,7 +361,9 @@ const accessRequests = computed(() =>
   )
 )
 const currentTenantName = computed(() => overview.value?.tenant_name || userStore.getTenantName || '-')
-const currentTenantId = computed(() => String(overview.value?.tenant_id || userStore.getTenantId || '').trim())
+const currentTenantId = computed(() =>
+  String(overview.value?.tenant_public_id || userStore.getTenantPublicId || '').trim()
+)
 
 const assetCount = (key: string) => Number(assetRows.value.find((item) => item.key === key)?.count || 0)
 
