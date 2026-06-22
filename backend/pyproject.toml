@@ -90,6 +90,7 @@ torch = [
 ]
 
 [tool.uv]
+package = false
 conflicts = [
     [
         { extra = "cpu" },
