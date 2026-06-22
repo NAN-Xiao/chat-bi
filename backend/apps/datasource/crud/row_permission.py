@@ -5,7 +5,6 @@ from typing import List, Dict
 
 from apps.datasource.models.datasource import CoreField, CoreDatasource
 from apps.db.constant import DB
-from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_variable_model import SystemVariable
 from common.core.deps import SessionDep, CurrentUser
 
@@ -41,6 +40,15 @@ def transFilterTree(session: SessionDep, current_user: CurrentUser, tree_list: L
 
 
 _VALID_LOGIC_OPS = {"AND", "OR"}
+
+
+def _same_explicit_tenant(left, right) -> bool:
+    if left in (None, "") or right in (None, ""):
+        return False
+    try:
+        return int(left) == int(right)
+    except (TypeError, ValueError):
+        return False
 
 
 def transTreeToWhere(session: SessionDep, current_user: CurrentUser, tree: any, ds: CoreDatasource) -> str | None:
@@ -97,7 +105,7 @@ def transTreeItem(session: SessionDep, current_user: CurrentUser, item: Dict, ds
                     return None
                 if (
                         sys_variable.type not in ('system', 'platform')
-                        and int(sys_variable.tenant_id or DEFAULT_TENANT_ID) != int(ds.tenant_id or DEFAULT_TENANT_ID)
+                        and not _same_explicit_tenant(sys_variable.tenant_id, ds.tenant_id)
                 ):
                     return None
 

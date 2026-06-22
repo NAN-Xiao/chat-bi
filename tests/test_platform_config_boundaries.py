@@ -33,6 +33,15 @@ def _platform_admin():
     )
 
 
+def _tenant_admin_without_workspace():
+    return SimpleNamespace(
+        id=4,
+        system_role="viewer",
+        tenant_id=None,
+        tenant_role="owner",
+    )
+
+
 def _variable_engine():
     engine = create_engine("sqlite://")
     with engine.begin() as conn:
@@ -145,6 +154,23 @@ def test_variable_scope_separates_platform_and_workspace_records():
             "global_region",
         ]
         assert [row["can_edit"] for row in platform_rows] == [False, True]
+
+
+def test_workspace_variables_require_explicit_workspace_context():
+    engine = _variable_engine()
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as list_exc:
+            variable_crud.list_all(session, _trans, _tenant_admin_without_workspace(), None)
+        assert list_exc.value.status_code == 403
+
+        with pytest.raises(HTTPException) as save_exc:
+            variable_crud.save(
+                session,
+                _tenant_admin_without_workspace(),
+                _trans,
+                SystemVariable(name="orphan_budget", var_type="number", type="custom", value=[0, 10]),
+            )
+        assert save_exc.value.status_code == 403
 
 
 def test_workspace_cannot_change_platform_variable_but_platform_can():

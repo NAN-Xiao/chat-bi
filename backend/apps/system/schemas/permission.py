@@ -11,6 +11,7 @@ from apps.chat.models.chat_model import Chat
 from common.core.db import engine
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_platform_admin, is_system_admin
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.system_schema import UserInfoDTO
 
 from common.utils.locale import I18n
@@ -163,10 +164,10 @@ async def check_project_permission(
             chat_ids = {int(item) for item in requested_ids}
         except (TypeError, ValueError):
             return False
-        tenant_id = getattr(current_user, "tenant_id", None) or 1
+        tenant_id = require_current_tenant_id(current_user)
         filters = [
             Chat.id.in_(chat_ids),
-            Chat.tenant_id == int(tenant_id),
+            Chat.tenant_id == tenant_id,
         ]
         if not _has_admin_permission(current_user):
             filters.append(Chat.create_by == current_user.id)

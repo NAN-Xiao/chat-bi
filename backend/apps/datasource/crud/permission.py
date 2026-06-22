@@ -71,6 +71,8 @@ def _supports_tenant_user_filter(session: SessionDep) -> bool:
 def _apply_datasource_tenant_filter(statement, session: SessionDep, current_user: CurrentUser | None):
     if is_global_platform_context(current_user):
         return statement
+    if not has_workspace_context(current_user):
+        return statement.where(False)
     tenant_id = current_tenant_id(current_user)
     if tenant_id is None or not _supports_datasource_tenant_filter(session):
         return statement
@@ -137,10 +139,11 @@ def list_project_assignable_user_ids(
 
     tenant_id = current_tenant_id(current_user)
     if (
-        tenant_id is not None
-        and not is_global_platform_context(current_user)
+        not is_global_platform_context(current_user)
         and _supports_tenant_user_filter(session)
     ):
+        if not has_workspace_context(current_user) or tenant_id is None:
+            return set()
         statement = statement.join(TenantUserModel, TenantUserModel.user_id == UserModel.id).where(
             TenantUserModel.tenant_id == tenant_id,
             TenantUserModel.status == 1,
@@ -207,10 +210,11 @@ def list_datasource_user_counts(
         )
     tenant_id = current_tenant_id(current_user)
     if (
-        tenant_id is not None
-        and not is_global_platform_context(current_user)
+        not is_global_platform_context(current_user)
         and _supports_tenant_user_filter(session)
     ):
+        if not has_workspace_context(current_user) or tenant_id is None:
+            return {}
         statement = (
             statement.join(TenantUserModel, TenantUserModel.user_id == CoreDatasourceUser.user_id)
             .where(

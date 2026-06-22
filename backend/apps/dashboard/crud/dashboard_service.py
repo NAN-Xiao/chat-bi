@@ -25,6 +25,7 @@ from apps.datasource.crud.permission import (
 )
 from apps.datasource.crud.query_executor import execute_user_query
 from apps.datasource.models.datasource import CoreDatasource
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.models.user import UserModel
 from apps.system.models.tenant import TenantUserModel
 from apps.system.crud.user import is_system_admin
@@ -43,12 +44,11 @@ DEFAULT_TENANT_ID = 1
 
 
 def _current_tenant_id(current_user: CurrentUser | None) -> int:
-    tenant_id = getattr(current_user, "tenant_id", None)
-    return int(tenant_id or DEFAULT_TENANT_ID)
+    return require_current_tenant_id(current_user)
 
 
 def _same_tenant(current_user: CurrentUser | None, record) -> bool:
-    return int(getattr(record, "tenant_id", DEFAULT_TENANT_ID) or DEFAULT_TENANT_ID) == _current_tenant_id(current_user)
+    return int(getattr(record, "tenant_id")) == _current_tenant_id(current_user)
 
 
 def _tenant_not_found(detail: str):
@@ -383,7 +383,7 @@ def _share_source_key(
         share: CoreDashboardShare,
 ) -> tuple[str | None, str | None, str | None, str | None, str | None]:
     return (
-        str(getattr(share, "tenant_id", DEFAULT_TENANT_ID) or DEFAULT_TENANT_ID),
+        str(getattr(share, "tenant_id")),
         str(share.create_by) if share.create_by is not None else None,
         share.share_type,
         share.source_dashboard_id,
@@ -394,7 +394,7 @@ def _share_source_key(
 def _active_shares_for_same_source(session: SessionDep, share: CoreDashboardShare) -> list[CoreDashboardShare]:
     filters = [
         _active_share_filter(),
-        CoreDashboardShare.tenant_id == int(share.tenant_id or DEFAULT_TENANT_ID),
+        CoreDashboardShare.tenant_id == int(share.tenant_id),
         CoreDashboardShare.create_by == share.create_by,
         CoreDashboardShare.share_type == share.share_type,
         CoreDashboardShare.source_dashboard_id == share.source_dashboard_id,

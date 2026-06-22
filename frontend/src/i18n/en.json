@@ -990,6 +990,19 @@
     "datasource_role_viewer": "Viewer",
     "datasource_role_editor": "Editor"
   },
+  "data_dictionary": {
+    "title": "Data Dictionary",
+    "subtitle": "View table and field metadata for bound workspace data sources without exposing business data values.",
+    "datasource_list": "Data sources",
+    "search_datasource": "Search data source",
+    "search_table": "Search table",
+    "search_field": "Search field",
+    "metadata_only": "Metadata only",
+    "table_count": "{count} tables",
+    "empty_datasource": "No viewable data sources",
+    "empty_table": "No viewable tables",
+    "empty_field": "No viewable fields"
+  },
   "model": {
     "int": "Integer",
     "float": "Float",

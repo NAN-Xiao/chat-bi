@@ -21,6 +21,7 @@ from apps.chat.task.llm import LLMService
 from apps.datasource.crud.permission import has_datasource_access
 from apps.system.crud.tenant_usage import check_tenant_usage_quota
 from apps.system.schemas.business_access import require_chatbi_business_user
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
@@ -38,7 +39,7 @@ router = APIRouter(
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
-    return int(getattr(current_user, "tenant_id", None) or 1)
+    return require_current_tenant_id(current_user)
 
 
 def _rate_limit_message(retry_after_seconds: int) -> str:
@@ -693,7 +694,7 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
             status_code=500,
             detail=f"ChatRecord with id {chat_record_id} not Owned by the current user"
         )
-    if int(chat_record.tenant_id or 1) != _current_tenant_id(current_user):
+    if int(chat_record.tenant_id) != _current_tenant_id(current_user):
         raise HTTPException(
             status_code=500,
             detail=f"ChatRecord with id {chat_record_id} not Owned by the current user"

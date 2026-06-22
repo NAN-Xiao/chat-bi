@@ -2,6 +2,8 @@ import asyncio
 import inspect
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine
@@ -120,3 +122,21 @@ def test_tenant_admin_audit_user_options_are_scoped_to_current_tenant():
         result = asyncio.run(endpoint(session=session, current_user=_tenant_admin(tenant_id=10)))
 
         assert result == [{"id": 2, "name": "Tenant A Admin"}]
+
+
+def test_tenant_audit_requires_explicit_workspace_context():
+    engine = _engine()
+    endpoint = inspect.unwrap(audit_api.page)
+    with Session(engine) as session:
+        _add_log(session, tenant_id=1, detail="default-tenant-log")
+
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(endpoint(
+                session=session,
+                request=_request(),
+                current_user=_tenant_admin(tenant_id=None),
+                page_num=1,
+                page_size=20,
+            ))
+
+        assert exc.value.status_code == 403

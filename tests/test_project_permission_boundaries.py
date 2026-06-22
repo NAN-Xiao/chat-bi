@@ -84,11 +84,11 @@ def _engine_with_project_metadata_tables():
         conn.execute(text(
             """
             INSERT INTO core_datasource
-                (id, name, type, configuration, create_by, recommended_config)
+                (id, tenant_id, name, type, configuration, create_by, recommended_config)
             VALUES
-                (1, 'Project 1', 'pg', '{}', 9, 1),
-                (2, 'Project 2', 'pg', '{}', 9, 1),
-                (3, 'Project 3', 'pg', '{}', 9, 1)
+                (1, 1, 'Project 1', 'pg', '{}', 9, 1),
+                (2, 1, 'Project 2', 'pg', '{}', 9, 1),
+                (3, 2, 'Project 3', 'pg', '{}', 9, 1)
             """
         ))
         conn.execute(text(
@@ -133,14 +133,14 @@ def test_data_training_pager_uses_visible_datasource_scope(monkeypatch):
 
     result = asyncio.run(data_training_api.pager(
         session=object(),
-        current_user=SimpleNamespace(id=2, isAdmin=False),
+        current_user=SimpleNamespace(id=2, isAdmin=False, tenant_id=10, tenant_role="admin"),
         current_page=1,
         page_size=10,
         question="revenue",
         datasource=None,
     ))
 
-    assert captured == {"datasource_ids": {1, 3}, "question": "revenue", "tenant_id": 1}
+    assert captured == {"datasource_ids": {1, 3}, "question": "revenue", "tenant_id": 10}
     assert result["data"] == []
 
 
@@ -162,7 +162,7 @@ def test_data_training_pager_rejects_unavailable_datasource(monkeypatch):
 def test_data_training_maintenance_respects_platform_and_tenant_scopes(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     platform_admin = SimpleNamespace(id=1, system_role="system_admin", tenant_id=1, tenant_role="owner")
-    tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=1, tenant_role="owner")
+    tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=10, tenant_role="owner")
     monkeypatch.setattr(data_training_api, "has_datasource_access", lambda *args, **kwargs: True)
 
     with pytest.raises(HTTPException) as exc:
@@ -219,7 +219,7 @@ def test_terminology_pager_uses_visible_datasource_scope(monkeypatch):
 
     result = asyncio.run(terminology_api.pager(
         session=object(),
-        current_user=SimpleNamespace(id=2, isAdmin=False),
+        current_user=SimpleNamespace(id=2, isAdmin=False, tenant_id=10, tenant_role="admin"),
         current_page=1,
         page_size=10,
         word="arpu",
@@ -230,7 +230,7 @@ def test_terminology_pager_uses_visible_datasource_scope(monkeypatch):
         "dslist": [1],
         "accessible_datasource_ids": {1, 3},
         "include_global": False,
-        "tenant_id": 1,
+        "tenant_id": 10,
     }
     assert result["data"] == []
 
@@ -253,7 +253,7 @@ def test_terminology_pager_rejects_unavailable_datasource(monkeypatch):
 def test_terminology_maintenance_respects_platform_and_tenant_scopes(monkeypatch):
     current_user = SimpleNamespace(id=2, isAdmin=False)
     platform_admin = SimpleNamespace(id=1, system_role="system_admin", tenant_id=1, tenant_role="owner")
-    tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=1, tenant_role="admin")
+    tenant_admin = SimpleNamespace(id=3, system_role="viewer", tenant_id=10, tenant_role="admin")
     monkeypatch.setattr(terminology_api, "has_datasource_access", lambda *args, **kwargs: True)
 
     with pytest.raises(HTTPException) as exc:
@@ -291,7 +291,7 @@ def test_terminology_maintenance_respects_platform_and_tenant_scopes(monkeypatch
 def test_table_and_field_permissions_resolve_to_owning_datasource(monkeypatch):
     engine = _engine_with_project_metadata_tables()
     monkeypatch.setattr(permission_schema, "engine", engine)
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
 
     assert asyncio.run(permission_schema.check_project_permission(
         current_user,
@@ -315,6 +315,25 @@ def test_table_and_field_permissions_resolve_to_owning_datasource(monkeypatch):
         current_user,
         "field",
         21,
+        ["project_viewer"],
+    )) is False
+
+
+def test_project_permission_requires_explicit_workspace_context(monkeypatch):
+    engine = _engine_with_project_metadata_tables()
+    monkeypatch.setattr(permission_schema, "engine", engine)
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+
+    assert asyncio.run(permission_schema.check_project_permission(
+        current_user,
+        "ds",
+        1,
+        ["project_viewer"],
+    )) is False
+    assert asyncio.run(permission_schema.check_project_permission(
+        current_user,
+        "table",
+        10,
         ["project_viewer"],
     )) is False
 

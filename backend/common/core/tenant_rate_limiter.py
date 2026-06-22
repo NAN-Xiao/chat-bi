@@ -33,10 +33,12 @@ _ACTION_LIMIT_KEYS = {
 
 
 def _tenant_id(value: int | str | None) -> int:
+    if value in (None, ""):
+        raise ValueError("Tenant context is required")
     try:
-        return int(value or 1)
-    except (TypeError, ValueError):
-        return 1
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Tenant context is required") from exc
 
 
 def _window(now: int | None = None) -> tuple[int, int]:

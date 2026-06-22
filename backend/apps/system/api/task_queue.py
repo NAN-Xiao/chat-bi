@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from apps.system.crud.user import is_system_admin
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.core.deps import CurrentUser
 from common.core.task_queue import enqueue_task, get_task, task_queue_health
@@ -20,12 +21,11 @@ class PingTaskRequest(BaseModel):
 
 
 def _current_tenant_id(current_user) -> int:
-    tenant_id = getattr(current_user, "tenant_id", None)
-    return int(tenant_id or 1)
+    return require_current_tenant_id(current_user)
 
 
 def _can_read_task(task: dict[str, Any], current_user) -> bool:
-    if int(task.get("tenant_id") or 1) != _current_tenant_id(current_user):
+    if int(task.get("tenant_id")) != _current_tenant_id(current_user):
         return False
     if is_system_admin(current_user):
         return True

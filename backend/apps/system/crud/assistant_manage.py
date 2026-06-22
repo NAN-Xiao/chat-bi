@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from sqlmodel import Session, select
 from starlette.middleware.cors import CORSMiddleware
 from apps.system.schemas.system_schema import AssistantBase
+from apps.system.schemas.access_context import require_tenant_id
 from common.core.config import settings
 from apps.system.models.system_model import AssistantModel
 from common.utils.time import get_timestamp
@@ -40,9 +41,9 @@ def dynamic_upgrade_cors(request: Request, session: Session):
         for instance in ResponseMiddleware.instances:
             instance.update_allow_origins(updated_origins)
 
-async def save(request: Request, session: Session, creator: AssistantBase, tenant_id: int = 1):
+async def save(request: Request, session: Session, creator: AssistantBase, tenant_id: int | None = None):
     db_model = AssistantModel.model_validate(creator.model_dump(exclude_unset=True))
-    db_model.tenant_id = int(tenant_id or 1)
+    db_model.tenant_id = require_tenant_id(tenant_id)
     db_model.create_time = get_timestamp()
     session.add(db_model)
     session.commit()

@@ -21,6 +21,7 @@ from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.assistant_manage import dynamic_upgrade_cors, save
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.models.system_model import AssistantModel
+from apps.system.schemas.access_context import require_tenant_id
 from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.system.schemas.auth import CacheName, CacheNamespace
 from apps.system.schemas.permission import AppPermission, require_permissions
@@ -56,10 +57,7 @@ PUBLIC_CONFIGURATION_KEYS = {
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
-    tenant_id = getattr(current_user, "tenant_id", None)
-    if not tenant_id:
-        raise HTTPException(status_code=403, detail="Current tenant is required")
-    return int(tenant_id)
+    return require_tenant_id(getattr(current_user, "tenant_id", None))
 
 
 def _can_manage_all_assistants(current_user: CurrentUser) -> bool:
@@ -78,14 +76,24 @@ def _get_manageable_assistant(session: SessionDep, current_user: CurrentUser, as
         raise HTTPException(status_code=404, detail=f"AssistantModel with id {assistant_id} not found")
     if (
         not _can_manage_all_assistants(current_user)
-        and int(getattr(db_model, "tenant_id", 1) or 1) != _current_tenant_id(current_user)
+        and (
+            getattr(db_model, "tenant_id", None) in (None, "")
+            or int(db_model.tenant_id) != _current_tenant_id(current_user)
+        )
     ):
         raise HTTPException(status_code=404, detail=f"AssistantModel with id {assistant_id} not found")
     return db_model
 
 
+def _model_tenant_id(db_model: AssistantModel) -> int:
+    tenant_id = getattr(db_model, "tenant_id", None)
+    if tenant_id in (None, ""):
+        raise HTTPException(status_code=403, detail="Assistant tenant is required")
+    return int(tenant_id)
+
+
 def _assistant_tenant_id(current_assistant: CurrentAssistant) -> int:
-    return int(getattr(current_assistant, "tenant_id", None) or 1)
+    return require_tenant_id(getattr(current_assistant, "tenant_id", None))
 
 
 def _public_assistant_info(db_model: AssistantModel, include_certificate: bool = False) -> AssistantPublicInfo:
@@ -163,7 +171,7 @@ async def validator(session: SessionDep, id: int, virtual: Optional[int] = Query
         "account": 'zhishu-inner-assistant',
         "assistant_id": id,
         "assistant_online": False,
-        "tenant_id": int(getattr(db_model, "tenant_id", None) or 1),
+        "tenant_id": _model_tenant_id(db_model),
     }
     access_token = create_access_token(
         assistantDict, expires_delta=access_token_expires

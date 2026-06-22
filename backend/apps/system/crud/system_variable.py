@@ -10,6 +10,7 @@ from sqlmodel import select
 from apps.system.models.system_variable_model import SystemVariable
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
+from apps.system.schemas.access_context import require_current_tenant_id
 from common.core.deps import SessionDep, CurrentUser, Trans
 from common.core.pagination import Paginator
 from common.core.schemas import PaginationParams
@@ -20,10 +21,9 @@ VARIABLE_TYPE_CUSTOM = "custom"
 
 
 def _current_tenant_id(user: CurrentUser | None) -> int:
-    try:
-        return int(getattr(user, "tenant_id", None) or DEFAULT_TENANT_ID)
-    except (TypeError, ValueError):
+    if _is_platform_operation(user):
         return DEFAULT_TENANT_ID
+    return require_current_tenant_id(user)
 
 
 def _is_platform_operation(user: CurrentUser) -> bool:
@@ -76,7 +76,7 @@ def _assert_custom_variable_access(record: SystemVariable | None, user: CurrentU
         return
     if record.type == VARIABLE_TYPE_PLATFORM:
         raise HTTPException(status_code=403, detail="平台变量不可编辑")
-    if int(record.tenant_id or DEFAULT_TENANT_ID) != _current_tenant_id(user):
+    if record.tenant_id in (None, "") or int(record.tenant_id) != _current_tenant_id(user):
         raise HTTPException(status_code=404, detail="变量不存在")
 
 
@@ -87,7 +87,8 @@ def _variable_response(data: SystemVariable, user: CurrentUser) -> dict:
     else:
         editable = (
             data.type not in (VARIABLE_TYPE_SYSTEM, VARIABLE_TYPE_PLATFORM)
-            and int(data.tenant_id or DEFAULT_TENANT_ID) == _current_tenant_id(user)
+            and data.tenant_id not in (None, "")
+            and int(data.tenant_id) == _current_tenant_id(user)
         )
     result = data.model_dump()
     result["can_edit"] = editable
@@ -112,7 +113,7 @@ def save(session: SessionDep, user: CurrentUser, trans: Trans, variable: SystemV
         record = session.query(SystemVariable).filter(SystemVariable.id == variable.id).first()
         _assert_custom_variable_access(record, user)
         variable.type = record.type
-        variable.tenant_id = int(record.tenant_id or _current_tenant_id(user))
+        variable.tenant_id = int(record.tenant_id)
         checkName(session, trans, user, variable)
         update_data = variable.model_dump(exclude_unset=True)
         update_data.pop("id", None)
@@ -186,7 +187,11 @@ async def list_page(session: SessionDep, trans: Trans, user: CurrentUser, pageNu
 
 
 def checkName(session: SessionDep, trans: Trans, user: CurrentUser, variable: SystemVariable):
-    tenant_id = int(getattr(variable, "tenant_id", None) or _current_tenant_id(user))
+    tenant_id = (
+        int(getattr(variable, "tenant_id"))
+        if getattr(variable, "tenant_id", None) not in (None, "")
+        else _current_tenant_id(user)
+    )
     filters = [
         SystemVariable.name == variable.name,
         _custom_variable_condition(user),

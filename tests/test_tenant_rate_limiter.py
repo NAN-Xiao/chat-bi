@@ -2,6 +2,8 @@ import asyncio
 import os
 from collections import defaultdict
 
+import pytest
+
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
 from sqlmodel import Session, create_engine
@@ -67,6 +69,16 @@ def test_tenant_rate_limit_uses_redis_key_and_ttl(monkeypatch):
         key = next(iter(fake.values))
         assert key.startswith("test-prefix:tenant:42:rate_limit:analysis:")
         assert fake.expirations[key] > 0
+
+    asyncio.run(scenario())
+
+
+def test_enabled_tenant_rate_limit_requires_tenant_context(monkeypatch):
+    _enable_memory_limiter(monkeypatch, limit=2)
+
+    async def scenario():
+        with pytest.raises(ValueError):
+            await tenant_rate_limiter.consume_tenant_rate_limit(None, "chat")
 
     asyncio.run(scenario())
 

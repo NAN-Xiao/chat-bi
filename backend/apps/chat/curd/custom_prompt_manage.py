@@ -13,6 +13,7 @@ from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo,
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_model import AiModelDetail
+from apps.system.schemas.access_context import require_tenant_id
 from common.core.deps import SessionDep
 
 
@@ -241,6 +242,10 @@ def _platform_public_visibility_condition():
     return CustomPrompt.visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
 
 
+def _tenant_id(tenant_id: int | str | None) -> int:
+    return require_tenant_id(tenant_id)
+
+
 def _private_visibility_condition(current_user_id: Optional[int]):
     if current_user_id is None:
         return False
@@ -288,7 +293,7 @@ def _build_query(
         platform_only: bool = False,
 ):
     prompt_type = _normalize_type(custom_prompt_type)
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    resolved_tenant_id = _tenant_id(tenant_id)
     private_condition = _private_visibility_condition(current_user_id)
     visibility_conditions = [
         and_(CustomPrompt.tenant_id == resolved_tenant_id, _tenant_public_visibility_condition()),
@@ -365,7 +370,7 @@ def list_custom_prompt_options(
         tenant_id: int | None = None,
         platform_only: bool = False,
 ) -> list[CustomPromptOption]:
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    resolved_tenant_id = _tenant_id(tenant_id)
     private_condition = _private_visibility_condition(current_user_id)
     visibility_conditions = [
         and_(CustomPrompt.tenant_id == resolved_tenant_id, _tenant_public_visibility_condition()),
@@ -539,7 +544,7 @@ def get_custom_prompt(
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
     public_match = (
         visibility_scope == CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
-        and int(row.tenant_id) == int(tenant_id or DEFAULT_TENANT_ID)
+        and int(row.tenant_id) == _tenant_id(tenant_id)
     )
     platform_match = visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC
     private_match = (
@@ -574,7 +579,7 @@ def create_custom_prompt(
         raise HTTPException(status_code=400, detail="Prompt content is required")
 
     prompt_type = _normalize_type(info.type)
-    resolved_tenant_id = tenant_id or info.tenant_id or DEFAULT_TENANT_ID
+    resolved_tenant_id = _tenant_id(tenant_id if tenant_id is not None else info.tenant_id)
     specific_ds = bool(info.specific_ds)
     datasource_ids = _normalize_ids(info.datasource_ids) if specific_ds else []
     if specific_ds and not datasource_ids:
@@ -640,7 +645,7 @@ def update_custom_prompt(
     if not info.id:
         return create_custom_prompt(session, info, current_user_id, tenant_id)
     row = session.get(CustomPrompt, int(info.id))
-    resolved_tenant_id = tenant_id or info.tenant_id or DEFAULT_TENANT_ID
+    resolved_tenant_id = _tenant_id(tenant_id if tenant_id is not None else info.tenant_id)
     if not row:
         raise HTTPException(status_code=404, detail="Custom prompt not found")
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
@@ -728,7 +733,7 @@ def delete_custom_prompts(
     normalized_ids = _normalize_ids(ids)
     if not normalized_ids:
         return
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    resolved_tenant_id = _tenant_id(tenant_id)
     if current_user_id is not None:
         rows = session.execute(select(CustomPrompt).where(CustomPrompt.id.in_(normalized_ids))).scalars().all()
         if len(rows) != len(set(normalized_ids)):
@@ -770,7 +775,7 @@ def batch_create_custom_prompts(
     success_count = 0
     seen: set[tuple[str, str, str]] = set()
 
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    resolved_tenant_id = _tenant_id(tenant_id)
     datasource_name_to_id = {
         row.name.strip(): int(row.id)
         for row in session.execute(

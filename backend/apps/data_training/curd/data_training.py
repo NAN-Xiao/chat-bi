@@ -65,6 +65,37 @@ def _runtime_scope_condition(tenant_id: int, include_platform: bool = True):
     return _tenant_scope_condition(tenant_id)
 
 
+def _resolve_management_scope(
+        tenant_id: int | None,
+        scope: SemanticRecordScopeEnum | str | None,
+) -> tuple[int, SemanticRecordScopeEnum]:
+    resolved_scope = normalize_semantic_scope(scope)
+    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
+        return DEFAULT_TENANT_ID, resolved_scope
+    if tenant_id is None or tenant_id == "":
+        raise ValueError("Tenant context is required")
+    return int(tenant_id), resolved_scope
+
+
+def _tenant_advanced_application_exists(
+        session: SessionDep,
+        advanced_application_id: int | None,
+        tenant_id: int,
+) -> bool:
+    if advanced_application_id is None:
+        return True
+    try:
+        application_id = int(advanced_application_id)
+    except (TypeError, ValueError):
+        return False
+    stmt = select(AssistantModel.id).where(
+        AssistantModel.id == application_id,
+        AssistantModel.type == 1,
+        AssistantModel.tenant_id == int(tenant_id),
+    )
+    return session.execute(stmt).first() is not None
+
+
 def build_data_training_query(session: SessionDep, name: Optional[str] = None,
                               paginate: bool = True, current_page: int = 1, page_size: int = 10,
                               datasource_ids: Optional[set[int]] = None,
@@ -76,8 +107,8 @@ def build_data_training_query(session: SessionDep, name: Optional[str] = None,
     构建数据训练查询的通用方法
     """
     parent_ids_subquery = get_data_training_base_query(name)
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    parent_ids_subquery = parent_ids_subquery.where(_semantic_scope_condition(resolved_tenant_id, scope))
+    resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
+    parent_ids_subquery = parent_ids_subquery.where(_semantic_scope_condition(resolved_tenant_id, resolved_scope))
     if datasource_ids is not None:
         parent_ids_subquery = parent_ids_subquery.where(
             and_(_tenant_scope_condition(resolved_tenant_id), DataTraining.datasource.in_(list(datasource_ids)))
@@ -129,7 +160,11 @@ def build_data_training_query(session: SessionDep, name: Optional[str] = None,
         )
         .outerjoin(CoreDatasource, and_(DataTraining.datasource == CoreDatasource.id))
         .outerjoin(AssistantModel,
-                   and_(DataTraining.advanced_application == AssistantModel.id, AssistantModel.type == 1))
+                   and_(
+                       DataTraining.advanced_application == AssistantModel.id,
+                       AssistantModel.type == 1,
+                       AssistantModel.tenant_id == DataTraining.tenant_id,
+                   ))
         .where(and_(DataTraining.id.in_(paginated_parent_ids)))
         .order_by(DataTraining.create_time.desc())
     )
@@ -222,16 +257,19 @@ def create_training(session: SessionDep, info: DataTrainingInfo, trans: Trans, s
         raise Exception(trans("i18n_data_training.description_cannot_be_empty"))
 
     create_time = datetime.datetime.now()
-    tenant_id = info.tenant_id or DEFAULT_TENANT_ID
-    scope = normalize_semantic_scope(info.scope)
+    tenant_id, scope = _resolve_management_scope(info.tenant_id, info.scope)
     if scope == SemanticRecordScopeEnum.PLATFORM:
-        tenant_id = DEFAULT_TENANT_ID
         info.datasource = None
         info.advanced_application = None
 
     # 检查数据源和高级应用不能同时为空
     if scope == SemanticRecordScopeEnum.TENANT and info.datasource is None and info.advanced_application is None:
         raise Exception(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
+    if (
+            scope == SemanticRecordScopeEnum.TENANT
+            and not _tenant_advanced_application_exists(session, info.advanced_application, tenant_id)
+    ):
+        raise Exception(trans("i18n_data_training.advanced_application_not_found").format(info.advanced_application))
 
     # 检查重复记录
     stmt = select(DataTraining.id).where(
@@ -282,10 +320,8 @@ def create_training(session: SessionDep, info: DataTrainingInfo, trans: Trans, s
 
 
 def update_training(session: SessionDep, info: DataTrainingInfo, trans: Trans):
-    tenant_id = info.tenant_id or DEFAULT_TENANT_ID
-    scope = normalize_semantic_scope(info.scope)
+    tenant_id, scope = _resolve_management_scope(info.tenant_id, info.scope)
     if scope == SemanticRecordScopeEnum.PLATFORM:
-        tenant_id = DEFAULT_TENANT_ID
         info.datasource = None
         info.advanced_application = None
     # 基本验证
@@ -297,6 +333,11 @@ def update_training(session: SessionDep, info: DataTrainingInfo, trans: Trans):
 
     if scope == SemanticRecordScopeEnum.TENANT and info.datasource is None and info.advanced_application is None:
         raise Exception(trans("i18n_data_training.datasource_assistant_cannot_be_none"))
+    if (
+            scope == SemanticRecordScopeEnum.TENANT
+            and not _tenant_advanced_application_exists(session, info.advanced_application, tenant_id)
+    ):
+        raise Exception(trans("i18n_data_training.advanced_application_not_found").format(info.advanced_application))
 
     count = session.query(DataTraining).filter(
         DataTraining.id == info.id,
@@ -390,10 +431,7 @@ def batch_create_training(
     deduplicated_list = list(unique_records.values())
 
     # 预加载数据源和高级应用名称到ID的映射
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    resolved_scope = normalize_semantic_scope(scope)
-    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
-        resolved_tenant_id = DEFAULT_TENANT_ID
+    resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
     datasource_name_to_id = {}
     if resolved_scope == SemanticRecordScopeEnum.TENANT:
         datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.tenant_id == resolved_tenant_id)
@@ -405,6 +443,8 @@ def batch_create_training(
     assistant_name_to_id = {}
 
     assistant_stmt = select(AssistantModel.id, AssistantModel.name).where(AssistantModel.type == 1)
+    if resolved_scope == SemanticRecordScopeEnum.TENANT:
+        assistant_stmt = assistant_stmt.where(AssistantModel.tenant_id == resolved_tenant_id)
     assistant_result = session.execute(assistant_stmt).all()
     for assistant in assistant_result:
         assistant_name_to_id[assistant.name.strip()] = assistant.id
@@ -510,10 +550,7 @@ def delete_training(
         tenant_id: int | None = None,
         scope: SemanticRecordScopeEnum | str | None = SemanticRecordScopeEnum.TENANT,
 ):
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    resolved_scope = normalize_semantic_scope(scope)
-    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
-        resolved_tenant_id = DEFAULT_TENANT_ID
+    resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
     stmt = delete(DataTraining).where(
         and_(
             DataTraining.tenant_id == resolved_tenant_id,
@@ -533,10 +570,7 @@ def enable_training(
         tenant_id: int | None = None,
         scope: SemanticRecordScopeEnum | str | None = SemanticRecordScopeEnum.TENANT,
 ):
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    resolved_scope = normalize_semantic_scope(scope)
-    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
-        resolved_tenant_id = DEFAULT_TENANT_ID
+    resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
     count = session.query(DataTraining).filter(
         DataTraining.id == id,
         DataTraining.tenant_id == resolved_tenant_id,
@@ -690,11 +724,13 @@ def select_training_by_question(session: SessionDep, question: str, datasource: 
     if question.strip() == "":
         return []
 
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    resolved_tenant_id = int(tenant_id) if tenant_id else None
     if datasource is not None and tenant_id is None:
         datasource_row = session.get(CoreDatasource, int(datasource))
         if datasource_row and getattr(datasource_row, "tenant_id", None):
             resolved_tenant_id = int(datasource_row.tenant_id)
+    if resolved_tenant_id is None:
+        return []
 
     _list: List[DataTraining] = []
 

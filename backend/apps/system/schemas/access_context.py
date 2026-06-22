@@ -1,9 +1,14 @@
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi import HTTPException
+
 from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum
+
+
+WORKSPACE_CONTEXT_REQUIRED_MESSAGE = "当前账号尚未加入工作空间，请先创建或加入工作空间后再访问工作空间侧业务功能。"
 
 
 @dataclass(frozen=True)
@@ -25,10 +30,10 @@ class AccessContext:
     @property
     def can_manage_workspace_scope(self) -> bool:
         if self.is_platform_workspace_delegate:
-            return True
+            return self.has_workspace_context
         if self.is_global_platform:
             return False
-        return self.tenant_role in TENANT_ADMIN_ROLES
+        return self.has_workspace_context and self.tenant_role in TENANT_ADMIN_ROLES
 
     @property
     def management_scope(self) -> SemanticRecordScopeEnum:
@@ -40,7 +45,11 @@ class AccessContext:
 
     @property
     def management_tenant_id(self) -> int:
-        return DEFAULT_TENANT_ID if self.is_global_platform else int(self.tenant_id or DEFAULT_TENANT_ID)
+        if self.is_global_platform:
+            return DEFAULT_TENANT_ID
+        if not self.has_workspace_context:
+            raise HTTPException(status_code=403, detail=WORKSPACE_CONTEXT_REQUIRED_MESSAGE)
+        return require_tenant_id(self.tenant_id)
 
 
 def current_tenant_id(current_user: Any | None) -> int | None:
@@ -48,11 +57,26 @@ def current_tenant_id(current_user: Any | None) -> int | None:
         return None
     tenant_id = getattr(current_user, "tenant_id", None)
     if tenant_id is None or tenant_id == "":
-        return DEFAULT_TENANT_ID
+        return None
     try:
         return int(tenant_id)
     except (TypeError, ValueError):
         return None
+
+
+def require_tenant_id(tenant_id: Any | None) -> int:
+    if tenant_id is None or tenant_id == "":
+        raise HTTPException(status_code=403, detail=WORKSPACE_CONTEXT_REQUIRED_MESSAGE)
+    try:
+        return int(tenant_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=403, detail=WORKSPACE_CONTEXT_REQUIRED_MESSAGE) from exc
+
+
+def require_current_tenant_id(current_user: Any | None) -> int:
+    if current_user is None:
+        raise HTTPException(status_code=403, detail=WORKSPACE_CONTEXT_REQUIRED_MESSAGE)
+    return require_tenant_id(getattr(current_user, "tenant_id", None))
 
 
 def resolve_access_context(current_user: Any | None) -> AccessContext:

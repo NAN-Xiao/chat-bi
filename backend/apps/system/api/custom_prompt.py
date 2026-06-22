@@ -33,7 +33,7 @@ from apps.datasource.crud.permission import (
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_collab_admin, is_platform_admin
-from apps.system.schemas.access_context import current_tenant_id
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.models.user import UserModel
 from apps.system.models.system_model import AiModelDetail
 from common.audit.models.log_model import OperationModules, OperationType
@@ -163,11 +163,19 @@ def _force_platform_public_prompt(info: CustomPromptInfo):
     info.datasource_ids = []
 
 
+def _workspace_tenant_id(current_user: CurrentUser) -> int:
+    return require_current_tenant_id(current_user)
+
+
+def _operation_tenant_id(current_user: CurrentUser, *, platform_only: bool = False) -> int:
+    return DEFAULT_TENANT_ID if platform_only else _workspace_tenant_id(current_user)
+
+
 def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
     can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
-    current_tid = current_tenant_id(current_user)
+    current_tid = DEFAULT_TENANT_ID if can_manage_platform_public else _workspace_tenant_id(current_user)
     if info.id:
         existing = session.get(CustomPrompt, int(info.id))
         if not existing:
@@ -180,7 +188,7 @@ def _prepare_prompt_for_save(session: SessionDep, current_user: CurrentUser, inf
         elif existing_platform_public:
             if not can_manage_platform_public:
                 raise HTTPException(status_code=404, detail="Custom prompt not found")
-        elif int(existing.tenant_id) != current_tid:
+        elif can_manage_platform_public or int(existing.tenant_id) != current_tid:
             raise HTTPException(status_code=404, detail="Custom prompt not found")
         _require_prompt_manage(session, current_user, existing)
         if existing_private:
@@ -232,7 +240,9 @@ def _require_prompt_ids_admin(session: SessionDep, current_user: CurrentUser, id
         elif _is_platform_public_scope(row.visibility_scope):
             if not _can_manage_platform_public_prompts(session, current_user):
                 raise HTTPException(status_code=404, detail="Custom prompt not found")
-        elif int(row.tenant_id) != current_tenant_id(current_user):
+        elif _can_manage_platform_public_prompts(session, current_user):
+            raise HTTPException(status_code=404, detail="Custom prompt not found")
+        elif int(row.tenant_id) != _workspace_tenant_id(current_user):
             raise HTTPException(status_code=404, detail="Custom prompt not found")
         _require_prompt_manage(session, current_user, row)
 
@@ -327,7 +337,7 @@ async def options(
         accessible_datasource_ids=visible_ids,
         current_user_id=int(current_user.id),
         can_manage_all=can_manage_all,
-        tenant_id=current_tenant_id(current_user),
+        tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
         platform_only=can_manage_platform_public,
     )
 
@@ -363,7 +373,7 @@ async def pager(
         can_manage_all=can_manage_all,
         can_manage_public=can_manage_public,
         can_manage_platform_public=can_manage_platform_public,
-        tenant_id=current_tenant_id(current_user),
+        tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
         visibility_scope=_parse_visibility_scope(visibility_scope),
         platform_only=can_manage_platform_public,
     )
@@ -435,8 +445,10 @@ async def get_one(session: SessionDep, current_user: CurrentUser, prompt_id: int
         can_manage_all=can_manage_all,
         can_manage_public=can_manage_public,
         can_manage_platform_public=can_manage_platform_public,
-        tenant_id=current_tenant_id(current_user),
+        tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
     )
+    if can_manage_platform_public and info.visibility_scope != CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        raise HTTPException(status_code=404, detail="Custom prompt not found")
     if not can_manage_all and not can_manage_platform_public:
         if info.visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE and not info.is_owner:
             raise HTTPException(status_code=403, detail="Datasource access is required")
@@ -458,7 +470,7 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, info:
             info,
             current_user_id=int(current_user.id),
             can_manage_all=can_manage_all,
-            tenant_id=current_tenant_id(current_user),
+            tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
             can_manage_public=can_manage_public,
             can_manage_platform_public=can_manage_platform_public,
         )
@@ -466,7 +478,7 @@ async def create_or_update(session: SessionDep, current_user: CurrentUser, info:
         session,
         info,
         current_user_id=int(current_user.id),
-        tenant_id=current_tenant_id(current_user),
+        tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
     )
 
 
@@ -482,7 +494,7 @@ async def delete(session: SessionDep, current_user: CurrentUser, id_list: list[i
         id_list,
         current_user_id=int(current_user.id),
         can_manage_all=can_manage_all,
-        tenant_id=current_tenant_id(current_user),
+        tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
         can_manage_public=can_manage_public,
         can_manage_platform_public=can_manage_platform_public,
     )
@@ -519,7 +531,7 @@ async def export_excel(
             can_manage_all=can_manage_all,
             can_manage_public=can_manage_public,
             can_manage_platform_public=can_manage_platform_public,
-            tenant_id=current_tenant_id(current_user),
+            tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
             visibility_scope=_parse_visibility_scope(visibility_scope),
             platform_only=can_manage_platform_public,
         )
@@ -590,7 +602,7 @@ async def upload_excel(
                     row.name.strip(): int(row.id)
                     for row in db_session.execute(
                         select(CoreDatasource.id, CoreDatasource.name).where(
-                            CoreDatasource.tenant_id == current_tenant_id(current_user)
+                            CoreDatasource.tenant_id == _workspace_tenant_id(current_user)
                         )
                     ).all()
                     if row.name
@@ -686,7 +698,7 @@ async def upload_excel(
                         else CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC
                     )
                     import_data.append(CustomPromptInfo(
-                        tenant_id=DEFAULT_TENANT_ID if can_manage_platform_public else current_tenant_id(current_user),
+                        tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
                         type=prompt_type,
                         name=name,
                         description=description,
@@ -704,7 +716,7 @@ async def upload_excel(
                 db_session,
                 import_data,
                 int(current_user.id),
-                DEFAULT_TENANT_ID if can_manage_platform_public else current_tenant_id(current_user),
+                _operation_tenant_id(current_user, platform_only=can_manage_platform_public),
             )
 
             error_excel_filename = None

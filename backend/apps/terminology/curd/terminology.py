@@ -87,6 +87,18 @@ def _runtime_scope_condition(tenant_id: int, include_platform: bool = True):
     return _tenant_scope_condition(tenant_id)
 
 
+def _resolve_management_scope(
+        tenant_id: int | None,
+        scope: SemanticRecordScopeEnum | str | None,
+) -> tuple[int, SemanticRecordScopeEnum]:
+    resolved_scope = normalize_semantic_scope(scope)
+    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
+        return DEFAULT_TENANT_ID, resolved_scope
+    if tenant_id is None or tenant_id == "":
+        raise ValueError("Tenant context is required")
+    return int(tenant_id), resolved_scope
+
+
 def build_terminology_query(session: SessionDep, name: Optional[str] = None,
                             paginate: bool = True, current_page: int = 1, page_size: int = 10,
                             dslist: Optional[list[int]] = None,
@@ -100,8 +112,8 @@ def build_terminology_query(session: SessionDep, name: Optional[str] = None,
     构建术语查询的通用方法
     """
     parent_ids_subquery, child = get_terminology_base_query(name)
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    parent_ids_subquery = parent_ids_subquery.where(_semantic_scope_condition(resolved_tenant_id, scope))
+    resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
+    parent_ids_subquery = parent_ids_subquery.where(_semantic_scope_condition(resolved_tenant_id, resolved_scope))
 
     if accessible_datasource_ids is not None:
         access_conditions = []
@@ -318,10 +330,7 @@ def create_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans,
         raise Exception(trans("i18n_terminology.description_cannot_be_empty"))
 
     create_time = datetime.datetime.now()
-    tenant_id = info.tenant_id or DEFAULT_TENANT_ID
-    scope = normalize_semantic_scope(info.scope)
-    if scope == SemanticRecordScopeEnum.PLATFORM:
-        tenant_id = DEFAULT_TENANT_ID
+    tenant_id, scope = _resolve_management_scope(info.tenant_id, info.scope)
 
     specific_ds = info.specific_ds if info.specific_ds is not None else False
     datasource_ids = info.datasource_ids if info.datasource_ids is not None else []
@@ -490,10 +499,7 @@ def batch_create_terminology(
 
     # 预加载数据源名称到ID的映射
     datasource_name_to_id = {}
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    resolved_scope = normalize_semantic_scope(scope)
-    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
-        resolved_tenant_id = DEFAULT_TENANT_ID
+    resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
     if resolved_scope == SemanticRecordScopeEnum.TENANT:
         datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.tenant_id == resolved_tenant_id)
         datasource_result = session.execute(datasource_stmt).all()
@@ -617,10 +623,7 @@ def batch_create_terminology(
 
 
 def update_terminology(session: SessionDep, info: TerminologyInfo, trans: Trans):
-    tenant_id = info.tenant_id or DEFAULT_TENANT_ID
-    scope = normalize_semantic_scope(info.scope)
-    if scope == SemanticRecordScopeEnum.PLATFORM:
-        tenant_id = DEFAULT_TENANT_ID
+    tenant_id, scope = _resolve_management_scope(info.tenant_id, info.scope)
     count = session.query(Terminology).filter(
         Terminology.id == info.id,
         Terminology.tenant_id == tenant_id,
@@ -741,10 +744,7 @@ def delete_terminology(
         tenant_id: int | None = None,
         scope: SemanticRecordScopeEnum | str | None = SemanticRecordScopeEnum.TENANT,
 ):
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    resolved_scope = normalize_semantic_scope(scope)
-    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
-        resolved_tenant_id = DEFAULT_TENANT_ID
+    resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
     stmt = delete(Terminology).where(
         and_(
             Terminology.tenant_id == resolved_tenant_id,
@@ -764,10 +764,7 @@ def enable_terminology(
         tenant_id: int | None = None,
         scope: SemanticRecordScopeEnum | str | None = SemanticRecordScopeEnum.TENANT,
 ):
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    resolved_scope = normalize_semantic_scope(scope)
-    if resolved_scope == SemanticRecordScopeEnum.PLATFORM:
-        resolved_tenant_id = DEFAULT_TENANT_ID
+    resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
     count = session.query(Terminology).filter(
         Terminology.id == id,
         Terminology.tenant_id == resolved_tenant_id,
@@ -929,7 +926,7 @@ def _resolve_runtime_tenant_id(session: SessionDep, datasource: int | None = Non
         datasource_row = session.get(CoreDatasource, int(datasource))
         if datasource_row and getattr(datasource_row, "tenant_id", None):
             return int(datasource_row.tenant_id)
-    return DEFAULT_TENANT_ID
+    raise ValueError("Tenant context is required")
 
 
 def select_terminology_by_word(
@@ -942,7 +939,10 @@ def select_terminology_by_word(
     if word.strip() == "":
         return []
 
-    resolved_tenant_id = _resolve_runtime_tenant_id(session, datasource, tenant_id)
+    try:
+        resolved_tenant_id = _resolve_runtime_tenant_id(session, datasource, tenant_id)
+    except ValueError:
+        return []
     _list: List[Terminology] = []
 
     stmt = (

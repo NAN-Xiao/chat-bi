@@ -37,6 +37,7 @@ interface Table {
 const props = withDefaults(
   defineProps<{
     info: Table
+    allowPreview?: boolean
   }>(),
   {
     info: () => ({
@@ -57,10 +58,12 @@ const props = withDefaults(
       can_manage_project: false,
       can_manage_metadata: false,
     }),
+    allowPreview: true,
   }
 )
 const { t } = useI18n()
 const canManageMetadata = computed(() => props.info.can_manage_metadata === true)
+const canPreviewData = computed(() => props.allowPreview === true && canManageMetadata.value)
 const paramsFormRef = ref()
 const tableList = ref([] as any[])
 const loading = ref(false)
@@ -181,9 +184,11 @@ const clickTable = (table: any) => {
       pageInfo.total = res.length
       pageInfo.currentPage = 1
       fieldName.value = ''
-      datasourceApi.previewData(props.info.id, buildData()).then((res) => {
-        previewData.value = res
-      })
+      if (canPreviewData.value) {
+        datasourceApi.previewData(props.info.id, buildData()).then((res) => {
+          previewData.value = res
+        })
+      }
     })
     .finally(() => {
       loading.value = false
@@ -401,6 +406,11 @@ const btnSelectClick = (val: any) => {
         loading.value = false
       })
   } else {
+    if (!canPreviewData.value) {
+      loading.value = false
+      btnSelect.value = 'd'
+      return
+    }
     datasourceApi
       .previewData(props.info.id, buildData())
       .then((res) => {
@@ -596,6 +606,7 @@ const btnSelectClick = (val: any) => {
               {{ t('ds.table_schema') }}
             </el-button>
             <el-button
+              v-if="canPreviewData"
               :class="[btnSelect === 'q' && 'is-active']"
               text
               @click="btnSelectClick('q')"

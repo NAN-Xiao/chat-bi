@@ -28,6 +28,39 @@ from apps.dashboard.models.dashboard_model import (
 def _engine_with_dashboard_table():
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine, tables=[CoreDashboard.__table__, CoreDashboardShare.__table__])
+    with engine.begin() as conn:
+        conn.execute(text(
+            """
+            CREATE TABLE sys_tenant_user (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role VARCHAR(32),
+                is_primary BOOLEAN,
+                status INTEGER NOT NULL DEFAULT 1,
+                create_time DATETIME
+            )
+            """
+        ))
+        for tenant_id, user_id in (
+            (1, 1),
+            (1, 2),
+            (1, 5),
+            (1, 9),
+            (2, 1),
+            (2, 9),
+            (20, 1),
+            (20, 5),
+        ):
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO sys_tenant_user (tenant_id, user_id, role, status)
+                    VALUES (:tenant_id, :user_id, 'member', 1)
+                    """
+                ),
+                {"tenant_id": tenant_id, "user_id": user_id},
+            )
     return engine
 
 
@@ -101,6 +134,8 @@ def _engine_with_dashboard_permission_tables():
                 enable BOOLEAN NOT NULL,
                 name VARCHAR NOT NULL,
                 description VARCHAR,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
+                scope VARCHAR(32) NOT NULL DEFAULT 'TENANT',
                 permission_list TEXT,
                 user_list TEXT,
                 white_list_user TEXT,
@@ -164,6 +199,15 @@ def _insert_simple_datasource_fixture(session: Session, datasource_id: int = 1):
     ), {"datasource_id": datasource_id})
 
 
+def _insert_active_tenant_member(session: Session, user_id: int, tenant_id: int = 1):
+    session.execute(text(
+        """
+        INSERT INTO sys_tenant_user (tenant_id, user_id, role, status)
+        VALUES (:tenant_id, :user_id, 'member', 1)
+        """
+    ), {"tenant_id": tenant_id, "user_id": user_id})
+
+
 def _insert_dashboard_permission_fixture(session: Session):
     session.execute(text(
         """
@@ -217,9 +261,9 @@ def _insert_orders_column_rule(session: Session):
     session.execute(text(
         """
         INSERT INTO ds_rules
-            (id, enable, name, description, permission_list, user_list, white_list_user)
+            (id, enable, name, description, tenant_id, scope, permission_list, user_list, white_list_user)
         VALUES
-            (2000, 1, 'user 2 orders columns', '', '[1000]', '[2]', '[]')
+            (2000, 1, 'user 2 orders columns', '', 1, 'TENANT', '[1000]', '[2]', '[]')
         """
     ))
 
@@ -236,9 +280,9 @@ def _insert_payments_table_deny_rule(session: Session):
     session.execute(text(
         """
         INSERT INTO ds_rules
-            (id, enable, name, description, permission_list, user_list, white_list_user)
+            (id, enable, name, description, tenant_id, scope, permission_list, user_list, white_list_user)
         VALUES
-            (2002, 1, 'user 2 payments denied', '', '[1002]', '[2]', '[]')
+            (2002, 1, 'user 2 payments denied', '', 1, 'TENANT', '[1002]', '[2]', '[]')
         """
     ))
 
@@ -267,16 +311,16 @@ def _insert_orders_row_rule(session: Session):
     session.execute(text(
         """
         INSERT INTO ds_rules
-            (id, enable, name, description, permission_list, user_list, white_list_user)
+            (id, enable, name, description, tenant_id, scope, permission_list, user_list, white_list_user)
         VALUES
-            (2001, 1, 'user 2 orders rows', '', '[1001]', '[2]', '[]')
+            (2001, 1, 'user 2 orders rows', '', 1, 'TENANT', '[1001]', '[2]', '[]')
         """
     ))
 
 
 def test_list_resource_returns_dashboard_tree_nodes_for_admin():
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=1, isAdmin=True)
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
 
     with Session(engine) as session:
         session.add(
@@ -430,7 +474,7 @@ def test_list_resource_is_scoped_to_current_workspace_even_for_same_creator(monk
 
 def test_list_resource_marks_project_editor_can_edit(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
 
@@ -462,7 +506,7 @@ def test_list_resource_marks_project_editor_can_edit(monkeypatch):
 
 def test_list_resource_marks_project_viewer_cannot_edit(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
@@ -494,7 +538,7 @@ def test_list_resource_marks_project_viewer_cannot_edit(monkeypatch):
 
 def test_list_resource_marks_creator_can_edit_with_project_viewer_role(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
@@ -526,7 +570,7 @@ def test_list_resource_marks_creator_can_edit_with_project_viewer_role(monkeypat
 
 def test_list_resource_marks_current_user_shared_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
 
     with Session(engine) as session:
@@ -575,7 +619,7 @@ def test_list_resource_marks_current_user_shared_dashboard(monkeypatch):
 
 def test_list_resource_includes_legacy_dashboard_when_canvas_uses_selected_datasource(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=1, isAdmin=True)
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
 
     with Session(engine) as session:
@@ -608,7 +652,7 @@ def test_list_resource_includes_legacy_dashboard_when_canvas_uses_selected_datas
 
 def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=1, isAdmin=True)
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
     chart_calls = []
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
     monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
@@ -656,7 +700,7 @@ def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
 
 def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=True)
+    current_user = SimpleNamespace(id=2, isAdmin=True, tenant_id=1)
     chart_calls = []
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
     monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
@@ -733,7 +777,7 @@ def test_project_editor_can_create_dashboard(monkeypatch):
 
 def test_project_viewer_can_create_own_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
 
@@ -756,7 +800,7 @@ def test_project_viewer_can_create_own_dashboard(monkeypatch):
 
 def test_project_editor_can_rename_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
 
@@ -788,7 +832,7 @@ def test_project_editor_can_rename_dashboard(monkeypatch):
 
 def test_project_viewer_cannot_rename_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
@@ -820,7 +864,7 @@ def test_project_viewer_cannot_rename_dashboard(monkeypatch):
 
 def test_project_viewer_can_rename_own_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
@@ -852,7 +896,7 @@ def test_project_viewer_can_rename_own_dashboard(monkeypatch):
 
 def test_validate_name_allows_update_when_name_unchanged(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
@@ -881,7 +925,7 @@ def test_validate_name_allows_update_when_name_unchanged(monkeypatch):
 
 def test_project_viewer_cannot_create_under_folder_they_cannot_edit(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
@@ -920,7 +964,7 @@ def test_project_viewer_cannot_create_under_folder_they_cannot_edit(monkeypatch)
 
 def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
@@ -969,7 +1013,7 @@ def test_dashboard_load_denies_chart_sql_with_unauthorized_table(monkeypatch):
 
 def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
@@ -997,7 +1041,7 @@ def test_dashboard_preview_denies_chart_sql_with_unauthorized_field(monkeypatch)
 
 def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
@@ -1027,7 +1071,7 @@ def test_dashboard_preview_applies_row_permission_before_execution(monkeypatch):
 
 def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch):
     engine = _engine_with_dashboard_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     exec_calls = []
     monkeypatch.setattr(
         query_executor,
@@ -1066,7 +1110,7 @@ def test_user_name_unwraps_row_result():
 
 def test_share_dashboard_creates_share_record(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
 
@@ -1107,7 +1151,7 @@ def test_share_dashboard_creates_share_record(monkeypatch):
 
 def test_share_chart_creates_chart_snapshot(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
 
@@ -1156,7 +1200,7 @@ def test_share_chart_creates_chart_snapshot(monkeypatch):
 
 def test_list_shared_resources_marks_permission_status(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=9, isAdmin=False)
+    current_user = SimpleNamespace(id=9, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(
         dashboard_service,
         "has_datasource_access",
@@ -1309,7 +1353,7 @@ def test_load_shared_resource_denies_cross_tenant_share(monkeypatch):
 
 def test_list_shared_resources_deduplicates_same_source(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=1, isAdmin=True)
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "_datasource_name", lambda *args, **kwargs: None)
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
@@ -1362,7 +1406,7 @@ def test_list_shared_resources_deduplicates_same_source(monkeypatch):
 
 def test_use_shared_resource_creates_dashboard_copy(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=5, isAdmin=False)
+    current_user = SimpleNamespace(id=5, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
 
     with Session(engine) as session:
@@ -1435,7 +1479,7 @@ def test_use_shared_resource_binds_copy_to_current_workspace(monkeypatch):
 
 def test_load_shared_resource_returns_permission_denied_state_without_access(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=5, isAdmin=False)
+    current_user = SimpleNamespace(id=5, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: False)
     monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
 
@@ -1476,7 +1520,7 @@ def test_load_shared_resource_returns_permission_denied_state_without_access(mon
 
 def test_delete_shared_resource_soft_deletes_for_creator(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
 
     with Session(engine) as session:
         session.add(
@@ -1512,7 +1556,7 @@ def test_delete_shared_resource_soft_deletes_for_creator(monkeypatch):
 
 def test_delete_shared_resource_allows_system_admin(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=1, isAdmin=True)
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
 
     with Session(engine) as session:
         session.add(
@@ -1548,7 +1592,7 @@ def test_delete_shared_resource_allows_system_admin(monkeypatch):
 
 def test_delete_shared_resource_deletes_duplicate_same_source_shares(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=1, isAdmin=True)
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
 
     with Session(engine) as session:
         for share_id, update_time in (("share-new", 200), ("share-old", 100)):
@@ -1587,7 +1631,7 @@ def test_delete_shared_resource_deletes_duplicate_same_source_shares(monkeypatch
 
 def test_delete_shared_resource_denied_for_non_creator(monkeypatch):
     engine = _engine_with_dashboard_table()
-    current_user = SimpleNamespace(id=9, isAdmin=False)
+    current_user = SimpleNamespace(id=9, isAdmin=False, tenant_id=1)
 
     with Session(engine) as session:
         session.add(

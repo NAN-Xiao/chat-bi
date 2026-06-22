@@ -990,6 +990,19 @@
     "datasource_role_viewer": "檢視者",
     "datasource_role_editor": "編輯者"
   },
+  "data_dictionary": {
+    "title": "資料字典",
+    "subtitle": "查看目前工作空間已綁定資料來源的表與欄位元資料，不展示業務資料值。",
+    "datasource_list": "資料來源",
+    "search_datasource": "搜尋資料來源",
+    "search_table": "搜尋資料表",
+    "search_field": "搜尋欄位",
+    "metadata_only": "僅元資料",
+    "table_count": "{count} 張表",
+    "empty_datasource": "暫無可查看的資料來源",
+    "empty_table": "暫無可查看的資料表",
+    "empty_field": "暫無可查看的欄位"
+  },
   "model": {
     "int": "整數",
     "float": "小數",

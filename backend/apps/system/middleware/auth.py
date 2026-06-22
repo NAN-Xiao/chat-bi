@@ -25,6 +25,7 @@ from apps.system.crud.tenant import (
 from apps.system.crud.user import get_user_by_account, get_user_info
 from apps.system.crud.user import is_platform_admin
 from apps.system.models.system_model import ApiKeyModel, AssistantModel
+from apps.system.schemas.access_context import require_tenant_id
 from apps.system.schemas.system_schema import AssistantHeader, UserInfoDTO
 from common.core import security
 from common.core.config import settings
@@ -150,7 +151,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         )
 
     def _assistant_tenant_id_from_payload(self, payload: dict, assistant_info: AssistantModel) -> int:
-        assistant_tenant_id = int(getattr(assistant_info, "tenant_id", None) or DEFAULT_TENANT_ID)
+        assistant_tenant_id = require_tenant_id(getattr(assistant_info, "tenant_id", None))
         payload_tenant_id = payload.get("tenant_id")
         if payload_tenant_id and int(payload_tenant_id) != assistant_tenant_id:
             raise PermissionError("Token tenant payload mismatch!")
@@ -163,7 +164,7 @@ class TokenMiddleware(BaseHTTPMiddleware):
         user: UserInfoDTO,
         assistant_info: AssistantModel,
     ) -> UserInfoDTO:
-        tenant_id = int(getattr(assistant_info, "tenant_id", None) or DEFAULT_TENANT_ID)
+        tenant_id = require_tenant_id(getattr(assistant_info, "tenant_id", None))
         try:
             tenant = get_active_tenant(session, tenant_id=tenant_id)
         except Exception:

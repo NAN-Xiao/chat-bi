@@ -33,6 +33,7 @@ import Tenant from '@/views/system/tenant/Tenant.vue'
 import TenantAccess from '@/views/system/tenant-access/TenantAccess.vue'
 import TenantOverview from '@/views/system/tenant-overview/TenantOverview.vue'
 import TenantUsage from '@/views/system/tenant-usage/TenantUsage.vue'
+import DataDictionary from '@/views/system/data-dictionary/DataDictionary.vue'
 import User from '@/views/system/user/User.vue'
 import MyWorkspaces from '@/views/account/workspaces/MyWorkspaces.vue'
 import WorkspaceApplications from '@/views/account/workspaces/WorkspaceApplications.vue'
@@ -81,12 +82,14 @@ export const routes = [
   {
     path: '/dsTable',
     component: SinglePage,
+    meta: { tenantAdminOnly: true },
     children: [
       {
         path: ':dsId/:dsName',
         name: 'dsTable',
         component: () => import('@/views/ds/TableList.vue'),
         props: true,
+        meta: { tenantAdminOnly: true },
       },
     ],
   },
@@ -285,6 +288,18 @@ export const routes = [
           title: t('tenant.member_access'),
           iconActive: 'member',
           iconDeActive: 'noMember',
+          tenantAdminOnly: true,
+          hideForPlatformAdmin: true,
+        },
+      },
+      {
+        path: 'data-dictionary',
+        name: 'data-dictionary',
+        component: DataDictionary,
+        meta: {
+          title: t('data_dictionary.title'),
+          iconActive: 'ds',
+          iconDeActive: 'noDs',
           tenantAdminOnly: true,
           hideForPlatformAdmin: true,
         },

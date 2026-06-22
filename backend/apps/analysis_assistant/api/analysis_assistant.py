@@ -29,6 +29,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
 from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
 from apps.system.crud.user import is_system_admin
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.business_access import require_chatbi_business_user
 from apps.terminology.curd.terminology import get_terminology_template
 from common.core.deps import CurrentUser, SessionDep
@@ -281,7 +282,7 @@ def _sse(payload: dict[str, Any]) -> str:
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
-    return int(getattr(current_user, "tenant_id", None) or 1)
+    return require_current_tenant_id(current_user)
 
 
 def _rate_limit_message(retry_after_seconds: int) -> str:
@@ -448,12 +449,13 @@ def _collect_metric_knowledge(
     parts: list[str] = []
     if current_user is not None and is_normal_user(current_user):
         return ""
+    tenant_id = _current_tenant_id(current_user) if current_user is not None else None
     try:
         terminology_template, _terms = get_terminology_template(
             session,
             question,
             datasource_id,
-            getattr(current_user, "tenant_id", None),
+            tenant_id,
         )
         if terminology_template and terminology_template.strip():
             parts.append(terminology_template.strip())
@@ -464,7 +466,7 @@ def _collect_metric_knowledge(
             session,
             question,
             datasource_id,
-            tenant_id=getattr(current_user, "tenant_id", None),
+            tenant_id=tenant_id,
         )
         if training_template and training_template.strip():
             parts.append(training_template.strip())
@@ -482,6 +484,7 @@ def _collect_custom_agent_context(
     if not custom_prompt_id:
         return "", None
     try:
+        tenant_id = _current_tenant_id(current_user) if current_user is not None else None
         prompt_text, _prompt_list, ai_model_id = find_custom_prompts(
             session,
             None,
@@ -490,7 +493,7 @@ def _collect_custom_agent_context(
             custom_prompt_id,
             getattr(current_user, "id", None),
             is_system_admin(current_user),
-            getattr(current_user, "tenant_id", None),
+            tenant_id,
         )
         return prompt_text.strip(), ai_model_id
     except Exception:

@@ -1,11 +1,16 @@
+import pytest
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
 from apps.data_training.curd.data_training import (
+    batch_create_training,
+    create_training,
     get_all_data_training,
     get_training_template,
     page_data_training,
 )
+from apps.data_training.models.data_training_model import DataTrainingInfo
+from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum
 from apps.terminology.curd.terminology import (
     build_terminology_query,
     get_terminology_template,
@@ -95,6 +100,10 @@ def _engine_with_semantic_tables():
             """
         ))
     return engine
+
+
+def _trans(value):
+    return value
 
 
 def test_workspace_sql_management_hides_platform_and_other_workspace_examples():
@@ -205,3 +214,109 @@ def test_export_uses_same_workspace_sql_visibility():
 
     assert [row.question for row in rows] == ["workspace dau"]
     assert term_total == 1
+
+
+def test_batch_sql_training_resolves_advanced_application_within_tenant(monkeypatch):
+    monkeypatch.setattr(
+        "apps.data_training.curd.data_training.run_save_data_training_embeddings",
+        lambda *args, **kwargs: None,
+    )
+    engine = _engine_with_semantic_tables()
+
+    with Session(engine) as session:
+        session.execute(text(
+            """
+            INSERT INTO sys_assistant (id, tenant_id, name, type)
+            VALUES
+                (101, 10, 'Shared Assistant', 1),
+                (201, 20, 'Shared Assistant', 1)
+            """
+        ))
+        session.commit()
+
+        result = batch_create_training(
+            session,
+            [
+                DataTrainingInfo(
+                    question="assistant scoped question",
+                    description="SELECT 1",
+                    advanced_application_name="Shared Assistant",
+                )
+            ],
+            _trans,
+            tenant_id=10,
+            scope=SemanticRecordScopeEnum.TENANT,
+        )
+        advanced_application_id = session.execute(text(
+            """
+            SELECT advanced_application
+            FROM data_training
+            WHERE question = 'assistant scoped question'
+            """
+        )).scalar()
+
+    assert result["success_count"] == 1
+    assert advanced_application_id == 101
+
+
+def test_sql_training_rejects_cross_tenant_advanced_application_id(monkeypatch):
+    monkeypatch.setattr(
+        "apps.data_training.curd.data_training.run_save_data_training_embeddings",
+        lambda *args, **kwargs: None,
+    )
+    engine = _engine_with_semantic_tables()
+
+    with Session(engine) as session:
+        session.execute(text(
+            """
+            INSERT INTO sys_assistant (id, tenant_id, name, type)
+            VALUES (201, 20, 'Other Assistant', 1)
+            """
+        ))
+        session.commit()
+
+        with pytest.raises(Exception):
+            create_training(
+                session,
+                DataTrainingInfo(
+                    tenant_id=10,
+                    scope=SemanticRecordScopeEnum.TENANT,
+                    question="cross tenant assistant",
+                    description="SELECT 1",
+                    advanced_application=201,
+                ),
+                _trans,
+            )
+
+
+def test_sql_training_list_does_not_join_cross_tenant_advanced_application_name():
+    engine = _engine_with_semantic_tables()
+
+    with Session(engine) as session:
+        session.execute(text(
+            """
+            INSERT INTO sys_assistant (id, tenant_id, name, type)
+            VALUES (201, 20, 'Other Assistant', 1)
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO data_training
+                (id, tenant_id, scope, datasource, advanced_application, create_time, question, description, enabled)
+            VALUES
+                (20, 10, 'TENANT', NULL, 201, '2026-01-05', 'cross assistant', 'sql', 1)
+            """
+        ))
+        session.commit()
+
+        _page, _size, _total, _pages, rows = page_data_training(
+            session,
+            current_page=1,
+            page_size=10,
+            name="cross assistant",
+            tenant_id=10,
+        )
+
+    assert len(rows) == 1
+    assert rows[0].advanced_application == "201"
+    assert rows[0].advanced_application_name is None

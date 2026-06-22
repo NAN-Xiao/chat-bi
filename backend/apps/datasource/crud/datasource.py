@@ -13,7 +13,7 @@ from apps.datasource.crud.query_executor import execute_user_query_or_raise
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
 from apps.db.constant import DB
-from apps.db.db import get_tables, get_fields, _unsafe_exec_sql_after_validation, check_connection
+from apps.db.db import get_tables, get_fields, check_connection
 from apps.db.engine import get_engine_config, get_engine_conn
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
@@ -198,10 +198,6 @@ def getFields(session: SessionDep, id: int, table_name: str):
 def getFieldsByDs(session: SessionDep, ds: CoreDatasource, table_name: str):
     fields = get_fields(ds, table_name)
     return fields
-
-
-def execute_internal_metadata_query(ds: CoreDatasource, sql: str, origin_column: bool = True):
-    return _unsafe_exec_sql_after_validation(ds, sql, origin_column)
 
 
 def sync_single_fields(
@@ -443,7 +439,7 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     ).result
 
 
-def fieldEnum(session: SessionDep, id: int):
+def fieldEnum(session: SessionDep, current_user: CurrentUser, id: int):
     field = session.query(CoreField).filter(CoreField.id == id).first()
     if field is None:
         return []
@@ -456,7 +452,15 @@ def fieldEnum(session: SessionDep, id: int):
 
     db = DB.get_db(ds.type)
     sql = f"""SELECT DISTINCT {db.prefix}{field.field_name}{db.suffix} FROM {db.prefix}{table.table_name}{db.suffix}"""
-    res = execute_internal_metadata_query(ds, sql, True)
+    res = execute_user_query_or_raise(
+        session=session,
+        current_user=current_user,
+        datasource=ds,
+        sql=sql,
+        allowed_tables=[table.table_name],
+        origin_column=True,
+        validate_columns=False,
+    ).result
     return [item.get(res.get('fields')[0]) for item in res.get('data')]
 
 
@@ -510,7 +514,7 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
     return _list
 
 
-def get_table_sample_data(ds: CoreDatasource, table_name: str, fields: list) -> str:
+def get_table_sample_data(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, table_name: str, fields: list) -> str:
     """Get 3 sample rows from a table in JSON format to help AI understand the data"""
     if not fields:
         return ""
@@ -541,7 +545,15 @@ def get_table_sample_data(ds: CoreDatasource, table_name: str, fields: list) -> 
         query = f"SELECT {','.join(field_names)} FROM {prefix}{table_name}{suffix} LIMIT 3"
 
     try:
-        result = execute_internal_metadata_query(ds=ds, sql=query, origin_column=True)
+        result = execute_user_query_or_raise(
+            session=session,
+            current_user=current_user,
+            datasource=ds,
+            sql=query,
+            allowed_tables=[table_name],
+            origin_column=True,
+            validate_columns=False,
+        ).result
         if result and result.get('data') and len(result['data']) > 0:
             import json
             # Truncate long string values for readability
@@ -580,7 +592,7 @@ def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: C
         if table_list is not None and obj.table.table_name not in table_list:
             continue
         if obj.fields:
-            sample = get_table_sample_data(ds, obj.table.table_name, obj.fields)
+            sample = get_table_sample_data(session, current_user, ds, obj.table.table_name, obj.fields)
             if sample:
                 sample_data_parts.append(f"# Table: {obj.table.table_name}\n{sample}")
     return "\n".join(sample_data_parts)

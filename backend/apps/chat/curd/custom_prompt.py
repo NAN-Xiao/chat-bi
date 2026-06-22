@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import text as sql_text
 from sqlmodel import Session
 
-from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.schemas.access_context import require_tenant_id
 
 
 class CustomPromptTypeEnum(str, Enum):
@@ -80,7 +80,7 @@ def find_custom_prompts(
     type_condition = ""
     params = {
         "prompt_id": normalized_prompt_id,
-        "tenant_id": int(tenant_id or DEFAULT_TENANT_ID),
+        "tenant_id": require_tenant_id(tenant_id),
         "target_scope": normalized_scope.value,
         "all_scope": CustomPromptTargetScopeEnum.ALL.value,
         "smart_qa_scope": CustomPromptTargetScopeEnum.SMART_QA.value,

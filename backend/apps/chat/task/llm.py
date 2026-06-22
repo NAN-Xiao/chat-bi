@@ -53,6 +53,7 @@ from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
 from apps.system.crud.user import is_system_admin
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.models.system_model import SysArgModel
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from apps.terminology.curd.terminology import get_terminology_template
@@ -353,8 +354,8 @@ class LLMService:
         chat: Chat | None = session.get(Chat, chat_id)
         if not chat:
             raise SingleMessageError(f"Chat with id {chat_id} not found")
-        tenant_id = int(getattr(current_user, "tenant_id", None) or 1)
-        if chat.create_by != current_user.id or int(chat.tenant_id or 1) != tenant_id:
+        tenant_id = require_current_tenant_id(current_user)
+        if chat.create_by != current_user.id or int(chat.tenant_id) != tenant_id:
             raise SingleMessageError(f"Chat with id {chat_id} not Owned by the current user")
         ds: CoreDatasource | AssistantOutDsSchema | None = None
         if not chat.datasource and chat_question.datasource_id:
@@ -449,7 +450,7 @@ class LLMService:
                 selected_prompt_id,
                 getattr(args[1], "id", None),
                 is_system_admin(args[1]),
-                getattr(args[1], "tenant_id", None),
+                require_current_tenant_id(args[1]),
             )
             if prompt_model_id and any(str(model.id) == str(prompt_model_id) for model in _ai_model_list):
                 specialized_model_id = prompt_model_id
@@ -598,7 +599,7 @@ class LLMService:
 
         self.chat_question.terminologies, term_list = get_terminology_template(_session, self.chat_question.question,
                                                                                calculate_ds_id,
-                                                                               getattr(self.current_user, "tenant_id", None))
+                                                                               require_current_tenant_id(self.current_user))
         self.current_logs[OperationEnum.FILTER_TERMS] = end_log(session=_session,
                                                                 log=self.current_logs[OperationEnum.FILTER_TERMS],
                                                                 full_message=term_list)
@@ -624,7 +625,7 @@ class LLMService:
             self.chat_question.custom_prompt_id,
             self.current_user.id,
             is_system_admin(self.current_user),
-            getattr(self.current_user, "tenant_id", None),
+            require_current_tenant_id(self.current_user),
         )
         self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
                                                                         log=self.current_logs[
@@ -648,12 +649,12 @@ class LLMService:
             self.chat_question.data_training, example_list = get_training_template(_session,
                                                                                    self.chat_question.question,
                                                                                    None, self.current_assistant.id,
-                                                                                   getattr(self.current_user, "tenant_id", None))
+                                                                                   require_current_tenant_id(self.current_user))
         else:
             self.chat_question.data_training, example_list = get_training_template(_session,
                                                                                    self.chat_question.question,
                                                                                    calculate_ds_id,
-                                                                                   tenant_id=getattr(self.current_user, "tenant_id", None))
+                                                                                   tenant_id=require_current_tenant_id(self.current_user))
         self.current_logs[OperationEnum.FILTER_SQL_EXAMPLE] = end_log(session=_session,
                                                                       log=self.current_logs[
                                                                           OperationEnum.FILTER_SQL_EXAMPLE],

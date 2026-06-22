@@ -21,6 +21,7 @@ export const datasourceApi = {
   tableList: (id: number) => request.post(`/datasource/tableList/${id}`),
   fieldList: (id: number, data = { fieldName: '' }) =>
     request.post(`/datasource/fieldList/${id}`, data),
+  schemaMetadata: (id: number | string) => request.get(`/datasource/schema-metadata/${id}`),
   edit: (data: any) => request.post('/datasource/editLocalComment', data),
   previewData: (id: number, data: any) => request.post(`/datasource/previewData/${id}`, data),
   saveTable: (data: any) => request.post('/datasource/editTable', data),

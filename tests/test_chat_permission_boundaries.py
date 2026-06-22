@@ -8,6 +8,7 @@ os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - 
 
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
+from fastapi import HTTPException
 
 from apps.chat.api import chat as chat_api
 from apps.chat.curd import chat as chat_crud
@@ -227,7 +228,7 @@ def test_db_permission_errors_are_detected_and_warning_is_preserved():
 
 def test_chat_cached_data_is_rechecked_against_current_permissions():
     engine = _engine_with_chat_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
 
     with Session(engine) as session:
         _insert_permission_fixture(session)
@@ -251,7 +252,7 @@ def test_chat_cached_data_is_rechecked_against_current_permissions():
 
 def test_chat_history_scrubs_cached_artifacts_after_permission_change():
     engine = _engine_with_chat_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
 
     with Session(engine) as session:
         _insert_permission_fixture(session)
@@ -291,7 +292,7 @@ def test_chat_history_scrubs_cached_artifacts_after_permission_change():
 
 def test_chat_excel_export_rechecks_current_permissions():
     engine = _engine_with_chat_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     trans = lambda key: key
 
     with Session(engine) as session:
@@ -329,7 +330,7 @@ def test_chat_excel_export_rechecks_current_permissions():
 
 def test_normal_user_chat_log_history_hides_internal_messages():
     engine = _engine_with_chat_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
 
     with Session(engine) as session:
         _insert_permission_fixture(session)
@@ -512,3 +513,27 @@ def test_chat_record_data_requires_current_tenant():
         result = chat_crud.get_chart_data_with_user(session, current_user, 1)
 
     assert result == {}
+
+
+def test_chat_business_service_requires_explicit_tenant_context():
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+
+    with Session(engine) as session:
+        session.add(Chat(
+            id=1,
+            tenant_id=1,
+            create_by=2,
+            create_time=datetime.datetime(2026, 1, 1),
+            datasource=None,
+            engine_type="",
+            brief="default-tenant",
+        ))
+        session.commit()
+
+        try:
+            chat_crud.get_chat_with_records(session, 1, current_user, None, with_data=True)
+        except HTTPException as exc:
+            assert exc.status_code == 403
+        else:
+            raise AssertionError("business chat access should require an explicit tenant context")

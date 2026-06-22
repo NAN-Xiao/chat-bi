@@ -12,6 +12,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.datasource.utils.utils import aes_encrypt
 from apps.system.models.system_model import AssistantModel
 from apps.system.schemas.auth import CacheName, CacheNamespace
+from apps.system.schemas.access_context import require_tenant_id
 from apps.system.schemas.system_schema import AssistantHeader, AssistantOutDsSchema, UserInfoDTO
 from common.core.config import settings
 from common.core.db import engine
@@ -37,7 +38,7 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
     type = assistant.type
     if type == 0 or type == 2:
         configuration = assistant.configuration
-        tenant_id = int(getattr(assistant, "tenant_id", None) or 1)
+        tenant_id = require_tenant_id(getattr(assistant, "tenant_id", None))
         stmt = (
             select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description)
             .where(CoreDatasource.tenant_id == tenant_id)

@@ -255,7 +255,6 @@ def test_low_level_sql_adapter_is_only_used_by_controlled_wrappers():
     allowed = {
         REPO_ROOT / "backend/apps/db/db.py",
         REPO_ROOT / "backend/apps/datasource/crud/query_executor.py",
-        REPO_ROOT / "backend/apps/datasource/crud/datasource.py",
     }
 
     for path in (REPO_ROOT / "backend/apps").rglob("*.py"):

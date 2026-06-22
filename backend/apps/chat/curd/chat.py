@@ -20,6 +20,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
 from apps.system.crud.tenant_usage import record_tenant_usage_detached, token_total
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.deps import CurrentAssistant, SessionDep, CurrentUser, Trans
 from common.utils.data_format import DataFormat
@@ -41,26 +42,25 @@ CHAT_USAGE_METRICS = {
 
 
 def _current_tenant_id(current_user: CurrentUser | None) -> int:
-    tenant_id = getattr(current_user, "tenant_id", None)
-    return int(tenant_id or DEFAULT_TENANT_ID)
+    return require_current_tenant_id(current_user)
 
 
 def _same_tenant(row, current_user: CurrentUser | None) -> bool:
-    return int(getattr(row, "tenant_id", DEFAULT_TENANT_ID) or DEFAULT_TENANT_ID) == _current_tenant_id(current_user)
+    return int(getattr(row, "tenant_id")) == _current_tenant_id(current_user)
 
 
-def _record_tenant_id(session: SessionDep, record_id: int | None) -> int:
+def _record_tenant_id(session: SessionDep, record_id: int | None) -> int | None:
     if not record_id:
-        return DEFAULT_TENANT_ID
+        return None
     tenant_id = session.execute(select(ChatRecord.tenant_id).where(ChatRecord.id == record_id)).scalar()
-    return int(tenant_id or DEFAULT_TENANT_ID)
+    return int(tenant_id) if tenant_id not in (None, "") else None
 
 
-def _chat_tenant_id(session: SessionDep, chat_id: int | None) -> int:
+def _chat_tenant_id(session: SessionDep, chat_id: int | None) -> int | None:
     if not chat_id:
-        return DEFAULT_TENANT_ID
+        return None
     tenant_id = session.execute(select(Chat.tenant_id).where(Chat.id == chat_id)).scalar()
-    return int(tenant_id or DEFAULT_TENANT_ID)
+    return int(tenant_id) if tenant_id not in (None, "") else None
 
 
 def _record_chat_usage_from_log(log: ChatLog, *, success: bool) -> None:
@@ -70,8 +70,10 @@ def _record_chat_usage_from_log(log: ChatLog, *, success: bool) -> None:
     total_tokens = token_total(log.token_usage)
     if log.local_operation:
         return
+    if log.tenant_id in (None, ""):
+        return
     record_tenant_usage_detached(
-        tenant_id=int(log.tenant_id or DEFAULT_TENANT_ID),
+        tenant_id=int(log.tenant_id),
         metric=metric,
         request_count=1,
         success_count=1 if success else 0,
@@ -818,7 +820,7 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
         raise Exception(f"ChatRecord with id {chat_record_id} not found")
 
     tenant_id = _current_tenant_id(current_user)
-    if chat_record.create_by != current_user.id or int(chat_record.tenant_id or DEFAULT_TENANT_ID) != tenant_id:
+    if chat_record.create_by != current_user.id or int(chat_record.tenant_id) != tenant_id:
         raise Exception(f"ChatRecord with id {chat_record_id} not owned by the current user")
 
     # 2. 查询与该ChatRecord相关的所有ChatLog记录
@@ -931,6 +933,8 @@ def get_chat_brief_generate(session: SessionDep, chat_id: int):
 
 def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
     tenant_id = _chat_tenant_id(session, chart_id)
+    if tenant_id is None:
+        return []
     stmt = select(ChatLog).where(
         and_(
             ChatLog.pid.in_(select(ChatRecord.id).where(and_(
@@ -952,6 +956,8 @@ def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
 
 def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
     tenant_id = _chat_tenant_id(session, chart_id)
+    if tenant_id is None:
+        return []
     stmt = select(ChatLog).where(
         and_(
             ChatLog.pid.in_(select(ChatRecord.id).where(and_(
@@ -1087,7 +1093,7 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
 
 def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, action_type: str) -> ChatRecord:
     record = ChatRecord()
-    record.tenant_id = int(base_record.tenant_id or DEFAULT_TENANT_ID)
+    record.tenant_id = int(base_record.tenant_id)
     record.question = base_record.question
     record.chat_id = base_record.chat_id
     record.datasource = base_record.datasource
@@ -1118,9 +1124,11 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
 def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str = None, operate: OperationEnum = None,
               record_id: int = None, full_message: Union[list[dict], dict] = None,
               local_operation: bool = False) -> ChatLog:
-    log = ChatLog(tenant_id=_record_tenant_id(session, record_id),
-                  type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
+    log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
                   messages=full_message, start_time=datetime.datetime.now(), local_operation=local_operation)
+    tenant_id = _record_tenant_id(session, record_id)
+    if tenant_id is not None:
+        log.tenant_id = tenant_id
 
     result = ChatLog(**log.model_dump())
 

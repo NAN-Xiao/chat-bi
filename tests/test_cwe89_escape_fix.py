@@ -8,8 +8,14 @@ These tests validate:
 """
 import os
 import textwrap
+from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import text
+from sqlmodel import Session, create_engine
+
+from apps.datasource.crud.row_permission import transTreeItem
+from apps.datasource.models.datasource import CoreDatasource
 
 
 # ---------- Extract functions from source ----------
@@ -223,6 +229,91 @@ class TestSqlFragmentSafety:
         value = "New York, NY"
         escaped = _escape_sql_value(value)
         assert escaped == "New York, NY"
+
+
+def _row_permission_engine():
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text(
+            """
+            CREATE TABLE core_field (
+                id INTEGER PRIMARY KEY,
+                ds_id INTEGER,
+                table_id INTEGER,
+                checked BOOLEAN,
+                field_name TEXT,
+                field_type VARCHAR(128),
+                field_comment TEXT,
+                custom_comment TEXT,
+                field_index INTEGER
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE system_variable (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER,
+                name VARCHAR(128) NOT NULL,
+                var_type VARCHAR(128) NOT NULL,
+                type VARCHAR(128) NOT NULL,
+                value TEXT,
+                create_time DATETIME,
+                create_by INTEGER
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            INSERT INTO core_field
+                (id, ds_id, table_id, checked, field_name, field_type, field_index)
+            VALUES (100, 1, 10, 1, 'region', 'text', 1)
+            """
+        ))
+    return engine
+
+
+def _variable_filter_item(variable_id: int) -> dict:
+    return {
+        "type": "item",
+        "field_id": 100,
+        "filter_type": "text",
+        "term": "in",
+        "value_type": "variable",
+        "variable_id": variable_id,
+    }
+
+
+def test_custom_row_permission_variable_requires_explicit_same_tenant():
+    engine = _row_permission_engine()
+    datasource = CoreDatasource(id=1, tenant_id=10, name="Workspace DS", type="pg")
+    current_user = SimpleNamespace(
+        id=2,
+        account="alice",
+        name="Alice",
+        email="alice@example.com",
+        system_variables=[
+            {"variableId": 1, "variableValues": ["CN"]},
+            {"variableId": 2, "variableValues": ["CN"]},
+            {"variableId": 3, "variableValues": ["CN"]},
+        ],
+    )
+
+    with Session(engine) as session:
+        session.execute(text(
+            """
+            INSERT INTO system_variable (id, tenant_id, name, var_type, type, value)
+            VALUES
+                (1, NULL, 'orphan_region', 'text', 'custom', '["CN"]'),
+                (2, 20, 'other_region', 'text', 'custom', '["CN"]'),
+                (3, 10, 'own_region', 'text', 'custom', '["CN"]')
+            """
+        ))
+        session.commit()
+
+        assert transTreeItem(session, current_user, _variable_filter_item(1), datasource) is None
+        assert transTreeItem(session, current_user, _variable_filter_item(2), datasource) is None
+        assert transTreeItem(session, current_user, _variable_filter_item(3), datasource) == '\"region\" IN (\'CN\')'
 
 
 if __name__ == "__main__":

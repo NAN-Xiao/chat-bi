@@ -19,9 +19,10 @@ from common.core.db import engine
 
 def _user_tenant_id(user: Optional[UserInfoDTO]) -> int:
     try:
-        return int(getattr(user, "tenant_id", None) or 1)
+        tenant_id = getattr(user, "tenant_id", None)
+        return int(tenant_id) if tenant_id not in (None, "") else None
     except (TypeError, ValueError):
-        return 1
+        return None
 
 
 def get_resource_name_by_id_and_module(session, resource_id: Any, module: str) -> List[Dict[str, str]]:

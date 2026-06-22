@@ -41,6 +41,7 @@ from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
+from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.tenant import TenantModel
 from apps.system.schemas.business_access import (
     ensure_chatbi_business_user,
@@ -75,7 +76,11 @@ path = settings.EXCEL_PATH
 
 
 def _tenant_excel_path(current_user: CurrentUser) -> str:
-    tenant_id = current_tenant_id(current_user) or 1
+    tenant_id = (
+        DEFAULT_TENANT_ID
+        if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+        else require_current_tenant_id(current_user)
+    )
     tenant_path = os.path.join(path, f"tenant_{tenant_id}")
     os.makedirs(tenant_path, exist_ok=True)
     return tenant_path
@@ -92,6 +97,12 @@ def _can_manage_tenant_projects(user: CurrentUser) -> bool:
 def _require_platform_project_admin(user: CurrentUser) -> None:
     if not is_platform_admin(user):
         raise HTTPException(status_code=403, detail="Only platform admin can manage projects")
+
+
+def _require_schema_metadata_admin(user: CurrentUser) -> None:
+    if is_platform_admin(user) or can_manage_workspace_scope(user):
+        return
+    raise HTTPException(status_code=403, detail="Only workspace admin can view datasource schema metadata")
 
 
 class DatasourceListItem(BaseModel):
@@ -136,6 +147,35 @@ class DatasourceDetailItem(BaseModel):
     tenant_id: Optional[int] = None
     tenant_name: Optional[str] = None
     can_manage_metadata: bool = False
+
+
+class DatasourceSchemaFieldItem(BaseModel):
+    id: int
+    field_name: str | None = None
+    field_type: str | None = None
+    field_comment: str | None = None
+    custom_comment: str | None = None
+    checked: bool = True
+    field_index: int | None = None
+
+
+class DatasourceSchemaTableItem(BaseModel):
+    id: int
+    table_name: str | None = None
+    table_comment: str | None = None
+    custom_comment: str | None = None
+    checked: bool = True
+    fields: list[DatasourceSchemaFieldItem] = Field(default_factory=list)
+
+
+class DatasourceSchemaMetadata(BaseModel):
+    id: int
+    name: str | None = None
+    description: str | None = None
+    type: str | None = None
+    type_name: str | None = None
+    num: str | None = None
+    tables: list[DatasourceSchemaTableItem] = Field(default_factory=list)
 
 
 class DatasourceBindingUpdate(BaseModel):
@@ -340,6 +380,62 @@ async def get_datasource(
     return data
 
 
+@router.get("/schema-metadata/{id}", response_model=DatasourceSchemaMetadata, include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['admin'], type='ds', keyExpression="id"))
+async def schema_metadata(
+        session: SessionDep,
+        user: CurrentUser,
+        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+):
+    _require_schema_metadata_admin(user)
+    datasource = get_ds(session, id, user)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    tables = get_tables_by_ds_id(session, id)
+    table_ids = [int(table.id) for table in tables if table.id is not None]
+    fields_by_table: dict[int, list[CoreField]] = {table_id: [] for table_id in table_ids}
+    if table_ids:
+        rows = session.exec(
+            select(CoreField)
+            .where(CoreField.table_id.in_(table_ids))
+            .order_by(CoreField.table_id, CoreField.field_index, CoreField.id)
+        ).all()
+        for field in rows:
+            fields_by_table.setdefault(int(field.table_id), []).append(field)
+
+    return DatasourceSchemaMetadata(
+        id=int(datasource.id),
+        name=datasource.name,
+        description=datasource.description,
+        type=datasource.type,
+        type_name=datasource.type_name,
+        num=datasource.num,
+        tables=[
+            DatasourceSchemaTableItem(
+                id=int(table.id),
+                table_name=table.table_name,
+                table_comment=table.table_comment,
+                custom_comment=table.custom_comment,
+                checked=bool(table.checked),
+                fields=[
+                    DatasourceSchemaFieldItem(
+                        id=int(field.id),
+                        field_name=field.field_name,
+                        field_type=field.field_type,
+                        field_comment=field.field_comment,
+                        custom_comment=field.custom_comment,
+                        checked=bool(field.checked),
+                        field_index=field.field_index,
+                    )
+                    for field in fields_by_table.get(int(table.id), [])
+                ],
+            )
+            for table in tables
+        ],
+    )
+
+
 @router.get("/{id}/binding", response_model=DatasourceBindingItem, include_in_schema=False)
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def datasource_binding(
@@ -500,13 +596,18 @@ async def sync_fields(session: SessionDep,
         "datasource.sync_fields",
         {"table_id": int(id)},
         created_by=current_user.id,
-        tenant_id=current_tenant_id(current_user),
+        tenant_id=(
+            DEFAULT_TENANT_ID
+            if is_platform_admin(current_user) and not is_platform_workspace_delegate(current_user)
+            else require_current_tenant_id(current_user)
+        ),
     )
 
 
 @router.post("/tableList/{id}", response_model=List[CoreTable], summary=f"{PLACEHOLDER_PREFIX}ds_table_list")
-@require_permissions(permission=AppPermission(type='ds', keyExpression="id"))
+@require_permissions(permission=AppPermission(role=['admin'], type='ds', keyExpression="id"))
 async def table_list(session: SessionDep, current_user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    _require_schema_metadata_admin(current_user)
     tables = get_tables_by_ds_id(session, id)
     if not is_normal_user(current_user):
         return tables
@@ -518,9 +619,10 @@ async def table_list(session: SessionDep, current_user: CurrentUser, id: int = P
 
 
 @router.post("/fieldList/{id}", response_model=List[CoreField], summary=f"{PLACEHOLDER_PREFIX}ds_field_list")
-@require_permissions(permission=AppPermission(type='table', keyExpression="id"))
+@require_permissions(permission=AppPermission(role=['admin'], type='table', keyExpression="id"))
 async def field_list(session: SessionDep, current_user: CurrentUser, field: FieldObj,
                      id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_table_id")):
+    _require_schema_metadata_admin(current_user)
     table = session.get(CoreTable, id)
     if table is None:
         return []
@@ -556,9 +658,12 @@ async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
 
 
 @router.post("/previewData/{id}", response_model=PreviewResponse, summary=f"{PLACEHOLDER_PREFIX}ds_preview_data")
-@require_permissions(permission=AppPermission(type='ds', keyExpression="id"))
+@require_permissions(permission=AppPermission(role=['platform_admin'], type='ds', keyExpression="id"))
 async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, data: TableObj,
                        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    if is_platform_workspace_delegate(current_user):
+        raise HTTPException(status_code=403, detail="Only platform admin can preview datasource rows")
+
     def inner():
         try:
             return preview(session, current_user, id, data)
@@ -582,7 +687,7 @@ async def field_enum(session: SessionDep, user: CurrentUser, id: int):
         raise HTTPException(status_code=404, detail="字段不存在")
 
     def inner():
-        return fieldEnum(session, id)
+        return fieldEnum(session, user, id)
 
     return await asyncio.to_thread(inner)
 

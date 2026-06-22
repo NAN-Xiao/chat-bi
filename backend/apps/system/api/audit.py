@@ -11,6 +11,7 @@ from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.user import is_platform_workspace_delegate, is_super_admin
 from apps.system.models.tenant import TenantUserModel
 from apps.system.models.user import UserModel
+from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.permission import AppPermission, require_permissions
 from common.audit.models.log_model import OperationStatus, OperationType, SystemLog, SystemLogsResource
 from common.core.deps import CurrentUser, SessionDep
@@ -71,10 +72,9 @@ def _parse_millis(value: str | None) -> datetime | None:
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
-    try:
-        return int(getattr(current_user, "tenant_id", None) or DEFAULT_TENANT_ID)
-    except (TypeError, ValueError):
+    if is_super_admin(current_user) and not is_platform_workspace_delegate(current_user):
         return DEFAULT_TENANT_ID
+    return require_current_tenant_id(current_user)
 
 
 def _apply_tenant_scope(stmt, current_user: CurrentUser):

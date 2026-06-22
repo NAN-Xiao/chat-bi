@@ -991,6 +991,19 @@
     "datasource_role_viewer": "查看者",
     "datasource_role_editor": "编辑者"
   },
+  "data_dictionary": {
+    "title": "数据字典",
+    "subtitle": "查看当前工作空间已绑定数据源的表和字段元数据，不展示业务数据值。",
+    "datasource_list": "数据源",
+    "search_datasource": "搜索数据源",
+    "search_table": "搜索数据表",
+    "search_field": "搜索字段",
+    "metadata_only": "仅元数据",
+    "table_count": "{count} 张表",
+    "empty_datasource": "暂无可查看的数据源",
+    "empty_table": "暂无可查看的数据表",
+    "empty_field": "暂无可查看的字段"
+  },
   "model": {
     "int": "整数",
     "float": "小数",

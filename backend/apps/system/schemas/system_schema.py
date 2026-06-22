@@ -152,7 +152,7 @@ class AssistantHeader(AssistantDTO):
     certificate: Optional[str] = None
     online: bool = False
     request_origin: Optional[str] = None
-    tenant_id: int = 1
+    tenant_id: Optional[int] = None
 
 
 class AssistantValidator(BaseModel):

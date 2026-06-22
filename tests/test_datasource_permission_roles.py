@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
 
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
@@ -21,6 +22,8 @@ from apps.datasource.crud.permission_rules import delete_permission_records_for_
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_AGENT_GUIDANCE, PERMISSION_DENIED_RESULT_MESSAGE
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreTable, TableObj
+from apps.datasource.models.datasource import FieldObj
+from apps.system.schemas import permission as permission_schema
 from apps.analysis_assistant.api import analysis_assistant as analysis_assistant_api
 
 
@@ -195,7 +198,7 @@ def _datasource(datasource_id=1, create_by=9, tenant_id=1):
 
 def test_datasource_role_defaults_to_viewer_for_existing_membership():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -282,7 +285,7 @@ def test_tenant_admin_update_user_datasources_ignores_projects_outside_current_t
 
 def test_datasource_editor_satisfies_dashboard_edit_role():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -321,7 +324,7 @@ def test_workspace_member_without_project_membership_cannot_edit_project():
 def test_datasource_list_hides_connection_config_for_normal_users():
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
-    system_admin = SimpleNamespace(id=4, system_role="system_admin")
+    system_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
     tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="owner")
 
     with Session(engine) as session:
@@ -345,9 +348,99 @@ def test_datasource_list_hides_connection_config_for_normal_users():
         assert tenant_admin_items[0]["can_bind_workspace"] is False
 
 
+def _set_permission_request_context(user):
+    request = Request({"type": "http", "headers": []})
+    request.state.current_user = user
+    return permission_schema.RequestContext.set_request(request)
+
+
+def test_workspace_admin_schema_metadata_is_metadata_only(monkeypatch):
+    engine = _engine_with_permission_tables()
+    monkeypatch.setattr(permission_schema, "engine", engine)
+    tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        token = _set_permission_request_context(tenant_admin)
+        try:
+            result = asyncio.run(datasource_api.schema_metadata(session, tenant_admin, 1))
+        finally:
+            permission_schema.RequestContext.reset(token)
+
+        payload = result.model_dump()
+        assert payload["id"] == 1
+        assert payload["tables"][0]["table_name"] == "orders"
+        assert payload["tables"][0]["fields"][0]["field_name"] == "order_id"
+        assert "configuration" not in payload
+        assert "data" not in payload
+        assert "sql" not in payload
+
+
+def test_workspace_member_cannot_directly_browse_schema_metadata(monkeypatch):
+    engine = _engine_with_permission_tables()
+    monkeypatch.setattr(permission_schema, "engine", engine)
+    member = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        token = _set_permission_request_context(member)
+        try:
+            with pytest.raises(HTTPException) as schema_exc:
+                asyncio.run(datasource_api.schema_metadata(session, member, 1))
+            with pytest.raises(HTTPException) as table_exc:
+                asyncio.run(datasource_api.table_list(session, member, 1))
+            with pytest.raises(HTTPException) as field_exc:
+                asyncio.run(datasource_api.field_list(session, member, FieldObj(fieldName=""), 10))
+        finally:
+            permission_schema.RequestContext.reset(token)
+
+        assert schema_exc.value.status_code == 403
+        assert table_exc.value.status_code == 403
+        assert field_exc.value.status_code == 403
+
+
+def test_platform_workspace_delegate_cannot_preview_datasource_rows(monkeypatch):
+    engine = _engine_with_permission_tables()
+    monkeypatch.setattr(permission_schema, "engine", engine)
+    delegate = SimpleNamespace(
+        id=4,
+        system_role="system_admin",
+        tenant_id=1,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        token = _set_permission_request_context(delegate)
+        try:
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(datasource_api.preview_data(
+                    session,
+                    None,
+                    delegate,
+                    TableObj(table=CoreTable(id=10, ds_id=1, table_name="orders", table_comment="", custom_comment="")),
+                    1,
+                ))
+        finally:
+            permission_schema.RequestContext.reset(token)
+
+        assert exc.value.status_code == 403
+
+
 def test_workspace_binding_replaces_and_cancels_bound_project_permissions():
     engine = _engine_with_permission_tables()
-    platform_admin = SimpleNamespace(id=4, system_role="system_admin")
+    platform_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1, tenant_id=1))
@@ -399,8 +492,8 @@ def test_workspace_binding_replaces_and_cancels_bound_project_permissions():
 
 def test_get_datasource_redacts_config_without_mutating_record():
     engine = _engine_with_permission_tables()
-    normal_user = SimpleNamespace(id=2, isAdmin=False)
-    admin_user = SimpleNamespace(id=4, system_role="system_admin")
+    normal_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    admin_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -419,7 +512,7 @@ def test_get_datasource_redacts_config_without_mutating_record():
 
 def test_update_datasource_ignores_missing_connection_config(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=4, system_role="system_admin")
+    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
     monkeypatch.setattr(datasource_crud, "run_save_ds_embeddings", lambda *args, **kwargs: None)
 
     with Session(engine) as session:
@@ -448,7 +541,7 @@ def test_update_datasource_ignores_missing_connection_config(monkeypatch):
 
 def test_update_datasource_users_excludes_system_admin_by_role_not_user_id():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=4, system_role="system_admin")
+    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
 
     with Session(engine) as session:
         datasource = _datasource(1)
@@ -469,13 +562,13 @@ def test_update_datasource_users_excludes_system_admin_by_role_not_user_id():
             {"user_id": 2, "role": "editor"},
             {"user_id": 3, "role": "editor"},
         ]
-        assert permission.list_datasource_user_ids(session, 1) == [1, 2, 3]
-        assert permission.list_user_datasource_roles(session, 2) == {1: "editor"}
+        assert permission.list_datasource_user_ids(session, 1, current_user) == [1, 2, 3]
+        assert permission.list_user_datasource_roles(session, 2, current_user) == {1: "editor"}
 
 
 def test_update_user_datasources_excludes_system_admin_by_role_not_user_id():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=4, system_role="system_admin")
+    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -486,13 +579,13 @@ def test_update_user_datasources_excludes_system_admin_by_role_not_user_id():
         assert permission.update_user_datasources(session, current_user, 4, [1, 2]) == []
         session.commit()
 
-        assert permission.list_user_datasource_roles(session, 1) == {1: "viewer"}
-        assert permission.list_user_datasource_roles(session, 4) == {}
+        assert permission.list_user_datasource_roles(session, 1, current_user) == {1: "viewer"}
+        assert permission.list_user_datasource_roles(session, 4, current_user) == {}
 
 
 def test_update_user_datasources_saves_project_role_map_for_new_memberships():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=4, system_role="system_admin")
+    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -508,7 +601,7 @@ def test_update_user_datasources_saves_project_role_map_for_new_memberships():
         ) == [1, 2]
         session.commit()
 
-        assert permission.list_user_datasource_roles(session, 2) == {
+        assert permission.list_user_datasource_roles(session, 2, current_user) == {
             1: "editor",
             2: "viewer",
         }
@@ -516,7 +609,7 @@ def test_update_user_datasources_saves_project_role_map_for_new_memberships():
 
 def test_update_user_datasources_updates_existing_project_roles():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=4, system_role="system_admin")
+    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -532,12 +625,12 @@ def test_update_user_datasources_updates_existing_project_roles():
         ) == [1]
         session.commit()
 
-        assert permission.list_user_datasource_roles(session, 2) == {1: "editor"}
+        assert permission.list_user_datasource_roles(session, 2, current_user) == {1: "editor"}
 
 
 def test_update_user_datasources_preserves_existing_roles_when_role_map_omitted():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=4, system_role="system_admin")
+    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -547,12 +640,12 @@ def test_update_user_datasources_preserves_existing_roles_when_role_map_omitted(
         assert permission.update_user_datasources(session, current_user, 2, [1]) == [1]
         session.commit()
 
-        assert permission.list_user_datasource_roles(session, 2) == {1: "editor"}
+        assert permission.list_user_datasource_roles(session, 2, current_user) == {1: "editor"}
 
 
 def test_get_datasource_ids_with_min_role_filters_by_project_role():
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
 
     with Session(engine) as session:
         session.add(_datasource(1))
@@ -983,7 +1076,7 @@ def _insert_user_table_deny_for_payments(session: Session):
 
 def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
 
     with Session(engine) as session:
@@ -1014,7 +1107,7 @@ def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
 
 def test_normal_user_sample_data_is_not_sent_to_model(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
     exec_calls = []
     monkeypatch.setattr(
@@ -1039,7 +1132,7 @@ def test_normal_user_sample_data_is_not_sent_to_model(monkeypatch):
 
 def test_sql_permission_scope_denies_hidden_columns(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
 
     with Session(engine) as session:
@@ -1065,7 +1158,7 @@ def test_sql_permission_scope_denies_hidden_columns(monkeypatch):
 
 def test_analysis_assistant_permission_failure_is_structured_and_sanitized(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
 
     with Session(engine) as session:
@@ -1147,7 +1240,7 @@ def test_analysis_assistant_final_prompt_carries_permission_gap(monkeypatch):
 
 def test_analysis_assistant_db_permission_failure_is_structured_and_sanitized():
     block = {"title": "受限数据检查", "summary": "old summary"}
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
 
     analysis_assistant_api._mark_query_error_block(
         block,
@@ -1198,7 +1291,7 @@ def test_analysis_assistant_data_profile_uses_query_executor(monkeypatch):
 
 def test_user_schema_filters_relationships_outside_table_scope(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
     relations = [
         {
@@ -1235,7 +1328,7 @@ def test_user_schema_filters_relationships_outside_table_scope(monkeypatch):
 
 def test_user_schema_filters_relationships_outside_column_scope(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
     relations = [
         {
@@ -1302,7 +1395,7 @@ def test_user_schema_filters_relationships_outside_column_scope(monkeypatch):
 
 def test_system_admin_schema_keeps_authorized_relationships(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=4, system_role="system_admin")
+    current_user = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
     relations = [
         {
@@ -1335,7 +1428,7 @@ def test_system_admin_schema_keeps_authorized_relationships(monkeypatch):
 
 def test_user_without_permission_rules_has_default_table_visibility(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
 
     with Session(engine) as session:
@@ -1360,7 +1453,7 @@ def test_user_without_permission_rules_has_default_table_visibility(monkeypatch)
 
 def test_preview_denies_configured_denied_tables(monkeypatch):
     engine = _engine_with_permission_tables()
-    current_user = SimpleNamespace(id=2, isAdmin=False)
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
     exec_calls = []
     monkeypatch.setattr(
