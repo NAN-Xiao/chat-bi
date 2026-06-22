@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field as PydanticField
-from sqlalchemy import BigInteger, Column, DateTime, Identity, Index, String
+from sqlalchemy import BigInteger, Column, DateTime, Identity, Index, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field as SQLModelField, SQLModel
 
@@ -23,7 +23,10 @@ class AnalysisAssistantConversation(SQLModel, table=True):
     datasource_name: Optional[str] = SQLModelField(default=None, sa_column=Column(String(255), nullable=True))
     custom_prompt_id: Optional[int] = SQLModelField(default=None, sa_column=Column(BigInteger, nullable=True))
     data_skill_id: Optional[int] = SQLModelField(default=None, sa_column=Column(BigInteger, nullable=True))
-    messages: list[dict] = SQLModelField(default_factory=list, sa_column=Column(JSONB, nullable=False, server_default="[]"))
+    messages: list[dict] = SQLModelField(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    )
     create_time: datetime = SQLModelField(sa_column=Column(DateTime(timezone=False), nullable=False))
     update_time: datetime = SQLModelField(sa_column=Column(DateTime(timezone=False), nullable=False))
 

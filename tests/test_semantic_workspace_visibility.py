@@ -123,7 +123,7 @@ def test_workspace_sql_management_hides_platform_and_other_workspace_examples():
     assert [row.question for row in rows] == ["workspace dau"]
 
 
-def test_runtime_sql_recall_can_include_platform_examples(monkeypatch):
+def test_runtime_sql_recall_returns_empty_legacy_examples(monkeypatch):
     monkeypatch.setattr(
         "apps.data_training.curd.data_training.settings.EMBEDDING_ENABLED",
         False,
@@ -131,14 +131,14 @@ def test_runtime_sql_recall_can_include_platform_examples(monkeypatch):
     engine = _engine_with_semantic_tables()
 
     with Session(engine) as session:
-        _template, with_platform = get_training_template(
+        template_with_platform, with_platform = get_training_template(
             session,
             "platform dau",
             datasource=1,
             tenant_id=10,
             include_platform=True,
         )
-        _template, without_platform = get_training_template(
+        template_without_platform, without_platform = get_training_template(
             session,
             "platform dau",
             datasource=1,
@@ -146,7 +146,9 @@ def test_runtime_sql_recall_can_include_platform_examples(monkeypatch):
             include_platform=False,
         )
 
-    assert [item["question"] for item in with_platform] == ["platform dau"]
+    assert template_with_platform == ""
+    assert with_platform == []
+    assert template_without_platform == ""
     assert without_platform == []
 
 
@@ -167,7 +169,7 @@ def test_workspace_terminology_management_hides_platform_terms():
     assert total == 1
 
 
-def test_runtime_terminology_recall_can_include_platform_terms(monkeypatch):
+def test_runtime_terminology_recall_returns_empty_legacy_terms(monkeypatch):
     monkeypatch.setattr(
         "apps.terminology.curd.terminology.settings.EMBEDDING_ENABLED",
         False,
@@ -175,14 +177,14 @@ def test_runtime_terminology_recall_can_include_platform_terms(monkeypatch):
     engine = _engine_with_semantic_tables()
 
     with Session(engine) as session:
-        _template, with_platform = get_terminology_template(
+        template_with_platform, with_platform = get_terminology_template(
             session,
             "platform term",
             datasource=None,
             tenant_id=10,
             include_platform=True,
         )
-        _template, without_platform = get_terminology_template(
+        template_without_platform, without_platform = get_terminology_template(
             session,
             "platform term",
             datasource=None,
@@ -190,7 +192,9 @@ def test_runtime_terminology_recall_can_include_platform_terms(monkeypatch):
             include_platform=False,
         )
 
-    assert [item["words"][0] for item in with_platform] == ["platform term"]
+    assert template_with_platform == ""
+    assert with_platform == []
+    assert template_without_platform == ""
     assert without_platform == []
 
 

@@ -48,8 +48,8 @@ const iconNameMap: Record<string, string> = {
   noParameter: 'parameter',
   variables: 'variables',
   noVariables: 'variables',
-  dashboardStore: 'store',
-  noDashboardStore: 'store',
+  dashboardStore: 'sharedDashboard',
+  noDashboardStore: 'sharedDashboard',
 }
 
 const iconSpec: Record<string, IconNode[]> = {
@@ -143,6 +143,11 @@ const iconSpec: Record<string, IconNode[]> = {
   store: [
     { tag: 'path', attrs: { d: 'M3.4 6.2 9 3.1l5.6 3.1L9 9.3 3.4 6.2Z' } },
     { tag: 'path', attrs: { d: 'm4.1 9.6 4.9 2.8 4.9-2.8M4.1 12.9 9 15.7l4.9-2.8' } },
+  ],
+  sharedDashboard: [
+    { tag: 'rect', attrs: { x: 3.1, y: 4.2, width: 8.6, height: 9.6, rx: 1.4 } },
+    { tag: 'path', attrs: { d: 'M5.4 6.8h3.9M5.4 9.1h2.6M5.4 11.4h3.4' } },
+    { tag: 'path', attrs: { d: 'M10.7 3.8h3.6v3.6M8.8 9.3l5.2-5.2' } },
   ],
 }
 

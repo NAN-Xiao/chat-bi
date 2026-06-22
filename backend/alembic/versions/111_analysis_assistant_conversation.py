@@ -48,7 +48,12 @@ def upgrade() -> None:
             sa.Column("datasource_name", sa.String(length=255), nullable=True),
             sa.Column("custom_prompt_id", sa.BigInteger(), nullable=True),
             sa.Column("data_skill_id", sa.BigInteger(), nullable=True),
-            sa.Column("messages", postgresql.JSONB(astext_type=sa.Text()), server_default="[]", nullable=False),
+            sa.Column(
+                "messages",
+                postgresql.JSONB(astext_type=sa.Text()),
+                server_default=sa.text("'[]'::jsonb"),
+                nullable=False,
+            ),
             sa.Column("create_time", sa.DateTime(timezone=False), nullable=False),
             sa.Column("update_time", sa.DateTime(timezone=False), nullable=False),
             sa.PrimaryKeyConstraint("id"),

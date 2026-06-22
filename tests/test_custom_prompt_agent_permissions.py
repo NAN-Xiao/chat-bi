@@ -667,6 +667,66 @@ def test_data_skill_runtime_hides_split_legacy_semantic_skills_after_combining()
         assert combined_id and terminology_split_id and sql_split_id and sql_prompt_split_id and themed_id
 
 
+def test_old_saas_theme_skills_are_hidden_after_saas_20_split():
+    engine = _engine()
+    with Session(engine) as session:
+        old_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_platform_admin(),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="SaaS 数据 Skill：收入付费与 LTV",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                active=True,
+                prompt=(
+                    "<!-- data-skill-source:semantic-theme:saas:revenue-payment-ltv -->\n"
+                    "# SaaS 数据 Skill：收入付费与 LTV\n"
+                    "Old broad SaaS skill."
+                ),
+            ),
+        ))
+        new_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_platform_admin(),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="SaaS 数据 Skill：收入确认、净额与订单状态",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                active=True,
+                prompt=(
+                    "<!-- data-skill-source:semantic-theme20:saas:revenue-recognition-net-amount -->\n"
+                    "# SaaS 数据 Skill：收入确认、净额与订单状态\n"
+                    "Use configured net revenue."
+                ),
+            ),
+        ))
+
+        skill_text, logs, _model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            skill_id=None,
+            current_user_id=3,
+            tenant_id=10,
+        )
+        _page, _size, total, _pages, rows = custom_prompt_api.page_custom_prompts(
+            session,
+            CustomPromptTypeEnum.DATA_SKILL,
+            current_user_id=3,
+            tenant_id=10,
+            visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+        )
+
+        assert "收入确认、净额与订单状态" in skill_text
+        assert "Old broad SaaS skill" not in skill_text
+        assert len(logs) == 1
+        assert total == 1
+        assert {row.id for row in rows} == {new_id}
+        assert old_id and new_id
+
+
 def test_explicit_visibility_filter_returns_one_skill_layer_only():
     engine = _engine()
     with Session(engine) as session:

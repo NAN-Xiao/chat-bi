@@ -94,6 +94,7 @@ def _is_split_legacy_data_skill(row) -> bool:
         or "<!-- data-skill-source:data-training:" in prompt
         or "<!-- data-skill-source:custom-prompt-generate-sql:" in prompt
         or "<!-- data-skill-source:legacy-semantic:" in prompt
+        or "<!-- data-skill-source:semantic-theme:saas:" in prompt
     )
 
 

@@ -264,6 +264,7 @@ def _split_legacy_data_skill_condition():
         CustomPrompt.prompt.contains("<!-- data-skill-source:data-training:"),
         CustomPrompt.prompt.contains("<!-- data-skill-source:custom-prompt-generate-sql:"),
         CustomPrompt.prompt.contains("<!-- data-skill-source:legacy-semantic:"),
+        CustomPrompt.prompt.contains("<!-- data-skill-source:semantic-theme:saas:"),
     )
 
 

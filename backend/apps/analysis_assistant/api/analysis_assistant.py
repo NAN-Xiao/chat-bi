@@ -1,14 +1,20 @@
 import re
 import traceback
+import zipfile
+from base64 import b64decode
+from html import escape as html_escape
+from io import BytesIO
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote
 
 import orjson
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, select
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import and_, or_, select
 
 from apps.ai_model.model_factory import LLMFactory, get_default_config
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts, find_data_skills
@@ -59,6 +65,31 @@ class AnalysisAssistantRequest(BaseModel):
     datasource_id: int | None = None
     custom_prompt_id: int | None = None
     data_skill_id: int | None = None
+
+
+class AnalysisAssistantExportBlock(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    title: str = ""
+    purpose: str | None = None
+    chart_type: str | None = None
+    fields: list[str] = Field(default_factory=list)
+    data: list[dict[str, Any]] = Field(default_factory=list)
+    summary: str | None = None
+    warning: str | None = None
+    error: str | None = None
+    image: str | None = None
+
+
+class AnalysisAssistantExportRequest(BaseModel):
+    title: str | None = None
+    question: str | None = None
+    datasource_id: int | None = None
+    datasource_name: str | None = None
+    format: Literal["pdf", "docx"] = "pdf"
+    blocks: list[AnalysisAssistantExportBlock] = Field(default_factory=list)
+    final: str | None = None
+    generated_at: str | None = None
 
 
 SYSTEM_PROMPT = """你是星通智数内置的综合分析助手，一个独立于“智能报表”的业务分析 Agent。
@@ -471,6 +502,515 @@ def _get_datasource(
         raise RuntimeError("当前有多个项目，请先选择本次综合分析要使用的项目")
     datasource = datasource_list[0]
     return datasource
+
+
+def _get_owned_conversation(
+    session: SessionDep,
+    current_user: CurrentUser,
+    conversation_id: int,
+    *,
+    verify_datasource_access: bool = True,
+) -> AnalysisAssistantConversation:
+    record = session.execute(
+        select(AnalysisAssistantConversation).where(
+            and_(
+                AnalysisAssistantConversation.id == conversation_id,
+                AnalysisAssistantConversation.tenant_id == _current_tenant_id(current_user),
+                AnalysisAssistantConversation.create_by == current_user.id,
+            )
+        )
+    ).scalars().first()
+    if record is None:
+        raise RuntimeError("历史对话不存在或无权访问")
+    if (
+        verify_datasource_access
+        and record.datasource_id is not None
+        and not has_datasource_access(session, current_user, record.datasource_id)
+    ):
+        raise RuntimeError("当前用户已无权访问该历史对话所属项目")
+    return record
+
+
+@router.get("/history", response_model=list[AnalysisAssistantConversationSummary], include_in_schema=False)
+async def list_history(
+    current_user: CurrentUser,
+    session: SessionDep,
+    datasource_id: int | None = None,
+    limit: int = 30,
+):
+    limit = min(max(int(limit or 30), 1), 100)
+    filters = [
+        AnalysisAssistantConversation.tenant_id == _current_tenant_id(current_user),
+        AnalysisAssistantConversation.create_by == current_user.id,
+    ]
+    if datasource_id is not None:
+        filters.append(
+            or_(
+                AnalysisAssistantConversation.datasource_id == datasource_id,
+                AnalysisAssistantConversation.datasource_id.is_(None),
+            )
+        )
+    records = session.execute(
+        select(AnalysisAssistantConversation)
+        .where(and_(*filters))
+        .order_by(AnalysisAssistantConversation.update_time.desc())
+        .limit(limit)
+    ).scalars().all()
+    return [
+        _conversation_summary(record)
+        for record in records
+        if record.datasource_id is None or has_datasource_access(session, current_user, record.datasource_id)
+    ]
+
+
+@router.get(
+    "/history/{conversation_id}",
+    response_model=AnalysisAssistantConversationDetail,
+    include_in_schema=False,
+)
+async def get_history(conversation_id: int, current_user: CurrentUser, session: SessionDep):
+    record = _get_owned_conversation(session, current_user, conversation_id)
+    return _conversation_detail(record)
+
+
+@router.post(
+    "/history",
+    response_model=AnalysisAssistantConversationDetail,
+    include_in_schema=False,
+)
+async def save_history(
+    request: AnalysisAssistantConversationSave,
+    current_user: CurrentUser,
+    session: SessionDep,
+):
+    messages = _serialise_conversation_messages(request)
+    if not messages:
+        raise RuntimeError("历史对话内容不能为空")
+    if request.datasource_id is not None and not has_datasource_access(session, current_user, request.datasource_id):
+        raise RuntimeError("当前用户无权访问该历史对话所属项目")
+
+    now = datetime.now()
+    title = _normalise_conversation_title(request.title, messages)
+    if request.id:
+        record = _get_owned_conversation(session, current_user, request.id, verify_datasource_access=False)
+        if request.datasource_id is not None and not has_datasource_access(session, current_user, request.datasource_id):
+            raise RuntimeError("当前用户无权访问该历史对话所属项目")
+        record.title = title
+        record.datasource_id = request.datasource_id
+        record.datasource_name = request.datasource_name
+        record.custom_prompt_id = request.custom_prompt_id
+        record.data_skill_id = request.data_skill_id
+        record.messages = messages
+        record.update_time = now
+    else:
+        record = AnalysisAssistantConversation(
+            tenant_id=_current_tenant_id(current_user),
+            create_by=current_user.id,
+            title=title,
+            datasource_id=request.datasource_id,
+            datasource_name=request.datasource_name,
+            custom_prompt_id=request.custom_prompt_id,
+            data_skill_id=request.data_skill_id,
+            messages=messages,
+            create_time=now,
+            update_time=now,
+        )
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    return _conversation_detail(record)
+
+
+def _strip_markdown(value: str | None) -> str:
+    text = str(value or "")
+    if not text.strip():
+        return ""
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*[-*+]\s+", "- ", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*>\s?", "", text, flags=re.MULTILINE)
+    text = text.replace("**", "").replace("__", "").replace("*", "")
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _export_paragraphs(value: str | None) -> list[str]:
+    text = _strip_markdown(value)
+    if not text:
+        return []
+    return [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
+
+
+def _clean_filename(value: str) -> str:
+    value = re.sub(r'[\\/:*?"<>|]+', "_", value).strip()
+    value = re.sub(r"\s+", "_", value)
+    return (value or "analysis-report")[:80]
+
+
+def _decode_export_image(data_url: str | None) -> tuple[bytes, str] | None:
+    if not data_url or not data_url.startswith("data:image/"):
+        return None
+    header, _, payload = data_url.partition(",")
+    if not payload or ";base64" not in header:
+        return None
+    image_type = header.split(";", 1)[0].split("/", 1)[-1].lower()
+    extension = "jpg" if image_type in {"jpeg", "jpg"} else "png"
+    try:
+        return b64decode(payload), extension
+    except Exception:
+        return None
+
+
+def _xml_text(value: str) -> str:
+    return html_escape(value, quote=False)
+
+
+def _docx_paragraph(
+    text: str,
+    *,
+    size: int = 22,
+    bold: bool = False,
+    color: str = "15233B",
+    before: int = 0,
+    after: int = 120,
+) -> str:
+    return (
+        f'<w:p><w:pPr><w:spacing w:before="{before}" w:after="{after}" w:line="320" '
+        'w:lineRule="auto"/></w:pPr>'
+        '<w:r><w:rPr>'
+        '<w:rFonts w:ascii="Arial" w:eastAsia="Microsoft YaHei" w:hAnsi="Arial"/>'
+        f'<w:sz w:val="{size}"/><w:color w:val="{color}"/>'
+        f'{"<w:b/>" if bold else ""}'
+        f'</w:rPr><w:t xml:space="preserve">{_xml_text(text)}</w:t></w:r></w:p>'
+    )
+
+
+def _docx_image(image_rid: str, image_index: int, image_bytes: bytes) -> str:
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(image_bytes)) as img:
+            width, height = img.size
+    except Exception:
+        width, height = 1000, 520
+
+    max_width_emu = 5_800_000
+    width = max(width, 1)
+    height = max(height, 1)
+    scale = min(1.0, max_width_emu / (width * 9525))
+    cx = int(width * 9525 * scale)
+    cy = int(height * 9525 * scale)
+    return f"""
+<w:p>
+  <w:pPr><w:spacing w:before="80" w:after="160"/></w:pPr>
+  <w:r>
+    <w:drawing>
+      <wp:inline distT="0" distB="0" distL="0" distR="0">
+        <wp:extent cx="{cx}" cy="{cy}"/>
+        <wp:effectExtent l="0" t="0" r="0" b="0"/>
+        <wp:docPr id="{image_index}" name="chart-{image_index}"/>
+        <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <pic:pic>
+              <pic:nvPicPr>
+                <pic:cNvPr id="{image_index}" name="chart-{image_index}"/>
+                <pic:cNvPicPr/>
+              </pic:nvPicPr>
+              <pic:blipFill>
+                <a:blip r:embed="{image_rid}"/>
+                <a:stretch><a:fillRect/></a:stretch>
+              </pic:blipFill>
+              <pic:spPr>
+                <a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>
+                <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              </pic:spPr>
+            </pic:pic>
+          </a:graphicData>
+        </a:graphic>
+      </wp:inline>
+    </w:drawing>
+  </w:r>
+</w:p>
+"""
+
+
+def _build_export_docx(request: AnalysisAssistantExportRequest) -> bytes:
+    media: list[tuple[str, str, str, bytes]] = []
+    body: list[str] = [
+        _docx_paragraph("综合分析报告", size=34, bold=True, before=0, after=180),
+        _docx_paragraph(f"分析主题：{request.question or request.title or '综合分析'}", size=22, after=80),
+        _docx_paragraph(f"项目：{request.datasource_name or '未绑定项目'}", size=20, color="6B7A90", after=40),
+        _docx_paragraph(f"生成时间：{request.generated_at or datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", size=20, color="6B7A90", after=180),
+    ]
+
+    for index, block in enumerate(request.blocks, start=1):
+        title = block.title or f"图表分析 {index}"
+        body.append(_docx_paragraph(f"{index}. {title}", size=28, bold=True, before=220, after=80))
+        chart_label = str(block.chart_type or "").strip()
+        if chart_label:
+            body.append(_docx_paragraph(f"图表类型：{chart_label}", size=20, color="6B7A90", after=60))
+        if block.purpose:
+            body.append(_docx_paragraph(f"分析目的：{_strip_markdown(block.purpose)}", size=21, color="42526E", after=80))
+
+        image = _decode_export_image(block.image)
+        if image:
+            image_bytes, extension = image
+            rid = f"rId{len(media) + 1}"
+            filename = f"chart-{index}.{extension}"
+            media.append((rid, filename, extension, image_bytes))
+            body.append(_docx_image(rid, len(media), image_bytes))
+
+        if block.summary:
+            body.append(_docx_paragraph("图表分析", size=24, bold=True, before=120, after=60))
+            for paragraph in _export_paragraphs(block.summary):
+                body.append(_docx_paragraph(paragraph, size=21, after=80))
+        if block.warning or block.error:
+            body.append(_docx_paragraph(f"提示：{_strip_markdown(block.warning or block.error)}", size=20, color="9A5B00", after=80))
+
+    if request.final:
+        body.append(_docx_paragraph("最终分析", size=28, bold=True, before=260, after=100))
+        for paragraph in _export_paragraphs(request.final):
+            body.append(_docx_paragraph(paragraph, size=21, after=90))
+
+    document_xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  <w:body>
+    {''.join(body)}
+    <w:sectPr>
+      <w:pgSz w:w="11906" w:h="16838"/>
+      <w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/>
+    </w:sectPr>
+  </w:body>
+</w:document>
+"""
+    rels = [
+        f'<Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/{filename}"/>'
+        for rid, filename, _extension, _bytes in media
+    ]
+    content_type_defaults = {
+        "rels": "application/vnd.openxmlformats-package.relationships+xml",
+        "xml": "application/xml",
+    }
+    if any(extension == "png" for _rid, _filename, extension, _bytes in media):
+        content_type_defaults["png"] = "image/png"
+    if any(extension == "jpg" for _rid, _filename, extension, _bytes in media):
+        content_type_defaults["jpg"] = "image/jpeg"
+    content_types = "".join(
+        f'<Default Extension="{extension}" ContentType="{content_type}"/>'
+        for extension, content_type in content_type_defaults.items()
+    )
+
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as docx:
+        docx.writestr(
+            "[Content_Types].xml",
+            (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                f"{content_types}"
+                '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+                "</Types>"
+            ),
+        )
+        docx.writestr(
+            "_rels/.rels",
+            (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+                "</Relationships>"
+            ),
+        )
+        docx.writestr(
+            "word/_rels/document.xml.rels",
+            (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                f"{''.join(rels)}"
+                "</Relationships>"
+            ),
+        )
+        docx.writestr("word/document.xml", document_xml)
+        for _rid, filename, _extension, image_bytes in media:
+            docx.writestr(f"word/media/{filename}", image_bytes)
+    return output.getvalue()
+
+
+def _load_export_font(size: int, *, bold: bool = False):
+    from PIL import ImageFont
+
+    candidates = [
+        r"C:\Windows\Fonts\msyhbd.ttc" if bold else r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Windows\Fonts\simhei.ttf",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return ImageFont.truetype(candidate, size=size)
+    return ImageFont.load_default()
+
+
+def _wrap_export_text(draw, text: str, font, max_width: int) -> list[str]:
+    lines: list[str] = []
+    for paragraph in (text or "").splitlines() or [""]:
+        current = ""
+        for char in paragraph:
+            candidate = current + char
+            if draw.textlength(candidate, font=font) <= max_width or not current:
+                current = candidate
+            else:
+                lines.append(current)
+                current = char
+        lines.append(current)
+    return lines
+
+
+def _build_export_pdf(request: AnalysisAssistantExportRequest) -> bytes:
+    from PIL import Image, ImageDraw
+
+    page_width, page_height = 1240, 1754
+    margin_x, margin_y = 90, 86
+    content_width = page_width - margin_x * 2
+    title_font = _load_export_font(34, bold=True)
+    heading_font = _load_export_font(26, bold=True)
+    label_font = _load_export_font(20, bold=True)
+    body_font = _load_export_font(20)
+    meta_font = _load_export_font(18)
+
+    pages: list[Image.Image] = []
+    page = Image.new("RGB", (page_width, page_height), "white")
+    draw = ImageDraw.Draw(page)
+    y = margin_y
+
+    def footer() -> None:
+        page_no = len(pages) + 1
+        draw.line((margin_x, page_height - 62, page_width - margin_x, page_height - 62), fill="#E6EDF6", width=1)
+        draw.text((page_width - margin_x - 80, page_height - 48), f"{page_no}", font=meta_font, fill="#8A97AA")
+
+    def new_page() -> None:
+        nonlocal page, draw, y
+        footer()
+        pages.append(page)
+        page = Image.new("RGB", (page_width, page_height), "white")
+        draw = ImageDraw.Draw(page)
+        y = margin_y
+
+    def ensure(height: int) -> None:
+        if y + height > page_height - 90:
+            new_page()
+
+    def write_text(text: str, font, fill: str = "#15233B", spacing: int = 8, after: int = 14) -> None:
+        nonlocal y
+        for line in _wrap_export_text(draw, text, font, content_width):
+            line_height = max(28, int(font.size * 1.45) if hasattr(font, "size") else 28)
+            ensure(line_height + after)
+            draw.text((margin_x, y), line, font=font, fill=fill)
+            y += line_height + spacing
+        y += after
+
+    def write_image(data_url: str | None) -> None:
+        nonlocal y
+        decoded = _decode_export_image(data_url)
+        if not decoded:
+            return
+        image_bytes, _extension = decoded
+        try:
+            with Image.open(BytesIO(image_bytes)) as source:
+                chart = source.convert("RGB")
+        except Exception:
+            return
+        max_height = 520
+        scale = min(content_width / chart.width, max_height / chart.height, 1)
+        image_width = max(1, int(chart.width * scale))
+        image_height = max(1, int(chart.height * scale))
+        chart = chart.resize((image_width, image_height), Image.Resampling.LANCZOS)
+        ensure(image_height + 34)
+        draw.rounded_rectangle(
+            (margin_x, y, margin_x + image_width, y + image_height),
+            radius=8,
+            outline="#E6EDF6",
+            width=1,
+            fill="#FFFFFF",
+        )
+        page.paste(chart, (margin_x, y))
+        y += image_height + 26
+
+    write_text("综合分析报告", title_font, "#15233B", after=4)
+    write_text(f"分析主题：{request.question or request.title or '综合分析'}", body_font, "#42526E", after=0)
+    write_text(f"项目：{request.datasource_name or '未绑定项目'}", meta_font, "#6B7A90", after=0)
+    write_text(f"生成时间：{request.generated_at or datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", meta_font, "#6B7A90", after=18)
+
+    for index, block in enumerate(request.blocks, start=1):
+        ensure(86)
+        draw.line((margin_x, y, page_width - margin_x, y), fill="#E6EDF6", width=1)
+        y += 24
+        write_text(f"{index}. {block.title or f'图表分析 {index}'}", heading_font, "#15233B", after=2)
+        chart_label = str(block.chart_type or "").strip()
+        if chart_label:
+            write_text(f"图表类型：{chart_label}", meta_font, "#6B7A90", after=0)
+        if block.purpose:
+            write_text(f"分析目的：{_strip_markdown(block.purpose)}", body_font, "#42526E", after=4)
+        write_image(block.image)
+        if block.summary:
+            write_text("图表分析", label_font, "#15233B", after=0)
+            for paragraph in _export_paragraphs(block.summary):
+                write_text(paragraph, body_font, "#15233B", after=2)
+        if block.warning or block.error:
+            write_text(f"提示：{_strip_markdown(block.warning or block.error)}", body_font, "#9A5B00", after=2)
+
+    if request.final:
+        ensure(90)
+        draw.line((margin_x, y, page_width - margin_x, y), fill="#C8EEE4", width=2)
+        y += 24
+        write_text("最终分析", heading_font, "#15233B", after=4)
+        for paragraph in _export_paragraphs(request.final):
+            write_text(paragraph, body_font, "#15233B", after=3)
+
+    footer()
+    pages.append(page)
+    output = BytesIO()
+    pages[0].save(output, format="PDF", save_all=True, append_images=pages[1:], resolution=150.0)
+    return output.getvalue()
+
+
+@router.post("/export", include_in_schema=False)
+async def export_report(
+    request: AnalysisAssistantExportRequest,
+    current_user: CurrentUser,
+    session: SessionDep,
+):
+    if not current_user:
+        raise RuntimeError("Unauthorized")
+    if request.datasource_id is not None and not has_datasource_access(session, current_user, request.datasource_id):
+        raise RuntimeError("当前用户无权导出该项目分析内容")
+    if not request.blocks and not str(request.final or "").strip():
+        raise RuntimeError("没有可导出的分析内容")
+
+    if request.format == "docx":
+        content = _build_export_docx(request)
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        extension = "docx"
+    else:
+        content = _build_export_pdf(request)
+        media_type = "application/pdf"
+        extension = "pdf"
+
+    filename = f"{_clean_filename(request.question or request.title or 'analysis-report')}.{extension}"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 def _prepare_sql_for_execution(
@@ -1355,14 +1895,13 @@ def _summarise_block(
     )
 
 
-def _final_answer(
-    llm,
+def _final_answer_messages(
     question: str,
     intro: str,
     blocks: list[dict[str, Any]],
     custom_agent: str = "",
     data_skill: str = "",
-) -> str:
+) -> list[BaseMessage]:
     block_details = []
     permission_limited_titles: list[str] = []
     for block in blocks:
@@ -1405,10 +1944,23 @@ def _final_answer(
         "不要猜测其数据结果，也不要展开或臆测具体受限表名、字段名或权限配置：\n"
         f"{payload[:16000]}"
     )
+    return [
+        SystemMessage(content=FINAL_PROMPT + _data_skill_final_system_rules(data_skill) + _custom_agent_final_system_rules(custom_agent)),
+        HumanMessage(content=prompt),
+    ]
+
+
+def _final_answer(
+    llm,
+    question: str,
+    intro: str,
+    blocks: list[dict[str, Any]],
+    custom_agent: str = "",
+    data_skill: str = "",
+) -> str:
     return _llm_text(
         llm,
-        [SystemMessage(content=FINAL_PROMPT + _data_skill_final_system_rules(data_skill) + _custom_agent_final_system_rules(custom_agent)),
-         HumanMessage(content=prompt)],
+        _final_answer_messages(question, intro, blocks, custom_agent, data_skill),
     )
 
 
@@ -1702,7 +2254,12 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
                 yield _sse({"type": "block", "block": block})
 
             yield _trace("正在汇总各个角度的发现，形成最终判断和建议。")
-            final = _final_answer(llm, question, intro, blocks, custom_agent, data_skill)
+            final = ""
+            for chunk in llm.stream(_final_answer_messages(question, intro, blocks, custom_agent, data_skill)):
+                content = _chunk_text(chunk.content)
+                if content:
+                    final += content
+                    yield _sse({"type": "final_delta", "content": content})
             yield _sse({"type": "final", "content": final})
             success = True
             yield _sse({"type": "finish"})

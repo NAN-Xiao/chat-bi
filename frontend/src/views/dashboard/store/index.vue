@@ -8,6 +8,7 @@ import iconChartPreviewUrl from '@/assets/svg/icon_chart_preview.svg?url'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
+import AddViewDashboard from '@/views/dashboard/common/AddViewDashboard.vue'
 import Card from './Card.vue'
 import { dashboardApi } from '@/api/dashboard'
 import { useUserStore } from '@/stores/user'
@@ -19,6 +20,7 @@ const userStore = useUserStore()
 
 const loading = ref(false)
 const usingId = ref('')
+const addViewRef = ref()
 const previewDialogVisible = ref(false)
 const previewLoading = ref(false)
 const keywords = ref('')
@@ -142,9 +144,32 @@ const useSharedItem = async (item: any) => {
   if (!item.can_use || usingId.value) return
   usingId.value = item.id
   try {
-    const res = await dashboardApi.share_use({ id: item.id })
+    if (item.share_type === 'chart') {
+      const res = await dashboardApi.share_load({ id: item.id })
+      const componentData = parseJson(res.component_data, [])
+      const canvasViewInfo = parseJson(res.canvas_view_info, {})
+      const componentId = componentData[0]?.id || res.source_view_id || item.source_view_id
+      const viewInfo = componentId ? canvasViewInfo?.[componentId] : null
+      if (!viewInfo) {
+        ElMessage.warning(t('dashboard.store_chart_preview_empty'))
+        return
+      }
+      addViewRef.value?.optInit({
+        ...viewInfo,
+        datasource: viewInfo.datasource || res.datasource || item.datasource,
+      })
+      return
+    }
+    const confirmed = await ElMessageBox.confirm(t('dashboard.store_add_dashboard_confirm'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+      autofocus: false,
+      showClose: false,
+    }).catch(() => false)
+    if (!confirmed) return
+    await dashboardApi.share_use({ id: item.id })
     ElMessage.success(t('dashboard.store_use_success'))
-    window.open(`#/canvas?resourceId=${res.id}`, '_self')
   } finally {
     usingId.value = ''
   }
@@ -310,6 +335,7 @@ watch(currentWorkspaceId, () => {
         </div>
       </div>
     </el-dialog>
+    <AddViewDashboard ref="addViewRef" />
   </div>
 </template>
 

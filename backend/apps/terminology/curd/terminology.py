@@ -1092,10 +1092,7 @@ def get_terminology_template(session: SessionDep, question: str,
                              datasource: Optional[int] = None,
                              tenant_id: Optional[int] = None,
                              include_platform: bool = True) -> tuple[str, list[dict]]:
-    _results = select_terminology_by_word(session, question, datasource, tenant_id, include_platform)
-    if _results and len(_results) > 0:
-        terminology = to_xml_string(_results)
-        template = get_base_terminology_template().format(terminologies=terminology)
-        return template, _results
-    else:
-        return '', []
+    # Runtime semantic accuracy is provided by Data Skills only.
+    # Legacy terminology remains manageable/exportable as historical reference,
+    # but it must not be injected into agent prompts.
+    return '', []

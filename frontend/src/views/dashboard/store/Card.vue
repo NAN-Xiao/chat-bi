@@ -58,6 +58,9 @@ const statusText = computed(() =>
     ? t('dashboard.store_status_available_short')
     : t('dashboard.store_status_restricted_short')
 )
+const actionText = computed(() =>
+  props.item.share_type === 'chart' ? t('chat.add_to_dashboard') : t('dashboard.store_add')
+)
 
 const showChartPreview = computed(() => {
   return (
@@ -167,7 +170,7 @@ onMounted(() => {
           <template #icon>
             <icon_into_item_outlined />
           </template>
-          {{ t('dashboard.store_add') }}
+          {{ actionText }}
         </el-button>
       </div>
     </div>
@@ -362,5 +365,11 @@ onMounted(() => {
 
 .use-action {
   flex: 1;
+
+  :deep(svg),
+  :deep(path) {
+    color: currentColor;
+    fill: currentColor;
+  }
 }
 </style>

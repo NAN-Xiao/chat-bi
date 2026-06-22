@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import html2canvas from 'html2canvas'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import {
   analysisAssistantApi,
+  type AnalysisAssistantExportBlock,
+  type AnalysisAssistantConversationSummary,
+  type AnalysisAssistantHistoryMessage,
   type AnalysisAssistantMessage,
   type AnalysisAssistantRole,
 } from '@/api/analysisAssistant'
-import icon_new_chat_outlined from '@/assets/svg/icon_new_chat_outlined.svg'
+import { CirclePlus, Clock, Download, RefreshRight } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus-secondary'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.svg'
 import icon_side_fold_outlined from '@/assets/svg/icon_side-fold_outlined.svg'
@@ -80,7 +85,16 @@ const selectedDataSkillId = ref<string | number | null>(null)
 const scrollRef = ref()
 const inputRef = ref()
 const isStreaming = ref(false)
+const historyVisible = ref(false)
+const historyLoading = ref(false)
+const historyList = ref<AnalysisAssistantConversationSummary[]>([])
+const currentConversationId = ref<number | null>(null)
+const savingHistory = ref(false)
 const streamController = ref<AbortController>()
+const exportDialogVisible = ref(false)
+const exportFormat = ref<'pdf' | 'docx'>('pdf')
+const exportMessage = ref<DockMessage | null>(null)
+const exporting = ref(false)
 const dockWidth = ref(360)
 let messageId = 0
 let streamBuffer = ''
@@ -142,6 +156,13 @@ const hasMessages = computed(() => messages.value.length > 0)
 const dockStyle = computed(() => (props.expanded ? { width: `${dockWidth.value}px` } : undefined))
 
 const dockTabStyle = computed(() => ({ top: `${dockTabTop.value}px` }))
+
+const currentConversationTitle = computed(() => {
+  const firstUserMessage = messages.value.find(
+    (message) => message.role === 'user' && message.content.trim()
+  )
+  return (firstUserMessage?.content || '新分析对话').trim().slice(0, 128)
+})
 
 const getDockTabTime = () =>
   typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -430,6 +451,33 @@ const getMessageHistoryContent = (message: DockMessage) => {
   return parts.filter(Boolean).join('\n')
 }
 
+const serializeMessages = (): AnalysisAssistantHistoryMessage[] =>
+  messages.value
+    .filter((message) => getMessageHistoryContent(message).trim() && !message.loading)
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+      plan: message.plan,
+      planText: message.planText,
+      traces: message.traces,
+      blocks: message.blocks,
+      final: message.final,
+      error: message.error,
+    }))
+
+const restoreMessage = (message: AnalysisAssistantHistoryMessage): DockMessage => ({
+  id: ++messageId,
+  role: message.role,
+  content: message.content || '',
+  loading: false,
+  error: message.error,
+  plan: message.plan as AnalysisPlan | undefined,
+  planText: message.planText,
+  traces: message.role === 'assistant' ? message.traces || [] : undefined,
+  blocks: message.role === 'assistant' ? (message.blocks as AnalysisBlock[]) || [] : undefined,
+  final: message.final,
+})
+
 const requestMessages = () =>
   messages.value
     .filter((message) => getMessageHistoryContent(message).trim() && !message.loading)
@@ -442,6 +490,77 @@ const finishAssistantMessage = (assistantMessage: DockMessage) => {
   assistantMessage.loading = false
   assistantMessage.progress = ''
   isStreaming.value = false
+}
+
+const loadHistoryList = async () => {
+  historyLoading.value = true
+  try {
+    historyList.value = await analysisAssistantApi.history(analysisContext.datasourceId)
+  } catch (e) {
+    console.error(e)
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+const openHistory = () => {
+  historyVisible.value = true
+  loadHistoryList()
+}
+
+const saveCurrentConversation = async () => {
+  const savedMessages = serializeMessages()
+  if (savedMessages.length < 2 || savingHistory.value) return
+  savingHistory.value = true
+  try {
+    const record = await analysisAssistantApi.saveHistory({
+      id: currentConversationId.value,
+      title: currentConversationTitle.value,
+      datasource_id: analysisContext.datasourceId,
+      datasource_name: analysisContext.datasourceName,
+      custom_prompt_id: selectedCustomPromptId.value,
+      data_skill_id: selectedDataSkillId.value,
+      messages: savedMessages,
+    })
+    currentConversationId.value = record.id
+    historyList.value = [
+      record,
+      ...historyList.value.filter((item) => item.id !== record.id),
+    ].slice(0, 30)
+  } catch (e) {
+    console.error(e)
+  } finally {
+    savingHistory.value = false
+  }
+}
+
+const loadConversation = async (conversation: AnalysisAssistantConversationSummary) => {
+  if (isStreaming.value) return
+  historyLoading.value = true
+  try {
+    const detail = await analysisAssistantApi.historyDetail(conversation.id)
+    messages.value = detail.messages.map(restoreMessage)
+    currentConversationId.value = detail.id
+    selectedCustomPromptId.value = detail.custom_prompt_id || null
+    selectedDataSkillId.value = detail.data_skill_id || null
+    historyVisible.value = false
+    scrollToBottom()
+  } catch (e) {
+    console.error(e)
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+const formatHistoryTime = (value?: string) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${month}-${day} ${hours}:${minutes}`
 }
 
 const getChartXAxis = (chart?: AnalysisChartConfig) => (chart?.axis?.x ? [chart.axis.x] : [])
@@ -495,6 +614,117 @@ const formatCell = (value: any) => {
   return String(value)
 }
 
+const canUseMessageActions = (message: DockMessage) =>
+  message.role === 'assistant' && !message.loading && !message.error && hasStructuredContent(message)
+
+const findPreviousUserQuestion = (assistantIndex: number) => {
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const message = messages.value[index]
+    if (message?.role === 'user' && message.content.trim()) {
+      return message.content.trim()
+    }
+  }
+  return ''
+}
+
+const getChartFrameId = (message: DockMessage, block: AnalysisBlock) =>
+  `analysis-chart-frame-${message.id}-${block.id}`
+
+const waitForExportPaint = async () => {
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  if (document.fonts?.ready) {
+    await document.fonts.ready
+  }
+}
+
+const captureBlockImage = async (message: DockMessage, block: AnalysisBlock) => {
+  if (!block.chart || !block.data?.length) return ''
+  await waitForExportPaint()
+  const target = document.getElementById(getChartFrameId(message, block))
+  if (!target) return ''
+  try {
+    const canvas = await html2canvas(target as HTMLElement, {
+      backgroundColor: '#ffffff',
+      scale: Math.min(2, window.devicePixelRatio || 1),
+      useCORS: true,
+    })
+    return canvas.toDataURL('image/png', 0.92)
+  } catch (error) {
+    console.error('capture analysis chart failed', error)
+    return ''
+  }
+}
+
+const buildExportBlocks = async (message: DockMessage): Promise<AnalysisAssistantExportBlock[]> => {
+  const blocks: AnalysisAssistantExportBlock[] = []
+  for (const block of message.blocks || []) {
+    if (!block.summary && !block.chart && !block.warning && !block.error) {
+      continue
+    }
+    blocks.push({
+      title: block.title,
+      purpose: block.purpose,
+      chart_type: getChartTypeLabel(block.chart?.type),
+      fields: getDisplayFields(block),
+      data: block.data || [],
+      summary: block.summary,
+      warning: block.warning,
+      error: block.error,
+      image: await captureBlockImage(message, block),
+    })
+  }
+  return blocks
+}
+
+const saveBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const openExportDialog = (message: DockMessage) => {
+  exportMessage.value = message
+  exportFormat.value = 'pdf'
+  exportDialogVisible.value = true
+}
+
+const exportCurrentMessage = async () => {
+  if (!exportMessage.value || exporting.value) return
+  exporting.value = true
+  try {
+    const message = exportMessage.value
+    const messageIndex = messages.value.findIndex((item) => item.id === message.id)
+    const question = findPreviousUserQuestion(messageIndex)
+    const blocks = await buildExportBlocks(message)
+    const generatedAt = new Date().toLocaleString('zh-CN', { hour12: false })
+    const blob = await analysisAssistantApi.exportReport({
+      title: currentConversationTitle.value,
+      question,
+      datasource_id: analysisContext.datasourceId,
+      datasource_name: analysisContext.datasourceName,
+      format: exportFormat.value,
+      blocks,
+      final: message.final,
+      generated_at: generatedAt,
+    })
+    const suffix = exportFormat.value
+    const filename = `${(question || currentConversationTitle.value || '综合分析报告').slice(0, 40)}.${suffix}`
+    saveBlob(blob, filename)
+    exportDialogVisible.value = false
+    ElMessage.success('导出成功')
+  } catch (error: any) {
+    console.error(error)
+    ElMessage.error(error?.message || '导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
 const processStreamEvent = (chunk: string, assistantMessage: DockMessage) => {
   const payload = chunk
     .split('\n')
@@ -534,6 +764,10 @@ const processStreamEvent = (chunk: string, assistantMessage: DockMessage) => {
       assistantMessage.blocks.push(data.block)
       assistantMessage.progress = ''
     }
+    if (data.type === 'final_delta') {
+      assistantMessage.final = (assistantMessage.final || '') + (data.content || '')
+      assistantMessage.progress = ''
+    }
     if (data.type === 'final') {
       assistantMessage.final = data.content || ''
     }
@@ -564,23 +798,16 @@ const appendStreamChunk = (text: string, assistantMessage: DockMessage) => {
   scrollToBottom()
 }
 
-const sendMessage = async ($event: any = {}) => {
-  if ($event?.isComposing || isStreaming.value) {
-    return
-  }
-  const question = inputMessage.value.trim()
-  if (!question) {
-    return
-  }
-
+const runQuestion = async (question: string, options: { appendUser?: boolean } = {}) => {
   try {
     await analysisContext.loadDatasources()
   } catch (e) {
     console.error(e)
   }
 
-  inputMessage.value = ''
-  pushMessage('user', question)
+  if (options.appendUser !== false) {
+    pushMessage('user', question)
+  }
   const assistantMessage = pushMessage('assistant', '', true)
 
   isStreaming.value = true
@@ -631,10 +858,37 @@ const sendMessage = async ($event: any = {}) => {
       assistantMessage.content = '综合分析助手没有返回可展示内容，请换个问法再试。'
     }
     finishAssistantMessage(assistantMessage)
+    await saveCurrentConversation()
     isStreaming.value = false
     streamController.value = undefined
     scrollToBottom()
   }
+}
+
+const sendMessage = async ($event: any = {}) => {
+  if ($event?.isComposing || isStreaming.value) {
+    return
+  }
+  const question = inputMessage.value.trim()
+  if (!question) {
+    return
+  }
+
+  inputMessage.value = ''
+  await runQuestion(question)
+}
+
+const regenerateMessage = async (message: DockMessage) => {
+  if (isStreaming.value) return
+  const assistantIndex = messages.value.findIndex((item) => item.id === message.id)
+  if (assistantIndex < 0) return
+  const question = findPreviousUserQuestion(assistantIndex)
+  if (!question) {
+    ElMessage.warning('没有找到可重新生成的问题')
+    return
+  }
+  messages.value = messages.value.slice(0, assistantIndex)
+  await runQuestion(question, { appendUser: false })
 }
 
 const stopStreaming = () => {
@@ -654,6 +908,7 @@ const clearMessages = () => {
   stopStreaming()
   messages.value = []
   inputMessage.value = ''
+  currentConversationId.value = null
 }
 
 watch(
@@ -713,19 +968,75 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
           </div>
         </div>
         <div class="dock-actions">
+          <el-popover
+            v-model:visible="historyVisible"
+            trigger="click"
+            placement="bottom-end"
+            popper-class="analysis-assistant-history-popper"
+            :width="320"
+            :teleported="false"
+            @show="openHistory"
+          >
+            <template #reference>
+              <span class="action-slot">
+                <el-tooltip effect="dark" content="历史对话" placement="bottom">
+                  <button class="icon-btn" type="button" :disabled="isStreaming">
+                    <el-icon>
+                      <Clock />
+                    </el-icon>
+                  </button>
+                </el-tooltip>
+              </span>
+            </template>
+            <div class="history-panel">
+              <div class="history-panel-header">
+                <span>历史对话</span>
+                <el-button link size="small" :loading="historyLoading" @click="loadHistoryList">
+                  刷新
+                </el-button>
+              </div>
+              <div v-if="historyLoading && !historyList.length" class="history-empty">
+                加载中...
+              </div>
+              <div v-else-if="!historyList.length" class="history-empty">
+                暂无历史对话
+              </div>
+              <div v-else class="history-list">
+                <button
+                  v-for="conversation in historyList"
+                  :key="conversation.id"
+                  type="button"
+                  class="history-item"
+                  :class="{ active: currentConversationId === conversation.id }"
+                  @click="loadConversation(conversation)"
+                >
+                  <span class="history-title">{{ conversation.title || '新分析对话' }}</span>
+                  <span class="history-meta">
+                    <span>{{ conversation.datasource_name || analysisContext.datasourceName || '未绑定项目' }}</span>
+                    <span>{{ formatHistoryTime(conversation.update_time) }}</span>
+                    <span>{{ conversation.message_count }} 条</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </el-popover>
           <el-tooltip effect="dark" content="新对话" placement="bottom">
-            <el-button link class="icon-btn" :disabled="isStreaming" @click="clearMessages">
-              <el-icon size="18">
-                <icon_new_chat_outlined />
-              </el-icon>
-            </el-button>
+            <span class="action-slot">
+              <button class="icon-btn" type="button" :disabled="isStreaming" @click="clearMessages">
+                <el-icon>
+                  <CirclePlus />
+                </el-icon>
+              </button>
+            </span>
           </el-tooltip>
           <el-tooltip effect="dark" content="收起" placement="bottom">
-            <el-button link class="icon-btn" @click="setExpanded(false)">
-              <el-icon size="18">
-                <icon_side_fold_outlined />
-              </el-icon>
-            </el-button>
+            <span class="action-slot">
+              <button class="icon-btn" type="button" @click="setExpanded(false)">
+                <el-icon>
+                  <icon_side_fold_outlined />
+                </el-icon>
+              </button>
+            </span>
           </el-tooltip>
         </div>
       </header>
@@ -792,6 +1103,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
 
                   <div
                     v-if="block.chart && block.data?.length"
+                    :id="getChartFrameId(message, block)"
                     class="chart-frame"
                     :class="{ table: isTableChart(block) }"
                   >
@@ -861,6 +1173,30 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 </section>
               </template>
               <MdComponent v-else :message="message.content || (message.loading ? '正在思考...' : '')" />
+              <div v-if="canUseMessageActions(message)" class="message-actions">
+                <button
+                  class="message-action-btn"
+                  type="button"
+                  :disabled="isStreaming"
+                  @click="regenerateMessage(message)"
+                >
+                  <el-icon>
+                    <RefreshRight />
+                  </el-icon>
+                  <span>重新生成</span>
+                </button>
+                <button
+                  class="message-action-btn"
+                  type="button"
+                  :disabled="isStreaming"
+                  @click="openExportDialog(message)"
+                >
+                  <el-icon>
+                    <Download />
+                  </el-icon>
+                  <span>导出</span>
+                </button>
+              </div>
             </template>
             <template v-else>
               {{ message.content }}
@@ -916,6 +1252,28 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
         </div>
       </footer>
     </template>
+
+    <el-dialog
+      v-model="exportDialogVisible"
+      title="导出分析报告"
+      width="360px"
+      class="analysis-export-dialog"
+      :close-on-click-modal="!exporting"
+      :close-on-press-escape="!exporting"
+      @closed="exportMessage = null"
+    >
+      <div class="export-format-body">
+        <div class="export-format-label">选择文件格式</div>
+        <el-radio-group v-model="exportFormat" :disabled="exporting" class="export-format-options">
+          <el-radio-button label="pdf">PDF</el-radio-button>
+          <el-radio-button label="docx">DOCX</el-radio-button>
+        </el-radio-group>
+      </div>
+      <template #footer>
+        <el-button :disabled="exporting" @click="exportDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="exporting" @click="exportCurrentMessage">导出</el-button>
+      </template>
+    </el-dialog>
   </aside>
 </template>
 
@@ -1116,21 +1474,146 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   }
 
   .dock-actions {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(3, 32px);
+    column-gap: 10px;
     align-items: center;
-    gap: 4px;
+    justify-content: end;
+    width: 116px;
+    height: 32px;
+
+    .action-slot {
+      display: inline-flex;
+      width: 32px;
+      height: 32px;
+      align-items: center;
+      justify-content: center;
+    }
   }
 
   .icon-btn {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    color: var(--assistant-dock-text-secondary);
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #42526e;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+
+    :deep(.ed-icon) {
+      width: 19px;
+      height: 19px;
+      font-size: 19px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    :deep(svg) {
+      width: 19px;
+      height: 19px;
+      display: block;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
 
     &:hover {
       background: var(--assistant-dock-control-hover-bg);
-      color: var(--assistant-dock-text-primary);
+      color: #15233b;
     }
+  }
+}
+
+.history-panel {
+  width: 100%;
+}
+
+.history-panel-header {
+  height: 30px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--assistant-dock-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.history-empty {
+  padding: 24px 0;
+  color: var(--assistant-dock-text-tertiary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.history-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.history-item {
+  width: 100%;
+  min-height: 58px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--assistant-dock-text-primary);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  &:hover,
+  &.active {
+    border-color: var(--assistant-dock-border-soft);
+    background: var(--assistant-dock-control-bg);
+  }
+
+  & + & {
+    margin-top: 4px;
+  }
+}
+
+.history-title {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--assistant-dock-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--assistant-dock-text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span:first-child {
+    flex: 1;
   }
 }
 
@@ -1475,6 +1958,70 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   padding: 12px;
   border-color: #c8eee4;
   background: #f8fffc;
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  margin-top: 10px;
+}
+
+.message-action-btn {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--assistant-dock-border-soft);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #42526e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 13px;
+  line-height: 30px;
+  cursor: pointer;
+
+  :deep(.ed-icon) {
+    width: 15px;
+    height: 15px;
+    font-size: 15px;
+  }
+
+  &:hover {
+    border-color: #c8d4e6;
+    background: var(--assistant-dock-control-hover-bg);
+    color: #15233b;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.export-format-body {
+  padding: 4px 0 8px;
+}
+
+.export-format-label {
+  margin-bottom: 12px;
+  color: var(--assistant-dock-text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.export-format-options {
+  width: 100%;
+
+  :deep(.ed-radio-button) {
+    width: 50%;
+  }
+
+  :deep(.ed-radio-button__inner) {
+    width: 100%;
+  }
 }
 
 .dock-footer {

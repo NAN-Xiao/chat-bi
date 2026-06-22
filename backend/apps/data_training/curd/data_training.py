@@ -861,12 +861,7 @@ def get_training_template(session: SessionDep, question: str, datasource: Option
                           advanced_application_id: Optional[int] = None,
                           tenant_id: Optional[int] = None,
                           include_platform: bool = True) -> tuple[str, list[dict]]:
-    if not datasource and not advanced_application_id:
-        return '', []
-    _results = select_training_by_question(session, question, datasource, advanced_application_id, tenant_id, include_platform)
-    if _results and len(_results) > 0:
-        data_training = to_xml_string(_results)
-        template = get_base_data_training_template().format(data_training=data_training)
-        return template, _results
-    else:
-        return '', []
+    # Runtime semantic accuracy is provided by Data Skills only.
+    # Legacy data-training SQL remains manageable/exportable as historical reference,
+    # but it must not be injected into agent prompts.
+    return '', []
