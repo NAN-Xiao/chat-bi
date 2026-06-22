@@ -1238,6 +1238,116 @@ def test_analysis_assistant_final_prompt_carries_permission_gap(monkeypatch):
     assert "不要猜测或暴露具体受限表名" in user_prompt
 
 
+def test_analysis_assistant_final_prompt_keeps_complete_lifecycle_rows_and_guardrails(monkeypatch):
+    captured = {}
+
+    def fake_llm_text(_llm, messages):
+        captured["messages"] = messages
+        return "final"
+
+    monkeypatch.setattr(analysis_assistant_api, "_llm_text", fake_llm_text)
+
+    rows = [
+        {
+            "lifecycle_day": day,
+            "daily_payers": 1 if day in {0, 18} else 0,
+            "daily_revenue": 169.97 if day == 18 else (17.95 if day == 0 else 0),
+            "cumulative_payers": 1 if day < 18 else 2,
+            "cumulative_revenue": 17.95 if day < 18 else 187.92,
+            "ltv": 0.16 if day < 18 else 1.72,
+        }
+        for day in range(31)
+    ]
+
+    result = analysis_assistant_api._final_answer(
+        None,
+        "分析某天新增用户后续付费",
+        "生命周期分析",
+        [
+            {
+                "id": "q1",
+                "title": "生命周期付费趋势",
+                "purpose": "查看 D0-D30 生命周期付费趋势",
+                "summary": "D18 有收入高点。",
+                "fields": [
+                    "lifecycle_day",
+                    "daily_payers",
+                    "daily_revenue",
+                    "cumulative_payers",
+                    "cumulative_revenue",
+                    "ltv",
+                ],
+                "data": rows,
+            },
+        ],
+    )
+
+    system_prompt = captured["messages"][0].content
+    user_prompt = captured["messages"][1].content
+    assert result == "final"
+    assert '"lifecycle_day":18' in user_prompt
+    assert '"daily_revenue":169.97' in user_prompt
+    assert "_omitted_middle_rows" not in user_prompt
+    assert "不要向业务用户提及 rows" in system_prompt
+    assert "不要写成“单笔”" in system_prompt
+
+
+def test_analysis_assistant_lifecycle_validation_requires_complete_ltv_series():
+    error = analysis_assistant_api._semantic_validation_error(
+        {
+            "_user_question": "分析某天新增用户的后续付费和 LTV",
+            "title": "新增用户每日付费趋势与 LTV 累积",
+            "purpose": "观察生命周期付费和累计收入",
+        },
+        {
+            "fields": ["lifecycle_day", "payers", "daily_revenue", "cumulative_revenue"],
+            "data": [
+                {"lifecycle_day": 0, "payers": 4, "daily_revenue": 17.95, "cumulative_revenue": 17.95},
+                {"lifecycle_day": 1, "payers": 3, "daily_revenue": 14.97, "cumulative_revenue": 32.92},
+                {"lifecycle_day": 2, "payers": 3, "daily_revenue": 59.97, "cumulative_revenue": 92.89},
+                {"lifecycle_day": 5, "payers": 1, "daily_revenue": 69.98, "cumulative_revenue": 182.86},
+            ],
+        },
+    )
+
+    assert error
+    assert "缺少连续日期" in error
+    assert "generate_series" in error
+
+
+def test_analysis_assistant_lifecycle_validation_accepts_complete_ltv_series():
+    error = analysis_assistant_api._semantic_validation_error(
+        {
+            "_user_question": "分析某天新增用户的后续付费和 LTV",
+            "title": "新增用户生命周期付费趋势",
+            "purpose": "观察生命周期累计付费人数、累计收入和 LTV",
+        },
+        {
+            "fields": [
+                "lifecycle_day",
+                "daily_payers",
+                "daily_revenue",
+                "cumulative_payers",
+                "cumulative_revenue",
+                "ltv",
+            ],
+            "data": [
+                {
+                    "lifecycle_day": day,
+                    "daily_payers": 1 if day in {0, 2} else 0,
+                    "daily_revenue": 10 if day in {0, 2} else 0,
+                    "cumulative_payers": 1 if day < 2 else 2,
+                    "cumulative_revenue": 10 if day < 2 else 20,
+                    "ltv": 0.1 if day < 2 else 0.2,
+                }
+                for day in range(0, 6)
+            ],
+        },
+    )
+
+    assert error is None
+
+
 def test_analysis_assistant_db_permission_failure_is_structured_and_sanitized():
     block = {"title": "受限数据检查", "summary": "old summary"}
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)

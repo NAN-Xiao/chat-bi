@@ -24,12 +24,13 @@ export class Metric extends BaseChart {
     const wrapper = document.createElement('div')
     Object.assign(wrapper.style, {
       width: '100%',
-      height: '100%',
+      minHeight: '100%',
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
       gap: '12px',
-      alignItems: 'stretch',
-      padding: '8px',
+      alignItems: 'start',
+      alignContent: 'start',
+      padding: '8px 16px 12px',
       boxSizing: 'border-box',
     })
 
@@ -37,13 +38,15 @@ export class Metric extends BaseChart {
       const card = document.createElement('div')
       Object.assign(card.style, {
         minWidth: '0',
+        width: '100%',
         border: '0',
         borderRadius: '8px',
         background: '#fff',
-        padding: '16px',
+        padding: '14px 24px 16px',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'center',
+        alignItems: 'flex-start',
+        justifyContent: 'flex-start',
         boxShadow: 'none',
       })
 
@@ -51,8 +54,8 @@ export class Metric extends BaseChart {
       label.textContent = axis.name || axis.value
       Object.assign(label.style, {
         color: '#6b7a90',
-        fontSize: '13px',
-        lineHeight: '20px',
+        fontSize: '14px',
+        lineHeight: '22px',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
@@ -66,10 +69,10 @@ export class Metric extends BaseChart {
           : String(formatNumber(rawValue))
       Object.assign(value.style, {
         color: '#15233b',
-        fontSize: '28px',
+        fontSize: '36px',
         fontWeight: '700',
-        lineHeight: '36px',
-        marginTop: '8px',
+        lineHeight: '44px',
+        marginTop: '6px',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
@@ -77,11 +80,11 @@ export class Metric extends BaseChart {
 
       const accent = document.createElement('div')
       Object.assign(accent.style, {
-        width: '28px',
-        height: '3px',
+        width: '36px',
+        height: '4px',
         borderRadius: '999px',
         background: chartPalette[axes.indexOf(axis) % chartPalette.length],
-        marginTop: '12px',
+        marginTop: '10px',
       })
 
       card.appendChild(label)

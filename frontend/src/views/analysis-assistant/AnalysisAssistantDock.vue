@@ -1325,6 +1325,7 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 <section
                   v-for="block in message.blocks"
                   :key="block.id"
+                  v-memo="[block]"
                   class="analysis-block"
                   :class="{ failed: block.error }"
                 >

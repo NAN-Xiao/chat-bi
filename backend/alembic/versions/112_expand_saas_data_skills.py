@@ -141,6 +141,7 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
             "需要区分净收入、毛收入、退款金额、折扣金额和税费；字段未配置时不能自行选择看起来像金额的列作为口径。",
             "收入统计窗口通常按交易成功或业务确认日期归属，而不是订单创建日期；如需改变归属日期必须明确说明。",
             "SQL 字段名应区分 revenue、gross_revenue、refund_amount、net_revenue，避免把不同金额口径混在一起。",
+            "汇总收入时必须保留订单或交易明细粒度；不要先 SELECT DISTINCT subject_id, amount 后再求和，否则同一主体多笔相同金额交易会被错误去重。",
         ),
     },
     {
@@ -183,6 +184,9 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
             "未成熟生命周期日应返回 NULL、标注未成熟或使用预测 Skill 外推，不能用 0 当作真实成熟 LTV。",
             "回答总营收或总体 LTV 时必须使用 cumulative_revenue 或 total_revenue 字段；不要从分日 rows 手动漏加或跨维度重复加总。",
             "如果 SQL 只返回 daily_revenue 或 daily_paying_subjects，结论只能描述每日节奏，不能描述累计收入、累计 LTV 或总体价值；必须补 cumulative_revenue/ltv 查询。",
+            "如果整体 cohort 概览与生命周期或分维数据块的付费人数/收入互相矛盾，优先视为 SQL 粒度、过滤或 join 口径错误并修正，不要把矛盾直接解释为业务异常。",
+            "解释收入峰值时必须基于完整生命周期结果比较 daily_revenue；不要因为前几行 rows 中某天较高就称为全周期最高峰。",
+            "daily_revenue、daily_amount 等字段是聚合后的当日合计，不能写成“单笔收入/单笔支付”；只有输出 order_id 或 order_count=1 时才可描述单笔。",
         ),
     },
     {
@@ -196,6 +200,10 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
             "生命周期日收入、人均收入、付费率和累计付费转化是不同字段，必须分别输出，不要共用一个指标名。",
             "“后续付费情况”默认至少输出 daily_paying_subjects、daily_revenue、cumulative_paying_subjects、cumulative_revenue、daily_pay_rate_pct、cumulative_pay_conversion_pct 和 ltv。",
             "生命周期趋势 SQL 不能只返回有付费的 lifecycle_day；应补齐观察窗口内的日期序列，让无付费日期以 0 展示，并让累计字段保持不下降。",
+            "PostgreSQL 计算累计收入时，必须先按生命周期日聚合出 daily_revenue，再在外层用 SUM(daily_revenue) OVER (ORDER BY lifecycle_day) 计算 cumulative_revenue；不要在同一层把 GROUP BY lifecycle_day 和 SUM(net_amount) OVER 混用。",
+            "累计付费主体数应先求每个主体首次成功付费生命周期日 first_pay_day，再按日期序列统计 first_pay_day <= lifecycle_day 的去重主体；不要把当日付费人数命名为 cumulative_paying_subjects。",
+            "生命周期结论中，早期局部高点应明确写“早期高点”；只有比较完整 D0-Dn 的 daily_revenue 后，才能称为“全周期单日收入最高峰”。",
+            "不要向业务用户暴露 rows、summary、样例行截断或数据块内部过程。",
             "同一 cohort 的分母固定；成熟但无付费可为 0，未成熟生命周期日应返回 NULL。",
             "图表标题和 y 轴应明确写“生命周期日付费率”“当日收入”或“累计付费转化率”，避免误读为留存。",
         ),
@@ -238,6 +246,8 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
             "同一问题中要区分主体当前属性、事件发生时属性和订单归属属性；历史行为分析优先使用事实发生时的维度。",
             "按维度比较总量、均值和比例时，应分别计算分子分母，再输出清晰字段名和排序指标。",
             "维度过多时限制 Top N，并说明排序依据；高基数字段适合表格或条形图，不适合饼图。",
+            "维度拆解使用 LEFT JOIN 保留未转化主体时，金额字段要 COALESCE 为 0，并用 NULLS LAST 或先聚合有效事实再关联维度，避免空收入分组排在真实收入分组前面。",
+            "如果维度拆解显示所有分组收入为空或转化为 0，但整体概览已有收入/转化，必须先修正分维 SQL，不能把这种矛盾当成数据同步或业务现象。",
         ),
     },
     {
