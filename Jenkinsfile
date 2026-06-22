@@ -255,14 +255,15 @@ EOF
           api_ports="$ZHISHU_API_PORTS"
           worker_ids="$ZHISHU_WORKER_IDS"
 
-          if [ "$(id -u)" -eq 0 ]; then
-            SUDO=""
-          elif command -v sudo >/dev/null 2>&1; then
-            SUDO="sudo"
-          else
-            echo "需要 root 或 sudo 权限安装 systemd 服务。"
-            exit 1
-          fi
+          SYSTEMD_SSH_TARGET="${SYSTEMD_SSH_TARGET:-root@${FRONTEND_HOST}}"
+          remote_systemctl() {
+            ssh \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/root/.ssh/known_hosts \
+              "$SYSTEMD_SSH_TARGET" \
+              systemctl "$@"
+          }
 
           cat > "$APP_HOME/chat-bi-systemd.env" <<EOF
 APP_HOME=$APP_HOME
@@ -288,29 +289,29 @@ EOF
 
           echo "停止旧单容器实例和旧 systemd 实例..."
           docker rm -f "$CONTAINER_NAME" "${CONTAINER_NAME}-previous" >/dev/null 2>&1 || true
-          $SUDO systemctl stop "chat-bi-mcp.service" >/dev/null 2>&1 || true
+          remote_systemctl stop "chat-bi-mcp.service" >/dev/null 2>&1 || true
           docker rm -f chat-bi-mcp >/dev/null 2>&1 || true
           for api_port in $api_ports; do
-            $SUDO systemctl stop "chat-bi-api@${api_port}.service" >/dev/null 2>&1 || true
+            remote_systemctl stop "chat-bi-api@${api_port}.service" >/dev/null 2>&1 || true
           done
           for worker_id in $worker_ids; do
-            $SUDO systemctl stop "chat-bi-worker@${worker_id}.service" >/dev/null 2>&1 || true
+            remote_systemctl stop "chat-bi-worker@${worker_id}.service" >/dev/null 2>&1 || true
           done
 
           echo "启动 API 副本和 worker..."
           for api_port in $api_ports; do
-            $SUDO systemctl restart "chat-bi-api@${api_port}.service"
+            remote_systemctl restart "chat-bi-api@${api_port}.service"
           done
           for worker_id in $worker_ids; do
-            $SUDO systemctl restart "chat-bi-worker@${worker_id}.service"
+            remote_systemctl restart "chat-bi-worker@${worker_id}.service"
           done
 
           sleep 15
           for api_port in $api_ports; do
-            $SUDO systemctl is-active --quiet "chat-bi-api@${api_port}.service"
+            remote_systemctl is-active --quiet "chat-bi-api@${api_port}.service"
           done
           for worker_id in $worker_ids; do
-            $SUDO systemctl is-active --quiet "chat-bi-worker@${worker_id}.service"
+            remote_systemctl is-active --quiet "chat-bi-worker@${worker_id}.service"
           done
 
           docker ps --filter "name=^/chat-bi-"
