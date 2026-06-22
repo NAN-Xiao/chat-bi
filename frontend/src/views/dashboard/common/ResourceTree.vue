@@ -933,7 +933,7 @@ defineExpose({
   :deep(.ed-tree-node__content) {
     margin: 0 14px 2px;
     height: 40px;
-    padding: 8px 0 8px 6px;
+    padding: 8px 0;
     border-radius: 6px;
     font-size: 14px;
     line-height: 22px;
@@ -987,7 +987,8 @@ defineExpose({
   width: 100%;
   display: flex;
   align-items: center;
-  box-sizing: content-box;
+  box-sizing: border-box;
+  padding-left: 12px;
   color: inherit;
 
   .tree-node-icon {
