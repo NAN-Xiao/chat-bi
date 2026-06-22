@@ -791,6 +791,106 @@ def test_explicit_visibility_filter_returns_one_skill_layer_only():
         assert {row.id for row in personal_rows} == {personal_id}
 
 
+def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers():
+    engine = _engine()
+    with Session(engine) as session:
+        for index in range(20):
+            asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+                session=session,
+                current_user=_platform_admin(),
+                info=_prompt_info(
+                    type=CustomPromptTypeEnum.DATA_SKILL,
+                    name=f"SaaS 数据 Skill：通用付费口径 {index}",
+                    target_scope=CustomPromptTargetScopeEnum.ALL,
+                    visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                    prompt=(
+                        "# 通用付费口径\n"
+                        "新增用户后续付费需要关注 cohort、累计付费、LTV、ARPU 和 ARPPU。\n"
+                        + ("补充说明。" * 120)
+                    ),
+                ),
+            ))
+        asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_platform_admin(),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="SaaS 数据 Skill：无关漏斗",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                prompt="# 无关漏斗\n只讲漏斗步骤和事件路径。",
+            ),
+        ))
+        ltv_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_platform_admin(),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="SaaS 数据 Skill：LTV 与 Cohort 价值曲线",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                prompt=(
+                    "# LTV 与 Cohort\n"
+                    "新增用户后续付费需要 cumulative_revenue、ltv 和累计付费。\n"
+                    + ("SQL 示例字段。" * 120)
+                ),
+            ),
+        ))
+        workspace_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="SLG Skill：首付转化与商品收入结构",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                specific_ds=True,
+                datasource_ids=[501],
+                prompt=(
+                    "# 首付转化\n"
+                    "新增 cohort 后续付费使用 fact_payments 和累计去重付费用户。\n"
+                    + ("商品结构规则。" * 80)
+                ),
+            ),
+        ))
+        personal_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_member(3, 10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="xiaonan Skill：渠道新增质量与早期回收",
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.USER_PRIVATE,
+                specific_ds=True,
+                datasource_ids=[501],
+                prompt=(
+                    "# 渠道新增质量\n"
+                    "新增用户后续付费按渠道比较 D7 收入、LTV、ARPU。\n"
+                    + ("渠道质量规则。" * 80)
+                ),
+            ),
+        ))
+
+        skill_text, logs, _model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+            skill_id=None,
+            current_user_id=3,
+            tenant_id=10,
+            question="帮我分析某天新增用户的后续付费情况",
+        )
+
+        assert len(logs) <= 12
+        assert "LTV 与 Cohort" in logs[0]
+        assert "首付转化与商品收入结构" in skill_text
+        assert "渠道新增质量与早期回收" in skill_text
+        assert skill_text.index("首付转化与商品收入结构") < len(skill_text)
+        assert skill_text.index("渠道新增质量与早期回收") < len(skill_text)
+        assert "无关漏斗" not in skill_text
+        assert ltv_id and workspace_id and personal_id
+
+
 def test_globally_disabled_data_skill_is_hidden_from_runtime():
     engine = _engine()
     with Session(engine) as session:

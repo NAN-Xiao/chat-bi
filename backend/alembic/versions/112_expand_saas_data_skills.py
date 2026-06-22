@@ -153,6 +153,7 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
             "付费率 = 付费用户数 / 指定分母，分母可能是同周期活跃用户、新增 cohort、试用用户或曝光用户，必须先确认。",
             "累计付费转化统计截至生命周期日 n 曾成功付费的主体数 / cohort 人数，应随生命周期日单调不下降。",
             "不要把生命周期日当日付费率、累计付费转化和首日付费用户复购留存混为同一个指标。",
+            "不要把按商品、渠道或日期分组后的 paying_subjects 相加当作整体付费用户数；整体付费用户必须在 cohort 或窗口范围内重新 count(distinct subject_id)。",
         ),
     },
     {
@@ -179,6 +180,7 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
             "累计 LTV 应随生命周期日单调不下降；若结果下降，优先检查分母变化、收入字段或生命周期窗口。",
             "如果展示总收入，应命名为 cumulative_revenue 或 total_revenue，不要把总收入列命名为 LTV。",
             "未成熟生命周期日应返回 NULL、标注未成熟或使用预测 Skill 外推，不能用 0 当作真实成熟 LTV。",
+            "回答总营收或总体 LTV 时必须使用 cumulative_revenue 或 total_revenue 字段；不要从分日 rows 手动漏加或跨维度重复加总。",
         ),
     },
     {
@@ -190,6 +192,7 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
         "rules": (
             "生命周期日付费率统计 lifecycle_day = n 当天成功付费主体数 / cohort 人数，曲线可以波动。",
             "生命周期日收入、人均收入、付费率和累计付费转化是不同字段，必须分别输出，不要共用一个指标名。",
+            "“后续付费情况”默认至少输出 daily_paying_subjects、daily_revenue、cumulative_paying_subjects、cumulative_revenue、daily_pay_rate_pct、cumulative_pay_conversion_pct 和 ltv。",
             "同一 cohort 的分母固定；成熟但无付费可为 0，未成熟生命周期日应返回 NULL。",
             "图表标题和 y 轴应明确写“生命周期日付费率”“当日收入”或“累计付费转化率”，避免误读为留存。",
         ),
@@ -216,6 +219,7 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
         "rules": (
             "商品、套餐、订阅方案或价格计划分析必须关联语义配置指定的商品/计划维表或枚举字段。",
             "收入结构默认使用成功有效净收入；同时输出订单数、购买人数、收入、ARPPU 和收入占比时要分别命名。",
+            "商品/计划维度的购买人数是组内去重，不能跨商品相加得到总体付费用户；如果需要总体付费用户，必须另算 overall_paying_subjects。",
             "饼图只适合展示单一构成指标，例如 revenue_share_pct；若同时比较收入、人数、订单数和均值，优先使用表格或柱图。",
             "如果用户要求商品明细排行，按收入或购买人数排序并限制 Top N，其余可归为 Other，避免图表过载。",
         ),
@@ -668,7 +672,8 @@ cumulative AS (
     SELECT
         cd.cohort_date,
         cd.lifecycle_day,
-        COUNT(DISTINCT pd.subject_id) AS cumulative_paying_subjects
+        COUNT(DISTINCT pd.subject_id) AS cumulative_paying_subjects,
+        COALESCE(SUM(pd.revenue), 0) AS cumulative_revenue
     FROM cohort_days AS cd
     LEFT JOIN payment_days AS pd
         ON pd.cohort_date = cd.cohort_date
@@ -679,10 +684,13 @@ SELECT
     c.cohort_date,
     c.lifecycle_day,
     s.cohort_subjects,
-    COALESCE(d.paying_subjects, 0) AS paying_subjects,
-    COALESCE(d.revenue, 0) AS revenue,
+    COALESCE(d.paying_subjects, 0) AS daily_paying_subjects,
+    COALESCE(d.revenue, 0) AS daily_revenue,
     ROUND(COALESCE(d.paying_subjects, 0) * 100.0 / NULLIF(s.cohort_subjects, 0), 2) AS daily_pay_rate_pct,
-    ROUND(c.cumulative_paying_subjects * 100.0 / NULLIF(s.cohort_subjects, 0), 2) AS cumulative_pay_conversion_pct
+    c.cumulative_paying_subjects,
+    ROUND(c.cumulative_revenue, 2) AS cumulative_revenue,
+    ROUND(c.cumulative_paying_subjects * 100.0 / NULLIF(s.cohort_subjects, 0), 2) AS cumulative_pay_conversion_pct,
+    ROUND(c.cumulative_revenue / NULLIF(s.cohort_subjects, 0), 4) AS ltv
 FROM cumulative AS c
 JOIN cohort_size AS s USING (cohort_date)
 LEFT JOIN daily AS d
@@ -760,13 +768,14 @@ LIMIT 20;
     "dimension-breakdown-segmentation": (
         """
 -- 维度拆解需使用当前数据源已有维度字段；不要临时发明分层阈值。
+-- 将 :start_date 和 :end_date 替换为用户指定日期窗口；若用户未指定，按当前数据源业务日期窗口确定。
 WITH subject_metric AS (
     SELECT
         e.subject_id,
         COUNT(*) AS events,
         COUNT(DISTINCT e.event_time::date) AS active_days
     FROM fact_events AS e
-    WHERE e.event_time::date BETWEEN DATE '2026-01-01' AND DATE '2026-01-31'
+    WHERE e.event_time::date BETWEEN :start_date AND :end_date
     GROUP BY 1
 ),
 subject_revenue AS (

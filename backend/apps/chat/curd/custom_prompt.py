@@ -1,6 +1,7 @@
 import json
+import re
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import text as sql_text
 from sqlmodel import Session
@@ -95,7 +96,174 @@ def _is_split_legacy_data_skill(row) -> bool:
         or "<!-- data-skill-source:custom-prompt-generate-sql:" in prompt
         or "<!-- data-skill-source:legacy-semantic:" in prompt
         or "<!-- data-skill-source:semantic-theme:saas:" in prompt
+        or "<!-- legacy-data-training:" in prompt
+        or "<!-- legacy-terminology:" in prompt
+        or "<!-- legacy-sql-prompt:" in prompt
     )
+
+
+def _skill_match_terms(question: str) -> set[str]:
+    text = (question or "").lower()
+    terms = {item for item in re.findall(r"[a-zA-Z][a-zA-Z0-9_]{1,}", text)}
+    cjk_runs = re.findall(r"[\u4e00-\u9fff]{2,}", text)
+    stop_terms = {
+        "帮我",
+        "分析",
+        "一下",
+        "这个",
+        "这天",
+        "情况",
+        "数据",
+        "看看",
+        "是否",
+        "怎么",
+        "为什么",
+    }
+    for run in cjk_runs:
+        run = re.sub(r"[年月日号天这的了和与及在后前]", "", run)
+        if len(run) < 2:
+            continue
+        max_len = min(6, len(run))
+        for size in range(2, max_len + 1):
+            for start in range(0, len(run) - size + 1):
+                term = run[start:start + size]
+                if term not in stop_terms:
+                    terms.add(term)
+    for keyword in (
+        "新增",
+        "新增用户",
+        "cohort",
+        "同期群",
+        "付费",
+        "收入",
+        "营收",
+        "付费率",
+        "累计",
+        "后续",
+        "生命周期",
+        "ltv",
+        "arpu",
+        "arppu",
+        "商品",
+        "渠道",
+        "留存",
+        "漏斗",
+        "预测",
+    ):
+        if keyword in text:
+            terms.add(keyword)
+    if ("新增" in text or "新增用户" in text or "cohort" in text) and any(
+        keyword in text for keyword in ("后续", "付费", "收入", "营收", "ltv")
+    ):
+        terms.update({"cohort", "生命周期", "累计", "累计付费", "ltv", "arpu", "arppu"})
+    return terms
+
+
+def _score_data_skill(skill: dict[str, Any], question: str) -> int:
+    terms = _skill_match_terms(question)
+    if not terms:
+        return 0
+
+    name = (skill.get("name") or "").lower()
+    description = (skill.get("description") or "").lower()
+    prompt = (skill.get("prompt") or "").lower()
+    score = 0
+    for term in terms:
+        lower_term = term.lower()
+        if lower_term in name:
+            score += 24
+        if lower_term in description:
+            score += 12
+        if lower_term in prompt:
+            score += 4
+    if question and (name in question.lower() or question.lower() in name):
+        score += 40
+    return score
+
+
+def _estimated_skill_chars(skill: dict[str, Any]) -> int:
+    return (
+        len(skill.get("name") or "")
+        + len(skill.get("description") or "")
+        + len(skill.get("prompt") or "")
+        + 96
+    )
+
+
+def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | None) -> list[dict[str, Any]]:
+    if not question or not question.strip():
+        return skill_rows
+
+    scored: list[tuple[int, int, dict[str, Any]]] = [
+        (_score_data_skill(skill, question), index, skill)
+        for index, skill in enumerate(skill_rows)
+    ]
+    positive = [item for item in scored if item[0] > 0]
+    if not positive:
+        return skill_rows
+
+    # Keep the prompt compact enough for downstream LLM calls while preserving the
+    # most relevant platform, workspace, and personal skills for the current question.
+    max_skills = 12
+    max_prompt_chars = 18000
+    ranked_positive = sorted(positive, key=lambda item: (-item[0], item[1]))
+    selected: list[tuple[int, int, dict[str, Any]]] = []
+    selected_keys: set[tuple[str, str, str]] = set()
+    used_chars = 0
+
+    def skill_key(skill: dict[str, Any]) -> tuple[str, str, str]:
+        return (skill.get("id") or "", skill.get("name") or "", skill.get("visibility_scope") or "")
+
+    def add_skill(item: tuple[int, int, dict[str, Any]]) -> bool:
+        nonlocal used_chars
+        _score, _index, skill = item
+        key = skill_key(skill)
+        if key in selected_keys:
+            return False
+        estimated_chars = _estimated_skill_chars(skill)
+        if selected and len(selected) >= max_skills:
+            return False
+        if selected and used_chars + estimated_chars > max_prompt_chars:
+            return False
+        selected.append(item)
+        selected_keys.add(key)
+        used_chars += estimated_chars
+        return True
+
+    def drop_lowest_platform_skill() -> bool:
+        nonlocal used_chars
+        platform_indexes = [
+            pos
+            for pos, (_score, _index, skill) in enumerate(selected)
+            if skill.get("visibility_scope") == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
+        ]
+        if not platform_indexes:
+            return False
+        drop_pos = min(platform_indexes, key=lambda pos: (selected[pos][0], -selected[pos][1]))
+        _score, _index, skill = selected.pop(drop_pos)
+        selected_keys.discard(skill_key(skill))
+        used_chars -= _estimated_skill_chars(skill)
+        return True
+
+    for required_scope in (
+        CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value,
+        CustomPromptVisibilityScopeEnum.USER_PRIVATE.value,
+    ):
+        scope_item = next(
+            (item for item in ranked_positive if item[2].get("visibility_scope") == required_scope),
+            None,
+        )
+        if scope_item is not None and not add_skill(scope_item):
+            if drop_lowest_platform_skill():
+                add_skill(scope_item)
+
+    for item in ranked_positive:
+        if not add_skill(item):
+            if len(selected) >= max_skills:
+                break
+
+    selected.sort(key=lambda item: (-item[0], item[1]))
+    return [skill for _score, _index, skill in selected] or skill_rows
 
 
 def find_custom_prompts(
@@ -132,7 +300,7 @@ def find_custom_prompts(
     rows = session.execute(
         sql_text(
             f"""
-            SELECT name, description, prompt, specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope
+            SELECT id, name, description, prompt, specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope
             FROM custom_prompt
             WHERE id = :prompt_id
               {type_condition}
@@ -208,6 +376,7 @@ def find_data_skills(
         current_user_id: Optional[int | str] = None,
         can_manage_all: bool = False,
         tenant_id: Optional[int | str] = None,
+        question: Optional[str] = None,
 ) -> tuple[str, list[str], Optional[int]]:
     normalized_skill_id = _normalize_prompt_id(skill_id)
     normalized_scope = _normalize_target_scope(target_scope)
@@ -230,7 +399,7 @@ def find_data_skills(
     rows = session.execute(
         sql_text(
             f"""
-            SELECT name, description, prompt, specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope
+            SELECT id, name, description, prompt, specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope
             FROM custom_prompt
             WHERE 1 = 1
               {skill_condition}
@@ -263,7 +432,7 @@ def find_data_skills(
         params,
     ).mappings().all()
 
-    skill_rows: list[dict[str, str]] = []
+    skill_rows: list[dict[str, Any]] = []
     ai_model_id: Optional[int] = None
     for row in rows:
         if _is_split_legacy_data_skill(row):
@@ -283,11 +452,16 @@ def find_data_skills(
             if str(datasource) not in _datasource_id_values(row.get("datasource_ids")):
                 continue
         skill_rows.append({
+            "id": str(row.get("id") or ""),
             "name": row.get("name") or "",
             "description": row.get("description") or "",
             "prompt": prompt,
+            "visibility_scope": visibility_scope,
         })
         ai_model_id = row.get("ai_model_id")
+
+    if normalized_skill_id is None:
+        skill_rows = _rank_auto_data_skills(skill_rows, question)
 
     if not skill_rows:
         return "", [], None

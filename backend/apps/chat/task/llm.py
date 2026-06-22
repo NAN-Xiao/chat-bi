@@ -633,6 +633,7 @@ class LLMService:
             self.current_user.id,
             is_system_admin(self.current_user),
             require_current_tenant_id(self.current_user),
+            question=self.chat_question.question,
         )
         self.current_logs[OperationEnum.FILTER_DATA_SKILL] = end_log(session=_session,
                                                                      log=self.current_logs[
