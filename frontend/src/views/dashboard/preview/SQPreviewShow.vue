@@ -34,6 +34,11 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  defaultMode: {
+    required: false,
+    type: Boolean,
+    default: false,
+  },
 })
 
 const { showPosition } = toRefs(props)
@@ -47,7 +52,7 @@ const mounted = computed(() => {
   return resourceTreeRef.value?.mounted
 })
 const canCreateDashboard = computed(() => {
-  return resourceTreeRef.value?.canCreateDashboard === true
+  return !props.defaultMode && resourceTreeRef.value?.canCreateDashboard === true
 })
 
 const stateInit = () => {
@@ -66,7 +71,8 @@ const loadCanvasData = (params: any) => {
       state.canvasViewInfoPreview = canvasViewInfoPreview
       state.dashboardInfo = dashboardInfo
       dataInitState.value = true
-    }
+    },
+    { defaultMode: props.defaultMode }
   )
 }
 const getPreviewStateInfo = () => {
@@ -127,6 +133,7 @@ defineExpose({
         ref="resourceTreeRef"
         :cur-canvas-type="'dashboard'"
         :show-position="showPosition"
+        :default-mode="defaultMode"
         @node-click="resourceNodeClick"
         @delete-cur-resource="stateInit"
         @toggle-sidebar="toggleSidebar"
@@ -160,9 +167,19 @@ defineExpose({
           ></SQPreview>
           <EmptyBackgroundSvg
             v-else-if="hasTreeData && mounted"
-            :description="t('dashboard.select_dashboard_tips')"
+            :description="
+              defaultMode
+                ? t('dashboard.select_default_dashboard_tips')
+                : t('dashboard.select_dashboard_tips')
+            "
           />
-          <EmptyBackground v-else-if="mounted" :description="t('dashboard.no_dashboard_info')" img-type="none" />
+          <EmptyBackground
+            v-else-if="mounted"
+            :description="
+              defaultMode ? t('dashboard.no_default_dashboard') : t('dashboard.no_dashboard_info')
+            "
+            img-type="none"
+          />
         </div>
       </div>
     </section>

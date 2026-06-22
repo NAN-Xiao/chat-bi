@@ -9,6 +9,8 @@ export interface SQTreeNode {
   datasource?: number | string
   can_edit?: boolean
   can_share?: boolean
+  can_set_default?: boolean
+  is_default?: boolean
   is_shared?: boolean
   share_id?: string
   children?: SQTreeNode[]

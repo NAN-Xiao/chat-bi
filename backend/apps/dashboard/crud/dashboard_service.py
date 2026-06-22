@@ -10,6 +10,7 @@ from apps.dashboard.models.dashboard_model import (
     CreateDashboard,
     QueryDashboard,
     DashboardBaseResponse,
+    DashboardDefaultRequest,
     DashboardSqlPreview,
     DashboardShareRequest,
     DashboardShareListQuery,
@@ -25,7 +26,7 @@ from apps.datasource.crud.permission import (
 )
 from apps.datasource.crud.query_executor import execute_user_query
 from apps.datasource.models.datasource import CoreDatasource
-from apps.system.schemas.access_context import require_current_tenant_id
+from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.user import UserModel
 from apps.system.models.tenant import TenantUserModel
 from apps.system.crud.user import is_system_admin
@@ -81,6 +82,10 @@ def _can_share_dashboard(session: SessionDep, current_user: CurrentUser, dashboa
     return _can_edit_dashboard(session, current_user, dashboard)
 
 
+def _can_set_default_dashboard(current_user: CurrentUser) -> bool:
+    return can_manage_workspace_scope(current_user)
+
+
 def _can_view_legacy_dashboard(current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
     if not _same_tenant(current_user, dashboard):
         return False
@@ -113,6 +118,11 @@ def _require_edit_permission(session: SessionDep, current_user: CurrentUser, das
 def _require_share_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):
     if not _can_share_dashboard(session, current_user, dashboard):
         raise HTTPException(status_code=403, detail="You do not have permission to share this dashboard")
+
+
+def _require_set_default_permission(current_user: CurrentUser):
+    if not _can_set_default_dashboard(current_user):
+        raise HTTPException(status_code=403, detail="Only workspace admin can set default dashboards")
 
 
 def _normalize_datasource_id(datasource) -> int | None:
@@ -334,6 +344,10 @@ def _active_share_filter():
     return or_(CoreDashboardShare.delete_flag == 0, CoreDashboardShare.delete_flag.is_(None))
 
 
+def _active_dashboard_filter():
+    return or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None))
+
+
 def _active_dashboard_share_map_for_user(
         session: SessionDep,
         current_user: CurrentUser,
@@ -442,6 +456,8 @@ def _dashboard_base_response(
         update_time=record.update_time,
         can_edit=_can_edit_dashboard(session, current_user, record),
         can_share=_can_share_dashboard(session, current_user, record),
+        can_set_default=_can_set_default_dashboard(current_user),
+        is_default=bool(record.is_default),
         is_shared=active_share is not None,
         share_id=active_share.id if active_share else None,
     )
@@ -539,8 +555,7 @@ def _load_share_preview_payload(
 
 
 def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
-    active_filter = or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None))
-    filters = [active_filter, CoreDashboard.tenant_id == _current_tenant_id(current_user)]
+    filters = [_active_dashboard_filter(), CoreDashboard.tenant_id == _current_tenant_id(current_user)]
     datasource_id = _normalize_datasource_id(dashboard.datasource)
     if datasource_id is not None:
         _ensure_datasource_access(session, current_user, datasource_id)
@@ -572,16 +587,22 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
     return tree
 
 
-def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
-    record = _load_dashboard_or_404(session, dashboard.id, current_user)
+def _dashboard_payload(
+        session: SessionDep,
+        current_user: CurrentUser,
+        record: CoreDashboard,
+        *,
+        dashboard: QueryDashboard | None = None,
+        default_context: bool = False,
+):
     effective_datasource = _effective_dashboard_datasource(record)
-    if dashboard.datasource is not None and effective_datasource is not None:
+    if dashboard is not None and dashboard.datasource is not None and effective_datasource is not None:
         request_datasource = _normalize_datasource_id(dashboard.datasource)
         if request_datasource != effective_datasource:
             raise HTTPException(status_code=403, detail="Dashboard does not belong to the selected datasource")
-    if effective_datasource is not None:
+    if effective_datasource is not None and not default_context:
         _ensure_datasource_access(session, current_user, effective_datasource)
-    else:
+    elif effective_datasource is None and not default_context:
         _check_dashboard_view_permission(session, current_user, record)
 
     result_dict = record.model_dump()
@@ -592,6 +613,8 @@ def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
     result_dict['update_name'] = updater
     result_dict['can_edit'] = _can_edit_dashboard(session, current_user, record)
     result_dict['can_share'] = _can_share_dashboard(session, current_user, record)
+    result_dict['can_set_default'] = _can_set_default_dashboard(current_user)
+    result_dict['is_default'] = bool(record.is_default)
 
     canvas_view_obj = _parse_canvas_view_info(result_dict.get('canvas_view_info'))
     for item in canvas_view_obj.values():
@@ -616,6 +639,39 @@ def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
             item['fields'] = data_result.get('fields', [])
     result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj).decode()
     return result_dict
+
+
+def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
+    record = _load_dashboard_or_404(session, dashboard.id, current_user)
+    return _dashboard_payload(session, current_user, record, dashboard=dashboard)
+
+
+def list_default_resources(session: SessionDep, current_user: CurrentUser):
+    statement = (
+        select(CoreDashboard)
+        .where(
+            and_(
+                _active_dashboard_filter(),
+                CoreDashboard.tenant_id == _current_tenant_id(current_user),
+                CoreDashboard.node_type == "leaf",
+                CoreDashboard.is_default == 1,
+            )
+        )
+        .order_by(CoreDashboard.update_time.desc(), CoreDashboard.create_time.desc())
+    )
+    result = session.exec(statement).scalars().all()
+    nodes = [
+        _dashboard_base_response(session, current_user, record, _effective_dashboard_datasource(record))
+        for record in result
+    ]
+    return nodes
+
+
+def load_default_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
+    record = _load_dashboard_or_404(session, dashboard.id, current_user)
+    if not record.is_default:
+        raise HTTPException(status_code=404, detail="Default dashboard does not exist")
+    return _dashboard_payload(session, current_user, record, default_context=True)
 
 
 def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
@@ -694,6 +750,27 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     return record
 
 
+def set_default_resource(session: SessionDep, user: CurrentUser, request: DashboardDefaultRequest):
+    _require_set_default_permission(user)
+    record = _load_dashboard_or_404(session, request.dashboard_id, user)
+    if record.node_type != "leaf":
+        raise HTTPException(status_code=400, detail="Default dashboard must be a dashboard")
+    effective_datasource = _effective_dashboard_datasource(record)
+    if effective_datasource is not None:
+        datasource = session.get(CoreDatasource, effective_datasource)
+        if not datasource or int(datasource.tenant_id) != _current_tenant_id(user):
+            raise HTTPException(status_code=403, detail="Dashboard datasource is not in current workspace")
+
+    now = int(time.time())
+    record.is_default = 1 if request.is_default else 0
+    record.update_by = str(user.id)
+    record.update_time = now
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    return _dashboard_base_response(session, user, record, effective_datasource)
+
+
 def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashboard) -> bool:
     if not dashboard.opt:
         raise ValueError("opt is required")
@@ -738,6 +815,8 @@ def delete_resource(session: SessionDep, current_user: CurrentUser, resource_id:
     _require_edit_permission(session, current_user, coreDashboard)
     if coreDashboard.datasource:
         _ensure_datasource_access(session, current_user, coreDashboard.datasource)
+    if coreDashboard.is_default:
+        _require_set_default_permission(current_user)
     sql = text("DELETE FROM core_dashboard WHERE id = :resource_id AND tenant_id = :tenant_id")
     result = session.execute(sql, {"resource_id": resource_id, "tenant_id": _current_tenant_id(current_user)})
     session.commit()

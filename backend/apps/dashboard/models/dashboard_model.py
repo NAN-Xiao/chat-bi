@@ -72,6 +72,10 @@ class CoreDashboard(SQLModel, table=True):
         default=0,
         sa_column=Column(Integer, nullable=True)
     )
+    is_default: int = Field(
+        default=0,
+        sa_column=Column(SmallInteger, nullable=False, server_default="0")
+    )
     sort: int = Field(
         default=0,
         sa_column=Column(Integer, nullable=True)
@@ -230,6 +234,8 @@ class DashboardBaseResponse(BaseModel):
     update_time: Optional[int] = None
     can_edit: Optional[bool] = False
     can_share: Optional[bool] = False
+    can_set_default: Optional[bool] = False
+    is_default: Optional[bool] = False
     is_shared: Optional[bool] = False
     share_id: Optional[str] = None
     children: List['DashboardBaseResponse'] = []
@@ -283,6 +289,11 @@ class CreateDashboard(QueryDashboard):
 class DashboardSqlPreview(BaseModel):
     datasource: int
     sql: str = ''
+
+
+class DashboardDefaultRequest(BaseModel):
+    dashboard_id: str
+    is_default: bool = True
 
 
 class DashboardShareRequest(BaseModel):

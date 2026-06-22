@@ -11,9 +11,13 @@ const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const { componentData, canvasStyleData, canvasViewInfo } = storeToRefs(dashboardStore)
 
-export const load_resource_prepare = (params: any, callBack: (obj: any) => void) => {
-  dashboardApi
-    .load_resource(params)
+export const load_resource_prepare = (
+  params: any,
+  callBack: (obj: any) => void,
+  options: { defaultMode?: boolean } = {}
+) => {
+  const loadRequest = options.defaultMode ? dashboardApi.default_load : dashboardApi.load_resource
+  loadRequest(params)
     .then((canvasInfo: any) => {
       const dashboardInfo = {
         id: canvasInfo.id,
@@ -29,6 +33,8 @@ export const load_resource_prepare = (params: any, callBack: (obj: any) => void)
         contentId: canvasInfo.content_id,
         canEdit: canvasInfo.can_edit,
         canShare: canvasInfo.can_share ?? canvasInfo.can_edit,
+        isDefault: canvasInfo.is_default,
+        canSetDefault: canvasInfo.can_set_default,
       }
       const canvasDataResult = JSON.parse(canvasInfo.component_data)
       const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)

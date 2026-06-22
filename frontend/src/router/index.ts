@@ -8,6 +8,7 @@ import chat from '@/views/chat/index.vue'
 import DashboardEditor from '@/views/dashboard/editor/index.vue'
 import DashboardPreview from '@//views/dashboard/preview/SQPreviewSingle.vue'
 import Dashboard from '@/views/dashboard/index.vue'
+import DefaultDashboard from '@/views/dashboard/default/index.vue'
 import Access from '@/views/access/index.vue'
 import CustomAgent from '@/views/custom-agent/index.vue'
 import DataSkills from '@/views/data-skills/index.vue'
@@ -89,6 +90,23 @@ export const routes = [
         component: () => import('@/views/ds/TableList.vue'),
         props: true,
         meta: { tenantAdminOnly: true },
+      },
+    ],
+  },
+  {
+    path: '/default-dashboard',
+    component: LayoutDsl,
+    redirect: '/default-dashboard/index',
+    children: [
+      {
+        path: 'index',
+        name: 'default-dashboard',
+        component: DefaultDashboard,
+        meta: {
+          title: t('dashboard.default_dashboard'),
+          iconActive: 'dashboard',
+          iconDeActive: 'noDashboard',
+        },
       },
     ],
   },

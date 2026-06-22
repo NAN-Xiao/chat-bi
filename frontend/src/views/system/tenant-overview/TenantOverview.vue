@@ -25,8 +25,11 @@
         <div class="hero-copy-top">
           <div class="hero-kicker">{{ t('tenant_overview.current_tenant') }}</div>
           <div class="hero-title-row">
-            <h2>{{ overview?.tenant_name || userStore.getTenantName || '-' }}</h2>
+            <h2>{{ currentTenantName }}</h2>
             <span class="hero-range">{{ selectedRangeLabel }}</span>
+          </div>
+          <div class="hero-identity-row">
+            <span>{{ t('tenant.tenant_id') }}: {{ currentTenantId || '-' }}</span>
           </div>
           <p class="hero-note">{{ t('tenant_overview.activity_hint') }}</p>
         </div>
@@ -357,6 +360,8 @@ const accessRequests = computed(() =>
     (a, b) => Number(b.create_time || 0) - Number(a.create_time || 0)
   )
 )
+const currentTenantName = computed(() => overview.value?.tenant_name || userStore.getTenantName || '-')
+const currentTenantId = computed(() => String(overview.value?.tenant_id || userStore.getTenantId || '').trim())
 
 const assetCount = (key: string) => Number(assetRows.value.find((item) => item.key === key)?.count || 0)
 
@@ -799,6 +804,26 @@ onMounted(async () => {
     font-size: 12px;
     line-height: 18px;
     border: 1px solid rgba(222, 232, 246, 0.9);
+  }
+
+  .hero-identity-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: -4px;
+
+    span {
+      min-width: 0;
+      max-width: 100%;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(47, 107, 255, 0.08);
+      color: var(--theme-text-secondary);
+      font-size: 12px;
+      line-height: 18px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      word-break: break-all;
+    }
   }
 
   .hero-note {

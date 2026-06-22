@@ -11,6 +11,7 @@ import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
+import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import dv_sort_asc from '@/assets/svg/dv-sort-asc.svg'
 import dv_sort_desc from '@/assets/svg/dv-sort-desc.svg'
 import { onMounted, reactive, ref, watch, nextTick, computed } from 'vue'
@@ -37,7 +38,7 @@ const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
 const resourceGroupOptRef = ref(null)
 
-defineProps({
+const props = defineProps({
   curCanvasType: {
     type: String,
     required: true,
@@ -51,6 +52,11 @@ defineProps({
     required: false,
     type: String,
     default: 'core',
+  },
+  defaultMode: {
+    required: false,
+    type: Boolean,
+    default: false,
   },
 })
 const defaultProps = {
@@ -138,6 +144,21 @@ const nodeClick = (data: SQTreeNode, node: any) => {
 }
 
 const getTree = async () => {
+  if (props.defaultMode) {
+    state.originResourceTree = []
+    dashboardApi.default_list().then((res: SQTreeNode[]) => {
+      state.originResourceTree = (res || []).map((item) => ({
+        ...item,
+        pid: 'root',
+        node_type: 'leaf',
+        leaf: true,
+      }))
+      state.resourceTree = _.cloneDeep(state.originResourceTree)
+      handleSortTypeChange('name_asc')
+      afterTreeInit()
+    })
+    return
+  }
   await datasourceContext.loadDatasources()
   const requestTenantId = userStore.getTenantId || 'default'
   const requestDatasourceId = datasourceContext.datasourceId
@@ -166,10 +187,19 @@ const hasData = computed<boolean>(() => state.resourceTree.length > 0)
 const canCreateDashboard = computed<boolean>(() => datasourceContext.canCreateDashboard)
 const canManageNode = (data: SQTreeNode) => data.can_edit === true
 const canShareNode = (data: SQTreeNode) => data.can_share === true || data.is_shared === true
+const canSetDefaultNode = (data: SQTreeNode) => data.node_type === 'leaf' && data.can_set_default === true
 const hasNodeMenu = (data: SQTreeNode) =>
-  canManageNode(data) || (data.node_type === 'leaf' && canShareNode(data))
+  !props.defaultMode &&
+  (canManageNode(data) || (data.node_type === 'leaf' && canShareNode(data)) || canSetDefaultNode(data))
 const nodeMenuList = (data: SQTreeNode) => {
   const list = canManageNode(data) ? [...state.baseMenuList] : []
+  if (canSetDefaultNode(data)) {
+    list.splice(canManageNode(data) ? 2 : 0, 0, {
+      label: data.is_default ? t('dashboard.remove_default_dashboard') : t('dashboard.set_default_dashboard'),
+      command: data.is_default ? 'removeDefault' : 'setDefault',
+      svgName: data.is_default ? icon_close_outlined : icon_start_outlined,
+    })
+  }
   if (data.node_type === 'leaf' && canShareNode(data)) {
     list.splice(canManageNode(data) ? 2 : 0, 0, {
       label: data.is_shared ? t('dashboard.cancel_share') : t('dashboard.share'),
@@ -262,6 +292,7 @@ onMounted(() => {
 watch(
   () => datasourceContext.datasourceId,
   () => {
+    if (props.defaultMode) return
     selectedNodeKey.value = null
     dashboardStore.canvasDataInit()
     emit('deleteCurResource')
@@ -270,7 +301,7 @@ watch(
 )
 
 const addOperation = (params: any) => {
-  if (!canCreateDashboard.value) return
+  if (props.defaultMode || !canCreateDashboard.value) return
   if (params?.id) {
     const folder = findTreeNode(state.originResourceTree, params.id)
     if (!folder || !canManageNode(folder)) return
@@ -337,6 +368,21 @@ const operation = async (opt: string, data: SQTreeNode) => {
         getTree()
       })
     })
+  } else if (opt === 'setDefault' || opt === 'removeDefault') {
+    if (!canSetDefaultNode(data)) return
+    dashboardApi
+      .default_set({
+        dashboard_id: data.id,
+        is_default: opt === 'setDefault',
+      })
+      .then(() => {
+        ElMessage.success(
+          opt === 'setDefault'
+            ? t('dashboard.set_default_dashboard_success')
+            : t('dashboard.remove_default_dashboard_success')
+        )
+        getTree()
+      })
   }
 }
 
@@ -417,7 +463,9 @@ defineExpose({
   <div class="resource-tree">
     <div class="tree-header">
       <div class="icon-methods">
-        <span class="title">{{ t('dashboard.dashboard') }} </span>
+        <span class="title">{{
+          defaultMode ? t('dashboard.default_dashboard') : t('dashboard.dashboard')
+        }}</span>
         <el-button link type="primary" class="icon-btn" @click="onClickSideBarBtn">
           <el-icon>
             <icon_sidebar_outlined />
@@ -425,7 +473,7 @@ defineExpose({
         </el-button>
       </div>
       <el-button
-        v-if="canCreateDashboard"
+        v-if="!defaultMode && canCreateDashboard"
         class="create-dashboard-btn"
         type="primary"
         @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
@@ -504,7 +552,8 @@ defineExpose({
         class="dashboard-resource-tree"
         style="overflow-x: hidden"
         menu
-        :empty-text="t('dashboard.no_dashboard')"
+        :empty-text="defaultMode ? t('dashboard.no_default_dashboard') : t('dashboard.no_dashboard')"
+        :draggable="!defaultMode"
         :default-expanded-keys="expandedArray"
         :data="state.resourceTree"
         :props="defaultProps"
@@ -512,7 +561,6 @@ defineExpose({
         highlight-current
         :expand-on-click-node="true"
         :filter-node-method="filterNode"
-        draggable
         @node-expand="nodeExpand"
         @node-collapse="nodeCollapse"
         @node-click="nodeClick"
@@ -532,6 +580,12 @@ defineExpose({
             </span>
             <span v-if="data.node_type === 'leaf' && data.is_shared" class="shared-mark">
               {{ t('dashboard.shared') }}
+            </span>
+            <span
+              v-if="!defaultMode && data.node_type === 'leaf' && data.is_default"
+              class="default-mark"
+            >
+              {{ t('dashboard.default_mark') }}
             </span>
             <div class="icon-more">
               <el-icon
@@ -951,6 +1005,18 @@ defineExpose({
     border-radius: 999px;
     background: rgba(37, 99, 235, 0.1);
     color: #2563eb;
+    font-size: 11px;
+    line-height: 18px;
+    font-weight: 500;
+  }
+
+  .default-mark {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.14);
+    color: #b45309;
     font-size: 11px;
     line-height: 18px;
     font-weight: 500;

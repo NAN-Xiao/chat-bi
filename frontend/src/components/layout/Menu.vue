@@ -71,13 +71,14 @@ const filterSystemRoutes = (arr: any[]): any[] => {
 }
 
 const mainMenuOrder = (path: string) => {
-  if (path.includes('/chat')) return 10
+  if (path.includes('/default-dashboard')) return 10
   if (path.includes('/dashboard') && !path.includes('/dashboard-store')) return 20
-  if (path.includes('/access')) return 30
-  if (path === '/as' || path.startsWith('/as/')) return 40
-  if (path.includes('/custom-agent')) return 50
-  if (path.includes('/data-skills')) return 60
-  if (path.includes('/dashboard-store')) return 70
+  if (path.includes('/chat')) return 30
+  if (path.includes('/access')) return 40
+  if (path === '/as' || path.startsWith('/as/')) return 50
+  if (path.includes('/custom-agent')) return 60
+  if (path.includes('/data-skills')) return 70
+  if (path.includes('/dashboard-store')) return 80
   return 100
 }
 

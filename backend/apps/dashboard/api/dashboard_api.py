@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 
 from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
     create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas, preview_sql, \
-    share_resource, list_shared_resources, load_shared_resource, delete_shared_resource, use_shared_resource
+    share_resource, list_shared_resources, load_shared_resource, delete_shared_resource, use_shared_resource, \
+    list_default_resources, load_default_resource, set_default_resource
 from apps.dashboard.models.dashboard_model import (
     CreateDashboard,
     BaseDashboard,
     QueryDashboard,
+    DashboardDefaultRequest,
     DashboardSqlPreview,
     DashboardShareRequest,
     DashboardShareListQuery,
@@ -37,6 +39,26 @@ async def list_resource_api(session: SessionDep, dashboard: QueryDashboard, curr
 @router.post("/load_resource", summary=f"{PLACEHOLDER_PREFIX}load_resource_api")
 async def load_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
     return load_resource(session=session, dashboard=dashboard, current_user=current_user)
+
+
+@router.get("/default/list", summary=f"{PLACEHOLDER_PREFIX}dashboard_default_list")
+async def list_default_resource_api(session: SessionDep, current_user: CurrentUser):
+    return list_default_resources(session=session, current_user=current_user)
+
+
+@router.post("/default/load", summary=f"{PLACEHOLDER_PREFIX}dashboard_default")
+async def load_default_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
+    return load_default_resource(session=session, dashboard=dashboard, current_user=current_user)
+
+
+@router.post("/default/set", summary=f"{PLACEHOLDER_PREFIX}dashboard_default_set")
+@system_log(LogConfig(
+    operation_type=OperationType.UPDATE,
+    module=OperationModules.DASHBOARD,
+    resource_id_expr="request.dashboard_id"
+))
+async def set_default_resource_api(session: SessionDep, user: CurrentUser, request: DashboardDefaultRequest):
+    return set_default_resource(session=session, user=user, request=request)
 
 
 @router.post("/create_resource", response_model=BaseDashboard, summary=f"{PLACEHOLDER_PREFIX}create_resource_api")
