@@ -108,8 +108,7 @@ RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
 
 EXPOSE 3000 8000 8001 5432
 
-# Add health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import os, urllib.request; path=os.environ.get('CONTEXT_PATH', '').rstrip('/') + '/openapi.json'; urllib.request.urlopen('http://localhost:8000' + path, timeout=3)" || exit 1
+# 暂时禁用 Docker 健康检查，避免受鉴权接口影响被误标记为 unhealthy。
+HEALTHCHECK NONE
 
 ENTRYPOINT ["sh", "start.sh"]

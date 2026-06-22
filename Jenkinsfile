@@ -169,7 +169,7 @@ EOF
       }
     }
 
-    stage('保存镜像到 /home/chai-bi') {
+    stage('保存镜像到 /home/chat-bi') {
       steps {
         sh '''
           set -eux
