@@ -292,6 +292,623 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
 )
 
 
+SAAS_SQL_EXAMPLES: dict[str, tuple[str, ...]] = {
+    "datasource-context-semantic-priority": (
+        """
+-- 仅在允许探查当前数据源 schema 时使用；不要跨数据源复用其他库的表字段。
+SELECT
+    table_schema,
+    table_name,
+    column_name,
+    data_type
+FROM information_schema.columns
+WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+ORDER BY table_schema, table_name, ordinal_position;
+""",
+    ),
+    "business-date-window": (
+        """
+-- 将 fact_events、event_date、subject_id 替换为当前数据源的事实表、业务日期和主体字段。
+WITH bounds AS (
+    SELECT MAX(event_date)::date AS max_business_date
+    FROM fact_events
+),
+windowed_events AS (
+    SELECT e.*
+    FROM fact_events AS e
+    CROSS JOIN bounds AS b
+    WHERE e.event_date::date BETWEEN b.max_business_date - INTERVAL '29 days'
+                                 AND b.max_business_date
+)
+SELECT
+    event_date::date AS business_date,
+    COUNT(DISTINCT subject_id) AS active_subjects,
+    COUNT(*) AS event_count
+FROM windowed_events
+GROUP BY 1
+ORDER BY 1;
+""",
+    ),
+    "grain-dedup-preaggregation": (
+        """
+-- 多事实表关联前先按共同粒度预聚合，避免订单、事件、会话互相放大。
+WITH orders_by_subject_day AS (
+    SELECT
+        subject_id,
+        paid_at::date AS business_date,
+        COUNT(DISTINCT order_id) AS orders,
+        SUM(net_amount) AS revenue
+    FROM fact_orders
+    WHERE order_status = 'success'
+    GROUP BY 1, 2
+),
+events_by_subject_day AS (
+    SELECT
+        subject_id,
+        event_time::date AS business_date,
+        COUNT(*) AS events
+    FROM fact_events
+    GROUP BY 1, 2
+)
+SELECT
+    COALESCE(o.business_date, e.business_date) AS business_date,
+    COUNT(DISTINCT COALESCE(o.subject_id, e.subject_id)) AS subjects,
+    SUM(COALESCE(o.orders, 0)) AS orders,
+    SUM(COALESCE(o.revenue, 0)) AS revenue,
+    SUM(COALESCE(e.events, 0)) AS events
+FROM orders_by_subject_day AS o
+FULL OUTER JOIN events_by_subject_day AS e
+    ON e.subject_id = o.subject_id
+   AND e.business_date = o.business_date
+GROUP BY 1
+ORDER BY 1;
+""",
+    ),
+    "rate-percent-metrics": (
+        """
+-- 比例指标输出 0-100 数值，不拼接百分号；整体比例用分子分母重新计算。
+WITH daily AS (
+    SELECT
+        event_date::date AS business_date,
+        COUNT(DISTINCT subject_id) AS denominator_subjects,
+        COUNT(DISTINCT CASE WHEN is_converted THEN subject_id END) AS numerator_subjects
+    FROM fact_events
+    GROUP BY 1
+)
+SELECT
+    business_date,
+    numerator_subjects,
+    denominator_subjects,
+    ROUND(numerator_subjects * 100.0 / NULLIF(denominator_subjects, 0), 2) AS conversion_pct
+FROM daily
+ORDER BY business_date;
+""",
+    ),
+    "new-user-cohort": (
+        """
+-- cohort_date 应替换为语义配置指定的首次注册、首次安装、开户或首次出现日期。
+WITH cohort AS (
+    SELECT
+        subject_id,
+        MIN(created_at)::date AS cohort_date
+    FROM dim_subjects
+    GROUP BY 1
+),
+bounds AS (
+    SELECT MAX(cohort_date) AS max_cohort_date
+    FROM cohort
+)
+SELECT
+    cohort_date,
+    COUNT(*) AS new_subjects
+FROM cohort
+CROSS JOIN bounds
+WHERE cohort_date BETWEEN max_cohort_date - INTERVAL '29 days'
+                      AND max_cohort_date
+GROUP BY 1
+ORDER BY 1;
+""",
+    ),
+    "active-session-health": (
+        """
+-- 将 session_id、duration_seconds、started_at 替换为当前会话/访问事实表字段。
+SELECT
+    started_at::date AS business_date,
+    COUNT(DISTINCT subject_id) AS active_subjects,
+    COUNT(DISTINCT session_id) AS sessions,
+    ROUND(SUM(duration_seconds) / NULLIF(COUNT(DISTINCT subject_id), 0), 2) AS avg_duration_seconds_per_subject,
+    ROUND(COUNT(DISTINCT session_id) * 1.0 / NULLIF(COUNT(DISTINCT subject_id), 0), 2) AS sessions_per_subject
+FROM fact_sessions
+WHERE is_valid_session = TRUE
+GROUP BY 1
+ORDER BY 1;
+""",
+    ),
+    "exact-retention-mature-window": (
+        """
+-- Dn 精确日留存：固定 cohort 分母；未成熟 cohort 不进入计算。
+WITH cohort AS (
+    SELECT subject_id, MIN(created_at)::date AS cohort_date
+    FROM dim_subjects
+    GROUP BY 1
+),
+activity AS (
+    SELECT DISTINCT subject_id, event_time::date AS active_date
+    FROM fact_events
+    WHERE is_active_event = TRUE
+),
+bounds AS (
+    SELECT MAX(active_date) AS max_active_date
+    FROM activity
+)
+SELECT
+    c.cohort_date,
+    1 AS lifecycle_day,
+    COUNT(DISTINCT c.subject_id) AS cohort_subjects,
+    COUNT(DISTINCT a.subject_id) AS retained_subjects,
+    ROUND(COUNT(DISTINCT a.subject_id) * 100.0 / NULLIF(COUNT(DISTINCT c.subject_id), 0), 2) AS retention_pct
+FROM cohort AS c
+CROSS JOIN bounds AS b
+LEFT JOIN activity AS a
+    ON a.subject_id = c.subject_id
+   AND a.active_date = c.cohort_date + 1
+WHERE c.cohort_date <= b.max_active_date - 1
+GROUP BY 1, 2
+ORDER BY 1;
+""",
+    ),
+    "churn-return-rolling-retention": (
+        """
+-- 回流模板：连续 inactive_days_threshold 天无活跃后再次活跃；阈值需由用户或 Skill 明确。
+WITH active_days AS (
+    SELECT DISTINCT subject_id, event_time::date AS active_date
+    FROM fact_events
+    WHERE is_active_event = TRUE
+),
+sequenced AS (
+    SELECT
+        subject_id,
+        active_date,
+        LAG(active_date) OVER (PARTITION BY subject_id ORDER BY active_date) AS previous_active_date
+    FROM active_days
+),
+returns AS (
+    SELECT
+        subject_id,
+        active_date AS return_date,
+        previous_active_date
+    FROM sequenced
+    WHERE previous_active_date IS NOT NULL
+      AND active_date > previous_active_date + 7
+)
+SELECT
+    return_date,
+    COUNT(DISTINCT subject_id) AS return_subjects
+FROM returns
+GROUP BY 1
+ORDER BY 1;
+""",
+    ),
+    "revenue-recognition-net-amount": (
+        """
+-- 收入以成功或业务确认状态为准；金额字段需替换为语义配置指定的净收入/毛收入字段。
+SELECT
+    paid_at::date AS business_date,
+    COUNT(DISTINCT order_id) AS successful_orders,
+    COUNT(DISTINCT subject_id) AS paying_subjects,
+    SUM(net_amount) AS net_revenue,
+    SUM(gross_amount) AS gross_revenue,
+    SUM(refund_amount) AS refund_amount
+FROM fact_orders
+WHERE order_status = 'success'
+GROUP BY 1
+ORDER BY 1;
+""",
+    ),
+    "payer-conversion-rate": (
+        """
+-- 付费率分母可为活跃、新增、曝光或试用主体；这里以同日活跃主体为例。
+WITH active AS (
+    SELECT event_time::date AS business_date, subject_id
+    FROM fact_events
+    WHERE is_active_event = TRUE
+    GROUP BY 1, 2
+),
+payers AS (
+    SELECT paid_at::date AS business_date, subject_id
+    FROM fact_orders
+    WHERE order_status = 'success'
+    GROUP BY 1, 2
+)
+SELECT
+    a.business_date,
+    COUNT(DISTINCT a.subject_id) AS active_subjects,
+    COUNT(DISTINCT p.subject_id) AS paying_subjects,
+    ROUND(COUNT(DISTINCT p.subject_id) * 100.0 / NULLIF(COUNT(DISTINCT a.subject_id), 0), 2) AS payer_rate_pct
+FROM active AS a
+LEFT JOIN payers AS p
+    ON p.business_date = a.business_date
+   AND p.subject_id = a.subject_id
+GROUP BY 1
+ORDER BY 1;
+""",
+    ),
+    "arpu-arppu-averages": (
+        """
+-- ARPU/ARPPU 均从总收入和分母重算，不对已聚合均值再平均。
+WITH active AS (
+    SELECT event_time::date AS business_date, subject_id
+    FROM fact_events
+    WHERE is_active_event = TRUE
+    GROUP BY 1, 2
+),
+revenue AS (
+    SELECT
+        paid_at::date AS business_date,
+        subject_id,
+        SUM(net_amount) AS revenue
+    FROM fact_orders
+    WHERE order_status = 'success'
+    GROUP BY 1, 2
+),
+daily AS (
+    SELECT
+        a.business_date,
+        COUNT(DISTINCT a.subject_id) AS active_subjects,
+        COUNT(DISTINCT r.subject_id) AS paying_subjects,
+        SUM(COALESCE(r.revenue, 0)) AS revenue
+    FROM active AS a
+    LEFT JOIN revenue AS r
+        ON r.business_date = a.business_date
+       AND r.subject_id = a.subject_id
+    GROUP BY 1
+)
+SELECT
+    business_date,
+    revenue,
+    active_subjects,
+    paying_subjects,
+    ROUND(revenue / NULLIF(active_subjects, 0), 4) AS arpu,
+    ROUND(revenue / NULLIF(paying_subjects, 0), 4) AS arppu
+FROM daily
+ORDER BY business_date;
+""",
+    ),
+    "ltv-cohort-value": (
+        """
+-- LTV(n) = 同一 cohort 截至生命周期日 n 的累计收入 / 固定 cohort 人数。
+WITH cohort AS (
+    SELECT subject_id, MIN(created_at)::date AS cohort_date
+    FROM dim_subjects
+    GROUP BY 1
+),
+cohort_size AS (
+    SELECT cohort_date, COUNT(DISTINCT subject_id) AS cohort_subjects
+    FROM cohort
+    GROUP BY 1
+),
+revenue_by_day AS (
+    SELECT
+        c.cohort_date,
+        (o.paid_at::date - c.cohort_date)::int AS lifecycle_day,
+        SUM(o.net_amount) AS revenue
+    FROM cohort AS c
+    JOIN fact_orders AS o
+        ON o.subject_id = c.subject_id
+       AND o.order_status = 'success'
+       AND o.paid_at::date >= c.cohort_date
+    GROUP BY 1, 2
+),
+cumulative AS (
+    SELECT
+        cohort_date,
+        lifecycle_day,
+        SUM(revenue) OVER (
+            PARTITION BY cohort_date
+            ORDER BY lifecycle_day
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS cumulative_revenue
+    FROM revenue_by_day
+)
+SELECT
+    c.cohort_date,
+    c.lifecycle_day,
+    s.cohort_subjects,
+    c.cumulative_revenue,
+    ROUND(c.cumulative_revenue / NULLIF(s.cohort_subjects, 0), 4) AS ltv
+FROM cumulative AS c
+JOIN cohort_size AS s USING (cohort_date)
+ORDER BY c.cohort_date, c.lifecycle_day;
+""",
+    ),
+    "lifecycle-monetization-curves": (
+        """
+-- 生命周期日付费率、当日收入、累计付费转化要分字段输出。
+WITH cohort AS (
+    SELECT subject_id, MIN(created_at)::date AS cohort_date
+    FROM dim_subjects
+    GROUP BY 1
+),
+cohort_size AS (
+    SELECT cohort_date, COUNT(DISTINCT subject_id) AS cohort_subjects
+    FROM cohort
+    GROUP BY 1
+),
+days AS (
+    SELECT generate_series(0, 30) AS lifecycle_day
+),
+cohort_days AS (
+    SELECT s.cohort_date, d.lifecycle_day
+    FROM cohort_size AS s
+    CROSS JOIN days AS d
+),
+payment_days AS (
+    SELECT
+        c.cohort_date,
+        o.subject_id,
+        (o.paid_at::date - c.cohort_date)::int AS lifecycle_day,
+        SUM(o.net_amount) AS revenue
+    FROM cohort AS c
+    JOIN fact_orders AS o
+        ON o.subject_id = c.subject_id
+       AND o.order_status = 'success'
+       AND o.paid_at::date >= c.cohort_date
+    GROUP BY 1, 2, 3
+),
+daily AS (
+    SELECT
+        cohort_date,
+        lifecycle_day,
+        COUNT(DISTINCT subject_id) AS paying_subjects,
+        SUM(revenue) AS revenue
+    FROM payment_days
+    GROUP BY 1, 2
+),
+cumulative AS (
+    SELECT
+        cd.cohort_date,
+        cd.lifecycle_day,
+        COUNT(DISTINCT pd.subject_id) AS cumulative_paying_subjects
+    FROM cohort_days AS cd
+    LEFT JOIN payment_days AS pd
+        ON pd.cohort_date = cd.cohort_date
+       AND pd.lifecycle_day <= cd.lifecycle_day
+    GROUP BY 1, 2
+)
+SELECT
+    c.cohort_date,
+    c.lifecycle_day,
+    s.cohort_subjects,
+    COALESCE(d.paying_subjects, 0) AS paying_subjects,
+    COALESCE(d.revenue, 0) AS revenue,
+    ROUND(COALESCE(d.paying_subjects, 0) * 100.0 / NULLIF(s.cohort_subjects, 0), 2) AS daily_pay_rate_pct,
+    ROUND(c.cumulative_paying_subjects * 100.0 / NULLIF(s.cohort_subjects, 0), 2) AS cumulative_pay_conversion_pct
+FROM cumulative AS c
+JOIN cohort_size AS s USING (cohort_date)
+LEFT JOIN daily AS d
+    ON d.cohort_date = c.cohort_date
+   AND d.lifecycle_day = c.lifecycle_day
+ORDER BY c.cohort_date, c.lifecycle_day;
+""",
+    ),
+    "first-pay-repeat-purchase": (
+        """
+-- 首付 cohort 的复购留存：分母固定为首次成功付费主体。
+WITH first_pay AS (
+    SELECT
+        subject_id,
+        MIN(paid_at)::date AS first_pay_date
+    FROM fact_orders
+    WHERE order_status = 'success'
+    GROUP BY 1
+),
+repeat_pay AS (
+    SELECT
+        f.subject_id,
+        f.first_pay_date,
+        (o.paid_at::date - f.first_pay_date)::int AS lifecycle_day
+    FROM first_pay AS f
+    JOIN fact_orders AS o
+        ON o.subject_id = f.subject_id
+       AND o.order_status = 'success'
+       AND o.paid_at::date > f.first_pay_date
+),
+cohort_size AS (
+    SELECT first_pay_date, COUNT(DISTINCT subject_id) AS first_payers
+    FROM first_pay
+    GROUP BY 1
+)
+SELECT
+    r.first_pay_date,
+    r.lifecycle_day,
+    s.first_payers,
+    COUNT(DISTINCT r.subject_id) AS repeat_payers,
+    ROUND(COUNT(DISTINCT r.subject_id) * 100.0 / NULLIF(s.first_payers, 0), 2) AS repeat_purchase_pct
+FROM repeat_pay AS r
+JOIN cohort_size AS s USING (first_pay_date)
+GROUP BY 1, 2, 3
+ORDER BY 1, 2;
+""",
+    ),
+    "product-plan-revenue-mix": (
+        """
+-- 商品/套餐/计划结构：收入、订单、购买人数和占比分开输出。
+WITH plan_revenue AS (
+    SELECT
+        COALESCE(p.plan_name, o.plan_id::text) AS plan_name,
+        COUNT(DISTINCT o.order_id) AS orders,
+        COUNT(DISTINCT o.subject_id) AS paying_subjects,
+        SUM(o.net_amount) AS revenue
+    FROM fact_orders AS o
+    LEFT JOIN dim_product_plan AS p
+        ON p.plan_id = o.plan_id
+    WHERE o.order_status = 'success'
+    GROUP BY 1
+)
+SELECT
+    plan_name,
+    orders,
+    paying_subjects,
+    revenue,
+    ROUND(revenue * 100.0 / NULLIF(SUM(revenue) OVER (), 0), 2) AS revenue_share_pct,
+    ROUND(revenue / NULLIF(paying_subjects, 0), 4) AS arppu
+FROM plan_revenue
+ORDER BY revenue DESC
+LIMIT 20;
+""",
+    ),
+    "dimension-breakdown-segmentation": (
+        """
+-- 维度拆解需使用当前数据源已有维度字段；不要临时发明分层阈值。
+WITH subject_metric AS (
+    SELECT
+        e.subject_id,
+        COUNT(*) AS events,
+        COUNT(DISTINCT e.event_time::date) AS active_days
+    FROM fact_events AS e
+    WHERE e.event_time::date BETWEEN DATE '2026-01-01' AND DATE '2026-01-31'
+    GROUP BY 1
+),
+subject_revenue AS (
+    SELECT subject_id, SUM(net_amount) AS revenue
+    FROM fact_orders
+    WHERE order_status = 'success'
+    GROUP BY 1
+)
+SELECT
+    COALESCE(d.segment_name, 'unknown') AS segment_name,
+    COUNT(DISTINCT m.subject_id) AS subjects,
+    SUM(m.events) AS events,
+    SUM(m.active_days) AS active_days,
+    SUM(COALESCE(r.revenue, 0)) AS revenue,
+    ROUND(SUM(COALESCE(r.revenue, 0)) / NULLIF(COUNT(DISTINCT m.subject_id), 0), 4) AS revenue_per_subject
+FROM subject_metric AS m
+LEFT JOIN subject_revenue AS r USING (subject_id)
+LEFT JOIN dim_subjects AS d USING (subject_id)
+GROUP BY 1
+ORDER BY revenue DESC
+LIMIT 20;
+""",
+    ),
+    "event-behavior-uv-pv": (
+        """
+-- PV/次数用事件行数；UV/触发人数用主体去重数。
+SELECT
+    event_time::date AS business_date,
+    event_name,
+    COUNT(*) AS event_count,
+    COUNT(DISTINCT subject_id) AS event_subjects
+FROM fact_events
+WHERE event_name IN ('target_event_a', 'target_event_b')
+GROUP BY 1, 2
+ORDER BY 1, 2;
+""",
+    ),
+    "funnel-path-conversion": (
+        """
+-- 漏斗先转主体级步骤状态；后续步骤必须满足前序步骤已完成。
+WITH step_flags AS (
+    SELECT
+        subject_id,
+        MIN(CASE WHEN event_name = 'step_1' THEN event_time END) AS step_1_time,
+        MIN(CASE WHEN event_name = 'step_2' THEN event_time END) AS step_2_time,
+        MIN(CASE WHEN event_name = 'step_3' THEN event_time END) AS step_3_time
+    FROM fact_events
+    WHERE event_name IN ('step_1', 'step_2', 'step_3')
+    GROUP BY 1
+),
+funnel AS (
+    SELECT 1 AS step_order, 'step_1' AS step_name, COUNT(DISTINCT subject_id) AS users
+    FROM step_flags
+    WHERE step_1_time IS NOT NULL
+    UNION ALL
+    SELECT 2, 'step_2', COUNT(DISTINCT subject_id)
+    FROM step_flags
+    WHERE step_1_time IS NOT NULL
+      AND step_2_time IS NOT NULL
+      AND step_2_time >= step_1_time
+    UNION ALL
+    SELECT 3, 'step_3', COUNT(DISTINCT subject_id)
+    FROM step_flags
+    WHERE step_1_time IS NOT NULL
+      AND step_2_time IS NOT NULL
+      AND step_3_time IS NOT NULL
+      AND step_2_time >= step_1_time
+      AND step_3_time >= step_2_time
+)
+SELECT
+    step_order,
+    step_name,
+    users,
+    ROUND(users * 100.0 / NULLIF(MAX(CASE WHEN step_order = 1 THEN users END) OVER (), 0), 2) AS conversion_from_start_pct,
+    ROUND(users * 100.0 / NULLIF(LAG(users) OVER (ORDER BY step_order), 0), 2) AS conversion_from_prev_pct,
+    LAG(users) OVER (ORDER BY step_order) - users AS dropoff_users
+FROM funnel
+ORDER BY step_order;
+""",
+    ),
+    "chart-result-schema": (
+        """
+-- 趋势图：日期/生命周期日 + 数值指标 + 可选 series。
+SELECT business_date AS x_date, metric_name AS series, metric_value
+FROM report_ready_metric_series
+ORDER BY x_date, series;
+
+-- 构成图：分类 + 数值 + 占比。
+SELECT category_name AS category, metric_value AS value, share_pct
+FROM report_ready_category_mix
+ORDER BY value DESC;
+
+-- 指标卡：单行、清晰字段名、数值类型。
+SELECT
+    SUM(revenue) AS revenue,
+    COUNT(DISTINCT subject_id) AS active_subjects,
+    ROUND(SUM(revenue) / NULLIF(COUNT(DISTINCT subject_id), 0), 4) AS arpu
+FROM report_ready_subject_metric;
+""",
+    ),
+    "forecast-benchmark-confidence": (
+        """
+-- 预测输出要区分实际值、成熟历史基准、预测值、样本量和置信度。
+WITH actual AS (
+    SELECT
+        business_date,
+        SUM(metric_value) AS actual_value,
+        COUNT(DISTINCT subject_id) AS sample_size
+    FROM fact_metric_observations
+    GROUP BY 1
+),
+benchmark AS (
+    SELECT
+        lifecycle_day,
+        AVG(metric_value) AS benchmark_value
+    FROM mature_history_metric
+    GROUP BY 1
+),
+forecast AS (
+    SELECT
+        business_date,
+        lifecycle_day,
+        predicted_value,
+        confidence
+    FROM external_forecast_results
+)
+SELECT
+    f.business_date,
+    a.actual_value,
+    b.benchmark_value,
+    f.predicted_value,
+    COALESCE(a.sample_size, 0) AS sample_size,
+    f.confidence
+FROM forecast AS f
+LEFT JOIN actual AS a USING (business_date)
+LEFT JOIN benchmark AS b USING (lifecycle_day)
+ORDER BY f.business_date;
+""",
+    ),
+}
+
+
 def _bind():
     return op.get_bind()
 
@@ -418,6 +1035,21 @@ def _render_prompt(
         source_sql_rows: list[dict[str, Any]],
 ) -> str:
     rules = "\n".join(f"- {item}" for item in theme["rules"])
+    sql_examples = tuple(SAAS_SQL_EXAMPLES.get(str(theme["slug"]), ()))
+    sql_section = ""
+    if sql_examples:
+        rendered_examples = "\n\n".join(
+            f"```sql\n{example.strip()}\n```"
+            for example in sql_examples
+            if example.strip()
+        )
+        sql_section = f"""
+
+## 参考 SQL 模板
+以下 SQL 只表达通用查询结构，表名、字段名、状态值、日期字段和布尔条件都是占位示例。生成真实 SQL 时必须替换为当前已选数据源中已授权、已配置的实际 Schema 与语义字段；如果当前数据源缺少对应配置，应说明缺口而不是照抄模板。
+
+{rendered_examples}
+"""
     return f"""{marker}
 # {skill_name}
 
@@ -430,7 +1062,7 @@ def _render_prompt(
 {rules}
 - 如果本 Skill 与当前数据库 Schema、数据权限、SQL 安全规则或用户已选数据源冲突，以当前 SaaS 权限、Schema 和已选数据源为准。
 - 如果当前数据源没有配置本 Skill 所需的业务字段、指标公式或维度映射，应说明缺少配置，不能把旧示例中的表名、字段名或业务域当作隐藏规则。
-"""
+{sql_section}"""
 
 
 def _upsert_skill(

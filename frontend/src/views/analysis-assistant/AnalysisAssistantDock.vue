@@ -91,9 +91,6 @@ const historyList = ref<AnalysisAssistantConversationSummary[]>([])
 const currentConversationId = ref<number | null>(null)
 const savingHistory = ref(false)
 const streamController = ref<AbortController>()
-const exportDialogVisible = ref(false)
-const exportFormat = ref<'pdf' | 'docx'>('pdf')
-const exportMessage = ref<DockMessage | null>(null)
 const exporting = ref(false)
 const dockWidth = ref(360)
 let messageId = 0
@@ -112,6 +109,20 @@ const DOCK_TAB_INERTIA_STOP_VELOCITY = 0.025
 const DOCK_TAB_MAX_INERTIA_MS = 700
 const DOCK_TAB_VELOCITY_SMOOTHING = 0.55
 const DOCK_TAB_POSITION_KEY = 'analysis-assistant-dock-tab-top'
+const EXPORT_FILE_TYPES = [
+  {
+    description: 'PDF 文件 (*.pdf)',
+    accept: {
+      'application/pdf': ['.pdf'],
+    },
+  },
+  {
+    description: 'DOCX 文件 (*.docx)',
+    accept: {
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+    },
+  },
+]
 
 const getDefaultDockTabTop = () =>
   typeof window === 'undefined'
@@ -676,28 +687,65 @@ const buildExportBlocks = async (message: DockMessage): Promise<AnalysisAssistan
   return blocks
 }
 
+const getExportBaseName = (message: DockMessage) => {
+  const messageIndex = messages.value.findIndex((item) => item.id === message.id)
+  const question = findPreviousUserQuestion(messageIndex)
+  return (question || currentConversationTitle.value || '综合分析报告').slice(0, 40)
+}
+
+const cleanExportFilename = (filename: string) => filename.replace(/[\\/:*?"<>|]+/g, '_')
+
 const saveBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = filename
+  link.download = cleanExportFilename(filename)
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
 }
 
-const openExportDialog = (message: DockMessage) => {
-  exportMessage.value = message
-  exportFormat.value = 'pdf'
-  exportDialogVisible.value = true
+const pickExportFile = async (message: DockMessage) => {
+  const picker = (window as any).showSaveFilePicker
+  const suggestedName = `${cleanExportFilename(getExportBaseName(message))}.pdf`
+  if (!picker) {
+    return {
+      format: 'pdf' as const,
+      filename: suggestedName,
+      handle: null,
+    }
+  }
+
+  const handle = await picker({
+    suggestedName,
+    types: EXPORT_FILE_TYPES,
+    excludeAcceptAllOption: true,
+  })
+  const name = String(handle?.name || suggestedName)
+  const format = name.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf'
+  return {
+    format: format as 'pdf' | 'docx',
+    filename: name,
+    handle,
+  }
 }
 
-const exportCurrentMessage = async () => {
-  if (!exportMessage.value || exporting.value) return
+const writeExportFile = async (blob: Blob, file: Awaited<ReturnType<typeof pickExportFile>>) => {
+  if (file.handle) {
+    const writable = await file.handle.createWritable()
+    await writable.write(blob)
+    await writable.close()
+    return
+  }
+  saveBlob(blob, file.filename)
+}
+
+const exportCurrentMessage = async (message: DockMessage) => {
+  if (exporting.value) return
   exporting.value = true
   try {
-    const message = exportMessage.value
+    const file = await pickExportFile(message)
     const messageIndex = messages.value.findIndex((item) => item.id === message.id)
     const question = findPreviousUserQuestion(messageIndex)
     const blocks = await buildExportBlocks(message)
@@ -707,19 +755,28 @@ const exportCurrentMessage = async () => {
       question,
       datasource_id: analysisContext.datasourceId,
       datasource_name: analysisContext.datasourceName,
-      format: exportFormat.value,
+      format: file.format,
       blocks,
       final: message.final,
       generated_at: generatedAt,
     })
-    const suffix = exportFormat.value
-    const filename = `${(question || currentConversationTitle.value || '综合分析报告').slice(0, 40)}.${suffix}`
-    saveBlob(blob, filename)
-    exportDialogVisible.value = false
+    await writeExportFile(blob, file)
     ElMessage.success('导出成功')
   } catch (error: any) {
+    if (error?.name === 'AbortError') return
     console.error(error)
-    ElMessage.error(error?.message || '导出失败')
+    let message = error?.message || '导出失败'
+    const data = error?.response?.data
+    if (data instanceof Blob) {
+      try {
+        const text = await data.text()
+        const json = JSON.parse(text)
+        message = json?.detail || json?.message || text || message
+      } catch {
+        // keep fallback message
+      }
+    }
+    ElMessage.error(message)
   } finally {
     exporting.value = false
   }
@@ -1188,8 +1245,8 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
                 <button
                   class="message-action-btn"
                   type="button"
-                  :disabled="isStreaming"
-                  @click="openExportDialog(message)"
+                  :disabled="isStreaming || exporting"
+                  @click="exportCurrentMessage(message)"
                 >
                   <el-icon>
                     <Download />
@@ -1252,28 +1309,6 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
         </div>
       </footer>
     </template>
-
-    <el-dialog
-      v-model="exportDialogVisible"
-      title="导出分析报告"
-      width="360px"
-      class="analysis-export-dialog"
-      :close-on-click-modal="!exporting"
-      :close-on-press-escape="!exporting"
-      @closed="exportMessage = null"
-    >
-      <div class="export-format-body">
-        <div class="export-format-label">选择文件格式</div>
-        <el-radio-group v-model="exportFormat" :disabled="exporting" class="export-format-options">
-          <el-radio-button label="pdf">PDF</el-radio-button>
-          <el-radio-button label="docx">DOCX</el-radio-button>
-        </el-radio-group>
-      </div>
-      <template #footer>
-        <el-button :disabled="exporting" @click="exportDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="exporting" @click="exportCurrentMessage">导出</el-button>
-      </template>
-    </el-dialog>
   </aside>
 </template>
 
@@ -1998,29 +2033,6 @@ const handleCtrlEnter = (e: KeyboardEvent) => {
   &:disabled {
     cursor: not-allowed;
     opacity: 0.5;
-  }
-}
-
-.export-format-body {
-  padding: 4px 0 8px;
-}
-
-.export-format-label {
-  margin-bottom: 12px;
-  color: var(--assistant-dock-text-secondary);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.export-format-options {
-  width: 100%;
-
-  :deep(.ed-radio-button) {
-    width: 50%;
-  }
-
-  :deep(.ed-radio-button__inner) {
-    width: 100%;
   }
 }
 

@@ -206,10 +206,7 @@ onMounted(() => {
 <template>
   <div class="access-page">
     <div class="access-header">
-      <div>
-        <div class="access-title">{{ t('access.my_permissions') }}</div>
-        <div class="access-subtitle">{{ t('access.subtitle') }}</div>
-      </div>
+      <div class="access-title">{{ t('access.my_permissions') }}</div>
       <el-tag :type="headerTagType" effect="light" round>
         {{ headerTag }}
       </el-tag>
@@ -385,28 +382,25 @@ onMounted(() => {
 <style lang="less" scoped>
 .access-page {
   height: 100%;
-  padding: 8px 0 24px;
+  padding: 0 0 24px;
   color: #1f2329;
 
   .access-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
+    min-height: 34px;
   }
 
   .access-title {
+    color: var(--workspace-text-primary, var(--theme-text-primary, #1f2329));
     font-weight: 600;
-    font-size: 22px;
-    line-height: 30px;
-  }
-
-  .access-subtitle {
-    margin-top: 6px;
-    color: #646a73;
-    font-size: 14px;
-    line-height: 22px;
+    font-size: 15px;
+    line-height: 24px;
+    letter-spacing: 0.1px;
+    white-space: nowrap;
   }
 
   .access-summary,

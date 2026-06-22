@@ -74,18 +74,8 @@ const defaultSkillForm = {
 const skillForm = ref(cloneDeep(defaultSkillForm))
 
 const currentDatasourceId = computed(() => datasourceContext.datasourceId)
-const currentDatasourceName = computed(() => datasourceContext.datasourceName)
 
 const pageTitle = computed(() => (isAdminMode.value ? t('data_skill.admin_title') : t('data_skill.title')))
-
-const pageSubtitle = computed(() => {
-  if (isAdminMode.value) {
-    return isPlatformAdmin.value
-      ? t('data_skill.admin_platform_subtitle')
-      : t('data_skill.admin_workspace_subtitle')
-  }
-  return `${t('access.current_project')}：${currentDatasourceName.value || '-'}`
-})
 
 const validateDatasource = (_: any, value: any, callback: any) => {
   if (isAdminMode.value && !isPlatformAdmin.value && skillForm.value.specific_ds && !value?.length) {
@@ -386,12 +376,7 @@ watch(scopeFilter, () => {
 <template>
   <div class="data-skills-page">
     <div class="page-header">
-      <div>
-        <div class="page-title">{{ pageTitle }}</div>
-        <div class="page-subtitle">
-          {{ pageSubtitle }}
-        </div>
-      </div>
+      <div class="page-title">{{ pageTitle }}</div>
       <div class="page-actions">
         <el-input
           v-model="skillKeyword"
@@ -641,28 +626,25 @@ watch(scopeFilter, () => {
 <style lang="less" scoped>
 .data-skills-page {
   height: 100%;
-  padding: 8px 0 24px;
+  padding: 0 0 24px;
   color: #1f2329;
 
   .page-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     margin-bottom: 16px;
+    min-height: 34px;
   }
 
   .page-title {
+    color: var(--workspace-text-primary, var(--theme-text-primary, #1f2329));
     font-weight: 600;
-    font-size: 22px;
-    line-height: 30px;
-  }
-
-  .page-subtitle {
-    margin-top: 6px;
-    color: #646a73;
-    font-size: 14px;
-    line-height: 22px;
+    font-size: 15px;
+    line-height: 24px;
+    letter-spacing: 0.1px;
+    white-space: nowrap;
   }
 
   .skill-section {

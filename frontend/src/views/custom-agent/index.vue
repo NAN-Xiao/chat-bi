@@ -47,7 +47,6 @@ const defaultAgentForm = {
 const agentForm = ref(cloneDeep(defaultAgentForm))
 
 const currentDatasourceId = computed(() => datasourceContext.datasourceId)
-const currentDatasourceName = computed(() => datasourceContext.datasourceName)
 
 const agentRules = {
   name: [
@@ -276,12 +275,7 @@ watch(scopeFilter, () => {
 <template>
   <div class="custom-agent-page">
     <div class="page-header">
-      <div>
-        <div class="page-title">{{ t('access.custom_agents') }}</div>
-        <div class="page-subtitle">
-          {{ t('access.current_project') }}：{{ currentDatasourceName || '-' }}
-        </div>
-      </div>
+      <div class="page-title">{{ t('access.custom_agents') }}</div>
       <div class="page-actions">
         <el-input
           v-model="agentKeyword"
@@ -569,28 +563,25 @@ watch(scopeFilter, () => {
 <style lang="less" scoped>
 .custom-agent-page {
   height: 100%;
-  padding: 8px 0 24px;
+  padding: 0 0 24px;
   color: #1f2329;
 
   .page-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     margin-bottom: 16px;
+    min-height: 34px;
   }
 
   .page-title {
+    color: var(--workspace-text-primary, var(--theme-text-primary, #1f2329));
     font-weight: 600;
-    font-size: 22px;
-    line-height: 30px;
-  }
-
-  .page-subtitle {
-    margin-top: 6px;
-    color: #646a73;
-    font-size: 14px;
-    line-height: 22px;
+    font-size: 15px;
+    line-height: 24px;
+    letter-spacing: 0.1px;
+    white-space: nowrap;
   }
 
   .agent-section {

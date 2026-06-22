@@ -341,20 +341,22 @@ watch(currentWorkspaceId, () => {
 
 <style scoped lang="less">
 .datasource-config {
-  height: calc(100% - 16px);
-  padding: 16px 0 16px 0;
+  height: 100%;
+  padding: 0 0 16px;
 
   .datasource-methods {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 16px;
-    padding: 0 24px 0 24px;
+    min-height: 34px;
 
     .title {
-      font-weight: 500;
-      font-size: 20px;
-      line-height: 28px;
+      color: var(--workspace-text-primary, var(--theme-text-primary, #1f2329));
+      font-weight: 600;
+      font-size: 15px;
+      line-height: 24px;
+      letter-spacing: 0.1px;
     }
   }
 
@@ -367,7 +369,7 @@ watch(currentWorkspaceId, () => {
   .card-content {
     max-height: calc(100% - 40px);
     overflow-y: auto;
-    padding: 0 32px 32px 24px;
+    padding: 0 8px 32px 0;
 
     .card-grid {
       display: grid;
