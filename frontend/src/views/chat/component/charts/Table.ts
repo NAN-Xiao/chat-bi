@@ -156,9 +156,27 @@ export class Table extends BaseChart {
       }
     }
 
+    const containerElement =
+      typeof this.container === 'string' ? document.getElementById(this.container) : this.container
+    const visibleAxis = this.axis?.filter((a) => !a.hidden) ?? []
+    const containerWidth = Math.max((containerElement?.clientWidth || 600) - 8, 320)
+    const containerHeight = containerElement?.clientHeight || 360
+    const columnWidth = Math.max(92, Math.floor(containerWidth / Math.max(visibleAxis.length, 1)))
+
     const s2Options: S2Options = {
-      width: 600,
-      height: 360,
+      width: containerWidth,
+      height: containerHeight,
+      style: {
+        layoutWidthType: 'adaptive',
+        colCell: {
+          height: 32,
+          width: columnWidth,
+        },
+        dataCell: {
+          height: 30,
+          width: columnWidth,
+        },
+      },
       showDefaultHeaderActionIcon: false,
       headerActionIcons: [
         {

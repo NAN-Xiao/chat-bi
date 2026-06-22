@@ -12,6 +12,7 @@ import cloneDeep from 'lodash/cloneDeep'
 import { findNewComponentFromList } from '@/views/dashboard/components/component-list.ts'
 import { guid } from '@/utils/canvas.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { applyRecommendedChartComponentSize } from '@/views/dashboard/utils/chartSizing.ts'
 
 const { t } = useI18n()
 const datasourceContext = useDatasourceContextStore()
@@ -93,6 +94,7 @@ const saveResourcePrepare = () => {
             datasource: dashboardInfo.datasource || state.datasource || datasourceContext.datasourceId,
           }
           component['id'] = newComponentId
+          applyRecommendedChartComponentSize(component, state.viewInfo)
           component['y'] = bottomPosition
           canvasDataResult.push(component)
           canvasViewInfoPreview[newComponentId] = state.viewInfo
@@ -114,6 +116,7 @@ const saveResourcePrepare = () => {
           type: 'dashboard',
         }
         component['id'] = newComponentId
+        applyRecommendedChartComponentSize(component, state.viewInfo)
         const canvasViewInfo = {}
         // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
         canvasViewInfo[newComponentId] = state.viewInfo

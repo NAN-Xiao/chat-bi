@@ -7,6 +7,7 @@ import MdComponent from '@/views/chat/component/MdComponent.vue'
 import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import { dashboardApi } from '@/api/dashboard'
 import { findNewComponentFromList } from '@/views/dashboard/components/component-list.ts'
+import { applyRecommendedChartComponentSize } from '@/views/dashboard/utils/chartSizing.ts'
 import { guid } from '@/utils/canvas.ts'
 import {
   analysisAssistantApi,
@@ -845,16 +846,21 @@ const generateDashboardFromMessage = async (message: DockMessage) => {
     const columns = blocks.length === 1 ? 1 : 2
     const sizeX = columns === 1 ? 36 : 18
     const sizeY = 14
+    const columnHeights = Array.from({ length: columns }, () => 1)
     blocks.forEach((block, index) => {
       const component = cloneDeep(componentTemplate)
       const componentId = guid()
+      const columnIndex = index % columns
       component.id = componentId
-      component.x = (index % columns) * sizeX + 1
-      component.y = Math.floor(index / columns) * (sizeY + 1) + 1
+      component.x = columnIndex * sizeX + 1
+      component.y = columnHeights[columnIndex]
       component.sizeX = sizeX
-      component.sizeY = isTableChart(block) ? 16 : sizeY
+      const chartInfo = buildDashboardChartInfo(block, componentId)
+      component.sizeY = sizeY
+      applyRecommendedChartComponentSize(component, chartInfo)
+      columnHeights[columnIndex] += component.sizeY + 1
       componentData.push(component)
-      canvasViewInfo[componentId] = buildDashboardChartInfo(block, componentId)
+      canvasViewInfo[componentId] = chartInfo
     })
 
     const dashboardName = uniqueDashboardName(message)

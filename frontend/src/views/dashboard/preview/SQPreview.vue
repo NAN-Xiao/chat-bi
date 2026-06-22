@@ -10,6 +10,7 @@ import { storeToRefs } from 'pinia'
 import SQComponentWrapper from '@/views/dashboard/preview/SQComponentWrapper.vue'
 import type { CanvasItem } from '@/utils/canvas.ts'
 import { useEmittLazy } from '@/utils/useEmitt.ts'
+import { getPreviewComponentSizeY } from '@/views/dashboard/utils/chartSizing.ts'
 
 const props = defineProps({
   canvasStyleData: {
@@ -80,9 +81,10 @@ const canvasStyle = computed(() => {
 const restore = () => {}
 
 function nowItemStyle(item: CanvasItem) {
+  const sizeY = getPreviewComponentSizeY(item, props.canvasViewInfo?.[item.id])
   return {
     width: cellWidth.value * item.sizeX - baseMarginLeft.value + 'px',
-    height: cellHeight.value * item.sizeY - baseMarginTop.value + 'px',
+    height: cellHeight.value * sizeY - baseMarginTop.value + 'px',
     left: cellWidth.value * (item.x - 1) + baseMarginLeft.value + 'px',
     top: cellHeight.value * (item.y - 1) + baseMarginTop.value + 'px',
   }

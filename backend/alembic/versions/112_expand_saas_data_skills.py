@@ -125,6 +125,7 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
         "rules": (
             "流失或沉默必须先定义连续不活跃阈值，例如连续 N 天无有效活跃；缺少阈值时应请求确认。",
             "回流用户是曾满足沉默或流失阈值后再次活跃的主体，与新增用户、普通留存活跃不同。",
+            "未付费用户、未转化用户或某日没有行为的用户不能直接称为流失用户；除非 SQL 已按连续不活跃阈值计算 churned_subjects。",
             "连续留存要求 D1 到 Dn 每天都活跃，通常单调不增；滚动留存要求第 n 天及以后任意一天活跃，也不同于精确日留存。",
             "精确日留存曲线回升不能自动解释为回流，除非 SQL 已逐主体验证沉默阈值后再次活跃。",
         ),
@@ -181,6 +182,7 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
             "如果展示总收入，应命名为 cumulative_revenue 或 total_revenue，不要把总收入列命名为 LTV。",
             "未成熟生命周期日应返回 NULL、标注未成熟或使用预测 Skill 外推，不能用 0 当作真实成熟 LTV。",
             "回答总营收或总体 LTV 时必须使用 cumulative_revenue 或 total_revenue 字段；不要从分日 rows 手动漏加或跨维度重复加总。",
+            "如果 SQL 只返回 daily_revenue 或 daily_paying_subjects，结论只能描述每日节奏，不能描述累计收入、累计 LTV 或总体价值；必须补 cumulative_revenue/ltv 查询。",
         ),
     },
     {
@@ -193,6 +195,7 @@ SAAS_SKILLS: tuple[dict[str, Any], ...] = (
             "生命周期日付费率统计 lifecycle_day = n 当天成功付费主体数 / cohort 人数，曲线可以波动。",
             "生命周期日收入、人均收入、付费率和累计付费转化是不同字段，必须分别输出，不要共用一个指标名。",
             "“后续付费情况”默认至少输出 daily_paying_subjects、daily_revenue、cumulative_paying_subjects、cumulative_revenue、daily_pay_rate_pct、cumulative_pay_conversion_pct 和 ltv。",
+            "生命周期趋势 SQL 不能只返回有付费的 lifecycle_day；应补齐观察窗口内的日期序列，让无付费日期以 0 展示，并让累计字段保持不下降。",
             "同一 cohort 的分母固定；成熟但无付费可为 0，未成熟生命周期日应返回 NULL。",
             "图表标题和 y 轴应明确写“生命周期日付费率”“当日收入”或“累计付费转化率”，避免误读为留存。",
         ),

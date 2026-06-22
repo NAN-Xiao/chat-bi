@@ -1424,7 +1424,8 @@ onMounted(async () => {
         border-color: var(--workspace-border, var(--theme-input-border));
 
         :deep(.ed-textarea__inner) {
-          padding: 42px 12px 52px 12px;
+          min-height: 118px !important;
+          padding: 12px 12px 52px 12px;
           background: var(--workspace-input-bg, var(--theme-input-bg));
           color: var(--workspace-text-primary, var(--theme-text-primary));
           border-radius: 16px;

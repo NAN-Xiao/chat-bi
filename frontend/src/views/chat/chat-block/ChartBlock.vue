@@ -160,6 +160,29 @@ const chartType = computed<ChartTypes>({
   },
 })
 
+const isTableChart = computed(() => chartType.value === 'table')
+const chatTableBlockHeight = computed(() => {
+  const rowCount = Math.max(data.value?.length || 0, 1)
+  const tableContentHeight = 32 + rowCount * 30
+  const displayBlockPadding = 18
+  const chartBlockPadding = 30
+  const minHeight = 248
+  const maxHeight = 356
+
+  return Math.min(
+    maxHeight,
+    Math.max(minHeight, tableContentHeight + displayBlockPadding + chartBlockPadding)
+  )
+})
+const chartBlockStyle = computed(() => {
+  if (props.enlarge || !isTableChart.value) {
+    return undefined
+  }
+  return {
+    height: `${chatTableBlockHeight.value}px`,
+  }
+})
+
 const chartTypeList = computed(() => {
   const _list = []
   const pushChartType = (value: ChartTypes, icon: any) => {
@@ -572,7 +595,7 @@ watch(
     </div>
 
     <template v-else-if="message?.record?.chart">
-      <div class="chart-block">
+      <div class="chart-block" :class="{ 'is-table-chart': isTableChart }" :style="chartBlockStyle">
         <DisplayChartBlock
           :id="chartId"
           ref="chartRef"

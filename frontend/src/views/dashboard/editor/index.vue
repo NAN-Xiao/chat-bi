@@ -17,6 +17,7 @@ import {
   loadDashboardCanvasDraft,
   saveDashboardCanvasDraft,
 } from '@/views/dashboard/utils/canvasDraft.ts'
+import { applyRecommendedChartComponentSize } from '@/views/dashboard/utils/chartSizing.ts'
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -132,17 +133,21 @@ watch(
 
 const addComponents = (componentType: string, views?: any) => {
   const component = cloneDeep(findNewComponentFromList(componentType))
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  if (!component) {
+    return
+  }
   component.x = findPositionX(component.sizeX)
+  const defaultSizeY = component.sizeY
   if (views) {
     const viewList = Array.isArray(views) ? views : [views]
     viewList.forEach((view: any, index: number) => {
       const target = cloneDeep(view)
       delete target.chart.sourceType
       if (index > 0) {
-        // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        component.x = ((component.x + component?.sizeX - 1) % baseMatrixCount.value.x) + 1
+        component.x = ((component.x + component.sizeX - 1) % baseMatrixCount.value.x) + 1
       }
+      component.sizeY = defaultSizeY
+      applyRecommendedChartComponentSize(component, target)
       addComponent(component, target)
     })
   } else {

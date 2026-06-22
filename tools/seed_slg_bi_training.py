@@ -1604,6 +1604,9 @@ SQL 口径：
 - 付费用户为成功净收入订单的 `count(distinct player_id)`。
 - 分日、分商品、分渠道后的 `payers` 都是组内去重，不能相加得到总体付费用户；总体付费用户必须在同一 cohort 或窗口内重新 `count(distinct player_id)`。
 - 分析“某一天/某批新增用户的后续付费情况”时，必须按用户指定日期或日期窗口锁定 `dim_player.install_date` cohort，并同时输出 cohort 基数、累计去重付费用户、累计收入、累计付费率、LTV；日付费人数和日收入只能解释节奏，不能代表累计转化。
+- 生命周期付费趋势 SQL 不能只返回有付费的 `lifecycle_day`；必须补齐观察窗口内的日期序列，无付费日期返回 0，累计字段保持不下降。
+- 只查 `daily_payers`/`daily_revenue` 时，结论只能描述每日节奏，不能描述累计收入、累计 LTV 或总体价值；需要总体结论时必须另算 `cumulative_payers`、`cumulative_revenue`、`ltv`。
+- 未付费用户不是流失用户；除非问题明确要求流失并定义连续不活跃阈值，否则只能称为“未付费/未转化用户”。
 - 首付用户优先用 `is_first_pay=true`，或用玩家最早成功支付日推导。
 - ARPU = 净收入 / 指定用户分母；ARPPU = 净收入 / 付费用户数。跨维度汇总时回到收入和人数重新计算，不要平均各组 ARPU。
 
@@ -1611,7 +1614,7 @@ SQL 口径：
 - 指标卡：`cohort_users`, `cumulative_payers`, `total_revenue`, `payer_rate_pct`, `ltv`, `arppu`。
 - 生命周期趋势：`lifecycle_day`, `daily_payers`, `daily_revenue`, `cumulative_payers`, `cumulative_revenue`, `cumulative_payer_rate_pct`, `ltv`。
 - 商品结构：`product_type`, `product_name`, `orders`, `payers`, `revenue`, `revenue_share_pct`, `arppu`。
-- 图表：收入趋势用柱/线，付费率用折线或双轴；商品收入占比可用饼图，但人数、订单数、ARPPU 用表格或柱图。
+- 图表：每日付费节奏可用柱/线；累计收入、累计付费率、LTV 用折线；商品收入占比可用饼图，但人数、订单数、ARPPU 用表格或柱图。
 
 参考 SQL：
 ```sql

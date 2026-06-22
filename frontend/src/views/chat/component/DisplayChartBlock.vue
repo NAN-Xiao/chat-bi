@@ -73,6 +73,8 @@ const multiQuotaName = computed(() => {
   return chartObject.value?.axis?.['multi-quota']?.name
 })
 
+const isTableChart = computed(() => props.chartType === 'table')
+
 const chartRef = ref()
 
 function onTypeChange() {
@@ -106,7 +108,7 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="message.record?.chart" class="chart-base-container">
+  <div v-if="message.record?.chart" class="chart-base-container" :class="{ 'is-table-chart': isTableChart }">
     <ChartComponent
       v-if="message.record.id && data?.length > 0"
       :id="id ?? 'default_chat_id'"
@@ -134,5 +136,9 @@ defineExpose({
   background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
   border: 1px solid #dfe8f3;
   box-shadow: 0 10px 24px rgba(36, 64, 102, 0.06);
+
+  &.is-table-chart {
+    padding: 12px 22px 6px 14px;
+  }
 }
 </style>
