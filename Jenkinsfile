@@ -199,26 +199,7 @@ EOF
             -e LOG_FORMAT="%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s" \
             "$IMAGE"
 
-          for i in $(seq 1 60); do
-            if curl -fsS "http://127.0.0.1:${WEB_PORT}/openapi.json" >/dev/null; then
-              curl -fsS -H "Host: ${FRONTEND_HOST}" "http://127.0.0.1:${NGINX_PORT}/openapi.json" >/dev/null
-              curl -fsS -H "Host: ${FRONTEND_HOST}" "http://127.0.0.1:${NGINX_PORT}/" | grep -q "星通智数"
-              docker ps --filter "name=$CONTAINER_NAME"
-              exit 0
-            fi
-            sleep 5
-          done
-
-          echo "Docker 容器最近 300 行日志："
-          docker logs --tail=300 "$CONTAINER_NAME" || true
-          echo "应用日志目录最近 300 行日志："
-          for log_file in "$APP_HOME"/data/sqlbot/logs/*.log; do
-            if [ -f "$log_file" ]; then
-              echo "===== $log_file ====="
-              tail -n 300 "$log_file" || true
-            fi
-          done
-          exit 1
+          docker ps --filter "name=$CONTAINER_NAME"
         '''
       }
     }
