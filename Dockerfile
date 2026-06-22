@@ -1,25 +1,35 @@
-# Build application image.
-ARG BASE_IMAGE=chat-bi/zhishu-python-pg:latest
-ARG RUNTIME_IMAGE=chat-bi/zhishu-python-pg:latest
-FROM --platform=${BUILDPLATFORM} ${BASE_IMAGE} AS zhishu-ui-builder
-ENV ZHISHU_HOME=/opt/zhishu
-ENV APP_HOME=${ZHISHU_HOME}/app
-ENV UI_HOME=${ZHISHU_HOME}/frontend
+# Build sqlbot
+ARG SQLBOT_BASE_IMAGE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest
+ARG SQLBOT_RUNTIME_IMAGE=registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest
+FROM ghcr.io/1panel-dev/maxkb-vector-model:v1.0.1 AS vector-model
+FROM ${SQLBOT_BASE_IMAGE} AS sqlbot-ui-builder
+ARG VITE_API_BASE_URL=./api/v1
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV APP_HOME=${SQLBOT_HOME}/app
+ENV UI_HOME=${SQLBOT_HOME}/frontend
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
+COPY frontend/package*.json /tmp/frontend/
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && cd /tmp/frontend \
+    && npm ci --no-audit --no-fund
 COPY frontend /tmp/frontend
-RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
+RUN cd /tmp/frontend && npm run build && mv dist ${UI_HOME}/dist
 
 
-FROM ${BASE_IMAGE} AS zhishu-builder
+FROM ${SQLBOT_BASE_IMAGE} AS sqlbot-builder
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
-ENV ZHISHU_HOME=/opt/zhishu
-ENV APP_HOME=${ZHISHU_HOME}/app
-ENV UI_HOME=${ZHISHU_HOME}/frontend
-ENV PYTHONPATH=${ZHISHU_HOME}/app
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV APP_HOME=${SQLBOT_HOME}/app
+ENV UI_HOME=${SQLBOT_HOME}/frontend
+ENV PYTHONPATH=${SQLBOT_HOME}/app
 ENV PATH="${APP_HOME}/.venv/bin:$PATH"
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
@@ -30,22 +40,18 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 
 WORKDIR ${APP_HOME}
 
-COPY  --from=zhishu-ui-builder ${UI_HOME} ${UI_HOME}
+COPY  --from=sqlbot-ui-builder ${UI_HOME} ${UI_HOME}
 # Install dependencies
-RUN test -f "./uv.lock" && \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=backend/uv.lock,target=uv.lock \
-    --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project || echo "uv.lock file not found, skipping intermediate-layers"
+COPY backend/pyproject.toml backend/uv.lock ${APP_HOME}/
+RUN uv sync --frozen --no-install-project --extra cpu
 
 COPY ./backend ${APP_HOME}
 
 # Final sync to ensure all dependencies are installed
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --extra cpu
+RUN uv sync --frozen --extra cpu
 
 # Build g2-ssr
-FROM ${BASE_IMAGE} AS ssr-builder
+FROM ${SQLBOT_BASE_IMAGE} AS ssr-builder
 
 WORKDIR /app
 
@@ -61,40 +67,42 @@ RUN npm config set fund false \
     && npm config set audit false \
     && npm config set progress false
 
-COPY g2-ssr/app.js g2-ssr/package.json /app/
+COPY g2-ssr/package*.json /app/
+RUN npm ci --no-audit --no-fund
+COPY g2-ssr/app.js /app/
 COPY g2-ssr/charts/* /app/charts/
-RUN npm install
 
 # Runtime stage
-FROM ${RUNTIME_IMAGE}
+FROM ${SQLBOT_RUNTIME_IMAGE}
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
 
 # Set runtime environment variables
 ENV PYTHONUNBUFFERED=1
-ENV ZHISHU_HOME=/opt/zhishu
-ENV PYTHONPATH=${ZHISHU_HOME}/app
-ENV PATH="${ZHISHU_HOME}/app/.venv/bin:$PATH"
+ENV SQLBOT_HOME=/opt/sqlbot
+ENV PYTHONPATH=${SQLBOT_HOME}/app
+ENV PATH="${SQLBOT_HOME}/app/.venv/bin:$PATH"
 
-ENV POSTGRES_DB=zhishu_bi
+ENV POSTGRES_DB=sqlbot
 ENV POSTGRES_USER=root
 ENV POSTGRES_PASSWORD=Password123@pg
 
 # Copy necessary files from builder
-COPY start.sh /opt/zhishu/app/start.sh
+COPY start.sh /opt/sqlbot/app/start.sh
 COPY g2-ssr/*.ttf /usr/share/fonts/truetype/liberation/
-COPY --from=zhishu-builder ${ZHISHU_HOME} ${ZHISHU_HOME}
-COPY --from=ssr-builder /app /opt/zhishu/g2-ssr
+COPY --from=sqlbot-builder ${SQLBOT_HOME} ${SQLBOT_HOME}
+COPY --from=ssr-builder /app /opt/sqlbot/g2-ssr
+COPY --from=vector-model /opt/maxkb/app/model /opt/sqlbot/models
 
-WORKDIR ${ZHISHU_HOME}/app
+WORKDIR ${SQLBOT_HOME}/app
 
-RUN mkdir -p /opt/zhishu/images /opt/zhishu/g2-ssr
+RUN mkdir -p /opt/sqlbot/images /opt/sqlbot/g2-ssr
 
 EXPOSE 3000 8000 8001 5432
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import os, urllib.request; p=os.environ.get('CONTEXT_PATH','').strip('/'); urllib.request.urlopen('http://localhost:8000/' + ((p + '/') if p else '') + 'health', timeout=3)" || exit 1
+    CMD python3 -c "import os, urllib.request; path=os.environ.get('CONTEXT_PATH', '').rstrip('/') + '/openapi.json'; urllib.request.urlopen('http://localhost:8000' + path, timeout=3)" || exit 1
 
 ENTRYPOINT ["sh", "start.sh"]

@@ -1,12 +1,41 @@
+# Git / IDE
+.git
+.github
+.idea
+.vscode
+.cursor
+.codex-runtime
+
 # Python
-backend/__pycache__
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+**/.venv
+**/venv
 backend/app.egg-info
-backend/*.pyc
-backend/.mypy_cache
-backend/.coverage
-backend/htmlcov
-backend/.venv
 backend/.gitignore
 backend/README.md
 backend/scripts
-backend/.DS_Store
+
+# Node / frontend build output
+**/node_modules
+frontend/dist
+frontend/components.d.ts
+g2-ssr/dist
+g2-ssr/dist-ssr
+
+# Local data / logs / OS files
+data
+**/*.log
+backend/logs
+logs
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
