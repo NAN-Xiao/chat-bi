@@ -8,7 +8,7 @@ pipeline {
   }
 
   parameters {
-    string(name: 'BRANCH_NAME', defaultValue: 'jenkins', description: 'Git 分支')
+    string(name: 'BRANCH_NAME', defaultValue: '单用户高可用', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
   }
 
