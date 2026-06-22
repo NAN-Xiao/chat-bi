@@ -15,14 +15,14 @@ pipeline {
   environment {
     DOCKER_BUILDKIT = '0'
     GIT_URL = 'https://github.com/NAN-Xiao/chat-bi.git'
-    APP_HOME = '/home/chai-bi'
+    APP_HOME = '/home/chat-bi'
     CONTAINER_NAME = 'chat-bi'
     IMAGE_REPOSITORY = 'chat-bi/sqlbot'
     SQLBOT_BASE_IMAGE = 'registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-base:latest'
     SQLBOT_RUNTIME_IMAGE = 'registry.cn-qingdao.aliyuncs.com/dataease/sqlbot-python-pg:latest'
     FRONTEND_HOST = '10.1.5.193'
     NGINX_PORT = '80'
-    NGINX_ROOT = '/home/chai-bi/nginx/html'
+    NGINX_ROOT = '/home/chat-bi/nginx/html'
     NGINX_CONF_PATH = '/etc/nginx/conf.d/chat-bi.conf'
     WEB_PORT = '8000'
     MCP_PORT = '8001'
@@ -159,26 +159,9 @@ EOF
           echo "项目 Nginx 参考配置已生成：$APP_HOME/chat-bi-nginx.conf"
           cat "$APP_HOME/chat-bi-nginx.conf"
 
-          if [ ! -f "$NGINX_CONF_PATH" ]; then
-            echo "没有找到宿主机 Nginx 配置：$NGINX_CONF_PATH"
-            echo "请先由 root 在 Linux 服务器执行："
-            echo "  cp $APP_HOME/chat-bi-nginx.conf $NGINX_CONF_PATH"
-            echo "  nginx -t && nginx -s reload"
-            exit 1
-          fi
-
-          if [ -r "$NGINX_CONF_PATH" ]; then
-            grep -q "root ${NGINX_ROOT};" "$NGINX_CONF_PATH" || {
-              echo "$NGINX_CONF_PATH 中没有找到 root ${NGINX_ROOT};"
-              exit 1
-            }
-            grep -q "proxy_pass http://127.0.0.1:${WEB_PORT}/api/v1/;" "$NGINX_CONF_PATH" || {
-              echo "$NGINX_CONF_PATH 中没有找到后端反向代理配置。"
-              exit 1
-            }
-          else
-            echo "Jenkins 用户无法读取 $NGINX_CONF_PATH，跳过文件内容检查。后续会通过 http://127.0.0.1:${NGINX_PORT}/ 做访问校验。"
-          fi
+          echo "Jenkins 运行在容器中时，$NGINX_CONF_PATH 可能是容器内路径。"
+          echo "宿主机 Nginx 配置请由 root 预先放到宿主机 $NGINX_CONF_PATH。"
+          echo "本流水线不再写入宿主机 Nginx 配置，最终通过 http://127.0.0.1:${NGINX_PORT}/ 做访问校验。"
         '''
       }
     }
