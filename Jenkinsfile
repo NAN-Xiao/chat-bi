@@ -3,6 +3,7 @@ pipeline {
 
   options {
     timestamps()
+    skipDefaultCheckout(true)
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '20'))
   }
@@ -48,9 +49,14 @@ pipeline {
         }
         sh '''
           set -eux
+          case "$EFFECTIVE_IMAGE_TAG" in
+            *[!A-Za-z0-9_.-]*|'')
+              echo "镜像标签不合法：$EFFECTIVE_IMAGE_TAG。只允许字母、数字、下划线、点和中横线。"
+              exit 1
+              ;;
+          esac
           command -v git
           command -v docker
-          command -v curl
           docker version
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/sqlbot/excel" "$APP_HOME/data/sqlbot/file" "$APP_HOME/data/sqlbot/images" "$APP_HOME/data/sqlbot/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
@@ -77,37 +83,7 @@ pipeline {
       }
     }
 
-    stage('发布前端到 Nginx') {
-      steps {
-        sh '''
-          set -eux
-          tmp_container="$(docker create "$IMAGE")"
-          trap 'docker rm -f "$tmp_container" >/dev/null 2>&1 || true' EXIT
-
-          case "$NGINX_ROOT" in
-            "$APP_HOME"/nginx/html|"$APP_HOME"/nginx/html/*)
-              ;;
-            *)
-              echo "NGINX_ROOT 路径异常：$NGINX_ROOT"
-              exit 1
-              ;;
-          esac
-
-          rm -rf "$NGINX_ROOT"
-          mkdir -p "$NGINX_ROOT"
-          docker cp "$tmp_container:/opt/sqlbot/frontend/dist/." "$NGINX_ROOT"
-          chmod o+rx "$APP_HOME" "$APP_HOME/nginx" "$NGINX_ROOT" || true
-          find "$NGINX_ROOT" -type d -exec chmod o+rx {} + || true
-          find "$NGINX_ROOT" -type f -exec chmod o+r {} + || true
-          if command -v chcon >/dev/null 2>&1; then
-            chcon -R -t httpd_sys_content_t "$NGINX_ROOT" || true
-          fi
-          find "$NGINX_ROOT" -maxdepth 2 -type f | head
-        '''
-      }
-    }
-
-    stage('检查宿主机 Nginx 配置') {
+    stage('生成 Nginx 参考配置') {
       steps {
         sh '''
           set -eux
@@ -173,7 +149,13 @@ EOF
 
           echo "Jenkins 运行在容器中时，$NGINX_CONF_PATH 可能是容器内路径。"
           echo "宿主机 Nginx 配置请由 root 预先放到宿主机 $NGINX_CONF_PATH。"
-          echo "本流水线不再写入宿主机 Nginx 配置，最终通过 http://127.0.0.1:${NGINX_PORT}/ 做访问校验。"
+          echo "本流水线不写入宿主机 Nginx 配置，只生成参考配置供人工比对。"
+          if [ -r "$NGINX_CONF_PATH" ]; then
+            echo "检测到当前执行环境可读取 $NGINX_CONF_PATH，开始和参考配置比对："
+            diff -u "$APP_HOME/chat-bi-nginx.conf" "$NGINX_CONF_PATH" || true
+          else
+            echo "当前执行环境无法读取 $NGINX_CONF_PATH，跳过自动比对。"
+          fi
         '''
       }
     }
@@ -192,8 +174,27 @@ EOF
       steps {
         sh '''
           set -eux
-          docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-          docker run -d \
+          backup_container="${CONTAINER_NAME}-previous"
+          docker rm -f "$backup_container" >/dev/null 2>&1 || true
+
+          restore_previous() {
+            status="$1"
+            echo "新容器启动失败，准备恢复旧容器。"
+            docker logs --tail=200 "$CONTAINER_NAME" || true
+            docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+            if docker ps -a --format '{{.Names}}' | grep -Fx "$backup_container" >/dev/null; then
+              docker rename "$backup_container" "$CONTAINER_NAME" || true
+              docker start "$CONTAINER_NAME" || true
+            fi
+            exit "$status"
+          }
+
+          if docker ps -a --format '{{.Names}}' | grep -Fx "$CONTAINER_NAME" >/dev/null; then
+            docker rename "$CONTAINER_NAME" "$backup_container"
+            docker stop "$backup_container" >/dev/null 2>&1 || true
+          fi
+
+          if ! docker run -d \
             --name "$CONTAINER_NAME" \
             --restart unless-stopped \
             -p "${WEB_PORT}:8000" \
@@ -215,9 +216,67 @@ EOF
             -e SERVER_IMAGE_HOST="http://${FRONTEND_HOST}/images/" \
             -e LOG_DIR="/opt/sqlbot/app/logs" \
             -e LOG_FORMAT="%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s" \
-            "$IMAGE"
+            "$IMAGE"; then
+            restore_previous 1
+          fi
 
-          docker ps --filter "name=$CONTAINER_NAME"
+          sleep 15
+          if ! container_status="$(docker inspect --format='{{.State.Status}}' "$CONTAINER_NAME")"; then
+            restore_previous 1
+          fi
+          if [ "$container_status" != "running" ]; then
+            restore_previous 1
+          fi
+          docker ps --filter "name=^/${CONTAINER_NAME}$"
+          docker port "$CONTAINER_NAME"
+
+          docker rm -f "$backup_container" >/dev/null 2>&1 || true
+        '''
+      }
+    }
+
+    stage('发布前端到 Nginx') {
+      steps {
+        sh '''
+          set -eux
+          tmp_container="$(docker create "$IMAGE")"
+          nginx_parent="$(dirname "$NGINX_ROOT")"
+          nginx_tmp="${nginx_parent}/html.new.$$"
+          nginx_backup="${nginx_parent}/html.prev.$$"
+          trap 'docker rm -f "$tmp_container" >/dev/null 2>&1 || true; rm -rf "$nginx_tmp" "$nginx_backup"' EXIT
+
+          case "$NGINX_ROOT" in
+            "$APP_HOME"/nginx/html|"$APP_HOME"/nginx/html/*)
+              ;;
+            *)
+              echo "NGINX_ROOT 路径异常：$NGINX_ROOT"
+              exit 1
+              ;;
+          esac
+
+          rm -rf "$nginx_tmp" "$nginx_backup"
+          mkdir -p "$nginx_tmp"
+          docker cp "$tmp_container:/opt/sqlbot/frontend/dist/." "$nginx_tmp"
+          test -f "$nginx_tmp/index.html"
+
+          if [ -d "$NGINX_ROOT" ]; then
+            mv "$NGINX_ROOT" "$nginx_backup"
+          fi
+          if ! mv "$nginx_tmp" "$NGINX_ROOT"; then
+            if [ -d "$nginx_backup" ]; then
+              mv "$nginx_backup" "$NGINX_ROOT"
+            fi
+            exit 1
+          fi
+          rm -rf "$nginx_backup"
+
+          chmod o+rx "$APP_HOME" "$APP_HOME/nginx" "$NGINX_ROOT" || true
+          find "$NGINX_ROOT" -type d -exec chmod o+rx {} + || true
+          find "$NGINX_ROOT" -type f -exec chmod o+r {} + || true
+          if command -v chcon >/dev/null 2>&1; then
+            chcon -R -t httpd_sys_content_t "$NGINX_ROOT" || true
+          fi
+          find "$NGINX_ROOT" -maxdepth 2 -type f | head
         '''
       }
     }
