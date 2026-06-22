@@ -50,6 +50,8 @@ pipeline {
           env.GITHUB_COMMIT = shortCommit
           env.FRONTEND_API_BASE_URL = "./api/v1"
           env.EFFECTIVE_PYTHON_DEPENDENCY_EXTRA = params.PYTHON_DEPENDENCY_EXTRA == 'none' ? '' : params.PYTHON_DEPENDENCY_EXTRA
+          env.EXPORT_IMAGE_TAR = params.EXPORT_IMAGE_TAR.toString()
+          env.CLEAN_DANGLING_IMAGES = params.CLEAN_DANGLING_IMAGES.toString()
         }
         sh '''
           set -eux
@@ -63,8 +65,8 @@ pipeline {
           command -v docker
           docker version
           echo "Python 依赖类型：${EFFECTIVE_PYTHON_DEPENDENCY_EXTRA:-none}"
-          echo "是否导出镜像 tar：${EXPORT_IMAGE_TAR}"
-          echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES}"
+          echo "是否导出镜像 tar：${EXPORT_IMAGE_TAR:-false}"
+          echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES:-false}"
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/sqlbot/excel" "$APP_HOME/data/sqlbot/file" "$APP_HOME/data/sqlbot/images" "$APP_HOME/data/sqlbot/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
             exit 1
@@ -335,7 +337,7 @@ EOF
           echo "清理退出容器，避免失败构建残留占用磁盘："
           docker container prune -f || true
 
-          if [ "$CLEAN_DANGLING_IMAGES" = "true" ]; then
+          if [ "${CLEAN_DANGLING_IMAGES:-false}" = "true" ]; then
             echo "按参数清理悬空镜像。注意：这可能降低下一次 Docker 构建缓存命中率。"
             docker image prune -f || true
           else
