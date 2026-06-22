@@ -309,6 +309,7 @@ def test_list_resource_marks_project_editor_can_edit(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
 
     with Session(engine) as session:
@@ -341,6 +342,7 @@ def test_list_resource_marks_project_viewer_cannot_edit(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
     with Session(engine) as session:
@@ -367,12 +369,51 @@ def test_list_resource_marks_project_viewer_cannot_edit(monkeypatch):
 
     assert len(tree) == 1
     assert tree[0].can_edit is False
+    assert tree[0].can_share is True
+
+
+def test_load_resource_marks_project_viewer_can_share_without_edit(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="项目看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        resource = dashboard_service.load_resource(
+            session=session,
+            dashboard=QueryDashboard(id="dashboard-1"),
+            current_user=current_user,
+        )
+
+    assert resource["can_edit"] is False
+    assert resource["can_share"] is True
 
 
 def test_list_resource_marks_creator_can_edit_with_project_viewer_role(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
     with Session(engine) as session:
@@ -405,6 +446,7 @@ def test_list_resource_marks_current_user_shared_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
 
     with Session(engine) as session:
         session.add(
@@ -943,6 +985,7 @@ def test_user_name_unwraps_row_result():
 def test_share_dashboard_creates_share_record(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
 
@@ -981,9 +1024,88 @@ def test_share_dashboard_creates_share_record(monkeypatch):
     assert share.preview_image == "data:image/jpeg;base64,preview"
 
 
+def test_project_viewer_can_share_accessible_dashboard(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="项目共享看板",
+                pid="root",
+                datasource=1,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        share = dashboard_service.share_resource(
+            session=session,
+            user=current_user,
+            request=DashboardShareRequest(
+                dashboard_id="dashboard-1",
+                share_type="dashboard",
+            ),
+        )
+
+    assert share.source_dashboard_id == "dashboard-1"
+    assert share.create_by == "2"
+    assert share.name == "项目共享看板"
+
+
+def test_share_dashboard_denied_without_datasource_access(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=9, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="项目看板",
+                pid="root",
+                datasource=1,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.share_resource(
+                session=session,
+                user=current_user,
+                request=DashboardShareRequest(
+                    dashboard_id="dashboard-1",
+                    share_type="dashboard",
+                ),
+            )
+
+    assert exc_info.value.status_code == 403
+
+
 def test_share_chart_creates_chart_snapshot(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
 

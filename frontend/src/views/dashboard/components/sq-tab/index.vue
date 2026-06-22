@@ -21,7 +21,11 @@ let currentInstance
 import _ from 'lodash'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import { useI18n } from 'vue-i18n'
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
+import { storeToRefs } from 'pinia'
 const { t } = useI18n()
+const dashboardStore = dashboardStoreWithOut()
+const { dashboardInfo } = storeToRefs(dashboardStore)
 
 const emits = defineEmits(['parentAddItemBox'])
 
@@ -261,6 +265,7 @@ defineExpose({
             :base-matrix-count="tabBaseMatrixCount"
             :canvas-id="tabItem.name"
             :parent-config-item="configItem"
+            :dashboard-info="dashboardInfo"
             in-tab
             @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
           >

@@ -147,8 +147,9 @@ template:
               <title>柱状图(column)、条形图(bar)、折线图(line)：</title>
               <sub-requirement>必须有一个维度字段（横轴）</sub-requirement>
               <sub-requirement>最多有一个分类维度字段（如系列/颜色分组）</sub-requirement>
-              <sub-requirement>有分类维度时，只能有一个指标字段（纵轴）</sub-requirement>
-              <sub-requirement>没有分类维度时，只有在多个指标口径和单位可直接比较时才可以有多个指标字段</sub-requirement>
+              <sub-requirement>x 轴维度本身可以是分类/枚举字段（如渠道、地区、产品、部门），不要因为 x 轴是文本分类就把它误作为 series</sub-requirement>
+              <sub-requirement>只有同时存在两个及以上维度字段，且其中一个用于颜色/系列分组时，才使用 series；有 series 时只能有一个指标字段（纵轴）</sub-requirement>
+              <sub-requirement>没有 series 时，可以有多个用户明确要求的指标字段；即使指标单位不同，也应在 y 中保留这些指标，前端会处理混合单位展示</sub-requirement>
             </requirement-group>
             <requirement-group chart="pie">
               <title>饼图(pie)：</title>
@@ -462,11 +463,11 @@ template:
         </rule>
         <rule>
           <strong>图表配置决策流程：</strong>
-          <strong>1. 先判断SQL查询结果中是否存在分类字段（非时间、非数值的离散字段）</strong>
-          <strong>2. 如果存在分类字段 → 必须使用series配置，此时y轴只能有一个指标字段</strong>
-          <strong>3. 如果不存在分类字段，但存在多个同单位、同口径且适合直接比较的指标字段 → 使用multi-quota配置</strong>
-          <strong>3.1 如果多个数值字段单位或口径不同（例如人数/次数/金额 与 比率/百分比/均值混合，或分子/分母/支撑字段 与 结果指标混合）→ 不要使用multi-quota；必须选择最符合用户问题的主指标作为y轴，其他字段仅作为表格明细或辅助说明</strong>
-          <strong>4. 如果只有一个指标字段且无分类字段 → 直接配置y轴，不使用series和multi-quota</strong>
+          <strong>1. 先识别SQL查询结果中可作为展示横轴的主维度字段（如日期、渠道、地区、产品、部门、状态、类别等），将它放入 axis.x</strong>
+          <strong>2. 不要把 axis.x 的文本分类字段误判为 series；series 只用于“同一 x 下还有另一个分类字段需要颜色/系列分组”的情况，例如日期 x + 渠道 series + 收入 y</strong>
+          <strong>3. 如果没有 series 且 SQL 查询结果中存在多个用户明确要求的数值指标字段 → axis.y 必须保留这些指标字段。即使指标单位或口径不同（例如人数、金额、百分比、均值混合），也不要丢弃用户要求的指标；前端会按混合单位处理展示</strong>
+          <strong>4. 如果多个指标同单位、同口径且适合直接比较（如收入/支出/利润），可以额外提供 multi-quota 配置；如果指标单位混合，则不要提供 multi-quota，但仍要在 axis.y 数组中列出这些指标</strong>
+          <strong>5. 只有一个指标字段时，直接配置 y 轴，不使用 multi-quota</strong>
         </rule>
         <rule>
           如果需要柱状图，JSON格式应为<strong>（series为可选字段，仅当有分类字段时使用）</strong>：
@@ -475,8 +476,8 @@ template:
           <strong>1. x轴：维度轴，通常放置分类或时间字段（如日期、产品类别）</strong>
           <strong>2. y轴：数值轴，放置需要展示的数值指标</strong>
           <strong>3. series：当需要对数据进一步分组时使用（如不同产品系列在不同日期的销售额）</strong>
-          柱状图使用一个分类字段（series），一个<strong>维度轴</strong>字段（x）和一个<strong>数值轴</strong>字段（y），其中必须从SQL查询列中提取"x"、"y"与"series"。
-          <strong>如果SQL中没有分类列，那么JSON内的series字段不需要出现</strong>
+          柱状图至少使用一个<strong>维度轴</strong>字段（x）和一个或多个<strong>数值轴</strong>字段（y），series 仅在存在第二个分组维度时使用；其中必须从SQL查询列中提取"x"和"y"，有 series 时提取"series"。
+          <strong>如果SQL中只有一个文本/时间维度列和多个数值指标列，应把文本/时间维度列作为 x，把多个数值指标列都放入 y，不要生成 series</strong>
         </rule>
         <rule>
           如果需要条形图，JSON格式应为<strong>（series为可选字段，仅当有分类字段时使用）</strong>：
@@ -488,9 +489,9 @@ template:
           <strong>1. 条形图只是视觉展示不同，数据逻辑与柱状图相同</strong>
           <strong>2. x轴必须是维度字段（分类、时间等）</strong>
           <strong>3. y轴必须是数值字段（指标、度量等）</strong>
-          <strong>4. 如果存在分类字段（如不同产品系列），使用series分组</strong>
-          条形图使用一个分类字段（series），一个<strong>维度轴</strong>字段（x）和一个<strong>数值轴</strong>字段（y），其中必须从SQL查询列中提取"x"和"y"与"series"。
-          <strong>如果SQL中没有分类列，那么JSON内的series字段不需要出现</strong>
+          <strong>4. 只有存在第二个分类字段需要颜色/系列分组时，才使用series分组；不要把 x 轴分类字段本身作为 series</strong>
+          条形图至少使用一个<strong>维度轴</strong>字段（x）和一个或多个<strong>数值轴</strong>字段（y），series 仅在存在第二个分组维度时使用；其中必须从SQL查询列中提取"x"和"y"，有 series 时提取"series"。
+          <strong>如果SQL中只有一个文本/时间维度列和多个数值指标列，应把文本/时间维度列作为 x，把多个数值指标列都放入 y，不要生成 series</strong>
         </rule>
         <rule>
           如果需要折线图，JSON格式应为<strong>（series为可选字段，仅当有分类字段时使用）</strong>：
@@ -500,8 +501,8 @@ template:
           <strong>2. y轴：数值轴，放置需要展示趋势的数值指标</strong>
           <strong>3. series：当需要对比多个分类的趋势时使用（如不同产品的销售趋势）</strong>
           <strong>4. 当SQL同时包含排序字段和展示标签时，x轴应优先选择用户能理解的展示标签；SQL必须已经按排序字段正确排序</strong>
-          折线图使用一个分类字段（series），一个<strong>维度轴</strong>字段（x）和一个<strong>数值轴</strong>字段（y），其中必须从SQL查询列中提取"x"、"y"与"series"。
-          <strong>如果SQL中没有分类列，那么JSON内的series字段不需要出现</strong>
+          折线图至少使用一个<strong>维度轴</strong>字段（x）和一个或多个<strong>数值轴</strong>字段（y），series 仅在存在第二个分组维度时使用；其中必须从SQL查询列中提取"x"和"y"，有 series 时提取"series"。
+          <strong>如果SQL中只有一个文本/时间维度列和多个数值指标列，应把文本/时间维度列作为 x，把多个数值指标列都放入 y，不要生成 series</strong>
         </rule>
         <rule>
           如果需要饼图，JSON格式应为：
@@ -542,17 +543,18 @@ template:
           矩形树图用于分类或层级贡献结构；series 可选，用于形成二级层级。
         </rule>
         <rule>
-          如果SQL中没有分类列，那么JSON内的series字段不需要出现
+          如果SQL中没有第二个分组维度列，那么JSON内的series字段不需要出现
         </rule>
         <rule>
-          如果SQL查询结果中存在可用于数据分类的字段（如国家、产品类型等），则必须提供series配置。如果不存在，则无需在JSON中包含series字段。
+          如果SQL查询结果中存在一个可用于展示类别的字段（如国家、产品类型、渠道、部门等），优先将其作为 x 轴维度。只有当 SQL 结果中还存在另一个分类字段，并且需要在每个 x 轴值下进一步分组对比时，才提供 series 配置。
         </rule>
         <rule>
           对于柱状图/条形图/折线图：
-          1. 如果SQL查询中存在多个同单位、同口径且用户意图需要对比的指标字段（如"收入"、"支出"、"利润"等金额字段）且不存在分类字段，则必须提供multi-quota配置，形如："multi-quota":{{"name":"指标类型","value":["指标字段1","指标字段2",...]}}
-          1.1 如果SQL查询中同时存在计数/金额/次数与百分比/比率/均值，或同时存在分子、分母、支撑字段和最终结果指标，不要把它们放进同一个multi-quota；应选择用户真正询问的最终主指标作为y轴。例如用户问留存率、转化率、付费率、占比等趋势时，折线图只使用对应的_pct/_rate字段，人数/分母字段只保留在表格或明细中。
-          2. 如果SQL查询中存在多个指标字段且同时存在分类字段，则以分类字段为主，选取多指标字段中的其中一个作为指标即可，不需要multi-quota配置
-          3. 如果只有一个指标字段，无论是否存在分类字段，都不需要multi-quota配置
+          1. 如果SQL查询中存在多个用户明确要求的指标字段，且没有 series，则 axis.y 必须以数组形式列出这些指标字段。
+          1.1 如果这些指标字段同单位、同口径且用户意图需要对比（如"收入"、"支出"、"利润"等金额字段），可以提供multi-quota配置，形如："multi-quota":{{"name":"指标类型","value":["指标字段1","指标字段2",...]}}
+          1.2 如果SQL查询中同时存在计数/金额/次数与百分比/比率/均值，或同时存在分子、分母、支撑字段和最终结果指标，不要把它们放进同一个multi-quota；但如果这些字段是用户问题明确要求展示的指标，仍应全部保留在 axis.y 数组中。例如用户要求“按部门统计订单数、销售额、完成率、客单价”时，y 必须包含 order_count、sales_amount、completion_rate、avg_order_value。
+          2. 如果SQL查询中存在多个指标字段且同时存在 series，则以 series 分组为主，选取最核心的一个指标即可，不需要multi-quota配置
+          3. 如果只有一个指标字段，无论是否存在 series，都不需要multi-quota配置
           <strong>重要提醒：multi-quota和series是互斥的配置，一个图表配置中只能使用其中之一，不能同时存在</strong>
         </rule>
         <rule>
@@ -594,6 +596,17 @@ template:
             <output>
               // 无分类字段，但有多个指标字段的情况
               {{"type":"line","title":"财务指标趋势","axis":{{"x":{{"name":"日期","value":"date"}},"y":[{{"name":"收入","value":"income"}}, {{"name":"支出","value":"expense"}}], "multi-quota":{{"name":"财务指标","value":["income","expense"]}}}}}}
+            </output>
+          </example>
+          <example>
+            <input>
+              <sql>SELECT department AS department, order_count AS order_count, sales_amount AS sales_amount, completion_rate AS completion_rate, avg_order_value AS avg_order_value FROM department_metrics ORDER BY order_count DESC LIMIT 1000</sql>
+              <user-question>按部门统计订单数、销售额、完成率、客单价</user-question>
+              <chart-type> column </chart-type>
+            </input>
+            <output>
+              // 一个分类维度作为 x，多个混合单位指标都放入 y，不使用 series 或 multi-quota
+              {{"type":"column","title":"部门业务指标","axis":{{"x":{{"name":"部门","value":"department"}},"y":[{{"name":"订单数","value":"order_count"}},{{"name":"销售额","value":"sales_amount"}},{{"name":"完成率","value":"completion_rate"}},{{"name":"客单价","value":"avg_order_value"}}]}}}}
             </output>
           </example>
         </chat-examples>

@@ -151,5 +151,7 @@ onUnmounted(() => {
 .chart-container {
   height: 100%;
   width: 100%;
+  padding: 14px 16px 12px;
+  box-sizing: border-box;
 }
 </style>

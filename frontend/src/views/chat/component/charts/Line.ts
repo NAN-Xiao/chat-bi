@@ -96,6 +96,8 @@ export class Line extends BaseG2Chart {
         x: {
           title: false, // x[0].name,
           labelFontSize: 12,
+          labelFill: '#7a89a0',
+          labelFontWeight: 400,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,
@@ -107,6 +109,8 @@ export class Line extends BaseG2Chart {
         },
         y: {
           title: false, // y[0].name,
+          labelFontSize: 12,
+          labelFill: '#7a89a0',
           labelFormatter: (value: any) => {
             return String(formatNumber(value))
           },
@@ -128,7 +132,7 @@ export class Line extends BaseG2Chart {
             shape: 'smooth',
           },
           style: {
-            fillOpacity: 0.09,
+            fillOpacity: 0.08,
           },
           tooltip: false,
         },
@@ -136,6 +140,11 @@ export class Line extends BaseG2Chart {
           type: 'line',
           encode: {
             shape: 'smooth',
+          },
+          style: {
+            lineWidth: 2.4,
+            lineCap: 'round',
+            lineJoin: 'round',
           },
           labels: this.showLabel
             ? [
@@ -175,7 +184,7 @@ export class Line extends BaseG2Chart {
                       dy: -12,
                       fontSize: 12,
                       fontWeight: 600,
-                      fill: '#1b2a41',
+                      fill: '#15233b',
                     },
                     transform: [{ type: 'exceedAdjust' }, { type: 'overlapHide' }],
                   },
@@ -199,10 +208,10 @@ export class Line extends BaseG2Chart {
           type: 'point',
           style: {
             fill: 'white',
-            lineWidth: 1.8,
+            lineWidth: 1.6,
           },
           encode: {
-            size: 2.2,
+            size: 2.6,
           },
           tooltip: false,
         },

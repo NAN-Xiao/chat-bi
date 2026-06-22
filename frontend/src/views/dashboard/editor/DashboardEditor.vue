@@ -85,6 +85,7 @@ const sizeInit = () => {
 }
 
 const addItemToBox = (item: CanvasItem) => {
+  if (props.dashboardInfo?.canEdit !== true) return
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   canvasCoreRef.value.addItemBox(item)
 }

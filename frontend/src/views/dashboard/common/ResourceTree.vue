@@ -155,10 +155,12 @@ const getTree = async () => {
 const hasData = computed<boolean>(() => state.resourceTree.length > 0)
 const canCreateDashboard = computed<boolean>(() => datasourceContext.canCreateDashboard)
 const canManageNode = (data: SQTreeNode) => data.can_edit === true
+const canShareNode = (data: SQTreeNode) =>
+  data.node_type === 'leaf' && (data.can_share === true || data.can_edit === true)
 const nodeMenuList = (data: SQTreeNode) => {
-  const list = [...state.baseMenuList]
-  if (data.node_type === 'leaf') {
-    list.splice(2, 0, {
+  const list = canManageNode(data) ? [...state.baseMenuList] : []
+  if (canShareNode(data)) {
+    list.splice(list.length > 0 ? 2 : 0, 0, {
       label: data.is_shared ? t('dashboard.cancel_share') : t('dashboard.share'),
       command: data.is_shared ? 'unshare' : 'share',
       svgName: data.is_shared ? icon_close_outlined : icon_export_outlined,
@@ -277,6 +279,8 @@ const addOperation = (params: any) => {
 }
 
 const operation = async (opt: string, data: SQTreeNode) => {
+  if (['delete', 'rename', 'edit'].includes(opt) && !canManageNode(data)) return
+  if (['share', 'unshare'].includes(opt) && !canShareNode(data)) return
   if (opt === 'delete') {
     const msg = data.node_type === 'leaf' ? '' : t('dashboard.delete_tips')
     ElMessageBox.confirm(t('dashboard.delete_dashboard_warn', [data.name]), {
@@ -529,7 +533,7 @@ defineExpose({
                 <Icon><icon_add_outlined class="svg-icon" /></Icon>
               </el-icon>
               <HandleMore
-                v-if="canManageNode(data)"
+                v-if="canManageNode(data) || canShareNode(data)"
                 :menu-list="nodeMenuList(data)"
                 :icon-name="icon_more_outlined"
                 placement="bottom-end"

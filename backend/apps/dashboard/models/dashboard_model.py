@@ -214,6 +214,7 @@ class DashboardBaseResponse(BaseModel):
     create_time: Optional[int] = None
     update_time: Optional[int] = None
     can_edit: Optional[bool] = False
+    can_share: Optional[bool] = False
     is_shared: Optional[bool] = False
     share_id: Optional[str] = None
     children: List['DashboardBaseResponse'] = []

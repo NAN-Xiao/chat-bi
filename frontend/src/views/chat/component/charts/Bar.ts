@@ -2,6 +2,8 @@ import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
 import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
+  buildMixedUnitComboOptions,
+  buildMixedUnitData,
   checkIsPercent,
   formatNumber,
   getAxesWithFilter,
@@ -31,6 +33,20 @@ export class Bar extends BaseG2Chart {
       y: axes.y,
       series: axes.series,
     }
+
+    const mixedUnitData = buildMixedUnitData(axes.x, axes.y, config.data)
+    if (mixedUnitData) {
+      const options = buildMixedUnitComboOptions(
+        this.chart.options(),
+        axes.x[0],
+        mixedUnitData,
+        this.showLabel,
+        true
+      )
+      this.chart.options(options)
+      return
+    }
+
     if (axes.multiQuota.length > 0) {
       config = processMultiQuotaData(
         axes.x,
@@ -78,27 +94,30 @@ export class Bar extends BaseG2Chart {
         color: series.length > 0 ? series[0].value : undefined,
       },
       style: {
+        maxWidth: 22,
+        inset: 1.5,
+        fillOpacity: 0.92,
         radiusTopLeft: (d: ChartData) => {
           if (d[y[0].value] && d[y[0].value] > 0) {
-            return 4
+            return 5
           }
           return 0
         },
         radiusTopRight: (d: ChartData) => {
           if (d[y[0].value] && d[y[0].value] > 0) {
-            return 4
+            return 5
           }
           return 0
         },
         radiusBottomLeft: (d: ChartData) => {
           if (d[y[0].value] && d[y[0].value] < 0) {
-            return 4
+            return 5
           }
           return 0
         },
         radiusBottomRight: (d: ChartData) => {
           if (d[y[0].value] && d[y[0].value] < 0) {
-            return 4
+            return 5
           }
           return 0
         },
@@ -107,6 +126,8 @@ export class Bar extends BaseG2Chart {
         x: {
           title: false, // x[0].name,
           labelFontSize: 12,
+          labelFill: '#7a89a0',
+          labelFontWeight: 400,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,
@@ -119,6 +140,8 @@ export class Bar extends BaseG2Chart {
         y: {
           title: false, // y[0].name,
           labelFontSize: 12,
+          labelFill: '#7a89a0',
+          labelFontWeight: 400,
           labelAutoHide: {
             type: 'hide',
             keepHeader: true,
@@ -141,7 +164,7 @@ export class Bar extends BaseG2Chart {
         },
       },
       interaction: {
-        elementHighlight: { background: true, region: true },
+        elementHighlight: { background: true },
         tooltip: { series: series.length > 0, shared: true },
       },
       tooltip: (data: any) => {
@@ -198,7 +221,7 @@ export class Bar extends BaseG2Chart {
                 style: {
                   fontSize: 12,
                   fontWeight: 600,
-                  fill: '#1b2a41',
+                  fill: '#15233b',
                 },
                 transform: [{ type: 'exceedAdjust' }, { type: 'overlapHide' }],
               },

@@ -20,6 +20,7 @@ from common.utils.crypto import (
 def stable_encryption_key(monkeypatch):
     monkeypatch.setattr(settings, "SENSITIVE_CONFIG_ENCRYPTION_KEY", "s" * 48)
     monkeypatch.setattr(settings, "DATASOURCE_CONFIG_ENCRYPTION_KEY", None)
+    monkeypatch.setattr(settings, "LEGACY_CONFIG_AES_KEYS", None)
 
 
 def test_sensitive_text_uses_versioned_server_side_encryption():
@@ -32,6 +33,17 @@ def test_sensitive_text_uses_versioned_server_side_encryption():
 
 def test_sensitive_text_keeps_legacy_aes_readable():
     legacy = legacy_zhishu_encrypt_for_tests("legacy-secret")
+
+    assert decrypt_sensitive_text(legacy) == "legacy-secret"
+
+
+def test_sensitive_text_reads_explicit_legacy_aes_keys(monkeypatch):
+    legacy_key = b"LegacyNeutralKey"
+    legacy = legacy_zhishu_encrypt_for_tests("legacy-secret", key=legacy_key)
+
+    assert decrypt_sensitive_text(legacy) == legacy
+
+    monkeypatch.setattr(settings, "LEGACY_CONFIG_AES_KEYS", legacy_key.decode("utf-8"))
 
     assert decrypt_sensitive_text(legacy) == "legacy-secret"
 

@@ -80,11 +80,11 @@ const handleDefaultChatChange = (val: any) => {
 
 <style lang="less">
 .chat-type_select.chat-type_select {
-  padding: 4px 0;
-  width: 120px !important;
-  min-width: 120px !important;
-  box-shadow: var(--workspace-card-shadow, 0 8px 24px rgba(17, 37, 73, 0.07));
-  border: 1px solid var(--workspace-border, #dce6f2);
+  padding: 6px 0;
+  width: 136px !important;
+  min-width: 136px !important;
+  box-shadow: 0 18px 44px rgba(24, 46, 86, 0.12);
+  border: 1px solid rgba(211, 224, 241, 0.92);
   background: var(--workspace-card-bg, #ffffff);
 
   .popover {
@@ -95,16 +95,17 @@ const handleDefaultChatChange = (val: any) => {
 
       .title {
         width: 100%;
-        height: 32px;
+        height: 30px;
         margin-bottom: 2px;
         display: flex;
         align-items: center;
         padding-left: 8px;
-        color: var(--workspace-text-tertiary, #8a97aa);
+        color: #8797ad;
+        font-size: 12px;
       }
     }
     .popover-item {
-      height: 32px;
+      height: 34px;
       display: flex;
       align-items: center;
       padding-left: 12px;
@@ -117,7 +118,7 @@ const handleDefaultChatChange = (val: any) => {
         margin-bottom: 0;
       }
       &:hover {
-        background: var(--workspace-control-hover-bg, #e9f1ff);
+        background: #f3f7ff;
       }
 
       .model-name {
@@ -148,25 +149,25 @@ const handleDefaultChatChange = (val: any) => {
 <style lang="less" scoped>
 .chat-select_type {
   width: 40px;
-  height: 24px;
+  height: 28px;
   border-radius: 6px;
   padding-left: 4px;
   display: flex;
   align-items: center;
   cursor: pointer;
-  color: var(--workspace-text-secondary, var(--theme-text-secondary));
+  color: #6d7c93;
 
   .expand {
     margin-left: 4px;
   }
 
   &:hover {
-    background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
-    color: var(--workspace-text-primary, var(--theme-text-primary));
+    background: #f1f6ff;
+    color: #263a59;
   }
 
   &.active {
-    background: var(--workspace-primary-soft-bg, var(--ed-color-primary-1a));
+    background: #eaf1ff;
     color: var(--ed-color-primary, #2f6bff);
   }
 }

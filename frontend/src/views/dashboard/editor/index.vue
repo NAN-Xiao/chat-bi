@@ -15,7 +15,7 @@ import { useDatasourceContextStore } from '@/stores/datasourceContext'
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
-const { componentData, canvasViewInfo, fullscreenFlag, baseMatrixCount } =
+const { componentData, canvasViewInfo, fullscreenFlag, baseMatrixCount, dashboardInfo } =
   storeToRefs(dashboardStore)
 
 const dataInitState = ref(true)
@@ -95,6 +95,7 @@ onMounted(async () => {
       pid: state.routerPid,
       datasource: state.datasource,
       canEdit: true,
+      canShare: false,
     })
   } else if (state.resourceId) {
     dataInitState.value = false
@@ -131,6 +132,7 @@ const findPositionX = (width: number) => {
         ref="dashboardEditorInnerRef"
         :canvas-component-data="componentData"
         :canvas-view-info="canvasViewInfo"
+        :dashboard-info="dashboardInfo"
       >
       </DashboardEditor>
     </div>

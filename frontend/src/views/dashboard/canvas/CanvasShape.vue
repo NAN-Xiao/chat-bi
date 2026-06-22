@@ -16,6 +16,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  canShare: {
+    type: Boolean,
+    default: false,
+  },
   active: {
     type: Boolean,
     default: false,
@@ -57,6 +61,9 @@ const shapeClick = (e: MouseEvent) => {
 }
 
 const dragDandleValue = computed(() => props.canEdit && !props.configItem.editing)
+const componentBarActive = computed(
+  () => props.active && (props.canEdit || (props.canShare && props.configItem.component === 'SQView'))
+)
 </script>
 
 <template>
@@ -76,7 +83,9 @@ const dragDandleValue = computed(() => props.canEdit && !props.configItem.editin
   >
     <component-bar
       :config-item="configItem"
-      :active="active && canEdit"
+      :active="componentBarActive"
+      :can-edit="canEdit"
+      :can-share="canShare"
       :show-position="'canvas'"
       :canvas-id="canvasId"
       @enlarge-view="() => emits('enlargeView')"

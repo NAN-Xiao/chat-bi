@@ -131,8 +131,9 @@ defineExpose({
   height: 100%;
   width: 100%;
   border-radius: 8px;
-  background: var(--workspace-card-bg, #ffffff);
-  border: 1px solid var(--workspace-border, #dce6f2);
-  box-shadow: var(--workspace-card-shadow, 0 8px 24px rgba(17, 37, 73, 0.07));
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+  border: 1px solid rgba(217, 228, 243, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 </style>

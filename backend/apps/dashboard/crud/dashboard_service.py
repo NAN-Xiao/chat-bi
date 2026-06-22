@@ -61,6 +61,13 @@ def _can_edit_dashboard(session: SessionDep, current_user: CurrentUser, dashboar
     )
 
 
+def _can_share_dashboard(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    datasource_id = _effective_dashboard_datasource(dashboard)
+    if datasource_id is not None:
+        return has_datasource_access(session, current_user, datasource_id)
+    return _can_view_legacy_dashboard(current_user, dashboard)
+
+
 def _can_view_legacy_dashboard(current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
     return is_system_admin(current_user) or str(dashboard.create_by) == _user_id(current_user)
 
@@ -86,6 +93,11 @@ def _require_create_permission(
 def _require_edit_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):
     if not _can_edit_dashboard(session, current_user, dashboard):
         raise HTTPException(status_code=403, detail="You do not have permission to modify this dashboard")
+
+
+def _require_share_permission(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard):
+    if not _can_share_dashboard(session, current_user, dashboard):
+        raise HTTPException(status_code=403, detail="You do not have permission to share this dashboard")
 
 
 def _normalize_datasource_id(datasource) -> int | None:
@@ -386,6 +398,7 @@ def _dashboard_base_response(
         create_time=record.create_time,
         update_time=record.update_time,
         can_edit=_can_edit_dashboard(session, current_user, record),
+        can_share=_can_share_dashboard(session, current_user, record),
         is_shared=active_share is not None,
         share_id=active_share.id if active_share else None,
     )
@@ -532,6 +545,7 @@ def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
     result_dict['create_name'] = creator
     result_dict['update_name'] = updater
     result_dict['can_edit'] = _can_edit_dashboard(session, current_user, record)
+    result_dict['can_share'] = _can_share_dashboard(session, current_user, record)
 
     canvas_view_obj = _parse_canvas_view_info(result_dict.get('canvas_view_info'))
     for item in canvas_view_obj.values():
@@ -696,7 +710,7 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
 
 def share_resource(session: SessionDep, user: CurrentUser, request: DashboardShareRequest):
     record = _load_dashboard_or_404(session, request.dashboard_id)
-    _require_edit_permission(session, user, record)
+    _require_share_permission(session, user, record)
     datasource_id = _effective_dashboard_datasource(record)
     if datasource_id is not None:
         _ensure_datasource_access(session, user, datasource_id)

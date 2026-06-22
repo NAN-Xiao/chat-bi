@@ -47,7 +47,6 @@ const userStore = useUserStore()
 const keywords = ref('')
 const oldKeywords = ref('')
 const searchLoading = ref(false)
-const currentType = ref('GENERATE_SQL')
 const options = ref<any[]>([])
 const aiModelOptions = ref<any[]>([])
 const fieldList = ref<any[]>([])
@@ -70,7 +69,7 @@ const state = reactive<any>({
 
 const defaultForm: AgentForm = {
   id: null,
-  type: null,
+  type: 'GENERATE_SQL',
   prompt: null,
   description: null,
   target_scope: 'SMART_QA',
@@ -86,6 +85,34 @@ const pageForm = ref<AgentForm>(cloneDeep(defaultForm))
 
 const filterOption = ref<any[]>([
   {
+    type: 'enum',
+    option: [],
+    field: 'prompt_type',
+    title: t('prompt.agent_capability_type'),
+    operate: 'in',
+  },
+  {
+    type: 'enum',
+    option: [],
+    field: 'target_scope',
+    title: t('prompt.available_entry'),
+    operate: 'in',
+  },
+  {
+    type: 'enum',
+    option: [],
+    field: 'visibility_scope',
+    title: t('prompt.agent_visibility'),
+    operate: 'in',
+  },
+  {
+    type: 'enum',
+    option: [],
+    field: 'active',
+    title: t('prompt.active_status'),
+    operate: 'in',
+  },
+  {
     type: 'select',
     option: [],
     field: 'dslist',
@@ -95,7 +122,33 @@ const filterOption = ref<any[]>([
   },
 ])
 
-const typeTitle = (type = currentType.value) => {
+const promptTypeOptions = [
+  { label: t('prompt.ask_sql'), value: 'GENERATE_SQL' },
+  { label: t('prompt.data_analysis'), value: 'ANALYSIS' },
+  { label: t('prompt.data_prediction'), value: 'PREDICT_DATA' },
+]
+
+const promptTypeFilterOptions = promptTypeOptions.map((item) => ({ id: item.value, name: item.label }))
+const targetScopeFilterOptions = [
+  { id: 'SMART_QA', name: t('prompt.target_scope_smart_qa') },
+  { id: 'ANALYSIS_ASSISTANT', name: t('prompt.target_scope_analysis_assistant') },
+  { id: 'ALL', name: t('prompt.target_scope_all') },
+]
+const visibilityScopeFilterOptions = [
+  { id: 'ADMIN_PUBLIC', name: t('access.admin_agent') },
+  { id: 'USER_PRIVATE', name: t('access.my_agent') },
+]
+const activeFilterOptions = [
+  { id: 'true', name: t('prompt.active_enabled') },
+  { id: 'false', name: t('prompt.active_disabled') },
+]
+
+filterOption.value[0].option = promptTypeFilterOptions
+filterOption.value[1].option = targetScopeFilterOptions
+filterOption.value[2].option = visibilityScopeFilterOptions
+filterOption.value[3].option = activeFilterOptions
+
+const typeTitle = (type?: string | null) => {
   if (type === 'GENERATE_SQL') return t('prompt.ask_sql')
   if (type === 'ANALYSIS') return t('prompt.data_analysis')
   if (type === 'PREDICT_DATA') return t('prompt.data_prediction')
@@ -105,7 +158,7 @@ const typeTitle = (type = currentType.value) => {
 const loadDatasources = () => {
   datasourceApi.list().then((res: any) => {
     options.value = res || []
-    filterOption.value[0].option = [...(res || [])]
+    filterOption.value[4].option = [...(res || [])]
   })
 }
 
@@ -121,7 +174,7 @@ onMounted(() => {
   search()
 })
 
-const getFileName = () => `${typeTitle()}.xlsx`
+const getFileName = () => `${t('prompt.customize_prompt_words')}.xlsx`
 
 const configParams = () => {
   const params = new URLSearchParams()
@@ -139,6 +192,11 @@ const configParams = () => {
   return query ? `?${query}` : ''
 }
 
+const configSearchParams = () => {
+  const params = new URLSearchParams(configParams().replace(/^\?/, ''))
+  return params
+}
+
 const search = ($event: any = {}) => {
   if ($event?.isComposing) {
     return
@@ -146,7 +204,7 @@ const search = ($event: any = {}) => {
   searchLoading.value = true
   oldKeywords.value = keywords.value
   promptApi
-    .getList(pageInfo.currentPage, pageInfo.pageSize, currentType.value, configParams())
+    .getList(pageInfo.currentPage, pageInfo.pageSize, 'ALL_TYPES', configParams())
     .then((res: any) => {
       fieldList.value = res.data
       pageInfo.total = res.total_count
@@ -157,7 +215,7 @@ const search = ($event: any = {}) => {
 }
 
 const exportExcel = () => {
-  const title = typeTitle()
+  const title = t('prompt.customize_prompt_words')
   ElMessageBox.confirm(t('prompt.export_hint', { msg: pageInfo.total, type: title }), {
     confirmButtonType: 'primary',
     confirmButtonText: t('professional.export'),
@@ -166,12 +224,8 @@ const exportExcel = () => {
     autofocus: false,
   }).then(() => {
     searchLoading.value = true
-    const params: Record<string, string> = {}
-    if (keywords.value) {
-      params.name = keywords.value
-    }
     promptApi
-      .export2Excel(currentType.value, params)
+      .export2Excel('ALL_TYPES', configSearchParams())
       .then((res) => {
         const blob = new Blob([res], {
           type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -240,6 +294,12 @@ const validateDatasource = (_: any, value: any, callback: any) => {
 }
 
 const rules = {
+  type: [
+    {
+      required: true,
+      message: t('datasource.please_enter') + t('common.empty') + t('prompt.agent_type'),
+    },
+  ],
   name: [
     {
       required: true,
@@ -287,7 +347,6 @@ const saveHandler = () => {
 
 const editHandler = (row: any) => {
   pageForm.value = cloneDeep(defaultForm)
-  pageForm.value.type = currentType.value
   if (row) {
     pageForm.value = cloneDeep({
       description: null,
@@ -339,12 +398,6 @@ const onRowFormClose = () => {
 
 const handleDatasourceChange = () => {
   termFormRef.value.validateField('datasource_ids')
-}
-
-const typeChange = (val: string) => {
-  currentType.value = val
-  pageInfo.currentPage = 1
-  search()
 }
 
 const fillFilterText = () => {
@@ -400,6 +453,11 @@ const targetScopeText = (scope?: string | null) => {
   return t('prompt.target_scope_smart_qa')
 }
 
+const sourceText = (row: any) => {
+  if (row?.visibility_scope === 'USER_PRIVATE') return t('access.my_agent')
+  return t('access.admin_agent')
+}
+
 const canManageAgent = (row: any) => {
   return row.can_manage === true || userStore.isSystemManagerUser
 }
@@ -418,29 +476,6 @@ const copyCode = () => {
 <template>
   <div class="prompt">
     <div class="tool-left">
-      <div class="btn-select">
-        <el-button
-          :class="[currentType === 'GENERATE_SQL' && 'is-active']"
-          text
-          @click="typeChange('GENERATE_SQL')"
-        >
-          {{ $t('prompt.ask_sql') }}
-        </el-button>
-        <el-button
-          :class="[currentType === 'ANALYSIS' && 'is-active']"
-          text
-          @click="typeChange('ANALYSIS')"
-        >
-          {{ $t('prompt.data_analysis') }}
-        </el-button>
-        <el-button
-          :class="[currentType === 'PREDICT_DATA' && 'is-active']"
-          text
-          @click="typeChange('PREDICT_DATA')"
-        >
-          {{ $t('prompt.data_prediction') }}
-        </el-button>
-      </div>
       <div class="tool-row">
         <el-input
           v-model="keywords"
@@ -462,7 +497,7 @@ const copyCode = () => {
           {{ $t('professional.export_all') }}
         </el-button>
         <Uploader
-          :upload-path="`/system/custom_prompt/${currentType}/uploadExcel`"
+          :upload-path="`/system/custom_prompt/ALL_TYPES/uploadExcel`"
           :template-path="`/system/custom_prompt/template`"
           :template-name="getFileName()"
           @upload-finished="search"
@@ -524,7 +559,13 @@ const copyCode = () => {
                   <span class="value ellipsis" :title="modelText(item)">{{ modelText(item) }}</span>
                 </div>
                 <div class="type-value">
-                  <span class="type">{{ $t('prompt.target_scope') }}</span>
+                  <span class="type">{{ $t('prompt.agent_visibility') }}</span>
+                  <span class="value ellipsis" :title="sourceText(item)">
+                    {{ sourceText(item) }}
+                  </span>
+                </div>
+                <div class="type-value">
+                  <span class="type">{{ $t('prompt.available_entry') }}</span>
                   <span class="value ellipsis" :title="targetScopeText(item.target_scope)">
                     {{ targetScopeText(item.target_scope) }}
                   </span>
@@ -632,6 +673,17 @@ const copyCode = () => {
       class="form-content_error"
       @submit.prevent
     >
+      <el-form-item prop="type" :label="t('prompt.agent_capability_type')">
+        <el-select v-model="pageForm.type" style="width: 100%">
+          <el-option
+            v-for="item in promptTypeOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </el-form-item>
+
       <el-form-item prop="name" :label="t('prompt.prompt_word_name')">
         <el-input
           v-model="pageForm.name"
@@ -671,7 +723,7 @@ const copyCode = () => {
         </el-select>
       </el-form-item>
 
-      <el-form-item prop="target_scope" :label="t('prompt.target_scope')">
+      <el-form-item prop="target_scope" :label="t('prompt.available_entry')">
         <el-radio-group v-model="pageForm.target_scope">
           <el-radio :value="'SMART_QA'">{{ $t('prompt.target_scope_smart_qa') }}</el-radio>
           <el-radio :value="'ANALYSIS_ASSISTANT'">
@@ -761,7 +813,7 @@ const copyCode = () => {
           {{ modelText(pageForm) }}
         </div>
       </el-form-item>
-      <el-form-item :label="t('prompt.target_scope')">
+      <el-form-item :label="t('prompt.available_entry')">
         <div class="content">
           {{ targetScopeText(pageForm.target_scope) }}
         </div>
@@ -823,40 +875,9 @@ const copyCode = () => {
   .tool-left {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 16px;
     margin-bottom: 16px;
-
-    .btn-select {
-      height: 32px;
-      display: inline-flex;
-      padding: 0 4px;
-      align-items: center;
-      justify-content: center;
-      background: #ffffff;
-      border: 1px solid var(--ed-border-color);
-      border-radius: 6px;
-      flex: none;
-
-      .is-active {
-        background: var(--ed-color-primary-1a, #1cba901a);
-        font-weight: 500;
-      }
-
-      .ed-button:not(.is-active) {
-        color: #1f2329;
-      }
-
-      .ed-button.is-text {
-        height: 24px;
-        padding: 0 8px;
-        line-height: 22px;
-      }
-
-      .ed-button + .ed-button {
-        margin-left: 4px;
-      }
-    }
   }
 
   .tool-row {

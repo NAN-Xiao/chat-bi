@@ -10,6 +10,7 @@ Scope: entire repository.
   Keep this workspace self-contained; do not point dependencies, runtime data, or services at another clone.
 - Before retrying random ports or passwords, use the known-good local app database settings from the repo root `.env`:
   `POSTGRES_SERVER=127.0.0.1`, `POSTGRES_PORT=15432`, `POSTGRES_DB=zhishu_bi_single_ha`, `POSTGRES_USER=root`, `POSTGRES_PASSWORD=Password123@pg`.
+- Treat `127.0.0.1:15432/zhishu_bi_single_ha` as the correct local app system database for this workspace even if the PostgreSQL process/data directory appears to come from another local clone. Do not change the app database port to avoid that path; instead keep this workspace's application services on non-conflicting ports. In particular, avoid colliding with the sibling `D:\work\AI\SQLBot` runtime, which may use frontend `5173`, backend `8000`, MCP `8001`, and Nginx `8080`; this workspace should stay on frontend `5174`, backend `8010`, MCP `8011`, and Nginx `8081` unless the user explicitly requests otherwise.
 - Do not confuse the local app system database with the SLG BI demo datasources:
   the current single-user HA branch system database is PostgreSQL `zhishu_bi_single_ha` on `127.0.0.1:15432` with user `root` / password `Password123@pg`;
   the seeded BI demo datasources are PostgreSQL on `127.0.0.1:5432` with user `postgres` / password `111111`,

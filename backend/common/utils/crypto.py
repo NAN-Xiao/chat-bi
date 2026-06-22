@@ -8,8 +8,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from common.core.config import settings
 
 _AES_KEY = b"Zhishu1234567890"
-_LEGACY_AES_KEYS = (b"SQLBot1234567890",)
 _FERNET_PREFIX = "fernet:v1:"
+_AES_KEY_SIZES = {16, 24, 32}
 
 
 def _encryption_secret() -> str:
@@ -25,8 +25,33 @@ def _fernet() -> Fernet:
     return Fernet(derived)
 
 
-def _legacy_ecb_encrypt(text: str) -> str:
-    cipher = AES.new(_AES_KEY, AES.MODE_ECB)
+def _configured_legacy_aes_keys() -> tuple[bytes, ...]:
+    raw_keys = settings.LEGACY_CONFIG_AES_KEYS
+    if not raw_keys:
+        return ()
+
+    keys: list[bytes] = []
+    for raw_key in raw_keys.split(","):
+        value = raw_key.strip()
+        if not value:
+            continue
+        key = (
+            base64.b64decode(value.removeprefix("base64:"))
+            if value.startswith("base64:")
+            else value.encode("utf-8")
+        )
+        if len(key) not in _AES_KEY_SIZES:
+            raise ValueError("LEGACY_CONFIG_AES_KEYS entries must be valid AES key sizes")
+        keys.append(key)
+    return tuple(keys)
+
+
+def legacy_config_aes_keys() -> tuple[bytes, ...]:
+    return _configured_legacy_aes_keys()
+
+
+def _legacy_ecb_encrypt(text: str, key: bytes = _AES_KEY) -> str:
+    cipher = AES.new(key, AES.MODE_ECB)
     encrypted = cipher.encrypt(pad((text or "").encode("utf-8"), AES.block_size))
     return base64.b64encode(encrypted).decode("utf-8")
 
@@ -41,7 +66,7 @@ def _legacy_ecb_decrypt(text: str) -> str:
     try:
         return _legacy_ecb_decrypt_with_key(text, _AES_KEY)
     except Exception:
-        for legacy_key in _LEGACY_AES_KEYS:
+        for legacy_key in _configured_legacy_aes_keys():
             try:
                 return _legacy_ecb_decrypt_with_key(text, legacy_key)
             except Exception:
@@ -94,5 +119,5 @@ async def zhishu_encrypt(text: str | None) -> str | None:
     return encrypt_sensitive_text(text)
 
 
-def legacy_zhishu_encrypt_for_tests(text: str) -> str:
-    return _legacy_ecb_encrypt(text)
+def legacy_zhishu_encrypt_for_tests(text: str, key: bytes = _AES_KEY) -> str:
+    return _legacy_ecb_encrypt(text, key)

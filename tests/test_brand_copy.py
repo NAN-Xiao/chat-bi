@@ -12,6 +12,72 @@ JSON_COPY_FILES = [
     ROOT / "frontend/src/i18n/ko-KR.json",
 ]
 
+SOURCE_FINGERPRINT_SCAN_PATHS = [
+    ROOT / "backend",
+    ROOT / "frontend/src",
+    ROOT / "frontend/index.html",
+    ROOT / "frontend/embedded.html",
+    ROOT / "frontend/public/vite-zhishu.svg",
+    ROOT / "docs",
+    ROOT / "installer",
+    ROOT / "tools",
+    ROOT / "tests",
+    ROOT / "README.md",
+    ROOT / "LICENSE",
+    ROOT / "Dockerfile",
+    ROOT / "Dockerfile-base",
+    ROOT / "docker-compose.yaml",
+    ROOT / "start.sh",
+]
+
+TEXT_SUFFIXES = {
+    "",
+    ".conf",
+    ".css",
+    ".html",
+    ".ini",
+    ".js",
+    ".json",
+    ".md",
+    ".py",
+    ".ps1",
+    ".sh",
+    ".svg",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".vue",
+    ".yaml",
+    ".yml",
+}
+
+SKIP_DIR_NAMES = {
+    ".git",
+    ".pytest_cache",
+    ".venv",
+    "__pycache__",
+    "node_modules",
+}
+
+FORBIDDEN_SOURCE_FINGERPRINTS = [
+    "".join(("Data", "Ease")),
+    "".join(("data", "ease")),
+    "".join(("DATA", "EASE")),
+    "".join(("FIT", "2", "CLOUD")),
+    "".join(("fit", "2", "cloud")),
+    "飞" + "致" + "云",
+    "".join(("SQL", "Bot")),
+    "".join(("sql", "bot")),
+    "".join(("SQL", "BOT")),
+    "".join(("SQL", "Bot", "1234567890")),
+    "".join(("1", "Panel")),
+    "".join(("Max", "KB")),
+    "".join(("Jump", "Server")),
+    "".join(("Meter", "Sphere")),
+    "".join(("Cord", "ys")),
+    "".join(("f", "2", "c_license")),
+]
+
 EXPECTED_COPY_SNIPPETS = {
     "frontend/index.html": ["<title>星通智数</title>"],
     "frontend/embedded.html": ["<title>星通智数</title>"],
@@ -45,12 +111,12 @@ EXPECTED_COPY_SNIPPETS = {
     "installer/zhishu/templates/zhishu.conf": ['PROJECT_NAME="星通智数"'],
     "README.md": [
         "星通智数是一款基于大语言模型和 RAG 的智能报表系统",
-        "快速部署星通智数",
+        "安装部署",
         "基于星通智数的源代码",
     ],
     "docs/README.en.md": [
         "星通智数 is an intelligent data query system based on large language models and RAG.",
-        "quickly deploy 星通智数",
+        "Installation and Deployment",
         "based on the 星通智数 source code",
     ],
     "installer/sctl": [
@@ -91,13 +157,42 @@ def _flatten_json_values(value):
         yield value
 
 
+def _source_files_to_scan():
+    for scan_path in SOURCE_FINGERPRINT_SCAN_PATHS:
+        if scan_path.is_file():
+            yield scan_path
+            continue
+        if not scan_path.exists():
+            continue
+        for file_path in scan_path.rglob("*"):
+            if not file_path.is_file():
+                continue
+            if any(part in SKIP_DIR_NAMES for part in file_path.parts):
+                continue
+            if file_path.suffix not in TEXT_SUFFIXES:
+                continue
+            yield file_path
+
+
 def test_i18n_visible_copy_uses_new_brand_name():
     offenders = []
     for file_path in JSON_COPY_FILES:
         data = json.loads(file_path.read_text(encoding="utf-8"))
         for value in _flatten_json_values(data):
-            if "SQLBot" in value:
-                offenders.append(f"{file_path.relative_to(ROOT)}: {value}")
+            for fingerprint in FORBIDDEN_SOURCE_FINGERPRINTS:
+                if fingerprint in value:
+                    offenders.append(f"{file_path.relative_to(ROOT)}: {value}")
+
+    assert offenders == []
+
+
+def test_source_files_do_not_contain_upstream_fingerprints():
+    offenders = []
+    for file_path in _source_files_to_scan():
+        content = file_path.read_text(encoding="utf-8", errors="ignore")
+        for fingerprint in FORBIDDEN_SOURCE_FINGERPRINTS:
+            if fingerprint in content:
+                offenders.append(f"{file_path.relative_to(ROOT)}: {fingerprint}")
 
     assert offenders == []
 

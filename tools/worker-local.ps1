@@ -2,6 +2,11 @@ param(
     [ValidateSet("start", "stop", "restart", "status")]
     [string]$Action = "start",
     [int]$Workers = 1,
+    [string]$PostgresHost = "127.0.0.1",
+    [int]$PostgresPort = 15432,
+    [string]$PostgresDatabase = "zhishu_bi_single_ha",
+    [string]$PostgresUser = "root",
+    [string]$PostgresPassword = "Password123@pg",
     [string]$RedisHost = "127.0.0.1",
     [int]$RedisPort = 6379,
     [string]$QueueName = "default"
@@ -32,11 +37,11 @@ function Set-WorkerEnvironment {
     $env:SECRET_KEY = $localSecretKey
     $env:SENSITIVE_CONFIG_ENCRYPTION_KEY = $localSensitiveConfigKey
 
-    $env:POSTGRES_SERVER = "127.0.0.1"
-    $env:POSTGRES_PORT = "15432"
-    $env:POSTGRES_DB = "zhishu_bi_single_ha"
-    $env:POSTGRES_USER = "root"
-    $env:POSTGRES_PASSWORD = "Password123@pg"
+    $env:POSTGRES_SERVER = $PostgresHost
+    $env:POSTGRES_PORT = [string]$PostgresPort
+    $env:POSTGRES_DB = $PostgresDatabase
+    $env:POSTGRES_USER = $PostgresUser
+    $env:POSTGRES_PASSWORD = $PostgresPassword
 
     $env:CACHE_TYPE = "redis"
     $env:REDIS_HOST = $RedisHost

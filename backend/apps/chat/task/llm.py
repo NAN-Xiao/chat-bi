@@ -21,6 +21,8 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
 from sqlalchemy import and_, select
 from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlparse.sql import Identifier, IdentifierList, TokenList
+from sqlparse.tokens import DML, Keyword
 from sqlmodel import Session
 
 from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
@@ -81,6 +83,172 @@ i18n = I18n()
 
 APP_SYSTEM_MESSAGE_KEY = "app_system"
 APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
+MULTI_METRIC_CHART_TYPES = {"column", "bar", "line"}
+NON_METRIC_OUTPUT_KEYWORDS = {
+    "id",
+    "key",
+    "code",
+    "name",
+    "title",
+    "label",
+    "date",
+    "time",
+    "day",
+    "week",
+    "month",
+    "year",
+    "quarter",
+    "channel",
+    "category",
+    "type",
+    "status",
+    "state",
+    "group",
+    "segment",
+    "dimension",
+    "rank",
+    "order",
+    "sort",
+}
+SUPPORT_METRIC_OUTPUT_KEYWORDS = {
+    "start_date",
+    "end_date",
+    "max_date",
+    "min_date",
+    "rank",
+    "rn",
+    "row_num",
+    "row_number",
+    "sort",
+    "sort_key",
+    "order_key",
+    "is_total",
+}
+
+
+def _strip_identifier_quotes(value: str) -> str:
+    text = str(value or "").strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'`', '"', "'"}:
+        return text[1:-1]
+    if text.startswith("[") and text.endswith("]"):
+        return text[1:-1]
+    return text
+
+
+def _normalize_chart_field_value(value: Any) -> str:
+    return _strip_identifier_quotes(str(value or "")).lower()
+
+
+def _iter_identifier_aliases(token: TokenList) -> list[str]:
+    if isinstance(token, IdentifierList):
+        return [_extract_identifier_alias(identifier) for identifier in token.get_identifiers()]
+    if isinstance(token, Identifier):
+        return [_extract_identifier_alias(token)]
+    return []
+
+
+def _extract_identifier_alias(identifier: Identifier) -> str:
+    alias = identifier.get_alias()
+    if alias:
+        return _strip_identifier_quotes(alias)
+    name = identifier.get_name()
+    if name:
+        return _strip_identifier_quotes(name)
+    return _strip_identifier_quotes(str(identifier))
+
+
+def _extract_outer_select_aliases(sql: str) -> list[str]:
+    """Return output aliases from the outermost SELECT list."""
+    try:
+        statements = [statement for statement in sqlparse.parse(sql or "") if str(statement).strip()]
+    except Exception:
+        return []
+    if not statements:
+        return []
+
+    statement = statements[-1]
+    aliases: list[str] = []
+    in_select = False
+    for token in statement.tokens:
+        if token.is_whitespace:
+            continue
+        if token.ttype is DML and token.normalized.upper() == "SELECT":
+            in_select = True
+            continue
+        if not in_select:
+            continue
+        if token.ttype is Keyword and token.normalized.upper() in {
+            "FROM",
+            "INTO",
+        }:
+            break
+        if token.ttype is Keyword and token.normalized.upper().startswith("FROM"):
+            break
+        aliases.extend(alias for alias in _iter_identifier_aliases(token) if alias)
+    return aliases
+
+
+def _looks_like_numeric_string(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    text = value.strip().replace(",", "")
+    if text.endswith("%"):
+        text = text[:-1]
+    if not text:
+        return False
+    try:
+        float(text)
+        return True
+    except ValueError:
+        return False
+
+
+def _is_numeric_chart_value(value: Any) -> bool:
+    if value is None or value == "":
+        return False
+    if isinstance(value, bool):
+        return False
+    return isinstance(value, (int, float)) or _looks_like_numeric_string(value)
+
+
+def _get_normalized_row_value(row: dict[str, Any], field: str) -> tuple[bool, Any]:
+    if field in row:
+        return True, row.get(field)
+    normalized_field = _normalize_chart_field_value(field)
+    for key, value in row.items():
+        if _normalize_chart_field_value(key) == normalized_field:
+            return True, value
+    return False, None
+
+
+def _field_has_numeric_values(field: str, rows: list[dict[str, Any]]) -> bool:
+    checked = 0
+    for row in rows[:50]:
+        if not isinstance(row, dict):
+            continue
+        exists, value = _get_normalized_row_value(row, field)
+        if not exists:
+            continue
+        if value is None or value == "":
+            continue
+        checked += 1
+        if not _is_numeric_chart_value(value):
+            return False
+    return checked > 0
+
+
+def _is_support_output_field(field: str) -> bool:
+    normalized = _normalize_chart_field_value(field)
+    if normalized in SUPPORT_METRIC_OUTPUT_KEYWORDS:
+        return True
+    return normalized.endswith("_id") or normalized.endswith("_key") or normalized.endswith("_sort")
+
+
+def _is_likely_dimension_output_field(field: str) -> bool:
+    normalized = _normalize_chart_field_value(field)
+    if normalized in NON_METRIC_OUTPUT_KEYWORDS:
+        return True
+    return normalized.endswith("_name") or normalized.endswith("_label") or normalized.endswith("_type")
 
 
 def _is_app_system_message(message: dict[str, Any]) -> bool:
@@ -274,7 +442,7 @@ class LLMService:
 
         chat_params: list[SysArgModel] = await get_groups(args[0], "chat")
         for config in chat_params:
-            if config.pkey in {'chat.zhishu_name', 'chat.sqlbot_name'}:
+            if config.pkey == 'chat.zhishu_name':
                 if config.pval.strip():
                     instance.chat_question.zhishu_name = config.pval
             if config.pkey == 'chat.limit_rows':
@@ -1076,6 +1244,62 @@ class LLMService:
 
         return brief
 
+    def _get_saved_chart_rows(self, session: Session) -> list[dict[str, Any]]:
+        try:
+            data_obj = get_chat_chart_data(session, self.record.id)
+            if not data_obj and self.record.data:
+                data_obj = orjson.loads(self.record.data)
+        except Exception:
+            return []
+
+        rows = data_obj.get("data") if isinstance(data_obj, dict) else None
+        if not isinstance(rows, list):
+            return []
+        return [row for row in rows if isinstance(row, dict)]
+
+    def _complete_multi_metric_chart_axis(self, session: Session, chart: Dict[str, Any]) -> None:
+        chart_type = chart.get("type")
+        axis = chart.get("axis")
+        if chart_type not in MULTI_METRIC_CHART_TYPES or not isinstance(axis, dict):
+            return
+        if axis.get("series") or not axis.get("x") or not axis.get("y"):
+            return
+
+        rows = self._get_saved_chart_rows(session)
+        if not rows:
+            return
+
+        aliases = _extract_outer_select_aliases(self.chat_question.sql or "")
+        if not aliases:
+            return
+
+        x_axis = axis.get("x") or {}
+        x_value = _normalize_chart_field_value(x_axis.get("value"))
+        y_axis = axis.get("y")
+        y_items = y_axis if isinstance(y_axis, list) else [y_axis]
+        y_items = [item for item in y_items if isinstance(item, dict) and item.get("value")]
+        y_values = {_normalize_chart_field_value(item.get("value")) for item in y_items}
+        if not y_values:
+            return
+
+        row_fields = {_normalize_chart_field_value(key) for row in rows[:10] for key in row.keys()}
+        numeric_aliases: list[str] = []
+        for alias in aliases:
+            field = _normalize_chart_field_value(alias)
+            if not field or field == x_value or field in y_values or field not in row_fields:
+                continue
+            if _is_support_output_field(field) or _is_likely_dimension_output_field(field):
+                continue
+            if _field_has_numeric_values(field, rows):
+                numeric_aliases.append(field)
+
+        if not numeric_aliases:
+            return
+
+        for field in numeric_aliases:
+            y_items.append({"name": field, "value": field})
+        axis["y"] = y_items
+
     def check_save_sql(self, session: Session, res: str, operate: OperationEnum) -> str:
         sql, *_ = self.check_sql(session=session, res=res, operate=operate)
         save_sql(session=session, sql=sql, record_id=self.record.id)
@@ -1133,6 +1357,7 @@ class LLMService:
                         elif isinstance(multi_quota['value'], str):
                             # 如果是字符串，也转换为小写
                             multi_quota['value'] = multi_quota['value'].lower()
+                self._complete_multi_metric_chart_axis(session, chart)
             elif data['type'] == 'error':
                 message = data['reason']
                 error = True
