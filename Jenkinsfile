@@ -8,7 +8,7 @@ pipeline {
   }
 
   parameters {
-    string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Git 分支')
+    string(name: 'BRANCH_NAME', defaultValue: 'jenkins', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
   }
 
@@ -88,8 +88,8 @@ pipeline {
           mkdir -p "$NGINX_ROOT"
           docker cp "$tmp_container:/opt/sqlbot/frontend/dist/." "$NGINX_ROOT"
           chmod o+rx "$APP_HOME" "$APP_HOME/nginx" "$NGINX_ROOT" || true
-          find "$NGINX_ROOT" -type d -exec chmod o+rx {} \; || true
-          find "$NGINX_ROOT" -type f -exec chmod o+r {} \; || true
+          find "$NGINX_ROOT" -type d -exec chmod o+rx {} + || true
+          find "$NGINX_ROOT" -type f -exec chmod o+r {} + || true
           find "$NGINX_ROOT" -maxdepth 2 -type f | head
         '''
       }
