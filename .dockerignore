@@ -21,7 +21,6 @@
 backend/app.egg-info
 backend/.gitignore
 backend/README.md
-backend/scripts
 
 # Node / frontend build output
 **/node_modules
