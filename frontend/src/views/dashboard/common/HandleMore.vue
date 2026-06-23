@@ -71,6 +71,7 @@ const emit = defineEmits(['handleCommand'])
 
   .ed-dropdown-menu {
     min-width: 120px;
+    padding: 4px;
   }
 
   .handle-icon {
@@ -85,11 +86,15 @@ const emit = defineEmits(['handleCommand'])
 
   .ed-dropdown-menu__item {
     position: relative;
+    display: flex;
+    align-items: center;
     min-width: 120px;
+    min-height: 36px;
     max-width: min(280px, calc(100vw - 24px));
     padding: 0 12px;
     background: none;
     color: #1f2329;
+    line-height: 20px;
     white-space: nowrap;
     &:focus {
       background: none;

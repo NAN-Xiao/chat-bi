@@ -10,6 +10,7 @@ from apps.datasource.api import (
     recommended_problem,
     table_relation,
 )
+from apps.knowledge_base.api import knowledge_base
 from apps.settings.api import base
 from apps.system.api import (
     aimodel,
@@ -45,6 +46,7 @@ api_router.include_router(datasource.router)
 api_router.include_router(permission.router)
 api_router.include_router(chat.router)
 api_router.include_router(dashboard_api.router)
+api_router.include_router(knowledge_base.router)
 if settings.MCP_ENABLED:
     from apps.mcp import mcp
 

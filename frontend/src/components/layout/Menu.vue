@@ -77,13 +77,12 @@ const mainMenuOrder = (path: string) => {
   if (path.includes('/access')) return 40
   if (path === '/as' || path.startsWith('/as/')) return 50
   if (path.includes('/custom-agent')) return 60
-  if (path.includes('/knowledge-base')) return 70
-  if (path.includes('/data-skills')) return 80
+  if (path.includes('/data-skills')) return 70
   if (path.includes('/dashboard-store')) return 90
   return 100
 }
 
-const tenantOptionalMainRoutes = ['/access', '/knowledge-base']
+const tenantOptionalMainRoutes = ['/access']
 const isTenantOptionalMainRoute = (path: string) =>
   tenantOptionalMainRoutes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 
@@ -228,7 +227,7 @@ const routerList = computed(() => {
       line {
         fill: none !important;
         stroke: currentColor !important;
-        stroke-width: 1.55 !important;
+        stroke-width: 1.45 !important;
         stroke-linecap: round !important;
         stroke-linejoin: round !important;
       }
@@ -236,7 +235,6 @@ const routerList = computed(() => {
 
     svg:not(.zhishu-menu-line-icon) path {
       fill: currentColor !important;
-      stroke: currentColor !important;
     }
   }
 

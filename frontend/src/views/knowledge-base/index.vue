@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cloneDeep } from 'lodash-es'
-import { Search } from '@element-plus/icons-vue'
+import { Search, UploadFilled } from '@element-plus/icons-vue'
+import type { UploadFile, UploadProps, UploadRawFile } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { knowledgeBaseApi, type KnowledgeBaseItem, type KnowledgeBaseScope } from '@/api/knowledgeBase'
 import { formatTimestamp } from '@/utils/date'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
@@ -11,66 +13,35 @@ import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 
-type KnowledgeScope = 'USER_PRIVATE' | 'ADMIN_PUBLIC' | 'PLATFORM_PUBLIC'
-
-interface KnowledgeBaseCard {
-  id: string
-  name: string
-  description: string
-  content: string
-  visibility_scope: KnowledgeScope
-  active: boolean
-  create_time: string
-  update_time: string
-}
-
-const props = withDefaults(
-  defineProps<{
-    mode?: 'personal' | 'admin'
-  }>(),
-  {
-    mode: 'personal',
-  }
-)
-
 const { t } = useI18n()
 const userStore = useUserStore()
 
-const storagePrefix = 'zhishu_knowledge_base_cards'
-const cardList = ref<KnowledgeBaseCard[]>([])
+const cardList = ref<KnowledgeBaseItem[]>([])
 const keyword = ref('')
 const formRef = ref()
 const drawerVisible = ref(false)
 const detailVisible = ref(false)
 const drawerTitle = ref('')
-const selectedCard = ref<KnowledgeBaseCard | null>(null)
+const selectedCard = ref<KnowledgeBaseItem | null>(null)
+const loading = ref(false)
 const saving = ref(false)
+const uploadFileName = ref('')
+const pendingFile = ref<File | null>(null)
+let refreshTimer: ReturnType<typeof window.setTimeout> | null = null
 
-const isAdminMode = computed(() => props.mode === 'admin')
 const isPlatformAdmin = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
 )
-const defaultScope = computed<KnowledgeScope>(() => {
-  if (!isAdminMode.value) return 'USER_PRIVATE'
+const defaultScope = computed<KnowledgeBaseScope>(() => {
   return isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC'
 })
-const pageTitle = computed(() =>
-  isAdminMode.value ? t('knowledge_base.admin_title') : t('knowledge_base.title')
-)
+const pageTitle = computed(() => t('knowledge_base.admin_title'))
 const scopeLabel = computed(() => sourceText({ visibility_scope: defaultScope.value }))
-const storageKey = computed(() => {
-  if (defaultScope.value === 'PLATFORM_PUBLIC') return `${storagePrefix}:platform`
-  if (defaultScope.value === 'ADMIN_PUBLIC') {
-    return `${storagePrefix}:workspace:${userStore.getTenantId || 'default'}`
-  }
-  return `${storagePrefix}:user:${userStore.getUid || 'local'}`
-})
 
 const defaultForm = {
-  id: '',
+  id: null as number | string | null,
   name: '',
   description: '',
-  content: '',
   active: true,
 }
 
@@ -84,13 +55,6 @@ const rules = computed(() => ({
       trigger: 'blur',
     },
   ],
-  content: [
-    {
-      required: true,
-      message: t('knowledge_base.content_required'),
-      trigger: 'blur',
-    },
-  ],
 }))
 
 const filteredCards = computed(() => {
@@ -99,26 +63,39 @@ const filteredCards = computed(() => {
   return cardList.value.filter((item) => {
     return (
       item.name.toLowerCase().includes(value) ||
-      item.description.toLowerCase().includes(value) ||
-      item.content.toLowerCase().includes(value)
+      (item.description || '').toLowerCase().includes(value) ||
+      (item.content || '').toLowerCase().includes(value) ||
+      (item.file_name || '').toLowerCase().includes(value)
     )
   })
 })
 
-function sourceText(row: Pick<KnowledgeBaseCard, 'visibility_scope'> | null) {
+function sourceText(row: Pick<KnowledgeBaseItem, 'visibility_scope'> | null) {
   if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('knowledge_base.saas_knowledge_base')
-  if (row?.visibility_scope === 'ADMIN_PUBLIC') return t('knowledge_base.workspace_knowledge_base')
-  return t('knowledge_base.my_knowledge_base')
+  return t('knowledge_base.workspace_knowledge_base')
 }
 
-function sourceClass(row: Pick<KnowledgeBaseCard, 'visibility_scope'> | null) {
+function sourceClass(row: Pick<KnowledgeBaseItem, 'visibility_scope'> | null) {
   if (row?.visibility_scope === 'PLATFORM_PUBLIC') return 'is-saas'
-  if (row?.visibility_scope === 'ADMIN_PUBLIC') return 'is-workspace'
-  return 'is-personal'
+  return 'is-workspace'
 }
 
-function statusText(row: Pick<KnowledgeBaseCard, 'active'> | null) {
+function statusText(row: Pick<KnowledgeBaseItem, 'active'> | null) {
   return row?.active === false ? t('knowledge_base.inactive') : t('knowledge_base.active')
+}
+
+function processStatusText(row: Pick<KnowledgeBaseItem, 'status'> | null) {
+  if (row?.status === 'READY') return t('knowledge_base.process_ready')
+  if (row?.status === 'FAILED') return t('knowledge_base.process_failed')
+  if (row?.status === 'PROCESSING') return t('knowledge_base.process_processing')
+  return t('knowledge_base.process_pending')
+}
+
+function processStatusClass(row: Pick<KnowledgeBaseItem, 'status'> | null) {
+  if (row?.status === 'READY') return 'is-ready'
+  if (row?.status === 'FAILED') return 'is-failed'
+  if (row?.status === 'PROCESSING') return 'is-processing'
+  return 'is-pending'
 }
 
 function formatCardTime(value?: string | null) {
@@ -126,22 +103,41 @@ function formatCardTime(value?: string | null) {
   return Number.isFinite(timestamp) ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm:ss') : '-'
 }
 
-function loadCards() {
-  try {
-    const raw = localStorage.getItem(storageKey.value)
-    const parsed = raw ? JSON.parse(raw) : []
-    cardList.value = Array.isArray(parsed) ? parsed : []
-  } catch {
-    cardList.value = []
-  }
+function clearRefreshTimer() {
+  if (!refreshTimer) return
+  window.clearTimeout(refreshTimer)
+  refreshTimer = null
 }
 
-function persistCards() {
-  localStorage.setItem(storageKey.value, JSON.stringify(cardList.value))
+function scheduleStatusRefresh() {
+  clearRefreshTimer()
+  const hasPendingStatus = cardList.value.some((item) =>
+    ['PENDING', 'PROCESSING'].includes(item.status)
+  )
+  if (!hasPendingStatus) return
+  refreshTimer = window.setTimeout(() => {
+    loadCards()
+  }, 3000)
+}
+
+async function loadCards() {
+  loading.value = true
+  try {
+    cardList.value = await knowledgeBaseApi.list({ visibility_scope: defaultScope.value })
+  } catch (error) {
+    console.error(error)
+    cardList.value = []
+  } finally {
+    loading.value = false
+    scheduleStatusRefresh()
+  }
 }
 
 function resetForm() {
   form.value = cloneDeep(defaultForm)
+  uploadFileName.value = ''
+  pendingFile.value = null
+  formRef.value?.clearValidate?.()
 }
 
 function openCreateCard() {
@@ -150,15 +146,16 @@ function openCreateCard() {
   drawerVisible.value = true
 }
 
-function openEditCard(row: KnowledgeBaseCard) {
+function openEditCard(row: KnowledgeBaseItem) {
   form.value = {
     id: row.id,
     name: row.name,
-    description: row.description,
-    content: row.content,
+    description: row.description || '',
     active: row.active,
   }
   drawerTitle.value = t('knowledge_base.edit_knowledge_base')
+  uploadFileName.value = row.file_name || ''
+  pendingFile.value = null
   drawerVisible.value = true
 }
 
@@ -167,54 +164,98 @@ function closeForm() {
   resetForm()
 }
 
+function isSupportedKnowledgeFile(file: File) {
+  const name = file.name.toLowerCase()
+  return name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.docx')
+}
+
+function setNameFromFile(file: File) {
+  if (form.value.name.trim()) return
+  form.value.name = file.name.replace(/\.(md|markdown|docx)$/i, '')
+}
+
+const beforeKnowledgeUpload: UploadProps['beforeUpload'] = (rawFile: UploadRawFile) => {
+  if (!isSupportedKnowledgeFile(rawFile)) {
+    ElMessage.warning(t('knowledge_base.upload_invalid_type'))
+    return false
+  }
+  if (rawFile.size > 50 * 1024 * 1024) {
+    ElMessage.warning(t('knowledge_base.upload_too_large'))
+    return false
+  }
+
+  pendingFile.value = rawFile
+  uploadFileName.value = rawFile.name
+  setNameFromFile(rawFile)
+  ElMessage.success(t('knowledge_base.upload_selected'))
+  return false
+}
+
+const handleKnowledgeFileChange: UploadProps['onChange'] = (uploadFile: UploadFile) => {
+  if (uploadFile.raw) {
+    beforeKnowledgeUpload(uploadFile.raw)
+  }
+}
+
 function saveCard() {
-  formRef.value?.validate((valid: boolean) => {
+  formRef.value?.validate(async (valid: boolean) => {
     if (!valid || saving.value) return
+    if (!form.value.id && !pendingFile.value) {
+      ElMessage.warning(t('knowledge_base.file_required'))
+      return
+    }
     saving.value = true
-    const now = new Date().toISOString()
-    const existingIndex = cardList.value.findIndex((item) => item.id === form.value.id)
-    const payload: KnowledgeBaseCard = {
-      id: form.value.id || `${Date.now()}`,
-      name: form.value.name.trim(),
-      description: form.value.description.trim(),
-      content: form.value.content,
-      visibility_scope: defaultScope.value,
-      active: form.value.active,
-      create_time: existingIndex >= 0 ? cardList.value[existingIndex].create_time : now,
-      update_time: now,
+    try {
+      await knowledgeBaseApi.save({
+        id: form.value.id,
+        name: form.value.name.trim(),
+        description: form.value.description.trim(),
+        active: form.value.active,
+        visibility_scope: defaultScope.value,
+        file: pendingFile.value,
+      })
+      ElMessage.success(t('common.save_success'))
+      closeForm()
+      await loadCards()
+    } catch (error) {
+      console.error(error)
+    } finally {
+      saving.value = false
     }
-    if (existingIndex >= 0) {
-      cardList.value.splice(existingIndex, 1, payload)
-    } else {
-      cardList.value.unshift(payload)
-    }
-    persistCards()
-    ElMessage.success(t('common.save_success'))
-    saving.value = false
-    closeForm()
   })
 }
 
-function deleteCard(row: KnowledgeBaseCard) {
+function deleteCard(row: KnowledgeBaseItem) {
   ElMessageBox.confirm(t('knowledge_base.delete_confirm', { msg: row.name }), {
     confirmButtonType: 'danger',
     confirmButtonText: t('dashboard.delete'),
     cancelButtonText: t('common.cancel'),
     customClass: 'confirm-no_icon',
     autofocus: false,
-  }).then(() => {
-    cardList.value = cardList.value.filter((item) => item.id !== row.id)
-    persistCards()
+  }).then(async () => {
+    await knowledgeBaseApi.delete(row.id)
     ElMessage.success(t('dashboard.delete_success'))
+    await loadCards()
   })
 }
 
-function openDetail(row: KnowledgeBaseCard) {
+function openDetail(row: KnowledgeBaseItem) {
   selectedCard.value = cloneDeep(row)
   detailVisible.value = true
 }
 
-watch(storageKey, loadCards, { immediate: true })
+watch(
+  defaultScope,
+  () => {
+    clearRefreshTimer()
+    loadCards()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  clearRefreshTimer()
+})
 </script>
 
 <template>
@@ -241,7 +282,7 @@ watch(storageKey, loadCards, { immediate: true })
       </div>
     </div>
 
-    <section class="knowledge-section">
+    <section v-loading="loading" class="knowledge-section">
       <div class="knowledge-content">
         <div v-if="!filteredCards.length" class="knowledge-empty">
           {{ t('knowledge_base.no_knowledge_base') }}
@@ -266,6 +307,9 @@ watch(storageKey, loadCards, { immediate: true })
                   </div>
                   <div class="meta-row">
                     <span>{{ statusText(card) }}</span>
+                    <span class="process-status" :class="processStatusClass(card)">
+                      {{ processStatusText(card) }}
+                    </span>
                     <span>{{ formatCardTime(card.update_time) }}</span>
                   </div>
                 </div>
@@ -306,8 +350,8 @@ watch(storageKey, loadCards, { immediate: true })
             >
               {{ card.description || t('knowledge_base.empty_description') }}
             </div>
-            <div class="content-preview" :title="card.content">
-              {{ card.content }}
+            <div class="content-preview" :title="card.file_name || card.content || ''">
+              {{ card.file_name || card.content || '-' }}
             </div>
           </article>
         </div>
@@ -357,13 +401,31 @@ watch(storageKey, loadCards, { immediate: true })
             type="textarea"
           />
         </el-form-item>
-        <el-form-item prop="content" :label="t('knowledge_base.document_content')">
-          <el-input
-            v-model="form.content"
-            :placeholder="t('knowledge_base.content_placeholder')"
-            :autosize="{ minRows: 12, maxRows: 24 }"
-            type="textarea"
-          />
+        <el-form-item :label="t('knowledge_base.document_content')">
+          <div class="knowledge-upload-source">
+            <div class="upload-source-title">{{ t('knowledge_base.upload_source') }}</div>
+            <el-upload
+              class="knowledge-upload"
+              drag
+              action="#"
+              :auto-upload="false"
+              :show-file-list="false"
+              accept=".md,.markdown,.docx"
+              :on-change="handleKnowledgeFileChange"
+            >
+              <div class="knowledge-upload-inner">
+                <el-icon class="upload-icon" size="22">
+                  <UploadFilled />
+                </el-icon>
+                <div class="upload-main">{{ t('knowledge_base.upload_drag_title') }}</div>
+                <div class="upload-sub">{{ t('knowledge_base.upload_tip') }}</div>
+              </div>
+            </el-upload>
+            <div v-if="uploadFileName" class="uploaded-file">
+              <span class="uploaded-label">{{ t('knowledge_base.selected_file') }}</span>
+              <span class="uploaded-name ellipsis" :title="uploadFileName">{{ uploadFileName }}</span>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -390,6 +452,17 @@ watch(storageKey, loadCards, { immediate: true })
         </el-form-item>
         <el-form-item :label="t('knowledge_base.status')">
           <div class="detail-content">{{ statusText(selectedCard) }}</div>
+        </el-form-item>
+        <el-form-item :label="t('knowledge_base.process_status')">
+          <div class="detail-content">
+            {{ processStatusText(selectedCard) }}
+            <span v-if="selectedCard?.error_message" class="detail-error">
+              {{ selectedCard.error_message }}
+            </span>
+          </div>
+        </el-form-item>
+        <el-form-item :label="t('knowledge_base.selected_file')">
+          <div class="detail-content">{{ selectedCard?.file_name || '-' }}</div>
         </el-form-item>
         <el-form-item :label="t('knowledge_base.description')">
           <div class="detail-content">
@@ -479,11 +552,6 @@ watch(storageKey, loadCards, { immediate: true })
       --scope-border: #b9d6ff;
     }
 
-    &.is-personal {
-      --scope-color: #12a076;
-      --scope-bg: #e9f8f2;
-      --scope-border: #a9e7d0;
-    }
   }
 
   .knowledge-section {
@@ -553,13 +621,6 @@ watch(storageKey, loadCards, { immediate: true })
       --card-source-bg: #eaf2ff;
       --card-source-border: #b9d6ff;
       --card-source-card-bg: #fbfdff;
-    }
-
-    &.is-personal {
-      --card-source-color: #12a076;
-      --card-source-bg: #e9f8f2;
-      --card-source-border: #a9e7d0;
-      --card-source-card-bg: #fbfffd;
     }
 
     .card-head {
@@ -640,6 +701,36 @@ watch(storageKey, loadCards, { immediate: true })
       color: #667085;
       font-size: 12px;
       line-height: 18px;
+      flex-wrap: wrap;
+    }
+
+    .process-status {
+      display: inline-flex;
+      align-items: center;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 4px;
+      background: #f2f4f7;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 18px;
+
+      &.is-ready {
+        background: #e9f8f2;
+        color: #12a076;
+      }
+
+      &.is-processing,
+      &.is-pending {
+        background: #eaf2ff;
+        color: #1570ef;
+      }
+
+      &.is-failed {
+        background: #fff1f3;
+        color: #d92d20;
+      }
     }
 
     .card-actions {
@@ -715,6 +806,101 @@ watch(storageKey, loadCards, { immediate: true })
   .pre-wrap {
     white-space: pre-wrap;
   }
+
+  .detail-error {
+    display: block;
+    margin-top: 6px;
+    color: #d92d20;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .knowledge-upload-source {
+    width: 100%;
+  }
+
+  .upload-source-title {
+    margin-bottom: 10px;
+    color: #1f2329;
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 500;
+  }
+
+  .knowledge-upload {
+    width: 100%;
+
+    .ed-upload {
+      display: block;
+      width: 100%;
+    }
+
+    .ed-upload-dragger {
+      width: 100%;
+      height: 112px;
+      padding: 0;
+      border: 1px dashed #d8dde8;
+      border-radius: 12px;
+      background: #fff;
+
+      &:hover {
+        border-color: #4f7df3;
+        background: #f8fbff;
+      }
+    }
+  }
+
+  .knowledge-upload-inner {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #4b5565;
+    text-align: center;
+  }
+
+  .upload-icon {
+    margin-bottom: 8px;
+    color: #1f2329;
+  }
+
+  .upload-main {
+    color: #1f2329;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  .upload-sub {
+    margin-top: 3px;
+    color: #6b7280;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .uploaded-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-top: 10px;
+    color: #475467;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .uploaded-label {
+    flex: 0 0 auto;
+    color: #667085;
+  }
+
+  .uploaded-name {
+    min-width: 0;
+    color: #1f2329;
+    font-weight: 500;
+  }
+
 }
 
 .popover-card_knowledge.popover-card_knowledge.popover-card_knowledge {

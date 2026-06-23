@@ -2,7 +2,7 @@
 
 from fastapi import HTTPException
 from orjson import orjson
-from sqlalchemy import String, cast, select, and_, or_, text
+from sqlalchemy import String, cast, select, and_, or_, text, func
 
 from apps.dashboard.models.dashboard_model import (
     CoreDashboard,
@@ -11,6 +11,7 @@ from apps.dashboard.models.dashboard_model import (
     QueryDashboard,
     DashboardBaseResponse,
     DashboardDefaultRequest,
+    DashboardDefaultSortRequest,
     DashboardSqlPreview,
     DashboardShareRequest,
     DashboardShareListQuery,
@@ -36,6 +37,17 @@ import uuid
 import time
 
 from common.utils.tree_utils import build_tree_generic
+
+
+def _first_scalar_value(value: Any):
+    if value is None:
+        return None
+    if hasattr(value, "_mapping"):
+        values = list(value._mapping.values())
+        return values[0] if values else None
+    if isinstance(value, (tuple, list)):
+        return value[0] if value else None
+    return value
 
 
 def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | bytes | None:
@@ -465,6 +477,7 @@ def _dashboard_base_response(
         type=record.type,
         create_time=record.create_time,
         update_time=record.update_time,
+        sort=record.sort or 0,
         can_edit=_can_edit_dashboard(session, current_user, record),
         can_share=_can_share_dashboard(session, current_user, record),
         can_set_default=_can_set_default_dashboard(current_user),
@@ -668,7 +681,11 @@ def list_default_resources(session: SessionDep, current_user: CurrentUser):
                 CoreDashboard.is_default == 1,
             )
         )
-        .order_by(CoreDashboard.update_time.desc(), CoreDashboard.create_time.desc())
+        .order_by(
+            func.coalesce(CoreDashboard.sort, 0).asc(),
+            CoreDashboard.update_time.asc(),
+            CoreDashboard.create_time.asc(),
+        )
     )
     result = session.exec(statement).scalars().all()
     nodes = [
@@ -773,6 +790,20 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
             raise HTTPException(status_code=403, detail="Dashboard datasource is not in current workspace")
 
     now = int(time.time())
+    if request.is_default and not record.is_default:
+        max_sort_row = session.exec(
+            select(func.max(func.coalesce(CoreDashboard.sort, 0)))
+            .where(
+                and_(
+                    _active_dashboard_filter(),
+                    CoreDashboard.tenant_id == _current_tenant_id(user),
+                    CoreDashboard.node_type == "leaf",
+                    CoreDashboard.is_default == 1,
+                )
+            )
+        ).first()
+        max_sort = _first_scalar_value(max_sort_row)
+        record.sort = int(max_sort or 0) + 1
     record.is_default = 1 if request.is_default else 0
     record.update_by = str(user.id)
     record.update_time = now
@@ -780,6 +811,39 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
     session.commit()
     session.refresh(record)
     return _dashboard_base_response(session, user, record, effective_datasource)
+
+
+def sort_default_resources(session: SessionDep, user: CurrentUser, request: DashboardDefaultSortRequest):
+    _require_set_default_permission(user)
+    ordered_ids = [str(item) for item in request.ordered_ids if item]
+    if not ordered_ids:
+        raise HTTPException(status_code=400, detail="ordered_ids is required")
+
+    records = session.exec(
+        select(CoreDashboard).where(
+            and_(
+                _active_dashboard_filter(),
+                CoreDashboard.tenant_id == _current_tenant_id(user),
+                CoreDashboard.node_type == "leaf",
+                CoreDashboard.is_default == 1,
+                CoreDashboard.id.in_(ordered_ids),
+            )
+        )
+    ).scalars().all()
+    record_by_id = {record.id: record for record in records}
+    if len(record_by_id) != len(set(ordered_ids)):
+        raise HTTPException(status_code=404, detail="Default dashboard does not exist")
+
+    now = int(time.time())
+    for index, dashboard_id in enumerate(ordered_ids):
+        record = record_by_id[dashboard_id]
+        record.sort = index + 1
+        record.update_by = str(user.id)
+        record.update_time = now
+        session.add(record)
+
+    session.commit()
+    return True
 
 
 def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashboard) -> bool:

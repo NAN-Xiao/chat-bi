@@ -12,6 +12,7 @@ export const dashboardApi = {
   default_list: () => request.get('/dashboard/default/list'),
   default_load: (params: any) => request.post('/dashboard/default/load', params),
   default_set: (params: any, config?: any) => request.post('/dashboard/default/set', params, config),
+  default_sort: (params: any, config?: any) => request.post('/dashboard/default/sort', params, config),
   share: (params: any, config?: any) => request.post('/dashboard/share', params, config),
   share_list: (params: any, config?: any) => request.post('/dashboard/share/list', params, config),
   share_load: (params: any, config?: any) => request.post('/dashboard/share/load', params, config),

@@ -2,14 +2,22 @@
 import { ref, toRefs, computed, nextTick, onBeforeUnmount } from 'vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
 import { ChatLineSquare, Close, Download, RefreshRight } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { analysisAssistantApi, type AnalysisAssistantMessage } from '@/api/analysisAssistant'
+import { dashboardApi } from '@/api/dashboard.ts'
 import { parseSseChunk } from '@/utils/sse'
+import { useEmitt } from '@/utils/useEmitt.ts'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
+import {
+  resolveReportPopoverStyle,
+  type ReportPopoverStyle,
+} from '@/views/dashboard/preview/reportPopoverPosition'
 
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
+const { emitter } = useEmitt()
 
 const props = defineProps({
   active: {
@@ -42,6 +50,8 @@ const { configItem, showPosition } = toRefs(props)
 const component = ref(null)
 const wrapperRef = ref<HTMLElement | null>(null)
 const reportPromptRef = ref<HTMLElement | null>(null)
+const reportTriggerRef = ref<HTMLElement | null>(null)
+const reportPopoverStyle = ref<ReportPopoverStyle | null>(null)
 const wrapperId = 'wrapper-outer-id-' + configItem.value.id
 const viewDemoInnerId = computed(() => 'enlarge-inner-content-' + configItem.value.id)
 const reportPromptVisible = ref(false)
@@ -50,18 +60,30 @@ const reportGenerating = ref(false)
 const reportAnswer = ref('')
 const reportProgress = ref('')
 const reportStopped = ref(false)
+const reportSubmittedQuestion = ref('')
 const reportController = ref<AbortController | null>(null)
 let reportStreamBuffer = ''
-const isPreviewChart = computed(
+const isPreviewSingleChart = computed(
   () => props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
 )
+const isPreviewReportTarget = computed(
+  () =>
+    props.showPosition === 'preview' &&
+    ['SQView', 'SQTab'].includes(props.configItem?.component) &&
+    !props.frameless
+)
 const currentViewInfo = computed(() => props.canvasViewInfo?.[props.configItem.id] || {})
-const chartTitle = computed(
-  () => currentViewInfo.value?.chart?.title || t('dashboard.view')
-)
+const reportScopeTitle = computed(() => {
+  if (props.configItem?.component === 'SQTab') {
+    const activeTab = getActiveTabItem(props.configItem)
+    return activeTab?.title || props.configItem?.name || t('dashboard.view')
+  }
+  return currentViewInfo.value?.chart?.title || t('dashboard.view')
+})
 const reportPromptTitle = computed(() =>
-  t('dashboard.chart_report_interpret_prompt', [chartTitle.value])
+  t('dashboard.chart_report_interpret_prompt', [reportScopeTitle.value])
 )
+const reportDialogTitle = computed(() => reportSubmittedQuestion.value || reportPromptTitle.value)
 const reportHasConversation = computed(
   () =>
     reportGenerating.value ||
@@ -96,10 +118,14 @@ function abortReportGeneration(markStopped = false) {
 function closeReportPrompt() {
   abortReportGeneration(false)
   reportPromptVisible.value = false
+  reportPopoverStyle.value = null
   document.removeEventListener('mousedown', handleDocumentMouseDown, true)
 }
 
 function handleDocumentMouseDown(event: MouseEvent) {
+  if (reportHasConversation.value) {
+    return
+  }
   const target = event.target as Node | null
   if (!target) {
     closeReportPrompt()
@@ -108,20 +134,47 @@ function handleDocumentMouseDown(event: MouseEvent) {
   if (reportPromptRef.value?.contains(target)) {
     return
   }
+  if (reportTriggerRef.value?.contains(target)) {
+    return
+  }
   if (wrapperRef.value?.querySelector('.preview-chart-actions')?.contains(target)) {
     return
   }
   closeReportPrompt()
 }
 
-function openReportPrompt() {
+function prepareReportPrompt(event?: MouseEvent) {
   abortReportGeneration(false)
   resetReportConversation()
   reportPromptText.value = ''
-  reportPromptVisible.value = true
+  reportSubmittedQuestion.value = ''
+  reportTriggerRef.value = (event?.currentTarget as HTMLElement | null) || reportTriggerRef.value
+  reportPopoverStyle.value = resolveReportPopoverStyle(reportTriggerRef.value, {
+    width: 420,
+    height: 170,
+  })
   document.removeEventListener('mousedown', handleDocumentMouseDown, true)
   nextTick(() => {
     document.addEventListener('mousedown', handleDocumentMouseDown, true)
+  })
+}
+
+function toggleReportPrompt(event?: MouseEvent) {
+  if (reportPromptVisible.value) {
+    if (reportHasConversation.value) {
+      return
+    }
+    closeReportPrompt()
+    return
+  }
+  prepareReportPrompt(event)
+  reportPromptVisible.value = true
+}
+
+function updateReportPopoverForConversation() {
+  reportPopoverStyle.value = resolveReportPopoverStyle(reportTriggerRef.value, {
+    width: 500,
+    height: 610,
   })
 }
 
@@ -135,9 +188,26 @@ function unique(values: Array<string | undefined | null>) {
   )
 }
 
+function cleanFilename(name?: string) {
+  return (name || t('dashboard.view')).replace(/[\\/:*?"<>|]/g, '_').slice(0, 80)
+}
+
+function cleanSheetName(name?: string, fallback?: string) {
+  return (name || fallback || t('dashboard.view'))
+    .replace(/[\[\]:*?/\\]/g, '_')
+    .slice(0, 31) || t('dashboard.view')
+}
+
 function normalizeDatasourceId(value: any) {
   const datasourceId = Number(value)
   return Number.isFinite(datasourceId) && datasourceId > 0 ? datasourceId : undefined
+}
+
+function getResultFields(result: any) {
+  return unique([
+    ...(Array.isArray(result?.fields) ? result.fields : []),
+    ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
+  ])
 }
 
 function getAxisFields(items: any) {
@@ -147,8 +217,80 @@ function getAxisFields(items: any) {
   return items.map((item) => item?.name || item?.value)
 }
 
-function buildReportContext() {
-  const viewInfo = currentViewInfo.value || {}
+function getActiveTabItem(tabConfig: any) {
+  const tabs = Array.isArray(tabConfig?.propValue) ? tabConfig.propValue : []
+  if (!tabs.length) {
+    return null
+  }
+  return tabs.find((tab: any) => tab?.name === tabConfig?.activeTabName) || tabs[0]
+}
+
+function isReportChartComponent(item: any) {
+  return item?.component === 'SQView'
+}
+
+function collectReportChartEntries(
+  items: any[],
+  path: string[] = [],
+  entries: Array<{ component: any; viewInfo: any; path: string[] }> = []
+) {
+  if (!Array.isArray(items)) {
+    return entries
+  }
+  items.forEach((item) => {
+    if (isReportChartComponent(item)) {
+      entries.push({
+        component: item,
+        viewInfo: props.canvasViewInfo?.[item.id] || {},
+        path,
+      })
+      return
+    }
+    if (item?.component === 'SQTab') {
+      const activeTab = getActiveTabItem(item)
+      const title = activeTab?.title || item?.name || t('dashboard.view')
+      collectReportChartEntries(activeTab?.componentData || [], [...path, title], entries)
+    }
+  })
+  return entries
+}
+
+function getReportChartEntries() {
+  if (props.configItem?.component === 'SQTab') {
+    const activeTab = getActiveTabItem(props.configItem)
+    const title = activeTab?.title || props.configItem?.name || t('dashboard.view')
+    return collectReportChartEntries(activeTab?.componentData || [], [title])
+  }
+  return [
+    {
+      component: props.configItem,
+      viewInfo: currentViewInfo.value || {},
+      path: [],
+    },
+  ]
+}
+
+function getEntryTitle(entry: { component: any; viewInfo: any; path: string[] }, index: number) {
+  return (
+    entry.viewInfo?.chart?.title ||
+    entry.viewInfo?.title ||
+    entry.component?.name ||
+    `${t('dashboard.view')} ${index + 1}`
+  )
+}
+
+function getReportDatasourceId() {
+  const entries = getReportChartEntries()
+  const datasource = entries.find((entry) => normalizeDatasourceId(entry.viewInfo?.datasource))
+    ?.viewInfo?.datasource
+  return normalizeDatasourceId(datasource)
+}
+
+function buildSingleChartContext(
+  entry: { component: any; viewInfo: any; path: string[] },
+  index: number
+) {
+  const viewInfo = entry.viewInfo || {}
   const chart = viewInfo.chart || {}
   const rows = Array.isArray(viewInfo.data?.data) ? viewInfo.data.data.slice(0, 50) : []
   const fields = unique([
@@ -162,12 +304,28 @@ function buildReportContext() {
   ])
 
   return [
-    `Current dashboard chart: ${chartTitle.value}`,
+    `Chart ${index + 1}: ${getEntryTitle(entry, index)}`,
+    `Container path: ${entry.path.join(' / ') || '-'}`,
     `Chart type: ${chart.type || chart.sourceType || 'unknown'}`,
+    `Datasource ID: ${viewInfo.datasource || '-'}`,
     `Fields: ${fields.join(', ') || '-'}`,
     `SQL:\n${viewInfo.sql || '-'}`,
-    `Visible chart data sample, up to 50 rows:\n${JSON.stringify(rows, null, 2).slice(0, 12000)}`,
-    'Interpret only this dashboard chart. Use the shown data first, keep the answer concise, and do not change dashboard configuration.',
+    `Visible chart data sample, up to 50 rows:\n${JSON.stringify(rows, null, 2).slice(0, 8000)}`,
+  ].join('\n')
+}
+
+function buildReportContext() {
+  const entries = getReportChartEntries()
+  const chartContexts = entries
+    .map((entry, index) => buildSingleChartContext(entry, index))
+    .join('\n\n---\n\n')
+
+  return [
+    `Current dashboard report target: ${reportScopeTitle.value}`,
+    `Target component type: ${props.configItem?.component || 'unknown'}`,
+    `Charts included in this target: ${entries.length}`,
+    chartContexts || 'No chart data was found in the current report target.',
+    'Interpret only this dashboard report target. If it is a tab, use only the active tab charts listed above. Synthesize findings across all included charts, use the shown data first, keep the answer concise, and do not change dashboard configuration.',
   ].join('\n\n')
 }
 
@@ -229,29 +387,37 @@ async function submitReportPrompt() {
   if (reportGenerating.value) {
     return
   }
-  const datasourceId = normalizeDatasourceId(currentViewInfo.value?.datasource)
+  const rawQuestion = reportPromptText.value.trim()
+  const nextQuestion = rawQuestion || (!reportHasConversation.value ? reportPromptTitle.value : reportSubmittedQuestion.value)
+  if (!nextQuestion) {
+    return
+  }
+  reportSubmittedQuestion.value = nextQuestion
+  const datasourceId = getReportDatasourceId()
   if (!datasourceId) {
     resetReportConversation()
     reportAnswer.value = t('dashboard.chart_report_no_datasource')
+    reportPromptText.value = ''
     return
   }
 
   resetReportConversation()
+  updateReportPopoverForConversation()
   reportGenerating.value = true
   const controller = new AbortController()
   reportController.value = controller
   const question = [
-    reportPromptText.value.trim() || reportPromptTitle.value,
-    'Please interpret the current dashboard chart. Focus on key findings, anomalies, possible causes, and suggested follow-up actions.',
+    nextQuestion,
+    '请解读当前看板报表区域，重点说明关键发现、异常点、可能原因和后续建议。回答要综合当前区域内图表数据，保持简洁。',
   ].join('\n')
+  reportPromptText.value = ''
   const messages: AnalysisAssistantMessage[] = [{ role: 'user', content: question }]
 
   try {
-    const response = await analysisAssistantApi.chat(
+    const response = await analysisAssistantApi.reportInterpretation(
       messages,
       buildReportContext(),
       datasourceId,
-      null,
       null,
       controller
     )
@@ -289,12 +455,163 @@ async function submitReportPrompt() {
   }
 }
 
-function refreshChartData() {
-  ;(component.value as any)?.refreshData?.()
+function xmlText(value: any) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+  const text = typeof value === 'object' ? JSON.stringify(value) : `${value}`
+  const safeText = /^[=+\-@]/.test(text) ? `\t${text}` : text
+  return safeText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function collectExportFields(viewInfo: any) {
+  const rows = Array.isArray(viewInfo?.data?.data) ? viewInfo.data.data : []
+  const chart = viewInfo?.chart || {}
+  return unique([
+    ...(Array.isArray(viewInfo?.data?.fields) ? viewInfo.data.fields : []),
+    ...(Array.isArray(viewInfo?.fields) ? viewInfo.fields : []),
+    ...getAxisFields(chart.columns),
+    ...getAxisFields(chart.xAxis),
+    ...getAxisFields(chart.yAxis),
+    ...getAxisFields(chart.series),
+    ...rows.flatMap((row: Record<string, any>) => Object.keys(row || {})),
+  ])
+}
+
+function uniqueSheetNames(names: string[]) {
+  const used = new Map<string, number>()
+  return names.map((name, index) => {
+    const base = cleanSheetName(name, `${t('dashboard.view')} ${index + 1}`)
+    const count = used.get(base) || 0
+    used.set(base, count + 1)
+    if (!count) {
+      return base
+    }
+    const suffix = `_${count + 1}`
+    return `${base.slice(0, 31 - suffix.length)}${suffix}`
+  })
+}
+
+function buildWorksheetXml(sheetName: string, title: string, fields: string[], rows: Record<string, any>[]) {
+  const headerRow = `<Row>${fields
+    .map((field) => `<Cell><Data ss:Type="String">${xmlText(field)}</Data></Cell>`)
+    .join('')}</Row>`
+  const dataRows = rows
+    .map(
+      (row) =>
+        `<Row>${fields
+          .map((field) => `<Cell><Data ss:Type="String">${xmlText(row?.[field])}</Data></Cell>`)
+          .join('')}</Row>`
+    )
+    .join('')
+  return `<Worksheet ss:Name="${xmlText(sheetName)}"><Table><Row><Cell ss:MergeAcross="${Math.max(fields.length - 1, 0)}"><Data ss:Type="String">${xmlText(title)}</Data></Cell></Row>${headerRow}${dataRows}</Table></Worksheet>`
+}
+
+async function refreshChartData() {
+  if (isPreviewSingleChart.value) {
+    ;(component.value as any)?.refreshData?.()
+    return
+  }
+  const entries = getReportChartEntries()
+  if (!entries.length) {
+    return
+  }
+  let successCount = 0
+  let failedCount = 0
+  await Promise.all(
+    entries.map(async (entry) => {
+      const viewInfo = entry.viewInfo
+      if (!viewInfo?.datasource || !viewInfo?.sql?.trim()) {
+        failedCount += 1
+        return
+      }
+      try {
+        const result = await dashboardApi.preview_sql({
+          datasource: viewInfo.datasource,
+          sql: viewInfo.sql.trim(),
+        })
+        const fields = getResultFields(result)
+        const data = Array.isArray(result?.data) ? result.data : []
+        if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+          viewInfo.data = {}
+        }
+        viewInfo.data.fields = fields
+        viewInfo.data.data = data
+        viewInfo.fields = fields
+        viewInfo.status = result?.status || 'success'
+        viewInfo.message = result?.message || ''
+        if (viewInfo.status === 'failed') {
+          failedCount += 1
+        } else {
+          successCount += 1
+        }
+        emitter.emit(`view-render-${viewInfo.id || entry.component?.id}`)
+      } catch (error: any) {
+        viewInfo.status = 'failed'
+        viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
+        failedCount += 1
+      }
+    })
+  )
+  if (successCount > 0 && failedCount === 0) {
+    ElMessage.success(t('dashboard.chart_refresh_success'))
+  } else if (successCount > 0) {
+    ElMessage.warning(`${t('dashboard.chart_refresh_success')} (${successCount}/${entries.length})`)
+  } else {
+    ElMessage.error(t('dashboard.chart_refresh_failed'))
+  }
 }
 
 function exportChartTableData() {
-  ;(component.value as any)?.exportTableData?.()
+  if (isPreviewSingleChart.value) {
+    ;(component.value as any)?.exportTableData?.()
+    return
+  }
+  const rawSheets = getReportChartEntries()
+    .map((entry, index) => {
+      const rows = Array.isArray(entry.viewInfo?.data?.data) ? entry.viewInfo.data.data : []
+      const fields = collectExportFields(entry.viewInfo)
+      if (!rows.length || !fields.length) {
+        return null
+      }
+      const title = getEntryTitle(entry, index)
+      return {
+        title,
+        fields,
+        rows,
+      }
+    })
+    .filter(Boolean) as Array<{ title: string; fields: string[]; rows: Record<string, any>[] }>
+
+  if (!rawSheets.length) {
+    ElMessage.warning(t('dashboard.chart_export_no_data'))
+    return
+  }
+
+  const sheetNames = uniqueSheetNames(rawSheets.map((sheet) => sheet.title))
+  const worksheets = rawSheets
+    .map((sheet, index) => buildWorksheetXml(sheetNames[index], sheet.title, sheet.fields, sheet.rows))
+    .join('')
+  const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:x="urn:schemas-microsoft-com:office:excel"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:html="http://www.w3.org/TR/REC-html40">${worksheets}</Workbook>`
+  const blob = new Blob(['\ufeff' + workbook], { type: 'application/vnd.ms-excel;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `${cleanFilename(reportScopeTitle.value)}.xls`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(link.href)
+  ElMessage.success(t('dashboard.chart_export_success'))
 }
 
 onBeforeUnmount(() => {
@@ -308,7 +625,12 @@ onBeforeUnmount(() => {
     :id="wrapperId"
     ref="wrapperRef"
     class="wrapper-outer"
-    :class="{ 'is-frameless': frameless }"
+    :class="{
+      'is-frameless': frameless,
+      'is-report-open': reportPromptVisible,
+      'is-report-tab-target': configItem.component === 'SQTab',
+      'is-report-chart-target': configItem.component === 'SQView',
+    }"
   >
     <div :id="viewDemoInnerId" ref="componentWrapperInnerRef" class="wrapper-inner">
       <div class="wrapper-inner-adaptor">
@@ -325,12 +647,16 @@ onBeforeUnmount(() => {
         />
       </div>
     </div>
-    <div v-if="isPreviewChart" class="preview-chart-actions" @click.stop @mousedown.stop>
-      <el-tooltip effect="dark" :content="t('dashboard.chart_report_interpret')" placement="top">
-        <el-button class="preview-action-btn" text @click="openReportPrompt">
-          <el-icon size="16"><ChatLineSquare /></el-icon>
-        </el-button>
-      </el-tooltip>
+    <div v-if="isPreviewReportTarget" class="preview-chart-actions" @click.stop @mousedown.stop>
+      <el-button
+        class="preview-action-btn"
+        text
+        :title="t('dashboard.chart_report_interpret')"
+        :aria-label="t('dashboard.chart_report_interpret')"
+        @click.stop="toggleReportPrompt($event)"
+      >
+        <el-icon size="16"><ChatLineSquare /></el-icon>
+      </el-button>
       <el-tooltip effect="dark" :content="t('dashboard.chart_refresh_data')" placement="top">
         <el-button class="preview-action-btn" text @click="refreshChartData">
           <el-icon size="16"><RefreshRight /></el-icon>
@@ -342,81 +668,106 @@ onBeforeUnmount(() => {
         </el-button>
       </el-tooltip>
     </div>
-    <div
-      v-if="reportPromptVisible"
-      ref="reportPromptRef"
-      class="report-prompt-popover"
-      @click.stop
-      @mousedown.stop
-    >
-      <template v-if="!reportHasConversation">
-        <el-input
-          v-model="reportPromptText"
-          class="report-prompt-input"
-          :placeholder="t('dashboard.chart_report_interpret_placeholder')"
-          type="textarea"
-          :autosize="{ minRows: 2, maxRows: 4 }"
-          @keydown.stop
-          @keyup.stop
-        />
-        <div class="report-prompt-footer">
-          <div class="report-prompt-title">
-            <el-icon size="15"><ChatLineSquare /></el-icon>
-            <span>{{ reportPromptTitle }}</span>
+    <Teleport to="body">
+      <div
+        v-if="reportPromptVisible"
+        ref="reportPromptRef"
+        class="dashboard-report-popover"
+        :class="{ 'is-conversation': reportHasConversation }"
+        :style="reportPopoverStyle || {}"
+        @click.stop
+        @mousedown.stop
+      >
+        <template v-if="!reportHasConversation">
+          <el-input
+            v-model="reportPromptText"
+            class="report-prompt-input"
+            :placeholder="t('dashboard.chart_report_interpret_placeholder')"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+            @keydown.stop
+            @keyup.stop
+          />
+          <div class="report-prompt-footer">
+            <div class="report-prompt-title">
+              <el-icon size="15"><ChatLineSquare /></el-icon>
+              <span>{{ reportPromptTitle }}</span>
+            </div>
+            <el-button
+              class="report-prompt-send"
+              circle
+              type="primary"
+              @click="submitReportPrompt"
+            >
+              <el-icon size="16">
+                <icon_send_filled />
+              </el-icon>
+            </el-button>
           </div>
-          <el-button
-            class="report-prompt-send"
-            circle
-            type="primary"
-            @click="submitReportPrompt"
-          >
-            <el-icon size="16">
-              <icon_send_filled />
-            </el-icon>
-          </el-button>
-        </div>
-      </template>
-      <template v-else>
-        <div class="report-dialog-header">
-          <div class="report-prompt-title">
-            <el-icon size="15"><ChatLineSquare /></el-icon>
-            <span>{{ reportPromptTitle }}</span>
+        </template>
+        <template v-else>
+          <div class="report-dialog-header">
+            <div class="report-dialog-title">
+              <span>{{ reportDialogTitle }}</span>
+            </div>
+            <el-button class="report-close-btn" text circle @click="closeReportPrompt">
+              <el-icon size="16"><Close /></el-icon>
+            </el-button>
           </div>
-          <el-button class="report-close-btn" text circle @click="closeReportPrompt">
-            <el-icon size="16"><Close /></el-icon>
-          </el-button>
-        </div>
-        <div class="report-answer-panel">
-          <MdComponent v-if="reportAnswer.trim()" :message="reportAnswer" />
-          <div v-else class="report-answer-empty">
-            {{ reportProgress || t('dashboard.chart_report_generating') }}
+          <div class="report-answer-panel">
+            <MdComponent v-if="reportAnswer.trim()" :message="reportAnswer" />
+            <div v-else class="report-answer-empty">
+              {{ reportProgress || t('dashboard.chart_report_generating') }}
+            </div>
+            <div v-if="reportProgress && reportAnswer.trim()" class="report-progress">
+              {{ reportProgress }}
+            </div>
           </div>
-          <div v-if="reportProgress && reportAnswer.trim()" class="report-progress">
-            {{ reportProgress }}
+          <div class="report-answer-tip">
+            {{ t('dashboard.chart_report_ai_tip') }}
           </div>
-        </div>
-        <div class="report-conversation-footer">
-          <span class="report-status">
-            {{
-              reportGenerating
-                ? t('dashboard.chart_report_generating')
-                : reportStopped
-                  ? t('dashboard.chart_report_stopped')
-                  : ''
-            }}
-          </span>
-          <el-button
-            v-if="reportGenerating"
-            class="report-stop-btn"
-            round
-            @click="stopReportGeneration"
-          >
-            <span class="stop-square"></span>
-            <span>{{ t('dashboard.chart_report_stop') }}</span>
-          </el-button>
-        </div>
-      </template>
-    </div>
+          <div class="report-conversation-tools">
+            <el-button class="report-icon-tool" text circle @click="submitReportPrompt">
+              <el-icon size="15"><RefreshRight /></el-icon>
+            </el-button>
+          </div>
+          <div class="report-chat-input">
+            <el-input
+              v-model="reportPromptText"
+              class="report-followup-input"
+              :placeholder="t('dashboard.chart_report_followup_placeholder')"
+              type="textarea"
+              :autosize="{ minRows: 1, maxRows: 3 }"
+              :disabled="reportGenerating"
+              @keydown.enter.exact.prevent="submitReportPrompt"
+              @keydown.stop
+              @keyup.stop
+            />
+            <el-button
+              v-if="reportGenerating"
+              class="report-stop-circle"
+              circle
+              :aria-label="t('dashboard.chart_report_stop')"
+              @click="stopReportGeneration"
+            >
+              <span class="stop-square"></span>
+            </el-button>
+            <el-button
+              v-else
+              class="report-prompt-send"
+              circle
+              type="primary"
+              :disabled="!reportPromptText.trim()"
+              @click="submitReportPrompt"
+            >
+              <el-icon size="16">
+                <icon_send_filled />
+              </el-icon>
+            </el-button>
+          </div>
+        </template>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -424,6 +775,12 @@ onBeforeUnmount(() => {
 .wrapper-outer {
   position: absolute;
   overflow: hidden;
+  --preview-action-top: 10px;
+  --preview-action-right: 16px;
+  --preview-action-gap: 4px;
+  --report-popover-top: 38px;
+  --report-popover-right: var(--preview-action-right);
+  --report-popover-horizontal-gap: calc(var(--report-popover-right) * 2);
   background: var(--workspace-card-bg, #ffffff);
   border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: 12px;
@@ -451,6 +808,21 @@ onBeforeUnmount(() => {
       0 6px 16px rgba(18, 34, 66, 0.08),
       0 2px 6px rgba(18, 34, 66, 0.05);
     transform: translateY(0);
+  }
+
+  &.is-report-open {
+    z-index: 200;
+    overflow: visible;
+  }
+
+  &.is-report-chart-target {
+    --preview-action-top: 10px;
+    --report-popover-top: 38px;
+  }
+
+  &.is-report-tab-target {
+    --preview-action-top: 10px;
+    --report-popover-top: 38px;
   }
 
   &.is-frameless {
@@ -493,12 +865,12 @@ onBeforeUnmount(() => {
 
 .preview-chart-actions {
   position: absolute;
-  top: 18px;
-  right: 24px;
+  top: var(--preview-action-top);
+  right: var(--preview-action-right);
   z-index: 25;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--preview-action-gap);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-2px);
@@ -509,22 +881,24 @@ onBeforeUnmount(() => {
 
 .wrapper-outer:hover .preview-chart-actions,
 .preview-chart-actions:hover,
-.report-prompt-popover:hover + .preview-chart-actions {
+.wrapper-outer.is-report-open .preview-chart-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
 }
 
 .preview-action-btn {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 0 !important;
   padding: 0;
   border: 0;
   border-radius: 6px;
   background: transparent;
   box-shadow: none;
   color: #394b63;
+  line-height: 20px;
 
   &:hover,
   &:focus {
@@ -533,159 +907,4 @@ onBeforeUnmount(() => {
   }
 }
 
-.report-prompt-popover {
-  position: absolute;
-  top: 42px;
-  right: 24px;
-  z-index: 30;
-  width: min(420px, calc(100% - 48px));
-  padding: 16px;
-  border: 2px solid #4f7df3;
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 18px 42px rgba(47, 107, 255, 0.16);
-}
-
-.report-prompt-input {
-  :deep(.ed-textarea__inner) {
-    min-height: 42px !important;
-    padding: 8px 0;
-    border: 0;
-    box-shadow: none;
-    resize: none;
-  }
-}
-
-.report-prompt-footer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.report-prompt-title {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  min-width: 0;
-  gap: 6px;
-  color: #1f2329;
-  font-size: 14px;
-  line-height: 22px;
-  font-weight: 500;
-
-  span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
-
-.report-prompt-send {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  background: #4f7df3;
-  border-color: #4f7df3;
-
-  &:hover,
-  &:focus {
-    background: #2f6bff;
-    border-color: #2f6bff;
-  }
-}
-
-.report-dialog-header,
-.report-conversation-footer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.report-dialog-header {
-  margin-bottom: 12px;
-}
-
-.report-close-btn {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  margin-left: auto;
-  color: #65758c;
-
-  &:hover,
-  &:focus {
-    color: #2f6bff;
-    background: rgba(47, 107, 255, 0.1);
-  }
-}
-
-.report-answer-panel {
-  min-height: 92px;
-  max-height: 260px;
-  overflow: auto;
-  color: #1f2329;
-  font-size: 13px;
-  line-height: 1.65;
-
-  :deep(.markdown-body) {
-    color: inherit;
-    font-size: inherit;
-    line-height: inherit;
-    background: transparent;
-  }
-
-  :deep(.markdown-body > :first-child) {
-    margin-top: 0;
-  }
-
-  :deep(.markdown-body > :last-child) {
-    margin-bottom: 0;
-  }
-}
-
-.report-answer-empty,
-.report-progress,
-.report-status {
-  color: #74849a;
-  font-size: 13px;
-}
-
-.report-progress {
-  margin-top: 10px;
-}
-
-.report-conversation-footer {
-  justify-content: space-between;
-  margin-top: 12px;
-}
-
-.report-status {
-  min-height: 24px;
-  line-height: 24px;
-}
-
-.report-stop-btn {
-  height: 30px;
-  padding: 0 12px;
-  border-color: #d7e1ef;
-  color: #394b63;
-  background: #ffffff;
-
-  &:hover,
-  &:focus {
-    border-color: #4f7df3;
-    color: #2f6bff;
-    background: rgba(79, 125, 243, 0.08);
-  }
-}
-
-.stop-square {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  margin-right: 6px;
-  border-radius: 2px;
-  background: currentColor;
-}
 </style>

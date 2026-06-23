@@ -10,6 +10,7 @@ import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
+import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
 import dv_sort_asc from '@/assets/svg/dv-sort-asc.svg'
@@ -72,6 +73,13 @@ const filterText = ref(null)
 const expandedArray = ref([])
 const resourceListTree = ref()
 const returnMounted = ref(false)
+const isDefaultOrderEditing = ref(false)
+const defaultDraggingNode = ref<any>(null)
+const defaultDropIndicator = reactive({
+  visible: false,
+  nodeId: '',
+  placement: '',
+})
 const state = reactive({
   curSortType: 'name_asc',
   curSortTypePrefix: 'name',
@@ -101,6 +109,10 @@ const state = reactive({
 })
 
 const { handleDrop, handleDragStart } = treeDraggableChart(state, 'resourceTree', 'dashboard')
+
+const canEditDefaultOrder = computed<boolean>(
+  () => props.defaultMode && userStore.isTenantAdminUser === true
+)
 
 const currentRouteDashboardId = () => {
   const resourceId =
@@ -199,7 +211,6 @@ const getTree = async () => {
         leaf: true,
       }))
       state.resourceTree = _.cloneDeep(state.originResourceTree)
-      handleSortTypeChange('name_asc')
       afterTreeInit()
     })
     return
@@ -464,6 +475,90 @@ const baseInfoChangeFinish = () => {
   getTree()
 }
 
+const defaultOrderIds = () => state.resourceTree.map((item) => String(item.id))
+
+const saveDefaultOrder = async () => {
+  const orderedIds = defaultOrderIds()
+  if (orderedIds.length === 0) return
+  await dashboardApi.default_sort({ ordered_ids: orderedIds })
+  state.originResourceTree = _.cloneDeep(state.resourceTree)
+}
+
+const toggleDefaultOrderEditing = async () => {
+  if (!canEditDefaultOrder.value) return
+  if (isDefaultOrderEditing.value) {
+    await saveDefaultOrder()
+    ElMessage.success(t('common.save_success'))
+    isDefaultOrderEditing.value = false
+    return
+  }
+  isDefaultOrderEditing.value = true
+}
+
+const allowDefaultOrderDrag = (draggingNode: any) =>
+  isDefaultOrderEditing.value && draggingNode?.data?.node_type === 'leaf'
+
+const allowDefaultOrderDrop = (draggingNode: any, dropNode: any, type: string) =>
+  isDefaultOrderEditing.value &&
+  type !== 'inner' &&
+  draggingNode?.data?.node_type === 'leaf' &&
+  dropNode?.data?.node_type === 'leaf' &&
+  (draggingNode?.data?.pid || 'root') === (dropNode?.data?.pid || 'root')
+
+const handleDefaultOrderDrop = () => {
+  state.originResourceTree = _.cloneDeep(state.resourceTree)
+  hideDefaultDropIndicator()
+  defaultDraggingNode.value = null
+}
+
+const hideDefaultDropIndicator = () => {
+  defaultDropIndicator.visible = false
+  defaultDropIndicator.nodeId = ''
+  defaultDropIndicator.placement = ''
+}
+
+const onDefaultOrderDragOver = (draggingNode: any, dropNode: any, event: DragEvent) => {
+  if (!isDefaultOrderEditing.value) return
+  const target = event.target as HTMLElement | null
+  const contentElement = target?.closest('.ed-tree-node__content') as HTMLElement | null
+  const treeElement = resourceListTree.value?.$el as HTMLElement | undefined
+  if (!contentElement || !treeElement) {
+    hideDefaultDropIndicator()
+    return
+  }
+  const contentRect = contentElement.getBoundingClientRect()
+  const dropType = event.clientY < contentRect.top + contentRect.height / 2 ? 'prev' : 'next'
+  if (!allowDefaultOrderDrop(defaultDraggingNode.value || draggingNode, dropNode, dropType)) {
+    hideDefaultDropIndicator()
+    return
+  }
+  defaultDropIndicator.nodeId = String(dropNode?.data?.id || '')
+  defaultDropIndicator.placement = dropType
+  defaultDropIndicator.visible = true
+}
+
+const onNodeDragStart = (node: any) => {
+  if (props.defaultMode) {
+    defaultDraggingNode.value = node
+    hideDefaultDropIndicator()
+    return
+  }
+  if (!props.defaultMode) handleDragStart(node)
+}
+
+const onNodeDrop = (draggingNode: any, dropNode: any, dropType: string) => {
+  if (props.defaultMode) {
+    handleDefaultOrderDrop()
+    return
+  }
+  handleDrop(draggingNode, dropNode, dropType)
+}
+
+const onNodeDragEnd = () => {
+  hideDefaultDropIndicator()
+  defaultDraggingNode.value = null
+}
+
 const handleSortTypeChange = (menuSortType: string) => {
   state.curSortTypePrefix = ['name', 'time'].includes(menuSortType)
     ? menuSortType
@@ -534,7 +629,13 @@ defineExpose({
 </script>
 
 <template>
-  <div class="resource-tree" :class="{ 'is-default-mode': defaultMode }">
+  <div
+    class="resource-tree"
+    :class="{
+      'is-default-mode': defaultMode,
+      'is-default-order-editing': isDefaultOrderEditing,
+    }"
+  >
     <div class="tree-header">
       <div class="icon-methods">
         <span class="title">{{
@@ -574,7 +675,37 @@ defineExpose({
             </el-icon>
           </template>
         </el-input>
+        <el-button
+          v-if="defaultMode && canEditDefaultOrder"
+          link
+          type="primary"
+          class="filter-icon-span default-order-edit-btn"
+          @click="toggleDefaultOrderEditing"
+        >
+          <el-tooltip
+            :offset="16"
+            effect="dark"
+            :content="
+              isDefaultOrderEditing
+                ? t('dashboard.finish_order_edit')
+                : t('dashboard.edit_order')
+            "
+            placement="top"
+          >
+            <span class="sort-trigger-icon">
+              <Icon
+                :name="isDefaultOrderEditing ? 'icon_done_outlined' : 'icon_edit_outlined'"
+              >
+                <component
+                  :is="isDefaultOrderEditing ? icon_done_outlined : icon_edit_outlined"
+                  class="svg-icon opt-icon"
+                />
+              </Icon>
+            </span>
+          </el-tooltip>
+        </el-button>
         <el-dropdown
+          v-else-if="!defaultMode"
           popper-class="tree-sort-menu-custom"
           trigger="click"
           placement="bottom-end"
@@ -627,7 +758,9 @@ defineExpose({
         style="overflow-x: hidden"
         menu
         :empty-text="defaultMode ? t('dashboard.no_default_dashboard') : t('dashboard.no_dashboard')"
-        :draggable="!defaultMode"
+        :draggable="defaultMode ? isDefaultOrderEditing : !defaultMode"
+        :allow-drag="defaultMode ? allowDefaultOrderDrag : undefined"
+        :allow-drop="defaultMode ? allowDefaultOrderDrop : undefined"
         :default-expanded-keys="expandedArray"
         :data="state.resourceTree"
         :props="defaultProps"
@@ -638,11 +771,25 @@ defineExpose({
         @node-expand="nodeExpand"
         @node-collapse="nodeCollapse"
         @node-click="nodeClick"
-        @node-drag-start="handleDragStart"
-        @node-drop="handleDrop"
+        @node-drag-start="onNodeDragStart"
+        @node-drag-over="onDefaultOrderDragOver"
+        @node-drag-end="onNodeDragEnd"
+        @node-drop="onNodeDrop"
       >
         <template #default="{ node, data }">
-          <span class="custom-tree-node">
+          <span
+            class="custom-tree-node"
+            :class="{
+              'is-default-order-drop-prev':
+                defaultDropIndicator.visible &&
+                defaultDropIndicator.nodeId === String(data.id) &&
+                defaultDropIndicator.placement === 'prev',
+              'is-default-order-drop-next':
+                defaultDropIndicator.visible &&
+                defaultDropIndicator.nodeId === String(data.id) &&
+                defaultDropIndicator.placement === 'next',
+            }"
+          >
             <el-icon v-if="data.node_type !== 'leaf'" class="tree-node-icon">
               <Icon name="icon_folder"><icon_folder class="svg-icon" /></Icon>
             </el-icon>
@@ -733,6 +880,12 @@ defineExpose({
       background: var(--ed-color-primary-60, #a4e3d3);
     }
   }
+
+  &.default-order-edit-btn {
+    flex: 0 0 34px;
+    min-width: 34px;
+    margin-left: 0;
+  }
 }
 
 .resource-tree {
@@ -772,6 +925,12 @@ defineExpose({
   &.is-default-mode {
     .custom-tree {
       padding-top: 8px;
+    }
+  }
+
+  &.is-default-order-editing {
+    :deep(.dashboard-resource-tree.ed-tree .ed-tree__drop-indicator) {
+      display: none !important;
     }
   }
 
@@ -822,13 +981,13 @@ defineExpose({
 
   .create-dashboard-btn {
     width: 100%;
-    height: 38px;
+    height: 36px;
     margin-bottom: 10px;
     border-radius: 10px;
     justify-content: center;
     border: 0;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.1px;
     background: linear-gradient(135deg, #2f6bff 0%, #1d8dff 100%);
@@ -860,8 +1019,8 @@ defineExpose({
 
     :deep(.ed-icon),
     :deep(svg) {
-      width: 18px;
-      height: 18px;
+      width: 16px;
+      height: 16px;
       color: inherit;
     }
 
@@ -976,6 +1135,7 @@ defineExpose({
   --active-color: var(--workspace-active-bg, var(--theme-control-bg));
 
   flex: 1;
+  position: relative;
   min-height: 0;
   height: auto;
   padding: 0;
@@ -999,20 +1159,39 @@ defineExpose({
 
   :deep(.ed-tree__empty-text) {
     color: var(--workspace-text-secondary, var(--theme-text-secondary)) !important;
-    font-size: 14px;
-    line-height: 22px;
+    font-size: 13px;
+    line-height: 20px;
   }
 
   :deep(.ed-tree-node__content) {
     margin: 0 14px 2px;
-    height: 40px;
-    padding: 8px 0;
+    height: 36px;
+    padding: 7px 0;
     border-radius: 6px;
-    font-size: 14px;
-    line-height: 22px;
+    font-size: 13px;
+    line-height: 20px;
     font-weight: 400;
     color: var(--workspace-text-primary, #1f2329) !important;
     background: transparent;
+  }
+
+  :deep(.dashboard-resource-tree.ed-tree .ed-tree-node > .ed-tree-node__content .tree-node-icon.icon-primary) {
+    color: var(--workspace-text-secondary, #667085) !important;
+    opacity: 1;
+    transform: scale(1.06);
+    transform-origin: center;
+    transition:
+      color 0.22s ease,
+      opacity 0.22s ease,
+      transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  :deep(.dashboard-resource-tree.ed-tree .ed-tree-node > .ed-tree-node__content .tree-node-icon.icon-primary svg) {
+    color: inherit !important;
+  }
+
+  :deep(.dashboard-resource-tree.ed-tree .ed-tree-node > .ed-tree-node__content .tree-node-icon.icon-primary svg path) {
+    fill: currentColor !important;
   }
 
   :deep(.ed-tree-node__content:hover),
@@ -1040,7 +1219,20 @@ defineExpose({
 
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon svg path) {
     fill: currentColor !important;
-    stroke: currentColor !important;
+  }
+
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon.icon-primary) {
+    color: var(--ed-color-primary, #2f6bff) !important;
+    opacity: 1;
+    transform: scale(1.2);
+  }
+
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon.icon-primary svg) {
+    color: inherit !important;
+  }
+
+  :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon.icon-primary svg path) {
+    fill: currentColor !important;
   }
 
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .label-tooltip) {
@@ -1054,9 +1246,11 @@ defineExpose({
   :deep(.ed-tree-node__expand-icon.is-leaf) {
     display: none;
   }
+
 }
 
 .custom-tree-node {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -1064,11 +1258,46 @@ defineExpose({
   padding-left: 12px;
   color: inherit;
 
+  &.is-default-order-drop-prev::before,
+  &.is-default-order-drop-next::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      transparent 0,
+      currentColor 16%,
+      currentColor 84%,
+      transparent 100%
+    );
+    opacity: 0.24;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  &.is-default-order-drop-prev::before {
+    top: -7px;
+  }
+
+  &.is-default-order-drop-next::before {
+    bottom: -7px;
+  }
+
   .tree-node-icon {
-    flex: 0 0 18px;
-    width: 18px;
-    height: 18px;
-    font-size: 18px;
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+  }
+
+  .tree-node-icon.icon-primary {
+    flex-basis: 17px;
+    width: 17px;
+    height: 17px;
+    font-size: 17px;
   }
 
   .label-tooltip {
@@ -1076,9 +1305,9 @@ defineExpose({
     width: auto;
     min-width: 0;
     margin-left: 8px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 400;
-    line-height: 22px;
+    line-height: 20px;
     color: inherit;
     overflow: hidden;
     white-space: nowrap;
@@ -1092,8 +1321,8 @@ defineExpose({
     border-radius: 999px;
     background: rgba(37, 99, 235, 0.1);
     color: #2563eb;
-    font-size: 11px;
-    line-height: 18px;
+    font-size: 10px;
+    line-height: 16px;
     font-weight: 500;
   }
 
@@ -1104,8 +1333,8 @@ defineExpose({
     border-radius: 999px;
     background: rgba(245, 158, 11, 0.14);
     color: #b45309;
-    font-size: 11px;
-    line-height: 18px;
+    font-size: 10px;
+    line-height: 16px;
     font-weight: 500;
   }
 

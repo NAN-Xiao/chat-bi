@@ -85,6 +85,23 @@ export const analysisAssistantApi = {
       },
       controller
     ),
+  reportInterpretation: (
+    messages: AnalysisAssistantMessage[],
+    context?: string,
+    datasourceId?: number,
+    dataSkillId?: number | string | null,
+    controller?: AbortController
+  ) =>
+    request.fetchStream(
+      '/analysis-assistant/report-interpretation',
+      {
+        messages,
+        context,
+        datasource_id: datasourceId,
+        data_skill_id: dataSkillId,
+      },
+      controller
+    ),
   history: (datasourceId?: number, limit = 30): Promise<AnalysisAssistantConversationSummary[]> =>
     request.get('/analysis-assistant/history', {
       params: {

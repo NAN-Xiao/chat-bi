@@ -44,6 +44,17 @@ def _normalize_target_scope(
         raise HTTPException(status_code=400, detail="Unsupported custom prompt target scope")
 
 
+def _ensure_target_scope_allowed(
+        prompt_type: CustomPromptTypeEnum,
+        target_scope: CustomPromptTargetScopeEnum,
+) -> None:
+    if (
+        target_scope == CustomPromptTargetScopeEnum.REPORT_INTERPRETATION
+        and prompt_type != CustomPromptTypeEnum.DATA_SKILL
+    ):
+        raise HTTPException(status_code=400, detail="Report interpretation scope only supports Data Skills")
+
+
 def _normalize_visibility_scope(
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None,
 ) -> CustomPromptVisibilityScopeEnum:
@@ -663,6 +674,7 @@ def create_custom_prompt(
         raise HTTPException(status_code=400, detail="Datasource is required")
     ai_model_id = _require_ai_model(session, _normalize_ai_model_id(info.ai_model_id))
     target_scope = _normalize_target_scope(info.target_scope)
+    _ensure_target_scope_allowed(prompt_type, target_scope)
     visibility_scope = _normalize_visibility_scope(info.visibility_scope)
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
         resolved_tenant_id = DEFAULT_TENANT_ID
@@ -757,6 +769,7 @@ def update_custom_prompt(
         raise HTTPException(status_code=400, detail="Datasource is required")
     ai_model_id = _require_ai_model(session, _normalize_ai_model_id(info.ai_model_id))
     target_scope = _normalize_target_scope(info.target_scope or row.target_scope)
+    _ensure_target_scope_allowed(prompt_type, target_scope)
     visibility_scope = _normalize_visibility_scope(info.visibility_scope or row.visibility_scope)
     if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
         resolved_tenant_id = DEFAULT_TENANT_ID

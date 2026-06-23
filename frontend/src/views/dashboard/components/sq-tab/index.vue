@@ -319,10 +319,11 @@ defineExpose({
 }
 
 .tab-content-custom {
+  --tab-content-inset: 1px;
   position: absolute;
-  width: 100%;
-  height: 100%;
-  margin: 2px !important; // border size
+  width: calc(100% - var(--tab-content-inset) * 2);
+  height: calc(100% - var(--tab-content-inset) * 2);
+  margin: var(--tab-content-inset) !important; // border size
   background: #fff;
   div::-webkit-scrollbar {
     width: 0 !important;

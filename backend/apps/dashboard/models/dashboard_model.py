@@ -232,6 +232,7 @@ class DashboardBaseResponse(BaseModel):
     type: Optional[str] = None
     create_time: Optional[int] = None
     update_time: Optional[int] = None
+    sort: Optional[int] = 0
     can_edit: Optional[bool] = False
     can_share: Optional[bool] = False
     can_set_default: Optional[bool] = False
@@ -294,6 +295,10 @@ class DashboardSqlPreview(BaseModel):
 class DashboardDefaultRequest(BaseModel):
     dashboard_id: str
     is_default: bool = True
+
+
+class DashboardDefaultSortRequest(BaseModel):
+    ordered_ids: List[str]
 
 
 class DashboardShareRequest(BaseModel):

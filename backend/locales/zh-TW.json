@@ -113,6 +113,7 @@
     "target_scope": "作用範圍",
     "target_scope_smart_qa": "智能報表",
     "target_scope_analysis_assistant": "分析助手",
+    "target_scope_report_interpretation": "報表解讀",
     "target_scope_all": "全部",
     "active": "啟用狀態",
     "prompt_word_content": "系統提示詞",

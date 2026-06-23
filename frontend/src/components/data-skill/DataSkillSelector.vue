@@ -97,6 +97,7 @@ const autoSkillDescription = computed(() => {
 
 const targetScopeText = (scope?: string | null) => {
   if (scope === 'ANALYSIS_ASSISTANT') return t('prompt.target_scope_analysis_assistant')
+  if (scope === 'REPORT_INTERPRETATION') return t('prompt.target_scope_report_interpretation')
   if (scope === 'ALL') return t('prompt.target_scope_all')
   return t('prompt.target_scope_smart_qa')
 }
@@ -416,6 +417,9 @@ onMounted(() => {
             <el-radio :value="'SMART_QA'">{{ t('prompt.target_scope_smart_qa') }}</el-radio>
             <el-radio :value="'ANALYSIS_ASSISTANT'">
               {{ t('prompt.target_scope_analysis_assistant') }}
+            </el-radio>
+            <el-radio :value="'REPORT_INTERPRETATION'">
+              {{ t('prompt.target_scope_report_interpretation') }}
             </el-radio>
             <el-radio :value="'ALL'">{{ t('prompt.target_scope_all') }}</el-radio>
           </el-radio-group>

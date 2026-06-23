@@ -203,7 +203,12 @@ defineExpose({
       }"
     >
       <div class="preview-stage">
-        <SQPreviewHead :dashboard-info="previewShowFlag ? state.dashboardInfo : {}" @reload="reload" />
+        <SQPreviewHead
+          :dashboard-info="previewShowFlag ? state.dashboardInfo : {}"
+          :component-data="state.canvasDataPreview"
+          :canvas-view-info="state.canvasViewInfoPreview"
+          @reload="reload"
+        />
         <div
           id="sq-preview-content"
           ref="previewCanvasContainer"

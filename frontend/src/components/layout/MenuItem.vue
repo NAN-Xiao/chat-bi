@@ -177,7 +177,7 @@ const MenuLineIcon = defineComponent({
           viewBox: '0 0 18 18',
           fill: 'none',
           stroke: 'currentColor',
-          strokeWidth: 1.55,
+          strokeWidth: 1.45,
           strokeLinecap: 'round',
           strokeLinejoin: 'round',
           xmlns: 'http://www.w3.org/2000/svg',

@@ -113,6 +113,7 @@
     "target_scope": "적용 범위",
     "target_scope_smart_qa": "스마트 리포트",
     "target_scope_analysis_assistant": "분석 도우미",
+    "target_scope_report_interpretation": "보고서 해석",
     "target_scope_all": "전체",
     "active": "활성 상태",
     "prompt_word_content": "시스템 프롬프트",

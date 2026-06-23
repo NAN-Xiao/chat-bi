@@ -298,9 +298,11 @@ def _parse_target_scope_cell(value: str, trans: Trans) -> CustomPromptTargetScop
     label_map = {
         CustomPromptTargetScopeEnum.SMART_QA.value.lower(): CustomPromptTargetScopeEnum.SMART_QA,
         CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT.value.lower(): CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+        CustomPromptTargetScopeEnum.REPORT_INTERPRETATION.value.lower(): CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
         CustomPromptTargetScopeEnum.ALL.value.lower(): CustomPromptTargetScopeEnum.ALL,
         trans("i18n_custom_prompt.target_scope_smart_qa").lower(): CustomPromptTargetScopeEnum.SMART_QA,
         trans("i18n_custom_prompt.target_scope_analysis_assistant").lower(): CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+        trans("i18n_custom_prompt.target_scope_report_interpretation").lower(): CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
         trans("i18n_custom_prompt.target_scope_all").lower(): CustomPromptTargetScopeEnum.ALL,
     }
     return label_map.get(raw.lower(), CustomPromptTargetScopeEnum.SMART_QA)

@@ -19,6 +19,7 @@ class CustomPromptTypeEnum(str, Enum):
 class CustomPromptTargetScopeEnum(str, Enum):
     SMART_QA = "SMART_QA"
     ANALYSIS_ASSISTANT = "ANALYSIS_ASSISTANT"
+    REPORT_INTERPRETATION = "REPORT_INTERPRETATION"
     ALL = "ALL"
 
 
@@ -377,10 +378,20 @@ def find_data_skills(
         can_manage_all: bool = False,
         tenant_id: Optional[int | str] = None,
         question: Optional[str] = None,
+        include_all_target_scopes: bool = False,
 ) -> tuple[str, list[str], Optional[int]]:
     normalized_skill_id = _normalize_prompt_id(skill_id)
     normalized_scope = _normalize_target_scope(target_scope)
     skill_condition = "AND id = :skill_id" if normalized_skill_id is not None else ""
+    target_scope_condition = ""
+    if not include_all_target_scopes:
+        target_scope_condition = """
+              AND (
+                target_scope = :target_scope
+                OR target_scope = :all_scope
+                OR (target_scope IS NULL AND :target_scope = :smart_qa_scope)
+              )
+        """
     params = {
         "custom_prompt_type": CustomPromptTypeEnum.DATA_SKILL.value,
         "tenant_id": require_tenant_id(tenant_id),
@@ -411,11 +422,7 @@ def find_data_skills(
                 (COALESCE(visibility_scope, :public_scope) = :public_scope AND tenant_id = :tenant_id)
                 OR (visibility_scope = :private_scope AND create_by = :current_user_id)
               )
-              AND (
-                target_scope = :target_scope
-                OR target_scope = :all_scope
-                OR (target_scope IS NULL AND :target_scope = :smart_qa_scope)
-              )
+              {target_scope_condition}
               AND (
                 :current_user_id IS NULL
                 OR NOT EXISTS (

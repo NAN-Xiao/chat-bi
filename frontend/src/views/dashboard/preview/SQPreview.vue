@@ -71,6 +71,8 @@ const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
+const PREVIEW_GRID_GAP = 10
+const TAB_PREVIEW_GRID_GAP = 6
 let resizeObserver: ResizeObserver | undefined
 const canvasStyle = computed(() => {
   if (props.inTab) {
@@ -100,8 +102,9 @@ const sizeInit = () => {
     const screenWidth = previewCanvas.value.offsetWidth
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     const screenHeight = previewCanvas.value.offsetHeight
-    baseMarginLeft.value = 10
-    baseMarginTop.value = 10
+    const gridGap = props.inTab ? TAB_PREVIEW_GRID_GAP : PREVIEW_GRID_GAP
+    baseMarginLeft.value = gridGap
+    baseMarginTop.value = gridGap
     baseWidth.value =
       (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
     baseHeight.value =

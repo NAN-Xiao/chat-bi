@@ -211,24 +211,6 @@ export const routes = [
     ],
   },
   {
-    path: '/knowledge-base',
-    component: LayoutDsl,
-    redirect: '/knowledge-base/index',
-    children: [
-      {
-        path: 'index',
-        name: 'knowledge-base',
-        component: KnowledgeBase,
-        props: { mode: 'personal' },
-        meta: {
-          title: t('knowledge_base.title'),
-          iconActive: 'knowledge',
-          iconDeActive: 'noKnowledge',
-        },
-      },
-    ],
-  },
-  {
     path: '/dashboard-store',
     component: LayoutDsl,
     redirect: '/dashboard-store/index',
@@ -519,7 +501,6 @@ export const routes = [
         path: 'knowledge-base',
         name: 'system-knowledge-base',
         component: KnowledgeBase,
-        props: { mode: 'admin' },
         meta: {
           title: t('knowledge_base.admin_title'),
           iconActive: 'knowledge',
