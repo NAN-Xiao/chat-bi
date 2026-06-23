@@ -89,6 +89,21 @@ const dataPermissionDenied = computed(
   () => dataObject.value?.status === 'failed' && dataObject.value?.error_type === 'permission_denied'
 )
 const dataFailureMessage = computed(() => dataObject.value?.message || dataObject.value?.reason || '')
+const chartDatasourceId = computed(
+  () => props.message?.record?.datasource || dataObject.value?.datasource || datasourceContext.datasourceId
+)
+const canAddToDashboard = computed(() => {
+  const datasourceId = chartDatasourceId.value
+  if (!datasourceId) return false
+  const datasource = datasourceContext.datasources.find(
+    (item) => String(item.id) === String(datasourceId)
+  )
+  if (datasource) return datasource.can_create_dashboard === true
+  return (
+    String(datasourceContext.datasourceId || '') === String(datasourceId) &&
+    datasourceContext.canCreateDashboard === true
+  )
+})
 
 const data = computed(() => {
   if (props.isPredict) {
@@ -292,13 +307,14 @@ function showSql() {
 const showLabel = ref(false)
 
 function addToDashboard() {
+  if (!canAddToDashboard.value) return
   const recordeInfo = {
     id: '1-1',
     data: {
       data: data.value,
     },
     sql: props.message?.record?.sql,
-    datasource: props.message?.record?.datasource || datasourceContext.datasourceId,
+    datasource: chartDatasourceId.value,
     chart: {},
   }
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -553,8 +569,19 @@ watch(
           </el-popover>
         </div>
         <div v-if="message?.record?.chart && !isAssistant && !dataPermissionDenied">
-          <el-tooltip effect="dark" :content="t('chat.add_to_dashboard')" placement="top">
-            <el-button class="tool-btn" text @click="addToDashboard">
+          <el-tooltip
+            effect="dark"
+            :content="
+              canAddToDashboard ? t('chat.add_to_dashboard') : t('chat.no_dashboard_create_permission')
+            "
+            placement="top"
+          >
+            <el-button
+              class="tool-btn"
+              text
+              :disabled="!canAddToDashboard"
+              @click="addToDashboard"
+            >
               <el-icon size="17">
                 <DataBoard />
               </el-icon>

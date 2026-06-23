@@ -23,6 +23,7 @@ import { toLoginPage } from '@/utils/utils'
 import { useCache } from '@/utils/useCache'
 import { useEmitt } from '@/utils/useEmitt'
 import { ElMessage } from 'element-plus-secondary'
+import { PLATFORM_ADMIN_HOME, resolveAfterWorkspaceSwitch, resolveManagementHome } from '@/utils/navigation'
 
 const { wsCache } = useCache()
 const router = useRouter()
@@ -102,11 +103,11 @@ const toSystem = () => {
   popoverRef.value?.hide?.()
   if (isPlatformWorkspaceDelegate.value) {
     userStore.exitPlatformWorkspaceDelegate().finally(() => {
-      router.push('/system/platform-overview')
+      router.push(PLATFORM_ADMIN_HOME)
     })
     return
   }
-  router.push(userStore.isSystemAdminUser ? '/system/platform-overview' : '/system/member-access')
+  router.push(resolveManagementHome(userStore))
 }
 
 const toWorkspaceApplication = () => {
@@ -138,7 +139,7 @@ const switchTenant = async (tenant: TenantInfo) => {
       ElMessage.success(t('common.switch_success'))
     }
     popoverRef.value?.hide?.()
-    router.push('/system/overview')
+    router.push(resolveAfterWorkspaceSwitch(userStore))
   } finally {
     tenantSwitchingId.value = ''
   }

@@ -2,12 +2,15 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmitt } from '@/utils/useEmitt'
+import { useUserStore } from '@/stores/user'
+import { resolveBusinessHome } from '@/utils/navigation'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 onMounted(() => {
   useEmitt().emitter.emit('analysis-assistant-toggle', true)
-  router.replace('/chat/index')
+  router.replace(resolveBusinessHome(userStore))
 })
 </script>
 

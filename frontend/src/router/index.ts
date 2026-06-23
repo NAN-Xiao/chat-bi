@@ -44,19 +44,17 @@ import { i18n } from '@/i18n'
 import { store } from '@/stores'
 import { UserStore } from '@/stores/user'
 import { watchRouter } from './watch'
+import { resolveSystemHome } from '@/utils/navigation'
 
 const t = i18n.global.t
-const resolveSystemHome = () => {
+const getSystemHome = () => {
   const userStore = UserStore(store)
-  if (userStore.isPlatformWorkspaceDelegate) return '/system/overview'
-  if (userStore.isSystemAdminUser) return '/system/platform-overview'
-  if (userStore.isTenantAdminUser) return '/system/overview'
-  return '/chat'
+  return resolveSystemHome(userStore)
 }
 export const routes = [
   {
     path: '/',
-    redirect: '/chat',
+    redirect: '/chat/index',
   },
   {
     path: '/login',
@@ -279,7 +277,7 @@ export const routes = [
     path: '/system',
     name: 'system',
     component: LayoutDsl,
-    redirect: () => resolveSystemHome(),
+    redirect: () => getSystemHome(),
     meta: { hidden: true },
     children: [
       {

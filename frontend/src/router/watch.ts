@@ -9,6 +9,7 @@ import {
   clearPlatformWorkspaceDelegateContext,
   isPlatformWorkspaceDelegateSession,
 } from '@/utils/platformWorkspaceDelegate'
+import { resolveAuthenticatedHome } from '@/utils/navigation'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
@@ -17,7 +18,6 @@ const whiteList = ['/login', '/admin-login']
 const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/401']
 const platformAdminHome = '/system/platform-overview'
 const platformTenantManagementPath = '/system/tenant'
-const tenantAdminSystemHome = '/system/overview'
 const tenantChatBIEntryPrefixes = [
   '/chat',
   '/dashboard',
@@ -35,16 +35,7 @@ const tenantChatBIEntryPrefixes = [
   '/system/setting/permission',
 ]
 
-const defaultAuthenticatedPath = () =>
-  userStore.isPlatformWorkspaceDelegate
-    ? tenantAdminSystemHome
-    : userStore.isSystemAdminUser
-    ? platformAdminHome
-    : userStore.hasActiveWorkspace
-      ? userStore.isTenantAdminUser
-        ? tenantAdminSystemHome
-        : '/chat'
-      : '/account/workspaces'
+const defaultAuthenticatedPath = () => resolveAuthenticatedHome(userStore)
 
 const matchesPathPrefix = (path: string, prefix: string) =>
   path === prefix || path.startsWith(`${prefix}/`)
@@ -125,7 +116,7 @@ export const watchRouter = (router: Router) => {
     }
     if (to.path === '/login' || to.path === '/admin-login') {
       console.info(from)
-      next('/chat')
+      next(defaultAuthenticatedPath())
     } else {
       next()
     }
@@ -144,7 +135,6 @@ const accessCrossPermission = (to: any) => {
     userStore.isSystemAdminUser && !platformDelegate && platformOperation
   return (
     (userStore.isSystemAdminUser && !platformDelegate && isTenantChatBIRoute(to.path) && !platformAdminOperation) ||
-    (platformDelegate && !to.path.startsWith('/system') && isTenantChatBIRoute(to.path)) ||
     (platformDelegate && platformOnly) ||
     (!userStore.isSystemAdminUser && !userStore.hasActiveWorkspace && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||

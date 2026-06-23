@@ -94,6 +94,12 @@ def _can_manage_tenant_projects(user: CurrentUser) -> bool:
     )
 
 
+def _can_manage_datasource_metadata(user: CurrentUser) -> bool:
+    return (
+        is_platform_admin(user) and not is_platform_workspace_delegate(user)
+    ) or is_platform_workspace_delegate(user)
+
+
 def _require_platform_project_admin(user: CurrentUser) -> None:
     if not is_platform_admin(user):
         raise HTTPException(status_code=403, detail="Only SaaS admin can manage projects")
@@ -235,6 +241,7 @@ def _datasource_list_items(
         bound_tenant_id = datasource_tenant_id if datasource_tenant_id != DEFAULT_TENANT_ID else None
         can_platform_manage_project = is_platform_admin(user) and not is_platform_workspace_delegate(user)
         can_manage_tenant_projects = _can_manage_tenant_projects(user)
+        can_manage_metadata = _can_manage_datasource_metadata(user)
         item = {
             "id": datasource.id,
             "name": datasource.name,
@@ -260,7 +267,7 @@ def _datasource_list_items(
             "can_create_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_VIEWER),
             "can_manage_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_EDITOR),
             "can_manage_project": can_manage_tenant_projects,
-            "can_manage_metadata": can_platform_manage_project,
+            "can_manage_metadata": can_manage_metadata,
             "can_bind_workspace": can_platform_manage_project,
         }
         result.append(item)
@@ -376,7 +383,7 @@ async def get_datasource(
     else:
         data["configuration"] = None
     data["tenant_name"] = _tenant_name_map(session, [datasource.tenant_id]).get(int(datasource.tenant_id or 0))
-    data["can_manage_metadata"] = is_platform_admin(user) and not is_platform_workspace_delegate(user)
+    data["can_manage_metadata"] = _can_manage_datasource_metadata(user)
     return data
 
 
@@ -661,9 +668,6 @@ async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
 @require_permissions(permission=AppPermission(role=['platform_admin'], type='ds', keyExpression="id"))
 async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, data: TableObj,
                        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
-    if is_platform_workspace_delegate(current_user):
-        raise HTTPException(status_code=403, detail="Only SaaS admin can preview datasource rows")
-
     def inner():
         try:
             return preview(session, current_user, id, data)

@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 
-from apps.system.crud.user import is_platform_admin
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.schemas.system_schema import UserInfoDTO
 from common.core.deps import CurrentUser, Trans
 
@@ -10,6 +10,10 @@ TENANT_REQUIRED_MESSAGE = "当前账号尚未加入工作空间，请先创建�
 
 
 def ensure_chatbi_business_user(current_user: UserInfoDTO, trans=None) -> None:
+    if is_platform_workspace_delegate(current_user):
+        if not getattr(current_user, "tenant_id", None):
+            raise HTTPException(status_code=403, detail=TENANT_REQUIRED_MESSAGE)
+        return
     if is_platform_admin(current_user):
         message = (
             trans("i18n_permission.platform_admin_chatbi_forbidden")

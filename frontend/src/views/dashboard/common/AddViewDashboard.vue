@@ -22,6 +22,11 @@ const resource = ref(null)
 
 const optInit = (viewInfo: any) => {
   state.viewInfo = viewInfo
+  state.datasource = viewInfo?.datasource || datasourceContext.datasourceId
+  if (!canCreateDashboardForDatasource(state.datasource)) {
+    ElMessage.warning(t('chat.no_dashboard_create_permission'))
+    return
+  }
   initDashboardList()
   resourceDialogShow.value = true
 }
@@ -38,6 +43,18 @@ const resourceForm = reactive({
   dashboardId: '',
   dashboardName: '',
 })
+
+const canCreateDashboardForDatasource = (datasourceId: number | string | null | undefined) => {
+  if (!datasourceId) return false
+  const datasource = datasourceContext.datasources.find(
+    (item) => String(item.id) === String(datasourceId)
+  )
+  if (datasource) return datasource.can_create_dashboard === true
+  return (
+    String(datasourceContext.datasourceId || '') === String(datasourceId) &&
+    datasourceContext.canCreateDashboard === true
+  )
+}
 
 const resourceFormRulesNew = ref({
   dashboardName: [
@@ -190,6 +207,11 @@ const initDashboardList = async () => {
   state.datasource =
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     state.viewInfo?.datasource || datasourceContext.datasourceId
+  if (!canCreateDashboardForDatasource(state.datasource)) {
+    ElMessage.warning(t('chat.no_dashboard_create_permission'))
+    resetForm()
+    return
+  }
   const params = { datasource: state.datasource }
   dashboardApi.list_resource(params).then((res: SQTreeNode[]) => {
     state.dashboardList = res || []

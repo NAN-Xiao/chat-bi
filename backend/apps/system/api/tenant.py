@@ -149,6 +149,8 @@ def _model_fields_set(model) -> set[str]:
 
 
 def _audit_tenant_id(current_user: CurrentUser, tenant_id: int | None = None) -> int:
+    if is_platform_workspace_delegate(current_user):
+        return DEFAULT_TENANT_ID
     try:
         return int(tenant_id or getattr(current_user, "tenant_id", None) or DEFAULT_TENANT_ID)
     except (TypeError, ValueError):

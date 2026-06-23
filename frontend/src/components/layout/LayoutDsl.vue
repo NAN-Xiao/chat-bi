@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, computed, onBeforeMount, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onBeforeMount, onMounted, onUnmounted, watch } from 'vue'
 import Menu from './Menu.vue'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
 import ProjectSelector from './ProjectSelector.vue'
@@ -16,6 +16,7 @@ import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useUserStore } from '@/stores/user'
 import { useEmitt } from '@/utils/useEmitt'
 import { isMobile } from '@/utils/utils'
+import { PLATFORM_ADMIN_HOME, resolveBusinessHome } from '@/utils/navigation'
 import { getInitialTheme, THEME_CHANGE_EVENT, type ThemeMode } from '@/utils/theme'
 
 const isPhone = computed(() => {
@@ -63,6 +64,9 @@ useEmitt({
       typeof expanded === 'boolean' ? expanded : !analysisAssistantExpanded.value
   },
 })
+watch(analysisAssistantExpanded, (expanded) => {
+  useEmitt().emitter.emit('analysis-assistant-expanded', expanded)
+})
 const handleFoldExpand = () => {
   handleCollapseChange(!collapse.value)
 }
@@ -70,19 +74,15 @@ const handleFoldExpand = () => {
 const toProjectList = () => {
   if (userStore.isPlatformWorkspaceDelegate) {
     userStore.exitPlatformWorkspaceDelegate().finally(() => {
-      router.push('/system/platform-overview')
+      router.push(PLATFORM_ADMIN_HOME)
     })
     return
   }
-  router.push(userStore.isSystemAdminUser ? '/system/platform-overview' : '/chat/index')
+  router.push(resolveBusinessHome(userStore))
 }
 
 const toChatIndex = () => {
-  router.push(
-    userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
-      ? '/system/platform-overview'
-      : '/chat/index'
-  )
+  router.push('/chat/index')
 }
 
 const route = useRoute()

@@ -14,6 +14,7 @@ import { useUserStore } from '@/stores/user'
 import { useEmitt } from '@/utils/useEmitt'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { type TenantInfo } from '@/api/tenant'
+import { resolveAfterWorkspaceSwitch } from '@/utils/navigation'
 
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
@@ -88,7 +89,7 @@ const handleWorkspaceChange = async (tenant: TenantInfo) => {
     emit('selectProject', null)
     ElMessage.success(t('common.switch_success'))
     popoverRef.value?.hide?.()
-    router.push('/chat/index')
+    router.push(resolveAfterWorkspaceSwitch(userStore))
   } finally {
     workspaceSwitchingId.value = ''
   }

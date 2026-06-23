@@ -1,5 +1,5 @@
 <script lang="ts">
-import { h, defineComponent } from 'vue'
+import { h, defineComponent, onBeforeUnmount, ref } from 'vue'
 import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
 import { useRouter, useRoute } from 'vue-router'
 import { useEmitt } from '@/utils/useEmitt'
@@ -198,6 +198,15 @@ const MenuItem = defineComponent({
   setup(props) {
     const router = useRouter()
     const route = useRoute()
+    const analysisAssistantExpanded = ref(false)
+    const emitter = useEmitt().emitter
+    const updateAnalysisAssistantExpanded = (expanded: unknown) => {
+      analysisAssistantExpanded.value = expanded === true
+    }
+    emitter.on('analysis-assistant-expanded', updateAnalysisAssistantExpanded)
+    onBeforeUnmount(() => {
+      emitter.off('analysis-assistant-expanded', updateAnalysisAssistantExpanded)
+    })
     const titleWithIcon = (props: any) => {
       const { title, icon } = props
       return [
@@ -244,12 +253,18 @@ const MenuItem = defineComponent({
       }
 
       const { title, iconDeActive, iconActive } = props.menu?.meta || {}
-      const icon = route.path === path ? iconActive : iconDeActive
+      const active = props.menu?.meta?.action === 'analysis-assistant'
+        ? analysisAssistantExpanded.value
+        : route.path === path
+      const icon = active ? iconActive : iconDeActive
+      const className = `${props.level > 0 ? `menu-level-${props.level}` : ''}${
+        active ? ' is-active' : ''
+      }`.trim()
       return h(
         ElMenuItem,
         {
           index: path,
-          class: props.level > 0 ? `menu-level-${props.level}` : '',
+          class: className,
           onClick: () => handleMenuClick(props.menu),
         },
         {

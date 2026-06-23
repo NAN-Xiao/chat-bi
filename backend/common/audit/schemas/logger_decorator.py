@@ -10,6 +10,8 @@ from sqlmodel import Session, select
 import traceback
 from common.audit.models.log_model import OperationType, OperationStatus, SystemLog, SystemLogsResource
 from common.audit.schemas.request_context import RequestContext
+from apps.system.crud.tenant import DEFAULT_TENANT_ID
+from apps.system.crud.user import is_platform_workspace_delegate
 from apps.system.crud.user import get_user_by_account
 from apps.system.schemas.system_schema import UserInfoDTO, BaseUserDTO
 from sqlalchemy import and_, select
@@ -18,6 +20,8 @@ from common.core.db import engine
 
 
 def _user_tenant_id(user: Optional[UserInfoDTO]) -> int:
+    if is_platform_workspace_delegate(user):
+        return DEFAULT_TENANT_ID
     try:
         tenant_id = getattr(user, "tenant_id", None)
         return int(tenant_id) if tenant_id not in (None, "") else None
