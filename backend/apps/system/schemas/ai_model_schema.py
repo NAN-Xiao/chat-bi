@@ -23,7 +23,7 @@ class AiModelConfigItem(BaseModel):
     
 class AiModelCreator(AiModelItem):
     api_domain: str = Field(description=f"{PLACEHOLDER_PREFIX}api_domain")
-    api_key: str = Field(description=f"{PLACEHOLDER_PREFIX}api_key")
+    api_key: str | None = Field(default="", description=f"{PLACEHOLDER_PREFIX}api_key")
     config_list: List[AiModelConfigItem] = Field(description=f"{PLACEHOLDER_PREFIX}config_list")
     
 class AiModelEditor(AiModelCreator, BaseCreatorDTO):

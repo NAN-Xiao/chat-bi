@@ -187,9 +187,10 @@ const handleAddModel = () => {
   })
 }
 const handleEditModel = (row: any) => {
+  const supplier = get_supplier(row.supplier)
   editModel.value = true
   activeType.value = row.supplier
-  activeName.value = row.supplier_item.name
+  activeName.value = supplier?.name || ''
   modelApi.query(row.id).then((res: any) => {
     modelConfigvVisible.value = true
     nextTick(() => {
