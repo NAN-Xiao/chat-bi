@@ -21,6 +21,69 @@ import {
 // const t = i18n.global.t
 const assistantStore = useAssistantStore()
 const { wsCache } = useCache()
+const TENANT_CONTEXT_HEADERS = {
+  id: 'x-zhishu-current-tenant-id',
+  publicId: 'x-zhishu-current-tenant-public-id',
+  name: 'x-zhishu-current-tenant-name',
+  role: 'x-zhishu-current-tenant-role',
+  status: 'x-zhishu-current-workspace-status',
+}
+
+const readHeader = (response: AxiosResponse, name: string) => {
+  const headers = response.headers || {}
+  return String(headers[name] || headers[name.toLowerCase()] || '').trim()
+}
+
+const decodeHeader = (value: string) => {
+  try {
+    return decodeURIComponent(value || '')
+  } catch {
+    return value || ''
+  }
+}
+
+const syncTenantContextFromResponse = (response: AxiosResponse) => {
+  if (assistantStore.getToken) return
+  const tenantId = readHeader(response, TENANT_CONTEXT_HEADERS.id)
+  const workspaceStatus = decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.status))
+  if (!tenantId || workspaceStatus === 'platform_admin') return
+  if (tenantId === String(wsCache.get('user.tenantId') || '')) return
+
+  const tenant = {
+    id: tenantId,
+    public_id: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.publicId)),
+    name: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.name)),
+    role: decodeHeader(readHeader(response, TENANT_CONTEXT_HEADERS.role)),
+  }
+  wsCache.set('user.tenantId', tenant.id)
+  wsCache.set('user.tenantPublicId', tenant.public_id)
+  wsCache.set('user.tenantName', tenant.name)
+  wsCache.set('user.tenantRole', tenant.role)
+  wsCache.set('user.workspaceRole', tenant.role)
+  wsCache.set('user.hasWorkspace', workspaceStatus === 'active' || workspaceStatus === 'platform_workspace_delegate')
+  wsCache.set('user.workspaceStatus', workspaceStatus || 'active')
+
+  import('@/stores/user')
+    .then(({ useUserStore }) => {
+      const userStore = useUserStore()
+      userStore.setTenant(tenant)
+      return Promise.all([
+        import('@/stores/datasourceContext'),
+        import('@/utils/useEmitt'),
+      ])
+    })
+    .then(([{ useDatasourceContextStore }, { useEmitt, emitWorkspaceContextChange }]) => {
+      const datasourceContext = useDatasourceContextStore()
+      datasourceContext.clear(true)
+      return datasourceContext.loadDatasources(true).finally(() => {
+        useEmitt().emitter.emit('datasource-context-change', null)
+        emitWorkspaceContextChange({ tenantId, phase: 'changed' })
+      })
+    })
+    .catch((error) => {
+      console.warn('Failed to sync workspace context from response headers', error)
+    })
+}
 
 const pushAppRoute = async (route: any, fallbackHash: string) => {
   try {
@@ -169,6 +232,7 @@ class HttpService {
     this.instance.interceptors.response.use(
       (response: AxiosResponse) => {
         // console.log(`[Response] ${response.config.url}`, response.data)
+        syncTenantContextFromResponse(response)
 
         // Return raw response if configured
         if ((response.config as FullRequestConfig).requestOptions?.rawResponse) {

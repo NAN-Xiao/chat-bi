@@ -1147,6 +1147,34 @@ def ensure_user_default_membership(session: Session, user) -> TenantContext:
     )
 
 
+def _tenant_context_from_membership(
+    session: Session,
+    tenant: TenantModel,
+    membership: TenantUserModel,
+) -> TenantContext:
+    ensure_tenant_public_id(session, tenant)
+    return TenantContext(
+        id=int(tenant.id),
+        public_id=getattr(tenant, "public_id", None),
+        name=tenant.name,
+        role=normalize_tenant_role(membership.role),
+    )
+
+
+def _fallback_user_tenant_context(session: Session, user) -> TenantContext | None:
+    memberships = list_user_tenant_memberships(session, int(user.id))
+    if not memberships:
+        return None
+
+    non_sample_memberships = [
+        (tenant, membership)
+        for tenant, membership in memberships
+        if tenant.name != SAMPLE_TENANT_NAME
+    ]
+    tenant, membership = (non_sample_memberships or memberships)[0]
+    return _tenant_context_from_membership(session, tenant, membership)
+
+
 def resolve_current_tenant(
     session: Session,
     user,
@@ -1163,9 +1191,11 @@ def resolve_current_tenant(
         requested_tenant_id = None
     if requested_tenant_id:
         tenant = session.get(TenantModel, requested_tenant_id)
-        if not tenant or (not user_is_platform_admin and tenant.status != 1):
-            raise PermissionError("Tenant is disabled or does not exist")
-        if getattr(tenant, "status", 1) == TENANT_STATUS_DELETED:
+        if not tenant or getattr(tenant, "status", 1) == TENANT_STATUS_DELETED:
+            if not user_is_platform_admin:
+                fallback = _fallback_user_tenant_context(session, user)
+                if fallback is not None:
+                    return fallback
             raise PermissionError("Tenant is disabled or does not exist")
         if user_is_platform_admin and platform_workspace_delegate:
             ensure_tenant_public_id(session, tenant)
@@ -1175,6 +1205,11 @@ def resolve_current_tenant(
                 name=tenant.name,
                 role=TENANT_ROLE_OWNER,
             )
+        if not user_is_platform_admin and int(getattr(tenant, "status", 0) or 0) != 1:
+            fallback = _fallback_user_tenant_context(session, user)
+            if fallback is not None:
+                return fallback
+            raise PermissionError("Tenant is disabled or does not exist")
         if user_is_platform_admin or user_belongs_to_tenant(session, int(user.id), requested_tenant_id):
             membership = session.exec(
                 select(TenantUserModel).where(
@@ -1190,6 +1225,9 @@ def resolve_current_tenant(
                 name=tenant.name,
                 role=normalize_tenant_role(membership.role if membership else TENANT_ROLE_OWNER),
             )
+        fallback = _fallback_user_tenant_context(session, user)
+        if fallback is not None:
+            return fallback
         raise PermissionError("User does not belong to tenant")
 
     if user_is_platform_admin and not platform_workspace_delegate:
@@ -1201,8 +1239,8 @@ def resolve_current_tenant(
             role=TENANT_ROLE_OWNER,
         )
 
-    memberships = list_user_tenant_memberships(session, int(user.id))
-    if not memberships:
+    fallback = _fallback_user_tenant_context(session, user)
+    if fallback is None:
         if user_is_platform_admin:
             tenant = ensure_default_tenant(session)
             return TenantContext(
@@ -1213,14 +1251,7 @@ def resolve_current_tenant(
             )
         return None
 
-    tenant, membership = memberships[0]
-    ensure_tenant_public_id(session, tenant)
-    return TenantContext(
-        id=int(tenant.id),
-        public_id=getattr(tenant, "public_id", None),
-        name=tenant.name,
-        role=normalize_tenant_role(membership.role),
-    )
+    return fallback
 
 
 def attach_tenant_context(user, tenant: TenantContext | None, *, platform_workspace_delegate: bool = False):

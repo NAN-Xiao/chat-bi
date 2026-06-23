@@ -9,6 +9,11 @@ interface Option {
 }
 
 const emitter = mitt()
+export const WORKSPACE_CONTEXT_CHANGE_EVENT = 'workspace-context-change'
+
+export const emitWorkspaceContextChange = (params: any = null) => {
+  emitter.emit(WORKSPACE_CONTEXT_CHANGE_EVENT, params)
+}
 
 // Map to store debounce information
 const lazyDebounceMap = new Map<

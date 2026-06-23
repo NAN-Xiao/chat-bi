@@ -11,10 +11,9 @@ import { useRouter } from 'vue-router'
 import { highlightKeyword } from '@/utils/xss'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
-import { useEmitt } from '@/utils/useEmitt'
+import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { type TenantInfo } from '@/api/tenant'
-import { resolveAfterWorkspaceSwitch } from '@/utils/navigation'
 
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
@@ -81,15 +80,19 @@ const handleWorkspaceChange = async (tenant: TenantInfo) => {
   }
   workspaceSwitchingId.value = tenantId
   try {
+    emitWorkspaceContextChange({ tenantId, phase: 'changing' })
     await userStore.switchTenant(tenantId)
     datasourceContext.clear(true)
     await datasourceContext.loadDatasources(true)
     dashboardStore.canvasDataInit()
     useEmitt().emitter.emit('datasource-context-change', null)
+    emitWorkspaceContextChange({ tenantId, phase: 'changed' })
     emit('selectProject', null)
     ElMessage.success(t('common.switch_success'))
     popoverRef.value?.hide?.()
-    router.push(resolveAfterWorkspaceSwitch(userStore))
+  } catch (error) {
+    emitWorkspaceContextChange({ tenantId: userStore.getTenantId, phase: 'changed' })
+    throw error
   } finally {
     workspaceSwitchingId.value = ''
   }

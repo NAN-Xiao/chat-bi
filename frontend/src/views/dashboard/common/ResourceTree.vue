@@ -30,6 +30,7 @@ import { useCache } from '@/utils/useCache.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
+import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 const { wsCache } = useCache()
 
 const { t } = useI18n()
@@ -37,6 +38,8 @@ const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
 const userStore = useUserStore()
 const resourceGroupOptRef = ref(null)
+let treeRequestSeq = 0
+const workspaceContextSwitching = ref(false)
 
 const props = defineProps({
   curCanvasType: {
@@ -123,6 +126,20 @@ const nodeCollapse = (data: any) => {
   }
 }
 
+const resetTreeState = () => {
+  treeRequestSeq += 1
+  selectedNodeKey.value = null
+  returnMounted.value = false
+  expandedArray.value = []
+  state.originResourceTree = []
+  state.resourceTree = []
+  dashboardStore.canvasDataInit()
+  nextTick(() => {
+    resourceListTree.value?.setCurrentKey?.(null)
+    resourceListTree.value?.filter?.(filterText.value)
+  })
+}
+
 const filterNode = (value: string, data: SQTreeNode) => {
   if (!value) return true
   return data.name?.toLocaleLowerCase().includes(value.toLocaleLowerCase())
@@ -164,9 +181,17 @@ const nodeClick = (data: SQTreeNode, node: any) => {
 }
 
 const getTree = async () => {
+  const requestSeq = ++treeRequestSeq
+  const requestTenantId = userStore.getTenantId || 'default'
   if (props.defaultMode) {
     state.originResourceTree = []
     dashboardApi.default_list().then((res: SQTreeNode[]) => {
+      if (
+        requestSeq !== treeRequestSeq ||
+        (userStore.getTenantId || 'default') !== requestTenantId
+      ) {
+        return
+      }
       state.originResourceTree = (res || []).map((item) => ({
         ...item,
         pid: 'root',
@@ -180,7 +205,6 @@ const getTree = async () => {
     return
   }
   await datasourceContext.loadDatasources()
-  const requestTenantId = userStore.getTenantId || 'default'
   const requestDatasourceId = datasourceContext.datasourceId
   state.originResourceTree = []
   if (!requestDatasourceId) {
@@ -191,6 +215,7 @@ const getTree = async () => {
   const params = { datasource: requestDatasourceId }
   dashboardApi.list_resource(params).then((res: SQTreeNode[]) => {
     if (
+      requestSeq !== treeRequestSeq ||
       (userStore.getTenantId || 'default') !== requestTenantId ||
       datasourceContext.datasourceId !== requestDatasourceId
     ) {
@@ -313,9 +338,26 @@ onMounted(() => {
   getTree()
 })
 
+useEmitt({
+  name: WORKSPACE_CONTEXT_CHANGE_EVENT,
+  callback: (event?: any) => {
+    workspaceContextSwitching.value = event?.phase === 'changing'
+    resetTreeState()
+    emit('deleteCurResource')
+    if (event?.phase === 'changing') {
+      return
+    }
+    workspaceContextSwitching.value = false
+    datasourceContext.loadDatasources().finally(() => {
+      getTree()
+    })
+  },
+})
+
 watch(
   () => datasourceContext.datasourceId,
   () => {
+    if (workspaceContextSwitching.value) return
     if (props.defaultMode) return
     const routeResourceId = currentRouteDashboardId()
     if (routeResourceId) {
@@ -324,8 +366,7 @@ watch(
       getTree()
       return
     }
-    selectedNodeKey.value = null
-    dashboardStore.canvasDataInit()
+    resetTreeState()
     emit('deleteCurResource')
     getTree()
   }

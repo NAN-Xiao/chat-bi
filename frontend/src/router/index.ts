@@ -12,6 +12,7 @@ import DefaultDashboard from '@/views/dashboard/default/index.vue'
 import Access from '@/views/access/index.vue'
 import CustomAgent from '@/views/custom-agent/index.vue'
 import DataSkills from '@/views/data-skills/index.vue'
+import KnowledgeBase from '@/views/knowledge-base/index.vue'
 import DashboardStore from '@/views/dashboard/store/index.vue'
 import Datasource from '@/views/ds/Datasource.vue'
 import Model from '@/views/system/model/Model.vue'
@@ -205,6 +206,24 @@ export const routes = [
           title: t('data_skill.title'),
           iconActive: 'terminology',
           iconDeActive: 'noTerminology',
+        },
+      },
+    ],
+  },
+  {
+    path: '/knowledge-base',
+    component: LayoutDsl,
+    redirect: '/knowledge-base/index',
+    children: [
+      {
+        path: 'index',
+        name: 'knowledge-base',
+        component: KnowledgeBase,
+        props: { mode: 'personal' },
+        meta: {
+          title: t('knowledge_base.title'),
+          iconActive: 'knowledge',
+          iconDeActive: 'noKnowledge',
         },
       },
     ],
@@ -491,6 +510,20 @@ export const routes = [
           title: t('data_skill.admin_title'),
           iconActive: 'terminology',
           iconDeActive: 'noTerminology',
+          tenantBusiness: true,
+          tenantAdminOnly: true,
+          platformOperation: true,
+        },
+      },
+      {
+        path: 'knowledge-base',
+        name: 'system-knowledge-base',
+        component: KnowledgeBase,
+        props: { mode: 'admin' },
+        meta: {
+          title: t('knowledge_base.admin_title'),
+          iconActive: 'knowledge',
+          iconDeActive: 'noKnowledge',
           tenantBusiness: true,
           tenantAdminOnly: true,
           platformOperation: true,

@@ -501,6 +501,7 @@ import router from '@/router'
 import QuickQuestion from '@/views/chat/QuickQuestion.vue'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 const userStore = useUserStore()
 const props = defineProps<{
   startChatDsId?: number
@@ -570,6 +571,7 @@ const scrollToBottom = debounce(() => {
 const loading = ref<boolean>(false)
 const chatList = ref<Array<ChatInfo>>([])
 const appearanceStore = useAppearanceStoreWithOut()
+const workspaceContextSwitching = ref(false)
 
 const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
@@ -623,6 +625,14 @@ const showChatFooter = computed(() => {
 const goEmpty = (func?: (...p: any[]) => void, ...param: any[]) => {
   inputMessage.value = ''
   stop(func, ...param)
+}
+
+const resetChatContext = () => {
+  currentChat.value = new ChatInfo()
+  currentChatId.value = undefined
+  chatList.value = []
+  selectedCustomPromptId.value = null
+  selectedDataSkillId.value = null
 }
 
 let scrollTime: any
@@ -730,7 +740,7 @@ function getChatList(callback?: () => void) {
       ) {
         return
       }
-      chatList.value = chatApi.toChatInfoList(res)
+      chatList.value = chatApi.toChatInfoList(res || [])
     })
     .finally(() => {
       if (
@@ -790,18 +800,38 @@ function onChatCreatedQuick(chat: ChatInfo) {
 watch(
   () => datasourceContext.datasourceId,
   (value, oldValue) => {
+    if (workspaceContextSwitching.value) {
+      return
+    }
     if (!oldValue || value === oldValue) {
       return
     }
     stop()
-    currentChat.value = new ChatInfo()
-    currentChatId.value = undefined
-    chatList.value = []
-    selectedCustomPromptId.value = null
-    selectedDataSkillId.value = null
+    resetChatContext()
     getChatList()
   }
 )
+
+useEmitt({
+  name: WORKSPACE_CONTEXT_CHANGE_EVENT,
+  callback: (event?: any) => {
+    workspaceContextSwitching.value = event?.phase === 'changing'
+    stop()
+    resetChatContext()
+    if (event?.phase === 'changing') {
+      loading.value = false
+      return
+    }
+    if (!userStore.getTenantId) {
+      loading.value = false
+      return
+    }
+    workspaceContextSwitching.value = false
+    datasourceContext.loadDatasources().finally(() => {
+      getChatList()
+    })
+  },
+})
 
 const recommendQuestionRef = ref()
 const quickQuestionRef = ref()

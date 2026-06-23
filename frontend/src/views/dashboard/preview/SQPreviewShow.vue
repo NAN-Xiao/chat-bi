@@ -12,6 +12,7 @@ import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 const { t } = useI18n()
 const route = useRoute()
 const dashboardStore = dashboardStoreWithOut()
@@ -70,6 +71,12 @@ const stateInit = () => {
   state.canvasStylePreview = {}
   state.canvasViewInfoPreview = {}
   state.dashboardInfo = {}
+}
+const resetPreviewState = () => {
+  dashboardLoadVersion += 1
+  loadingDashboardId.value = null
+  dataInitState.value = true
+  stateInit()
 }
 const sameDashboard = (id: unknown) =>
   id && String((state.dashboardInfo as any)?.id || '') === String(id)
@@ -135,6 +142,12 @@ watch(
   },
   { immediate: true }
 )
+useEmitt({
+  name: WORKSPACE_CONTEXT_CHANGE_EVENT,
+  callback: () => {
+    resetPreviewState()
+  },
+})
 const sideTreeStatus = ref(true)
 
 function toggleSidebar() {

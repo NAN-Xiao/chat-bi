@@ -21,9 +21,10 @@ import { userApi } from '@/api/auth'
 import { type TenantInfo } from '@/api/tenant'
 import { toLoginPage } from '@/utils/utils'
 import { useCache } from '@/utils/useCache'
-import { useEmitt } from '@/utils/useEmitt'
+import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { ElMessage } from 'element-plus-secondary'
-import { PLATFORM_ADMIN_HOME, resolveAfterWorkspaceSwitch, resolveManagementHome } from '@/utils/navigation'
+import { PLATFORM_ADMIN_HOME, resolveManagementHome } from '@/utils/navigation'
+import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
 
 const { wsCache } = useCache()
 const router = useRouter()
@@ -84,7 +85,8 @@ const languageList = computed(() => [
   },
 ])
 const popoverRef = ref()
-const tenantSwitchingId = ref('')
+const workspacePopoverVisible = ref(false)
+const languagePopoverVisible = ref(false)
 
 const tenantDisplayId = (tenant?: Partial<TenantInfo> | null) =>
   String(tenant?.public_id || '')
@@ -115,33 +117,43 @@ const toWorkspaceApplication = () => {
   router.push('/account/workspace-applications')
 }
 
-const loadTenants = async () => {
-  try {
-    await userStore.loadTenants()
-  } catch (error) {
-    console.warn('Failed to load tenant list', error)
-  }
-}
+const currentBusinessTenant = () => ({
+  id: userStore.getTenantId,
+  public_id: userStore.getTenantPublicId,
+  name: userStore.getTenantName,
+  role: userStore.getTenantRole,
+})
 
-const switchTenant = async (tenant: TenantInfo) => {
-  const tenantId = String(tenant.id || '')
+const enterTenantAdmin = async (tenant?: TenantInfo) => {
+  const tenantId = String(tenant?.id || userStore.getTenantId || '')
   if (!tenantId) {
     return
   }
-  tenantSwitchingId.value = tenantId
+  rememberBusinessTenantBeforeAdmin(currentBusinessTenant())
   try {
     if (tenantId !== String(userStore.getTenantId || '')) {
+      emitWorkspaceContextChange({ tenantId, phase: 'changing' })
       await userStore.switchTenant(tenantId)
       datasourceContext.clear(true)
       await datasourceContext.loadDatasources(true)
       dashboardStore.canvasDataInit()
       useEmitt().emitter.emit('datasource-context-change', null)
+      emitWorkspaceContextChange({ tenantId, phase: 'changed' })
       ElMessage.success(t('common.switch_success'))
     }
     popoverRef.value?.hide?.()
-    router.push(resolveAfterWorkspaceSwitch(userStore))
-  } finally {
-    tenantSwitchingId.value = ''
+    router.push(resolveManagementHome(userStore))
+  } catch (error) {
+    emitWorkspaceContextChange({ tenantId: userStore.getTenantId, phase: 'changed' })
+    throw error
+  }
+}
+
+const loadTenants = async () => {
+  try {
+    await userStore.loadTenants()
+  } catch (error) {
+    console.warn('Failed to load tenant list', error)
   }
 }
 
@@ -215,13 +227,16 @@ onMounted(() => {
           <div class="datasource-name">{{ $t('common.platform_manage') }}</div>
         </div>
         <el-popover
-          v-if="showAdminWorkspaceEntry && adminTenantList.length > 1"
+          v-if="showAdminWorkspaceEntry"
+          v-model:visible="workspacePopoverVisible"
           :teleported="false"
+          :show-after="0"
+          :hide-after="0"
           popper-class="system-tenant"
           placement="right"
         >
           <template #reference>
-            <div class="popover-item">
+            <div class="popover-item has-submenu" :class="workspacePopoverVisible && 'is-submenu-open'">
               <el-icon size="16">
                 <icon_member_outlined></icon_member_outlined>
               </el-icon>
@@ -231,15 +246,14 @@ onMounted(() => {
               </el-icon>
             </div>
           </template>
-          <div class="tenant-popover">
-            <div class="tenant-title">{{ $t('tenant.my_workspaces') }}</div>
+          <div class="tenant-popover workspace-admin-popover">
+            <div class="tenant-title">{{ $t('tenant.workspace_list') }}</div>
             <el-scrollbar max-height="300px">
               <div
                 v-for="tenant in adminTenantList"
                 :key="tenant.id"
                 class="tenant-option"
-                :class="String(userStore.getTenantId) === String(tenant.id) && 'isActive'"
-                @click="switchTenant(tenant)"
+                @click="enterTenantAdmin(tenant)"
               >
                 <el-icon size="16">
                   <icon_member_outlined></icon_member_outlined>
@@ -252,27 +266,10 @@ onMounted(() => {
                     {{ $t('tenant.tenant_id') }} {{ tenantDisplayId(tenant) }} · {{ formatTenantRole(tenant.role) }}
                   </div>
                 </div>
-                <el-icon
-                  v-if="tenantSwitchingId !== String(tenant.id)"
-                  size="16"
-                  class="done"
-                >
-                  <icon_done_outlined></icon_done_outlined>
-                </el-icon>
               </div>
             </el-scrollbar>
           </div>
         </el-popover>
-        <div
-          v-else-if="showAdminWorkspaceEntry && adminTenantList.length === 1"
-          class="popover-item"
-          @click="switchTenant(adminTenantList[0])"
-        >
-          <el-icon size="16">
-            <icon_member_outlined></icon_member_outlined>
-          </el-icon>
-          <div class="datasource-name">{{ $t('tenant.my_workspaces') }}</div>
-        </div>
         <div
           v-if="showWorkspaceApplicationEntry"
           class="popover-item"
@@ -295,9 +292,16 @@ onMounted(() => {
           </el-icon>
           <div class="datasource-name">API Key</div>
         </div>
-        <el-popover :teleported="false" popper-class="system-language" placement="right">
+        <el-popover
+          v-model:visible="languagePopoverVisible"
+          :teleported="false"
+          :show-after="0"
+          :hide-after="0"
+          popper-class="system-language"
+          placement="right"
+        >
           <template #reference>
-            <div class="popover-item">
+            <div class="popover-item has-submenu" :class="languagePopoverVisible && 'is-submenu-open'">
               <el-icon size="16">
                 <icon_translate_outlined></icon_translate_outlined>
               </el-icon>
@@ -479,7 +483,7 @@ onMounted(() => {
         color: var(--theme-text-secondary);
       }
     }
-      .popover-item {
+    .popover-item {
       height: 32px;
       display: flex;
       align-items: center;
@@ -498,6 +502,11 @@ onMounted(() => {
       }
       .datasource-name {
         margin-left: 8px;
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       &.mr4 {
@@ -509,6 +518,14 @@ onMounted(() => {
 
       .right {
         margin-left: auto;
+        opacity: 0;
+      }
+
+      &:hover,
+      &.is-submenu-open {
+        .right {
+          opacity: 1;
+        }
       }
     }
   }
@@ -516,7 +533,7 @@ onMounted(() => {
 
 .system-tenant.system-tenant {
   padding: 4px;
-  width: 260px !important;
+  width: 280px !important;
   box-shadow: var(--theme-card-shadow);
   border: 1px solid var(--theme-shell-border);
   background: var(--theme-panel-bg);

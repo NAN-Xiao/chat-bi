@@ -3,6 +3,8 @@ import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import ChartInsightHeader from '@/views/chat/component/ChartInsightHeader.vue'
 import icon_window_mini_outlined from '@/assets/svg/icon_window-mini_outlined.svg'
 import SqViewDisplay from '@/views/dashboard/components/sq-view/index.vue'
+import { dashboardApi } from '@/api/dashboard.ts'
+import { ElMessage } from 'element-plus-secondary'
 const props = defineProps({
   viewInfo: {
     type: Object,
@@ -35,6 +37,7 @@ const containerRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
 const frameSize = ref({ width: 0, height: 0 })
+const refreshing = ref(false)
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
 
@@ -49,6 +52,119 @@ const enlargeDialogVisible = ref(false)
 
 const enlargeView = () => {
   enlargeDialogVisible.value = true
+}
+
+function unique(values: Array<string | undefined | null>) {
+  return Array.from(
+    new Set(
+      values
+        .filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '')
+        .map((value) => `${value}`)
+    )
+  )
+}
+
+function getResultFields(result: any) {
+  return unique([
+    ...(Array.isArray(result?.fields) ? result.fields : []),
+    ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
+  ])
+}
+
+async function refreshData() {
+  if (!props.viewInfo?.datasource) {
+    ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
+    return
+  }
+  if (!props.viewInfo?.sql?.trim()) {
+    ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
+    return
+  }
+  refreshing.value = true
+  try {
+    const result = await dashboardApi.preview_sql({
+      datasource: props.viewInfo.datasource,
+      sql: props.viewInfo.sql.trim(),
+    })
+    const fields = getResultFields(result)
+    const data = Array.isArray(result?.data) ? result.data : []
+    if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
+      props.viewInfo.data = {}
+    }
+    props.viewInfo.data.fields = fields
+    props.viewInfo.data.data = data
+    props.viewInfo.fields = fields
+    props.viewInfo.status = result?.status || 'success'
+    props.viewInfo.message = result?.message || ''
+    if (props.viewInfo.status === 'failed') {
+      ElMessage.error(props.viewInfo.message || t('dashboard.chart_refresh_failed'))
+    } else {
+      ElMessage.success(t('dashboard.chart_refresh_success'))
+    }
+    await nextTick()
+    renderChart()
+  } catch (error: any) {
+    ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
+  } finally {
+    refreshing.value = false
+  }
+}
+
+function cleanExportFilename(name?: string) {
+  return (name || t('dashboard.view')).replace(/[\\/:*?"<>|]/g, '_').slice(0, 80)
+}
+
+function collectExportFields() {
+  const rows = Array.isArray(props.viewInfo?.data?.data) ? props.viewInfo.data.data : []
+  const chart = chartRef.value as any
+  const excelData = chart?.getExcelData?.()
+  return unique([
+    ...(Array.isArray(props.viewInfo?.data?.fields) ? props.viewInfo.data.fields : []),
+    ...(Array.isArray(props.viewInfo?.fields) ? props.viewInfo.fields : []),
+    ...(Array.isArray(excelData?.axis) ? excelData.axis.map((item: any) => item?.value || item?.name) : []),
+    ...rows.flatMap((row: Record<string, any>) => Object.keys(row || {})),
+  ])
+}
+
+function htmlCell(value: any) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+  const text = typeof value === 'object' ? JSON.stringify(value) : `${value}`
+  const safeText = /^[=+\-@]/.test(text) ? `\t${text}` : text
+  return safeText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function exportTableData() {
+  const rows = Array.isArray(props.viewInfo?.data?.data) ? props.viewInfo.data.data : []
+  const fields = collectExportFields()
+  if (!rows.length || !fields.length) {
+    ElMessage.warning(t('dashboard.chart_export_no_data'))
+    return
+  }
+  const tableRows = [
+    `<tr>${fields.map((field) => `<th>${htmlCell(field)}</th>`).join('')}</tr>`,
+    ...rows.map(
+      (row: Record<string, any>) =>
+        `<tr>${fields
+          .map((field) => `<td style="mso-number-format:'\\@';">${htmlCell(row?.[field])}</td>`)
+          .join('')}</tr>`
+    ),
+  ]
+  const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body><table>${tableRows.join('')}</table></body></html>`
+  const blob = new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `${cleanExportFilename(props.viewInfo?.chart?.title)}.xls`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(link.href)
+  ElMessage.success(t('dashboard.chart_export_success'))
 }
 
 const chartTypeList = computed(() => {
@@ -230,12 +346,15 @@ onBeforeUnmount(() => {
 defineExpose({
   renderChart,
   enlargeView,
+  refreshData,
+  exportTableData,
 })
 </script>
 
 <template>
   <div
     ref="containerRef"
+    v-loading="refreshing"
     class="chart-base-container"
     :class="`insight-density-${insightDensity}`"
   >

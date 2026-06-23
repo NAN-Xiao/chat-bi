@@ -10,9 +10,16 @@ import {
   isPlatformWorkspaceDelegateSession,
 } from '@/utils/platformWorkspaceDelegate'
 import { resolveAuthenticatedHome, resolveLoginSuccessTarget } from '@/utils/navigation'
+import {
+  clearRememberedBusinessTenant,
+  getRememberedBusinessTenant,
+} from '@/utils/workspaceAdminContext'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
+const datasourceContext = useDatasourceContextStore()
 const { wsCache } = useCache()
 const whiteList = ['/login', '/admin-login']
 const assistantWhiteList = ['/assistant', '/embeddedPage', '/embeddedCommon', '/401']
@@ -42,6 +49,23 @@ const matchesPathPrefix = (path: string, prefix: string) =>
 
 const isTenantChatBIRoute = (path: string) =>
   tenantChatBIEntryPrefixes.some((prefix) => matchesPathPrefix(path, prefix))
+
+const restoreBusinessTenantAfterWorkspaceAdmin = async (to: any, from: any) => {
+  if (!from?.path?.startsWith('/system') || to?.path?.startsWith('/system')) return
+  if (!isTenantChatBIRoute(to.path)) return
+  const rememberedTenant = getRememberedBusinessTenant()
+  if (!rememberedTenant?.id) return
+  const tenantId = String(rememberedTenant.id)
+  if (tenantId !== String(userStore.getTenantId || '')) {
+    emitWorkspaceContextChange({ tenantId, phase: 'changing' })
+    await userStore.switchTenant(tenantId)
+    datasourceContext.clear(true)
+    await datasourceContext.loadDatasources(true)
+    useEmitt().emitter.emit('datasource-context-change', null)
+    emitWorkspaceContextChange({ tenantId, phase: 'changed' })
+  }
+  clearRememberedBusinessTenant()
+}
 
 export const watchRouter = (router: Router) => {
   router.beforeEach(async (to: any, from: any, next: any) => {
@@ -112,6 +136,11 @@ export const watchRouter = (router: Router) => {
     if (to.path === '/docs') {
       location.href = to.fullPath
       return
+    }
+    try {
+      await restoreBusinessTenantAfterWorkspaceAdmin(to, from)
+    } catch (error) {
+      console.warn('Failed to restore business workspace after leaving workspace admin', error)
     }
     if (to.path === '/' || accessCrossPermission(to)) {
       next(defaultAuthenticatedPath())

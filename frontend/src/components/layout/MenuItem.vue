@@ -40,6 +40,8 @@ const iconNameMap: Record<string, string> = {
   noUsage: 'usage',
   terminology: 'terminology',
   noTerminology: 'terminology',
+  knowledge: 'knowledge',
+  noKnowledge: 'knowledge',
   sql: 'sql',
   noSql: 'sql',
   agent: 'agent',
@@ -120,6 +122,11 @@ const iconSpec: Record<string, IconNode[]> = {
   terminology: [
     { tag: 'path', attrs: { d: 'M4.2 3.8h7.2a2.4 2.4 0 0 1 2.4 2.4v8.1H6.1a1.9 1.9 0 0 1-1.9-1.9V3.8Z' } },
     { tag: 'path', attrs: { d: 'M4.2 12.4a1.9 1.9 0 0 1 1.9-1.9h7.7M6.7 6.3h4.1M6.7 8.5h3.2' } },
+  ],
+  knowledge: [
+    { tag: 'path', attrs: { d: 'M4 3.8h6.8a2.6 2.6 0 0 1 2.6 2.6v8H6.2A2.2 2.2 0 0 1 4 12.2V3.8Z' } },
+    { tag: 'path', attrs: { d: 'M4 12.2A2.2 2.2 0 0 1 6.2 10h7.2M6.7 6.3h4M6.7 8.3h3.1' } },
+    { tag: 'path', attrs: { d: 'M12.4 3.8v5l-1.3-.8-1.3.8V3.8' } },
   ],
   sql: [
     { tag: 'rect', attrs: { x: 3.1, y: 4, width: 11.8, height: 10, rx: 1.6 } },

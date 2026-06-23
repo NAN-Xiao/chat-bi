@@ -284,7 +284,7 @@ import {
 import { useUserStore } from '@/stores/user'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
-import { useEmitt } from '@/utils/useEmitt'
+import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { formatTimestamp } from '@/utils/date'
 
 const { t } = useI18n()
@@ -560,22 +560,29 @@ const leaveWorkspace = async (tenant: TenantInfo) => {
     if (tenantId === String(userStore.getTenantId || '')) {
       const nextTenant = userStore.tenants[0] || null
       if (nextTenant?.id) {
+        emitWorkspaceContextChange({ tenantId: nextTenant.id, phase: 'changing' })
         await userStore.switchTenant(nextTenant.id)
         datasourceContext.clear(true)
         await datasourceContext.loadDatasources(true)
         dashboardStore.canvasDataInit()
         useEmitt().emitter.emit('datasource-context-change', null)
+        emitWorkspaceContextChange({ tenantId: nextTenant.id, phase: 'changed' })
       } else {
+        emitWorkspaceContextChange({ tenantId: '', phase: 'changing' })
         userStore.setTenant(null)
         datasourceContext.clear(true)
         dashboardStore.canvasDataInit()
         useEmitt().emitter.emit('datasource-context-change', null)
+        emitWorkspaceContextChange({ tenantId: '', phase: 'changed' })
       }
     } else {
       await userStore.loadTenants(true)
     }
     await Promise.all([loadApplications(), loadInvitations()])
     ElMessage.success(t('common.operation_success'))
+  } catch (error) {
+    emitWorkspaceContextChange({ tenantId: userStore.getTenantId, phase: 'changed' })
+    throw error
   } finally {
     tenantLeavingId.value = ''
   }

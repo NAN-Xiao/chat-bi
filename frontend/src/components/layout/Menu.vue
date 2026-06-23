@@ -77,12 +77,13 @@ const mainMenuOrder = (path: string) => {
   if (path.includes('/access')) return 40
   if (path === '/as' || path.startsWith('/as/')) return 50
   if (path.includes('/custom-agent')) return 60
-  if (path.includes('/data-skills')) return 70
-  if (path.includes('/dashboard-store')) return 80
+  if (path.includes('/knowledge-base')) return 70
+  if (path.includes('/data-skills')) return 80
+  if (path.includes('/dashboard-store')) return 90
   return 100
 }
 
-const tenantOptionalMainRoutes = ['/access']
+const tenantOptionalMainRoutes = ['/access', '/knowledge-base']
 const isTenantOptionalMainRoute = (path: string) =>
   tenantOptionalMainRoutes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 

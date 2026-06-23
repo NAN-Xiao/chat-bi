@@ -1,5 +1,6 @@
 
 import base64
+from urllib.parse import quote
 
 import jwt
 from fastapi import Request
@@ -37,6 +38,14 @@ from common.utils.locale import I18n
 from common.utils.utils import AppLogUtil, get_origin_from_referer
 from common.utils.whitelist import whiteUtils
 
+TENANT_CONTEXT_RESPONSE_HEADERS = {
+    "id": "X-ZHISHU-CURRENT-TENANT-ID",
+    "public_id": "X-ZHISHU-CURRENT-TENANT-PUBLIC-ID",
+    "name": "X-ZHISHU-CURRENT-TENANT-NAME",
+    "role": "X-ZHISHU-CURRENT-TENANT-ROLE",
+    "status": "X-ZHISHU-CURRENT-WORKSPACE-STATUS",
+}
+
 
 class TokenMiddleware(BaseHTTPMiddleware):
 
@@ -57,7 +66,8 @@ class TokenMiddleware(BaseHTTPMiddleware):
             validate_pass, data = await self.validateAskToken(request, askToken, trans)
             if validate_pass:
                 request.state.current_user = data
-                return await call_next(request)
+                response = await call_next(request)
+                return self._with_tenant_context_headers(request, response)
             message = trans('i18n_permission.authenticate_invalid', msg = data)
             return JSONResponse(message, status_code=401, headers=cors_headers_for_request(request))
         #if assistantToken and assistantToken.lower().startswith("assistant "):
@@ -71,7 +81,8 @@ class TokenMiddleware(BaseHTTPMiddleware):
                 origin = request.headers.get("X-ZHISHU-HOST-ORIGIN") or get_origin_from_referer(request)
                 if origin and validator[2]:
                     request.state.assistant.request_origin = origin
-                return await call_next(request)
+                response = await call_next(request)
+                return self._with_tenant_context_headers(request, response)
             message = trans('i18n_permission.authenticate_invalid', msg = validator[1])
             return JSONResponse(message, status_code=401, headers=cors_headers_for_request(request))
         #validate pass
@@ -80,7 +91,8 @@ class TokenMiddleware(BaseHTTPMiddleware):
         validate_pass, data = await self.validateToken(request, token, trans)
         if validate_pass:
             request.state.current_user = data
-            return await call_next(request)
+            response = await call_next(request)
+            return self._with_tenant_context_headers(request, response)
 
         message = trans('i18n_permission.authenticate_invalid', msg = data)
         return JSONResponse(message, status_code=401, headers=cors_headers_for_request(request))
@@ -104,6 +116,29 @@ class TokenMiddleware(BaseHTTPMiddleware):
             return int(raw)
         except (TypeError, ValueError):
             return token_tenant_id
+
+    def _with_tenant_context_headers(self, request: Request, response):
+        tenant = getattr(request.state, "current_tenant", None)
+        user = getattr(request.state, "current_user", None)
+        tenant_id = getattr(tenant, "id", None) or getattr(user, "tenant_id", None)
+        if tenant_id is None:
+            return response
+
+        values = {
+            "id": tenant_id,
+            "public_id": quote(str(getattr(tenant, "public_id", None) or getattr(user, "tenant_public_id", None) or "")),
+            "name": quote(str(getattr(tenant, "name", None) or getattr(user, "tenant_name", None) or "")),
+            "role": quote(str(getattr(tenant, "role", None) or getattr(user, "tenant_role", None) or "")),
+            "status": quote(str(getattr(user, "workspace_status", None) or "active")),
+        }
+        for key, header in TENANT_CONTEXT_RESPONSE_HEADERS.items():
+            response.headers[header] = str(values.get(key) or "")
+
+        exposed = response.headers.get("Access-Control-Expose-Headers")
+        exposed_values = {item.strip() for item in (exposed or "").split(",") if item.strip()}
+        exposed_values.update(TENANT_CONTEXT_RESPONSE_HEADERS.values())
+        response.headers["Access-Control-Expose-Headers"] = ", ".join(sorted(exposed_values))
+        return response
 
     def _apply_session_auth_origin(self, user: UserInfoDTO, auth_origin: int | None) -> UserInfoDTO:
         if auth_origin is None:

@@ -14,16 +14,22 @@ import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.sv
 import { useRoute, useRouter } from 'vue-router'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useUserStore } from '@/stores/user'
-import { useEmitt } from '@/utils/useEmitt'
+import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { isMobile } from '@/utils/utils'
 import { PLATFORM_ADMIN_HOME, resolveBusinessHome } from '@/utils/navigation'
 import { getInitialTheme, THEME_CHANGE_EVENT, type ThemeMode } from '@/utils/theme'
+import {
+  clearRememberedBusinessTenant,
+  getRememberedBusinessTenant,
+} from '@/utils/workspaceAdminContext'
 
 const isPhone = computed(() => {
   return isMobile()
 })
 const router = useRouter()
 const userStore = useUserStore()
+const datasourceContext = useDatasourceContextStore()
 const collapse = ref(false)
 const collapseCopy = ref(false)
 const analysisAssistantExpanded = ref(false)
@@ -71,17 +77,34 @@ const handleFoldExpand = () => {
   handleCollapseChange(!collapse.value)
 }
 
-const toProjectList = () => {
+const restoreBusinessTenant = async () => {
+  const rememberedTenant = getRememberedBusinessTenant()
+  if (!rememberedTenant?.id) return
+  const tenantId = String(rememberedTenant.id)
+  if (tenantId !== String(userStore.getTenantId || '')) {
+    emitWorkspaceContextChange({ tenantId, phase: 'changing' })
+    await userStore.switchTenant(tenantId)
+    datasourceContext.clear(true)
+    await datasourceContext.loadDatasources(true)
+    useEmitt().emitter.emit('datasource-context-change', null)
+    emitWorkspaceContextChange({ tenantId, phase: 'changed' })
+  }
+  clearRememberedBusinessTenant()
+}
+
+const toProjectList = async () => {
   if (userStore.isPlatformWorkspaceDelegate) {
     userStore.exitPlatformWorkspaceDelegate().finally(() => {
       router.push(PLATFORM_ADMIN_HOME)
     })
     return
   }
+  await restoreBusinessTenant()
   router.push(resolveBusinessHome(userStore))
 }
 
-const toChatIndex = () => {
+const toChatIndex = async () => {
+  await restoreBusinessTenant()
   router.push('/chat/index')
 }
 
