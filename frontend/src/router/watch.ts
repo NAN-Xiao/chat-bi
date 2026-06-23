@@ -9,7 +9,7 @@ import {
   clearPlatformWorkspaceDelegateContext,
   isPlatformWorkspaceDelegateSession,
 } from '@/utils/platformWorkspaceDelegate'
-import { resolveAuthenticatedHome } from '@/utils/navigation'
+import { resolveAuthenticatedHome, resolveLoginSuccessTarget } from '@/utils/navigation'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
@@ -53,7 +53,10 @@ export const watchRouter = (router: Router) => {
       isPlatformWorkspaceDelegateSession() &&
       to.query?.platform_workspace_delegate !== '1'
     if (to.path.startsWith('/login') && userStore.getUid) {
-      next(to?.query?.redirect || '/')
+      const redirect = Array.isArray(to?.query?.redirect)
+        ? to.query.redirect[0]
+        : to?.query?.redirect
+      next(resolveLoginSuccessTarget(userStore, redirect))
       return
     }
     if (assistantWhiteList.includes(to.path)) {

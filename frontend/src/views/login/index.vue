@@ -429,9 +429,9 @@ import { useI18n } from 'vue-i18n'
 import custom_small from '@/assets/svg/logo-custom_small.svg'
 import elexDataLogoUrl from '@/assets/elex_data.png'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
-import { toLoginSuccess } from '@/utils/utils'
 import { AuthApi } from '@/api/login'
 import { ElMessage } from 'element-plus-secondary'
+import { resolveLoginSuccessTarget } from '@/utils/navigation'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -707,15 +707,7 @@ const currentRedirect = () => {
 
 const goLoginSuccess = async () => {
   await userStore.info()
-  if (userStore.isSystemAdminUser) {
-    await router.push('/system/platform-overview')
-    return
-  }
-  if (!userStore.hasActiveWorkspace) {
-    await router.push('/account/workspaces')
-    return
-  }
-  toLoginSuccess(router)
+  await router.push(resolveLoginSuccessTarget(userStore, currentRedirect()))
 }
 
 const loadFeishuStatus = async () => {

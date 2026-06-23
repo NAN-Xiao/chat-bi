@@ -62,6 +62,12 @@ const syncRouteState = () => {
 }
 
 const applyLoadedCanvasResource = async (resourceId: string | number, result: any) => {
+  if (
+    result?.dashboardInfo?.datasource &&
+    String(datasourceContext.datasourceId || '') !== String(result.dashboardInfo.datasource)
+  ) {
+    await datasourceContext.activateDatasourceById(result.dashboardInfo.datasource, false)
+  }
   await pauseCanvasStateWatch(() => {
     dashboardStore.setDashboardInfo(result?.dashboardInfo)
     dashboardStore.setCanvasStyleData(result?.canvasStyleResult || {})

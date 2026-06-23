@@ -126,6 +126,32 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       }
     },
 
+    setDatasourceById(id?: number | string, persist = false) {
+      if (!id) return false
+      const datasource = this.datasources.find((item) => String(item.id) === String(id))
+      if (!datasource) return false
+      this.setDatasource(
+        Number(datasource.id),
+        datasource.name,
+        datasource.type || '',
+        datasource.type_name || '',
+        datasource.project_role || '',
+        datasource.can_create_dashboard === true,
+        datasource.can_manage_dashboard === true,
+        datasource.can_manage_project === true,
+        persist
+      )
+      return true
+    },
+
+    async activateDatasourceById(id?: number | string, persist = false) {
+      if (!id) return false
+      if (!this.datasources.length) {
+        await this.loadDatasources()
+      }
+      return this.setDatasourceById(id, persist)
+    },
+
     clear(persist = true) {
       this.datasources = []
       this.datasourceId = undefined

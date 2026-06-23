@@ -45,3 +45,13 @@ export const resolveBusinessHome = (userStore: NavigationUserState) => {
 }
 
 export const resolveAfterWorkspaceSwitch = resolveAuthenticatedHome
+
+export const resolveLoginSuccessTarget = (
+  userStore: NavigationUserState,
+  redirect?: string | null
+) => {
+  if (redirect && !redirect.startsWith('/login') && !redirect.startsWith('/admin-login')) {
+    return redirect
+  }
+  return resolveAuthenticatedHome(userStore)
+}

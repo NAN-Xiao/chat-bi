@@ -99,10 +99,14 @@ const state = reactive({
 
 const { handleDrop, handleDragStart } = treeDraggableChart(state, 'resourceTree', 'dashboard')
 
-const routeDashboardId =
-  router.currentRoute.value.query.resourceId || router.currentRoute.value.query.dashboardId
+const currentRouteDashboardId = () => {
+  const resourceId =
+    router.currentRoute.value.query.resourceId || router.currentRoute.value.query.dashboardId
+  return Array.isArray(resourceId) ? resourceId[0] : resourceId
+}
+const routeDashboardId = currentRouteDashboardId()
 if (routeDashboardId) {
-  selectedNodeKey.value = Array.isArray(routeDashboardId) ? routeDashboardId[0] : routeDashboardId
+  selectedNodeKey.value = routeDashboardId
   returnMounted.value = true
 }
 const nodeExpand = (data: any) => {
@@ -124,6 +128,20 @@ const filterNode = (value: string, data: SQTreeNode) => {
   return data.name?.toLocaleLowerCase().includes(value.toLocaleLowerCase())
 }
 
+const syncDashboardRoute = (resourceId: string | number) => {
+  if (props.defaultMode || props.showPosition !== 'preview') return
+  const currentRoute = router.currentRoute.value
+  if (currentRoute.path !== '/dashboard/index') return
+  if (String(currentRoute.query.resourceId || '') === String(resourceId)) return
+  router.replace({
+    path: currentRoute.path,
+    query: {
+      ...currentRoute.query,
+      resourceId,
+    },
+  })
+}
+
 const nodeClick = (data: SQTreeNode, node: any) => {
   dashboardStore.setCurComponent({ component: null, index: null })
   if (node.disabled) {
@@ -137,6 +155,7 @@ const nodeClick = (data: SQTreeNode, node: any) => {
   } else {
     selectedNodeKey.value = data.id
     if (data.node_type === 'leaf') {
+      syncDashboardRoute(data.id)
       emit('nodeClick', data)
     } else {
       resourceListTree.value.setCurrentKey(null)
@@ -298,6 +317,13 @@ watch(
   () => datasourceContext.datasourceId,
   () => {
     if (props.defaultMode) return
+    const routeResourceId = currentRouteDashboardId()
+    if (routeResourceId) {
+      selectedNodeKey.value = routeResourceId
+      returnMounted.value = true
+      getTree()
+      return
+    }
     selectedNodeKey.value = null
     dashboardStore.canvasDataInit()
     emit('deleteCurResource')

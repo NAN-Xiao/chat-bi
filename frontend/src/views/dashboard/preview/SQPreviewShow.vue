@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
-import { reactive, ref, toRefs, onBeforeMount, computed } from 'vue'
+import { reactive, ref, toRefs, onBeforeMount, computed, watch } from 'vue'
 import { load_resource_prepare } from '@/views/dashboard/utils/canvasUtils'
 import ResourceTree from '@/views/dashboard/common/ResourceTree.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
@@ -9,9 +9,13 @@ import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import EmptyBackgroundSvg from '@/views/dashboard/common/EmptyBackgroundSvg.vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 const { t } = useI18n()
+const route = useRoute()
 const dashboardStore = dashboardStoreWithOut()
+const datasourceContext = useDatasourceContextStore()
 const previewCanvasContainer = ref(null)
 const dashboardPreview = ref(null)
 const slideShow = ref(true)
@@ -44,6 +48,8 @@ const props = defineProps({
 const { showPosition } = toRefs(props)
 
 const resourceTreeRef = ref()
+let dashboardLoadVersion = 0
+const loadingDashboardId = ref<string | null>(null)
 
 const hasTreeData = computed(() => {
   return resourceTreeRef.value?.hasData
@@ -54,6 +60,10 @@ const mounted = computed(() => {
 const canCreateDashboard = computed(() => {
   return !props.defaultMode && resourceTreeRef.value?.canCreateDashboard === true
 })
+const routeDashboardId = computed(() => {
+  const resourceId = route.query.resourceId || route.query.dashboardId
+  return Array.isArray(resourceId) ? resourceId[0] : resourceId
+})
 
 const stateInit = () => {
   state.canvasDataPreview = []
@@ -61,15 +71,37 @@ const stateInit = () => {
   state.canvasViewInfoPreview = {}
   state.dashboardInfo = {}
 }
+const sameDashboard = (id: unknown) =>
+  id && String((state.dashboardInfo as any)?.id || '') === String(id)
+
 const loadCanvasData = (params: any) => {
+  const resourceId = params?.id ? String(params.id) : ''
+  if (!resourceId || sameDashboard(resourceId) || loadingDashboardId.value === resourceId) return
+  const loadVersion = ++dashboardLoadVersion
+  loadingDashboardId.value = resourceId
   dataInitState.value = false
   load_resource_prepare(
-    { id: params.id },
-    function ({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview }) {
+    { id: resourceId },
+    async function ({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview }) {
+      if (loadVersion !== dashboardLoadVersion) return
+      if (
+        dashboardInfo?.datasource &&
+        String(datasourceContext.datasourceId || '') !== String(dashboardInfo.datasource)
+      ) {
+        await datasourceContext.activateDatasourceById(dashboardInfo.datasource, false)
+        if (loadVersion !== dashboardLoadVersion) return
+      }
+      if (!dashboardInfo?.id) {
+        stateInit()
+        loadingDashboardId.value = null
+        dataInitState.value = true
+        return
+      }
       state.canvasDataPreview = canvasDataResult
       state.canvasStylePreview = canvasStyleResult
       state.canvasViewInfoPreview = canvasViewInfoPreview
       state.dashboardInfo = dashboardInfo
+      loadingDashboardId.value = null
       dataInitState.value = true
     },
     { defaultMode: props.defaultMode }
@@ -94,6 +126,15 @@ onBeforeMount(() => {
     dashboardStore.canvasDataInit()
   }
 })
+watch(
+  routeDashboardId,
+  (resourceId) => {
+    if (!props.defaultMode && resourceId) {
+      loadCanvasData({ id: resourceId })
+    }
+  },
+  { immediate: true }
+)
 const sideTreeStatus = ref(true)
 
 function toggleSidebar() {
