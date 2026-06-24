@@ -159,5 +159,7 @@ onUnmounted(() => {
   width: 100%;
   padding: 14px 16px 12px;
   box-sizing: border-box;
+  min-width: 0;
+  overflow: hidden;
 }
 </style>

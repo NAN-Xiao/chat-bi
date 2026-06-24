@@ -135,18 +135,26 @@ export class Table extends BaseChart {
 
     this.debounceRender = debounce(async (width?: number, height?: number) => {
       if (this.table) {
-        this.table.changeSheetSize(width, height)
+        const size = this.getContainerSize(width, height)
+        this.table.changeSheetSize(size.width, size.height)
         await this.table.render(false)
       }
     }, 200)
 
     this.resizeObserver = new ResizeObserver(([entry] = []) => {
-      const [size] = entry.borderBoxSize || []
-      this.debounceRender(size.inlineSize, size.blockSize)
+      this.debounceRender(entry?.contentRect.width, entry?.contentRect.height)
     })
 
-    if (this.container?.parentElement) {
-      this.resizeObserver.observe(this.container.parentElement)
+    if (this.container) {
+      this.resizeObserver.observe(this.container)
+    }
+  }
+
+  private getContainerSize(width?: number, height?: number) {
+    const container = this.container instanceof HTMLElement ? this.container : undefined
+    return {
+      width: Math.max(0, Math.floor(width ?? container?.clientWidth ?? 600)),
+      height: Math.max(0, Math.floor(height ?? container?.clientHeight ?? 360)),
     }
   }
 
@@ -205,9 +213,10 @@ export class Table extends BaseChart {
       }
     }
 
+    const size = this.getContainerSize()
     const s2Options: S2Options = {
-      width: 600,
-      height: 360,
+      width: size.width,
+      height: size.height,
       showDefaultHeaderActionIcon: false,
       headerActionIcons: [
         {
