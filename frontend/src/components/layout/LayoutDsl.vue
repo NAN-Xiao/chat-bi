@@ -17,7 +17,8 @@ import { useUserStore } from '@/stores/user'
 import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { isMobile } from '@/utils/utils'
-import { PLATFORM_ADMIN_HOME, resolveBusinessHome } from '@/utils/navigation'
+import { PLATFORM_ADMIN_HOME } from '@/utils/navigation'
+import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 import { getInitialTheme, THEME_CHANGE_EVENT, type ThemeMode } from '@/utils/theme'
 import {
   clearRememberedBusinessTenant,
@@ -100,12 +101,12 @@ const toProjectList = async () => {
     return
   }
   await restoreBusinessTenant()
-  router.push(resolveBusinessHome(userStore))
+  router.push(await resolveBusinessDashboardLandingTarget(userStore))
 }
 
 const toChatIndex = async () => {
   await restoreBusinessTenant()
-  router.push('/chat/index')
+  router.push(await resolveBusinessDashboardLandingTarget(userStore))
 }
 
 const route = useRoute()

@@ -3,14 +3,14 @@ import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useEmitt } from '@/utils/useEmitt'
 import { useUserStore } from '@/stores/user'
-import { resolveBusinessHome } from '@/utils/navigation'
+import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 
 const router = useRouter()
 const userStore = useUserStore()
 
-onMounted(() => {
+onMounted(async () => {
   useEmitt().emitter.emit('analysis-assistant-toggle', true)
-  router.replace(resolveBusinessHome(userStore))
+  router.replace(await resolveBusinessDashboardLandingTarget(userStore))
 })
 </script>
 

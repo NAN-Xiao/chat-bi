@@ -20,6 +20,7 @@ import Model from '@/views/system/model/Model.vue'
 // import SetAssistant from '@/views/system/embedded/iframe.vue'
 import SystemEmbedded from '@/views/system/embedded/Page.vue'
 import Variables from '@/views/system/variables/index.vue'
+import WelcomeView from '@/views/WelcomeView.vue'
 
 import assistantTest from '@/views/system/embedded/Test.vue'
 import assistant from '@/views/embedded/index.vue'
@@ -55,7 +56,9 @@ const getSystemHome = () => {
 export const routes = [
   {
     path: '/',
-    redirect: '/chat/index',
+    name: 'home',
+    component: WelcomeView,
+    meta: { hidden: true },
   },
   {
     path: '/login',

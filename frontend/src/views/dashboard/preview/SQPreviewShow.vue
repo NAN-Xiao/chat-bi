@@ -11,12 +11,16 @@ import EmptyBackgroundSvg from '@/views/dashboard/common/EmptyBackgroundSvg.vue'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
+import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
+import { useUserStore } from '@/stores/user'
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const dashboardStore = dashboardStoreWithOut()
 const datasourceContext = useDatasourceContextStore()
+const userStore = useUserStore()
 const previewCanvasContainer = ref(null)
 const dashboardPreview = ref(null)
 const slideShow = ref(true)
@@ -91,18 +95,24 @@ const loadCanvasData = (params: any) => {
     { id: resourceId },
     async function ({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview }) {
       if (loadVersion !== dashboardLoadVersion) return
+      if (!dashboardInfo?.id) {
+        stateInit()
+        loadingDashboardId.value = null
+        dataInitState.value = true
+        if (showPosition.value === 'preview') {
+          const target = await resolveBusinessDashboardLandingTarget(userStore)
+          if (!isCurrentRouteTarget(target)) {
+            await router.replace(target)
+          }
+        }
+        return
+      }
       if (
         dashboardInfo?.datasource &&
         String(datasourceContext.datasourceId || '') !== String(dashboardInfo.datasource)
       ) {
         await datasourceContext.activateDatasourceById(dashboardInfo.datasource, false)
         if (loadVersion !== dashboardLoadVersion) return
-      }
-      if (!dashboardInfo?.id) {
-        stateInit()
-        loadingDashboardId.value = null
-        dataInitState.value = true
-        return
       }
       state.canvasDataPreview = canvasDataResult
       state.canvasStylePreview = canvasStyleResult
@@ -113,6 +123,16 @@ const loadCanvasData = (params: any) => {
     },
     { defaultMode: props.defaultMode }
   )
+}
+
+const isCurrentRouteTarget = (target: any) => {
+  if (typeof target === 'string') {
+    return target === route.fullPath || target === route.path
+  }
+  if (!target?.path || target.path !== route.path) return false
+  const targetResourceId = target.query?.resourceId
+  if (!targetResourceId) return true
+  return String(targetResourceId) === String(route.query.resourceId || '')
 }
 const getPreviewStateInfo = () => {
   return state

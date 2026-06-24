@@ -9,7 +9,10 @@ import {
   clearPlatformWorkspaceDelegateContext,
   isPlatformWorkspaceDelegateSession,
 } from '@/utils/platformWorkspaceDelegate'
-import { resolveAuthenticatedHome, resolveLoginSuccessTarget } from '@/utils/navigation'
+import {
+  resolveAuthenticatedDashboardLandingTarget,
+  resolveLoginSuccessDashboardTarget,
+} from '@/utils/dashboardLanding'
 import {
   clearRememberedBusinessTenant,
   getRememberedBusinessTenant,
@@ -42,7 +45,7 @@ const tenantChatBIEntryPrefixes = [
   '/system/setting/permission',
 ]
 
-const defaultAuthenticatedPath = () => resolveAuthenticatedHome(userStore)
+const defaultAuthenticatedPath = () => resolveAuthenticatedDashboardLandingTarget(userStore)
 
 const matchesPathPrefix = (path: string, prefix: string) =>
   path === prefix || path.startsWith(`${prefix}/`)
@@ -80,7 +83,7 @@ export const watchRouter = (router: Router) => {
       const redirect = Array.isArray(to?.query?.redirect)
         ? to.query.redirect[0]
         : to?.query?.redirect
-      next(resolveLoginSuccessTarget(userStore, redirect))
+      next(await resolveLoginSuccessDashboardTarget(userStore, redirect))
       return
     }
     if (assistantWhiteList.includes(to.path)) {
@@ -143,12 +146,12 @@ export const watchRouter = (router: Router) => {
       console.warn('Failed to restore business workspace after leaving workspace admin', error)
     }
     if (to.path === '/' || accessCrossPermission(to)) {
-      next(defaultAuthenticatedPath())
+      next(await defaultAuthenticatedPath())
       return
     }
     if (to.path === '/login' || to.path === '/admin-login') {
       console.info(from)
-      next(defaultAuthenticatedPath())
+      next(await defaultAuthenticatedPath())
     } else {
       next()
     }

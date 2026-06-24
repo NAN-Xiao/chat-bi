@@ -1,7 +1,7 @@
 import { request } from '@/utils/request'
 
 export const dashboardApi = {
-  list_resource: (params: any) => request.post('/dashboard/list_resource', params),
+  list_resource: (params: any, config?: any) => request.post('/dashboard/list_resource', params, config),
   load_resource: (params: any) => request.post('/dashboard/load_resource', params),
   create_resource: (params: any) => request.post('/dashboard/create_resource', params),
   update_resource: (params: any) => request.post('/dashboard/update_resource', params),
@@ -9,7 +9,7 @@ export const dashboardApi = {
   update_canvas: (params: any) => request.post('/dashboard/update_canvas', params),
   check_name: (params: any) => request.post('/dashboard/check_name', params),
   preview_sql: (params: any) => request.post('/dashboard/sql_preview', params),
-  default_list: () => request.get('/dashboard/default/list'),
+  default_list: (config?: any) => request.get('/dashboard/default/list', config),
   default_load: (params: any) => request.post('/dashboard/default/load', params),
   default_set: (params: any, config?: any) => request.post('/dashboard/default/set', params, config),
   default_sort: (params: any, config?: any) => request.post('/dashboard/default/sort', params, config),

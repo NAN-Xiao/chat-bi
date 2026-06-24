@@ -431,7 +431,7 @@ import elexDataLogoUrl from '@/assets/elex_data.png'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { AuthApi } from '@/api/login'
 import { ElMessage } from 'element-plus-secondary'
-import { resolveLoginSuccessTarget } from '@/utils/navigation'
+import { resolveLoginSuccessDashboardTarget } from '@/utils/dashboardLanding'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -707,7 +707,7 @@ const currentRedirect = () => {
 
 const goLoginSuccess = async () => {
   await userStore.info()
-  await router.push(resolveLoginSuccessTarget(userStore, currentRedirect()))
+  await router.push(await resolveLoginSuccessDashboardTarget(userStore, currentRedirect()))
 }
 
 const loadFeishuStatus = async () => {

@@ -3,6 +3,8 @@ import { h, defineComponent, onBeforeUnmount, ref } from 'vue'
 import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
 import { useRouter, useRoute } from 'vue-router'
 import { useEmitt } from '@/utils/useEmitt'
+import { useUserStore } from '@/stores/user'
+import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 
 type IconNode = {
   tag: 'path' | 'circle' | 'rect' | 'ellipse' | 'polyline' | 'line'
@@ -205,6 +207,7 @@ const MenuItem = defineComponent({
   setup(props) {
     const router = useRouter()
     const route = useRoute()
+    const userStore = useUserStore()
     const analysisAssistantExpanded = ref(false)
     const emitter = useEmitt().emitter
     const updateAnalysisAssistantExpanded = (expanded: unknown) => {
@@ -226,10 +229,11 @@ const MenuItem = defineComponent({
       ]
     }
 
-    const handleMenuClick = (e: any) => {
+    const handleMenuClick = async (e: any) => {
       const index = e.index || e.path
       if (e.meta?.action === 'analysis-assistant') {
         useEmitt().emitter.emit('analysis-assistant-toggle')
+        router.push(await resolveBusinessDashboardLandingTarget(userStore))
         return
       }
       if (index) {

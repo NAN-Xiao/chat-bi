@@ -32,6 +32,13 @@ import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
 import { useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
+import {
+  findDashboardNodeById,
+  findFirstLeafDashboardNode,
+  getRememberedDefaultDashboardId,
+  rememberDefaultDashboardId,
+  resolveBusinessDashboardLandingTarget,
+} from '@/utils/dashboardLanding'
 const { wsCache } = useCache()
 
 const { t } = useI18n()
@@ -70,7 +77,7 @@ const defaultProps = {
 const mounted = ref(false)
 const selectedNodeKey: any = ref(null)
 const filterText = ref(null)
-const expandedArray = ref([])
+const expandedArray = ref<Array<string | number>>([])
 const resourceListTree = ref()
 const returnMounted = ref(false)
 const isDefaultOrderEditing = ref(false)
@@ -126,14 +133,12 @@ if (routeDashboardId) {
 }
 const nodeExpand = (data: any) => {
   if (data.id) {
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     expandedArray.value.push(data.id)
   }
 }
 
 const nodeCollapse = (data: any) => {
   if (data.id) {
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     expandedArray.value.splice(expandedArray.value.indexOf(data.id), 1)
   }
 }
@@ -158,9 +163,10 @@ const filterNode = (value: string, data: SQTreeNode) => {
 }
 
 const syncDashboardRoute = (resourceId: string | number) => {
-  if (props.defaultMode || props.showPosition !== 'preview') return
+  if (props.showPosition !== 'preview') return
   const currentRoute = router.currentRoute.value
-  if (currentRoute.path !== '/dashboard/index') return
+  const expectedPath = props.defaultMode ? '/default-dashboard/index' : '/dashboard/index'
+  if (currentRoute.path !== expectedPath) return
   if (String(currentRoute.query.resourceId || '') === String(resourceId)) return
   router.replace({
     path: currentRoute.path,
@@ -169,6 +175,57 @@ const syncDashboardRoute = (resourceId: string | number) => {
       resourceId,
     },
   })
+}
+
+const shouldAutoSelectDashboard = () => props.showPosition === 'preview'
+const isLeafDashboardNode = (node?: SQTreeNode) => node?.node_type === 'leaf' || node?.leaf === true
+
+const isCurrentRouteTarget = (target: any) => {
+  const currentRoute = router.currentRoute.value
+  if (typeof target === 'string') {
+    return target === currentRoute.fullPath || target === currentRoute.path
+  }
+  if (!target?.path || target.path !== currentRoute.path) return false
+  const targetResourceId = target.query?.resourceId
+  if (!targetResourceId) return true
+  return String(targetResourceId) === String(currentRoute.query.resourceId || '')
+}
+
+const redirectToResolvedLanding = async () => {
+  if (!shouldAutoSelectDashboard()) return false
+  const target = await resolveBusinessDashboardLandingTarget(userStore)
+  if (isCurrentRouteTarget(target)) return false
+  await router.replace(target)
+  return true
+}
+
+const resolveInitialDashboardNode = () => {
+  if (!shouldAutoSelectDashboard()) return undefined
+  const routeResourceId = currentRouteDashboardId()
+  if (routeResourceId) {
+    const routeNode = findDashboardNodeById(state.resourceTree, routeResourceId)
+    if (isLeafDashboardNode(routeNode)) return routeNode
+  }
+  if (props.defaultMode) {
+    const rememberedNode = findDashboardNodeById(
+      state.resourceTree,
+      getRememberedDefaultDashboardId(userStore)
+    )
+    if (rememberedNode) return rememberedNode
+  }
+  return findFirstLeafDashboardNode(state.resourceTree)
+}
+
+const selectDashboardNode = (node?: SQTreeNode) => {
+  if (!node?.id || !isLeafDashboardNode(node)) return false
+  selectedNodeKey.value = node.id
+  returnMounted.value = true
+  expandedArray.value = getDefaultExpandedKeys()
+  if (props.defaultMode) {
+    rememberDefaultDashboardId(node.id, userStore)
+  }
+  syncDashboardRoute(node.id)
+  return true
 }
 
 const nodeClick = (data: SQTreeNode, node: any) => {
@@ -184,6 +241,9 @@ const nodeClick = (data: SQTreeNode, node: any) => {
   } else {
     selectedNodeKey.value = data.id
     if (data.node_type === 'leaf') {
+      if (props.defaultMode) {
+        rememberDefaultDashboardId(data.id, userStore)
+      }
       syncDashboardRoute(data.id)
       emit('nodeClick', data)
     } else {
@@ -197,7 +257,7 @@ const getTree = async () => {
   const requestTenantId = userStore.getTenantId || 'default'
   if (props.defaultMode) {
     state.originResourceTree = []
-    dashboardApi.default_list().then((res: SQTreeNode[]) => {
+    dashboardApi.default_list().then(async (res: SQTreeNode[]) => {
       if (
         requestSeq !== treeRequestSeq ||
         (userStore.getTenantId || 'default') !== requestTenantId
@@ -211,6 +271,7 @@ const getTree = async () => {
         leaf: true,
       }))
       state.resourceTree = _.cloneDeep(state.originResourceTree)
+      if (!state.resourceTree.length && (await redirectToResolvedLanding())) return
       afterTreeInit()
     })
     return
@@ -220,11 +281,12 @@ const getTree = async () => {
   state.originResourceTree = []
   if (!requestDatasourceId) {
     state.resourceTree = []
+    if (await redirectToResolvedLanding()) return
     afterTreeInit()
     return
   }
   const params = { datasource: requestDatasourceId }
-  dashboardApi.list_resource(params).then((res: SQTreeNode[]) => {
+  dashboardApi.list_resource(params).then(async (res: SQTreeNode[]) => {
     if (
       requestSeq !== treeRequestSeq ||
       (userStore.getTenantId || 'default') !== requestTenantId ||
@@ -235,6 +297,7 @@ const getTree = async () => {
     state.originResourceTree = res || []
     state.resourceTree = _.cloneDeep(state.originResourceTree)
     handleSortTypeChange('name_asc')
+    if (!state.resourceTree.length && (await redirectToResolvedLanding())) return
     afterTreeInit()
   })
 }
@@ -277,8 +340,17 @@ const findTreeNode = (nodes: SQTreeNode[], id: string | number): SQTreeNode | un
 
 const afterTreeInit = () => {
   mounted.value = true
+  const selectedNode = selectedNodeKey.value
+    ? findDashboardNodeById(state.resourceTree, selectedNodeKey.value)
+    : undefined
+  const routeResourceId = currentRouteDashboardId()
+  if (!isLeafDashboardNode(selectedNode) && (!routeResourceId || props.defaultMode)) {
+    selectedNodeKey.value = null
+  }
+  if (!selectedNodeKey.value) {
+    selectDashboardNode(resolveInitialDashboardNode())
+  }
   if (selectedNodeKey.value && returnMounted.value) {
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     expandedArray.value = getDefaultExpandedKeys()
     returnMounted.value = false
   }
@@ -394,6 +466,31 @@ watch(
     resetTreeState()
     emit('deleteCurResource')
     getTree()
+  }
+)
+
+watch(
+  () => currentRouteDashboardId(),
+  (resourceId) => {
+    if (!shouldAutoSelectDashboard()) return
+    if (!resourceId || String(resourceId) === String(selectedNodeKey.value || '')) return
+    const node = findDashboardNodeById(state.resourceTree, resourceId)
+    if (!isLeafDashboardNode(node)) {
+      if (state.resourceTree.length && props.defaultMode) {
+        selectedNodeKey.value = null
+        selectDashboardNode(resolveInitialDashboardNode())
+        return
+      }
+      selectedNodeKey.value = resourceId
+      returnMounted.value = true
+      return
+    }
+    selectDashboardNode(node)
+    nextTick(() => {
+      resourceListTree.value?.setCurrentKey?.(selectedNodeKey.value)
+      const currentNode = resourceListTree.value?.$el?.querySelector?.('.is-current')
+      currentNode?.firstChild?.click?.()
+    })
   }
 )
 
@@ -652,7 +749,7 @@ defineExpose({
         <span class="title">{{
           defaultMode ? t('dashboard.default_dashboard') : t('dashboard.dashboard')
         }}</span>
-        <el-button link type="primary" class="icon-btn" @click="onClickSideBarBtn">
+        <el-button link type="primary" class="icon-btn sidebar-toggle-btn" @click="onClickSideBarBtn">
           <el-icon>
             <icon_sidebar_outlined />
           </el-icon>
@@ -986,6 +1083,27 @@ defineExpose({
       &:hover {
         background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
         color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+
+      &.sidebar-toggle-btn {
+        color: var(--workspace-text-secondary, var(--TextSecondary, #667085));
+        opacity: 0.78;
+
+        :deep(svg) {
+          width: 17px;
+          height: 17px;
+        }
+
+        :deep(svg g),
+        :deep(svg path),
+        :deep(svg rect) {
+          stroke-width: 1.05 !important;
+        }
+
+        &:hover {
+          opacity: 1;
+          color: var(--workspace-text-primary, var(--theme-text-primary));
+        }
       }
     }
   }

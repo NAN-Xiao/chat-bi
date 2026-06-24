@@ -145,6 +145,7 @@ import { ArrowLeftBold } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
 import { useI18n } from 'vue-i18n'
 import LanguageSelector from '@/components/Language-selector/index.vue'
+import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 
 const { t } = useI18n()
 const { wsCache } = useCache()
@@ -210,8 +211,12 @@ const toSystem = () => {
 const backMain = () => {
   router.push('/')
 }
-const goHome = () => {
-  router.push(userStore.isSystemAdminUser ? '/system/platform-overview' : '/chat/index')
+const goHome = async () => {
+  router.push(
+    userStore.isSystemAdminUser
+      ? '/system/platform-overview'
+      : await resolveBusinessDashboardLandingTarget(userStore)
+  )
 }
 const switchLayout = () => {
   topLayout.value = !topLayout.value
