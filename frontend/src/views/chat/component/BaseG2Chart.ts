@@ -3,6 +3,12 @@ import { Chart, type G2Spec } from '@antv/g2'
 import { chartTheme } from '@/views/chat/component/charts/theme.ts'
 
 const TOOLTIP_MOUNT_SELECTOR = 'body'
+const TOOLTIP_MARKER_OPTIONS = {
+  markerR: 2.4,
+  markerStroke: '#ffffff',
+  markerLineWidth: 2,
+  markerStrokeOpacity: 1,
+}
 
 function hasVisibleTooltip(options: Record<string, any>): boolean {
   if (!options || typeof options !== 'object') {
@@ -33,8 +39,8 @@ function withFloatingTooltip(options: G2Spec): G2Spec {
   const currentTooltip = currentInteraction.tooltip
   const tooltip =
     currentTooltip && typeof currentTooltip === 'object'
-      ? { mount: TOOLTIP_MOUNT_SELECTOR, ...currentTooltip }
-      : { mount: TOOLTIP_MOUNT_SELECTOR }
+      ? { mount: TOOLTIP_MOUNT_SELECTOR, ...TOOLTIP_MARKER_OPTIONS, ...currentTooltip }
+      : { mount: TOOLTIP_MOUNT_SELECTOR, ...TOOLTIP_MARKER_OPTIONS }
 
   return {
     ...chartOptions,

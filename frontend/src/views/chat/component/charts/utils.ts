@@ -523,27 +523,6 @@ export function buildMixedUnitComboOptions(
           value: `${formatNumber(datum[percentValueField])}%`,
         }),
       },
-      {
-        type: 'point',
-        data: mixedData.percentData,
-        encode: {
-          x: xAxis.value,
-          y: percentValueField,
-          color: seriesField,
-          size: 1.5,
-        },
-        scale: {
-          y: {
-            ...percentScale,
-            independent: true,
-          },
-        },
-        style: {
-          fill: 'white',
-        },
-        axis: false,
-        tooltip: false,
-      },
     ],
   } as G2Spec
 }

@@ -14,10 +14,14 @@ const { componentData, canvasStyleData, canvasViewInfo } = storeToRefs(dashboard
 export const load_resource_prepare = (
   params: any,
   callBack: (obj: any) => void,
-  options: { defaultMode?: boolean } = {}
+  options: { defaultMode?: boolean; includeData?: boolean } = {}
 ) => {
   const loadRequest = options.defaultMode ? dashboardApi.default_load : dashboardApi.load_resource
-  loadRequest(params)
+  const requestParams =
+    typeof options.includeData === 'boolean'
+      ? { ...params, include_data: options.includeData }
+      : params
+  loadRequest(requestParams)
     .then((canvasInfo: any) => {
       const dashboardInfo = {
         id: canvasInfo.id,

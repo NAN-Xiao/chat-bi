@@ -325,12 +325,6 @@ def test_tenant_overview_active_members_include_owner_admin_and_member():
 
 
 def test_local_login_sets_resolved_tenant_on_request_state(monkeypatch):
-    async def _unlocked_login_state(*_args, **_kwargs):
-        return SimpleNamespace(locked=False, retry_after_seconds=0)
-
-    async def _clear_login_state(*_args, **_kwargs):
-        return None
-
     request = SimpleNamespace(
         headers={"X-ZHISHU-TENANT-ID": "200"},
         state=SimpleNamespace(),
@@ -353,8 +347,6 @@ def test_local_login_sets_resolved_tenant_on_request_state(monkeypatch):
     monkeypatch.setattr(login_api, "ensure_user_sample_workspace_membership", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(login_api, "resolve_current_tenant", lambda *_args, **_kwargs: tenant)
     monkeypatch.setattr(login_api, "create_access_token", lambda *_args, **_kwargs: "token")
-    monkeypatch.setattr(login_api, "get_login_limit_state", _unlocked_login_state)
-    monkeypatch.setattr(login_api, "clear_login_failures", _clear_login_state)
 
     result = asyncio.run(
         login_api.local_login.__wrapped__(

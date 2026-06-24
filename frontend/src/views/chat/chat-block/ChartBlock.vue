@@ -219,6 +219,7 @@ const chartTypeList = computed(() => {
       case 'column':
       case 'bar':
       case 'line':
+      case 'area':
         _list.push({
           value: 'column',
           name: t('chat.chart_type.column'),
@@ -232,6 +233,11 @@ const chartTypeList = computed(() => {
         _list.push({
           value: 'line',
           name: t('chat.chart_type.line'),
+          icon: TrendCharts,
+        })
+        _list.push({
+          value: 'area',
+          name: t('chat.chart_type.area'),
           icon: TrendCharts,
         })
         break

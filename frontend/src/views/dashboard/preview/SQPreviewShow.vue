@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
-import { reactive, ref, toRefs, onBeforeMount, computed, watch } from 'vue'
+import { reactive, ref, toRefs, onBeforeMount, computed, watch, nextTick } from 'vue'
 import { load_resource_prepare } from '@/views/dashboard/utils/canvasUtils'
+import { dashboardApi } from '@/api/dashboard.ts'
 import ResourceTree from '@/views/dashboard/common/ResourceTree.vue'
 import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
 import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
@@ -26,10 +27,10 @@ const dashboardPreview = ref(null)
 const slideShow = ref(true)
 const dataInitState = ref(true)
 const state = reactive({
-  canvasDataPreview: [],
-  canvasStylePreview: {},
-  canvasViewInfoPreview: {},
-  dashboardInfo: {},
+  canvasDataPreview: [] as any[],
+  canvasStylePreview: {} as Record<string, any>,
+  canvasViewInfoPreview: {} as Record<string, any>,
+  dashboardInfo: {} as Record<string, any>,
 })
 
 const props = defineProps({
@@ -55,6 +56,7 @@ const { showPosition } = toRefs(props)
 const resourceTreeRef = ref()
 let dashboardLoadVersion = 0
 const loadingDashboardId = ref<string | null>(null)
+const CHART_REFRESH_CONCURRENCY = 4
 
 const hasTreeData = computed(() => {
   return resourceTreeRef.value?.hasData
@@ -84,6 +86,170 @@ const resetPreviewState = () => {
 }
 const sameDashboard = (id: unknown) =>
   id && String((state.dashboardInfo as any)?.id || '') === String(id)
+
+function unique(values: Array<string | undefined | null>) {
+  return Array.from(
+    new Set(
+      values
+        .filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '')
+        .map((value) => `${value}`)
+    )
+  )
+}
+
+function getResultFields(result: any) {
+  return unique([
+    ...(Array.isArray(result?.fields) ? result.fields : []),
+    ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
+  ])
+}
+
+function getErrorMessage(error: any) {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data ||
+    error?.message ||
+    error?.toString?.() ||
+    t('dashboard.chart_refresh_failed')
+  )
+}
+
+function collectDashboardCharts(items: any[], entries: Array<{ component: any; viewInfo: any }> = []) {
+  if (!Array.isArray(items)) {
+    return entries
+  }
+  items.forEach((item) => {
+    if (item?.component === 'SQView') {
+      entries.push({
+        component: item,
+        viewInfo: state.canvasViewInfoPreview?.[item.id],
+      })
+      return
+    }
+    if (item?.component === 'SQTab') {
+      const tabs = Array.isArray(item.propValue) ? item.propValue : []
+      tabs.forEach((tab: any) => collectDashboardCharts(tab?.componentData || [], entries))
+      return
+    }
+    if (Array.isArray(item?.componentData)) {
+      collectDashboardCharts(item.componentData, entries)
+    }
+  })
+  return entries
+}
+
+function prepareChartLoadingState(viewInfo: any, progress = 0) {
+  if (!viewInfo || !viewInfo.sql?.trim()) {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.data = []
+  viewInfo.data.fields = []
+  viewInfo.fields = []
+  viewInfo.message = ''
+  viewInfo.dataState = 'loading'
+  viewInfo.loadingProgress = progress
+}
+
+function applyChartResult(viewInfo: any, result: any) {
+  const fields = getResultFields(result)
+  const data = Array.isArray(result?.data) ? result.data : []
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.fields = fields
+  viewInfo.data.data = data
+  viewInfo.fields = fields
+  viewInfo.status = result?.status || 'success'
+  viewInfo.message = result?.message || ''
+  viewInfo.dataState = viewInfo.status === 'failed' ? 'failed' : 'ready'
+  viewInfo.loadingProgress = 100
+}
+
+async function refreshDashboardCharts(loadVersion: number) {
+  const allChartEntries = collectDashboardCharts(state.canvasDataPreview)
+  allChartEntries.forEach((entry) => {
+    const viewInfo = entry.viewInfo
+    if (!viewInfo || viewInfo.status !== 'loading') {
+      return
+    }
+    if (!viewInfo.datasource) {
+      viewInfo.status = 'failed'
+      viewInfo.message = t('dashboard.sql_editor_no_datasource')
+      viewInfo.dataState = 'failed'
+      viewInfo.loadingProgress = 100
+      return
+    }
+    if (!viewInfo.sql?.trim()) {
+      viewInfo.status = 'failed'
+      viewInfo.message = t('dashboard.sql_editor_empty_sql')
+      viewInfo.dataState = 'failed'
+      viewInfo.loadingProgress = 100
+    }
+  })
+  const chartEntries = allChartEntries.filter(
+    (entry) => entry.viewInfo?.datasource && entry.viewInfo?.sql?.trim()
+  )
+  const total = chartEntries.length
+  if (!total) {
+    return
+  }
+  chartEntries.forEach((entry) => prepareChartLoadingState(entry.viewInfo, 0))
+  await nextTick()
+
+  let nextIndex = 0
+  let finished = 0
+  const updateProgress = () => {
+    const progress = Math.min(95, Math.round((finished / total) * 100))
+    chartEntries.forEach((entry) => {
+      if (entry.viewInfo?.dataState === 'loading') {
+        entry.viewInfo.loadingProgress = progress
+      }
+    })
+  }
+  const runNext = async (): Promise<void> => {
+    const currentIndex = nextIndex
+    nextIndex += 1
+    const entry = chartEntries[currentIndex]
+    if (!entry || loadVersion !== dashboardLoadVersion) {
+      return
+    }
+    const { viewInfo } = entry
+    try {
+      viewInfo.loadingProgress = Math.max(viewInfo.loadingProgress || 0, 5)
+      const result = await dashboardApi.preview_sql(
+        {
+          datasource: viewInfo.datasource,
+          sql: viewInfo.sql.trim(),
+        },
+        { requestOptions: { silent: true } }
+      )
+      if (loadVersion !== dashboardLoadVersion) {
+        return
+      }
+      applyChartResult(viewInfo, result)
+    } catch (error: any) {
+      if (loadVersion === dashboardLoadVersion) {
+        viewInfo.status = 'failed'
+        viewInfo.message = getErrorMessage(error)
+        viewInfo.dataState = 'failed'
+        viewInfo.loadingProgress = 100
+      }
+    } finally {
+      finished += 1
+      updateProgress()
+      if (nextIndex < total) {
+        await runNext()
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(CHART_REFRESH_CONCURRENCY, total) }, () => runNext())
+  )
+}
 
 const loadCanvasData = (params: any) => {
   const resourceId = params?.id ? String(params.id) : ''
@@ -120,8 +286,9 @@ const loadCanvasData = (params: any) => {
       state.dashboardInfo = dashboardInfo
       loadingDashboardId.value = null
       dataInitState.value = true
+      refreshDashboardCharts(loadVersion)
     },
-    { defaultMode: props.defaultMode }
+    { defaultMode: props.defaultMode, includeData: false }
   )
 }
 
@@ -146,7 +313,6 @@ const resourceNodeClick = (prams: any) => {
   loadCanvasData(prams)
 }
 
-// @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const previewShowFlag = computed(() => !!state.dashboardInfo?.name)
 onBeforeMount(() => {
   if (showPosition.value === 'preview') {
@@ -214,7 +380,6 @@ defineExpose({
       />
     </el-aside>
     <section
-      v-loading="!dataInitState"
       class="preview-area"
       :class="{
         'is-empty': !previewShowFlag,
@@ -236,7 +401,7 @@ defineExpose({
           :class="{ 'content--empty': !previewShowFlag }"
         >
           <SQPreview
-            v-if="previewShowFlag && state.canvasStylePreview && dataInitState"
+            v-if="previewShowFlag && state.canvasStylePreview"
             ref="dashboardPreview"
             :dashboard-info="state.dashboardInfo"
             :component-data="state.canvasDataPreview"

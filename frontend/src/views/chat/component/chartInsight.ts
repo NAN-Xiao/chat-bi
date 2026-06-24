@@ -75,7 +75,7 @@ export function resolveInsightLayout(params: {
   }
 
   const yValues = axisValues(params.y)
-  if (yValues.length >= 4 && ['line', 'column', 'bar'].includes(params.chartType)) {
+  if (yValues.length >= 4 && ['line', 'area', 'column', 'bar'].includes(params.chartType)) {
     return 'side'
   }
 

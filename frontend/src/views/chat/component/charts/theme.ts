@@ -74,17 +74,18 @@ export const chartTheme = {
   line: {
     line: {
       strokeOpacity: 1,
-      lineWidth: 2.4,
+      lineWidth: 1.8,
       lineCap: 'round',
       lineJoin: 'round',
     },
   },
   point: {
     point: {
-      r: 2.8,
+      r: 2.1,
       fillOpacity: 1,
       lineWidth: 1.4,
       stroke: '#ffffff',
+      strokeOpacity: 1,
     },
   },
   interval: {

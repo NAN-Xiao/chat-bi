@@ -642,6 +642,7 @@ const getChartTypeLabel = (type?: ChartTypes) => {
     bar: '条形图',
     column: '柱图',
     line: '折线图',
+    area: '堆叠面积图',
     pie: '饼图',
     metric: '指标卡',
     funnel: '漏斗图',

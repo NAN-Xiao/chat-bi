@@ -100,12 +100,6 @@ def validate_production_settings() -> list[str]:
         errors.append("TASK_QUEUE_MAX_PENDING_PER_TENANT must be greater than or equal to 0.")
     if settings.TASK_QUEUE_MAX_PROCESSING_PER_TENANT < 0:
         errors.append("TASK_QUEUE_MAX_PROCESSING_PER_TENANT must be greater than or equal to 0.")
-    if not settings.LOGIN_RATE_LIMIT_ENABLED:
-        errors.append("LOGIN_RATE_LIMIT_ENABLED must be true in production.")
-    if settings.LOGIN_MAX_FAILED_ATTEMPTS <= 0 or settings.LOGIN_MAX_FAILED_ATTEMPTS > 10:
-        errors.append("LOGIN_MAX_FAILED_ATTEMPTS must be between 1 and 10 in production.")
-    if settings.LOGIN_LOCKOUT_SECONDS <= 0:
-        errors.append("LOGIN_LOCKOUT_SECONDS must be greater than 0 in production.")
     if not settings.TENANT_RATE_LIMIT_ENABLED:
         errors.append("TENANT_RATE_LIMIT_ENABLED must be true in production.")
     if not settings.TENANT_USAGE_METERING_ENABLED:

@@ -40,6 +40,7 @@ const frameSize = ref({ width: 0, height: 0 })
 const refreshing = ref(false)
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
+let progressTimer: number | undefined
 
 const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -81,6 +82,12 @@ async function refreshData() {
     return
   }
   refreshing.value = true
+  if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
+    props.viewInfo.data = {}
+  }
+  props.viewInfo.dataState = 'loading'
+  props.viewInfo.loadingProgress = 0
+  startRefreshProgress()
   try {
     const result = await dashboardApi.preview_sql({
       datasource: props.viewInfo.datasource,
@@ -97,16 +104,43 @@ async function refreshData() {
     props.viewInfo.status = result?.status || 'success'
     props.viewInfo.message = result?.message || ''
     if (props.viewInfo.status === 'failed') {
+      props.viewInfo.dataState = 'failed'
       ElMessage.error(props.viewInfo.message || t('dashboard.chart_refresh_failed'))
     } else {
+      props.viewInfo.dataState = 'ready'
       ElMessage.success(t('dashboard.chart_refresh_success'))
     }
+    props.viewInfo.loadingProgress = 100
     await nextTick()
     renderChart()
   } catch (error: any) {
+    props.viewInfo.status = 'failed'
+    props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
+    props.viewInfo.dataState = 'failed'
+    props.viewInfo.loadingProgress = 100
     ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
   } finally {
+    stopRefreshProgress()
     refreshing.value = false
+  }
+}
+
+function startRefreshProgress() {
+  stopRefreshProgress()
+  progressTimer = window.setInterval(() => {
+    if (!refreshing.value) {
+      stopRefreshProgress()
+      return
+    }
+    const current = Number(props.viewInfo?.loadingProgress || 0)
+    props.viewInfo.loadingProgress = Math.min(95, current + Math.max(1, Math.round((96 - current) * 0.12)))
+  }, 260)
+}
+
+function stopRefreshProgress() {
+  if (progressTimer) {
+    window.clearInterval(progressTimer)
+    progressTimer = undefined
   }
 }
 
@@ -183,6 +217,7 @@ const chartTypeList = computed(() => {
       case 'column':
       case 'bar':
       case 'line':
+      case 'area':
         _list.push({
           value: 'column',
           name: t('chat.chart_type.column'),
@@ -196,6 +231,11 @@ const chartTypeList = computed(() => {
         _list.push({
           value: 'line',
           name: t('chat.chart_type.line'),
+          icon: ICON_LINE,
+        })
+        _list.push({
+          value: 'area',
+          name: t('chat.chart_type.area'),
           icon: ICON_LINE,
         })
         break
@@ -272,6 +312,19 @@ const canShowInsightHeader = computed(() => {
   }
   return insightDisplay.value.show
 })
+const chartLoading = computed(
+  () =>
+    refreshing.value ||
+    props.viewInfo?.dataState === 'loading' ||
+    props.viewInfo?.status === 'loading'
+)
+const chartLoadingProgress = computed(() => {
+  const progress = Number(props.viewInfo?.loadingProgress ?? 0)
+  if (!Number.isFinite(progress)) {
+    return 0
+  }
+  return Math.max(0, Math.min(100, Math.round(progress)))
+})
 const insightDensity = computed(() => insightDisplay.value.density)
 const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
 const insightMaxStats = computed(() => insightDisplay.value.maxStats)
@@ -338,6 +391,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  stopRefreshProgress()
   if (renderTimer) {
     window.clearTimeout(renderTimer)
   }
@@ -354,7 +408,6 @@ defineExpose({
 <template>
   <div
     ref="containerRef"
-    v-loading="refreshing"
     class="chart-base-container"
     :class="`insight-density-${insightDensity}`"
   >
@@ -390,7 +443,17 @@ defineExpose({
       </div>
     </div>
     <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
-      <div v-if="viewInfo.status === 'failed'" class="error-info">
+      <div v-if="chartLoading" class="chart-loading-info">
+        <el-progress
+          type="circle"
+          :percentage="chartLoadingProgress"
+          :width="92"
+          :stroke-width="7"
+          :show-text="true"
+        />
+        <div class="chart-loading-text">{{ t('dashboard.chart_data_loading') }}</div>
+      </div>
+      <div v-else-if="viewInfo.status === 'failed'" class="error-info">
         {{ viewInfo.message }}
       </div>
       <ChartInsightHeader
@@ -407,7 +470,7 @@ defineExpose({
         :sql="viewInfo.sql"
       />
       <div
-        v-if="viewInfo.status !== 'failed' && viewInfo.id"
+        v-if="!chartLoading && viewInfo.status !== 'failed' && viewInfo.id"
         class="chart-content-row"
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
@@ -718,5 +781,41 @@ defineExpose({
   align-items: center;
   font-size: 12px;
   color: var(--workspace-text-secondary, var(--N600, #646a73));
+}
+
+.chart-loading-info {
+  width: 100%;
+  height: 100%;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--workspace-text-primary, #1f2329);
+
+  :deep(.ed-progress-circle__track),
+  :deep(.el-progress-circle__track) {
+    stroke: #eef1f5;
+  }
+
+  :deep(.ed-progress-circle__path),
+  :deep(.el-progress-circle__path) {
+    stroke: var(--ed-color-primary, #2f6bff);
+  }
+
+  :deep(.ed-progress__text),
+  :deep(.el-progress__text) {
+    min-width: 46px;
+    color: var(--workspace-text-primary, #1f2329);
+    font-size: 20px !important;
+    font-weight: 700;
+  }
+}
+
+.chart-loading-text {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--workspace-text-secondary, #66758f);
 }
 </style>

@@ -2,6 +2,7 @@ import { BaseChart } from '@/views/chat/component/BaseChart.ts'
 import { Bar } from '@/views/chat/component/charts/Bar.ts'
 import { Column } from '@/views/chat/component/charts/Column.ts'
 import { Line } from '@/views/chat/component/charts/Line.ts'
+import { Area } from '@/views/chat/component/charts/Area.ts'
 import { Table } from '@/views/chat/component/charts/Table.ts'
 import { Pie } from '@/views/chat/component/charts/Pie.ts'
 import { Metric } from '@/views/chat/component/charts/Metric.ts'
@@ -16,6 +17,7 @@ const CHART_TYPE_MAP: { [key: string]: any } = {
   column: Column,
   bar: Bar,
   line: Line,
+  area: Area,
   pie: Pie,
   metric: Metric,
   funnel: Funnel,

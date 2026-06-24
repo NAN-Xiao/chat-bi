@@ -23,6 +23,7 @@ export type ChartTypes =
   | 'bar'
   | 'column'
   | 'line'
+  | 'area'
   | 'pie'
   | 'metric'
   | 'funnel'

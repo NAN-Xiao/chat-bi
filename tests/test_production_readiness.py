@@ -35,9 +35,6 @@ def _set_valid_production_settings(monkeypatch):
     monkeypatch.setattr(settings, "ZHISHU_ALLOW_METADATA_QUERIES", False)
     monkeypatch.setattr(settings, "TASK_QUEUE_MAX_ATTEMPTS", 3)
     monkeypatch.setattr(settings, "TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS", 3600)
-    monkeypatch.setattr(settings, "LOGIN_RATE_LIMIT_ENABLED", True)
-    monkeypatch.setattr(settings, "LOGIN_MAX_FAILED_ATTEMPTS", 5)
-    monkeypatch.setattr(settings, "LOGIN_LOCKOUT_SECONDS", 900)
     monkeypatch.setattr(settings, "TENANT_RATE_LIMIT_ENABLED", True)
     monkeypatch.setattr(settings, "TENANT_CHAT_REQUESTS_PER_MINUTE", 60)
     monkeypatch.setattr(settings, "TENANT_ANALYSIS_REQUESTS_PER_MINUTE", 20)
@@ -75,7 +72,6 @@ def test_production_settings_reject_development_defaults(monkeypatch):
     monkeypatch.setattr(settings, "BACKEND_CORS_ORIGINS", ["http://localhost:5173"])
     monkeypatch.setattr(settings, "ENABLE_LOCAL_DEV_CORS", True)
     monkeypatch.setattr(settings, "TASK_QUEUE_MAX_ATTEMPTS", 1)
-    monkeypatch.setattr(settings, "LOGIN_RATE_LIMIT_ENABLED", False)
     monkeypatch.setattr(settings, "TENANT_RATE_LIMIT_ENABLED", False)
     monkeypatch.setattr(settings, "TENANT_USAGE_METERING_ENABLED", False)
     monkeypatch.setattr(settings, "TENANT_USAGE_QUOTA_ENABLED", False)
@@ -95,7 +91,6 @@ def test_production_settings_reject_development_defaults(monkeypatch):
     assert "CACHE_TYPE must be redis" in message
     assert "AUTO_RUN_MIGRATIONS must be false" in message
     assert "ENABLE_LOCAL_DEV_CORS must be false" in message
-    assert "LOGIN_RATE_LIMIT_ENABLED must be true" in message
     assert "TENANT_RATE_LIMIT_ENABLED must be true" in message
     assert "TENANT_USAGE_METERING_ENABLED must be true" in message
     assert "TENANT_USAGE_QUOTA_ENABLED must be true" in message

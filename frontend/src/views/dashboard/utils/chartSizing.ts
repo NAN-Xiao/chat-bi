@@ -104,7 +104,7 @@ export const getRecommendedDashboardChartFrame = (viewInfo?: any, chartCount = 1
     }
   }
 
-  if (chartType === 'line' || chartType === 'bar' || chartType === 'column' || chartType === 'scatter') {
+  if (chartType === 'line' || chartType === 'area' || chartType === 'bar' || chartType === 'column' || chartType === 'scatter') {
     return {
       sizeX: chartCount <= 2 ? DEFAULT_DASHBOARD_GRID_COLUMNS : 48,
       sizeY: 18,

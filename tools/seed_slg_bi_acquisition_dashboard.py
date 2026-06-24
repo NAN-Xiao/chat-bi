@@ -43,19 +43,43 @@ UPDATE_BY = "7471612174524223488"
 BACKUP_DIR = Path(".codex-runtime/backups")
 USD_TO_CNY = Decimal("7.15")
 
-NETWORK_BY_CHANNEL = {
+ORGANIC_CHANNELS = {"organic", "pre_register"}
+
+FIXED_NETWORK_BY_CHANNEL = {
     "facebook_ads": "Facebook",
     "tiktok_ads": "Network_1",
     "google_ads": "Network_2",
     "app_store_search": "Network_3",
-    "iOS,app store": "Network_4",
-    "google_play": "Network_5",
-    "huawei_store": "Network_6",
     "tap_tap": "Network_3",
     "influencer": "Network_5",
-    "pre_register": "Organic",
-    "organic": "Organic",
 }
+
+PAID_NETWORK_WEIGHTS = [
+    ("Facebook", 18),
+    ("Network_1", 17),
+    ("Network_2", 16),
+    ("Network_3", 14),
+    ("Network_4", 14),
+    ("Network_5", 12),
+    ("Network_6", 9),
+]
+
+STORE_ACQUISITION_NETWORK_SEQUENCE = [
+    "Organic",
+    "Facebook",
+    "Network_1",
+    "Network_2",
+    "Network_3",
+    "Network_4",
+    "Network_5",
+    "Network_6",
+    "Facebook",
+    "Network_1",
+    "Network_2",
+    "Network_3",
+    "Network_4",
+    "Network_5",
+]
 
 BASE_CPI_USD = {
     "Facebook": Decimal("27.4"),
@@ -67,6 +91,33 @@ BASE_CPI_USD = {
     "Network_6": Decimal("29.6"),
     "Organic": Decimal("0.00"),
 }
+
+
+def weighted_paid_network(rng: random.Random) -> str:
+    total = sum(weight for _, weight in PAID_NETWORK_WEIGHTS)
+    roll = rng.randint(1, total)
+    running = 0
+    for network, weight in PAID_NETWORK_WEIGHTS:
+        running += weight
+        if roll <= running:
+            return network
+    return PAID_NETWORK_WEIGHTS[-1][0]
+
+
+def acquisition_network_for(channel: str, rng: random.Random) -> str:
+    if channel in ORGANIC_CHANNELS:
+        return "Organic"
+    fixed_network = FIXED_NETWORK_BY_CHANNEL.get(channel)
+    if fixed_network:
+        return fixed_network
+    return weighted_paid_network(rng)
+
+
+def store_acquisition_network_for(install_day: date, sequence_index: int) -> str:
+    offset = install_day.toordinal() % len(STORE_ACQUISITION_NETWORK_SEQUENCE)
+    return STORE_ACQUISITION_NETWORK_SEQUENCE[
+        (sequence_index + offset) % len(STORE_ACQUISITION_NETWORK_SEQUENCE)
+    ]
 
 
 def json_value(value: Any) -> Any:
@@ -123,9 +174,16 @@ def seed_acquisition_fields(conn: Any) -> None:
         rows = cur.fetchall()
 
     updates: list[tuple[Decimal, Decimal, str, int]] = []
+    daily_store_counts: dict[date, int] = {}
     for row in rows:
         channel = row["channel"]
-        network = NETWORK_BY_CHANNEL.get(channel, "Network_2")
+        if channel in ORGANIC_CHANNELS or channel in FIXED_NETWORK_BY_CHANNEL:
+            network = acquisition_network_for(channel, rng)
+        else:
+            install_day = row["install_date"]
+            sequence_index = daily_store_counts.get(install_day, 0)
+            daily_store_counts[install_day] = sequence_index + 1
+            network = store_acquisition_network_for(install_day, sequence_index)
         base_cpi = BASE_CPI_USD[network]
         if base_cpi == 0:
             cost_usd = Decimal("0.00")
@@ -167,17 +225,7 @@ WITH obs AS (
            round(sum(cost_cny), 2) AS network_cost
     FROM cohort
     GROUP BY install_date, network
-), total_daily AS (
-    SELECT install_date,
-           round(sum(cost_cny), 2) AS total_cost
-    FROM cohort
-    GROUP BY install_date
 )
-SELECT install_date AS "日期",
-       '总成本（元）' AS "投放系列",
-       total_cost AS "买量成本"
-FROM total_daily
-UNION ALL
 SELECT install_date AS "日期",
        '渠道成本（元）.' || network AS "投放系列",
        network_cost AS "买量成本"
@@ -267,7 +315,7 @@ CHARTS = [
     {
         "id": "2187000000000000001",
         "title": "每日买量成本",
-        "type": "line",
+        "type": "area",
         "layout": (1, 1, 72, 17),
         "sql": DAILY_COST_SQL,
         "x": [axis("日期", axis_type="x")],
@@ -277,7 +325,7 @@ CHARTS = [
     {
         "id": "2187000000000000002",
         "title": "单用户买量成本",
-        "type": "line",
+        "type": "area",
         "layout": (1, 18, 72, 17),
         "sql": CPA_SQL,
         "x": [axis("日期", axis_type="x")],

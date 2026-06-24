@@ -330,6 +330,16 @@ def _execute_dashboard_chart_sql(
     )
 
 
+def _clear_dashboard_chart_data(item: dict) -> None:
+    if not isinstance(item.get('data'), dict):
+        item['data'] = {}
+    item['data']['data'] = []
+    item['data']['fields'] = []
+    item['fields'] = []
+    item['status'] = 'loading'
+    item['message'] = ''
+
+
 def _user_name(session: SessionDep, user_id) -> str | None:
     if not user_id:
         return None
@@ -618,6 +628,7 @@ def _dashboard_payload(
         *,
         dashboard: QueryDashboard | None = None,
         default_context: bool = False,
+        include_data: bool = True,
 ):
     effective_datasource = _effective_dashboard_datasource(record)
     if dashboard is not None and dashboard.datasource is not None and effective_datasource is not None:
@@ -645,7 +656,12 @@ def _dashboard_payload(
         if not isinstance(item, dict):
             continue
         item_datasource = _chart_datasource(record, item, effective_datasource)
-        if item_datasource is not None and item.get('sql') is not None:
+        if item.get('sql') is not None:
+            if not include_data:
+                _clear_dashboard_chart_data(item)
+                continue
+            if item_datasource is None:
+                continue
             if record.datasource is not None and item_datasource != record.datasource:
                 data_result = {
                     'status': 'failed',
@@ -667,7 +683,13 @@ def _dashboard_payload(
 
 def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
     record = _load_dashboard_or_404(session, dashboard.id, current_user)
-    return _dashboard_payload(session, current_user, record, dashboard=dashboard)
+    return _dashboard_payload(
+        session,
+        current_user,
+        record,
+        dashboard=dashboard,
+        include_data=dashboard.include_data,
+    )
 
 
 def list_default_resources(session: SessionDep, current_user: CurrentUser):
@@ -699,12 +721,18 @@ def load_default_resource(session: SessionDep, dashboard: QueryDashboard, curren
     record = _load_dashboard_or_404(session, dashboard.id, current_user)
     if not record.is_default:
         raise HTTPException(status_code=404, detail="Default dashboard does not exist")
-    return _dashboard_payload(session, current_user, record, default_context=True)
+    return _dashboard_payload(
+        session,
+        current_user,
+        record,
+        default_context=True,
+        include_data=dashboard.include_data,
+    )
 
 
 def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
     new_id = uuid.uuid4().hex
-    record = CoreDashboard(**dashboard.model_dump())
+    record = CoreDashboard(**dashboard.model_dump(exclude={"include_data"}))
     record.id = new_id
     record.tenant_id = _current_tenant_id(user)
     record.create_by = str(user.id)

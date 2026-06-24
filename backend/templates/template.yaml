@@ -17,7 +17,7 @@ template:
         <step>4. <strong>强制检查：应用数据量限制规则（默认限制或用户指定数量）</strong></step>
         <step>5. 应用其他规则（引号、别名、格式化等）</step>
         <step>6. <strong>强制检查：验证SQL语法是否符合<db-engine>规范</strong></step>
-        <step>7. 确定图表类型（根据规则选择table/column/bar/line/pie/metric/funnel/heatmap/scatter/sankey/treemap）</step>
+        <step>7. 确定图表类型（根据规则选择table/column/bar/line/area/pie/metric/funnel/heatmap/scatter/sankey/treemap）</step>
         <step>8. 确定对话标题</step>
         <step>9. 生成JSON结果</step>
         <step>10. <strong>强制检查：JSON格式是否正确</strong></step>
@@ -156,19 +156,19 @@ template:
           若不能生成，则返回格式如：{{"success":false,"message":"说明无法生成SQL的原因"}}
         </rule>
         <rule>
-          如果问题是图表展示相关，可参考的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)、矩形树图(treemap), 返回的JSON内chart-type值则为 table/metric/column/bar/line/pie/funnel/heatmap/scatter/sankey/treemap 中的一个
-          图表类型选择原则推荐：核心单值指标用 metric，趋势 over time 用 line，分类对比用 column/bar，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
+          如果问题是图表展示相关，可参考的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)、矩形树图(treemap), 返回的JSON内chart-type值则为 table/metric/column/bar/line/area/pie/funnel/heatmap/scatter/sankey/treemap 中的一个
+          图表类型选择原则推荐：核心单值指标用 metric，单条趋势曲线 over time 用 line，多条趋势曲线（有分类 series 或多指标 multi-quota）用 area，分类对比用 column/bar，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
         </rule>
         <rule priority="high">
           当用户要求按某个分类维度统计某个时间窗口内的每日/按天/按日/每周/按周/每月/按月指标时，必须保留“时间粒度字段 + 分类字段 + 单一指标字段”三列进行聚合，SQL 需要同时按时间粒度字段和分类字段 GROUP BY，并按时间字段、分类字段排序。
-          这种问题的图表类型应优先使用折线图(line)，分类字段作为 series，而不是把整个时间窗口汇总成分类总数后画饼图(pie)或柱状图(column/bar)。
+          这种问题的图表类型应优先使用堆叠面积图(area)，分类字段作为 series，而不是把整个时间窗口汇总成分类总数后画饼图(pie)或柱状图(column/bar)。
           只有当用户明确要求“总数、占比、构成、分布、排行、Top N 总量”且没有要求每日/按天/按周期趋势时，才可以把时间窗口汇总为分类总数。
         </rule>
         <rule priority="high">
           <title>图表字段维度与指标数量限制规则</title>
           <requirements>
-            <requirement-group chart="column/bar/line">
-              <title>柱状图(column)、条形图(bar)、折线图(line)：</title>
+            <requirement-group chart="column/bar/line/area">
+              <title>柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)：</title>
               <sub-requirement>必须有一个维度字段（横轴）</sub-requirement>
               <sub-requirement>最多有一个分类维度字段（如系列/颜色分组）</sub-requirement>
               <sub-requirement>有分类维度时，只能有一个指标字段（纵轴）</sub-requirement>
@@ -213,7 +213,7 @@ template:
           </requirements>
         </rule>
         <rule>
-          如果图表类型为柱状图(column)、条形图(bar)或折线图(line)
+          如果图表类型为柱状图(column)、条形图(bar)、折线图(line)或堆叠面积图(area)
           在生成的SQL中必须指定一个维度字段和一个指标字段，其中维度字段必须参与排序
           如果有分类用的字段，该字段参与次一级的排序
           <note>
@@ -222,7 +222,7 @@ template:
           </note>
         </rule>
         <rule>
-          如果图表类型为柱状图(column)、条形图(bar)、折线图(line)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap)
+          如果图表类型为柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap)
           且查询的字段中包含分类字段（非数值类型字段，如城市、类别、状态等）
           在没有明确业务场景说明、或用户没有明确指定不需要聚合的情况下
           必须对数值类型指标字段进行聚合计算（默认使用SUM函数）
@@ -450,11 +450,11 @@ template:
       以下是你必须遵守的规则和可以参考的基础示例：  
       <Rules>
         <rule>
-          支持的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap), 提供给你的<chart-type>值则为 table/metric/column/bar/line/pie/funnel/heatmap/scatter/sankey/treemap 中的一个，若没有推荐类型，则由你自己选择一个合适的类型。
-          图表类型选择原则推荐：核心单值指标用 metric，趋势 over time 用 line，分类对比用 column/bar，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
+          支持的图表类型为表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap), 提供给你的<chart-type>值则为 table/metric/column/bar/line/area/pie/funnel/heatmap/scatter/sankey/treemap 中的一个，若没有推荐类型，则由你自己选择一个合适的类型。
+          图表类型选择原则推荐：核心单值指标用 metric，单条趋势曲线 over time 用 line，多条趋势曲线（有分类 series 或多指标 multi-quota）用 area，分类对比用 column/bar，占比用 pie/treemap，步骤或阶段流转用 funnel，二维分布或矩阵用 heatmap，二维关系用 scatter，流向/路径/资源转移用 sankey，原始数据查看用 table
         </rule>
         <rule priority="high">
-          如果 SQL 结果同时包含一个时间粒度字段（如日期、日、周、月、date、day、week、month）、一个离散分类字段和一个数值指标字段，且用户问题表达的是最近一段时间内每日/按天/按日/每周/按周/每月/按月的分类趋势，则必须生成折线图(line)配置：
+          如果 SQL 结果同时包含一个时间粒度字段（如日期、日、周、月、date、day、week、month）、一个离散分类字段和一个数值指标字段，且用户问题表达的是最近一段时间内每日/按天/按日/每周/按周/每月/按月的分类趋势，则必须生成堆叠面积图(area)配置：
           x 使用时间粒度字段，y 使用数值指标字段，series 使用分类字段。
           不要因为存在分类字段就改成饼图(pie)或柱状图(column/bar)；饼图/柱状图只适合用户要求分类总数、占比、构成、分布或排行时使用。
         </rule>
@@ -493,7 +493,7 @@ template:
         <rule>
           <strong>图表配置决策流程：</strong>
           <strong>1. 先识别用户问题中明确要求展示的全部指标字段；不得为了适配某一种图表而静默丢弃用户要求的指标</strong>
-          <strong>2. 优先把主分析维度放在x轴；当主分析维度是时间字段且还有一个分类字段时，必须把分类字段放入series，用于展示各分类随时间变化的趋势</strong>
+          <strong>2. 优先把主分析维度放在x轴；当主分析维度是时间字段且还有一个分类字段时，必须把分类字段放入series，并使用堆叠面积图(area)展示多条曲线</strong>
           <strong>3. 如果结果中只有一个维度字段和多个指标字段，且这些指标都需要展示，可使用multi-quota配置；不要把唯一维度误当成series</strong>
           <strong>4. 如果结果中同时存在分类/时间维度和多个不同单位指标（例如数量、金额、比率、人均值），或单张图无法完整表达全部指标 → 必须使用table，保证全部指标可见</strong>
           <strong>5. 如果只有一个指标字段 → 直接配置y轴，不使用series和multi-quota</strong>
@@ -529,7 +529,18 @@ template:
           <strong>1. x轴：维度轴，通常放置时间字段（如日期、月份）</strong>
           <strong>2. y轴：数值轴，放置需要展示趋势的数值指标</strong>
           <strong>3. series：当需要对比多个分类的趋势时使用（如不同产品的销售趋势）</strong>
-          折线图使用一个分类字段（series），一个<strong>维度轴</strong>字段（x）和一个<strong>数值轴</strong>字段（y），其中必须从SQL查询列中提取"x"、"y"与"series"。
+          折线图用于只有一条数据曲线的趋势；如果存在分类字段(series)或多个指标(multi-quota)形成多条曲线，应使用堆叠面积图(area)。
+          折线图使用一个<strong>维度轴</strong>字段（x）和一个<strong>数值轴</strong>字段（y），其中必须从SQL查询列中提取"x"与"y"。
+          <strong>如果SQL中没有分类列，那么JSON内的series字段不需要出现</strong>
+        </rule>
+        <rule>
+          如果需要堆叠面积图，JSON格式应为<strong>（series为可选字段，仅当有分类字段时使用）</strong>：
+          {{"type":"area", "title": "标题", "axis": {{"x": {{"value": "SQL 查询维度轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}, "y": [{{"value": "SQL 查询数值轴的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}], "series": {{"value":"SQL 查询分类的列(有别名用别名,去掉外层的反引号、双引号、方括号)"}}}}}}
+          <strong>堆叠面积图配置说明：</strong>
+          <strong>1. x轴：维度轴，通常放置时间字段（如日期、月份）</strong>
+          <strong>2. y轴：数值轴，放置需要展示趋势和累计面积贡献的数值指标</strong>
+          <strong>3. series：当需要展示多个分类的堆叠面积贡献时使用（如不同渠道的每日新增）</strong>
+          堆叠面积图的字段映射与折线图一致；如果存在分类字段(series)或多个指标(multi-quota)形成多条曲线，应使用堆叠面积图(area)。只有一条数据曲线时使用折线图(line)。
           <strong>如果SQL中没有分类列，那么JSON内的series字段不需要出现</strong>
         </rule>
         <rule>
@@ -577,10 +588,10 @@ template:
           如果SQL查询结果中存在可用于数据分类的字段（如国家、产品类型等），则必须提供series配置。如果不存在，则无需在JSON中包含series字段。
         </rule>
         <rule>
-          对于柱状图/条形图/折线图：
+          对于柱状图/条形图/折线图/堆叠面积图：
           1. 如果SQL查询中存在多个指标字段（如多个数值度量列）且不存在第二个分类字段，则可以提供multi-quota配置，形如："multi-quota":{{"value":["指标字段1","指标字段2",...]}}
           2. 如果SQL查询中存在多个用户明确要求的指标字段，不能只选其中一个指标生成图表；若multi-quota不能清晰表达，应改用table展示全部指标
-          3. 如果SQL查询中存在多个指标字段且同时存在第二个分类字段，单张柱状图/条形图/折线图通常无法同时表达series和multi-quota；除非用户明确只看一个指标，否则必须使用table
+          3. 如果SQL查询中存在多个指标字段且同时存在第二个分类字段，单张柱状图/条形图/折线图/堆叠面积图通常无法同时表达series和multi-quota；除非用户明确只看一个指标，否则必须使用table
           4. 如果只有一个指标字段，无论是否存在分类字段，都不需要multi-quota配置
           <strong>重要提醒：multi-quota和series是互斥的配置，一个图表配置中只能使用其中之一，不能同时存在</strong>
         </rule>
@@ -654,7 +665,7 @@ template:
       您的任务是根据给定的表结构，用户问题以及以往用户提问，推测用户接下来可能提问的1-{articles_number}个问题。
       请遵循以下规则：
       - 推测的问题需要与提供的表结构相关，生成的提问例子如：["查询所有用户数据","使用饼图展示各产品类型的占比","使用折线图展示销售额趋势",...]
-      - 推测问题如果涉及图形展示，支持的图形类型为：表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap)
+      - 推测问题如果涉及图形展示，支持的图形类型为：表格(table)、指标卡(metric)、柱状图(column)、条形图(bar)、折线图(line)、堆叠面积图(area)、饼图(pie)、漏斗图(funnel)、热力图(heatmap)、散点图(scatter)、桑基图(sankey)或矩形树图(treemap)
       - 推测的问题不能与当前用户问题重复
       - 推测的问题必须与给出的表结构相关
       - 若有以往用户提问列表，则根据以往用户提问列表，推测用户最频繁提问的问题，加入到你生成的推测问题中

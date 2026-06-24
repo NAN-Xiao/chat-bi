@@ -277,6 +277,7 @@ class BaseDashboard(BaseModel):
 
 class QueryDashboard(BaseDashboard):
     opt: str = ''
+    include_data: bool = True
 
 
 # dashboard create obj

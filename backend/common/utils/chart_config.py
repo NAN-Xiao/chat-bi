@@ -7,6 +7,7 @@ CHART_TYPES = {
     "column",
     "bar",
     "line",
+    "area",
     "pie",
     "funnel",
     "heatmap",

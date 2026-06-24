@@ -292,18 +292,49 @@ ORDER BY d.dt
         BASE_BOUNDS
         + """
 , top_channels AS (
-    SELECT p.channel
-    FROM public.dim_player p, bounds b
-    WHERE p.install_date BETWEEN b.start_date AND b.end_date
-    GROUP BY p.channel
+    SELECT channel_name
+    FROM (
+        SELECT CASE
+                 WHEN nullif(trim(p.bi_channel_name), '') IS NOT NULL THEN p.bi_channel_name
+                 WHEN nullif(trim(p.registration_channel), '') IS NOT NULL THEN p.registration_channel
+                 WHEN p.channel = 'iOS,app store' THEN 'app store'
+                 WHEN p.channel = 'huawei_store' THEN '华为应用商城'
+                 WHEN p.channel = 'yingyongbao' THEN '应用宝'
+                 WHEN p.channel = 'xiaomi_store' THEN '小米应用商城'
+                 WHEN p.channel = 'google_play' THEN 'Google Play'
+                 WHEN p.channel = 'qihu_360' THEN '360手机助手'
+                 WHEN p.channel = 'baidu_store' THEN '百度手机助手'
+                 WHEN p.channel = 'wandoujia' THEN '豌豆荚'
+                 ELSE coalesce(nullif(trim(p.channel), ''), '未知')
+               END AS channel_name
+        FROM public.dim_player p, bounds b
+        WHERE p.install_date BETWEEN b.start_date AND b.end_date
+    ) n
+    GROUP BY channel_name
     ORDER BY count(*) DESC
     LIMIT 6
-), channel_installs AS (
+), normalized_installs AS (
     SELECT p.install_date AS dt,
-           CASE WHEN p.channel IN (SELECT channel FROM top_channels) THEN p.channel ELSE '其他' END AS channel_group,
-           count(*) AS new_users
+           CASE
+             WHEN nullif(trim(p.bi_channel_name), '') IS NOT NULL THEN p.bi_channel_name
+             WHEN nullif(trim(p.registration_channel), '') IS NOT NULL THEN p.registration_channel
+             WHEN p.channel = 'iOS,app store' THEN 'app store'
+             WHEN p.channel = 'huawei_store' THEN '华为应用商城'
+             WHEN p.channel = 'yingyongbao' THEN '应用宝'
+             WHEN p.channel = 'xiaomi_store' THEN '小米应用商城'
+             WHEN p.channel = 'google_play' THEN 'Google Play'
+             WHEN p.channel = 'qihu_360' THEN '360手机助手'
+             WHEN p.channel = 'baidu_store' THEN '百度手机助手'
+             WHEN p.channel = 'wandoujia' THEN '豌豆荚'
+             ELSE coalesce(nullif(trim(p.channel), ''), '未知')
+           END AS channel_name
     FROM public.dim_player p, bounds b
     WHERE p.install_date BETWEEN b.start_date AND b.end_date
+), channel_installs AS (
+    SELECT dt,
+           CASE WHEN channel_name IN (SELECT channel_name FROM top_channels) THEN channel_name ELSE '其他' END AS channel_group,
+           count(*) AS new_users
+    FROM normalized_installs
     GROUP BY 1, 2
 )
 SELECT dt AS "日期",
@@ -451,19 +482,35 @@ ORDER BY display_order
 WITH bounds AS (
     SELECT max(session_start::date) AS end_date
     FROM public.fact_sessions
-), top_channels AS (
-    SELECT p.channel
+), normalized_cohorts AS (
+    SELECT p.install_date,
+           p.player_id,
+           CASE
+             WHEN nullif(trim(p.bi_channel_name), '') IS NOT NULL THEN p.bi_channel_name
+             WHEN nullif(trim(p.registration_channel), '') IS NOT NULL THEN p.registration_channel
+             WHEN p.channel = 'iOS,app store' THEN 'app store'
+             WHEN p.channel = 'huawei_store' THEN '华为应用商城'
+             WHEN p.channel = 'yingyongbao' THEN '应用宝'
+             WHEN p.channel = 'xiaomi_store' THEN '小米应用商城'
+             WHEN p.channel = 'google_play' THEN 'Google Play'
+             WHEN p.channel = 'qihu_360' THEN '360手机助手'
+             WHEN p.channel = 'baidu_store' THEN '百度手机助手'
+             WHEN p.channel = 'wandoujia' THEN '豌豆荚'
+             ELSE coalesce(nullif(trim(p.channel), ''), '未知')
+           END AS channel_name
     FROM public.dim_player p, bounds b
     WHERE p.install_date BETWEEN b.end_date - 13 AND b.end_date - 7
-    GROUP BY p.channel
+), top_channels AS (
+    SELECT channel_name
+    FROM normalized_cohorts
+    GROUP BY channel_name
     ORDER BY count(*) DESC
     LIMIT 5
 ), cohorts AS (
-    SELECT p.install_date,
-           CASE WHEN p.channel IN (SELECT channel FROM top_channels) THEN p.channel ELSE '其他' END AS channel_group,
-           p.player_id
-    FROM public.dim_player p, bounds b
-    WHERE p.install_date BETWEEN b.end_date - 13 AND b.end_date - 7
+    SELECT install_date,
+           CASE WHEN channel_name IN (SELECT channel_name FROM top_channels) THEN channel_name ELSE '其他' END AS channel_group,
+           player_id
+    FROM normalized_cohorts
 ), active AS (
     SELECT DISTINCT s.player_id,
            s.lifecycle_day
@@ -591,7 +638,7 @@ def main() -> None:
             with sys_conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
                     """
-                    SELECT id, name, datasource, tenant_id, create_by, update_by,
+                    SELECT id, name, datasource, create_by, update_by,
                            component_data, canvas_style_data, canvas_view_info, update_time
                     FROM public.core_dashboard
                     WHERE id = %s

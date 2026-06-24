@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, toRefs, computed, nextTick, onBeforeUnmount } from 'vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
-import { ChatLineSquare, Close, Download, RefreshRight } from '@element-plus/icons-vue'
+import { ChatLineSquare, Close, Download, FullScreen, RefreshRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { analysisAssistantApi, type AnalysisAssistantMessage } from '@/api/analysisAssistant'
@@ -566,6 +566,13 @@ async function refreshChartData() {
   }
 }
 
+function openChartFullscreen() {
+  if (!isPreviewSingleChart.value) {
+    return
+  }
+  ;(component.value as any)?.enlargeView?.()
+}
+
 function exportChartTableData() {
   if (isPreviewSingleChart.value) {
     ;(component.value as any)?.exportTableData?.()
@@ -648,6 +655,16 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div v-if="isPreviewReportTarget" class="preview-chart-actions" @click.stop @mousedown.stop>
+      <el-tooltip
+        v-if="isPreviewSingleChart"
+        effect="dark"
+        :content="t('dashboard.chart_fullscreen')"
+        placement="top"
+      >
+        <el-button class="preview-action-btn" text @click="openChartFullscreen">
+          <el-icon size="16"><FullScreen /></el-icon>
+        </el-button>
+      </el-tooltip>
       <el-button
         class="preview-action-btn"
         text

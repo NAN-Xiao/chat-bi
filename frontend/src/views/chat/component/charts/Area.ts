@@ -11,9 +11,9 @@ import {
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
-export class Line extends BaseG2Chart {
+export class Area extends BaseG2Chart {
   constructor(id: string) {
-    super(id, 'line')
+    super(id, 'area')
   }
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {
@@ -60,12 +60,36 @@ export class Line extends BaseG2Chart {
     const series = config.series
 
     const _data = checkIsPercent(y, config.data)
+    const shouldStack = series.length > 0
 
     console.debug({ 'render-info': { x: x, y: y, series: series, data: _data }, instance: this })
 
+    const areaLabels = this.showLabel
+      ? [
+          {
+            text: (datum: ChartData) => {
+              const value = datum[y[0].value]
+              if (value === undefined || value === null) {
+                return ''
+              }
+              return `${formatNumber(value)}${_data.isPercent ? '%' : ''}`
+            },
+            style: {
+              dx: -10,
+              dy: -12,
+            },
+            transform: [
+              { type: 'contrastReverse' },
+              { type: 'exceedAdjust' },
+              { type: 'overlapHide' },
+            ],
+          },
+        ]
+      : []
+
     const options: G2Spec = withChartThemeOptions({
       ...this.chart.options(),
-      type: 'view',
+      type: 'area',
       data: _data.data,
       encode: {
         x: x[0].value,
@@ -74,7 +98,7 @@ export class Line extends BaseG2Chart {
       },
       axis: {
         x: {
-          title: false, // x[0].name,
+          title: false,
           labelFontSize: 11,
           labelAutoHide: {
             type: 'hide',
@@ -86,7 +110,7 @@ export class Line extends BaseG2Chart {
           labelAutoEllipsis: true,
         },
         y: {
-          title: false, // y[0].name,
+          title: false,
           labelFormatter: (value: any) => {
             return String(formatNumber(value))
           },
@@ -101,62 +125,26 @@ export class Line extends BaseG2Chart {
           type: 'linear',
         },
       },
-      children: [
-        {
-          type: 'line',
-          labels: this.showLabel
-            ? [
-                {
-                  text: (data: any) => {
-                    const value = data[y[0].value]
-                    if (value === undefined || value === null) {
-                      return ''
-                    }
-                    return `${formatNumber(value)}${_data.isPercent ? '%' : ''}`
-                  },
-                  style: {
-                    dx: -10,
-                    dy: -12,
-                  },
-                  transform: [
-                    { type: 'contrastReverse' },
-                    { type: 'exceedAdjust' },
-                    { type: 'overlapHide' },
-                  ],
-                },
-              ]
-            : [],
-          tooltip: (data: any) => {
-            if (series.length > 0) {
-              return {
-                name: data[series[0].value],
-                value: `${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`,
-              }
-            } else {
-              return {
-                name: axisLabel(y[0]),
-                value: `${formatNumber(data[y[0].value])}${_data.isPercent ? '%' : ''}`,
-              }
-            }
-          },
-        },
-        {
-          type: 'point',
-          style: {
-            r: 2.1,
-            lineWidth: 0,
-            strokeOpacity: 0,
-          },
-          encode: {
-            x: x[0].value,
-            y: y[0].value,
-            color: series.length > 0 ? series[0].value : undefined,
-            shape: 'point',
-            size: 2.1,
-          },
-          tooltip: false,
-        },
-      ],
+      interaction: {
+        tooltip: { series: series.length > 0, shared: true },
+      },
+      transform: shouldStack ? [{ type: 'stackY' }] : undefined,
+      style: {
+        fillOpacity: 0.78,
+      },
+      labels: areaLabels,
+      tooltip: (datum: ChartData) => {
+        if (series.length > 0) {
+          return {
+            name: datum[series[0].value],
+            value: `${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
+          }
+        }
+        return {
+          name: axisLabel(y[0]),
+          value: `${formatNumber(datum[y[0].value])}${_data.isPercent ? '%' : ''}`,
+        }
+      },
     } as G2Spec)
 
     this.chart.options(options)

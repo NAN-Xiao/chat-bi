@@ -134,10 +134,10 @@ const doShareComponent = async (e: MouseEvent) => {
 
 <style scoped lang="less">
 .component-bar-main {
-  height: 20px;
+  height: 28px;
   position: absolute;
-  right: 12px;
-  top: 12px;
+  right: 22px;
+  top: 18px;
   display: flex;
   z-index: 11;
   cursor: pointer !important;
@@ -148,20 +148,29 @@ const doShareComponent = async (e: MouseEvent) => {
 }
 
 .bar-more {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   color: rgba(31, 35, 41, 1);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 1);
-  border: 1px solid rgba(217, 220, 223, 1);
-  padding: 8px;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
   z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  :deep(.svg-icon) {
+    width: 20px;
+    height: 20px;
+  }
   &:hover {
-    background-color: rgba(245, 246, 247, 1);
+    background-color: transparent;
+    color: var(--ed-color-primary, #3370ff);
   }
 
   &:active {
-    background-color: rgba(245, 246, 247, 0.5);
+    background-color: transparent;
   }
 }
 </style>

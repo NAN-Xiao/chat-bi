@@ -50,6 +50,7 @@ interface StatItem {
 
 const structureChartTypes = new Set<ChartTypes>(['pie', 'funnel', 'treemap'])
 const rankedChartTypes = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'sankey'])
+const trendChartTypes = new Set<ChartTypes>(['line', 'area'])
 
 const isBlank = (value: any) => value === null || value === undefined || value === ''
 const genericAxisLabels = new Set([
@@ -270,7 +271,7 @@ function dateFieldPriority(field: string) {
 }
 
 const isTrendLike = computed(() => {
-  if (props.chartType === 'line') {
+  if (trendChartTypes.has(props.chartType)) {
     return true
   }
   const axis = xAxis.value
@@ -652,7 +653,7 @@ function buildRankedStats(includeTotal = true): Array<StatItem> {
 }
 
 const stats = computed<Array<StatItem>>(() => {
-  if (props.chartType === 'line') {
+  if (trendChartTypes.has(props.chartType)) {
     return buildTrendStats()
   }
 
@@ -761,7 +762,7 @@ const anchorLabel = computed(() => {
   if (props.chartType === 'sankey') {
     return t('chat.insight_flow_summary')
   }
-  if (props.chartType === 'line') {
+  if (trendChartTypes.has(props.chartType)) {
     return t('chat.insight_trend_summary')
   }
   if (isTrendLike.value && latestAnchorValue.value) {
