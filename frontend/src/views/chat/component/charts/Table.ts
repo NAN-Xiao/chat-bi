@@ -54,10 +54,7 @@ function parseDateLikeValue(value: any): { type: 'date' | 'datetime'; text: stri
 
 function formatTableValue(value: any, axis?: ChartAxis): string {
   const dataType = axis?.data_type?.toLowerCase()
-  if (dataType === 'date' || dataType === 'datetime') {
-    return parseDateLikeValue(value)?.text ?? String(value ?? '')
-  }
-  if (!dataType && hasDateFieldName(axis)) {
+  if (dataType === 'date' || dataType === 'datetime' || (!dataType && hasDateFieldName(axis))) {
     const parsed = parseDateLikeValue(value)
     if (parsed) {
       return parsed.text
