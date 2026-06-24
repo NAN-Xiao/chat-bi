@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from apps.ai_model.embedding import EmbeddingModelCache
 from apps.data_training.models.data_training_model import DataTrainingInfo, DataTraining, DataTrainingInfoResult
+from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_model import AssistantModel
@@ -434,10 +435,12 @@ def batch_create_training(
     resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
     datasource_name_to_id = {}
     if resolved_scope == SemanticRecordScopeEnum.TENANT:
-        datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.tenant_id == resolved_tenant_id)
-        datasource_result = session.execute(datasource_stmt).all()
-        for ds in datasource_result:
-            datasource_name_to_id[ds.name.strip()] = ds.id
+        datasource_id = get_bound_datasource_id_for_tenant(session, resolved_tenant_id)
+        if datasource_id is not None:
+            datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.id == datasource_id)
+            datasource_result = session.execute(datasource_stmt).all()
+            for ds in datasource_result:
+                datasource_name_to_id[ds.name.strip()] = ds.id
     valid_datasource_ids = {int(value) for value in datasource_name_to_id.values()}
 
     assistant_name_to_id = {}

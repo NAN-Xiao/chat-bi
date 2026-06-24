@@ -270,7 +270,7 @@ function closeDialog() {
   border: 1px solid rgba(226, 232, 240, 0.92);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 10px 30px rgba(18, 34, 66, 0.06);
+  box-shadow: 0 4px 12px rgba(18, 34, 66, 0.035);
   overflow: hidden;
 
   :deep(.chart-insight-header.side) {
@@ -315,8 +315,8 @@ function closeDialog() {
   border-radius: 12px;
   background: #ffffff;
   box-shadow:
-    0 18px 46px rgba(18, 34, 66, 0.1),
-    0 6px 18px rgba(18, 34, 66, 0.05);
+    0 6px 18px rgba(18, 34, 66, 0.045),
+    0 1px 3px rgba(18, 34, 66, 0.03);
 
   :deep(.chart-container) {
     min-height: 0;

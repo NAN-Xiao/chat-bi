@@ -26,7 +26,6 @@ import assistantTest from '@/views/system/embedded/Test.vue'
 import assistant from '@/views/embedded/index.vue'
 import EmbeddedPage from '@/views/embedded/page.vue'
 import EmbeddedCommon from '@/views/embedded/common.vue'
-import Prompt from '@/views/system/prompt/index.vue'
 import Audit from '@/views/system/audit/index.vue'
 import Parameter from '@/views/system/parameter/index.vue'
 import Permission from '@/views/system/permission/index.vue'
@@ -501,6 +500,20 @@ export const routes = [
         },
       },
       {
+        path: 'custom-agent',
+        name: 'system-custom-agent',
+        component: CustomAgent,
+        props: { mode: 'admin' },
+        meta: {
+          title: t('access.custom_agents'),
+          iconActive: 'agent',
+          iconDeActive: 'noAgent',
+          tenantBusiness: true,
+          tenantAdminOnly: true,
+          platformOperation: true,
+        },
+      },
+      {
         path: 'knowledge-base',
         name: 'system-knowledge-base',
         component: KnowledgeBase,
@@ -535,12 +548,9 @@ export const routes = [
       },
       {
         path: 'prompt',
-        name: 'prompt',
-        component: Prompt,
+        redirect: '/system/custom-agent',
+        hidden: true,
         meta: {
-          title: t('prompt.customize_prompt_words'),
-          iconActive: 'agent',
-          iconDeActive: 'noAgent',
           tenantBusiness: true,
           tenantAdminOnly: true,
           platformOperation: true,

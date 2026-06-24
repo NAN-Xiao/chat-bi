@@ -68,13 +68,14 @@ let reportStreamBuffer = ''
 const isPreviewSingleChart = computed(
   () => props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
 )
+const currentViewInfo = computed(() => props.canvasViewInfo?.[props.configItem.id] || {})
 const isPreviewReportTarget = computed(
   () =>
     props.showPosition === 'preview' &&
     ['SQView', 'SQTab'].includes(props.configItem?.component) &&
     !props.frameless
 )
-const currentViewInfo = computed(() => props.canvasViewInfo?.[props.configItem.id] || {})
+const canShowReportInterpret = computed(() => isPreviewReportTarget.value)
 const reportScopeTitle = computed(() => {
   if (props.configItem?.component === 'SQTab') {
     const activeTab = getActiveTabItem(props.configItem)
@@ -210,6 +211,16 @@ function getResultFields(result: any) {
     ...(Array.isArray(result?.fields) ? result.fields : []),
     ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
   ])
+}
+
+function previewChartSql(viewInfo: any, config?: any) {
+  return dashboardApi.preview_sql(
+    {
+      datasource: viewInfo.datasource,
+      sql: viewInfo.sql.trim(),
+    },
+    config
+  )
 }
 
 function getAxisFields(items: any) {
@@ -532,10 +543,7 @@ async function refreshChartData() {
         return
       }
       try {
-        const result = await dashboardApi.preview_sql({
-          datasource: viewInfo.datasource,
-          sql: viewInfo.sql.trim(),
-        })
+        const result = await previewChartSql(viewInfo)
         const fields = getResultFields(result)
         const data = Array.isArray(result?.data) ? result.data : []
         if (!viewInfo.data || typeof viewInfo.data !== 'object') {
@@ -657,17 +665,8 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <div v-if="isPreviewReportTarget" class="preview-chart-actions" @click.stop @mousedown.stop>
-      <el-tooltip
-        v-if="isPreviewSingleChart"
-        effect="dark"
-        :content="t('dashboard.chart_fullscreen')"
-        placement="top"
-      >
-        <el-button class="preview-action-btn" text @click="openChartFullscreen">
-          <el-icon size="16"><FullScreen /></el-icon>
-        </el-button>
-      </el-tooltip>
       <el-button
+        v-if="canShowReportInterpret"
         class="preview-action-btn"
         text
         :title="t('dashboard.chart_report_interpret')"
@@ -679,6 +678,16 @@ onBeforeUnmount(() => {
       <el-tooltip effect="dark" :content="t('dashboard.chart_refresh_data')" placement="top">
         <el-button class="preview-action-btn" text @click="refreshChartData">
           <el-icon size="16"><RefreshRight /></el-icon>
+        </el-button>
+      </el-tooltip>
+      <el-tooltip
+        v-if="isPreviewSingleChart"
+        effect="dark"
+        :content="t('dashboard.chart_fullscreen')"
+        placement="top"
+      >
+        <el-button class="preview-action-btn" text @click="openChartFullscreen">
+          <el-icon size="16"><FullScreen /></el-icon>
         </el-button>
       </el-tooltip>
       <el-tooltip effect="dark" :content="t('dashboard.chart_export_table')" placement="top">

@@ -15,6 +15,7 @@ async def get_assistant_info(**kwargs):
 
 from sqlmodel import select
 
+from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource
 from apps.db.constant import DB
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
@@ -207,6 +208,9 @@ async def ds(session: SessionDep, current_assistant: CurrentAssistant):
         online = current_assistant.online
         configuration = current_assistant.configuration
         config: dict[any] = json.loads(configuration)
+        datasource_id = get_bound_datasource_id_for_tenant(session, _assistant_tenant_id(current_assistant))
+        if datasource_id is None:
+            return []
         stmt = (
             select(
                 CoreDatasource.id,
@@ -216,7 +220,7 @@ async def ds(session: SessionDep, current_assistant: CurrentAssistant):
                 CoreDatasource.type_name,
                 CoreDatasource.num,
             )
-            .where(CoreDatasource.tenant_id == _assistant_tenant_id(current_assistant))
+            .where(CoreDatasource.id == datasource_id)
         )
         if not online:
             public_list: list[int] = config.get('public_list') or None

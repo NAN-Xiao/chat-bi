@@ -45,6 +45,21 @@ class CoreDatasourceUser(SQLModel, table=True):
     create_time: datetime = Field(sa_column=Column(DateTime(timezone=False), nullable=True))
 
 
+class CoreDatasourceTenantBinding(SQLModel, table=True):
+    __tablename__ = "core_datasource_tenant_binding"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_core_datasource_tenant_binding_tenant"),
+        UniqueConstraint("tenant_id", "datasource_id", name="uq_core_datasource_tenant_binding_pair"),
+        Index("idx_core_datasource_tenant_binding_datasource", "datasource_id"),
+    )
+
+    id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))
+    tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    datasource_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    create_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    create_time: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
+
+
 class CoreTable(SQLModel, table=True):
     __tablename__ = "core_table"
     id: int = Field(sa_column=Column(BigInteger, Identity(always=True), nullable=False, primary_key=True))

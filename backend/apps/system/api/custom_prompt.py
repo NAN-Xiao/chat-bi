@@ -36,6 +36,7 @@ from apps.datasource.crud.permission import (
     get_datasource_ids_with_min_role,
     has_datasource_role,
 )
+from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID, TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_collab_admin, is_platform_admin, is_platform_workspace_delegate
@@ -670,15 +671,19 @@ async def upload_excel(
             if can_manage_platform_public:
                 datasource_name_to_id = {}
             else:
-                datasource_name_to_id = {
-                    row.name.strip(): int(row.id)
-                    for row in db_session.execute(
-                        select(CoreDatasource.id, CoreDatasource.name).where(
-                            CoreDatasource.tenant_id == _workspace_tenant_id(current_user)
-                        )
-                    ).all()
-                    if row.name
-                }
+                datasource_name_to_id = {}
+                datasource_id = get_bound_datasource_id_for_tenant(
+                    db_session,
+                    _workspace_tenant_id(current_user),
+                )
+                if datasource_id is not None:
+                    datasource_name_to_id = {
+                        row.name.strip(): int(row.id)
+                        for row in db_session.execute(
+                            select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.id == datasource_id)
+                        ).all()
+                        if row.name
+                    }
             ai_model_name_to_id = {
                 row.name.strip(): int(row.id)
                 for row in db_session.execute(select(AiModelDetail.id, AiModelDetail.name)).all()

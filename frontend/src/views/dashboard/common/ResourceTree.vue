@@ -10,6 +10,7 @@ import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
 import icon_export_outlined from '@/assets/svg/icon_export_outlined.svg'
 import icon_close_outlined from '@/assets/svg/icon_close_outlined.svg'
+import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
@@ -78,6 +79,8 @@ const mounted = ref(false)
 const selectedNodeKey: any = ref(null)
 const filterText = ref(null)
 const expandedArray = ref<Array<string | number>>([])
+const delegateDraftNodes = ref<SQTreeNode[]>([])
+const platformTemplateNodes = ref<SQTreeNode[]>([])
 const resourceListTree = ref()
 const returnMounted = ref(false)
 const isDefaultOrderEditing = ref(false)
@@ -177,8 +180,19 @@ const syncDashboardRoute = (resourceId: string | number) => {
   })
 }
 
+const syncDelegateDraftRoute = (draftId: string | number) => {
+  router.replace({
+    path: '/canvas',
+    query: { delegateDraftId: draftId },
+  })
+}
+
 const shouldAutoSelectDashboard = () => props.showPosition === 'preview'
-const isLeafDashboardNode = (node?: SQTreeNode) => node?.node_type === 'leaf' || node?.leaf === true
+const isDelegateDraftNode = (node?: SQTreeNode) => (node as any)?.is_platform_delegate_draft === true
+const isPlatformTemplateNode = (node?: SQTreeNode) => (node as any)?.is_platform_template === true
+const isVirtualNode = (node?: SQTreeNode) => (node as any)?.virtual === true
+const isLeafDashboardNode = (node?: SQTreeNode) =>
+  (node?.node_type === 'leaf' || node?.leaf === true) && !isVirtualNode(node)
 
 const isCurrentRouteTarget = (target: any) => {
   const currentRoute = router.currentRoute.value
@@ -230,6 +244,19 @@ const selectDashboardNode = (node?: SQTreeNode) => {
 
 const nodeClick = (data: SQTreeNode, node: any) => {
   dashboardStore.setCurComponent({ component: null, index: null })
+  if (isVirtualNode(data)) {
+    resourceListTree.value?.setCurrentKey?.(null)
+    return
+  }
+  if (isDelegateDraftNode(data)) {
+    selectedNodeKey.value = data.id
+    syncDelegateDraftRoute(data.id)
+    return
+  }
+  if (isPlatformTemplateNode(data)) {
+    operation('copyTemplateToDraft', data)
+    return
+  }
   if (node.disabled) {
     nextTick(() => {
       const currentNode = resourceListTree.value.$el.querySelector('.is-current')
@@ -295,11 +322,80 @@ const getTree = async () => {
       return
     }
     state.originResourceTree = res || []
-    state.resourceTree = _.cloneDeep(state.originResourceTree)
+    if (userStore.isPlatformWorkspaceDelegate) {
+      await loadDelegateWorkspaceExtras()
+    }
+    state.resourceTree = composeResourceTree()
     handleSortTypeChange('name_asc')
     if (!state.resourceTree.length && (await redirectToResolvedLanding())) return
     afterTreeInit()
   })
+}
+
+const delegateDraftGroupNode = (): SQTreeNode | null => {
+  if (!userStore.isPlatformWorkspaceDelegate || !delegateDraftNodes.value.length) return null
+  return {
+    id: '__platform_delegate_drafts__',
+    pid: 'root',
+    name: t('dashboard.platform_delegate_drafts'),
+    leaf: false,
+    weight: 0,
+    type: 'dashboard',
+    node_type: 'folder',
+    children: delegateDraftNodes.value,
+    virtual: true,
+  } as any
+}
+
+const platformTemplateGroupNode = (): SQTreeNode | null => {
+  if (!userStore.isPlatformWorkspaceDelegate || !platformTemplateNodes.value.length) return null
+  return {
+    id: '__platform_dashboard_templates__',
+    pid: 'root',
+    name: t('dashboard.platform_templates'),
+    leaf: false,
+    weight: 0,
+    type: 'dashboard',
+    node_type: 'folder',
+    children: platformTemplateNodes.value,
+    virtual: true,
+  } as any
+}
+
+const composeResourceTree = (baseTree?: SQTreeNode[]) => {
+  const tree = _.cloneDeep(baseTree || state.originResourceTree)
+  const draftGroup = delegateDraftGroupNode()
+  const templateGroup = platformTemplateGroupNode()
+  if (draftGroup) tree.push(draftGroup)
+  if (templateGroup) tree.push(templateGroup)
+  return tree
+}
+
+const loadDelegateWorkspaceExtras = async () => {
+  if (!userStore.isPlatformWorkspaceDelegate || props.defaultMode) {
+    delegateDraftNodes.value = []
+    platformTemplateNodes.value = []
+    return
+  }
+  const [drafts, templates] = await Promise.all([
+    dashboardApi.delegate_draft_list().catch(() => []),
+    dashboardApi.platform_template_list().catch(() => []),
+  ])
+  delegateDraftNodes.value = (drafts || []).map((item: any) => ({
+    ...item,
+    pid: '__platform_delegate_drafts__',
+    node_type: 'leaf',
+    leaf: true,
+    is_platform_delegate_draft: true,
+  }))
+  platformTemplateNodes.value = (templates || []).map((item: any) => ({
+    ...item,
+    pid: '__platform_dashboard_templates__',
+    node_type: 'leaf',
+    leaf: true,
+    is_platform_template: true,
+    can_edit: false,
+  }))
 }
 
 const hasData = computed<boolean>(() => state.resourceTree.length > 0)
@@ -308,11 +404,89 @@ const canManageNode = (data: SQTreeNode) => data.can_edit === true
 const canShareNode = (data: SQTreeNode) =>
   data.node_type === 'leaf' && (data.can_share === true || data.can_edit === true || data.is_shared === true)
 const canSetDefaultNode = (data: SQTreeNode) => data.node_type === 'leaf' && data.can_set_default === true
-const hasNodeMenu = (data: SQTreeNode) =>
+const canCopyDefaultNode = (data: SQTreeNode) => props.defaultMode && data.node_type === 'leaf'
+const canCreateMaintenanceDraftNode = (data: SQTreeNode) =>
+  userStore.isPlatformWorkspaceDelegate &&
   !props.defaultMode &&
-  (canManageNode(data) || canShareNode(data) || canSetDefaultNode(data))
+  data.node_type === 'leaf' &&
+  (data as any).can_create_maintenance_draft === true
+const canCopyPlatformTemplateNode = (data: SQTreeNode) =>
+  userStore.isPlatformWorkspaceDelegate &&
+  !props.defaultMode &&
+  data.node_type === 'leaf' &&
+  (data as any).can_copy_to_platform_template === true
+const hasNodeMenu = (data: SQTreeNode) =>
+  props.defaultMode
+    ? canCopyDefaultNode(data)
+    : isDelegateDraftNode(data) ||
+      isPlatformTemplateNode(data) ||
+      canManageNode(data) ||
+      canShareNode(data) ||
+      canSetDefaultNode(data) ||
+      canCreateMaintenanceDraftNode(data) ||
+      canCopyPlatformTemplateNode(data)
 const nodeMenuList = (data: SQTreeNode) => {
+  if (props.defaultMode) {
+    return canCopyDefaultNode(data)
+      ? [
+          {
+            label: t('dashboard.copy_to_my_dashboard'),
+            command: 'copyDefault',
+            svgName: icon_copy_outlined,
+            disabled: copyLoading.value,
+          },
+        ]
+      : []
+  }
+  if (isDelegateDraftNode(data)) {
+    return [
+      {
+        label: t('dashboard.delegate_edit'),
+        command: 'editDelegateDraft',
+        svgName: icon_edit_outlined,
+      },
+      {
+        label: t('dashboard.publish_as_workspace_dashboard'),
+        command: 'publishDelegateDraft',
+        svgName: icon_done_outlined,
+      },
+      {
+        label: t('dashboard.publish_as_default_dashboard'),
+        command: 'publishDelegateDraftDefault',
+        svgName: icon_start_outlined,
+      },
+      {
+        label: t('dashboard.discard_delegate_draft'),
+        command: 'deleteDelegateDraft',
+        svgName: icon_delete,
+        divided: true,
+      },
+    ]
+  }
+  if (isPlatformTemplateNode(data)) {
+    return [
+      {
+        label: t('dashboard.copy_template_to_delegate_draft'),
+        command: 'copyTemplateToDraft',
+        svgName: icon_copy_outlined,
+      },
+    ]
+  }
   const list = canManageNode(data) ? [...state.baseMenuList] : []
+  if (canCreateMaintenanceDraftNode(data)) {
+    list.splice(0, 0, {
+      label: t('dashboard.delegate_maintain'),
+      command: 'createMaintenanceDraft',
+      svgName: icon_edit_outlined,
+    })
+  }
+  if (canCopyPlatformTemplateNode(data)) {
+    list.push({
+      label: t('dashboard.copy_to_platform_template'),
+      command: 'copyToPlatformTemplate',
+      svgName: icon_copy_outlined,
+    })
+  }
   if (canSetDefaultNode(data)) {
     list.splice(canManageNode(data) ? 2 : 0, 0, {
       label: data.is_default ? t('dashboard.remove_default_dashboard') : t('dashboard.set_default_dashboard'),
@@ -384,6 +558,20 @@ const resourceEdit = (resourceId) => {
   })
 }
 
+const openCopiedDashboard = async (record: any) => {
+  if (record?.datasource) {
+    const activated = await datasourceContext.activateDatasourceById(record.datasource, true)
+    if (!activated) {
+      await datasourceContext.loadDatasources(true)
+      await datasourceContext.activateDatasourceById(record.datasource, true)
+    }
+  }
+  await router.push({
+    path: '/dashboard/index',
+    query: { resourceId: record.id },
+  })
+}
+
 // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
 const getParentKeys = (tree: any, targetKey: any, parentKeys = []) => {
   for (const node of tree) {
@@ -438,14 +626,14 @@ onMounted(() => {
 useEmitt({
   name: WORKSPACE_CONTEXT_CHANGE_EVENT,
   callback: (event?: any) => {
-    workspaceContextSwitching.value = event?.phase === 'changing'
+    workspaceContextSwitching.value = event?.phase === 'changing' || event?.phase === 'changed'
     resetTreeState()
     emit('deleteCurResource')
     if (event?.phase === 'changing') {
       return
     }
-    workspaceContextSwitching.value = false
     datasourceContext.loadDatasources().finally(() => {
+      workspaceContextSwitching.value = false
       getTree()
     })
   },
@@ -530,6 +718,72 @@ const operation = async (opt: string, data: SQTreeNode) => {
     resourceGroupOptRef.value?.optInit({ opt: 'rename', id: data.id, name: data.name })
   } else if (opt === 'edit') {
     resourceEdit(data.id)
+  } else if (opt === 'editDelegateDraft') {
+    syncDelegateDraftRoute(data.id)
+  } else if (opt === 'createMaintenanceDraft') {
+    if (!canCreateMaintenanceDraftNode(data)) return
+    const draft = await dashboardApi.delegate_draft_maintain({ dashboard_id: data.id })
+    ElMessage.success(t('dashboard.delegate_draft_created'))
+    syncDelegateDraftRoute(draft.id)
+  } else if (opt === 'publishDelegateDraft' || opt === 'publishDelegateDraftDefault') {
+    if (!isDelegateDraftNode(data)) return
+    const publishAsDefault = opt === 'publishDelegateDraftDefault'
+    ElMessageBox.confirm(
+      publishAsDefault
+        ? t('dashboard.publish_delegate_draft_default_confirm')
+        : t('dashboard.publish_delegate_draft_confirm'),
+      {
+        confirmButtonType: 'primary',
+        type: 'warning',
+        autofocus: false,
+        showClose: false,
+      }
+    ).then(async () => {
+      const record = await dashboardApi.delegate_draft_publish({
+        draft_dashboard_id: data.id,
+        publish_as_default: publishAsDefault,
+      })
+      ElMessage.success(t('dashboard.delegate_draft_published'))
+      await openCopiedDashboard(record)
+      getTree()
+    })
+  } else if (opt === 'deleteDelegateDraft') {
+    if (!isDelegateDraftNode(data)) return
+    ElMessageBox.confirm(t('dashboard.discard_delegate_draft_confirm', [data.name]), {
+      confirmButtonType: 'danger',
+      type: 'warning',
+      autofocus: false,
+      showClose: false,
+    }).then(() => {
+      dashboardApi.delegate_draft_delete({ dashboard_id: data.id }).then(() => {
+        ElMessage.success(t('dashboard.delegate_draft_discarded'))
+        getTree()
+      })
+    })
+  } else if (opt === 'copyToPlatformTemplate') {
+    if (!canCopyPlatformTemplateNode(data)) return
+    const record = await dashboardApi.platform_template_copy_from_dashboard({ dashboard_id: data.id })
+    ElMessage.success(t('dashboard.copy_to_platform_template_success'))
+    platformTemplateNodes.value.unshift({
+      ...record,
+      pid: '__platform_dashboard_templates__',
+      node_type: 'leaf',
+      leaf: true,
+      is_platform_template: true,
+      can_edit: false,
+    } as any)
+    state.resourceTree = composeResourceTree(treeSort(state.originResourceTree, state.curSortType))
+  } else if (opt === 'copyTemplateToDraft') {
+    if (!isPlatformTemplateNode(data) || copyLoading.value) return
+    copyLoading.value = true
+    try {
+      const draft = await dashboardApi.platform_template_copy_to_draft({ template_id: data.id })
+      ElMessage.success(t('dashboard.copy_template_to_delegate_draft_success'))
+      syncDelegateDraftRoute(draft.id)
+      getTree()
+    } finally {
+      copyLoading.value = false
+    }
   } else if (opt === 'share') {
     if (!canShareNode(data)) return
     const previewImage = selectedNodeKey.value === data.id ? await captureDashboardSharePreview() : ''
@@ -571,6 +825,16 @@ const operation = async (opt: string, data: SQTreeNode) => {
         )
         getTree()
       })
+  } else if (opt === 'copyDefault') {
+    if (!canCopyDefaultNode(data) || copyLoading.value) return
+    copyLoading.value = true
+    try {
+      const record = await dashboardApi.default_copy({ dashboard_id: data.id })
+      ElMessage.success(t('dashboard.copy_default_dashboard_success'))
+      await openCopiedDashboard(record)
+    } finally {
+      copyLoading.value = false
+    }
   }
 }
 
@@ -578,6 +842,11 @@ const baseInfoChangeFinish = (result?: any) => {
   if (result?.opt === 'newLeaf' && result?.resourceId) {
     selectedNodeKey.value = result.resourceId
     returnMounted.value = true
+    if (result.isPlatformDelegateDraft) {
+      syncDelegateDraftRoute(result.resourceId)
+      getTree()
+      return
+    }
     syncDashboardRoute(result.resourceId)
   }
   getTree()
@@ -654,6 +923,11 @@ const onNodeDragStart = (node: any) => {
   if (!props.defaultMode) handleDragStart(node)
 }
 
+const allowNodeDrag = (draggingNode: any) => {
+  if (props.defaultMode) return allowDefaultOrderDrag(draggingNode)
+  return !isVirtualNode(draggingNode?.data) && !isDelegateDraftNode(draggingNode?.data) && !isPlatformTemplateNode(draggingNode?.data)
+}
+
 const onNodeDrop = (draggingNode: any, dropNode: any, dropType: string) => {
   if (props.defaultMode) {
     handleDefaultOrderDrop()
@@ -675,7 +949,11 @@ const handleSortTypeChange = (menuSortType: string) => {
     ? menuSortType
     : state.curSortTypeSuffix
   const curMenuSortType = state.curSortTypePrefix + state.curSortTypeSuffix
-  state.resourceTree = treeSort(state.originResourceTree, curMenuSortType)
+  const sortedTree = treeSort(state.originResourceTree, curMenuSortType)
+  state.resourceTree = sortedTree
+  if (userStore.isPlatformWorkspaceDelegate && !props.defaultMode) {
+    state.resourceTree = composeResourceTree(sortedTree)
+  }
   state.curSortType = curMenuSortType
   wsCache.set('TreeSort-dashboard', state.curSortType)
 }
@@ -867,7 +1145,7 @@ defineExpose({
         menu
         :empty-text="defaultMode ? t('dashboard.no_default_dashboard') : t('dashboard.no_dashboard')"
         :draggable="defaultMode ? isDefaultOrderEditing : !defaultMode"
-        :allow-drag="defaultMode ? allowDefaultOrderDrag : undefined"
+        :allow-drag="allowNodeDrag"
         :allow-drop="defaultMode ? allowDefaultOrderDrop : undefined"
         :default-expanded-keys="expandedArray"
         :data="state.resourceTree"
@@ -909,6 +1187,18 @@ defineExpose({
             </span>
             <span v-if="data.node_type === 'leaf' && data.is_shared" class="shared-mark">
               {{ t('dashboard.shared') }}
+            </span>
+            <span
+              v-if="!defaultMode && data.node_type === 'leaf' && data.is_platform_delegate_draft"
+              class="delegate-draft-mark"
+            >
+              {{ t('dashboard.delegate_draft_mark') }}
+            </span>
+            <span
+              v-if="!defaultMode && data.node_type === 'leaf' && data.is_platform_template"
+              class="template-mark"
+            >
+              {{ t('dashboard.platform_template_mark') }}
             </span>
             <span
               v-if="!defaultMode && data.node_type === 'leaf' && data.is_default"
@@ -1462,6 +1752,30 @@ defineExpose({
     border-radius: 999px;
     background: rgba(245, 158, 11, 0.14);
     color: #b45309;
+    font-size: 10px;
+    line-height: 16px;
+    font-weight: 500;
+  }
+
+  .delegate-draft-mark {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(13, 148, 136, 0.12);
+    color: #0f766e;
+    font-size: 10px;
+    line-height: 16px;
+    font-weight: 500;
+  }
+
+  .template-mark {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(79, 70, 229, 0.1);
+    color: #4f46e5;
     font-size: 10px;
     line-height: 16px;
     font-weight: 500;

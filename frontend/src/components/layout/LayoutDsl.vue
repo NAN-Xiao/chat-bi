@@ -320,7 +320,17 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <div class="right-main" :class="collapse && 'right-side-collapse'">
+    <div
+      class="right-main"
+      :class="{
+        'right-side-collapse': collapse,
+        'is-platform-delegate': userStore.isPlatformWorkspaceDelegate,
+      }"
+    >
+      <div v-if="userStore.isPlatformWorkspaceDelegate" class="delegate-banner">
+        <span>{{ $t('tenant.platform_delegate_banner', { name: userStore.getTenantName }) }}</span>
+        <button type="button" @click="toProjectList">{{ $t('tenant.return_to_platform') }}</button>
+      </div>
       <div class="content">
         <router-view />
       </div>
@@ -582,6 +592,48 @@ onMounted(() => {
 
       &:has(.no-padding) {
         padding: 0;
+      }
+    }
+
+    &.is-platform-delegate {
+      .content {
+        height: calc(100% - 36px);
+      }
+    }
+
+    .delegate-banner {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--theme-shell-border, #d9dcdf);
+      background: #ecfdf5;
+      color: #065f46;
+      font-size: 13px;
+      line-height: 20px;
+
+      span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      button {
+        flex: 0 0 auto;
+        border: none;
+        background: transparent;
+        color: #047857;
+        font-size: 13px;
+        cursor: pointer;
+        padding: 0;
+
+        &:hover {
+          color: #065f46;
+          text-decoration: underline;
+        }
       }
     }
 

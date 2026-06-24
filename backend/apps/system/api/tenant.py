@@ -8,7 +8,11 @@ from apps.chat.curd.custom_prompt import CustomPromptTypeEnum, CustomPromptVisib
 from apps.chat.models.custom_prompt_model import CustomPrompt
 from apps.dashboard.models.dashboard_model import CoreDashboard
 from apps.data_training.models.data_training_model import DataTraining
-from apps.datasource.crud.binding import bind_tenant_to_datasource
+from apps.datasource.crud.binding import (
+    bind_tenant_to_datasource,
+    get_bound_datasource_id_for_tenant,
+    list_datasource_binding_rows,
+)
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
 from apps.datasource.crud.permission import (
     list_user_datasource_roles,
@@ -268,11 +272,13 @@ def _remove_tenant_project_permissions(session: SessionDep, *, tenant_id: int, u
         CoreDatasourceUser.__tablename__,
     ):
         return
-    datasource_ids = select(CoreDatasource.id).where(CoreDatasource.tenant_id == int(tenant_id))
+    bound_datasource_id = get_bound_datasource_id_for_tenant(session, int(tenant_id))
+    if bound_datasource_id is None:
+        return
     session.exec(
         sqlmodel_delete(CoreDatasourceUser).where(
             CoreDatasourceUser.user_id == int(user_id),
-            CoreDatasourceUser.ds_id.in_(datasource_ids),
+            CoreDatasourceUser.ds_id == int(bound_datasource_id),
         )
     )
 
@@ -316,11 +322,7 @@ def _tenant_bound_datasource_map(session: SessionDep, tenant_ids: list[int]) -> 
     ids = [int(tenant_id) for tenant_id in tenant_ids if int(tenant_id) != DEFAULT_TENANT_ID]
     if not ids or not _table_exists(session, CoreDatasource.__tablename__):
         return {}
-    rows = session.exec(
-        select(CoreDatasource.tenant_id, CoreDatasource.id, CoreDatasource.name)
-        .where(CoreDatasource.tenant_id.in_(ids))
-        .order_by(CoreDatasource.name)
-    ).all()
+    rows = list_datasource_binding_rows(session, ids)
     result = {}
     for tenant_id, datasource_id, datasource_name in rows:
         result.setdefault(
@@ -338,12 +340,7 @@ def _tenant_bound_datasource_map(session: SessionDep, tenant_ids: list[int]) -> 
 def _tenant_bound_datasource_id(session: SessionDep, tenant_id: int) -> int | None:
     if int(tenant_id) == DEFAULT_TENANT_ID or not _table_exists(session, CoreDatasource.__tablename__):
         return None
-    datasource_id = session.exec(
-        select(CoreDatasource.id)
-        .where(CoreDatasource.tenant_id == int(tenant_id))
-        .order_by(CoreDatasource.id)
-    ).first()
-    return int(datasource_id) if datasource_id is not None else None
+    return get_bound_datasource_id_for_tenant(session, int(tenant_id))
 
 
 def _scope_member_datasource_payload_to_bound_datasource(
@@ -1021,12 +1018,7 @@ async def platform_overview(
         ),
     )
     datasource_total = _platform_count(session, select(func.count()).select_from(CoreDatasource))
-    bound_tenant_count = _platform_count(
-        session,
-        select(func.count(func.distinct(CoreDatasource.tenant_id)))
-        .select_from(CoreDatasource)
-        .where(CoreDatasource.tenant_id != DEFAULT_TENANT_ID),
-    )
+    bound_tenant_count = len({int(row[0]) for row in list_datasource_binding_rows(session)})
     dashboard_total = 0
     if _table_exists(session, CoreDashboard.__tablename__):
         dashboard_total = _platform_count(
@@ -1411,11 +1403,7 @@ async def tenant_overview(
         )
     ).one() or 0
 
-    datasource_total = session.exec(
-        select(func.count())
-        .select_from(CoreDatasource)
-        .where(CoreDatasource.tenant_id == tenant_id)
-    ).one() or 0
+    datasource_total = 1 if _tenant_bound_datasource_id(session, tenant_id) is not None else 0
 
     dashboard_total = 0
     if _table_exists(session, CoreDashboard.__tablename__):

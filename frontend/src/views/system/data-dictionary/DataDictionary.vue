@@ -4,8 +4,6 @@ import { useI18n } from 'vue-i18n'
 import { datasourceApi } from '@/api/datasource'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-import icon_form_outlined from '@/assets/svg/icon_form_outlined.svg'
-import { dsTypeWithImg } from '@/views/ds/js/ds-type'
 
 type DatasourceItem = {
   id: number | string
@@ -43,19 +41,11 @@ const { t } = useI18n()
 
 const datasourceLoading = ref(false)
 const schemaLoading = ref(false)
-const datasourceKeyword = ref('')
 const tableKeyword = ref('')
 const fieldKeyword = ref('')
 const datasources = ref<DatasourceItem[]>([])
-const selectedDatasourceId = ref<number | string | null>(null)
 const schema = ref<SchemaMetadata | null>(null)
 const selectedTableId = ref<number | string | null>(null)
-
-const filteredDatasources = computed(() => {
-  const keyword = datasourceKeyword.value.trim().toLowerCase()
-  if (!keyword) return datasources.value
-  return datasources.value.filter((item) => String(item.name || '').toLowerCase().includes(keyword))
-})
 
 const filteredTables = computed(() => {
   const keyword = tableKeyword.value.trim().toLowerCase()
@@ -83,10 +73,6 @@ const filteredFields = computed(() => {
   })
 })
 
-const datasourceIcon = (item: DatasourceItem) => {
-  return (dsTypeWithImg.find((ele) => item.type === ele.type) || {}).img
-}
-
 const selectFirstVisibleTable = () => {
   selectedTableId.value = filteredTables.value[0]?.id ?? null
 }
@@ -104,23 +90,15 @@ const loadSchema = async (id: number | string) => {
   }
 }
 
-const selectDatasource = (item: DatasourceItem) => {
-  if (String(selectedDatasourceId.value || '') === String(item.id || '')) return
-  selectedDatasourceId.value = item.id
-  loadSchema(item.id)
-}
-
 const loadDatasources = async () => {
   datasourceLoading.value = true
   try {
     const res = await datasourceApi.accessibleList()
     datasources.value = Array.isArray(res) ? res : []
     if (datasources.value.length) {
-      selectedDatasourceId.value = datasources.value[0].id
       await loadSchema(datasources.value[0].id)
     } else {
       schema.value = null
-      selectedDatasourceId.value = null
     }
   } finally {
     datasourceLoading.value = false
@@ -147,48 +125,6 @@ onMounted(() => {
     </div>
 
     <section class="dictionary-shell">
-      <aside class="datasource-panel">
-        <div class="panel-head">
-          <span>{{ t('data_dictionary.datasource_list') }}</span>
-          <span class="muted">{{ datasources.length }}</span>
-        </div>
-        <el-input
-          v-model="datasourceKeyword"
-          clearable
-          :placeholder="t('data_dictionary.search_datasource')"
-        >
-          <template #prefix>
-            <el-icon>
-              <icon_searchOutline_outlined />
-            </el-icon>
-          </template>
-        </el-input>
-        <div v-loading="datasourceLoading" class="datasource-list">
-          <button
-            v-for="item in filteredDatasources"
-            :key="item.id"
-            type="button"
-            class="datasource-item"
-            :class="{ active: String(selectedDatasourceId) === String(item.id) }"
-            @click="selectDatasource(item)"
-          >
-            <img v-if="datasourceIcon(item)" :src="datasourceIcon(item)" alt="" width="28" height="28" />
-            <span v-else class="fallback-icon">
-              <el-icon><icon_form_outlined /></el-icon>
-            </span>
-            <span class="datasource-main">
-              <strong>{{ item.name }}</strong>
-              <em>{{ item.type_name || item.type || '-' }}</em>
-            </span>
-          </button>
-          <EmptyBackground
-            v-if="!datasourceLoading && !filteredDatasources.length"
-            :description="t('data_dictionary.empty_datasource')"
-            img-type="tree"
-          />
-        </div>
-      </aside>
-
       <main v-loading="schemaLoading" class="schema-panel">
         <template v-if="schema">
           <div class="schema-head">
@@ -317,14 +253,10 @@ onMounted(() => {
 }
 
 .dictionary-shell {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 16px;
   min-height: 0;
   height: calc(100% - 70px);
 }
 
-.datasource-panel,
 .schema-panel,
 .table-panel,
 .field-panel {
@@ -332,13 +264,6 @@ onMounted(() => {
   border-radius: 8px;
   background: var(--workspace-card-bg, #fff);
   box-shadow: 0 12px 28px rgba(24, 46, 86, 0.06);
-}
-
-.datasource-panel {
-  min-width: 0;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
 }
 
 .panel-head {
@@ -357,18 +282,12 @@ onMounted(() => {
   }
 }
 
-.datasource-list,
 .table-list {
   min-height: 0;
   overflow-y: auto;
   margin-top: 12px;
 }
 
-.datasource-list {
-  flex: 1;
-}
-
-.datasource-item,
 .table-item {
   width: 100%;
   border: 0;
@@ -388,49 +307,6 @@ onMounted(() => {
   &.active {
     background: var(--workspace-primary-soft-bg, #eaf1ff);
     color: var(--ed-color-primary, #2f6bff);
-  }
-}
-
-.datasource-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 58px;
-  padding: 9px 10px;
-}
-
-.fallback-icon {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.datasource-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-
-  strong,
-  em {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-style: normal;
-  }
-
-  strong {
-    font-size: 14px;
-    line-height: 22px;
-    font-weight: 600;
-  }
-
-  em {
-    color: var(--workspace-text-secondary, #66758f);
-    font-size: 12px;
-    line-height: 18px;
   }
 }
 

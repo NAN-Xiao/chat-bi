@@ -81,9 +81,13 @@ def require_current_tenant_id(current_user: Any | None) -> int:
 
 def resolve_access_context(current_user: Any | None) -> AccessContext:
     raw_tenant_id = getattr(current_user, "tenant_id", None) if current_user is not None else None
+    tenant_role = (
+        getattr(current_user, "workspace_role", None)
+        or getattr(current_user, "tenant_role", None)
+    )
     return AccessContext(
         tenant_id=current_tenant_id(current_user),
-        tenant_role=normalize_tenant_role(getattr(current_user, "tenant_role", None)),
+        tenant_role=normalize_tenant_role(tenant_role),
         is_platform_admin=is_platform_admin(current_user),
         is_platform_workspace_delegate=is_platform_workspace_delegate(current_user),
         has_workspace_context=raw_tenant_id not in (None, ""),

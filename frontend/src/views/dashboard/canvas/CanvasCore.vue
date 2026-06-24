@@ -90,6 +90,14 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  showComponentBar: {
+    type: Boolean,
+    default: true,
+  },
+  canEditSql: {
+    type: Boolean,
+    default: true,
+  },
   resizeStart: {
     type: Function,
     default: () => {
@@ -1415,6 +1423,8 @@ defineExpose({
         :start-move="startMove"
         :start-resize="startResize"
         :canvas-id="canvasId"
+        :show-component-bar="showComponentBar"
+        :can-edit-sql="canEditSql"
         :style="nowItemStyle(item)"
         @enlarge-view="() => enlargeView(item.id)"
         @edit-sql="() => editSql(item.id)"
@@ -1429,6 +1439,8 @@ defineExpose({
           :canvas-view-info="canvasViewInfo"
           :show-position="'canvas'"
           :disabled="fullscreenFlag"
+          :can-edit-sql="canEditSql"
+          :show-component-bar="showComponentBar"
           @parent-add-item-box="(subItem: any) => addItemBox(subItem)"
         >
         </component>

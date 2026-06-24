@@ -8,6 +8,7 @@ from apps.datasource.crud.permission import (
     list_user_datasource_roles,
     update_user_datasources,
 )
+from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import (
@@ -266,11 +267,13 @@ async def _join_existing_user_to_tenant(
 
 
 def _remove_current_tenant_project_permissions(session: SessionDep, current_user: CurrentUser, user_id: int) -> None:
-    datasource_ids = select(CoreDatasource.id).where(CoreDatasource.tenant_id == _current_tenant_id(current_user))
+    datasource_id = get_bound_datasource_id_for_tenant(session, _current_tenant_id(current_user))
+    if datasource_id is None:
+        return
     session.exec(
         sqlmodel_delete(CoreDatasourceUser).where(
             CoreDatasourceUser.user_id == int(user_id),
-            CoreDatasourceUser.ds_id.in_(datasource_ids),
+            CoreDatasourceUser.ds_id == int(datasource_id),
         )
     )
 
@@ -401,14 +404,17 @@ async def pager(
     project_rows = []
     current_tenant_id = getattr(current_user, "tenant_id", None)
     if current_tenant_id and not is_platform_admin(current_user):
-        project_rows = session.exec(
-            select(CoreDatasourceUser.user_id, CoreDatasourceUser.ds_id, CoreDatasourceUser.role)
-            .join(CoreDatasource, CoreDatasource.id == CoreDatasourceUser.ds_id)
-            .where(
-                CoreDatasourceUser.user_id.in_(uid_list),
-                CoreDatasource.tenant_id == int(current_tenant_id),
-            )
-        ).all()
+        bound_datasource_id = get_bound_datasource_id_for_tenant(session, int(current_tenant_id))
+        if bound_datasource_id is None:
+            project_rows = []
+        else:
+            project_rows = session.exec(
+                select(CoreDatasourceUser.user_id, CoreDatasourceUser.ds_id, CoreDatasourceUser.role)
+                .where(
+                    CoreDatasourceUser.user_id.in_(uid_list),
+                    CoreDatasourceUser.ds_id == int(bound_datasource_id),
+                )
+            ).all()
     project_map = defaultdict(list)
     project_role_map = defaultdict(dict)
     for user_id, ds_id, role in project_rows:

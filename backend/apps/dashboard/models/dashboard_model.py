@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, Field
 from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index
-from typing import Optional, List, Literal
+from typing import Any, Optional, List, Literal
 from pydantic import BaseModel
 
 class CoreDashboard(SQLModel, table=True):
@@ -221,6 +221,7 @@ class CoreDashboardShare(SQLModel, table=True):
         sa_column=Column(String(255), nullable=True)
     )
 
+
 class DashboardBaseResponse(BaseModel):
     id: Optional[str] = None
     tenant_id: Optional[int] = None
@@ -230,6 +231,9 @@ class DashboardBaseResponse(BaseModel):
     node_type: Optional[str] = None
     leaf: Optional[bool] = False
     type: Optional[str] = None
+    status: Optional[int] = None
+    source: Optional[str] = None
+    content_id: Optional[str] = None
     create_time: Optional[int] = None
     update_time: Optional[int] = None
     sort: Optional[int] = 0
@@ -238,6 +242,11 @@ class DashboardBaseResponse(BaseModel):
     can_set_default: Optional[bool] = False
     is_default: Optional[bool] = False
     is_shared: Optional[bool] = False
+    is_public: Optional[bool] = False
+    is_platform_delegate_draft: Optional[bool] = False
+    can_publish_delegate_draft: Optional[bool] = False
+    can_create_maintenance_draft: Optional[bool] = False
+    can_copy_to_platform_template: Optional[bool] = False
     share_id: Optional[str] = None
     children: List['DashboardBaseResponse'] = []
 
@@ -272,6 +281,9 @@ class BaseDashboard(BaseModel):
     org_id: str = ''
     type: str = ''
     node_type: str = ''
+    status: Optional[int] = None
+    source: Optional[str] = None
+    content_id: Optional[str] = None
     level: int = 0
     create_by: int = 0
 
@@ -302,6 +314,29 @@ class DashboardDefaultSortRequest(BaseModel):
     ordered_ids: List[str]
 
 
+class DashboardDefaultCopyRequest(BaseModel):
+    dashboard_id: str
+
+
+class DashboardPlatformDelegateDraftRequest(BaseModel):
+    dashboard_id: str
+
+
+class DashboardPlatformDelegatePublishRequest(BaseModel):
+    draft_dashboard_id: str
+    publish_as_default: bool = False
+
+
+class DashboardPlatformTemplateCopyRequest(BaseModel):
+    dashboard_id: str
+    name: str = ''
+
+
+class DashboardPlatformTemplateUseRequest(BaseModel):
+    template_id: str
+    name: str = ''
+
+
 class DashboardShareRequest(BaseModel):
     dashboard_id: str
     share_type: Literal["dashboard", "chart"] = "dashboard"
@@ -323,3 +358,42 @@ class SharedDashboardQuery(BaseModel):
 
 class SharedDashboardUseRequest(BaseModel):
     id: str
+
+
+class DashboardDeliveryCreateRequest(BaseModel):
+    target_tenant_id: Optional[int | str] = None
+    target_tenant_public_id: str = ''
+    target_datasource_id: Optional[int] = None
+    source_dashboard_ids: List[str] = []
+    name: str = ''
+    publish_as_default: bool = True
+
+
+class DashboardDeliveryChartUpdateRequest(BaseModel):
+    draft_dashboard_id: str
+    view_id: str
+    sql: str = ''
+    chart: dict[str, Any] = {}
+
+
+class DashboardDeliveryOrderUpdateRequest(BaseModel):
+    ordered_dashboard_ids: List[str]
+
+
+class DashboardDeliveryCanvasUpdateRequest(BaseModel):
+    draft_dashboard_id: str
+    name: str = ''
+    component_data: str = ''
+    canvas_style_data: str = ''
+    canvas_view_info: str = ''
+
+
+class DashboardDeliveryPublishRequest(BaseModel):
+    publish_as_default: bool = True
+
+
+class DashboardDeliverySqlPreview(BaseModel):
+    target_tenant_id: Optional[int | str] = None
+    target_tenant_public_id: str = ''
+    target_datasource_id: Optional[int] = None
+    sql: str = ''

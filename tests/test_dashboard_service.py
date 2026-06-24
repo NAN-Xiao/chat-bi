@@ -18,6 +18,7 @@ from apps.dashboard.models.dashboard_model import (
     CoreDashboardShare,
     CreateDashboard,
     QueryDashboard,
+    DashboardDefaultCopyRequest,
     DashboardSqlPreview,
     DashboardShareRequest,
     DashboardShareListQuery,
@@ -366,7 +367,7 @@ def test_list_resource_excludes_dashboards_from_other_tenants_for_admin():
                 datasource=None,
                 node_type="leaf",
                 type="dashboard",
-                create_by="1",
+                create_by="2",
                 create_time=100,
                 delete_flag=0,
             )
@@ -472,9 +473,10 @@ def test_list_resource_is_scoped_to_current_workspace_even_for_same_creator(monk
     assert [node.id for node in tree] == ["tenant-20-dashboard"]
 
 
-def test_list_resource_marks_project_editor_can_edit(monkeypatch):
+def test_list_resource_hides_other_users_dashboard_for_project_editor(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "_supports_datasource_editor_role_lookup", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
 
@@ -500,13 +502,13 @@ def test_list_resource_marks_project_editor_can_edit(monkeypatch):
             current_user=current_user,
         )
 
-    assert len(tree) == 1
-    assert tree[0].can_edit is True
+    assert tree == []
 
 
-def test_list_resource_marks_project_viewer_cannot_edit(monkeypatch):
+def test_list_resource_hides_other_users_dashboard_for_project_viewer(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "_supports_datasource_editor_role_lookup", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
@@ -532,14 +534,13 @@ def test_list_resource_marks_project_viewer_cannot_edit(monkeypatch):
             current_user=current_user,
         )
 
-    assert len(tree) == 1
-    assert tree[0].can_edit is False
-    assert tree[0].can_share is False
+    assert tree == []
 
 
 def test_list_resource_marks_creator_can_edit_with_project_viewer_role(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "_supports_datasource_editor_role_lookup", lambda *args, **kwargs: True)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
     monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
 
@@ -568,6 +569,768 @@ def test_list_resource_marks_creator_can_edit_with_project_viewer_role(monkeypat
     assert len(tree) == 1
     assert tree[0].can_edit is True
     assert tree[0].can_share is True
+
+
+def test_project_editor_cannot_load_other_users_private_dashboard(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "_supports_datasource_editor_role_lookup", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="dashboard-1",
+                name="别人的私有看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.load_resource(
+                session=session,
+                dashboard=QueryDashboard(id="dashboard-1"),
+                current_user=current_user,
+            )
+
+    assert exc_info.value.status_code == 404
+
+
+def test_workspace_admin_cannot_load_member_private_dashboard(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=1, isAdmin=False, tenant_id=1, tenant_role="owner")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="member-private-dashboard",
+                name="成员私有看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=current_user,
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.load_resource(
+                session=session,
+                dashboard=QueryDashboard(id="member-private-dashboard"),
+                current_user=current_user,
+            )
+
+    assert tree == []
+    assert exc_info.value.status_code == 404
+
+
+def test_platform_delegate_cannot_list_or_load_member_private_dashboard(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=1,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "get_accessible_datasource_ids", lambda *args, **kwargs: {2})
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="private-dashboard",
+                name="成员私有看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=current_user,
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.load_resource(
+                session=session,
+                dashboard=QueryDashboard(id="private-dashboard"),
+                current_user=current_user,
+            )
+
+    assert tree == []
+    assert exc_info.value.status_code == 404
+
+
+def test_platform_delegate_draft_is_hidden_until_publish(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    delegate_user = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=1,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    workspace_admin = SimpleNamespace(id=1, isAdmin=False, tenant_id=1, tenant_role="owner")
+    member = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_execute_dashboard_chart_sql", lambda *args, **kwargs: {
+        "status": "success",
+        "data": [],
+        "fields": [],
+        "message": "",
+    })
+
+    with Session(engine) as session:
+        draft = dashboard_service.create_canvas(
+            session=session,
+            user=delegate_user,
+            dashboard=CreateDashboard(
+                name="代运营草稿",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            ),
+        )
+        draft_id = draft.id
+        draft_status = draft.status
+
+        admin_tree_before = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=workspace_admin,
+        )
+        with pytest.raises(HTTPException):
+            dashboard_service.load_resource(
+                session=session,
+                dashboard=QueryDashboard(id=draft_id),
+                current_user=workspace_admin,
+            )
+
+        delegate_drafts = dashboard_service.list_platform_delegate_drafts(
+            session=session,
+            current_user=delegate_user,
+        )
+        loaded_draft = dashboard_service.load_platform_delegate_draft(
+            session=session,
+            dashboard=QueryDashboard(id=draft_id),
+            current_user=delegate_user,
+        )
+        published = dashboard_service.publish_platform_delegate_draft(
+            session=session,
+            user=delegate_user,
+            draft_dashboard_id=draft_id,
+            publish_as_default=True,
+        )
+        member_default = dashboard_service.list_default_resources(
+            session=session,
+            current_user=member,
+        )
+        admin_default = dashboard_service.list_default_resources(
+            session=session,
+            current_user=workspace_admin,
+        )
+        admin_tree_after = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=workspace_admin,
+        )
+
+    assert draft_status == dashboard_service.DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
+    assert admin_tree_before == []
+    assert [item.id for item in delegate_drafts] == [draft_id]
+    assert loaded_draft["id"] == draft_id
+    assert published.is_default is True
+    assert published.source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_DELEGATE
+    assert [item.id for item in member_default] == [published.id]
+    assert [item.id for item in admin_default] == [published.id]
+    assert [item.id for item in admin_tree_after] == [published.id]
+
+
+def test_platform_delegate_maintenance_draft_updates_only_after_publish(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    delegate_user = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=1,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    workspace_admin = SimpleNamespace(id=1, isAdmin=False, tenant_id=1, tenant_role="owner")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="published-delegate-dashboard",
+                name="正式代运营看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_DELEGATE,
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                create_by="9",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 1"}}),
+            )
+        )
+        session.commit()
+
+        admin_loaded = dashboard_service.load_resource(
+            session=session,
+            dashboard=QueryDashboard(id="published-delegate-dashboard"),
+            current_user=workspace_admin,
+        )
+        draft = dashboard_service.create_platform_delegate_maintenance_draft(
+            session=session,
+            user=delegate_user,
+            dashboard_id="published-delegate-dashboard",
+        )
+        dashboard_service.update_platform_delegate_draft(
+            session=session,
+            user=delegate_user,
+            dashboard=CreateDashboard(
+                id=draft.id,
+                name="维护后代运营看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 2"}}),
+            ),
+        )
+        target_before_publish = session.get(CoreDashboard, "published-delegate-dashboard")
+        target_name_before_publish = target_before_publish.name
+        target_sql_before_publish = json.loads(target_before_publish.canvas_view_info)["chart-1"]["sql"]
+        published = dashboard_service.publish_platform_delegate_draft(
+            session=session,
+            user=delegate_user,
+            draft_dashboard_id=draft.id,
+            publish_as_default=False,
+        )
+        target_after_publish = session.get(CoreDashboard, "published-delegate-dashboard")
+
+    assert admin_loaded["can_edit"] is True
+    assert draft.content_id == "published-delegate-dashboard"
+    assert target_name_before_publish == "正式代运营看板"
+    assert target_sql_before_publish == "select 1"
+    assert published.id == "published-delegate-dashboard"
+    assert target_after_publish.name == "维护后代运营看板"
+    assert json.loads(target_after_publish.canvas_view_info)["chart-1"]["sql"] == "select 2"
+
+
+def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    delegate_user = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=1,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="private-dashboard",
+                name="成员私有看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="default-dashboard",
+                name="推荐看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=101,
+                delete_flag=0,
+                is_default=1,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps(
+                    {"chart-1": {"datasource": 2, "sql": "select 1", "data": {"data": [{"v": 1}]}}}
+                ),
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.copy_dashboard_to_platform_template(
+                session=session,
+                user=delegate_user,
+                dashboard_id="private-dashboard",
+            )
+        template = dashboard_service.copy_dashboard_to_platform_template(
+            session=session,
+            user=delegate_user,
+            dashboard_id="default-dashboard",
+        )
+        template_record = session.get(CoreDashboard, template.id)
+
+    assert exc_info.value.status_code == 404
+    assert template.tenant_id == dashboard_service.DEFAULT_TENANT_ID
+    assert template.source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+    chart = json.loads(template_record.canvas_view_info)["chart-1"]
+    assert chart["sql"] == "select 1"
+    assert chart["data"]["data"] == []
+
+
+def test_platform_template_copy_to_workspace_creates_independent_delegate_draft(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    delegate_user = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=1,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *args, **kwargs: 3)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 3)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="template-dashboard",
+                tenant_id=dashboard_service.DEFAULT_TENANT_ID,
+                name="平台模板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                create_by="9",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 1"}}),
+            )
+        )
+        session.commit()
+
+        draft = dashboard_service.copy_platform_template_to_delegate_draft(
+            session=session,
+            user=delegate_user,
+            template_id="template-dashboard",
+        )
+        draft_record = session.get(CoreDashboard, draft.id)
+        template_record = session.get(CoreDashboard, "template-dashboard")
+
+    assert draft.id != "template-dashboard"
+    assert draft.tenant_id == 1
+    assert draft.datasource == 3
+    assert draft.status == dashboard_service.DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
+    assert draft.source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_DELEGATE
+    assert json.loads(draft_record.canvas_view_info)["chart-1"]["datasource"] == 3
+    assert json.loads(template_record.canvas_view_info)["chart-1"]["datasource"] == 2
+
+
+def test_project_viewer_sees_copied_default_dashboard_but_not_admin_default(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *args, **kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="default-dashboard",
+                name="默认看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                is_default=1,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        copied = dashboard_service.copy_default_resource(
+            session=session,
+            user=current_user,
+            request=DashboardDefaultCopyRequest(dashboard_id="default-dashboard"),
+        )
+        tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=current_user,
+        )
+
+    assert copied.create_by == "2"
+    assert copied.is_default == 0
+    assert [node.id for node in tree] == [copied.id]
+    assert tree[0].name == "默认看板"
+
+
+def test_default_dashboard_load_is_readonly_for_non_owner_member(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_execute_dashboard_chart_sql", lambda *args, **kwargs: {
+        "status": "success",
+        "data": [],
+        "fields": [],
+        "message": "",
+    })
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="default-dashboard",
+                name="管理员推荐看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                is_default=1,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        resource = dashboard_service.load_default_resource(
+            session=session,
+            dashboard=QueryDashboard(id="default-dashboard"),
+            current_user=current_user,
+        )
+
+    assert resource["can_edit"] is False
+    assert resource["can_share"] is False
+    assert resource["can_set_default"] is False
+
+
+def test_workspace_owner_can_edit_own_default_dashboard_with_workspace_role(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(
+        id=2,
+        isAdmin=False,
+        tenant_id=1,
+        tenant_role=None,
+        workspace_role="owner",
+    )
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dashboard_service, "_execute_dashboard_chart_sql", lambda *args, **kwargs: {
+        "status": "success",
+        "data": [],
+        "fields": [],
+        "message": "",
+    })
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="owner-default-dashboard",
+                name="空间所有者默认看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=100,
+                delete_flag=0,
+                is_default=1,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        resource = dashboard_service.load_resource(
+            session=session,
+            dashboard=QueryDashboard(id="owner-default-dashboard"),
+            current_user=current_user,
+        )
+        updated = dashboard_service.update_canvas(
+            session=session,
+            user=current_user,
+            dashboard=CreateDashboard(
+                id="owner-default-dashboard",
+                name="已修改的默认看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            ),
+        )
+
+    assert resource["can_edit"] is True
+    assert resource["can_set_default"] is True
+    assert updated.name == "已修改的默认看板"
+    assert updated.update_by == "2"
+
+
+def test_workspace_owner_my_dashboard_list_excludes_other_creators_default(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="owner")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="admin-default-dashboard",
+                name="管理员推荐看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                is_default=1,
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="owner-dashboard",
+                name="我的看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="2",
+                create_time=101,
+                delete_flag=0,
+            )
+        )
+        session.commit()
+
+        tree = dashboard_service.list_resource(
+            session=session,
+            dashboard=QueryDashboard(datasource=2),
+            current_user=current_user,
+        )
+
+    assert [node.id for node in tree] == ["owner-dashboard"]
+    assert tree[0].can_edit is True
+    assert tree[0].can_set_default is True
+
+
+def test_non_owner_member_cannot_update_default_dashboard_even_with_project_editor_role(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: True)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="default-dashboard",
+                name="管理员推荐看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                is_default=1,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            dashboard_service.update_canvas(
+                session=session,
+                user=current_user,
+                dashboard=CreateDashboard(
+                    id="default-dashboard",
+                    name="被成员修改",
+                    pid="root",
+                    datasource=2,
+                    node_type="leaf",
+                    type="dashboard",
+                    component_data="[]",
+                    canvas_style_data="{}",
+                    canvas_view_info="{}",
+                ),
+            )
+
+    assert exc.value.status_code == 403
+
+
+def test_copy_default_dashboard_rekeys_canvas_components(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1, tenant_role="member")
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "datasource_bound_to_tenant", lambda *args, **kwargs: True)
+
+    source_component_data = [
+        {
+            "id": "tab-1",
+            "_dragId": "tab-1",
+            "component": "SQTab",
+            "activeTabName": "tab-pane-1",
+            "propValue": [
+                {
+                    "name": "tab-pane-1",
+                    "title": "趋势",
+                    "componentData": [
+                        {
+                            "id": "chart-1",
+                            "_dragId": "chart-1",
+                            "component": "SQView",
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    source_canvas_view_info = {
+        "chart-1": {
+            "id": "chart-1",
+            "sourceId": "",
+            "datasource": 2,
+            "sql": "select 1",
+            "chart": {
+                "id": "chart-1",
+                "title": "趋势图",
+                "type": "table",
+            },
+        }
+    }
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="default-dashboard",
+                name="管理员推荐看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                is_default=1,
+                component_data=json.dumps(source_component_data),
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps(source_canvas_view_info),
+            )
+        )
+        session.commit()
+
+        copied = dashboard_service.copy_default_resource(
+            session=session,
+            user=current_user,
+            request=DashboardDefaultCopyRequest(dashboard_id="default-dashboard"),
+        )
+        source = session.get(CoreDashboard, "default-dashboard")
+
+    copied_components = json.loads(copied.component_data)
+    copied_tab = copied_components[0]
+    copied_chart = copied_tab["propValue"][0]["componentData"][0]
+    copied_view_info = json.loads(copied.canvas_view_info)
+    copied_chart_id = copied_chart["id"]
+
+    assert copied.id != "default-dashboard"
+    assert copied.create_by == "2"
+    assert copied.is_default == 0
+    assert copied_tab["id"] != "tab-1"
+    assert copied_tab["_dragId"] == copied_tab["id"]
+    assert copied_tab["activeTabName"] != "tab-pane-1"
+    assert copied_tab["activeTabName"] == copied_tab["propValue"][0]["name"]
+    assert copied_chart_id != "chart-1"
+    assert copied_chart["_dragId"] == copied_chart_id
+    assert set(copied_view_info.keys()) == {copied_chart_id}
+    assert copied_view_info[copied_chart_id]["id"] == copied_chart_id
+    assert copied_view_info[copied_chart_id]["chart"]["id"] == copied_chart_id
+    assert json.loads(source.component_data) == source_component_data
+    assert json.loads(source.canvas_view_info) == source_canvas_view_info
 
 
 def test_list_resource_marks_current_user_shared_dashboard(monkeypatch):
@@ -634,7 +1397,7 @@ def test_list_resource_includes_legacy_dashboard_when_canvas_uses_selected_datas
                 datasource=None,
                 node_type="leaf",
                 type="dashboard",
-                create_by="1",
+                create_by="2",
                 create_time=100,
                 delete_flag=0,
                 canvas_view_info=json.dumps({"chart-1": {"datasource": 1, "sql": "select 1"}}),
@@ -726,7 +1489,7 @@ def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monk
                 datasource=None,
                 node_type="leaf",
                 type="dashboard",
-                create_by="1",
+                create_by="2",
                 create_time=100,
                 delete_flag=0,
                 component_data="[]",
@@ -801,7 +1564,7 @@ def test_project_viewer_can_create_own_dashboard(monkeypatch):
         assert record.create_by == "2"
 
 
-def test_project_editor_can_rename_dashboard(monkeypatch):
+def test_project_editor_cannot_rename_other_users_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
     monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 2)
@@ -823,14 +1586,14 @@ def test_project_editor_can_rename_dashboard(monkeypatch):
         )
         session.commit()
 
-        record = dashboard_service.update_resource(
-            session=session,
-            user=current_user,
-            dashboard=QueryDashboard(id="dashboard-1", name="新名称"),
-        )
+        with pytest.raises(HTTPException) as exc:
+            dashboard_service.update_resource(
+                session=session,
+                user=current_user,
+                dashboard=QueryDashboard(id="dashboard-1", name="新名称"),
+            )
 
-        assert record.name == "新名称"
-        assert record.update_by == "2"
+    assert exc.value.status_code == 403
 
 
 def test_project_viewer_cannot_rename_dashboard(monkeypatch):

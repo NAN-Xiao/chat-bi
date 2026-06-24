@@ -52,6 +52,14 @@ const props = defineProps({
     type: String,
     default: 'canvas-main',
   },
+  showComponentBar: {
+    type: Boolean,
+    default: true,
+  },
+  canEditSql: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const { draggable } = toRefs(props)
@@ -79,10 +87,12 @@ const dragDandleValue = computed(() => props.canEdit && !props.configItem.editin
     @mousedown="startMove($event, configItem, itemIndex)"
   >
     <component-bar
+      v-if="showComponentBar"
       :config-item="configItem"
       :active="active && (canEdit || canShare)"
       :can-edit="canEdit"
       :can-share="canShare"
+      :can-edit-sql="canEditSql"
       :show-position="'canvas'"
       :canvas-id="canvasId"
       @enlarge-view="() => emits('enlargeView')"

@@ -11,7 +11,8 @@ from apps.datasource.crud.permission_rules import (
     trans_record_to_dto,
 )
 from apps.datasource.crud.row_permission import transFilterTree
-from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser, CoreField, CoreTable
+from apps.datasource.crud.binding import datasource_tenant_binding_active
+from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceTenantBinding, CoreDatasourceUser, CoreField, CoreTable
 from apps.system.models.tenant import TenantUserModel
 from common.core.deps import CurrentUser, SessionDep
 from apps.system.crud.user import (
@@ -74,7 +75,14 @@ def _apply_datasource_tenant_filter(statement, session: SessionDep, current_user
     if not has_workspace_context(current_user):
         return statement.where(False)
     tenant_id = current_tenant_id(current_user)
-    if tenant_id is None or not _supports_datasource_tenant_filter(session):
+    if tenant_id is None:
+        return statement
+    if datasource_tenant_binding_active(session):
+        bound_datasource_ids = select(CoreDatasourceTenantBinding.datasource_id).where(
+            CoreDatasourceTenantBinding.tenant_id == int(tenant_id)
+        )
+        return statement.where(CoreDatasource.id.in_(bound_datasource_ids))
+    if not _supports_datasource_tenant_filter(session):
         return statement
     return statement.where(CoreDatasource.tenant_id == tenant_id)
 

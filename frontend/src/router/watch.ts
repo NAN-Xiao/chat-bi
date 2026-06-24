@@ -30,6 +30,7 @@ const platformAdminHome = '/system/platform-overview'
 const platformTenantManagementPath = '/system/tenant'
 const tenantChatBIEntryPrefixes = [
   '/chat',
+  '/default-dashboard',
   '/dashboard',
   '/dashboard-store',
   '/custom-agent',
@@ -169,7 +170,10 @@ const accessCrossPermission = (to: any) => {
   const platformAdminOperation =
     userStore.isSystemAdminUser && !platformDelegate && platformOperation
   return (
-    (userStore.isSystemAdminUser && !platformDelegate && isTenantChatBIRoute(to.path) && !platformAdminOperation) ||
+    (userStore.isSystemAdminUser &&
+      !platformDelegate &&
+      isTenantChatBIRoute(to.path) &&
+      !platformAdminOperation) ||
     (platformDelegate && platformOnly) ||
     (!userStore.isSystemAdminUser && !userStore.hasActiveWorkspace && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||

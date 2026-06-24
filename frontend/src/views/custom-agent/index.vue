@@ -13,9 +13,19 @@ import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import { formatTimestamp } from '@/utils/date'
+import { useUserStore } from '@/stores/user'
 
+const props = withDefaults(
+  defineProps<{
+    mode?: 'personal' | 'admin'
+  }>(),
+  {
+    mode: 'personal',
+  }
+)
 const { t } = useI18n()
 const datasourceContext = useDatasourceContextStore()
+const userStore = useUserStore()
 
 const CUSTOM_PROMPT_TYPES = ['GENERATE_SQL', 'ANALYSIS', 'PREDICT_DATA']
 
@@ -30,6 +40,12 @@ const selectedAgent = ref<any | null>(null)
 const savingAgent = ref(false)
 const agentKeyword = ref('')
 const scopeFilter = ref('')
+
+const isAdminMode = computed(() => props.mode === 'admin')
+const isPlatformAdmin = computed(
+  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
+const canCreateAgent = computed(() => !isAdminMode.value || userStore.isSystemManagerUser)
 
 const defaultAgentForm = {
   id: null as number | string | null,
@@ -47,6 +63,11 @@ const defaultAgentForm = {
 const agentForm = ref(cloneDeep(defaultAgentForm))
 
 const currentDatasourceId = computed(() => datasourceContext.datasourceId)
+
+const pageTitle = computed(() => {
+  if (!isAdminMode.value) return t('access.custom_agents')
+  return isPlatformAdmin.value ? t('access.saas_agent') : t('access.workspace_agent')
+})
 
 const agentRules = {
   name: [
@@ -110,10 +131,20 @@ const sortBySourceAndTime = (a: any, b: any) => {
 }
 
 const layerOptions = computed(() => [
-  { label: t('prompt.target_scope_all'), value: '' },
-  { label: t('permission.scope_platform'), value: 'PLATFORM_PUBLIC' },
-  { label: t('permission.scope_workspace'), value: 'ADMIN_PUBLIC' },
-  { label: t('access.user_permission_scope'), value: 'USER_PRIVATE' },
+  ...(!isAdminMode.value ? [{ label: t('prompt.target_scope_all'), value: '' }] : []),
+  ...(isAdminMode.value && isPlatformAdmin.value
+    ? [{ label: t('permission.scope_platform'), value: 'PLATFORM_PUBLIC' }]
+    : []),
+  ...(isAdminMode.value && !isPlatformAdmin.value
+    ? [{ label: t('permission.scope_workspace'), value: 'ADMIN_PUBLIC' }]
+    : []),
+  ...(!isAdminMode.value
+    ? [
+        { label: t('permission.scope_platform'), value: 'PLATFORM_PUBLIC' },
+        { label: t('permission.scope_workspace'), value: 'ADMIN_PUBLIC' },
+        { label: t('access.user_permission_scope'), value: 'USER_PRIVATE' },
+      ]
+    : []),
 ])
 
 const scopeText = (row: any) => {
@@ -127,10 +158,12 @@ const scopeText = (row: any) => {
 }
 
 const isVisibleInPersonalEntry = (row: any) => {
+  if (isAdminMode.value) return true
   return row?.visibility_scope !== 'USER_PRIVATE' || row?.is_owner === true
 }
 
 const canManageAgent = (row: any) => {
+  if (isAdminMode.value) return row?.can_manage === true
   return row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true
 }
 
@@ -140,11 +173,14 @@ const canViewPromptInPersonalEntry = (row: any) => {
 
 const buildAgentQuery = () => {
   const params = new URLSearchParams()
-  if (currentDatasourceId.value) {
-    params.append('dslist', String(currentDatasourceId.value))
-  }
   if (scopeFilter.value) {
     params.append('visibility_scope', scopeFilter.value)
+  }
+  if (isAdminMode.value && !scopeFilter.value) {
+    params.append('visibility_scope', isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
+  }
+  if (!isAdminMode.value && currentDatasourceId.value) {
+    params.append('dslist', String(currentDatasourceId.value))
   }
   if (agentKeyword.value.trim()) {
     params.append('name', agentKeyword.value.trim())
@@ -182,11 +218,16 @@ const resetAgentForm = () => {
     ...cloneDeep(defaultAgentForm),
     specific_ds: false,
     datasource_ids: [],
-    visibility_scope: 'USER_PRIVATE',
+    visibility_scope: isAdminMode.value
+      ? isPlatformAdmin.value
+        ? 'PLATFORM_PUBLIC'
+        : 'ADMIN_PUBLIC'
+      : 'USER_PRIVATE',
   }
 }
 
 const openCreateAgent = () => {
+  if (!canCreateAgent.value) return
   resetAgentForm()
   agentDialogTitle.value = t('prompt.add_prompt_word')
   agentDialogVisible.value = true
@@ -199,7 +240,11 @@ const openEditAgent = (row: any) => {
     ...cloneDeep(row),
     specific_ds: false,
     datasource_ids: [],
-    visibility_scope: 'USER_PRIVATE',
+    visibility_scope: isAdminMode.value
+      ? isPlatformAdmin.value
+        ? 'PLATFORM_PUBLIC'
+        : 'ADMIN_PUBLIC'
+      : 'USER_PRIVATE',
   }
   agentDialogTitle.value = t('prompt.edit_prompt_word')
   agentDialogVisible.value = true
@@ -211,13 +256,18 @@ const closeAgentForm = () => {
 }
 
 const saveAgent = () => {
+  if (!canCreateAgent.value) return
   agentFormRef.value?.validate((valid: boolean) => {
     if (!valid || savingAgent.value) return
     const payload = cloneDeep(agentForm.value)
     payload.type = payload.type || 'GENERATE_SQL'
     payload.specific_ds = false
     payload.datasource_ids = []
-    payload.visibility_scope = 'USER_PRIVATE'
+    payload.visibility_scope = isAdminMode.value
+      ? isPlatformAdmin.value
+        ? 'PLATFORM_PUBLIC'
+        : 'ADMIN_PUBLIC'
+      : 'USER_PRIVATE'
     savingAgent.value = true
     promptApi
       .updateEmbedded(payload)
@@ -254,13 +304,20 @@ const openAgentDetail = (row: any) => {
 }
 
 onMounted(async () => {
-  await datasourceContext.loadDatasources()
+  scopeFilter.value = isAdminMode.value
+    ? isPlatformAdmin.value
+      ? 'PLATFORM_PUBLIC'
+      : 'ADMIN_PUBLIC'
+    : ''
+  if (!isAdminMode.value) {
+    await datasourceContext.loadDatasources()
+  }
   loadAiModels()
   loadAgents()
 })
 
 watch(currentDatasourceId, () => {
-  loadAgents()
+  if (!isAdminMode.value) loadAgents()
 })
 
 watch(agentKeyword, () => {
@@ -275,7 +332,7 @@ watch(scopeFilter, () => {
 <template>
   <div class="custom-agent-page">
     <div class="page-header">
-      <div class="page-title">{{ t('access.custom_agents') }}</div>
+      <div class="page-title">{{ pageTitle }}</div>
       <div class="page-actions">
         <el-input
           v-model="agentKeyword"
@@ -292,7 +349,7 @@ watch(scopeFilter, () => {
             :value="item.value"
           />
         </el-select>
-        <el-button type="primary" @click="openCreateAgent">
+        <el-button v-if="canCreateAgent" type="primary" @click="openCreateAgent">
           <template #icon>
             <icon_add_outlined />
           </template>
@@ -494,7 +551,9 @@ watch(scopeFilter, () => {
           />
         </el-form-item>
         <el-form-item :label="t('training.effective_data_sources')">
-          <div class="fixed-project">{{ t('access.user_permission_scope') }}</div>
+          <div class="fixed-project">
+            {{ isAdminMode ? t('training.all_data_sources') : t('access.user_permission_scope') }}
+          </div>
         </el-form-item>
         <el-form-item prop="prompt" :label="t('prompt.prompt_word_content')">
           <el-input

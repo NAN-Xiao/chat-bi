@@ -9,6 +9,7 @@ from sqlalchemy import and_, or_, select, func, delete, update, union, text, Big
 from sqlalchemy.orm import aliased
 
 from apps.ai_model.embedding import EmbeddingModelCache
+from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum, normalize_semantic_scope
@@ -501,10 +502,12 @@ def batch_create_terminology(
     datasource_name_to_id = {}
     resolved_tenant_id, resolved_scope = _resolve_management_scope(tenant_id, scope)
     if resolved_scope == SemanticRecordScopeEnum.TENANT:
-        datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.tenant_id == resolved_tenant_id)
-        datasource_result = session.execute(datasource_stmt).all()
-        for ds in datasource_result:
-            datasource_name_to_id[ds.name.strip()] = ds.id
+        datasource_id = get_bound_datasource_id_for_tenant(session, resolved_tenant_id)
+        if datasource_id is not None:
+            datasource_stmt = select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.id == datasource_id)
+            datasource_result = session.execute(datasource_stmt).all()
+            for ds in datasource_result:
+                datasource_name_to_id[ds.name.strip()] = ds.id
     valid_datasource_ids = {int(value) for value in datasource_name_to_id.values()}
 
     # 验证和转换数据源名称

@@ -106,18 +106,89 @@ def selected_table_aliases(select_expr: exp.Select, cte_names: set[str] | None =
     return aliases
 
 
+def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
+    cte_columns: dict[str, set[str]] = {}
+    for cte in statement.find_all(exp.CTE):
+        cte_name = normalize_identifier(cte.alias_or_name)
+        if not cte_name:
+            continue
+        columns: set[str] = set()
+        cte_selects = list(cte.this.find_all(exp.Select))
+        cte_selects.sort(key=lambda item: 0 if any(expr.alias for expr in item.expressions) else 1)
+        for cte_select in cte_selects:
+            for item in cte_select.expressions:
+                column_name = normalize_identifier(item.alias_or_name)
+                if column_name and column_name != "*":
+                    columns.add(column_name)
+            if not columns:
+                columns.update(_values_source_columns(cte_select))
+            if columns:
+                break
+        cte_columns[cte_name] = columns
+    return cte_columns
+
+
+def _values_source_columns(select_expr: exp.Select) -> set[str]:
+    from_expr = select_expr.args.get("from_")
+    source = from_expr.this if from_expr is not None else None
+    if not isinstance(source, exp.Values):
+        return set()
+    alias = source.args.get("alias")
+    if not isinstance(alias, exp.TableAlias):
+        return set()
+    return {
+        normalize_identifier(column.name)
+        for column in alias.args.get("columns") or []
+        if normalize_identifier(column.name)
+    }
+
+
+def selected_cte_aliases(
+        select_expr: exp.Select,
+        cte_columns: dict[str, set[str]] | None = None,
+) -> dict[str, set[str]]:
+    cte_columns = cte_columns or {}
+    aliases: dict[str, set[str]] = {}
+    sources = []
+    from_expr = select_expr.args.get("from_")
+    if from_expr and from_expr.this is not None:
+        sources.append(from_expr.this)
+    for join in select_expr.args.get("joins") or []:
+        if join.this is not None:
+            sources.append(join.this)
+
+    for source in sources:
+        if not isinstance(source, exp.Table):
+            continue
+        table_name = normalize_identifier(source.name)
+        if table_name not in cte_columns:
+            continue
+        source_alias = normalize_identifier(source.alias_or_name or source.name)
+        aliases[source_alias] = cte_columns[table_name]
+        aliases[table_name] = cte_columns[table_name]
+    return aliases
+
+
 def _column_can_resolve(
         column_name: str,
         column_table: str,
         selected_aliases: dict[str, str],
         permission_scope: dict[str, dict[str, Any]],
+        output_aliases: set[str] | None = None,
+        cte_aliases: dict[str, set[str]] | None = None,
 ) -> bool:
     normalized_column = normalize_identifier(column_name)
     normalized_table = normalize_identifier(column_table)
+    cte_aliases = cte_aliases or {}
     if not normalized_column:
+        return True
+    if normalized_column in (output_aliases or set()):
         return True
 
     if normalized_table:
+        cte_fields = cte_aliases.get(normalized_table)
+        if cte_fields is not None:
+            return not cte_fields or normalized_column in cte_fields
         physical_table = selected_aliases.get(normalized_table)
         if physical_table is None:
             return True
@@ -127,12 +198,21 @@ def _column_can_resolve(
     selected_tables = set(selected_aliases.values())
     if not selected_tables:
         return True
+    if any(
+            normalized_column in permission_scope.get(table_name, {}).get("denied_fields", set())
+            for table_name in selected_tables
+    ):
+        return False
     candidate_tables = [
         table_name
         for table_name in selected_tables
         if normalized_column in permission_scope.get(table_name, {}).get("fields", set())
     ]
-    return len(candidate_tables) == 1
+    if len(candidate_tables) == 1:
+        return True
+    if any(not fields or normalized_column in fields for fields in cte_aliases.values()):
+        return True
+    return False
 
 
 def _star_uses_table_scope(star: exp.Star, selected_aliases: dict[str, str]) -> set[str]:
@@ -141,6 +221,28 @@ def _star_uses_table_scope(star: exp.Star, selected_aliases: dict[str, str]) -> 
         physical_table = selected_aliases.get(normalize_identifier(parent.table))
         return {physical_table} if physical_table else set()
     return set(selected_aliases.values())
+
+
+def _nearest_select(node: exp.Expression) -> exp.Select | None:
+    parent = node.parent
+    while parent is not None:
+        if isinstance(parent, exp.Select):
+            return parent
+        parent = parent.parent
+    return None
+
+
+def _is_in_current_select_scope(node: exp.Expression, select_expr: exp.Select) -> bool:
+    return _nearest_select(node) is select_expr
+
+
+def _select_output_aliases(select_expr: exp.Select) -> set[str]:
+    aliases: set[str] = set()
+    for item in select_expr.expressions:
+        alias = normalize_identifier(item.alias)
+        if alias:
+            aliases.add(alias)
+    return aliases
 
 
 def validate_sql_columns(
@@ -159,9 +261,14 @@ def validate_sql_columns(
             for cte in statement.find_all(exp.CTE)
             if cte.alias_or_name
         }
+        cte_columns = cte_output_columns(statement)
         for select_expr in statement.find_all(exp.Select):
             selected_aliases = selected_table_aliases(select_expr, cte_names)
+            output_aliases = _select_output_aliases(select_expr)
+            cte_aliases = selected_cte_aliases(select_expr, cte_columns)
             for star in select_expr.find_all(exp.Star):
+                if not _is_in_current_select_scope(star, select_expr):
+                    continue
                 if isinstance(star.parent, exp.Count):
                     continue
                 if isinstance(star.parent, exp.Column) and isinstance(star.parent.parent, exp.Count):
@@ -169,9 +276,18 @@ def validate_sql_columns(
                 star_tables.update(_star_uses_table_scope(star, selected_aliases))
 
             for column in select_expr.find_all(exp.Column):
+                if not _is_in_current_select_scope(column, select_expr):
+                    continue
                 if isinstance(column.this, exp.Star):
                     continue
-                if not _column_can_resolve(column.name, column.table, selected_aliases, permission_scope):
+                if not _column_can_resolve(
+                        column.name,
+                        column.table,
+                        selected_aliases,
+                        permission_scope,
+                        output_aliases,
+                        cte_aliases,
+                ):
                     denied_columns.add(column.sql())
 
     restricted_star_tables = {

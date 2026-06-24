@@ -27,6 +27,7 @@ interface DatasourceContextState {
   canCreateDashboard: boolean
   canManageDashboard: boolean
   canManageProject: boolean
+  tenantScopeId: string
   loading: boolean
   initialized: boolean
 }
@@ -42,6 +43,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
     canCreateDashboard: false,
     canManageDashboard: false,
     canManageProject: false,
+    tenantScopeId: '',
     loading: false,
     initialized: false,
   }),
@@ -58,12 +60,18 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
     },
 
     async loadDatasources(force = false) {
-      if ((this.loading && !force) || (this.initialized && !force)) {
+      const userStore = useUserStore()
+      const requestTenantId = userStore.getTenantId || 'default'
+      if (this.tenantScopeId && this.tenantScopeId !== requestTenantId) {
+        this.clear(false)
+      }
+      if (
+        (this.loading && !force) ||
+        (this.initialized && !force && this.tenantScopeId === requestTenantId)
+      ) {
         return
       }
       this.loading = true
-      const userStore = useUserStore()
-      const requestTenantId = userStore.getTenantId || 'default'
       try {
         const res = await datasourceApi.accessibleList()
         if ((useUserStore().getTenantId || 'default') !== requestTenantId) {
@@ -95,6 +103,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
         } else {
           this.clear(false)
         }
+        this.tenantScopeId = requestTenantId
         this.initialized = true
       } finally {
         this.loading = false
@@ -162,6 +171,7 @@ export const DatasourceContextStore = defineStore('datasourceContext', {
       this.canCreateDashboard = false
       this.canManageDashboard = false
       this.canManageProject = false
+      this.tenantScopeId = ''
       this.initialized = false
       if (persist) {
         wsCache.delete(this.cacheKey())

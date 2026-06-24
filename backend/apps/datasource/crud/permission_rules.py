@@ -357,7 +357,12 @@ def delete_rule_dto(session: SessionDep, rule_id: int) -> None:
     session.flush()
 
 
-def delete_permission_records_for_datasources(session: SessionDep, datasource_ids: list[int]) -> None:
+def delete_permission_records_for_datasources(
+    session: SessionDep,
+    datasource_ids: list[int],
+    *,
+    tenant_id: int | None = None,
+) -> None:
     ids = [int(datasource_id) for datasource_id in datasource_ids if datasource_id is not None]
     if not ids:
         return
@@ -369,7 +374,12 @@ def delete_permission_records_for_datasources(session: SessionDep, datasource_id
     if not permission_ids:
         return
 
-    for rule in list_rule_records(session):
+    rules = (
+        list_rule_records(session, tenant_id=int(tenant_id), include_platform=False)
+        if tenant_id is not None
+        else list_rule_records(session)
+    )
+    for rule in rules:
         rule_permission_ids = _int_list(rule.permission_list)
         next_permission_ids = [
             permission_id for permission_id in rule_permission_ids if permission_id not in permission_ids
@@ -384,7 +394,12 @@ def delete_permission_records_for_datasources(session: SessionDep, datasource_id
                 .values(permission_list=json.dumps(next_permission_ids, ensure_ascii=False))
             )
 
-    session.execute(delete(ds_permission_table).where(ds_permission_table.c.id.in_(permission_ids)))
+    referenced_permission_ids: set[int] = set()
+    for rule in list_rule_records(session):
+        referenced_permission_ids.update(_int_list(rule.permission_list))
+    orphan_permission_ids = permission_ids - referenced_permission_ids
+    if orphan_permission_ids:
+        session.execute(delete(ds_permission_table).where(ds_permission_table.c.id.in_(orphan_permission_ids)))
     session.flush()
 
 

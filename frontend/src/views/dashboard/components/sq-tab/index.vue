@@ -52,6 +52,14 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showComponentBar: {
+    type: Boolean,
+    default: true,
+  },
+  canEditSql: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const { configItem } = toRefs(props)
@@ -261,6 +269,8 @@ defineExpose({
             :base-matrix-count="tabBaseMatrixCount"
             :canvas-id="tabItem.name"
             :parent-config-item="configItem"
+            :show-component-bar="showComponentBar"
+            :can-edit-sql="canEditSql"
             in-tab
             @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
           >

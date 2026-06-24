@@ -37,6 +37,7 @@ from apps.datasource.crud.permission import (
     update_datasource_users,
 )
 from apps.datasource.crud.binding import bind_datasource_to_tenant
+from apps.datasource.crud.binding import list_bound_tenant_ids_for_datasource
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
@@ -128,6 +129,8 @@ class DatasourceListItem(BaseModel):
     project_role: Optional[str] = None
     tenant_id: Optional[int] = None
     tenant_name: Optional[str] = None
+    tenant_ids: list[int] = Field(default_factory=list)
+    tenant_names: list[str] = Field(default_factory=list)
     authorized_user_count: int = 0
     can_create_dashboard: bool = False
     can_manage_dashboard: bool = False
@@ -152,6 +155,8 @@ class DatasourceDetailItem(BaseModel):
     recommended_config: Optional[int] = None
     tenant_id: Optional[int] = None
     tenant_name: Optional[str] = None
+    tenant_ids: list[int] = Field(default_factory=list)
+    tenant_names: list[str] = Field(default_factory=list)
     can_manage_metadata: bool = False
 
 
@@ -211,7 +216,8 @@ def _tenant_name_map(session: SessionDep, tenant_ids) -> dict[int, str]:
 
 
 def _datasource_binding_item(session: SessionDep, datasource: CoreDatasource) -> DatasourceBindingItem:
-    tenant_id = int(datasource.tenant_id) if getattr(datasource, "tenant_id", None) else None
+    tenant_ids = list_bound_tenant_ids_for_datasource(session, int(datasource.id))
+    tenant_id = tenant_ids[0] if tenant_ids else None
     tenant_name = None
     if tenant_id and tenant_id != DEFAULT_TENANT_ID:
         tenant = session.get(TenantModel, tenant_id)
@@ -228,7 +234,12 @@ def _datasource_list_items(
         user: CurrentUser,
         datasources: list[CoreDatasource],
 ) -> list[dict[str, Any]]:
-    tenant_names = _tenant_name_map(session, [datasource.tenant_id for datasource in datasources])
+    binding_map = {
+        int(datasource.id): list_bound_tenant_ids_for_datasource(session, int(datasource.id))
+        for datasource in datasources
+    }
+    all_tenant_ids = [tenant_id for tenant_ids in binding_map.values() for tenant_id in tenant_ids]
+    tenant_names = _tenant_name_map(session, all_tenant_ids)
     authorized_user_counts = list_datasource_user_counts(
         session,
         [datasource.id for datasource in datasources],
@@ -237,8 +248,12 @@ def _datasource_list_items(
     result = []
     for datasource in datasources:
         role = get_datasource_role(session, user, datasource.id)
-        datasource_tenant_id = int(datasource.tenant_id) if datasource.tenant_id else None
-        bound_tenant_id = datasource_tenant_id if datasource_tenant_id != DEFAULT_TENANT_ID else None
+        datasource_tenant_ids = [
+            int(tenant_id)
+            for tenant_id in binding_map.get(int(datasource.id), [])
+            if int(tenant_id) != DEFAULT_TENANT_ID
+        ]
+        bound_tenant_id = datasource_tenant_ids[0] if datasource_tenant_ids else None
         can_platform_manage_project = is_platform_admin(user) and not is_platform_workspace_delegate(user)
         can_manage_tenant_projects = _can_manage_tenant_projects(user)
         can_manage_metadata = _can_manage_datasource_metadata(user)
@@ -263,6 +278,8 @@ def _datasource_list_items(
             "project_role": role,
             "tenant_id": bound_tenant_id,
             "tenant_name": tenant_names.get(bound_tenant_id) if bound_tenant_id else None,
+            "tenant_ids": datasource_tenant_ids,
+            "tenant_names": [tenant_names.get(tenant_id) for tenant_id in datasource_tenant_ids if tenant_names.get(tenant_id)],
             "authorized_user_count": authorized_user_counts.get(int(datasource.id), 0),
             "can_create_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_VIEWER),
             "can_manage_dashboard": project_role_rank(role) >= project_role_rank(PROJECT_ROLE_EDITOR),
@@ -382,7 +399,12 @@ async def get_datasource(
         data["configuration"] = decrypt_datasource_configuration_for_output(data.get("configuration"))
     else:
         data["configuration"] = None
-    data["tenant_name"] = _tenant_name_map(session, [datasource.tenant_id]).get(int(datasource.tenant_id or 0))
+    tenant_ids = list_bound_tenant_ids_for_datasource(session, int(datasource.id))
+    tenant_names = _tenant_name_map(session, tenant_ids)
+    data["tenant_ids"] = tenant_ids
+    data["tenant_names"] = [tenant_names.get(tenant_id) for tenant_id in tenant_ids if tenant_names.get(tenant_id)]
+    data["tenant_id"] = tenant_ids[0] if tenant_ids else None
+    data["tenant_name"] = tenant_names.get(tenant_ids[0]) if tenant_ids else None
     data["can_manage_metadata"] = _can_manage_datasource_metadata(user)
     return data
 
@@ -668,6 +690,9 @@ async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
 @require_permissions(permission=AppPermission(role=['platform_admin'], type='ds', keyExpression="id"))
 async def preview_data(session: SessionDep, trans: Trans, current_user: CurrentUser, data: TableObj,
                        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    if is_platform_workspace_delegate(current_user):
+        raise HTTPException(status_code=403, detail="SaaS workspace delegate cannot preview datasource rows")
+
     def inner():
         try:
             return preview(session, current_user, id, data)

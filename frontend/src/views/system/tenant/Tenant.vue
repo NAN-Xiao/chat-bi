@@ -174,7 +174,7 @@
               <el-tooltip
                 :offset="14"
                 effect="dark"
-                :content="t('tenant.enter_workspace_admin')"
+                :content="t('tenant.enter_workspace_delegate')"
                 placement="top"
               >
                 <el-icon class="action-btn" size="16" @click="openWorkspaceAdmin(scope.row.source)">

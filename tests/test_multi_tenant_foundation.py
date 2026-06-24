@@ -123,6 +123,17 @@ def _engine():
         ))
         conn.execute(text(
             """
+            CREATE TABLE core_datasource_tenant_binding (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL UNIQUE,
+                datasource_id INTEGER NOT NULL,
+                create_by INTEGER,
+                create_time DATETIME
+            )
+            """
+        ))
+        conn.execute(text(
+            """
             CREATE TABLE ds_permission (
                 id INTEGER PRIMARY KEY,
                 name VARCHAR,
@@ -753,6 +764,9 @@ def test_platform_admin_platform_overview_aggregates_saas_scope():
                 (102, 200, 'Tenant B DS')
             """
         ))
+        session.exec(text(
+            "INSERT INTO core_datasource_tenant_binding (tenant_id, datasource_id) VALUES (200, 102)"
+        ))
         session.execute(text(
             """
             INSERT INTO sys_tenant_usage_daily (
@@ -878,6 +892,9 @@ def test_tenant_member_datasource_permissions_are_limited_to_bound_datasource():
                 (302, 1, 'Platform DS')
             """
         ))
+        session.exec(text(
+            "INSERT INTO core_datasource_tenant_binding (tenant_id, datasource_id) VALUES (200, 301)"
+        ))
         session.commit()
 
         updated = asyncio.run(tenant_api.update_tenant_member(
@@ -930,7 +947,23 @@ def test_platform_admin_manages_tenant_lifecycle():
         assert tenant.status == 1
         assert tenant.bound_datasource_id == 101
         assert tenant.bound_datasource_name == "Primary DS"
-        assert session.exec(text("SELECT tenant_id FROM core_datasource WHERE id = 101")).scalar_one() == tenant.id
+        assert session.execute(text(
+            "SELECT datasource_id FROM core_datasource_tenant_binding WHERE tenant_id = :tenant_id"
+        ), {"tenant_id": tenant.id}).scalar_one() == 101
+
+        tenant_2 = asyncio.run(tenant_api.add_tenant(
+            session,
+            _user(1, "system_admin"),
+            tenant_api.TenantCreator(
+                name="Tenant C",
+                plan="basic",
+                datasource_id=101,
+            ),
+        ))
+        assert tenant_2.bound_datasource_id == 101
+        assert session.exec(text(
+            "SELECT tenant_id FROM core_datasource_tenant_binding WHERE datasource_id = 101 ORDER BY tenant_id"
+        )).all() == [(tenant.id,), (tenant_2.id,)]
 
         session.exec(text("INSERT INTO core_datasource (id, tenant_id, name) VALUES (102, 1, 'Replacement DS')"))
         session.commit()
@@ -958,8 +991,12 @@ def test_platform_admin_manages_tenant_lifecycle():
         assert edited.current_period_end_time == 3000
         assert edited.subscription_note == "manual follow-up required"
         assert edited.bound_datasource_id == 102
-        assert session.exec(text("SELECT tenant_id FROM core_datasource WHERE id = 101")).scalar_one() == DEFAULT_TENANT_ID
-        assert session.exec(text("SELECT tenant_id FROM core_datasource WHERE id = 102")).scalar_one() == tenant.id
+        assert session.execute(text(
+            "SELECT datasource_id FROM core_datasource_tenant_binding WHERE tenant_id = :tenant_id"
+        ), {"tenant_id": tenant.id}).scalar_one() == 102
+        assert session.exec(text(
+            "SELECT tenant_id FROM core_datasource_tenant_binding WHERE datasource_id = 101 ORDER BY tenant_id"
+        )).all() == [(tenant_2.id,)]
 
         unbound = asyncio.run(tenant_api.edit_tenant(
             session,
@@ -980,7 +1017,9 @@ def test_platform_admin_manages_tenant_lifecycle():
             ),
         ))
         assert unbound.bound_datasource_id is None
-        assert session.exec(text("SELECT tenant_id FROM core_datasource WHERE id = 102")).scalar_one() == DEFAULT_TENANT_ID
+        assert session.execute(text(
+            "SELECT datasource_id FROM core_datasource_tenant_binding WHERE tenant_id = :tenant_id"
+        ), {"tenant_id": tenant.id}).first() is None
 
         disabled = asyncio.run(tenant_api.update_tenant_status(
             session,
@@ -991,7 +1030,7 @@ def test_platform_admin_manages_tenant_lifecycle():
         assert disabled.status == 0
 
         admin_rows = asyncio.run(tenant_api.admin_tenant_list(session, _user(1, "system_admin")))
-        assert {row.name for row in admin_rows} == {"Tenant Beta"}
+        assert {row.name for row in admin_rows} == {"Tenant Beta", "Tenant C"}
 
 
 def test_default_tenant_cannot_be_disabled():
@@ -1715,6 +1754,7 @@ def test_user_leaves_joined_tenant_and_loses_tenant_project_permissions():
         session.add(TenantUserModel(id=101, tenant_id=1, user_id=100, role="member", is_primary=True, status=1))
         session.add(TenantUserModel(id=201, tenant_id=200, user_id=100, role="member", is_primary=False, status=1))
         session.exec(text("INSERT INTO core_datasource (id, tenant_id, name) VALUES (301, 200, 'Tenant DS')"))
+        session.exec(text("INSERT INTO core_datasource_tenant_binding (tenant_id, datasource_id) VALUES (200, 301)"))
         session.exec(text("INSERT INTO core_datasource_user (id, ds_id, user_id) VALUES (401, 301, 100)"))
         session.commit()
 

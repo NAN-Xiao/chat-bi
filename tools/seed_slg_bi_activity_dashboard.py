@@ -95,6 +95,99 @@ def ensure_activity_columns(conn: Any) -> None:
     conn.commit()
 
 
+def load_physical_columns(conn: Any) -> dict[str, list[dict[str, Any]]]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT c.relname AS table_name,
+                   a.attname AS field_name,
+                   pg_catalog.format_type(a.atttypid, a.atttypmod) AS field_type,
+                   coalesce(col_description(c.oid, a.attnum), '') AS field_comment
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            ORDER BY c.relname, a.attnum
+            """
+        )
+        rows = [dict(row) for row in cur.fetchall()]
+    by_table: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_table.setdefault(row["table_name"], []).append(row)
+    return by_table
+
+
+def sync_datasource_field_metadata(system_conn: Any, bi_conn: Any) -> None:
+    physical_by_table = load_physical_columns(bi_conn)
+    added: list[str] = []
+    updated = 0
+    with system_conn:
+        with system_conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, table_name
+                FROM public.core_table
+                WHERE ds_id = %s
+                ORDER BY id
+                """,
+                (DATASOURCE_ID,),
+            )
+            tables = [dict(row) for row in cur.fetchall()]
+            for table in tables:
+                physical_fields = physical_by_table.get(table["table_name"], [])
+                if not physical_fields:
+                    continue
+                cur.execute(
+                    """
+                    SELECT id, field_name
+                    FROM public.core_field
+                    WHERE ds_id = %s AND table_id = %s
+                    """,
+                    (DATASOURCE_ID, table["id"]),
+                )
+                existing_by_name = {row["field_name"]: row["id"] for row in cur.fetchall()}
+                for index, field in enumerate(physical_fields):
+                    comment = field["field_comment"] or field["field_name"]
+                    field_id = existing_by_name.get(field["field_name"])
+                    if field_id:
+                        cur.execute(
+                            """
+                            UPDATE public.core_field
+                               SET field_type = %s,
+                                   field_comment = %s,
+                                   field_index = %s
+                             WHERE id = %s
+                            """,
+                            (field["field_type"], comment, index, field_id),
+                        )
+                        updated += cur.rowcount
+                    else:
+                        cur.execute(
+                            """
+                            INSERT INTO public.core_field
+                                (ds_id, table_id, checked, field_name, field_type,
+                                 field_comment, custom_comment, field_index)
+                            VALUES
+                                (%s, %s, true, %s, %s, %s, %s, %s)
+                            """,
+                            (
+                                DATASOURCE_ID,
+                                table["id"],
+                                field["field_name"],
+                                field["field_type"],
+                                comment,
+                                comment,
+                                index,
+                            ),
+                        )
+                        added.append(f"{table['table_name']}.{field['field_name']}")
+    print(f"synced metadata updated={updated} added={len(added)}")
+    for item in added:
+        print(f"metadata add {item}")
+
+
 def seed_event_dictionary(conn: Any) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -693,6 +786,7 @@ def main() -> None:
     system_conn = psycopg2.connect(**SYSTEM_DB)
     try:
         seed_bi_data(bi_conn)
+        sync_datasource_field_metadata(system_conn, bi_conn)
         component_data, canvas_view_info = build_dashboard_payload(bi_conn)
         update_dashboard(system_conn, component_data, canvas_view_info)
         verify(system_conn, bi_conn)

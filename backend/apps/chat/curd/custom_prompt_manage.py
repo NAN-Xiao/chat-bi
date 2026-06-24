@@ -15,6 +15,7 @@ from apps.chat.models.custom_prompt_model import (
     CustomPromptOption,
     CustomPromptUserPreference,
 )
+from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_model import AiModelDetail
@@ -866,13 +867,16 @@ def batch_create_custom_prompts(
     seen: set[tuple[str, str, str]] = set()
 
     resolved_tenant_id = _tenant_id(tenant_id)
-    datasource_name_to_id = {
-        row.name.strip(): int(row.id)
-        for row in session.execute(
-            select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.tenant_id == resolved_tenant_id)
-        ).all()
-        if row.name
-    }
+    datasource_name_to_id = {}
+    datasource_id = get_bound_datasource_id_for_tenant(session, resolved_tenant_id)
+    if datasource_id is not None:
+        datasource_name_to_id = {
+            row.name.strip(): int(row.id)
+            for row in session.execute(
+                select(CoreDatasource.id, CoreDatasource.name).where(CoreDatasource.id == datasource_id)
+            ).all()
+            if row.name
+        }
     valid_datasource_ids = set(datasource_name_to_id.values())
 
     for info in info_list:

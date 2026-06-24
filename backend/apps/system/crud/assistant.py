@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from sqlmodel import Session, select
 from starlette.middleware.cors import CORSMiddleware
 
+from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource
 from apps.datasource.utils.utils import aes_encrypt
 from apps.system.models.system_model import AssistantModel
@@ -39,9 +40,12 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
     if type == 0 or type == 2:
         configuration = assistant.configuration
         tenant_id = require_tenant_id(getattr(assistant, "tenant_id", None))
+        datasource_id = get_bound_datasource_id_for_tenant(session, tenant_id)
+        if datasource_id is None:
+            return []
         stmt = (
             select(CoreDatasource.id, CoreDatasource.name, CoreDatasource.description)
-            .where(CoreDatasource.tenant_id == tenant_id)
+            .where(CoreDatasource.id == datasource_id)
         )
         if configuration:
             config: dict[any] = json.loads(configuration)

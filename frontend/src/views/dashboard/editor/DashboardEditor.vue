@@ -58,6 +58,14 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showComponentBar: {
+    type: Boolean,
+    default: true,
+  },
+  canEditSql: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const canvasSizeInit = () => {
@@ -156,6 +164,8 @@ const emits = defineEmits(['parentAddItemBox'])
       :dashboard-info="dashboardInfo"
       :parent-config-item="parentConfigItem"
       :canvas-id="canvasId"
+      :show-component-bar="showComponentBar"
+      :can-edit-sql="canEditSql"
       @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
     ></CanvasCore>
   </div>

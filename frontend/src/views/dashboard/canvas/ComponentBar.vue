@@ -42,6 +42,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  canEditSql: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const { configItem } = toRefs(props)
@@ -107,7 +111,7 @@ const doShareComponent = async (e: MouseEvent) => {
               >{{ t('dashboard.preview') }}</el-dropdown-item
             >
             <el-dropdown-item
-              v-if="configItem.component === 'SQView' && canEdit"
+              v-if="configItem.component === 'SQView' && canEdit && canEditSql"
               :icon="icon_sql_outlined"
               @click="doEditSql"
               >{{ t('dashboard.edit_sql') }}</el-dropdown-item

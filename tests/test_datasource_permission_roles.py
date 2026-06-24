@@ -10,6 +10,7 @@ from starlette.requests import Request
 os.environ["LOG_FORMAT"] = "%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
 
 from sqlalchemy import text
+from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, create_engine
 
 from apps.datasource.crud import datasource as datasource_crud
@@ -28,7 +29,11 @@ from apps.analysis_assistant.api import analysis_assistant as analysis_assistant
 
 
 def _engine_with_permission_tables():
-    engine = create_engine("sqlite://")
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     with engine.begin() as conn:
         conn.execute(text(
             """
@@ -163,6 +168,31 @@ def _engine_with_permission_tables():
         ))
         conn.execute(text(
             """
+            CREATE TABLE sys_tenant_user (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role VARCHAR(32) NOT NULL DEFAULT 'member',
+                member_remark VARCHAR(255),
+                is_primary BOOLEAN NOT NULL DEFAULT 0,
+                status INTEGER NOT NULL DEFAULT 1,
+                create_time INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE core_datasource_tenant_binding (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER NOT NULL UNIQUE,
+                datasource_id INTEGER NOT NULL,
+                create_by INTEGER,
+                create_time DATETIME
+            )
+            """
+        ))
+        conn.execute(text(
+            """
             INSERT INTO sys_user
                 (id, account, name, password, email, status, origin, create_time, language, system_role)
             VALUES
@@ -179,6 +209,18 @@ def _engine_with_permission_tables():
             VALUES
                 (1, 'WSDEFAULT2', 'Default', 1, 'default', 'active', 'manual', 1, 1),
                 (2, 'WSWORKSP2', 'Workspace 2', 1, 'default', 'active', 'manual', 1, 1)
+            """
+        ))
+        conn.execute(text(
+            """
+            INSERT INTO sys_tenant_user
+                (id, tenant_id, user_id, role, is_primary, status, create_time)
+            VALUES
+                (1, 2, 2, 'member', 1, 1, 1),
+                (2, 2, 3, 'member', 0, 1, 1),
+                (3, 3, 3, 'member', 1, 1, 1),
+                (4, 1, 2, 'member', 1, 1, 1),
+                (5, 1, 5, 'admin', 0, 1, 1)
             """
         ))
     return engine
@@ -443,6 +485,9 @@ def test_workspace_binding_replaces_and_cancels_bound_project_permissions():
     platform_admin = SimpleNamespace(id=4, system_role="system_admin", tenant_id=1)
 
     with Session(engine) as session:
+        session.execute(text(
+            "INSERT INTO sys_tenant (id, public_id, name, status, plan) VALUES (3, 'WSTENANT3', 'Tenant 3', 1, 'default')"
+        ))
         session.add(_datasource(1, tenant_id=1))
         session.add(_datasource(2, tenant_id=1))
         session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
@@ -459,10 +504,10 @@ def test_workspace_binding_replaces_and_cancels_bound_project_permissions():
         session.execute(text(
             """
             INSERT INTO ds_rules
-                (id, enable, name, description, permission_list, user_list, white_list_user)
+                (id, enable, name, description, tenant_id, scope, permission_list, user_list, white_list_user)
             VALUES
-                (2000, 1, 'project 1', '', '[1000]', '[2]', '[]'),
-                (2001, 1, 'project 2', '', '[1001]', '[3]', '[]')
+                (2000, 1, 'project 1', '', 2, 'TENANT', '[1000]', '[2]', '[]'),
+                (2001, 1, 'project 2', '', 2, 'TENANT', '[1001]', '[3]', '[]')
             """
         ))
         session.commit()
@@ -471,21 +516,29 @@ def test_workspace_binding_replaces_and_cancels_bound_project_permissions():
         session.expire_all()
 
         assert int(bound.id) == 1
-        assert session.get(CoreDatasource, 1).tenant_id == 2
+        assert session.execute(text("SELECT datasource_id FROM core_datasource_tenant_binding WHERE tenant_id = 2")).scalar_one() == 1
         assert session.get(CoreDatasource, 2).tenant_id == 1
         assert session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id == 1).count() == 0
+
+        bind_tenant_to_datasource(session, platform_admin, 3, 1)
+        session.expire_all()
+
+        assert session.execute(text(
+            "SELECT tenant_id FROM core_datasource_tenant_binding WHERE datasource_id = 1 ORDER BY tenant_id"
+        )).all() == [(2,), (3,)]
 
         bind_tenant_to_datasource(session, platform_admin, 2, 2)
         session.expire_all()
 
-        assert session.get(CoreDatasource, 1).tenant_id == 1
-        assert session.get(CoreDatasource, 2).tenant_id == 2
+        assert session.execute(text("SELECT datasource_id FROM core_datasource_tenant_binding WHERE tenant_id = 2")).scalar_one() == 2
+        assert session.execute(text("SELECT datasource_id FROM core_datasource_tenant_binding WHERE tenant_id = 3")).scalar_one() == 1
         assert session.query(CoreDatasourceUser).filter(CoreDatasourceUser.ds_id.in_([1, 2])).count() == 0
 
         bind_tenant_to_datasource(session, platform_admin, 2, None)
         session.expire_all()
 
-        assert session.get(CoreDatasource, 2).tenant_id == 1
+        assert session.execute(text("SELECT datasource_id FROM core_datasource_tenant_binding WHERE tenant_id = 2")).first() is None
+        assert session.execute(text("SELECT datasource_id FROM core_datasource_tenant_binding WHERE tenant_id = 3")).scalar_one() == 1
         assert session.execute(text("SELECT id FROM ds_permission ORDER BY id")).all() == []
         assert session.execute(text("SELECT id FROM ds_rules ORDER BY id")).all() == []
 
@@ -1154,6 +1207,182 @@ def test_sql_permission_scope_denies_hidden_columns(monkeypatch):
             assert "amount" in str(exc)
         else:
             raise AssertionError("hidden column query should be rejected")
+
+
+def test_sql_permission_scope_allows_cte_and_output_alias_columns(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        _statements, tables, _scope = validate_sql_scope(
+            session,
+            current_user,
+            ds,
+            """
+            WITH daily AS (
+                SELECT order_id, count(*) AS order_count
+                FROM orders
+                GROUP BY order_id
+            ),
+            labeled AS (
+                SELECT order_id, order_count, order_count + 1 AS next_count
+                FROM daily
+            )
+            SELECT order_id AS "订单", order_count AS "订单数"
+            FROM labeled
+            ORDER BY "订单数"
+            """,
+        )
+
+    assert tables == {"orders"}
+
+
+def test_sql_permission_scope_denies_hidden_columns_inside_cte(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(ValueError) as exc_info:
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                """
+                WITH hidden AS (
+                    SELECT order_id, amount AS hidden_amount
+                    FROM orders
+                )
+                SELECT order_id
+                FROM hidden
+                """,
+            )
+
+    assert "无权限字段" in str(exc_info.value)
+    assert "amount" in str(exc_info.value)
+
+
+def test_sql_permission_scope_allows_unqualified_cte_columns_when_joining_physical_table(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        _statements, tables, _scope = validate_sql_scope(
+            session,
+            current_user,
+            ds,
+            """
+            WITH buckets AS (
+                SELECT order_id AS bucket_id
+                FROM orders
+            )
+            SELECT bucket_id, count(o.order_id) AS order_count
+            FROM buckets b
+            LEFT JOIN orders o ON o.order_id = b.bucket_id
+            GROUP BY bucket_id
+            ORDER BY bucket_id
+            """,
+        )
+
+    assert tables == {"orders"}
+
+
+def test_sql_permission_scope_denies_hidden_unqualified_column_when_joining_cte(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        with pytest.raises(ValueError) as exc_info:
+            validate_sql_scope(
+                session,
+                current_user,
+                ds,
+                """
+                WITH buckets AS (
+                    SELECT order_id AS bucket_id
+                    FROM orders
+                )
+                SELECT bucket_id, amount
+                FROM buckets b
+                JOIN orders o ON o.order_id = b.bucket_id
+                """,
+            )
+
+    assert "无权限字段" in str(exc_info.value)
+    assert "amount" in str(exc_info.value)
+
+
+def test_sql_permission_scope_allows_values_cte_alias_columns(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_rule_for_orders(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        _statements, tables, _scope = validate_sql_scope(
+            session,
+            current_user,
+            ds,
+            """
+            WITH buckets AS (
+                SELECT *
+                FROM (VALUES ('low', 1), ('high', 2)) AS t(bucket_name, sort_no)
+            ),
+            series AS (
+                SELECT 'all' AS series_name, 1 AS series_sort
+                UNION ALL SELECT 'paid', 2
+            ),
+            order_counts AS (
+                SELECT order_id, count(*) AS order_count
+                FROM orders
+                GROUP BY order_id
+            )
+            SELECT b.bucket_name, s.series_name, coalesce(oc.order_count, 0) AS order_count
+            FROM buckets b
+            CROSS JOIN series s
+            LEFT JOIN order_counts oc ON oc.order_id = b.sort_no
+            ORDER BY b.sort_no, s.series_sort
+            """,
+        )
+
+    assert tables == {"orders"}
 
 
 def test_analysis_assistant_permission_failure_is_structured_and_sanitized(monkeypatch):

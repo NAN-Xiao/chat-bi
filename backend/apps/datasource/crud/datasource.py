@@ -10,6 +10,7 @@ from apps.datasource.crud.permission import can_access_table, current_tenant_id,
     get_column_permission_fields, get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, \
     is_normal_user
 from apps.datasource.crud.query_executor import execute_user_query_or_raise
+from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
 from apps.db.constant import DB
@@ -40,17 +41,15 @@ def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreData
         return []
 
     statement = select(CoreDatasource).where(CoreDatasource.id.in_(accessible_ids))
-    if tenant_id is not None:
-        statement = statement.where(CoreDatasource.tenant_id == tenant_id)
     return session.exec(statement.order_by(CoreDatasource.name)).all()
 
 
 def get_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
     statement = select(CoreDatasource).where(CoreDatasource.id == id)
     tenant_id = None if is_platform_admin(user) and not is_platform_workspace_delegate(user) else current_tenant_id(user)
-    if tenant_id is not None:
-        statement = statement.where(CoreDatasource.tenant_id == tenant_id)
     datasource = session.exec(statement).first()
+    if datasource is not None and tenant_id is not None and not datasource_bound_to_tenant(session, int(datasource.id), tenant_id):
+        return None
     return datasource
 
 

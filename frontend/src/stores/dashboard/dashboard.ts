@@ -7,6 +7,7 @@ const getDefaultDashboardInfo = () => ({
   pid: null,
   datasource: null,
   status: null,
+  source: null,
   dataState: null,
   createName: null,
   updateName: null,
@@ -16,6 +17,8 @@ const getDefaultDashboardInfo = () => ({
   type: null,
   canEdit: false,
   canShare: false,
+  isPlatformDelegateDraft: false,
+  canPublishDelegateDraft: false,
 })
 
 export const dashboardStore = defineStore('dashboard', {
