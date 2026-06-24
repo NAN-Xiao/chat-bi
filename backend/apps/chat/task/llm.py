@@ -2,13 +2,14 @@ import concurrent
 import json
 import os
 import queue
+import re
 import threading
 import time
 import traceback
 import urllib.parse
 import warnings
 from concurrent.futures import ThreadPoolExecutor, Future
-from datetime import datetime
+from datetime import datetime, date
 from dis import specialized
 from typing import Any, Callable, List, Optional, Union, Dict, Iterator
 
@@ -123,6 +124,15 @@ SUPPORT_METRIC_OUTPUT_KEYWORDS = {
     "sort_key",
     "order_key",
     "is_total",
+}
+
+DATE_FIELD_KEYWORDS = {
+    "date",
+    "day",
+    "dt",
+    "time",
+    "日期",
+    "时间",
 }
 
 
@@ -1300,6 +1310,129 @@ class LLMService:
             y_items.append({"name": field, "value": field})
         axis["y"] = y_items
 
+    @staticmethod
+    def _iter_chart_field_items(chart: Dict[str, Any]) -> Iterator[dict[str, Any]]:
+        columns = chart.get("columns")
+        if isinstance(columns, list):
+            for column in columns:
+                if isinstance(column, dict):
+                    yield column
+
+        axis = chart.get("axis")
+        if not isinstance(axis, dict):
+            return
+
+        for key in ("x", "series"):
+            item = axis.get(key)
+            if isinstance(item, dict):
+                yield item
+
+        y_axis = axis.get("y")
+        if isinstance(y_axis, list):
+            for item in y_axis:
+                if isinstance(item, dict):
+                    yield item
+        elif isinstance(y_axis, dict):
+            yield y_axis
+
+    @staticmethod
+    def _chart_field_text(field: dict[str, Any]) -> str:
+        return f"{field.get('name') or ''} {field.get('value') or ''}".strip().lower()
+
+    @staticmethod
+    def _looks_like_date_field(field: dict[str, Any]) -> bool:
+        text = LLMService._chart_field_text(field)
+        return any(keyword in text for keyword in DATE_FIELD_KEYWORDS)
+
+    @staticmethod
+    def _parse_date_like_value(value: Any) -> str | None:
+        if isinstance(value, datetime):
+            return "datetime"
+        if isinstance(value, date):
+            return "date"
+        if isinstance(value, (int, float)):
+            if isinstance(value, float) and not value.is_integer():
+                return None
+            text = str(int(value))
+        elif isinstance(value, str):
+            text = value.strip()
+        else:
+            return None
+
+        if not text:
+            return None
+
+        normalized = text.replace("/", "-")
+        if re.fullmatch(r"\d{8}", normalized):
+            try:
+                datetime.strptime(normalized, "%Y%m%d")
+                return "date"
+            except ValueError:
+                return None
+        if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", normalized):
+            try:
+                datetime.strptime(normalized, "%Y-%m-%d")
+                return "date"
+            except ValueError:
+                return None
+        if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}[ T]\d{1,2}:\d{1,2}(:\d{1,2})?", normalized):
+            date_part, time_part = re.split(r"[ T]", normalized, maxsplit=1)
+            fmt = "%Y-%m-%d %H:%M:%S" if time_part.count(":") == 2 else "%Y-%m-%d %H:%M"
+            try:
+                datetime.strptime(f"{date_part} {time_part}", fmt)
+                return "datetime"
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _infer_field_data_type(field: dict[str, Any], rows: list[dict[str, Any]]) -> str | None:
+        value_key = str(field.get("value") or "")
+        if not value_key:
+            return None
+
+        samples = [
+            row.get(value_key)
+            for row in rows
+            if isinstance(row, dict) and row.get(value_key) not in (None, "")
+        ][:30]
+        if not samples:
+            return None
+
+        if LLMService._looks_like_date_field(field):
+            parsed_types = [LLMService._parse_date_like_value(value) for value in samples]
+            parsed_count = len([item for item in parsed_types if item])
+            if parsed_count / len(samples) >= 0.8:
+                return "datetime" if "datetime" in parsed_types else "date"
+
+        numeric_count = 0
+        for value in samples:
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                numeric_count += 1
+                continue
+            if isinstance(value, str):
+                normalized = value.strip().replace(",", "").replace("%", "")
+                if normalized and re.fullmatch(r"[+-]?\d+(\.\d+)?", normalized):
+                    numeric_count += 1
+        if numeric_count / len(samples) >= 0.8:
+            return "number"
+
+        return "text"
+
+    def _attach_chart_field_data_types(self, session: Session, chart: Dict[str, Any]) -> None:
+        rows = self._get_saved_chart_rows(session)
+        if not rows:
+            return
+
+        for field in self._iter_chart_field_items(chart):
+            if field.get("data_type"):
+                continue
+            data_type = self._infer_field_data_type(field, rows)
+            if data_type:
+                field["data_type"] = data_type
+
     def check_save_sql(self, session: Session, res: str, operate: OperationEnum) -> str:
         sql, *_ = self.check_sql(session=session, res=res, operate=operate)
         save_sql(session=session, sql=sql, record_id=self.record.id)
@@ -1358,6 +1491,7 @@ class LLMService:
                             # 如果是字符串，也转换为小写
                             multi_quota['value'] = multi_quota['value'].lower()
                 self._complete_multi_metric_chart_axis(session, chart)
+                self._attach_chart_field_data_types(session, chart)
             elif data['type'] == 'error':
                 message = data['reason']
                 error = True

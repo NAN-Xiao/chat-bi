@@ -2,6 +2,7 @@ export interface ChartAxis {
   name: string
   value: string
   type?: 'x' | 'y' | 'series' | 'other-info'
+  data_type?: 'date' | 'datetime' | 'number' | 'text' | string
   'multi-quota'?: boolean
   hidden?: boolean
 }

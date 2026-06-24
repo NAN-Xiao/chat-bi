@@ -41,21 +41,27 @@ const chartId = computed(() => {
 const axis = computed(() => {
   const _list: Array<ChartAxis> = []
   params.columns.forEach((column) => {
-    _list.push({ name: column.name, value: column.value })
+    _list.push({ name: column.name, value: column.value, data_type: column.data_type })
   })
   params.x.forEach((column) => {
-    _list.push({ name: column.name, value: column.value, type: 'x' })
+    _list.push({ name: column.name, value: column.value, type: 'x', data_type: column.data_type })
   })
   params.y.forEach((column) => {
     _list.push({
       name: column.name,
       value: column.value,
       type: 'y',
+      data_type: column.data_type,
       'multi-quota': column['multi-quota'],
     })
   })
   params.series.forEach((column) => {
-    _list.push({ name: column.name, value: column.value, type: 'series' })
+    _list.push({
+      name: column.name,
+      value: column.value,
+      type: 'series',
+      data_type: column.data_type,
+    })
   })
   if (params.multiQuotaName) {
     _list.push({
