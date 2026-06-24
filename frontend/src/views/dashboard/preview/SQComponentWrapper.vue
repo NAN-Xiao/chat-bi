@@ -10,6 +10,7 @@ import { parseSseChunk } from '@/utils/sse'
 import { useEmitt } from '@/utils/useEmitt.ts'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
+import ChartFullscreenDialog from '@/views/dashboard/preview/ChartFullscreenDialog.vue'
 import {
   resolveReportPopoverStyle,
   type ReportPopoverStyle,
@@ -62,6 +63,7 @@ const reportProgress = ref('')
 const reportStopped = ref(false)
 const reportSubmittedQuestion = ref('')
 const reportController = ref<AbortController | null>(null)
+const chartFullscreenVisible = ref(false)
 let reportStreamBuffer = ''
 const isPreviewSingleChart = computed(
   () => props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
@@ -570,7 +572,7 @@ function openChartFullscreen() {
   if (!isPreviewSingleChart.value) {
     return
   }
-  ;(component.value as any)?.enlargeView?.()
+  chartFullscreenVisible.value = true
 }
 
 function exportChartTableData() {
@@ -685,6 +687,11 @@ onBeforeUnmount(() => {
         </el-button>
       </el-tooltip>
     </div>
+    <ChartFullscreenDialog
+      v-if="isPreviewSingleChart"
+      v-model="chartFullscreenVisible"
+      :view-info="currentViewInfo"
+    />
     <Teleport to="body">
       <div
         v-if="reportPromptVisible"

@@ -779,6 +779,7 @@
     "chart_report_switch": "Switch",
     "chart_report_followup_placeholder": "Enter your thoughts...",
     "chart_fullscreen": "View chart fullscreen",
+    "chart_exit_fullscreen": "Exit fullscreen",
     "chart_refresh_data": "Refresh chart data",
     "chart_data_loading": "Loading data",
     "chart_refresh_success": "Chart data refreshed",

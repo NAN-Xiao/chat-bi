@@ -779,6 +779,7 @@
     "chart_report_switch": "切換",
     "chart_report_followup_placeholder": "輸入你的想法...",
     "chart_fullscreen": "全螢幕查看圖表",
+    "chart_exit_fullscreen": "退出全螢幕",
     "chart_refresh_data": "主動重新整理圖表資料",
     "chart_data_loading": "資料載入中",
     "chart_refresh_success": "圖表資料已重新整理",
