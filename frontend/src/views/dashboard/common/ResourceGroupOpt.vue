@@ -69,8 +69,9 @@ const optInit = (params: any) => {
   state.targetInfo = params.data
   state.nodeType = params.nodeType || 'folder'
   state.datasource = params.datasource || datasourceContext.datasourceId
+  state.placeholder = params.placeholder || ''
   resourceDialogShow.value = true
-  resourceForm.name = params.name || getResourceNewName(params.opt)
+  resourceForm.name = params.name ?? getResourceNewName(params.opt)
   resourceForm.pid = params.pid || 'root'
   if (params.parentSelect) {
     getTree()
@@ -107,6 +108,7 @@ const resourceFormRules = ref({
 
 const resetForm = () => {
   state.dialogTitle = ''
+  state.placeholder = ''
   resourceForm.name = ''
   resourceForm.pid = ''
   resourceDialogShow.value = false

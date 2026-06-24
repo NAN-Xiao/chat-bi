@@ -339,6 +339,20 @@ const getDefaultExpandedKeys = () => {
   }
 }
 
+const openCreateDashboardDialog = (params: any = {}) => {
+  dashboardStore.canvasDataInit()
+  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  resourceGroupOptRef.value?.optInit({
+    opt: 'newLeaf',
+    type: 'dashboard',
+    nodeType: 'leaf',
+    name: '',
+    placeholder: t('dashboard.add_dashboard_name_tips'),
+    pid: params?.id || 'root',
+    datasource: datasourceContext.datasourceId,
+  })
+}
+
 watch(filterText, (val) => {
   resourceListTree.value.filter(val)
 })
@@ -390,15 +404,7 @@ const addOperation = (params: any) => {
     if (!folder || !canManageNode(folder)) return
   }
   if (params.opt === 'newLeaf') {
-    dashboardStore.canvasDataInit()
-    router.push({
-      path: '/canvas',
-      query: {
-        opt: 'create',
-        ...(params?.id ? { pid: params.id } : {}),
-        ...(datasourceContext.datasourceId ? { datasource: datasourceContext.datasourceId } : {}),
-      },
-    })
+    openCreateDashboardDialog(params)
   } else {
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit(params)
@@ -471,7 +477,12 @@ const operation = async (opt: string, data: SQTreeNode) => {
   }
 }
 
-const baseInfoChangeFinish = () => {
+const baseInfoChangeFinish = (result?: any) => {
+  if (result?.opt === 'newLeaf' && result?.resourceId) {
+    selectedNodeKey.value = result.resourceId
+    returnMounted.value = true
+    syncDashboardRoute(result.resourceId)
+  }
   getTree()
 }
 
