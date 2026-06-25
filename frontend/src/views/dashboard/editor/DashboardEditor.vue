@@ -66,6 +66,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  platformTemplate: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const canvasSizeInit = () => {
@@ -166,6 +170,7 @@ const emits = defineEmits(['parentAddItemBox'])
       :canvas-id="canvasId"
       :show-component-bar="showComponentBar"
       :can-edit-sql="canEditSql"
+      :platform-template="platformTemplate"
       @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
     ></CanvasCore>
   </div>

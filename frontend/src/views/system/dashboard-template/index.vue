@@ -1,32 +1,127 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
-import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
-import iconDashboardUrl from '@/assets/svg/dashboard.svg?url'
+import icon_delete from '@/assets/svg/icon_delete.svg'
+import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
+import icon_dashboard from '@/assets/permission/icon_dashboard.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import EmptyBackgroundSvg from '@/views/dashboard/common/EmptyBackgroundSvg.vue'
+import HandleMore from '@/views/dashboard/common/HandleMore.vue'
+import SQPreview from '@/views/dashboard/preview/SQPreview.vue'
+import SQPreviewHead from '@/views/dashboard/preview/SQPreviewHead.vue'
 import { dashboardApi } from '@/api/dashboard'
-import { useUserStore } from '@/stores/user'
 
 const { t } = useI18n()
-const userStore = useUserStore()
+const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
-const usingId = ref('')
+const previewLoading = ref(false)
+const deletingId = ref('')
 const keyword = ref('')
 const list = ref<any[]>([])
+const selectedId = ref('')
+const previewKey = ref(0)
+const preview = reactive({
+  dashboardInfo: {} as Record<string, any>,
+  componentData: [] as any[],
+  canvasStyleData: {} as Record<string, any>,
+  canvasViewInfo: {} as Record<string, any>,
+})
 
-const canUseInWorkspace = computed(() => userStore.isPlatformWorkspaceDelegate)
+const hasPreview = computed(() => Boolean(preview.dashboardInfo?.id))
+const hasCanvasPreview = computed(() => hasPreview.value && preview.componentData.length > 0)
+const templateMenuList = computed(() => [
+  {
+    label: t('dashboard.delete'),
+    command: 'delete',
+    svgName: icon_delete,
+  },
+])
 const filteredList = computed(() => {
   const value = keyword.value.trim().toLowerCase()
   if (!value) return list.value
   return list.value.filter((item) =>
-    [item.name, item.remark, item.content_id].some((field) =>
+    [item.name, item.id].some((field) =>
       String(field || '').toLowerCase().includes(value)
     )
   )
 })
+
+const templateMetaText = (item: any) => {
+  if (!item?.id) return '-'
+  return `ID ${item.id}`
+}
+
+const parseJson = (value: any, fallback: any) => {
+  if (!value) return fallback
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return fallback
+  }
+}
+
+const clearPreview = () => {
+  preview.dashboardInfo = {}
+  preview.componentData = []
+  preview.canvasStyleData = {}
+  preview.canvasViewInfo = {}
+  previewKey.value += 1
+}
+
+const loadTemplatePreview = async (id: string) => {
+  if (!id) {
+    clearPreview()
+    return
+  }
+  previewLoading.value = true
+  try {
+    const res = await dashboardApi.platform_template_admin_load(
+      { id, include_data: false },
+      { requestOptions: { silent: true } }
+    )
+    preview.dashboardInfo = {
+      id: res.id,
+      name: res.name,
+      pid: res.pid,
+      datasource: res.datasource,
+      status: res.status,
+      source: res.source,
+      contentId: res.content_id,
+      type: res.type,
+      createName: res.create_name,
+      updateName: res.update_name,
+      createTime: res.create_time,
+      updateTime: res.update_time,
+      canEdit: res.can_edit === true,
+      canShare: false,
+      isDefault: false,
+    }
+    preview.componentData = parseJson(res.component_data, [])
+    preview.canvasStyleData = parseJson(res.canvas_style_data, {})
+    preview.canvasViewInfo = parseJson(res.canvas_view_info, {})
+    previewKey.value += 1
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+const selectTemplate = async (item: any, syncRoute = true) => {
+  if (!item?.id || selectedId.value === item.id) return
+  selectedId.value = item.id
+  if (syncRoute) {
+    await router.replace({
+      path: '/system/dashboard-template',
+      query: { ...route.query, templateId: item.id },
+    })
+  }
+  await loadTemplatePreview(item.id)
+}
 
 const loadList = async () => {
   loading.value = true
@@ -35,42 +130,75 @@ const loadList = async () => {
       requestOptions: { silent: true },
     })
     list.value = Array.isArray(res) ? res : []
+    const routeTemplateId = Array.isArray(route.query.templateId)
+      ? route.query.templateId[0]
+      : route.query.templateId
+    const nextSelected =
+      list.value.find((item) => String(item.id) === String(routeTemplateId || selectedId.value)) ||
+      list.value[0]
+    if (nextSelected) {
+      await selectTemplate(nextSelected, false)
+    } else {
+      selectedId.value = ''
+      clearPreview()
+    }
   } finally {
     loading.value = false
   }
 }
 
-const sourceText = (item: any) => {
-  const remark = String(item.remark || '')
-  const tenantMatch = remark.match(/source_tenant_id=([^;]+)/)
-  const dashboardMatch = remark.match(/source_dashboard_id=([^;]+)/)
-  if (!tenantMatch && !dashboardMatch) return '-'
-  return [tenantMatch ? `WS ${tenantMatch[1]}` : '', dashboardMatch ? dashboardMatch[1] : '']
-    .filter(Boolean)
-    .join(' / ')
-}
-
-const copyToWorkspace = async (item: any) => {
-  if (!canUseInWorkspace.value || usingId.value) return
+const deleteTemplate = async (item?: any) => {
+  const id = item?.id || selectedId.value
+  const name = item?.name || preview.dashboardInfo?.name || ''
+  if (!id || deletingId.value) return
   const confirmed = await ElMessageBox.confirm(
-    t('dashboard.platform_template_use_confirm', { name: item.name }),
+    t('dashboard.platform_template_delete_confirm', { name }),
     {
-      confirmButtonText: t('common.confirm'),
+      confirmButtonText: t('dashboard.delete'),
       cancelButtonText: t('common.cancel'),
+      confirmButtonType: 'danger',
       type: 'warning',
       autofocus: false,
       showClose: false,
     }
   ).catch(() => false)
   if (!confirmed) return
-  usingId.value = item.id
+  deletingId.value = id
   try {
-    await dashboardApi.platform_template_copy_to_workspace({ template_id: item.id })
-    ElMessage.success(t('dashboard.platform_template_use_success'))
+    await dashboardApi.platform_template_admin_delete({ id, name })
+    ElMessage.success(t('dashboard.delete_success'))
+    if (String(id) === String(selectedId.value)) {
+      const nextQuery = { ...route.query }
+      delete nextQuery.templateId
+      selectedId.value = ''
+      clearPreview()
+      await router.replace({
+        path: '/system/dashboard-template',
+        query: nextQuery,
+      })
+    }
+    await loadList()
   } finally {
-    usingId.value = ''
+    deletingId.value = ''
   }
 }
+
+const handleTemplateCommand = (command: string, item: any) => {
+  if (command === 'delete') {
+    deleteTemplate(item)
+  }
+}
+
+watch(
+  () => filteredList.value.map((item) => item.id).join(','),
+  async () => {
+    await nextTick()
+    if (selectedId.value && filteredList.value.some((item) => item.id === selectedId.value)) return
+    if (filteredList.value[0]) {
+      await selectTemplate(filteredList.value[0])
+    }
+  }
+)
 
 onMounted(() => {
   loadList()
@@ -78,88 +206,134 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-loading="loading" class="platform-dashboard-template">
-    <div class="page-toolbar">
-      <div class="title-wrap">
+  <div v-loading="loading" class="platform-template-workbench no-padding">
+    <aside class="template-sidebar">
+      <div class="sidebar-head">
         <div class="title">{{ t('dashboard.platform_template_library') }}</div>
         <div class="subtitle">{{ t('dashboard.platform_template_library_desc') }}</div>
       </div>
-      <div class="toolbar-actions">
-        <el-input
-          v-model="keyword"
-          clearable
-          :placeholder="t('dashboard.platform_template_search')"
-          @keyup.enter="loadList"
+      <el-input
+        v-model="keyword"
+        clearable
+        class="search-input"
+        :placeholder="t('dashboard.platform_template_search')"
+      >
+        <template #prefix>
+          <el-icon>
+            <icon_searchOutline_outlined class="svg-icon" />
+          </el-icon>
+        </template>
+      </el-input>
+
+      <div v-if="filteredList.length" class="template-list">
+        <div
+          v-for="item in filteredList"
+          :key="item.id"
+          role="button"
+          tabindex="0"
+          class="template-row"
+          :class="{ active: selectedId === item.id }"
+          @click="selectTemplate(item)"
+          @keydown.enter.prevent="selectTemplate(item)"
+          @keydown.space.prevent="selectTemplate(item)"
         >
-          <template #prefix>
-            <el-icon>
-              <icon_searchOutline_outlined class="svg-icon" />
-            </el-icon>
-          </template>
-        </el-input>
-        <el-button secondary @click="loadList">{{ t('common.refresh') }}</el-button>
-      </div>
-    </div>
-
-    <EmptyBackground
-      v-if="!filteredList.length"
-      :description="t('dashboard.platform_template_empty')"
-      class="template-empty"
-      img-type="noneWhite"
-    />
-
-    <div v-else class="template-grid">
-      <div v-for="item in filteredList" :key="item.id" class="template-card">
-        <div class="preview">
-          <img :src="iconDashboardUrl" width="60" height="60" />
-          <div class="preview-title">{{ t('dashboard.platform_template_mark') }}</div>
-        </div>
-        <div class="card-body">
-          <div class="name ellipsis" :title="item.name">{{ item.name }}</div>
-          <div class="meta-row">
-            <span>{{ t('dashboard.platform_template_source') }}</span>
-            <strong class="ellipsis" :title="sourceText(item)">{{ sourceText(item) }}</strong>
-          </div>
-          <div class="meta-row">
-            <span>{{ t('dashboard.store_datasource') }}</span>
-            <strong>{{ item.datasource || '-' }}</strong>
-          </div>
-        </div>
-        <div class="card-actions">
-          <el-button
-            type="primary"
-            :disabled="!canUseInWorkspace"
-            :loading="usingId === item.id"
-            @click="copyToWorkspace(item)"
-          >
-            <template #icon>
-              <icon_into_item_outlined />
-            </template>
-            {{ t('dashboard.platform_template_use') }}
-          </el-button>
+          <span class="row-icon"><icon_dashboard /></span>
+          <span class="row-body">
+            <span class="row-name ellipsis" :title="item.name">{{ item.name }}</span>
+            <span class="row-meta ellipsis" :title="templateMetaText(item)">{{ templateMetaText(item) }}</span>
+          </span>
+          <span class="row-actions" @click.stop>
+            <HandleMore
+              :menu-list="templateMenuList"
+              :icon-name="icon_more_outlined"
+              placement="bottom-end"
+              @handle-command="(command: string) => handleTemplateCommand(command, item)"
+            />
+          </span>
         </div>
       </div>
-    </div>
+
+      <EmptyBackground
+        v-else
+        :description="t('dashboard.platform_template_empty')"
+        class="template-empty"
+        img-type="noneWhite"
+      />
+    </aside>
+
+    <main
+      class="template-preview-area"
+      :class="{ 'is-empty': !hasPreview }"
+    >
+      <div class="preview-stage">
+        <SQPreviewHead
+          :dashboard-info="hasPreview ? preview.dashboardInfo : {}"
+          :component-data="preview.componentData"
+          :canvas-view-info="preview.canvasViewInfo"
+          platform-template
+        />
+        <div
+          v-loading="previewLoading"
+          class="content"
+          :class="{ 'content--empty': !hasCanvasPreview }"
+        >
+          <SQPreview
+            v-if="hasCanvasPreview"
+            :key="`platform-template-${selectedId}-${previewKey}`"
+            :canvas-id="`platform-template-${selectedId}`"
+            :dashboard-info="preview.dashboardInfo"
+            :component-data="preview.componentData"
+            :canvas-style-data="preview.canvasStyleData"
+            :canvas-view-info="preview.canvasViewInfo"
+            show-position="preview"
+            readonly-template
+          />
+          <EmptyBackgroundSvg
+            v-else-if="hasPreview"
+            :description="t('dashboard.no_dashboard_info')"
+          />
+          <EmptyBackgroundSvg
+            v-else-if="filteredList.length"
+            :description="t('dashboard.select_dashboard_tips')"
+          />
+          <EmptyBackground
+            v-else
+            :description="t('dashboard.platform_template_empty')"
+            img-type="none"
+          />
+        </div>
+        <div class="template-head-actions">
+          <el-button secondary @click="loadList">{{ t('common.refresh') }}</el-button>
+        </div>
+      </div>
+    </main>
   </div>
 </template>
 
 <style scoped lang="less">
-.platform-dashboard-template {
+.platform-template-workbench {
   height: 100%;
-  padding: 0 0 16px;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  color: var(--workspace-text-primary, #1f2329);
 }
 
-.page-toolbar {
-  min-height: 44px;
-  margin-bottom: 16px;
+.template-sidebar {
+  min-height: 0;
+  border-right: 1px solid var(--workspace-border, #e2eaf4);
+  background: var(--workspace-panel-bg, var(--theme-panel-bg));
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+}
+
+.sidebar-head {
+  padding: 16px 16px 12px;
 }
 
 .title {
-  color: var(--workspace-text-primary, var(--theme-text-primary, #1f2329));
+  color: var(--workspace-text-primary, #1f2329);
   font-size: 16px;
   line-height: 24px;
   font-weight: 600;
@@ -168,92 +342,198 @@ onMounted(() => {
 .subtitle {
   margin-top: 4px;
   color: var(--workspace-text-secondary, #667085);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-
-  .ed-input {
-    width: 260px;
-  }
-}
-
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 300px));
-  gap: 18px;
-  align-items: start;
-}
-
-.template-card {
-  border: 1px solid var(--workspace-border, #e2eaf4);
-  border-radius: 8px;
-  background: var(--workspace-card-bg, #fff);
-  overflow: hidden;
-  box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
-}
-
-.preview {
-  height: 164px;
-  border-bottom: 1px solid var(--workspace-border-soft, #eff4fa);
-  background: linear-gradient(180deg, #fbfdff 0%, #f3f7fc 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--workspace-text-secondary, #66758f);
-}
-
-.preview-title {
-  margin-top: 8px;
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.card-body {
-  padding: 14px;
-}
-
-.name {
-  color: var(--workspace-text-primary, #1b2a41);
-  font-size: 15px;
-  line-height: 24px;
-  font-weight: 600;
-}
-
-.meta-row {
-  margin-top: 8px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  color: var(--workspace-text-secondary, #66758f);
   font-size: 12px;
   line-height: 18px;
+}
 
-  span {
-    flex: 0 0 auto;
+.search-input {
+  width: calc(100% - 32px);
+  margin: 0 16px 12px;
+}
+
+.template-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 12px;
+}
+
+.template-row {
+  width: 100%;
+  min-height: 54px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &.active {
+    background: var(--ed-color-primary-1a, rgba(51, 112, 255, 0.1));
   }
 
-  strong {
-    min-width: 0;
-    color: var(--workspace-text-primary, #1b2a41);
-    font-weight: 500;
+  &:hover .row-actions,
+  &.active .row-actions {
+    display: inline-flex;
+  }
+
+  &.active .row-name {
+    color: var(--ed-color-primary, #3370ff);
   }
 }
 
-.card-actions {
-  padding: 0 14px 14px;
+.row-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--workspace-text-secondary, #667085);
+}
 
-  .ed-button {
-    width: 100%;
-  }
+.row-body {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.row-name {
+  color: var(--workspace-text-primary, #1f2329);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.row-meta {
+  margin-top: 2px;
+  color: var(--workspace-text-secondary, #667085);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.row-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--workspace-text-tertiary, #8f959e);
+}
+
+.row-actions :deep(.hover-icon) {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-actions :deep(.hover-icon:hover) {
+  background: rgba(31, 35, 41, 0.1);
+  color: var(--workspace-text-primary, #1f2329);
 }
 
 .template-empty {
-  padding-top: 180px;
+  padding-top: 96px;
+}
+
+.template-preview-area {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+}
+
+.preview-stage {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.content {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0;
+  align-items: stretch;
+
+  &.content--empty {
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.template-head-actions {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-preview-area :deep(.preview-head .canvas-opt-button) {
+  padding-right: 96px;
+}
+
+.template-preview-area :deep(.preview-head .canvas-name) {
+  max-width: 520px;
+}
+
+.template-preview-area .content.content--empty {
+  :deep(.empty-info),
+  :deep(.ed-empty) {
+    width: 100%;
+    height: 100%;
+    padding-top: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  }
+
+  :deep(.ed-empty__description) {
+    color: var(--workspace-text-secondary, #66758f);
+  }
+}
+
+@media (max-width: 900px) {
+  .platform-template-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .template-sidebar {
+    min-height: 260px;
+    border-right: 0;
+    border-bottom: 1px solid var(--workspace-border, #e2eaf4);
+  }
+
+  .template-head-actions {
+    position: static;
+    justify-content: flex-end;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--workspace-border, #e2eaf4);
+  }
+
+  .template-preview-area :deep(.preview-head .canvas-opt-button) {
+    padding-right: 0;
+  }
 }
 </style>

@@ -875,7 +875,15 @@ def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private
                 component_data="[]",
                 canvas_style_data="{}",
                 canvas_view_info=json.dumps(
-                    {"chart-1": {"datasource": 2, "sql": "select 1", "data": {"data": [{"v": 1}]}}}
+                    {
+                        "chart-1": {
+                            "datasource": 2,
+                            "sql": "select 1",
+                            "status": "success",
+                            "data": {"fields": ["v"], "data": [{"v": 1}]},
+                            "fields": ["v"],
+                        }
+                    }
                 ),
             )
         )
@@ -897,9 +905,14 @@ def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private
     assert exc_info.value.status_code == 404
     assert template.tenant_id == dashboard_service.DEFAULT_TENANT_ID
     assert template.source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+    assert template.content_id == "0"
+    assert template.datasource is None
     chart = json.loads(template_record.canvas_view_info)["chart-1"]
     assert chart["sql"] == "select 1"
-    assert chart["data"]["data"] == []
+    assert chart["datasource"] is None
+    assert chart["status"] == "success"
+    assert chart["data"]["data"] == [{"v": 1}]
+    assert chart["data"]["fields"] == ["v"]
 
 
 def test_platform_admin_can_list_dashboard_templates_without_workspace_context():
@@ -920,7 +933,7 @@ def test_platform_admin_can_list_dashboard_templates_without_workspace_context()
                 tenant_id=dashboard_service.DEFAULT_TENANT_ID,
                 name="平台模板",
                 pid="root",
-                datasource=2,
+                datasource=None,
                 node_type="leaf",
                 type="dashboard",
                 source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
@@ -942,9 +955,303 @@ def test_platform_admin_can_list_dashboard_templates_without_workspace_context()
     assert templates[0].id == "template-dashboard"
     assert templates[0].source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE
     assert templates[0].remark == "source_dashboard_id=source-1;source_tenant_id=2"
-    assert templates[0].can_edit is False
+    assert templates[0].can_edit is True
     assert templates[0].can_share is False
     assert templates[0].can_set_default is False
+
+
+def test_platform_admin_updates_template_without_touching_source_dashboard():
+    engine = _engine_with_dashboard_table()
+    platform_admin = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=None,
+        tenant_role=None,
+        workspace_status="platform_admin",
+    )
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="source-dashboard",
+                tenant_id=2,
+                name="来源看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                create_by="1",
+                create_time=90,
+                update_time=90,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 1"}}),
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="template-dashboard",
+                tenant_id=dashboard_service.DEFAULT_TENANT_ID,
+                name="平台模板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                remark="source_dashboard_id=source-dashboard;source_tenant_id=2",
+                content_id="0",
+                create_by="9",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 2"}}),
+            )
+        )
+        session.commit()
+
+        updated = dashboard_service.update_platform_dashboard_template(
+            session=session,
+            user=platform_admin,
+            dashboard=CreateDashboard(
+                id="template-dashboard",
+                name="平台模板新版",
+                node_type="leaf",
+                type="dashboard",
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 3"}}),
+            ),
+        )
+        source = session.get(CoreDashboard, "source-dashboard")
+        template = session.get(CoreDashboard, "template-dashboard")
+
+    assert updated.id == "template-dashboard"
+    assert updated.name == "平台模板新版"
+    assert template.name == "平台模板新版"
+    assert template.content_id == "0"
+    assert json.loads(template.canvas_view_info)["chart-1"]["sql"] == "select 3"
+    assert json.loads(template.canvas_view_info)["chart-1"]["datasource"] is None
+    assert source.name == "来源看板"
+    assert json.loads(source.canvas_view_info)["chart-1"]["sql"] == "select 1"
+
+
+def test_platform_admin_deletes_template_without_touching_source_dashboard():
+    engine = _engine_with_dashboard_table()
+    platform_admin = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=None,
+        tenant_role=None,
+        workspace_status="platform_admin",
+    )
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="source-dashboard",
+                tenant_id=2,
+                name="来源看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                create_by="1",
+                create_time=90,
+                update_time=90,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 1"}}),
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="template-dashboard",
+                tenant_id=dashboard_service.DEFAULT_TENANT_ID,
+                name="平台模板",
+                pid="root",
+                datasource=None,
+                node_type="leaf",
+                type="dashboard",
+                source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                remark="source_dashboard_id=source-dashboard;source_tenant_id=2",
+                content_id="0",
+                create_by="9",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": None, "sql": "select 2"}}),
+            )
+        )
+        session.commit()
+
+        deleted = dashboard_service.delete_platform_dashboard_template(
+            session=session,
+            user=platform_admin,
+            template_id="template-dashboard",
+        )
+        source = session.get(CoreDashboard, "source-dashboard")
+        template = session.get(CoreDashboard, "template-dashboard")
+        templates = dashboard_service.list_platform_dashboard_templates(session=session, user=platform_admin)
+
+    assert deleted is True
+    assert template.delete_flag == 1
+    assert template.delete_by == "9"
+    assert source.delete_flag == 0
+    assert json.loads(source.canvas_view_info)["chart-1"]["sql"] == "select 1"
+    assert templates == []
+
+
+def test_platform_delegate_cannot_delete_platform_template():
+    engine = _engine_with_dashboard_table()
+    delegate_user = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=1,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="template-dashboard",
+                tenant_id=dashboard_service.DEFAULT_TENANT_ID,
+                name="平台模板",
+                pid="root",
+                datasource=None,
+                node_type="leaf",
+                type="dashboard",
+                source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                create_by="9",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info="{}",
+            )
+        )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            dashboard_service.delete_platform_dashboard_template(
+                session=session,
+                user=delegate_user,
+                template_id="template-dashboard",
+            )
+        template = session.get(CoreDashboard, "template-dashboard")
+
+    assert exc_info.value.status_code == 403
+    assert template.delete_flag == 0
+
+
+def test_platform_template_load_repairs_legacy_loading_template_snapshot(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    platform_admin = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=None,
+        tenant_role=None,
+        workspace_status="platform_admin",
+    )
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: None)
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="source-dashboard",
+                tenant_id=2,
+                name="来源看板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                create_by="1",
+                create_time=90,
+                update_time=90,
+                delete_flag=0,
+                component_data=json.dumps([{"id": "source-chart", "component": "SQView"}]),
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps(
+                    {
+                        "source-chart": {
+                            "id": "source-chart",
+                            "datasource": 2,
+                            "sql": "select 1",
+                            "status": "success",
+                            "data": {"fields": ["v"], "data": [{"v": 7}]},
+                            "fields": ["v"],
+                            "chart": {"id": "source-chart", "title": "来源图表"},
+                        }
+                    }
+                ),
+            )
+        )
+        session.add(
+            CoreDashboard(
+                id="template-dashboard",
+                tenant_id=dashboard_service.DEFAULT_TENANT_ID,
+                name="平台模板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                remark="source_dashboard_id=source-dashboard;source_tenant_id=2",
+                content_id="source-dashboard",
+                create_by="9",
+                create_time=100,
+                update_time=100,
+                delete_flag=0,
+                component_data=json.dumps([{"id": "legacy-chart", "component": "SQView"}]),
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps(
+                    {
+                        "legacy-chart": {
+                            "id": "legacy-chart",
+                            "datasource": 2,
+                            "sql": "select 1",
+                            "status": "loading",
+                            "data": {"fields": [], "data": []},
+                            "fields": [],
+                        }
+                    }
+                ),
+            )
+        )
+        session.commit()
+
+        loaded = dashboard_service.load_platform_dashboard_template(
+            session=session,
+            user=platform_admin,
+            template_id="template-dashboard",
+        )
+        template = session.get(CoreDashboard, "template-dashboard")
+
+    assert template.datasource is None
+    assert template.content_id == "0"
+    loaded_views = json.loads(loaded["canvas_view_info"])
+    assert len(loaded_views) == 1
+    repaired_chart = next(iter(loaded_views.values()))
+    assert repaired_chart["datasource"] is None
+    assert repaired_chart["status"] == "success"
+    assert repaired_chart["data"]["data"] == [{"v": 7}]
 
 
 def test_platform_template_copy_to_workspace_creates_independent_workspace_dashboard(monkeypatch):
@@ -967,7 +1274,7 @@ def test_platform_template_copy_to_workspace_creates_independent_workspace_dashb
                 tenant_id=dashboard_service.DEFAULT_TENANT_ID,
                 name="平台模板",
                 pid="root",
-                datasource=2,
+                datasource=None,
                 node_type="leaf",
                 type="dashboard",
                 source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
@@ -977,7 +1284,7 @@ def test_platform_template_copy_to_workspace_creates_independent_workspace_dashb
                 delete_flag=0,
                 component_data="[]",
                 canvas_style_data="{}",
-                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 1"}}),
+                canvas_view_info=json.dumps({"chart-1": {"datasource": None, "sql": "select 1"}}),
             )
         )
         session.commit()
@@ -998,7 +1305,7 @@ def test_platform_template_copy_to_workspace_creates_independent_workspace_dashb
     assert copied.create_by == "1"
     assert copied.update_by == "1"
     assert json.loads(copied_record.canvas_view_info)["chart-1"]["datasource"] == 3
-    assert json.loads(template_record.canvas_view_info)["chart-1"]["datasource"] == 2
+    assert json.loads(template_record.canvas_view_info)["chart-1"]["datasource"] is None
 
 
 def test_project_viewer_sees_copied_default_dashboard_but_not_admin_default(monkeypatch):

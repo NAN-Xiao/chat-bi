@@ -14,6 +14,7 @@ import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import {
   getCreateCanvasSourceKey,
   getDashboardCanvasSourceKey,
+  getPlatformTemplateCanvasSourceKey,
   loadDashboardCanvasDraft,
   saveDashboardCanvasDraft,
 } from '@/views/dashboard/utils/canvasDraft.ts'
@@ -29,6 +30,7 @@ const dataInitState = ref(true)
 const state = reactive({
   routerPid: null as string | null,
   resourceId: null as string | null,
+  platformTemplateId: null as string | null,
   opt: null as string | null,
   datasource: null as number | string | null | undefined,
 })
@@ -46,6 +48,17 @@ const loadCanvasResource = (id: string | number) =>
     })
   })
 
+const loadPlatformTemplateResource = (id: string | number) =>
+  new Promise<any>((resolve) => {
+    load_resource_prepare(
+      { id, include_data: false },
+      function (result: any) {
+        resolve(result)
+      },
+      { platformTemplate: true, includeData: false }
+    )
+  })
+
 const firstQueryValue = (value: unknown) => {
   if (Array.isArray(value)) {
     return value[0] ? String(value[0]) : null
@@ -57,6 +70,7 @@ const syncRouteState = () => {
   const query = router.currentRoute.value.query
   state.opt = firstQueryValue(query.opt)
   state.resourceId = firstQueryValue(query.resourceId)
+  state.platformTemplateId = firstQueryValue(query.platformTemplateId)
   state.routerPid = firstQueryValue(query.pid)
   state.datasource = firstQueryValue(query.datasource) || datasourceContext.datasourceId
 }
@@ -88,11 +102,15 @@ const loadCanvasFromRoute = async () => {
   persistCanvasDraft()
   canvasStateReady = false
   syncRouteState()
-  await datasourceContext.loadDatasources()
-  if (loadVersion !== routeLoadVersion) return
+  if (!state.platformTemplateId) {
+    await datasourceContext.loadDatasources()
+    if (loadVersion !== routeLoadVersion) return
+  }
 
   const sourceKey =
-    state.opt === 'create'
+    state.platformTemplateId
+      ? getPlatformTemplateCanvasSourceKey(state.platformTemplateId)
+      : state.opt === 'create'
       ? getCreateCanvasSourceKey(state.datasource, state.routerPid)
       : getDashboardCanvasSourceKey(state.resourceId)
   if (
@@ -106,7 +124,20 @@ const loadCanvasFromRoute = async () => {
 
   dataInitState.value = false
   try {
-    if (state.opt === 'create') {
+    if (state.platformTemplateId && sourceKey) {
+      const templateId = state.platformTemplateId
+      const result = await loadPlatformTemplateResource(templateId)
+      if (loadVersion !== routeLoadVersion) return
+      await applyLoadedCanvasResource(templateId, result, sourceKey)
+      dashboardStore.updateDashboardInfo({
+        canEdit: true,
+        canShare: false,
+      })
+      const restored = await restoreCanvasDraft(sourceKey)
+      if (!restored) {
+        dashboardStore.markCanvasSaved()
+      }
+    } else if (state.opt === 'create') {
       const createSourceKey = getCreateCanvasSourceKey(state.datasource, state.routerPid)
       await pauseCanvasStateWatch(() => {
         dashboardStore.canvasDataInit()
@@ -260,10 +291,13 @@ const addComponent = (componentSource: any, viewInfo?: any) => {
   if (component && dashboardEditorInnerRef.value) {
     component.id = guid()
     // add view
-    if (component?.component === 'SQView' && !!viewInfo) {
-      viewInfo['sourceId'] = viewInfo['id']
-      viewInfo['id'] = component.id
-      dashboardStore.addCanvasViewInfo(viewInfo)
+    if (component?.component === 'SQView') {
+      const nextViewInfo = viewInfo ? cloneDeep(viewInfo) : createEmptyViewInfo(component.id)
+      if (viewInfo) {
+        nextViewInfo['sourceId'] = nextViewInfo['id']
+      }
+      nextViewInfo['id'] = component.id
+      dashboardStore.addCanvasViewInfo(nextViewInfo)
     } else if (component.component === 'SQTab') {
       const subTabName = guid('tab')
       component.propValue[0].name = subTabName
@@ -275,6 +309,31 @@ const addComponent = (componentSource: any, viewInfo?: any) => {
     dashboardEditorInnerRef.value.addItemToBox(component)
   }
 }
+
+const createEmptyViewInfo = (id: string) => ({
+  id,
+  sql: '',
+  datasource: state.platformTemplateId ? null : state.datasource || datasourceContext.datasourceId,
+  data: {
+    fields: [],
+    data: [],
+  },
+  fields: [],
+  status: 'success',
+  dataState: 'ready',
+  loadingProgress: 100,
+  message: '',
+  chart: {
+    id,
+    type: 'table',
+    sourceType: 'table',
+    title: t('dashboard.view'),
+    columns: [],
+    xAxis: [],
+    yAxis: [],
+    series: [],
+  },
+})
 
 const maxYComponentCount = () => {
   if (componentData.value.length === 0) {
@@ -314,8 +373,11 @@ const baseParams = computed(() => {
   return {
     opt: state.opt,
     resourceId: state.resourceId,
+    platformTemplate: Boolean(state.platformTemplateId),
+    platformTemplateId: state.platformTemplateId,
     pid: state.routerPid,
     datasource: state.datasource,
+    canUseChatHistory: !state.platformTemplateId,
   }
 })
 const findPositionX = (width: number) => {
@@ -337,6 +399,7 @@ const findPositionX = (width: number) => {
         ref="dashboardEditorInnerRef"
         :canvas-component-data="componentData"
         :canvas-view-info="canvasViewInfo"
+        :platform-template="Boolean(state.platformTemplateId)"
       >
       </DashboardEditor>
     </div>

@@ -18,7 +18,9 @@ const router = useRouter()
 const edit = () => {
   router.push({
     path: '/canvas',
-    query: { resourceId: props.dashboardInfo.id },
+    query: props.platformTemplate
+      ? { platformTemplateId: props.dashboardInfo.id }
+      : { resourceId: props.dashboardInfo.id },
   })
 }
 const props = defineProps({
@@ -37,9 +39,13 @@ const props = defineProps({
     required: false,
     default: () => ({}),
   },
+  platformTemplate: {
+    type: Boolean,
+    default: false,
+  },
 })
 const canEdit = computed(() => props.dashboardInfo?.canEdit === true)
-const canInterpretDashboard = computed(() => !!props.dashboardInfo?.id)
+const canInterpretDashboard = computed(() => !!props.dashboardInfo?.id && !props.platformTemplate)
 const titleText = computed(() => props.dashboardInfo?.name || t('dashboard.dashboard'))
 const reportPromptText = ref('')
 const reportPromptVisible = ref(false)

@@ -18,6 +18,12 @@ export const dashboardApi = {
     request.get('/dashboard/platform-delegate/template/list', config),
   platform_template_admin_list: (config?: any) =>
     request.get('/dashboard/platform-template/list', config),
+  platform_template_admin_load: (params: any, config?: any) =>
+    request.post('/dashboard/platform-template/load', params, config),
+  platform_template_admin_update: (params: any, config?: any) =>
+    request.post('/dashboard/platform-template/update', params, config),
+  platform_template_admin_delete: (params: any, config?: any) =>
+    request.post('/dashboard/platform-template/delete', params, config),
   platform_template_copy_from_dashboard: (params: any, config?: any) =>
     request.post('/dashboard/platform-delegate/template/copy-from-dashboard', params, config),
   platform_template_copy_to_workspace: (params: any, config?: any) =>

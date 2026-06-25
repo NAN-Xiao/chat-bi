@@ -98,6 +98,10 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  platformTemplate: {
+    type: Boolean,
+    default: false,
+  },
   resizeStart: {
     type: Function,
     default: () => {
@@ -523,6 +527,9 @@ function removeItem(index: number) {
     }
   })
   canvasComponentData.value.splice(index, 1)
+  if (item?.component === 'SQView' && item.id && props.canvasViewInfo?.[item.id]) {
+    delete props.canvasViewInfo[item.id]
+  }
 }
 
 function getNextDragId() {
@@ -1441,6 +1448,7 @@ defineExpose({
           :disabled="fullscreenFlag"
           :can-edit-sql="canEditSql"
           :show-component-bar="showComponentBar"
+          :platform-template="platformTemplate"
           @parent-add-item-box="(subItem: any) => addItemBox(subItem)"
         >
         </component>
@@ -1449,6 +1457,7 @@ defineExpose({
     <DashboardSqlEditor
       v-model="sqlEditorVisible"
       :view-info="editingViewInfo"
+      :allow-static-apply="platformTemplate"
       @applied="onSqlApplied"
     />
   </div>

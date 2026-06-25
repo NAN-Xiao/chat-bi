@@ -12,7 +12,10 @@ import { snapshotStoreWithOut } from '@/stores/dashboard/snapshot.ts'
 import icon_undo_outlined from '@/assets/svg/icon_undo_outlined.svg'
 import icon_redo_outlined from '@/assets/svg/icon_redo_outlined.svg'
 import icon_arrow_left_outlined from '@/assets/svg/icon_arrow-left_outlined.svg'
-import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
+import {
+  saveDashboardResource,
+  savePlatformTemplateResource,
+} from '@/views/dashboard/utils/canvasUtils.ts'
 import ChatChartSelection from '@/views/dashboard/editor/ChatChartSelection.vue'
 import icon_pc_outlined from '@/assets/svg/icon_pc_outlined.svg'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
@@ -29,6 +32,10 @@ const emits = defineEmits(['addComponents'])
 const resourceGroupOptRef = ref(null)
 const chatChartSelectionRef = ref(null)
 const openViewDialog = () => {
+  if (!props.baseParams?.canUseChatHistory) {
+    emits('addComponents', 'SQView')
+    return
+  }
   // @ts-expect-error  @typescript-eslint/ban-ts-comment
   chatChartSelectionRef.value?.dialogInit()
 }
@@ -59,6 +66,21 @@ const saveCanvasWithCheck = () => {
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
     resourceGroupOptRef.value?.optInit(createParams)
   } else if (dashboardInfo.value.id) {
+    if (props.baseParams?.platformTemplate) {
+      savePlatformTemplateResource(
+        {
+          id: dashboardInfo.value.id,
+          name: dashboardInfo.value.name,
+        },
+        function () {
+          ElMessage({
+            type: 'success',
+            message: t('common.save_success'),
+          })
+        }
+      )
+      return
+    }
     const updateParams = {
       opt: 'updateLeaf',
       id: dashboardInfo.value.id,
@@ -141,6 +163,13 @@ const redo = () => {
 }
 
 const backToMain = () => {
+  if (props.baseParams?.platformTemplate) {
+    router.push({
+      path: '/system/dashboard-template',
+      query: dashboardInfo.value.id ? { templateId: dashboardInfo.value.id } : undefined,
+    })
+    return
+  }
   router.push({
     path: '/dashboard/index',
     query: dashboardInfo.value.id ? { resourceId: dashboardInfo.value.id } : undefined,
@@ -261,6 +290,7 @@ const previewInner = () => {
     </Teleport>
     <ResourceGroupOpt ref="resourceGroupOptRef" @finish="groupOptFinish"></ResourceGroupOpt>
     <ChatChartSelection
+      v-if="baseParams?.canUseChatHistory"
       ref="chatChartSelectionRef"
       @add-chat-chart="addChatChart"
       @finish="chartSelectionFinish"

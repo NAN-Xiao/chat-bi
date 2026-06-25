@@ -16,7 +16,6 @@ const invitationRespondingId = ref('')
 const applicationCancelingId = ref('')
 
 const workspaceList = computed<TenantInfo[]>(() => userStore.getTenants || [])
-const currentWorkspaceId = computed(() => String(userStore.getTenantId || ''))
 const joinedWorkspaceCount = computed(() => workspaceList.value.length)
 const pendingInvitationCount = computed(() => pendingInvitations.value.length)
 const pendingApplicationCount = computed(() => pendingApplications.value.length)
@@ -77,12 +76,6 @@ const formatApplicationType = (type?: string) => {
   return t('tenant.application_type_create')
 }
 
-const currentWorkspaceLabel = computed(() => {
-  if (isPlatformOnlyAdmin.value) return t('access.platform_admin_workspace_label')
-  if (!userStore.getTenantId) return t('access.no_current_workspace')
-  return t('access.current_workspace_named', { name: userStore.getTenantName })
-})
-
 const headerTag = computed(() => {
   if (isPlatformOnlyAdmin.value) return t('access.platform_admin')
   if (!joinedWorkspaceCount.value) return t('access.no_joined_workspace_status')
@@ -92,75 +85,6 @@ const headerTag = computed(() => {
 const headerTagType = computed(() =>
   isPlatformOnlyAdmin.value || joinedWorkspaceCount.value ? 'success' : 'info'
 )
-
-const roleConfigs = computed(() => [
-  {
-    key: 'owner' as const,
-    label: t('access.owner_group_title'),
-    shortLabel: t('access.owner_group_short'),
-    tagType: roleTagType('owner'),
-    description: t('access.owner_group_description'),
-    capabilities: [
-      t('access.owner_capability_members'),
-      t('access.owner_capability_security'),
-      t('access.owner_capability_data'),
-    ],
-    responsibilities: [
-      t('access.owner_responsibility_boundary'),
-      t('access.owner_responsibility_trust'),
-      t('access.owner_responsibility_risk'),
-    ],
-  },
-  {
-    key: 'admin' as const,
-    label: t('access.admin_group_title'),
-    shortLabel: t('access.admin_group_short'),
-    tagType: roleTagType('admin'),
-    description: t('access.admin_group_description'),
-    capabilities: [
-      t('access.admin_capability_members'),
-      t('access.admin_capability_config'),
-      t('access.admin_capability_support'),
-    ],
-    responsibilities: [
-      t('access.admin_responsibility_policy'),
-      t('access.admin_responsibility_support'),
-      t('access.admin_responsibility_data'),
-    ],
-  },
-  {
-    key: 'member' as const,
-    label: t('access.member_group_title'),
-    shortLabel: t('access.member_group_short'),
-    tagType: roleTagType('member'),
-    description: t('access.member_group_description'),
-    capabilities: [
-      t('access.member_capability_analysis'),
-      t('access.member_capability_assets'),
-      t('access.member_capability_request'),
-    ],
-    responsibilities: [
-      t('access.member_responsibility_scope'),
-      t('access.member_responsibility_share'),
-      t('access.member_responsibility_request'),
-    ],
-  },
-])
-
-const roleGroups = computed(() => {
-  const buckets: Record<WorkspaceRoleKey, TenantInfo[]> = {
-    owner: [],
-    admin: [],
-    member: [],
-  }
-  workspaceList.value.forEach((workspace) => {
-    buckets[normalizeRole(workspace.role)].push(workspace)
-  })
-  return roleConfigs.value.map((config) => ({
-    ...config,
-    items: buckets[config.key],
-  }))
-})
 
 const loadPendingInvitations = async () => {
   if (isPlatformOnlyAdmin.value) {
@@ -224,111 +148,126 @@ onMounted(() => {
       </el-tag>
     </div>
 
-    <section class="access-summary">
-      <div class="summary-main">
-        <div class="summary-label">{{ t('access.workspace_identity_title') }}</div>
-        <div class="summary-value">{{ currentWorkspaceLabel }}</div>
-        <div class="summary-description">{{ t('access.workspace_identity_description') }}</div>
-      </div>
-      <div class="summary-stats">
-        <div v-for="group in roleGroups" :key="group.key" class="summary-stat">
-          <div class="summary-stat-value">{{ group.items.length }}</div>
-          <div class="summary-stat-label">{{ group.shortLabel }}</div>
-        </div>
-      </div>
-    </section>
-
-    <section v-if="pendingRequestCount" class="access-section invitation-section">
-      <div class="section-heading">
-        <div>
-          <div class="section-title">{{ t('tenant.my_workspace_requests') }}</div>
-          <div class="section-description">
-            {{ t('access.pending_workspace_requests_description') }}
-          </div>
-        </div>
-        <el-tag type="warning" effect="light" round>
-          {{ t('access.workspace_count', { count: pendingRequestCount }) }}
-        </el-tag>
-      </div>
-
-      <div class="invitation-list">
-        <div v-for="application in pendingApplications" :key="`application-${application.id}`" class="invitation-row">
-          <div class="invitation-main">
-            <div class="workspace-title-row">
-              <span class="workspace-name">
-                {{ application.tenant_name || '-' }}
-              </span>
-              <el-tag type="info" effect="plain" round>
-                {{ formatApplicationType(application.application_type) }}
-              </el-tag>
-              <el-tag type="warning" effect="plain" round>
-                {{ t('tenant.application_status_pending') }}
-              </el-tag>
-            </div>
-            <div class="invitation-meta">
-              <span>{{ t('tenant.submitted_at') }} {{ formatDateTime(application.create_time) }}</span>
-              <span>{{ t('tenant.requested_role') }}: {{ roleLabel(application.requested_role) }}</span>
-            </div>
-            <div v-if="application.reason" class="invitation-reason">
-              {{ t('tenant.apply_reason') }}: {{ application.reason }}
-            </div>
-          </div>
-          <div class="invitation-actions">
-            <el-button
-              text
-              type="danger"
-              :loading="applicationCancelingId === String(application.id)"
-              @click="cancelApplication(application)"
-            >
-              {{ t('tenant.withdraw_action') }}
-            </el-button>
+    <div class="access-overview-grid">
+      <section class="access-panel identity-panel">
+        <div class="section-heading">
+          <div>
+            <div class="section-title">{{ t('access.workspace_identity_title') }}</div>
+            <div class="section-description">{{ t('access.workspace_identity_description') }}</div>
           </div>
         </div>
 
-        <div v-for="invitation in pendingInvitations" :key="invitation.id" class="invitation-row">
-          <div class="invitation-main">
-            <div class="workspace-title-row">
-              <span class="workspace-name">
-                {{ invitation.tenant_name || '-' }}
-              </span>
-              <el-tag type="info" effect="plain" round>
-                {{ t('tenant.application_type_invite') }}
-              </el-tag>
-              <el-tag type="warning" effect="plain" round>
-                {{ t('tenant.application_status_pending') }}
-              </el-tag>
+        <div v-if="workspaceList.length" class="identity-list">
+          <div v-for="workspace in workspaceList" :key="workspace.id" class="identity-row">
+            <div class="workspace-main">
+              <div class="workspace-title-row">
+                <span class="workspace-name">{{ formatWorkspaceName(workspace) }}</span>
+              </div>
+              <div v-if="formatWorkspaceMeta(workspace)" class="workspace-meta">
+                {{ formatWorkspaceMeta(workspace) }}
+              </div>
             </div>
-            <div class="invitation-meta">
-              <span>{{ t('tenant.inviter') }}: {{ invitationInviterLabel(invitation) }}</span>
-              <span>{{ t('tenant.invited_at') }} {{ formatDateTime(invitation.create_time) }}</span>
-              <span>{{ t('tenant.requested_role') }}: {{ roleLabel(invitation.requested_role) }}</span>
-            </div>
-            <div v-if="invitation.reason" class="invitation-reason">
-              {{ t('tenant.invitation_note') }}: {{ invitation.reason }}
-            </div>
-          </div>
-          <div class="invitation-actions">
-            <el-button
-              type="primary"
-              :loading="invitationRespondingId === String(invitation.id)"
-              @click="respondInvitation(invitation, true)"
-            >
-              {{ t('tenant.accept_invitation') }}
-            </el-button>
-            <el-button
-              text
-              type="danger"
-              :disabled="invitationRespondingId === String(invitation.id)"
-              @click="respondInvitation(invitation, false)"
-            >
-              {{ t('tenant.reject_invitation') }}
-            </el-button>
+            <el-tag :type="roleTagType(normalizeRole(workspace.role))" effect="plain" round>
+              {{ roleLabel(workspace.role) }}
+            </el-tag>
           </div>
         </div>
-      </div>
-    </section>
+        <div v-else class="empty-state">{{ t('access.no_joined_workspace_status') }}</div>
+      </section>
 
-    <section class="access-section">
+      <section class="access-panel request-panel">
+        <div class="section-heading">
+          <div>
+            <div class="section-title">{{ t('tenant.my_workspace_requests') }}</div>
+            <div class="section-description">
+              {{ t('access.pending_workspace_requests_description') }}
+            </div>
+          </div>
+          <el-tag :type="pendingRequestCount ? 'warning' : 'info'" effect="light" round>
+            {{ t('access.pending_request_count', { count: pendingRequestCount }) }}
+          </el-tag>
+        </div>
+
+        <div v-if="pendingRequestCount" class="request-list">
+          <div v-for="application in pendingApplications" :key="`application-${application.id}`" class="request-row">
+            <div class="request-main">
+              <div class="workspace-title-row">
+                <span class="workspace-name">
+                  {{ application.tenant_name || '-' }}
+                </span>
+                <el-tag type="info" effect="plain" round>
+                  {{ formatApplicationType(application.application_type) }}
+                </el-tag>
+                <el-tag type="warning" effect="plain" round>
+                  {{ t('tenant.application_status_pending') }}
+                </el-tag>
+              </div>
+              <div class="request-meta">
+                <span>{{ t('tenant.submitted_at') }} {{ formatDateTime(application.create_time) }}</span>
+                <span>{{ t('tenant.requested_role') }}: {{ roleLabel(application.requested_role) }}</span>
+              </div>
+              <div v-if="application.reason" class="request-reason">
+                {{ t('tenant.apply_reason') }}: {{ application.reason }}
+              </div>
+            </div>
+            <div class="request-actions">
+              <el-button
+                text
+                type="danger"
+                :loading="applicationCancelingId === String(application.id)"
+                @click="cancelApplication(application)"
+              >
+                {{ t('tenant.withdraw_action') }}
+              </el-button>
+            </div>
+          </div>
+
+          <div v-for="invitation in pendingInvitations" :key="invitation.id" class="request-row">
+            <div class="request-main">
+              <div class="workspace-title-row">
+                <span class="workspace-name">
+                  {{ invitation.tenant_name || '-' }}
+                </span>
+                <el-tag type="info" effect="plain" round>
+                  {{ t('tenant.application_type_invite') }}
+                </el-tag>
+                <el-tag type="warning" effect="plain" round>
+                  {{ t('tenant.application_status_pending') }}
+                </el-tag>
+              </div>
+              <div class="request-meta">
+                <span>{{ t('tenant.inviter') }}: {{ invitationInviterLabel(invitation) }}</span>
+                <span>{{ t('tenant.invited_at') }} {{ formatDateTime(invitation.create_time) }}</span>
+                <span>{{ t('tenant.requested_role') }}: {{ roleLabel(invitation.requested_role) }}</span>
+              </div>
+              <div v-if="invitation.reason" class="request-reason">
+                {{ t('tenant.invitation_note') }}: {{ invitation.reason }}
+              </div>
+            </div>
+            <div class="request-actions">
+              <el-button
+                type="primary"
+                :loading="invitationRespondingId === String(invitation.id)"
+                @click="respondInvitation(invitation, true)"
+              >
+                {{ t('tenant.accept_invitation') }}
+              </el-button>
+              <el-button
+                text
+                type="danger"
+                :disabled="invitationRespondingId === String(invitation.id)"
+                @click="respondInvitation(invitation, false)"
+              >
+                {{ t('tenant.reject_invitation') }}
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-state">{{ t('tenant.no_workspace_requests') }}</div>
+      </section>
+    </div>
+
+    <section class="access-panel role-reference-panel">
       <div class="section-heading">
         <div>
           <div class="section-title">{{ t('access.workspace_role_groups') }}</div>
@@ -336,9 +275,9 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="role-group-list">
-        <article v-for="group in roleGroups" :key="group.key" class="role-group">
-          <div class="role-group-header">
+      <div class="role-reference-grid">
+        <article v-for="group in visibleRoleGroups" :key="group.key" class="role-card">
+          <div class="role-card-header">
             <div>
               <div class="role-group-title-row">
                 <span class="role-group-title">{{ group.label }}</span>
@@ -364,31 +303,6 @@ onMounted(() => {
               </ul>
             </div>
           </div>
-
-          <div v-if="group.items.length" class="workspace-list">
-            <div v-for="workspace in group.items" :key="workspace.id" class="workspace-row">
-              <div class="workspace-main">
-                <div class="workspace-title-row">
-                  <span class="workspace-name">{{ formatWorkspaceName(workspace) }}</span>
-                  <el-tag
-                    v-if="String(workspace.id) === currentWorkspaceId"
-                    type="success"
-                    effect="plain"
-                    round
-                  >
-                    {{ t('access.current_workspace') }}
-                  </el-tag>
-                </div>
-                <div v-if="formatWorkspaceMeta(workspace)" class="workspace-meta">
-                  {{ formatWorkspaceMeta(workspace) }}
-                </div>
-              </div>
-              <el-tag :type="roleTagType(normalizeRole(workspace.role))" effect="plain" round>
-                {{ roleLabel(workspace.role) }}
-              </el-tag>
-            </div>
-          </div>
-          <div v-else class="role-empty">{{ t('access.no_workspace_in_role') }}</div>
         </article>
       </div>
     </section>
@@ -425,74 +339,33 @@ onMounted(() => {
     white-space: nowrap;
   }
 
-  .access-summary,
-  .access-section,
+  .access-overview-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+    gap: 16px;
+    align-items: start;
+    margin-bottom: 16px;
+  }
+
+  .access-panel,
   .access-notice {
     border: 1px solid #dee0e3;
     border-radius: 8px;
     background: #fff;
   }
 
-  .access-summary {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
-    gap: 24px;
-    padding: 24px;
+  .access-panel {
+    min-width: 0;
+    padding: 20px 24px 24px;
     margin-bottom: 16px;
+  }
+
+  .identity-panel {
     background: linear-gradient(180deg, #f7faf9 0%, #fff 100%);
   }
 
-  .summary-label {
-    color: #646a73;
-    font-size: 13px;
-    line-height: 20px;
-  }
-
-  .summary-value {
-    margin-top: 8px;
-    font-weight: 600;
-    font-size: 26px;
-    line-height: 34px;
-  }
-
-  .summary-description {
-    margin-top: 8px;
-    color: #646a73;
-    font-size: 14px;
-    line-height: 22px;
-  }
-
-  .summary-stats {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-    align-self: stretch;
-  }
-
-  .summary-stat {
-    min-width: 0;
-    padding: 14px 12px;
-    border: 1px solid #eff0f1;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.72);
-  }
-
-  .summary-stat-value {
-    font-weight: 600;
-    font-size: 24px;
-    line-height: 30px;
-  }
-
-  .summary-stat-label {
-    margin-top: 4px;
-    color: #646a73;
-    font-size: 13px;
-    line-height: 20px;
-  }
-
-  .access-section {
-    padding: 20px 24px 24px;
-    margin-bottom: 16px;
+  .access-overview-grid .access-panel {
+    margin-bottom: 0;
   }
 
   .section-heading {
@@ -501,6 +374,10 @@ onMounted(() => {
     justify-content: space-between;
     gap: 16px;
     margin-bottom: 16px;
+  }
+
+  .section-heading > .ed-tag {
+    flex-shrink: 0;
   }
 
   .section-title {
@@ -516,93 +393,40 @@ onMounted(() => {
     line-height: 20px;
   }
 
-  .role-group-list {
+  .identity-list,
+  .request-list {
     display: grid;
-    gap: 14px;
+    gap: 8px;
+    max-height: 320px;
+    overflow: auto;
+    padding-right: 2px;
   }
 
-  .role-group {
-    min-width: 0;
-    padding: 18px;
+  .identity-row,
+  .request-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
     border: 1px solid #eff0f1;
     border-radius: 8px;
     background: #fff;
   }
 
-  .role-group-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-  }
-
-  .role-group-title-row {
-    display: flex;
+  .identity-row {
     align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .role-group-title {
-    font-weight: 600;
-    font-size: 15px;
-    line-height: 23px;
-  }
-
-  .role-group-description {
-    margin-top: 6px;
-    color: #646a73;
-    font-size: 13px;
-    line-height: 20px;
-  }
-
-  .role-detail-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 14px;
-  }
-
-  .role-detail-block {
-    min-width: 0;
-    padding: 14px;
-    border-radius: 8px;
-    background: #f7f8fa;
-  }
-
-  .role-detail-title {
-    font-weight: 600;
-    font-size: 13px;
-    line-height: 20px;
-  }
-
-  .role-detail-list {
-    margin: 8px 0 0;
-    padding-left: 18px;
-    color: #4e5969;
-    font-size: 13px;
-    line-height: 22px;
-  }
-
-  .workspace-list {
-    display: grid;
-    gap: 8px;
-    margin-top: 14px;
-  }
-
-  .workspace-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
     min-height: 58px;
     padding: 10px 12px;
-    border: 1px solid #eff0f1;
-    border-radius: 8px;
-    background: #fff;
+    background: rgba(255, 255, 255, 0.84);
   }
 
-  .workspace-main {
+  .request-row {
+    align-items: flex-start;
+    min-height: 72px;
+    padding: 12px 14px;
+  }
+
+  .workspace-main,
+  .request-main {
     min-width: 0;
   }
 
@@ -629,38 +453,7 @@ onMounted(() => {
     word-break: break-word;
   }
 
-  .role-empty {
-    margin-top: 14px;
-    padding: 14px;
-    border-radius: 8px;
-    background: #f7f8fa;
-    color: #86909c;
-    font-size: 13px;
-    line-height: 20px;
-  }
-
-  .invitation-list {
-    display: grid;
-    gap: 10px;
-  }
-
-  .invitation-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    min-height: 76px;
-    padding: 12px 14px;
-    border: 1px solid #eff0f1;
-    border-radius: 8px;
-    background: #fff;
-  }
-
-  .invitation-main {
-    min-width: 0;
-  }
-
-  .invitation-meta {
+  .request-meta {
     display: flex;
     flex-wrap: wrap;
     gap: 6px 14px;
@@ -670,7 +463,7 @@ onMounted(() => {
     line-height: 18px;
   }
 
-  .invitation-reason {
+  .request-reason {
     margin-top: 6px;
     color: #86909c;
     font-size: 12px;
@@ -678,11 +471,90 @@ onMounted(() => {
     word-break: break-word;
   }
 
-  .invitation-actions {
+  .request-actions {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+  }
+
+  .empty-state {
+    padding: 14px;
+    border-radius: 8px;
+    background: #f7f8fa;
+    color: #86909c;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .role-reference-panel {
+    margin-bottom: 16px;
+  }
+
+  .role-reference-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .role-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid #eff0f1;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .role-card-header {
+    min-height: 74px;
+  }
+
+  .role-group-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .role-group-title {
+    font-weight: 600;
+    font-size: 15px;
+    line-height: 23px;
+  }
+
+  .role-group-description {
+    margin-top: 6px;
+    color: #646a73;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .role-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .role-detail-block {
+    min-width: 0;
+    padding: 14px;
+    border-radius: 8px;
+    background: #f7f8fa;
+  }
+
+  .role-detail-title {
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .role-detail-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    color: #4e5969;
+    font-size: 13px;
+    line-height: 22px;
   }
 
   .access-notice {
@@ -710,15 +582,10 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .access-page {
-    .access-summary,
-    .role-detail-grid {
+    .access-overview-grid {
       grid-template-columns: 1fr;
-    }
-
-    .summary-stats {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
 }
@@ -726,17 +593,14 @@ onMounted(() => {
 @media (max-width: 640px) {
   .access-page {
     .access-header,
-    .workspace-row,
-    .invitation-row {
+    .identity-row,
+    .request-row,
+    .section-heading {
       align-items: flex-start;
       flex-direction: column;
     }
 
-    .summary-stats {
-      grid-template-columns: 1fr;
-    }
-
-    .invitation-actions {
+    .request-actions {
       width: 100%;
       justify-content: flex-start;
       flex-wrap: wrap;

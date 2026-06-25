@@ -142,6 +142,7 @@ export const routes = [
           title: t('access.my_permissions'),
           iconActive: 'user',
           iconDeActive: 'noUser',
+          hidden: true,
         },
       },
     ],

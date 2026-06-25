@@ -671,6 +671,22 @@ def _clear_dashboard_chart_data(item: dict) -> None:
     item['fields'] = []
     item['status'] = 'loading'
     item['message'] = ''
+    item['dataState'] = 'loading'
+    item['loadingProgress'] = 0
+
+
+def _mark_dashboard_chart_snapshot_ready(item: dict) -> None:
+    if not isinstance(item.get('data'), dict):
+        item['data'] = {}
+    item['data']['data'] = item['data'].get('data') if isinstance(item['data'].get('data'), list) else []
+    data_fields = item['data'].get('fields') if isinstance(item['data'].get('fields'), list) else []
+    item_fields = item.get('fields') if isinstance(item.get('fields'), list) else []
+    item['data']['fields'] = data_fields or item_fields
+    item['fields'] = item_fields or item['data']['fields']
+    if item.get('status') in (None, '', 'loading') or item.get('dataState') == 'loading':
+        item['status'] = 'success'
+    item['dataState'] = 'failed' if item.get('status') == 'failed' else 'ready'
+    item['loadingProgress'] = 100
 
 
 def _clear_dashboard_payload_results(canvas_view_info: str | bytes | None) -> str:
@@ -679,6 +695,87 @@ def _clear_dashboard_payload_results(canvas_view_info: str | bytes | None) -> st
         if isinstance(item, dict):
             _clear_dashboard_chart_data(item)
     return orjson.dumps(canvas_view_obj).decode()
+
+
+def _clear_dashboard_template_datasource(canvas_view_info: str | bytes | None) -> str:
+    canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
+    _clear_dashboard_template_datasource_obj(canvas_view_obj)
+    return orjson.dumps(canvas_view_obj).decode()
+
+
+def _clear_dashboard_template_datasource_obj(canvas_view_obj: dict) -> None:
+    for item in canvas_view_obj.values():
+        if isinstance(item, dict):
+            item["datasource"] = None
+
+
+def _prepare_dashboard_template_canvas_view_info(canvas_view_info: str | bytes | None) -> str:
+    canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
+    for item in canvas_view_obj.values():
+        if not isinstance(item, dict):
+            continue
+        item["datasource"] = None
+        if item.get("sql") is not None or isinstance(item.get("chart"), dict):
+            _mark_dashboard_chart_snapshot_ready(item)
+    return orjson.dumps(canvas_view_obj).decode()
+
+
+def _remark_value(remark: str | None, key: str) -> str | None:
+    if not remark:
+        return None
+    prefix = f"{key}="
+    for part in str(remark).split(";"):
+        if part.startswith(prefix):
+            value = part[len(prefix):].strip()
+            return value or None
+    return None
+
+
+def _platform_template_needs_snapshot_repair(template: CoreDashboard) -> bool:
+    if template.datasource is not None:
+        return True
+    if template.content_id not in (None, "", "0"):
+        return True
+    canvas_view_obj = _parse_canvas_view_info(template.canvas_view_info)
+    for item in canvas_view_obj.values():
+        if not isinstance(item, dict):
+            continue
+        data = item.get("data") if isinstance(item.get("data"), dict) else {}
+        rows = data.get("data") if isinstance(data, dict) else []
+        if item.get("datasource") is not None:
+            return True
+        if item.get("status") == "loading" or item.get("dataState") == "loading":
+            return True
+        if item.get("sql") is not None and rows is None:
+            return True
+    return False
+
+
+def _repair_platform_template_snapshot_if_needed(session: SessionDep, template: CoreDashboard) -> None:
+    if not _platform_template_needs_snapshot_repair(template):
+        return
+    source_id = _remark_value(template.remark, "source_dashboard_id")
+    source = session.get(CoreDashboard, source_id) if source_id else None
+    if source and source.delete_flag != 1 and source.node_type == "leaf":
+        component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload(
+            source.component_data,
+            source.canvas_style_data,
+            source.canvas_view_info,
+        )
+        template.component_data = component_data
+        template.canvas_style_data = canvas_style_data
+        template.canvas_view_info = _prepare_dashboard_template_canvas_view_info(canvas_view_info)
+    else:
+        template.canvas_view_info = _prepare_dashboard_template_canvas_view_info(template.canvas_view_info)
+    template.tenant_id = DEFAULT_TENANT_ID
+    template.source = DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+    template.datasource = None
+    template.content_id = "0"
+    template.status = DASHBOARD_STATUS_ACTIVE
+    template.update_time = _now()
+    session.add(template)
+    session.commit()
+    session.refresh(template)
 
 
 def _user_name(session: SessionDep, user_id) -> str | None:
@@ -819,10 +916,25 @@ def _dashboard_base_response(
         record: CoreDashboard,
         datasource: int | None = None,
         active_share: CoreDashboardShare | None = None,
+        platform_template_context: bool = False,
 ) -> DashboardBaseResponse:
-    can_edit = False if _is_platform_admin_context(current_user) else _can_edit_dashboard(session, current_user, record)
-    can_share = False if _is_platform_admin_context(current_user) else _can_share_dashboard(session, current_user, record)
-    can_set_default = False if _is_platform_admin_context(current_user) else _can_set_default_dashboard(current_user)
+    can_edit = (
+        True
+        if platform_template_context and _is_platform_admin_context(current_user)
+        else False
+        if _is_platform_admin_context(current_user)
+        else _can_edit_dashboard(session, current_user, record)
+    )
+    can_share = (
+        False
+        if platform_template_context or _is_platform_admin_context(current_user)
+        else _can_share_dashboard(session, current_user, record)
+    )
+    can_set_default = (
+        False
+        if platform_template_context or _is_platform_admin_context(current_user)
+        else _can_set_default_dashboard(current_user)
+    )
     is_public = bool(
         record.is_default
         or active_share is not None
@@ -838,13 +950,13 @@ def _dashboard_base_response(
         tenant_id=record.tenant_id,
         name=record.name,
         pid=record.pid,
-        datasource=record.datasource if datasource is None else datasource,
+        datasource=None if platform_template_context else record.datasource if datasource is None else datasource,
         node_type=record.node_type,
         leaf=record.node_type == 'leaf',
         type=record.type,
         status=record.status,
         source=record.source,
-        content_id=record.content_id,
+        content_id="0" if platform_template_context else record.content_id,
         remark=record.remark,
         create_by=str(record.create_by) if record.create_by is not None else None,
         update_by=str(record.update_by) if record.update_by is not None else None,
@@ -997,16 +1109,17 @@ def _dashboard_payload(
         *,
         dashboard: QueryDashboard | None = None,
         default_context: bool = False,
+        platform_template_context: bool = False,
         include_data: bool = True,
 ):
-    effective_datasource = _effective_dashboard_datasource(record)
+    effective_datasource = None if platform_template_context else _effective_dashboard_datasource(record)
     if dashboard is not None and dashboard.datasource is not None and effective_datasource is not None:
         request_datasource = _normalize_datasource_id(dashboard.datasource)
         if request_datasource != effective_datasource:
             raise HTTPException(status_code=403, detail="Dashboard does not belong to the selected datasource")
-    if effective_datasource is not None and not default_context:
+    if effective_datasource is not None and not default_context and not platform_template_context:
         _ensure_datasource_access(session, current_user, effective_datasource)
-    elif effective_datasource is None and not default_context:
+    elif effective_datasource is None and not default_context and not platform_template_context:
         _check_dashboard_view_permission(session, current_user, record)
 
     result_dict = record.model_dump()
@@ -1015,16 +1128,27 @@ def _dashboard_payload(
     updater = _user_name(session, record.update_by)
     result_dict['create_name'] = creator
     result_dict['update_name'] = updater
-    result_dict['can_edit'] = _can_edit_dashboard(session, current_user, record)
-    result_dict['can_share'] = _can_share_dashboard(session, current_user, record)
-    result_dict['can_set_default'] = _can_set_default_dashboard(current_user)
+    if platform_template_context:
+        result_dict['can_edit'] = _is_platform_admin_context(current_user)
+        result_dict['can_share'] = False
+        result_dict['can_set_default'] = False
+    else:
+        result_dict['can_edit'] = _can_edit_dashboard(session, current_user, record)
+        result_dict['can_share'] = _can_share_dashboard(session, current_user, record)
+        result_dict['can_set_default'] = _can_set_default_dashboard(current_user)
     result_dict['is_default'] = bool(record.is_default)
 
     canvas_view_obj = _parse_canvas_view_info(result_dict.get('canvas_view_info'))
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue
-        item_datasource = _chart_datasource(record, item, effective_datasource)
+        if platform_template_context:
+            item["datasource"] = None
+            if item.get('sql') is not None:
+                _mark_dashboard_chart_snapshot_ready(item)
+            continue
+        else:
+            item_datasource = _chart_datasource(record, item, effective_datasource)
         if item.get('sql') is not None:
             if not include_data:
                 _clear_dashboard_chart_data(item)
@@ -1347,14 +1471,14 @@ def copy_dashboard_to_platform_template(
         source.canvas_style_data,
         source.canvas_view_info,
     )
-    canvas_view_info = _clear_dashboard_payload_results(canvas_view_info)
+    canvas_view_info = _prepare_dashboard_template_canvas_view_info(canvas_view_info)
     now = _now()
     record = CoreDashboard(
         id=uuid.uuid4().hex,
         tenant_id=DEFAULT_TENANT_ID,
         name=(name or source.name or "").strip() or source.name,
         pid="root",
-        datasource=_effective_dashboard_datasource(source),
+        datasource=None,
         org_id=source.org_id or "",
         level=1,
         node_type="leaf",
@@ -1375,13 +1499,19 @@ def copy_dashboard_to_platform_template(
         update_time=now,
         delete_flag=0,
         version=source.version or 3,
-        content_id=source.id,
+        content_id="0",
         check_version=source.check_version or "1",
     )
     session.add(record)
     session.commit()
     session.refresh(record)
-    return _dashboard_base_response(session, user, record, _effective_dashboard_datasource(record))
+    return _dashboard_base_response(
+        session,
+        user,
+        record,
+        None,
+        platform_template_context=True,
+    )
 
 
 def list_platform_dashboard_templates(session: SessionDep, user: CurrentUser):
@@ -1401,10 +1531,110 @@ def list_platform_dashboard_templates(session: SessionDep, user: CurrentUser):
         .order_by(CoreDashboard.update_time.desc(), CoreDashboard.create_time.desc())
     )
     result = session.exec(statement).scalars().all()
+    for record in result:
+        _repair_platform_template_snapshot_if_needed(session, record)
     return [
-        _dashboard_base_response(session, user, record, _effective_dashboard_datasource(record))
+        _dashboard_base_response(
+            session,
+            user,
+            record,
+            None,
+            platform_template_context=True,
+        )
         for record in result
     ]
+
+
+def load_platform_dashboard_template(
+        session: SessionDep,
+        user: CurrentUser,
+        template_id: str,
+        include_data: bool = False,
+):
+    template = _load_platform_template_or_404(session, template_id, user)
+    _repair_platform_template_snapshot_if_needed(session, template)
+    return _dashboard_payload(
+        session,
+        user,
+        template,
+        dashboard=QueryDashboard(id=template_id, include_data=include_data),
+        platform_template_context=True,
+        include_data=include_data,
+    )
+
+
+def update_platform_dashboard_template(
+        session: SessionDep,
+        user: CurrentUser,
+        dashboard: CreateDashboard,
+):
+    if not _is_platform_admin_context(user):
+        raise HTTPException(status_code=403, detail="Only SaaS admin can edit dashboard templates")
+    template = _load_platform_template_or_404(session, dashboard.id, user)
+    if not dashboard.name or not dashboard.name.strip():
+        raise HTTPException(status_code=400, detail="Dashboard template name is required")
+    duplicate = session.exec(
+        select(CoreDashboard.id).where(
+            and_(
+                or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
+                CoreDashboard.tenant_id == DEFAULT_TENANT_ID,
+                CoreDashboard.source == DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                CoreDashboard.status == DASHBOARD_STATUS_ACTIVE,
+                CoreDashboard.name == dashboard.name.strip(),
+                CoreDashboard.id != template.id,
+            )
+        )
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Dashboard template name already exists")
+    _clone_dashboard_canvas_payload(
+        dashboard.component_data,
+        dashboard.canvas_style_data,
+        dashboard.canvas_view_info,
+    )
+    template.name = dashboard.name.strip()
+    template.canvas_style_data = dashboard.canvas_style_data or "{}"
+    template.component_data = dashboard.component_data or "[]"
+    template.canvas_view_info = _prepare_dashboard_template_canvas_view_info(
+        _sanitize_canvas_view_info(dashboard.canvas_view_info or "{}")
+    )
+    template.mobile_layout = getattr(dashboard, "mobile_layout", None) or template.mobile_layout or 0
+    template.status = DASHBOARD_STATUS_ACTIVE
+    template.source = DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+    template.tenant_id = DEFAULT_TENANT_ID
+    template.datasource = None
+    template.content_id = "0"
+    template.node_type = "leaf"
+    template.pid = "root"
+    template.type = dashboard.type or template.type or "dashboard"
+    template.update_by = str(user.id)
+    template.update_time = _now()
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    return _dashboard_base_response(
+        session,
+        user,
+        template,
+        None,
+        platform_template_context=True,
+    )
+
+
+def delete_platform_dashboard_template(
+        session: SessionDep,
+        user: CurrentUser,
+        template_id: str,
+):
+    if not _is_platform_admin_context(user):
+        raise HTTPException(status_code=403, detail="Only SaaS admin can delete dashboard templates")
+    template = _load_platform_template_or_404(session, template_id, user)
+    template.delete_flag = 1
+    template.delete_time = _now()
+    template.delete_by = _user_id(user)
+    session.add(template)
+    session.commit()
+    return True
 
 
 def copy_platform_template_to_workspace_dashboard(
@@ -1415,6 +1645,7 @@ def copy_platform_template_to_workspace_dashboard(
 ):
     _require_platform_delegate(user)
     template = _load_platform_template_or_404(session, template_id, user)
+    _repair_platform_template_snapshot_if_needed(session, template)
     target_datasource_id = get_bound_datasource_id_for_tenant(session, _current_tenant_id(user))
     if target_datasource_id is not None:
         _ensure_datasource_access(session, user, target_datasource_id, required=True)

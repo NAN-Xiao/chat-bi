@@ -10,6 +10,7 @@ import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import icon_user from '@/assets/svg/icon_user.svg'
 import { useI18n } from 'vue-i18n'
 import PwdForm from './PwdForm.vue'
 import Apikey from './Apikey.vue'
@@ -115,6 +116,11 @@ const toSystem = () => {
 const toWorkspaceApplication = () => {
   popoverRef.value?.hide?.()
   router.push('/account/workspace-applications')
+}
+
+const toAccess = () => {
+  popoverRef.value?.hide?.()
+  router.push('/access/index')
 }
 
 const currentBusinessTenant = () => ({
@@ -279,6 +285,12 @@ onMounted(() => {
             <icon_add_outlined></icon_add_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('tenant.apply_workspace') }}</div>
+        </div>
+        <div class="popover-item" @click="toAccess">
+          <el-icon size="16">
+            <icon_user></icon_user>
+          </el-icon>
+          <div class="datasource-name">{{ $t('access.my_permissions') }}</div>
         </div>
         <div v-if="isLocalUser && !platFlag" class="popover-item" @click="openPwd">
           <el-icon size="16">

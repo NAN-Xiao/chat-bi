@@ -54,6 +54,9 @@ const matchesPathPrefix = (path: string, prefix: string) =>
 const isTenantChatBIRoute = (path: string) =>
   tenantChatBIEntryPrefixes.some((prefix) => matchesPathPrefix(path, prefix))
 
+const isPlatformTemplateCanvasRoute = (to: any) =>
+  to?.path === '/canvas' && Boolean(to?.query?.platformTemplateId)
+
 const restoreBusinessTenantAfterWorkspaceAdmin = async (to: any, from: any) => {
   if (!from?.path?.startsWith('/system') || to?.path?.startsWith('/system')) return
   if (!isTenantChatBIRoute(to.path)) return
@@ -169,11 +172,14 @@ const accessCrossPermission = (to: any) => {
   const tenantSystemRoute = to.path.startsWith('/system') && (tenantAdminOnly || tenantBusiness)
   const platformAdminOperation =
     userStore.isSystemAdminUser && !platformDelegate && platformOperation
+  const platformTemplateCanvasOperation =
+    userStore.isSystemAdminUser && !platformDelegate && isPlatformTemplateCanvasRoute(to)
   return (
     (userStore.isSystemAdminUser &&
       !platformDelegate &&
       isTenantChatBIRoute(to.path) &&
-      !platformAdminOperation) ||
+      !platformAdminOperation &&
+      !platformTemplateCanvasOperation) ||
     (platformDelegate && platformOnly) ||
     (!userStore.isSystemAdminUser && !userStore.hasActiveWorkspace && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||

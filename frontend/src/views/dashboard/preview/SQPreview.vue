@@ -53,6 +53,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  readonlyTemplate: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const { showPosition, canvasId } = toRefs(props)
@@ -153,6 +157,7 @@ defineExpose({
         :style="nowItemStyle(item)"
         :index="index"
         :frameless="inTab"
+        :readonly-template="readonlyTemplate"
       />
     </template>
   </div>

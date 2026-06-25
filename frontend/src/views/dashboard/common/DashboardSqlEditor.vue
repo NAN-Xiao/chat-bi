@@ -9,10 +9,12 @@ const props = withDefaults(
   defineProps<{
     modelValue: boolean
     viewInfo?: any
+    allowStaticApply?: boolean
   }>(),
   {
     modelValue: false,
     viewInfo: null,
+    allowStaticApply: false,
   }
 )
 
@@ -67,7 +69,10 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
 
 const fieldOptions = computed(() => preview.fields.map((field) => ({ label: field, value: field })))
 const hasPreviewData = computed(() => preview.status !== 'failed' && preview.data.length > 0)
-const sqlChangedAfterPreview = computed(() => form.sql.trim() !== lastPreviewSql.value.trim())
+const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource))
+const sqlChangedAfterPreview = computed(
+  () => !props.allowStaticApply && form.sql.trim() !== lastPreviewSql.value.trim()
+)
 const previewTableFields = computed(() => {
   if (form.columns.length > 0) {
     return form.columns.slice(0, 10)
@@ -251,6 +256,9 @@ function validateBeforeApply() {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return false
   }
+  if (props.allowStaticApply && !canRunPreview.value) {
+    return true
+  }
   if (sqlChangedAfterPreview.value) {
     ElMessage.warning(t('dashboard.sql_editor_need_preview'))
     return false
@@ -293,8 +301,11 @@ function applyChange() {
     data: [...preview.data],
   }
   props.viewInfo.status = preview.status
+  props.viewInfo.dataState = preview.status === 'failed' ? 'failed' : 'ready'
+  props.viewInfo.loadingProgress = 100
   props.viewInfo.message = preview.message
   props.viewInfo.chart = buildChart()
+  props.viewInfo.datasource = props.viewInfo.datasource || null
   previewVersion.value += 1
   emits('applied', props.viewInfo)
   visible.value = false
@@ -329,7 +340,7 @@ function closeDrawer() {
           />
         </el-form-item>
         <div class="action-row">
-          <el-button type="primary" @click="runPreview">{{ t('dashboard.sql_editor_run_preview') }}</el-button>
+          <el-button type="primary" :disabled="allowStaticApply && !canRunPreview" @click="runPreview">{{ t('dashboard.sql_editor_run_preview') }}</el-button>
           <span v-if="sqlChangedAfterPreview" class="muted">{{ t('dashboard.sql_editor_changed') }}</span>
         </div>
         <el-alert
