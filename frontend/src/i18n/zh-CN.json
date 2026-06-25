@@ -1,7 +1,7 @@
 {
   "menu": {
     "add_interface_credentials": "请添加接口凭证",
-    "Data Q&A": "智能问数",
+    "Data Q&A": "AI看板",
     "Data Connections": "数据源",
     "Dashboard": "看板",
     "AI Model Configuration": "模型配置",
@@ -321,7 +321,7 @@
     "efficiency_asset_usability_hint": "数据、看板和应用是否已可被使用",
     "efficiency_reusable_assets": "{count} 个可复用资产",
     "efficiency_analysis_maturity": "分析沉淀率",
-    "efficiency_analysis_maturity_hint": "看板和数据 Skills 是否形成沉淀",
+    "efficiency_analysis_maturity_hint": "看板和 Skills 是否形成沉淀",
     "efficiency_analysis_assets": "看板 {dashboards} / Skills {skills}",
     "efficiency_pending_resolution": "待办处理率",
     "efficiency_pending_resolution_hint": "成员申请是否已及时处理",
@@ -350,7 +350,7 @@
     "role_member": "普通成员",
     "asset_datasource": "数据项目",
     "asset_dashboard": "已发布看板",
-    "asset_terminology": "数据 Skills",
+    "asset_terminology": "Skills",
     "asset_training": "旧版 SQL 示例",
     "asset_custom_agent": "自定义 Agent",
     "asset_embedded": "嵌入应用",
@@ -371,8 +371,8 @@
     "action_manage_members": "管理成员",
     "action_manage_datasources": "配置数据项目",
     "action_open_dashboards": "查看看板",
-    "action_manage_terminology": "维护数据 Skills",
-    "action_manage_training": "维护数据 Skills",
+    "action_manage_terminology": "维护Skills",
+    "action_manage_training": "维护Skills",
     "action_manage_agents": "管理 Agent",
     "action_manage_embedded": "管理嵌入应用",
     "event_operator": "操作人",
@@ -561,7 +561,7 @@
     "default_ai_model": "默认模型",
     "select_ai_model_placeholder": "请选择使用模型",
     "target_scope": "作用范围",
-    "target_scope_smart_qa": "智能问数",
+    "target_scope_smart_qa": "AI看板",
     "target_scope_analysis_assistant": "分析助手",
     "target_scope_report_interpretation": "报表解读",
     "target_scope_all": "全部",
@@ -870,7 +870,7 @@
     "quick_question": "快捷提问",
     "new_chat": "新建对话",
     "start_zhishu": "开启问数",
-    "title": "智能问数",
+    "title": "AI看板",
     "placeholder": "请输入您的问题",
     "ask": "提问",
     "loading": "加载中...",
@@ -901,7 +901,7 @@
     "conversation_title": "对话标题",
     "copied": "已复制",
     "ask_failed": "报表失败",
-    "no_bound_datasource_answer": "当前工作空间未绑定数据，智能问数暂不可用。"
+    "no_bound_datasource_answer": "当前工作空间未绑定数据，AI看板暂不可用。"
   },
   "ds": {
     "title": "数据源管理",
@@ -1267,7 +1267,7 @@
     "operate_with_caution": "删除后，该项目下的用户将被移除，所有资源也将被删除，请谨慎操作。"
   },
   "access": {
-    "my_permissions": "我的权限",
+    "my_permissions": "个人中心",
     "subtitle": "当前账号按照管理员设置好的策略使用系统",
     "permission_overview": "权限概览",
     "current_level": "当前权限级别",
@@ -1349,7 +1349,7 @@
     "admin_group_short": "管理员",
     "admin_group_description": "你负责这些工作空间的日常管理，可维护成员、项目配置、语义资产和权限策略。",
     "admin_capability_members": "处理成员邀请、申请审核和成员角色调整。",
-    "admin_capability_config": "配置数据源、权限策略、语义层、数据 Skills 和 Agent。",
+    "admin_capability_config": "配置数据源、权限策略、语义层、Skills 和 Agent。",
     "admin_capability_support": "支持成员问数、看板建设和分析助手使用。",
     "admin_responsibility_policy": "按工作空间规则维护权限，不扩大无依据的数据范围。",
     "admin_responsibility_support": "帮助成员理解可用数据、口径和资产使用方式。",
@@ -1358,7 +1358,7 @@
     "member_group_short": "普通成员",
     "member_group_description": "你在这些工作空间中主要使用已开放的数据能力，可问数、查看看板和使用助手。",
     "member_capability_analysis": "在已授权项目内进行智能问答和分析。",
-    "member_capability_assets": "查看或使用已开放的看板、数据 Skills 和自定义 Agent。",
+    "member_capability_assets": "查看或使用已开放的看板、Skills 和自定义 Agent。",
     "member_capability_request": "需要更多数据或能力时向管理员申请。",
     "member_responsibility_scope": "只在授权范围内使用数据，不绕过项目和数据权限。",
     "member_responsibility_share": "分享分析结论时注意数据敏感性和上下文。",
@@ -1614,7 +1614,7 @@
       "FILTER_CUSTOM_PROMPT": "匹配自定义 Agent",
       "EXECUTE_SQL": "执行 SQL",
       "GENERATE_PICTURE": "生成图片",
-      "FILTER_DATA_SKILL": "匹配数据 Skill"
+      "FILTER_DATA_SKILL": "匹配 Skill"
     },
     "log_system": "对话模板",
     "log_question": "本次提问",
@@ -1625,7 +1625,7 @@
     "find_custom_prompt_title": "匹配到 {0} 个自定义 Agent",
     "query_count_title": "查询到 {0} 条数据",
     "generate_picture_success": "已生成图片",
-    "find_data_skill_title": "匹配到 {0} 个数据 Skill"
+    "find_data_skill_title": "匹配到 {0} 个 Skill"
   },
   "about": {
     "title": "关于",
@@ -1791,8 +1791,8 @@
     "trigger_limit": "最多支持创建 {0} 个 API Key"
   },
   "data_skill": {
-    "title": "数据 Skills",
-    "no_skill": "暂无数据 Skill",
+    "title": "Skills管理",
+    "no_skill": "暂无 Skills",
     "add_skill": "新建 Skill",
     "edit_skill": "编辑 Skill",
     "default_skill": "自动 Skills",
@@ -1814,9 +1814,9 @@
     "visible_shown": "显示",
     "visible_hidden": "隐藏",
     "visible_hint": "隐藏后，下级用户不可见也不可使用；不影响当前激活状态。",
-    "admin_title": "数据 Skills 管理",
-    "admin_platform_subtitle": "维护 SaaS 全局可见的数据 Skills，用户可在问答和分析助手中自动使用或手动锁定。",
-    "admin_workspace_subtitle": "维护当前工作空间公开的数据 Skills，用户可在问答和分析助手中自动使用或手动锁定。",
+    "admin_title": "Skills管理",
+    "admin_platform_subtitle": "维护 SaaS 全局可见的 Skills，用户可在问答和分析助手中自动使用或手动锁定。",
+    "admin_workspace_subtitle": "维护当前工作空间公开的 Skills，用户可在问答和分析助手中自动使用或手动锁定。",
     "platform_skill": "SaaS Skill"
   },
   "knowledge_base": {

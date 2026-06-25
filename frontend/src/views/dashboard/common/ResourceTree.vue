@@ -1064,7 +1064,10 @@ defineExpose({
           placement="bottom-end"
           @command="handleSortTypeChange"
         >
-          <el-icon class="filter-icon-span" :class="state.curSortType !== 'name_asc' && 'active'">
+          <el-icon
+            class="filter-icon-span sort-filter-btn"
+            :class="state.curSortType !== 'name_asc' && 'active'"
+          >
             <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
               <span class="sort-trigger-icon">
                 <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc"
@@ -1281,6 +1284,32 @@ defineExpose({
     flex: 0 0 34px;
     min-width: 34px;
     margin-left: 0;
+  }
+
+  &.sort-filter-btn {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    transition: color 160ms ease;
+
+    &:hover,
+    &:focus,
+    &:active {
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+      color: var(--ed-color-primary, #2f6bff);
+    }
+
+    &.active,
+    &.active:hover,
+    &.active:focus,
+    &.active:active {
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+      color: var(--ed-color-primary, #2f6bff);
+    }
   }
 
   &.compact-icon-btn {

@@ -406,7 +406,6 @@ const routerList = computed(() => {
     justify-content: center;
     transition:
       color 160ms ease,
-      border-color 160ms ease,
       background 160ms ease;
 
     .menu-line-icon-wrapper {
@@ -421,6 +420,31 @@ const routerList = computed(() => {
       display: inline-flex;
       align-items: center;
       line-height: 20px;
+    }
+
+    .menu-title-text {
+      position: relative;
+      transform-origin: center bottom;
+      transition:
+        transform 160ms ease,
+        font-weight 160ms ease;
+
+      &::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -5px;
+        height: 2px;
+        border-radius: 999px;
+        background: currentColor;
+        opacity: 0;
+        transform: scaleX(0.45);
+        transform-origin: center;
+        transition:
+          opacity 160ms ease,
+          transform 160ms ease;
+      }
     }
 
     .menu-line-icon-wrapper,
@@ -453,14 +477,24 @@ const routerList = computed(() => {
   > .ed-sub-menu:focus .ed-sub-menu__title {
     background: transparent !important;
     color: #1f2f4a !important;
+
+    .menu-title-text {
+      font-weight: 600;
+      transform: scale(1.06);
+    }
   }
 
   > .ed-menu-item.is-active,
   > .ed-sub-menu.is-active .ed-sub-menu__title {
     background: transparent !important;
-    border-bottom-color: var(--ed-color-primary, #2f6bff) !important;
+    border-bottom-color: transparent !important;
     color: var(--ed-color-primary, #2f6bff) !important;
     font-weight: 600;
+
+    .menu-title-text::after {
+      opacity: 1;
+      transform: scaleX(1);
+    }
   }
 
   .ed-sub-menu .ed-sub-menu__icon-arrow {
