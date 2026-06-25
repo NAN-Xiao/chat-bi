@@ -852,7 +852,11 @@
     "platform_template_use": "複製到目前工作空間",
     "platform_template_use_confirm": "確認將「{name}」複製到目前工作空間？",
     "platform_template_use_success": "已複製到目前工作空間",
-    "platform_template_delete_confirm": "確認刪除平台模板「{name}」？刪除後不會影響來源專案看板。"
+    "platform_template_delete_confirm": "確認刪除平台模板「{name}」？刪除後不會影響來源專案看板。",
+    "dashboard_create_mode": "建立方式",
+    "blank_dashboard": "空白看板",
+    "create_from_platform_template": "從模板建立",
+    "select_platform_template": "請選擇平台模板"
   },
   "qa": {
     "retrieve_error": "暫無內容",

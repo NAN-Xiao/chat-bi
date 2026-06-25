@@ -24,7 +24,7 @@ import { toLoginPage } from '@/utils/utils'
 import { useCache } from '@/utils/useCache'
 import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { ElMessage } from 'element-plus-secondary'
-import { PLATFORM_ADMIN_HOME, resolveManagementHome } from '@/utils/navigation'
+import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
 
 const { wsCache } = useCache()
@@ -51,10 +51,10 @@ const adminTenantList = computed(() =>
 )
 const hasAdminTenant = computed(() => adminTenantList.value.length > 0)
 const showAdminWorkspaceEntry = computed(
-  () => !isPlatformAdmin.value && hasAdminTenant.value
+  () => !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && hasAdminTenant.value
 )
 const showWorkspaceApplicationEntry = computed(
-  () => !isPlatformAdmin.value && !userStore.hasActiveWorkspace
+  () => !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && !userStore.hasActiveWorkspace
 )
 
 const isClient = computed(() => {
@@ -104,12 +104,11 @@ const canManageTenant = (role?: string) => {
 
 const toSystem = () => {
   popoverRef.value?.hide?.()
-  if (isPlatformWorkspaceDelegate.value) {
-    userStore.exitPlatformWorkspaceDelegate().finally(() => {
-      router.push(PLATFORM_ADMIN_HOME)
-    })
-    return
-  }
+  router.push(resolveManagementHome(userStore))
+}
+
+const toWorkspaceManagement = () => {
+  popoverRef.value?.hide?.()
   router.push(resolveManagementHome(userStore))
 }
 
@@ -232,6 +231,16 @@ onMounted(() => {
           </el-icon>
           <div class="datasource-name">{{ $t('common.platform_manage') }}</div>
         </div>
+        <div
+          v-if="isPlatformWorkspaceDelegate"
+          class="popover-item"
+          @click="toWorkspaceManagement"
+        >
+          <el-icon style="color: var(--theme-text-secondary)" size="16">
+            <icon_admin_outlined></icon_admin_outlined>
+          </el-icon>
+          <div class="datasource-name">{{ $t('tenant.management') }}</div>
+        </div>
         <el-popover
           v-if="showAdminWorkspaceEntry"
           v-model:visible="workspacePopoverVisible"
@@ -286,19 +295,27 @@ onMounted(() => {
           </el-icon>
           <div class="datasource-name">{{ $t('tenant.apply_workspace') }}</div>
         </div>
-        <div class="popover-item" @click="toAccess">
+        <div v-if="!isPlatformWorkspaceDelegate" class="popover-item" @click="toAccess">
           <el-icon size="16">
             <icon_user></icon_user>
           </el-icon>
           <div class="datasource-name">{{ $t('access.my_permissions') }}</div>
         </div>
-        <div v-if="isLocalUser && !platFlag" class="popover-item" @click="openPwd">
+        <div
+          v-if="!isPlatformWorkspaceDelegate && isLocalUser && !platFlag"
+          class="popover-item"
+          @click="openPwd"
+        >
           <el-icon size="16">
             <icon_key_outlined></icon_key_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('user.change_password') }}</div>
         </div>
-        <div v-if="!isPlatformAdmin" class="popover-item" @click="openApikey">
+        <div
+          v-if="!isPlatformAdmin && !isPlatformWorkspaceDelegate"
+          class="popover-item"
+          @click="openApikey"
+        >
           <el-icon size="16">
             <icon_api_key></icon_api_key>
           </el-icon>
@@ -339,7 +356,7 @@ onMounted(() => {
           </div>
         </el-popover>
         <div style="height: 4px; width: 100%"></div>
-        <div v-if="!isClient" class="popover-item mr4" @click="logout">
+        <div v-if="!isClient && !isPlatformWorkspaceDelegate" class="popover-item mr4" @click="logout">
           <el-icon size="16">
             <icon_logout_outlined></icon_logout_outlined>
           </el-icon>

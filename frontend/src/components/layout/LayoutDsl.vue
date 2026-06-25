@@ -291,7 +291,7 @@ onMounted(() => {
         </button>
       </div>
       <ProjectSelector
-        v-if="!showSysmenu && (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate)"
+        v-if="!showSysmenu && !userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate"
         :collapse="collapse"
       ></ProjectSelector>
       <Menu :collapse="collapseCopy"></Menu>

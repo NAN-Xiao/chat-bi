@@ -38,7 +38,6 @@ import {
   findFirstLeafDashboardNode,
   getRememberedDefaultDashboardId,
   rememberDefaultDashboardId,
-  resolveBusinessDashboardLandingTarget,
 } from '@/utils/dashboardLanding'
 const { wsCache } = useCache()
 
@@ -183,25 +182,6 @@ const isVirtualNode = (node?: SQTreeNode) => (node as any)?.virtual === true
 const isLeafDashboardNode = (node?: SQTreeNode) =>
   (node?.node_type === 'leaf' || node?.leaf === true) && !isVirtualNode(node)
 
-const isCurrentRouteTarget = (target: any) => {
-  const currentRoute = router.currentRoute.value
-  if (typeof target === 'string') {
-    return target === currentRoute.fullPath || target === currentRoute.path
-  }
-  if (!target?.path || target.path !== currentRoute.path) return false
-  const targetResourceId = target.query?.resourceId
-  if (!targetResourceId) return true
-  return String(targetResourceId) === String(currentRoute.query.resourceId || '')
-}
-
-const redirectToResolvedLanding = async () => {
-  if (!shouldAutoSelectDashboard()) return false
-  const target = await resolveBusinessDashboardLandingTarget(userStore)
-  if (isCurrentRouteTarget(target)) return false
-  await router.replace(target)
-  return true
-}
-
 const resolveInitialDashboardNode = () => {
   if (!shouldAutoSelectDashboard()) return undefined
   const routeResourceId = currentRouteDashboardId()
@@ -278,7 +258,6 @@ const getTree = async () => {
         leaf: true,
       }))
       state.resourceTree = _.cloneDeep(state.originResourceTree)
-      if (!state.resourceTree.length && (await redirectToResolvedLanding())) return
       afterTreeInit()
     })
     return
@@ -288,7 +267,6 @@ const getTree = async () => {
   state.originResourceTree = []
   if (!requestDatasourceId) {
     state.resourceTree = []
-    if (await redirectToResolvedLanding()) return
     afterTreeInit()
     return
   }
@@ -304,7 +282,6 @@ const getTree = async () => {
     state.originResourceTree = res || []
     state.resourceTree = _.cloneDeep(state.originResourceTree)
     handleSortTypeChange('name_asc')
-    if (!state.resourceTree.length && (await redirectToResolvedLanding())) return
     afterTreeInit()
   })
 }
@@ -402,9 +379,15 @@ const afterTreeInit = () => {
 
 const copyLoading = ref(false)
 const emit = defineEmits(['nodeClick', 'deleteCurResource', 'toggleSidebar'])
+const canCreateFromPlatformTemplate = computed<boolean>(
+  () => userStore.isPlatformWorkspaceDelegate && !props.defaultMode
+)
+const canOpenCreateDashboard = computed<boolean>(
+  () => canCreateDashboard.value || canCreateFromPlatformTemplate.value
+)
 
 function createNewObject() {
-  if (!canCreateDashboard.value) return
+  if (!canOpenCreateDashboard.value) return
   addOperation({ opt: 'newLeaf' })
 }
 
@@ -545,7 +528,7 @@ watch(
 )
 
 const addOperation = (params: any) => {
-  if (props.defaultMode || !canCreateDashboard.value) return
+  if (props.defaultMode || !canOpenCreateDashboard.value) return
   if (params?.id) {
     const folder = findTreeNode(state.originResourceTree, params.id)
     if (!folder || !canManageNode(folder)) return
@@ -800,7 +783,7 @@ const sortTypeTip = computed(() => {
 
 defineExpose({
   hasData,
-  canCreateDashboard,
+  canCreateDashboard: canOpenCreateDashboard,
   createNewObject,
   mounted,
 })
@@ -826,7 +809,7 @@ defineExpose({
         </el-button>
       </div>
       <el-button
-        v-if="!defaultMode && canCreateDashboard"
+        v-if="!defaultMode && canOpenCreateDashboard"
         class="create-dashboard-btn"
         type="primary"
         @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"

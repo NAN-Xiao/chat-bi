@@ -1,14 +1,16 @@
 <script lang="ts" setup>
 import folder from '@/assets/svg/folder.svg'
 import { type SQTreeNode } from '@/views/dashboard/utils/treeNode'
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { saveDashboardResource } from '@/views/dashboard/utils/canvasUtils.ts'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { useUserStore } from '@/stores/user'
 
 const { t } = useI18n()
 const datasourceContext = useDatasourceContextStore()
+const userStore = useUserStore()
 const emits = defineEmits(['finish'])
 const resource = ref(null)
 const state = reactive({
@@ -25,6 +27,7 @@ const state = reactive({
   targetInfo: null,
   attachParams: null,
   datasource: null as number | string | null | undefined,
+  platformTemplateList: [] as any[],
 })
 
 const getTitle = (opt: string) => {
@@ -73,8 +76,14 @@ const optInit = (params: any) => {
   resourceDialogShow.value = true
   resourceForm.name = params.name ?? getResourceNewName(params.opt)
   resourceForm.pid = params.pid || 'root'
+  resourceForm.createMode =
+    canCreateFromTemplate.value && !canCreateBlankDashboard.value ? 'template' : 'blank'
+  resourceForm.templateId = ''
   if (params.parentSelect) {
     getTree()
+  }
+  if (params.opt === 'newLeaf' && canCreateFromTemplate.value) {
+    loadPlatformTemplates()
   }
 }
 
@@ -85,6 +94,8 @@ const resourceForm = reactive({
   pid: '',
   pName: '',
   name: 'New Dashboard',
+  createMode: 'blank',
+  templateId: '',
 })
 
 const resourceFormRules = ref({
@@ -104,13 +115,23 @@ const resourceFormRules = ref({
       trigger: 'blur',
     },
   ],
+  templateId: [
+    {
+      required: true,
+      message: t('dashboard.select_platform_template'),
+      trigger: 'change',
+    },
+  ],
 })
 
 const resetForm = () => {
   state.dialogTitle = ''
   state.placeholder = ''
+  state.platformTemplateList = []
   resourceForm.name = ''
   resourceForm.pid = ''
+  resourceForm.createMode = 'blank'
+  resourceForm.templateId = ''
   resourceDialogShow.value = false
 }
 
@@ -123,11 +144,83 @@ const propsTree = {
 }
 
 const showPid = false
+const isNewDashboard = computed(() => state.opt === 'newLeaf')
+const canCreateBlankDashboard = computed(() => datasourceContext.canCreateDashboard === true)
+const canCreateFromTemplate = computed(() => userStore.isPlatformWorkspaceDelegate && isNewDashboard.value)
+const isTemplateCreateMode = computed(
+  () => canCreateFromTemplate.value && resourceForm.createMode === 'template'
+)
+
+const activeRules = computed(() => {
+  const rules: Record<string, any> = {
+    name: resourceFormRules.value.name,
+    pid: resourceFormRules.value.pid,
+  }
+  if (isTemplateCreateMode.value) {
+    rules.templateId = resourceFormRules.value.templateId
+  }
+  return rules
+})
+
+const loadPlatformTemplates = async () => {
+  loading.value = true
+  try {
+    const res = await dashboardApi.platform_template_list({
+      requestOptions: { silent: true },
+    })
+    state.platformTemplateList = Array.isArray(res) ? res : []
+  } finally {
+    loading.value = false
+  }
+}
+
+const onCreateModeChange = () => {
+  if (isTemplateCreateMode.value && !state.platformTemplateList.length) {
+    loadPlatformTemplates()
+  }
+}
+
+const onTemplateChange = (templateId: string) => {
+  const template = state.platformTemplateList.find((item: any) => String(item.id) === String(templateId))
+  if (!template) return
+  resourceForm.name = template.name || resourceForm.name
+}
+
+const copyTemplateToWorkspace = () => {
+  loading.value = true
+  dashboardApi
+    .platform_template_copy_to_workspace({
+      template_id: resourceForm.templateId,
+      name: resourceForm.name,
+    })
+    .then((rsp: any) => {
+      ElMessage({
+        type: 'success',
+        message: t('dashboard.platform_template_use_success'),
+      })
+      emits('finish', {
+        opt: state.opt,
+        resourceId: rsp.id,
+      })
+      resetForm()
+    })
+    .finally(() => {
+      loading.value = false
+    })
+}
 
 const saveResource = () => {
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   resource.value?.validate((result) => {
     if (result) {
+      if (isTemplateCreateMode.value) {
+        copyTemplateToWorkspace()
+        return
+      }
+      if (isNewDashboard.value && !canCreateBlankDashboard.value) {
+        ElMessage.warning(t('chat.no_dashboard_create_permission'))
+        return
+      }
       const params = {
         id: state.id,
         node_type: state.nodeType,
@@ -185,10 +278,45 @@ defineExpose({
       label-position="top"
       require-asterisk-position="right"
       :model="resourceForm"
-      :rules="resourceFormRules"
+      :rules="activeRules"
       class="last"
       @submit.prevent
     >
+      <el-form-item
+        v-if="canCreateFromTemplate"
+        :label="t('dashboard.dashboard_create_mode')"
+        prop="createMode"
+      >
+        <el-radio-group v-model="resourceForm.createMode" @change="onCreateModeChange">
+          <el-radio value="blank" :disabled="!canCreateBlankDashboard">
+            {{ t('dashboard.blank_dashboard') }}
+          </el-radio>
+          <el-radio value="template">{{ t('dashboard.create_from_platform_template') }}</el-radio>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item
+        v-if="isTemplateCreateMode"
+        :label="t('dashboard.platform_template_mark')"
+        required
+        prop="templateId"
+      >
+        <el-select
+          v-model="resourceForm.templateId"
+          filterable
+          class="template-select"
+          :placeholder="t('dashboard.select_platform_template')"
+          @change="onTemplateChange"
+          @keydown.stop
+          @keyup.stop
+        >
+          <el-option
+            v-for="item in state.platformTemplateList"
+            :key="item.id"
+            :label="item.name"
+            :value="item.id"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item :label="state.resourceFormNameLabel" prop="name">
         <el-input
           v-model="resourceForm.name"
@@ -276,5 +404,9 @@ defineExpose({
 
 .custom-tree-folder {
   color: rgb(255, 198, 10);
+}
+
+.template-select {
+  width: 100%;
 }
 </style>

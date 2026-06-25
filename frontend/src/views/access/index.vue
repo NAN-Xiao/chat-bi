@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus-secondary'
 import { useUserStore } from '@/stores/user'
@@ -7,6 +7,21 @@ import { tenantApi, type TenantApplicationInfo, type TenantInfo } from '@/api/te
 import { formatTimestamp } from '@/utils/date'
 
 type WorkspaceRoleKey = 'owner' | 'admin' | 'member'
+type WorkspaceRequestRow = {
+  id: number | string
+  application_type?: string
+  tenant_name?: string
+  status?: string
+  reason?: string
+  create_time?: number | string | null
+  inviter_name?: string
+  inviter_account?: string
+  requestType: 'application' | 'invitation'
+  requestTypeLabel: string
+  requestTimeLabel: string
+  requestTime?: number | string | null
+  descriptionText: string
+}
 
 const { t } = useI18n()
 const userStore = useUserStore()
@@ -14,6 +29,10 @@ const pendingInvitations = shallowRef<TenantApplicationInfo[]>([])
 const pendingApplications = shallowRef<TenantApplicationInfo[]>([])
 const invitationRespondingId = ref('')
 const applicationCancelingId = ref('')
+const requestPage = reactive({
+  currentPage: 1,
+  pageSize: 10,
+})
 
 const workspaceList = computed<TenantInfo[]>(() => userStore.getTenants || [])
 const joinedWorkspaceCount = computed(() => workspaceList.value.length)
@@ -67,7 +86,7 @@ const formatDateTime = (value?: number | string | null) => {
   return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm') : '-'
 }
 
-const invitationInviterLabel = (invitation: TenantApplicationInfo) =>
+const invitationInviterLabel = (invitation: Pick<TenantApplicationInfo, 'inviter_name' | 'inviter_account'>) =>
   invitation.inviter_name || invitation.inviter_account || '-'
 
 const formatApplicationType = (type?: string) => {
@@ -75,6 +94,61 @@ const formatApplicationType = (type?: string) => {
   if (type === 'invite') return t('tenant.application_type_invite')
   return t('tenant.application_type_create')
 }
+
+const formatApplicationStatus = (status?: string) => {
+  const key = `tenant.application_status_${status || 'pending'}`
+  const label = t(key)
+  return label === key ? status || '-' : label
+}
+
+const requestStatusClass = (status?: string) => {
+  if (status === 'approved') return 'status-approved'
+  if (status === 'rejected') return 'status-rejected'
+  if (status === 'cancelled') return 'status-cancelled'
+  return 'status-pending'
+}
+
+const requestRows = computed<WorkspaceRequestRow[]>(() =>
+  [
+    ...pendingApplications.value.map((item) => ({
+      id: item.id,
+      application_type: item.application_type,
+      tenant_name: item.tenant_name,
+      status: item.status,
+      reason: item.reason,
+      create_time: item.create_time,
+      requestType: 'application' as const,
+      requestTypeLabel: formatApplicationType(item.application_type),
+      requestTimeLabel: t('tenant.submitted_at'),
+      requestTime: item.create_time,
+      descriptionText: item.reason || '-',
+    })),
+    ...pendingInvitations.value.map((item) => ({
+      id: item.id,
+      application_type: item.application_type || 'invite',
+      tenant_name: item.tenant_name,
+      status: item.status,
+      reason: item.reason,
+      create_time: item.create_time,
+      inviter_name: item.inviter_name,
+      inviter_account: item.inviter_account,
+      requestType: 'invitation' as const,
+      requestTypeLabel: t('tenant.application_type_invite'),
+      requestTimeLabel: t('tenant.invited_at'),
+      requestTime: item.create_time,
+      descriptionText: item.reason || invitationInviterLabel(item),
+    })),
+  ]
+)
+
+const requestPageRows = computed(() => {
+  const start = (requestPage.currentPage - 1) * requestPage.pageSize
+  return requestRows.value.slice(start, start + requestPage.pageSize)
+})
+
+const maxRequestPage = computed(() =>
+  Math.max(1, Math.ceil(requestRows.value.length / requestPage.pageSize))
+)
 
 const headerTag = computed(() => {
   if (isPlatformOnlyAdmin.value) return t('access.platform_admin')
@@ -110,7 +184,7 @@ const refreshAccessData = async () => {
   await Promise.all([userStore.loadTenants(true), loadPendingApplications(), loadPendingInvitations()])
 }
 
-const respondInvitation = async (invitation: TenantApplicationInfo, approved: boolean) => {
+const respondInvitation = async (invitation: Pick<TenantApplicationInfo, 'id'>, approved: boolean) => {
   invitationRespondingId.value = String(invitation.id)
   try {
     await tenantApi.respondInvitation(invitation.id, { approved })
@@ -121,7 +195,7 @@ const respondInvitation = async (invitation: TenantApplicationInfo, approved: bo
   }
 }
 
-const cancelApplication = async (application: TenantApplicationInfo) => {
+const cancelApplication = async (application: Pick<TenantApplicationInfo, 'id'>) => {
   applicationCancelingId.value = String(application.id)
   try {
     await tenantApi.cancelApplication(application.id)
@@ -137,6 +211,15 @@ onMounted(() => {
     console.warn('Failed to load workspace access data', error)
   })
 })
+
+watch(
+  () => [requestRows.value.length, requestPage.pageSize],
+  () => {
+    if (requestPage.currentPage > maxRequestPage.value) {
+      requestPage.currentPage = maxRequestPage.value
+    }
+  }
+)
 </script>
 
 <template>
@@ -148,169 +231,132 @@ onMounted(() => {
       </el-tag>
     </div>
 
-    <div class="access-overview-grid">
-      <section class="access-panel identity-panel">
-        <div class="section-heading">
-          <div>
-            <div class="section-title">{{ t('access.workspace_identity_title') }}</div>
-            <div class="section-description">{{ t('access.workspace_identity_description') }}</div>
-          </div>
-        </div>
-
-        <div v-if="workspaceList.length" class="identity-list">
-          <div v-for="workspace in workspaceList" :key="workspace.id" class="identity-row">
-            <div class="workspace-main">
-              <div class="workspace-title-row">
-                <span class="workspace-name">{{ formatWorkspaceName(workspace) }}</span>
-              </div>
-              <div v-if="formatWorkspaceMeta(workspace)" class="workspace-meta">
-                {{ formatWorkspaceMeta(workspace) }}
-              </div>
-            </div>
-            <el-tag :type="roleTagType(normalizeRole(workspace.role))" effect="plain" round>
-              {{ roleLabel(workspace.role) }}
-            </el-tag>
-          </div>
-        </div>
-        <div v-else class="empty-state">{{ t('access.no_joined_workspace_status') }}</div>
-      </section>
-
-      <section class="access-panel request-panel">
-        <div class="section-heading">
-          <div>
-            <div class="section-title">{{ t('tenant.my_workspace_requests') }}</div>
-            <div class="section-description">
-              {{ t('access.pending_workspace_requests_description') }}
-            </div>
-          </div>
-          <el-tag :type="pendingRequestCount ? 'warning' : 'info'" effect="light" round>
-            {{ t('access.pending_request_count', { count: pendingRequestCount }) }}
-          </el-tag>
-        </div>
-
-        <div v-if="pendingRequestCount" class="request-list">
-          <div v-for="application in pendingApplications" :key="`application-${application.id}`" class="request-row">
-            <div class="request-main">
-              <div class="workspace-title-row">
-                <span class="workspace-name">
-                  {{ application.tenant_name || '-' }}
-                </span>
-                <el-tag type="info" effect="plain" round>
-                  {{ formatApplicationType(application.application_type) }}
-                </el-tag>
-                <el-tag type="warning" effect="plain" round>
-                  {{ t('tenant.application_status_pending') }}
-                </el-tag>
-              </div>
-              <div class="request-meta">
-                <span>{{ t('tenant.submitted_at') }} {{ formatDateTime(application.create_time) }}</span>
-                <span>{{ t('tenant.requested_role') }}: {{ roleLabel(application.requested_role) }}</span>
-              </div>
-              <div v-if="application.reason" class="request-reason">
-                {{ t('tenant.apply_reason') }}: {{ application.reason }}
-              </div>
-            </div>
-            <div class="request-actions">
-              <el-button
-                text
-                type="danger"
-                :loading="applicationCancelingId === String(application.id)"
-                @click="cancelApplication(application)"
-              >
-                {{ t('tenant.withdraw_action') }}
-              </el-button>
-            </div>
-          </div>
-
-          <div v-for="invitation in pendingInvitations" :key="invitation.id" class="request-row">
-            <div class="request-main">
-              <div class="workspace-title-row">
-                <span class="workspace-name">
-                  {{ invitation.tenant_name || '-' }}
-                </span>
-                <el-tag type="info" effect="plain" round>
-                  {{ t('tenant.application_type_invite') }}
-                </el-tag>
-                <el-tag type="warning" effect="plain" round>
-                  {{ t('tenant.application_status_pending') }}
-                </el-tag>
-              </div>
-              <div class="request-meta">
-                <span>{{ t('tenant.inviter') }}: {{ invitationInviterLabel(invitation) }}</span>
-                <span>{{ t('tenant.invited_at') }} {{ formatDateTime(invitation.create_time) }}</span>
-                <span>{{ t('tenant.requested_role') }}: {{ roleLabel(invitation.requested_role) }}</span>
-              </div>
-              <div v-if="invitation.reason" class="request-reason">
-                {{ t('tenant.invitation_note') }}: {{ invitation.reason }}
-              </div>
-            </div>
-            <div class="request-actions">
-              <el-button
-                type="primary"
-                :loading="invitationRespondingId === String(invitation.id)"
-                @click="respondInvitation(invitation, true)"
-              >
-                {{ t('tenant.accept_invitation') }}
-              </el-button>
-              <el-button
-                text
-                type="danger"
-                :disabled="invitationRespondingId === String(invitation.id)"
-                @click="respondInvitation(invitation, false)"
-              >
-                {{ t('tenant.reject_invitation') }}
-              </el-button>
-            </div>
-          </div>
-        </div>
-        <div v-else class="empty-state">{{ t('tenant.no_workspace_requests') }}</div>
-      </section>
-    </div>
-
-    <section class="access-panel role-reference-panel">
-      <div class="section-heading">
-        <div>
-          <div class="section-title">{{ t('access.workspace_role_groups') }}</div>
-          <div class="section-description">{{ t('access.workspace_role_groups_description') }}</div>
-        </div>
-      </div>
-
-      <div class="role-reference-grid">
-        <article v-for="group in visibleRoleGroups" :key="group.key" class="role-card">
-          <div class="role-card-header">
-            <div>
-              <div class="role-group-title-row">
-                <span class="role-group-title">{{ group.label }}</span>
-                <el-tag :type="group.tagType" effect="light" round>
-                  {{ t('access.workspace_count', { count: group.items.length }) }}
-                </el-tag>
-              </div>
-              <div class="role-group-description">{{ group.description }}</div>
-            </div>
-          </div>
-
-          <div class="role-detail-grid">
-            <div class="role-detail-block">
-              <div class="role-detail-title">{{ t('access.what_i_can_do') }}</div>
-              <ul class="role-detail-list">
-                <li v-for="item in group.capabilities" :key="item">{{ item }}</li>
-              </ul>
-            </div>
-            <div class="role-detail-block">
-              <div class="role-detail-title">{{ t('access.my_responsibilities') }}</div>
-              <ul class="role-detail-list">
-                <li v-for="item in group.responsibilities" :key="item">{{ item }}</li>
-              </ul>
-            </div>
-          </div>
-        </article>
-      </div>
-    </section>
-
     <section class="access-notice">
       <div class="notice-title">{{ t('access.permission_boundary_title') }}</div>
       <div class="notice-description">{{ t('access.permission_boundary_description') }}</div>
       <div class="notice-footer">{{ t('access.apply_tip') }}</div>
+    </section>
+
+    <section class="access-panel identity-panel">
+      <div class="section-heading">
+        <div>
+          <div class="section-title">{{ t('access.workspace_identity_title') }}</div>
+          <div class="section-description">{{ t('access.workspace_identity_description') }}</div>
+        </div>
+      </div>
+
+      <div v-if="workspaceList.length" class="identity-list">
+        <div v-for="workspace in workspaceList" :key="workspace.id" class="identity-row">
+          <div class="workspace-main">
+            <div class="workspace-title-row">
+              <span class="workspace-name">{{ formatWorkspaceName(workspace) }}</span>
+            </div>
+            <div v-if="formatWorkspaceMeta(workspace)" class="workspace-meta">
+              {{ formatWorkspaceMeta(workspace) }}
+            </div>
+          </div>
+          <el-tag :type="roleTagType(normalizeRole(workspace.role))" effect="plain" round>
+            {{ roleLabel(workspace.role) }}
+          </el-tag>
+        </div>
+      </div>
+      <div v-else class="empty-state">{{ t('access.no_joined_workspace_status') }}</div>
+    </section>
+
+    <section class="access-panel request-panel">
+      <div class="section-heading">
+        <div>
+          <div class="section-title">{{ t('tenant.my_workspace_requests') }}</div>
+          <div class="section-description">
+            {{ t('access.pending_workspace_requests_description') }}
+          </div>
+        </div>
+        <el-tag :type="pendingRequestCount ? 'warning' : 'info'" effect="light" round>
+          {{ t('access.pending_request_count', { count: pendingRequestCount }) }}
+        </el-tag>
+      </div>
+
+      <div v-if="pendingRequestCount" class="request-table-shell">
+        <el-table :data="requestPageRows" class="request-table" style="width: 100%">
+          <el-table-column prop="requestTypeLabel" :label="t('tenant.request_type')" width="150">
+            <template #default="scope">
+              <el-tag effect="plain" round>
+                {{ scope.row.requestTypeLabel }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="tenant_name" :label="t('tenant.name')" min-width="180" show-overflow-tooltip>
+            <template #default="scope">
+              <div class="workspace-name">{{ scope.row.tenant_name || '-' }}</div>
+              <div v-if="scope.row.requestType === 'invitation'" class="workspace-meta">
+                {{ t('tenant.inviter') }}: {{ invitationInviterLabel(scope.row) }}
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" :label="t('tenant.application_status')" width="130">
+            <template #default="scope">
+              <div class="request-status" :class="requestStatusClass(scope.row.status)">
+                <span class="status-icon" aria-hidden="true"></span>
+                <span>{{ formatApplicationStatus(scope.row.status) }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="requestTime" :label="t('tenant.apply_time')" width="210">
+            <template #default="scope">
+              <div class="request-time-cell">
+                <div class="request-time-status">{{ scope.row.requestTimeLabel }}</div>
+                <div class="request-time-detail">{{ formatDateTime(scope.row.requestTime) }}</div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="descriptionText" :label="t('tenant.apply_reason')" min-width="180" show-overflow-tooltip>
+            <template #default="scope">
+              <span class="request-description-cell">{{ scope.row.descriptionText || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column fixed="right" :label="t('ds.actions')" width="170">
+            <template #default="scope">
+              <div v-if="scope.row.requestType === 'invitation'" class="request-actions">
+                <el-button
+                  text
+                  :loading="invitationRespondingId === String(scope.row.id)"
+                  @click="respondInvitation(scope.row, true)"
+                >
+                  {{ t('tenant.approve_action') }}
+                </el-button>
+                <el-button
+                  text
+                  type="danger"
+                  :disabled="invitationRespondingId === String(scope.row.id)"
+                  @click="respondInvitation(scope.row, false)"
+                >
+                  {{ t('tenant.reject_action') }}
+                </el-button>
+              </div>
+              <el-button
+                v-else
+                text
+                type="danger"
+                :loading="applicationCancelingId === String(scope.row.id)"
+                @click="cancelApplication(scope.row)"
+              >
+                {{ t('tenant.withdraw_action') }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="table-pagination">
+          <el-pagination
+            v-model:current-page="requestPage.currentPage"
+            v-model:page-size="requestPage.pageSize"
+            :page-sizes="[5, 10, 20]"
+            :total="requestRows.length"
+            small
+            layout="total, sizes, prev, pager, next"
+          />
+        </div>
+      </div>
+      <div v-else class="empty-state">{{ t('tenant.no_workspace_requests') }}</div>
     </section>
   </div>
 </template>
@@ -339,14 +385,6 @@ onMounted(() => {
     white-space: nowrap;
   }
 
-  .access-overview-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
-    gap: 16px;
-    align-items: start;
-    margin-bottom: 16px;
-  }
-
   .access-panel,
   .access-notice {
     border: 1px solid #dee0e3;
@@ -362,10 +400,6 @@ onMounted(() => {
 
   .identity-panel {
     background: linear-gradient(180deg, #f7faf9 0%, #fff 100%);
-  }
-
-  .access-overview-grid .access-panel {
-    margin-bottom: 0;
   }
 
   .section-heading {
@@ -393,8 +427,7 @@ onMounted(() => {
     line-height: 20px;
   }
 
-  .identity-list,
-  .request-list {
+  .identity-list {
     display: grid;
     gap: 8px;
     max-height: 320px;
@@ -402,8 +435,7 @@ onMounted(() => {
     padding-right: 2px;
   }
 
-  .identity-row,
-  .request-row {
+  .identity-row {
     display: flex;
     justify-content: space-between;
     gap: 16px;
@@ -419,14 +451,7 @@ onMounted(() => {
     background: rgba(255, 255, 255, 0.84);
   }
 
-  .request-row {
-    align-items: flex-start;
-    min-height: 72px;
-    padding: 12px 14px;
-  }
-
-  .workspace-main,
-  .request-main {
+  .workspace-main {
     min-width: 0;
   }
 
@@ -453,22 +478,34 @@ onMounted(() => {
     word-break: break-word;
   }
 
-  .request-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 14px;
-    margin-top: 4px;
-    color: #646a73;
-    font-size: 12px;
-    line-height: 18px;
+  .request-table-shell {
+    border: 1px solid #eff0f1;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
   }
 
-  .request-reason {
-    margin-top: 6px;
-    color: #86909c;
-    font-size: 12px;
-    line-height: 18px;
-    word-break: break-word;
+  .request-table {
+    :deep(.ed-table__inner-wrapper),
+    :deep(.ed-table__body-wrapper),
+    :deep(.ed-scrollbar),
+    :deep(.ed-scrollbar__wrap) {
+      min-height: 0;
+    }
+
+    :deep(.ed-table__header-wrapper th.ed-table__cell) {
+      background: #f7f8fa;
+      color: #646a73;
+      font-weight: 600;
+    }
+
+    :deep(.ed-table__cell) {
+      border-color: #eff0f1;
+    }
+
+    :deep(.ed-table__body tr:hover > td.ed-table__cell) {
+      background: #f8fbff;
+    }
   }
 
   .request-actions {
@@ -476,6 +513,140 @@ onMounted(() => {
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+  }
+
+  .request-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #646a73;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+  }
+
+  .status-icon {
+    position: relative;
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    color: currentColor;
+  }
+
+  .status-pending {
+    color: #d46b08;
+
+    .status-icon {
+      border: 1.5px solid currentColor;
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 2.5px;
+        width: 1.5px;
+        height: 5px;
+        border-radius: 1px;
+        background: currentColor;
+      }
+
+      &::after {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 6.5px;
+        width: 4px;
+        height: 1.5px;
+        border-radius: 1px;
+        background: currentColor;
+      }
+    }
+  }
+
+  .status-approved {
+    color: #24714d;
+
+    .status-icon::before {
+      content: '';
+      position: absolute;
+      left: 2px;
+      top: 3px;
+      width: 9px;
+      height: 5px;
+      border-left: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: rotate(-45deg);
+    }
+  }
+
+  .status-rejected {
+    color: #c02a2a;
+
+    .status-icon::before,
+    .status-icon::after {
+      content: '';
+      position: absolute;
+      left: 2px;
+      top: 6px;
+      width: 10px;
+      height: 2px;
+      border-radius: 1px;
+      background: currentColor;
+    }
+
+    .status-icon::before {
+      transform: rotate(45deg);
+    }
+
+    .status-icon::after {
+      transform: rotate(-45deg);
+    }
+  }
+
+  .status-cancelled {
+    color: #646a73;
+
+    .status-icon::before {
+      content: '';
+      position: absolute;
+      left: 2px;
+      top: 6px;
+      width: 10px;
+      height: 2px;
+      border-radius: 1px;
+      background: currentColor;
+    }
+  }
+
+  .request-time-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .request-time-status {
+    color: #646a73;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 500;
+  }
+
+  .request-time-detail,
+  .request-description-cell {
+    color: #86909c;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 48px;
+    padding: 10px 16px;
+    border-top: 1px solid #eff0f1;
+    background: #fff;
   }
 
   .empty-state {
@@ -487,78 +658,9 @@ onMounted(() => {
     line-height: 20px;
   }
 
-  .role-reference-panel {
-    margin-bottom: 16px;
-  }
-
-  .role-reference-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 12px;
-  }
-
-  .role-card {
-    min-width: 0;
-    padding: 16px;
-    border: 1px solid #eff0f1;
-    border-radius: 8px;
-    background: #fff;
-  }
-
-  .role-card-header {
-    min-height: 74px;
-  }
-
-  .role-group-title-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .role-group-title {
-    font-weight: 600;
-    font-size: 15px;
-    line-height: 23px;
-  }
-
-  .role-group-description {
-    margin-top: 6px;
-    color: #646a73;
-    font-size: 13px;
-    line-height: 20px;
-  }
-
-  .role-detail-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-    margin-top: 12px;
-  }
-
-  .role-detail-block {
-    min-width: 0;
-    padding: 14px;
-    border-radius: 8px;
-    background: #f7f8fa;
-  }
-
-  .role-detail-title {
-    font-weight: 600;
-    font-size: 13px;
-    line-height: 20px;
-  }
-
-  .role-detail-list {
-    margin: 8px 0 0;
-    padding-left: 18px;
-    color: #4e5969;
-    font-size: 13px;
-    line-height: 22px;
-  }
-
   .access-notice {
     padding: 20px 24px;
+    margin-bottom: 16px;
     background: #f7faf9;
   }
 
@@ -582,28 +684,13 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 1180px) {
-  .access-page {
-    .access-overview-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-}
-
 @media (max-width: 640px) {
   .access-page {
     .access-header,
     .identity-row,
-    .request-row,
     .section-heading {
       align-items: flex-start;
       flex-direction: column;
-    }
-
-    .request-actions {
-      width: 100%;
-      justify-content: flex-start;
-      flex-wrap: wrap;
     }
   }
 }

@@ -852,7 +852,11 @@
     "platform_template_use": "Copy to current workspace",
     "platform_template_use_confirm": "Copy \"{name}\" to the current workspace?",
     "platform_template_use_success": "Copied to current workspace",
-    "platform_template_delete_confirm": "Delete platform template \"{name}\"? This will not affect the source project dashboard."
+    "platform_template_delete_confirm": "Delete platform template \"{name}\"? This will not affect the source project dashboard.",
+    "dashboard_create_mode": "Create Mode",
+    "blank_dashboard": "Blank Dashboard",
+    "create_from_platform_template": "Create from Template",
+    "select_platform_template": "Select a platform template"
   },
   "qa": {
     "retrieve_error": "No content available",

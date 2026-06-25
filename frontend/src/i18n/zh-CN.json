@@ -852,7 +852,11 @@
     "platform_template_use": "复制到当前工作空间",
     "platform_template_use_confirm": "确认将「{name}」复制到当前工作空间？",
     "platform_template_use_success": "已复制到当前工作空间",
-    "platform_template_delete_confirm": "确认删除平台模板「{name}」？删除后不会影响来源项目看板。"
+    "platform_template_delete_confirm": "确认删除平台模板「{name}」？删除后不会影响来源项目看板。",
+    "dashboard_create_mode": "创建方式",
+    "blank_dashboard": "空白看板",
+    "create_from_platform_template": "从模板创建",
+    "select_platform_template": "请选择平台模板"
   },
   "qa": {
     "retrieve_error": "暂无内容",
@@ -1308,7 +1312,7 @@
     "user_permission_scope": "跟随当前用户权限",
     "no_project_agent": "请先选择项目",
     "prompt_not_visible": "管理员 Agent 的提示词由管理员维护，当前账号不可查看。",
-    "workspace_identity_title": "我的工作空间身份",
+    "workspace_identity_title": "已加入的工作空间",
     "workspace_identity_description": "这里展示你已加入的工作空间以及在每个空间中的身份。具体数据源、数据表、字段和行级规则仍由管理员策略控制。",
     "workspace_role_groups": "工作空间角色与职责",
     "workspace_role_groups_description": "只展示你当前拥有的角色及对应职责，所属空间请以上方身份列表为准。",
