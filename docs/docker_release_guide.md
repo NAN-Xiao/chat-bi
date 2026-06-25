@@ -208,7 +208,7 @@ G2 SSR：可单独运行，或由单容器/all 模式后台启动
 | --- | --- | --- |
 | `APP_HOME` | `/home/chat-bi` | 发布机运行目录 |
 | `IMAGE_REPOSITORY` | `zhishu` | 镜像仓库名 |
-| `FRONTEND_HOST` | `10.1.5.193` | 前端/Nginx 服务地址 |
+| `FRONTEND_HOST` | `10.1.5.28` | 前端/Nginx 服务地址 |
 | `NGINX_ROOT` | `/home/chat-bi/nginx/html` | 前端静态文件发布目录 |
 | `RUNTIME_ENV_FILE` | `/home/chat-bi/chat-bi.runtime.env` | Jenkins 生成的容器运行环境文件 |
 
@@ -242,8 +242,8 @@ docker system df
 ZHISHU_API_PORTS="8000 8002"
 ZHISHU_WORKER_IDS="1 2"
 ZHISHU_CACHE_TYPE="redis"
-ZHISHU_REDIS_HOST=10.1.5.193
-ZHISHU_DB_HOST=10.1.5.193
+ZHISHU_REDIS_HOST=10.1.5.28
+ZHISHU_DB_HOST=10.1.5.28
 ZHISHU_DB_DB=zhishu_bi
 ZHISHU_MCP_ENABLED=false
 ```
@@ -408,7 +408,7 @@ tar -czf /home/chat-bi/nginx/html-$(date +%Y%m%d_%H%M%S).tar.gz -C /home/chat-bi
 数据库迁移不可简单依赖镜像回滚自动逆转。生产发布前应先备份系统库：
 
 ```bash
-pg_dump -h 10.1.5.193 -p 5432 -U root -Fc zhishu_bi > zhishu_bi-before-release.dump
+pg_dump -h 10.1.5.28 -p 5432 -U root -Fc zhishu_bi > zhishu_bi-before-release.dump
 ```
 
 如需回滚数据库，应按 Alembic 迁移内容和备份策略单独评估。

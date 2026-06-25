@@ -24,7 +24,7 @@ pipeline {
     IMAGE_REPOSITORY = 'zhishu'
     ZHISHU_BASE_IMAGE = 'zhishu-base:local'
     ZHISHU_RUNTIME_IMAGE = 'zhishu-python-pg:local'
-    FRONTEND_HOST = '10.1.5.193'
+    FRONTEND_HOST = '10.1.5.28'
     NGINX_PORT = '80'
     NGINX_ROOT = '/home/chat-bi/nginx/html'
     NGINX_CONF_PATH = '/etc/nginx/conf.d/chat-bi.conf'
