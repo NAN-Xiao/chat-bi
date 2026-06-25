@@ -1,7 +1,10 @@
 <template>
   <div class="tenant-usage-container professional-container">
     <div class="tool-left" :class="{ 'is-embedded': embedded }">
-      <span class="page-title">{{ t('tenant_usage.title') }}</span>
+      <div class="title-block">
+        <span class="page-title">{{ t('tenant_usage.title') }}</span>
+        <p class="page-subtitle">{{ selectedMetricLabel }}</p>
+      </div>
       <div class="toolbar">
         <el-date-picker
           v-model="dateRange"
@@ -38,7 +41,6 @@
             <h2>{{ currentScopeLabel }}</h2>
             <span class="overview-range">{{ dateRangeLabel }}</span>
           </div>
-          <p class="overview-subtitle">{{ selectedMetricLabel }}</p>
           <div class="overview-total">
             <span class="overview-total-label">{{ t('tenant_usage.total_token_consumption') }}</span>
             <strong>{{ formatNumber(summary.total_tokens) }}</strong>
