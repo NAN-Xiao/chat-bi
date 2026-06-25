@@ -155,6 +155,7 @@ onMounted(() => {
             {{ appearanceStore.name }}
           </span>
         </div>
+        <div class="top-nav-brand-divider" aria-hidden="true"></div>
         <Menu class="top-nav-menu" mode="horizontal" scope="business"></Menu>
         <div class="top-nav-actions">
           <ProjectSelector
@@ -438,6 +439,7 @@ onMounted(() => {
       display: flex;
       align-items: center;
       gap: 8px;
+      margin-left: 18px;
       cursor: pointer;
 
       img,
@@ -458,8 +460,17 @@ onMounted(() => {
       }
     }
 
+    .top-nav-brand-divider {
+      flex: 0 0 1px;
+      width: 1px;
+      height: 34px;
+      background: var(--workspace-border-soft, #e5eaf2);
+    }
+
     :deep(.workspace-selector) {
-      width: 212px;
+      width: fit-content;
+      min-width: 112px;
+      max-width: min(360px, 32vw);
       height: var(--top-nav-control-height);
       margin-bottom: 0;
       padding: 0 10px;
@@ -474,7 +485,7 @@ onMounted(() => {
 
       .name {
         margin-left: 7px;
-        max-width: 118px;
+        max-width: min(260px, 24vw);
         font-size: 13px;
         line-height: 20px;
         color: var(--workspace-text-primary, var(--theme-text-primary));
@@ -482,6 +493,7 @@ onMounted(() => {
 
       .expand {
         font-size: 20px !important;
+        margin-left: 8px;
       }
 
       &:hover,

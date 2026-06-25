@@ -234,6 +234,7 @@
         <EmptyBackground :description="t('tenant_usage.empty')" img-type="tree" />
       </template>
     </el-table>
+    <div class="usage-bottom-space" aria-hidden="true" />
   </div>
 </template>
 
@@ -626,22 +627,36 @@ onMounted(async () => {
 
   .tool-left {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 16px;
+    gap: 20px;
     margin-bottom: 16px;
+  }
 
-    .page-title {
-      flex: 0 0 auto;
-      font-weight: 500;
-      font-size: 20px;
-      line-height: 28px;
-    }
+  .title-block {
+    min-width: 0;
+  }
 
+  .page-title {
+    display: block;
+    font-weight: 500;
+    font-size: 20px;
+    line-height: 28px;
+    color: var(--theme-text-primary);
+  }
+
+  .page-subtitle {
+    margin: 6px 0 0;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--theme-text-secondary);
+  }
+
+  .tool-left {
     &.is-embedded {
       justify-content: flex-end;
 
-      .page-title {
+      .title-block {
         display: none;
       }
     }
@@ -671,83 +686,87 @@ onMounted(async () => {
   }
 
   .overview-shell {
-    margin-bottom: 16px;
+    margin-bottom: 18px;
   }
 
   .overview-panel {
     display: grid;
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr);
+    align-items: start;
     gap: 16px;
-    padding: 18px;
-    border: 1px solid #e2eaf4;
-    border-radius: 8px;
-    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-    box-shadow:
-      0 18px 42px rgba(24, 46, 86, 0.05),
-      0 3px 10px rgba(24, 46, 86, 0.04);
   }
 
   .overview-copy {
+    height: 340px;
+    min-width: 0;
+    min-height: 0;
+    padding: 16px;
+    border: 1px solid #e2eaf4;
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(243, 248, 255, 0.98)),
+      var(--theme-card-bg, #ffffff);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: 16px;
-    min-width: 0;
+    gap: 8px;
+    overflow: hidden;
   }
 
   .overview-kicker {
-    color: #5c7cfa;
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: rgba(47, 107, 255, 0.1);
+    color: #2f6bff;
     font-size: 12px;
     font-weight: 600;
-    line-height: 18px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    line-height: 24px;
   }
 
   .overview-title-row {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
 
     h2 {
-      color: #1b2a41;
       font-size: 26px;
       font-weight: 600;
-      line-height: 34px;
+      line-height: 32px;
+      margin: 0;
+      color: var(--theme-text-primary);
       word-break: break-word;
     }
   }
 
   .overview-range {
     width: fit-content;
-    padding: 6px 10px;
+    padding: 5px 10px;
     border-radius: 999px;
-    background: #eef4ff;
-    color: #4e6fb8;
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid rgba(222, 232, 246, 0.9);
+    color: var(--theme-text-secondary);
     font-size: 12px;
     line-height: 18px;
-  }
-
-  .overview-subtitle {
-    color: #6b7a90;
-    font-size: 14px;
-    line-height: 22px;
   }
 
   .overview-total {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 16px 18px;
+    gap: 4px;
+    padding: 10px;
     border: 1px solid #dfe9fb;
     border-radius: 8px;
     background: linear-gradient(180deg, rgba(91, 143, 249, 0.08) 0%, rgba(91, 143, 249, 0.02) 100%);
 
     strong {
-      color: #1b2a41;
-      font-size: 34px;
+      color: var(--theme-text-primary);
+      font-size: 28px;
       font-weight: 700;
-      line-height: 40px;
+      line-height: 34px;
       word-break: break-word;
     }
   }
@@ -762,12 +781,12 @@ onMounted(async () => {
   .overview-highlights {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
+    gap: 8px;
   }
 
   .overview-highlight {
     min-width: 0;
-    padding: 12px;
+    padding: 8px;
     border: 1px solid #edf2f8;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.88);
@@ -776,10 +795,10 @@ onMounted(async () => {
     gap: 6px;
 
     strong {
-      color: #1b2a41;
+      color: var(--theme-text-primary);
       font-size: 18px;
       font-weight: 600;
-      line-height: 26px;
+      line-height: 24px;
     }
   }
 
@@ -792,14 +811,18 @@ onMounted(async () => {
   .overview-visual,
   .chart-card {
     min-width: 0;
-    border: 1px solid #e6edf6;
+    border: 1px solid var(--theme-border-color, #ebeef5);
     border-radius: 8px;
-    background: #ffffff;
-    overflow: hidden;
+    background: var(--theme-card-bg, #ffffff);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
   }
 
   .overview-visual {
-    padding: 14px 16px 12px;
+    height: 340px;
+    min-height: 0;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
   }
 
   .chart-card {
@@ -811,10 +834,10 @@ onMounted(async () => {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 12px;
-    color: #1f2329;
-    font-size: 14px;
-    font-weight: 600;
+    margin-bottom: 14px;
+    color: var(--theme-text-primary);
+    font-size: 15px;
+    font-weight: 500;
     line-height: 22px;
   }
 
@@ -826,7 +849,11 @@ onMounted(async () => {
   }
 
   .chart-surface-hero {
-    height: 320px;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    border-radius: 0;
+    background: transparent;
   }
 
   .hero-empty-state {
@@ -1050,6 +1077,11 @@ onMounted(async () => {
   .usage-table {
     max-height: calc(100vh - 340px);
     overflow-y: auto;
+  }
+
+  .usage-bottom-space {
+    height: 48px;
+    flex: 0 0 auto;
   }
 
   .user-cell {

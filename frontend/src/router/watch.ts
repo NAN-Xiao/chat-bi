@@ -45,6 +45,7 @@ const tenantChatBIEntryPrefixes = [
   '/system/embedded',
   '/system/variables',
   '/system/setting/permission',
+  '/system/setting/variables',
 ]
 
 const defaultAuthenticatedPath = () => resolveAuthenticatedDashboardLandingTarget(userStore)

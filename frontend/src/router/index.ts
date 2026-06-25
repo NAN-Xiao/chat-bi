@@ -482,8 +482,16 @@ export const routes = [
           },
           {
             path: 'variables',
-            redirect: '/system/variables',
-            hidden: true,
+            name: 'setting-variables',
+            component: Variables,
+            meta: {
+              title: t('variables.system_variables'),
+              iconActive: 'variables',
+              iconDeActive: 'noVariables',
+              tenantAdminOnly: true,
+              tenantBusiness: true,
+              platformOperation: true,
+            },
           },
         ],
       },
@@ -584,12 +592,9 @@ export const routes = [
       },
       {
         path: 'variables',
-        name: 'variables',
-        component: Variables,
+        redirect: '/system/setting/variables',
+        hidden: true,
         meta: {
-          title: t('variables.system_variables'),
-          iconActive: 'variables',
-          iconDeActive: 'noVariables',
           tenantAdminOnly: true,
           tenantBusiness: true,
           platformOperation: true,

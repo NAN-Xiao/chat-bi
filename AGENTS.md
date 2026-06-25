@@ -78,6 +78,14 @@ Scope: entire repository.
 - Product direction: Smart Q&A should focus on asking data questions and generating charts; deeper analysis and prediction should be handled by the analysis assistant.
 - See `docs/smart_qa_hidden_analysis_predict_actions.md` for the detailed memo and restore steps.
 
+## Temporarily Hidden Color Theme Switching
+
+- Color theme switching is intentionally hidden, not deleted. The application must default to light theme while dark theme polish is incomplete.
+- The current switch is `COLOR_THEME_SWITCHING_ENABLED = false` in `frontend/src/utils/theme.ts`; keep `DEFAULT_THEME` as `light` while this switch is disabled.
+- Keep `ThemeSwitcher.vue`, `frontend/src/utils/theme.ts` theme helpers, `THEME_CHANGE_EVENT`, `THEME_STORAGE_KEY`, and existing `:root[data-theme='dark']` styles unless the user explicitly asks to permanently remove dark theme support.
+- Do not add new theme toggle entrances, system dark-mode auto-follow behavior, or code paths that bypass `COLOR_THEME_SWITCHING_ENABLED` while the switch is disabled.
+- See `docs/temporarily_hidden_color_theme_switching.md` for the detailed memo and restore steps.
+
 ## Semantic Layer First
 
 - For business data issues involving metric definitions, analysis口径, SQL generation, chart field selection, datasource selection, or result interpretation, the authoritative solution must be semantic configuration: terminology, data-training SQL examples, datasource/table/field metadata, recommended questions, custom prompts, assistant configuration, and permission configuration.
