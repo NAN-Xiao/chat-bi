@@ -41,7 +41,7 @@ ENV DB_CLIENT=/opt/zhishu/db_client
 ENV LD_LIBRARY_PATH="${DB_CLIENT}/oracle_instant_client:${LD_LIBRARY_PATH}"
 ARG TARGETARCH
 RUN apt-get update && \
-    apt-get install -y unzip libaio1 && \
+    (apt-get install -y unzip libaio1t64 || apt-get install -y unzip libaio1) && \
     mkdir -p ${DB_CLIENT} && \
     if [ "$TARGETARCH" = "amd64" ]; then \
       echo "Building for x86_64"; \
