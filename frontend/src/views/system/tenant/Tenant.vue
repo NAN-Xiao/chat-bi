@@ -647,7 +647,7 @@ const closeDrawer = () => {
 }
 
 const openWorkspaceAdmin = (tenant: TenantInfo) => {
-  const route = router.resolve({
+  router.push({
     path: '/default-dashboard/index',
     query: {
       [PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY]: '1',
@@ -656,7 +656,6 @@ const openWorkspaceAdmin = (tenant: TenantInfo) => {
       tenant_name: tenant.name || '',
     },
   })
-  window.open(route.href, '_blank', 'noopener')
 }
 
 const saveTenant = () => {

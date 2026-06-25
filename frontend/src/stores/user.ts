@@ -260,6 +260,20 @@ export const UserStore = defineStore('user', {
         const res = await tenantApi.list()
         this.tenants = Array.isArray(res) ? res : []
         if (this.isPlatformWorkspaceDelegate) {
+          const currentTenant = this.tenants.find(
+            (tenant) => String(tenant.id) === String(this.tenantId || '')
+          )
+          this.tenants = this.tenantId
+            ? [
+                {
+                  id: this.tenantId,
+                  public_id: this.tenantPublicId,
+                  name: this.tenantName || this.tenantPublicId || this.tenantId,
+                  role: this.getTenantRole || 'owner',
+                  ...currentTenant,
+                },
+              ]
+            : []
           return this.tenants
         }
         if (this.isSystemAdminUser) {

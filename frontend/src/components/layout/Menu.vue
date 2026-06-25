@@ -98,6 +98,16 @@ const mainMenuOrder = (path: string) => {
 }
 
 const adminWorkspaceTenants = computed(() => {
+  if (userStore.isPlatformWorkspaceDelegate && userStore.getTenantId) {
+    return [
+      {
+        id: userStore.getTenantId,
+        public_id: userStore.getTenantPublicId,
+        name: userStore.getTenantName,
+        role: userStore.getTenantRole || 'owner',
+      },
+    ]
+  }
   const tenants = userStore.getTenants.filter((tenant: any) => canManageWorkspaceRole(tenant.role))
   if (tenants.length) {
     return tenants

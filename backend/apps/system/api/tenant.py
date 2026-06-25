@@ -886,6 +886,15 @@ async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
 
 @router.get("/list", response_model=list[TenantDTO])
 async def tenant_list(session: SessionDep, current_user: CurrentUser):
+    if is_platform_workspace_delegate(current_user):
+        tenant_id = getattr(current_user, "tenant_id", None)
+        if not tenant_id:
+            return []
+        tenant = get_active_tenant(session, tenant_id=int(tenant_id))
+        if not tenant:
+            return []
+        role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+        return _tenant_dto_list(session, [(tenant, role, None)])
     if is_platform_admin(current_user):
         tenants = list_tenants(session)
         return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER, None) for tenant in tenants])

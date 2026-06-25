@@ -732,7 +732,8 @@ onMounted(async () => {
 
   .hero-panel {
     display: grid;
-    grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr);
+    align-items: start;
     gap: 16px;
     margin-bottom: 18px;
   }
@@ -748,8 +749,9 @@ onMounted(async () => {
   }
 
   .hero-copy {
-    min-height: 320px;
-    padding: 18px;
+    height: 340px;
+    min-height: 0;
+    padding: 16px;
     background:
       linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(243, 248, 255, 0.98)),
       var(--theme-card-bg, #ffffff);
@@ -758,13 +760,15 @@ onMounted(async () => {
     box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    justify-content: space-between;
+    gap: 8px;
+    overflow: hidden;
   }
 
   .hero-copy-top {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
 
   .hero-kicker {
@@ -783,14 +787,14 @@ onMounted(async () => {
 
   .hero-title-row {
     display: flex;
+    flex-direction: column;
     align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 6px;
 
     h2 {
       margin: 0;
-      font-size: 28px;
-      line-height: 36px;
+      font-size: 26px;
+      line-height: 32px;
       font-weight: 600;
       color: var(--theme-text-primary);
       word-break: break-word;
@@ -799,7 +803,7 @@ onMounted(async () => {
 
   .hero-range {
     flex: 0 0 auto;
-    padding: 6px 12px;
+    padding: 5px 10px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.88);
     color: var(--theme-text-secondary);
@@ -817,12 +821,12 @@ onMounted(async () => {
     span {
       min-width: 0;
       max-width: 100%;
-      padding: 3px 8px;
+      padding: 2px 7px;
       border-radius: 6px;
       background: rgba(47, 107, 255, 0.08);
       color: var(--theme-text-secondary);
       font-size: 12px;
-      line-height: 18px;
+      line-height: 16px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
       word-break: break-all;
     }
@@ -830,19 +834,20 @@ onMounted(async () => {
 
   .hero-note {
     margin: 0;
-    font-size: 14px;
-    line-height: 22px;
+    font-size: 13px;
+    line-height: 19px;
     color: var(--theme-text-secondary);
   }
 
   .hero-highlight-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
   }
 
   .hero-highlight {
-    padding: 14px 16px;
+    min-width: 0;
+    padding: 10px;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.92);
     border: 1px solid #e6edf6;
@@ -857,15 +862,15 @@ onMounted(async () => {
 
     strong {
       display: block;
-      margin-top: 8px;
-      font-size: 26px;
-      line-height: 32px;
+      margin-top: 6px;
+      font-size: 23px;
+      line-height: 28px;
       color: var(--theme-text-primary);
     }
 
     em {
       display: block;
-      margin-top: 8px;
+      margin-top: 6px;
       font-style: normal;
       font-size: 12px;
       line-height: 18px;
@@ -874,14 +879,7 @@ onMounted(async () => {
   }
 
   .hero-focus-card {
-    flex: 1 1 auto;
-    min-height: 0;
-    padding: 14px 16px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.94);
-    border: 1px solid #e6edf6;
-    display: flex;
-    flex-direction: column;
+    display: none;
   }
 
   .hero-focus-head {
@@ -948,7 +946,8 @@ onMounted(async () => {
 
   .hero-chart {
     padding: 18px;
-    min-height: 320px;
+    height: 340px;
+    min-height: 0;
     display: flex;
     flex-direction: column;
   }
@@ -1109,7 +1108,7 @@ onMounted(async () => {
 
   .chart-surface-hero {
     flex: 1 1 auto;
-    min-height: 252px;
+    min-height: 0;
     height: auto;
   }
 
@@ -1258,6 +1257,28 @@ onMounted(async () => {
 
     .tool-left {
       align-items: stretch;
+    }
+
+    .hero-copy,
+    .hero-chart {
+      height: auto;
+      min-height: 320px;
+      overflow: visible;
+    }
+
+    .hero-copy {
+      justify-content: flex-start;
+    }
+
+    .hero-focus-card {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid #e6edf6;
+      display: flex;
+      flex-direction: column;
     }
 
     .toolbar {
