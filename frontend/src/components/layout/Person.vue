@@ -26,6 +26,7 @@ import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { ElMessage } from 'element-plus-secondary'
 import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
+import { canManageWorkspaceRole } from '@/utils/workspacePermission'
 
 const { wsCache } = useCache()
 const router = useRouter()
@@ -51,7 +52,7 @@ const adminTenantList = computed(() =>
 )
 const hasAdminTenant = computed(() => adminTenantList.value.length > 0)
 const showAdminWorkspaceEntry = computed(
-  () => !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && hasAdminTenant.value
+  () => false && !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && hasAdminTenant.value
 )
 const showWorkspaceApplicationEntry = computed(
   () => !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && !userStore.hasActiveWorkspace
@@ -99,7 +100,7 @@ const formatTenantRole = (role: string) => {
 }
 
 const canManageTenant = (role?: string) => {
-  return ['owner', 'admin'].includes(String(role || '').trim().toLowerCase())
+  return canManageWorkspaceRole(role)
 }
 
 const toSystem = () => {

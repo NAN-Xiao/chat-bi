@@ -53,7 +53,9 @@ const layerOptions = computed(() => {
     return options.filter((item) => item.value === 'PLATFORM_PUBLIC')
   }
   if (isAdminMode.value) {
-    return options.filter((item) => item.value === 'ADMIN_PUBLIC')
+    return options.filter((item) =>
+      ['', 'PLATFORM_PUBLIC', 'ADMIN_PUBLIC'].includes(String(item.value))
+    )
   }
   return options
 })
@@ -65,6 +67,7 @@ const defaultSkillForm = {
   description: '',
   target_scope: 'ALL',
   active: true,
+  visible: true,
   ai_model_id: null as number | string | null,
   prompt: '',
   specific_ds: false,
@@ -75,10 +78,17 @@ const skillForm = ref(cloneDeep(defaultSkillForm))
 
 const currentDatasourceId = computed(() => datasourceContext.datasourceId)
 
-const pageTitle = computed(() => (isAdminMode.value ? t('data_skill.admin_title') : t('data_skill.title')))
+const pageTitle = computed(() =>
+  isAdminMode.value ? t('data_skill.admin_title') : t('data_skill.title')
+)
 
 const validateDatasource = (_: any, value: any, callback: any) => {
-  if (isAdminMode.value && !isPlatformAdmin.value && skillForm.value.specific_ds && !value?.length) {
+  if (
+    isAdminMode.value &&
+    !isPlatformAdmin.value &&
+    skillForm.value.specific_ds &&
+    !value?.length
+  ) {
     callback(new Error(t('datasource.Please_select') + t('common.empty') + t('ds.title')))
     return
   }
@@ -167,7 +177,10 @@ const canManageSkill = (row: any) => {
 }
 
 const canViewSkillContent = (row: any) => {
-  return row?.prompt_visible === true || (row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true)
+  return (
+    row?.prompt_visible === true ||
+    (row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true)
+  )
 }
 
 const isSkillEffective = (row: any) => row?.effective_active !== false && row?.active !== false
@@ -175,13 +188,21 @@ const isSkillEffective = (row: any) => row?.effective_active !== false && row?.a
 const activationStatusText = (row: any) =>
   isSkillEffective(row) ? t('prompt.active_enabled') : t('prompt.active_disabled')
 
-const buildSkillQuery = () => {
+const isSkillVisible = (row: any) => row?.visible !== false
+
+const visibilityStatusText = (row: any) =>
+  isSkillVisible(row) ? t('data_skill.visible_shown') : t('data_skill.visible_hidden')
+
+const adminVisibilityScopes = computed(() => {
+  if (!isAdminMode.value) return [scopeFilter.value || '']
+  if (isPlatformAdmin.value) return [scopeFilter.value || 'PLATFORM_PUBLIC']
+  return scopeFilter.value ? [scopeFilter.value] : ['PLATFORM_PUBLIC', 'ADMIN_PUBLIC']
+})
+
+const buildSkillQuery = (visibilityScope = scopeFilter.value) => {
   const params = new URLSearchParams()
-  if (scopeFilter.value) {
-    params.append('visibility_scope', scopeFilter.value)
-  }
-  if (isAdminMode.value && !scopeFilter.value) {
-    params.append('visibility_scope', isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
+  if (visibilityScope) {
+    params.append('visibility_scope', visibilityScope)
   }
   if (!isAdminMode.value && currentDatasourceId.value) {
     params.append('dslist', String(currentDatasourceId.value))
@@ -191,6 +212,16 @@ const buildSkillQuery = () => {
   }
   const query = params.toString()
   return query ? `?${query}` : ''
+}
+
+const dedupeSkills = (rows: any[]) => {
+  const seen = new Set<string>()
+  return rows.filter((row) => {
+    const key = String(row?.id || '')
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 const loadDatasourceOptions = async () => {
@@ -205,8 +236,13 @@ const loadDatasourceOptions = async () => {
 const loadSkills = async () => {
   skillLoading.value = true
   try {
-    const res: any = await dataSkillApi.getList(1, 100, buildSkillQuery()).catch(() => ({ data: [] }))
-    skillList.value = (res?.data || [])
+    const queries = isAdminMode.value
+      ? adminVisibilityScopes.value.map((scope) => buildSkillQuery(scope))
+      : [buildSkillQuery()]
+    const responses: any[] = await Promise.all(
+      queries.map((query) => dataSkillApi.getList(1, 100, query).catch(() => ({ data: [] })))
+    )
+    skillList.value = dedupeSkills(responses.flatMap((res: any) => res?.data || []))
       .filter(isVisibleInPersonalEntry)
       .filter((row: any) => isAdminMode.value || row?.active !== false || canManageSkill(row))
       .sort(sortBySourceAndTime)
@@ -222,10 +258,10 @@ const toggleSkillActivation = (skill: any, value: boolean) => {
 
   if (scope === 'global') {
     skill.active = value
-    skill.effective_active = value && (skill.user_enabled !== false)
+    skill.effective_active = value && skill.user_enabled !== false
   } else {
     skill.user_enabled = value
-    skill.effective_active = (skill.active !== false) && value
+    skill.effective_active = skill.active !== false && value
   }
 
   dataSkillApi
@@ -233,7 +269,7 @@ const toggleSkillActivation = (skill: any, value: boolean) => {
     .then((res: any) => {
       skill.active = res?.active ?? skill.active
       skill.user_enabled = res?.user_enabled ?? skill.user_enabled
-      skill.effective_active = (skill.active !== false) && (skill.user_enabled !== false)
+      skill.effective_active = skill.active !== false && skill.user_enabled !== false
       ElMessage.success(t('common.save_success'))
       if (!isAdminMode.value && skill.active === false) {
         loadSkills()
@@ -243,6 +279,22 @@ const toggleSkillActivation = (skill: any, value: boolean) => {
       skill.user_enabled = previousUserEnabled
       skill.active = previousActive
       skill.effective_active = previousActive && previousUserEnabled
+    })
+}
+
+const toggleSkillVisibility = (skill: any, value: boolean) => {
+  if (!isAdminMode.value || !canManageSkill(skill)) return
+  const previousVisible = isSkillVisible(skill)
+  skill.visible = value
+
+  dataSkillApi
+    .setVisibility(skill.id, value)
+    .then((res: any) => {
+      skill.visible = res?.visible ?? value
+      ElMessage.success(t('common.save_success'))
+    })
+    .catch(() => {
+      skill.visible = previousVisible
     })
 }
 
@@ -309,6 +361,7 @@ const saveSkill = () => {
       payload.visibility_scope = 'USER_PRIVATE'
     }
     savingSkill.value = true
+    payload.visible = payload.visible !== false
     dataSkillApi
       .save(payload)
       .then(() => {
@@ -348,11 +401,7 @@ const handleDatasourceChange = () => {
 }
 
 onMounted(async () => {
-  scopeFilter.value = isAdminMode.value
-    ? isPlatformAdmin.value
-      ? 'PLATFORM_PUBLIC'
-      : 'ADMIN_PUBLIC'
-    : ''
+  scopeFilter.value = isAdminMode.value ? (isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : '') : ''
   if (isAdminMode.value) {
     await loadDatasourceOptions()
   } else {
@@ -420,7 +469,10 @@ watch(scopeFilter, () => {
               <div class="skill-card-head">
                 <div class="skill-title-area">
                   <span class="name ellipsis" :title="skill.name">{{ skill.name }}</span>
-                  <div class="skill-meta-row" :title="`${sourceText(skill)} · ${targetScopeText(skill.target_scope)} · ${scopeText(skill)}`">
+                  <div
+                    class="skill-meta-row"
+                    :title="`${sourceText(skill)} · ${targetScopeText(skill.target_scope)} · ${scopeText(skill)}`"
+                  >
                     <span class="skill-source-pill">{{ sourceText(skill) }}</span>
                     <span class="skill-sub-meta ellipsis">
                       {{ targetScopeText(skill.target_scope) }} · {{ scopeText(skill) }}
@@ -460,19 +512,41 @@ watch(scopeFilter, () => {
                       </div>
                     </div>
                   </el-popover>
+                  <el-tooltip
+                    v-if="isAdminMode && canManageSkill(skill)"
+                    :content="`${t('data_skill.visible_status')}: ${visibilityStatusText(skill)}`"
+                    placement="top"
+                  >
+                    <div class="visibility-switch">
+                      <el-switch
+                        :model-value="isSkillVisible(skill)"
+                        size="small"
+                        @change="
+                          (value: string | number | boolean) =>
+                            toggleSkillVisibility(skill, Boolean(value))
+                        "
+                      />
+                    </div>
+                  </el-tooltip>
                   <span class="action-divider"></span>
                   <div class="activation-switch">
                     <el-switch
                       :model-value="isSkillEffective(skill)"
                       size="small"
                       :disabled="isAdminMode && !canManageSkill(skill)"
-                      @change="(value: string | number | boolean) => toggleSkillActivation(skill, Boolean(value))"
+                      @change="
+                        (value: string | number | boolean) =>
+                          toggleSkillActivation(skill, Boolean(value))
+                      "
                     />
                   </div>
                 </div>
               </div>
 
-              <div class="skill-preview" :title="skill.description || t('data_skill.empty_description')">
+              <div
+                class="skill-preview"
+                :title="skill.description || t('data_skill.empty_description')"
+              >
                 {{ skill.description || t('data_skill.empty_description') }}
               </div>
             </article>
@@ -533,8 +607,19 @@ watch(scopeFilter, () => {
             :inactive-text="t('prompt.active_disabled')"
           />
         </el-form-item>
+        <el-form-item v-if="isAdminMode" prop="visible" :label="t('data_skill.visible_status')">
+          <el-tooltip :content="t('data_skill.visible_hint')" placement="top">
+            <el-switch
+              v-model="skillForm.visible"
+              :active-text="t('data_skill.visible_shown')"
+              :inactive-text="t('data_skill.visible_hidden')"
+            />
+          </el-tooltip>
+        </el-form-item>
         <el-form-item :label="t('training.effective_data_sources')">
-          <div v-if="!isAdminMode" class="fixed-project">{{ t('access.user_permission_scope') }}</div>
+          <div v-if="!isAdminMode" class="fixed-project">
+            {{ t('access.user_permission_scope') }}
+          </div>
           <div v-else-if="isPlatformAdmin" class="fixed-project">
             {{ t('training.all_data_sources') }}
           </div>
@@ -608,6 +693,14 @@ watch(scopeFilter, () => {
         <el-form-item :label="t('prompt.active_status')">
           <div class="detail-content">
             {{ activationStatusText(selectedSkill) }}
+          </div>
+        </el-form-item>
+        <el-form-item
+          v-if="isAdminMode && canManageSkill(selectedSkill)"
+          :label="t('data_skill.visible_status')"
+        >
+          <div class="detail-content">
+            {{ visibilityStatusText(selectedSkill) }}
           </div>
         </el-form-item>
         <el-form-item :label="t('training.effective_data_sources')">
@@ -807,10 +900,12 @@ watch(scopeFilter, () => {
       height: 24px;
     }
 
-    .activation-switch {
+    .activation-switch,
+    .visibility-switch {
       height: 22px;
       display: inline-flex;
       align-items: center;
+      flex: 0 0 auto;
     }
 
     .icon-action {

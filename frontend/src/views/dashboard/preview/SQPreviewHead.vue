@@ -552,8 +552,8 @@ onBeforeUnmount(() => {
   display: flex;
   width: 100%;
   min-width: 300px;
-  height: 64px;
-  padding: 14px 16px;
+  height: 50px;
+  padding: 14px 16px 0;
   border-bottom: 0;
   background: transparent;
 
@@ -596,6 +596,7 @@ onBeforeUnmount(() => {
     justify-content: right;
     align-items: center;
     flex: 1;
+    transform: translateY(-7px);
 
     .head-more-icon {
       color: var(--workspace-text-primary, #1b2a41);

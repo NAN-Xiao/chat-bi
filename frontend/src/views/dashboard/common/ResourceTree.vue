@@ -1235,7 +1235,7 @@ defineExpose({
   height: 34px;
   border-radius: 6px;
   color: var(--workspace-text-primary, #1f2329);
-  background: var(--workspace-card-bg, #ffffff);
+  background: var(--dashboard-preview-card-bg, var(--workspace-card-bg, #ffffff));
   padding: 8px;
   margin-left: 0;
   font-size: 16px;
@@ -1319,14 +1319,15 @@ defineExpose({
 }
 
 .resource-tree {
-  --ed-bg-color: var(--workspace-card-bg, #ffffff);
-  --ed-bg-color-page: var(--workspace-panel-bg, var(--theme-panel-bg));
-  --ed-bg-color-overlay: var(--workspace-card-bg, #ffffff);
+  --dashboard-sidebar-surface: var(--dashboard-preview-sidebar-bg, var(--workspace-panel-bg, var(--theme-panel-bg)));
+  --ed-bg-color: var(--dashboard-sidebar-surface);
+  --ed-bg-color-page: var(--dashboard-sidebar-surface);
+  --ed-bg-color-overlay: var(--dashboard-preview-card-bg, var(--workspace-card-bg, #ffffff));
   --ed-fill-color: var(--workspace-control-hover-bg, #eef2f8);
   --ed-fill-color-light: var(--workspace-control-hover-bg, #eef2f8);
   --ed-fill-color-lighter: var(--workspace-control-bg, #f8f9fa);
-  --ed-fill-color-extra-light: var(--workspace-card-bg, #ffffff);
-  --ed-fill-color-blank: var(--workspace-card-bg, #ffffff);
+  --ed-fill-color-extra-light: var(--dashboard-sidebar-surface);
+  --ed-fill-color-blank: var(--dashboard-sidebar-surface);
   --ed-text-color-primary: var(--workspace-text-primary, #1f2329);
   --ed-text-color-regular: var(--workspace-text-primary, #1f2329);
   --ed-text-color-secondary: var(--workspace-text-secondary, #646a73);
@@ -1344,7 +1345,7 @@ defineExpose({
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  background: var(--dashboard-sidebar-surface);
   color: var(--workspace-text-primary, #1f2329);
   font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
 
@@ -1450,7 +1451,7 @@ defineExpose({
       min-height: 34px;
       padding: 0 10px;
       border-radius: 10px;
-      background-color: #ffffff !important;
+      background-color: var(--dashboard-preview-card-bg, #ffffff) !important;
       box-shadow:
         0 0 0 1px rgba(118, 134, 166, 0.22) inset,
         0 4px 12px rgba(18, 34, 66, 0.04) !important;
@@ -1541,12 +1542,12 @@ defineExpose({
   min-height: 0;
   height: auto;
   padding: 0;
-  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  background: var(--dashboard-sidebar-surface);
   color: var(--workspace-text-primary, #1f2329);
 
   :deep(.ed-scrollbar__view),
   :deep(.ed-tree) {
-    background: var(--workspace-panel-bg, var(--theme-panel-bg)) !important;
+    background: var(--dashboard-sidebar-surface) !important;
     color: var(--workspace-text-primary, #1f2329) !important;
     max-width: 100%;
     overflow-x: hidden !important;
@@ -1837,11 +1838,9 @@ defineExpose({
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: #f7f9fc;
-      box-shadow:
-        inset 0 0 0 1px #d7dce5,
-        0 1px 2px rgba(31, 35, 41, 0.08);
-      color: #536174;
+      background: #f8faff;
+      box-shadow: none;
+      color: #8aa3ea;
       cursor: pointer;
       opacity: 1;
       transition:
@@ -1868,11 +1867,9 @@ defineExpose({
 
     :deep(.hover-icon:hover),
     :deep(.hover-icon:focus) {
-      background: #edf3ff;
-      box-shadow:
-        inset 0 0 0 1px #b9c9ff,
-        0 2px 4px rgba(47, 107, 255, 0.14);
-      color: var(--ed-color-primary, #2f6bff);
+      background: #f8f9fb;
+      box-shadow: none;
+      color: #8a94a3;
       opacity: 1;
       transform: translateY(-1px);
     }

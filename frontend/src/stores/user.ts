@@ -12,6 +12,10 @@ import {
   setPlatformWorkspaceDelegateContext,
   type PlatformWorkspaceDelegateTenant,
 } from '@/utils/platformWorkspaceDelegate'
+import {
+  canManageCurrentWorkspace,
+  normalizeWorkspaceRole,
+} from '@/utils/workspacePermission'
 
 const { wsCache } = useCache()
 
@@ -104,13 +108,13 @@ export const UserStore = defineStore('user', {
       return this.systemRole === 'collab_admin'
     },
     isTenantAdminUser(): boolean {
-      return ['owner', 'admin'].includes(String(this.workspaceRole || this.tenantRole || '').trim().toLowerCase())
+      return canManageCurrentWorkspace(this)
     },
     isTenantOwnerUser(): boolean {
-      return String(this.workspaceRole || this.tenantRole || '').trim().toLowerCase() === 'owner'
+      return normalizeWorkspaceRole(this.workspaceRole || this.tenantRole) === 'owner'
     },
     isTenantMemberUser(): boolean {
-      return String(this.workspaceRole || this.tenantRole || '').trim().toLowerCase() === 'member'
+      return normalizeWorkspaceRole(this.workspaceRole || this.tenantRole) === 'member'
     },
     isSystemManagerUser(): boolean {
       return (

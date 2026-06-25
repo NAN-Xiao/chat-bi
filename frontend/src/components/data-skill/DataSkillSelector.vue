@@ -49,6 +49,7 @@ const defaultSkillForm = {
   description: '',
   target_scope: 'SMART_QA',
   active: true,
+  visible: true,
   ai_model_id: null as number | string | null,
   prompt: '',
   specific_ds: false,

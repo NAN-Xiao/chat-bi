@@ -2,9 +2,13 @@
 import { h, defineComponent, onBeforeUnmount, ref } from 'vue'
 import { ElMenuItem, ElSubMenu, ElIcon } from 'element-plus-secondary'
 import { useRouter, useRoute } from 'vue-router'
-import { useEmitt } from '@/utils/useEmitt'
+import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { useUserStore } from '@/stores/user'
+import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
+import { resolveManagementHome } from '@/utils/navigation'
+import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
 
 type IconNode = {
   tag: 'path' | 'circle' | 'rect' | 'ellipse' | 'polyline' | 'line'
@@ -208,6 +212,8 @@ const MenuItem = defineComponent({
     const router = useRouter()
     const route = useRoute()
     const userStore = useUserStore()
+    const datasourceContext = useDatasourceContextStore()
+    const dashboardStore = dashboardStoreWithOut()
     const analysisAssistantExpanded = ref(false)
     const emitter = useEmitt().emitter
     const updateAnalysisAssistantExpanded = (expanded: unknown) => {
@@ -225,7 +231,7 @@ const MenuItem = defineComponent({
           { size: 18, class: 'menu-line-icon-wrapper' },
           { default: () => h(MenuLineIcon, { name: normalizeIconName(icon) }) }
         ),
-        h('span', null, { default: () => title }),
+        h('span', { class: 'menu-title-text' }, title),
       ]
     }
 
@@ -236,8 +242,40 @@ const MenuItem = defineComponent({
         router.push(await resolveBusinessDashboardLandingTarget(userStore))
         return
       }
+      if (e.meta?.action === 'workspace-admin-entry') {
+        await enterWorkspaceAdmin(e.tenant)
+        return
+      }
       if (index) {
         router.push(e.redirect || index)
+      }
+    }
+
+    const currentBusinessTenant = () => ({
+      id: userStore.getTenantId,
+      public_id: userStore.getTenantPublicId,
+      name: userStore.getTenantName,
+      role: userStore.getTenantRole,
+    })
+
+    const enterWorkspaceAdmin = async (tenant?: any) => {
+      const tenantId = String(tenant?.id || userStore.getTenantId || '')
+      if (!tenantId) return
+      rememberBusinessTenantBeforeAdmin(currentBusinessTenant())
+      try {
+        if (tenantId !== String(userStore.getTenantId || '')) {
+          emitWorkspaceContextChange({ tenantId, phase: 'changing' })
+          await userStore.switchTenant(tenantId)
+          datasourceContext.clear(true)
+          await datasourceContext.loadDatasources(true)
+          dashboardStore.canvasDataInit()
+          useEmitt().emitter.emit('datasource-context-change', null)
+          emitWorkspaceContextChange({ tenantId, phase: 'changed' })
+        }
+        router.push(resolveManagementHome(userStore))
+      } catch (error) {
+        emitWorkspaceContextChange({ tenantId: userStore.getTenantId, phase: 'changed' })
+        throw error
       }
     }
 
@@ -249,14 +287,19 @@ const MenuItem = defineComponent({
 
       if (children?.length) {
         const { title, iconDeActive, iconActive } = props.menu?.meta || {}
-        const icon = route.path.startsWith(path) ? iconActive : iconDeActive
+        const active = props.menu?.meta?.activePrefix
+          ? route.path.startsWith(props.menu.meta.activePrefix)
+          : route.path.startsWith(path)
+        const icon = active ? iconActive : iconDeActive
         return h(
           ElSubMenu,
-          { index: path },
+          { index: path, class: active ? 'is-active' : '' },
           {
             title: () => titleWithIcon({ title, icon }),
             default: () => [
-              h(MenuItem, { menu: { meta: { title } }, class: 'subTitleMenu' }),
+              !props.menu?.meta?.hidePopupTitle
+                ? h(MenuItem, { menu: { meta: { title } }, class: 'subTitleMenu' })
+                : null,
               children.map((ele: any) => h(MenuItem, { menu: ele, level: props.level + 1 })),
             ],
           }
@@ -266,7 +309,9 @@ const MenuItem = defineComponent({
       const { title, iconDeActive, iconActive } = props.menu?.meta || {}
       const active = props.menu?.meta?.action === 'analysis-assistant'
         ? analysisAssistantExpanded.value
-        : route.path === path
+        : props.menu?.meta?.activePrefix
+          ? route.path.startsWith(props.menu.meta.activePrefix)
+          : route.path === path
       const icon = active ? iconActive : iconDeActive
       const className = `${props.level > 0 ? `menu-level-${props.level}` : ''}${
         active ? ' is-active' : ''
@@ -287,7 +332,7 @@ const MenuItem = defineComponent({
                 default: () => h(MenuLineIcon, { name: normalizeIconName(icon) }),
               }
             ),
-            h('span', null, { default: () => title }),
+            h('span', { class: 'menu-title-text' }, title),
           ],
         }
       )

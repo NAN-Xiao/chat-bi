@@ -40,7 +40,8 @@ from apps.analysis_assistant.models import (
     AnalysisAssistantConversationSummary,
 )
 from apps.system.crud.tenant_usage import check_tenant_usage_quota, record_tenant_usage_detached
-from apps.system.crud.user import is_system_admin
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.schemas.business_access import require_chatbi_business_user
 from common.core.deps import CurrentUser, SessionDep
@@ -53,6 +54,18 @@ router = APIRouter(
     prefix="/analysis-assistant",
     dependencies=[Depends(require_chatbi_business_user)],
 )
+
+
+def _can_manage_platform_prompt_runtime(user: CurrentUser | None) -> bool:
+    return bool(user is not None and is_platform_admin(user) and not is_platform_workspace_delegate(user))
+
+
+def _can_manage_tenant_prompt_runtime(user: CurrentUser | None) -> bool:
+    if user is None or _can_manage_platform_prompt_runtime(user):
+        return False
+    if is_system_admin(user):
+        return True
+    return normalize_tenant_role(getattr(user, "tenant_role", None)) in TENANT_ADMIN_ROLES
 
 
 class AnalysisAssistantMessage(BaseModel):
@@ -1112,6 +1125,8 @@ def _collect_custom_agent_context(
             getattr(current_user, "id", None),
             is_system_admin(current_user),
             tenant_id,
+            can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
+            can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
         )
         return prompt_text.strip(), ai_model_id
     except Exception:
@@ -1140,6 +1155,8 @@ def _collect_data_skill_context(
             tenant_id,
             question=question,
             include_all_target_scopes=include_all_target_scopes,
+            can_manage_public=_can_manage_tenant_prompt_runtime(current_user),
+            can_manage_platform_public=_can_manage_platform_prompt_runtime(current_user),
         )
         return skill_text.strip()
     except Exception:

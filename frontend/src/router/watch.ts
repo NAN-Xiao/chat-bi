@@ -19,6 +19,7 @@ import {
 } from '@/utils/workspaceAdminContext'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
+import { canManageCurrentWorkspace } from '@/utils/workspacePermission'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
@@ -170,6 +171,7 @@ const accessCrossPermission = (to: any) => {
   const tenantAdminOnly = to.matched?.some((record: any) => record?.meta?.tenantAdminOnly)
   const tenantBusiness = to.matched?.some((record: any) => record?.meta?.tenantBusiness)
   const tenantSystemRoute = to.path.startsWith('/system') && (tenantAdminOnly || tenantBusiness)
+  const canManageWorkspace = canManageCurrentWorkspace(userStore)
   const platformAdminOperation =
     userStore.isSystemAdminUser && !platformDelegate && platformOperation
   const platformTemplateCanvasOperation =
@@ -183,7 +185,7 @@ const accessCrossPermission = (to: any) => {
     (platformDelegate && platformOnly) ||
     (!userStore.isSystemAdminUser && !userStore.hasActiveWorkspace && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||
-    (tenantAdminOnly && !userStore.isTenantAdminUser && !platformAdminOperation) ||
+    (tenantAdminOnly && !canManageWorkspace && !platformAdminOperation) ||
     (tenantBusiness && !userStore.hasActiveWorkspace && !platformAdminOperation) ||
     (to.path.startsWith('/set') && !userStore.isSystemManagerUser) ||
     (platformOnly && !userStore.isSystemAdminUser)

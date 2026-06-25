@@ -16,4 +16,8 @@ export const dataSkillApi = {
     request.put(`/system/custom_prompt/${id}/activation`, null, {
       params: { enabled, scope },
     }),
+  setVisibility: (id: any, visible: boolean) =>
+    request.put(`/system/custom_prompt/${id}/visibility`, null, {
+      params: { visible },
+    }),
 }

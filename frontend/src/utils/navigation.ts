@@ -1,3 +1,5 @@
+import { canManageCurrentWorkspace } from '@/utils/workspacePermission'
+
 export const PLATFORM_ADMIN_HOME = '/system/platform-overview'
 export const TENANT_ADMIN_HOME = '/system/overview'
 export const MEMBER_HOME = '/chat/index'
@@ -23,7 +25,7 @@ export const resolveAuthenticatedHome = (userStore: NavigationUserState) => {
 export const resolveSystemHome = (userStore: NavigationUserState) => {
   if (userStore.isPlatformWorkspaceDelegate) return TENANT_ADMIN_HOME
   if (userStore.isSystemAdminUser) return PLATFORM_ADMIN_HOME
-  if (userStore.isTenantAdminUser) return TENANT_ADMIN_HOME
+  if (canManageCurrentWorkspace(userStore)) return TENANT_ADMIN_HOME
   return hasWorkspace(userStore) ? MEMBER_HOME : WORKSPACE_REQUIRED_HOME
 }
 
@@ -31,7 +33,7 @@ export const resolveManagementHome = (userStore: NavigationUserState) => {
   if (userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate) {
     return PLATFORM_ADMIN_HOME
   }
-  if (userStore.isTenantAdminUser || userStore.isPlatformWorkspaceDelegate) {
+  if (canManageCurrentWorkspace(userStore)) {
     return TENANT_ADMIN_HOME
   }
   return hasWorkspace(userStore) ? MEMBER_HOME : WORKSPACE_REQUIRED_HOME

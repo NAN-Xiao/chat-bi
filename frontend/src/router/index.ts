@@ -158,8 +158,8 @@ export const routes = [
         component: MyWorkspaces,
         meta: {
           title: t('tenant.my_workspaces'),
-          iconActive: 'user',
-          iconDeActive: 'noUser',
+          iconActive: 'workspace',
+          iconDeActive: 'noWorkspace',
         },
       },
       {

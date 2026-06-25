@@ -83,7 +83,7 @@ const canvasStyle = computed(() => {
   if (props.inTab) {
     return { background: '#ffffff' }
   }
-  return { background: 'var(--workspace-panel-bg, var(--theme-panel-bg))' }
+  return { background: 'var(--dashboard-preview-canvas-bg, var(--workspace-panel-bg, var(--theme-panel-bg)))' }
 })
 const displayComponentData = computed(() =>
   Array.isArray(props.componentData) ? props.componentData : []

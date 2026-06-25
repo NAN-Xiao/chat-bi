@@ -313,6 +313,13 @@ def _parse_active_cell(value: str) -> bool:
     return (value or "").strip().lower() in ["y", "yes", "true", "1", "active", "enabled", "已激活", "启用"]
 
 
+def _parse_visible_cell(value: str) -> bool:
+    raw = (value or "").strip()
+    if not raw:
+        return True
+    return raw.lower() in ["y", "yes", "true", "1", "visible", "shown", "show", "display", "显示", "可见"]
+
+
 def _split_query_ids(value) -> Optional[list[int]]:
     if value is None or value == "":
         return None
@@ -341,6 +348,7 @@ async def options(
 ):
     can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
     can_manage_all = _can_manage_all_prompts(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
     visible_ids = _visible_datasource_ids(session, current_user)
     return list_custom_prompt_options(
         session,
@@ -350,6 +358,8 @@ async def options(
         accessible_datasource_ids=visible_ids,
         current_user_id=int(current_user.id),
         can_manage_all=can_manage_all,
+        can_manage_public=can_manage_public,
+        can_manage_platform_public=can_manage_platform_public,
         tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
         platform_only=can_manage_platform_public,
     )
@@ -410,6 +420,7 @@ async def excel_template(trans: Trans):
                 "description": trans("i18n_custom_prompt.agent_description_template_example1"),
                 "target_scope": trans("i18n_custom_prompt.target_scope_smart_qa"),
                 "active": "N",
+                "visible": "Y",
                 "ai_model": trans("i18n_custom_prompt.ai_model_template_example1"),
                 "prompt": trans("i18n_custom_prompt.prompt_word_content_template_example1"),
                 "datasource": trans("i18n_custom_prompt.effective_data_sources_template_example1"),
@@ -420,6 +431,7 @@ async def excel_template(trans: Trans):
                 "description": trans("i18n_custom_prompt.agent_description_template_example2"),
                 "target_scope": trans("i18n_custom_prompt.target_scope_all"),
                 "active": "Y",
+                "visible": "Y",
                 "ai_model": "",
                 "prompt": trans("i18n_custom_prompt.prompt_word_content_template_example2"),
                 "datasource": "",
@@ -431,6 +443,7 @@ async def excel_template(trans: Trans):
             AxisObj(name=trans("i18n_custom_prompt.agent_description_template"), value="description"),
             AxisObj(name=trans("i18n_custom_prompt.target_scope_template"), value="target_scope"),
             AxisObj(name=trans("i18n_custom_prompt.active_template"), value="active"),
+            AxisObj(name=trans("i18n_custom_prompt.visible_template"), value="visible"),
             AxisObj(name=trans("i18n_custom_prompt.ai_model_template"), value="ai_model"),
             AxisObj(name=trans("i18n_custom_prompt.prompt_word_content_template"), value="prompt"),
             AxisObj(name=trans("i18n_custom_prompt.effective_data_sources_template"), value="datasource"),
@@ -530,6 +543,36 @@ async def set_activation(
     return {"active": bool(prompt.active), "user_enabled": bool(row.enabled)}
 
 
+@router.put("/{prompt_id}/visibility")
+async def set_visibility(
+        session: SessionDep,
+        current_user: CurrentUser,
+        prompt_id: int,
+        visible: bool = Query(...),
+):
+    prompt = session.get(CustomPrompt, prompt_id)
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Custom prompt not found")
+
+    can_manage_platform_public = _can_manage_platform_public_prompts(session, current_user)
+    can_manage_all = _can_manage_all_prompts(session, current_user)
+    can_manage_public = _can_manage_tenant_public_prompts(session, current_user)
+    get_custom_prompt(
+        session,
+        prompt_id,
+        current_user_id=int(current_user.id),
+        can_manage_all=can_manage_all,
+        can_manage_public=can_manage_public,
+        can_manage_platform_public=can_manage_platform_public,
+        tenant_id=_operation_tenant_id(current_user, platform_only=can_manage_platform_public),
+    )
+    _require_prompt_manage(session, current_user, prompt)
+    prompt.visible = bool(visible)
+    session.add(prompt)
+    session.commit()
+    return {"visible": bool(prompt.visible)}
+
+
 @router.put("")
 @system_log(LogConfig(operation_type=OperationType.CREATE_OR_UPDATE, module=OperationModules.PROMPT_WORDS, resource_id_expr="info.id", result_id_expr="result_self"))
 async def create_or_update(session: SessionDep, current_user: CurrentUser, info: CustomPromptInfo):
@@ -614,6 +657,7 @@ async def export_excel(
                 "description": row.description,
                 "target_scope": _target_scope_export_value(row.target_scope),
                 "active": "Y" if row.active else "N",
+                "visible": "Y" if row.visible else "N",
                 "ai_model": row.ai_model_name or "",
                 "prompt": row.prompt,
                 "datasource": ", ".join(row.datasource_names or []) if row.specific_ds else "",
@@ -626,6 +670,7 @@ async def export_excel(
             AxisObj(name=trans("i18n_custom_prompt.agent_description"), value="description"),
             AxisObj(name=trans("i18n_custom_prompt.target_scope"), value="target_scope"),
             AxisObj(name=trans("i18n_custom_prompt.active"), value="active"),
+            AxisObj(name=trans("i18n_custom_prompt.visible"), value="visible"),
             AxisObj(name=trans("i18n_custom_prompt.ai_model"), value="ai_model"),
             AxisObj(name=trans("i18n_custom_prompt.prompt_word_content"), value="prompt"),
             AxisObj(name=trans("i18n_custom_prompt.effective_data_sources"), value="datasource"),
@@ -694,7 +739,9 @@ async def upload_excel(
                 column_count = get_excel_column_count(save_path, sheet_name)
                 if column_count < 4:
                     raise Exception(trans("i18n_excel_import.col_num_not_match"))
-                if column_count >= 8:
+                if column_count >= 9:
+                    use_cols = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+                elif column_count >= 8:
                     use_cols = [0, 1, 2, 3, 4, 5, 6, 7]
                 elif column_count >= 6:
                     use_cols = [0, 1, 2, 3, 4, 5]
@@ -711,7 +758,19 @@ async def upload_excel(
                 for _, row in df.iterrows():
                     if row.isnull().all():
                         continue
-                    if len(use_cols) >= 8:
+                    if len(use_cols) >= 9:
+                        name_raw, description_raw, target_scope_raw, active_raw, visible_raw, ai_model_raw, prompt_raw, datasource_raw, all_datasource_raw = (
+                            row.iloc[0],
+                            row.iloc[1],
+                            row.iloc[2],
+                            row.iloc[3],
+                            row.iloc[4],
+                            row.iloc[5],
+                            row.iloc[6],
+                            row.iloc[7],
+                            row.iloc[8],
+                        )
+                    elif len(use_cols) >= 8:
                         name_raw, description_raw, target_scope_raw, active_raw, ai_model_raw, prompt_raw, datasource_raw, all_datasource_raw = (
                             row.iloc[0],
                             row.iloc[1],
@@ -722,6 +781,7 @@ async def upload_excel(
                             row.iloc[6],
                             row.iloc[7],
                         )
+                        visible_raw = ""
                     elif len(use_cols) >= 6:
                         name_raw, description_raw, ai_model_raw, prompt_raw, datasource_raw, all_datasource_raw = (
                             row.iloc[0],
@@ -733,6 +793,7 @@ async def upload_excel(
                         )
                         target_scope_raw = ""
                         active_raw = ""
+                        visible_raw = ""
                     elif len(use_cols) >= 5:
                         name_raw, description_raw, prompt_raw, datasource_raw, all_datasource_raw = (
                             row.iloc[0],
@@ -744,6 +805,7 @@ async def upload_excel(
                         ai_model_raw = ""
                         target_scope_raw = ""
                         active_raw = ""
+                        visible_raw = ""
                     else:
                         name_raw, prompt_raw, datasource_raw, all_datasource_raw = (
                             row.iloc[0],
@@ -755,6 +817,7 @@ async def upload_excel(
                         ai_model_raw = ""
                         target_scope_raw = ""
                         active_raw = ""
+                        visible_raw = ""
 
                     name = name_raw.strip() if pd.notna(name_raw) and name_raw.strip() else ""
                     description = description_raw.strip() if pd.notna(description_raw) and description_raw.strip() else ""
@@ -763,6 +826,7 @@ async def upload_excel(
                         trans,
                     )
                     active = _parse_active_cell(active_raw if pd.notna(active_raw) else "")
+                    visible = _parse_visible_cell(visible_raw if pd.notna(visible_raw) else "")
                     ai_model_name = ai_model_raw.strip() if pd.notna(ai_model_raw) and ai_model_raw.strip() else ""
                     ai_model_id = ai_model_name_to_id.get(ai_model_name) if ai_model_name else None
                     prompt = prompt_raw.strip() if pd.notna(prompt_raw) and prompt_raw.strip() else ""
@@ -781,6 +845,7 @@ async def upload_excel(
                         description=description,
                         target_scope=target_scope,
                         active=active,
+                        visible=visible,
                         ai_model_id=ai_model_id,
                         ai_model_name=ai_model_name if ai_model_id else None,
                         prompt=prompt,
@@ -806,6 +871,7 @@ async def upload_excel(
                         "description": data.description,
                         "target_scope": _target_scope_export_value(data.target_scope),
                         "active": "Y" if data.active else "N",
+                        "visible": "Y" if data.visible else "N",
                         "ai_model": data.ai_model_name or "",
                         "prompt": data.prompt,
                         "datasource": ", ".join(data.datasource_names or []),
@@ -817,6 +883,7 @@ async def upload_excel(
                     AxisObj(name=trans("i18n_custom_prompt.agent_description"), value="description"),
                     AxisObj(name=trans("i18n_custom_prompt.target_scope"), value="target_scope"),
                     AxisObj(name=trans("i18n_custom_prompt.active"), value="active"),
+                    AxisObj(name=trans("i18n_custom_prompt.visible"), value="visible"),
                     AxisObj(name=trans("i18n_custom_prompt.ai_model"), value="ai_model"),
                     AxisObj(name=trans("i18n_custom_prompt.prompt_word_content"), value="prompt"),
                     AxisObj(name=trans("i18n_custom_prompt.effective_data_sources"), value="datasource"),

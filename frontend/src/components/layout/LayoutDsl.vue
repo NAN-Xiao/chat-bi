@@ -116,6 +116,7 @@ const isPlatformSaasAdminShell = computed(
   () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
 )
 const useTopNavigationShell = computed(() => !isPlatformSaasAdminShell.value)
+const showTopWorkspaceAdminSidebar = computed(() => useTopNavigationShell.value && showSysmenu.value)
 onBeforeMount(() => {
   if (isPhone.value) {
     collapse.value = true
@@ -135,8 +136,8 @@ onMounted(() => {
         <div class="top-nav-brand" @click="toChatIndex">
           <img
             v-if="loginBg"
-            height="30"
-            width="30"
+            height="28"
+            width="28"
             :src="loginBg"
             alt=""
           />
@@ -146,31 +147,18 @@ onMounted(() => {
           <img
             v-else
             :src="defaultLogoUrl"
-            height="30"
-            width="30"
+            height="28"
+            width="28"
             alt=""
           />
-          <span
-            :title="showSysmenu ? $t('tenant.management') : appearanceStore.name"
-            class="ellipsis"
-          >
-            {{ showSysmenu ? $t('tenant.management') : appearanceStore.name }}
+          <span :title="appearanceStore.name" class="ellipsis">
+            {{ appearanceStore.name }}
           </span>
         </div>
-        <Menu class="top-nav-menu" mode="horizontal"></Menu>
+        <Menu class="top-nav-menu" mode="horizontal" scope="business"></Menu>
         <div class="top-nav-actions">
-          <div
-            v-if="showSysmenu"
-            class="top-back-to-project"
-            @click="toProjectList"
-          >
-            <el-icon size="18">
-              <icon_moments_categories_outlined></icon_moments_categories_outlined>
-            </el-icon>
-            <span>{{ $t('project.return_to_project') }}</span>
-          </div>
           <ProjectSelector
-            v-if="!showSysmenu && !userStore.isPlatformWorkspaceDelegate"
+            v-if="!userStore.isPlatformWorkspaceDelegate"
             :collapse="false"
           ></ProjectSelector>
           <Person :collapse="true" :in-sysmenu="showSysmenu"></Person>
@@ -382,8 +370,19 @@ onMounted(() => {
           {{ $t('tenant.return_to_platform') }}
         </button>
       </div>
-      <div class="content">
-        <router-view />
+      <div class="content" :class="showTopWorkspaceAdminSidebar && 'workspace-admin-content'">
+        <aside v-if="showTopWorkspaceAdminSidebar" class="workspace-admin-sidebar">
+          <div class="workspace-admin-sidebar-head">
+            <div class="workspace-admin-sidebar-title">{{ $t('tenant.management') }}</div>
+            <div class="workspace-admin-sidebar-subtitle ellipsis">
+              {{ userStore.getTenantName }}
+            </div>
+          </div>
+          <Menu scope="system"></Menu>
+        </aside>
+        <main class="content-main">
+          <router-view />
+        </main>
       </div>
     </div>
     <AnalysisAssistantDock
@@ -410,18 +409,21 @@ onMounted(() => {
   }
 
   &.system-layout-top-nav {
+    --top-nav-height: 52px;
+    --top-nav-control-height: 32px;
+
     flex-direction: column;
     background: var(--workspace-shell-bg, var(--theme-shell-bg));
 
     .top-nav-shell {
-      flex: 0 0 60px;
+      flex: 0 0 var(--top-nav-height);
       width: 100%;
       min-width: 0;
-      height: 60px;
+      height: var(--top-nav-height);
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 0 16px;
+      gap: 12px;
+      padding: 0 14px;
       color: var(--workspace-text-primary, var(--theme-text-primary));
       background: var(--workspace-card-bg, var(--theme-panel-bg));
       border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
@@ -431,41 +433,55 @@ onMounted(() => {
 
     .top-nav-brand {
       flex: 0 0 auto;
-      min-width: 190px;
-      max-width: 230px;
+      min-width: 184px;
+      max-width: 220px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       cursor: pointer;
 
       img,
       :deep(svg) {
         flex: 0 0 auto;
-        width: 30px;
-        height: 30px;
+        width: 28px;
+        height: 28px;
       }
 
       span {
         min-width: 0;
         font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
-        font-size: 17px;
+        font-size: 16px;
         font-weight: 700;
-        line-height: 24px;
+        line-height: 22px;
         letter-spacing: 0;
         color: var(--workspace-text-primary, var(--theme-text-primary));
       }
     }
 
     :deep(.workspace-selector) {
-      width: 220px;
-      height: 36px;
+      width: 212px;
+      height: var(--top-nav-control-height);
       margin-bottom: 0;
+      padding: 0 10px;
+      border-radius: 8px;
       background: var(--workspace-control-bg, var(--theme-control-bg));
       border-color: var(--workspace-border, var(--theme-shell-border));
       color: var(--workspace-text-secondary, var(--theme-text-secondary));
 
+      .ed-icon {
+        font-size: 16px !important;
+      }
+
       .name {
+        margin-left: 7px;
+        max-width: 118px;
+        font-size: 13px;
+        line-height: 20px;
         color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+
+      .expand {
+        font-size: 20px !important;
       }
 
       &:hover,
@@ -478,7 +494,7 @@ onMounted(() => {
     .top-nav-menu {
       flex: 1 1 auto;
       min-width: 0;
-      height: 60px;
+      height: var(--top-nav-height);
       overflow: hidden;
     }
 
@@ -486,11 +502,15 @@ onMounted(() => {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
-      gap: 8px;
-      height: 60px;
+      gap: 6px;
+      height: var(--top-nav-height);
 
       :deep(.person),
       :deep(.theme-toggle.collapse) {
+        width: var(--top-nav-control-height);
+        min-width: var(--top-nav-control-height);
+        height: var(--top-nav-control-height);
+        border-radius: 8px;
         color: var(--workspace-text-secondary, var(--theme-text-secondary));
 
         &:hover,
@@ -499,18 +519,35 @@ onMounted(() => {
           color: var(--workspace-text-primary, var(--theme-text-primary));
         }
       }
+
+      :deep(.person.collapse .ed-icon) {
+        width: 26px;
+        height: 26px;
+        font-size: 26px !important;
+      }
+
+      :deep(.person.collapse .ed-icon svg),
+      :deep(.person.collapse .default-avatar) {
+        width: 26px;
+        height: 26px;
+      }
+
+      :deep(.theme-toggle.collapse .theme-toggle-icon) {
+        width: 15px;
+        height: 15px;
+      }
     }
 
     .top-back-to-project {
-      height: 36px;
-      padding: 0 12px;
+      height: var(--top-nav-control-height);
+      padding: 0 10px;
       border-radius: 8px;
       display: flex;
       align-items: center;
       gap: 6px;
       color: var(--workspace-text-secondary, var(--theme-text-secondary));
       cursor: pointer;
-      font-size: 14px;
+      font-size: 13px;
       line-height: 20px;
       white-space: nowrap;
       transition:
@@ -531,14 +568,18 @@ onMounted(() => {
     .right-main {
       width: 100%;
       min-height: 0;
-      max-height: calc(100vh - 60px);
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - var(--top-nav-height));
 
       .content {
+        flex: 1;
+        min-height: 0;
         height: 100%;
       }
 
       &.is-platform-delegate {
-        max-height: calc(100vh - 60px);
+        max-height: calc(100vh - var(--top-nav-height));
       }
     }
   }
@@ -778,6 +819,96 @@ onMounted(() => {
       &:has(.no-padding) {
         padding: 0;
       }
+
+      &.workspace-admin-content {
+        padding: 0;
+        display: flex;
+        overflow: hidden;
+      }
+    }
+
+    .workspace-admin-sidebar {
+      flex: 0 0 240px;
+      width: 240px;
+      min-width: 240px;
+      height: 100%;
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      color: var(--theme-sidebar-text);
+      background: var(--theme-sidebar-bg);
+      border-right: 1px solid var(--theme-sidebar-border);
+      --theme-text-primary: var(--theme-sidebar-text);
+      --theme-text-secondary: var(--theme-sidebar-text-secondary);
+      --theme-text-tertiary: var(--theme-sidebar-text-tertiary);
+      --theme-control-bg: var(--theme-sidebar-control-bg);
+      --theme-control-hover-bg: var(--theme-sidebar-control-hover-bg);
+      --theme-hover-bg: var(--theme-sidebar-hover-bg);
+      --theme-active-bg: var(--theme-sidebar-active-soft-bg);
+      --theme-shell-border: var(--theme-sidebar-border);
+      --theme-card-shadow: none;
+    }
+
+    .workspace-admin-sidebar-head {
+      flex: 0 0 auto;
+      padding: 0 6px 14px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .workspace-admin-sidebar-title {
+      color: var(--theme-sidebar-emphasis-text, var(--theme-sidebar-text));
+      font-size: 16px;
+      line-height: 24px;
+      font-weight: 600;
+    }
+
+    .workspace-admin-sidebar-subtitle {
+      margin-top: 2px;
+      color: var(--theme-sidebar-text-secondary, var(--theme-text-secondary));
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .content-main {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      overflow: visible;
+      scrollbar-width: thin;
+      scrollbar-color: #b8c4d6 #edf2f8;
+
+      &:has(.no-padding) {
+        padding: 0;
+      }
+    }
+
+    .workspace-admin-content .content-main {
+      padding: 18px 24px;
+      overflow: auto;
+    }
+
+    .content-main::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    .content-main::-webkit-scrollbar-track {
+      background: #edf2f8;
+      border-radius: 999px;
+    }
+
+    .content-main::-webkit-scrollbar-thumb {
+      background: #b8c4d6;
+      border-radius: 999px;
+      border: 2px solid #edf2f8;
+    }
+
+    .content-main::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
     }
 
     &.is-platform-delegate {

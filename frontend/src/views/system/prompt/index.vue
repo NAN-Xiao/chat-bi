@@ -534,99 +534,91 @@ const copyCode = () => {
       />
 
       <div v-if="fieldList.length" class="card-content">
-        <el-row :gutter="16" class="w-full">
-          <el-col
-            v-for="item in fieldList"
-            :key="item.id"
-            :xs="24"
-            :sm="12"
-            :md="12"
-            :lg="8"
-            :xl="6"
-            class="mb-16"
-          >
-            <article class="agent-card" @click="handleRowClick(item)">
-              <div class="name-icon">
-                <el-icon class="icon-primary" size="32">
-                  <icon_ai></icon_ai>
-                </el-icon>
-                <div class="info">
-                  <div class="name ellipsis" :title="item.name">{{ item.name }}</div>
-                  <div class="sub-title">{{ sourceText(item) }} · {{ typeTitle(item.type) }}</div>
-                </div>
-              </div>
+        <article
+          v-for="item in fieldList"
+          :key="item.id"
+          class="agent-card"
+          @click="handleRowClick(item)"
+        >
+          <div class="name-icon">
+            <el-icon class="icon-primary" size="28">
+              <icon_ai></icon_ai>
+            </el-icon>
+            <div class="info">
+              <div class="name ellipsis" :title="item.name">{{ item.name }}</div>
+              <div class="sub-title">{{ sourceText(item) }} · {{ typeTitle(item.type) }}</div>
+            </div>
+          </div>
 
-              <div class="detail-list">
-                <div class="type-value">
-                  <span class="type">{{ $t('prompt.agent_description') }}</span>
-                  <span class="value ellipsis" :title="item.description || $t('prompt.agent_empty_description')">
-                    {{ item.description || $t('prompt.agent_empty_description') }}
-                  </span>
-                </div>
-                <div class="type-value">
-                  <span class="type">{{ $t('prompt.ai_model') }}</span>
-                  <span class="value ellipsis" :title="modelText(item)">{{ modelText(item) }}</span>
-                </div>
-                <div class="type-value">
-                  <span class="type">{{ $t('prompt.target_scope') }}</span>
-                  <span class="value ellipsis" :title="targetScopeText(item.target_scope)">
-                    {{ targetScopeText(item.target_scope) }}
-                  </span>
-                </div>
-                <div class="type-value">
-                  <span class="type">{{ $t('prompt.active_status') }}</span>
-                  <span class="value" :class="item.active ? 'is-active-status' : 'is-inactive-status'">
-                    {{ item.active ? $t('prompt.active_enabled') : $t('prompt.active_disabled') }}
-                  </span>
-                </div>
-                <div class="type-value">
-                  <span class="type">{{ $t('training.effective_data_sources') }}</span>
-                  <span class="value ellipsis" :title="scopeText(item)">{{ scopeText(item) }}</span>
-                </div>
-              </div>
+          <div class="detail-list">
+            <div class="type-value">
+              <span class="type">{{ $t('prompt.agent_description') }}</span>
+              <span class="value ellipsis" :title="item.description || $t('prompt.agent_empty_description')">
+                {{ item.description || $t('prompt.agent_empty_description') }}
+              </span>
+            </div>
+            <div class="type-value">
+              <span class="type">{{ $t('prompt.ai_model') }}</span>
+              <span class="value ellipsis" :title="modelText(item)">{{ modelText(item) }}</span>
+            </div>
+            <div class="type-value">
+              <span class="type">{{ $t('prompt.target_scope') }}</span>
+              <span class="value ellipsis" :title="targetScopeText(item.target_scope)">
+                {{ targetScopeText(item.target_scope) }}
+              </span>
+            </div>
+            <div class="type-value">
+              <span class="type">{{ $t('prompt.active_status') }}</span>
+              <span class="value" :class="item.active ? 'is-active-status' : 'is-inactive-status'">
+                {{ item.active ? $t('prompt.active_enabled') : $t('prompt.active_disabled') }}
+              </span>
+            </div>
+            <div class="type-value">
+              <span class="type">{{ $t('training.effective_data_sources') }}</span>
+              <span class="value ellipsis" :title="scopeText(item)">{{ scopeText(item) }}</span>
+            </div>
+          </div>
 
-              <div class="bottom-info">
-                <div class="form-rate">
-                  <el-icon class="form-icon" size="14">
-                    <icon_key_outlined></icon_key_outlined>
-                  </el-icon>
-                  {{ typeTitle(item.type) }}
+          <div class="bottom-info">
+            <div class="form-rate">
+              <el-icon class="form-icon" size="13">
+                <icon_key_outlined></icon_key_outlined>
+              </el-icon>
+              {{ typeTitle(item.type) }}
+            </div>
+            <div class="create-time">
+              {{ formatTimestamp(item.create_time, 'YYYY-MM-DD HH:mm:ss') }}
+            </div>
+            <div v-if="canManageAgent(item)" class="methods" @click.stop>
+              <el-popover
+                trigger="click"
+                :teleported="true"
+                popper-class="popover-card_agent"
+                placement="bottom-end"
+              >
+                <template #reference>
+                  <button type="button" class="more" aria-label="more actions">
+                    <icon_more_outlined></icon_more_outlined>
+                  </button>
+                </template>
+                <div class="content">
+                  <div class="item" @click.stop="editHandler(item)">
+                    <el-icon size="16">
+                      <IconOpeEdit></IconOpeEdit>
+                    </el-icon>
+                    {{ $t('datasource.edit') }}
+                  </div>
+                  <div class="item" @click.stop="deleteHandler(item)">
+                    <el-icon size="16">
+                      <IconOpeDelete></IconOpeDelete>
+                    </el-icon>
+                    {{ $t('dashboard.delete') }}
+                  </div>
                 </div>
-                <div class="create-time">
-                  {{ formatTimestamp(item.create_time, 'YYYY-MM-DD HH:mm:ss') }}
-                </div>
-                <div v-if="canManageAgent(item)" class="methods" @click.stop>
-                  <el-popover
-                    trigger="click"
-                    :teleported="true"
-                    popper-class="popover-card_agent"
-                    placement="bottom-end"
-                  >
-                    <template #reference>
-                      <button type="button" class="more" aria-label="more actions">
-                        <icon_more_outlined></icon_more_outlined>
-                      </button>
-                    </template>
-                    <div class="content">
-                      <div class="item" @click.stop="editHandler(item)">
-                        <el-icon size="16">
-                          <IconOpeEdit></IconOpeEdit>
-                        </el-icon>
-                        {{ $t('datasource.edit') }}
-                      </div>
-                      <div class="item" @click.stop="deleteHandler(item)">
-                        <el-icon size="16">
-                          <IconOpeDelete></IconOpeDelete>
-                        </el-icon>
-                        {{ $t('dashboard.delete') }}
-                      </div>
-                    </div>
-                  </el-popover>
-                </div>
-              </div>
-            </article>
-          </el-col>
-        </el-row>
+              </el-popover>
+            </div>
+          </div>
+        </article>
       </div>
 
       <template v-else-if="!searchLoading">
@@ -935,24 +927,19 @@ const copyCode = () => {
 
   .card-content {
     padding-top: 12px;
-
-    .w-full {
-      width: 100%;
-    }
-
-    .mb-16 {
-      margin-bottom: 16px;
-    }
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
   }
 
   .agent-card {
     width: 100%;
-    height: 246px;
+    height: 196px;
     border: 1px solid var(--workspace-border, #e2eaf4);
-    padding: 16px 54px 20px 16px;
+    padding: 12px 42px 12px 12px;
     border-radius: 8px;
     background: #ffffff;
-    box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
+    box-shadow: none;
     cursor: pointer;
     display: flex;
     flex-direction: column;
@@ -964,29 +951,29 @@ const copyCode = () => {
 
     &:hover {
       border-color: var(--workspace-border, #e2eaf4);
-      box-shadow: 0 16px 36px rgba(24, 46, 86, 0.11);
-      transform: translateY(-2px) scale(1.012);
+      box-shadow: 0 8px 18px rgba(16, 24, 40, 0.08);
+      transform: translateY(-1px);
     }
 
     .name-icon {
       display: flex;
       align-items: center;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
 
       .icon-primary {
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         border-radius: 6px;
         background: #2f6de5;
         color: #ffffff;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        flex: 0 0 32px;
+        flex: 0 0 28px;
 
         :deep(svg) {
-          width: 20px;
-          height: 20px;
+          width: 18px;
+          height: 18px;
         }
 
         :deep(path) {
@@ -995,15 +982,15 @@ const copyCode = () => {
       }
 
       .info {
-        margin-left: 12px;
-        max-width: calc(100% - 50px);
+        margin-left: 10px;
+        max-width: calc(100% - 38px);
         min-width: 0;
       }
 
       .name {
-        font-weight: 500;
-        font-size: 16px;
-        line-height: 24px;
+        font-weight: 600;
+        font-size: 14px;
+        line-height: 22px;
         max-width: 100%;
         color: var(--workspace-text-primary, #1b2a41);
       }
@@ -1011,7 +998,7 @@ const copyCode = () => {
       .sub-title {
         font-weight: 400;
         font-size: 12px;
-        line-height: 20px;
+        line-height: 18px;
         color: var(--workspace-text-secondary, #66758f);
       }
     }
@@ -1025,17 +1012,19 @@ const copyCode = () => {
       display: flex;
       align-items: center;
       font-weight: 400;
-      font-size: 14px;
-      line-height: 22px;
+      font-size: 12px;
+      line-height: 18px;
 
       .type {
         color: var(--workspace-text-secondary, #66758f);
         flex: 0 0 86px;
+        overflow: hidden;
+        text-overflow: ellipsis;
         white-space: nowrap;
       }
 
       .value {
-        margin-left: 16px;
+        margin-left: 8px;
         min-width: 0;
         flex: 1;
         color: var(--workspace-text-primary, #1b2a41);
@@ -1051,7 +1040,7 @@ const copyCode = () => {
     }
 
     .type-value + .type-value {
-      margin-top: 6px;
+      margin-top: 2px;
     }
 
     .bottom-info {
@@ -1059,8 +1048,8 @@ const copyCode = () => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      height: 22px;
+      gap: 8px;
+      height: 20px;
 
       .form-rate {
         display: flex;
@@ -1068,14 +1057,14 @@ const copyCode = () => {
         min-width: 0;
         color: var(--workspace-text-secondary, #66758f);
         font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
+        font-size: 12px;
+        line-height: 18px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
 
         .form-icon {
-          margin-right: 10px;
+          margin-right: 6px;
           flex: 0 0 auto;
           color: var(--workspace-text-secondary, #66758f);
         }
@@ -1084,14 +1073,14 @@ const copyCode = () => {
       .create-time {
         color: var(--workspace-text-secondary, #66758f);
         font-size: 12px;
-        line-height: 20px;
+        line-height: 18px;
         flex: 0 0 auto;
       }
 
       .methods {
         position: absolute;
-        right: 16px;
-        top: 16px;
+        right: 12px;
+        top: 12px;
         align-items: center;
         display: flex;
 
@@ -1104,9 +1093,9 @@ const copyCode = () => {
           line-height: 1;
           position: relative;
           cursor: pointer;
-          width: 28px;
-          height: 28px;
-          flex: 0 0 28px;
+          width: 24px;
+          height: 24px;
+          flex: 0 0 24px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -1123,8 +1112,8 @@ const copyCode = () => {
             content: '';
             position: absolute;
             border-radius: 8px;
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
             transform: translate(-50%, -50%);
             top: 50%;
             left: 50%;

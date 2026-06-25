@@ -276,6 +276,8 @@ def find_custom_prompts(
         current_user_id: Optional[int | str] = None,
         can_manage_all: bool = False,
         tenant_id: Optional[int | str] = None,
+        can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
 ) -> tuple[str, list[str], Optional[int]]:
     normalized_prompt_id = _normalize_prompt_id(prompt_id)
     if normalized_prompt_id is None:
@@ -293,6 +295,8 @@ def find_custom_prompts(
         "platform_scope": CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value,
         "public_scope": CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value,
         "private_scope": CustomPromptVisibilityScopeEnum.USER_PRIVATE.value,
+        "can_manage_public": bool(can_manage_public or can_manage_all),
+        "can_manage_platform_public": bool(can_manage_platform_public),
     }
     if custom_prompt_type is not None:
         type_condition = "AND type = :custom_prompt_type"
@@ -307,9 +311,16 @@ def find_custom_prompts(
               {type_condition}
               AND COALESCE(active, false) = true
               AND (
-                visibility_scope = :platform_scope
+                (
+                  visibility_scope = :platform_scope
+                  AND (:can_manage_platform_public OR COALESCE(visible, true) = true)
+                )
                 OR
-                (COALESCE(visibility_scope, :public_scope) = :public_scope AND tenant_id = :tenant_id)
+                (
+                  COALESCE(visibility_scope, :public_scope) = :public_scope
+                  AND tenant_id = :tenant_id
+                  AND (:can_manage_public OR COALESCE(visible, true) = true)
+                )
                 OR (visibility_scope = :private_scope AND create_by = :current_user_id)
               )
               AND (
@@ -379,6 +390,8 @@ def find_data_skills(
         tenant_id: Optional[int | str] = None,
         question: Optional[str] = None,
         include_all_target_scopes: bool = False,
+        can_manage_public: bool = False,
+        can_manage_platform_public: bool = False,
 ) -> tuple[str, list[str], Optional[int]]:
     normalized_skill_id = _normalize_prompt_id(skill_id)
     normalized_scope = _normalize_target_scope(target_scope)
@@ -403,6 +416,8 @@ def find_data_skills(
         "public_scope": CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value,
         "private_scope": CustomPromptVisibilityScopeEnum.USER_PRIVATE.value,
         "disabled_pref": False,
+        "can_manage_public": bool(can_manage_public or can_manage_all),
+        "can_manage_platform_public": bool(can_manage_platform_public),
     }
     if normalized_skill_id is not None:
         params["skill_id"] = normalized_skill_id
@@ -417,9 +432,16 @@ def find_data_skills(
               AND type = :custom_prompt_type
               AND COALESCE(active, false) = true
               AND (
-                visibility_scope = :platform_scope
+                (
+                  visibility_scope = :platform_scope
+                  AND (:can_manage_platform_public OR COALESCE(visible, true) = true)
+                )
                 OR
-                (COALESCE(visibility_scope, :public_scope) = :public_scope AND tenant_id = :tenant_id)
+                (
+                  COALESCE(visibility_scope, :public_scope) = :public_scope
+                  AND tenant_id = :tenant_id
+                  AND (:can_manage_public OR COALESCE(visible, true) = true)
+                )
                 OR (visibility_scope = :private_scope AND create_by = :current_user_id)
               )
               {target_scope_condition}

@@ -456,11 +456,15 @@ defineExpose({
 
 <style lang="less">
 .dv-preview {
+  --dashboard-preview-card-bg: #ffffff;
+  --dashboard-preview-canvas-bg: #fbfbff;
+  --dashboard-preview-sidebar-bg: #f3f7fc;
+
   width: 100%;
   height: 100%;
   overflow: hidden;
   display: flex;
-  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  background: var(--dashboard-preview-sidebar-bg);
   color: var(--workspace-text-primary, #1f2329);
   position: relative;
   font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
@@ -471,7 +475,7 @@ defineExpose({
     position: relative;
     height: 100%;
     padding: 0;
-    background: var(--workspace-panel-bg, var(--theme-panel-bg));
+    background: var(--dashboard-preview-sidebar-bg);
     color: var(--workspace-text-primary, #1f2329);
     border-right: 1px solid var(--workspace-border, var(--theme-shell-border));
     z-index: 1;
@@ -490,7 +494,7 @@ defineExpose({
     overflow-x: hidden;
     overflow-y: auto;
     position: relative;
-    background: var(--workspace-panel-bg, var(--theme-panel-bg));
+    background: var(--dashboard-preview-canvas-bg);
 
     .preview-stage {
       display: flex;
@@ -498,6 +502,7 @@ defineExpose({
       min-width: 0;
       min-height: 0;
       flex-direction: column;
+      background: var(--dashboard-preview-canvas-bg);
     }
 
     .content {
@@ -510,6 +515,7 @@ defineExpose({
       overflow-y: auto;
       padding: 0;
       align-items: stretch;
+      background: var(--dashboard-preview-canvas-bg);
 
       &.content--empty {
         align-items: center;
@@ -519,7 +525,9 @@ defineExpose({
   }
 
   .preview-area .preview-stage > .preview-head {
-    background: transparent;
+    position: relative;
+    z-index: 2;
+    background: var(--dashboard-preview-canvas-bg);
     border-bottom: 0;
   }
 }
@@ -554,7 +562,7 @@ defineExpose({
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: var(--workspace-panel-bg, var(--theme-panel-bg));
+    background: var(--dashboard-preview-canvas-bg);
   }
 
   :deep(.ed-empty__description) {
@@ -616,7 +624,7 @@ defineExpose({
   width: 16px;
   left: 0;
   top: calc(50% - 30px);
-  background-color: var(--workspace-card-bg, #ffffff);
+  background-color: var(--dashboard-preview-card-bg, #ffffff);
   border-radius: 0 8px 8px 0;
   cursor: pointer;
   z-index: 10;
