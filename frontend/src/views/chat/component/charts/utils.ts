@@ -114,7 +114,7 @@ function axisText(axis: ChartAxis): string {
   return axisLabel(axis).toLowerCase()
 }
 
-function isAverageAxis(axis: ChartAxis): boolean {
+export function isAverageAxis(axis: ChartAxis): boolean {
   const text = axisText(axis)
   return AVERAGE_KEYWORDS.some((keyword) => text.includes(keyword))
 }

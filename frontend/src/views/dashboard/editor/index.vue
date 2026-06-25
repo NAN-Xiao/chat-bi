@@ -17,6 +17,7 @@ import {
   getPlatformTemplateCanvasSourceKey,
   loadDashboardCanvasDraft,
   saveDashboardCanvasDraft,
+  clearDashboardCanvasDraft,
 } from '@/views/dashboard/utils/canvasDraft.ts'
 import { applyRecommendedChartComponentSize } from '@/views/dashboard/utils/chartSizing.ts'
 
@@ -40,6 +41,8 @@ let canvasStateReady = false
 let applyingCanvasState = false
 let draftSaveTimer: number | null = null
 let routeLoadVersion = 0
+
+const canUseCanvasDraft = (sourceKey?: string | null) => Boolean(sourceKey?.startsWith('create:'))
 
 const loadCanvasResource = (id: string | number) =>
   new Promise<any>((resolve) => {
@@ -113,8 +116,12 @@ const loadCanvasFromRoute = async () => {
       : state.opt === 'create'
       ? getCreateCanvasSourceKey(state.datasource, state.routerPid)
       : getDashboardCanvasSourceKey(state.resourceId)
+  if (sourceKey && !canUseCanvasDraft(sourceKey)) {
+    clearDashboardCanvasDraft(sourceKey)
+  }
   if (
     sourceKey &&
+    canUseCanvasDraft(sourceKey) &&
     dashboardStore.canvasEditingSourceKey === sourceKey &&
     dashboardStore.hasUnsavedCanvasChanges
   ) {
@@ -133,10 +140,7 @@ const loadCanvasFromRoute = async () => {
         canEdit: true,
         canShare: false,
       })
-      const restored = await restoreCanvasDraft(sourceKey)
-      if (!restored) {
-        dashboardStore.markCanvasSaved()
-      }
+      dashboardStore.markCanvasSaved()
     } else if (state.opt === 'create') {
       const createSourceKey = getCreateCanvasSourceKey(state.datasource, state.routerPid)
       await pauseCanvasStateWatch(() => {
@@ -160,10 +164,7 @@ const loadCanvasFromRoute = async () => {
       const result = await loadCanvasResource(resourceId)
       if (loadVersion !== routeLoadVersion) return
       await applyLoadedCanvasResource(resourceId, result)
-      const restored = await restoreCanvasDraft(sourceKey)
-      if (!restored) {
-        dashboardStore.markCanvasSaved()
-      }
+      dashboardStore.markCanvasSaved()
     } else {
       await pauseCanvasStateWatch(() => {
         dashboardStore.canvasDataInit()
@@ -203,6 +204,7 @@ const buildDraftDashboardInfo = (draftInfo: any) => {
 }
 
 const restoreCanvasDraft = async (sourceKey: string) => {
+  if (!canUseCanvasDraft(sourceKey)) return false
   const draft = loadDashboardCanvasDraft(sourceKey)
   if (!draft) return false
   await pauseCanvasStateWatch(() => {
@@ -218,7 +220,7 @@ const restoreCanvasDraft = async (sourceKey: string) => {
 
 const persistCanvasDraft = () => {
   const sourceKey = dashboardStore.canvasEditingSourceKey
-  if (!sourceKey || !dashboardStore.hasUnsavedCanvasChanges) return
+  if (!sourceKey || !canUseCanvasDraft(sourceKey) || !dashboardStore.hasUnsavedCanvasChanges) return
   saveDashboardCanvasDraft(sourceKey, {
     sourceKey,
     savedAt: Date.now(),

@@ -468,6 +468,7 @@ defineExpose({
         :series="viewInfo.chart?.series"
         :data="viewInfo.data?.data"
         :sql="viewInfo.sql"
+        :insight="viewInfo.chart?.insight"
       />
       <div
         v-if="!chartLoading && viewInfo.status !== 'failed' && viewInfo.id"
@@ -487,6 +488,7 @@ defineExpose({
           :series="viewInfo.chart?.series"
           :data="viewInfo.data?.data"
           :sql="viewInfo.sql"
+          :insight="viewInfo.chart?.insight"
         />
         <ChartComponent
           :id="outerId || viewInfo.id"

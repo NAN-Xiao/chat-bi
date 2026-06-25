@@ -424,9 +424,9 @@ const routerList = computed(() => {
 
     .menu-title-text {
       position: relative;
-      transform-origin: center bottom;
+      font-size: 14px;
       transition:
-        transform 160ms ease,
+        font-size 160ms ease,
         font-weight 160ms ease;
 
       &::after {
@@ -479,8 +479,7 @@ const routerList = computed(() => {
     color: #1f2f4a !important;
 
     .menu-title-text {
-      font-weight: 600;
-      transform: scale(1.06);
+      font-size: 15px;
     }
   }
 
@@ -489,7 +488,10 @@ const routerList = computed(() => {
     background: transparent !important;
     border-bottom-color: transparent !important;
     color: var(--ed-color-primary, #2f6bff) !important;
-    font-weight: 600;
+
+    .menu-title-text {
+      font-size: 15px;
+    }
 
     .menu-title-text::after {
       opacity: 1;

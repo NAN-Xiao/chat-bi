@@ -191,6 +191,12 @@ const tabMoveOutXOffset = 30
 const tabMoveOutYOffset = 30
 // Effective area of collision depth
 const collisionGap = 10
+const insertDropMinOverlapRatio = 0.25
+
+type GridFrame = { x: number; y: number; sizeX: number; sizeY: number }
+type LayoutSnapshot = Array<{ item: CanvasItem; frame: GridFrame }>
+type MoveDropMode = 'place' | 'insert' | 'invalid'
+type LayoutFramePlan = Map<CanvasItem, GridFrame>
 
 function debounce(func: () => void, time: number) {
   if (!isOverlay) {
@@ -307,7 +313,7 @@ function rebuildPositionBox() {
   canvasComponentData.value.forEach((item) => addItemToPositionBox(item))
 }
 
-function getItemGridFrame(item: CanvasItem) {
+function getItemGridFrame(item: CanvasItem): GridFrame {
   return {
     x: item.x,
     y: item.y,
@@ -316,7 +322,7 @@ function getItemGridFrame(item: CanvasItem) {
   }
 }
 
-function normalizeGridFrame(frame: { x: number; y: number; sizeX: number; sizeY: number }) {
+function normalizeGridFrame(frame: GridFrame): GridFrame {
   const safeMaxCell = Math.max(itemMaxX, 1)
   const sizeX = Math.max(1, Math.min(Math.round(frame.sizeX), safeMaxCell))
   const sizeY = Math.max(1, Math.round(frame.sizeY))
@@ -335,8 +341,8 @@ function isSameCanvasItem(a: CanvasItem, b: CanvasItem) {
 }
 
 function isGridFrameOverlap(
-  a: { x: number; y: number; sizeX: number; sizeY: number },
-  b: { x: number; y: number; sizeX: number; sizeY: number }
+  a: GridFrame,
+  b: GridFrame
 ) {
   return (
     a.x < b.x + b.sizeX &&
@@ -346,13 +352,212 @@ function isGridFrameOverlap(
   )
 }
 
-function canPlaceGridFrame(item: CanvasItem, frame: { x: number; y: number; sizeX: number; sizeY: number }) {
+function getGridFrameOverlapArea(a: GridFrame, b: GridFrame) {
+  const overlapWidth = Math.max(0, Math.min(a.x + a.sizeX, b.x + b.sizeX) - Math.max(a.x, b.x))
+  const overlapHeight = Math.max(0, Math.min(a.y + a.sizeY, b.y + b.sizeY) - Math.max(a.y, b.y))
+  return overlapWidth * overlapHeight
+}
+
+function getDisplacedItemOverlapRatio(itemFrame: GridFrame, displacedFrame: GridFrame) {
+  const displacedArea = displacedFrame.sizeX * displacedFrame.sizeY
+  if (displacedArea <= 0) {
+    return 0
+  }
+
+  return getGridFrameOverlapArea(itemFrame, displacedFrame) / displacedArea
+}
+
+function canPlaceGridFrame(item: CanvasItem, frame: GridFrame) {
   return !canvasComponentData.value.some((otherItem) => {
     if (isSameCanvasItem(item, otherItem)) {
       return false
     }
     return isGridFrameOverlap(frame, getItemGridFrame(otherItem))
   })
+}
+
+function getOverlappingGridItems(item: CanvasItem, frame: GridFrame) {
+  return canvasComponentData.value.filter((otherItem) => {
+    if (isSameCanvasItem(item, otherItem)) {
+      return false
+    }
+    return isGridFrameOverlap(frame, getItemGridFrame(otherItem))
+  })
+}
+
+function getDisplaceableGridItems(item: CanvasItem, frame: GridFrame) {
+  const overlappingItems = getOverlappingGridItems(item, frame)
+
+  return overlappingItems.filter((otherItem) => {
+    return getDisplacedItemOverlapRatio(frame, getItemGridFrame(otherItem)) >= insertDropMinOverlapRatio
+  })
+}
+
+function getMoveDropMode(item: CanvasItem, frame: GridFrame): MoveDropMode {
+  if (canPlaceGridFrame(item, frame)) {
+    return 'place'
+  }
+
+  const overlappingItems = getOverlappingGridItems(item, frame)
+  const displaceableItems = getDisplaceableGridItems(item, frame)
+
+  return overlappingItems.length > 0 && overlappingItems.length === displaceableItems.length
+    ? 'insert'
+    : 'invalid'
+}
+
+function createLayoutSnapshot(): LayoutSnapshot {
+  return canvasComponentData.value.map((item) => ({
+    item,
+    frame: getItemGridFrame(item),
+  }))
+}
+
+function restoreLayoutSnapshot(snapshot: LayoutSnapshot) {
+  snapshot.forEach(({ item, frame }) => {
+    item.x = frame.x
+    item.y = frame.y
+    item.sizeX = frame.sizeX
+    item.sizeY = frame.sizeY
+  })
+  rebuildPositionBox()
+  snapshot.forEach(({ item }) => changeItemCoord(item))
+}
+
+function isGridFrameWithinCanvas(frame: GridFrame) {
+  return (
+    frame.x >= 1 &&
+    frame.y >= 1 &&
+    frame.sizeX >= 1 &&
+    frame.sizeY >= 1 &&
+    frame.x + frame.sizeX - 1 <= itemMaxX
+  )
+}
+
+function getPlannedGridFrame(item: CanvasItem, plan: LayoutFramePlan) {
+  return plan.get(item) || getItemGridFrame(item)
+}
+
+function canApplyLayoutFramePlan(plan: LayoutFramePlan) {
+  const items = canvasComponentData.value
+
+  for (const item of items) {
+    if (!isGridFrameWithinCanvas(getPlannedGridFrame(item, plan))) {
+      return false
+    }
+  }
+
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (
+        isGridFrameOverlap(getPlannedGridFrame(items[i], plan), getPlannedGridFrame(items[j], plan))
+      ) {
+        return false
+      }
+    }
+  }
+
+  return true
+}
+
+function applyLayoutFramePlan(plan: LayoutFramePlan) {
+  plan.forEach((frame, item) => {
+    item.x = frame.x
+    item.y = frame.y
+    item.sizeX = frame.sizeX
+    item.sizeY = frame.sizeY
+  })
+  rebuildPositionBox()
+  plan.forEach((_frame, item) => changeItemCoord(item))
+}
+
+function getGridFrameGroupBounds(items: CanvasItem[]) {
+  const frames = items.map((item) => getItemGridFrame(item))
+  const minX = Math.min(...frames.map((frame) => frame.x))
+  const minY = Math.min(...frames.map((frame) => frame.y))
+  const maxX = Math.max(...frames.map((frame) => frame.x + frame.sizeX))
+  const maxY = Math.max(...frames.map((frame) => frame.y + frame.sizeY))
+
+  return {
+    minX,
+    minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  }
+}
+
+function buildTranslatedFramePlan(
+  item: CanvasItem,
+  targetFrame: GridFrame,
+  displacedItems: CanvasItem[],
+  deltaX: number,
+  deltaY: number
+) {
+  const plan: LayoutFramePlan = new Map([[item, targetFrame]])
+
+  displacedItems.forEach((displacedItem) => {
+    const frame = getItemGridFrame(displacedItem)
+    plan.set(displacedItem, {
+      ...frame,
+      x: frame.x + deltaX,
+      y: frame.y + deltaY,
+    })
+  })
+
+  return plan
+}
+
+function buildSwapMovePlan(item: CanvasItem, targetFrame: GridFrame, displacedItems: CanvasItem[]) {
+  const sourceFrame = getItemGridFrame(item)
+  const groupBounds = getGridFrameGroupBounds(displacedItems)
+
+  if (groupBounds.width > sourceFrame.sizeX || groupBounds.height > sourceFrame.sizeY) {
+    return null
+  }
+
+  return buildTranslatedFramePlan(
+    item,
+    targetFrame,
+    displacedItems,
+    sourceFrame.x - groupBounds.minX,
+    sourceFrame.y - groupBounds.minY
+  )
+}
+
+function buildSqueezeMovePlan(item: CanvasItem, targetFrame: GridFrame, displacedItems: CanvasItem[]) {
+  const groupBounds = getGridFrameGroupBounds(displacedItems)
+
+  return buildTranslatedFramePlan(
+    item,
+    targetFrame,
+    displacedItems,
+    0,
+    targetFrame.y + targetFrame.sizeY - groupBounds.minY
+  )
+}
+
+function buildLocalMovePlan(item: CanvasItem, frame: GridFrame, mode: MoveDropMode) {
+  if (mode === 'invalid') {
+    return null
+  }
+
+  if (mode === 'place') {
+    const plan: LayoutFramePlan = new Map([[item, frame]])
+    return canApplyLayoutFramePlan(plan) ? plan : null
+  }
+
+  const displacedItems = _.sortBy(getDisplaceableGridItems(item, frame), ['y', 'x'])
+  if (displacedItems.length === 0) {
+    return null
+  }
+
+  const swapPlan = buildSwapMovePlan(item, frame, displacedItems)
+  if (swapPlan && canApplyLayoutFramePlan(swapPlan)) {
+    return swapPlan
+  }
+
+  const squeezePlan = buildSqueezeMovePlan(item, frame, displacedItems)
+  return canApplyLayoutFramePlan(squeezePlan) ? squeezePlan : null
 }
 
 /**
@@ -497,6 +702,22 @@ function setPlayerGridFrame(
   checkItemPosition(item, nextFrame)
   rebuildPositionBox()
   changeItemCoord(item)
+
+  if (item.component === 'SQView') {
+    useEmittLazy(`view-render-${item.id}`)
+  }
+
+  return getItemGridFrame(item)
+}
+
+function applyMoveGridFrame(item: CanvasItem, frame: GridFrame, mode: MoveDropMode) {
+  const plan = buildLocalMovePlan(item, frame, mode)
+
+  if (!plan) {
+    return null
+  }
+
+  applyLayoutFramePlan(plan)
 
   if (item.component === 'SQView') {
     useEmittLazy(`view-render-${item.id}`)
@@ -939,6 +1160,30 @@ function normalizeResizeFrame(x: number, y: number, sizeX: number, sizeY: number
   }
 }
 
+function isInteractiveDragTarget(target: Element) {
+  return Boolean(
+    target.closest(
+      [
+        '.component-bar-main',
+        '.bar-more',
+        '.ed-dropdown',
+        '.ed-dropdown-menu',
+        '.ed-button',
+        '.ed-input',
+        '.ed-select',
+        '.ed-tabs__nav',
+        '.tox',
+        'button',
+        'input',
+        'textarea',
+        'select',
+        'a',
+        '[contenteditable="true"]',
+      ].join(',')
+    )
+  )
+}
+
 function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   canvasLocked.value = false // Reset canvas lock status
   if (!draggable.value) return
@@ -948,36 +1193,32 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   }
 
   const target = e.target
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  let className = target.className || ''
+  if (!(target instanceof Element)) {
+    return
+  }
+  const targetElement = target
+  const className =
+    typeof targetElement.className === 'string'
+      ? targetElement.className
+      : targetElement.getAttribute('class') || ''
+  const itemNode = targetElement.closest('.item') as HTMLElement | null
+  const isResizeTarget = Boolean(targetElement.closest('.resizeHandle'))
 
-  if (
-    !className.includes('dragHandle') &&
-    !className.includes('item') &&
-    !className.includes('resizeHandle')
-  ) {
+  if (!itemNode || (!isResizeTarget && isInteractiveDragTarget(targetElement))) {
     return
   }
 
-  if (className.includes('resizeHandle')) {
+  if (isResizeTarget || className.includes('resizeHandle')) {
     // Handle resize (optional)
-  } else if (draggable.value && (className.includes('dragHandle') || className.includes('item'))) {
+  } else if (draggable.value) {
     props.dragStart(e, item, index)
     infoBox.value.moveItem = item
     infoBox.value.moveItemIndex = index
   }
   infoBox.value.cloneItem = null
   infoBox.value.nowItemNode = null
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  if (target.className.includes('item')) {
-    infoBox.value.nowItemNode = target
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    infoBox.value.cloneItem = target.cloneNode(true)
-  } else {
-    // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    infoBox.value.nowItemNode = target.closest('.item')
-    infoBox.value.cloneItem = infoBox.value.nowItemNode.cloneNode(true)
-  }
+  infoBox.value.nowItemNode = itemNode
+  infoBox.value.cloneItem = itemNode.cloneNode(true)
   infoBox.value.cloneItem.classList.add('cloneNode')
   const img = new Image()
   img.classList.add('clone_img')
@@ -1003,6 +1244,7 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
   infoBox.value.oldSizeX = item.sizeX
   infoBox.value.oldSizeY = item.sizeY
   infoBox.value.lastValidFrame = getItemGridFrame(item)
+  infoBox.value.originalLayoutSnapshot = createLayoutSnapshot()
   infoBox.value.originWidth = infoBox.value.cloneItem.offsetWidth
   infoBox.value.originHeight = infoBox.value.cloneItem.offsetHeight
   const itemMouseMove = (e: MouseEvent) => {
@@ -1078,11 +1320,13 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
         sizeY: moveItem.sizeY,
       })
       infoBox.value.dropFrame = candidateFrame
-      const canPlaceFrame = canPlaceGridFrame(moveItem, candidateFrame)
-      if (canPlaceFrame) {
+      const dropMode = getMoveDropMode(moveItem, candidateFrame)
+      infoBox.value.dropMode = dropMode
+      if (dropMode !== 'invalid') {
         infoBox.value.lastValidFrame = candidateFrame
       }
-      infoBox.value.cloneItem.classList.toggle('invalidDrop', !canPlaceFrame)
+      infoBox.value.cloneItem.classList.toggle('invalidDrop', dropMode === 'invalid')
+      infoBox.value.cloneItem.classList.toggle('insertDrop', dropMode === 'insert')
       const validStyle = getSnappedItemStyle(
         candidateFrame.x,
         candidateFrame.y,
@@ -1152,12 +1396,14 @@ function startMove(e: MouseEvent, item: CanvasItem, index: number) {
     }
     if (infoBox.value.moveItem) {
       const dropFrame = infoBox.value.dropFrame
-      const frameToApply =
-        dropFrame && canPlaceGridFrame(infoBox.value.moveItem, dropFrame)
-          ? dropFrame
-          : infoBox.value.lastValidFrame
-      if (frameToApply) {
-        setPlayerGridFrame(infoBox.value.moveItem, frameToApply)
+      const dropMode = infoBox.value.dropMode || 'invalid'
+      const originalLayoutSnapshot = infoBox.value.originalLayoutSnapshot
+      const appliedFrame =
+        dropFrame && dropMode !== 'invalid'
+          ? applyMoveGridFrame(infoBox.value.moveItem, dropFrame, dropMode)
+          : null
+      if (!appliedFrame && originalLayoutSnapshot) {
+        restoreLayoutSnapshot(originalLayoutSnapshot)
       }
       props.dragEnd(e, infoBox.value.moveItem, infoBox.value.moveItem._dragId)
       infoBox.value.moveItem.show = true

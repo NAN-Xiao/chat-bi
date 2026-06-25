@@ -294,6 +294,24 @@ onMounted(() => {
       line-height: 60px;
     }
 
+    .menu-container {
+      :deep(.ed-menu-item),
+      :deep(.ed-sub-menu__title) {
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      :deep(.ed-menu-item.is-active),
+      :deep(.ed-sub-menu.is-active > .ed-sub-menu__title) {
+        font-weight: 500 !important;
+      }
+
+      :deep(.ed-menu-item.is-active > span),
+      :deep(.ed-sub-menu.is-active > .ed-sub-menu__title > span) {
+        font-weight: 500 !important;
+      }
+    }
+
     .main-topbar-right {
       display: flex;
       height: 60px;
