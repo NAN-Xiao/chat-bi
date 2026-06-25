@@ -9,7 +9,7 @@ pipeline {
   }
 
   parameters {
-    string(name: 'BRANCH_NAME', defaultValue: 'single_ha_t1', description: 'Git 分支')
+    string(name: 'BRANCH_NAME', defaultValue: '单用户高可用', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
     booleanParam(name: 'CLEAN_OLD_IMAGES', defaultValue: false, description: '是否清理旧版本镜像。默认关闭以缩短发布耗时')
     booleanParam(name: 'CLEAN_DANGLING_IMAGES', defaultValue: false, description: '是否清理悬空镜像。默认关闭以保留 Docker 构建缓存')
