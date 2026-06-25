@@ -1,8 +1,8 @@
 # Build zhishu
-ARG ZHISHU_BUILD_BASE_IMAGE=zhishu-base:latest
-ARG ZHISHU_RUNTIME_IMAGE=zhishu-python-pg:latest
+ARG ZHISHU_BASE_IMAGE=zhishu-base:local
+ARG ZHISHU_RUNTIME_IMAGE=zhishu-python-pg:local
 
-FROM --platform=${BUILDPLATFORM} ${ZHISHU_BUILD_BASE_IMAGE} AS zhishu-ui-builder
+FROM --platform=${BUILDPLATFORM} ${ZHISHU_BASE_IMAGE} AS zhishu-ui-builder
 ENV ZHISHU_HOME=/opt/zhishu
 ENV APP_HOME=${ZHISHU_HOME}/app
 ENV UI_HOME=${ZHISHU_HOME}/frontend
@@ -14,7 +14,7 @@ COPY frontend /tmp/frontend
 RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
 
 
-FROM ${ZHISHU_BUILD_BASE_IMAGE} AS zhishu-builder
+FROM ${ZHISHU_BASE_IMAGE} AS zhishu-builder
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
 ENV ZHISHU_HOME=/opt/zhishu
@@ -32,12 +32,11 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 WORKDIR ${APP_HOME}
 
 COPY  --from=zhishu-ui-builder ${UI_HOME} ${UI_HOME}
-# Install dependencies
-RUN test -f "./uv.lock" && \
-    --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=backend/uv.lock,target=uv.lock \
-    --mount=type=bind,source=backend/pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project || echo "uv.lock file not found, skipping intermediate-layers"
+COPY backend/pyproject.toml ${APP_HOME}/
+# Install dependencies directly from pyproject.toml. This repository does not
+# ship uv.lock, so the build must resolve dependencies at build time.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-install-project
 
 COPY ./backend ${APP_HOME}
 
@@ -46,7 +45,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --extra cpu
 
 # Build g2-ssr
-FROM ${ZHISHU_BUILD_BASE_IMAGE} AS ssr-builder
+FROM ${ZHISHU_BASE_IMAGE} AS ssr-builder
 
 WORKDIR /app
 

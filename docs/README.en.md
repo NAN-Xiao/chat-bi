@@ -45,6 +45,21 @@
 Prepare a Linux server, install [Docker](https://docs.docker.com/get-docker/), and execute the following one-click installation script:
 
 ```bash
+docker build \
+  -f Dockerfile-base \
+  -t zhishu-base:local \
+  -t zhishu-python-pg:local \
+  .
+
+docker buildx build \
+  --load \
+  --tag zhishu:latest \
+  --build-arg ZHISHU_BASE_IMAGE=zhishu-base:local \
+  --build-arg ZHISHU_RUNTIME_IMAGE=zhishu-python-pg:local \
+  --build-arg VITE_API_BASE_URL=./api/v1 \
+  --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
+  .
+
 docker run -d \
   --name zhishu \
   --restart unless-stopped \

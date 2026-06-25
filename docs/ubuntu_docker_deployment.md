@@ -119,16 +119,24 @@ cd /opt/zhishu/SQLBot
 export DOCKER_BUILDKIT=1
 
 docker build -f Dockerfile-base \
-  -t zhishu-base:latest \
-  -t zhishu-python-pg:latest \
+  -t zhishu-base:local \
+  -t zhishu-python-pg:local \
   .
 
-docker build -t zhishu:latest .
+docker buildx build \
+  --load \
+  -t zhishu:latest \
+  --build-arg ZHISHU_BASE_IMAGE=zhishu-base:local \
+  --build-arg ZHISHU_RUNTIME_IMAGE=zhishu-python-pg:local \
+  --build-arg VITE_API_BASE_URL=./api/v1 \
+  --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
+  .
 ```
 
 说明：
 
 - `Dockerfile-base` 会安装 Python、Node.js、PostgreSQL 基础环境和数据库驱动。
+- 上面两个本地基础镜像 tag 指向同一个构建结果，分别供 `ZHISHU_BASE_IMAGE` 和 `ZHISHU_RUNTIME_IMAGE` 引用。
 - `Dockerfile` 会构建前端、后端依赖和图表 SSR 服务。
 - 首次构建耗时较长，通常需要数分钟到数十分钟，取决于服务器网络和 CPU。
 
@@ -367,11 +375,18 @@ git pull
 export DOCKER_BUILDKIT=1
 
 docker build -f Dockerfile-base \
-  -t zhishu-base:latest \
-  -t zhishu-python-pg:latest \
+  -t zhishu-base:local \
+  -t zhishu-python-pg:local \
   .
 
-docker build -t zhishu:latest .
+docker buildx build \
+  --load \
+  -t zhishu:latest \
+  --build-arg ZHISHU_BASE_IMAGE=zhishu-base:local \
+  --build-arg ZHISHU_RUNTIME_IMAGE=zhishu-python-pg:local \
+  --build-arg VITE_API_BASE_URL=./api/v1 \
+  --build-arg PYTHON_DEPENDENCY_EXTRA=cpu \
+  .
 ```
 
 重启容器：
