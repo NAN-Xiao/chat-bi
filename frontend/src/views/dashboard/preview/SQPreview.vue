@@ -74,7 +74,9 @@ const baseWidth = ref(0)
 const baseHeight = ref(0)
 const baseMarginLeft = ref(0)
 const baseMarginTop = ref(0)
+const basePaddingTop = ref(0)
 const PREVIEW_GRID_GAP = 10
+const PREVIEW_TOP_GAP = 4
 const TAB_PREVIEW_GRID_GAP = 6
 let resizeObserver: ResizeObserver | undefined
 const canvasStyle = computed(() => {
@@ -94,7 +96,7 @@ function nowItemStyle(item: CanvasItem) {
     width: cellWidth.value * item.sizeX - baseMarginLeft.value + 'px',
     height: cellHeight.value * item.sizeY - baseMarginTop.value + 'px',
     left: cellWidth.value * (item.x - 1) + baseMarginLeft.value + 'px',
-    top: cellHeight.value * (item.y - 1) + baseMarginTop.value + 'px',
+    top: cellHeight.value * (item.y - 1) + basePaddingTop.value + 'px',
   }
 }
 
@@ -107,6 +109,7 @@ const sizeInit = () => {
     const gridGap = props.inTab ? TAB_PREVIEW_GRID_GAP : PREVIEW_GRID_GAP
     baseMarginLeft.value = gridGap
     baseMarginTop.value = gridGap
+    basePaddingTop.value = props.inTab ? gridGap : PREVIEW_TOP_GAP
     baseWidth.value =
       (screenWidth - baseMarginLeft.value) / props.baseMatrixCount.x - baseMarginLeft.value
     baseHeight.value =

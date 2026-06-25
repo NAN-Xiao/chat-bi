@@ -3,7 +3,7 @@
     "add_interface_credentials": "请添加接口凭证",
     "Data Q&A": "智能问数",
     "Data Connections": "数据源",
-    "Dashboard": "我的看板",
+    "Dashboard": "看板",
     "AI Model Configuration": "模型配置",
     "Details": "详情"
   },
@@ -801,7 +801,7 @@
     "delete_resource_warn": "确定删除该{0}吗？",
     "delete_success": "删除成功",
     "new_folder": "新建目录",
-    "new_dashboard": "新建我的看板",
+    "new_dashboard": "新建看板",
     "default_dashboard": "推荐看板",
     "default_mark": "默认",
     "edit_order": "编辑顺序",

@@ -3,7 +3,7 @@
     "add_interface_credentials": "請新增介面憑證",
     "Data Q&A": "智慧問數",
     "Data Connections": "資料來源",
-    "Dashboard": "我的看板",
+    "Dashboard": "看板",
     "AI Model Configuration": "模型配置",
     "Details": "詳情"
   },
@@ -801,7 +801,7 @@
     "delete_resource_warn": "確定刪除該{0}嗎？",
     "delete_success": "刪除成功",
     "new_folder": "新建目錄",
-    "new_dashboard": "新建我的看板",
+    "new_dashboard": "新建看板",
     "default_dashboard": "推薦看板",
     "default_mark": "預設",
     "edit_order": "編輯順序",

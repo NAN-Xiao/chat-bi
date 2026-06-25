@@ -57,6 +57,8 @@ const resourceTreeRef = ref()
 let dashboardLoadVersion = 0
 const loadingDashboardId = ref<string | null>(null)
 const CHART_REFRESH_CONCURRENCY = 4
+const DASHBOARD_MODE_DEFAULT = 'default'
+const DASHBOARD_MODE_MY = 'my'
 
 const hasTreeData = computed(() => {
   return resourceTreeRef.value?.hasData
@@ -71,6 +73,12 @@ const routeDashboardId = computed(() => {
   const resourceId = route.query.resourceId || route.query.dashboardId
   return Array.isArray(resourceId) ? resourceId[0] : resourceId
 })
+const routeDashboardMode = computed(() => {
+  const mode = Array.isArray(route.query.dashboardMode)
+    ? route.query.dashboardMode[0]
+    : route.query.dashboardMode
+  return mode === DASHBOARD_MODE_DEFAULT ? DASHBOARD_MODE_DEFAULT : DASHBOARD_MODE_MY
+})
 
 const stateInit = () => {
   state.canvasDataPreview = []
@@ -84,8 +92,19 @@ const resetPreviewState = () => {
   dataInitState.value = true
   stateInit()
 }
-const sameDashboard = (id: unknown) =>
-  id && String((state.dashboardInfo as any)?.id || '') === String(id)
+const resolveDashboardMode = (params?: any) =>
+  props.defaultMode || params?.dashboardScope === DASHBOARD_MODE_DEFAULT
+    ? DASHBOARD_MODE_DEFAULT
+    : DASHBOARD_MODE_MY
+
+const currentDashboardMode = () =>
+  (state.dashboardInfo as any)?.dashboardMode ||
+  (props.defaultMode ? DASHBOARD_MODE_DEFAULT : routeDashboardMode.value)
+
+const sameDashboard = (id: unknown, mode: string) =>
+  id &&
+  String((state.dashboardInfo as any)?.id || '') === String(id) &&
+  currentDashboardMode() === mode
 
 function unique(values: Array<string | undefined | null>) {
   return Array.from(
@@ -253,9 +272,11 @@ async function refreshDashboardCharts(loadVersion: number) {
 
 const loadCanvasData = (params: any) => {
   const resourceId = params?.id ? String(params.id) : ''
-  if (!resourceId || sameDashboard(resourceId) || loadingDashboardId.value === resourceId) return
+  const dashboardMode = resolveDashboardMode(params)
+  const loadingKey = `${dashboardMode}:${resourceId}`
+  if (!resourceId || sameDashboard(resourceId, dashboardMode) || loadingDashboardId.value === loadingKey) return
   const loadVersion = ++dashboardLoadVersion
-  loadingDashboardId.value = resourceId
+  loadingDashboardId.value = loadingKey
   dataInitState.value = false
   load_resource_prepare(
     { id: resourceId },
@@ -283,12 +304,15 @@ const loadCanvasData = (params: any) => {
       state.canvasDataPreview = canvasDataResult
       state.canvasStylePreview = canvasStyleResult
       state.canvasViewInfoPreview = canvasViewInfoPreview
-      state.dashboardInfo = dashboardInfo
+      state.dashboardInfo = {
+        ...dashboardInfo,
+        dashboardMode,
+      }
       loadingDashboardId.value = null
       dataInitState.value = true
       refreshDashboardCharts(loadVersion)
     },
-    { defaultMode: props.defaultMode, includeData: false }
+    { defaultMode: dashboardMode === DASHBOARD_MODE_DEFAULT, includeData: false }
   )
 }
 
@@ -320,10 +344,10 @@ onBeforeMount(() => {
   }
 })
 watch(
-  routeDashboardId,
-  (resourceId) => {
+  () => [routeDashboardId.value, routeDashboardMode.value],
+  ([resourceId, dashboardMode]) => {
     if (!props.defaultMode && resourceId) {
-      loadCanvasData({ id: resourceId })
+      loadCanvasData({ id: resourceId, dashboardScope: dashboardMode })
     }
   },
   { immediate: true }
@@ -492,6 +516,11 @@ defineExpose({
         justify-content: center;
       }
     }
+  }
+
+  .preview-area .preview-stage > .preview-head {
+    background: transparent;
+    border-bottom: 0;
   }
 }
 

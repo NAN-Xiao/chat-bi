@@ -554,8 +554,8 @@ onBeforeUnmount(() => {
   min-width: 300px;
   height: 64px;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
-  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  border-bottom: 0;
+  background: transparent;
 
   .canvas-name {
     max-width: 280px;

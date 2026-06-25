@@ -7,9 +7,16 @@ import { useUserStore } from '@/stores/user'
 // import { routes } from '@/router'
 const router = useRouter()
 const userStore = useUserStore()
-defineProps({
-  collapse: Boolean,
-})
+const props = withDefaults(
+  defineProps<{
+    collapse?: boolean
+    mode?: 'vertical' | 'horizontal'
+  }>(),
+  {
+    collapse: false,
+    mode: 'vertical',
+  }
+)
 
 const route = useRoute()
 // const menuList = computed(() => route.matched[0]?.children || [])
@@ -101,6 +108,12 @@ const routerList = computed(() => {
     if (!hasTenantContext && !isTenantOptionalMainRoute(route.path)) {
       return false
     }
+    if (route.meta?.action === 'analysis-assistant') {
+      return false
+    }
+    if (route.path.includes('/default-dashboard')) {
+      return false
+    }
     return (
       !route.meta?.hidden &&
       !route.path.includes('embeddedPage') &&
@@ -132,7 +145,16 @@ const routerList = computed(() => {
 </script>
 
 <template>
-  <el-menu :default-active="activeMenu" class="el-menu-demo ed-menu-vertical" :collapse="collapse">
+  <el-menu
+    :default-active="activeMenu"
+    class="el-menu-demo zhishu-layout-menu"
+    :class="{
+      'ed-menu-vertical': props.mode === 'vertical',
+      'zhishu-layout-menu-horizontal': props.mode === 'horizontal',
+    }"
+    :mode="props.mode"
+    :collapse="props.mode === 'vertical' ? props.collapse : false"
+  >
     <MenuItem v-for="menu in routerList" :key="menu.path" :menu="menu"></MenuItem>
   </el-menu>
 </template>
@@ -288,6 +310,78 @@ const routerList = computed(() => {
         }
       }
     }
+  }
+}
+
+.zhishu-layout-menu-horizontal {
+  --ed-menu-item-height: 60px;
+  --ed-menu-bg-color: transparent;
+  --ed-menu-hover-bg-color: transparent;
+  --ed-menu-active-color: var(--ed-color-primary, #2f6bff);
+  height: 60px;
+  border: none !important;
+  background: transparent !important;
+
+  &.ed-menu--horizontal {
+    border-bottom: 0 !important;
+  }
+
+  > .ed-menu-item,
+  > .ed-sub-menu .ed-sub-menu__title {
+    height: 60px !important;
+    line-height: 60px !important;
+    padding: 0 14px !important;
+    border-bottom: 2px solid transparent !important;
+    color: var(--workspace-text-secondary, var(--theme-text-secondary)) !important;
+    font-size: 14px;
+    font-weight: 500;
+    transition:
+      color 160ms ease,
+      border-color 160ms ease,
+      background 160ms ease;
+
+    .ed-icon {
+      margin-right: 6px;
+      color: inherit !important;
+    }
+
+    .zhishu-menu-line-icon {
+      color: inherit !important;
+
+      path,
+      circle,
+      rect,
+      ellipse,
+      polyline,
+      line {
+        fill: none !important;
+        stroke: currentColor !important;
+        stroke-width: 1.45 !important;
+        stroke-linecap: round !important;
+        stroke-linejoin: round !important;
+      }
+    }
+  }
+
+  > .ed-menu-item:hover,
+  > .ed-menu-item:focus,
+  > .ed-sub-menu:hover .ed-sub-menu__title,
+  > .ed-sub-menu:focus .ed-sub-menu__title {
+    background: transparent !important;
+    color: var(--workspace-text-primary, var(--theme-text-primary)) !important;
+  }
+
+  > .ed-menu-item.is-active,
+  > .ed-sub-menu.is-active .ed-sub-menu__title {
+    background: transparent !important;
+    border-bottom-color: var(--ed-color-primary, #2f6bff) !important;
+    color: var(--ed-color-primary, #2f6bff) !important;
+    font-weight: 600;
+  }
+
+  .ed-sub-menu .ed-sub-menu__icon-arrow {
+    margin-left: 4px;
+    color: inherit;
   }
 }
 .ed-popper.is-light:has(.ed-menu--popup) {

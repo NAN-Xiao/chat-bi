@@ -112,6 +112,10 @@ const route = useRoute()
 const showSysmenu = computed(() => {
   return route.path.includes('/system')
 })
+const isPlatformSaasAdminShell = computed(
+  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
+const useTopNavigationShell = computed(() => !isPlatformSaasAdminShell.value)
 onBeforeMount(() => {
   if (isPhone.value) {
     collapse.value = true
@@ -125,8 +129,56 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="system-layout">
-    <div class="left-side" :class="collapse && 'left-side-collapse'">
+  <div class="system-layout" :class="{ 'system-layout-top-nav': useTopNavigationShell }">
+    <template v-if="useTopNavigationShell">
+      <header class="top-nav-shell">
+        <div class="top-nav-brand" @click="toChatIndex">
+          <img
+            v-if="loginBg"
+            height="30"
+            width="30"
+            :src="loginBg"
+            alt=""
+          />
+          <custom_small
+            v-else-if="appearanceStore.themeColor !== 'default'"
+          ></custom_small>
+          <img
+            v-else
+            :src="defaultLogoUrl"
+            height="30"
+            width="30"
+            alt=""
+          />
+          <span
+            :title="showSysmenu ? $t('tenant.management') : appearanceStore.name"
+            class="ellipsis"
+          >
+            {{ showSysmenu ? $t('tenant.management') : appearanceStore.name }}
+          </span>
+        </div>
+        <Menu class="top-nav-menu" mode="horizontal"></Menu>
+        <div class="top-nav-actions">
+          <div
+            v-if="showSysmenu"
+            class="top-back-to-project"
+            @click="toProjectList"
+          >
+            <el-icon size="18">
+              <icon_moments_categories_outlined></icon_moments_categories_outlined>
+            </el-icon>
+            <span>{{ $t('project.return_to_project') }}</span>
+          </div>
+          <ProjectSelector
+            v-if="!showSysmenu && !userStore.isPlatformWorkspaceDelegate"
+            :collapse="false"
+          ></ProjectSelector>
+          <Person :collapse="true" :in-sysmenu="showSysmenu"></Person>
+          <ThemeSwitcher :collapse="true"></ThemeSwitcher>
+        </div>
+      </header>
+    </template>
+    <div v-else class="left-side" :class="collapse && 'left-side-collapse'">
       <div class="side-header">
         <div class="side-brand">
           <template v-if="showSysmenu">
@@ -354,6 +406,140 @@ onMounted(() => {
     }
     100% {
       width: 64px;
+    }
+  }
+
+  &.system-layout-top-nav {
+    flex-direction: column;
+    background: var(--workspace-shell-bg, var(--theme-shell-bg));
+
+    .top-nav-shell {
+      flex: 0 0 60px;
+      width: 100%;
+      min-width: 0;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 16px;
+      color: var(--workspace-text-primary, var(--theme-text-primary));
+      background: var(--workspace-card-bg, var(--theme-panel-bg));
+      border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      z-index: 9;
+    }
+
+    .top-nav-brand {
+      flex: 0 0 auto;
+      min-width: 190px;
+      max-width: 230px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+
+      img,
+      :deep(svg) {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+      }
+
+      span {
+        min-width: 0;
+        font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 24px;
+        letter-spacing: 0;
+        color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+    }
+
+    :deep(.workspace-selector) {
+      width: 220px;
+      height: 36px;
+      margin-bottom: 0;
+      background: var(--workspace-control-bg, var(--theme-control-bg));
+      border-color: var(--workspace-border, var(--theme-shell-border));
+      color: var(--workspace-text-secondary, var(--theme-text-secondary));
+
+      .name {
+        color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+
+      &:hover,
+      &:focus {
+        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+        color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+    }
+
+    .top-nav-menu {
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 60px;
+      overflow: hidden;
+    }
+
+    .top-nav-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 60px;
+
+      :deep(.person),
+      :deep(.theme-toggle.collapse) {
+        color: var(--workspace-text-secondary, var(--theme-text-secondary));
+
+        &:hover,
+        &:focus {
+          background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+          color: var(--workspace-text-primary, var(--theme-text-primary));
+        }
+      }
+    }
+
+    .top-back-to-project {
+      height: 36px;
+      padding: 0 12px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--workspace-text-secondary, var(--theme-text-secondary));
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 20px;
+      white-space: nowrap;
+      transition:
+        background 160ms ease,
+        color 160ms ease;
+
+      &:hover,
+      &:focus {
+        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+        color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+
+      &:active {
+        background: var(--workspace-active-bg, var(--theme-active-bg));
+      }
+    }
+
+    .right-main {
+      width: 100%;
+      min-height: 0;
+      max-height: calc(100vh - 60px);
+
+      .content {
+        height: 100%;
+      }
+
+      &.is-platform-delegate {
+        max-height: calc(100vh - 60px);
+      }
     }
   }
 

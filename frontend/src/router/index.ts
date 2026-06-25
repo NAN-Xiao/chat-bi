@@ -122,7 +122,7 @@ export const routes = [
         name: 'dashboard',
         component: Dashboard,
         meta: {
-          title: t('dashboard.dashboard'),
+          title: t('menu.Dashboard'),
           iconActive: 'dashboard',
           iconDeActive: 'noDashboard',
         },
