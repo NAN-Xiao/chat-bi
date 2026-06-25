@@ -50,6 +50,7 @@ const props = withDefaults(
     layout?: InsightLayout
     density?: InsightDensity
     insight?: TrendInsightConfig
+    featuredSide?: boolean
   }>(),
   {
     data: () => [],
@@ -62,6 +63,7 @@ const props = withDefaults(
     maxStats: 4,
     layout: 'top',
     density: 'regular',
+    featuredSide: false,
   }
 )
 
@@ -1124,7 +1126,15 @@ const showAnchor = computed(() => props.density !== 'basic')
   <div
     v-if="shouldShow && stats.length > 0"
     class="chart-insight-header"
-    :class="[layoutClass, densityClass, { compact, 'configured-trend': Boolean(configuredTrendSummary) }]"
+    :class="[
+      layoutClass,
+      densityClass,
+      {
+        compact,
+        'configured-trend': Boolean(configuredTrendSummary),
+        'featured-side': featuredSide,
+      },
+    ]"
   >
     <div v-if="visibleMetaItems.length" class="insight-meta-row">
       <span v-for="item in visibleMetaItems" :key="item" class="insight-meta-item">{{ item }}</span>
@@ -1518,6 +1528,103 @@ const showAnchor = computed(() => props.density !== 'basic')
     .configured-trend-aggregate-value {
       font-size: 13px;
       line-height: 18px;
+    }
+
+    &.configured-trend.featured-side {
+      width: 210px;
+      padding: 0 18px 0 0;
+      margin: 0 28px 0 0;
+
+      .insight-stat-row {
+        height: 100%;
+        margin-top: 0;
+      }
+
+      .configured-trend-layout {
+        display: flex;
+        height: 100%;
+        flex-direction: column;
+        justify-content: flex-start;
+        gap: 22px;
+      }
+
+      .configured-trend-anchor {
+        color: #1f3554;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      .configured-trend-value {
+        margin-top: 2px;
+        color: #071a33;
+        font-size: 36px;
+        font-weight: 700;
+        line-height: 44px;
+      }
+
+      .configured-trend-metrics {
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 20px;
+      }
+
+      .configured-trend-comparison {
+        gap: 4px;
+      }
+
+      .configured-trend-comparison-item {
+        gap: 6px;
+      }
+
+      .configured-trend-item-label {
+        color: #14243a;
+        font-size: 13px;
+        line-height: 20px;
+      }
+
+      .configured-trend-item-value {
+        color: #14243a;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 20px;
+
+        &.positive {
+          color: #0c9b6d;
+        }
+
+        &.negative {
+          color: #e05252;
+        }
+      }
+
+      .configured-trend-aggregate {
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .configured-trend-aggregate-row {
+        justify-content: flex-start;
+        gap: 6px;
+      }
+
+      .configured-trend-aggregate-item {
+        min-width: 0;
+      }
+
+      .configured-trend-aggregate-item .configured-trend-item-label {
+        color: #14243a;
+        font-size: 13px;
+        line-height: 24px;
+      }
+
+      .configured-trend-aggregate-value {
+        color: #071a33;
+        font-size: 32px;
+        font-weight: 500;
+        line-height: 38px;
+      }
     }
   }
 

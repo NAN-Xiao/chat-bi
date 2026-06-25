@@ -328,6 +328,7 @@ const chartLoadingProgress = computed(() => {
 const insightDensity = computed(() => insightDisplay.value.density)
 const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
 const insightMaxStats = computed(() => insightDisplay.value.maxStats)
+const isFeaturedSideInsight = computed(() => insightDisplay.value.featuredSide === true)
 
 function measureFrame() {
   const el = containerRef.value
@@ -489,6 +490,7 @@ defineExpose({
           :data="viewInfo.data?.data"
           :sql="viewInfo.sql"
           :insight="viewInfo.chart?.insight"
+          :featured-side="isFeaturedSideInsight"
         />
         <ChartComponent
           :id="outerId || viewInfo.id"

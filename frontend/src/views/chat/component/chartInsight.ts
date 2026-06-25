@@ -17,6 +17,7 @@ export interface InsightDisplayStrategy {
   layout: InsightLayout
   density: InsightDensity
   maxStats: number
+  featuredSide?: boolean
 }
 
 const SIDE_LAYOUT_TYPES = new Set<ChartTypes>(['sankey', 'treemap'])
@@ -326,6 +327,7 @@ export function resolveInsightDisplay(params: {
       layout: preferredLayout,
       density: params.dashboard ? 'compact' : 'regular',
       maxStats: preferredLayout === 'side' ? 4 : 3,
+      featuredSide: false,
     }
   }
 
@@ -340,6 +342,7 @@ export function resolveInsightDisplay(params: {
       layout,
       density: 'basic',
       maxStats: 0,
+      featuredSide: false,
     }
   }
 
@@ -350,6 +353,7 @@ export function resolveInsightDisplay(params: {
         layout,
         density: 'basic',
         maxStats: 1,
+        featuredSide: false,
       }
     }
 
@@ -359,6 +363,7 @@ export function resolveInsightDisplay(params: {
         layout,
         density: 'mini',
         maxStats: 2,
+        featuredSide: false,
       }
     }
 
@@ -367,6 +372,7 @@ export function resolveInsightDisplay(params: {
       layout,
       density: 'compact',
       maxStats: 3,
+      featuredSide: false,
     }
   }
 
@@ -376,6 +382,7 @@ export function resolveInsightDisplay(params: {
       layout,
       density: 'mini',
       maxStats: resolveSideMaxStats(height, 2),
+      featuredSide: false,
     }
   }
 
@@ -387,5 +394,6 @@ export function resolveInsightDisplay(params: {
       height,
       width < SIDE_COMPACT_MAX_WIDTH || height < SIDE_COMPACT_MAX_HEIGHT ? 3 : 4
     ),
+    featuredSide: isWideSingleMetricTrend,
   }
 }
