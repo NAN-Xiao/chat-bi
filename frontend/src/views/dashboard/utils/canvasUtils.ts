@@ -14,13 +14,9 @@ const { componentData, canvasStyleData, canvasViewInfo } = storeToRefs(dashboard
 export const load_resource_prepare = (
   params: any,
   callBack: (obj: any) => void,
-  options: { defaultMode?: boolean; includeData?: boolean; delegateDraftMode?: boolean } = {}
+  options: { defaultMode?: boolean; includeData?: boolean } = {}
 ) => {
-  const loadRequest = options.delegateDraftMode
-    ? dashboardApi.delegate_draft_load
-    : options.defaultMode
-      ? dashboardApi.default_load
-      : dashboardApi.load_resource
+  const loadRequest = options.defaultMode ? dashboardApi.default_load : dashboardApi.load_resource
   const requestParams =
     typeof options.includeData === 'boolean'
       ? { ...params, include_data: options.includeData }
@@ -44,8 +40,6 @@ export const load_resource_prepare = (
         canShare: canvasInfo.can_share ?? canvasInfo.can_edit,
         isDefault: canvasInfo.is_default,
         canSetDefault: canvasInfo.can_set_default,
-        isPlatformDelegateDraft: canvasInfo.is_platform_delegate_draft,
-        canPublishDelegateDraft: canvasInfo.can_publish_delegate_draft,
       }
       const canvasDataResult = JSON.parse(canvasInfo.component_data)
       const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)
@@ -133,7 +127,6 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
             contentId: res.content_id,
             dataState: 'ready',
             canEdit: true,
-            isPlatformDelegateDraft: res.status === 3 || res.source === 'platform_delegate',
           })
           clearDashboardCanvasDraft(previousSourceKey)
           clearDashboardCanvasDraft(getDashboardCanvasSourceKey(res.id))
@@ -156,11 +149,7 @@ export const saveDashboardResourceTarget = (params: any, commonParams: any, call
           canvas_style_data: JSON.stringify(commonParams.canvasStyleData),
           canvas_view_info: JSON.stringify(commonParams.canvasViewInfo),
         }
-        const updateRequest =
-          requestBaseParams.delegateDraftMode || dashboardStore.dashboardInfo.isPlatformDelegateDraft
-            ? dashboardApi.delegate_draft_update
-            : dashboardApi.update_canvas
-        updateRequest(requestParams).then((res: any) => {
+        dashboardApi.update_canvas(requestParams).then((res: any) => {
           clearDashboardCanvasDraft(dashboardStore.canvasEditingSourceKey)
           dashboardStore.markCanvasSaved()
           callBack(res)

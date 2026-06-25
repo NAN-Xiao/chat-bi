@@ -66,7 +66,6 @@ const saveCanvasWithCheck = () => {
       datasource:
         dashboardInfo.value.datasource || props.baseParams?.datasource || datasourceContext.datasourceId,
       pid: 'root',
-      delegateDraftMode: props.baseParams?.platformDelegateDraftMode,
     }
     saveDashboardResource(updateParams, function () {
       ElMessage({
@@ -142,10 +141,6 @@ const redo = () => {
 }
 
 const backToMain = () => {
-  if (props.baseParams?.platformDelegateDraftMode) {
-    router.push('/dashboard/index')
-    return
-  }
   router.push({
     path: '/dashboard/index',
     query: dashboardInfo.value.id ? { resourceId: dashboardInfo.value.id } : undefined,

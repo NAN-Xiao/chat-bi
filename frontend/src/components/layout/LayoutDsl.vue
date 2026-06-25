@@ -93,13 +93,12 @@ const restoreBusinessTenant = async () => {
   clearRememberedBusinessTenant()
 }
 
+const exitPlatformWorkspaceDelegate = async () => {
+  await userStore.exitPlatformWorkspaceDelegate()
+  router.push(PLATFORM_ADMIN_HOME)
+}
+
 const toProjectList = async () => {
-  if (userStore.isPlatformWorkspaceDelegate) {
-    userStore.exitPlatformWorkspaceDelegate().finally(() => {
-      router.push(PLATFORM_ADMIN_HOME)
-    })
-    return
-  }
   await restoreBusinessTenant()
   router.push(await resolveBusinessDashboardLandingTarget(userStore))
 }
@@ -292,7 +291,7 @@ onMounted(() => {
         </button>
       </div>
       <ProjectSelector
-        v-if="!showSysmenu && !userStore.isSystemAdminUser"
+        v-if="!showSysmenu && (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate)"
         :collapse="collapse"
       ></ProjectSelector>
       <Menu :collapse="collapseCopy"></Menu>
@@ -309,9 +308,7 @@ onMounted(() => {
           {{
             collapse
               ? ''
-              : userStore.isPlatformWorkspaceDelegate
-                ? $t('tenant.return_to_platform')
-                : $t('project.return_to_project')
+              : $t('project.return_to_project')
           }}
         </div>
         <div class="side-account-area">
@@ -329,14 +326,16 @@ onMounted(() => {
     >
       <div v-if="userStore.isPlatformWorkspaceDelegate" class="delegate-banner">
         <span>{{ $t('tenant.platform_delegate_banner', { name: userStore.getTenantName }) }}</span>
-        <button type="button" @click="toProjectList">{{ $t('tenant.return_to_platform') }}</button>
+        <button type="button" @click="exitPlatformWorkspaceDelegate">
+          {{ $t('tenant.return_to_platform') }}
+        </button>
       </div>
       <div class="content">
         <router-view />
       </div>
     </div>
     <AnalysisAssistantDock
-      v-if="!showSysmenu && !isPhone && !userStore.isSystemAdminUser"
+      v-if="!showSysmenu && !isPhone && (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate)"
       v-model:expanded="analysisAssistantExpanded"
     />
   </div>

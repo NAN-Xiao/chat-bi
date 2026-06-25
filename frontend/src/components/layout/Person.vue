@@ -217,7 +217,7 @@ onMounted(() => {
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
         <div
-          v-if="isPlatformAdmin && (!inSysmenu || isPlatformWorkspaceDelegate)"
+          v-if="isPlatformAdmin && !isPlatformWorkspaceDelegate && !inSysmenu"
           class="popover-item"
           @click="toSystem"
         >

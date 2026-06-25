@@ -13,10 +13,6 @@ export interface SQTreeNode {
   is_default?: boolean
   is_shared?: boolean
   is_public?: boolean
-  is_platform_delegate_draft?: boolean
-  is_platform_template?: boolean
-  can_publish_delegate_draft?: boolean
-  can_create_maintenance_draft?: boolean
   can_copy_to_platform_template?: boolean
   virtual?: boolean
   share_id?: string

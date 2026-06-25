@@ -14,7 +14,6 @@ import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import {
   getCreateCanvasSourceKey,
   getDashboardCanvasSourceKey,
-  getPlatformDelegateCanvasSourceKey,
   loadDashboardCanvasDraft,
   saveDashboardCanvasDraft,
 } from '@/views/dashboard/utils/canvasDraft.ts'
@@ -32,7 +31,6 @@ const state = reactive({
   resourceId: null as string | null,
   opt: null as string | null,
   datasource: null as number | string | null | undefined,
-  delegateDraftId: null as string | null,
 })
 
 const dashboardEditorInnerRef = ref(null)
@@ -48,17 +46,6 @@ const loadCanvasResource = (id: string | number) =>
     })
   })
 
-const loadPlatformDelegateDraftResource = (id: string | number) =>
-  new Promise<any>((resolve) => {
-    load_resource_prepare(
-      { id },
-      function (result: any) {
-        resolve(result)
-      },
-      { delegateDraftMode: true }
-    )
-  })
-
 const firstQueryValue = (value: unknown) => {
   if (Array.isArray(value)) {
     return value[0] ? String(value[0]) : null
@@ -72,10 +59,7 @@ const syncRouteState = () => {
   state.resourceId = firstQueryValue(query.resourceId)
   state.routerPid = firstQueryValue(query.pid)
   state.datasource = firstQueryValue(query.datasource) || datasourceContext.datasourceId
-  state.delegateDraftId = firstQueryValue(query.delegateDraftId)
 }
-
-const isPlatformDelegateDraftMode = computed(() => Boolean(state.delegateDraftId))
 
 const applyLoadedCanvasResource = async (
   resourceId: string | number,
@@ -108,9 +92,7 @@ const loadCanvasFromRoute = async () => {
   if (loadVersion !== routeLoadVersion) return
 
   const sourceKey =
-    isPlatformDelegateDraftMode.value
-      ? getPlatformDelegateCanvasSourceKey(state.delegateDraftId)
-      : state.opt === 'create'
+    state.opt === 'create'
       ? getCreateCanvasSourceKey(state.datasource, state.routerPid)
       : getDashboardCanvasSourceKey(state.resourceId)
   if (
@@ -124,15 +106,7 @@ const loadCanvasFromRoute = async () => {
 
   dataInitState.value = false
   try {
-    if (isPlatformDelegateDraftMode.value && state.delegateDraftId && sourceKey) {
-      const result = await loadPlatformDelegateDraftResource(state.delegateDraftId)
-      if (loadVersion !== routeLoadVersion) return
-      await applyLoadedCanvasResource(state.delegateDraftId, result, sourceKey)
-      const restored = await restoreCanvasDraft(sourceKey)
-      if (!restored) {
-        dashboardStore.markCanvasSaved()
-      }
-    } else if (state.opt === 'create') {
+    if (state.opt === 'create') {
       const createSourceKey = getCreateCanvasSourceKey(state.datasource, state.routerPid)
       await pauseCanvasStateWatch(() => {
         dashboardStore.canvasDataInit()
@@ -342,8 +316,6 @@ const baseParams = computed(() => {
     resourceId: state.resourceId,
     pid: state.routerPid,
     datasource: state.datasource,
-    delegateDraftId: state.delegateDraftId,
-    platformDelegateDraftMode: isPlatformDelegateDraftMode.value,
   }
 })
 const findPositionX = (width: number) => {

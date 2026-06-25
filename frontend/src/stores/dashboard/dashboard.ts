@@ -17,8 +17,6 @@ const getDefaultDashboardInfo = () => ({
   type: null,
   canEdit: false,
   canShare: false,
-  isPlatformDelegateDraft: false,
-  canPublishDelegateDraft: false,
 })
 
 export const dashboardStore = defineStore('dashboard', {

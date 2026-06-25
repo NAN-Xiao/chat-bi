@@ -234,6 +234,9 @@ class DashboardBaseResponse(BaseModel):
     status: Optional[int] = None
     source: Optional[str] = None
     content_id: Optional[str] = None
+    remark: Optional[str] = None
+    create_by: Optional[str] = None
+    update_by: Optional[str] = None
     create_time: Optional[int] = None
     update_time: Optional[int] = None
     sort: Optional[int] = 0
@@ -243,9 +246,6 @@ class DashboardBaseResponse(BaseModel):
     is_default: Optional[bool] = False
     is_shared: Optional[bool] = False
     is_public: Optional[bool] = False
-    is_platform_delegate_draft: Optional[bool] = False
-    can_publish_delegate_draft: Optional[bool] = False
-    can_create_maintenance_draft: Optional[bool] = False
     can_copy_to_platform_template: Optional[bool] = False
     share_id: Optional[str] = None
     children: List['DashboardBaseResponse'] = []
@@ -316,15 +316,6 @@ class DashboardDefaultSortRequest(BaseModel):
 
 class DashboardDefaultCopyRequest(BaseModel):
     dashboard_id: str
-
-
-class DashboardPlatformDelegateDraftRequest(BaseModel):
-    dashboard_id: str
-
-
-class DashboardPlatformDelegatePublishRequest(BaseModel):
-    draft_dashboard_id: str
-    publish_as_default: bool = False
 
 
 class DashboardPlatformTemplateCopyRequest(BaseModel):

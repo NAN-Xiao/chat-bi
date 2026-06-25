@@ -206,14 +206,18 @@ const logout = async () => {
   }
 }
 const toSystem = () => {
-  router.push(userStore.isSystemAdminUser ? '/system/platform-overview' : '/system/overview')
+  router.push(
+    userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+      ? '/system/platform-overview'
+      : '/system/overview'
+  )
 }
 const backMain = () => {
   router.push('/')
 }
 const goHome = async () => {
   router.push(
-    userStore.isSystemAdminUser
+    userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
       ? '/system/platform-overview'
       : await resolveBusinessDashboardLandingTarget(userStore)
   )

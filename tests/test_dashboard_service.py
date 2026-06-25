@@ -43,24 +43,24 @@ def _engine_with_dashboard_table():
             )
             """
         ))
-        for tenant_id, user_id in (
-            (1, 1),
-            (1, 2),
-            (1, 5),
-            (1, 9),
-            (2, 1),
-            (2, 9),
-            (20, 1),
-            (20, 5),
+        for tenant_id, user_id, role in (
+            (1, 1, "owner"),
+            (1, 2, "member"),
+            (1, 5, "admin"),
+            (1, 9, "member"),
+            (2, 1, "owner"),
+            (2, 9, "member"),
+            (20, 1, "owner"),
+            (20, 5, "member"),
         ):
             conn.execute(
                 text(
                     """
                     INSERT INTO sys_tenant_user (tenant_id, user_id, role, status)
-                    VALUES (:tenant_id, :user_id, 'member', 1)
+                    VALUES (:tenant_id, :user_id, :role, 1)
                     """
                 ),
-                {"tenant_id": tenant_id, "user_id": user_id},
+                {"tenant_id": tenant_id, "user_id": user_id, "role": role},
             )
     return engine
 
@@ -696,7 +696,7 @@ def test_platform_delegate_cannot_list_or_load_member_private_dashboard(monkeypa
     assert exc_info.value.status_code == 404
 
 
-def test_platform_delegate_draft_is_hidden_until_publish(monkeypatch):
+def test_platform_delegate_create_canvas_is_workspace_asset(monkeypatch):
     engine = _engine_with_dashboard_table()
     delegate_user = SimpleNamespace(
         id=9,
@@ -721,11 +721,11 @@ def test_platform_delegate_draft_is_hidden_until_publish(monkeypatch):
     })
 
     with Session(engine) as session:
-        draft = dashboard_service.create_canvas(
+        created = dashboard_service.create_canvas(
             session=session,
             user=delegate_user,
             dashboard=CreateDashboard(
-                name="代运营草稿",
+                name="SaaS 创建看板",
                 pid="root",
                 datasource=2,
                 node_type="leaf",
@@ -735,62 +735,36 @@ def test_platform_delegate_draft_is_hidden_until_publish(monkeypatch):
                 canvas_view_info="{}",
             ),
         )
-        draft_id = draft.id
-        draft_status = draft.status
+        dashboard_id = created.id
 
-        admin_tree_before = dashboard_service.list_resource(
+        admin_tree = dashboard_service.list_resource(
             session=session,
             dashboard=QueryDashboard(datasource=2),
             current_user=workspace_admin,
         )
-        with pytest.raises(HTTPException):
-            dashboard_service.load_resource(
-                session=session,
-                dashboard=QueryDashboard(id=draft_id),
-                current_user=workspace_admin,
-            )
-
-        delegate_drafts = dashboard_service.list_platform_delegate_drafts(
+        admin_loaded = dashboard_service.load_resource(
             session=session,
-            current_user=delegate_user,
-        )
-        loaded_draft = dashboard_service.load_platform_delegate_draft(
-            session=session,
-            dashboard=QueryDashboard(id=draft_id),
-            current_user=delegate_user,
-        )
-        published = dashboard_service.publish_platform_delegate_draft(
-            session=session,
-            user=delegate_user,
-            draft_dashboard_id=draft_id,
-            publish_as_default=True,
-        )
-        member_default = dashboard_service.list_default_resources(
-            session=session,
-            current_user=member,
-        )
-        admin_default = dashboard_service.list_default_resources(
-            session=session,
+            dashboard=QueryDashboard(id=dashboard_id),
             current_user=workspace_admin,
         )
-        admin_tree_after = dashboard_service.list_resource(
+        delegate_loaded = dashboard_service.load_resource(
             session=session,
-            dashboard=QueryDashboard(datasource=2),
-            current_user=workspace_admin,
+            dashboard=QueryDashboard(id=dashboard_id),
+            current_user=delegate_user,
         )
 
-    assert draft_status == dashboard_service.DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
-    assert admin_tree_before == []
-    assert [item.id for item in delegate_drafts] == [draft_id]
-    assert loaded_draft["id"] == draft_id
-    assert published.is_default is True
-    assert published.source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_DELEGATE
-    assert [item.id for item in member_default] == [published.id]
-    assert [item.id for item in admin_default] == [published.id]
-    assert [item.id for item in admin_tree_after] == [published.id]
+    assert created.status == dashboard_service.DASHBOARD_STATUS_ACTIVE
+    assert created.source is None
+    assert created.create_by == "1"
+    assert created.update_by == "1"
+    assert [item.id for item in admin_tree] == [dashboard_id]
+    assert admin_loaded["id"] == dashboard_id
+    assert admin_loaded["can_edit"] is True
+    assert delegate_loaded["id"] == dashboard_id
+    assert delegate_loaded["can_edit"] is True
 
 
-def test_platform_delegate_maintenance_draft_updates_only_after_publish(monkeypatch):
+def test_platform_delegate_updates_workspace_asset_directly(monkeypatch):
     engine = _engine_with_dashboard_table()
     delegate_user = SimpleNamespace(
         id=9,
@@ -818,7 +792,7 @@ def test_platform_delegate_maintenance_draft_updates_only_after_publish(monkeypa
                 type="dashboard",
                 source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_DELEGATE,
                 status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
-                create_by="9",
+                create_by="1",
                 create_time=100,
                 delete_flag=0,
                 component_data="[]",
@@ -833,16 +807,11 @@ def test_platform_delegate_maintenance_draft_updates_only_after_publish(monkeypa
             dashboard=QueryDashboard(id="published-delegate-dashboard"),
             current_user=workspace_admin,
         )
-        draft = dashboard_service.create_platform_delegate_maintenance_draft(
-            session=session,
-            user=delegate_user,
-            dashboard_id="published-delegate-dashboard",
-        )
-        dashboard_service.update_platform_delegate_draft(
+        updated = dashboard_service.update_canvas(
             session=session,
             user=delegate_user,
             dashboard=CreateDashboard(
-                id=draft.id,
+                id="published-delegate-dashboard",
                 name="维护后代运营看板",
                 pid="root",
                 datasource=2,
@@ -853,23 +822,12 @@ def test_platform_delegate_maintenance_draft_updates_only_after_publish(monkeypa
                 canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 2"}}),
             ),
         )
-        target_before_publish = session.get(CoreDashboard, "published-delegate-dashboard")
-        target_name_before_publish = target_before_publish.name
-        target_sql_before_publish = json.loads(target_before_publish.canvas_view_info)["chart-1"]["sql"]
-        published = dashboard_service.publish_platform_delegate_draft(
-            session=session,
-            user=delegate_user,
-            draft_dashboard_id=draft.id,
-            publish_as_default=False,
-        )
         target_after_publish = session.get(CoreDashboard, "published-delegate-dashboard")
 
     assert admin_loaded["can_edit"] is True
-    assert draft.content_id == "published-delegate-dashboard"
-    assert target_name_before_publish == "正式代运营看板"
-    assert target_sql_before_publish == "select 1"
-    assert published.id == "published-delegate-dashboard"
+    assert updated.id == "published-delegate-dashboard"
     assert target_after_publish.name == "维护后代运营看板"
+    assert target_after_publish.update_by == "1"
     assert json.loads(target_after_publish.canvas_view_info)["chart-1"]["sql"] == "select 2"
 
 
@@ -944,7 +902,52 @@ def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private
     assert chart["data"]["data"] == []
 
 
-def test_platform_template_copy_to_workspace_creates_independent_delegate_draft(monkeypatch):
+def test_platform_admin_can_list_dashboard_templates_without_workspace_context():
+    engine = _engine_with_dashboard_table()
+    platform_admin = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=None,
+        tenant_role=None,
+        workspace_status="platform_admin",
+    )
+
+    with Session(engine) as session:
+        session.add(
+            CoreDashboard(
+                id="template-dashboard",
+                tenant_id=dashboard_service.DEFAULT_TENANT_ID,
+                name="平台模板",
+                pid="root",
+                datasource=2,
+                node_type="leaf",
+                type="dashboard",
+                source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                remark="source_dashboard_id=source-1;source_tenant_id=2",
+                create_by="9",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps({"chart-1": {"datasource": 2, "sql": "select 1"}}),
+            )
+        )
+        session.commit()
+
+        templates = dashboard_service.list_platform_dashboard_templates(session=session, user=platform_admin)
+
+    assert len(templates) == 1
+    assert templates[0].id == "template-dashboard"
+    assert templates[0].source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+    assert templates[0].remark == "source_dashboard_id=source-1;source_tenant_id=2"
+    assert templates[0].can_edit is False
+    assert templates[0].can_share is False
+    assert templates[0].can_set_default is False
+
+
+def test_platform_template_copy_to_workspace_creates_independent_workspace_dashboard(monkeypatch):
     engine = _engine_with_dashboard_table()
     delegate_user = SimpleNamespace(
         id=9,
@@ -979,20 +982,22 @@ def test_platform_template_copy_to_workspace_creates_independent_delegate_draft(
         )
         session.commit()
 
-        draft = dashboard_service.copy_platform_template_to_delegate_draft(
+        copied = dashboard_service.copy_platform_template_to_workspace_dashboard(
             session=session,
             user=delegate_user,
             template_id="template-dashboard",
         )
-        draft_record = session.get(CoreDashboard, draft.id)
+        copied_record = session.get(CoreDashboard, copied.id)
         template_record = session.get(CoreDashboard, "template-dashboard")
 
-    assert draft.id != "template-dashboard"
-    assert draft.tenant_id == 1
-    assert draft.datasource == 3
-    assert draft.status == dashboard_service.DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
-    assert draft.source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_DELEGATE
-    assert json.loads(draft_record.canvas_view_info)["chart-1"]["datasource"] == 3
+    assert copied.id != "template-dashboard"
+    assert copied.tenant_id == 1
+    assert copied.datasource == 3
+    assert copied.status == dashboard_service.DASHBOARD_STATUS_ACTIVE
+    assert copied.source is None
+    assert copied.create_by == "1"
+    assert copied.update_by == "1"
+    assert json.loads(copied_record.canvas_view_info)["chart-1"]["datasource"] == 3
     assert json.loads(template_record.canvas_view_info)["chart-1"]["datasource"] == 2
 
 

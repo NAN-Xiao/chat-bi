@@ -14,23 +14,14 @@ export const dashboardApi = {
   default_copy: (params: any, config?: any) => request.post('/dashboard/default/copy', params, config),
   default_set: (params: any, config?: any) => request.post('/dashboard/default/set', params, config),
   default_sort: (params: any, config?: any) => request.post('/dashboard/default/sort', params, config),
-  delegate_draft_list: (config?: any) => request.get('/dashboard/platform-delegate/draft/list', config),
-  delegate_draft_load: (params: any, config?: any) =>
-    request.post('/dashboard/platform-delegate/draft/load', params, config),
-  delegate_draft_update: (params: any, config?: any) =>
-    request.post('/dashboard/platform-delegate/draft/update', params, config),
-  delegate_draft_maintain: (params: any, config?: any) =>
-    request.post('/dashboard/platform-delegate/draft/maintain', params, config),
-  delegate_draft_publish: (params: any, config?: any) =>
-    request.post('/dashboard/platform-delegate/draft/publish', params, config),
-  delegate_draft_delete: (params: any, config?: any) =>
-    request.post('/dashboard/platform-delegate/draft/delete', params, config),
   platform_template_list: (config?: any) =>
     request.get('/dashboard/platform-delegate/template/list', config),
+  platform_template_admin_list: (config?: any) =>
+    request.get('/dashboard/platform-template/list', config),
   platform_template_copy_from_dashboard: (params: any, config?: any) =>
     request.post('/dashboard/platform-delegate/template/copy-from-dashboard', params, config),
-  platform_template_copy_to_draft: (params: any, config?: any) =>
-    request.post('/dashboard/platform-delegate/template/copy-to-draft', params, config),
+  platform_template_copy_to_workspace: (params: any, config?: any) =>
+    request.post('/dashboard/platform-delegate/template/copy-to-workspace', params, config),
   share: (params: any, config?: any) => request.post('/dashboard/share', params, config),
   share_list: (params: any, config?: any) => request.post('/dashboard/share/list', params, config),
   share_load: (params: any, config?: any) => request.post('/dashboard/share/load', params, config),

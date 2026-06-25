@@ -93,7 +93,7 @@ const routerList = computed(() => {
     )
     return filterSystemRoutes(sysRouter.children || [])
   }
-  if (userStore.isSystemAdminUser) {
+  if (userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate) {
     return []
   }
   const hasTenantContext = !!userStore.getTenantId

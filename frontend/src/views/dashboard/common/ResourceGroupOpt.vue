@@ -147,7 +147,6 @@ const saveResource = () => {
         emits('finish', {
           opt: state.opt,
           resourceId: rsp.id,
-          isPlatformDelegateDraft: rsp.status === 3 || rsp.source === 'platform_delegate',
         })
         resetForm()
       })

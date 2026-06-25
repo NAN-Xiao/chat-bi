@@ -35,6 +35,7 @@ import TenantAccess from '@/views/system/tenant-access/TenantAccess.vue'
 import TenantOverview from '@/views/system/tenant-overview/TenantOverview.vue'
 import TenantUsage from '@/views/system/tenant-usage/TenantUsage.vue'
 import DataDictionary from '@/views/system/data-dictionary/DataDictionary.vue'
+import DashboardTemplate from '@/views/system/dashboard-template/index.vue'
 import User from '@/views/system/user/User.vue'
 import MyWorkspaces from '@/views/account/workspaces/MyWorkspaces.vue'
 import WorkspaceApplications from '@/views/account/workspaces/WorkspaceApplications.vue'
@@ -375,6 +376,18 @@ export const routes = [
           title: t('ds.title'),
           iconActive: 'ds',
           iconDeActive: 'noDs',
+          platformOnly: true,
+          platformOperation: true,
+        },
+      },
+      {
+        path: 'dashboard-template',
+        name: 'platform-dashboard-template',
+        component: DashboardTemplate,
+        meta: {
+          title: t('dashboard.platform_template_library'),
+          iconActive: 'dashboardStore',
+          iconDeActive: 'noDashboardStore',
           platformOnly: true,
           platformOperation: true,
         },

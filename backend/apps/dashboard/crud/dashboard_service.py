@@ -2,7 +2,7 @@
 
 from fastapi import HTTPException
 from orjson import orjson
-from sqlalchemy import String, cast, select, and_, or_, text, func, inspect
+from sqlalchemy import String, case, cast, select, and_, or_, text, func, inspect
 
 from apps.dashboard.models.dashboard_model import (
     CoreDashboard,
@@ -33,6 +33,7 @@ from apps.datasource.models.datasource import CoreDatasource
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.user import UserModel
 from apps.system.models.tenant import TenantUserModel
+from apps.system.crud.tenant import TENANT_ROLE_ADMIN, TENANT_ROLE_OWNER
 from apps.system.crud.user import is_platform_workspace_delegate, is_system_admin
 from common.core.deps import SessionDep, CurrentUser
 from common.utils.chart_config import sanitize_chart_display_names
@@ -74,10 +75,9 @@ def _now() -> int:
 DEFAULT_TENANT_ID = 1
 DASHBOARD_STATUS_ACTIVE = 1
 DASHBOARD_STATUS_DELIVERY_DRAFT = 2
-DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT = 3
 DASHBOARD_DRAFT_STATUSES = {
     DASHBOARD_STATUS_DELIVERY_DRAFT,
-    DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT,
+    3,
 }
 DASHBOARD_SOURCE_PLATFORM_DELEGATE = "platform_delegate"
 DASHBOARD_SOURCE_PLATFORM_TEMPLATE = "platform_template"
@@ -89,6 +89,79 @@ def _current_tenant_id(current_user: CurrentUser | None) -> int:
 
 def _same_tenant(current_user: CurrentUser | None, record) -> bool:
     return int(getattr(record, "tenant_id")) == _current_tenant_id(current_user)
+
+
+def _workspace_admin_user_ids(session: SessionDep, current_user: CurrentUser) -> set[str]:
+    try:
+        rows = session.exec(
+            select(TenantUserModel.user_id).where(
+                and_(
+                    TenantUserModel.tenant_id == _current_tenant_id(current_user),
+                    TenantUserModel.status == 1,
+                    TenantUserModel.role.in_([TENANT_ROLE_OWNER, TENANT_ROLE_ADMIN]),
+                )
+            )
+        ).all()
+    except Exception:
+        return set()
+    return {str(_first_scalar_value(row)) for row in rows if _first_scalar_value(row) is not None}
+
+
+def _workspace_delegate_asset_owner_id(session: SessionDep, current_user: CurrentUser) -> str:
+    if not is_platform_workspace_delegate(current_user):
+        return _user_id(current_user)
+    tenant_id = _current_tenant_id(current_user)
+    current_user_id = _user_id(current_user)
+    role_priority = case(
+        (TenantUserModel.role == TENANT_ROLE_OWNER, 0),
+        (TenantUserModel.role == TENANT_ROLE_ADMIN, 1),
+        else_=2,
+    )
+    try:
+        row = session.exec(
+            select(TenantUserModel.user_id)
+            .where(
+                and_(
+                    TenantUserModel.tenant_id == tenant_id,
+                    TenantUserModel.status == 1,
+                    cast(TenantUserModel.user_id, String) != current_user_id,
+                )
+            )
+            .order_by(
+                role_priority.asc(),
+                TenantUserModel.is_primary.desc(),
+                TenantUserModel.user_id.asc(),
+            )
+        ).first()
+    except Exception:
+        row = None
+    owner_id = _first_scalar_value(row)
+    return str(owner_id) if owner_id is not None else current_user_id
+
+
+def _asset_operator_id(session: SessionDep, current_user: CurrentUser) -> str:
+    return _workspace_delegate_asset_owner_id(session, current_user)
+
+
+def _platform_delegate_visible_creator_ids(session: SessionDep, current_user: CurrentUser) -> set[str]:
+    visible_ids = _workspace_admin_user_ids(session, current_user)
+    visible_ids.add(_workspace_delegate_asset_owner_id(session, current_user))
+    visible_ids.add(_user_id(current_user))
+    return {item for item in visible_ids if item}
+
+
+def _is_workspace_admin_owned_dashboard(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
+    return str(dashboard.create_by) in _platform_delegate_visible_creator_ids(session, current_user)
+
+
+def _is_platform_admin_context(current_user: CurrentUser | None) -> bool:
+    workspace_status = getattr(current_user, "workspace_status", None)
+    tenant_id = getattr(current_user, "tenant_id", None)
+    return bool(
+        is_system_admin(current_user)
+        and not is_platform_workspace_delegate(current_user)
+        and (tenant_id in (None, "") or workspace_status == "platform_admin")
+    )
 
 
 def _tenant_not_found(detail: str):
@@ -136,9 +209,10 @@ def _platform_delegate_visible_dashboard_filter(
         session: SessionDep,
         current_user: CurrentUser,
 ):
+    visible_creator_ids = _platform_delegate_visible_creator_ids(session, current_user)
     return or_(
         CoreDashboard.is_default == 1,
-        CoreDashboard.create_by == _user_id(current_user),
+        CoreDashboard.create_by.in_(visible_creator_ids),
         CoreDashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE,
     )
 
@@ -146,7 +220,9 @@ def _platform_delegate_visible_dashboard_filter(
 def _is_public_dashboard_for_delegate(session: SessionDep, current_user: CurrentUser, dashboard: CoreDashboard) -> bool:
     if dashboard.is_default:
         return True
-    if dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE and dashboard.status != DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT:
+    if dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE:
+        return True
+    if _is_workspace_admin_owned_dashboard(session, current_user, dashboard):
         return True
     return False
 
@@ -161,10 +237,9 @@ def _can_edit_dashboard(session: SessionDep, current_user: CurrentUser, dashboar
     if not _same_tenant(current_user, dashboard):
         return False
     if is_platform_workspace_delegate(current_user):
-        if dashboard.status == DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT:
-            return str(dashboard.create_by) == _user_id(current_user)
         return (
             str(dashboard.create_by) == _user_id(current_user)
+            or _is_workspace_admin_owned_dashboard(session, current_user, dashboard)
             or dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE
             or bool(dashboard.is_default)
         )
@@ -190,11 +265,7 @@ def _can_manage_default_dashboard(current_user: CurrentUser, dashboard: CoreDash
     if not _same_tenant(current_user, dashboard):
         return False
     if is_platform_workspace_delegate(current_user):
-        return (
-            str(dashboard.create_by) == _user_id(current_user)
-            or dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE
-            or bool(dashboard.is_default)
-        )
+        return True
     return (
         is_system_admin(current_user)
         or _can_set_default_dashboard(current_user)
@@ -212,11 +283,10 @@ def _can_view_dashboard_resource(session: SessionDep, current_user: CurrentUser,
     if not _same_tenant(current_user, dashboard):
         return False
     if is_platform_workspace_delegate(current_user):
-        if dashboard.status == DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT:
-            return str(dashboard.create_by) == _user_id(current_user)
         return (
             bool(dashboard.is_default)
             or str(dashboard.create_by) == _user_id(current_user)
+            or _is_workspace_admin_owned_dashboard(session, current_user, dashboard)
             or dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE
         )
     if dashboard.is_default:
@@ -226,17 +296,6 @@ def _can_view_dashboard_resource(session: SessionDep, current_user: CurrentUser,
     if str(dashboard.create_by) == _user_id(current_user):
         return True
     return False
-
-
-def _can_access_platform_delegate_draft(current_user: CurrentUser | None, dashboard: CoreDashboard) -> bool:
-    return (
-        current_user is not None
-        and is_platform_workspace_delegate(current_user)
-        and dashboard.status == DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
-        and dashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE
-        and _same_tenant(current_user, dashboard)
-        and str(dashboard.create_by) == _user_id(current_user)
-    )
 
 
 def _require_create_permission(
@@ -320,23 +379,13 @@ def _load_dashboard_or_404(
     return record
 
 
-def _load_platform_delegate_draft_or_404(
-        session: SessionDep,
-        dashboard_id: str,
-        current_user: CurrentUser,
-) -> CoreDashboard:
-    record = session.get(CoreDashboard, dashboard_id)
-    if not record or record.delete_flag == 1 or not _can_access_platform_delegate_draft(current_user, record):
-        raise HTTPException(status_code=404, detail="Dashboard draft does not exist")
-    return record
-
-
 def _load_platform_template_or_404(
         session: SessionDep,
         template_id: str,
         current_user: CurrentUser,
 ) -> CoreDashboard:
-    _require_platform_delegate(current_user)
+    if not (_is_platform_admin_context(current_user) or is_platform_workspace_delegate(current_user)):
+        raise HTTPException(status_code=403, detail="Only SaaS admin can use dashboard templates")
     record = session.get(CoreDashboard, template_id)
     if (
         not record
@@ -771,6 +820,19 @@ def _dashboard_base_response(
         datasource: int | None = None,
         active_share: CoreDashboardShare | None = None,
 ) -> DashboardBaseResponse:
+    can_edit = False if _is_platform_admin_context(current_user) else _can_edit_dashboard(session, current_user, record)
+    can_share = False if _is_platform_admin_context(current_user) else _can_share_dashboard(session, current_user, record)
+    can_set_default = False if _is_platform_admin_context(current_user) else _can_set_default_dashboard(current_user)
+    is_public = bool(
+        record.is_default
+        or active_share is not None
+        or record.source in {DASHBOARD_SOURCE_PLATFORM_DELEGATE, DASHBOARD_SOURCE_PLATFORM_TEMPLATE}
+    )
+    can_copy_to_platform_template = (
+        is_platform_workspace_delegate(current_user)
+        and record.node_type == "leaf"
+        and _is_public_dashboard_for_delegate(session, current_user, record)
+    )
     return DashboardBaseResponse(
         id=record.id,
         tenant_id=record.tenant_id,
@@ -783,33 +845,19 @@ def _dashboard_base_response(
         status=record.status,
         source=record.source,
         content_id=record.content_id,
+        remark=record.remark,
+        create_by=str(record.create_by) if record.create_by is not None else None,
+        update_by=str(record.update_by) if record.update_by is not None else None,
         create_time=record.create_time,
         update_time=record.update_time,
         sort=record.sort or 0,
-        can_edit=_can_edit_dashboard(session, current_user, record),
-        can_share=_can_share_dashboard(session, current_user, record),
-        can_set_default=_can_set_default_dashboard(current_user),
+        can_edit=can_edit,
+        can_share=can_share,
+        can_set_default=can_set_default,
         is_default=bool(record.is_default),
         is_shared=active_share is not None,
-        is_public=bool(record.is_default or active_share is not None or record.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE),
-        is_platform_delegate_draft=record.status == DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT,
-        can_publish_delegate_draft=(
-            is_platform_workspace_delegate(current_user)
-            and record.status == DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
-            and str(record.create_by) == _user_id(current_user)
-        ),
-        can_create_maintenance_draft=(
-            is_platform_workspace_delegate(current_user)
-            and record.node_type == "leaf"
-            and record.status != DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
-            and _can_edit_dashboard(session, current_user, record)
-        ),
-        can_copy_to_platform_template=(
-            is_platform_workspace_delegate(current_user)
-            and record.node_type == "leaf"
-            and record.status != DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
-            and _is_public_dashboard_for_delegate(session, current_user, record)
-        ),
+        is_public=is_public,
+        can_copy_to_platform_template=can_copy_to_platform_template,
         share_id=active_share.id if active_share else None,
     )
 
@@ -1072,6 +1120,7 @@ def copy_default_resource(session: SessionDep, user: CurrentUser, request: Dashb
         source.canvas_style_data,
         source.canvas_view_info,
     )
+    operator_id = _asset_operator_id(session, user)
     record = CoreDashboard(
         id=uuid.uuid4().hex,
         tenant_id=_current_tenant_id(user),
@@ -1090,8 +1139,8 @@ def copy_default_resource(session: SessionDep, user: CurrentUser, request: Dashb
         self_watermark_status=source.self_watermark_status or 0,
         is_default=0,
         sort=0,
-        create_by=str(user.id),
-        update_by=str(user.id),
+        create_by=operator_id,
+        update_by=operator_id,
         create_time=now,
         update_time=now,
         delete_flag=0,
@@ -1112,16 +1161,9 @@ def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
     record.tenant_id = _current_tenant_id(user)
     record.create_by = str(user.id)
     record.create_time = _now()
+    record.status = record.status or DASHBOARD_STATUS_ACTIVE
+    record.delete_flag = 0 if record.delete_flag is None else record.delete_flag
     return record
-
-
-def _mark_platform_delegate_draft(record: CoreDashboard, user: CurrentUser):
-    record.status = DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
-    record.source = DASHBOARD_SOURCE_PLATFORM_DELEGATE
-    record.is_default = 0
-    record.sort = 0
-    record.create_by = str(user.id)
-    record.update_by = str(user.id)
 
 
 def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
@@ -1129,7 +1171,8 @@ def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDas
     _require_create_permission(session, user, dashboard.datasource, dashboard.pid)
     record = get_create_base_info(user, dashboard)
     if is_platform_workspace_delegate(user):
-        _mark_platform_delegate_draft(record, user)
+        record.create_by = _asset_operator_id(session, user)
+    record.update_by = record.create_by
     session.add(record)
     session.flush()
     session.refresh(record)
@@ -1144,7 +1187,7 @@ def update_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDash
     if record.datasource:
         _ensure_datasource_access(session, user, record.datasource)
     record.name = dashboard.name
-    record.update_by = str(user.id)
+    record.update_by = _asset_operator_id(session, user)
     record.update_time = int(time.time())
     session.add(record)
     session.commit()
@@ -1158,7 +1201,8 @@ def create_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     _validate_canvas_datasources(session, user, dashboard, dashboard.datasource)
     record = get_create_base_info(user, dashboard)
     if is_platform_workspace_delegate(user):
-        _mark_platform_delegate_draft(record, user)
+        record.create_by = _asset_operator_id(session, user)
+    record.update_by = record.create_by
     record.node_type = dashboard.node_type
     record.component_data = dashboard.component_data
     record.canvas_style_data = dashboard.canvas_style_data
@@ -1183,7 +1227,7 @@ def update_canvas(session: SessionDep, user: CurrentUser, dashboard: CreateDashb
     _validate_canvas_datasources(session, user, dashboard, bound_datasource)
     record.name = dashboard.name
     record.datasource = bound_datasource
-    record.update_by = str(user.id)
+    record.update_by = _asset_operator_id(session, user)
     record.update_time = int(time.time())
     record.component_data = dashboard.component_data
     record.canvas_style_data = dashboard.canvas_style_data
@@ -1210,243 +1254,12 @@ def move_resource(session: SessionDep, user: CurrentUser, dashboard: QueryDashbo
         if _effective_dashboard_datasource(parent) != _effective_dashboard_datasource(record):
             raise HTTPException(status_code=400, detail="Dashboard parent must belong to the same datasource")
     record.pid = target_pid
-    record.update_by = str(user.id)
+    record.update_by = _asset_operator_id(session, user)
     record.update_time = _now()
     session.add(record)
     session.commit()
     session.refresh(record)
     return record
-
-
-def list_platform_delegate_drafts(session: SessionDep, current_user: CurrentUser):
-    _require_platform_delegate(current_user)
-    statement = (
-        select(CoreDashboard)
-        .where(
-            and_(
-                or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
-                CoreDashboard.tenant_id == _current_tenant_id(current_user),
-                CoreDashboard.status == DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT,
-                CoreDashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE,
-                CoreDashboard.create_by == _user_id(current_user),
-            )
-        )
-        .order_by(CoreDashboard.update_time.desc(), CoreDashboard.create_time.desc())
-    )
-    result = session.exec(statement).scalars().all()
-    return [
-        _dashboard_base_response(session, current_user, record, _effective_dashboard_datasource(record))
-        for record in result
-    ]
-
-
-def load_platform_delegate_draft(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
-    record = _load_platform_delegate_draft_or_404(session, dashboard.id, current_user)
-    return _dashboard_payload(
-        session,
-        current_user,
-        record,
-        dashboard=dashboard,
-        include_data=dashboard.include_data,
-    )
-
-
-def update_platform_delegate_draft(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
-    record = _load_platform_delegate_draft_or_404(session, dashboard.id, user)
-    request_datasource = _normalize_datasource_id(dashboard.datasource)
-    bound_datasource = record.datasource or request_datasource
-    if request_datasource is not None and record.datasource is not None and request_datasource != record.datasource:
-        raise HTTPException(status_code=400, detail="Dashboard datasource cannot be changed")
-    if bound_datasource is not None:
-        _ensure_datasource_access(session, user, bound_datasource)
-    _validate_canvas_datasources(session, user, dashboard, bound_datasource)
-    record.name = dashboard.name
-    record.datasource = bound_datasource
-    record.pid = dashboard.pid or record.pid or "root"
-    record.node_type = dashboard.node_type or record.node_type or "leaf"
-    record.type = dashboard.type or record.type or "dashboard"
-    record.update_by = str(user.id)
-    record.update_time = _now()
-    record.component_data = dashboard.component_data
-    record.canvas_style_data = dashboard.canvas_style_data
-    record.canvas_view_info = _sanitize_canvas_view_info(dashboard.canvas_view_info)
-    record.status = DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT
-    record.source = DASHBOARD_SOURCE_PLATFORM_DELEGATE
-    session.add(record)
-    session.commit()
-    session.refresh(record)
-    return record
-
-
-def create_platform_delegate_maintenance_draft(
-        session: SessionDep,
-        user: CurrentUser,
-        dashboard_id: str,
-):
-    _require_platform_delegate(user)
-    source = _load_dashboard_or_404(session, dashboard_id, user)
-    if source.node_type != "leaf":
-        raise HTTPException(status_code=400, detail="Dashboard maintenance draft must come from a dashboard")
-    if not _can_edit_dashboard(session, user, source):
-        raise HTTPException(status_code=404, detail="Dashboard does not exist")
-
-    existing = session.exec(
-        select(CoreDashboard)
-        .where(
-            and_(
-                or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
-                CoreDashboard.tenant_id == _current_tenant_id(user),
-                CoreDashboard.status == DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT,
-                CoreDashboard.source == DASHBOARD_SOURCE_PLATFORM_DELEGATE,
-                CoreDashboard.create_by == _user_id(user),
-                CoreDashboard.content_id == source.id,
-            )
-        )
-        .order_by(CoreDashboard.update_time.desc(), CoreDashboard.create_time.desc())
-    ).scalars().first()
-    if existing:
-        return _dashboard_base_response(session, user, existing, _effective_dashboard_datasource(existing))
-
-    component_data, canvas_style_data, canvas_view_info = _clone_dashboard_canvas_payload(
-        source.component_data,
-        source.canvas_style_data,
-        source.canvas_view_info,
-    )
-    now = _now()
-    record = CoreDashboard(
-        id=uuid.uuid4().hex,
-        tenant_id=_current_tenant_id(user),
-        name=source.name,
-        pid=source.pid or "root",
-        datasource=_effective_dashboard_datasource(source),
-        org_id=source.org_id or "",
-        level=source.level or 1,
-        node_type="leaf",
-        type=source.type or "dashboard",
-        canvas_style_data=canvas_style_data,
-        component_data=component_data,
-        canvas_view_info=canvas_view_info,
-        mobile_layout=source.mobile_layout or 0,
-        status=DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT,
-        source=DASHBOARD_SOURCE_PLATFORM_DELEGATE,
-        remark="maintenance_draft",
-        content_id=source.id,
-        self_watermark_status=source.self_watermark_status or 0,
-        is_default=0,
-        sort=0,
-        create_by=str(user.id),
-        update_by=str(user.id),
-        create_time=now,
-        update_time=now,
-        delete_flag=0,
-        version=source.version or 3,
-        check_version=source.check_version or "1",
-    )
-    session.add(record)
-    session.commit()
-    session.refresh(record)
-    return _dashboard_base_response(session, user, record, _effective_dashboard_datasource(record))
-
-
-def publish_platform_delegate_draft(
-        session: SessionDep,
-        user: CurrentUser,
-        draft_dashboard_id: str,
-        publish_as_default: bool = False,
-):
-    draft = _load_platform_delegate_draft_or_404(session, draft_dashboard_id, user)
-    if draft.node_type != "leaf":
-        raise HTTPException(status_code=400, detail="Only dashboard drafts can be published")
-
-    datasource_id = _effective_dashboard_datasource(draft)
-    if datasource_id is not None:
-        if not datasource_bound_to_tenant(session, int(datasource_id), _current_tenant_id(user)):
-            raise HTTPException(status_code=403, detail="Dashboard datasource is not in current workspace")
-        _ensure_datasource_access(session, user, datasource_id, required=True)
-
-    now = _now()
-    target: CoreDashboard | None = None
-    if draft.content_id and draft.content_id != "0":
-        candidate = session.get(CoreDashboard, draft.content_id)
-        if (
-            candidate
-            and candidate.delete_flag != 1
-            and candidate.status not in DASHBOARD_DRAFT_STATUSES
-            and _same_tenant(user, candidate)
-            and _can_edit_dashboard(session, user, candidate)
-        ):
-            target = candidate
-        else:
-            raise HTTPException(status_code=404, detail="Published dashboard does not exist")
-
-    if target is None:
-        target = CoreDashboard(
-            id=uuid.uuid4().hex,
-            tenant_id=_current_tenant_id(user),
-            create_by=str(user.id),
-            create_time=now,
-            delete_flag=0,
-        )
-
-    target.name = draft.name
-    target.pid = draft.pid or "root"
-    target.datasource = datasource_id
-    target.org_id = draft.org_id or ""
-    target.level = draft.level or 1
-    target.node_type = "leaf"
-    target.type = draft.type or "dashboard"
-    target.canvas_style_data = draft.canvas_style_data or "{}"
-    target.component_data = draft.component_data or "[]"
-    target.canvas_view_info = draft.canvas_view_info or "{}"
-    target.mobile_layout = draft.mobile_layout or 0
-    target.status = DASHBOARD_STATUS_ACTIVE
-    target.source = DASHBOARD_SOURCE_PLATFORM_DELEGATE
-    target.remark = "created_via=platform_delegate;owner_scope=workspace"
-    target.self_watermark_status = draft.self_watermark_status or 0
-    target.version = draft.version or 3
-    target.content_id = draft.content_id if draft.content_id and draft.content_id != "0" else "0"
-    target.check_version = draft.check_version or "1"
-    target.update_by = str(user.id)
-    target.update_time = now
-
-    if publish_as_default and not target.is_default:
-        max_sort_row = session.exec(
-            select(func.max(func.coalesce(CoreDashboard.sort, 0)))
-            .where(
-                and_(
-                    _active_dashboard_filter(),
-                    CoreDashboard.tenant_id == _current_tenant_id(user),
-                    CoreDashboard.node_type == "leaf",
-                    CoreDashboard.is_default == 1,
-                )
-            )
-        ).first()
-        target.sort = int(_first_scalar_value(max_sort_row) or 0) + 1
-    target.is_default = 1 if publish_as_default else 0
-
-    draft.delete_flag = 1
-    draft.delete_time = now
-    draft.delete_by = str(user.id)
-    draft.update_by = str(user.id)
-    draft.update_time = now
-    session.add(target)
-    session.add(draft)
-    session.commit()
-    session.refresh(target)
-    return _dashboard_base_response(session, user, target, datasource_id)
-
-
-def delete_platform_delegate_draft(session: SessionDep, user: CurrentUser, draft_dashboard_id: str):
-    draft = _load_platform_delegate_draft_or_404(session, draft_dashboard_id, user)
-    now = _now()
-    draft.delete_flag = 1
-    draft.delete_time = now
-    draft.delete_by = str(user.id)
-    draft.update_by = str(user.id)
-    draft.update_time = now
-    session.add(draft)
-    session.commit()
-    return True
 
 
 def set_default_resource(session: SessionDep, user: CurrentUser, request: DashboardDefaultRequest):
@@ -1476,7 +1289,7 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
         max_sort = _first_scalar_value(max_sort_row)
         record.sort = int(max_sort or 0) + 1
     record.is_default = 1 if request.is_default else 0
-    record.update_by = str(user.id)
+    record.update_by = _asset_operator_id(session, user)
     record.update_time = now
     session.add(record)
     session.commit()
@@ -1506,10 +1319,11 @@ def sort_default_resources(session: SessionDep, user: CurrentUser, request: Dash
         raise HTTPException(status_code=404, detail="Default dashboard does not exist")
 
     now = int(time.time())
+    operator_id = _asset_operator_id(session, user)
     for index, dashboard_id in enumerate(ordered_ids):
         record = record_by_id[dashboard_id]
         record.sort = index + 1
-        record.update_by = str(user.id)
+        record.update_by = operator_id
         record.update_time = now
         session.add(record)
 
@@ -1571,7 +1385,8 @@ def copy_dashboard_to_platform_template(
 
 
 def list_platform_dashboard_templates(session: SessionDep, user: CurrentUser):
-    _require_platform_delegate(user)
+    if not (_is_platform_admin_context(user) or is_platform_workspace_delegate(user)):
+        raise HTTPException(status_code=403, detail="Only SaaS admin can list dashboard templates")
     statement = (
         select(CoreDashboard)
         .where(
@@ -1592,12 +1407,13 @@ def list_platform_dashboard_templates(session: SessionDep, user: CurrentUser):
     ]
 
 
-def copy_platform_template_to_delegate_draft(
+def copy_platform_template_to_workspace_dashboard(
         session: SessionDep,
         user: CurrentUser,
         template_id: str,
         name: str = "",
 ):
+    _require_platform_delegate(user)
     template = _load_platform_template_or_404(session, template_id, user)
     target_datasource_id = get_bound_datasource_id_for_tenant(session, _current_tenant_id(user))
     if target_datasource_id is not None:
@@ -1609,6 +1425,7 @@ def copy_platform_template_to_delegate_draft(
         target_datasource_id,
     )
     now = _now()
+    operator_id = _asset_operator_id(session, user)
     record = CoreDashboard(
         id=uuid.uuid4().hex,
         tenant_id=_current_tenant_id(user),
@@ -1623,14 +1440,14 @@ def copy_platform_template_to_delegate_draft(
         component_data=component_data,
         canvas_view_info=canvas_view_info,
         mobile_layout=template.mobile_layout or 0,
-        status=DASHBOARD_STATUS_PLATFORM_DELEGATE_DRAFT,
-        source=DASHBOARD_SOURCE_PLATFORM_DELEGATE,
+        status=DASHBOARD_STATUS_ACTIVE,
+        source=None,
         remark=f"source_template_id={template.id}",
         self_watermark_status=template.self_watermark_status or 0,
         is_default=0,
         sort=0,
-        create_by=str(user.id),
-        update_by=str(user.id),
+        create_by=operator_id,
+        update_by=operator_id,
         create_time=now,
         update_time=now,
         delete_flag=0,
@@ -1732,6 +1549,7 @@ def share_resource(session: SessionDep, user: CurrentUser, request: DashboardSha
             share_name = record.name
 
     now = int(time.time())
+    operator_id = _asset_operator_id(session, user)
     share = _active_share_for_source(
         session,
         user,
@@ -1747,7 +1565,7 @@ def share_resource(session: SessionDep, user: CurrentUser, request: DashboardSha
         share.canvas_style_data = canvas_style_data
         share.canvas_view_info = canvas_view_info
         share.preview_image = request.preview_image or share.preview_image
-        share.update_by = str(user.id)
+        share.update_by = operator_id
         share.update_time = now
         share.delete_flag = 0
     else:
@@ -1763,8 +1581,8 @@ def share_resource(session: SessionDep, user: CurrentUser, request: DashboardSha
             canvas_style_data=canvas_style_data,
             canvas_view_info=canvas_view_info,
             preview_image=request.preview_image or None,
-            create_by=str(user.id),
-            update_by=str(user.id),
+            create_by=operator_id,
+            update_by=operator_id,
             create_time=now,
             update_time=now,
             delete_flag=0,
@@ -1829,10 +1647,11 @@ def delete_shared_resource(session: SessionDep, current_user: CurrentUser, query
     if not _share_can_delete(current_user, share):
         raise HTTPException(status_code=403, detail="You do not have permission to delete this shared dashboard")
     now = int(time.time())
+    operator_id = _asset_operator_id(session, current_user)
     for active_share in _active_shares_for_same_source(session, share):
         active_share.delete_flag = 1
         active_share.delete_time = now
-        active_share.delete_by = _user_id(current_user)
+        active_share.delete_by = operator_id
         session.add(active_share)
     session.commit()
     return True
@@ -1844,6 +1663,7 @@ def use_shared_resource(session: SessionDep, user: CurrentUser, request: SharedD
     if datasource_id is None or not _share_can_use(session, user, share):
         raise HTTPException(status_code=403, detail="You do not have permission to use this shared dashboard")
 
+    operator_id = _asset_operator_id(session, user)
     record = CoreDashboard(
         id=uuid.uuid4().hex,
         tenant_id=_current_tenant_id(user),
@@ -1857,8 +1677,8 @@ def use_shared_resource(session: SessionDep, user: CurrentUser, request: SharedD
         canvas_style_data=share.canvas_style_data or "{}",
         component_data=share.component_data or "[]",
         canvas_view_info=share.canvas_view_info or "{}",
-        create_by=str(user.id),
-        update_by=str(user.id),
+        create_by=operator_id,
+        update_by=operator_id,
         create_time=int(time.time()),
         update_time=int(time.time()),
         delete_flag=0,
