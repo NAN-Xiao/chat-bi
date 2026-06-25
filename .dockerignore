@@ -8,5 +8,4 @@ backend/htmlcov
 backend/.venv
 backend/.gitignore
 backend/README.md
-backend/scripts
 backend/.DS_Store

@@ -3,9 +3,11 @@ ARG ZHISHU_BASE_IMAGE=zhishu-base:local
 ARG ZHISHU_RUNTIME_IMAGE=zhishu-python-pg:local
 
 FROM --platform=${BUILDPLATFORM} ${ZHISHU_BASE_IMAGE} AS zhishu-ui-builder
+ARG VITE_API_BASE_URL=./api/v1
 ENV ZHISHU_HOME=/opt/zhishu
 ENV APP_HOME=${ZHISHU_HOME}/app
 ENV UI_HOME=${ZHISHU_HOME}/frontend
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p ${APP_HOME} ${UI_HOME}
@@ -99,6 +101,6 @@ EXPOSE 3000 8000 8001 5432
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python3 -c "import os, urllib.request; p=os.environ.get('CONTEXT_PATH','').strip('/'); urllib.request.urlopen('http://localhost:8000/' + ((p + '/') if p else '') + 'health', timeout=3)" || exit 1
+    CMD python3 -c "import os, urllib.request; port=os.environ.get('API_PORT','8000'); p=os.environ.get('CONTEXT_PATH','').strip('/'); urllib.request.urlopen(f'http://localhost:{port}/' + ((p + '/') if p else '') + 'health', timeout=3)" || exit 1
 
 ENTRYPOINT ["sh", "start.sh"]

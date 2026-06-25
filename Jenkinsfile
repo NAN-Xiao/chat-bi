@@ -71,7 +71,7 @@ pipeline {
               cp "$APP_HOME/docker-buildx" /root/.docker/cli-plugins/docker-buildx
               chmod +x /root/.docker/cli-plugins/docker-buildx
             fi
-            docker buildx version
+            docker buildx version || echo "docker buildx 不可用，将使用 DOCKER_BUILDKIT=1 docker build。"
           fi
           echo "Python 依赖类型：${PYTHON_DEPENDENCY_EXTRA:-cpu}"
           echo "是否清理旧版本镜像：${CLEAN_OLD_IMAGES:-false}"
@@ -257,7 +257,7 @@ EOF
       }
     }
 
-    stage('迁移并重启 systemd 服务') {
+    stage('迁移并重启 Docker 服务') {
       steps {
         sh '''
           set -eux
@@ -271,60 +271,12 @@ EOF
           api_ports="$ZHISHU_API_PORTS"
           worker_ids="$ZHISHU_WORKER_IDS"
 
-          SYSTEMD_SSH_TARGET="${SYSTEMD_SSH_TARGET:-root@${FRONTEND_HOST}}"
-          api_services=""
-          for api_port in $api_ports; do
-            api_services="$api_services chat-bi-api@${api_port}.service"
-          done
-          worker_services=""
-          for worker_id in $worker_ids; do
-            worker_services="$worker_services chat-bi-worker@${worker_id}.service"
-          done
-          remote_systemd_batch() {
-            ssh \
-              -o BatchMode=yes \
-              -o StrictHostKeyChecking=no \
-              -o UserKnownHostsFile=/root/.ssh/known_hosts \
-              "$SYSTEMD_SSH_TARGET" \
-              "API_PORTS='$api_ports' API_SERVICES='$api_services' WORKER_SERVICES='$worker_services' bash -s" <<'REMOTE_SYSTEMD'
-set -euo pipefail
-echo "停止旧 systemd 实例..."
-systemctl stop chat-bi-mcp.service $API_SERVICES $WORKER_SERVICES >/dev/null 2>&1 || true
-
-echo "启动 API 副本和 worker..."
-systemctl restart $API_SERVICES $WORKER_SERVICES
-
-deadline=$(( $(date +%s) + 45 ))
-while true; do
-  all_ok=1
-  for service in $API_SERVICES $WORKER_SERVICES; do
-    systemctl is-active --quiet "$service" || all_ok=0
-  done
-  for port in $API_PORTS; do
-    timeout 1 bash -lc "</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1 || all_ok=0
-  done
-  if [ "$all_ok" -eq 1 ]; then
-    echo "systemd 服务和 API 端口已就绪。"
-    break
-  fi
-  if [ "$(date +%s)" -ge "$deadline" ]; then
-    echo "等待 systemd 服务或 API 端口就绪超时。"
-    systemctl --no-pager --plain status $API_SERVICES $WORKER_SERVICES || true
-    exit 1
-  fi
-  sleep 1
-done
-REMOTE_SYSTEMD
-          }
-
-          cat > "$APP_HOME/chat-bi-systemd.env" <<EOF
+          cat > "$APP_HOME/chat-bi-deploy.env" <<EOF
 APP_HOME=$APP_HOME
 IMAGE=$IMAGE
 RUNTIME_ENV_FILE=$RUNTIME_ENV_FILE
 EOF
-          chmod 600 "$APP_HOME/chat-bi-systemd.env"
-
-          echo "跳过 systemd unit 安装：chat-bi-api@.service 和 chat-bi-worker@.service 已由宿主机预先配置。"
+          chmod 600 "$APP_HOME/chat-bi-deploy.env"
 
           echo "执行数据库迁移..."
           docker rm -f chat-bi-migrate >/dev/null 2>&1 || true
@@ -339,10 +291,72 @@ EOF
             -v "$APP_HOME/data/zhishu/logs:/opt/zhishu/app/logs" \
             "$IMAGE"
 
-          echo "停止旧单容器实例和旧 systemd 实例..."
+          echo "停止旧应用容器..."
           docker rm -f "$CONTAINER_NAME" "${CONTAINER_NAME}-previous" >/dev/null 2>&1 || true
           docker rm -f chat-bi-mcp >/dev/null 2>&1 || true
-          remote_systemd_batch
+          for api_port in $api_ports; do
+            docker rm -f "chat-bi-api-${api_port}" >/dev/null 2>&1 || true
+          done
+          for worker_id in $worker_ids; do
+            docker rm -f "chat-bi-worker-${worker_id}" >/dev/null 2>&1 || true
+          done
+
+          echo "启动 API 副本..."
+          for api_port in $api_ports; do
+            docker run -d \
+              --name "chat-bi-api-${api_port}" \
+              --restart unless-stopped \
+              --env-file "$RUNTIME_ENV_FILE" \
+              -e APP_ROLE=api \
+              -e API_PORT="$api_port" \
+              -p "127.0.0.1:${api_port}:${api_port}" \
+              -v "$APP_HOME/data/zhishu/excel:/opt/zhishu/data/excel" \
+              -v "$APP_HOME/data/zhishu/file:/opt/zhishu/data/file" \
+              -v "$APP_HOME/data/zhishu/images:/opt/zhishu/images" \
+              -v "$APP_HOME/data/zhishu/logs:/opt/zhishu/app/logs" \
+              "$IMAGE"
+          done
+
+          echo "启动 Worker 副本..."
+          for worker_id in $worker_ids; do
+            docker run -d \
+              --name "chat-bi-worker-${worker_id}" \
+              --restart unless-stopped \
+              --env-file "$RUNTIME_ENV_FILE" \
+              -e APP_ROLE=worker \
+              -e WORKER_ID="$worker_id" \
+              -v "$APP_HOME/data/zhishu/excel:/opt/zhishu/data/excel" \
+              -v "$APP_HOME/data/zhishu/file:/opt/zhishu/data/file" \
+              -v "$APP_HOME/data/zhishu/images:/opt/zhishu/images" \
+              -v "$APP_HOME/data/zhishu/logs:/opt/zhishu/app/logs" \
+              "$IMAGE"
+          done
+
+          deadline=$(( $(date +%s) + 45 ))
+          while true; do
+            all_ok=1
+            for api_port in $api_ports; do
+              docker ps --format '{{.Names}}' | grep -Fx "chat-bi-api-${api_port}" >/dev/null || all_ok=0
+              docker run --rm --network host busybox:1.36 sh -c "nc -z 127.0.0.1 ${api_port}" >/dev/null 2>&1 || all_ok=0
+            done
+            for worker_id in $worker_ids; do
+              docker ps --format '{{.Names}}' | grep -Fx "chat-bi-worker-${worker_id}" >/dev/null || all_ok=0
+            done
+            if [ "$all_ok" -eq 1 ]; then
+              echo "Docker API 和 worker 容器已就绪。"
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "等待 Docker API 或 worker 容器就绪超时。"
+              docker ps -a --filter 'name=^/chat-bi-(api|worker)-'
+              for container in $(docker ps -a --filter 'name=^/chat-bi-(api|worker)-' --format '{{.Names}}'); do
+                echo "===== container:$container ====="
+                docker logs --tail=200 "$container" || true
+              done
+              exit 1
+            fi
+            sleep 1
+          done
 
           docker ps --filter "name=^/chat-bi-"
         '''
