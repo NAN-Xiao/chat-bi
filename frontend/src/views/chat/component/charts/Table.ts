@@ -16,6 +16,53 @@ import '@antv/s2/dist/s2.min.css'
 
 const { t } = i18n.global
 
+const DATE_FIELD_KEYWORDS = ['date', 'day', 'dt', 'time', '日期', '时间']
+
+function hasDateFieldName(axis?: ChartAxis): boolean {
+  const text = `${axis?.name ?? ''} ${axis?.value ?? ''}`.toLowerCase()
+  return DATE_FIELD_KEYWORDS.some((keyword) => text.includes(keyword))
+}
+
+function parseDateLikeValue(value: any): { type: 'date' | 'datetime'; text: string } | undefined {
+  if (value === null || value === undefined || value === '') {
+    return undefined
+  }
+  const raw = typeof value === 'number' && Number.isInteger(value) ? String(value) : String(value).trim()
+  if (/^\d{8}$/.test(raw)) {
+    const year = Number(raw.slice(0, 4))
+    const month = Number(raw.slice(4, 6))
+    const day = Number(raw.slice(6, 8))
+    const parsed = new Date(year, month - 1, day)
+    if (
+      parsed.getFullYear() === year &&
+      parsed.getMonth() === month - 1 &&
+      parsed.getDate() === day
+    ) {
+      return { type: 'date', text: `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}` }
+    }
+    return undefined
+  }
+  const normalized = raw.replace(/\//g, '-')
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(normalized)) {
+    return { type: 'date', text: normalized }
+  }
+  if (/^\d{4}-\d{1,2}-\d{1,2}[ T]\d{1,2}:\d{1,2}(:\d{1,2})?$/.test(normalized)) {
+    return { type: 'datetime', text: normalized.replace('T', ' ') }
+  }
+  return undefined
+}
+
+function formatTableValue(value: any, axis?: ChartAxis): string {
+  const dataType = axis?.data_type?.toLowerCase()
+  if (dataType === 'date' || dataType === 'datetime' || (!dataType && hasDateFieldName(axis))) {
+    const parsed = parseDateLikeValue(value)
+    if (parsed) {
+      return parsed.text
+    }
+  }
+  return String(formatNumber(value))
+}
+
 const createSmartSortFunc = (sortMethod: string) => {
   const compareNumericString = (a: string, b: string): number => {
     const isNegA = a.startsWith('-')
@@ -85,18 +132,26 @@ export class Table extends BaseChart {
 
     this.debounceRender = debounce(async (width?: number, height?: number) => {
       if (this.table) {
-        this.table.changeSheetSize(width, height)
+        const size = this.getContainerSize(width, height)
+        this.table.changeSheetSize(size.width, size.height)
         await this.table.render(false)
       }
     }, 200)
 
     this.resizeObserver = new ResizeObserver(([entry] = []) => {
-      const [size] = entry.borderBoxSize || []
-      this.debounceRender(size.inlineSize, size.blockSize)
+      this.debounceRender(entry?.contentRect.width, entry?.contentRect.height)
     })
 
-    if (this.container?.parentElement) {
-      this.resizeObserver.observe(this.container.parentElement)
+    if (this.container) {
+      this.resizeObserver.observe(this.container)
+    }
+  }
+
+  private getContainerSize(width?: number, height?: number) {
+    const container = this.container instanceof HTMLElement ? this.container : undefined
+    return {
+      width: Math.max(0, Math.floor(width ?? container?.clientWidth ?? 600)),
+      height: Math.max(0, Math.floor(height ?? container?.clientHeight ?? 360)),
     }
   }
 
@@ -122,8 +177,7 @@ export class Table extends BaseChart {
             field: a.value,
             name: a.name,
             formatter: (value: any) => {
-              const formatted = formatNumber(value)
-              return String(formatted)
+              return formatTableValue(value, a)
             },
           }
         }) ?? [],
@@ -156,9 +210,10 @@ export class Table extends BaseChart {
       }
     }
 
+    const size = this.getContainerSize()
     const s2Options: S2Options = {
-      width: 600,
-      height: 360,
+      width: size.width,
+      height: size.height,
       showDefaultHeaderActionIcon: false,
       headerActionIcons: [
         {
@@ -201,7 +256,8 @@ export class Table extends BaseChart {
             container.style.fontSize = '14px'
             container.style.whiteSpace = 'pre-wrap'
 
-            const formattedValue = formatNumber(meta.fieldValue)
+            const axis = this.axis?.find((item) => item.value === meta.field)
+            const formattedValue = formatTableValue(meta.fieldValue, axis)
             const text = document.createTextNode(String(formattedValue))
             container.appendChild(text)
 

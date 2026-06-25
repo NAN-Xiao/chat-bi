@@ -1,0 +1,16 @@
+[Unit]
+Description=星通智数 Database Migration
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=zhishu
+Group=zhishu
+WorkingDirectory=/opt/zhishu/backend
+EnvironmentFile=/etc/zhishu/zhishu.env
+Environment=AUTO_MIGRATE_ON_STARTUP=false
+ExecStart=/opt/zhishu/backend/.venv/bin/alembic upgrade head
+
+[Install]
+WantedBy=multi-user.target

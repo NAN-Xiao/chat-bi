@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "星通智数"
     APP_ENV: Literal["development", "test", "production"] = "development"
     PRODUCTION_CHECKS_ENABLED: bool = True
+    AUTO_MIGRATE_ON_STARTUP: bool = True
     #CONTEXT_PATH: str = "/zhishu"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)
@@ -62,8 +63,8 @@ class Settings(BaseSettings):
     def API_V1_STR(self) -> str:
         return self.CONTEXT_PATH + "/api/v1"
 
-    POSTGRES_SERVER: str = 'localhost'
-    POSTGRES_PORT: int = 15432
+    POSTGRES_SERVER: str = '10.1.5.193'
+    POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = 'root'
     POSTGRES_PASSWORD: str = "Password123@pg"
     POSTGRES_DB: str = "zhishu_bi_single_ha"
@@ -136,7 +137,7 @@ class Settings(BaseSettings):
     MCP_IMAGE_HOST: str = 'http://localhost:3001'
     SERVER_IMAGE_HOST: str = 'http://YOUR_SERVE_IP:MCP_PORT/images/'
     SERVER_IMAGE_TIMEOUT: int = 15
-    LLM_REQUEST_TIMEOUT: int = 45
+    LLM_REQUEST_TIMEOUT: int = 180
     LLM_MAX_RETRIES: int = 1
     SQL_QUERY_EXECUTION_TIMEOUT_SECONDS: int = 60
     SQL_QUERY_DEFAULT_ROW_LIMIT: int = 1000
@@ -204,6 +205,7 @@ class Settings(BaseSettings):
                      'EMBEDDING_NORMALIZE',
                      'REDIS_SSL',
                      'PRODUCTION_CHECKS_ENABLED',
+                     'AUTO_MIGRATE_ON_STARTUP',
                      'ENABLE_LOCAL_DEV_CORS',
                      'LOGIN_RATE_LIMIT_ENABLED',
                      'CHAT_GENERATION_CONCURRENCY_LIMIT_ENABLED',

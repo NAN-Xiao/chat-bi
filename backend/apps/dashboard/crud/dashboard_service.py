@@ -236,6 +236,13 @@ def _failed_chart_result(message: str) -> dict[str, Any]:
     }
 
 
+def _has_cached_chart_data(item: dict) -> bool:
+    data_obj = item.get('data')
+    if not isinstance(data_obj, dict):
+        return False
+    return isinstance(data_obj.get('data'), list)
+
+
 def _execute_dashboard_chart_sql(
         session: SessionDep,
         current_user: CurrentUser,
@@ -547,11 +554,17 @@ def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
     result_dict['can_edit'] = _can_edit_dashboard(session, current_user, record)
     result_dict['can_share'] = _can_share_dashboard(session, current_user, record)
 
+    refresh_data = bool(getattr(dashboard, 'refresh_data', False))
     canvas_view_obj = _parse_canvas_view_info(result_dict.get('canvas_view_info'))
+    data_refreshed = False
     for item in canvas_view_obj.values():
         if not isinstance(item, dict):
             continue
         item_datasource = _chart_datasource(record, item, effective_datasource)
+        if not refresh_data and _has_cached_chart_data(item):
+            item['status'] = item.get('status') or 'success'
+            item['message'] = item.get('message') or ''
+            continue
         if item_datasource is not None and item.get('sql') is not None:
             if record.datasource is not None and item_datasource != record.datasource:
                 data_result = {
@@ -568,7 +581,14 @@ def load_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
             item['status'] = data_result['status']
             item['message'] = data_result['message']
             item['fields'] = data_result.get('fields', [])
+            data_refreshed = True
     result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj).decode()
+    if data_refreshed:
+        record.canvas_view_info = result_dict['canvas_view_info']
+        record.update_by = _user_id(current_user)
+        record.update_time = int(time.time())
+        session.add(record)
+        session.commit()
     return result_dict
 
 

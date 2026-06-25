@@ -9,8 +9,9 @@ pipeline {
   }
 
   parameters {
-    string(name: 'BRANCH_NAME', defaultValue: '单用户高可用', description: 'Git 分支')
+    string(name: 'BRANCH_NAME', defaultValue: 'single_ha_t1', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
+    booleanParam(name: 'CLEAN_OLD_IMAGES', defaultValue: false, description: '是否清理旧版本镜像。默认关闭以缩短发布耗时')
     booleanParam(name: 'CLEAN_DANGLING_IMAGES', defaultValue: false, description: '是否清理悬空镜像。默认关闭以保留 Docker 构建缓存')
   }
 
@@ -27,6 +28,8 @@ pipeline {
     NGINX_PORT = '80'
     NGINX_ROOT = '/home/chat-bi/nginx/html'
     NGINX_CONF_PATH = '/etc/nginx/conf.d/chat-bi.conf'
+    INSTALL_CONF_FILE = 'installer/install.conf'
+    RUNTIME_ENV_FILE = '/home/chat-bi/chat-bi.runtime.env'
     WEB_PORT = '8000'
     MCP_PORT = '8001'
   }
@@ -48,6 +51,7 @@ pipeline {
           env.GITHUB_COMMIT = shortCommit
           env.FRONTEND_API_BASE_URL = "./api/v1"
           env.PYTHON_DEPENDENCY_EXTRA = "cpu"
+          env.CLEAN_OLD_IMAGES = params.CLEAN_OLD_IMAGES.toString()
           env.CLEAN_DANGLING_IMAGES = params.CLEAN_DANGLING_IMAGES.toString()
         }
         sh '''
@@ -70,12 +74,75 @@ pipeline {
             docker buildx version
           fi
           echo "Python 依赖类型：${PYTHON_DEPENDENCY_EXTRA:-cpu}"
+          echo "是否清理旧版本镜像：${CLEAN_OLD_IMAGES:-false}"
           echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES:-false}"
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/sqlbot/excel" "$APP_HOME/data/sqlbot/file" "$APP_HOME/data/sqlbot/images" "$APP_HOME/data/sqlbot/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
             exit 1
           fi
           test -w "$APP_HOME" || { echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"; exit 1; }
+          if [ ! -f "$INSTALL_CONF_FILE" ]; then
+            echo "缺少仓库配置文件：$INSTALL_CONF_FILE"
+            echo "请先在仓库 installer/install.conf 中维护部署配置。"
+            exit 1
+          fi
+
+          set +x
+          set -a
+          . "$INSTALL_CONF_FILE"
+          set +a
+          : "${ZHISHU_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_API_PORTS}"
+          : "${ZHISHU_WORKER_IDS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_WORKER_IDS}"
+          : "${ZHISHU_CACHE_TYPE:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_CACHE_TYPE}"
+          : "${ZHISHU_REDIS_HOST:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_REDIS_HOST}"
+          : "${ZHISHU_REDIS_PORT:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_REDIS_PORT}"
+          : "${ZHISHU_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS}"
+          : "${ZHISHU_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS}"
+          {
+            echo "PROJECT_NAME=星通智数"
+            echo "POSTGRES_SERVER=${ZHISHU_DB_HOST}"
+            echo "POSTGRES_PORT=${ZHISHU_DB_PORT}"
+            echo "POSTGRES_DB=${ZHISHU_DB_DB}"
+            echo "POSTGRES_USER=${ZHISHU_DB_USER}"
+            echo "POSTGRES_PASSWORD=${ZHISHU_DB_PASSWORD}"
+            echo "SECRET_KEY=${ZHISHU_SECRET_KEY}"
+            echo "DEFAULT_PWD=${ZHISHU_DEFAULT_PWD}"
+            echo "FRONTEND_HOST=http://${FRONTEND_HOST}"
+            echo "BACKEND_CORS_ORIGINS=${ZHISHU_CORS_ORIGINS}"
+            echo "SERVER_IMAGE_HOST=${ZHISHU_SERVER_IMAGE_HOST}"
+            echo "LOG_LEVEL=${ZHISHU_LOG_LEVEL}"
+            echo "SQL_DEBUG=false"
+            echo "BASE_DIR=/opt/sqlbot"
+            echo "UPLOAD_DIR=/opt/sqlbot/data/file"
+            echo "EXCEL_PATH=/opt/sqlbot/data/excel"
+            echo "MCP_IMAGE_PATH=/opt/sqlbot/images"
+            echo "LOG_DIR=/opt/sqlbot/app/logs"
+            echo "LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s"
+            echo "AUTO_MIGRATE_ON_STARTUP=false"
+            echo "CACHE_TYPE=${ZHISHU_CACHE_TYPE}"
+            echo "REDIS_HOST=${ZHISHU_REDIS_HOST}"
+            echo "REDIS_PORT=${ZHISHU_REDIS_PORT}"
+            echo "REDIS_DB=${ZHISHU_REDIS_DB}"
+            echo "REDIS_USERNAME=${ZHISHU_REDIS_USERNAME}"
+            echo "REDIS_PASSWORD=${ZHISHU_REDIS_PASSWORD}"
+            echo "REDIS_SSL=${ZHISHU_REDIS_SSL}"
+            echo "REDIS_KEY_PREFIX=${ZHISHU_REDIS_KEY_PREFIX}"
+            echo "TASK_QUEUE_NAME=${ZHISHU_TASK_QUEUE_NAME}"
+            echo "TASK_QUEUE_RESULT_TTL_SECONDS=${ZHISHU_TASK_QUEUE_RESULT_TTL_SECONDS}"
+            echo "TASK_QUEUE_POLL_TIMEOUT_SECONDS=${ZHISHU_TASK_QUEUE_POLL_TIMEOUT_SECONDS}"
+            echo "TASK_QUEUE_MAX_ATTEMPTS=${ZHISHU_TASK_QUEUE_MAX_ATTEMPTS}"
+            echo "TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS=${ZHISHU_TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS}"
+            echo "TASK_QUEUE_REQUEUE_INTERVAL_SECONDS=${ZHISHU_TASK_QUEUE_REQUEUE_INTERVAL_SECONDS}"
+            echo "EMBEDDING_MODEL=${ZHISHU_EMBEDDING_MODEL}"
+            echo "EMBEDDING_API_BASE_URL=${ZHISHU_EMBEDDING_API_BASE_URL}"
+            echo "EMBEDDING_API_KEY=${ZHISHU_EMBEDDING_API_KEY}"
+            echo "MCP_ENABLED=${ZHISHU_MCP_ENABLED}"
+            echo "ACCESS_TOKEN_EXPIRE_MINUTES=${ZHISHU_ACCESS_TOKEN_EXPIRE_MINUTES}"
+            echo "CONTEXT_PATH=${ZHISHU_CONTEXT_PATH}"
+          } > "$RUNTIME_ENV_FILE"
+          chmod 600 "$RUNTIME_ENV_FILE"
+          set -x
+          grep -E '^(POSTGRES_SERVER|POSTGRES_PORT|POSTGRES_DB|POSTGRES_USER|FRONTEND_HOST|BACKEND_CORS_ORIGINS|CACHE_TYPE)=' "$RUNTIME_ENV_FILE" || true
         '''
       }
     }
@@ -103,8 +170,24 @@ pipeline {
       steps {
         sh '''
           set -eux
+          set +x
+          set -a
+          . "$INSTALL_CONF_FILE"
+          set +a
+          : "${ZHISHU_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_API_PORTS}"
+          set -x
           DOLLAR='$'
+          api_ports="$ZHISHU_API_PORTS"
           cat > "$APP_HOME/chat-bi-nginx.conf" <<EOF
+upstream chat_bi_backend {
+    least_conn;
+EOF
+          for api_port in $api_ports; do
+            echo "    server 127.0.0.1:${api_port} max_fails=3 fail_timeout=10s;" >> "$APP_HOME/chat-bi-nginx.conf"
+          done
+          cat >> "$APP_HOME/chat-bi-nginx.conf" <<EOF
+}
+
 server {
     listen ${NGINX_PORT};
     server_name ${FRONTEND_HOST};
@@ -119,7 +202,7 @@ server {
     }
 
     location /api/v1/ {
-        proxy_pass http://127.0.0.1:${WEB_PORT}/api/v1/;
+        proxy_pass http://chat_bi_backend/api/v1/;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -127,7 +210,7 @@ server {
     }
 
     location = /openapi.json {
-        proxy_pass http://127.0.0.1:${WEB_PORT}/openapi.json;
+        proxy_pass http://chat_bi_backend/openapi.json;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -135,7 +218,7 @@ server {
     }
 
     location /docs {
-        proxy_pass http://127.0.0.1:${WEB_PORT}/docs;
+        proxy_pass http://chat_bi_backend/docs;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -143,15 +226,7 @@ server {
     }
 
     location /images/ {
-        proxy_pass http://127.0.0.1:${MCP_PORT}/images/;
-        proxy_set_header Host ${DOLLAR}host;
-        proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
-        proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto ${DOLLAR}scheme;
-    }
-
-    location /mcp {
-        proxy_pass http://127.0.0.1:${MCP_PORT};
+        proxy_pass http://chat_bi_backend/images/;
         proxy_set_header Host ${DOLLAR}host;
         proxy_set_header X-Real-IP ${DOLLAR}remote_addr;
         proxy_set_header X-Forwarded-For ${DOLLAR}proxy_add_x_forwarded_for;
@@ -163,80 +238,100 @@ EOF
           echo "项目 Nginx 参考配置已生成：$APP_HOME/chat-bi-nginx.conf"
           cat "$APP_HOME/chat-bi-nginx.conf"
 
-          echo "Jenkins 运行在容器中时，$NGINX_CONF_PATH 可能是容器内路径。"
-          echo "宿主机 Nginx 配置请由 root 预先放到宿主机 $NGINX_CONF_PATH。"
-          echo "本流水线不写入宿主机 Nginx 配置，只生成参考配置供人工比对。"
-          if [ -r "$NGINX_CONF_PATH" ]; then
-            echo "检测到当前执行环境可读取 $NGINX_CONF_PATH，开始和参考配置比对："
-            diff -u "$APP_HOME/chat-bi-nginx.conf" "$NGINX_CONF_PATH" || true
-          else
-            echo "当前执行环境无法读取 $NGINX_CONF_PATH，跳过自动比对。"
-          fi
+          echo "跳过 Nginx 安装和 reload：当前 Jenkins 运行环境不负责管理宿主机 Nginx。"
+          echo "如需更新宿主机配置，请人工比对并应用：$APP_HOME/chat-bi-nginx.conf -> $NGINX_CONF_PATH"
         '''
       }
     }
 
-    stage('启动镜像') {
+    stage('迁移并重启 systemd 服务') {
       steps {
         sh '''
           set -eux
-          backup_container="${CONTAINER_NAME}-previous"
-          docker rm -f "$backup_container" >/dev/null 2>&1 || true
+          set +x
+          set -a
+          . "$INSTALL_CONF_FILE"
+          set +a
+          : "${ZHISHU_API_PORTS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_API_PORTS}"
+          : "${ZHISHU_WORKER_IDS:?请在 $INSTALL_CONF_FILE 中配置 ZHISHU_WORKER_IDS}"
+          set -x
+          api_ports="$ZHISHU_API_PORTS"
+          worker_ids="$ZHISHU_WORKER_IDS"
 
-          restore_previous() {
-            status="$1"
-            echo "新容器启动失败，准备恢复旧容器。"
-            docker logs --tail=200 "$CONTAINER_NAME" || true
-            docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-            if docker ps -a --format '{{.Names}}' | grep -Fx "$backup_container" >/dev/null; then
-              docker rename "$backup_container" "$CONTAINER_NAME" || true
-              docker start "$CONTAINER_NAME" || true
-            fi
-            exit "$status"
+          SYSTEMD_SSH_TARGET="${SYSTEMD_SSH_TARGET:-root@${FRONTEND_HOST}}"
+          api_services=""
+          for api_port in $api_ports; do
+            api_services="$api_services chat-bi-api@${api_port}.service"
+          done
+          worker_services=""
+          for worker_id in $worker_ids; do
+            worker_services="$worker_services chat-bi-worker@${worker_id}.service"
+          done
+          remote_systemd_batch() {
+            ssh \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=no \
+              -o UserKnownHostsFile=/root/.ssh/known_hosts \
+              "$SYSTEMD_SSH_TARGET" \
+              "API_PORTS='$api_ports' API_SERVICES='$api_services' WORKER_SERVICES='$worker_services' bash -s" <<'REMOTE_SYSTEMD'
+set -euo pipefail
+echo "停止旧 systemd 实例..."
+systemctl stop chat-bi-mcp.service $API_SERVICES $WORKER_SERVICES >/dev/null 2>&1 || true
+
+echo "启动 API 副本和 worker..."
+systemctl restart $API_SERVICES $WORKER_SERVICES
+
+deadline=$(( $(date +%s) + 45 ))
+while true; do
+  all_ok=1
+  for service in $API_SERVICES $WORKER_SERVICES; do
+    systemctl is-active --quiet "$service" || all_ok=0
+  done
+  for port in $API_PORTS; do
+    timeout 1 bash -lc "</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1 || all_ok=0
+  done
+  if [ "$all_ok" -eq 1 ]; then
+    echo "systemd 服务和 API 端口已就绪。"
+    break
+  fi
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    echo "等待 systemd 服务或 API 端口就绪超时。"
+    systemctl --no-pager --plain status $API_SERVICES $WORKER_SERVICES || true
+    exit 1
+  fi
+  sleep 1
+done
+REMOTE_SYSTEMD
           }
 
-          if docker ps -a --format '{{.Names}}' | grep -Fx "$CONTAINER_NAME" >/dev/null; then
-            docker rename "$CONTAINER_NAME" "$backup_container"
-            docker stop "$backup_container" >/dev/null 2>&1 || true
-          fi
+          cat > "$APP_HOME/chat-bi-systemd.env" <<EOF
+APP_HOME=$APP_HOME
+IMAGE=$IMAGE
+RUNTIME_ENV_FILE=$RUNTIME_ENV_FILE
+EOF
+          chmod 600 "$APP_HOME/chat-bi-systemd.env"
 
-          if ! docker run -d \
-            --name "$CONTAINER_NAME" \
-            --restart unless-stopped \
-            -p "${WEB_PORT}:8000" \
-            -p "${MCP_PORT}:8001" \
+          echo "跳过 systemd unit 安装：chat-bi-api@.service 和 chat-bi-worker@.service 已由宿主机预先配置。"
+
+          echo "执行数据库迁移..."
+          docker rm -f chat-bi-migrate >/dev/null 2>&1 || true
+          docker run --rm \
+            --name chat-bi-migrate \
+            --env-file "$RUNTIME_ENV_FILE" \
+            -e APP_ROLE=migrate \
+            -e AUTO_MIGRATE_ON_STARTUP=false \
             -v "$APP_HOME/data/sqlbot/excel:/opt/sqlbot/data/excel" \
             -v "$APP_HOME/data/sqlbot/file:/opt/sqlbot/data/file" \
             -v "$APP_HOME/data/sqlbot/images:/opt/sqlbot/images" \
             -v "$APP_HOME/data/sqlbot/logs:/opt/sqlbot/app/logs" \
-            -v "$APP_HOME/data/postgresql:/var/lib/postgresql/data" \
-            -e POSTGRES_SERVER="localhost" \
-            -e POSTGRES_PORT="5432" \
-            -e POSTGRES_DB="sqlbot" \
-            -e POSTGRES_USER="root" \
-            -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-Password123@pg}" \
-            -e SECRET_KEY="${SECRET_KEY:-jenkins-chat-bi-secret}" \
-            -e DEFAULT_PWD="${DEFAULT_PWD:-elex@123}" \
-            -e FRONTEND_HOST="http://${FRONTEND_HOST}" \
-            -e BACKEND_CORS_ORIGINS="http://${FRONTEND_HOST}" \
-            -e SERVER_IMAGE_HOST="http://${FRONTEND_HOST}/images/" \
-            -e LOG_DIR="/opt/sqlbot/app/logs" \
-            -e LOG_FORMAT="%(asctime)s - %(name)s - %(levelname)s:%(lineno)d - %(message)s" \
-            "$IMAGE"; then
-            restore_previous 1
-          fi
+            "$IMAGE"
 
-          sleep 15
-          if ! container_status="$(docker inspect --format='{{.State.Status}}' "$CONTAINER_NAME")"; then
-            restore_previous 1
-          fi
-          if [ "$container_status" != "running" ]; then
-            restore_previous 1
-          fi
-          docker ps --filter "name=^/${CONTAINER_NAME}$"
-          docker port "$CONTAINER_NAME"
+          echo "停止旧单容器实例和旧 systemd 实例..."
+          docker rm -f "$CONTAINER_NAME" "${CONTAINER_NAME}-previous" >/dev/null 2>&1 || true
+          docker rm -f chat-bi-mcp >/dev/null 2>&1 || true
+          remote_systemd_batch
 
-          docker rm -f "$backup_container" >/dev/null 2>&1 || true
+          docker ps --filter "name=^/chat-bi-"
         '''
       }
     }
@@ -293,36 +388,41 @@ EOF
           set -eu
           IMAGE_KEEP_COUNT=2
           TAR_KEEP_COUNT=1
-          RUNNING_IMAGE_ID="$(docker inspect --format='{{.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)"
+          RUNNING_IMAGE_IDS="$(docker ps --filter 'name=^/chat-bi-(api|worker)-' --format '{{.ID}}' \
+            | xargs -r docker inspect --format='{{.Image}}' 2>/dev/null || true)"
 
-          docker images "$IMAGE_REPOSITORY" --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}' \
-            | sort -k3,4r \
-            | awk -v keep="$IMAGE_KEEP_COUNT" -v running_id="$RUNNING_IMAGE_ID" '
-                NR <= keep {
-                  print "保留镜像：" $1
-                  next
-                }
-                running_id != "" && index(running_id, $2) > 0 {
-                  print "跳过运行中镜像：" $1
-                  next
-                }
-                {
-                  print $1
-                }
-              ' \
-            | while IFS= read -r image; do
-                case "$image" in
-                  保留镜像：*|跳过运行中镜像：*)
-                    echo "$image"
-                    ;;
-                  "")
-                    ;;
-                  *)
-                    echo "删除旧镜像：$image"
-                    docker rmi "$image" || true
-                    ;;
-                esac
-              done
+          if [ "${CLEAN_OLD_IMAGES:-false}" = "true" ]; then
+            docker images "$IMAGE_REPOSITORY" --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}' \
+              | sort -k3,4r \
+              | awk -v keep="$IMAGE_KEEP_COUNT" -v running_ids="$RUNNING_IMAGE_IDS" '
+                  NR <= keep {
+                    print "保留镜像：" $1
+                    next
+                  }
+                  running_ids != "" && index(running_ids, $2) > 0 {
+                    print "跳过运行中镜像：" $1
+                    next
+                  }
+                  {
+                    print $1
+                  }
+                ' \
+              | while IFS= read -r image; do
+                  case "$image" in
+                    保留镜像：*|跳过运行中镜像：*)
+                      echo "$image"
+                      ;;
+                    "")
+                      ;;
+                    *)
+                      echo "删除旧镜像：$image"
+                      docker rmi "$image" || true
+                      ;;
+                  esac
+                done
+          else
+            echo "跳过旧版本镜像清理。磁盘紧张时可手动打开 CLEAN_OLD_IMAGES。"
+          fi
 
           echo "当前保留的 $IMAGE_REPOSITORY 镜像："
           docker images "$IMAGE_REPOSITORY"
@@ -337,15 +437,19 @@ EOF
             echo "跳过悬空镜像清理，以保留 Docker 构建缓存。磁盘紧张时可手动打开 CLEAN_DANGLING_IMAGES。"
           fi
 
-          echo "清理旧镜像归档文件，只保留最近 $TAR_KEEP_COUNT 个："
-          find "$APP_HOME" -maxdepth 1 -name 'chat-bi-*.tar' -type f -printf '%T@ %p\n' \
-            | sort -nr \
-            | awk -v keep="$TAR_KEEP_COUNT" 'NR > keep { print substr($0, index($0, " ") + 1) }' \
-            | while IFS= read -r tar_file; do
-                [ -n "$tar_file" ] || continue
-                echo "删除旧镜像归档：$tar_file"
-                rm -f "$tar_file"
-              done
+          if [ "${CLEAN_OLD_IMAGES:-false}" = "true" ]; then
+            echo "清理旧镜像归档文件，只保留最近 $TAR_KEEP_COUNT 个："
+            find "$APP_HOME" -maxdepth 1 -name 'chat-bi-*.tar' -type f -printf '%T@ %p\n' \
+              | sort -nr \
+              | awk -v keep="$TAR_KEEP_COUNT" 'NR > keep { print substr($0, index($0, " ") + 1) }' \
+              | while IFS= read -r tar_file; do
+                  [ -n "$tar_file" ] || continue
+                  echo "删除旧镜像归档：$tar_file"
+                  rm -f "$tar_file"
+                done
+          else
+            echo "跳过旧镜像归档文件清理。"
+          fi
 
           echo "Docker 磁盘使用情况："
           docker system df
@@ -362,10 +466,15 @@ EOF
       sh '''
         set +e
         echo "Docker 容器最近 300 行日志："
-        if docker ps -a --format '{{.Names}}' | grep -Fx "$CONTAINER_NAME" >/dev/null; then
-          docker logs --tail=300 "$CONTAINER_NAME"
-        else
-          echo "容器 $CONTAINER_NAME 不存在，跳过容器日志收集。"
+        docker ps -a --filter 'name=^/chat-bi-(api|worker)-' --format '{{.Names}}' \
+          | while IFS= read -r container; do
+              [ -n "$container" ] || continue
+              echo "===== container:$container ====="
+              docker logs --tail=300 "$container" || true
+            done
+        if docker ps -a --format '{{.Names}}' | grep -Fx chat-bi-migrate >/dev/null; then
+          echo "===== container:chat-bi-migrate ====="
+          docker logs --tail=300 chat-bi-migrate || true
         fi
         echo "应用日志目录最近 300 行日志："
         for log_file in "$APP_HOME"/data/sqlbot/logs/*.log; do

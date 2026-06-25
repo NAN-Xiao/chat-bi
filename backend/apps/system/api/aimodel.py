@@ -123,7 +123,7 @@ async def check_default(session: SessionDep, trans: Trans):
 async def set_default(session: SessionDep, id: int = Path(description="ID")):
     db_model = session.get(AiModelDetail, id)
     if not db_model:
-        raise ValueError(f"AiModelDetail with id {id} not found")
+        raise HTTPException(status_code=404, detail=f"AiModelDetail with id {id} not found")
     if db_model.default_model:
         return
 
@@ -173,7 +173,7 @@ async def get_model_by_id(
 ):
     db_model = session.get(AiModelDetail, id)
     if not db_model:
-        raise ValueError(f"AiModelDetail with id {id} not found")
+        raise HTTPException(status_code=404, detail=f"AiModelDetail with id {id} not found")
 
     config_list: list[AiModelConfigItem] = []
     if db_model.config:
@@ -196,6 +196,7 @@ async def get_model_by_id(
     except Exception:
         pass
     data.pop("config", None)
+    data["api_key"] = data.get("api_key") or ""
     data["config_list"] = config_list
     return AiModelEditor(**data)
 
@@ -237,6 +238,8 @@ async def update_model(
     data.pop("config_list", None)
     data = await _encrypt_ai_model_secrets(data)
     db_model = session.get(AiModelDetail, id)
+    if not db_model:
+        raise HTTPException(status_code=404, detail=f"AiModelDetail with id {id} not found")
     # update_data = AiModelDetail.model_validate(data)
     db_model.sqlmodel_update(data)
     session.add(db_model)

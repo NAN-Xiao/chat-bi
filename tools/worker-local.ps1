@@ -2,8 +2,8 @@ param(
     [ValidateSet("start", "stop", "restart", "status")]
     [string]$Action = "start",
     [int]$Workers = 1,
-    [string]$PostgresHost = "127.0.0.1",
-    [int]$PostgresPort = 15432,
+    [string]$PostgresHost = "10.1.5.193",
+    [int]$PostgresPort = 5432,
     [string]$PostgresDatabase = "zhishu_bi_single_ha",
     [string]$PostgresUser = "root",
     [string]$PostgresPassword = "Password123@pg",

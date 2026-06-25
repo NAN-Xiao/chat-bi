@@ -64,6 +64,8 @@ def validate_production_settings() -> list[str]:
         errors.append("SENSITIVE_CONFIG_ENCRYPTION_KEY must be at least 32 characters.")
     if settings.CACHE_TYPE != "redis":
         errors.append("CACHE_TYPE must be redis for production single-tenant deployments.")
+    if settings.AUTO_MIGRATE_ON_STARTUP:
+        errors.append("AUTO_MIGRATE_ON_STARTUP must be false in production; run Alembic as a separate deployment step.")
 
     redis_url = settings.CACHE_REDIS_URL or settings.REDIS_URL
     if not settings.REDIS_PASSWORD and not _redis_url_has_auth(redis_url):
@@ -101,8 +103,8 @@ def validate_production_settings() -> list[str]:
         errors.append("MAX_UPLOAD_BYTES must be greater than 0 in production.")
     if settings.MAX_UPLOAD_BYTES > 100 * 1024 * 1024:
         errors.append("MAX_UPLOAD_BYTES must not exceed 100 MiB in production.")
-    if settings.LLM_REQUEST_TIMEOUT <= 0 or settings.LLM_REQUEST_TIMEOUT > 120:
-        errors.append("LLM_REQUEST_TIMEOUT must be between 1 and 120 seconds in production.")
+    if settings.LLM_REQUEST_TIMEOUT <= 0 or settings.LLM_REQUEST_TIMEOUT > 300:
+        errors.append("LLM_REQUEST_TIMEOUT must be between 1 and 300 seconds in production.")
     if settings.SQL_QUERY_EXECUTION_TIMEOUT_SECONDS <= 0 or settings.SQL_QUERY_EXECUTION_TIMEOUT_SECONDS > 120:
         errors.append("SQL_QUERY_EXECUTION_TIMEOUT_SECONDS must be between 1 and 120 seconds in production.")
     if settings.SQL_QUERY_DEFAULT_ROW_LIMIT <= 0 or settings.SQL_QUERY_DEFAULT_ROW_LIMIT > 1000:

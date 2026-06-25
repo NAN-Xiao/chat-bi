@@ -52,7 +52,10 @@ def run_migrations():
 async def lifespan(app: FastAPI):
     validate_production_settings()
     init_observability()
-    run_migrations()
+    if settings.AUTO_MIGRATE_ON_STARTUP:
+        run_migrations()
+    else:
+        AppLogUtil.info("跳过启动自动迁移，当前由独立迁移步骤负责")
     await init_app_cache()
     init_dynamic_cors(app)
     AppLogUtil.info("✅ 星通智数 初始化完成")
@@ -77,6 +80,11 @@ app = FastAPI(
 )
 # cache docs for different text
 _openapi_cache: dict[str, dict[str, Any]] = {}
+
+# 静态图片由 API 副本直接提供；单机 HA 阶段各副本共享同一个本机 images 目录。
+images_path = settings.MCP_IMAGE_PATH
+os.makedirs(images_path, exist_ok=True)
+app.mount(f"{settings.CONTEXT_PATH}/images", StaticFiles(directory=images_path), name="images")
 
 # replace placeholder
 def replace_placeholders_in_schema(schema: dict[str, Any], trans: dict[str, str]) -> None:
@@ -207,9 +215,7 @@ async def ready():
 
 
 mcp_app = FastAPI()
-# mcp server, images path
-images_path = settings.MCP_IMAGE_PATH
-os.makedirs(images_path, exist_ok=True)
+# 兼容旧的 main:mcp_app 启动方式。
 mcp_app.mount("/images", StaticFiles(directory=images_path), name="images")
 
 mcp = None

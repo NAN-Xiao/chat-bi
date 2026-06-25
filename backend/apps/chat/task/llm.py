@@ -125,7 +125,6 @@ SUPPORT_METRIC_OUTPUT_KEYWORDS = {
     "is_total",
 }
 
-
 def _strip_identifier_quotes(value: str) -> str:
     text = str(value or "").strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in {'`', '"', "'"}:

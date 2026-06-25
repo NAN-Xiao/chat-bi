@@ -342,7 +342,33 @@ def get_chat_chart_config(session: SessionDep, chat_record_id: int):
 
 
 def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    return _get_chart_data_with_user(
+        session=session,
+        current_user=current_user,
+        chat_record_id=chat_record_id,
+        allow_live_fallback=True,
+    )
+
+
+def _loads_cached_chart_data(data: str | None) -> dict[str, Any] | None:
+    if not data:
+        return None
+    try:
+        parsed = orjson.loads(data)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
+def _get_chart_data_with_user(
+    session: SessionDep,
+    current_user: CurrentUser,
+    chat_record_id: int,
+    *,
+    allow_live_fallback: bool,
+):
     stmt = select(
+        ChatRecord.id,
         ChatRecord.datasource,
         ChatRecord.sql,
         ChatRecord.data,
@@ -353,28 +379,31 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
     )
     res = session.execute(stmt)
     for row in res:
-        if row.datasource and row.sql:
+        if not _record_allowed_by_current_permissions(session, current_user, row):
+            return _failed_permission_data()
+
+        source_record_id = row.analysis_record_id or row.predict_record_id
+        if row.datasource and source_record_id:
+            result = _get_chart_data_with_user(
+                session=session,
+                current_user=current_user,
+                chat_record_id=source_record_id,
+                allow_live_fallback=allow_live_fallback,
+            )
+            if result.get("status") == "failed":
+                return _failed_permission_data()
+            return result
+
+        cached_data = _loads_cached_chart_data(row.data)
+        if cached_data is not None:
+            return cached_data
+
+        if allow_live_fallback and row.datasource and row.sql:
             return get_chart_data_with_user_live(
                 session=session,
                 current_user=current_user,
                 chat_record_id=chat_record_id,
             )
-        source_record_id = row.analysis_record_id or row.predict_record_id
-        if row.datasource and source_record_id:
-            result = get_chart_data_with_user_live(
-                session=session,
-                current_user=current_user,
-                chat_record_id=source_record_id,
-            )
-            if result.get("status") == "failed":
-                return _failed_permission_data()
-            return result
-        if row.datasource and row.data and is_normal_user(current_user):
-            return _failed_permission_data()
-        try:
-            return orjson.loads(row.data)
-        except Exception:
-            pass
     return {}
 
 def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
@@ -502,7 +531,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                    ChatRecord.regenerate_record_id,
                    ChatRecord.custom_prompt_id,
                    ChatRecord.recommended_question, ChatRecord.first_chat,
-                   ChatRecord.finish, ChatRecord.error,
+                   ChatRecord.finish, ChatRecord.error, ChatRecord.data,
                    sql_alias_log.reasoning_content.label('sql_reasoning_content'),
                    chart_alias_log.reasoning_content.label('chart_reasoning_content'),
                    analysis_alias_log.reasoning_content.label('analysis_reasoning_content'),
@@ -588,10 +617,11 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
         data_value = _row_value(row, "data")
         if row.datasource and (row.sql or row.analysis_record_id or row.predict_record_id):
-            data_value = orjson.dumps(get_chart_data_with_user(
+            data_value = orjson.dumps(_get_chart_data_with_user(
                 session=session,
                 current_user=current_user,
                 chat_record_id=row.id,
+                allow_live_fallback=False,
             )).decode()
 
         record_result: ChatRecordResult

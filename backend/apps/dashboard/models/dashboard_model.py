@@ -253,6 +253,7 @@ class BaseDashboard(BaseModel):
 
 class QueryDashboard(BaseDashboard):
     opt: str = ''
+    refresh_data: bool = False
 
 
 # dashboard create obj

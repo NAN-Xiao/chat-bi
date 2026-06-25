@@ -35,7 +35,7 @@ def _set_valid_production_settings(monkeypatch):
     monkeypatch.setattr(settings, "LOGIN_MAX_FAILED_ATTEMPTS", 5)
     monkeypatch.setattr(settings, "LOGIN_LOCKOUT_SECONDS", 900)
     monkeypatch.setattr(settings, "MAX_UPLOAD_BYTES", 50 * 1024 * 1024)
-    monkeypatch.setattr(settings, "LLM_REQUEST_TIMEOUT", 45)
+    monkeypatch.setattr(settings, "LLM_REQUEST_TIMEOUT", 180)
     monkeypatch.setattr(settings, "SQL_QUERY_EXECUTION_TIMEOUT_SECONDS", 60)
     monkeypatch.setattr(settings, "SQL_QUERY_DEFAULT_ROW_LIMIT", 1000)
     monkeypatch.setattr(settings, "ANALYSIS_ASSISTANT_MAX_QUERIES", 4)
