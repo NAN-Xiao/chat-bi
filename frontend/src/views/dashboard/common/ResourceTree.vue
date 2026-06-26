@@ -4,6 +4,7 @@ import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlin
 import icon_folder from '@/assets/svg/icon_folder.svg'
 import icon_folder_open from '@/assets/svg/folder-open-svgrepo-com.svg'
 import icon_dashboard from '@/assets/permission/icon_dashboard.svg'
+import icon_dashboard_grid_add from '@/assets/svg/icon_dashboard_grid_add.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
@@ -1237,7 +1238,9 @@ defineExpose({
               <Icon name="icon_folder"><icon_folder class="svg-icon" /></Icon>
             </el-icon>
             <el-icon v-else class="tree-node-icon icon-primary">
-              <Icon name="icon_dashboard"><icon_dashboard class="svg-icon" /></Icon>
+              <Icon name="icon_dashboard_grid_add">
+                <icon_dashboard_grid_add class="svg-icon" />
+              </Icon>
             </el-icon>
             <span :title="node.label" class="label-tooltip">
               {{ node.label }}
@@ -1338,6 +1341,7 @@ defineExpose({
     flex: 0 0 34px;
     min-width: 34px;
     margin-left: 0;
+    color: var(--workspace-text-secondary, #667085);
   }
 
   &.compact-icon-btn {
@@ -1852,6 +1856,8 @@ defineExpose({
   }
 
   .folder-directory-icon {
+    color: var(--workspace-text-secondary, #667085);
+
     :deep(.ed-icon),
     :deep(svg) {
       width: 16px;
@@ -1859,6 +1865,10 @@ defineExpose({
       min-width: 16px;
       min-height: 16px;
       color: inherit;
+    }
+
+    :deep(svg path) {
+      fill: currentColor !important;
     }
   }
 

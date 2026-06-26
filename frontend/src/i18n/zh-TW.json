@@ -1299,6 +1299,10 @@
   },
   "access": {
     "my_permissions": "我的權限",
+    "account_details": "帳號詳情",
+    "my_requests": "我的申請",
+    "permission_details": "權限詳情",
+    "account_id": "帳號 ID",
     "subtitle": "目前帳號依照管理員設定好的策略使用系統",
     "permission_overview": "權限概覽",
     "current_level": "目前權限級別",

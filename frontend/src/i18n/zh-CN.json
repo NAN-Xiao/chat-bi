@@ -1300,6 +1300,10 @@
   },
   "access": {
     "my_permissions": "个人中心",
+    "account_details": "账号详情",
+    "my_requests": "我的申请",
+    "permission_details": "权限详情",
+    "account_id": "账号 ID",
     "subtitle": "当前账号按照管理员设置好的策略使用系统",
     "permission_overview": "权限概览",
     "current_level": "当前权限级别",

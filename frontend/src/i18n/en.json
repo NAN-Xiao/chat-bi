@@ -1299,6 +1299,10 @@
   },
   "access": {
     "my_permissions": "My Permissions",
+    "account_details": "Account Details",
+    "my_requests": "My Requests",
+    "permission_details": "Permission Details",
+    "account_id": "Account ID",
     "subtitle": "This account uses the system according to administrator policies",
     "permission_overview": "Permission Overview",
     "current_level": "Current Access Level",

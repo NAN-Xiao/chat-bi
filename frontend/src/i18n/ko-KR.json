@@ -1286,6 +1286,10 @@
   },
   "access": {
     "my_permissions": "내 권한",
+    "account_details": "계정 상세",
+    "my_requests": "내 신청",
+    "permission_details": "권한 상세",
+    "account_id": "계정 ID",
     "subtitle": "현재 계정은 관리자가 설정한 정책에 따라 시스템을 사용합니다",
     "permission_overview": "권한 개요",
     "current_level": "현재 권한 수준",
