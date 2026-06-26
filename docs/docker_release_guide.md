@@ -197,7 +197,7 @@ G2 SSR：可单独运行，或由单容器/all 模式后台启动
 
 | 参数 | 当前默认值 | 说明 |
 | --- | --- | --- |
-| `BRANCH_NAME` | `mul_ha_skills` | 发布分支 |
+| `BRANCH_NAME` | `release_ha` | 发布分支 |
 | `IMAGE_TAG` | 空 | 空值时使用 `BUILD_NUMBER-git短哈希` |
 | `CLEAN_OLD_IMAGES` | `false` | 是否清理旧版本镜像 |
 | `CLEAN_DANGLING_IMAGES` | `false` | 是否清理悬空镜像，开启会影响构建缓存 |
@@ -230,7 +230,7 @@ Jenkins 发布阶段：
 发布前建议确认：
 
 ```bash
-git branch --all --list '*mul_ha_skills*'
+git branch --all --list '*release_ha*'
 docker version
 docker buildx version
 docker system df
