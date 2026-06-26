@@ -64,6 +64,9 @@ const reportPromptTitle = computed(() =>
   t('dashboard.dashboard_report_interpret_prompt', [titleText.value])
 )
 const reportDialogTitle = computed(() => reportSubmittedQuestion.value || reportPromptTitle.value)
+const reportTargetContext = computed(() =>
+  t('dashboard.dashboard_report_target_context', [titleText.value])
+)
 const reportHasConversation = computed(
   () =>
     reportGenerating.value ||
@@ -482,6 +485,9 @@ onBeforeUnmount(() => {
         <div class="report-answer-tip">
           {{ t('dashboard.chart_report_ai_tip') }}
         </div>
+        <div class="report-target-context" :title="reportTargetContext">
+          {{ reportTargetContext }}
+        </div>
         <div class="report-conversation-tools">
           <el-button class="report-icon-tool" text circle @click="submitReportPrompt">
             <el-icon size="15"><RefreshRight /></el-icon>
@@ -800,7 +806,8 @@ onBeforeUnmount(() => {
 
 .report-answer-empty,
 .report-progress,
-.report-answer-tip {
+.report-answer-tip,
+.report-target-context {
   color: #74849a;
   font-size: 13px;
 }
@@ -811,6 +818,17 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 20px;
   color: #9aa8bb;
+}
+
+.report-target-context {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #74849a;
+  font-size: 12px;
+  line-height: 20px;
 }
 
 .report-progress {

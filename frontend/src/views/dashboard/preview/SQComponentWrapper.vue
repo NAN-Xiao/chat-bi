@@ -91,6 +91,9 @@ const reportPromptTitle = computed(() =>
   t('dashboard.chart_report_interpret_prompt', [reportScopeTitle.value])
 )
 const reportDialogTitle = computed(() => reportSubmittedQuestion.value || reportPromptTitle.value)
+const reportTargetContext = computed(() =>
+  t('dashboard.chart_report_target_context', [reportScopeTitle.value])
+)
 const reportHasConversation = computed(
   () =>
     reportGenerating.value ||
@@ -763,6 +766,9 @@ onBeforeUnmount(() => {
           </div>
           <div class="report-answer-tip">
             {{ t('dashboard.chart_report_ai_tip') }}
+          </div>
+          <div class="report-target-context" :title="reportTargetContext">
+            {{ reportTargetContext }}
           </div>
           <div class="report-conversation-tools">
             <el-button class="report-icon-tool" text circle @click="submitReportPrompt">

@@ -383,6 +383,7 @@ onMounted(() => {
     class="workspace-light-dialog api-key-dialog"
     title="API Key"
     width="840"
+    :top="'22vh'"
   >
     <apikey v-if="apikeyDialogVisible" ref="apikeyRef" />
   </el-dialog>

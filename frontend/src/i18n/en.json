@@ -805,6 +805,8 @@
     "dashboard_report_interpret": "Interpret Dashboard",
     "dashboard_report_interpret_prompt": "{0} dashboard interpretation",
     "chart_report_interpret_prompt": "{0} report interpretation",
+    "chart_report_target_context": "Interpreting: {0}",
+    "dashboard_report_target_context": "Interpreting: {0}",
     "chart_report_interpret_placeholder": "Enter your thoughts",
     "chart_report_generating": "Generating interpretation...",
     "chart_report_stop": "Stop",

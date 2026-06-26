@@ -805,6 +805,8 @@
     "dashboard_report_interpret": "解讀看板",
     "dashboard_report_interpret_prompt": "{0}看板解讀",
     "chart_report_interpret_prompt": "{0}報表解讀",
+    "chart_report_target_context": "解讀對象：{0}",
+    "dashboard_report_target_context": "解讀對象：{0}",
     "chart_report_interpret_placeholder": "請輸入你的想法",
     "chart_report_generating": "正在產生解讀...",
     "chart_report_stop": "停止",

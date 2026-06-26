@@ -428,7 +428,7 @@ onMounted(() => {
       color: var(--workspace-text-primary, var(--theme-text-primary));
       background: var(--workspace-card-bg, var(--theme-panel-bg));
       border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      box-shadow: none;
       z-index: 9;
     }
 
@@ -455,8 +455,8 @@ onMounted(() => {
         font-size: 16px;
         font-weight: 700;
         line-height: 22px;
-        letter-spacing: 0;
-        color: var(--workspace-text-primary, var(--theme-text-primary));
+        letter-spacing: 0.08em;
+        color: var(--ed-color-primary, #2f6bff);
       }
     }
 

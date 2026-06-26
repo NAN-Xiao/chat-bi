@@ -805,6 +805,8 @@
     "dashboard_report_interpret": "대시보드 해석",
     "dashboard_report_interpret_prompt": "{0} 대시보드 해석",
     "chart_report_interpret_prompt": "{0} 보고서 해석",
+    "chart_report_target_context": "해석 대상: {0}",
+    "dashboard_report_target_context": "해석 대상: {0}",
     "chart_report_interpret_placeholder": "생각을 입력하세요",
     "chart_report_generating": "해석 생성 중...",
     "chart_report_stop": "중지",
