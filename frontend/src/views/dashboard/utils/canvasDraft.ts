@@ -6,6 +6,9 @@ const DRAFT_PREFIX = 'dashboard.canvas.draft.'
 export const getDashboardCanvasSourceKey = (resourceId?: string | number | null) =>
   resourceId ? `dashboard:${resourceId}` : null
 
+export const getPlatformTemplateCanvasSourceKey = (templateId?: string | number | null) =>
+  templateId ? `platform-template:${templateId}` : null
+
 export const getCreateCanvasSourceKey = (
   datasource?: string | number | null,
   pid?: string | number | null

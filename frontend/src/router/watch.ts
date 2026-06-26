@@ -19,6 +19,7 @@ import {
 } from '@/utils/workspaceAdminContext'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
+import { canManageCurrentWorkspace } from '@/utils/workspacePermission'
 
 const appearanceStore = useAppearanceStoreWithOut()
 const userStore = useUserStore()
@@ -44,6 +45,7 @@ const tenantChatBIEntryPrefixes = [
   '/system/embedded',
   '/system/variables',
   '/system/setting/permission',
+  '/system/setting/variables',
 ]
 
 const defaultAuthenticatedPath = () => resolveAuthenticatedDashboardLandingTarget(userStore)
@@ -53,6 +55,9 @@ const matchesPathPrefix = (path: string, prefix: string) =>
 
 const isTenantChatBIRoute = (path: string) =>
   tenantChatBIEntryPrefixes.some((prefix) => matchesPathPrefix(path, prefix))
+
+const isPlatformTemplateCanvasRoute = (to: any) =>
+  to?.path === '/canvas' && Boolean(to?.query?.platformTemplateId)
 
 const restoreBusinessTenantAfterWorkspaceAdmin = async (to: any, from: any) => {
   if (!from?.path?.startsWith('/system') || to?.path?.startsWith('/system')) return
@@ -167,17 +172,21 @@ const accessCrossPermission = (to: any) => {
   const tenantAdminOnly = to.matched?.some((record: any) => record?.meta?.tenantAdminOnly)
   const tenantBusiness = to.matched?.some((record: any) => record?.meta?.tenantBusiness)
   const tenantSystemRoute = to.path.startsWith('/system') && (tenantAdminOnly || tenantBusiness)
+  const canManageWorkspace = canManageCurrentWorkspace(userStore)
   const platformAdminOperation =
     userStore.isSystemAdminUser && !platformDelegate && platformOperation
+  const platformTemplateCanvasOperation =
+    userStore.isSystemAdminUser && !platformDelegate && isPlatformTemplateCanvasRoute(to)
   return (
     (userStore.isSystemAdminUser &&
       !platformDelegate &&
       isTenantChatBIRoute(to.path) &&
-      !platformAdminOperation) ||
+      !platformAdminOperation &&
+      !platformTemplateCanvasOperation) ||
     (platformDelegate && platformOnly) ||
     (!userStore.isSystemAdminUser && !userStore.hasActiveWorkspace && isTenantChatBIRoute(to.path)) ||
     (to.path.startsWith('/system') && !tenantSystemRoute && !userStore.isSystemAdminUser) ||
-    (tenantAdminOnly && !userStore.isTenantAdminUser && !platformAdminOperation) ||
+    (tenantAdminOnly && !canManageWorkspace && !platformAdminOperation) ||
     (tenantBusiness && !userStore.hasActiveWorkspace && !platformAdminOperation) ||
     (to.path.startsWith('/set') && !userStore.isSystemManagerUser) ||
     (platformOnly && !userStore.isSystemAdminUser)

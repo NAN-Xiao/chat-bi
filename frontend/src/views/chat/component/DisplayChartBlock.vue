@@ -30,6 +30,7 @@ const chartObject = computed<{
     }
   }
   columns: Array<ChartAxis>
+  insight?: any
 }>(() => {
   if (props.message?.record?.chart) {
     return JSON.parse(props.message.record.chart)
@@ -113,6 +114,7 @@ function getViewInfo() {
       yAxis: yAxis.value,
       series: series.value,
       title: chartObject.value.title,
+      insight: chartObject.value?.insight,
     },
     data: { data: props.data },
   }
@@ -143,6 +145,7 @@ defineExpose({
       :y="yAxis"
       :series="series"
       :sql="message.record?.sql"
+      :insight="chartObject?.insight"
     />
     <div
       v-if="message.record.id && data?.length > 0"
@@ -160,6 +163,7 @@ defineExpose({
         :y="yAxis"
         :series="series"
         :sql="message.record?.sql"
+        :insight="chartObject?.insight"
       />
       <ChartComponent
         :id="id ?? 'default_chat_id'"

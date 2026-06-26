@@ -27,6 +27,10 @@ class CustomPrompt(SQLModel, table=True):
         max_length=32,
     )
     active: Optional[bool] = Field(default=False, sa_column=Column(Boolean, default=False))
+    visible: Optional[bool] = Field(
+        default=True,
+        sa_column=Column(Boolean, nullable=False, server_default="true"),
+    )
     ai_model_id: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     create_by: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     visibility_scope: Optional[CustomPromptVisibilityScopeEnum] = Field(
@@ -63,6 +67,7 @@ class CustomPromptInfo(BaseModel):
     description: Optional[str] = None
     target_scope: Optional[CustomPromptTargetScopeEnum] = CustomPromptTargetScopeEnum.SMART_QA
     active: Optional[bool] = False
+    visible: Optional[bool] = None
     ai_model_id: Optional[int] = None
     ai_model_name: Optional[str] = None
     can_manage: Optional[bool] = False
@@ -85,4 +90,5 @@ class CustomPromptOption(BaseModel):
     target_scope: Optional[CustomPromptTargetScopeEnum] = CustomPromptTargetScopeEnum.SMART_QA
     ai_model_id: Optional[int] = None
     ai_model_name: Optional[str] = None
+    visible: Optional[bool] = True
     visibility_scope: Optional[CustomPromptVisibilityScopeEnum] = CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC

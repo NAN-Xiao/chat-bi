@@ -144,6 +144,15 @@ export interface TenantMemberInfo {
   project_role_map?: Record<string, string>
 }
 
+export interface TenantOwnerCandidateInfo {
+  user_id: number | string
+  account: string
+  name?: string | null
+  email?: string | null
+  tenant_role?: string | null
+  is_workspace_member: boolean
+}
+
 export interface TenantBulkMemberResult {
   account: string
   status: string
@@ -347,6 +356,14 @@ export const tenantApi = {
   search: (keyword: string) =>
     request.get<TenantSearchInfo[]>(`/system/tenant/search?keyword=${encodeURIComponent(keyword)}`),
   adminList: () => request.get<TenantInfo[]>('/system/tenant/admin/list'),
+  adminMembers: (tenantId: number | string, keyword?: string) =>
+    request.get<TenantMemberInfo[]>(
+      `/system/tenant/admin/${tenantId}/member/list${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}`
+    ),
+  adminOwnerCandidates: (tenantId: number | string, keyword?: string) =>
+    request.get<TenantOwnerCandidateInfo[]>(
+      `/system/tenant/admin/${tenantId}/owner/candidates${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}`
+    ),
   myApplications: (status?: string) =>
     request.get<TenantApplicationInfo[]>(
       `/system/tenant/application/my${status ? `?status=${status}` : ''}`
@@ -390,6 +407,10 @@ export const tenantApi = {
     request.delete<TenantApplicationInfo>(`/system/tenant/invitation/${id}`),
   transferOwner: (targetUserId: number | string) =>
     request.post<TenantInfo>('/system/tenant/owner/transfer', { target_user_id: targetUserId }),
+  adminTransferOwner: (
+    tenantId: number | string,
+    data: { target_user_id: number | string; reason?: string }
+  ) => request.post<TenantInfo>(`/system/tenant/admin/${tenantId}/owner/transfer`, data),
   leave: (id: number | string) => request.post<TenantInfo[]>(`/system/tenant/${id}/leave`),
   members: (keyword?: string) =>
     request.get<TenantMemberInfo[]>(

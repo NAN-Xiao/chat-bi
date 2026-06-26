@@ -4,12 +4,24 @@ import { ElMenu } from 'element-plus-secondary'
 import { useRoute, useRouter } from 'vue-router'
 import MenuItem from './MenuItem.vue'
 import { useUserStore } from '@/stores/user'
+import { useI18n } from 'vue-i18n'
+import { canManageWorkspaceRole } from '@/utils/workspacePermission'
 // import { routes } from '@/router'
 const router = useRouter()
 const userStore = useUserStore()
-defineProps({
-  collapse: Boolean,
-})
+const { t } = useI18n()
+const props = withDefaults(
+  defineProps<{
+    collapse?: boolean
+    mode?: 'vertical' | 'horizontal'
+    scope?: 'auto' | 'business' | 'system'
+  }>(),
+  {
+    collapse: false,
+    mode: 'vertical',
+    scope: 'auto',
+  }
+)
 
 const route = useRoute()
 // const menuList = computed(() => route.matched[0]?.children || [])
@@ -21,6 +33,9 @@ const activeMenu = computed(() => route.path)
 const showSysmenu = computed(() => {
   return route.path.includes('/system')
 })
+const useSystemMenu = computed(
+  () => props.scope === 'system' || (props.scope === 'auto' && showSysmenu.value)
+)
 
 const formatRoute = (arr: any, parentPath = '') => {
   return arr.map((element: any) => {
@@ -82,12 +97,68 @@ const mainMenuOrder = (path: string) => {
   return 100
 }
 
+const adminWorkspaceTenants = computed(() => {
+  if (userStore.isPlatformWorkspaceDelegate && userStore.getTenantId) {
+    return [
+      {
+        id: userStore.getTenantId,
+        public_id: userStore.getTenantPublicId,
+        name: userStore.getTenantName,
+        role: userStore.getTenantRole || 'owner',
+      },
+    ]
+  }
+  const tenants = userStore.getTenants.filter((tenant: any) => canManageWorkspaceRole(tenant.role))
+  if (tenants.length) {
+    return tenants
+  }
+  if (userStore.isTenantAdminUser && userStore.getTenantId) {
+    return [
+      {
+        id: userStore.getTenantId,
+        public_id: userStore.getTenantPublicId,
+        name: userStore.getTenantName,
+        role: userStore.getTenantRole,
+      },
+    ]
+  }
+  return []
+})
+
+const workspaceAdminChildMenu = (tenant: any) => ({
+  path: `/system/workspace-admin/${tenant.id}`,
+  tenant,
+  meta: {
+    title: tenant.name || tenant.public_id || tenant.id,
+    iconActive: 'workspace',
+    iconDeActive: 'noWorkspace',
+    action: 'workspace-admin-entry',
+  },
+})
+
+const workspaceAdminMenu = computed(() => {
+  if (props.mode !== 'horizontal' || !adminWorkspaceTenants.value.length) {
+    return null
+  }
+  return {
+    path: '/system/workspace-admin',
+    children: adminWorkspaceTenants.value.map(workspaceAdminChildMenu),
+    meta: {
+      title: t('tenant.management'),
+      iconActive: 'workspace',
+      iconDeActive: 'noWorkspace',
+      activePrefix: '/system',
+      hidePopupTitle: true,
+    },
+  }
+})
+
 const tenantOptionalMainRoutes = ['/access']
 const isTenantOptionalMainRoute = (path: string) =>
   tenantOptionalMainRoutes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 
 const routerList = computed(() => {
-  if (showSysmenu.value) {
+  if (useSystemMenu.value) {
     const [sysRouter] = formatRoute(
       router.getRoutes().filter((route: any) => route?.name === 'system')
     )
@@ -99,6 +170,12 @@ const routerList = computed(() => {
   const hasTenantContext = !!userStore.getTenantId
   const list = router.getRoutes().filter((route) => {
     if (!hasTenantContext && !isTenantOptionalMainRoute(route.path)) {
+      return false
+    }
+    if (route.meta?.action === 'analysis-assistant') {
+      return false
+    }
+    if (route.path.includes('/default-dashboard')) {
       return false
     }
     return (
@@ -127,12 +204,22 @@ const routerList = computed(() => {
     )
   })
 
-  return list.sort((prev: any, next: any) => mainMenuOrder(prev.path) - mainMenuOrder(next.path))
+  const sortedList = list.sort((prev: any, next: any) => mainMenuOrder(prev.path) - mainMenuOrder(next.path))
+  return workspaceAdminMenu.value ? [...sortedList, workspaceAdminMenu.value] : sortedList
 })
 </script>
 
 <template>
-  <el-menu :default-active="activeMenu" class="el-menu-demo ed-menu-vertical" :collapse="collapse">
+  <el-menu
+    :default-active="activeMenu"
+    class="el-menu-demo zhishu-layout-menu"
+    :class="{
+      'ed-menu-vertical': props.mode === 'vertical',
+      'zhishu-layout-menu-horizontal': props.mode === 'horizontal',
+    }"
+    :mode="props.mode"
+    :collapse="props.mode === 'vertical' ? props.collapse : false"
+  >
     <MenuItem v-for="menu in routerList" :key="menu.path" :menu="menu"></MenuItem>
   </el-menu>
 </template>
@@ -290,6 +377,186 @@ const routerList = computed(() => {
     }
   }
 }
+
+.zhishu-layout-menu-horizontal {
+  --top-nav-height: 52px;
+  --ed-menu-item-height: var(--top-nav-height);
+  --ed-menu-bg-color: transparent;
+  --ed-menu-hover-bg-color: transparent;
+  --ed-menu-active-color: var(--ed-color-primary, #2f6bff);
+  height: var(--top-nav-height);
+  border: none !important;
+  background: transparent !important;
+
+  &.ed-menu--horizontal {
+    border-bottom: 0 !important;
+  }
+
+  > .ed-menu-item,
+  > .ed-sub-menu .ed-sub-menu__title {
+    height: var(--top-nav-height) !important;
+    line-height: 20px !important;
+    padding: 0 12px !important;
+    border-bottom: 2px solid transparent !important;
+    color: #41506a !important;
+    font-size: 14px;
+    font-weight: 500;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    transition:
+      color 160ms ease,
+      background 160ms ease;
+
+    .menu-line-icon-wrapper {
+      width: 16px;
+      height: 16px;
+      margin-right: 5px;
+      color: inherit !important;
+      line-height: 1 !important;
+    }
+
+    > span {
+      display: inline-flex;
+      align-items: center;
+      line-height: 20px;
+    }
+
+    .menu-title-text {
+      position: relative;
+      font-size: 14px;
+      transition:
+        font-size 160ms ease,
+        font-weight 160ms ease;
+
+      &::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -5px;
+        height: 2px;
+        border-radius: 999px;
+        background: currentColor;
+        opacity: 0;
+        transform: scaleX(0.45);
+        transform-origin: center;
+        transition:
+          opacity 160ms ease,
+          transform 160ms ease;
+      }
+    }
+
+    .menu-line-icon-wrapper,
+    .zhishu-menu-line-icon {
+      width: 16px !important;
+      height: 16px !important;
+    }
+
+    .zhishu-menu-line-icon {
+      color: inherit !important;
+
+      path,
+      circle,
+      rect,
+      ellipse,
+      polyline,
+      line {
+        fill: none !important;
+        stroke: currentColor !important;
+        stroke-width: 1.45 !important;
+        stroke-linecap: round !important;
+        stroke-linejoin: round !important;
+      }
+    }
+  }
+
+  > .ed-menu-item:hover,
+  > .ed-menu-item:focus,
+  > .ed-sub-menu:hover .ed-sub-menu__title,
+  > .ed-sub-menu:focus .ed-sub-menu__title {
+    background: transparent !important;
+    color: #1f2f4a !important;
+
+    .menu-title-text {
+      font-size: 15px;
+    }
+  }
+
+  > .ed-menu-item.is-active,
+  > .ed-sub-menu.is-active .ed-sub-menu__title {
+    background: transparent !important;
+    border-bottom-color: transparent !important;
+    color: var(--ed-color-primary, #2f6bff) !important;
+
+    .menu-title-text {
+      font-size: 15px;
+    }
+
+    .menu-title-text::after {
+      opacity: 1;
+      transform: scaleX(1);
+    }
+  }
+
+  .ed-sub-menu .ed-sub-menu__icon-arrow {
+    position: relative !important;
+    top: 0 !important;
+    right: auto !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 12px;
+    margin-left: 4px;
+    margin-right: 0 !important;
+    margin-top: 0 !important;
+    width: 12px;
+    height: 20px;
+    color: inherit;
+    line-height: 20px;
+    opacity: 0.58;
+    vertical-align: middle;
+    transform: none !important;
+
+    svg {
+      display: none;
+    }
+
+    &::before {
+      left: 2px;
+      transform: translateY(-50%) rotate(45deg);
+    }
+
+    &::after {
+      right: 2px;
+      transform: translateY(-50%) rotate(-45deg);
+    }
+
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 6px;
+      height: 1.5px;
+      border-radius: 999px;
+      background: currentColor;
+      transform-origin: center;
+    }
+  }
+
+  > .ed-sub-menu.is-opened .ed-sub-menu__icon-arrow {
+    transform: none !important;
+
+    &::before {
+      transform: translateY(-50%) rotate(-45deg);
+    }
+
+    &::after {
+      transform: translateY(-50%) rotate(45deg);
+    }
+  }
+}
 .ed-popper.is-light:has(.ed-menu--popup) {
   border: 1px solid var(--workspace-border, var(--theme-shell-border));
   border-radius: 8px;
@@ -298,13 +565,25 @@ const routerList = computed(() => {
   overflow: hidden;
 }
 .ed-menu--popup {
-  padding: 8px;
+  width: max-content;
+  min-width: 148px !important;
+  max-width: 280px;
+  padding: 4px;
   background: var(--workspace-card-bg, var(--theme-panel-bg));
 
   .ed-menu-item {
-    padding: 9px 16px;
-    height: 40px !important;
-    border-radius: 8px;
+    min-width: 0;
+    height: 34px !important;
+    padding: 0 12px !important;
+    border-radius: 6px;
+    line-height: 34px !important;
+
+    .menu-title-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     &.is-active {
       background-color: var(--workspace-primary-soft-bg, var(--theme-primary-soft-bg)) !important;
       color: var(--ed-color-primary, #2f6bff) !important;

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, provide, reactive, ref, unref } from 'vue'
+import { computed, onMounted, provide, reactive, ref, unref } from 'vue'
 import icon_info_outlined_1 from '@/assets/svg/icon_info_outlined_1.svg'
 import { useI18n } from 'vue-i18n'
 import { request } from '@/utils/request'
@@ -30,7 +30,101 @@ const state = reactive({
   }),
 })
 const feishuSaving = ref(false)
+const feishuSubmitted = ref(false)
 provide('parameterForm', state.parameterForm)
+
+const requiredFeishuScopes = ['contact:user.base:readonly', 'contact:user.email:readonly']
+const feishuRequiredEnabled = computed(() => Boolean(state.feishuForm.enable))
+
+const cleanText = (value: unknown) => String(value ?? '').trim()
+
+const isHttpUrl = (value: string) => {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+const feishuValidationErrors = computed<Record<string, string>>(() => {
+  const errors: Record<string, string> = {}
+
+  if (!feishuRequiredEnabled.value) {
+    return errors
+  }
+
+  const appId = cleanText(state.feishuForm.app_id)
+  const appSecret = cleanText(state.feishuForm.app_secret)
+  const scope = cleanText(state.feishuForm.scope)
+  const scopeItems = scope.split(/\s+/).filter(Boolean)
+
+  if (!appId) {
+    errors.app_id = '启用企业飞书登录后必须填写 App ID'
+  } else if (!/^cli_[A-Za-z0-9]+$/.test(appId)) {
+    errors.app_id = 'App ID 格式应类似 cli_xxx'
+  }
+
+  if (!state.feishuForm.secret_configured && !appSecret) {
+    errors.app_secret = '首次启用企业飞书登录必须填写 App Secret'
+  }
+
+  const urlFields: Array<[string, string]> = [
+    ['redirect_uri', '回调地址'],
+    ['authorize_url', '授权地址'],
+    ['token_url', 'Token 地址'],
+    ['user_info_url', '用户信息地址'],
+  ]
+
+  if (state.feishuForm.token_mode === 'authen_v1') {
+    urlFields.push(['tenant_access_token_url', 'Tenant Access Token 地址'])
+  }
+
+  urlFields.forEach(([field, label]) => {
+    const value = cleanText(state.feishuForm[field])
+    if (!value) {
+      errors[field] = `启用企业飞书登录后必须填写${label}`
+    } else if (!isHttpUrl(value)) {
+      errors[field] = `${label}必须是 http:// 或 https:// 开头的完整地址`
+    }
+  })
+
+  if (!scope) {
+    errors.scope = 'Scope 必须填写，至少包含用户基本信息和邮箱权限'
+  } else {
+    const missingScopes = requiredFeishuScopes.filter((item) => !scopeItems.includes(item))
+    if (missingScopes.length > 0) {
+      errors.scope = `Scope 缺少：${missingScopes.join('、')}`
+    }
+  }
+
+  return errors
+})
+
+const hasFeishuValidationErrors = computed(() => Object.keys(feishuValidationErrors.value).length > 0)
+const showFeishuValidation = computed(() => feishuSubmitted.value || feishuRequiredEnabled.value)
+
+const feishuFieldClass = (field: string) => {
+  return {
+    'is-error': Boolean(showFeishuValidation.value && feishuValidationErrors.value[field]),
+  }
+}
+
+const feishuFieldError = (field: string) => {
+  if (!showFeishuValidation.value) {
+    return ''
+  }
+  return feishuValidationErrors.value[field] || ''
+}
+
+const validateFeishuConfig = () => {
+  feishuSubmitted.value = true
+  if (hasFeishuValidationErrors.value) {
+    ElMessage.error('企业飞书登录配置未完成，请先处理红色提示')
+    return false
+  }
+  return true
+}
 const loadData = () => {
   request.get('/system/parameter').then((res: any) => {
     if (res) {
@@ -113,6 +207,9 @@ const saveHandler = () => {
     })
 }
 const saveFeishuHandler = () => {
+  if (!validateFeishuConfig()) {
+    return
+  }
   feishuSaving.value = true
   const payload = {
     enable: Boolean(state.feishuForm.enable),
@@ -245,13 +342,19 @@ onMounted(() => {
         </el-row>
       </div>
 
-      <div class="card">
+      <div
+        class="card feishu-config-card"
+        :class="{ 'has-error': showFeishuValidation && hasFeishuValidationErrors }"
+      >
         <div class="card-title">
-          飞书登录配置
+          企业飞书登录配置
+        </div>
+        <div v-if="showFeishuValidation && hasFeishuValidationErrors" class="feishu-error-summary">
+          企业飞书登录配置未完成，请检查红色标记的必填项和格式。
         </div>
         <el-row>
           <div class="card-item">
-            <div class="label">启用飞书登录</div>
+            <div class="label">启用企业飞书登录</div>
             <div class="value">
               <el-switch v-model="state.feishuForm.enable" />
             </div>
@@ -264,14 +367,17 @@ onMounted(() => {
           </div>
         </el-row>
         <el-row>
-          <div class="card-item">
-            <div class="label">App ID</div>
+          <div class="card-item" :class="feishuFieldClass('app_id')">
+            <div class="label"><span class="require">App ID</span></div>
             <div class="value">
               <el-input v-model="state.feishuForm.app_id" placeholder="cli_xxx" />
+              <div v-if="feishuFieldError('app_id')" class="field-error">
+                {{ feishuFieldError('app_id') }}
+              </div>
             </div>
           </div>
-          <div class="card-item" style="margin-left: 16px">
-            <div class="label">App Secret</div>
+          <div class="card-item" style="margin-left: 16px" :class="feishuFieldClass('app_secret')">
+            <div class="label"><span class="require">App Secret</span></div>
             <div class="value">
               <el-input
                 v-model="state.feishuForm.app_secret"
@@ -279,14 +385,20 @@ onMounted(() => {
                 show-password
                 :placeholder="state.feishuForm.secret_configured ? '留空则保持当前密钥' : '请输入 App Secret'"
               />
+              <div v-if="feishuFieldError('app_secret')" class="field-error">
+                {{ feishuFieldError('app_secret') }}
+              </div>
             </div>
           </div>
         </el-row>
         <el-row>
-          <div class="card-item" style="width: 100%">
-            <div class="label">回调地址</div>
+          <div class="card-item" style="width: 100%" :class="feishuFieldClass('redirect_uri')">
+            <div class="label"><span class="require">回调地址</span></div>
             <div class="value">
               <el-input v-model="state.feishuForm.redirect_uri" />
+              <div v-if="feishuFieldError('redirect_uri')" class="field-error">
+                {{ feishuFieldError('redirect_uri') }}
+              </div>
             </div>
           </div>
         </el-row>
@@ -300,48 +412,70 @@ onMounted(() => {
               </el-select>
             </div>
           </div>
-          <div class="card-item" style="margin-left: 16px">
-            <div class="label">Scope</div>
+          <div class="card-item" style="margin-left: 16px" :class="feishuFieldClass('scope')">
+            <div class="label"><span class="require">Scope</span></div>
             <div class="value">
-              <el-input v-model="state.feishuForm.scope" placeholder="可选" />
+              <el-input
+                v-model="state.feishuForm.scope"
+                placeholder="contact:user.base:readonly contact:user.email:readonly"
+              />
+              <div v-if="feishuFieldError('scope')" class="field-error">
+                {{ feishuFieldError('scope') }}
+              </div>
             </div>
           </div>
         </el-row>
         <el-row>
-          <div class="card-item" style="width: 100%">
-            <div class="label">授权地址</div>
+          <div class="card-item" style="width: 100%" :class="feishuFieldClass('authorize_url')">
+            <div class="label"><span class="require">授权地址</span></div>
             <div class="value">
               <el-input v-model="state.feishuForm.authorize_url" />
+              <div v-if="feishuFieldError('authorize_url')" class="field-error">
+                {{ feishuFieldError('authorize_url') }}
+              </div>
             </div>
           </div>
         </el-row>
         <el-row>
-          <div class="card-item" style="width: 100%">
-            <div class="label">Token 地址</div>
+          <div class="card-item" style="width: 100%" :class="feishuFieldClass('token_url')">
+            <div class="label"><span class="require">Token 地址</span></div>
             <div class="value">
               <el-input v-model="state.feishuForm.token_url" />
+              <div v-if="feishuFieldError('token_url')" class="field-error">
+                {{ feishuFieldError('token_url') }}
+              </div>
             </div>
           </div>
         </el-row>
         <el-row v-if="state.feishuForm.token_mode === 'authen_v1'">
-          <div class="card-item" style="width: 100%">
-            <div class="label">Tenant Access Token 地址</div>
+          <div
+            class="card-item"
+            style="width: 100%"
+            :class="feishuFieldClass('tenant_access_token_url')"
+          >
+            <div class="label"><span class="require">Tenant Access Token 地址</span></div>
             <div class="value">
               <el-input v-model="state.feishuForm.tenant_access_token_url" />
+              <div v-if="feishuFieldError('tenant_access_token_url')" class="field-error">
+                {{ feishuFieldError('tenant_access_token_url') }}
+              </div>
             </div>
           </div>
         </el-row>
         <el-row>
-          <div class="card-item" style="width: 100%">
-            <div class="label">用户信息地址</div>
+          <div class="card-item" style="width: 100%" :class="feishuFieldClass('user_info_url')">
+            <div class="label"><span class="require">用户信息地址</span></div>
             <div class="value">
               <el-input v-model="state.feishuForm.user_info_url" />
+              <div v-if="feishuFieldError('user_info_url')" class="field-error">
+                {{ feishuFieldError('user_info_url') }}
+              </div>
             </div>
           </div>
         </el-row>
         <div class="card-actions">
           <el-button type="primary" :loading="feishuSaving" @click="saveFeishuHandler">
-            保存飞书配置
+            保存企业飞书登录配置
           </el-button>
         </div>
       </div>
@@ -421,6 +555,46 @@ onMounted(() => {
         display: flex;
         justify-content: flex-end;
         margin-top: 16px;
+      }
+      &.feishu-config-card {
+        transition:
+          border-color 0.2s ease,
+          box-shadow 0.2s ease;
+
+        &.has-error {
+          border-color: #ff4d4f;
+          box-shadow: 0 0 0 1px rgba(255, 77, 79, 0.2);
+        }
+
+        .feishu-error-summary {
+          margin-top: 12px;
+          border: 1px solid #ffccc7;
+          border-radius: 6px;
+          padding: 9px 12px;
+          background: #fff2f0;
+          color: #cf1322;
+          font-size: 13px;
+          line-height: 20px;
+        }
+
+        .card-item.is-error {
+          :deep(.ed-input__wrapper) {
+            border-color: #ff4d4f;
+            box-shadow: 0 0 0 1px #ff4d4f inset;
+          }
+
+          :deep(.ed-select .ed-input__wrapper) {
+            border-color: #ff4d4f;
+            box-shadow: 0 0 0 1px #ff4d4f inset;
+          }
+        }
+
+        .field-error {
+          margin-top: 6px;
+          color: #cf1322;
+          font-size: 12px;
+          line-height: 18px;
+        }
       }
       .feishu-valid-state {
         display: inline-flex;

@@ -464,6 +464,11 @@ def log_interp_retention(lifecycle_day: int) -> float:
     if lifecycle_day in curve:
         return curve[lifecycle_day]
     keys = sorted(curve)
+    if lifecycle_day < keys[0]:
+        return curve[keys[0]]
+    if lifecycle_day > keys[-1]:
+        days_after_max = lifecycle_day - keys[-1]
+        return max(0.018, curve[keys[-1]] * math.exp(-0.012 * days_after_max))
     left = max(k for k in keys if k < lifecycle_day)
     right = min(k for k in keys if k > lifecycle_day)
     lval = math.log(curve[left])

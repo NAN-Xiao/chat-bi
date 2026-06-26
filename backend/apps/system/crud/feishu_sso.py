@@ -5,14 +5,17 @@ import json
 import secrets
 from datetime import timedelta
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from apps.system.crud.tenant import auto_assign_tenants_by_email_domain, ensure_user_sample_workspace_membership
+from apps.system.crud.tenant import (
+    auto_assign_tenants_by_email_domain,
+    ensure_user_sample_workspace_membership,
+)
 from apps.system.models.system_model import AuthenticationModel
 from apps.system.models.user import UserModel, UserPlatformModel
 from apps.system.schemas.sso import FeishuSsoConfigDTO, FeishuSsoConfigEditor
@@ -30,6 +33,7 @@ DEFAULT_FEISHU_AUTHORIZE_URL = "https://open.feishu.cn/open-apis/authen/v1/index
 DEFAULT_FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
 DEFAULT_FEISHU_TENANT_ACCESS_TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
 DEFAULT_FEISHU_USER_INFO_URL = "https://open.feishu.cn/open-apis/authen/v1/user_info"
+REQUIRED_FEISHU_LOGIN_SCOPES = {"contact:user.base:readonly", "contact:user.email:readonly"}
 
 
 class FeishuIdentity(BaseModel):
@@ -94,21 +98,84 @@ def _secret_is_mask(value: str | None) -> bool:
     return not stripped or set(stripped) == {"*"}
 
 
+def _has_configured_secret(config: dict[str, Any]) -> bool:
+    try:
+        return bool(_clean_text(decrypt_sensitive_text(config.get("app_secret"))))
+    except ValueError:
+        return False
+
+
+def _is_http_url(value: str | None) -> bool:
+    parsed = urlparse(_clean_text(value))
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _scope_items(value: str | None) -> set[str]:
+    return {item for item in _clean_text(value).split() if item}
+
+
 def _is_config_valid(config: dict[str, Any], *, enable: bool) -> bool:
+    scope_items = _scope_items(config.get("scope"))
     return bool(
         enable
         and _clean_text(config.get("app_id"))
-        and _clean_text(decrypt_sensitive_text(config.get("app_secret")))
-        and _clean_text(config.get("redirect_uri"))
-        and _clean_text(config.get("authorize_url"))
-        and _clean_text(config.get("token_url"))
-        and _clean_text(config.get("user_info_url"))
+        and _clean_text(config.get("app_id")).startswith("cli_")
+        and _has_configured_secret(config)
+        and _is_http_url(config.get("redirect_uri"))
+        and _is_http_url(config.get("authorize_url"))
+        and _is_http_url(config.get("token_url"))
+        and _is_http_url(config.get("user_info_url"))
+        and REQUIRED_FEISHU_LOGIN_SCOPES.issubset(scope_items)
+        and (
+            config.get("token_mode") != "authen_v1"
+            or _is_http_url(config.get("tenant_access_token_url"))
+        )
     )
+
+
+def _validate_enabled_config(config: dict[str, Any], *, enable: bool) -> None:
+    if not enable:
+        return
+
+    errors: list[str] = []
+    app_id = _clean_text(config.get("app_id"))
+    if not app_id:
+        errors.append("App ID 不能为空")
+    elif not app_id.startswith("cli_"):
+        errors.append("App ID 格式应类似 cli_xxx")
+
+    if not _has_configured_secret(config):
+        errors.append("App Secret 不能为空")
+
+    for key, label in (
+        ("redirect_uri", "回调地址"),
+        ("authorize_url", "授权地址"),
+        ("token_url", "Token 地址"),
+        ("user_info_url", "用户信息地址"),
+    ):
+        if not _clean_text(config.get(key)):
+            errors.append(f"{label}不能为空")
+        elif not _is_http_url(config.get(key)):
+            errors.append(f"{label}必须是 http:// 或 https:// 开头的完整地址")
+
+    if config.get("token_mode") == "authen_v1":
+        if not _clean_text(config.get("tenant_access_token_url")):
+            errors.append("Tenant Access Token 地址不能为空")
+        elif not _is_http_url(config.get("tenant_access_token_url")):
+            errors.append("Tenant Access Token 地址必须是 http:// 或 https:// 开头的完整地址")
+
+    scope_items = _scope_items(config.get("scope"))
+    missing_scopes = sorted(REQUIRED_FEISHU_LOGIN_SCOPES - scope_items)
+    if missing_scopes:
+        errors.append(f"Scope 缺少：{'、'.join(missing_scopes)}")
+
+    if errors:
+        raise ValueError("企业飞书登录配置未完成：" + "；".join(errors))
 
 
 def _to_dto(row: AuthenticationModel | None) -> FeishuSsoConfigDTO:
     config = _load_config(row, decrypt_secret=False)
-    secret_configured = bool(_clean_text(decrypt_sensitive_text(config.get("app_secret"))))
+    secret_configured = _has_configured_secret(config)
     return FeishuSsoConfigDTO(
         enable=bool(row.enable) if row else False,
         valid=bool(row.valid) if row else False,
@@ -154,6 +221,7 @@ def upsert_feishu_sso_config(session: Session, editor: FeishuSsoConfigEditor) ->
     if not _secret_is_mask(editor.app_secret):
         config["app_secret"] = encrypt_sensitive_text(editor.app_secret)
 
+    _validate_enabled_config(config, enable=editor.enable)
     valid = _is_config_valid(config, enable=editor.enable)
     now = get_timestamp()
     if row is None:
@@ -238,7 +306,7 @@ def get_enabled_feishu_config(session: Session) -> dict[str, Any]:
     row = _find_row(session)
     dto = _to_dto(row)
     if not dto.enable or not dto.valid:
-        raise ValueError("Feishu SSO is not enabled")
+        raise ValueError("企业飞书登录未启用或配置未完成")
     return _load_config(row, decrypt_secret=True)
 
 

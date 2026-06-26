@@ -46,6 +46,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  readonlyTemplate: {
+    type: Boolean,
+    default: false,
+  },
 })
 const { configItem, showPosition } = toRefs(props)
 const component = ref(null)
@@ -87,6 +91,9 @@ const reportPromptTitle = computed(() =>
   t('dashboard.chart_report_interpret_prompt', [reportScopeTitle.value])
 )
 const reportDialogTitle = computed(() => reportSubmittedQuestion.value || reportPromptTitle.value)
+const reportTargetContext = computed(() =>
+  t('dashboard.chart_report_target_context', [reportScopeTitle.value])
+)
 const reportHasConversation = computed(
   () =>
     reportGenerating.value ||
@@ -661,10 +668,11 @@ onBeforeUnmount(() => {
           :show-position="showPosition"
           :disabled="true"
           :active="active"
+          :readonly-template="readonlyTemplate"
         />
       </div>
     </div>
-    <div v-if="isPreviewReportTarget" class="preview-chart-actions" @click.stop @mousedown.stop>
+    <div v-if="isPreviewReportTarget && !readonlyTemplate" class="preview-chart-actions" @click.stop @mousedown.stop>
       <el-button
         v-if="canShowReportInterpret"
         class="preview-action-btn"
@@ -758,6 +766,9 @@ onBeforeUnmount(() => {
           </div>
           <div class="report-answer-tip">
             {{ t('dashboard.chart_report_ai_tip') }}
+          </div>
+          <div class="report-target-context" :title="reportTargetContext">
+            {{ reportTargetContext }}
           </div>
           <div class="report-conversation-tools">
             <el-button class="report-icon-tool" text circle @click="submitReportPrompt">

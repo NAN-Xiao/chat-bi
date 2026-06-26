@@ -121,6 +121,7 @@ function closeDialog() {
             :y="yAxis"
             :series="seriesAxis"
             :sql="viewInfo.sql"
+            :insight="chartConfig?.insight"
             layout="side"
             density="regular"
             :max-stats="4"
@@ -138,6 +139,7 @@ function closeDialog() {
             :y="yAxis"
             :series="seriesAxis"
             :sql="viewInfo.sql"
+            :insight="chartConfig?.insight"
             compact
             density="compact"
             :max-stats="4"

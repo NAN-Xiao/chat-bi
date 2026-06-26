@@ -60,6 +60,14 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  readonlyTemplate: {
+    type: Boolean,
+    default: false,
+  },
+  platformTemplate: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const { configItem } = toRefs(props)
@@ -257,6 +265,7 @@ defineExpose({
             :canvas-view-info="canvasViewInfo"
             :base-matrix-count="tabBaseMatrixCount"
             :canvas-id="tabItem.name"
+            :readonly-template="readonlyTemplate"
             in-tab
           ></SQPreview>
           <DashboardEditor
@@ -271,6 +280,7 @@ defineExpose({
             :parent-config-item="configItem"
             :show-component-bar="showComponentBar"
             :can-edit-sql="canEditSql"
+            :platform-template="platformTemplate"
             in-tab
             @parent-add-item-box="(item) => emits('parentAddItemBox', item)"
           >

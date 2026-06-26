@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
-import Default_avatar_custom from '@/assets/img/Default-avatar.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_api_key from '@/assets/svg/icon-api_key.svg'
@@ -10,9 +9,11 @@ import icon_right_outlined from '@/assets/svg/icon_right_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_member_outlined from '@/assets/svg/icon_member_outlined.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import icon_user from '@/assets/svg/icon_user.svg'
 import { useI18n } from 'vue-i18n'
 import PwdForm from './PwdForm.vue'
 import Apikey from './Apikey.vue'
+import UserAvatar from '@/components/user-avatar/UserAvatar.vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
@@ -23,8 +24,9 @@ import { toLoginPage } from '@/utils/utils'
 import { useCache } from '@/utils/useCache'
 import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
 import { ElMessage } from 'element-plus-secondary'
-import { PLATFORM_ADMIN_HOME, resolveManagementHome } from '@/utils/navigation'
+import { resolveManagementHome } from '@/utils/navigation'
 import { rememberBusinessTenantBeforeAdmin } from '@/utils/workspaceAdminContext'
+import { canManageWorkspaceRole } from '@/utils/workspacePermission'
 
 const { wsCache } = useCache()
 const router = useRouter()
@@ -50,10 +52,10 @@ const adminTenantList = computed(() =>
 )
 const hasAdminTenant = computed(() => adminTenantList.value.length > 0)
 const showAdminWorkspaceEntry = computed(
-  () => !isPlatformAdmin.value && hasAdminTenant.value
+  () => false && !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && hasAdminTenant.value
 )
 const showWorkspaceApplicationEntry = computed(
-  () => !isPlatformAdmin.value && !userStore.hasActiveWorkspace
+  () => !isPlatformAdmin.value && !isPlatformWorkspaceDelegate.value && !userStore.hasActiveWorkspace
 )
 
 const isClient = computed(() => {
@@ -98,23 +100,27 @@ const formatTenantRole = (role: string) => {
 }
 
 const canManageTenant = (role?: string) => {
-  return ['owner', 'admin'].includes(String(role || '').trim().toLowerCase())
+  return canManageWorkspaceRole(role)
 }
 
 const toSystem = () => {
   popoverRef.value?.hide?.()
-  if (isPlatformWorkspaceDelegate.value) {
-    userStore.exitPlatformWorkspaceDelegate().finally(() => {
-      router.push(PLATFORM_ADMIN_HOME)
-    })
-    return
-  }
+  router.push(resolveManagementHome(userStore))
+}
+
+const toWorkspaceManagement = () => {
+  popoverRef.value?.hide?.()
   router.push(resolveManagementHome(userStore))
 }
 
 const toWorkspaceApplication = () => {
   popoverRef.value?.hide?.()
   router.push('/account/workspace-applications')
+}
+
+const toAccess = () => {
+  popoverRef.value?.hide?.()
+  router.push('/access/index')
 }
 
 const currentBusinessTenant = () => ({
@@ -201,18 +207,20 @@ onMounted(() => {
   >
     <template #reference>
       <button class="person" :title="name" :class="collapse && 'collapse'">
-        <el-icon size="32">
-          <Default_avatar_custom></Default_avatar_custom>
-        </el-icon>
+        <UserAvatar :name="name" :account="account" :uid="userStore.getUid" :size="32" />
         <span v-if="!collapse" class="name ellipsis">{{ name }}</span>
       </button></template
     >
     <div class="popover">
       <div class="popover-content">
         <div class="info">
-          <el-icon class="avatar-custom" size="40">
-            <Default_avatar_custom></Default_avatar_custom>
-          </el-icon>
+          <UserAvatar
+            class="avatar-custom"
+            :name="name"
+            :account="account"
+            :uid="userStore.getUid"
+            :size="40"
+          />
           <div :title="name" class="top ellipsis">{{ name }}</div>
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
@@ -225,6 +233,16 @@ onMounted(() => {
             <icon_admin_outlined></icon_admin_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('common.platform_manage') }}</div>
+        </div>
+        <div
+          v-if="isPlatformWorkspaceDelegate"
+          class="popover-item"
+          @click="toWorkspaceManagement"
+        >
+          <el-icon style="color: var(--theme-text-secondary)" size="16">
+            <icon_admin_outlined></icon_admin_outlined>
+          </el-icon>
+          <div class="datasource-name">{{ $t('tenant.management') }}</div>
         </div>
         <el-popover
           v-if="showAdminWorkspaceEntry"
@@ -280,13 +298,27 @@ onMounted(() => {
           </el-icon>
           <div class="datasource-name">{{ $t('tenant.apply_workspace') }}</div>
         </div>
-        <div v-if="isLocalUser && !platFlag" class="popover-item" @click="openPwd">
+        <div v-if="!isPlatformWorkspaceDelegate" class="popover-item" @click="toAccess">
+          <el-icon size="16">
+            <icon_user></icon_user>
+          </el-icon>
+          <div class="datasource-name">{{ $t('access.my_permissions') }}</div>
+        </div>
+        <div
+          v-if="!isPlatformWorkspaceDelegate && isLocalUser && !platFlag"
+          class="popover-item"
+          @click="openPwd"
+        >
           <el-icon size="16">
             <icon_key_outlined></icon_key_outlined>
           </el-icon>
           <div class="datasource-name">{{ $t('user.change_password') }}</div>
         </div>
-        <div v-if="!isPlatformAdmin" class="popover-item" @click="openApikey">
+        <div
+          v-if="!isPlatformAdmin && !isPlatformWorkspaceDelegate"
+          class="popover-item"
+          @click="openApikey"
+        >
           <el-icon size="16">
             <icon_api_key></icon_api_key>
           </el-icon>
@@ -327,7 +359,7 @@ onMounted(() => {
           </div>
         </el-popover>
         <div style="height: 4px; width: 100%"></div>
-        <div v-if="!isClient" class="popover-item mr4" @click="logout">
+        <div v-if="!isClient && !isPlatformWorkspaceDelegate" class="popover-item mr4" @click="logout">
           <el-icon size="16">
             <icon_logout_outlined></icon_logout_outlined>
           </el-icon>
@@ -351,6 +383,7 @@ onMounted(() => {
     class="workspace-light-dialog api-key-dialog"
     title="API Key"
     width="840"
+    :top="'22vh'"
   >
     <apikey v-if="apikeyDialogVisible" ref="apikeyRef" />
   </el-dialog>
@@ -383,22 +416,15 @@ onMounted(() => {
     position: relative;
     margin-top: 0;
     margin-bottom: 0;
+    border-radius: 50%;
+  }
 
-    .ed-icon {
-      display: inline-grid;
-      place-items: center;
-    }
-
-    .ed-icon svg {
-      display: block;
-    }
-
-    .default-avatar {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-    }
+  .user-avatar {
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease,
+      border-color 160ms ease;
+    transform-origin: center;
   }
 
   .name {
@@ -423,9 +449,21 @@ onMounted(() => {
 
   &:hover,
   &:focus {
-    border-color: var(--theme-shell-border);
-    background: var(--theme-control-bg);
-    color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
+    &:not(.collapse) {
+      border-color: var(--theme-shell-border);
+      background: var(--theme-control-bg);
+      color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
+    }
+
+    &.collapse {
+      border-color: transparent;
+      background: transparent;
+      color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
+
+      .user-avatar {
+        transform: scale(1.08);
+      }
+    }
 
     &::after {
       background: transparent;
@@ -433,7 +471,13 @@ onMounted(() => {
   }
 
   &:active {
-    background: var(--theme-active-bg);
+    &:not(.collapse) {
+      background: var(--theme-active-bg);
+    }
+
+    &.collapse .user-avatar {
+      transform: scale(1.02);
+    }
 
     &::after {
       background: transparent;

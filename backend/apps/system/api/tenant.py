@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, inspect, or_
+from sqlalchemy import String, cast, func, inspect, or_
 from sqlmodel import delete as sqlmodel_delete, select
 
 from apps.chat.curd.custom_prompt import CustomPromptTypeEnum, CustomPromptVisibilityScopeEnum
@@ -28,6 +28,7 @@ from apps.system.crud.tenant import (
     TENANT_APPLICATION_TYPE_JOIN,
     TENANT_DATA_REQUEST_TYPE_CANCEL,
     TENANT_DATA_REQUEST_TYPE_DELETE,
+    TENANT_ROLE_ADMIN,
     TENANT_ROLE_OWNER,
     assign_user_to_tenant,
     approve_tenant_application,
@@ -41,6 +42,7 @@ from apps.system.crud.tenant import (
     complete_tenant_data_request,
     ensure_user_sample_workspace_membership,
     get_tenant_membership,
+    get_active_tenant,
     leave_tenant,
     list_tenant_data_requests,
     list_tenants,
@@ -121,6 +123,7 @@ from apps.system.schemas.tenant_schema import (
     PlatformOverviewSummaryDTO,
     PlatformOverviewTenantUsageDTO,
     PlatformOverviewTrendPointDTO,
+    TenantOwnerCandidateDTO,
     TenantOwnerTransfer,
     TenantSecurityPolicyDTO,
     TenantSecurityPolicyEditor,
@@ -886,6 +889,15 @@ async def current_tenant(session: SessionDep, current_tenant: CurrentTenant):
 
 @router.get("/list", response_model=list[TenantDTO])
 async def tenant_list(session: SessionDep, current_user: CurrentUser):
+    if is_platform_workspace_delegate(current_user):
+        tenant_id = getattr(current_user, "tenant_id", None)
+        if not tenant_id:
+            return []
+        tenant = get_active_tenant(session, tenant_id=int(tenant_id))
+        if not tenant:
+            return []
+        role = normalize_tenant_role(getattr(current_user, "tenant_role", None))
+        return _tenant_dto_list(session, [(tenant, role, None)])
     if is_platform_admin(current_user):
         tenants = list_tenants(session)
         return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER, None) for tenant in tenants])
@@ -1290,8 +1302,173 @@ async def platform_overview(
 @router.get("/admin/list", response_model=list[TenantDTO])
 async def admin_tenant_list(session: SessionDep, current_user: CurrentUser):
     _require_platform_admin(current_user)
+    if is_platform_workspace_delegate(current_user):
+        raise HTTPException(status_code=403, detail="SaaS tenant management is only available in SaaS context")
     tenants = list_tenants(session, include_disabled=True)
     return _tenant_dto_list(session, [(tenant, TENANT_ROLE_OWNER, None) for tenant in tenants])
+
+
+@router.get("/admin/{tenant_id}/member/list", response_model=list[TenantMemberDTO])
+async def admin_tenant_member_list(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+    keyword: str | None = Query(None, max_length=100),
+):
+    _require_platform_admin(current_user)
+    if is_platform_workspace_delegate(current_user):
+        raise HTTPException(status_code=403, detail="SaaS tenant management is only available in SaaS context")
+    tenant = session.get(TenantModel, int(tenant_id))
+    if tenant is None or int(getattr(tenant, "status", 1)) < 0:
+        raise HTTPException(status_code=404, detail="Tenant does not exist")
+    statement = (
+        select(UserModel, TenantUserModel)
+        .join(TenantUserModel, TenantUserModel.user_id == UserModel.id)
+        .where(
+            TenantUserModel.tenant_id == int(tenant_id),
+            TenantUserModel.status == 1,
+            UserModel.status == 1,
+            *_non_platform_member_filter(session),
+        )
+        .order_by(TenantUserModel.role, UserModel.account)
+    )
+    if keyword:
+        keyword_pattern = f"%{keyword.strip()}%"
+        statement = statement.where(
+            or_(
+                UserModel.account.ilike(keyword_pattern),
+                UserModel.name.ilike(keyword_pattern),
+                TenantUserModel.member_remark.ilike(keyword_pattern),
+            )
+        )
+    rows = session.exec(statement).all()
+    return [
+        _tenant_member_dto(session, current_user, user, membership)
+        for user, membership in rows
+        if not is_high_privilege_user(user)
+    ]
+
+
+@router.get("/admin/{tenant_id}/owner/candidates", response_model=list[TenantOwnerCandidateDTO])
+async def admin_tenant_owner_candidates(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+    keyword: str | None = Query(None, max_length=100),
+    limit: int = Query(20, ge=1, le=50),
+):
+    _require_platform_admin(current_user)
+    if is_platform_workspace_delegate(current_user):
+        raise HTTPException(status_code=403, detail="SaaS tenant management is only available in SaaS context")
+    tenant = session.get(TenantModel, int(tenant_id))
+    if tenant is None or int(getattr(tenant, "status", 1)) < 0:
+        raise HTTPException(status_code=404, detail="Tenant does not exist")
+
+    owner_id = (_tenant_owner_map(session, [int(tenant_id)]).get(int(tenant_id)) or {}).get("owner_user_id")
+    membership_subquery = (
+        select(TenantUserModel)
+        .where(
+            TenantUserModel.tenant_id == int(tenant_id),
+            TenantUserModel.status == 1,
+        )
+        .subquery()
+    )
+    statement = (
+        select(
+            UserModel.id,
+            UserModel.account,
+            UserModel.name,
+            UserModel.email,
+            membership_subquery.c.role,
+            membership_subquery.c.user_id,
+        )
+        .outerjoin(membership_subquery, membership_subquery.c.user_id == UserModel.id)
+        .where(
+            UserModel.status == 1,
+            *_non_platform_member_filter(session),
+        )
+        .order_by(membership_subquery.c.user_id.is_(None), UserModel.account)
+        .limit(limit)
+    )
+    if owner_id:
+        statement = statement.where(UserModel.id != int(owner_id))
+    normalized_keyword = (keyword or "").strip()
+    if normalized_keyword:
+        keyword_pattern = f"%{normalized_keyword}%"
+        statement = statement.where(
+            or_(
+                cast(UserModel.id, String).ilike(keyword_pattern),
+                UserModel.account.ilike(keyword_pattern),
+                UserModel.name.ilike(keyword_pattern),
+                UserModel.email.ilike(keyword_pattern),
+            )
+        )
+
+    rows = session.exec(statement).all()
+    return [
+        TenantOwnerCandidateDTO(
+            user_id=int(user_id),
+            account=account,
+            name=name,
+            email=email,
+            tenant_role=normalize_tenant_role(role) if member_user_id is not None else None,
+            is_workspace_member=member_user_id is not None,
+        )
+        for user_id, account, name, email, role, member_user_id in rows
+    ]
+
+
+@router.post("/admin/{tenant_id}/owner/transfer", response_model=TenantDTO)
+async def admin_transfer_tenant_owner(
+    session: SessionDep,
+    current_user: CurrentUser,
+    tenant_id: int,
+    dto: TenantOwnerTransfer,
+):
+    _require_platform_admin(current_user)
+    if is_platform_workspace_delegate(current_user):
+        raise HTTPException(status_code=403, detail="SaaS tenant management is only available in SaaS context")
+    tenant = session.get(TenantModel, int(tenant_id))
+    if tenant is None or int(getattr(tenant, "status", 1)) < 0:
+        raise HTTPException(status_code=404, detail="Tenant does not exist")
+    target_user = session.get(UserModel, int(dto.target_user_id))
+    if not target_user or int(target_user.status) != 1:
+        raise HTTPException(status_code=404, detail="Target user does not exist")
+    if is_high_privilege_user(target_user):
+        raise HTTPException(status_code=400, detail="SaaS administrator cannot be tenant owner")
+    if not get_tenant_membership(session, int(target_user.id), tenant_id=int(tenant_id)):
+        assign_user_to_tenant(
+            session,
+            int(target_user.id),
+            tenant_id=int(tenant_id),
+            role=TENANT_ROLE_ADMIN,
+            is_primary=True,
+        )
+    try:
+        transfer_tenant_owner(
+            session,
+            tenant_id=int(tenant_id),
+            target_user_id=int(target_user.id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    reason = (dto.reason or "").strip()
+    _write_tenant_audit(
+        session,
+        current_user,
+        operation_type=OperationType.UPDATE,
+        detail="SaaS 管理员重新指定工作空间所有者",
+        module=OperationModules.TENANT,
+        tenant_id=int(tenant_id),
+        resource_id=target_user.id,
+        resource_name=target_user.name or target_user.account,
+        remark=(
+            f"tenant_id={tenant_id}; target_user_id={target_user.id}; "
+            f"target_account={target_user.account}; reason={reason or 'none'}"
+        ),
+    )
+    tenant = session.get(TenantModel, int(tenant_id))
+    return _tenant_admin_dto(session, tenant)
 
 
 @router.get("/usage", response_model=list[TenantUsageDailyDTO])

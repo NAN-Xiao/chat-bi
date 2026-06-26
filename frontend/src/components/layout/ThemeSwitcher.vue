@@ -1,6 +1,12 @@
 <script lang="ts" setup>
 import { computed, onMounted, ref } from 'vue'
-import { applyTheme, getInitialTheme, getNextTheme, type ThemeMode } from '@/utils/theme'
+import {
+  applyTheme,
+  COLOR_THEME_SWITCHING_ENABLED,
+  getInitialTheme,
+  getNextTheme,
+  type ThemeMode,
+} from '@/utils/theme'
 
 defineProps({
   collapse: { type: Boolean, required: true },
@@ -31,6 +37,7 @@ onMounted(() => {
 
 <template>
   <button
+    v-if="COLOR_THEME_SWITCHING_ENABLED"
     type="button"
     class="theme-toggle"
     :class="[`theme-toggle--${theme}`, { collapse }]"

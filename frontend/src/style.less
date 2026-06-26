@@ -1108,8 +1108,12 @@ strong {
 .dashboard-editor-main,
 .dv-preview,
 .dv-preview .preview-area {
-  background: var(--workspace-panel-bg, #f6f9fd);
+  background: var(--dashboard-preview-canvas-bg, var(--workspace-panel-bg, #f6f9fd));
   color: var(--workspace-text-primary);
+}
+
+.dv-preview {
+  background: var(--dashboard-preview-sidebar-bg, var(--workspace-panel-bg, #f6f9fd));
 }
 
 .editor-content .toolbar-main {
@@ -1119,26 +1123,38 @@ strong {
 }
 
 .dv-preview .resource-area {
-  background: var(--workspace-card-bg);
+  background: var(--dashboard-preview-sidebar-bg, var(--workspace-card-bg));
   color: var(--workspace-text-primary);
 }
 
 .dv-preview .resource-tree,
-.dv-preview .custom-tree,
-.dv-preview .preview-head,
+.dv-preview .custom-tree {
+  background: var(--dashboard-preview-sidebar-bg, var(--workspace-card-bg));
+  color: var(--workspace-text-primary);
+}
+
+.dv-preview .preview-head {
+  background: var(--dashboard-preview-canvas-bg, var(--workspace-panel-bg, #f6f9fd));
+  color: var(--workspace-text-primary);
+}
+
 .dv-preview .chart-base-container,
 .dv-preview .chart-show-area,
 .dv-preview .de-tabs,
 .dv-preview .ed-tabs,
 .dv-preview .ed-tabs__content {
-  background: var(--workspace-card-bg);
+  background: var(--dashboard-preview-card-bg, var(--workspace-card-bg));
   color: var(--workspace-text-primary);
 }
 
 .dv-preview .content,
-.dv-preview .canvas-container,
+.dv-preview .canvas-container {
+  background: var(--dashboard-preview-canvas-bg, var(--workspace-panel-bg));
+  color: var(--workspace-text-primary);
+}
+
 .dv-preview .wrapper-inner {
-  background: var(--workspace-panel-bg);
+  background: var(--dashboard-preview-card-bg, var(--workspace-card-bg));
   color: var(--workspace-text-primary);
 }
 
@@ -1153,10 +1169,10 @@ strong {
 .chart-fullscreen-dialog-view .chart-base-container,
 .chart-fullscreen-dialog-view .chart-show-area,
 .chart-fullscreen-dialog-view .ed-dialog,
-.chart-fullscreen-dialog-body-view,
-.chart-fullscreen-dialog-body-view .chart-base-container,
-.chart-fullscreen-dialog-body-view .chart-show-area {
-  background: var(--workspace-card-bg);
+  .chart-fullscreen-dialog-body-view,
+  .chart-fullscreen-dialog-body-view .chart-base-container,
+  .chart-fullscreen-dialog-body-view .chart-show-area {
+  background: var(--dashboard-preview-card-bg, var(--workspace-card-bg));
   color: var(--workspace-text-primary);
 }
 
@@ -1269,7 +1285,6 @@ strong {
     .resource-area,
     .resource-tree,
     .custom-tree,
-    .preview-head,
     .chart-base-container,
     .chart-show-area,
     .de-tabs,
@@ -1294,15 +1309,33 @@ strong {
     .ed-dialog__body,
     .ed-scrollbar__wrap,
     .ed-scrollbar__view {
-      background: var(--workspace-card-bg) !important;
+      background: var(--dashboard-preview-card-bg, var(--workspace-card-bg)) !important;
       color: var(--workspace-text-primary) !important;
       border-color: var(--workspace-border) !important;
     }
 
+    .resource-area,
+    .resource-tree,
+    .custom-tree,
+    .ed-tree,
+    .ed-tree > .ed-tree-node,
+    .ed-scrollbar__wrap,
+    .ed-scrollbar__view {
+      background: var(--dashboard-preview-sidebar-bg, var(--workspace-card-bg)) !important;
+    }
+
+    .preview-head {
+      background: var(--dashboard-preview-canvas-bg, var(--workspace-panel-bg, #f6f9fd)) !important;
+    }
+
     .content,
-    .canvas-container,
+    .canvas-container {
+      background: var(--dashboard-preview-canvas-bg, var(--workspace-panel-bg)) !important;
+      color: var(--workspace-text-primary) !important;
+    }
+
     .wrapper-inner {
-      background: var(--workspace-panel-bg) !important;
+      background: var(--dashboard-preview-card-bg, var(--workspace-card-bg)) !important;
       color: var(--workspace-text-primary) !important;
     }
 

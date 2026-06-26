@@ -86,6 +86,16 @@ class TenantDatasourceBindingEditor(BaseModel):
 
 class TenantOwnerTransfer(BaseModel):
     target_user_id: int = Field(gt=0)
+    reason: Optional[str] = Field(default=None, max_length=2000)
+
+
+class TenantOwnerCandidateDTO(BaseModel):
+    user_id: int
+    account: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    tenant_role: Optional[str] = None
+    is_workspace_member: bool = False
 
 
 class TenantApplicationCreator(BaseModel):

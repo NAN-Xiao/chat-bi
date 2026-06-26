@@ -465,7 +465,7 @@ const productSlogan = computed(() => {
   return '连接数据资产、语义口径与权限体系，帮助团队用自然语言完成查询、洞察和决策。'
 })
 
-const navItems = ['智能问数', '语义层', '数据看板', '权限治理']
+const navItems = ['AI看板', '语义层', '数据看板', '权限治理']
 
 const capabilities = [
   {
@@ -526,7 +526,7 @@ const accountBenefits = [
 const accountExploreCards = [
   {
     icon: '问',
-    title: '智能问数',
+    title: 'AI看板',
     desc: '通过业务语言发起查询，自动生成 SQL、解释结果并沉淀上下文。',
   },
   {
@@ -758,7 +758,7 @@ const startFeishuLogin = async () => {
     window.location.href = feishuStatus.value.authorize_url
     return
   }
-  ElMessage.warning('飞书登录未启用或配置未完成')
+  ElMessage.warning('飞书登录暂不可用，请联系管理员检查企业飞书配置')
 }
 
 const submitForm = () => {

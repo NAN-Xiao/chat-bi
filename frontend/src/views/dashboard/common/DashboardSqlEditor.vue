@@ -4,15 +4,26 @@ import { useI18n } from 'vue-i18n'
 import { dashboardApi } from '@/api/dashboard.ts'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import { isAverageAxis, isPercentAxis } from '@/views/chat/component/charts/utils.ts'
+import {
+  availableTrendComparisonMetrics,
+  defaultTrendComparisonMetrics,
+  detectTrendAxisGranularity,
+  type TrendComparisonMetric,
+  type TrendAggregateMetric,
+  type TrendTimeGranularity,
+} from '@/views/chat/component/chartInsight.ts'
 
 const props = withDefaults(
   defineProps<{
     modelValue: boolean
     viewInfo?: any
+    allowStaticApply?: boolean
   }>(),
   {
     modelValue: false,
     viewInfo: null,
+    allowStaticApply: false,
   }
 )
 
@@ -37,6 +48,11 @@ const form = reactive({
   y: [] as string[],
   series: '',
   multiQuotaName: '',
+  insightEnabled: true,
+  insightComparisonEnabled: true,
+  insightComparisonMetrics: [] as TrendComparisonMetric[],
+  insightAggregateEnabled: true,
+  insightAggregateMetrics: [] as TrendAggregateMetric[],
 })
 
 const preview = reactive({
@@ -67,7 +83,10 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
 
 const fieldOptions = computed(() => preview.fields.map((field) => ({ label: field, value: field })))
 const hasPreviewData = computed(() => preview.status !== 'failed' && preview.data.length > 0)
-const sqlChangedAfterPreview = computed(() => form.sql.trim() !== lastPreviewSql.value.trim())
+const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource))
+const sqlChangedAfterPreview = computed(
+  () => !props.allowStaticApply && form.sql.trim() !== lastPreviewSql.value.trim()
+)
 const previewTableFields = computed(() => {
   if (form.columns.length > 0) {
     return form.columns.slice(0, 10)
@@ -77,6 +96,62 @@ const previewTableFields = computed(() => {
 const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.id || 'new'}-${previewVersion.value}`)
 const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chartType))
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
+const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
+const supportsTrendInsightConfig = computed(
+  () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length === 1 && !form.series
+)
+const trendTimeGranularity = computed<TrendTimeGranularity | null>(() =>
+  supportsTrendInsightConfig.value ? detectTrendAxisGranularity(preview.data, form.x) : null
+)
+const supportsComparisonInsightConfig = computed(
+  () =>
+    supportsTrendInsightConfig.value &&
+    availableTrendComparisonMetrics(trendTimeGranularity.value).length > 0
+)
+const selectedMetricAxis = computed<ChartAxis | undefined>(() => {
+  const field = form.y[0]
+  return field ? { name: field, value: field } : undefined
+})
+const selectedMetricIsRatioOrAverage = computed(() => {
+  const axis = selectedMetricAxis.value
+  if (!axis) {
+    return false
+  }
+  return isPercentAxis(axis, preview.data) || isAverageAxis(axis)
+})
+
+function comparisonMetricLabel(metric: TrendComparisonMetric, granularity: TrendTimeGranularity | null) {
+  if (metric === 'week_over_week' && granularity === 'day') {
+    return t('dashboard.insight_week_same_period')
+  }
+  if (metric === 'day_over_day') {
+    return t('dashboard.insight_day_over_day')
+  }
+  if (metric === 'week_over_week') {
+    return t('dashboard.insight_week_over_week')
+  }
+  if (metric === 'month_over_month') {
+    return t('dashboard.insight_month_over_month')
+  }
+  return t('dashboard.insight_year_over_year')
+}
+
+const comparisonMetricOptions = computed(() =>
+  availableTrendComparisonMetrics(trendTimeGranularity.value).map((value) => ({
+    label: comparisonMetricLabel(value, trendTimeGranularity.value),
+    value,
+  }))
+)
+const aggregateMetricOptions = computed(() => [
+  { label: t('dashboard.insight_period_average'), value: 'average' as TrendAggregateMetric },
+  {
+    label: t('dashboard.insight_period_sum'),
+    value: 'sum' as TrendAggregateMetric,
+    disabled: selectedMetricIsRatioOrAverage.value,
+  },
+  { label: t('dashboard.insight_peak'), value: 'max' as TrendAggregateMetric },
+  { label: t('dashboard.insight_lowest'), value: 'min' as TrendAggregateMetric },
+])
 
 function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
@@ -88,6 +163,61 @@ function toAxis(field: string): ChartAxis {
 
 function toAxes(fields: string[]): ChartAxis[] {
   return unique(fields).map(toAxis)
+}
+
+function defaultComparisonMetrics(): TrendComparisonMetric[] {
+  return defaultTrendComparisonMetrics(trendTimeGranularity.value)
+}
+
+function defaultAggregateMetrics(): TrendAggregateMetric[] {
+  return selectedMetricIsRatioOrAverage.value ? ['average'] : ['average', 'sum']
+}
+
+function normalizeInsightSelections(fillEmpty = false) {
+  const allowedComparisonValues = comparisonMetricOptions.value.map((item) => item.value)
+  form.insightComparisonMetrics = form.insightComparisonMetrics.filter((value) =>
+    allowedComparisonValues.includes(value)
+  )
+  const allowedAggregateValues = aggregateMetricOptions.value
+    .filter((item) => !item.disabled)
+    .map((item) => item.value)
+  form.insightAggregateMetrics = form.insightAggregateMetrics.filter((value) =>
+    allowedAggregateValues.includes(value)
+  )
+
+  if (fillEmpty && form.insightComparisonEnabled && form.insightComparisonMetrics.length === 0) {
+    form.insightComparisonMetrics = defaultComparisonMetrics()
+  }
+  if (fillEmpty && form.insightAggregateEnabled && form.insightAggregateMetrics.length === 0) {
+    form.insightAggregateMetrics = defaultAggregateMetrics()
+  }
+}
+
+function initInsightConfig(insight?: any) {
+  form.insightEnabled = insight?.enabled !== false
+  form.insightComparisonEnabled = insight?.comparison?.enabled !== false
+  form.insightAggregateEnabled = insight?.aggregate?.enabled !== false
+  form.insightComparisonMetrics = Array.isArray(insight?.comparison?.metrics)
+    ? [...insight.comparison.metrics]
+    : defaultComparisonMetrics()
+  form.insightAggregateMetrics = Array.isArray(insight?.aggregate?.metrics)
+    ? [...insight.aggregate.metrics]
+    : defaultAggregateMetrics()
+  normalizeInsightSelections(true)
+}
+
+function buildInsightConfig() {
+  return {
+    enabled: form.insightEnabled,
+    comparison: {
+      enabled: form.insightComparisonEnabled,
+      metrics: [...form.insightComparisonMetrics],
+    },
+    aggregate: {
+      enabled: form.insightAggregateEnabled,
+      metrics: [...form.insightAggregateMetrics],
+    },
+  }
 }
 
 function axisValues(axis?: Array<{ value?: string }>) {
@@ -149,6 +279,7 @@ function initEditor() {
   preview.message = viewInfo.message || ''
   lastPreviewSql.value = form.sql.trim()
   resetFieldSelections()
+  initInsightConfig(chart.insight)
   previewVersion.value += 1
 }
 
@@ -169,9 +300,28 @@ watch(
     form.y.join('|'),
     form.series,
     form.multiQuotaName,
+    form.insightEnabled,
+    form.insightComparisonEnabled,
+    form.insightComparisonMetrics.join('|'),
+    form.insightAggregateEnabled,
+    form.insightAggregateMetrics.join('|'),
   ],
   () => {
     previewVersion.value += 1
+  }
+)
+
+watch(
+  () => [
+    form.chartType,
+    form.x,
+    form.y.join('|'),
+    form.series,
+    selectedMetricIsRatioOrAverage.value,
+    trendTimeGranularity.value,
+  ],
+  () => {
+    normalizeInsightSelections(true)
   }
 )
 
@@ -223,6 +373,11 @@ function buildChart() {
     yAxis: [],
     series: [],
   }
+  if (supportsInsightConfig.value) {
+    chart.insight = buildInsightConfig()
+  } else {
+    delete chart.insight
+  }
 
   if (form.chartType === 'table') {
     chart.columns = toAxes(form.columns.length ? form.columns : preview.fields)
@@ -250,6 +405,9 @@ function validateBeforeApply() {
   if (!form.sql.trim()) {
     ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
     return false
+  }
+  if (props.allowStaticApply && !canRunPreview.value) {
+    return true
   }
   if (sqlChangedAfterPreview.value) {
     ElMessage.warning(t('dashboard.sql_editor_need_preview'))
@@ -293,8 +451,11 @@ function applyChange() {
     data: [...preview.data],
   }
   props.viewInfo.status = preview.status
+  props.viewInfo.dataState = preview.status === 'failed' ? 'failed' : 'ready'
+  props.viewInfo.loadingProgress = 100
   props.viewInfo.message = preview.message
   props.viewInfo.chart = buildChart()
+  props.viewInfo.datasource = props.viewInfo.datasource || null
   previewVersion.value += 1
   emits('applied', props.viewInfo)
   visible.value = false
@@ -329,7 +490,7 @@ function closeDrawer() {
           />
         </el-form-item>
         <div class="action-row">
-          <el-button type="primary" @click="runPreview">{{ t('dashboard.sql_editor_run_preview') }}</el-button>
+          <el-button type="primary" :disabled="allowStaticApply && !canRunPreview" @click="runPreview">{{ t('dashboard.sql_editor_run_preview') }}</el-button>
           <span v-if="sqlChangedAfterPreview" class="muted">{{ t('dashboard.sql_editor_changed') }}</span>
         </div>
         <el-alert
@@ -402,6 +563,61 @@ function closeDrawer() {
             <el-input v-model="form.multiQuotaName" @keydown.stop @keyup.stop />
           </el-form-item>
         </div>
+        <div v-if="supportsInsightConfig" class="insight-config">
+          <div class="insight-config-row">
+            <span class="insight-config-caption">{{ t('dashboard.sql_editor_insight_config') }}</span>
+            <el-checkbox v-model="form.insightEnabled">
+              {{ t('dashboard.sql_editor_insight_enabled') }}
+            </el-checkbox>
+          </div>
+          <template v-if="form.insightEnabled && supportsTrendInsightConfig">
+            <div v-if="supportsComparisonInsightConfig" class="insight-config-row">
+              <span class="insight-config-caption">{{ t('dashboard.sql_editor_simultaneous_display') }}</span>
+              <el-checkbox v-model="form.insightComparisonEnabled">
+                {{ t('dashboard.sql_editor_insight_comparison') }}
+              </el-checkbox>
+              <el-select
+                v-model="form.insightComparisonMetrics"
+                class="insight-metric-select"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                :disabled="!form.insightComparisonEnabled"
+                @change="normalizeInsightSelections(false)"
+              >
+                <el-option
+                  v-for="item in comparisonMetricOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </div>
+            <div class="insight-config-row">
+              <span class="insight-config-caption">{{ t('dashboard.sql_editor_simultaneous_display') }}</span>
+              <el-checkbox v-model="form.insightAggregateEnabled">
+                {{ t('dashboard.sql_editor_insight_aggregate') }}
+              </el-checkbox>
+              <el-select
+                v-model="form.insightAggregateMetrics"
+                class="insight-metric-select"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                :disabled="!form.insightAggregateEnabled"
+                @change="normalizeInsightSelections(false)"
+              >
+                <el-option
+                  v-for="item in aggregateMetricOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                  :disabled="item.disabled"
+                />
+              </el-select>
+            </div>
+          </template>
+        </div>
       </el-form>
 
       <div class="preview-title">{{ t('dashboard.sql_editor_chart_preview') }}</div>
@@ -472,6 +688,31 @@ function closeDrawer() {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 16px;
+}
+
+.insight-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 6px;
+}
+
+.insight-config-row {
+  display: grid;
+  grid-template-columns: 72px 92px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  min-height: 32px;
+}
+
+.insight-config-caption {
+  color: #1f2329;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.insight-metric-select {
+  width: 100%;
 }
 
 .preview-title {

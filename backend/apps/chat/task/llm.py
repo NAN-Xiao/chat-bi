@@ -56,9 +56,22 @@ from apps.db.db import get_version, check_connection
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
-from apps.system.crud.user import is_system_admin
+from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.models.system_model import SysArgModel
+
+
+def _can_manage_platform_prompt_runtime(user) -> bool:
+    return bool(user is not None and is_platform_admin(user) and not is_platform_workspace_delegate(user))
+
+
+def _can_manage_tenant_prompt_runtime(user) -> bool:
+    if user is None or _can_manage_platform_prompt_runtime(user):
+        return False
+    if is_system_admin(user):
+        return True
+    return normalize_tenant_role(getattr(user, "tenant_role", None)) in TENANT_ADMIN_ROLES
 from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.db import engine
@@ -495,6 +508,8 @@ class LLMService:
                 getattr(args[1], "id", None),
                 is_system_admin(args[1]),
                 require_current_tenant_id(args[1]),
+                can_manage_public=_can_manage_tenant_prompt_runtime(args[1]),
+                can_manage_platform_public=_can_manage_platform_prompt_runtime(args[1]),
             )
             if prompt_model_id and any(str(model.id) == str(prompt_model_id) for model in _ai_model_list):
                 specialized_model_id = prompt_model_id
@@ -646,6 +661,8 @@ class LLMService:
             self.current_user.id,
             is_system_admin(self.current_user),
             require_current_tenant_id(self.current_user),
+            can_manage_public=_can_manage_tenant_prompt_runtime(self.current_user),
+            can_manage_platform_public=_can_manage_platform_prompt_runtime(self.current_user),
         )
         self.current_logs[OperationEnum.FILTER_CUSTOM_PROMPT] = end_log(session=_session,
                                                                         log=self.current_logs[
@@ -675,6 +692,8 @@ class LLMService:
             is_system_admin(self.current_user),
             require_current_tenant_id(self.current_user),
             question=self.chat_question.question,
+            can_manage_public=_can_manage_tenant_prompt_runtime(self.current_user),
+            can_manage_platform_public=_can_manage_platform_prompt_runtime(self.current_user),
         )
         self.current_logs[OperationEnum.FILTER_DATA_SKILL] = end_log(session=_session,
                                                                      log=self.current_logs[

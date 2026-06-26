@@ -73,6 +73,10 @@ const formatTenantRole = (role?: string) => {
 }
 
 const handleWorkspaceChange = async (tenant: TenantInfo) => {
+  if (userStore.isPlatformWorkspaceDelegate) {
+    popoverRef.value?.hide?.()
+    return
+  }
   const tenantId = String(tenant.id || '')
   if (!tenantId || tenantId === String(userStore.getTenantId || '')) {
     popoverRef.value?.hide?.()
@@ -99,11 +103,13 @@ const handleWorkspaceChange = async (tenant: TenantInfo) => {
 }
 
 const toWorkspaceApplication = () => {
+  if (userStore.isPlatformWorkspaceDelegate) return
   popoverRef.value?.hide?.()
   router.push('/account/workspace-applications')
 }
 
 const refreshWorkspaces = async () => {
+  if (userStore.isPlatformWorkspaceDelegate) return
   await userStore.loadTenants(true)
   if (userStore.hasActiveWorkspace) {
     await datasourceContext.loadDatasources(true)

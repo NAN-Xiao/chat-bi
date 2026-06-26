@@ -18,7 +18,9 @@ const router = useRouter()
 const edit = () => {
   router.push({
     path: '/canvas',
-    query: { resourceId: props.dashboardInfo.id },
+    query: props.platformTemplate
+      ? { platformTemplateId: props.dashboardInfo.id }
+      : { resourceId: props.dashboardInfo.id },
   })
 }
 const props = defineProps({
@@ -37,9 +39,13 @@ const props = defineProps({
     required: false,
     default: () => ({}),
   },
+  platformTemplate: {
+    type: Boolean,
+    default: false,
+  },
 })
 const canEdit = computed(() => props.dashboardInfo?.canEdit === true)
-const canInterpretDashboard = computed(() => !!props.dashboardInfo?.id)
+const canInterpretDashboard = computed(() => !!props.dashboardInfo?.id && !props.platformTemplate)
 const titleText = computed(() => props.dashboardInfo?.name || t('dashboard.dashboard'))
 const reportPromptText = ref('')
 const reportPromptVisible = ref(false)
@@ -58,6 +64,9 @@ const reportPromptTitle = computed(() =>
   t('dashboard.dashboard_report_interpret_prompt', [titleText.value])
 )
 const reportDialogTitle = computed(() => reportSubmittedQuestion.value || reportPromptTitle.value)
+const reportTargetContext = computed(() =>
+  t('dashboard.dashboard_report_target_context', [titleText.value])
+)
 const reportHasConversation = computed(
   () =>
     reportGenerating.value ||
@@ -476,6 +485,9 @@ onBeforeUnmount(() => {
         <div class="report-answer-tip">
           {{ t('dashboard.chart_report_ai_tip') }}
         </div>
+        <div class="report-target-context" :title="reportTargetContext">
+          {{ reportTargetContext }}
+        </div>
         <div class="report-conversation-tools">
           <el-button class="report-icon-tool" text circle @click="submitReportPrompt">
             <el-icon size="15"><RefreshRight /></el-icon>
@@ -546,10 +558,10 @@ onBeforeUnmount(() => {
   display: flex;
   width: 100%;
   min-width: 300px;
-  height: 64px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
-  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  height: 50px;
+  padding: 14px 16px 0;
+  border-bottom: 0;
+  background: transparent;
 
   .canvas-name {
     max-width: 280px;
@@ -590,6 +602,7 @@ onBeforeUnmount(() => {
     justify-content: right;
     align-items: center;
     flex: 1;
+    transform: translateY(-7px);
 
     .head-more-icon {
       color: var(--workspace-text-primary, #1b2a41);
@@ -793,7 +806,8 @@ onBeforeUnmount(() => {
 
 .report-answer-empty,
 .report-progress,
-.report-answer-tip {
+.report-answer-tip,
+.report-target-context {
   color: #74849a;
   font-size: 13px;
 }
@@ -804,6 +818,17 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 20px;
   color: #9aa8bb;
+}
+
+.report-target-context {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #74849a;
+  font-size: 12px;
+  line-height: 20px;
 }
 
 .report-progress {

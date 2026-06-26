@@ -12,7 +12,6 @@ import icon_invisible_outlined from '@/assets/embedded/icon_invisible_outlined.s
 import icon_visible_outlined from '@/assets/embedded/icon_visible_outlined.svg'
 import { formatTimestamp } from '@/utils/date'
 import { useClipboard } from '@vueuse/core'
-import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import { request } from '@/utils/request'
 
 const { t } = useI18n()
@@ -144,7 +143,9 @@ onMounted(() => {
     <div class="api-key-grid">
       <el-table
         ref="multipleTableRef"
+        class="api-key-table"
         :data="state.tableData"
+        height="320"
         style="width: 100%"
         @sort-change="sortChange"
       >
@@ -261,11 +262,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <template #empty>
-          <EmptyBackground
-            v-if="!state.tableData.length"
-            :description="$t('datasource.relevant_content_found')"
-            img-type="none"
-          />
+          <div class="api-key-empty">{{ $t('datasource.relevant_content_found') }}</div>
         </template>
       </el-table>
     </div>
@@ -322,8 +319,24 @@ onMounted(() => {
 
   .api-key-grid {
     width: 100%;
+    min-height: 320px;
+    overflow: hidden;
+
     .el-table {
       width: 100%;
+    }
+
+    .api-key-empty {
+      height: 266px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #646a73;
+      font-size: 14px;
+    }
+
+    :deep(.api-key-table .ed-table__body-wrapper) {
+      overflow-y: auto;
     }
 
     .table-operate {

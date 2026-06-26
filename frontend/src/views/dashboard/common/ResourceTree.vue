@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
 import icon_sidebar_outlined from '@/assets/svg/icon_sidebar_outlined.svg'
-import { treeDraggableChart } from '@/views/dashboard/utils/treeDraggableChart'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import icon_folder from '@/assets/svg/icon_folder.svg'
+import icon_folder_open from '@/assets/svg/folder-open-svgrepo-com.svg'
 import icon_dashboard from '@/assets/permission/icon_dashboard.svg'
+import icon_dashboard_grid_add from '@/assets/svg/icon_dashboard_grid_add.svg'
+import icon_dashboard_group_color from '@/assets/svg/icon_dashboard_group_color.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
@@ -14,8 +15,7 @@ import icon_copy_outlined from '@/assets/svg/icon_copy_outlined.svg'
 import icon_done_outlined from '@/assets/svg/icon_done_outlined.svg'
 import icon_more_outlined from '@/assets/svg/icon_more_outlined.svg'
 import icon_start_outlined from '@/assets/svg/icon_start_outlined.svg'
-import dv_sort_asc from '@/assets/svg/dv-sort-asc.svg'
-import dv_sort_desc from '@/assets/svg/dv-sort-desc.svg'
+import icon_tree_list from '@/assets/svg/icon_tree_list.svg'
 import { onMounted, reactive, ref, watch, nextTick, computed } from 'vue'
 import { ElIcon, ElMessage, ElMessageBox, ElScrollbar } from 'element-plus-secondary'
 import { Icon } from '@/components/icon-custom'
@@ -27,8 +27,6 @@ import ResourceGroupOpt from '@/views/dashboard/common/ResourceGroupOpt.vue'
 import { dashboardApi } from '@/api/dashboard.ts'
 import HandleMore from '@/views/dashboard/common/HandleMore.vue'
 import { useI18n } from 'vue-i18n'
-import treeSort from '@/views/dashboard/utils/treeSortUtils.ts'
-import { useCache } from '@/utils/useCache.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { useUserStore } from '@/stores/user'
 import { captureDashboardSharePreview } from '@/views/dashboard/utils/sharePreview'
@@ -38,9 +36,7 @@ import {
   findFirstLeafDashboardNode,
   getRememberedDefaultDashboardId,
   rememberDefaultDashboardId,
-  resolveBusinessDashboardLandingTarget,
 } from '@/utils/dashboardLanding'
-const { wsCache } = useCache()
 
 const { t } = useI18n()
 const dashboardStore = dashboardStoreWithOut()
@@ -75,27 +71,40 @@ const defaultProps = {
   children: 'children',
   label: 'name',
 }
+type DashboardScope = 'default' | 'my'
+type TreeOrderItem = {
+  id: string | number
+  pid: string | number
+  sort: number
+}
+type TreeMenuItem = {
+  label: string
+  command: string
+  svgName: any
+  disabled?: boolean
+  divided?: boolean
+}
+const DEFAULT_GROUP_ID = '__dashboard_group_default__'
+const MY_GROUP_ID = '__dashboard_group_my__'
+const DEFAULT_SCOPE: DashboardScope = 'default'
+const MY_SCOPE: DashboardScope = 'my'
+const TREE_NODE_INDENT = 28
 const mounted = ref(false)
 const selectedNodeKey: any = ref(null)
 const filterText = ref(null)
 const expandedArray = ref<Array<string | number>>([])
 const resourceListTree = ref()
 const returnMounted = ref(false)
-const isDefaultOrderEditing = ref(false)
-const defaultDraggingNode = ref<any>(null)
-const defaultDropIndicator = reactive({
+const isTreeEditing = ref(false)
+const draggingTreeNode = ref<any>(null)
+const treeDropIndicator = reactive({
   visible: false,
   nodeId: '',
   placement: '',
 })
 const state = reactive({
-  curSortType: 'name_asc',
-  curSortTypePrefix: 'name',
-  curSortTypeSuffix: '_asc',
   resourceTree: [] as SQTreeNode[],
   originResourceTree: [] as SQTreeNode[],
-  sortType: [],
-  templateCreatePid: 0,
   baseMenuList: [
     {
       label: t('dashboard.edit'),
@@ -116,11 +125,195 @@ const state = reactive({
   ],
 })
 
-const { handleDrop, handleDragStart } = treeDraggableChart(state, 'resourceTree', 'dashboard')
-
-const canEditDefaultOrder = computed<boolean>(
-  () => props.defaultMode && userStore.isTenantAdminUser === true
+const canEditDefaultOrder = computed<boolean>(() => userStore.isTenantAdminUser === true)
+const isCombinedDashboardTree = computed<boolean>(() => !props.defaultMode)
+const treeEditButtonTip = computed(() =>
+  isTreeEditing.value ? t('dashboard.finish_order_edit') : t('dashboard.edit_order')
 )
+
+const normalizeDashboardScope = (value: unknown): DashboardScope => {
+  const scope = Array.isArray(value) ? value[0] : value
+  return scope === DEFAULT_SCOPE ? DEFAULT_SCOPE : MY_SCOPE
+}
+
+const currentRouteDashboardScope = (): DashboardScope =>
+  props.defaultMode
+    ? DEFAULT_SCOPE
+    : normalizeDashboardScope(router.currentRoute.value.query.dashboardMode)
+
+const expandedStorageKey = () => {
+  const tenantId = userStore.getTenantId || 'default'
+  const datasourceId = props.defaultMode ? 'default' : datasourceContext.datasourceId || 'none'
+  const mode = props.defaultMode ? 'default' : 'combined'
+  return `dashboard-tree-expanded:${tenantId}:${datasourceId}:${mode}`
+}
+
+const collectExpandableKeys = (nodes: SQTreeNode[] = [], result: Array<string | number> = []) => {
+  nodes.forEach((node) => {
+    if (node.id && node.node_type !== 'leaf') {
+      result.push(node.id)
+    }
+    collectExpandableKeys(node.children || [], result)
+  })
+  return result
+}
+
+const readStoredExpandedKeys = () => {
+  try {
+    const raw = window.localStorage.getItem(expandedStorageKey())
+    const value = raw ? JSON.parse(raw) : []
+    return Array.isArray(value) ? value : []
+  } catch {
+    return []
+  }
+}
+
+const persistExpandedKeys = () => {
+  try {
+    window.localStorage.setItem(expandedStorageKey(), JSON.stringify(expandedArray.value))
+  } catch {
+    // Ignore storage failures; the tree still falls back to expanding all folders.
+  }
+}
+
+const restoreExpandedKeys = () => {
+  const expandableKeys = collectExpandableKeys(state.resourceTree)
+  const expandableKeySet = new Set(expandableKeys.map((key) => String(key)))
+  const storedKeys = readStoredExpandedKeys().filter((key) => expandableKeySet.has(String(key)))
+  expandedArray.value = storedKeys.length ? storedKeys : expandableKeys
+  if (!storedKeys.length) {
+    persistExpandedKeys()
+  }
+}
+
+const ensureSelectedNodeExpanded = () => {
+  const parentKeys = getDefaultExpandedKeys().filter((key) => key)
+  const keyMap = new Map(expandedArray.value.map((key) => [String(key), key]))
+  parentKeys.forEach((key) => {
+    if (!keyMap.has(String(key))) {
+      keyMap.set(String(key), key)
+    }
+  })
+  expandedArray.value = Array.from(keyMap.values())
+  persistExpandedKeys()
+}
+
+const getRawDashboardId = (node?: SQTreeNode | null) => (node as any)?.raw_id ?? node?.id
+const getDashboardScope = (node?: SQTreeNode | null): DashboardScope =>
+  props.defaultMode ? DEFAULT_SCOPE : ((node as any)?.dashboard_scope || MY_SCOPE)
+
+const getDashboardNodeKey = (scope: DashboardScope, dashboardId?: string | number | null) => {
+  if (!dashboardId) return dashboardId
+  return scope === DEFAULT_SCOPE && isCombinedDashboardTree.value
+    ? `${DEFAULT_SCOPE}:${dashboardId}`
+    : dashboardId
+}
+
+const isDefaultDashboardNode = (node?: SQTreeNode | null) =>
+  getDashboardScope(node) === DEFAULT_SCOPE
+const isMyDashboardNode = (node?: SQTreeNode | null) => getDashboardScope(node) === MY_SCOPE
+const isDefaultGroupNode = (node?: SQTreeNode | null) =>
+  isVirtualNode(node as SQTreeNode) && String(node?.id || '') === DEFAULT_GROUP_ID
+const isMyGroupNode = (node?: SQTreeNode | null) =>
+  isVirtualNode(node as SQTreeNode) && String(node?.id || '') === MY_GROUP_ID
+const findDefaultGroupNode = (nodes: SQTreeNode[] = []) =>
+  nodes.find((item) => String(item.id) === DEFAULT_GROUP_ID)
+const findMyGroupNode = (nodes: SQTreeNode[] = []) =>
+  nodes.find((item) => String(item.id) === MY_GROUP_ID)
+
+const createDashboardGroup = (
+  id: string,
+  name: string,
+  scope: DashboardScope,
+  children: SQTreeNode[]
+): SQTreeNode =>
+  ({
+    id,
+    pid: 'root',
+    name,
+    leaf: false,
+    weight: 0,
+    type: 'dashboard',
+    node_type: 'folder',
+    virtual: true,
+    dashboard_scope: scope,
+    children,
+  }) as SQTreeNode
+
+const normalizeDefaultDashboardNodes = (
+  nodes: SQTreeNode[] = [],
+  pid: string | number = DEFAULT_GROUP_ID
+): SQTreeNode[] =>
+  nodes.map((item) => {
+    const rawId = getRawDashboardId(item)
+    const nodeKey = getDashboardNodeKey(DEFAULT_SCOPE, rawId) || ''
+    const children: SQTreeNode[] = item.children?.length
+      ? normalizeDefaultDashboardNodes(item.children, nodeKey)
+      : []
+    return {
+      ...item,
+      id: nodeKey,
+      raw_id: rawId,
+      pid,
+      dashboard_scope: DEFAULT_SCOPE,
+      children,
+    } as SQTreeNode
+  })
+
+const normalizeMyDashboardNodes = (
+  nodes: SQTreeNode[] = [],
+  pid: string | number = MY_GROUP_ID
+): SQTreeNode[] =>
+  nodes.map((item) => {
+    const rawId = getRawDashboardId(item)
+    const children: SQTreeNode[] = item.children?.length
+      ? normalizeMyDashboardNodes(item.children, rawId)
+      : []
+    return {
+      ...item,
+      id: rawId,
+      raw_id: rawId,
+      pid,
+      dashboard_scope: MY_SCOPE,
+      children,
+    } as SQTreeNode
+  })
+
+const buildCombinedTree = (defaultNodes: SQTreeNode[] = [], myNodes: SQTreeNode[] = []) => [
+  createDashboardGroup(
+    DEFAULT_GROUP_ID,
+    t('dashboard.default_dashboard'),
+    DEFAULT_SCOPE,
+    normalizeDefaultDashboardNodes(defaultNodes)
+  ),
+  createDashboardGroup(
+    MY_GROUP_ID,
+    t('dashboard.dashboard'),
+    MY_SCOPE,
+    normalizeMyDashboardNodes(myNodes)
+  ),
+]
+
+const findDashboardNode = (
+  nodes: SQTreeNode[] = [],
+  dashboardId?: string | number | null,
+  scope?: DashboardScope
+): SQTreeNode | undefined => {
+  if (!dashboardId) return undefined
+  for (const node of nodes) {
+    const rawId = getRawDashboardId(node)
+    if (
+      isLeafDashboardNode(node) &&
+      String(rawId) === String(dashboardId) &&
+      (!scope || getDashboardScope(node) === scope)
+    ) {
+      return node
+    }
+    const matched = findDashboardNode(node.children || [], dashboardId, scope)
+    if (matched) return matched
+  }
+  return undefined
+}
 
 const currentRouteDashboardId = () => {
   const resourceId =
@@ -129,19 +322,22 @@ const currentRouteDashboardId = () => {
 }
 const routeDashboardId = currentRouteDashboardId()
 if (routeDashboardId) {
-  selectedNodeKey.value = routeDashboardId
+  selectedNodeKey.value = getDashboardNodeKey(currentRouteDashboardScope(), routeDashboardId)
   returnMounted.value = true
 }
 const nodeExpand = (data: any) => {
-  if (data.id) {
+  if (!data.id) return
+  if (!expandedArray.value.some((id) => String(id) === String(data.id))) {
     expandedArray.value.push(data.id)
   }
+  persistExpandedKeys()
 }
 
 const nodeCollapse = (data: any) => {
-  if (data.id) {
-    expandedArray.value.splice(expandedArray.value.indexOf(data.id), 1)
-  }
+  if (!data.id) return
+  const collapsedKeys = new Set(collectExpandableKeys([data]).map((id) => String(id)))
+  expandedArray.value = expandedArray.value.filter((id) => !collapsedKeys.has(String(id)))
+  persistExpandedKeys()
 }
 
 const resetTreeState = () => {
@@ -160,59 +356,80 @@ const resetTreeState = () => {
 
 const filterNode = (value: string, data: SQTreeNode) => {
   if (!value) return true
+  if (isVirtualNode(data)) return true
   return data.name?.toLocaleLowerCase().includes(value.toLocaleLowerCase())
 }
 
-const syncDashboardRoute = (resourceId: string | number) => {
+const syncDashboardRoute = (node: SQTreeNode) => {
   if (props.showPosition !== 'preview') return
   const currentRoute = router.currentRoute.value
   const expectedPath = props.defaultMode ? '/default-dashboard/index' : '/dashboard/index'
   if (currentRoute.path !== expectedPath) return
-  if (String(currentRoute.query.resourceId || '') === String(resourceId)) return
+  const resourceId = getRawDashboardId(node)
+  const dashboardMode = getDashboardScope(node)
+  if (!resourceId) return
+  const currentMode = props.defaultMode ? DEFAULT_SCOPE : currentRouteDashboardScope()
+  if (
+    String(currentRoute.query.resourceId || '') === String(resourceId) &&
+    currentMode === dashboardMode
+  ) {
+    return
+  }
   router.replace({
     path: currentRoute.path,
     query: {
       ...currentRoute.query,
       resourceId,
+      ...(props.defaultMode
+        ? {}
+        : {
+            dashboardMode,
+          }),
     },
   })
 }
 
 const shouldAutoSelectDashboard = () => props.showPosition === 'preview'
 const isVirtualNode = (node?: SQTreeNode) => (node as any)?.virtual === true
+const isRealNode = (node?: SQTreeNode | null) => !!node && !isVirtualNode(node as SQTreeNode)
 const isLeafDashboardNode = (node?: SQTreeNode) =>
   (node?.node_type === 'leaf' || node?.leaf === true) && !isVirtualNode(node)
 
-const isCurrentRouteTarget = (target: any) => {
-  const currentRoute = router.currentRoute.value
-  if (typeof target === 'string') {
-    return target === currentRoute.fullPath || target === currentRoute.path
+const getTreeNodeDepth = (node: any, data?: SQTreeNode) => {
+  if (isVirtualNode(data)) {
+    return 0
   }
-  if (!target?.path || target.path !== currentRoute.path) return false
-  const targetResourceId = target.query?.resourceId
-  if (!targetResourceId) return true
-  return String(targetResourceId) === String(currentRoute.query.resourceId || '')
+  const level = Number(node?.level || 1)
+  const rootLevel = isCombinedDashboardTree.value ? 2 : 1
+  return Math.max(level - rootLevel, 0)
 }
 
-const redirectToResolvedLanding = async () => {
-  if (!shouldAutoSelectDashboard()) return false
-  const target = await resolveBusinessDashboardLandingTarget(userStore)
-  if (isCurrentRouteTarget(target)) return false
-  await router.replace(target)
-  return true
+const shouldShiftTopLevelFolder = (node: any, data?: SQTreeNode) =>
+  data?.node_type !== 'leaf' && !isVirtualNode(data) && getTreeNodeDepth(node, data) === 0
+
+const getTreeNodeStyle = (node: any, data: SQTreeNode) => {
+  const depth = getTreeNodeDepth(node, data)
+  return {
+    '--dashboard-tree-indent': `${depth * TREE_NODE_INDENT}px`,
+  }
 }
 
 const resolveInitialDashboardNode = () => {
   if (!shouldAutoSelectDashboard()) return undefined
   const routeResourceId = currentRouteDashboardId()
   if (routeResourceId) {
-    const routeNode = findDashboardNodeById(state.resourceTree, routeResourceId)
+    const routeNode = findDashboardNode(
+      state.resourceTree,
+      routeResourceId,
+      currentRouteDashboardScope()
+    )
     if (isLeafDashboardNode(routeNode)) return routeNode
   }
   if (props.defaultMode) {
-    const rememberedNode = findDashboardNodeById(
+    const rememberedNode = findDashboardNode(
       state.resourceTree,
-      getRememberedDefaultDashboardId(userStore)
+      getRememberedDefaultDashboardId(userStore),
+      DEFAULT_SCOPE
     )
     if (rememberedNode) return rememberedNode
   }
@@ -223,12 +440,22 @@ const selectDashboardNode = (node?: SQTreeNode) => {
   if (!node?.id || !isLeafDashboardNode(node)) return false
   selectedNodeKey.value = node.id
   returnMounted.value = true
-  expandedArray.value = getDefaultExpandedKeys()
-  if (props.defaultMode) {
-    rememberDefaultDashboardId(node.id, userStore)
+  if (isDefaultDashboardNode(node)) {
+    rememberDefaultDashboardId(getRawDashboardId(node), userStore)
   }
-  syncDashboardRoute(node.id)
+  syncDashboardRoute(node)
   return true
+}
+
+const emitDashboardNodeClick = (data?: SQTreeNode) => {
+  const dashboardNode = data
+  if (!dashboardNode || !isLeafDashboardNode(dashboardNode)) return
+  emit('nodeClick', {
+    ...dashboardNode,
+    id: getRawDashboardId(dashboardNode),
+    dashboardScope: getDashboardScope(dashboardNode),
+    dashboardKey: dashboardNode.id,
+  })
 }
 
 const nodeClick = (data: SQTreeNode, node: any) => {
@@ -248,11 +475,11 @@ const nodeClick = (data: SQTreeNode, node: any) => {
   } else {
     selectedNodeKey.value = data.id
     if (data.node_type === 'leaf') {
-      if (props.defaultMode) {
-        rememberDefaultDashboardId(data.id, userStore)
+      if (isDefaultDashboardNode(data)) {
+        rememberDefaultDashboardId(getRawDashboardId(data), userStore)
       }
-      syncDashboardRoute(data.id)
-      emit('nodeClick', data)
+      syncDashboardRoute(data)
+      emitDashboardNodeClick(data)
     } else {
       resourceListTree.value.setCurrentKey(null)
     }
@@ -271,14 +498,8 @@ const getTree = async () => {
       ) {
         return
       }
-      state.originResourceTree = (res || []).map((item) => ({
-        ...item,
-        pid: 'root',
-        node_type: 'leaf',
-        leaf: true,
-      }))
+      state.originResourceTree = normalizeDefaultDashboardNodes(res || [], 'root')
       state.resourceTree = _.cloneDeep(state.originResourceTree)
-      if (!state.resourceTree.length && (await redirectToResolvedLanding())) return
       afterTreeInit()
     })
     return
@@ -286,14 +507,11 @@ const getTree = async () => {
   await datasourceContext.loadDatasources()
   const requestDatasourceId = datasourceContext.datasourceId
   state.originResourceTree = []
-  if (!requestDatasourceId) {
-    state.resourceTree = []
-    if (await redirectToResolvedLanding()) return
-    afterTreeInit()
-    return
-  }
-  const params = { datasource: requestDatasourceId }
-  dashboardApi.list_resource(params).then(async (res: SQTreeNode[]) => {
+  const defaultListRequest = dashboardApi.default_list()
+  const myListRequest = requestDatasourceId
+    ? dashboardApi.list_resource({ datasource: requestDatasourceId })
+    : Promise.resolve([])
+  Promise.all([defaultListRequest, myListRequest]).then(async ([defaultRes, myRes]) => {
     if (
       requestSeq !== treeRequestSeq ||
       (userStore.getTenantId || 'default') !== requestTenantId ||
@@ -301,45 +519,142 @@ const getTree = async () => {
     ) {
       return
     }
-    state.originResourceTree = res || []
+    state.originResourceTree = buildCombinedTree(defaultRes || [], myRes || [])
     state.resourceTree = _.cloneDeep(state.originResourceTree)
-    handleSortTypeChange('name_asc')
-    if (!state.resourceTree.length && (await redirectToResolvedLanding())) return
     afterTreeInit()
   })
 }
 
-const hasData = computed<boolean>(() => state.resourceTree.length > 0)
+const hasData = computed<boolean>(() => !!findFirstLeafDashboardNode(state.resourceTree))
 const canCreateDashboard = computed<boolean>(() => datasourceContext.canCreateDashboard)
 const canManageNode = (data: SQTreeNode) => data.can_edit === true
 const canShareNode = (data: SQTreeNode) =>
-  data.node_type === 'leaf' && (data.can_share === true || data.can_edit === true || data.is_shared === true)
-const canSetDefaultNode = (data: SQTreeNode) => data.node_type === 'leaf' && data.can_set_default === true
-const canCopyDefaultNode = (data: SQTreeNode) => props.defaultMode && data.node_type === 'leaf'
+  isMyDashboardNode(data) &&
+  data.node_type === 'leaf' &&
+  (data.can_share === true || data.can_edit === true || data.is_shared === true)
+const canSetDefaultNode = (data: SQTreeNode) =>
+  isMyDashboardNode(data) && data.node_type === 'leaf' && data.can_set_default === true
+const canRemoveDefaultNode = (data: SQTreeNode) =>
+  data.node_type === 'leaf' &&
+  data.is_default === true &&
+  (canSetDefaultNode(data) || (isDefaultDashboardNode(data) && canEditDefaultOrder.value))
+const canCopyDefaultNode = (data: SQTreeNode) =>
+  isDefaultDashboardNode(data) && data.node_type === 'leaf'
 const canCopyPlatformTemplateNode = (data: SQTreeNode) =>
   userStore.isPlatformWorkspaceDelegate &&
   !props.defaultMode &&
+  isMyDashboardNode(data) &&
   data.node_type === 'leaf' &&
   (data as any).can_copy_to_platform_template === true
-const hasNodeMenu = (data: SQTreeNode) =>
-  props.defaultMode
-    ? canCopyDefaultNode(data)
-    : canManageNode(data) ||
-      canShareNode(data) ||
-      canSetDefaultNode(data) ||
-      canCopyPlatformTemplateNode(data)
+const hasNodeMenu = (data: SQTreeNode) => {
+  if (isDefaultGroupNode(data)) return canEditDefaultOrder.value
+  if (isDefaultDashboardNode(data) && data.node_type !== 'leaf') return canEditDefaultOrder.value
+  if (canCopyDefaultNode(data)) return true
+  if (isMyGroupNode(data)) return canOpenCreateDashboard.value
+  if (!isMyDashboardNode(data)) return false
+  return (
+    canManageNode(data) ||
+    canShareNode(data) ||
+    canSetDefaultNode(data) ||
+    canCopyPlatformTemplateNode(data)
+  )
+}
 const nodeMenuList = (data: SQTreeNode) => {
-  if (props.defaultMode) {
-    return canCopyDefaultNode(data)
+  if (isDefaultGroupNode(data)) {
+    return canEditDefaultOrder.value
       ? [
           {
-            label: t('dashboard.copy_to_my_dashboard'),
-            command: 'copyDefault',
-            svgName: icon_copy_outlined,
-            disabled: copyLoading.value,
+            label: t('dashboard.new_folder'),
+            command: 'newFolder',
+            svgName: icon_folder,
           },
         ]
       : []
+  }
+  if (canCopyDefaultNode(data)) {
+    const list: TreeMenuItem[] = [
+      {
+        label: t('dashboard.copy_to_my_dashboard'),
+        command: 'copyDefault',
+        svgName: icon_copy_outlined,
+        disabled: copyLoading.value,
+      },
+    ]
+    if (canRemoveDefaultNode(data)) {
+      list.push({
+        label: t('dashboard.remove_default_dashboard'),
+        command: 'removeDefault',
+        svgName: icon_close_outlined,
+      })
+    }
+    return list
+  }
+  if (isDefaultDashboardNode(data)) {
+    if (data.node_type !== 'leaf' && canEditDefaultOrder.value) {
+      return [
+        {
+          label: t('dashboard.new_folder'),
+          command: 'newFolder',
+          svgName: icon_folder,
+        },
+        {
+          label: t('dashboard.rename'),
+          command: 'rename',
+          svgName: icon_rename,
+        },
+        {
+          label: t('dashboard.delete'),
+          command: 'delete',
+          svgName: icon_delete,
+          divided: true,
+        },
+      ]
+    }
+    return []
+  }
+  if (isMyGroupNode(data)) {
+    return canOpenCreateDashboard.value
+      ? [
+          {
+            label: t('dashboard.new_dashboard'),
+            command: 'newLeaf',
+            svgName: icon_dashboard,
+          },
+          {
+            label: t('dashboard.new_folder'),
+            command: 'newFolder',
+            svgName: icon_folder,
+          },
+        ]
+      : []
+  }
+  if (!isMyDashboardNode(data)) {
+    return []
+  }
+  if (data.node_type !== 'leaf') {
+    return [
+      {
+        label: t('dashboard.new_dashboard'),
+        command: 'newLeaf',
+        svgName: icon_dashboard,
+      },
+      {
+        label: t('dashboard.new_folder'),
+        command: 'newFolder',
+        svgName: icon_folder,
+      },
+      {
+        label: t('dashboard.rename'),
+        command: 'rename',
+        svgName: icon_rename,
+      },
+      {
+        label: t('dashboard.delete'),
+        command: 'delete',
+        svgName: icon_delete,
+        divided: true,
+      },
+    ]
   }
   const list = canManageNode(data) ? [...state.baseMenuList] : []
   if (canCopyPlatformTemplateNode(data)) {
@@ -374,6 +689,37 @@ const findTreeNode = (nodes: SQTreeNode[], id: string | number): SQTreeNode | un
   return undefined
 }
 
+const normalizePersistPid = (pid: string | number, scope: DashboardScope) => {
+  if (scope === DEFAULT_SCOPE && String(pid) === DEFAULT_GROUP_ID) return 'root'
+  if (scope === MY_SCOPE && String(pid) === MY_GROUP_ID) return 'root'
+  return pid
+}
+
+const collectTreeOrderItems = (
+  nodes: SQTreeNode[] = [],
+  parentId: string | number,
+  scope: DashboardScope,
+  result: TreeOrderItem[] = [],
+  includeNode: (node: SQTreeNode) => boolean = () => true
+) => {
+  nodes.forEach((node, index) => {
+    if (isVirtualNode(node)) {
+      collectTreeOrderItems(node.children || [], node.id, scope, result, includeNode)
+      return
+    }
+    if (!includeNode(node)) return
+    const rawId = getRawDashboardId(node)
+    const rawPid = normalizePersistPid(parentId, scope)
+    result.push({
+      id: rawId,
+      pid: rawPid,
+      sort: index + 1,
+    })
+    collectTreeOrderItems(node.children || [], rawId, scope, result, includeNode)
+  })
+  return result
+}
+
 const afterTreeInit = () => {
   mounted.value = true
   const selectedNode = selectedNodeKey.value
@@ -386,25 +732,30 @@ const afterTreeInit = () => {
   if (!selectedNodeKey.value) {
     selectDashboardNode(resolveInitialDashboardNode())
   }
+  restoreExpandedKeys()
   if (selectedNodeKey.value && returnMounted.value) {
-    expandedArray.value = getDefaultExpandedKeys()
+    ensureSelectedNodeExpanded()
     returnMounted.value = false
   }
   nextTick(() => {
-    resourceListTree.value.setCurrentKey(selectedNodeKey.value)
+    resourceListTree.value.setCurrentKey(selectedNodeKey.value, false)
     resourceListTree.value.filter(filterText.value)
-    nextTick(() => {
-      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      document.querySelector('.is-current')?.firstChild?.click()
-    })
+    emitDashboardNodeClick(findDashboardNodeById(state.resourceTree, selectedNodeKey.value))
   })
 }
 
 const copyLoading = ref(false)
 const emit = defineEmits(['nodeClick', 'deleteCurResource', 'toggleSidebar'])
+const canCreateFromPlatformTemplate = computed<boolean>(
+  () => userStore.isPlatformWorkspaceDelegate && !props.defaultMode
+)
+const canOpenCreateDashboard = computed<boolean>(
+  () => canCreateDashboard.value || canCreateFromPlatformTemplate.value
+)
+const canEditDashboardTree = computed<boolean>(() => canOpenCreateDashboard.value || canEditDefaultOrder.value)
 
 function createNewObject() {
-  if (!canCreateDashboard.value) return
+  if (!canOpenCreateDashboard.value) return
   addOperation({ opt: 'newLeaf' })
 }
 
@@ -430,7 +781,7 @@ const openCopiedDashboard = async (record: any) => {
   }
   await router.push({
     path: '/dashboard/index',
-    query: { resourceId: record.id },
+    query: { resourceId: record.id, dashboardMode: MY_SCOPE },
   })
 }
 
@@ -508,7 +859,7 @@ watch(
     if (props.defaultMode) return
     const routeResourceId = currentRouteDashboardId()
     if (routeResourceId) {
-      selectedNodeKey.value = routeResourceId
+      selectedNodeKey.value = getDashboardNodeKey(currentRouteDashboardScope(), routeResourceId)
       returnMounted.value = true
       getTree()
       return
@@ -520,32 +871,37 @@ watch(
 )
 
 watch(
-  () => currentRouteDashboardId(),
-  (resourceId) => {
+  () => [currentRouteDashboardId(), currentRouteDashboardScope()],
+  ([resourceId, dashboardScope]) => {
     if (!shouldAutoSelectDashboard()) return
-    if (!resourceId || String(resourceId) === String(selectedNodeKey.value || '')) return
-    const node = findDashboardNodeById(state.resourceTree, resourceId)
+    const routeNodeKey = getDashboardNodeKey(dashboardScope as DashboardScope, resourceId)
+    if (!resourceId || String(routeNodeKey) === String(selectedNodeKey.value || '')) return
+    const node = findDashboardNode(state.resourceTree, resourceId, dashboardScope as DashboardScope)
     if (!isLeafDashboardNode(node)) {
       if (state.resourceTree.length && props.defaultMode) {
         selectedNodeKey.value = null
         selectDashboardNode(resolveInitialDashboardNode())
         return
       }
-      selectedNodeKey.value = resourceId
+      selectedNodeKey.value = getDashboardNodeKey(dashboardScope as DashboardScope, resourceId)
       returnMounted.value = true
       return
     }
     selectDashboardNode(node)
+    ensureSelectedNodeExpanded()
+    returnMounted.value = false
     nextTick(() => {
-      resourceListTree.value?.setCurrentKey?.(selectedNodeKey.value)
-      const currentNode = resourceListTree.value?.$el?.querySelector?.('.is-current')
-      currentNode?.firstChild?.click?.()
+      resourceListTree.value?.setCurrentKey?.(selectedNodeKey.value, false)
+      emitDashboardNodeClick(node)
     })
   }
 )
 
 const addOperation = (params: any) => {
-  if (props.defaultMode || !canCreateDashboard.value) return
+  const creatingDefaultFolder =
+    params?.opt === 'newFolder' && (params?.dashboardScope === DEFAULT_SCOPE || props.defaultMode)
+  if (!creatingDefaultFolder && (props.defaultMode || !canOpenCreateDashboard.value)) return
+  if (creatingDefaultFolder && !canEditDefaultOrder.value) return
   if (params?.id) {
     const folder = findTreeNode(state.originResourceTree, params.id)
     if (!folder || !canManageNode(folder)) return
@@ -559,6 +915,32 @@ const addOperation = (params: any) => {
 }
 
 const operation = async (opt: string, data: SQTreeNode) => {
+  const resourceId = getRawDashboardId(data)
+  if (opt === 'toggleTreeEditing') {
+    await toggleTreeEditing()
+    return
+  }
+  if (opt === 'newLeaf') {
+    addOperation({ opt: 'newLeaf', type: 'dashboard', id: isMyGroupNode(data) ? undefined : resourceId })
+    return
+  }
+  if (opt === 'newFolder') {
+    const dashboardScope = getDashboardScope(data)
+    const isRootGroup = isMyGroupNode(data) || isDefaultGroupNode(data)
+    addOperation({
+      opt: 'newFolder',
+      type: 'dashboard',
+      nodeType: 'folder',
+      name: '',
+      placeholder: t('dashboard.length_1_64_characters'),
+      pid: isRootGroup ? 'root' : resourceId,
+      id: isRootGroup ? undefined : data.id,
+      datasource: dashboardScope === DEFAULT_SCOPE ? null : datasourceContext.datasourceId,
+      isDefault: dashboardScope === DEFAULT_SCOPE,
+      dashboardScope,
+    })
+    return
+  }
   if (opt === 'delete') {
     const msg = data.node_type === 'leaf' ? '' : t('dashboard.delete_tips')
     ElMessageBox.confirm(t('dashboard.delete_dashboard_warn', [data.name]), {
@@ -568,7 +950,7 @@ const operation = async (opt: string, data: SQTreeNode) => {
       autofocus: false,
       showClose: false,
     }).then(() => {
-      dashboardApi.delete_resource({ id: data.id, name: data.name }).then(() => {
+      dashboardApi.delete_resource({ id: resourceId, name: data.name }).then(() => {
         ElMessage.success(t('dashboard.delete_success'))
         getTree()
         dashboardStore.canvasDataInit()
@@ -577,19 +959,19 @@ const operation = async (opt: string, data: SQTreeNode) => {
     })
   } else if (opt === 'rename') {
     // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    resourceGroupOptRef.value?.optInit({ opt: 'rename', id: data.id, name: data.name })
+    resourceGroupOptRef.value?.optInit({ opt: 'rename', id: resourceId, name: data.name })
   } else if (opt === 'edit') {
-    resourceEdit(data.id)
+    resourceEdit(resourceId)
   } else if (opt === 'copyToPlatformTemplate') {
     if (!canCopyPlatformTemplateNode(data)) return
-    await dashboardApi.platform_template_copy_from_dashboard({ dashboard_id: data.id })
+    await dashboardApi.platform_template_copy_from_dashboard({ dashboard_id: resourceId })
     ElMessage.success(t('dashboard.copy_to_platform_template_success'))
   } else if (opt === 'share') {
     if (!canShareNode(data)) return
     const previewImage = selectedNodeKey.value === data.id ? await captureDashboardSharePreview() : ''
     dashboardApi
       .share({
-        dashboard_id: data.id,
+        dashboard_id: resourceId,
         share_type: 'dashboard',
         preview_image: previewImage,
       })
@@ -611,10 +993,11 @@ const operation = async (opt: string, data: SQTreeNode) => {
       })
     })
   } else if (opt === 'setDefault' || opt === 'removeDefault') {
-    if (!canSetDefaultNode(data)) return
+    if (opt === 'setDefault' && !canSetDefaultNode(data)) return
+    if (opt === 'removeDefault' && !canRemoveDefaultNode(data)) return
     dashboardApi
       .default_set({
-        dashboard_id: data.id,
+        dashboard_id: resourceId,
         is_default: opt === 'setDefault',
       })
       .then(() => {
@@ -629,7 +1012,7 @@ const operation = async (opt: string, data: SQTreeNode) => {
     if (!canCopyDefaultNode(data) || copyLoading.value) return
     copyLoading.value = true
     try {
-      const record = await dashboardApi.default_copy({ dashboard_id: data.id })
+      const record = await dashboardApi.default_copy({ dashboard_id: resourceId })
       ElMessage.success(t('dashboard.copy_default_dashboard_success'))
       await openCopiedDashboard(record)
     } finally {
@@ -642,165 +1025,161 @@ const baseInfoChangeFinish = (result?: any) => {
   if (result?.opt === 'newLeaf' && result?.resourceId) {
     selectedNodeKey.value = result.resourceId
     returnMounted.value = true
-    syncDashboardRoute(result.resourceId)
+    syncDashboardRoute({
+      id: result.resourceId,
+      raw_id: result.resourceId,
+      pid: result.pid || 'root',
+      name: result.name || '',
+      leaf: true,
+      weight: 0,
+      type: 'dashboard',
+      node_type: 'leaf',
+      dashboard_scope: MY_SCOPE,
+    } as SQTreeNode)
   }
   getTree()
 }
 
-const defaultOrderIds = () => state.resourceTree.map((item) => String(item.id))
-
-const saveDefaultOrder = async () => {
-  const orderedIds = defaultOrderIds()
-  if (orderedIds.length === 0) return
-  await dashboardApi.default_sort({ ordered_ids: orderedIds })
+const saveTreeOrder = async () => {
+  const requests: Promise<any>[] = []
+  const defaultNodes = isCombinedDashboardTree.value
+    ? findDefaultGroupNode(state.resourceTree)?.children || []
+    : state.resourceTree
+  const defaultItems = collectTreeOrderItems(defaultNodes, props.defaultMode ? 'root' : DEFAULT_GROUP_ID, DEFAULT_SCOPE)
+  if (defaultItems.length && canEditDefaultOrder.value) {
+    requests.push(dashboardApi.reorder({ scope: DEFAULT_SCOPE, items: defaultItems }))
+  }
+  if (!props.defaultMode) {
+    const myNodes = findMyGroupNode(state.resourceTree)?.children || []
+    const myItems = collectTreeOrderItems(
+      myNodes,
+      MY_GROUP_ID,
+      MY_SCOPE,
+      [],
+      (node) => !node.is_default
+    )
+    if (myItems.length) {
+      requests.push(dashboardApi.reorder({ scope: MY_SCOPE, items: myItems }))
+    }
+  }
+  if (requests.length) {
+    await Promise.all(requests)
+  }
   state.originResourceTree = _.cloneDeep(state.resourceTree)
 }
 
-const toggleDefaultOrderEditing = async () => {
-  if (!canEditDefaultOrder.value) return
-  if (isDefaultOrderEditing.value) {
-    await saveDefaultOrder()
+const toggleTreeEditing = async () => {
+  if (!canEditDashboardTree.value) return
+  if (isTreeEditing.value) {
+    await saveTreeOrder()
     ElMessage.success(t('common.save_success'))
-    isDefaultOrderEditing.value = false
+    isTreeEditing.value = false
     return
   }
-  isDefaultOrderEditing.value = true
+  isTreeEditing.value = true
 }
 
-const allowDefaultOrderDrag = (draggingNode: any) =>
-  isDefaultOrderEditing.value && draggingNode?.data?.node_type === 'leaf'
+const sameDashboardScope = (left?: SQTreeNode | null, right?: SQTreeNode | null) =>
+  getDashboardScope(left) === getDashboardScope(right)
 
-const allowDefaultOrderDrop = (draggingNode: any, dropNode: any, type: string) =>
-  isDefaultOrderEditing.value &&
-  type !== 'inner' &&
-  draggingNode?.data?.node_type === 'leaf' &&
-  dropNode?.data?.node_type === 'leaf' &&
-  (draggingNode?.data?.pid || 'root') === (dropNode?.data?.pid || 'root')
+const allowNodeDrag = (draggingNode: any) => isTreeEditing.value && isRealNode(draggingNode?.data)
 
-const handleDefaultOrderDrop = () => {
+const allowNodeDrop = (draggingNode: any, dropNode: any, type: string) => {
+  if (!isTreeEditing.value || !isRealNode(draggingNode?.data) || !dropNode?.data) return false
+  if (!sameDashboardScope(draggingNode.data, dropNode.data)) return false
+  if (type === 'inner') {
+    return dropNode.data.node_type !== 'leaf'
+  }
+  return isRealNode(dropNode.data)
+}
+
+const handleTreeDrop = () => {
   state.originResourceTree = _.cloneDeep(state.resourceTree)
-  hideDefaultDropIndicator()
-  defaultDraggingNode.value = null
+  hideTreeDropIndicator()
+  draggingTreeNode.value = null
 }
 
-const hideDefaultDropIndicator = () => {
-  defaultDropIndicator.visible = false
-  defaultDropIndicator.nodeId = ''
-  defaultDropIndicator.placement = ''
+const hideTreeDropIndicator = () => {
+  treeDropIndicator.visible = false
+  treeDropIndicator.nodeId = ''
+  treeDropIndicator.placement = ''
 }
 
-const onDefaultOrderDragOver = (draggingNode: any, dropNode: any, event: DragEvent) => {
-  if (!isDefaultOrderEditing.value) return
+const getNodeDropPlacement = (draggingNode: any, dropNode: any, event: DragEvent, contentRect: DOMRect) => {
+  let dropPrev = allowNodeDrop(draggingNode, dropNode, 'prev')
+  let dropInner = allowNodeDrop(draggingNode, dropNode, 'inner')
+  let dropNext = allowNodeDrop(draggingNode, dropNode, 'next')
+
+  if (dropNode?.nextSibling === draggingNode) {
+    dropNext = false
+  }
+  if (dropNode?.previousSibling === draggingNode) {
+    dropPrev = false
+  }
+  if (dropNode?.contains?.(draggingNode, false)) {
+    dropInner = false
+  }
+  if (draggingNode === dropNode || draggingNode?.contains?.(dropNode)) {
+    dropPrev = false
+    dropInner = false
+    dropNext = false
+  }
+
+  const prevPercent = dropPrev ? (dropInner ? 0.25 : dropNext ? 0.45 : 1) : -1
+  const nextPercent = dropNext ? (dropInner ? 0.75 : dropPrev ? 0.55 : 0) : 1
+  const distance = event.clientY - contentRect.top
+
+  if (distance < contentRect.height * prevPercent) return 'prev'
+  if (distance > contentRect.height * nextPercent) return 'next'
+  if (dropInner) return 'inner'
+  return ''
+}
+
+const onNodeDragOver = (draggingNode: any, dropNode: any, event: DragEvent) => {
+  if (!isTreeEditing.value) return
   const target = event.target as HTMLElement | null
   const contentElement = target?.closest('.ed-tree-node__content') as HTMLElement | null
   const treeElement = resourceListTree.value?.$el as HTMLElement | undefined
   if (!contentElement || !treeElement) {
-    hideDefaultDropIndicator()
+    hideTreeDropIndicator()
     return
   }
   const contentRect = contentElement.getBoundingClientRect()
-  const dropType = event.clientY < contentRect.top + contentRect.height / 2 ? 'prev' : 'next'
-  if (!allowDefaultOrderDrop(defaultDraggingNode.value || draggingNode, dropNode, dropType)) {
-    hideDefaultDropIndicator()
+  const dropType = getNodeDropPlacement(
+    draggingTreeNode.value || draggingNode,
+    dropNode,
+    event,
+    contentRect
+  )
+  if (!dropType) {
+    hideTreeDropIndicator()
     return
   }
-  defaultDropIndicator.nodeId = String(dropNode?.data?.id || '')
-  defaultDropIndicator.placement = dropType
-  defaultDropIndicator.visible = true
+  treeDropIndicator.nodeId = String(dropNode?.data?.id || '')
+  treeDropIndicator.placement = dropType
+  treeDropIndicator.visible = true
 }
 
 const onNodeDragStart = (node: any) => {
-  if (props.defaultMode) {
-    defaultDraggingNode.value = node
-    hideDefaultDropIndicator()
-    return
-  }
-  if (!props.defaultMode) handleDragStart(node)
+  if (!allowNodeDrag(node)) return
+  draggingTreeNode.value = node
+  hideTreeDropIndicator()
 }
 
-const allowNodeDrag = (draggingNode: any) => {
-  if (props.defaultMode) return allowDefaultOrderDrag(draggingNode)
-  return !isVirtualNode(draggingNode?.data)
-}
-
-const onNodeDrop = (draggingNode: any, dropNode: any, dropType: string) => {
-  if (props.defaultMode) {
-    handleDefaultOrderDrop()
-    return
+const onNodeDrop = () => {
+  if (isTreeEditing.value) {
+    handleTreeDrop()
   }
-  handleDrop(draggingNode, dropNode, dropType)
 }
 
 const onNodeDragEnd = () => {
-  hideDefaultDropIndicator()
-  defaultDraggingNode.value = null
+  hideTreeDropIndicator()
+  draggingTreeNode.value = null
 }
-
-const handleSortTypeChange = (menuSortType: string) => {
-  state.curSortTypePrefix = ['name', 'time'].includes(menuSortType)
-    ? menuSortType
-    : state.curSortTypePrefix
-  state.curSortTypeSuffix = ['_asc', '_desc'].includes(menuSortType)
-    ? menuSortType
-    : state.curSortTypeSuffix
-  const curMenuSortType = state.curSortTypePrefix + state.curSortTypeSuffix
-  const sortedTree = treeSort(state.originResourceTree, curMenuSortType)
-  state.resourceTree = sortedTree
-  state.curSortType = curMenuSortType
-  wsCache.set('TreeSort-dashboard', state.curSortType)
-}
-
-const sortColumnList = [
-  {
-    name: t('dashboard.time'),
-    value: 'time',
-  },
-  {
-    name: t('dashboard.name'),
-    value: 'name',
-    divided: true,
-  },
-]
-
-const sortTypeList = [
-  {
-    name: t('dashboard.sort_asc'),
-    value: '_asc',
-  },
-  {
-    name: t('dashboard.sort_desc'),
-    value: '_desc',
-  },
-]
-
-const sortList = [
-  {
-    name: t('dashboard.time_asc'),
-    value: 'time_asc',
-  },
-  {
-    name: t('dashboard.time_desc'),
-    value: 'time_desc',
-    divided: true,
-  },
-  {
-    name: t('dashboard.name_asc'),
-    value: 'name_asc',
-  },
-  {
-    name: t('dashboard.name_desc'),
-    value: 'name_desc',
-  },
-]
-
-const sortTypeTip = computed(() => {
-  // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  return sortList.find((ele) => ele.value === state.curSortType).name
-})
 
 defineExpose({
   hasData,
-  canCreateDashboard,
+  canCreateDashboard: canOpenCreateDashboard,
   createNewObject,
   mounted,
 })
@@ -811,11 +1190,11 @@ defineExpose({
     class="resource-tree"
     :class="{
       'is-default-mode': defaultMode,
-      'is-default-order-editing': isDefaultOrderEditing,
+      'is-tree-editing': isTreeEditing,
     }"
   >
     <div class="tree-header">
-      <div class="icon-methods">
+      <div v-if="defaultMode" class="icon-methods">
         <span class="title">{{
           defaultMode ? t('dashboard.default_dashboard') : t('dashboard.dashboard')
         }}</span>
@@ -825,19 +1204,6 @@ defineExpose({
           </el-icon>
         </el-button>
       </div>
-      <el-button
-        v-if="!defaultMode && canCreateDashboard"
-        class="create-dashboard-btn"
-        type="primary"
-        @click="addOperation({ opt: 'newLeaf', type: 'dashboard' })"
-      >
-        <template #icon>
-          <Icon name="icon_add_outlined">
-            <icon_add_outlined class="svg-icon" />
-          </Icon>
-        </template>
-        {{ t('dashboard.new_dashboard') }}
-      </el-button>
       <div class="search-row">
         <el-input
           v-model="filterText"
@@ -854,79 +1220,24 @@ defineExpose({
           </template>
         </el-input>
         <el-button
-          v-if="defaultMode && canEditDefaultOrder"
+          v-if="canEditDashboardTree"
           link
           type="primary"
-          class="filter-icon-span default-order-edit-btn"
-          @click="toggleDefaultOrderEditing"
+          class="filter-icon-span tree-edit-btn"
+          :class="isTreeEditing && 'active'"
+          @click="toggleTreeEditing"
         >
-          <el-tooltip
-            :offset="16"
-            effect="dark"
-            :content="
-              isDefaultOrderEditing
-                ? t('dashboard.finish_order_edit')
-                : t('dashboard.edit_order')
-            "
-            placement="top"
-          >
+          <el-tooltip :offset="16" effect="dark" :content="treeEditButtonTip" placement="top">
             <span class="sort-trigger-icon">
-              <Icon
-                :name="isDefaultOrderEditing ? 'icon_done_outlined' : 'icon_edit_outlined'"
-              >
+              <Icon :name="isTreeEditing ? 'icon_done_outlined' : 'icon_tree_list'">
                 <component
-                  :is="isDefaultOrderEditing ? icon_done_outlined : icon_edit_outlined"
+                  :is="isTreeEditing ? icon_done_outlined : icon_tree_list"
                   class="svg-icon opt-icon"
                 />
               </Icon>
             </span>
           </el-tooltip>
         </el-button>
-        <el-dropdown
-          v-else-if="!defaultMode"
-          popper-class="tree-sort-menu-custom"
-          trigger="click"
-          placement="bottom-end"
-          @command="handleSortTypeChange"
-        >
-          <el-icon class="filter-icon-span" :class="state.curSortType !== 'name_asc' && 'active'">
-            <el-tooltip :offset="16" effect="dark" :content="sortTypeTip" placement="top">
-              <span class="sort-trigger-icon">
-                <Icon v-if="state.curSortType.includes('asc')" name="dv-sort-asc"
-                  ><dv_sort_asc class="svg-icon opt-icon"
-                /></Icon>
-                <Icon v-else name="dv-sort-desc"
-                  ><dv_sort_desc class="svg-icon opt-icon"
-                /></Icon>
-              </span>
-            </el-tooltip>
-          </el-icon>
-          <template #dropdown>
-            <el-dropdown-menu style="width: 120px">
-              <span class="sort_menu">{{ t('dashboard.sort_column') }}</span>
-              <template v-for="ele in sortColumnList" :key="ele.value">
-                <el-dropdown-item
-                  class="ed-select-dropdown__item"
-                  :class="state.curSortType.includes(ele.value) && 'selected'"
-                  :command="ele.value"
-                >
-                  {{ ele.name }}
-                </el-dropdown-item>
-                <li v-if="ele.divided" class="ed-dropdown-menu__item--divided"></li>
-              </template>
-              <span class="sort_menu">{{ t('dashboard.sort_type') }}</span>
-              <template v-for="ele in sortTypeList" :key="ele.value">
-                <el-dropdown-item
-                  class="ed-select-dropdown__item"
-                  :class="state.curSortType.includes(ele.value) && 'selected'"
-                  :command="ele.value"
-                >
-                  {{ ele.name }}
-                </el-dropdown-item>
-              </template>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
       </div>
     </div>
     <el-scrollbar v-loading="copyLoading" class="custom-tree">
@@ -936,10 +1247,11 @@ defineExpose({
         style="overflow-x: hidden"
         menu
         :empty-text="defaultMode ? t('dashboard.no_default_dashboard') : t('dashboard.no_dashboard')"
-        :draggable="defaultMode ? isDefaultOrderEditing : !defaultMode"
+        :draggable="isTreeEditing"
         :allow-drag="allowNodeDrag"
-        :allow-drop="defaultMode ? allowDefaultOrderDrop : undefined"
+        :allow-drop="allowNodeDrop"
         :default-expanded-keys="expandedArray"
+        :auto-expand-parent="false"
         :data="state.resourceTree"
         :props="defaultProps"
         node-key="id"
@@ -950,56 +1262,89 @@ defineExpose({
         @node-collapse="nodeCollapse"
         @node-click="nodeClick"
         @node-drag-start="onNodeDragStart"
-        @node-drag-over="onDefaultOrderDragOver"
+        @node-drag-over="onNodeDragOver"
         @node-drag-end="onNodeDragEnd"
         @node-drop="onNodeDrop"
       >
         <template #default="{ node, data }">
           <span
             class="custom-tree-node"
+            :style="getTreeNodeStyle(node, data)"
+            :data-tree-depth="getTreeNodeDepth(node, data)"
+            :data-shift-folder="shouldShiftTopLevelFolder(node, data) ? 'true' : undefined"
             :class="{
+              'is-group-node': data.node_type !== 'leaf',
+              'is-leaf-node': data.node_type === 'leaf',
+              'is-real-folder-node': data.node_type !== 'leaf' && !isVirtualNode(data),
+              'is-empty-folder-node':
+                data.node_type !== 'leaf' && !isVirtualNode(data) && !(data.children || []).length,
               'is-default-order-drop-prev':
-                defaultDropIndicator.visible &&
-                defaultDropIndicator.nodeId === String(data.id) &&
-                defaultDropIndicator.placement === 'prev',
+                treeDropIndicator.visible &&
+                treeDropIndicator.nodeId === String(data.id) &&
+                treeDropIndicator.placement === 'prev',
               'is-default-order-drop-next':
-                defaultDropIndicator.visible &&
-                defaultDropIndicator.nodeId === String(data.id) &&
-                defaultDropIndicator.placement === 'next',
+                treeDropIndicator.visible &&
+                treeDropIndicator.nodeId === String(data.id) &&
+                treeDropIndicator.placement === 'next',
+              'is-tree-drop-inner':
+                treeDropIndicator.visible &&
+                treeDropIndicator.nodeId === String(data.id) &&
+                treeDropIndicator.placement === 'inner',
             }"
           >
-            <el-icon v-if="data.node_type !== 'leaf'" class="tree-node-icon">
-              <Icon name="icon_folder"><icon_folder class="svg-icon" /></Icon>
+            <el-icon
+              v-if="data.node_type !== 'leaf' && !isVirtualNode(data)"
+              class="tree-node-icon folder-directory-icon"
+            >
+              <Icon name="folder-open-svgrepo-com">
+                <icon_folder_open class="svg-icon" />
+              </Icon>
+            </el-icon>
+            <el-icon
+              v-else-if="data.node_type !== 'leaf'"
+              class="tree-node-icon"
+              :class="{ 'group-color-icon': isVirtualNode(data) }"
+            >
+              <Icon v-if="isVirtualNode(data)" name="icon_dashboard_group_color">
+                <icon_dashboard_group_color class="svg-icon" />
+              </Icon>
+              <Icon v-else name="icon_folder"><icon_folder class="svg-icon" /></Icon>
             </el-icon>
             <el-icon v-else class="tree-node-icon icon-primary">
-              <Icon name="icon_dashboard"><icon_dashboard class="svg-icon" /></Icon>
+              <Icon name="icon_dashboard_grid_add">
+                <icon_dashboard_grid_add class="svg-icon" />
+              </Icon>
             </el-icon>
             <span :title="node.label" class="label-tooltip">
               {{ node.label }}
             </span>
-            <span v-if="data.node_type === 'leaf' && data.is_shared" class="shared-mark">
-              {{ t('dashboard.shared') }}
-            </span>
             <span
-              v-if="!defaultMode && data.node_type === 'leaf' && data.is_default"
-              class="default-mark"
+              v-if="
+                data.node_type === 'leaf' &&
+                (data.is_shared || (!defaultMode && isMyDashboardNode(data) && data.is_default))
+              "
+              class="tree-node-status"
             >
-              {{ t('dashboard.default_mark') }}
+              <span v-if="data.is_shared" class="shared-mark">
+                {{ t('dashboard.shared') }}
+              </span>
+              <span
+                v-if="!defaultMode && isMyDashboardNode(data) && data.is_default"
+                class="default-mark"
+              >
+                {{ t('dashboard.default_mark') }}
+              </span>
             </span>
             <div class="icon-more">
-              <el-icon
-                v-if="data.node_type !== 'leaf' && canManageNode(data)"
-                class="hover-icon"
-                @click.stop
-                @click="addOperation({ opt: 'newLeaf', type: 'dashboard', id: data.id })"
-              >
-                <Icon><icon_add_outlined class="svg-icon" /></Icon>
-              </el-icon>
               <HandleMore
                 v-if="hasNodeMenu(data)"
+                class="tree-node-more-menu"
                 :menu-list="nodeMenuList(data)"
                 :icon-name="icon_more_outlined"
-                placement="bottom-end"
+                vertical-dots
+                :create-menu="isMyGroupNode(data)"
+                placement="bottom"
+                :offset="6"
                 @handle-command="(opt: string) => operation(opt, data)"
               ></HandleMore>
             </div>
@@ -1017,7 +1362,7 @@ defineExpose({
   height: 34px;
   border-radius: 6px;
   color: var(--workspace-text-primary, #1f2329);
-  background: var(--workspace-card-bg, #ffffff);
+  background: var(--dashboard-preview-card-bg, var(--workspace-card-bg, #ffffff));
   padding: 8px;
   margin-left: 0;
   font-size: 16px;
@@ -1030,6 +1375,12 @@ defineExpose({
     width: 100%;
     height: 100%;
     color: inherit;
+
+    :deep(svg) {
+      width: 16px;
+      height: 16px;
+      color: inherit;
+    }
   }
 
   .opt-icon:focus {
@@ -1059,22 +1410,58 @@ defineExpose({
     }
   }
 
-  &.default-order-edit-btn {
+  &.tree-edit-btn {
     flex: 0 0 34px;
     min-width: 34px;
     margin-left: 0;
+    color: var(--workspace-text-secondary, #667085);
+  }
+
+  &.compact-icon-btn {
+    flex: 0 0 34px;
+    min-width: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    :deep(.ed-icon),
+    :deep(svg) {
+      width: 16px;
+      height: 16px;
+      color: inherit;
+    }
+
+    :deep(svg path) {
+      fill: currentColor !important;
+    }
+  }
+
+  &.sidebar-toggle-btn {
+    color: var(--workspace-text-secondary, #667085);
+  }
+
+  &.create-compact-btn {
+    color: var(--ed-color-primary, #2f6bff);
+    background: var(--workspace-primary-soft-bg, rgba(47, 107, 255, 0.1));
+
+    &:hover,
+    &:focus {
+      background: rgba(47, 107, 255, 0.16);
+      color: var(--ed-color-primary, #2f6bff);
+    }
   }
 }
 
 .resource-tree {
-  --ed-bg-color: var(--workspace-card-bg, #ffffff);
-  --ed-bg-color-page: var(--workspace-panel-bg, var(--theme-panel-bg));
-  --ed-bg-color-overlay: var(--workspace-card-bg, #ffffff);
+  --dashboard-sidebar-surface: var(--dashboard-preview-sidebar-bg, var(--workspace-panel-bg, var(--theme-panel-bg)));
+  --ed-bg-color: var(--dashboard-sidebar-surface);
+  --ed-bg-color-page: var(--dashboard-sidebar-surface);
+  --ed-bg-color-overlay: var(--dashboard-preview-card-bg, var(--workspace-card-bg, #ffffff));
   --ed-fill-color: var(--workspace-control-hover-bg, #eef2f8);
   --ed-fill-color-light: var(--workspace-control-hover-bg, #eef2f8);
   --ed-fill-color-lighter: var(--workspace-control-bg, #f8f9fa);
-  --ed-fill-color-extra-light: var(--workspace-card-bg, #ffffff);
-  --ed-fill-color-blank: var(--workspace-card-bg, #ffffff);
+  --ed-fill-color-extra-light: var(--dashboard-sidebar-surface);
+  --ed-fill-color-blank: var(--dashboard-sidebar-surface);
   --ed-text-color-primary: var(--workspace-text-primary, #1f2329);
   --ed-text-color-regular: var(--workspace-text-primary, #1f2329);
   --ed-text-color-secondary: var(--workspace-text-secondary, #646a73);
@@ -1087,17 +1474,17 @@ defineExpose({
   --ed-tree-node-hover-bg-color: var(--workspace-control-hover-bg, #eef2f8);
   --ed-tree-text-color: var(--workspace-text-primary, #1f2329);
 
-  padding: 14px 0 0;
+  padding: 8px 0 0;
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  background: var(--dashboard-sidebar-surface);
   color: var(--workspace-text-primary, #1f2329);
   font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
 
   .tree-header {
-    padding: 0 14px;
+    padding: 0 8px;
   }
 
   &.is-default-mode {
@@ -1106,7 +1493,7 @@ defineExpose({
     }
   }
 
-  &.is-default-order-editing {
+  &.is-tree-editing {
     :deep(.dashboard-resource-tree.ed-tree .ed-tree__drop-indicator) {
       display: none !important;
     }
@@ -1178,56 +1565,6 @@ defineExpose({
     }
   }
 
-  .create-dashboard-btn {
-    width: 100%;
-    height: 36px;
-    margin-bottom: 10px;
-    border-radius: 10px;
-    justify-content: center;
-    border: 0;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.1px;
-    background: linear-gradient(135deg, #2f6bff 0%, #1d8dff 100%);
-    box-shadow: 0 8px 18px rgba(47, 107, 255, 0.18);
-    transition:
-      transform 0.18s ease,
-      box-shadow 0.18s ease,
-      filter 0.18s ease;
-
-    --ed-button-text-color: #ffffff;
-    --ed-button-bg-color: #2f6bff;
-    --ed-button-border-color: transparent;
-    --ed-button-hover-bg-color: #235df0;
-    --ed-button-hover-text-color: #ffffff;
-    --ed-button-hover-border-color: transparent;
-    --ed-button-active-bg-color: #1f55de;
-    --ed-button-active-border-color: transparent;
-
-    &:hover {
-      background: linear-gradient(135deg, #235df0 0%, #137fe8 100%);
-      box-shadow: 0 10px 20px rgba(47, 107, 255, 0.24);
-      filter: saturate(1.04);
-    }
-
-    &:active {
-      transform: translateY(1px);
-      box-shadow: 0 6px 14px rgba(47, 107, 255, 0.18);
-    }
-
-    :deep(.ed-icon),
-    :deep(svg) {
-      width: 16px;
-      height: 16px;
-      color: inherit;
-    }
-
-    :deep(svg path) {
-      fill: currentColor !important;
-    }
-  }
-
   .search-row {
     position: relative;
     display: flex;
@@ -1235,6 +1572,7 @@ defineExpose({
     gap: 8px;
     width: 100%;
     height: 34px;
+    margin-bottom: 8px;
   }
 
   .search-bar {
@@ -1247,7 +1585,7 @@ defineExpose({
       min-height: 34px;
       padding: 0 10px;
       border-radius: 10px;
-      background-color: #ffffff !important;
+      background-color: var(--dashboard-preview-card-bg, #ffffff) !important;
       box-shadow:
         0 0 0 1px rgba(118, 134, 166, 0.22) inset,
         0 4px 12px rgba(18, 34, 66, 0.04) !important;
@@ -1331,20 +1669,41 @@ defineExpose({
 
 .custom-tree {
   --hover-color: var(--workspace-control-hover-bg, var(--theme-hover-bg));
-  --active-color: var(--workspace-active-bg, var(--theme-control-bg));
+  --active-color: #e8f0ff;
 
   flex: 1;
   position: relative;
   min-height: 0;
   height: auto;
   padding: 0;
-  background: var(--workspace-panel-bg, var(--theme-panel-bg));
+  background: var(--dashboard-sidebar-surface);
   color: var(--workspace-text-primary, #1f2329);
 
   :deep(.ed-scrollbar__view),
   :deep(.ed-tree) {
-    background: var(--workspace-panel-bg, var(--theme-panel-bg)) !important;
+    background: var(--dashboard-sidebar-surface) !important;
     color: var(--workspace-text-primary, #1f2329) !important;
+    max-width: 100%;
+    overflow-x: hidden !important;
+  }
+
+  :deep(.ed-scrollbar__bar.is-vertical) {
+    width: 4px;
+    right: 2px;
+  }
+
+  :deep(.ed-scrollbar__bar.is-horizontal) {
+    height: 4px;
+    bottom: 2px;
+  }
+
+  :deep(.ed-scrollbar__thumb) {
+    border-radius: 999px;
+    background-color: rgba(100, 106, 115, 0.28);
+  }
+
+  :deep(.ed-scrollbar__bar:hover .ed-scrollbar__thumb) {
+    background-color: rgba(100, 106, 115, 0.42);
   }
 
   :deep(.ed-tree__empty-text),
@@ -1363,21 +1722,44 @@ defineExpose({
   }
 
   :deep(.ed-tree-node__content) {
-    margin: 0 14px 2px;
-    height: 36px;
-    padding: 7px 0;
+    margin: 0 8px 1px;
+    width: calc(100% - 16px);
+    max-width: calc(100% - 16px);
+    box-sizing: border-box;
+    height: 32px;
+    padding: 0 !important;
     border-radius: 6px;
     font-size: 13px;
     line-height: 20px;
     font-weight: 400;
     color: var(--workspace-text-primary, #1f2329) !important;
     background: transparent;
+    overflow: hidden;
+  }
+
+  :deep(.dashboard-resource-tree > .ed-tree-node > .ed-tree-node__content) {
+    height: 32px;
+    margin-top: 0;
+    margin-bottom: 1px;
+  }
+
+  :deep(.dashboard-resource-tree .ed-tree-node__children) {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  :deep(.dashboard-resource-tree > .ed-tree-node > .ed-tree-node__children .ed-tree-node__content) {
+    margin: 0 8px 1px;
+    width: calc(100% - 16px);
+    max-width: calc(100% - 16px);
   }
 
   :deep(.dashboard-resource-tree.ed-tree .ed-tree-node > .ed-tree-node__content .tree-node-icon.icon-primary) {
     color: var(--workspace-text-secondary, #667085) !important;
     opacity: 1;
-    transform: scale(1.06);
+    transform: scale(1);
     transform-origin: center;
     transition:
       color 0.22s ease,
@@ -1423,7 +1805,7 @@ defineExpose({
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon.icon-primary) {
     color: var(--ed-color-primary, #2f6bff) !important;
     opacity: 1;
-    transform: scale(1.2);
+    transform: scale(1.18);
   }
 
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon.icon-primary svg) {
@@ -1439,11 +1821,36 @@ defineExpose({
   }
 
   :deep(.ed-tree-node) {
-    margin-bottom: 2px;
+    margin-bottom: 1px;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   :deep(.ed-tree-node__expand-icon.is-leaf) {
-    display: none;
+    visibility: hidden;
+    display: inline-flex !important;
+    flex: 0 0 2px;
+    width: 2px;
+  }
+
+  :deep(
+    .ed-tree-node__content:has(
+        > .custom-tree-node.is-real-folder-node[data-shift-folder='true']
+      )
+      > .ed-tree-node__expand-icon
+  ) {
+    position: relative;
+    z-index: 2;
+    transform: translateX(10px);
+  }
+
+  :deep(
+    .ed-tree-node__content:has(
+        > .custom-tree-node.is-real-folder-node[data-shift-folder='true']
+      )
+      > .ed-tree-node__expand-icon.expanded
+  ) {
+    transform: translateX(10px) rotate(90deg);
   }
 
 }
@@ -1451,38 +1858,69 @@ defineExpose({
 .custom-tree-node {
   position: relative;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   box-sizing: border-box;
-  padding-left: 12px;
+  padding-left: calc(var(--dashboard-tree-indent, 0px) + 6px);
   color: inherit;
 
   &.is-default-order-drop-prev::before,
   &.is-default-order-drop-next::before {
     content: '';
     position: absolute;
-    left: 0;
-    right: 0;
-    height: 1px;
+    left: 6px;
+    right: 6px;
+    height: 2px;
     border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      transparent 0,
-      currentColor 16%,
-      currentColor 84%,
-      transparent 100%
-    );
-    opacity: 0.24;
+    background: var(--ed-color-primary, #2f6bff);
+    box-shadow: 0 0 0 2px rgba(47, 107, 255, 0.1);
     pointer-events: none;
-    z-index: 2;
+    z-index: 4;
+  }
+
+  &.is-default-order-drop-prev::after,
+  &.is-default-order-drop-next::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ed-color-primary, #2f6bff);
+    pointer-events: none;
+    z-index: 5;
   }
 
   &.is-default-order-drop-prev::before {
-    top: -7px;
+    top: 1px;
+  }
+
+  &.is-default-order-drop-prev::after {
+    top: -1px;
   }
 
   &.is-default-order-drop-next::before {
-    bottom: -7px;
+    bottom: 1px;
+  }
+
+  &.is-default-order-drop-next::after {
+    bottom: -1px;
+  }
+
+  &.is-tree-drop-inner {
+    border-radius: 6px;
+    background: rgba(47, 107, 255, 0.09);
+    box-shadow:
+      0 0 0 1px rgba(47, 107, 255, 0.48) inset,
+      0 6px 14px rgba(47, 107, 255, 0.12);
+    color: var(--workspace-text-primary, #1f2329);
+  }
+
+  &.is-tree-drop-inner .tree-node-icon {
+    color: var(--ed-color-primary, #2f6bff);
   }
 
   .tree-node-icon {
@@ -1492,11 +1930,59 @@ defineExpose({
     font-size: 16px;
   }
 
+  .tree-node-icon :deep(svg) {
+    width: 16px;
+    height: 16px;
+  }
+
+  .tree-node-icon.group-color-icon {
+    flex-basis: 20px;
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+
+    :deep(svg) {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  .folder-directory-icon {
+    color: var(--workspace-text-secondary, #667085);
+
+    :deep(.ed-icon),
+    :deep(svg) {
+      width: 16px;
+      height: 16px;
+      min-width: 16px;
+      min-height: 16px;
+      color: inherit;
+    }
+
+    :deep(svg path) {
+      fill: currentColor !important;
+    }
+  }
+
   .tree-node-icon.icon-primary {
-    flex-basis: 17px;
-    width: 17px;
-    height: 17px;
-    font-size: 17px;
+    flex-basis: 14px;
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+
+    :deep(svg) {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  &.is-real-folder-node {
+    padding-left: calc(var(--dashboard-tree-indent, 0px) + 10px);
+  }
+
+  &.is-leaf-node,
+  &.is-empty-folder-node {
+    padding-left: calc(var(--dashboard-tree-indent, 0px) + 18px);
   }
 
   .label-tooltip {
@@ -1510,12 +1996,25 @@ defineExpose({
     color: inherit;
     overflow: hidden;
     white-space: nowrap;
-    text-overflow: ellipsis;
+    text-overflow: clip;
+  }
+
+  .tree-node-status {
+    position: absolute;
+    top: 50%;
+    right: 34px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: 6px;
+    max-width: 112px;
+    overflow: hidden;
+    z-index: 1;
   }
 
   .shared-mark {
     flex: 0 0 auto;
-    margin-left: 6px;
     padding: 0 6px;
     border-radius: 999px;
     background: rgba(37, 99, 235, 0.1);
@@ -1527,7 +2026,6 @@ defineExpose({
 
   .default-mark {
     flex: 0 0 auto;
-    margin-left: 6px;
     padding: 0 6px;
     border-radius: 999px;
     background: rgba(245, 158, 11, 0.14);
@@ -1538,9 +2036,69 @@ defineExpose({
   }
 
   .icon-more {
-    margin-left: auto;
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
     display: none;
-    color: var(--workspace-text-tertiary, #bbbfc4);
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: var(--workspace-text-secondary, #667085);
+    z-index: 2;
+  }
+
+  .tree-node-more-menu {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    :deep(.hover-icon) {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8faff;
+      box-shadow: none;
+      color: #8aa3ea;
+      cursor: pointer;
+      opacity: 1;
+      transition:
+        background-color 0.18s ease,
+        box-shadow 0.18s ease,
+        color 0.18s ease,
+        transform 0.18s ease,
+        opacity 0.18s ease;
+    }
+
+    :deep(.hover-icon svg),
+    :deep(.hover-icon .vertical-dots) {
+      color: inherit;
+    }
+
+    :deep(.hover-icon .vertical-dots span) {
+      width: 3.5px;
+      height: 3.5px;
+    }
+
+    :deep(.hover-icon svg path) {
+      fill: currentColor !important;
+    }
+
+    :deep(.hover-icon:hover),
+    :deep(.hover-icon:focus) {
+      background: #f8f9fb;
+      box-shadow: none;
+      color: #8a94a3;
+      opacity: 1;
+      transform: translateY(-1px);
+    }
   }
 
   &:hover {
@@ -1562,36 +2120,12 @@ defineExpose({
 </style>
 
 <style lang="less">
-.tree-sort-menu-custom {
-  padding: 4px !important;
-  li {
-    border-radius: 6px;
-    padding: 0 8px !important;
-  }
-  .ed-dropdown-menu__item:not(.is-disabled):not(.selected):hover {
-    color: #1f2329;
-  }
-}
 .menu-outer-dv_popper {
   min-width: 140px;
   margin-top: -2px !important;
 
   .ed-icon {
     border-radius: 6px;
-  }
-}
-
-.sort-type-normal {
-  i {
-    display: none;
-  }
-}
-
-.sort-type-checked {
-  color: var(--ed-color-primary);
-
-  i {
-    display: block;
   }
 }
 
@@ -1604,9 +2138,4 @@ defineExpose({
   background: #bbbfc4 !important;
 }
 
-.sort_menu {
-  color: rgba(143, 149, 158, 1);
-  font-size: 14px;
-  margin-left: 8px;
-}
 </style>

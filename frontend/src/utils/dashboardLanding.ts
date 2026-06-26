@@ -21,9 +21,13 @@ type DashboardLandingUserState = NavigationUserState & {
 const { wsCache } = useCache()
 const silentRequestConfig = { requestOptions: { silent: true } }
 
-const dashboardRoute = (path: string, dashboardId: string | number): RouteLocationRaw => ({
+const dashboardRoute = (
+  path: string,
+  dashboardId: string | number,
+  extraQuery: Record<string, string> = {}
+): RouteLocationRaw => ({
   path,
-  query: { resourceId: String(dashboardId) },
+  query: { resourceId: String(dashboardId), ...extraQuery },
 })
 
 const userScope = (userStore?: DashboardLandingUserState) => {
@@ -78,7 +82,7 @@ const resolveDefaultDashboardTarget = async (userStore: DashboardLandingUserStat
       findDashboardNodeById(dashboards, rememberedId) || findFirstLeafDashboardNode(dashboards)
     if (!candidate?.id) return null
     rememberDefaultDashboardId(candidate.id, userStore)
-    return dashboardRoute('/default-dashboard/index', candidate.id)
+    return dashboardRoute('/dashboard/index', candidate.id, { dashboardMode: 'default' })
   } catch (error) {
     console.warn('Failed to resolve recommended dashboard landing', error)
     return null
@@ -107,7 +111,7 @@ const resolveMyDashboardTarget = async () => {
       const candidate = findFirstLeafDashboardNode(tree)
       if (candidate?.id) {
         datasourceContext.setDatasourceById(datasourceId, true)
-        return dashboardRoute('/dashboard/index', candidate.id)
+        return dashboardRoute('/dashboard/index', candidate.id, { dashboardMode: 'my' })
       }
     }
   } catch (error) {

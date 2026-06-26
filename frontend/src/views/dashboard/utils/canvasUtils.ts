@@ -14,9 +14,13 @@ const { componentData, canvasStyleData, canvasViewInfo } = storeToRefs(dashboard
 export const load_resource_prepare = (
   params: any,
   callBack: (obj: any) => void,
-  options: { defaultMode?: boolean; includeData?: boolean } = {}
+  options: { defaultMode?: boolean; includeData?: boolean; platformTemplate?: boolean } = {}
 ) => {
-  const loadRequest = options.defaultMode ? dashboardApi.default_load : dashboardApi.load_resource
+  const loadRequest = options.platformTemplate
+    ? dashboardApi.platform_template_admin_load
+    : options.defaultMode
+      ? dashboardApi.default_load
+      : dashboardApi.load_resource
   const requestParams =
     typeof options.includeData === 'boolean'
       ? { ...params, include_data: options.includeData }
@@ -98,12 +102,42 @@ export const saveDashboardResource = (params: any, callBack: Function) => {
   saveDashboardResourceTarget(params, commonParams, callBack)
 }
 
+export const savePlatformTemplateResource = (params: any, callBack: Function) => {
+  const requestParams = {
+    id: params.id,
+    name: params.name || dashboardStore.dashboardInfo.name,
+    pid: 'root',
+    datasource: dashboardStore.dashboardInfo.datasource || null,
+    node_type: 'leaf',
+    type: dashboardStore.dashboardInfo.type || 'dashboard',
+    component_data: JSON.stringify(componentData.value || []),
+    canvas_style_data: JSON.stringify(canvasStyleData.value || {}),
+    canvas_view_info: JSON.stringify(canvasViewInfo.value || {}),
+  }
+  dashboardApi.platform_template_admin_update(requestParams).then((res: any) => {
+    clearDashboardCanvasDraft(dashboardStore.canvasEditingSourceKey)
+    dashboardStore.updateDashboardInfo({
+      id: res.id,
+      name: res.name || requestParams.name,
+      datasource: res.datasource ?? requestParams.datasource,
+      status: res.status,
+      source: res.source,
+      contentId: res.content_id,
+      canEdit: true,
+    })
+    dashboardStore.markCanvasSaved()
+    callBack(res)
+  })
+}
+
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 export const saveDashboardResourceTarget = (params: any, commonParams: any, callBack: Function) => {
+  const hasDatasourceParam = Object.prototype.hasOwnProperty.call(params, 'datasource')
   const requestBaseParams = {
     ...params,
-    datasource:
-      params.datasource || dashboardStore.dashboardInfo.datasource || datasourceContext.datasourceId,
+    datasource: hasDatasourceParam
+      ? params.datasource
+      : dashboardStore.dashboardInfo.datasource || datasourceContext.datasourceId,
   }
   dashboardApi.check_name(requestBaseParams).then((resCheck: any) => {
     if (resCheck) {

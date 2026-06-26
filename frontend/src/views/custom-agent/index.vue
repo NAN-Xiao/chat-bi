@@ -54,6 +54,7 @@ const defaultAgentForm = {
   description: '',
   target_scope: 'SMART_QA',
   active: true,
+  visible: true,
   ai_model_id: null as number | string | null,
   prompt: '',
   specific_ds: false,
@@ -131,12 +132,17 @@ const sortBySourceAndTime = (a: any, b: any) => {
 }
 
 const layerOptions = computed(() => [
-  ...(!isAdminMode.value ? [{ label: t('prompt.target_scope_all'), value: '' }] : []),
+  ...(!isAdminMode.value || (isAdminMode.value && !isPlatformAdmin.value)
+    ? [{ label: t('prompt.target_scope_all'), value: '' }]
+    : []),
   ...(isAdminMode.value && isPlatformAdmin.value
     ? [{ label: t('permission.scope_platform'), value: 'PLATFORM_PUBLIC' }]
     : []),
   ...(isAdminMode.value && !isPlatformAdmin.value
-    ? [{ label: t('permission.scope_workspace'), value: 'ADMIN_PUBLIC' }]
+    ? [
+        { label: t('permission.scope_platform'), value: 'PLATFORM_PUBLIC' },
+        { label: t('permission.scope_workspace'), value: 'ADMIN_PUBLIC' },
+      ]
     : []),
   ...(!isAdminMode.value
     ? [
@@ -168,16 +174,27 @@ const canManageAgent = (row: any) => {
 }
 
 const canViewPromptInPersonalEntry = (row: any) => {
-  return row?.prompt_visible === true || (row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true)
+  return (
+    row?.prompt_visible === true ||
+    (row?.visibility_scope === 'USER_PRIVATE' && row?.is_owner === true)
+  )
 }
 
-const buildAgentQuery = () => {
+const isAgentVisible = (row: any) => row?.visible !== false
+
+const visibilityStatusText = (row: any) =>
+  isAgentVisible(row) ? t('prompt.visible_shown') : t('prompt.visible_hidden')
+
+const adminVisibilityScopes = computed(() => {
+  if (!isAdminMode.value) return [scopeFilter.value || '']
+  if (isPlatformAdmin.value) return [scopeFilter.value || 'PLATFORM_PUBLIC']
+  return scopeFilter.value ? [scopeFilter.value] : ['PLATFORM_PUBLIC', 'ADMIN_PUBLIC']
+})
+
+const buildAgentQuery = (visibilityScope = scopeFilter.value) => {
   const params = new URLSearchParams()
-  if (scopeFilter.value) {
-    params.append('visibility_scope', scopeFilter.value)
-  }
-  if (isAdminMode.value && !scopeFilter.value) {
-    params.append('visibility_scope', isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : 'ADMIN_PUBLIC')
+  if (visibilityScope) {
+    params.append('visibility_scope', visibilityScope)
   }
   if (!isAdminMode.value && currentDatasourceId.value) {
     params.append('dslist', String(currentDatasourceId.value))
@@ -189,6 +206,16 @@ const buildAgentQuery = () => {
   return query ? `?${query}` : ''
 }
 
+const dedupeAgents = (rows: any[]) => {
+  const seen = new Set<string>()
+  return rows.filter((row) => {
+    const key = String(row?.id || '')
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 const loadAiModels = () => {
   modelApi.listAvailable().then((res: any) => {
     aiModelOptions.value = res || []
@@ -198,19 +225,38 @@ const loadAiModels = () => {
 const loadAgents = async () => {
   agentLoading.value = true
   try {
-    const query = buildAgentQuery()
+    const queries = isAdminMode.value
+      ? adminVisibilityScopes.value.map((scope) => buildAgentQuery(scope))
+      : [buildAgentQuery()]
     const responses = await Promise.all(
-      CUSTOM_PROMPT_TYPES.map((type) =>
-        promptApi.getList(1, 100, type, query).catch(() => ({ data: [] }))
+      queries.flatMap((query) =>
+        CUSTOM_PROMPT_TYPES.map((type) =>
+          promptApi.getList(1, 100, type, query).catch(() => ({ data: [] }))
+        )
       )
     )
-    agentList.value = responses
-      .flatMap((res: any) => res?.data || [])
+    agentList.value = dedupeAgents(responses.flatMap((res: any) => res?.data || []))
       .filter(isVisibleInPersonalEntry)
       .sort(sortBySourceAndTime)
   } finally {
     agentLoading.value = false
   }
+}
+
+const toggleAgentVisibility = (agent: any, value: boolean) => {
+  if (!isAdminMode.value || !canManageAgent(agent)) return
+  const previousVisible = isAgentVisible(agent)
+  agent.visible = value
+
+  promptApi
+    .setVisibility(agent.id, value)
+    .then((res: any) => {
+      agent.visible = res?.visible ?? value
+      ElMessage.success(t('common.save_success'))
+    })
+    .catch(() => {
+      agent.visible = previousVisible
+    })
 }
 
 const resetAgentForm = () => {
@@ -268,6 +314,7 @@ const saveAgent = () => {
         ? 'PLATFORM_PUBLIC'
         : 'ADMIN_PUBLIC'
       : 'USER_PRIVATE'
+    payload.visible = payload.visible !== false
     savingAgent.value = true
     promptApi
       .updateEmbedded(payload)
@@ -304,11 +351,7 @@ const openAgentDetail = (row: any) => {
 }
 
 onMounted(async () => {
-  scopeFilter.value = isAdminMode.value
-    ? isPlatformAdmin.value
-      ? 'PLATFORM_PUBLIC'
-      : 'ADMIN_PUBLIC'
-    : ''
+  scopeFilter.value = isAdminMode.value ? (isPlatformAdmin.value ? 'PLATFORM_PUBLIC' : '') : ''
   if (!isAdminMode.value) {
     await datasourceContext.loadDatasources()
   }
@@ -365,120 +408,135 @@ watch(scopeFilter, () => {
         </div>
         <template v-else>
           <div class="card-content">
-            <el-row :gutter="16" class="w-full">
-              <el-col
-                v-for="agent in agentList"
-                :key="agent.id"
-                :xs="24"
-                :sm="12"
-                :md="12"
-                :lg="8"
-                :xl="6"
-                class="mb-16"
-              >
-                <article
-                  class="agent-card"
-                  :class="sourceClass(agent)"
-                  @click="openAgentDetail(agent)"
-                >
-                  <div class="name-icon">
-                    <el-icon class="icon-primary" size="32">
-                      <icon_ai />
-                    </el-icon>
-                    <div class="info">
-                      <div class="title-line">
-                        <span class="name ellipsis" :title="agent.name">{{ agent.name }}</span>
-                        <span class="agent-source-pill">{{ sourceText(agent) }}</span>
+            <article
+              v-for="agent in agentList"
+              :key="agent.id"
+              class="agent-card"
+              :class="[
+                sourceClass(agent),
+                { 'has-visibility-switch': isAdminMode && canManageAgent(agent) },
+              ]"
+              @click="openAgentDetail(agent)"
+            >
+              <div class="name-icon">
+                <el-icon class="icon-primary" size="28">
+                  <icon_ai />
+                </el-icon>
+                <div class="info">
+                  <div class="title-line">
+                    <span class="name ellipsis" :title="agent.name">{{ agent.name }}</span>
+                    <span class="agent-source-pill">{{ sourceText(agent) }}</span>
+                  </div>
+                  <div class="sub-title">{{ typeTitle(agent.type) }}</div>
+                </div>
+              </div>
+
+              <div class="detail-list">
+                <div class="type-value">
+                  <span class="type">{{ t('prompt.agent_description') }}</span>
+                  <span
+                    class="value ellipsis"
+                    :title="agent.description || t('prompt.agent_empty_description')"
+                  >
+                    {{ agent.description || t('prompt.agent_empty_description') }}
+                  </span>
+                </div>
+                <div class="type-value">
+                  <span class="type">{{ t('prompt.ai_model') }}</span>
+                  <span class="value ellipsis" :title="modelText(agent)">
+                    {{ modelText(agent) }}
+                  </span>
+                </div>
+                <div class="type-value">
+                  <span class="type">{{ t('prompt.target_scope') }}</span>
+                  <span class="value ellipsis" :title="targetScopeText(agent.target_scope)">
+                    {{ targetScopeText(agent.target_scope) }}
+                  </span>
+                </div>
+                <div class="type-value">
+                  <span class="type">{{ t('prompt.active_status') }}</span>
+                  <span
+                    class="value"
+                    :class="agent.active ? 'is-active-status' : 'is-inactive-status'"
+                  >
+                    {{ agent.active ? t('prompt.active_enabled') : t('prompt.active_disabled') }}
+                  </span>
+                </div>
+                <div v-if="isAdminMode && canManageAgent(agent)" class="type-value">
+                  <span class="type">{{ t('prompt.visible_status') }}</span>
+                  <span
+                    class="value"
+                    :class="isAgentVisible(agent) ? 'is-active-status' : 'is-inactive-status'"
+                  >
+                    {{ visibilityStatusText(agent) }}
+                  </span>
+                </div>
+                <div v-else class="type-value">
+                  <span class="type">{{ t('training.effective_data_sources') }}</span>
+                  <span class="value ellipsis" :title="scopeText(agent)">
+                    {{ scopeText(agent) }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="bottom-info">
+                <div class="form-rate">
+                  <el-icon class="form-icon" size="13">
+                    <icon_key_outlined />
+                  </el-icon>
+                  {{ typeTitle(agent.type) }}
+                </div>
+                <div class="create-time">
+                  {{
+                    agent.create_time
+                      ? formatTimestamp(agent.create_time, 'YYYY-MM-DD HH:mm:ss')
+                      : '-'
+                  }}
+                </div>
+                <div v-if="canManageAgent(agent)" class="methods" @click.stop>
+                  <el-tooltip
+                    v-if="isAdminMode"
+                    :content="`${t('prompt.visible_status')}: ${visibilityStatusText(agent)}`"
+                    placement="top"
+                  >
+                    <el-switch
+                      :model-value="isAgentVisible(agent)"
+                      size="small"
+                      @change="
+                        (value: string | number | boolean) =>
+                          toggleAgentVisibility(agent, Boolean(value))
+                      "
+                    />
+                  </el-tooltip>
+                  <el-popover
+                    trigger="click"
+                    :teleported="true"
+                    popper-class="popover-card_agent"
+                    placement="bottom-end"
+                  >
+                    <template #reference>
+                      <button type="button" class="more" aria-label="more actions">
+                        <icon_more_outlined />
+                      </button>
+                    </template>
+                    <div class="content">
+                      <div class="item" @click.stop="openEditAgent(agent)">
+                        <el-icon size="16">
+                          <IconOpeEdit />
+                        </el-icon>
+                        {{ t('datasource.edit') }}
                       </div>
-                      <div class="sub-title">{{ typeTitle(agent.type) }}</div>
+                      <div class="item" @click.stop="deleteAgent(agent)">
+                        <el-icon size="16">
+                          <IconOpeDelete />
+                        </el-icon>
+                        {{ t('dashboard.delete') }}
+                      </div>
                     </div>
-                  </div>
-
-                  <div class="detail-list">
-                    <div class="type-value">
-                      <span class="type">{{ t('prompt.agent_description') }}</span>
-                      <span
-                        class="value ellipsis"
-                        :title="agent.description || t('prompt.agent_empty_description')"
-                      >
-                        {{ agent.description || t('prompt.agent_empty_description') }}
-                      </span>
-                    </div>
-                    <div class="type-value">
-                      <span class="type">{{ t('prompt.ai_model') }}</span>
-                      <span class="value ellipsis" :title="modelText(agent)">
-                        {{ modelText(agent) }}
-                      </span>
-                    </div>
-                    <div class="type-value">
-                      <span class="type">{{ t('prompt.target_scope') }}</span>
-                      <span class="value ellipsis" :title="targetScopeText(agent.target_scope)">
-                        {{ targetScopeText(agent.target_scope) }}
-                      </span>
-                    </div>
-                    <div class="type-value">
-                      <span class="type">{{ t('prompt.active_status') }}</span>
-                      <span
-                        class="value"
-                        :class="agent.active ? 'is-active-status' : 'is-inactive-status'"
-                      >
-                        {{ agent.active ? t('prompt.active_enabled') : t('prompt.active_disabled') }}
-                      </span>
-                    </div>
-                    <div class="type-value">
-                      <span class="type">{{ t('training.effective_data_sources') }}</span>
-                      <span class="value ellipsis" :title="scopeText(agent)">
-                        {{ scopeText(agent) }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div class="bottom-info">
-                    <div class="form-rate">
-                      <el-icon class="form-icon" size="14">
-                        <icon_key_outlined />
-                      </el-icon>
-                      {{ typeTitle(agent.type) }}
-                    </div>
-                    <div class="create-time">
-                      {{
-                        agent.create_time
-                          ? formatTimestamp(agent.create_time, 'YYYY-MM-DD HH:mm:ss')
-                          : '-'
-                      }}
-                    </div>
-                    <div v-if="canManageAgent(agent)" class="methods" @click.stop>
-                      <el-popover
-                        trigger="click"
-                        :teleported="true"
-                        popper-class="popover-card_agent"
-                        placement="bottom-end"
-                      >
-                        <template #reference>
-                          <button type="button" class="more" aria-label="more actions">
-                            <icon_more_outlined />
-                          </button>
-                        </template>
-                        <div class="content">
-                          <div class="item" @click.stop="openEditAgent(agent)">
-                            <el-icon size="16">
-                              <IconOpeEdit />
-                            </el-icon>
-                            {{ t('datasource.edit') }}
-                          </div>
-                          <div class="item" @click.stop="deleteAgent(agent)">
-                            <el-icon size="16">
-                              <IconOpeDelete />
-                            </el-icon>
-                            {{ t('dashboard.delete') }}
-                          </div>
-                        </div>
-                      </el-popover>
-                    </div>
-                  </div>
-                </article>
-              </el-col>
-            </el-row>
+                  </el-popover>
+                </div>
+              </div>
+            </article>
           </div>
         </template>
       </div>
@@ -550,6 +608,15 @@ watch(scopeFilter, () => {
             :inactive-text="t('prompt.active_disabled')"
           />
         </el-form-item>
+        <el-form-item v-if="isAdminMode" prop="visible" :label="t('prompt.visible_status')">
+          <el-tooltip :content="t('prompt.visible_hint')" placement="top">
+            <el-switch
+              v-model="agentForm.visible"
+              :active-text="t('prompt.visible_shown')"
+              :inactive-text="t('prompt.visible_hidden')"
+            />
+          </el-tooltip>
+        </el-form-item>
         <el-form-item :label="t('training.effective_data_sources')">
           <div class="fixed-project">
             {{ isAdminMode ? t('training.all_data_sources') : t('access.user_permission_scope') }}
@@ -600,6 +667,14 @@ watch(scopeFilter, () => {
         <el-form-item :label="t('prompt.active_status')">
           <div class="detail-content">
             {{ selectedAgent?.active ? t('prompt.active_enabled') : t('prompt.active_disabled') }}
+          </div>
+        </el-form-item>
+        <el-form-item
+          v-if="isAdminMode && canManageAgent(selectedAgent)"
+          :label="t('prompt.visible_status')"
+        >
+          <div class="detail-content">
+            {{ visibilityStatusText(selectedAgent) }}
           </div>
         </el-form-item>
         <el-form-item :label="t('training.effective_data_sources')">
@@ -665,13 +740,9 @@ watch(scopeFilter, () => {
   }
 
   .card-content {
-    .w-full {
-      width: 100%;
-    }
-
-    .mb-16 {
-      margin-bottom: 16px;
-    }
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
   }
 
   .page-actions {
@@ -696,13 +767,13 @@ watch(scopeFilter, () => {
     --agent-source-border: #d0d5dd;
     --agent-source-card-bg: #ffffff;
     width: 100%;
-    height: 246px;
+    height: 196px;
     border: 1px solid var(--agent-source-border);
     border-left: 2px solid var(--agent-source-color);
-    padding: 16px 54px 20px 14px;
+    padding: 12px 42px 12px 12px;
     border-radius: 8px;
     background: var(--agent-source-card-bg);
-    box-shadow: 0 12px 28px rgba(24, 46, 86, 0.07);
+    box-shadow: none;
     cursor: pointer;
     display: flex;
     flex-direction: column;
@@ -714,8 +785,8 @@ watch(scopeFilter, () => {
 
     &:hover {
       border-color: var(--agent-source-color);
-      box-shadow: 0 16px 36px rgba(24, 46, 86, 0.11);
-      transform: translateY(-2px) scale(1.012);
+      box-shadow: 0 8px 18px rgba(16, 24, 40, 0.08);
+      transform: translateY(-1px);
     }
 
     &.is-saas {
@@ -739,25 +810,29 @@ watch(scopeFilter, () => {
       --agent-source-card-bg: #fbfffd;
     }
 
+    &.has-visibility-switch {
+      padding-right: 84px;
+    }
+
     .name-icon {
       display: flex;
       align-items: center;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
 
       .icon-primary {
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         border-radius: 6px;
         background: #2f6de5;
         color: #ffffff;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        flex: 0 0 32px;
+        flex: 0 0 28px;
 
         :deep(svg) {
-          width: 20px;
-          height: 20px;
+          width: 18px;
+          height: 18px;
         }
 
         :deep(path) {
@@ -766,21 +841,21 @@ watch(scopeFilter, () => {
       }
 
       .info {
-        margin-left: 12px;
-        max-width: calc(100% - 50px);
+        margin-left: 10px;
+        max-width: calc(100% - 38px);
         min-width: 0;
       }
 
       .title-line {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         min-width: 0;
       }
 
       .agent-source-pill {
         flex: 0 0 auto;
-        max-width: 92px;
+        max-width: 84px;
         padding: 0 5px;
         border: 1px solid var(--agent-source-border);
         border-radius: 4px;
@@ -798,16 +873,16 @@ watch(scopeFilter, () => {
         min-width: 0;
         max-width: 100%;
         color: var(--workspace-text-primary, #1b2a41);
-        font-weight: 500;
-        font-size: 16px;
-        line-height: 24px;
+        font-weight: 600;
+        font-size: 14px;
+        line-height: 22px;
       }
 
       .sub-title {
         color: var(--workspace-text-secondary, #66758f);
         font-weight: 400;
         font-size: 12px;
-        line-height: 20px;
+        line-height: 18px;
       }
     }
 
@@ -820,17 +895,19 @@ watch(scopeFilter, () => {
       display: flex;
       align-items: center;
       font-weight: 400;
-      font-size: 14px;
-      line-height: 22px;
+      font-size: 12px;
+      line-height: 18px;
 
       .type {
         color: var(--workspace-text-secondary, #66758f);
         flex: 0 0 86px;
+        overflow: hidden;
+        text-overflow: ellipsis;
         white-space: nowrap;
       }
 
       .value {
-        margin-left: 16px;
+        margin-left: 8px;
         min-width: 0;
         flex: 1;
         color: var(--workspace-text-primary, #1b2a41);
@@ -846,7 +923,7 @@ watch(scopeFilter, () => {
     }
 
     .type-value + .type-value {
-      margin-top: 6px;
+      margin-top: 2px;
     }
 
     .bottom-info {
@@ -854,8 +931,8 @@ watch(scopeFilter, () => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      height: 22px;
+      gap: 8px;
+      height: 20px;
 
       .form-rate {
         display: flex;
@@ -863,14 +940,14 @@ watch(scopeFilter, () => {
         min-width: 0;
         color: var(--workspace-text-secondary, #66758f);
         font-weight: 400;
-        font-size: 14px;
-        line-height: 22px;
+        font-size: 12px;
+        line-height: 18px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
 
         .form-icon {
-          margin-right: 10px;
+          margin-right: 6px;
           flex: 0 0 auto;
           color: var(--workspace-text-secondary, #66758f);
         }
@@ -879,16 +956,17 @@ watch(scopeFilter, () => {
       .create-time {
         color: var(--workspace-text-secondary, #66758f);
         font-size: 12px;
-        line-height: 20px;
+        line-height: 18px;
         flex: 0 0 auto;
       }
 
       .methods {
         position: absolute;
-        right: 16px;
-        top: 16px;
+        right: 12px;
+        top: 12px;
         align-items: center;
         display: flex;
+        gap: 6px;
 
         .more {
           border: 0;
@@ -899,9 +977,9 @@ watch(scopeFilter, () => {
           line-height: 1;
           position: relative;
           cursor: pointer;
-          width: 28px;
-          height: 28px;
-          flex: 0 0 28px;
+          width: 24px;
+          height: 24px;
+          flex: 0 0 24px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -918,8 +996,8 @@ watch(scopeFilter, () => {
             content: '';
             position: absolute;
             border-radius: 8px;
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
             transform: translate(-50%, -50%);
             top: 50%;
             left: 50%;

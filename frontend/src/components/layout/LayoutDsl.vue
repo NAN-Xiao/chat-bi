@@ -112,6 +112,11 @@ const route = useRoute()
 const showSysmenu = computed(() => {
   return route.path.includes('/system')
 })
+const isPlatformSaasAdminShell = computed(
+  () => userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate
+)
+const useTopNavigationShell = computed(() => !isPlatformSaasAdminShell.value)
+const showTopWorkspaceAdminSidebar = computed(() => useTopNavigationShell.value && showSysmenu.value)
 onBeforeMount(() => {
   if (isPhone.value) {
     collapse.value = true
@@ -125,8 +130,44 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="system-layout">
-    <div class="left-side" :class="collapse && 'left-side-collapse'">
+  <div class="system-layout" :class="{ 'system-layout-top-nav': useTopNavigationShell }">
+    <template v-if="useTopNavigationShell">
+      <header class="top-nav-shell">
+        <div class="top-nav-brand" @click="toChatIndex">
+          <img
+            v-if="loginBg"
+            height="28"
+            width="28"
+            :src="loginBg"
+            alt=""
+          />
+          <custom_small
+            v-else-if="appearanceStore.themeColor !== 'default'"
+          ></custom_small>
+          <img
+            v-else
+            :src="defaultLogoUrl"
+            height="28"
+            width="28"
+            alt=""
+          />
+          <span :title="appearanceStore.name" class="ellipsis">
+            {{ appearanceStore.name }}
+          </span>
+        </div>
+        <div class="top-nav-brand-divider" aria-hidden="true"></div>
+        <Menu class="top-nav-menu" mode="horizontal" scope="business"></Menu>
+        <div class="top-nav-actions">
+          <ProjectSelector
+            v-if="!userStore.isPlatformWorkspaceDelegate"
+            :collapse="false"
+          ></ProjectSelector>
+          <Person :collapse="true" :in-sysmenu="showSysmenu"></Person>
+          <ThemeSwitcher :collapse="true"></ThemeSwitcher>
+        </div>
+      </header>
+    </template>
+    <div v-else class="left-side" :class="collapse && 'left-side-collapse'">
       <div class="side-header">
         <div class="side-brand">
           <template v-if="showSysmenu">
@@ -291,7 +332,7 @@ onMounted(() => {
         </button>
       </div>
       <ProjectSelector
-        v-if="!showSysmenu && (!userStore.isSystemAdminUser || userStore.isPlatformWorkspaceDelegate)"
+        v-if="!showSysmenu && !userStore.isSystemAdminUser && !userStore.isPlatformWorkspaceDelegate"
         :collapse="collapse"
       ></ProjectSelector>
       <Menu :collapse="collapseCopy"></Menu>
@@ -330,8 +371,19 @@ onMounted(() => {
           {{ $t('tenant.return_to_platform') }}
         </button>
       </div>
-      <div class="content">
-        <router-view />
+      <div class="content" :class="showTopWorkspaceAdminSidebar && 'workspace-admin-content'">
+        <aside v-if="showTopWorkspaceAdminSidebar" class="workspace-admin-sidebar">
+          <div class="workspace-admin-sidebar-head">
+            <div class="workspace-admin-sidebar-title">{{ $t('tenant.management') }}</div>
+            <div class="workspace-admin-sidebar-subtitle ellipsis">
+              {{ userStore.getTenantName }}
+            </div>
+          </div>
+          <Menu scope="system"></Menu>
+        </aside>
+        <main class="content-main">
+          <router-view />
+        </main>
       </div>
     </div>
     <AnalysisAssistantDock
@@ -354,6 +406,205 @@ onMounted(() => {
     }
     100% {
       width: 64px;
+    }
+  }
+
+  &.system-layout-top-nav {
+    --top-nav-height: 52px;
+    --top-nav-control-height: 32px;
+
+    flex-direction: column;
+    background: var(--workspace-shell-bg, var(--theme-shell-bg));
+
+    .top-nav-shell {
+      flex: 0 0 var(--top-nav-height);
+      width: 100%;
+      min-width: 0;
+      height: var(--top-nav-height);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      color: var(--workspace-text-primary, var(--theme-text-primary));
+      background: var(--workspace-card-bg, var(--theme-panel-bg));
+      border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
+      box-shadow: none;
+      z-index: 9;
+    }
+
+    .top-nav-brand {
+      flex: 0 0 auto;
+      min-width: 184px;
+      max-width: 220px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 18px;
+      cursor: pointer;
+
+      img,
+      :deep(svg) {
+        flex: 0 0 auto;
+        width: 28px;
+        height: 28px;
+      }
+
+      span {
+        min-width: 0;
+        font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 22px;
+        letter-spacing: 0.08em;
+        color: var(--ed-color-primary, #2f6bff);
+      }
+    }
+
+    .top-nav-brand-divider {
+      flex: 0 0 1px;
+      width: 1px;
+      height: 34px;
+      background: var(--workspace-border-soft, #e5eaf2);
+    }
+
+    :deep(.workspace-selector) {
+      width: fit-content;
+      min-width: 112px;
+      max-width: min(360px, 32vw);
+      height: var(--top-nav-control-height);
+      margin-bottom: 0;
+      padding: 0 10px;
+      border-radius: 8px;
+      background: var(--workspace-control-bg, var(--theme-control-bg));
+      border-color: var(--workspace-border, var(--theme-shell-border));
+      color: var(--workspace-text-secondary, var(--theme-text-secondary));
+
+      .ed-icon {
+        font-size: 16px !important;
+      }
+
+      .name {
+        margin-left: 7px;
+        max-width: min(260px, 24vw);
+        font-size: 13px;
+        line-height: 20px;
+        color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+
+      .expand {
+        font-size: 20px !important;
+        margin-left: 8px;
+      }
+
+      &:hover,
+      &:focus {
+        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+        color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+    }
+
+    .top-nav-menu {
+      flex: 1 1 auto;
+      min-width: 0;
+      height: var(--top-nav-height);
+      overflow: hidden;
+    }
+
+    .top-nav-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: var(--top-nav-height);
+
+      :deep(.theme-toggle.collapse) {
+        width: var(--top-nav-control-height);
+        min-width: var(--top-nav-control-height);
+        height: var(--top-nav-control-height);
+        border-radius: 8px;
+        color: var(--workspace-text-secondary, var(--theme-text-secondary));
+
+        &:hover,
+        &:focus {
+          background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+          color: var(--workspace-text-primary, var(--theme-text-primary));
+        }
+      }
+
+      :deep(.person.collapse) {
+        width: var(--top-nav-control-height);
+        min-width: var(--top-nav-control-height);
+        height: var(--top-nav-control-height);
+        border-color: transparent;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--workspace-text-secondary, var(--theme-text-secondary));
+
+        &:hover,
+        &:focus,
+        &:active {
+          border-color: transparent;
+          background: transparent;
+          color: var(--workspace-text-primary, var(--theme-text-primary));
+        }
+      }
+
+      :deep(.person.collapse .user-avatar) {
+        width: 26px;
+        height: 26px;
+        flex-basis: 26px;
+        font-size: 12px;
+      }
+
+      :deep(.theme-toggle.collapse .theme-toggle-icon) {
+        width: 15px;
+        height: 15px;
+      }
+    }
+
+    .top-back-to-project {
+      height: var(--top-nav-control-height);
+      padding: 0 10px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--workspace-text-secondary, var(--theme-text-secondary));
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 20px;
+      white-space: nowrap;
+      transition:
+        background 160ms ease,
+        color 160ms ease;
+
+      &:hover,
+      &:focus {
+        background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+        color: var(--workspace-text-primary, var(--theme-text-primary));
+      }
+
+      &:active {
+        background: var(--workspace-active-bg, var(--theme-active-bg));
+      }
+    }
+
+    .right-main {
+      width: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - var(--top-nav-height));
+
+      .content {
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+      }
+
+      &.is-platform-delegate {
+        max-height: calc(100vh - var(--top-nav-height));
+      }
     }
   }
 
@@ -556,7 +807,7 @@ onMounted(() => {
         width: 40px;
         gap: 8px;
 
-        .default-avatar {
+        :deep(.user-avatar) {
           margin: 0;
         }
       }
@@ -592,6 +843,96 @@ onMounted(() => {
       &:has(.no-padding) {
         padding: 0;
       }
+
+      &.workspace-admin-content {
+        padding: 0;
+        display: flex;
+        overflow: hidden;
+      }
+    }
+
+    .workspace-admin-sidebar {
+      flex: 0 0 240px;
+      width: 240px;
+      min-width: 240px;
+      height: 100%;
+      padding: 18px 14px;
+      display: flex;
+      flex-direction: column;
+      color: var(--theme-sidebar-text);
+      background: var(--theme-sidebar-bg);
+      border-right: 1px solid var(--theme-sidebar-border);
+      --theme-text-primary: var(--theme-sidebar-text);
+      --theme-text-secondary: var(--theme-sidebar-text-secondary);
+      --theme-text-tertiary: var(--theme-sidebar-text-tertiary);
+      --theme-control-bg: var(--theme-sidebar-control-bg);
+      --theme-control-hover-bg: var(--theme-sidebar-control-hover-bg);
+      --theme-hover-bg: var(--theme-sidebar-hover-bg);
+      --theme-active-bg: var(--theme-sidebar-active-soft-bg);
+      --theme-shell-border: var(--theme-sidebar-border);
+      --theme-card-shadow: none;
+    }
+
+    .workspace-admin-sidebar-head {
+      flex: 0 0 auto;
+      padding: 0 6px 14px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .workspace-admin-sidebar-title {
+      color: var(--theme-sidebar-emphasis-text, var(--theme-sidebar-text));
+      font-size: 16px;
+      line-height: 24px;
+      font-weight: 600;
+    }
+
+    .workspace-admin-sidebar-subtitle {
+      margin-top: 2px;
+      color: var(--theme-sidebar-text-secondary, var(--theme-text-secondary));
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .content-main {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      overflow: visible;
+      scrollbar-width: thin;
+      scrollbar-color: #b8c4d6 #edf2f8;
+
+      &:has(.no-padding) {
+        padding: 0;
+      }
+    }
+
+    .workspace-admin-content .content-main {
+      padding: 18px 24px;
+      overflow: auto;
+    }
+
+    .content-main::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    .content-main::-webkit-scrollbar-track {
+      background: #edf2f8;
+      border-radius: 999px;
+    }
+
+    .content-main::-webkit-scrollbar-thumb {
+      background: #b8c4d6;
+      border-radius: 999px;
+      border: 2px solid #edf2f8;
+    }
+
+    .content-main::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
     }
 
     &.is-platform-delegate {

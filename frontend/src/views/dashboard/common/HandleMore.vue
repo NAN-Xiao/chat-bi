@@ -14,15 +14,23 @@ withDefaults(
   defineProps<{
     menuList: Menu[]
     placement?: Placement
+    offset?: number
     // eslint-disable-next-line vue/require-default-prop
     iconName?: any
     iconSize?: string
     inTable?: boolean
+    verticalDots?: boolean
+    compactTextOnly?: boolean
+    createMenu?: boolean
   }>(),
   {
     placement: 'bottom-end',
+    offset: 6,
     iconSize: '16px',
     inTable: false,
+    verticalDots: false,
+    compactTextOnly: false,
+    createMenu: false,
   }
 )
 
@@ -35,20 +43,40 @@ const emit = defineEmits(['handleCommand'])
 
 <template>
   <el-dropdown
-    popper-class="menu-more_popper"
+    :popper-class="
+      createMenu
+        ? 'menu-more_popper menu-more_popper-create'
+        : compactTextOnly
+          ? 'menu-more_popper menu-more_popper-compact-text'
+          : 'menu-more_popper'
+    "
     :placement="placement"
+    :offset="offset"
     :persistent="false"
     trigger="click"
     @command="handleCommand"
   >
-    <el-icon class="hover-icon" :class="inTable && 'hover-icon-in-table'" @click.stop>
-      <component :is="iconName || icon_more_outlined" class="svg-icon"></component>
+    <el-icon
+      class="hover-icon"
+      :class="[inTable && 'hover-icon-in-table', verticalDots && 'hover-icon-vertical-dots']"
+      @click.stop
+    >
+      <span v-if="verticalDots" class="vertical-dots" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+      <component v-else :is="iconName || icon_more_outlined" class="svg-icon"></component>
     </el-icon>
     <template #dropdown>
       <el-dropdown-menu :persistent="false">
         <template v-for="ele in menuList" :key="ele">
           <el-dropdown-item :divided="ele.divided" :command="ele.command" :disabled="ele.disabled">
-            <el-icon v-if="ele.svgName" class="handle-icon" :style="{ fontSize: iconSize }">
+            <el-icon
+              v-if="ele.svgName && !compactTextOnly"
+              class="handle-icon"
+              :style="{ fontSize: iconSize }"
+            >
               <component :is="ele.svgName"></component>
             </el-icon>
             {{ ele.label }}
@@ -60,6 +88,25 @@ const emit = defineEmits(['handleCommand'])
 </template>
 
 <style lang="less">
+.hover-icon-vertical-dots {
+  .vertical-dots {
+    width: 6px;
+    height: 18px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .vertical-dots span {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+}
+
 .menu-more_popper {
   box-shadow: 0px 4px 8px 0px #1f23291a !important;
   border-radius: 6px;
@@ -116,6 +163,55 @@ const emit = defineEmits(['handleCommand'])
         background: #1f23291a;
       }
     }
+  }
+}
+
+.menu-more_popper-compact-text {
+  min-width: 92px !important;
+
+  .ed-dropdown-menu {
+    min-width: 92px;
+    padding: 2px;
+  }
+
+  .ed-dropdown-menu__item {
+    min-width: 92px;
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .ed-dropdown-menu__item:hover::after {
+    width: calc(100% - 4px);
+    height: 24px;
+  }
+}
+
+.menu-more_popper-create {
+  min-width: 88px !important;
+
+  .ed-dropdown-menu {
+    min-width: 88px;
+    padding: 4px;
+  }
+
+  .ed-dropdown-menu__item {
+    min-width: 80px;
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .handle-icon {
+    margin-right: 8px;
+    color: #646a73;
+  }
+
+  .ed-dropdown-menu__item:hover::after {
+    width: calc(100% - 8px);
+    height: 32px;
   }
 }
 </style>
