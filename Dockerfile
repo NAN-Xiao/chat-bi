@@ -17,6 +17,7 @@ RUN cd /tmp/frontend && npm install && npm run build && mv dist ${UI_HOME}/dist
 
 
 FROM ${ZHISHU_BASE_IMAGE} AS zhishu-builder
+ARG PYTHON_DEPENDENCY_EXTRA=cpu
 # Set build environment variables
 ENV PYTHONUNBUFFERED=1
 ENV ZHISHU_HOME=/opt/zhishu
@@ -34,17 +35,17 @@ RUN mkdir -p ${APP_HOME} ${UI_HOME}
 WORKDIR ${APP_HOME}
 
 COPY  --from=zhishu-ui-builder ${UI_HOME} ${UI_HOME}
-COPY backend/pyproject.toml ${APP_HOME}/
-# Install dependencies directly from pyproject.toml. This repository does not
-# ship uv.lock, so the build must resolve dependencies at build time.
+COPY backend/pyproject.toml backend/uv.lock ${APP_HOME}/
+# Install dependencies from the committed lockfile so CI does not resolve
+# fresh dependency candidates on every image build.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --no-install-project
+    uv sync --locked --extra "${PYTHON_DEPENDENCY_EXTRA}" --no-install-project
 
 COPY ./backend ${APP_HOME}
 
 # Final sync to ensure all dependencies are installed
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --extra cpu
+    uv sync --locked --extra "${PYTHON_DEPENDENCY_EXTRA}"
 
 # Build g2-ssr
 FROM ${ZHISHU_BASE_IMAGE} AS ssr-builder
