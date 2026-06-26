@@ -90,7 +90,7 @@ docker run -d \
 - 使用 Nginx 统一暴露 `80/443` 和 TLS，后端只监听内网或受控网段。
 - 使用独立 PostgreSQL、Redis、backend API 副本和 worker，生产开启 `CACHE_TYPE=redis`。
 - 从私有环境变量提供 `SECRET_KEY`、`SENSITIVE_CONFIG_ENCRYPTION_KEY`、数据库密码、Redis 密码和模型 API Key，禁止使用开发默认值。
-- 设置 `APP_ENV=production`、`PRODUCTION_CHECKS_ENABLED=true`、`AUTO_RUN_MIGRATIONS=false`，迁移作为发布步骤单独执行。
+- 设置 `APP_ENV=production`、`PRODUCTION_CHECKS_ENABLED=true`，迁移作为发布步骤单独执行；启动默认不自动迁移。
 - 上线前通过后端测试、前端构建、依赖审计、生产配置检查、数据库备份恢复、多租户权限和 worker 故障恢复验收。
 
 ### 联系我们

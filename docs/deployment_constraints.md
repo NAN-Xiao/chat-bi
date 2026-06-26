@@ -34,7 +34,7 @@
   `deploy/nginx/nginx.production.conf.template` 和 `deploy/systemd/`。
 - 多租户运行边界：`sys_tenant/sys_tenant_user` 提供企业和成员关系；数据源、语义层、ChatBI 对话、看板、API Key、自定义助手、审计日志和用量计量均带租户范围；企业 owner/admin 可管理本租户项目、语义层和公开自定义 Agent。
 - 数据源 Excel/CSV 临时导入文件按租户目录保存，避免共享临时目录被跨租户文件名引用。
-- 生产数据库迁移拆分：开发可自动迁移；生产必须 `AUTO_RUN_MIGRATIONS=false`，通过
+- 生产数据库迁移拆分：启动默认不自动迁移；生产必须 `AUTO_RUN_MIGRATIONS=false`，通过
   `python -m scripts.db_migrate` 或 `zhishu-migrate.service` 在 API 副本启动前单独执行一次。
 
 ## 暂不做

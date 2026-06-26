@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "星通智数"
     APP_ENV: Literal["development", "test", "production"] = "development"
     PRODUCTION_CHECKS_ENABLED: bool = True
-    AUTO_RUN_MIGRATIONS: bool = True
+    AUTO_RUN_MIGRATIONS: bool = False
     #CONTEXT_PATH: str = "/zhishu"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)
