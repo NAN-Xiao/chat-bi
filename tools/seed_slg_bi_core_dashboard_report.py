@@ -20,18 +20,18 @@ from psycopg2.extras import RealDictCursor
 
 
 SYSTEM_DB = {
-    "host": "127.0.0.1",
-    "port": 15432,
+    "host": "10.1.5.28",
+    "port": 5432,
     "dbname": "zhishu_bi",
     "user": "root",
     "password": "Password123@pg",
 }
 BI_DB = {
-    "host": "127.0.0.1",
+    "host": "10.1.5.28",
     "port": 5432,
     "dbname": "slg_bi_mock",
-    "user": "postgres",
-    "password": "111111",
+    "user": "root",
+    "password": "Password123@pg",
 }
 
 DASHBOARD_ID = "5e16dcf469a7491780e48eed5086eb57"
