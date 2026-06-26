@@ -5,6 +5,7 @@ import icon_folder from '@/assets/svg/icon_folder.svg'
 import icon_folder_open from '@/assets/svg/folder-open-svgrepo-com.svg'
 import icon_dashboard from '@/assets/permission/icon_dashboard.svg'
 import icon_dashboard_grid_add from '@/assets/svg/icon_dashboard_grid_add.svg'
+import icon_dashboard_group_color from '@/assets/svg/icon_dashboard_group_color.svg'
 import icon_edit_outlined from '@/assets/svg/icon_edit_outlined.svg'
 import icon_rename from '@/assets/svg/icon_rename.svg'
 import icon_delete from '@/assets/svg/icon_delete.svg'
@@ -140,6 +141,63 @@ const currentRouteDashboardScope = (): DashboardScope =>
     ? DEFAULT_SCOPE
     : normalizeDashboardScope(router.currentRoute.value.query.dashboardMode)
 
+const expandedStorageKey = () => {
+  const tenantId = userStore.getTenantId || 'default'
+  const datasourceId = props.defaultMode ? 'default' : datasourceContext.datasourceId || 'none'
+  const mode = props.defaultMode ? 'default' : 'combined'
+  return `dashboard-tree-expanded:${tenantId}:${datasourceId}:${mode}`
+}
+
+const collectExpandableKeys = (nodes: SQTreeNode[] = [], result: Array<string | number> = []) => {
+  nodes.forEach((node) => {
+    if (node.id && node.node_type !== 'leaf') {
+      result.push(node.id)
+    }
+    collectExpandableKeys(node.children || [], result)
+  })
+  return result
+}
+
+const readStoredExpandedKeys = () => {
+  try {
+    const raw = window.localStorage.getItem(expandedStorageKey())
+    const value = raw ? JSON.parse(raw) : []
+    return Array.isArray(value) ? value : []
+  } catch {
+    return []
+  }
+}
+
+const persistExpandedKeys = () => {
+  try {
+    window.localStorage.setItem(expandedStorageKey(), JSON.stringify(expandedArray.value))
+  } catch {
+    // Ignore storage failures; the tree still falls back to expanding all folders.
+  }
+}
+
+const restoreExpandedKeys = () => {
+  const expandableKeys = collectExpandableKeys(state.resourceTree)
+  const expandableKeySet = new Set(expandableKeys.map((key) => String(key)))
+  const storedKeys = readStoredExpandedKeys().filter((key) => expandableKeySet.has(String(key)))
+  expandedArray.value = storedKeys.length ? storedKeys : expandableKeys
+  if (!storedKeys.length) {
+    persistExpandedKeys()
+  }
+}
+
+const ensureSelectedNodeExpanded = () => {
+  const parentKeys = getDefaultExpandedKeys().filter((key) => key)
+  const keyMap = new Map(expandedArray.value.map((key) => [String(key), key]))
+  parentKeys.forEach((key) => {
+    if (!keyMap.has(String(key))) {
+      keyMap.set(String(key), key)
+    }
+  })
+  expandedArray.value = Array.from(keyMap.values())
+  persistExpandedKeys()
+}
+
 const getRawDashboardId = (node?: SQTreeNode | null) => (node as any)?.raw_id ?? node?.id
 const getDashboardScope = (node?: SQTreeNode | null): DashboardScope =>
   props.defaultMode ? DEFAULT_SCOPE : ((node as any)?.dashboard_scope || MY_SCOPE)
@@ -268,15 +326,17 @@ if (routeDashboardId) {
   returnMounted.value = true
 }
 const nodeExpand = (data: any) => {
-  if (data.id) {
+  if (!data.id) return
+  if (!expandedArray.value.some((id) => String(id) === String(data.id))) {
     expandedArray.value.push(data.id)
   }
+  persistExpandedKeys()
 }
 
 const nodeCollapse = (data: any) => {
-  if (data.id) {
-    expandedArray.value.splice(expandedArray.value.indexOf(data.id), 1)
-  }
+  if (!data.id) return
+  expandedArray.value = expandedArray.value.filter((id) => String(id) !== String(data.id))
+  persistExpandedKeys()
 }
 
 const resetTreeState = () => {
@@ -379,7 +439,6 @@ const selectDashboardNode = (node?: SQTreeNode) => {
   if (!node?.id || !isLeafDashboardNode(node)) return false
   selectedNodeKey.value = node.id
   returnMounted.value = true
-  expandedArray.value = getDefaultExpandedKeys()
   if (isDefaultDashboardNode(node)) {
     rememberDefaultDashboardId(getRawDashboardId(node), userStore)
   }
@@ -666,8 +725,9 @@ const afterTreeInit = () => {
   if (!selectedNodeKey.value) {
     selectDashboardNode(resolveInitialDashboardNode())
   }
+  restoreExpandedKeys()
   if (selectedNodeKey.value && returnMounted.value) {
-    expandedArray.value = getDefaultExpandedKeys()
+    ensureSelectedNodeExpanded()
     returnMounted.value = false
   }
   nextTick(() => {
@@ -1234,8 +1294,15 @@ defineExpose({
                 <icon_folder_open class="svg-icon" />
               </Icon>
             </el-icon>
-            <el-icon v-else-if="data.node_type !== 'leaf'" class="tree-node-icon">
-              <Icon name="icon_folder"><icon_folder class="svg-icon" /></Icon>
+            <el-icon
+              v-else-if="data.node_type !== 'leaf'"
+              class="tree-node-icon"
+              :class="{ 'group-color-icon': isVirtualNode(data) }"
+            >
+              <Icon v-if="isVirtualNode(data)" name="icon_dashboard_group_color">
+                <icon_dashboard_group_color class="svg-icon" />
+              </Icon>
+              <Icon v-else name="icon_folder"><icon_folder class="svg-icon" /></Icon>
             </el-icon>
             <el-icon v-else class="tree-node-icon icon-primary">
               <Icon name="icon_dashboard_grid_add">
@@ -1686,7 +1753,7 @@ defineExpose({
   :deep(.dashboard-resource-tree.ed-tree .ed-tree-node > .ed-tree-node__content .tree-node-icon.icon-primary) {
     color: var(--workspace-text-secondary, #667085) !important;
     opacity: 1;
-    transform: scale(1.06);
+    transform: scale(1);
     transform-origin: center;
     transition:
       color 0.22s ease,
@@ -1732,7 +1799,7 @@ defineExpose({
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon.icon-primary) {
     color: var(--ed-color-primary, #2f6bff) !important;
     opacity: 1;
-    transform: scale(1.2);
+    transform: scale(1.18);
   }
 
   :deep(.dashboard-resource-tree.dashboard-resource-tree.ed-tree .ed-tree-node.is-current > .ed-tree-node__content .tree-node-icon.icon-primary svg) {
@@ -1855,6 +1922,23 @@ defineExpose({
     font-size: 16px;
   }
 
+  .tree-node-icon :deep(svg) {
+    width: 16px;
+    height: 16px;
+  }
+
+  .tree-node-icon.group-color-icon {
+    flex-basis: 20px;
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+
+    :deep(svg) {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
   .folder-directory-icon {
     color: var(--workspace-text-secondary, #667085);
 
@@ -1873,10 +1957,15 @@ defineExpose({
   }
 
   .tree-node-icon.icon-primary {
-    flex-basis: 17px;
-    width: 17px;
-    height: 17px;
-    font-size: 17px;
+    flex-basis: 14px;
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+
+    :deep(svg) {
+      width: 14px;
+      height: 14px;
+    }
   }
 
   &.is-real-folder-node {

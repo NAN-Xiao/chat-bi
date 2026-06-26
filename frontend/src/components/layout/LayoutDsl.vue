@@ -532,16 +532,11 @@ onMounted(() => {
         }
       }
 
-      :deep(.person.collapse .ed-icon) {
+      :deep(.person.collapse .user-avatar) {
         width: 26px;
         height: 26px;
-        font-size: 26px !important;
-      }
-
-      :deep(.person.collapse .ed-icon svg),
-      :deep(.person.collapse .default-avatar) {
-        width: 26px;
-        height: 26px;
+        flex-basis: 26px;
+        font-size: 12px;
       }
 
       :deep(.theme-toggle.collapse .theme-toggle-icon) {
@@ -795,7 +790,7 @@ onMounted(() => {
         width: 40px;
         gap: 8px;
 
-        .default-avatar {
+        :deep(.user-avatar) {
           margin: 0;
         }
       }

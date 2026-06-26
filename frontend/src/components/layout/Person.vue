@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted } from 'vue'
-import Default_avatar_custom from '@/assets/img/Default-avatar.svg'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
 import icon_key_outlined from '@/assets/svg/icon-key_outlined.svg'
 import icon_api_key from '@/assets/svg/icon-api_key.svg'
@@ -14,6 +13,7 @@ import icon_user from '@/assets/svg/icon_user.svg'
 import { useI18n } from 'vue-i18n'
 import PwdForm from './PwdForm.vue'
 import Apikey from './Apikey.vue'
+import UserAvatar from '@/components/user-avatar/UserAvatar.vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
@@ -207,18 +207,20 @@ onMounted(() => {
   >
     <template #reference>
       <button class="person" :title="name" :class="collapse && 'collapse'">
-        <el-icon size="32">
-          <Default_avatar_custom></Default_avatar_custom>
-        </el-icon>
+        <UserAvatar :name="name" :account="account" :uid="userStore.getUid" :size="32" />
         <span v-if="!collapse" class="name ellipsis">{{ name }}</span>
       </button></template
     >
     <div class="popover">
       <div class="popover-content">
         <div class="info">
-          <el-icon class="avatar-custom" size="40">
-            <Default_avatar_custom></Default_avatar_custom>
-          </el-icon>
+          <UserAvatar
+            class="avatar-custom"
+            :name="name"
+            :account="account"
+            :uid="userStore.getUid"
+            :size="40"
+          />
           <div :title="name" class="top ellipsis">{{ name }}</div>
           <div :title="account" class="bottom ellipsis">{{ account }}</div>
         </div>
@@ -413,22 +415,6 @@ onMounted(() => {
     position: relative;
     margin-top: 0;
     margin-bottom: 0;
-
-    .ed-icon {
-      display: inline-grid;
-      place-items: center;
-    }
-
-    .ed-icon svg {
-      display: block;
-    }
-
-    .default-avatar {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-    }
   }
 
   .name {

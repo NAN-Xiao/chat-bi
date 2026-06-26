@@ -5,8 +5,9 @@ import { ElMessage } from 'element-plus-secondary'
 import { useUserStore } from '@/stores/user'
 import { tenantApi, type TenantApplicationInfo, type TenantInfo } from '@/api/tenant'
 import { formatTimestamp } from '@/utils/date'
-import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import UserAvatar from '@/components/user-avatar/UserAvatar.vue'
 import icon_admin_outlined from '@/assets/svg/icon_admin_outlined.svg'
+import icon_logs_outlined from '@/assets/svg/icon_logs_outlined.svg'
 import icon_user from '@/assets/svg/icon_user.svg'
 
 type WorkspaceRoleKey = 'owner' | 'admin' | 'member'
@@ -69,11 +70,6 @@ const roleLabel = (role?: string) => {
   return t('access.role_member_label')
 }
 
-const accountInitial = computed(() => {
-  const value = String(userStore.getName || userStore.getAccount || userStore.getUid || '-').trim()
-  return value ? value.slice(0, 1).toUpperCase() : '-'
-})
-
 const currentWorkspaceLabel = computed(() => {
   if (isPlatformOnlyAdmin.value) return t('access.platform_admin_workspace_label')
   return userStore.getTenantName || t('access.no_current_workspace')
@@ -95,7 +91,7 @@ const accountDetailRows = computed(() => [
 
 const accessNavItems = computed(() => [
   { key: 'account' as const, label: t('access.account_details'), icon: icon_user },
-  { key: 'requests' as const, label: t('access.my_requests'), icon: icon_add_outlined },
+  { key: 'requests' as const, label: t('access.my_requests'), icon: icon_logs_outlined },
   { key: 'permissions' as const, label: t('access.permission_details'), icon: icon_admin_outlined },
 ])
 
@@ -258,8 +254,8 @@ watch(
 </script>
 
 <template>
-  <div class="access-page">
-    <aside class="access-sidebar">
+  <div class="access-page dv-preview dv-teleport-query no-padding">
+    <aside class="resource-area access-sidebar">
       <div class="access-sidebar-title">{{ t('access.my_permissions') }}</div>
       <nav class="access-nav" :aria-label="t('access.my_permissions')">
         <button
@@ -281,240 +277,276 @@ watch(
       </nav>
     </aside>
 
-    <main class="access-main">
-      <template v-if="activePanel === 'account'">
-        <div class="access-header">
-          <div class="access-title">{{ t('access.account_details') }}</div>
-          <el-tag :type="headerTagType" effect="light" round>
-            {{ headerTag }}
-          </el-tag>
-        </div>
-
-        <section class="access-panel account-panel">
-          <div class="account-summary">
-            <div class="account-avatar" aria-hidden="true">{{ accountInitial }}</div>
-            <div class="account-summary-main">
-              <div class="account-name">{{ userStore.getName || userStore.getAccount || '-' }}</div>
-              <div class="account-text">{{ userStore.getAccount || '-' }}</div>
-            </div>
+    <main class="preview-area access-main">
+      <div class="preview-stage access-stage">
+        <template v-if="activePanel === 'account'">
+          <div class="access-header">
+            <div class="access-title">{{ t('access.account_details') }}</div>
+            <el-tag :type="headerTagType" effect="light" round>
+              {{ headerTag }}
+            </el-tag>
           </div>
 
-          <div class="account-detail-list">
-            <div v-for="row in accountDetailRows" :key="row.label" class="account-detail-row">
-              <div class="account-detail-label">{{ row.label }}</div>
-              <div class="account-detail-value">{{ row.value }}</div>
-            </div>
-          </div>
-        </section>
-      </template>
-
-      <template v-else-if="activePanel === 'requests'">
-        <div class="access-header">
-          <div class="access-title">{{ t('access.my_requests') }}</div>
-          <el-tag :type="pendingRequestCount ? 'warning' : 'info'" effect="light" round>
-            {{ t('access.pending_request_count', { count: pendingRequestCount }) }}
-          </el-tag>
-        </div>
-
-        <section class="access-panel request-panel">
-          <div class="section-heading">
-            <div>
-              <div class="section-title">{{ t('tenant.my_workspace_requests') }}</div>
-              <div class="section-description">
-                {{ t('access.pending_workspace_requests_description') }}
+          <section class="access-panel account-panel">
+            <div class="account-summary">
+              <UserAvatar
+                :name="userStore.getName"
+                :account="userStore.getAccount"
+                :uid="userStore.getUid"
+                :size="62"
+              />
+              <div class="account-summary-main">
+                <div class="account-name">{{ userStore.getName || userStore.getAccount || '-' }}</div>
+                <div class="account-text">{{ userStore.getAccount || '-' }}</div>
               </div>
             </div>
+
+            <div class="account-detail-list">
+              <div v-for="row in accountDetailRows" :key="row.label" class="account-detail-row">
+                <div class="account-detail-label">{{ row.label }}</div>
+                <div class="account-detail-value">{{ row.value }}</div>
+              </div>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="activePanel === 'requests'">
+          <div class="access-header">
+            <div class="access-title">{{ t('access.my_requests') }}</div>
+            <el-tag :type="pendingRequestCount ? 'warning' : 'info'" effect="light" round>
+              {{ t('access.pending_request_count', { count: pendingRequestCount }) }}
+            </el-tag>
           </div>
 
-          <div v-if="pendingRequestCount" class="request-table-shell">
-            <el-table :data="requestPageRows" class="request-table" style="width: 100%">
-              <el-table-column prop="requestTypeLabel" :label="t('tenant.request_type')" width="150">
-                <template #default="scope">
-                  <el-tag effect="plain" round>
-                    {{ scope.row.requestTypeLabel }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="tenant_name" :label="t('tenant.name')" min-width="180" show-overflow-tooltip>
-                <template #default="scope">
-                  <div class="workspace-name">{{ scope.row.tenant_name || '-' }}</div>
-                  <div v-if="scope.row.requestType === 'invitation'" class="workspace-meta">
-                    {{ t('tenant.inviter') }}: {{ invitationInviterLabel(scope.row) }}
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column prop="status" :label="t('tenant.application_status')" width="130">
-                <template #default="scope">
-                  <div class="request-status" :class="requestStatusClass(scope.row.status)">
-                    <span class="status-icon" aria-hidden="true"></span>
-                    <span>{{ formatApplicationStatus(scope.row.status) }}</span>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column prop="requestTime" :label="t('tenant.apply_time')" width="210">
-                <template #default="scope">
-                  <div class="request-time-cell">
-                    <div class="request-time-status">{{ scope.row.requestTimeLabel }}</div>
-                    <div class="request-time-detail">{{ formatDateTime(scope.row.requestTime) }}</div>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column prop="descriptionText" :label="t('tenant.apply_reason')" min-width="180" show-overflow-tooltip>
-                <template #default="scope">
-                  <span class="request-description-cell">{{ scope.row.descriptionText || '-' }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column fixed="right" :label="t('ds.actions')" width="170">
-                <template #default="scope">
-                  <div v-if="scope.row.requestType === 'invitation'" class="request-actions">
+          <section class="access-panel request-panel">
+            <div class="section-heading">
+              <div>
+                <div class="section-title">{{ t('tenant.my_workspace_requests') }}</div>
+                <div class="section-description">
+                  {{ t('access.pending_workspace_requests_description') }}
+                </div>
+              </div>
+            </div>
+
+            <div v-if="pendingRequestCount" class="request-table-shell">
+              <el-table :data="requestPageRows" class="request-table" style="width: 100%">
+                <el-table-column prop="requestTypeLabel" :label="t('tenant.request_type')" width="150">
+                  <template #default="scope">
+                    <el-tag effect="plain" round>
+                      {{ scope.row.requestTypeLabel }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="tenant_name" :label="t('tenant.name')" min-width="180" show-overflow-tooltip>
+                  <template #default="scope">
+                    <div class="workspace-name">{{ scope.row.tenant_name || '-' }}</div>
+                    <div v-if="scope.row.requestType === 'invitation'" class="workspace-meta">
+                      {{ t('tenant.inviter') }}: {{ invitationInviterLabel(scope.row) }}
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="status" :label="t('tenant.application_status')" width="130">
+                  <template #default="scope">
+                    <div class="request-status" :class="requestStatusClass(scope.row.status)">
+                      <span class="status-icon" aria-hidden="true"></span>
+                      <span>{{ formatApplicationStatus(scope.row.status) }}</span>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="requestTime" :label="t('tenant.apply_time')" width="210">
+                  <template #default="scope">
+                    <div class="request-time-cell">
+                      <div class="request-time-status">{{ scope.row.requestTimeLabel }}</div>
+                      <div class="request-time-detail">{{ formatDateTime(scope.row.requestTime) }}</div>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="descriptionText" :label="t('tenant.apply_reason')" min-width="180" show-overflow-tooltip>
+                  <template #default="scope">
+                    <span class="request-description-cell">{{ scope.row.descriptionText || '-' }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column fixed="right" :label="t('ds.actions')" width="170">
+                  <template #default="scope">
+                    <div v-if="scope.row.requestType === 'invitation'" class="request-actions">
+                      <el-button
+                        text
+                        :loading="invitationRespondingId === String(scope.row.id)"
+                        @click="respondInvitation(scope.row, true)"
+                      >
+                        {{ t('tenant.approve_action') }}
+                      </el-button>
+                      <el-button
+                        text
+                        type="danger"
+                        :disabled="invitationRespondingId === String(scope.row.id)"
+                        @click="respondInvitation(scope.row, false)"
+                      >
+                        {{ t('tenant.reject_action') }}
+                      </el-button>
+                    </div>
                     <el-button
-                      text
-                      :loading="invitationRespondingId === String(scope.row.id)"
-                      @click="respondInvitation(scope.row, true)"
-                    >
-                      {{ t('tenant.approve_action') }}
-                    </el-button>
-                    <el-button
+                      v-else
                       text
                       type="danger"
-                      :disabled="invitationRespondingId === String(scope.row.id)"
-                      @click="respondInvitation(scope.row, false)"
+                      :loading="applicationCancelingId === String(scope.row.id)"
+                      @click="cancelApplication(scope.row)"
                     >
-                      {{ t('tenant.reject_action') }}
+                      {{ t('tenant.withdraw_action') }}
                     </el-button>
-                  </div>
-                  <el-button
-                    v-else
-                    text
-                    type="danger"
-                    :loading="applicationCancelingId === String(scope.row.id)"
-                    @click="cancelApplication(scope.row)"
-                  >
-                    {{ t('tenant.withdraw_action') }}
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <div class="table-pagination">
-              <el-pagination
-                v-model:current-page="requestPage.currentPage"
-                v-model:page-size="requestPage.pageSize"
-                :page-sizes="[5, 10, 20]"
-                :total="requestRows.length"
-                small
-                layout="total, sizes, prev, pager, next"
-              />
-            </div>
-          </div>
-          <div v-else class="empty-state">{{ t('tenant.no_workspace_requests') }}</div>
-        </section>
-      </template>
-
-      <template v-else>
-        <div class="access-header">
-          <div class="access-title">{{ t('access.permission_details') }}</div>
-          <el-tag :type="headerTagType" effect="light" round>
-            {{ headerTag }}
-          </el-tag>
-        </div>
-
-        <section class="access-notice">
-          <div class="notice-title">{{ t('access.permission_boundary_title') }}</div>
-          <div class="notice-description">{{ t('access.permission_boundary_description') }}</div>
-          <div class="notice-footer">{{ t('access.apply_tip') }}</div>
-        </section>
-
-        <section class="access-panel identity-panel">
-          <div class="section-heading">
-            <div>
-              <div class="section-title">{{ t('access.workspace_identity_title') }}</div>
-              <div class="section-description">{{ t('access.workspace_identity_description') }}</div>
-            </div>
-          </div>
-
-          <div v-if="workspaceList.length" class="identity-list">
-            <div v-for="workspace in workspaceList" :key="workspace.id" class="identity-row">
-              <div class="workspace-main">
-                <div class="workspace-title-row">
-                  <span class="workspace-name">{{ formatWorkspaceName(workspace) }}</span>
-                </div>
-                <div v-if="formatWorkspaceMeta(workspace)" class="workspace-meta">
-                  {{ formatWorkspaceMeta(workspace) }}
-                </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div class="table-pagination">
+                <el-pagination
+                  v-model:current-page="requestPage.currentPage"
+                  v-model:page-size="requestPage.pageSize"
+                  :page-sizes="[5, 10, 20]"
+                  :total="requestRows.length"
+                  small
+                  layout="total, sizes, prev, pager, next"
+                />
               </div>
-              <el-tag :type="roleTagType(normalizeRole(workspace.role))" effect="plain" round>
-                {{ roleLabel(workspace.role) }}
-              </el-tag>
             </div>
+            <div v-else class="empty-state">{{ t('tenant.no_workspace_requests') }}</div>
+          </section>
+        </template>
+
+        <template v-else>
+          <div class="access-header">
+            <div class="access-title">{{ t('access.permission_details') }}</div>
+            <el-tag :type="headerTagType" effect="light" round>
+              {{ headerTag }}
+            </el-tag>
           </div>
-          <div v-else class="empty-state">{{ t('access.no_joined_workspace_status') }}</div>
-        </section>
-      </template>
+
+          <section class="access-notice">
+            <div class="notice-title">{{ t('access.permission_boundary_title') }}</div>
+            <div class="notice-description">{{ t('access.permission_boundary_description') }}</div>
+            <div class="notice-footer">{{ t('access.apply_tip') }}</div>
+          </section>
+
+          <section class="access-panel identity-panel">
+            <div class="section-heading">
+              <div>
+                <div class="section-title">{{ t('access.workspace_identity_title') }}</div>
+                <div class="section-description">{{ t('access.workspace_identity_description') }}</div>
+              </div>
+            </div>
+
+            <div v-if="workspaceList.length" class="identity-list">
+              <div v-for="workspace in workspaceList" :key="workspace.id" class="identity-row">
+                <div class="workspace-main">
+                  <div class="workspace-title-row">
+                    <span class="workspace-name">{{ formatWorkspaceName(workspace) }}</span>
+                  </div>
+                  <div v-if="formatWorkspaceMeta(workspace)" class="workspace-meta">
+                    {{ formatWorkspaceMeta(workspace) }}
+                  </div>
+                </div>
+                <el-tag :type="roleTagType(normalizeRole(workspace.role))" effect="plain" round>
+                  {{ roleLabel(workspace.role) }}
+                </el-tag>
+              </div>
+            </div>
+            <div v-else class="empty-state">{{ t('access.no_joined_workspace_status') }}</div>
+          </section>
+        </template>
+      </div>
     </main>
   </div>
 </template>
 
 <style lang="less" scoped>
 .access-page {
+  --dashboard-preview-card-bg: #ffffff;
+  --dashboard-preview-canvas-bg: #fbfbff;
+  --dashboard-preview-sidebar-bg: #f3f7fc;
+
+  width: 100%;
   height: 100%;
   min-height: 0;
-  padding: 0 0 24px;
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 16px;
+  padding: 0;
+  display: flex;
   overflow: hidden;
+  background: var(--dashboard-preview-sidebar-bg);
   color: #1f2329;
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
 
   .access-sidebar {
+    --ed-aside-width: 280px;
+
+    position: relative;
+    flex: 0 0 280px;
+    width: 280px;
+    height: 100%;
     min-width: 0;
-    align-self: start;
-    border: 1px solid #dee0e3;
-    border-radius: 8px;
-    background: #fff;
-    padding: 16px 12px;
+    padding: 8px 0 0;
+    border: 0;
+    border-right: 1px solid var(--workspace-border, var(--theme-shell-border));
+    border-radius: 0;
+    background: var(--dashboard-preview-sidebar-bg);
+    color: var(--workspace-text-primary, #1f2329);
+    overflow: hidden;
   }
 
   .access-sidebar-title {
-    margin: 0 0 16px 4px;
-    color: var(--workspace-text-primary, var(--theme-text-primary, #1f2329));
+    height: 24px;
+    margin: 0 8px 10px;
+    color: var(--workspace-text-primary, var(--TextPrimary, #1f2329));
     font-weight: 600;
-    font-size: 18px;
-    line-height: 26px;
+    font-size: 15px;
+    line-height: 24px;
+    white-space: nowrap;
   }
 
   .access-nav {
     display: grid;
-    gap: 4px;
+    gap: 1px;
+    padding: 0 8px;
   }
 
   .access-nav-item {
     width: 100%;
-    min-height: 38px;
-    padding: 0 10px;
+    height: 32px;
+    padding: 0 8px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     border: 0;
     border-radius: 6px;
     background: transparent;
-    color: #1f2329;
-    font-size: 14px;
-    line-height: 22px;
+    color: var(--workspace-text-primary, #1f2329);
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 400;
     text-align: left;
     cursor: pointer;
+    transition:
+      background-color 0.18s ease,
+      color 0.18s ease;
 
     &:hover {
-      background: #f7f8fa;
+      background: var(--workspace-control-hover-bg, #eef2f8);
     }
 
     &.is-active {
-      background: var(--ed-color-primary-1a, #eef3ff);
-      color: var(--ed-color-primary);
+      background: #e8f0ff;
+      color: var(--workspace-text-primary, var(--theme-text-primary));
+      font-weight: 500;
+
+      .ed-icon {
+        color: var(--ed-color-primary, #2f6bff);
+        transform: scale(1.08);
+      }
     }
 
     .ed-icon {
       flex: 0 0 auto;
-      color: inherit;
+      color: var(--workspace-text-secondary, #667085);
+      transition:
+        color 0.18s ease,
+        transform 0.18s ease;
     }
 
     svg [fill] {
@@ -550,9 +582,24 @@ watch(
   }
 
   .access-main {
+    flex: 1;
+    display: flex;
     min-width: 0;
     min-height: 0;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: relative;
+    background: var(--dashboard-preview-canvas-bg);
+  }
+
+  .access-stage {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    padding: 24px 26px;
+    background: var(--dashboard-preview-canvas-bg);
   }
 
   .access-header {
@@ -562,6 +609,7 @@ watch(
     gap: 16px;
     margin-bottom: 16px;
     min-height: 34px;
+    flex: 0 0 auto;
   }
 
   .access-title {
@@ -584,6 +632,7 @@ watch(
     min-width: 0;
     padding: 20px 24px 24px;
     margin-bottom: 16px;
+    flex: 0 0 auto;
   }
 
   .account-panel {
@@ -596,20 +645,6 @@ watch(
     gap: 14px;
     padding-bottom: 20px;
     border-bottom: 1px solid #eff0f1;
-  }
-
-  .account-avatar {
-    flex: 0 0 56px;
-    width: 56px;
-    height: 56px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: var(--ed-color-primary-1a, #eef3ff);
-    color: var(--ed-color-primary);
-    font-size: 22px;
-    line-height: 1;
-    font-weight: 600;
   }
 
   .account-summary-main {
@@ -955,11 +990,24 @@ watch(
 
 @media (max-width: 640px) {
   .access-page {
-    grid-template-columns: 1fr;
+    flex-direction: column;
     overflow: auto;
+
+    .access-sidebar {
+      flex: 0 0 auto;
+      width: 100%;
+      height: auto;
+      padding-bottom: 8px;
+      border-right: 0;
+      border-bottom: 1px solid var(--workspace-border, var(--theme-shell-border));
+    }
 
     .access-main {
       overflow: visible;
+    }
+
+    .access-stage {
+      padding: 16px;
     }
 
     .access-nav {

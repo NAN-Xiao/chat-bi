@@ -49,7 +49,7 @@
 
         <el-dropdown trigger="click">
           <div class="user-info">
-            <el-avatar size="small">{{ name?.charAt(0) }}</el-avatar>
+            <UserAvatar :name="name" :account="userStore.getAccount" :uid="userStore.getUid" :size="24" />
             <span class="user-name">{{ name }}</span>
           </div>
           <template #dropdown>
@@ -81,7 +81,7 @@
 
             <el-dropdown trigger="click">
               <div class="user-info">
-                <el-avatar size="small">{{ name?.charAt(0) }}</el-avatar>
+                <UserAvatar :name="name" :account="userStore.getAccount" :uid="userStore.getUid" :size="24" />
                 <span class="user-name">{{ name }}</span>
               </div>
               <template #dropdown>
@@ -145,6 +145,7 @@ import { ArrowLeftBold } from '@element-plus/icons-vue'
 import { useCache } from '@/utils/useCache'
 import { useI18n } from 'vue-i18n'
 import LanguageSelector from '@/components/Language-selector/index.vue'
+import UserAvatar from '@/components/user-avatar/UserAvatar.vue'
 import { resolveBusinessDashboardLandingTarget } from '@/utils/dashboardLanding'
 
 const { t } = useI18n()
@@ -153,7 +154,7 @@ const topLayout = ref(false)
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
-const name = ref('admin')
+const name = computed(() => userStore.getName || userStore.getAccount || 'admin')
 const activeMenu = computed(() => route.path)
 const routerList = computed(() => {
   return router.getRoutes().filter((route) => {
@@ -341,11 +342,6 @@ onMounted(() => {
         column-gap: 4px;
         align-items: center;
 
-        .ed-avatar {
-          background-color: var(--el-color-primary);
-          color: #fff;
-        }
-
         .user-name {
           font-size: 14px;
           font-weight: 500;
@@ -443,11 +439,6 @@ onMounted(() => {
             display: flex;
             column-gap: 4px;
             align-items: center;
-
-            .ed-avatar {
-              background-color: var(--el-color-primary);
-              color: #fff;
-            }
 
             .user-name {
               font-size: 14px;
