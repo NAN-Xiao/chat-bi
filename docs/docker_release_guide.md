@@ -191,6 +191,12 @@ G2 SSR：可单独运行，或由单容器/all 模式后台启动
 | `TASK_QUEUE_*` | Redis 任务队列配置 |
 | `MCP_ENABLED` | 是否启用 MCP，默认建议 `false` |
 
+补充说明：
+
+- Oracle 客户端不是当前发布的硬依赖。
+- 只有在实际连接 Oracle 数据源时，系统才会尝试初始化 Oracle thick mode。
+- 如果镜像或宿主机未提供 Oracle Instant Client，非 Oracle 场景仍应正常启动。
+
 ## 八、Jenkins 发布流程
 
 当前 `Jenkinsfile` 的参数：

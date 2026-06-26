@@ -38,19 +38,33 @@ from sqlglot import expressions as exp
 from sqlalchemy.pool import NullPool
 from pyhive import hive
 
-try:
-    if settings.ORACLE_THICK_MODE_ENABLED:
-        if os.path.exists(settings.ORACLE_CLIENT_PATH):
-            oracledb.init_oracle_client(
-                lib_dir=settings.ORACLE_CLIENT_PATH
-            )
-            AppLogUtil.info("init oracle client success, use thick mode")
-        else:
-            AppLogUtil.info("init oracle client not found, use thin mode")
-    else:
-        AppLogUtil.info("oracle thick mode disabled, use thin mode")
-except Exception as e:
-    AppLogUtil.error(f"init oracle client failed, use thin mode: {e}")
+_ORACLE_CLIENT_INIT_ATTEMPTED = False
+_ORACLE_CLIENT_READY = False
+
+
+def _ensure_oracle_client_initialized() -> bool:
+    global _ORACLE_CLIENT_INIT_ATTEMPTED, _ORACLE_CLIENT_READY
+
+    if not settings.ORACLE_THICK_MODE_ENABLED:
+        return False
+
+    if _ORACLE_CLIENT_INIT_ATTEMPTED:
+        return _ORACLE_CLIENT_READY
+
+    _ORACLE_CLIENT_INIT_ATTEMPTED = True
+    if not os.path.exists(settings.ORACLE_CLIENT_PATH):
+        AppLogUtil.info("oracle thick mode enabled, but client not found, use thin mode")
+        return False
+
+    try:
+        oracledb.init_oracle_client(lib_dir=settings.ORACLE_CLIENT_PATH)
+        _ORACLE_CLIENT_READY = True
+        AppLogUtil.info("init oracle client success, use thick mode")
+    except Exception as e:
+        _ORACLE_CLIENT_READY = False
+        AppLogUtil.error(f"init oracle client failed, use thin mode: {e}")
+
+    return _ORACLE_CLIENT_READY
 
 
 def get_uri(ds: CoreDatasource) -> str:
@@ -78,6 +92,7 @@ def get_uri_from_config(type: str, conf: DatasourceConf) -> str:
         else:
             db_url = f"postgresql+psycopg2://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}/{conf.database}"
     elif equals_ignore_case(type, "oracle"):
+        _ensure_oracle_client_initialized()
         if equals_ignore_case(conf.mode, "service_name", "serviceName"):
             if conf.extraJdbc is not None and conf.extraJdbc != '':
                 db_url = f"oracle+oracledb://{urllib.parse.quote(conf.username)}:{urllib.parse.quote(conf.password)}@{conf.host}:{conf.port}?service_name={conf.database}&{conf.extraJdbc}"
