@@ -517,7 +517,6 @@ onMounted(() => {
       gap: 6px;
       height: var(--top-nav-height);
 
-      :deep(.person),
       :deep(.theme-toggle.collapse) {
         width: var(--top-nav-control-height);
         min-width: var(--top-nav-control-height);
@@ -528,6 +527,24 @@ onMounted(() => {
         &:hover,
         &:focus {
           background: var(--workspace-control-hover-bg, var(--theme-hover-bg));
+          color: var(--workspace-text-primary, var(--theme-text-primary));
+        }
+      }
+
+      :deep(.person.collapse) {
+        width: var(--top-nav-control-height);
+        min-width: var(--top-nav-control-height);
+        height: var(--top-nav-control-height);
+        border-color: transparent;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--workspace-text-secondary, var(--theme-text-secondary));
+
+        &:hover,
+        &:focus,
+        &:active {
+          border-color: transparent;
+          background: transparent;
           color: var(--workspace-text-primary, var(--theme-text-primary));
         }
       }

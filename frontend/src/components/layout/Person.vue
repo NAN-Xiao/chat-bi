@@ -415,6 +415,15 @@ onMounted(() => {
     position: relative;
     margin-top: 0;
     margin-bottom: 0;
+    border-radius: 50%;
+  }
+
+  .user-avatar {
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease,
+      border-color 160ms ease;
+    transform-origin: center;
   }
 
   .name {
@@ -439,9 +448,21 @@ onMounted(() => {
 
   &:hover,
   &:focus {
-    border-color: var(--theme-shell-border);
-    background: var(--theme-control-bg);
-    color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
+    &:not(.collapse) {
+      border-color: var(--theme-shell-border);
+      background: var(--theme-control-bg);
+      color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
+    }
+
+    &.collapse {
+      border-color: transparent;
+      background: transparent;
+      color: var(--theme-sidebar-emphasis-text, var(--theme-text-primary));
+
+      .user-avatar {
+        transform: scale(1.08);
+      }
+    }
 
     &::after {
       background: transparent;
@@ -449,7 +470,13 @@ onMounted(() => {
   }
 
   &:active {
-    background: var(--theme-active-bg);
+    &:not(.collapse) {
+      background: var(--theme-active-bg);
+    }
+
+    &.collapse .user-avatar {
+      transform: scale(1.02);
+    }
 
     &::after {
       background: transparent;

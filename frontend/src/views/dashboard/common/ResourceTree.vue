@@ -335,7 +335,8 @@ const nodeExpand = (data: any) => {
 
 const nodeCollapse = (data: any) => {
   if (!data.id) return
-  expandedArray.value = expandedArray.value.filter((id) => String(id) !== String(data.id))
+  const collapsedKeys = new Set(collectExpandableKeys([data]).map((id) => String(id)))
+  expandedArray.value = expandedArray.value.filter((id) => !collapsedKeys.has(String(id)))
   persistExpandedKeys()
 }
 
@@ -446,6 +447,17 @@ const selectDashboardNode = (node?: SQTreeNode) => {
   return true
 }
 
+const emitDashboardNodeClick = (data?: SQTreeNode) => {
+  const dashboardNode = data
+  if (!dashboardNode || !isLeafDashboardNode(dashboardNode)) return
+  emit('nodeClick', {
+    ...dashboardNode,
+    id: getRawDashboardId(dashboardNode),
+    dashboardScope: getDashboardScope(dashboardNode),
+    dashboardKey: dashboardNode.id,
+  })
+}
+
 const nodeClick = (data: SQTreeNode, node: any) => {
   dashboardStore.setCurComponent({ component: null, index: null })
   if (isVirtualNode(data)) {
@@ -467,12 +479,7 @@ const nodeClick = (data: SQTreeNode, node: any) => {
         rememberDefaultDashboardId(getRawDashboardId(data), userStore)
       }
       syncDashboardRoute(data)
-      emit('nodeClick', {
-        ...data,
-        id: getRawDashboardId(data),
-        dashboardScope: getDashboardScope(data),
-        dashboardKey: data.id,
-      })
+      emitDashboardNodeClick(data)
     } else {
       resourceListTree.value.setCurrentKey(null)
     }
@@ -731,12 +738,9 @@ const afterTreeInit = () => {
     returnMounted.value = false
   }
   nextTick(() => {
-    resourceListTree.value.setCurrentKey(selectedNodeKey.value)
+    resourceListTree.value.setCurrentKey(selectedNodeKey.value, false)
     resourceListTree.value.filter(filterText.value)
-    nextTick(() => {
-      // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      document.querySelector('.is-current')?.firstChild?.click()
-    })
+    emitDashboardNodeClick(findDashboardNodeById(state.resourceTree, selectedNodeKey.value))
   })
 }
 
@@ -884,10 +888,11 @@ watch(
       return
     }
     selectDashboardNode(node)
+    ensureSelectedNodeExpanded()
+    returnMounted.value = false
     nextTick(() => {
-      resourceListTree.value?.setCurrentKey?.(selectedNodeKey.value)
-      const currentNode = resourceListTree.value?.$el?.querySelector?.('.is-current')
-      currentNode?.firstChild?.click?.()
+      resourceListTree.value?.setCurrentKey?.(selectedNodeKey.value, false)
+      emitDashboardNodeClick(node)
     })
   }
 )
@@ -1246,6 +1251,7 @@ defineExpose({
         :allow-drag="allowNodeDrag"
         :allow-drop="allowNodeDrop"
         :default-expanded-keys="expandedArray"
+        :auto-expand-parent="false"
         :data="state.resourceTree"
         :props="defaultProps"
         node-key="id"
@@ -1833,7 +1839,9 @@ defineExpose({
       )
       > .ed-tree-node__expand-icon
   ) {
-    transform: translateX(28px);
+    position: relative;
+    z-index: 2;
+    transform: translateX(10px);
   }
 
   :deep(
@@ -1842,7 +1850,7 @@ defineExpose({
       )
       > .ed-tree-node__expand-icon.expanded
   ) {
-    transform: translateX(28px) rotate(90deg);
+    transform: translateX(10px) rotate(90deg);
   }
 
 }
