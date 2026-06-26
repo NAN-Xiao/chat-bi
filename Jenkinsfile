@@ -257,7 +257,7 @@ EOF
       }
     }
 
-    stage('迁移并重启 Docker 服务') {
+    stage('重启 Docker 服务') {
       steps {
         sh '''
           set -eux
@@ -278,22 +278,8 @@ RUNTIME_ENV_FILE=$RUNTIME_ENV_FILE
 EOF
           chmod 600 "$APP_HOME/chat-bi-deploy.env"
 
-          echo "执行数据库迁移..."
-          docker rm -f chat-bi-migrate >/dev/null 2>&1 || true
-          docker run --rm \
-            --name chat-bi-migrate \
-            --env-file "$RUNTIME_ENV_FILE" \
-            -e APP_ROLE=migrate \
-            -e AUTO_MIGRATE_ON_STARTUP=false \
-            -v "$APP_HOME/data/zhishu/excel:/opt/zhishu/data/excel" \
-            -v "$APP_HOME/data/zhishu/file:/opt/zhishu/data/file" \
-            -v "$APP_HOME/data/zhishu/images:/opt/zhishu/images" \
-            -v "$APP_HOME/data/zhishu/logs:/opt/zhishu/app/logs" \
-            "$IMAGE"
-
           echo "停止旧应用容器..."
           docker rm -f "$CONTAINER_NAME" "${CONTAINER_NAME}-previous" >/dev/null 2>&1 || true
-          docker rm -f chat-bi-mcp >/dev/null 2>&1 || true
           for api_port in $api_ports; do
             docker rm -f "chat-bi-api-${api_port}" >/dev/null 2>&1 || true
           done
@@ -489,20 +475,16 @@ EOF
     success {
       echo "发布完成：${env.IMAGE}，镜像未导出 tar"
     }
-    failure {
-      sh '''
-        set +e
-        echo "Docker 容器最近 300 行日志："
-        docker ps -a --filter 'name=^/chat-bi-(api|worker)-' --format '{{.Names}}' \
+      failure {
+        sh '''
+          set +e
+          echo "Docker 容器最近 300 行日志："
+          docker ps -a --filter 'name=^/chat-bi-(api|worker)-' --format '{{.Names}}' \
           | while IFS= read -r container; do
               [ -n "$container" ] || continue
               echo "===== container:$container ====="
               docker logs --tail=300 "$container" || true
             done
-        if docker ps -a --format '{{.Names}}' | grep -Fx chat-bi-migrate >/dev/null; then
-          echo "===== container:chat-bi-migrate ====="
-          docker logs --tail=300 chat-bi-migrate || true
-        fi
         echo "应用日志目录最近 300 行日志："
         for log_file in "$APP_HOME"/data/zhishu/logs/*.log; do
           if [ -f "$log_file" ]; then
