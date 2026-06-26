@@ -59,6 +59,9 @@ const isTenantChatBIRoute = (path: string) =>
 const isPlatformTemplateCanvasRoute = (to: any) =>
   to?.path === '/canvas' && Boolean(to?.query?.platformTemplateId)
 
+const isDefaultDashboardRoute = (path: string) =>
+  matchesPathPrefix(path, '/default-dashboard')
+
 const restoreBusinessTenantAfterWorkspaceAdmin = async (to: any, from: any) => {
   if (!from?.path?.startsWith('/system') || to?.path?.startsWith('/system')) return
   if (!isTenantChatBIRoute(to.path)) return
@@ -144,6 +147,16 @@ export const watchRouter = (router: Router) => {
     }
     if (to.path === '/docs') {
       location.href = to.fullPath
+      return
+    }
+    if (userStore.isPlatformWorkspaceDelegate && isDefaultDashboardRoute(to.path)) {
+      next({
+        path: '/dashboard/index',
+        query: {
+          ...to.query,
+          dashboardMode: 'default',
+        },
+      })
       return
     }
     try {

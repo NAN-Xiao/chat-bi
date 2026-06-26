@@ -817,7 +817,7 @@ const closeDrawer = () => {
 
 const openWorkspaceAdmin = (tenant: TenantInfo) => {
   router.push({
-    path: '/default-dashboard/index',
+    path: '/dashboard/index',
     query: {
       [PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY]: '1',
       [PLATFORM_WORKSPACE_DELEGATE_TENANT_QUERY_KEY]: String(tenant.id),
