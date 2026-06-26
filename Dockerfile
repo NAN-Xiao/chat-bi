@@ -72,23 +72,10 @@ FROM ${ZHISHU_RUNTIME_IMAGE}
 
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone
-#
-# 安装 Oracle Instant Client 运行时依赖，并在构建上下文中包含 instantclient-basic.zip
-# - 请将 Oracle Instant Client basic 包命名为 instantclient-basic.zip 放在仓库根目录或构建上下文中。
-# - 如果构建时不提供该文件，COPY 会失败；在 CI 中请确保将该文件作为私有构建资产传入。
-RUN apt-get update && apt-get install -y --no-install-recommends libaio1 unzip ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
-# 将 instantclient zip 复制并解压到 /opt/oracle/instantclient_*（需要在构建上下文提供 instantclient-basic.zip）
-COPY instantclient-basic.zip /tmp/instantclient.zip
-RUN mkdir -p /opt/oracle \
-    && unzip /tmp/instantclient.zip -d /opt/oracle \
-    && rm /tmp/instantclient.zip \
-    && ldconfig || true
-
-# 将 Instant Client 目录加入动态库搜索路径。根据实际解压出的目录名调整（常见为 instantclient_19_8 或 instantclient_21_8）
-ENV LD_LIBRARY_PATH=/opt/oracle/instantclient_21_8:$LD_LIBRARY_PATH
-ENV ORACLE_CLIENT_PATH=/opt/oracle/instantclient_21_8
+# 复用基础镜像中已安装的 Oracle Instant Client，避免 CI 依赖私有 zip 构建资产。
+ENV ORACLE_CLIENT_PATH=/opt/zhishu/db_client/oracle_instant_client
+ENV LD_LIBRARY_PATH=${ORACLE_CLIENT_PATH}:${LD_LIBRARY_PATH}
 
 # This runtime image is the all-in-one evaluation image. It starts PostgreSQ0625$0L
 # from start.sh and carries development database defaults for first-run demos.
