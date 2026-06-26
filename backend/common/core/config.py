@@ -194,6 +194,7 @@ class Settings(BaseSettings):
     DS_EMBEDDING_COUNT: int = 10
 
     ORACLE_CLIENT_PATH: str = '/opt/zhishu/db_client/oracle_instant_client'
+    ORACLE_THICK_MODE_ENABLED: bool = False
 
     @field_validator('SQL_DEBUG',
                      'EMBEDDING_ENABLED',

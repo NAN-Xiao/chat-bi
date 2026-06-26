@@ -79,7 +79,7 @@ newgrp docker
 
 ## 4. 准备项目目录
 
-推荐统一部署到 `/opt/zhishu/SQLBot`：
+推荐统一部署到 `/opt/zhishu/chat-bi`：
 
 ```bash
 sudo mkdir -p /opt/zhishu
@@ -90,23 +90,23 @@ cd /opt/zhishu
 如果服务器可以访问 Git 仓库：
 
 ```bash
-git clone <你的仓库地址> SQLBot
-cd SQLBot
+git clone <你的仓库地址> chat-bi
+cd chat-bi
 ```
 
 如果服务器不能访问 Git，可以在本地打包后上传：
 
 ```bash
-tar -czf SQLBot.tar.gz SQLBot
-scp SQLBot.tar.gz user@服务器IP:/opt/zhishu/
+tar -czf chat-bi.tar.gz chat-bi
+scp chat-bi.tar.gz user@服务器IP:/opt/zhishu/
 ```
 
 服务器解压：
 
 ```bash
 cd /opt/zhishu
-tar -xzf SQLBot.tar.gz
-cd SQLBot
+tar -xzf chat-bi.tar.gz
+cd chat-bi
 ```
 
 ## 5. 构建 Docker 镜像
@@ -114,7 +114,7 @@ cd SQLBot
 当前项目需要先构建基础镜像，再构建应用镜像：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/zhishu/chat-bi
 
 export DOCKER_BUILDKIT=1
 
@@ -214,7 +214,7 @@ services:
 ## 7. 创建持久化目录
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/zhishu/chat-bi
 
 mkdir -p data/zhishu/excel
 mkdir -p data/zhishu/file
@@ -308,7 +308,7 @@ password: docker-compose.local.yaml 中 POSTGRES_PASSWORD 的值
 进入项目目录：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/zhishu/chat-bi
 ```
 
 查看服务：
@@ -358,7 +358,7 @@ docker exec -it zhishu bash -lc 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0
 升级前先备份，至少备份 `data/` 和 `docker-compose.local.yaml`。
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/zhishu/chat-bi
 
 tar -czf zhishu-data-before-upgrade-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
 ```
@@ -409,7 +409,7 @@ docker logs --tail=200 zhishu
 停止服务后备份最稳：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/zhishu/chat-bi
 
 docker compose -f docker-compose.local.yaml down
 tar -czf zhishu-full-data-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
@@ -421,7 +421,7 @@ docker compose -f docker-compose.local.yaml up -d
 服务运行时也可以做逻辑备份：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/zhishu/chat-bi
 
 docker exec -e PGPASSWORD='你的POSTGRES_PASSWORD' zhishu \
   pg_dump -h 127.0.0.1 -U root -d zhishu_bi \
@@ -437,7 +437,7 @@ cp data/zhishu/logs/zhishu_bi.dump ./zhishu_bi-$(date +%F-%H%M%S).dump
 旧服务器：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/zhishu/chat-bi
 
 docker compose -f docker-compose.local.yaml down
 tar -czf zhishu-migrate-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
@@ -446,13 +446,13 @@ tar -czf zhishu-migrate-$(date +%F-%H%M%S).tar.gz data docker-compose.local.yaml
 传到新服务器：
 
 ```bash
-scp zhishu-migrate-*.tar.gz user@新服务器IP:/opt/zhishu/SQLBot/
+scp zhishu-migrate-*.tar.gz user@新服务器IP:/opt/zhishu/chat-bi/
 ```
 
 新服务器先按本文档安装 Docker、准备代码并构建镜像，然后恢复数据：
 
 ```bash
-cd /opt/zhishu/SQLBot
+cd /opt/zhishu/chat-bi
 tar -xzf zhishu-migrate-*.tar.gz
 docker compose -f docker-compose.local.yaml up -d
 ```

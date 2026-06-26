@@ -39,15 +39,18 @@ from sqlalchemy.pool import NullPool
 from pyhive import hive
 
 try:
-    if os.path.exists(settings.ORACLE_CLIENT_PATH):
-        oracledb.init_oracle_client(
-            lib_dir=settings.ORACLE_CLIENT_PATH
-        )
-        AppLogUtil.info("init oracle client success, use thick mode")
+    if settings.ORACLE_THICK_MODE_ENABLED:
+        if os.path.exists(settings.ORACLE_CLIENT_PATH):
+            oracledb.init_oracle_client(
+                lib_dir=settings.ORACLE_CLIENT_PATH
+            )
+            AppLogUtil.info("init oracle client success, use thick mode")
+        else:
+            AppLogUtil.info("init oracle client not found, use thin mode")
     else:
-        AppLogUtil.info("init oracle client failed, because not found oracle client, use thin mode")
+        AppLogUtil.info("oracle thick mode disabled, use thin mode")
 except Exception as e:
-    AppLogUtil.error("init oracle client failed, check your client is installed, use thin mode")
+    AppLogUtil.error(f"init oracle client failed, use thin mode: {e}")
 
 
 def get_uri(ds: CoreDatasource) -> str:
