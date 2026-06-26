@@ -6,7 +6,7 @@ from apps.dashboard.crud.dashboard_service import list_resource, load_resource, 
     create_resource, create_canvas, validate_name, delete_resource, update_resource, update_canvas, preview_sql, \
     share_resource, list_shared_resources, load_shared_resource, delete_shared_resource, use_shared_resource, \
     list_default_resources, load_default_resource, copy_default_resource, set_default_resource, sort_default_resources, \
-    move_resource, \
+    move_resource, reorder_resources, \
     copy_dashboard_to_platform_template, list_platform_dashboard_templates, load_platform_dashboard_template, \
     update_platform_dashboard_template, delete_platform_dashboard_template, copy_platform_template_to_workspace_dashboard
 from apps.dashboard.models.dashboard_model import (
@@ -16,6 +16,7 @@ from apps.dashboard.models.dashboard_model import (
     DashboardDefaultCopyRequest,
     DashboardDefaultRequest,
     DashboardDefaultSortRequest,
+    DashboardReorderRequest,
     DashboardPlatformTemplateCopyRequest,
     DashboardPlatformTemplateUseRequest,
     DashboardSqlPreview,
@@ -90,6 +91,15 @@ async def set_default_resource_api(session: SessionDep, user: CurrentUser, reque
 ))
 async def sort_default_resource_api(session: SessionDep, user: CurrentUser, request: DashboardDefaultSortRequest):
     return sort_default_resources(session=session, user=user, request=request)
+
+
+@router.post("/reorder", summary=f"{PLACEHOLDER_PREFIX}dashboard_reorder")
+@system_log(LogConfig(
+    operation_type=OperationType.UPDATE,
+    module=OperationModules.DASHBOARD,
+))
+async def reorder_resource_api(session: SessionDep, user: CurrentUser, request: DashboardReorderRequest):
+    return reorder_resources(session=session, user=user, request=request)
 
 
 @router.get("/platform-delegate/template/list", summary=f"{PLACEHOLDER_PREFIX}platform_dashboard_template_list")

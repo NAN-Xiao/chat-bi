@@ -132,10 +132,12 @@ export const savePlatformTemplateResource = (params: any, callBack: Function) =>
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 export const saveDashboardResourceTarget = (params: any, commonParams: any, callBack: Function) => {
+  const hasDatasourceParam = Object.prototype.hasOwnProperty.call(params, 'datasource')
   const requestBaseParams = {
     ...params,
-    datasource:
-      params.datasource || dashboardStore.dashboardInfo.datasource || datasourceContext.datasourceId,
+    datasource: hasDatasourceParam
+      ? params.datasource
+      : dashboardStore.dashboardInfo.datasource || datasourceContext.datasourceId,
   }
   dashboardApi.check_name(requestBaseParams).then((resCheck: any) => {
     if (resCheck) {

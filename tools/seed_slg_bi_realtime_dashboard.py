@@ -5,7 +5,7 @@ Targets:
 - App system database: 127.0.0.1:15432 / zhishu_bi / root / Password123@pg
 
 The generated BI rows stay at detail level:
-- fact_sessions rows model online sessions for 2026-06-23 and 2026-06-24;
+- fact_sessions rows model online sessions for 2026-07-01 and 2026-07-02;
 - fact_events rows model purchase_start / purchase_success events;
 - fact_payments rows model successful hourly orders.
 
@@ -50,12 +50,15 @@ DATASOURCE_ID = 1
 UPDATE_BY = "7471612174524223488"
 BACKUP_DIR = Path(".codex-runtime/backups")
 
-START_DAY = date(2026, 6, 23)
-TODAY = date(2026, 6, 24)
-SESSION_ID_START = 9_500_000
+START_DAY = date(2026, 7, 1)
+TODAY = date(2026, 7, 2)
+SESSION_ID_START = 20_000_000
+SESSION_UID_PREFIX = "rt_live_mock"
+EVENT_UID_PREFIX = "rt_live_mock_evt"
+ORDER_ID_PREFIX = "RTLIVE"
 
 RT_PRODUCT = (
-    "rt_mock_realtime_pack",
+    "rt_live_mock_realtime_pack",
     "实时活动礼包",
     "event_pack",
     Decimal("9999.00"),
@@ -65,35 +68,57 @@ RT_PRODUCT = (
 )
 
 YESTERDAY_HOURLY_REVENUE = [
-    Decimal("3200"),
-    Decimal("6200"),
-    Decimal("6800"),
-    Decimal("9100"),
-    Decimal("8600"),
-    Decimal("9000"),
-    Decimal("11800"),
-    Decimal("9600"),
-    Decimal("10100"),
-    Decimal("10800"),
-    Decimal("12500"),
-    Decimal("10000"),
-    Decimal("9800"),
-    Decimal("11200"),
-    Decimal("10600"),
-    Decimal("14000"),
-    Decimal("9700"),
-    Decimal("8200"),
-    Decimal("8500"),
-    Decimal("7600"),
-    Decimal("5900"),
-    Decimal("3600"),
-    Decimal("4300"),
-    Decimal("3100"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("50"),
+    Decimal("480"),
+    Decimal("2600"),
+    Decimal("1450"),
+    Decimal("1120"),
+    Decimal("900"),
+    Decimal("680"),
+    Decimal("1380"),
+    Decimal("3170"),
+    Decimal("2320"),
+    Decimal("860"),
+    Decimal("590"),
+    Decimal("3400"),
+    Decimal("3121"),
+    Decimal("1660"),
+    Decimal("1750"),
+    Decimal("774"),
 ]
 
 TODAY_HOURLY_REVENUE = [
-    Decimal("4450"),
-    Decimal("2182"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("0"),
+    Decimal("120"),
+    Decimal("600"),
+    Decimal("2318"),
+    Decimal("5400"),
+    Decimal("3200"),
+    Decimal("5100"),
+    Decimal("2905"),
+    Decimal("4180"),
+    Decimal("5852"),
+    Decimal("3792"),
+    Decimal("4016"),
+    Decimal("4200"),
+    Decimal("7312"),
+    Decimal("6033"),
+    Decimal("1916"),
+    Decimal("5398"),
+    Decimal("5264"),
 ]
 
 
@@ -180,10 +205,10 @@ def load_players(conn: Any) -> list[Player]:
 
 def cleanup(conn: Any) -> None:
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM public.fact_payments WHERE order_id LIKE 'RTMOCK%'")
-        cur.execute("DELETE FROM public.fact_events WHERE event_uid LIKE 'rt_mock_%'")
-        cur.execute("DELETE FROM public.fact_sessions WHERE session_uid LIKE 'rt_mock_%'")
-        cur.execute("DELETE FROM public.dim_product WHERE product_id LIKE 'rt_mock_%'")
+        cur.execute("DELETE FROM public.fact_payments WHERE order_id LIKE %s", (f"{ORDER_ID_PREFIX}%",))
+        cur.execute("DELETE FROM public.fact_events WHERE event_uid LIKE %s", (f"{EVENT_UID_PREFIX}_%",))
+        cur.execute("DELETE FROM public.fact_sessions WHERE session_uid LIKE %s", (f"{SESSION_UID_PREFIX}_pay_sess_%",))
+        cur.execute("DELETE FROM public.dim_product WHERE product_id = %s", (RT_PRODUCT[0],))
     conn.commit()
 
 
@@ -282,7 +307,7 @@ def build_online_sessions(players: list[Player]) -> tuple[list[tuple], int]:
             start_minute = sample_start_minute(rng)
             start_at = minute_dt(current_day, start_minute, rng.randint(0, 45))
             duration = int(max(45, min(520, rng.gauss(285, 95))))
-            session_uid = f"rt_mock_online_sess_{session_id}"
+            session_uid = f"{SESSION_UID_PREFIX}_online_sess_{session_id}"
             session_rows.append(build_session_row(session_id, session_uid, player, start_at, duration))
             session_id += 1
     return session_rows, session_id
@@ -301,8 +326,8 @@ def build_event_row(
     current_day = event_time.date()
     return (
         event_uid,
-        f"rt_mock_cli_{event_uid}",
-        f"rt_mock_trace_{session_id}_{sequence}",
+        f"{SESSION_UID_PREFIX}_cli_{event_uid}",
+        f"{SESSION_UID_PREFIX}_trace_{session_id}_{sequence}",
         event_time,
         event_time,
         event_time + timedelta(milliseconds=350),
@@ -363,15 +388,15 @@ def build_payment_rows(players: list[Player], next_session_id: int) -> tuple[lis
             pay_time = day_start(current_day) + timedelta(hours=hour, minutes=8 + (hour % 5), seconds=11)
             session_id = next_session_id
             next_session_id += 1
-            session_uid = f"rt_mock_pay_sess_{session_id}"
+            session_uid = f"{SESSION_UID_PREFIX}_pay_sess_{session_id}"
             session_rows.append(build_session_row(session_id, session_uid, player, pay_time - timedelta(minutes=8), 36))
 
-            order_id = f"RTMOCK{current_day:%Y%m%d}{order_no:05d}"
+            order_id = f"{ORDER_ID_PREFIX}{current_day:%Y%m%d}{order_no:05d}"
             order_no += 1
             product_id, product_name = RT_PRODUCT[0], RT_PRODUCT[1]
-            start_uid = f"rt_mock_evt_{event_no:08d}"
+            start_uid = f"{EVENT_UID_PREFIX}_{event_no:08d}"
             event_no += 1
-            final_uid = f"rt_mock_evt_{event_no:08d}"
+            final_uid = f"{EVENT_UID_PREFIX}_{event_no:08d}"
             event_no += 1
 
             event_rows.append(
@@ -425,7 +450,7 @@ def build_payment_rows(players: list[Player], next_session_id: int) -> tuple[lis
                     max(player.current_vip_level, 1),
                     player.current_level,
                     "whale" if amount >= Decimal("5000") else "mid",
-                    json.dumps({"source": "rt_mock_seed", "hour": hour}, ensure_ascii=False),
+                    json.dumps({"source": "rt_live_mock_seed", "hour": hour}, ensure_ascii=False),
                 )
             )
     return session_rows, event_rows, payment_rows
@@ -433,41 +458,45 @@ def build_payment_rows(players: list[Player], next_session_id: int) -> tuple[lis
 
 def insert_detail_rows(conn: Any, session_rows: list[tuple], event_rows: list[tuple], payment_rows: list[tuple]) -> None:
     with conn.cursor() as cur:
-        cur.executemany(
-            """
-            INSERT INTO public.fact_sessions (
-                session_id, session_uid, player_id, account_id, role_id, device_id, server_id, session_start,
-                session_end, duration_seconds, lifecycle_day, player_level_start, player_level_end, power_start,
-                power_end, platform, channel, campaign, client_version, app_build, sdk_version, device_tier,
-                device_model, os_version, network_type, country, ip_country
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            session_rows,
-        )
-        cur.executemany(
-            """
-            INSERT INTO public.fact_events (
-                event_uid, client_event_id, trace_id, event_time, client_time, server_receive_time, ingest_time,
-                event_date, player_id, account_id, role_id, device_id, server_id, session_id, event_name,
-                event_category, lifecycle_day, player_level, vip_level, power, alliance_id, client_version,
-                app_build, sdk_version, event_schema_version, platform, channel, campaign, country, ip_country,
-                language, device_model, os_version, device_tier, network_type, event_source,
-                sequence_in_session, attributes
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            event_rows,
-        )
-        cur.executemany(
-            """
-            INSERT INTO public.fact_payments (
-                order_id, start_event_uid, final_event_uid, event_time, event_date, player_id, server_id,
-                session_id, product_id, product_name, amount_usd, gross_revenue_usd, refund_amount_usd,
-                net_revenue_usd, local_currency, payment_channel, payment_status, fail_reason, refund_reason,
-                is_first_pay, pay_sequence, lifecycle_day, vip_level_after, player_level, revenue_tier, attributes
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            payment_rows,
-        )
+        if session_rows:
+            cur.executemany(
+                """
+                INSERT INTO public.fact_sessions (
+                    session_id, session_uid, player_id, account_id, role_id, device_id, server_id, session_start,
+                    session_end, duration_seconds, lifecycle_day, player_level_start, player_level_end, power_start,
+                    power_end, platform, channel, campaign, client_version, app_build, sdk_version, device_tier,
+                    device_model, os_version, network_type, country, ip_country
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (session_uid) DO NOTHING
+                """,
+                session_rows,
+            )
+        if event_rows:
+            cur.executemany(
+                """
+                INSERT INTO public.fact_events (
+                    event_uid, client_event_id, trace_id, event_time, client_time, server_receive_time, ingest_time,
+                    event_date, player_id, account_id, role_id, device_id, server_id, session_id, event_name,
+                    event_category, lifecycle_day, player_level, vip_level, power, alliance_id, client_version,
+                    app_build, sdk_version, event_schema_version, platform, channel, campaign, country, ip_country,
+                    language, device_model, os_version, device_tier, network_type, event_source,
+                    sequence_in_session, attributes
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                event_rows,
+            )
+        if payment_rows:
+            cur.executemany(
+                """
+                INSERT INTO public.fact_payments (
+                    order_id, start_event_uid, final_event_uid, event_time, event_date, player_id, server_id,
+                    session_id, product_id, product_name, amount_usd, gross_revenue_usd, refund_amount_usd,
+                    net_revenue_usd, local_currency, payment_channel, payment_status, fail_reason, refund_reason,
+                    is_first_pay, pay_sequence, lifecycle_day, vip_level_after, player_level, revenue_tier, attributes
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                payment_rows,
+            )
     conn.commit()
 
 
@@ -475,6 +504,7 @@ ONLINE_SQL = """
 WITH obs AS (
     SELECT max(session_start::date) AS today
     FROM public.fact_sessions
+    WHERE session_uid LIKE 'rt_live_mock_%'
 ), days AS (
     SELECT today AS day_date FROM obs
     UNION ALL
@@ -496,6 +526,7 @@ LEFT JOIN public.fact_sessions s
   ON s.session_start <= mb.bucket_time
  AND s.session_end > mb.bucket_time
  AND s.session_start::date BETWEEN (SELECT today - 1 FROM obs) AND (SELECT today FROM obs)
+ AND s.session_uid LIKE 'rt_live_mock_%'
 GROUP BY day_date, bucket_time
 ORDER BY day_date, bucket_time
 """
@@ -504,16 +535,34 @@ HOURLY_PAYMENT_SQL = """
 WITH obs AS (
     SELECT max(event_date) AS today
     FROM public.fact_payments
+    WHERE order_id LIKE 'RTLIVE%'
+), days AS (
+    SELECT today AS day_date FROM obs
+    UNION ALL
+    SELECT today - 1 AS day_date FROM obs
+), hours AS (
+    SELECT d.day_date, gs.hour_index
+    FROM days d
+    CROSS JOIN generate_series(0, 23) AS gs(hour_index)
+), hourly AS (
+    SELECT p.event_date AS day_date,
+           extract(hour FROM p.event_time)::int AS hour_index,
+           round(sum(p.net_revenue_usd), 2) AS revenue
+    FROM public.fact_payments p, obs
+    WHERE p.payment_status = 'success'
+      AND p.net_revenue_usd > 0
+      AND p.order_id LIKE 'RTLIVE%'
+      AND p.event_date BETWEEN obs.today - 1 AND obs.today
+    GROUP BY p.event_date, extract(hour FROM p.event_time)::int
 )
-SELECT to_char(date_trunc('hour', p.event_time), 'HH24') || chr(58) || '00' AS "小时",
-       to_char(p.event_date, 'YYYY-MM-DD') AS "日期",
-       round(sum(p.net_revenue_usd), 2) AS "实时付费金额"
-FROM public.fact_payments p, obs
-WHERE p.payment_status = 'success'
-  AND p.net_revenue_usd > 0
-  AND p.event_date BETWEEN obs.today - 1 AND obs.today
-GROUP BY p.event_date, date_trunc('hour', p.event_time)
-ORDER BY p.event_date, date_trunc('hour', p.event_time)
+SELECT lpad(h.hour_index::text, 2, '0') || chr(58) || '00' AS "小时",
+       to_char(h.day_date, 'YYYY-MM-DD') AS "日期",
+       coalesce(hourly.revenue, 0) AS "实时付费金额"
+FROM hours h
+LEFT JOIN hourly
+  ON hourly.day_date = h.day_date
+ AND hourly.hour_index = h.hour_index
+ORDER BY h.day_date, h.hour_index
 """
 
 CUMULATIVE_PAYMENT_SQL = """
@@ -521,9 +570,10 @@ WITH obs AS (
     SELECT max(event_date) AS today,
            extract(hour FROM max(event_time))::int AS current_hour
     FROM public.fact_payments
+    WHERE order_id LIKE 'RTLIVE%'
 ), days AS (
     SELECT today AS day_date,
-           current_hour AS max_hour
+           23 AS max_hour
     FROM obs
     UNION ALL
     SELECT today - 1 AS day_date,
@@ -540,6 +590,7 @@ WITH obs AS (
     FROM public.fact_payments p, obs
     WHERE p.payment_status = 'success'
       AND p.net_revenue_usd > 0
+      AND p.order_id LIKE 'RTLIVE%'
       AND p.event_date BETWEEN obs.today - 1 AND obs.today
     GROUP BY p.event_date, extract(hour FROM p.event_time)::int
 ), filled AS (
@@ -708,19 +759,19 @@ def verify(system_conn: Any, bi_conn: Any) -> None:
     with bi_conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT count(*) FILTER (WHERE session_uid LIKE 'rt_mock_%') AS rt_sessions,
-                   min(session_start) FILTER (WHERE session_uid LIKE 'rt_mock_%') AS min_session,
-                   max(session_start) FILTER (WHERE session_uid LIKE 'rt_mock_%') AS max_session
+            SELECT count(*) FILTER (WHERE session_uid LIKE 'rt_live_mock_%') AS rt_sessions,
+                   min(session_start) FILTER (WHERE session_uid LIKE 'rt_live_mock_%') AS min_session,
+                   max(session_start) FILTER (WHERE session_uid LIKE 'rt_live_mock_%') AS max_session
             FROM public.fact_sessions
             """
         )
         print("verify_sessions=" + json.dumps(normalize_row(dict(cur.fetchone())), ensure_ascii=False))
         cur.execute(
             """
-            SELECT count(*) FILTER (WHERE order_id LIKE 'RTMOCK%') AS rt_payments,
-                   round(sum(net_revenue_usd) FILTER (WHERE order_id LIKE 'RTMOCK%'), 2) AS rt_revenue,
-                   min(event_time) FILTER (WHERE order_id LIKE 'RTMOCK%') AS min_payment,
-                   max(event_time) FILTER (WHERE order_id LIKE 'RTMOCK%') AS max_payment
+            SELECT count(*) FILTER (WHERE order_id LIKE 'RTLIVE%') AS rt_payments,
+                   round(sum(net_revenue_usd) FILTER (WHERE order_id LIKE 'RTLIVE%'), 2) AS rt_revenue,
+                   min(event_time) FILTER (WHERE order_id LIKE 'RTLIVE%') AS min_payment,
+                   max(event_time) FILTER (WHERE order_id LIKE 'RTLIVE%') AS max_payment
             FROM public.fact_payments
             """
         )
@@ -762,7 +813,24 @@ def seed_bi_data(conn: Any) -> None:
     players = load_players(conn)
     if len(players) < 100:
         raise RuntimeError("Not enough players in dim_player to build realtime detail rows")
-    online_sessions, next_session_id = build_online_sessions(players)
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT count(*) AS online_sessions,
+                   coalesce(max(session_id), %s - 1) + 1 AS next_session_id
+            FROM public.fact_sessions
+            WHERE session_uid LIKE %s
+            """,
+            (SESSION_ID_START, f"{SESSION_UID_PREFIX}_%"),
+        )
+        realtime_state = dict(cur.fetchone())
+
+    if realtime_state["online_sessions"] > 0:
+        online_sessions = []
+        next_session_id = int(realtime_state["next_session_id"])
+    else:
+        online_sessions, next_session_id = build_online_sessions(players)
+
     payment_sessions, payment_events, payment_rows = build_payment_rows(players, next_session_id)
     all_sessions = online_sessions + payment_sessions
     insert_detail_rows(conn, all_sessions, payment_events, payment_rows)

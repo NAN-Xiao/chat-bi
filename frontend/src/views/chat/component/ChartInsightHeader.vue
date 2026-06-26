@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ChartAxis, ChartData, ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import {
@@ -89,6 +89,8 @@ interface ConfiguredTrendSummary {
 const structureChartTypes = new Set<ChartTypes>(['pie', 'funnel', 'treemap'])
 const rankedChartTypes = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'sankey'])
 const trendChartTypes = new Set<ChartTypes>(['line', 'area'])
+const SIDE_FIT_MIN_SCALE = 0.9
+const SIDE_FIT_EPSILON = 1
 
 const isBlank = (value: any) => value === null || value === undefined || value === ''
 const genericAxisLabels = new Set([
@@ -134,6 +136,12 @@ const valueAxes = computed(() => normalizeAxes(props.y))
 const xAxis = computed(() => normalizeAxes(props.x)[0])
 const seriesAxis = computed(() => normalizeAxes(props.series)[0])
 const rows = computed(() => (Array.isArray(props.data) ? props.data : []))
+const headerRef = ref<HTMLElement | null>(null)
+const contentRef = ref<HTMLElement | null>(null)
+const fittedStatsLimit = ref<number | null>(null)
+const fitScale = ref(1)
+let fitTimer: number | undefined
+let headerResizeObserver: ResizeObserver | undefined
 
 const shouldShow = computed(() => {
   return (
@@ -1110,22 +1118,132 @@ const visibleMetaItems = computed(() => {
   }
   return metaItems.value
 })
-const visibleStats = computed(() => {
+const desiredVisibleStats = computed(() => {
   if (configuredTrendSummary.value) {
     return stats.value
   }
   if (props.density === 'basic') {
-    return stats.value.slice(0, 1)
+    const minimumMetricCount = valueAxes.value.length > 1 && !seriesAxis.value ? valueAxes.value.length : 1
+    return stats.value.slice(0, Math.max(minimumMetricCount, props.maxStats || 1))
   }
   return stats.value
 })
+const visibleStats = computed(() => {
+  const items = desiredVisibleStats.value
+  if (props.layout !== 'side' || fittedStatsLimit.value === null) {
+    return items
+  }
+  return items.slice(0, fittedStatsLimit.value)
+})
 const showAnchor = computed(() => props.density !== 'basic')
+const fitStyle = computed(() =>
+  props.layout === 'side'
+    ? {
+        '--insight-side-fit-scale': fitScale.value.toFixed(3),
+      }
+    : {}
+)
+
+function resetSideFit() {
+  fittedStatsLimit.value = props.layout === 'side' ? desiredVisibleStats.value.length : null
+  fitScale.value = 1
+}
+
+async function measureSideFit() {
+  if (props.layout !== 'side' || configuredTrendSummary.value) {
+    fittedStatsLimit.value = null
+    fitScale.value = 1
+    return
+  }
+
+  const header = headerRef.value
+  const content = contentRef.value
+  const desiredCount = desiredVisibleStats.value.length
+  if (!header || !content || desiredCount <= 0) {
+    resetSideFit()
+    return
+  }
+
+  let nextLimit = Math.min(fittedStatsLimit.value ?? desiredCount, desiredCount)
+  nextLimit = Math.max(nextLimit, 1)
+
+  for (let attempts = 0; attempts < desiredCount; attempts += 1) {
+    fittedStatsLimit.value = nextLimit
+    fitScale.value = 1
+    await nextTick()
+
+    const availableHeight = header.clientHeight
+    const contentHeight = content.scrollHeight
+    if (availableHeight <= 0 || contentHeight <= availableHeight + SIDE_FIT_EPSILON) {
+      fitScale.value = 1
+      return
+    }
+
+    const neededScale = availableHeight / contentHeight
+    if (neededScale >= SIDE_FIT_MIN_SCALE) {
+      fitScale.value = Math.max(SIDE_FIT_MIN_SCALE, Math.min(1, neededScale))
+      return
+    }
+
+    if (nextLimit <= 1) {
+      fitScale.value = 1
+      return
+    }
+    nextLimit -= 1
+  }
+}
+
+function scheduleSideFit() {
+  if (fitTimer) {
+    window.clearTimeout(fitTimer)
+  }
+  fitTimer = window.setTimeout(() => {
+    fitTimer = undefined
+    measureSideFit()
+  }, 40)
+}
+
+watch(
+  () => [
+    props.layout,
+    props.density,
+    props.maxStats,
+    props.chartType,
+    rows.value.length,
+    desiredVisibleStats.value.map((item) => `${item.label}:${item.value}:${item.subLabel || ''}:${item.meta || ''}`).join('|'),
+    visibleMetaItems.value.join('|'),
+    Boolean(configuredTrendSummary.value),
+  ],
+  () => {
+    resetSideFit()
+    scheduleSideFit()
+  },
+  { flush: 'post' }
+)
+
+onMounted(() => {
+  resetSideFit()
+  if (headerRef.value) {
+    headerResizeObserver = new ResizeObserver(scheduleSideFit)
+    headerResizeObserver.observe(headerRef.value)
+  }
+  scheduleSideFit()
+})
+
+onBeforeUnmount(() => {
+  headerResizeObserver?.disconnect()
+  if (fitTimer) {
+    window.clearTimeout(fitTimer)
+  }
+})
 </script>
 
 <template>
   <div
     v-if="shouldShow && stats.length > 0"
+    ref="headerRef"
     class="chart-insight-header"
+    :style="fitStyle"
     :class="[
       layoutClass,
       densityClass,
@@ -1136,87 +1254,94 @@ const showAnchor = computed(() => props.density !== 'basic')
       },
     ]"
   >
-    <div v-if="visibleMetaItems.length" class="insight-meta-row">
-      <span v-for="item in visibleMetaItems" :key="item" class="insight-meta-item">{{ item }}</span>
-    </div>
-    <div class="insight-stat-row" :class="{ 'no-meta': visibleMetaItems.length === 0 }">
-      <template v-if="configuredTrendSummary">
-        <div class="configured-trend-layout">
-          <div class="configured-trend-primary">
-            <div class="configured-trend-anchor" :title="configuredTrendSummary.anchorLabel">
-              {{ configuredTrendSummary.anchorLabel }}
-            </div>
-            <div class="configured-trend-value" :title="configuredTrendSummary.latestValue">
-              {{ configuredTrendSummary.latestValue }}
-            </div>
-          </div>
-          <div
-            v-if="configuredTrendSummary.comparisonStats.length || configuredTrendSummary.aggregateStats.length"
-            class="configured-trend-metrics"
-          >
-            <div
-              v-if="configuredTrendSummary.comparisonStats.length"
-              class="configured-trend-group configured-trend-comparison"
-            >
-              <div
-                v-for="item in configuredTrendSummary.comparisonStats"
-                :key="`${item.label}-${item.value}`"
-                class="configured-trend-item configured-trend-comparison-item"
-                :title="item.subLabel ? `${item.label} ${item.subLabel}` : item.label"
-              >
-                <span class="configured-trend-item-label">{{ item.label }}</span>
-                <span class="configured-trend-item-value" :class="item.tone">{{ item.value }}</span>
+    <div ref="contentRef" class="insight-fit-content">
+      <div v-if="visibleMetaItems.length" class="insight-meta-row">
+        <span v-for="item in visibleMetaItems" :key="item" class="insight-meta-item">{{ item }}</span>
+      </div>
+      <div class="insight-stat-row" :class="{ 'no-meta': visibleMetaItems.length === 0 }">
+        <template v-if="configuredTrendSummary">
+          <div class="configured-trend-layout">
+            <div class="configured-trend-primary">
+              <div class="configured-trend-anchor" :title="configuredTrendSummary.anchorLabel">
+                {{ configuredTrendSummary.anchorLabel }}
+              </div>
+              <div class="configured-trend-value" :title="configuredTrendSummary.latestValue">
+                {{ configuredTrendSummary.latestValue }}
               </div>
             </div>
             <div
-              v-if="configuredTrendSummary.aggregateStats.length"
-              class="configured-trend-group configured-trend-aggregate"
+              v-if="configuredTrendSummary.comparisonStats.length || configuredTrendSummary.aggregateStats.length"
+              class="configured-trend-metrics"
             >
               <div
-                v-for="item in configuredTrendSummary.aggregateStats"
-                :key="`${item.label}-${item.value}`"
-                class="configured-trend-item configured-trend-aggregate-item"
+                v-if="configuredTrendSummary.comparisonStats.length"
+                class="configured-trend-group configured-trend-comparison"
               >
-                <div class="configured-trend-aggregate-row">
+                <div
+                  v-for="item in configuredTrendSummary.comparisonStats"
+                  :key="`${item.label}-${item.value}`"
+                  class="configured-trend-item configured-trend-comparison-item"
+                  :title="item.subLabel ? `${item.label} ${item.subLabel}` : item.label"
+                >
                   <span class="configured-trend-item-label">{{ item.label }}</span>
-                  <span class="configured-trend-item-value configured-trend-aggregate-value">{{ item.value }}</span>
+                  <span class="configured-trend-item-value" :class="item.tone">{{ item.value }}</span>
                 </div>
-                <div v-if="item.subLabel" class="configured-trend-item-sub-label" :title="item.subLabel">
-                  {{ item.subLabel }}
+              </div>
+              <div
+                v-if="configuredTrendSummary.aggregateStats.length"
+                class="configured-trend-group configured-trend-aggregate"
+              >
+                <div
+                  v-for="item in configuredTrendSummary.aggregateStats"
+                  :key="`${item.label}-${item.value}`"
+                  class="configured-trend-item configured-trend-aggregate-item"
+                >
+                  <div class="configured-trend-aggregate-row">
+                    <span class="configured-trend-item-label">{{ item.label }}</span>
+                    <span class="configured-trend-item-value configured-trend-aggregate-value">{{ item.value }}</span>
+                  </div>
+                  <div v-if="item.subLabel" class="configured-trend-item-sub-label" :title="item.subLabel">
+                    {{ item.subLabel }}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </template>
-      <template v-else>
-        <div v-if="showAnchor && anchorLabel" class="insight-anchor">{{ anchorLabel }}</div>
-        <div class="insight-stat-grid">
-          <div v-for="item in visibleStats" :key="`${item.label}-${item.value}`" class="insight-stat">
-            <div class="insight-stat-value" :class="item.tone" :title="item.value">{{ item.value }}</div>
-            <div v-if="item.label" class="insight-stat-label" :title="item.label">
-              <span class="insight-color" :style="{ backgroundColor: item.color }" />
-              <span class="insight-label-text">{{ item.label }}</span>
-            </div>
-            <div v-if="item.subLabel" class="insight-stat-sub-label" :title="item.subLabel">
-              {{ item.subLabel }}
-            </div>
-            <div v-if="item.meta" class="insight-stat-meta" :class="item.tone">
-              {{ item.meta }}
+        </template>
+        <template v-else>
+          <div v-if="showAnchor && anchorLabel" class="insight-anchor">{{ anchorLabel }}</div>
+          <div class="insight-stat-grid">
+            <div v-for="item in visibleStats" :key="`${item.label}-${item.value}`" class="insight-stat">
+              <div class="insight-stat-value" :class="item.tone" :title="item.value">{{ item.value }}</div>
+              <div v-if="item.label" class="insight-stat-label" :title="item.label">
+                <span class="insight-color" :style="{ backgroundColor: item.color }" />
+                <span class="insight-label-text">{{ item.label }}</span>
+              </div>
+              <div v-if="item.subLabel" class="insight-stat-sub-label" :title="item.subLabel">
+                {{ item.subLabel }}
+              </div>
+              <div v-if="item.meta" class="insight-stat-meta" :class="item.tone">
+                {{ item.meta }}
+              </div>
             </div>
           </div>
-        </div>
-      </template>
+        </template>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped lang="less">
 .chart-insight-header {
+  --insight-side-fit-scale: 1;
   flex: 0 0 auto;
   padding: 2px 2px 12px;
   margin-bottom: 10px;
   border-bottom: 1px solid #eaf0f8;
+
+  .insight-fit-content {
+    min-width: 0;
+  }
 
   .insight-meta-row {
     display: flex;
@@ -1463,6 +1588,12 @@ const showAnchor = computed(() => props.density !== 'basic')
     border-right: 1px solid #eaf0f8;
     border-bottom: 0;
     overflow: hidden;
+
+    .insight-fit-content {
+      width: calc(100% / var(--insight-side-fit-scale));
+      transform: scale(var(--insight-side-fit-scale));
+      transform-origin: left top;
+    }
 
     .insight-meta-row {
       display: block;
@@ -1939,13 +2070,14 @@ const showAnchor = computed(() => props.density !== 'basic')
     .insight-stat-grid {
       display: flex;
       min-width: 0;
-      gap: 0;
+      gap: 14px;
       overflow: hidden;
     }
 
     .insight-stat {
       display: flex;
       align-items: center;
+      flex: 0 1 auto;
       min-width: 0;
       gap: 6px;
     }

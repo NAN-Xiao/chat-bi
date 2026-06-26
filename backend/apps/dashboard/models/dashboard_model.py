@@ -286,6 +286,8 @@ class BaseDashboard(BaseModel):
     content_id: Optional[str] = None
     level: int = 0
     create_by: int = 0
+    is_default: Optional[bool] = False
+    sort: Optional[int] = 0
 
 class QueryDashboard(BaseDashboard):
     opt: str = ''
@@ -312,6 +314,17 @@ class DashboardDefaultRequest(BaseModel):
 
 class DashboardDefaultSortRequest(BaseModel):
     ordered_ids: List[str]
+
+
+class DashboardOrderItem(BaseModel):
+    id: str
+    pid: str = "root"
+    sort: int = 0
+
+
+class DashboardReorderRequest(BaseModel):
+    scope: Literal["default", "my"] = "my"
+    items: List[DashboardOrderItem]
 
 
 class DashboardDefaultCopyRequest(BaseModel):

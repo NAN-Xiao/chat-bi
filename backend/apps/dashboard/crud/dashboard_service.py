@@ -13,6 +13,7 @@ from apps.dashboard.models.dashboard_model import (
     DashboardDefaultCopyRequest,
     DashboardDefaultRequest,
     DashboardDefaultSortRequest,
+    DashboardReorderRequest,
     DashboardSqlPreview,
     DashboardShareRequest,
     DashboardShareListQuery,
@@ -1066,7 +1067,11 @@ def _load_share_preview_payload(
 
 
 def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
-    filters = [_active_dashboard_filter(), CoreDashboard.tenant_id == _current_tenant_id(current_user)]
+    filters = [
+        _active_dashboard_filter(),
+        CoreDashboard.tenant_id == _current_tenant_id(current_user),
+        or_(CoreDashboard.is_default == 0, CoreDashboard.node_type == "leaf"),
+    ]
     datasource_id = _normalize_datasource_id(dashboard.datasource)
     if datasource_id is not None:
         _ensure_datasource_access(session, current_user, datasource_id)
@@ -1085,7 +1090,14 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
     if visibility_filter is not None:
         filters.append(visibility_filter)
 
-    statement = select(CoreDashboard).where(and_(*filters)).order_by(CoreDashboard.create_time.desc())
+    statement = (
+        select(CoreDashboard)
+        .where(and_(*filters))
+        .order_by(
+            func.coalesce(CoreDashboard.sort, 0).asc(),
+            CoreDashboard.create_time.desc(),
+        )
+    )
     result = session.exec(statement).scalars().all()
     if datasource_id is not None:
         result = [record for record in result if _dashboard_matches_datasource(record, datasource_id)]
@@ -1098,6 +1110,15 @@ def list_resource(session: SessionDep, dashboard: QueryDashboard, current_user: 
         _dashboard_base_response(session, current_user, record, datasource_id, share_map.get(record.id))
         for record in result
     ]
+    visible_ids = {node.id for node in nodes if node.id is not None}
+    for node in nodes:
+        if (
+            node.is_default
+            and node.node_type == "leaf"
+            and node.pid not in ("root", "0", "", None)
+            and node.pid not in visible_ids
+        ):
+            node.pid = "root"
     tree = build_tree_generic(nodes, root_pid="root")
     return tree
 
@@ -1194,7 +1215,6 @@ def list_default_resources(session: SessionDep, current_user: CurrentUser):
             and_(
                 _active_dashboard_filter(),
                 CoreDashboard.tenant_id == _current_tenant_id(current_user),
-                CoreDashboard.node_type == "leaf",
                 CoreDashboard.is_default == 1,
             )
         )
@@ -1209,7 +1229,11 @@ def list_default_resources(session: SessionDep, current_user: CurrentUser):
         _dashboard_base_response(session, current_user, record, _effective_dashboard_datasource(record))
         for record in result
     ]
-    return nodes
+    visible_ids = {node.id for node in nodes if node.id is not None}
+    for node in nodes:
+        if node.pid not in ("root", "0", "", None) and node.pid not in visible_ids:
+            node.pid = "root"
+    return build_tree_generic(nodes, root_pid="root")
 
 
 def load_default_resource(session: SessionDep, dashboard: QueryDashboard, current_user: CurrentUser):
@@ -1291,9 +1315,19 @@ def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
 
 
 def create_resource(session: SessionDep, user: CurrentUser, dashboard: CreateDashboard):
-    dashboard.datasource = _ensure_datasource_access(session, user, dashboard.datasource, required=True)
-    _require_create_permission(session, user, dashboard.datasource, dashboard.pid)
+    is_default_folder = bool(dashboard.is_default) and dashboard.node_type == "folder"
+    if is_default_folder:
+        _require_set_default_permission(user)
+        dashboard.datasource = None
+        if dashboard.pid and dashboard.pid != "root":
+            parent = _load_dashboard_or_404(session, dashboard.pid, user)
+            if parent.node_type != "folder" or not parent.is_default:
+                raise HTTPException(status_code=400, detail="Default dashboard parent must be recommended folder")
+    else:
+        dashboard.datasource = _ensure_datasource_access(session, user, dashboard.datasource, required=True)
+        _require_create_permission(session, user, dashboard.datasource, dashboard.pid)
     record = get_create_base_info(user, dashboard)
+    record.is_default = 1 if dashboard.is_default else 0
     if is_platform_workspace_delegate(user):
         record.create_by = _asset_operator_id(session, user)
     record.update_by = record.create_by
@@ -1412,6 +1446,22 @@ def set_default_resource(session: SessionDep, user: CurrentUser, request: Dashbo
         ).first()
         max_sort = _first_scalar_value(max_sort_row)
         record.sort = int(max_sort or 0) + 1
+    elif not request.is_default and record.is_default:
+        parent = (
+            session.exec(
+                select(CoreDashboard).where(
+                    and_(
+                        _active_dashboard_filter(),
+                        CoreDashboard.tenant_id == _current_tenant_id(user),
+                        CoreDashboard.id == record.pid,
+                    )
+                )
+            ).first()
+            if record.pid not in ("root", "0", "", None)
+            else None
+        )
+        if parent and parent.is_default:
+            record.pid = "root"
     record.is_default = 1 if request.is_default else 0
     record.update_by = _asset_operator_id(session, user)
     record.update_time = now
@@ -1447,6 +1497,94 @@ def sort_default_resources(session: SessionDep, user: CurrentUser, request: Dash
     for index, dashboard_id in enumerate(ordered_ids):
         record = record_by_id[dashboard_id]
         record.sort = index + 1
+        record.update_by = operator_id
+        record.update_time = now
+        session.add(record)
+
+    session.commit()
+    return True
+
+
+def _would_create_dashboard_cycle(record_by_id: dict[str, CoreDashboard], child_id: str, target_pid: str) -> bool:
+    seen = {child_id}
+    current_pid = target_pid
+    while current_pid and current_pid != "root":
+        if current_pid in seen:
+            return True
+        seen.add(current_pid)
+        parent = record_by_id.get(current_pid)
+        if parent is None:
+            return False
+        current_pid = parent.pid or "root"
+    return False
+
+
+def reorder_resources(session: SessionDep, user: CurrentUser, request: DashboardReorderRequest):
+    if not request.items:
+        raise HTTPException(status_code=400, detail="items is required")
+
+    scope = request.scope or "my"
+    if scope == "default":
+        _require_set_default_permission(user)
+
+    item_ids = [str(item.id) for item in request.items if item.id]
+    unique_ids = list(dict.fromkeys(item_ids))
+    if not unique_ids:
+        raise HTTPException(status_code=400, detail="items is required")
+
+    records = session.exec(
+        select(CoreDashboard).where(
+            and_(
+                _active_dashboard_filter(),
+                CoreDashboard.tenant_id == _current_tenant_id(user),
+                CoreDashboard.id.in_(unique_ids),
+            )
+        )
+    ).scalars().all()
+    record_by_id = {record.id: record for record in records}
+    if len(record_by_id) != len(unique_ids):
+        raise HTTPException(status_code=404, detail="Dashboard does not exist")
+
+    for record in records:
+        if scope == "default":
+            if not record.is_default:
+                raise HTTPException(status_code=400, detail="Default dashboard tree can only contain recommended dashboards")
+        else:
+            _require_edit_permission(session, user, record)
+            if record.is_default:
+                raise HTTPException(status_code=400, detail="Recommended dashboards must be reordered in recommended scope")
+
+    for item in request.items:
+        record = record_by_id[str(item.id)]
+        target_pid = item.pid or "root"
+        if target_pid in ("0", ""):
+            target_pid = "root"
+        if target_pid == record.id or _would_create_dashboard_cycle(record_by_id, record.id, target_pid):
+            raise HTTPException(status_code=400, detail="Dashboard cannot move under itself")
+        if target_pid == "root":
+            continue
+        parent = record_by_id.get(target_pid) or _load_dashboard_or_404(session, target_pid, user)
+        if parent.node_type != "folder":
+            raise HTTPException(status_code=400, detail="Dashboard parent must be a folder")
+        if scope == "default" and not parent.is_default:
+            raise HTTPException(status_code=400, detail="Default dashboard parent must be recommended")
+        if scope == "my" and parent.is_default:
+            raise HTTPException(status_code=400, detail="My dashboard parent cannot be recommended")
+        if scope == "my":
+            parent_datasource = _effective_dashboard_datasource(parent)
+            record_datasource = _effective_dashboard_datasource(record)
+            if parent_datasource is not None and record_datasource is not None and parent_datasource != record_datasource:
+                raise HTTPException(status_code=400, detail="Dashboard parent must belong to the same datasource")
+
+    now = int(time.time())
+    operator_id = _asset_operator_id(session, user)
+    for item in request.items:
+        record = record_by_id[str(item.id)]
+        target_pid = item.pid or "root"
+        if target_pid in ("0", ""):
+            target_pid = "root"
+        record.pid = target_pid
+        record.sort = item.sort or 0
         record.update_by = operator_id
         record.update_time = now
         session.add(record)
@@ -1699,16 +1837,30 @@ def validate_name(session: SessionDep,user: CurrentUser,  dashboard: QueryDashbo
 
 
     if dashboard.opt in ('newLeaf', 'newFolder'):
-        datasource_id = _ensure_datasource_access(session, user, datasource_id, required=True)
-        _require_create_permission(session, user, datasource_id, dashboard.pid)
-        query = session.query(CoreDashboard).filter(
-            and_(
-                CoreDashboard.tenant_id == _current_tenant_id(user),
-                CoreDashboard.datasource == datasource_id,
-                or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
-                CoreDashboard.name == dashboard.name
+        is_default_folder = bool(dashboard.is_default) and dashboard.node_type == "folder"
+        if is_default_folder:
+            _require_set_default_permission(user)
+            datasource_id = None
+            if dashboard.pid and dashboard.pid != "root":
+                parent = _load_dashboard_or_404(session, dashboard.pid, user)
+                if parent.node_type != "folder" or not parent.is_default:
+                    raise HTTPException(status_code=400, detail="Default dashboard parent must be recommended folder")
+        else:
+            datasource_id = _ensure_datasource_access(session, user, datasource_id, required=True)
+            _require_create_permission(session, user, datasource_id, dashboard.pid)
+        duplicate_filters = [
+            CoreDashboard.tenant_id == _current_tenant_id(user),
+            CoreDashboard.is_default == (1 if is_default_folder else 0),
+            or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
+            CoreDashboard.name == dashboard.name,
+        ]
+        if not is_default_folder:
+            duplicate_filters.append(
+                CoreDashboard.datasource.is_(None)
+                if datasource_id is None
+                else CoreDashboard.datasource == datasource_id
             )
-        )
+        query = session.query(CoreDashboard).filter(and_(*duplicate_filters))
     elif dashboard.opt in ('updateLeaf', 'updateFolder', 'rename'):
         if not dashboard.id:
             raise ValueError("id is required for update operation")

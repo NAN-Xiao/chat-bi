@@ -309,6 +309,7 @@ export function resolveInsightDisplay(params: {
   const preferredLayout = resolveInsightLayout(params)
   const width = params.width || 0
   const height = params.height || 0
+  const visibleMetricCount = axisValues(params.y).length
   const trendGranularity = detectTrendAxisGranularity(params.data, params.x?.[0])
   const isWideSingleMetricTrend =
     params.dashboard &&
@@ -352,7 +353,7 @@ export function resolveInsightDisplay(params: {
         show: true,
         layout,
         density: 'basic',
-        maxStats: 1,
+        maxStats: clampNumber(visibleMetricCount || 1, 1, 3),
         featuredSide: false,
       }
     }
@@ -362,7 +363,7 @@ export function resolveInsightDisplay(params: {
         show: true,
         layout,
         density: 'mini',
-        maxStats: 2,
+        maxStats: clampNumber(Math.max(2, visibleMetricCount), 2, 3),
         featuredSide: false,
       }
     }

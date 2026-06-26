@@ -27,6 +27,7 @@ const state = reactive({
   targetInfo: null,
   attachParams: null,
   datasource: null as number | string | null | undefined,
+  isDefault: false,
   platformTemplateList: [] as any[],
 })
 
@@ -56,7 +57,10 @@ const getResourceNewName = (opt: string) => {
 
 const getTree = async () => {
   await datasourceContext.loadDatasources()
-  const params = { node_type: 'folder', datasource: state.datasource || datasourceContext.datasourceId }
+  const params = {
+    node_type: 'folder',
+    datasource: state.datasource === undefined ? datasourceContext.datasourceId : state.datasource,
+  }
   dashboardApi.list_resource(params).then((res) => {
     state.tData = res || []
     state.tDataSource = [...state.tData]
@@ -71,7 +75,8 @@ const optInit = (params: any) => {
   state.parentSelect = params.parentSelect
   state.targetInfo = params.data
   state.nodeType = params.nodeType || 'folder'
-  state.datasource = params.datasource || datasourceContext.datasourceId
+  state.datasource = params.datasource === undefined ? datasourceContext.datasourceId : params.datasource
+  state.isDefault = params.isDefault === true
   state.placeholder = params.placeholder || ''
   resourceDialogShow.value = true
   resourceForm.name = params.name ?? getResourceNewName(params.opt)
@@ -227,9 +232,10 @@ const saveResource = () => {
         name: resourceForm.name,
         opt: state.opt,
         pid: resourceForm.pid,
-        datasource: state.datasource || datasourceContext.datasourceId,
+        datasource: state.datasource === undefined ? datasourceContext.datasourceId : state.datasource,
         type: 'dashboard',
         level: state.nodeType === 'folder' ? 0 : 1,
+        is_default: state.isDefault,
       }
       saveDashboardResource(params, function (rsp: any) {
         const messageTips = t('common.save_success')

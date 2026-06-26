@@ -14,6 +14,7 @@ export const dashboardApi = {
   default_copy: (params: any, config?: any) => request.post('/dashboard/default/copy', params, config),
   default_set: (params: any, config?: any) => request.post('/dashboard/default/set', params, config),
   default_sort: (params: any, config?: any) => request.post('/dashboard/default/sort', params, config),
+  reorder: (params: any, config?: any) => request.post('/dashboard/reorder', params, config),
   platform_template_list: (config?: any) =>
     request.get('/dashboard/platform-delegate/template/list', config),
   platform_template_admin_list: (config?: any) =>

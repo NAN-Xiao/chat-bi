@@ -252,94 +252,163 @@
         class="form-content_error"
         @submit.prevent
       >
-        <el-form-item prop="name" :label="t('tenant.name')">
-          <el-input v-model="form.name" maxlength="255" clearable />
-        </el-form-item>
-        <el-form-item prop="plan" :label="t('tenant.plan')">
-          <el-select v-model="form.plan" style="width: 240px">
-            <el-option
-              v-for="item in planOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item prop="subscription_status" :label="t('tenant.subscription_status')">
-          <el-select v-model="form.subscription_status" style="width: 240px">
-            <el-option
-              v-for="item in subscriptionStatusOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item prop="billing_mode" :label="t('tenant.billing_mode')">
-          <el-select v-model="form.billing_mode" style="width: 240px">
-            <el-option
-              v-for="item in billingModeOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('tenant.bound_datasource')">
-          <el-select
-            v-model="form.datasource_id"
-            clearable
-            filterable
-            :disabled="isDefaultTenantForm"
-            :loading="datasourceLoading"
-            style="width: 100%"
-            :placeholder="t('tenant.select_datasource')"
-          >
-            <el-option
-              v-for="datasource in datasourceOptions"
-              :key="datasource.id"
-              :label="datasource.name"
-              :value="datasource.id"
+        <section class="tenant-form-section tenant-basic-section">
+          <el-form-item prop="name" :label="t('tenant.name')">
+            <el-input v-model="form.name" maxlength="255" clearable />
+          </el-form-item>
+          <el-form-item prop="plan" :label="t('tenant.plan')">
+            <el-select v-model="form.plan" class="tenant-form-select">
+              <el-option
+                v-for="item in planOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item prop="subscription_status" :label="t('tenant.subscription_status')">
+            <el-select v-model="form.subscription_status" class="tenant-form-select">
+              <el-option
+                v-for="item in subscriptionStatusOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item prop="billing_mode" :label="t('tenant.billing_mode')">
+            <el-select v-model="form.billing_mode" class="tenant-form-select">
+              <el-option
+                v-for="item in billingModeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="t('tenant.bound_datasource')">
+            <el-select
+              v-model="form.datasource_id"
+              clearable
+              filterable
+              :disabled="isDefaultTenantForm"
+              :loading="datasourceLoading"
+              style="width: 100%"
+              :placeholder="t('tenant.select_datasource')"
             >
-              <div class="datasource-option">
-                <span class="datasource-name ellipsis">{{ datasource.name }}</span>
-                <span class="datasource-type ellipsis">{{
-                  datasource.type_name || datasource.type
-                }}</span>
-              </div>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('tenant.trial_end_time')">
-          <el-date-picker
-            v-model="form.trial_end_time"
-            type="datetime"
-            value-format="x"
-            clearable
-            style="width: 240px"
-          />
-        </el-form-item>
-        <el-form-item :label="t('tenant.current_period_end_time')">
-          <el-date-picker
-            v-model="form.current_period_end_time"
-            type="datetime"
-            value-format="x"
-            clearable
-            style="width: 240px"
-          />
-        </el-form-item>
-        <el-form-item :label="t('tenant.contract_no')">
-          <el-input v-model="form.contract_no" maxlength="128" clearable />
-        </el-form-item>
-        <el-form-item :label="t('tenant.billing_contact')">
-          <el-input v-model="form.billing_contact" maxlength="128" clearable />
-        </el-form-item>
-        <el-form-item :label="t('tenant.billing_email')">
-          <el-input v-model="form.billing_email" maxlength="128" clearable />
-        </el-form-item>
-        <el-form-item :label="t('tenant.subscription_note')">
-          <el-input v-model="form.subscription_note" type="textarea" :rows="4" maxlength="2000" />
-        </el-form-item>
+              <el-option
+                v-for="datasource in datasourceOptions"
+                :key="datasource.id"
+                :label="datasource.name"
+                :value="datasource.id"
+              >
+                <div class="datasource-option">
+                  <span class="datasource-name ellipsis">{{ datasource.name }}</span>
+                  <span class="datasource-type ellipsis">{{
+                    datasource.type_name || datasource.type
+                  }}</span>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
+        </section>
+
+        <section v-if="form.id" class="tenant-form-section owner-transfer-panel">
+          <div class="owner-transfer-target">
+            <div class="owner-transfer-title ellipsis" :title="form.name || ''">
+              {{ t('tenant.replace_owner') }}
+            </div>
+            <div class="owner-transfer-meta">
+              {{ t('tenant.current_owner') }}:
+              {{ currentOwnerDisplay }}
+            </div>
+          </div>
+          <el-form-item :label="t('tenant.new_owner')">
+            <el-select
+              v-model="ownerTransferForm.target_user_id"
+              filterable
+              remote
+              clearable
+              :remote-method="searchOwnerCandidates"
+              :loading="ownerCandidateLoading"
+              style="width: 100%"
+              :placeholder="t('tenant.select_new_owner')"
+            >
+              <el-option
+                v-for="candidate in ownerCandidateOptions"
+                :key="candidate.user_id"
+                :label="formatOwnerCandidate(candidate)"
+                :value="candidate.user_id"
+              >
+                <div class="owner-option">
+                  <div class="owner-option-main">
+                    <span class="owner-option-name ellipsis">
+                      {{ candidate.name || candidate.account }}
+                    </span>
+                    <span class="owner-option-id">ID {{ candidate.user_id }}</span>
+                  </div>
+                  <div class="owner-option-meta">
+                    <span class="ellipsis" :title="candidate.email || ''">
+                      {{ candidate.email || '-' }}
+                    </span>
+                    <span class="owner-option-role">{{ formatOwnerCandidateRole(candidate) }}</span>
+                  </div>
+                </div>
+              </el-option>
+            </el-select>
+            <div
+              v-if="!ownerCandidateLoading && !ownerCandidateKeyword"
+              class="owner-transfer-hint"
+            >
+              {{ t('tenant.owner_candidate_search_hint') }}
+            </div>
+            <div
+              v-else-if="!ownerCandidateLoading && !ownerCandidateOptions.length"
+              class="owner-transfer-hint"
+            >
+              {{ t('tenant.no_owner_candidates') }}
+            </div>
+          </el-form-item>
+          <el-form-item :label="t('tenant.owner_transfer_reason')">
+            <el-input
+              v-model="ownerTransferForm.reason"
+              type="textarea"
+              :rows="3"
+              maxlength="2000"
+              show-word-limit
+              :placeholder="t('tenant.owner_transfer_reason_placeholder')"
+            />
+          </el-form-item>
+        </section>
+
+        <section class="tenant-form-section">
+          <el-form-item :label="t('tenant.service_period_range')">
+            <el-date-picker
+              v-model="servicePeriodRange"
+              type="daterange"
+              value-format="x"
+              clearable
+              unlink-panels
+              :shortcuts="servicePeriodShortcuts"
+              :range-separator="t('tenant.date_range_separator')"
+              :start-placeholder="t('tenant.date_range_start')"
+              :end-placeholder="t('tenant.date_range_end')"
+              class="tenant-range-picker"
+            />
+          </el-form-item>
+          <el-form-item :label="t('tenant.contract_no')">
+            <el-input v-model="form.contract_no" maxlength="128" clearable />
+          </el-form-item>
+          <el-form-item :label="t('tenant.billing_contact')">
+            <el-input v-model="form.billing_contact" maxlength="128" clearable />
+          </el-form-item>
+          <el-form-item :label="t('tenant.billing_email')">
+            <el-input v-model="form.billing_email" maxlength="128" clearable />
+          </el-form-item>
+          <el-form-item :label="t('tenant.subscription_note')">
+            <el-input v-model="form.subscription_note" type="textarea" :rows="4" maxlength="2000" />
+          </el-form-item>
+        </section>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
@@ -373,6 +442,7 @@ import {
   tenantApi,
   type TenantApplicationInfo,
   type TenantInfo,
+  type TenantOwnerCandidateInfo,
   type TenantUsageDailyInfo,
 } from '@/api/tenant'
 import { useUserStore } from '@/stores/user'
@@ -391,12 +461,21 @@ const saving = ref(false)
 const statusLoadingId = ref('')
 const deleteLoadingId = ref('')
 const reviewLoadingId = ref('')
+const ownerTransferLoadingId = ref('')
 const datasourceLoading = ref(false)
 const formRef = ref()
 const tenants = shallowRef<TenantInfo[]>([])
 const applications = shallowRef<TenantApplicationInfo[]>([])
 const usageRows = shallowRef<TenantUsageDailyInfo[]>([])
 const datasourceOptions = shallowRef<any[]>([])
+const editingTenant = ref<TenantInfo | null>(null)
+const ownerCandidateLoading = ref(false)
+const ownerCandidateKeyword = ref('')
+const ownerCandidateRows = shallowRef<TenantOwnerCandidateInfo[]>([])
+const ownerTransferForm = reactive({
+  target_user_id: '' as number | string,
+  reason: '',
+})
 const defaultForm = {
   id: '',
   name: '',
@@ -431,6 +510,21 @@ const billingModeOptions = computed(() => [
   { value: 'manual', label: t('tenant.billing_manual') },
   { value: 'contract', label: t('tenant.billing_contract') },
   { value: 'offline', label: t('tenant.billing_offline') },
+])
+
+const servicePeriodShortcuts = computed(() => [
+  {
+    text: t('tenant.date_shortcut_this_week'),
+    value: () => [dayjs().startOf('day').valueOf(), dayjs().add(6, 'day').endOf('day').valueOf()],
+  },
+  {
+    text: t('tenant.date_shortcut_one_month'),
+    value: () => [dayjs().startOf('day').valueOf(), dayjs().add(1, 'month').endOf('day').valueOf()],
+  },
+  {
+    text: t('tenant.date_shortcut_one_year'),
+    value: () => [dayjs().startOf('day').valueOf(), dayjs().add(1, 'year').endOf('day').valueOf()],
+  },
 ])
 
 const rules = computed(() => ({
@@ -515,6 +609,43 @@ const normalizeBoundDatasourceId = (tenant?: TenantInfo | null) =>
 const normalizeBoundDatasourceName = (tenant?: TenantInfo | null) =>
   tenant?.bound_datasource_name || tenant?.bound_project_name || ''
 
+const normalizeTenantRole = (role?: string) => {
+  const normalized = String(role || '').toLowerCase()
+  return ['owner', 'admin', 'member'].includes(normalized) ? normalized : 'member'
+}
+
+const formatTenantRole = (role?: string) => {
+  const normalized = normalizeTenantRole(role)
+  return t(`user.tenant_role_${normalized}`)
+}
+
+const ownerCandidateOptions = computed(() =>
+  ownerCandidateRows.value.filter(
+    (candidate) =>
+      normalizeTenantRole(candidate.tenant_role || undefined) !== 'owner' &&
+      String(candidate.user_id) !== String(editingTenant.value?.owner_user_id || '')
+  )
+)
+
+const currentOwnerDisplay = computed(() =>
+  [
+    editingTenant.value?.owner_name || editingTenant.value?.owner_account || '-',
+    editingTenant.value?.owner_email || '',
+  ]
+    .filter(Boolean)
+    .join(' / ')
+)
+
+const formatOwnerCandidate = (candidate: TenantOwnerCandidateInfo) =>
+  [candidate.name || candidate.account, `ID ${candidate.user_id}`, candidate.email || '']
+    .filter(Boolean)
+    .join(' / ')
+
+const formatOwnerCandidateRole = (candidate: TenantOwnerCandidateInfo) => {
+  if (!candidate.is_workspace_member) return t('tenant.owner_candidate_not_member')
+  return formatTenantRole(candidate.tenant_role || undefined)
+}
+
 const formatPlan = (plan?: string) => {
   const key = `tenant.plan_${plan || 'default'}`
   const label = t(key)
@@ -577,6 +708,34 @@ const normalizeTimestamp = (value?: number | string | null) => {
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null
 }
 
+const normalizeRangeStartTimestamp = (value?: number | string | null) => {
+  const timestamp = normalizeTimestamp(value)
+  return timestamp ? dayjs(timestamp).startOf('day').valueOf() : null
+}
+
+const normalizeRangeEndTimestamp = (value?: number | string | null) => {
+  const timestamp = normalizeTimestamp(value)
+  return timestamp ? dayjs(timestamp).endOf('day').valueOf() : null
+}
+
+const servicePeriodRange = computed<[number, number] | null>({
+  get() {
+    const start = normalizeTimestamp(form.trial_end_time)
+    const end = normalizeTimestamp(form.current_period_end_time)
+    return start && end ? [start, end] : null
+  },
+  set(value) {
+    if (!value || value.length !== 2) {
+      form.trial_end_time = null
+      form.current_period_end_time = null
+      return
+    }
+    const [start, end] = value
+    form.trial_end_time = normalizeRangeStartTimestamp(start)
+    form.current_period_end_time = normalizeRangeEndTimestamp(end)
+  },
+})
+
 const formatOptionalTimestamp = (value?: number | string | null) => {
   const timestamp = normalizeTimestamp(value)
   return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm:ss') : '-'
@@ -623,6 +782,11 @@ const reloadEnterpriseRows = async () => {
 
 const openDrawer = async (tenant: TenantInfo | null) => {
   await loadDatasourceOptions()
+  editingTenant.value = tenant
+  ownerTransferForm.target_user_id = ''
+  ownerTransferForm.reason = ''
+  ownerCandidateKeyword.value = ''
+  ownerCandidateRows.value = []
   Object.assign(form, {
     ...defaultForm,
     ...(tenant || {}),
@@ -643,6 +807,11 @@ const openDrawer = async (tenant: TenantInfo | null) => {
 
 const closeDrawer = () => {
   Object.assign(form, defaultForm)
+  editingTenant.value = null
+  ownerTransferForm.target_user_id = ''
+  ownerTransferForm.reason = ''
+  ownerCandidateKeyword.value = ''
+  ownerCandidateRows.value = []
   drawerVisible.value = false
 }
 
@@ -656,6 +825,75 @@ const openWorkspaceAdmin = (tenant: TenantInfo) => {
       tenant_name: tenant.name || '',
     },
   })
+}
+
+const loadOwnerCandidates = async (keyword = '') => {
+  if (!editingTenant.value?.id) return
+  const normalizedKeyword = keyword.trim()
+  ownerCandidateKeyword.value = normalizedKeyword
+  if (!normalizedKeyword) {
+    ownerCandidateRows.value = []
+    return
+  }
+  ownerCandidateLoading.value = true
+  try {
+    ownerCandidateRows.value = await tenantApi.adminOwnerCandidates(
+      editingTenant.value.id,
+      normalizedKeyword
+    )
+  } finally {
+    ownerCandidateLoading.value = false
+  }
+}
+
+const searchOwnerCandidates = (value: string) => {
+  loadOwnerCandidates(value)
+}
+
+const shouldTransferOwner = () => {
+  const tenant = editingTenant.value
+  return Boolean(
+    tenant?.id &&
+      ownerTransferForm.target_user_id &&
+      String(ownerTransferForm.target_user_id) !== String(tenant.owner_user_id || '')
+  )
+}
+
+const confirmOwnerTransferIfNeeded = async () => {
+  if (!shouldTransferOwner()) return
+  const target = ownerCandidateRows.value.find(
+    (candidate) => String(candidate.user_id) === String(ownerTransferForm.target_user_id)
+  )
+  await ElMessageBox.confirm(
+    t('tenant.replace_owner_confirm', {
+      tenant: editingTenant.value?.name || form.name,
+      owner: target?.name || target?.account || ownerTransferForm.target_user_id,
+    }),
+    {
+      confirmButtonType: 'primary',
+      confirmButtonText: t('tenant.confirm_replace_owner'),
+      cancelButtonText: t('common.cancel'),
+      customClass: 'confirm-no_icon',
+      autofocus: false,
+    }
+  )
+}
+
+const transferOwnerIfNeeded = async () => {
+  const tenant = editingTenant.value
+  if (!tenant?.id || !shouldTransferOwner()) return
+  if (String(ownerTransferForm.target_user_id) === String(tenant.owner_user_id || '')) {
+    return
+  }
+  ownerTransferLoadingId.value = String(tenant.id)
+  try {
+    await tenantApi.adminTransferOwner(tenant.id, {
+      target_user_id: ownerTransferForm.target_user_id,
+      reason: ownerTransferForm.reason.trim(),
+    })
+  } finally {
+    ownerTransferLoadingId.value = ''
+  }
 }
 
 const saveTenant = () => {
@@ -677,7 +915,9 @@ const saveTenant = () => {
         ...(!isDefaultTenantForm.value ? { datasource_id: form.datasource_id || null } : {}),
       }
       if (form.id) {
+        await confirmOwnerTransferIfNeeded()
         await tenantApi.edit(form.id, payload)
+        await transferOwnerIfNeeded()
       } else {
         await tenantApi.add(payload)
       }
@@ -1069,6 +1309,163 @@ onMounted(() => {
     color: #8f959e;
     font-size: 12px;
   }
+}
+
+.form-content_error {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tenant-form-section {
+  padding: 12px;
+  border: 1px solid #e5e8ef;
+  border-radius: 6px;
+  background: #fff;
+
+  :deep(.ed-form-item:last-child) {
+    margin-bottom: 0;
+  }
+}
+
+.tenant-form-select {
+  width: 240px;
+}
+
+.tenant-range-picker {
+  width: 100%;
+  max-width: 100%;
+
+  :deep(.ed-range-input) {
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  :deep(.ed-range-separator) {
+    flex: 0 0 auto;
+    padding: 0 8px;
+    color: #646a73;
+  }
+}
+
+.tenant-basic-section {
+  padding: 16px;
+
+  :deep(.ed-form-item) {
+    display: grid;
+    grid-template-columns: 116px minmax(0, 1fr);
+    column-gap: 14px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  :deep(.ed-form-item__label) {
+    min-height: 32px;
+    margin-bottom: 0;
+    padding-right: 0;
+    color: #1f2329;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 32px;
+    text-align: left;
+  }
+
+  :deep(.ed-form-item__content) {
+    min-width: 0;
+    line-height: 32px;
+  }
+
+  :deep(.ed-input),
+  :deep(.ed-select),
+  :deep(.ed-date-editor) {
+    width: 100%;
+  }
+
+  :deep(.ed-input__wrapper),
+  :deep(.ed-select__wrapper) {
+    min-height: 32px;
+  }
+
+  :deep(.ed-form-item__error) {
+    grid-column: 2;
+    position: static;
+    padding-top: 4px;
+    line-height: 16px;
+  }
+
+  .tenant-form-select {
+    width: 100%;
+  }
+}
+
+.owner-transfer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #fbfcff;
+}
+
+.owner-transfer-target {
+  padding: 12px 14px;
+  border: 1px solid #e5e8ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.owner-transfer-title {
+  color: #1f2329;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.owner-transfer-meta,
+.owner-transfer-hint {
+  margin-top: 4px;
+  color: #8f959e;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.owner-option {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.owner-option-main,
+.owner-option-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 18px;
+}
+
+.owner-option-main {
+  flex: 1 1 auto;
+}
+
+.owner-option-meta {
+  flex: 0 1 220px;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.owner-option-name {
+  min-width: 0;
+  color: #1f2329;
+}
+
+.owner-option-id,
+.owner-option-meta {
+  color: #8f959e;
+  font-size: 12px;
+}
+
+.owner-option-role {
+  color: #646a73;
 }
 </style>
 

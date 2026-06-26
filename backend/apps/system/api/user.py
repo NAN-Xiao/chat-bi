@@ -12,6 +12,7 @@ from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.models.datasource import CoreDatasource, CoreDatasourceUser
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
 from apps.system.crud.tenant import (
+    DEFAULT_TENANT_ID,
     TENANT_ROLE_ADMIN,
     TENANT_ROLE_MEMBER,
     TENANT_ROLE_OWNER,
@@ -286,6 +287,7 @@ def _delete_global_user(session: SessionDep, current_user: CurrentUser, user_id:
         raise HTTPException(status_code=403, detail="System admin cannot be deleted")
     if is_high_privilege_user(user_model) and not is_super_admin(current_user):
         raise HTTPException(status_code=403, detail="Only system admin can delete administrator roles")
+    _ensure_user_not_sole_active_owner(session, user_id)
     session.exec(sqlmodel_delete(CoreDatasourceUser).where(CoreDatasourceUser.user_id == int(user_id)))
     session.exec(sqlmodel_delete(TenantUserModel).where(TenantUserModel.user_id == int(user_id)))
     session.exec(sqlmodel_delete(UserPlatformModel).where(UserPlatformModel.uid == int(user_id)))
@@ -306,6 +308,43 @@ def _remove_user_from_current_tenant(session: SessionDep, current_user: CurrentU
         raise Exception("Administrator roles cannot be removed")
     remove_user_from_tenant(session, user_id, tenant_id=_current_tenant_id(current_user))
     _remove_current_tenant_project_permissions(session, current_user, user_id)
+
+
+def _ensure_user_not_sole_active_owner(session: SessionDep, user_id: int) -> None:
+    owner_tenant_ids = session.exec(
+        select(TenantUserModel.tenant_id).where(
+            TenantUserModel.user_id == int(user_id),
+            TenantUserModel.role == TENANT_ROLE_OWNER,
+            TenantUserModel.status == 1,
+        )
+    ).all()
+    if not owner_tenant_ids:
+        return
+    blocked_tenants = []
+    for tenant_id in owner_tenant_ids:
+        tenant = session.get(TenantModel, int(tenant_id))
+        if tenant is None or int(getattr(tenant, "status", 1)) != 1 or int(tenant.id) == DEFAULT_TENANT_ID:
+            continue
+        other_owner = session.exec(
+            select(TenantUserModel.id)
+            .join(UserModel, UserModel.id == TenantUserModel.user_id)
+            .where(
+                TenantUserModel.tenant_id == int(tenant_id),
+                TenantUserModel.role == TENANT_ROLE_OWNER,
+                TenantUserModel.status == 1,
+                TenantUserModel.user_id != int(user_id),
+                UserModel.status == 1,
+            )
+        ).first()
+        if not other_owner:
+            blocked_tenants.append(tenant.name or str(tenant.id))
+    if blocked_tenants:
+        names = "、".join(blocked_tenants[:5])
+        suffix = "..." if len(blocked_tenants) > 5 else ""
+        raise HTTPException(
+            status_code=400,
+            detail=f"Transfer workspace ownership before deleting or disabling this account: {names}{suffix}",
+        )
 
 
 @router.get("/template", include_in_schema=False)
@@ -549,6 +588,8 @@ async def update(session: SessionDep, current_user: CurrentUser, editor: UserEdi
         raise Exception("System admin role cannot be removed from this endpoint")
     if is_super_admin(user_model) and int(data.get("status", 1) or 0) != 1:
         raise Exception("System admin cannot be disabled")
+    if int(data.get("status", 1) or 0) == 0:
+        _ensure_user_not_sole_active_owner(session, int(user_model.id))
     user_model.sqlmodel_update(data)
     session.add(user_model)
     if should_update_tenant_membership:
@@ -649,5 +690,7 @@ async def statusChange(session: SessionDep, current_user: CurrentUser, trans: Tr
         raise Exception(trans('i18n_permission.no_permission', url = ", ", msg = trans('i18n_permission.only_admin')))
     if is_super_admin(db_user) and status == 0:
         raise Exception("System admin cannot be disabled")
+    if status == 0:
+        _ensure_user_not_sole_active_owner(session, int(db_user.id))
     db_user.status = status
     session.add(db_user)
