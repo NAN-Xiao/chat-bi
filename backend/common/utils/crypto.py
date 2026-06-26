@@ -8,6 +8,9 @@ from cryptography.fernet import Fernet, InvalidToken
 from common.core.config import settings
 
 _AES_KEY = b"Zhishu1234567890"
+_BUILTIN_LEGACY_AES_KEYS = (
+    b"SQLBot1234567890",
+)
 _FERNET_PREFIX = "fernet:v1:"
 _AES_KEY_SIZES = {16, 24, 32}
 
@@ -67,7 +70,7 @@ def _decode_legacy_key_token(token: str) -> bytes | None:
 
 def get_legacy_config_aes_keys() -> tuple[bytes, ...]:
     raw_value = settings.LEGACY_CONFIG_AES_KEYS or ""
-    keys: list[bytes] = []
+    keys: list[bytes] = list(_BUILTIN_LEGACY_AES_KEYS)
     for token in raw_value.split(","):
         token = token.strip()
         if not token:
