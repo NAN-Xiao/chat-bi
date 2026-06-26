@@ -60,6 +60,7 @@ const props = defineProps({
 })
 
 const { showPosition, canvasId } = toRefs(props)
+const emit = defineEmits(['chartMoved'])
 const domId = 'preview-' + canvasId.value
 const previewCanvas = ref(null)
 const renderReady = ref(true)
@@ -155,12 +156,16 @@ defineExpose({
         :active="!!curComponent && item.id === curComponent['id']"
         :config-item="item"
         :canvas-view-info="canvasViewInfo"
+        :component-data="displayComponentData"
+        :canvas-style-data="canvasStyleData"
+        :dashboard-info="dashboardInfo"
         :show-position="showPosition"
         :canvas-id="canvasId"
         :style="nowItemStyle(item)"
         :index="index"
         :frameless="inTab"
         :readonly-template="readonlyTemplate"
+        @chart-moved="emit('chartMoved', $event)"
       />
     </template>
   </div>

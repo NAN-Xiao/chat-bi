@@ -2070,25 +2070,31 @@ onBeforeUnmount(() => {
     .insight-stat-grid {
       display: flex;
       min-width: 0;
-      gap: 14px;
+      width: 100%;
+      justify-content: space-between;
+      gap: 8px;
       overflow: hidden;
     }
 
     .insight-stat {
       display: flex;
       align-items: center;
-      flex: 0 1 auto;
+      flex: 1 1 0;
       min-width: 0;
-      gap: 6px;
+      gap: 4px;
     }
 
     .insight-stat-value {
-      flex: 0 0 auto;
+      flex: 0 1 auto;
+      min-width: 0;
       font-size: 13px;
       line-height: 18px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .insight-stat-label {
+      flex: 1 1 auto;
       min-width: 0;
       margin-top: 0;
       font-size: 11px;

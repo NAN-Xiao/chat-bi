@@ -38,7 +38,11 @@ const WIDE_TREND_SIDE_MIN_ASPECT_RATIO = 2.2
 const SIDE_MAX_STATS = 8
 const SIDE_COMPACT_RESERVED_HEIGHT = 130
 const SIDE_COMPACT_STAT_HEIGHT = 76
+const TOP_RANKED_REGULAR_MIN_WIDTH = 640
+const TOP_RANKED_COMPACT_MIN_WIDTH = 500
+const TOP_RANKED_MAX_STATS = 4
 const DAY_MS = 24 * 60 * 60 * 1000
+const TOP_RANKED_TYPES = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter'])
 
 function axisValues(axes?: Array<ChartAxis>) {
   return (axes || []).map((axis) => axis.value).filter(Boolean)
@@ -311,6 +315,11 @@ export function resolveInsightDisplay(params: {
   const height = params.height || 0
   const visibleMetricCount = axisValues(params.y).length
   const trendGranularity = detectTrendAxisGranularity(params.data, params.x?.[0])
+  const isRankedTopSummary =
+    params.dashboard &&
+    preferredLayout === 'top' &&
+    TOP_RANKED_TYPES.has(params.chartType) &&
+    axisValues(params.series).length === 0
   const isWideSingleMetricTrend =
     params.dashboard &&
     preferredLayout === 'top' &&
@@ -348,6 +357,21 @@ export function resolveInsightDisplay(params: {
   }
 
   if (layout === 'top') {
+    if (isRankedTopSummary && width >= TOP_RANKED_COMPACT_MIN_WIDTH) {
+      return {
+        show: true,
+        layout,
+        density:
+          width >= TOP_RANKED_REGULAR_MIN_WIDTH && height >= TOP_BASIC_MAX_HEIGHT
+            ? 'regular'
+            : height >= TOP_BASIC_MAX_HEIGHT
+              ? 'compact'
+              : 'basic',
+        maxStats: TOP_RANKED_MAX_STATS,
+        featuredSide: false,
+      }
+    }
+
     if (width < TOP_BASIC_MAX_WIDTH || height < TOP_BASIC_MAX_HEIGHT) {
       return {
         show: true,

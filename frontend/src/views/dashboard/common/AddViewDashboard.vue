@@ -12,7 +12,7 @@ import cloneDeep from 'lodash/cloneDeep'
 import { findNewComponentFromList } from '@/views/dashboard/components/component-list.ts'
 import { guid } from '@/utils/canvas.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
-import { applyRecommendedChartComponentSize } from '@/views/dashboard/utils/chartSizing.ts'
+import { getRecommendedDashboardChartFrame } from '@/views/dashboard/utils/chartSizing.ts'
 import { useRouter } from 'vue-router'
 
 const { t } = useI18n()
@@ -86,6 +86,12 @@ const resetForm = () => {
   resourceDialogShow.value = false
 }
 
+const applyRecommendedSingleChartFrame = (component: any, viewInfo: any) => {
+  const frame = getRecommendedDashboardChartFrame(viewInfo, 1)
+  component.sizeX = frame.sizeX
+  component.sizeY = frame.sizeY
+}
+
 const saveResourcePrepare = () => {
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   resource.value?.validate((result) => {
@@ -113,10 +119,10 @@ const saveResourcePrepare = () => {
             datasource: dashboardInfo.datasource || state.datasource || datasourceContext.datasourceId,
           }
           component['id'] = newComponentId
-          applyRecommendedChartComponentSize(component, state.viewInfo)
-          component['y'] = bottomPosition
+          applyRecommendedSingleChartFrame(component, state.viewInfo)
           canvasDataResult.push(component)
           canvasViewInfoPreview[newComponentId] = state.viewInfo
+          component['y'] = bottomPosition
           const commonParams = {
             componentData: canvasDataResult,
             canvasStyleData: canvasStyleResult,
@@ -135,7 +141,7 @@ const saveResourcePrepare = () => {
           type: 'dashboard',
         }
         component['id'] = newComponentId
-        applyRecommendedChartComponentSize(component, state.viewInfo)
+        applyRecommendedSingleChartFrame(component, state.viewInfo)
         const canvasViewInfo = {}
         // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
         canvasViewInfo[newComponentId] = state.viewInfo

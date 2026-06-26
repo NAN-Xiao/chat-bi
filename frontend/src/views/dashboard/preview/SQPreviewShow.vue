@@ -333,6 +333,16 @@ const reload = (params: any) => {
   loadCanvasData(params)
 }
 
+const reloadCurrentDashboard = () => {
+  if (!state.dashboardInfo?.id) return
+  const resourceId = String(state.dashboardInfo.id)
+  state.dashboardInfo = {}
+  loadCanvasData({
+    id: resourceId,
+    dashboardScope: currentDashboardMode(),
+  })
+}
+
 const resourceNodeClick = (prams: any) => {
   loadCanvasData(prams)
 }
@@ -432,6 +442,7 @@ defineExpose({
             :canvas-style-data="state.canvasStylePreview"
             :canvas-view-info="state.canvasViewInfoPreview"
             :show-position="showPosition"
+            @chart-moved="reloadCurrentDashboard"
           ></SQPreview>
           <EmptyBackgroundSvg
             v-else-if="hasTreeData && mounted"
