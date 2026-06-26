@@ -430,10 +430,11 @@ class LLMService:
                 session.commit()
 
         if chat.datasource:
-            if not current_assistant and not has_datasource_access(session, current_user, chat.datasource):
+            use_dynamic_assistant_ds = current_assistant and current_assistant.type in dynamic_ds_types
+            if not use_dynamic_assistant_ds and not has_datasource_access(session, current_user, chat.datasource):
                 raise SingleMessageError(f"当前用户无权访问项目 {chat.datasource}")
             # Get available datasource
-            if current_assistant and current_assistant.type in dynamic_ds_types:
+            if use_dynamic_assistant_ds:
                 self.out_ds_instance = AssistantOutDsFactory.get_instance(current_assistant)
                 ds = self.out_ds_instance.get_ds(chat.datasource)
                 if not ds:
@@ -967,6 +968,10 @@ class LLMService:
                         missing_datasource = _datasource
                         _datasource = None
                         raise SingleMessageError(f"项目 {missing_datasource} 不存在或连接配置不可用")
+                    if not has_datasource_access(_session, self.current_user, _datasource):
+                        forbidden_datasource = _datasource
+                        _datasource = None
+                        raise SingleMessageError(f"当前用户无权访问项目 {forbidden_datasource}")
                     self.ds = CoreDatasource(**_ds.model_dump())
                     self.chat_question.engine = (_ds.type_name if _ds.type != 'excel' else 'PostgreSQL') + get_version(
                         self.ds)

@@ -72,13 +72,46 @@ function getResultFields(result: any) {
   ])
 }
 
-async function refreshData() {
+type RefreshDataOptions = {
+  silent?: boolean
+}
+
+function hasChartResult(viewInfo: any) {
+  const rows = viewInfo?.data?.data
+  const fields = unique([
+    ...(Array.isArray(viewInfo?.data?.fields) ? viewInfo.data.fields : []),
+    ...(Array.isArray(viewInfo?.fields) ? viewInfo.fields : []),
+  ])
+  return Array.isArray(rows) && (rows.length > 0 || fields.length > 0)
+}
+
+function normalizeLoadedChartState() {
+  if (props.viewInfo?.dataState !== 'loading' && props.viewInfo?.status !== 'loading') {
+    return false
+  }
+  if (!hasChartResult(props.viewInfo)) {
+    return false
+  }
+  if (props.viewInfo.status === 'loading') {
+    props.viewInfo.status = 'success'
+  }
+  props.viewInfo.dataState = props.viewInfo.status === 'failed' ? 'failed' : 'ready'
+  props.viewInfo.loadingProgress = 100
+  return true
+}
+
+async function refreshData(options: RefreshDataOptions = {}) {
+  const silent = options.silent === true
   if (!props.viewInfo?.datasource) {
-    ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
+    if (!silent) {
+      ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
+    }
     return
   }
   if (!props.viewInfo?.sql?.trim()) {
-    ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
+    if (!silent) {
+      ElMessage.warning(t('dashboard.sql_editor_empty_sql'))
+    }
     return
   }
   refreshing.value = true
@@ -105,10 +138,14 @@ async function refreshData() {
     props.viewInfo.message = result?.message || ''
     if (props.viewInfo.status === 'failed') {
       props.viewInfo.dataState = 'failed'
-      ElMessage.error(props.viewInfo.message || t('dashboard.chart_refresh_failed'))
+      if (!silent) {
+        ElMessage.error(props.viewInfo.message || t('dashboard.chart_refresh_failed'))
+      }
     } else {
       props.viewInfo.dataState = 'ready'
-      ElMessage.success(t('dashboard.chart_refresh_success'))
+      if (!silent) {
+        ElMessage.success(t('dashboard.chart_refresh_success'))
+      }
     }
     props.viewInfo.loadingProgress = 100
     await nextTick()
@@ -118,7 +155,9 @@ async function refreshData() {
     props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
     props.viewInfo.dataState = 'failed'
     props.viewInfo.loadingProgress = 100
-    ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
+    if (!silent) {
+      ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
+    }
   } finally {
     stopRefreshProgress()
     refreshing.value = false
@@ -326,6 +365,7 @@ const chartLoadingProgress = computed(() => {
   return Math.max(0, Math.min(100, Math.round(progress)))
 })
 const insightDensity = computed(() => insightDisplay.value.density)
+const compactInsightHeader = computed(() => insightDensity.value !== 'regular')
 const effectiveInsightLayout = computed(() => insightDisplay.value.layout)
 const insightMaxStats = computed(() => insightDisplay.value.maxStats)
 const isFeaturedSideInsight = computed(() => insightDisplay.value.featuredSide === true)
@@ -355,11 +395,45 @@ function scheduleRenderChart() {
   }, 80)
 }
 
+async function recoverStaleLoadingState() {
+  if (refreshing.value) {
+    return
+  }
+  if (props.viewInfo?.dataState !== 'loading' && props.viewInfo?.status !== 'loading') {
+    return
+  }
+  if (normalizeLoadedChartState()) {
+    scheduleRenderChart()
+    return
+  }
+  if (props.showPosition === 'canvas' && props.viewInfo?.datasource && props.viewInfo?.sql?.trim()) {
+    await refreshData({ silent: true })
+  }
+}
+
 watch(
   () => [props.viewInfo?.chart?.type, props.viewInfo?.chart?.sourceType],
   ([type, sourceType]) => {
     currentChartType.value = type ?? sourceType
   }
+)
+
+watch(
+  () => [
+    props.viewInfo?.id,
+    props.viewInfo?.status,
+    props.viewInfo?.dataState,
+    props.viewInfo?.loadingProgress,
+    props.viewInfo?.datasource,
+    props.viewInfo?.sql,
+    props.viewInfo?.data?.data?.length,
+    props.viewInfo?.data?.fields?.length,
+    props.viewInfo?.fields?.length,
+  ],
+  () => {
+    void recoverStaleLoadingState()
+  },
+  { immediate: true }
 )
 
 function onTypeChange(val: any) {
@@ -459,7 +533,7 @@ defineExpose({
       </div>
       <ChartInsightHeader
         v-else-if="canShowInsightHeader && effectiveInsightLayout === 'top'"
-        compact
+        :compact="compactInsightHeader"
         :density="insightDensity"
         :max-stats="insightMaxStats"
         :chart-type="chartType"
@@ -478,7 +552,7 @@ defineExpose({
       >
         <ChartInsightHeader
           v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
-          compact
+          :compact="compactInsightHeader"
           :density="insightDensity"
           layout="side"
           :max-stats="insightMaxStats"

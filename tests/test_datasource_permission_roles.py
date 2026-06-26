@@ -295,6 +295,30 @@ def test_datasource_membership_does_not_cross_tenant_boundary():
         assert permission.get_accessible_datasource_ids(session, current_user) == {1}
 
 
+def test_schema_context_requires_datasource_access():
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+
+    with Session(engine) as session:
+        session.add(_datasource(2, tenant_id=2))
+        session.add(CoreTable(id=20, ds_id=2, checked=True, table_name="secret_orders"))
+        session.commit()
+
+        ds = session.get(CoreDatasource, 2)
+        schema, tables = datasource_crud.get_table_schema(
+            session=session,
+            current_user=current_user,
+            ds=ds,
+            question="show orders",
+            embedding=False,
+        )
+        sample_data = datasource_crud.get_tables_sample_data(session, current_user, ds)
+
+    assert schema == ""
+    assert tables == []
+    assert sample_data == ""
+
+
 def test_tenant_admin_can_manage_all_datasources_in_current_tenant_only():
     engine = _engine_with_permission_tables()
     tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="admin")

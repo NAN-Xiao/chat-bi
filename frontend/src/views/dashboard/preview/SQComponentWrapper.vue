@@ -1,13 +1,23 @@
 <script setup lang="ts">
-import { ref, toRefs, computed, nextTick, onBeforeUnmount } from 'vue'
+import { ref, toRefs, computed, nextTick, reactive, onBeforeUnmount } from 'vue'
 import { findComponent } from '@/views/dashboard/components/component-list.ts'
-import { ChatLineSquare, Close, Download, FullScreen, RefreshRight } from '@element-plus/icons-vue'
+import {
+  ChatLineSquare,
+  Close,
+  Download,
+  FullScreen,
+  MoreFilled,
+  Position,
+  RefreshRight,
+} from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus-secondary'
 import { useI18n } from 'vue-i18n'
 import { analysisAssistantApi, type AnalysisAssistantMessage } from '@/api/analysisAssistant'
 import { dashboardApi } from '@/api/dashboard.ts'
 import { parseSseChunk } from '@/utils/sse'
 import { useEmitt } from '@/utils/useEmitt.ts'
+import { guid } from '@/utils/canvas.ts'
+import cloneDeep from 'lodash/cloneDeep'
 import MdComponent from '@/views/chat/component/MdComponent.vue'
 import icon_send_filled from '@/assets/svg/icon_send_filled.svg'
 import ChartFullscreenDialog from '@/views/dashboard/preview/ChartFullscreenDialog.vue'
@@ -33,6 +43,21 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  componentData: {
+    type: Array,
+    required: false,
+    default: () => [],
+  },
+  canvasStyleData: {
+    type: Object,
+    required: false,
+    default: () => ({}),
+  },
+  dashboardInfo: {
+    type: Object,
+    required: false,
+    default: () => ({}),
+  },
   showPosition: {
     required: false,
     type: String,
@@ -51,6 +76,7 @@ const props = defineProps({
     default: false,
   },
 })
+const emit = defineEmits(['chartMoved'])
 const { configItem, showPosition } = toRefs(props)
 const component = ref(null)
 const wrapperRef = ref<HTMLElement | null>(null)
@@ -68,6 +94,14 @@ const reportStopped = ref(false)
 const reportSubmittedQuestion = ref('')
 const reportController = ref<AbortController | null>(null)
 const chartFullscreenVisible = ref(false)
+const moveDialogVisible = ref(false)
+const moveLoading = ref(false)
+const targetDashboardLoading = ref(false)
+const targetDashboardList = ref<any[]>([])
+const moveFormRef = ref()
+const moveForm = reactive({
+  dashboardId: '',
+})
 let reportStreamBuffer = ''
 const isPreviewSingleChart = computed(
   () => props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
@@ -101,6 +135,242 @@ const reportHasConversation = computed(
     Boolean(reportAnswer.value.trim()) ||
     Boolean(reportProgress.value.trim())
 )
+const canMoveChart = computed(
+  () =>
+    isPreviewSingleChart.value &&
+    props.dashboardInfo?.id &&
+    props.dashboardInfo?.dashboardMode !== 'default' &&
+    props.dashboardInfo?.canEdit !== false
+)
+const moveFormRules = computed(() => ({
+  dashboardId: [
+    {
+      required: true,
+      message: t('dashboard.select_dashboard'),
+      trigger: 'change',
+    },
+  ],
+}))
+
+function flattenDashboardOptions(nodes: any[] = [], level = 0, result: any[] = []) {
+  nodes.forEach((node) => {
+    if (node?.node_type === 'leaf' || node?.leaf === true) {
+      if (
+        String(node.id) !== String(props.dashboardInfo?.id) &&
+        node.can_edit !== false &&
+        node.is_default !== true
+      ) {
+        result.push({
+          id: node.id,
+          name: node.name,
+          level,
+        })
+      }
+      return
+    }
+    flattenDashboardOptions(node?.children || [], level + 1, result)
+  })
+  return result
+}
+
+function parseJson(value: any, fallback: any) {
+  if (value === null || value === undefined || value === '') {
+    return fallback
+  }
+  if (typeof value !== 'string') {
+    return value
+  }
+  try {
+    return JSON.parse(value)
+  } catch {
+    return fallback
+  }
+}
+
+function maxDashboardBottom(items: any[]) {
+  if (!Array.isArray(items) || !items.length) {
+    return 1
+  }
+  return items.reduce((max, item) => {
+    const y = Number(item?.y || 1)
+    const sizeY = Number(item?.sizeY || 0)
+    return Math.max(max, y + sizeY)
+  }, 1)
+}
+
+function prepareMovedChartPayload() {
+  const nextComponentId = guid()
+  const componentPayload = cloneDeep(props.configItem || {})
+  const viewPayload = cloneDeep(currentViewInfo.value || {})
+  componentPayload.id = nextComponentId
+  delete componentPayload._dragId
+  componentPayload.x = 1
+  viewPayload.id = nextComponentId
+  if (viewPayload.chart && typeof viewPayload.chart === 'object') {
+    viewPayload.chart.id = nextComponentId
+  }
+  if (!viewPayload.data || typeof viewPayload.data !== 'object') {
+    viewPayload.data = {}
+  }
+  viewPayload.data.data = []
+  viewPayload.data.fields = []
+  viewPayload.fields = []
+  viewPayload.status = 'loading'
+  viewPayload.dataState = 'loading'
+  viewPayload.loadingProgress = 0
+  viewPayload.message = ''
+  return {
+    nextComponentId,
+    componentPayload,
+    viewPayload,
+  }
+}
+
+function removeComponentById(items: any[] = [], componentId: any) {
+  if (!Array.isArray(items)) {
+    return []
+  }
+  return items
+    .filter((item) => String(item?.id) !== String(componentId))
+    .map((item) => {
+      if (Array.isArray(item?.componentData)) {
+        item.componentData = removeComponentById(item.componentData, componentId)
+      }
+      if (Array.isArray(item?.propValue)) {
+        item.propValue = item.propValue.map((tab: any) => ({
+          ...tab,
+          componentData: removeComponentById(tab?.componentData || [], componentId),
+        }))
+      }
+      return item
+    })
+}
+
+function buildUpdateParams(dashboardInfo: any) {
+  return {
+    id: dashboardInfo.id,
+    name: dashboardInfo.name,
+    pid: dashboardInfo.pid || 'root',
+    datasource: dashboardInfo.datasource,
+    node_type: 'leaf',
+    type: dashboardInfo.type || 'dashboard',
+    opt: 'updateLeaf',
+  }
+}
+
+async function loadTargetDashboard(dashboardId: string | number) {
+  const result: any = await dashboardApi.load_resource({ id: dashboardId, include_data: false })
+  return {
+    dashboardInfo: result,
+    componentData: parseJson(result?.component_data, []),
+    canvasStyleData: parseJson(result?.canvas_style_data, {}),
+    canvasViewInfo: parseJson(result?.canvas_view_info, {}),
+  }
+}
+
+async function updateDashboardCanvas(
+  dashboardInfo: any,
+  componentData: any[],
+  canvasStyleData: Record<string, any>,
+  canvasViewInfo: Record<string, any>
+) {
+  await dashboardApi.update_canvas({
+    ...buildUpdateParams(dashboardInfo),
+    component_data: JSON.stringify(componentData || []),
+    canvas_style_data: JSON.stringify(canvasStyleData || {}),
+    canvas_view_info: JSON.stringify(canvasViewInfo || {}),
+  })
+}
+
+async function loadMoveTargets() {
+  const datasourceId =
+    currentViewInfo.value?.datasource || props.dashboardInfo?.datasource || undefined
+  if (!datasourceId) {
+    targetDashboardList.value = []
+    return
+  }
+  targetDashboardLoading.value = true
+  try {
+    const res: any = await dashboardApi.list_resource({ datasource: datasourceId })
+    targetDashboardList.value = flattenDashboardOptions(res || [])
+  } finally {
+    targetDashboardLoading.value = false
+  }
+}
+
+async function openMoveDialog() {
+  if (!canMoveChart.value) {
+    ElMessage.warning(t('dashboard.chart_move_no_permission'))
+    return
+  }
+  moveForm.dashboardId = ''
+  moveDialogVisible.value = true
+  await loadMoveTargets()
+}
+
+function closeMoveDialog() {
+  if (moveLoading.value) return
+  moveDialogVisible.value = false
+  moveForm.dashboardId = ''
+}
+
+async function moveChartToDashboard() {
+  if (moveLoading.value) return
+  const valid = await moveFormRef.value?.validate?.().catch(() => false)
+  if (!valid) return
+  moveLoading.value = true
+  let targetSnapshot: any = null
+  try {
+    const target = await loadTargetDashboard(moveForm.dashboardId)
+    targetSnapshot = cloneDeep(target)
+    const { nextComponentId, componentPayload, viewPayload } = prepareMovedChartPayload()
+    componentPayload.y = maxDashboardBottom(target.componentData)
+    target.componentData.push(componentPayload)
+    target.canvasViewInfo[nextComponentId] = viewPayload
+    await updateDashboardCanvas(
+      target.dashboardInfo,
+      target.componentData,
+      target.canvasStyleData,
+      target.canvasViewInfo
+    )
+
+    const sourceComponentData = removeComponentById(
+      cloneDeep(props.componentData || []),
+      props.configItem?.id
+    )
+    const sourceCanvasViewInfo = cloneDeep(props.canvasViewInfo || {})
+    if (props.configItem?.id !== undefined && props.configItem?.id !== null) {
+      delete sourceCanvasViewInfo[props.configItem.id]
+    }
+    await updateDashboardCanvas(
+      props.dashboardInfo,
+      sourceComponentData,
+      cloneDeep(props.canvasStyleData || {}),
+      sourceCanvasViewInfo
+    )
+
+    ElMessage.success(t('dashboard.chart_move_success'))
+    moveDialogVisible.value = false
+    emit('chartMoved', { targetDashboardId: moveForm.dashboardId })
+  } catch (error) {
+    if (targetSnapshot) {
+      try {
+        await updateDashboardCanvas(
+          targetSnapshot.dashboardInfo,
+          targetSnapshot.componentData,
+          targetSnapshot.canvasStyleData,
+          targetSnapshot.canvasViewInfo
+        )
+      } catch (rollbackError) {
+        console.error('rollback moved chart target dashboard failed', rollbackError)
+      }
+    }
+    console.error('move chart failed', error)
+    ElMessage.error(t('dashboard.chart_move_failed'))
+  } finally {
+    moveLoading.value = false
+  }
+}
 
 function resetReportConversation() {
   reportAnswer.value = ''
@@ -698,17 +968,86 @@ onBeforeUnmount(() => {
           <el-icon size="16"><FullScreen /></el-icon>
         </el-button>
       </el-tooltip>
-      <el-tooltip effect="dark" :content="t('dashboard.chart_export_table')" placement="top">
-        <el-button class="preview-action-btn" text @click="exportChartTableData">
-          <el-icon size="16"><Download /></el-icon>
+      <el-dropdown trigger="click" placement="bottom-end" popper-class="preview-action-more-popper">
+        <el-button
+          class="preview-action-btn"
+          text
+          :title="t('dashboard.chart_more_actions')"
+          :aria-label="t('dashboard.chart_more_actions')"
+          @click.stop
+        >
+          <el-icon size="16"><MoreFilled /></el-icon>
         </el-button>
-      </el-tooltip>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="exportChartTableData">
+              <el-icon size="15"><Download /></el-icon>
+              <span>{{ t('dashboard.chart_export_table') }}</span>
+            </el-dropdown-item>
+            <el-dropdown-item v-if="canMoveChart" @click="openMoveDialog">
+              <el-icon size="15"><Position /></el-icon>
+              <span>{{ t('dashboard.chart_move_to') }}</span>
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
     <ChartFullscreenDialog
       v-if="isPreviewSingleChart"
       v-model="chartFullscreenVisible"
       :view-info="currentViewInfo"
     />
+    <el-dialog
+      v-model="moveDialogVisible"
+      class="chart-move-dialog"
+      :title="t('dashboard.chart_move_to')"
+      width="420px"
+      append-to-body
+      :before-close="closeMoveDialog"
+    >
+      <el-form
+        ref="moveFormRef"
+        v-loading="targetDashboardLoading"
+        :model="moveForm"
+        :rules="moveFormRules"
+        label-position="top"
+        @submit.prevent
+      >
+        <el-form-item :label="t('dashboard.dashboard')" prop="dashboardId" required>
+          <el-select
+            v-model="moveForm.dashboardId"
+            class="chart-move-select"
+            filterable
+            :placeholder="t('dashboard.select_dashboard')"
+            :empty-text="t('dashboard.chart_move_no_target')"
+          >
+            <el-option
+              v-for="item in targetDashboardList"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            >
+              <span class="chart-move-option" :style="{ paddingLeft: `${item.level * 14}px` }">
+                {{ item.name }}
+              </span>
+            </el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="moveLoading" @click="closeMoveDialog">
+          {{ t('common.cancel') }}
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="moveLoading"
+          :disabled="!targetDashboardList.length"
+          @click="moveChartToDashboard"
+        >
+          {{ t('common.confirm') }}
+        </el-button>
+      </template>
+    </el-dialog>
     <Teleport to="body">
       <div
         v-if="reportPromptVisible"
@@ -949,6 +1288,20 @@ onBeforeUnmount(() => {
     color: #2f6bff;
     background: rgba(47, 107, 255, 0.1);
   }
+}
+
+.chart-move-select {
+  width: 100%;
+}
+
+.chart-move-option {
+  display: inline-flex;
+  align-items: center;
+  max-width: 320px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 </style>

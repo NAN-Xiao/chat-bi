@@ -55,6 +55,33 @@ def _first_scalar_value(value: Any):
     return value
 
 
+def _dashboard_chart_has_materialized_result(item: dict) -> bool:
+    data_obj = item.get('data') if isinstance(item.get('data'), dict) else {}
+    rows = data_obj.get('data')
+    data_fields = data_obj.get('fields')
+    item_fields = item.get('fields')
+    return (
+        (isinstance(rows, list) and len(rows) > 0)
+        or (isinstance(data_fields, list) and len(data_fields) > 0)
+        or (isinstance(item_fields, list) and len(item_fields) > 0)
+    )
+
+
+def _normalize_persisted_dashboard_chart_state(canvas_view_obj: dict) -> dict:
+    for item in canvas_view_obj.values():
+        if not isinstance(item, dict):
+            continue
+        if item.get('dataState') != 'loading' and item.get('status') != 'loading':
+            continue
+        if not _dashboard_chart_has_materialized_result(item):
+            continue
+        if item.get('status') == 'loading':
+            item['status'] = 'success'
+        item['dataState'] = 'failed' if item.get('status') == 'failed' else 'ready'
+        item['loadingProgress'] = 100
+    return canvas_view_obj
+
+
 def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | bytes | None:
     if not canvas_view_info:
         return canvas_view_info
@@ -62,7 +89,10 @@ def _sanitize_canvas_view_info(canvas_view_info: str | bytes | None) -> str | by
         canvas_view_obj = orjson.loads(canvas_view_info)
     except Exception:
         return canvas_view_info
-    return orjson.dumps(sanitize_chart_display_names(canvas_view_obj)).decode()
+    canvas_view_obj = sanitize_chart_display_names(canvas_view_obj)
+    if isinstance(canvas_view_obj, dict):
+        canvas_view_obj = _normalize_persisted_dashboard_chart_state(canvas_view_obj)
+    return orjson.dumps(canvas_view_obj).decode()
 
 
 def _user_id(current_user: CurrentUser) -> str:
@@ -71,6 +101,12 @@ def _user_id(current_user: CurrentUser) -> str:
 
 def _now() -> int:
     return int(time.time())
+
+
+def _smallint_flag(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    return 1 if bool(value) else 0
 
 
 DEFAULT_TENANT_ID = 1
@@ -690,6 +726,19 @@ def _mark_dashboard_chart_snapshot_ready(item: dict) -> None:
     item['loadingProgress'] = 100
 
 
+def _apply_dashboard_chart_result(item: dict, data_result: dict[str, Any]) -> None:
+    if not isinstance(item.get('data'), dict):
+        item['data'] = {}
+    fields = data_result.get('fields', [])
+    item['data']['data'] = data_result['data']
+    item['data']['fields'] = fields
+    item['status'] = data_result['status']
+    item['message'] = data_result['message']
+    item['fields'] = fields
+    item['dataState'] = 'failed' if item.get('status') == 'failed' else 'ready'
+    item['loadingProgress'] = 100
+
+
 def _clear_dashboard_payload_results(canvas_view_info: str | bytes | None) -> str:
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     for item in canvas_view_obj.values():
@@ -1185,12 +1234,7 @@ def _dashboard_payload(
                 }
             else:
                 data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
-            if not isinstance(item.get('data'), dict):
-                item['data'] = {}
-            item['data']['data'] = data_result['data']
-            item['status'] = data_result['status']
-            item['message'] = data_result['message']
-            item['fields'] = data_result.get('fields', [])
+            _apply_dashboard_chart_result(item, data_result)
     result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj).decode()
     return result_dict
 
@@ -1310,6 +1354,7 @@ def get_create_base_info(user: CurrentUser, dashboard: CreateDashboard):
     record.create_by = str(user.id)
     record.create_time = _now()
     record.status = record.status or DASHBOARD_STATUS_ACTIVE
+    record.is_default = _smallint_flag(record.is_default)
     record.delete_flag = 0 if record.delete_flag is None else record.delete_flag
     return record
 

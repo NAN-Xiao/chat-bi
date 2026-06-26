@@ -8,7 +8,7 @@ from sqlmodel import select
 
 from apps.datasource.crud.permission import can_access_table, current_tenant_id, get_accessible_datasource_ids, \
     get_column_permission_fields, get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, \
-    is_normal_user
+    has_datasource_access, is_normal_user
 from apps.datasource.crud.query_executor import execute_user_query_or_raise
 from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.embedding.table_embedding import calc_table_embedding
@@ -479,6 +479,8 @@ def updateNum(session: SessionDep, ds: CoreDatasource):
 
 def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> List[TableAndFields]:
     _list: List = []
+    if ds is None or not has_datasource_access(session, current_user, ds.id):
+        return _list
     tables = session.query(CoreTable).filter(
         and_(CoreTable.ds_id == ds.id, CoreTable.checked == True)
     ).all()

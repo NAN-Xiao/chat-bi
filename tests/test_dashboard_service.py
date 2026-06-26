@@ -1776,6 +1776,71 @@ def test_load_resource_runs_legacy_chart_with_dashboard_datasource(monkeypatch):
     assert canvas_view_info["chart-1"]["data"]["data"] == [{"value": 1}]
 
 
+def test_load_resource_marks_refreshed_loading_chart_ready(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=1, isAdmin=True, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+    monkeypatch.setattr(dashboard_service, "has_datasource_role", lambda *args, **kwargs: False)
+    monkeypatch.setattr(dashboard_service, "_user_name", lambda *args, **kwargs: "Administrator")
+    monkeypatch.setattr(
+        dashboard_service,
+        "_execute_dashboard_chart_sql",
+        lambda *args, **kwargs: {
+            "status": "success",
+            "data": [{"step": "首次战斗", "rate": 97.58}],
+            "fields": ["step", "rate"],
+            "message": "",
+        },
+    )
+
+    with Session(engine) as session:
+        _insert_simple_datasource_fixture(session, 1)
+        session.add(
+            CoreDashboard(
+                id="dashboard-loading",
+                name="旧加载状态看板",
+                pid="root",
+                datasource=1,
+                node_type="leaf",
+                type="dashboard",
+                create_by="1",
+                create_time=100,
+                delete_flag=0,
+                component_data="[]",
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps(
+                    {
+                        "chart-1": {
+                            "datasource": 1,
+                            "sql": "select step, rate from funnel",
+                            "data": {"data": [], "fields": []},
+                            "fields": [],
+                            "status": "loading",
+                            "dataState": "loading",
+                            "loadingProgress": 0,
+                        }
+                    }
+                ),
+            )
+        )
+        session.commit()
+
+        resource = dashboard_service.load_resource(
+            session=session,
+            dashboard=QueryDashboard(id="dashboard-loading"),
+            current_user=current_user,
+        )
+
+    chart = json.loads(resource["canvas_view_info"])["chart-1"]
+    assert chart["status"] == "success"
+    assert chart["dataState"] == "ready"
+    assert chart["loadingProgress"] == 100
+    assert chart["fields"] == ["step", "rate"]
+    assert chart["data"]["fields"] == ["step", "rate"]
+    assert chart["data"]["data"] == [{"step": "首次战斗", "rate": 97.58}]
+
+
 def test_load_resource_infers_legacy_dashboard_datasource_from_canvas_items(monkeypatch):
     engine = _engine_with_dashboard_table()
     current_user = SimpleNamespace(id=2, isAdmin=True, tenant_id=1)
@@ -1851,6 +1916,70 @@ def test_project_editor_can_create_dashboard(monkeypatch):
         assert record.datasource == 2
         assert record.create_by == "2"
         assert record.tenant_id == 3
+
+
+def test_dashboard_create_base_info_normalizes_default_flag():
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=3)
+
+    record = dashboard_service.get_create_base_info(
+        current_user,
+        CreateDashboard(
+            name="项目看板",
+            pid="root",
+            datasource=2,
+            node_type="leaf",
+            type="dashboard",
+            is_default=False,
+        ),
+    )
+
+    assert record.is_default == 0
+    assert not isinstance(record.is_default, bool)
+
+
+def test_create_canvas_normalizes_materialized_loading_chart_state(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(dashboard_service, "has_datasource_access", lambda *args, **kwargs: True)
+
+    canvas_view_info = {
+        "chart-1": {
+            "id": "chart-1",
+            "datasource": 1,
+            "sql": "select step, rate from funnel",
+            "data": {
+                "data": [{"step": "首次战斗", "rate": 97.58}],
+                "fields": [],
+            },
+            "fields": ["step", "rate"],
+            "status": "success",
+            "dataState": "loading",
+            "loadingProgress": 0,
+        }
+    }
+
+    with Session(engine) as session:
+        record = dashboard_service.create_canvas(
+            session=session,
+            user=current_user,
+            dashboard=CreateDashboard(
+                name="项目看板",
+                pid="root",
+                datasource=1,
+                node_type="leaf",
+                type="dashboard",
+                component_data=json.dumps([{"id": "chart-1", "component": "SQView"}]),
+                canvas_style_data="{}",
+                canvas_view_info=json.dumps(canvas_view_info),
+            ),
+        )
+
+    chart = json.loads(record.canvas_view_info)["chart-1"]
+    assert chart["status"] == "success"
+    assert chart["dataState"] == "ready"
+    assert chart["loadingProgress"] == 100
+    assert chart["data"]["data"] == [{"step": "首次战斗", "rate": 97.58}]
 
 
 def test_project_viewer_can_create_own_dashboard(monkeypatch):
