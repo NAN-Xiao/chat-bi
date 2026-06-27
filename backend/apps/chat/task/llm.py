@@ -320,6 +320,64 @@ def _is_supporting_only_gap(covered_metrics: list[str], missing_metrics: list[st
     )
 
 
+def _is_funnel_supporting_metric_gap(
+    chart: dict[str, Any],
+    covered_metrics: list[str],
+    missing_metrics: list[str],
+) -> bool:
+    if str(chart.get("type") or "").lower() != "funnel" or not covered_metrics or not missing_metrics:
+        return False
+
+    axis = chart.get("axis") or {}
+    x_axis = axis.get("x")
+    x_field = _normalize_chart_field_name(x_axis.get("value")) if isinstance(x_axis, dict) else ""
+    if not any(token in x_field for token in ("step", "stage", "funnel", "步骤", "阶段")):
+        return False
+
+    def is_funnel_primary(field: str) -> bool:
+        normalized = _normalize_chart_field_name(field)
+        return any(
+            token in normalized
+            for token in (
+                "users",
+                "user_count",
+                "count",
+                "num",
+                "value",
+                "人数",
+                "用户数",
+                "数量",
+            )
+        )
+
+    def is_funnel_auxiliary(field: str) -> bool:
+        normalized = _normalize_chart_field_name(field)
+        return any(
+            token in normalized
+            for token in (
+                "conversion",
+                "rate",
+                "ratio",
+                "pct",
+                "percent",
+                "dropoff",
+                "drop_off",
+                "drop",
+                "lost",
+                "loss",
+                "流失",
+                "掉点",
+                "转化",
+                "通过率",
+            )
+        )
+
+    return any(is_funnel_primary(field) for field in covered_metrics) and all(
+        is_funnel_auxiliary(field) or _is_supporting_metric_field(field)
+        for field in missing_metrics
+    )
+
+
 def _ensure_chart_covers_metric_fields(
     chart: dict[str, Any],
     fields: list[Any] | None,
@@ -356,6 +414,8 @@ def _ensure_chart_covers_metric_fields(
         field for field in metric_fields if _normalize_chart_field_name(field) not in used_values
     ]
     if len(covered_metrics) < len(metric_fields):
+        if _is_funnel_supporting_metric_gap(chart, covered_metrics, missing_metrics):
+            return chart
         if _is_supporting_only_gap(covered_metrics, missing_metrics):
             return chart
         title = chart.get("title") or "指标对比"

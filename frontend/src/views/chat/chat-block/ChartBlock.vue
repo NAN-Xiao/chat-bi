@@ -249,6 +249,8 @@ const chartTypeList = computed(() => {
         break
       case 'funnel':
         pushChartType('funnel', DataAnalysis)
+        pushChartType('column', Histogram)
+        pushChartType('bar', DataAnalysis)
         break
       case 'heatmap':
         pushChartType('heatmap', Grid)

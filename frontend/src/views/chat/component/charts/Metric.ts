@@ -58,12 +58,42 @@ export class Metric extends BaseChart {
         .replace(/\s+/g, ' ')
         .trim()
     const isMachineField = (text: string) => /^[a-z][a-z0-9_]*$/.test(text)
+    const machineFieldLabel = (text: string) => {
+      const normalized = text.trim().toLowerCase()
+      const labels: Record<string, string> = {
+        tutorial_completers: '完成新手引导人数',
+        tutorial_complete_users: '完成新手引导人数',
+        paid_from_completers: '完成引导后付费人数',
+        paid_after_tutorial_users: '完成引导后付费人数',
+        conversion_rate_pct: '转化率',
+        conversion_from_start_pct: '起点转化率',
+        conversion_from_prev_pct: '上一步转化率',
+        dropoff_users: '流失人数',
+        drop_off_users: '流失人数',
+        users: '用户数',
+        pay_users: '付费用户数',
+        active_users: '活跃用户数',
+        retained_users: '留存用户数',
+        net_revenue_usd: '净收入 USD',
+        revenue_usd: '收入 USD',
+      }
+      if (labels[normalized]) {
+        return labels[normalized]
+      }
+      if (normalized.endsWith('_pct')) {
+        return `${normalize(normalized.slice(0, -4))} %`
+      }
+      return normalize(normalized)
+    }
 
     if (rawName && !isMachineField(rawName)) {
       return normalize(rawName)
     }
     if (rawValue && !isMachineField(rawValue)) {
       return normalize(rawValue)
+    }
+    if (rawName || rawValue) {
+      return machineFieldLabel(rawName || rawValue)
     }
     return ''
   }

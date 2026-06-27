@@ -37,6 +37,7 @@ DATA_SKILLS: list[dict[str, str]] = [
 - 新用户从安装、登录、新手教程、首次战斗、首次建筑升级、首次科技研究到首次付费的转化。
 - 新手教程第 3/7/12 步掉点、早期关键节点流失、不同渠道或设备的新手链路对比。
 - “新手任务通过率”“新手引导通过率”“新手教程通过率”“新手任务漏斗”“教程步骤掉点”等问题。
+- “新手引导到付费转化率”“完成新手教程后付费”“新手任务到付费”等问题，默认做有顺序的漏斗，不用无标签指标卡。
 
 必须使用的明细表：
 - cohort 用 `dim_player.install_date` 锁定新增玩家。
@@ -48,6 +49,7 @@ SQL 口径：
 - 漏斗人数必须带前序条件，例如完成第 7 步人数必须同时完成登录、第 3 步和第 7 步。
 - 禁止每个步骤独立 `count(distinct player_id)` 后直接 `UNION`，那会导致后序步骤人数大于前序步骤。
 - 当用户只问“新手任务/新手引导/新手教程通过率”且未指定首次战斗、建筑、科技、首付等后续节点时，默认返回 `tutorial_step` 每一步的 `step_order`, `step_name`, `users`, `conversion_from_start_pct`, `conversion_from_prev_pct`, `drop_off_users`。
+- 当用户问“新手引导到付费/新手教程到付费”时，第 1 步为完成 `tutorial_step >= 12`，并取首次完成时间；第 2 步为该时间之后的成功净收入付费 `payment_status='success' AND net_revenue_usd > 0 AND payment.event_time >= tutorial_complete_time`。默认图表为漏斗图，字段仍返回 `step_order`, `step_name`, `users`, `conversion_from_start_pct`, `conversion_from_prev_pct`, `drop_off_users`。
 - 不要使用 `activity_type`、`activity_stage` 分析新手任务通过率；它们是活动字段，不是新手教程步骤。
 - 不要使用 `fact_events.task_id`，该字段不存在；新手教程步骤在 `attributes` 中。
 - 首付只统计 `payment_status='success' AND net_revenue_usd > 0`，不要用 `amount_usd`。

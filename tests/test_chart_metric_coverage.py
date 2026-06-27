@@ -100,3 +100,45 @@ def test_rate_chart_with_supporting_count_fields_is_kept():
     )
 
     assert result == chart
+
+
+def test_funnel_chart_with_conversion_and_dropoff_fields_is_kept():
+    chart = {
+        "type": "funnel",
+        "title": "新手任务通过率分析",
+        "axis": {
+            "x": {"value": "step_name"},
+            "y": {"value": "users"},
+        },
+    }
+    result = _ensure_chart_covers_metric_fields(
+        chart,
+        [
+            "step_order",
+            "step_name",
+            "users",
+            "conversion_from_start_pct",
+            "conversion_from_prev_pct",
+            "dropoff_users",
+        ],
+        [
+            {
+                "step_order": 1,
+                "step_name": "新手引导第1步",
+                "users": 9000,
+                "conversion_from_start_pct": 100,
+                "conversion_from_prev_pct": None,
+                "dropoff_users": None,
+            },
+            {
+                "step_order": 2,
+                "step_name": "新手引导第2步",
+                "users": 8961,
+                "conversion_from_start_pct": 99.57,
+                "conversion_from_prev_pct": 99.57,
+                "dropoff_users": 39,
+            },
+        ],
+    )
+
+    assert result == chart
