@@ -20,6 +20,11 @@ const props = defineProps({
     required: false,
     default: 'default',
   },
+  showLabel: {
+    type: Boolean,
+    required: false,
+    default: false,
+  },
 })
 
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -1240,6 +1245,7 @@ defineExpose({
           :series="renderSeries"
           :data="viewInfo.data?.data"
           :multi-quota-name="renderMultiQuotaName"
+          :show-label="showLabel"
         />
       </div>
     </div>
@@ -1266,7 +1272,7 @@ defineExpose({
           </el-button>
         </el-tooltip>
       </div>
-      <SqViewDisplay :view-info="viewInfo" :outer-id="'enlarge-' + viewInfo.id" />
+      <SqViewDisplay :view-info="viewInfo" :outer-id="'enlarge-' + viewInfo.id" :show-label="showLabel" />
     </el-dialog>
   </div>
 </template>

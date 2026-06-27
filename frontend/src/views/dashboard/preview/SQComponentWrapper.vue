@@ -8,6 +8,7 @@ import {
   FullScreen,
   MoreFilled,
   Position,
+  PriceTag,
   RefreshRight,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus-secondary'
@@ -94,6 +95,7 @@ const reportStopped = ref(false)
 const reportSubmittedQuestion = ref('')
 const reportController = ref<AbortController | null>(null)
 const chartFullscreenVisible = ref(false)
+const chartShowLabel = ref(false)
 const moveDialogVisible = ref(false)
 const moveLoading = ref(false)
 const targetDashboardLoading = ref(false)
@@ -107,6 +109,16 @@ const isPreviewSingleChart = computed(
   () => props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
 )
 const currentViewInfo = computed(() => props.canvasViewInfo?.[props.configItem.id] || {})
+const currentChartType = computed(() => {
+  const chart = currentViewInfo.value?.chart || {}
+  return chart.type || chart.sourceType || 'table'
+})
+const canToggleChartLabel = computed(
+  () =>
+    isPreviewSingleChart.value &&
+    !['table', 'metric'].includes(String(currentChartType.value || '').toLowerCase()) &&
+    currentViewInfo.value?.status !== 'failed'
+)
 const isPreviewReportTarget = computed(
   () =>
     props.showPosition === 'preview' &&
@@ -127,6 +139,9 @@ const reportPromptTitle = computed(() =>
 const reportDialogTitle = computed(() => reportSubmittedQuestion.value || reportPromptTitle.value)
 const reportTargetContext = computed(() =>
   t('dashboard.chart_report_target_context', [reportScopeTitle.value])
+)
+const componentExtraProps = computed(() =>
+  props.configItem?.component === 'SQView' ? { showLabel: chartShowLabel.value } : {}
 )
 const reportHasConversation = computed(
   () =>
@@ -939,6 +954,7 @@ onBeforeUnmount(() => {
           :disabled="true"
           :active="active"
           :readonly-template="readonlyTemplate"
+          v-bind="componentExtraProps"
         />
       </div>
     </div>
@@ -953,6 +969,22 @@ onBeforeUnmount(() => {
       >
         <el-icon size="16"><ChatLineSquare /></el-icon>
       </el-button>
+      <el-tooltip
+        v-if="canToggleChartLabel"
+        effect="dark"
+        :content="chartShowLabel ? t('chat.hide_label') : t('chat.show_label')"
+        placement="top"
+      >
+        <el-button
+          class="preview-action-btn"
+          :class="{ 'is-active': chartShowLabel }"
+          text
+          :aria-label="chartShowLabel ? t('chat.hide_label') : t('chat.show_label')"
+          @click="chartShowLabel = !chartShowLabel"
+        >
+          <el-icon size="16"><PriceTag /></el-icon>
+        </el-button>
+      </el-tooltip>
       <el-tooltip effect="dark" :content="t('dashboard.chart_refresh_data')" placement="top">
         <el-button class="preview-action-btn" text @click="refreshChartData">
           <el-icon size="16"><RefreshRight /></el-icon>
@@ -996,6 +1028,7 @@ onBeforeUnmount(() => {
       v-if="isPreviewSingleChart"
       v-model="chartFullscreenVisible"
       :view-info="currentViewInfo"
+      :show-label="chartShowLabel"
     />
     <el-dialog
       v-model="moveDialogVisible"
@@ -1287,6 +1320,11 @@ onBeforeUnmount(() => {
   &:focus {
     color: #2f6bff;
     background: rgba(47, 107, 255, 0.1);
+  }
+
+  &.is-active {
+    color: #2f6bff;
+    background: rgba(47, 107, 255, 0.12);
   }
 }
 

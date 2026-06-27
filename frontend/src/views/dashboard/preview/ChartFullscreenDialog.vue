@@ -11,9 +11,11 @@ const props = withDefaults(
   defineProps<{
     modelValue?: boolean
     viewInfo: Record<string, any>
+    showLabel?: boolean
   }>(),
   {
     modelValue: false,
+    showLabel: false,
   }
 )
 
@@ -156,6 +158,7 @@ function closeDialog() {
                 :series="seriesAxis"
                 :data="rows"
                 :multi-quota-name="chartConfig?.multiQuotaName"
+                :show-label="showLabel"
               />
             </div>
           </div>
