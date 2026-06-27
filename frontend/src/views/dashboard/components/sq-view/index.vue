@@ -22,25 +22,51 @@ const props = defineProps({
   },
 })
 
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ChartPopover from '@/views/chat/chat-block/ChartPopover.vue'
-import { buildInsightColumns, resolveInsightDisplay } from '@/views/chat/component/chartInsight.ts'
+import {
+  buildInsightColumns,
+  detectTrendAxisGranularity,
+  resolveInsightDisplay,
+} from '@/views/chat/component/chartInsight.ts'
+import { axisValue } from '@/views/chat/component/BaseChart.ts'
 import ICON_TABLE from '@/assets/svg/chart/icon_form_outlined.svg'
 import ICON_COLUMN from '@/assets/svg/chart/icon_dashboard_outlined.svg'
 import ICON_BAR from '@/assets/svg/chart/icon_bar_outlined.svg'
 import ICON_LINE from '@/assets/svg/chart/icon_chart-line.svg'
 import ICON_PIE from '@/assets/svg/chart/icon_pie_outlined.svg'
-import type { ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
+import {
+  defaultPivotAggregationForAxes,
+  resolvePivotMetricAggregations,
+  withResolvedMetricSemantics,
+} from '@/views/dashboard/utils/metricSemantics.ts'
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 const { t } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
 const chartRef = ref(null)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
 const frameSize = ref({ width: 0, height: 0 })
 const refreshing = ref(false)
+const chartRenderVersion = ref(0)
+const pivotCalendarMonth = ref('')
+const pivotCalendarDraftStart = ref('')
 let resizeObserver: ResizeObserver | undefined
 let renderTimer: number | undefined
 let progressTimer: number | undefined
+let pivotRefreshTimer: number | undefined
+let refreshRequestSeq = 0
+
+type PivotGranularity = 'day' | 'week' | 'month'
+type PivotQuickRange = {
+  value: string
+  label: string
+  days: number
+  offset?: number
+  range?: string
+}
+const DAY_MS = 24 * 60 * 60 * 1000
 
 const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -48,6 +74,9 @@ const renderChart = () => {
   //@ts-expect-error eslint-disable-next-line @typescript-eslint/no-unused-expressions
   chartRef.value?.renderChart()
 }
+const chartComponentKey = computed(
+  () => `${props.outerId || props.viewInfo?.id || 'chart'}-${chartRenderVersion.value}`
+)
 
 const enlargeDialogVisible = ref(false)
 
@@ -74,6 +103,423 @@ function getResultFields(result: any) {
 
 type RefreshDataOptions = {
   silent?: boolean
+}
+
+const pivotGranularityOptions = computed(() => [
+  { value: 'day', label: t('dashboard.pivot_day') },
+  { value: 'week', label: t('dashboard.pivot_week') },
+  { value: 'month', label: t('dashboard.pivot_month') },
+])
+const pivotRangeOptions = computed(() => [
+  { value: 'source', label: t('dashboard.pivot_source_time') },
+  { value: '7d', label: t('dashboard.pivot_recent_7d') },
+  { value: '14d', label: t('dashboard.pivot_recent_14d') },
+  { value: '30d', label: t('dashboard.pivot_recent_30d') },
+  { value: '90d', label: t('dashboard.pivot_recent_90d') },
+  { value: 'all', label: t('dashboard.pivot_all_time') },
+  { value: 'custom', label: t('dashboard.pivot_custom_range') },
+])
+const pivotQuickRangeOptions = computed<PivotQuickRange[]>(() => [
+  { value: 'today', label: t('dashboard.pivot_today'), days: 1 },
+  { value: '2d', label: t('dashboard.pivot_recent_2d'), days: 2 },
+  { value: '3d', label: t('dashboard.pivot_recent_3d'), days: 3 },
+  { value: '7d', label: t('dashboard.pivot_recent_7d'), days: 7, range: '7d' },
+  { value: 'yesterday', label: t('dashboard.pivot_yesterday'), days: 1, offset: 1 },
+])
+const pivotCalendarWeekdays = computed(() => [
+  t('dashboard.pivot_weekday_mo'),
+  t('dashboard.pivot_weekday_tu'),
+  t('dashboard.pivot_weekday_we'),
+  t('dashboard.pivot_weekday_th'),
+  t('dashboard.pivot_weekday_fr'),
+  t('dashboard.pivot_weekday_sa'),
+  t('dashboard.pivot_weekday_su'),
+])
+const pivotState = reactive({
+  initializedFor: '',
+  granularity: 'day',
+  range: 'source',
+  customStart: '',
+  customEnd: '',
+  groupEnabled: true,
+})
+
+function normalizeAxisList(list: any): ChartAxis[] {
+  return Array.isArray(list) ? list : []
+}
+
+function normalizeAxisField(axis: any) {
+  return axisValue(axis)
+}
+
+function firstAxisValue(list: any) {
+  const axis = normalizeAxisList(list).find((item) => normalizeAxisField(item))
+  return axis ? normalizeAxisField(axis) : ''
+}
+
+function normalizedAxis(axis: any): ChartAxis | null {
+  const value = normalizeAxisField(axis)
+  if (!value) {
+    return null
+  }
+  return { ...(axis || {}), value }
+}
+
+function axisForField(list: any, field: string): ChartAxis | undefined {
+  if (!field) {
+    return undefined
+  }
+  const axis = normalizeAxisList(list).find((item) => normalizeAxisField(item) === field)
+  return normalizedAxis(axis) || undefined
+}
+
+const pivotTimeField = computed(() => props.viewInfo?.pivot?.time_field || firstAxisValue(props.viewInfo?.chart?.xAxis))
+const chartMetricAxes = computed<ChartAxis[]>(() => {
+  const used = new Set<string>()
+  return normalizeAxisList(props.viewInfo?.chart?.yAxis)
+    .map(normalizedAxis)
+    .map((axis) => axis && withResolvedMetricSemantics(axis, props.viewInfo?.data?.data || []))
+    .filter((axis): axis is ChartAxis => {
+      if (!axis || used.has(axis.value)) {
+        return false
+      }
+      used.add(axis.value)
+      return true
+    })
+})
+const pivotMetricFields = computed(() => {
+  const fields = chartMetricAxes.value.map((axis) => axis.value)
+  if (fields.length > 0) {
+    return fields
+  }
+  const legacyField = props.viewInfo?.pivot?.metric_field || firstAxisValue(props.viewInfo?.chart?.yAxis)
+  return legacyField ? [legacyField] : []
+})
+const pivotGroupField = computed(() => props.viewInfo?.pivot?.group_field || firstAxisValue(props.viewInfo?.chart?.series))
+const pivotHasGroup = computed(() => Boolean(pivotGroupField.value))
+const pivotRangeEnabled = computed(() => props.viewInfo?.pivot?.range_enabled !== false)
+const pivotEnabled = computed(() => {
+  if (props.showPosition === 'multiplexing') {
+    return false
+  }
+  return props.viewInfo?.pivot?.enabled === true && Boolean(pivotTimeField.value && pivotMetricFields.value.length)
+})
+const pivotSummaryText = computed(() => {
+  if (!pivotEnabled.value) {
+    return ''
+  }
+  const groupLabel =
+    pivotHasGroup.value && pivotState.groupEnabled
+      ? t('dashboard.pivot_grouped')
+      : t('dashboard.pivot_ungrouped')
+  return `${pivotRangeLabel.value} / ${groupLabel}`
+})
+const pivotGranularityLabel = computed(
+  () =>
+    pivotGranularityOptions.value.find((item) => item.value === pivotState.granularity)?.label ||
+    t('dashboard.pivot_day')
+)
+const currentPivotTimeAxis = computed<ChartAxis | undefined>(() =>
+  axisForField(props.viewInfo?.chart?.xAxis, pivotTimeField.value) ||
+  (pivotTimeField.value ? { name: pivotTimeField.value, value: pivotTimeField.value } : undefined)
+)
+const currentPivotGroupAxis = computed<ChartAxis | undefined>(() =>
+  axisForField(props.viewInfo?.chart?.series, pivotGroupField.value) ||
+  (pivotGroupField.value ? { name: pivotGroupField.value, value: pivotGroupField.value } : undefined)
+)
+const renderXAxis = computed<ChartAxis[]>(() => {
+  if (pivotEnabled.value) {
+    return currentPivotTimeAxis.value ? [currentPivotTimeAxis.value] : []
+  }
+  return normalizeAxisList(props.viewInfo?.chart?.xAxis)
+})
+const renderYAxis = computed<ChartAxis[]>(() => {
+  if (pivotEnabled.value) {
+    return chartMetricAxes.value
+  }
+  return normalizeAxisList(props.viewInfo?.chart?.yAxis)
+})
+const renderSeries = computed<ChartAxis[]>(() => {
+  if (pivotEnabled.value) {
+    return pivotHasGroup.value && pivotState.groupEnabled && currentPivotGroupAxis.value
+      ? [currentPivotGroupAxis.value]
+      : []
+  }
+  return normalizeAxisList(props.viewInfo?.chart?.series)
+})
+const renderMultiQuotaName = computed(() => props.viewInfo.chart?.multiQuotaName)
+const pivotRangeLabel = computed(() => {
+  if (pivotState.range === 'custom' && (pivotState.customStart || pivotState.customEnd)) {
+    if (pivotState.customStart && pivotState.customEnd) {
+      return `${pivotState.customStart} ~ ${pivotState.customEnd}`
+    }
+    return pivotState.customStart || pivotState.customEnd
+  }
+  return (
+    pivotRangeOptions.value.find((item) => item.value === pivotState.range)?.label ||
+    t('dashboard.pivot_source_time')
+  )
+})
+function padDatePart(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function formatDateKey(date: Date) {
+  return `${date.getUTCFullYear()}-${padDatePart(date.getUTCMonth() + 1)}-${padDatePart(
+    date.getUTCDate()
+  )}`
+}
+
+function parseDateKey(value: string) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) {
+    return null
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null
+  }
+  return date
+}
+
+function shiftDateKey(value: string, days: number) {
+  const date = parseDateKey(value)
+  if (!date) {
+    return value
+  }
+  return formatDateKey(new Date(date.getTime() + days * DAY_MS))
+}
+
+function monthKeyFromDateKey(value: string) {
+  return value.slice(0, 7)
+}
+
+function compareDateKey(a: string, b: string) {
+  return a.localeCompare(b)
+}
+
+function normalizeRange(start: string, end: string) {
+  if (!start || !end) {
+    return { start, end }
+  }
+  return compareDateKey(start, end) <= 0 ? { start, end } : { start: end, end: start }
+}
+
+const pivotDataDateBounds = computed(() => {
+  const rows = Array.isArray(props.viewInfo?.data?.data) ? props.viewInfo.data.data : []
+  const field = pivotTimeField.value
+  const dates = rows
+    .map((row: Record<string, any>) => parseDateKey(String(row?.[field] || '').slice(0, 10)))
+    .filter((date: Date | null): date is Date => Boolean(date))
+    .map(formatDateKey)
+    .sort()
+  return {
+    min: dates[0] || '',
+    max: dates[dates.length - 1] || '',
+  }
+})
+
+const pivotCalendarAnchorDate = computed(() => {
+  return (
+    pivotState.customEnd ||
+    pivotState.customStart ||
+    pivotDataDateBounds.value.max ||
+    formatDateKey(new Date())
+  )
+})
+
+const pivotCalendarMonthKey = computed(() => {
+  return pivotCalendarMonth.value || monthKeyFromDateKey(pivotCalendarAnchorDate.value)
+})
+
+const pivotCalendarTitle = computed(() => pivotCalendarMonthKey.value)
+
+const pivotActiveRange = computed(() => {
+  if (pivotState.range === 'custom') {
+    return normalizeRange(pivotState.customStart, pivotState.customEnd || pivotState.customStart)
+  }
+  if (pivotState.range === 'all' && pivotDataDateBounds.value.min && pivotDataDateBounds.value.max) {
+    return { start: pivotDataDateBounds.value.min, end: pivotDataDateBounds.value.max }
+  }
+  const days = pivotState.range === '7d' || pivotState.range === '14d' || pivotState.range === '30d' || pivotState.range === '90d'
+    ? Number(pivotState.range.replace('d', ''))
+    : 0
+  if (days && pivotDataDateBounds.value.max) {
+    return {
+      start: shiftDateKey(pivotDataDateBounds.value.max, -(days - 1)),
+      end: pivotDataDateBounds.value.max,
+    }
+  }
+  return { start: '', end: '' }
+})
+
+const pivotCalendarDays = computed(() => {
+  const [yearText, monthText] = pivotCalendarMonthKey.value.split('-')
+  const year = Number(yearText)
+  const month = Number(monthText)
+  const firstDay = new Date(Date.UTC(year, month - 1, 1))
+  const startOffset = (firstDay.getUTCDay() + 6) % 7
+  const startTime = firstDay.getTime() - startOffset * DAY_MS
+  const activeStart = pivotActiveRange.value.start
+  const activeEnd = pivotActiveRange.value.end
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(startTime + index * DAY_MS)
+    const value = formatDateKey(date)
+    const inActiveRange =
+      activeStart && activeEnd && compareDateKey(value, activeStart) >= 0 && compareDateKey(value, activeEnd) <= 0
+    const isDraft = pivotCalendarDraftStart.value === value
+    return {
+      value,
+      label: String(date.getUTCDate()),
+      inMonth: date.getUTCMonth() === month - 1,
+      isStart: Boolean(activeStart && value === activeStart),
+      isEnd: Boolean(activeEnd && value === activeEnd),
+      inRange: Boolean(inActiveRange),
+      isDraft,
+    }
+  })
+})
+
+function applyPivotCustomRange(start: string, end: string) {
+  const range = normalizeRange(start, end)
+  pivotCalendarDraftStart.value = ''
+  pivotState.range = 'custom'
+  pivotState.customStart = range.start
+  pivotState.customEnd = range.end
+  pivotCalendarMonth.value = monthKeyFromDateKey(range.end || range.start || pivotCalendarAnchorDate.value)
+  schedulePivotRefresh()
+}
+
+function setPivotQuickRange(option: PivotQuickRange) {
+  if (option.range) {
+    pivotCalendarDraftStart.value = ''
+    setPivotRange(option.range)
+    return
+  }
+  const anchor = pivotDataDateBounds.value.max || formatDateKey(new Date())
+  const end = shiftDateKey(anchor, -(option.offset || 0))
+  const start = shiftDateKey(end, -(option.days - 1))
+  applyPivotCustomRange(start, end)
+}
+
+function isPivotQuickRangeActive(option: PivotQuickRange) {
+  if (option.range) {
+    return pivotState.range === option.range
+  }
+  const anchor = pivotDataDateBounds.value.max || formatDateKey(new Date())
+  const end = shiftDateKey(anchor, -(option.offset || 0))
+  const start = shiftDateKey(end, -(option.days - 1))
+  return pivotState.range === 'custom' && pivotState.customStart === start && pivotState.customEnd === end
+}
+
+function selectPivotCalendarDate(value: string) {
+  if (!pivotCalendarDraftStart.value || (pivotState.range === 'custom' && pivotState.customStart && pivotState.customEnd)) {
+    pivotCalendarDraftStart.value = value
+    pivotState.range = 'custom'
+    pivotState.customStart = value
+    pivotState.customEnd = ''
+    return
+  }
+  applyPivotCustomRange(pivotCalendarDraftStart.value, value)
+}
+
+function shiftPivotCalendarMonth(delta: number) {
+  const [yearText, monthText] = pivotCalendarMonthKey.value.split('-')
+  const date = new Date(Date.UTC(Number(yearText), Number(monthText) - 1 + delta, 1))
+  pivotCalendarMonth.value = `${date.getUTCFullYear()}-${padDatePart(date.getUTCMonth() + 1)}`
+}
+
+function normalizePivotGranularity(value: any, fallback: PivotGranularity = 'day'): PivotGranularity {
+  return value === 'week' || value === 'month' || value === 'day' ? value : fallback
+}
+
+function detectedPivotGranularity(): PivotGranularity {
+  const detected = detectTrendAxisGranularity(props.viewInfo?.data?.data, pivotTimeField.value)
+  return detected === 'week' || detected === 'month' ? detected : 'day'
+}
+
+function initialPivotGranularity(pivot: any): PivotGranularity {
+  const configured = normalizePivotGranularity(pivot?.granularity, 'day')
+  const detected = detectedPivotGranularity()
+  if ((!pivot?.granularity || (configured === 'day' && detected !== 'day')) && pivot?.range !== 'custom') {
+    return detected
+  }
+  return configured
+}
+
+function defaultPivotAggregation() {
+  return defaultPivotAggregationForAxes(chartMetricAxes.value, props.viewInfo?.data?.data || [])
+}
+
+function getPivotPayload() {
+  if (!pivotEnabled.value) {
+    return undefined
+  }
+  return {
+    enabled: true,
+    time_field: pivotTimeField.value,
+    metric_fields: pivotMetricFields.value,
+    metric_aggregations: resolvePivotMetricAggregations(chartMetricAxes.value, props.viewInfo?.data?.data || []),
+    metric_field: pivotMetricFields.value[0] || '',
+    group_field: pivotGroupField.value,
+    group_enabled: pivotHasGroup.value ? pivotState.groupEnabled : false,
+    range_enabled: pivotRangeEnabled.value,
+    granularity: pivotState.granularity,
+    range: pivotRangeEnabled.value ? pivotState.range : 'source',
+    custom_start: pivotRangeEnabled.value ? pivotState.customStart : '',
+    custom_end: pivotRangeEnabled.value ? pivotState.customEnd : '',
+    aggregation: defaultPivotAggregation(),
+  }
+}
+
+function syncPivotStateFromView(force = false) {
+  const viewId = `${props.viewInfo?.id || ''}:${props.viewInfo?.sql || ''}`
+  if (!force && pivotState.initializedFor === viewId) {
+    return
+  }
+  const pivot = props.viewInfo?.pivot || {}
+  pivotState.initializedFor = viewId
+  pivotState.granularity = initialPivotGranularity(pivot)
+  pivotState.range = pivot.range || 'source'
+  pivotState.customStart = pivot.custom_start || ''
+  pivotState.customEnd = pivot.custom_end || ''
+  pivotState.groupEnabled =
+    typeof pivot.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(pivotGroupField.value)
+  if (pivotEnabled.value) {
+    props.viewInfo.pivot = {
+      ...pivot,
+      ...getPivotPayload(),
+    }
+  }
+}
+
+function schedulePivotRefresh() {
+  if (!pivotEnabled.value) {
+    return
+  }
+  if (pivotState.range === 'custom' && !pivotState.customStart && !pivotState.customEnd) {
+    return
+  }
+  if (props.viewInfo?.pivot) {
+    props.viewInfo.pivot = {
+      ...props.viewInfo.pivot,
+      ...getPivotPayload(),
+    }
+  }
+  if (pivotRefreshTimer) {
+    window.clearTimeout(pivotRefreshTimer)
+  }
+  pivotRefreshTimer = window.setTimeout(() => {
+    pivotRefreshTimer = undefined
+    void refreshData({ silent: true })
+  }, 120)
 }
 
 function hasChartResult(viewInfo: any) {
@@ -121,11 +567,17 @@ async function refreshData(options: RefreshDataOptions = {}) {
   props.viewInfo.dataState = 'loading'
   props.viewInfo.loadingProgress = 0
   startRefreshProgress()
+  const requestSeq = ++refreshRequestSeq
+  const pivotPayload = getPivotPayload()
   try {
     const result = await dashboardApi.preview_sql({
       datasource: props.viewInfo.datasource,
       sql: props.viewInfo.sql.trim(),
+      pivot: pivotPayload,
     })
+    if (requestSeq !== refreshRequestSeq) {
+      return
+    }
     const fields = getResultFields(result)
     const data = Array.isArray(result?.data) ? result.data : []
     if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
@@ -148,9 +600,12 @@ async function refreshData(options: RefreshDataOptions = {}) {
       }
     }
     props.viewInfo.loadingProgress = 100
+    chartRenderVersion.value += 1
     await nextTick()
-    renderChart()
   } catch (error: any) {
+    if (requestSeq !== refreshRequestSeq) {
+      return
+    }
     props.viewInfo.status = 'failed'
     props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
     props.viewInfo.dataState = 'failed'
@@ -159,9 +614,30 @@ async function refreshData(options: RefreshDataOptions = {}) {
       ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
     }
   } finally {
-    stopRefreshProgress()
-    refreshing.value = false
+    if (requestSeq === refreshRequestSeq) {
+      stopRefreshProgress()
+      refreshing.value = false
+    }
   }
+}
+
+function setPivotGranularity(value: string) {
+  pivotState.granularity = normalizePivotGranularity(value)
+  schedulePivotRefresh()
+}
+
+function setPivotRange(value: string) {
+  pivotState.range = value
+  if (value !== 'custom') {
+    pivotState.customStart = ''
+    pivotState.customEnd = ''
+  }
+  schedulePivotRefresh()
+}
+
+function togglePivotGroup() {
+  pivotState.groupEnabled = !pivotState.groupEnabled
+  schedulePivotRefresh()
 }
 
 function startRefreshProgress() {
@@ -327,9 +803,9 @@ const showInsightHeader = computed(() => {
 })
 const insightColumns = computed(() =>
   buildInsightColumns(props.viewInfo.data?.data, [
-    ...(props.viewInfo.chart?.xAxis || []),
-    ...(props.viewInfo.chart?.yAxis || []),
-    ...(props.viewInfo.chart?.series || []),
+    ...renderXAxis.value,
+    ...renderYAxis.value,
+    ...renderSeries.value,
     ...(props.viewInfo.chart?.columns || []),
   ])
 )
@@ -337,9 +813,9 @@ const insightDisplay = computed(() =>
   resolveInsightDisplay({
     chartType: chartType.value,
     data: props.viewInfo.data?.data,
-    x: props.viewInfo.chart?.xAxis,
-    y: props.viewInfo.chart?.yAxis,
-    series: props.viewInfo.chart?.series,
+    x: renderXAxis.value,
+    y: renderYAxis.value,
+    series: renderSeries.value,
     width: frameSize.value.width,
     height: frameSize.value.height,
     dashboard: isDashboardSurface.value,
@@ -429,8 +905,10 @@ watch(
     props.viewInfo?.data?.data?.length,
     props.viewInfo?.data?.fields?.length,
     props.viewInfo?.fields?.length,
+    props.viewInfo?.pivot,
   ],
   () => {
+    syncPivotStateFromView()
     void recoverStaleLoadingState()
   },
   { immediate: true }
@@ -469,6 +947,9 @@ onBeforeUnmount(() => {
   stopRefreshProgress()
   if (renderTimer) {
     window.clearTimeout(renderTimer)
+  }
+  if (pivotRefreshTimer) {
+    window.clearTimeout(pivotRefreshTimer)
   }
 })
 
@@ -517,6 +998,114 @@ defineExpose({
         <div class="divider" />
       </div>
     </div>
+    <div v-if="pivotEnabled" class="pivot-toolbar">
+      <el-popover
+        trigger="click"
+        placement="bottom-start"
+        width="148"
+        popper-class="dashboard-pivot-popper"
+      >
+        <template #reference>
+          <button class="pivot-chip pivot-link" type="button">{{ pivotGranularityLabel }}</button>
+        </template>
+        <div class="pivot-time-panel">
+          <div class="pivot-menu">
+            <button
+              v-for="option in pivotGranularityOptions"
+              :key="option.value"
+              type="button"
+              class="pivot-menu-item"
+              :class="{ active: pivotState.granularity === option.value }"
+              @click="setPivotGranularity(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+          <el-popover
+            v-if="pivotRangeEnabled"
+            trigger="click"
+            placement="right-start"
+            width="326"
+            popper-class="dashboard-pivot-popper dashboard-pivot-calendar-popper"
+          >
+            <template #reference>
+              <button
+                type="button"
+                class="pivot-menu-item with-arrow"
+                :class="{ active: pivotState.range !== 'source' }"
+              >
+                <span>{{ t('dashboard.pivot_select_time') }}</span>
+                <el-icon size="14" class="pivot-menu-arrow">
+                  <ArrowRight />
+                </el-icon>
+              </button>
+            </template>
+            <div class="pivot-time-panel">
+              <div class="pivot-quick-row">
+                <button
+                  v-for="option in pivotQuickRangeOptions"
+                  :key="option.value"
+                  type="button"
+                  class="pivot-quick-chip"
+                  :class="{ active: isPivotQuickRangeActive(option) }"
+                  @click="setPivotQuickRange(option)"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+              <div class="pivot-calendar-head">
+                <button class="pivot-calendar-nav" type="button" @click="shiftPivotCalendarMonth(-1)">
+                  <el-icon size="16">
+                    <ArrowLeft />
+                  </el-icon>
+                </button>
+                <span class="pivot-calendar-title">{{ pivotCalendarTitle }}</span>
+                <button class="pivot-calendar-nav" type="button" @click="shiftPivotCalendarMonth(1)">
+                  <el-icon size="16">
+                    <ArrowRight />
+                  </el-icon>
+                </button>
+              </div>
+              <div class="pivot-calendar-grid weekdays">
+                <span v-for="weekday in pivotCalendarWeekdays" :key="weekday">{{ weekday }}</span>
+              </div>
+              <div class="pivot-calendar-grid days">
+                <button
+                  v-for="day in pivotCalendarDays"
+                  :key="day.value"
+                  type="button"
+                  class="pivot-calendar-day"
+                  :class="{
+                    muted: !day.inMonth,
+                    'in-range': day.inRange,
+                    endpoint: day.isStart || day.isEnd || day.isDraft,
+                  }"
+                  @click="selectPivotCalendarDate(day.value)"
+                >
+                  {{ day.label }}
+                </button>
+              </div>
+              <div class="pivot-calendar-foot">
+                <span>{{ t('dashboard.pivot_calendar_hint') }}</span>
+                <button class="pivot-clear-btn" type="button" @click="setPivotRange('source')">
+                  {{ t('dashboard.pivot_clear_time') }}
+                </button>
+              </div>
+            </div>
+          </el-popover>
+        </div>
+      </el-popover>
+      <button
+        v-if="pivotHasGroup"
+        type="button"
+        class="pivot-chip pivot-group-chip"
+        :class="{ active: pivotState.groupEnabled }"
+        @click="togglePivotGroup"
+      >
+        {{ pivotState.groupEnabled ? t('dashboard.pivot_grouped') : t('dashboard.pivot_ungrouped') }}
+      </button>
+      <span class="pivot-summary">{{ pivotSummaryText }}</span>
+    </div>
     <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
       <div v-if="chartLoading" class="chart-loading-info">
         <el-progress
@@ -538,9 +1127,9 @@ defineExpose({
         :max-stats="insightMaxStats"
         :chart-type="chartType"
         :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
-        :x="viewInfo.chart?.xAxis"
-        :y="viewInfo.chart?.yAxis"
-        :series="viewInfo.chart?.series"
+        :x="renderXAxis"
+        :y="renderYAxis"
+        :series="renderSeries"
         :data="viewInfo.data?.data"
         :sql="viewInfo.sql"
         :insight="viewInfo.chart?.insight"
@@ -558,24 +1147,25 @@ defineExpose({
           :max-stats="insightMaxStats"
           :chart-type="chartType"
           :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
-          :x="viewInfo.chart?.xAxis"
-          :y="viewInfo.chart?.yAxis"
-          :series="viewInfo.chart?.series"
+          :x="renderXAxis"
+          :y="renderYAxis"
+          :series="renderSeries"
           :data="viewInfo.data?.data"
           :sql="viewInfo.sql"
           :insight="viewInfo.chart?.insight"
           :featured-side="isFeaturedSideInsight"
         />
         <ChartComponent
+          :key="chartComponentKey"
           :id="outerId || viewInfo.id"
           ref="chartRef"
           :type="chartType"
           :columns="[...(viewInfo.chart.columns || []), ...insightColumns]"
-          :x="viewInfo.chart?.xAxis"
-          :y="viewInfo.chart?.yAxis"
-          :series="viewInfo.chart?.series"
+          :x="renderXAxis"
+          :y="renderYAxis"
+          :series="renderSeries"
           :data="viewInfo.data?.data"
-          :multi-quota-name="viewInfo.chart?.multiQuotaName"
+          :multi-quota-name="renderMultiQuotaName"
         />
       </div>
     </div>
@@ -768,6 +1358,295 @@ defineExpose({
       margin-bottom: 4px;
     }
   }
+
+  .pivot-toolbar {
+    min-height: 26px;
+    margin: -4px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+
+    .pivot-chip {
+      flex: 0 0 auto;
+      height: 24px;
+      max-width: 140px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--workspace-text-primary, rgba(31, 35, 41, 1));
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 24px;
+      padding: 0 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+
+      &.pivot-link {
+        color: var(--ed-color-primary, #2f6bff);
+        font-weight: 600;
+      }
+
+      &:hover,
+      &:focus-visible {
+        background: rgba(31, 35, 41, 0.06);
+        outline: none;
+      }
+
+      &.pivot-link:hover,
+      &.pivot-link:focus-visible {
+        color: var(--ed-color-primary, #2f6bff);
+      }
+
+      &.pivot-group-chip {
+        color: #d97706;
+        font-weight: 600;
+      }
+
+      &.pivot-group-chip:not(.active):hover,
+      &.pivot-group-chip:not(.active):focus-visible {
+        color: #d97706;
+        background: rgba(217, 119, 6, 0.1);
+      }
+
+      &.active {
+        color: var(--ed-color-primary, #2f6bff);
+        font-weight: 600;
+      }
+    }
+
+    .pivot-summary {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--workspace-text-secondary, rgba(100, 106, 115, 1));
+      font-size: 12px;
+    }
+  }
+
+  &.insight-density-mini,
+  &.insight-density-basic {
+    .pivot-toolbar {
+      margin-bottom: 4px;
+      gap: 4px;
+
+      .pivot-summary,
+      > :nth-child(n + 3) {
+        display: none;
+      }
+    }
+  }
+}
+
+:global(.dashboard-pivot-popper) {
+  padding: 8px !important;
+  border: 1px solid rgba(31, 35, 41, 0.08) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 12px 32px rgba(31, 35, 41, 0.12) !important;
+}
+
+:global(.dashboard-pivot-popper .pivot-menu),
+:global(.dashboard-pivot-popper .pivot-time-panel),
+:global(.dashboard-pivot-popper .pivot-range-panel) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:global(.dashboard-pivot-popper .pivot-time-panel) {
+  gap: 8px;
+}
+
+:global(.dashboard-pivot-popper .pivot-time-divider) {
+  height: 1px;
+  background: rgba(31, 35, 41, 0.08);
+  margin: 2px 0;
+}
+
+:global(.dashboard-pivot-popper .pivot-menu-item) {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(31, 35, 41, 1);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 20px;
+  min-height: 32px;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+:global(.dashboard-pivot-popper .pivot-menu-item:hover),
+:global(.dashboard-pivot-popper .pivot-menu-item.active) {
+  background: rgba(31, 35, 41, 0.06);
+}
+
+:global(.dashboard-pivot-popper .pivot-menu-item.active) {
+  color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+  font-weight: 600;
+}
+
+:global(.dashboard-pivot-popper .pivot-menu-item.with-arrow) {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+:global(.dashboard-pivot-popper .pivot-menu-arrow) {
+  color: rgba(100, 106, 115, 0.82);
+}
+
+:global(.dashboard-pivot-popper .pivot-menu-item.with-arrow.active .pivot-menu-arrow) {
+  color: var(--ed-color-primary, rgba(28, 186, 144, 1));
+}
+
+:global(.dashboard-pivot-popper .pivot-range-grid) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+:global(.dashboard-pivot-popper .pivot-custom-range) {
+  margin-top: 4px;
+}
+
+:global(.dashboard-pivot-popper .pivot-custom-range .ed-date-editor),
+:global(.dashboard-pivot-popper .pivot-custom-range .el-date-editor) {
+  width: 100%;
+}
+
+:global(.dashboard-pivot-popper .pivot-quick-row) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+:global(.dashboard-pivot-popper .pivot-quick-chip) {
+  border: 1px solid rgba(51, 112, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(51, 112, 255, 0.06);
+  color: #12305f;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 20px;
+  min-width: 46px;
+  padding: 2px 9px;
+}
+
+:global(.dashboard-pivot-popper .pivot-quick-chip:hover),
+:global(.dashboard-pivot-popper .pivot-quick-chip.active) {
+  background: rgba(51, 112, 255, 0.12);
+  border-color: rgba(51, 112, 255, 0.28);
+  color: var(--ed-color-primary, #1cba90);
+  font-weight: 600;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-head) {
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  align-items: center;
+  min-height: 30px;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-title) {
+  color: rgba(15, 23, 42, 1);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-nav) {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(51, 112, 255, 1);
+  cursor: pointer;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-nav:hover) {
+  background: rgba(31, 35, 41, 0.06);
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-grid) {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-grid.weekdays) {
+  color: rgba(100, 116, 139, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-day) {
+  aspect-ratio: 1 / 1;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(15, 23, 42, 1);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 0;
+  padding: 0;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-day:hover) {
+  background: rgba(51, 112, 255, 0.1);
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-day.muted) {
+  color: rgba(100, 116, 139, 0.7);
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-day.in-range) {
+  background: rgba(51, 112, 255, 0.11);
+  color: rgba(15, 23, 42, 1);
+  font-weight: 700;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-day.endpoint) {
+  background: rgba(37, 99, 235, 1);
+  color: #fff;
+  font-weight: 800;
+}
+
+:global(.dashboard-pivot-popper .pivot-calendar-foot) {
+  align-items: center;
+  border-top: 1px solid rgba(31, 35, 41, 0.08);
+  color: rgba(100, 106, 115, 1);
+  display: flex;
+  font-size: 11px;
+  gap: 8px;
+  justify-content: space-between;
+  line-height: 18px;
+  padding-top: 7px;
+}
+
+:global(.dashboard-pivot-popper .pivot-clear-btn) {
+  border: 0;
+  border-radius: 6px;
+  background: rgba(31, 35, 41, 0.06);
+  color: rgba(51, 112, 255, 1);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 22px;
+  padding: 0 8px;
+}
+
+:global(.dashboard-pivot-popper .pivot-clear-btn:hover) {
+  background: rgba(51, 112, 255, 0.12);
 }
 
 .chart-show-area {
@@ -795,12 +1674,21 @@ defineExpose({
   }
 }
 
+.chart-base-container:has(.pivot-toolbar) .chart-show-area {
+  height: calc(100% - 80px);
+}
+
 .insight-density-mini .chart-show-area {
   height: calc(100% - 34px);
 }
 
 .insight-density-basic .chart-show-area {
   height: calc(100% - 28px);
+}
+
+.insight-density-mini:has(.pivot-toolbar) .chart-show-area,
+.insight-density-basic:has(.pivot-toolbar) .chart-show-area {
+  height: calc(100% - 58px);
 }
 
 .buttons-bar {

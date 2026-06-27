@@ -38,8 +38,8 @@ SLG fixtures are demo data only. Runtime code must stay datasource-agnostic and 
 
 - SaaS administrator: manages SaaS-wide configuration, tenant approval, production operations, and can switch tenant context for support.
 - Tenant `owner/admin`: manages current-tenant users, datasources, public Data Skills, public custom Agents, dashboards, and tenant usage.
-- Tenant `member`: can only access explicitly assigned datasources.
-- Datasource `viewer/editor`: controls project usage and dashboard editing. It does not grant SaaS administration.
+- Tenant `member`: can access the datasource bound to the current workspace as the default project viewer.
+- Datasource `viewer/editor`: controls project usage and dashboard editing. It does not grant SaaS administration; table, column, and row permission rules narrow the default viewer access when configured.
 - Smart Q&A, dashboards, custom Agents, and analysis assistant must all validate tenant and datasource access before reading schema, semantic records, examples, history, SQL, chart data, or execution results.
 - Row and column permissions are applied to normal users during schema exposure, SQL validation, SQL execution, chart reload, dashboard load, and analysis assistant execution.
 - Tenant owner/admin can submit member invitations in bulk. Each account produces an individual result and the action is written to tenant audit logs.

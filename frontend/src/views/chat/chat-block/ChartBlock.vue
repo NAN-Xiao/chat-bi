@@ -31,6 +31,7 @@ import html2canvas from 'html2canvas'
 import { chatApi } from '@/api/chat'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { detectTrendAxisGranularity } from '@/views/chat/component/chartInsight.ts'
 
 const chatConfig = useChatConfigStore()
 const showSQLBtn = chatConfig.getShowSQL
@@ -314,6 +315,47 @@ function showSql() {
 
 const showLabel = ref(false)
 
+function axisField(axis?: Pick<ChartAxis, 'value' | 'name'> | null) {
+  return String(axis?.value || axis?.name || '').trim()
+}
+
+function firstAxisField(axis?: Array<ChartAxis>) {
+  return (axis || []).map(axisField).find(Boolean) || ''
+}
+
+function defaultPivotAggregation(metricField: string) {
+  return /rate|ratio|percent|pct|share|proportion|percentage|avg|average|mean|比率|率|占比|比例|百分|平均|人均|每|单均|客单|%/i.test(
+    metricField
+  )
+    ? 'avg'
+    : 'sum'
+}
+
+function buildDefaultPivot(viewInfo: any) {
+  const chart = viewInfo?.chart || {}
+  const type = chart.sourceType || chart.type
+  const timeField = firstAxisField(chart.xAxis)
+  const metricField = firstAxisField(chart.yAxis)
+  if (!timeField || !metricField || ['table', 'metric'].includes(type)) {
+    return { enabled: false }
+  }
+  const groupField = firstAxisField(chart.series)
+  const granularity = detectTrendAxisGranularity(viewInfo?.data?.data, timeField)
+  return {
+    enabled: true,
+    time_field: timeField,
+    metric_field: metricField,
+    group_field: groupField,
+    group_enabled: Boolean(groupField),
+    range_enabled: true,
+    granularity: granularity === 'week' || granularity === 'month' ? granularity : 'day',
+    range: 'source',
+    custom_start: '',
+    custom_end: '',
+    aggregation: defaultPivotAggregation(metricField),
+  }
+}
+
 function addToDashboard() {
   if (!canAddToDashboard.value) return
   const recordeInfo = {
@@ -324,6 +366,7 @@ function addToDashboard() {
     sql: props.message?.record?.sql,
     datasource: chartDatasourceId.value,
     chart: {},
+    pivot: { enabled: false },
   }
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment
   const chartBaseInfo = JSON.parse(props.message?.record?.chart)
@@ -354,6 +397,7 @@ function addToDashboard() {
       yAxis: yAxis,
       series: axis?.series ? [axis?.series] : [],
     }
+    recordeInfo['pivot'] = buildDefaultPivot(recordeInfo)
   }
 
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment

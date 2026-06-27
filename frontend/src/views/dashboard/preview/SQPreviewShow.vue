@@ -242,6 +242,7 @@ async function refreshDashboardCharts(loadVersion: number) {
         {
           datasource: viewInfo.datasource,
           sql: viewInfo.sql.trim(),
+          pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
         },
         { requestOptions: { silent: true } }
       )

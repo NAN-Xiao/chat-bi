@@ -3,6 +3,8 @@ export interface ChartAxis {
   value: string
   type?: 'x' | 'y' | 'series' | 'other-info'
   'multi-quota'?: boolean
+  metricType?: 'additive' | 'average' | 'ratio' | 'snapshot' | 'derived'
+  pivotAggregation?: 'sum' | 'avg' | 'count' | 'min' | 'max'
   hidden?: boolean
 }
 

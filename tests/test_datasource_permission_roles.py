@@ -1316,6 +1316,118 @@ def _insert_user_table_deny_for_payments(session: Session):
     ))
 
 
+def _insert_user_table_deny_for_payments_with_permission_whitelist(session: Session):
+    session.execute(text(
+        """
+        INSERT INTO ds_permission
+            (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+        VALUES
+            (1003, 'payments denied', 1, 'user', 'table', 1, 11, '{}', '[]', '[2]')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO ds_rules
+            (id, enable, name, description, permission_list, user_list, white_list_user)
+        VALUES
+            (2003, 1, 'user 2 payments denied', '', '[1003]', '[2]', '[]')
+        """
+    ))
+
+
+def _insert_user_row_rule_for_orders(session: Session, *, field_id: int = 100, permission_whitelist: str = "[]"):
+    tree = {
+        "logic": "AND",
+        "items": [
+            {
+                "type": "item",
+                "field_id": field_id,
+                "filter_type": "text",
+                "term": "eq",
+                "value": "US",
+            }
+        ],
+    }
+    session.execute(text(
+        """
+        INSERT INTO ds_permission
+            (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+        VALUES
+            (1004, 'orders rows', 1, 'user', 'row', 1, 10, :tree, '[]', :permission_whitelist)
+        """
+    ), {"tree": json.dumps(tree), "permission_whitelist": permission_whitelist})
+    session.execute(text(
+        """
+        INSERT INTO ds_rules
+            (id, enable, name, description, permission_list, user_list, white_list_user)
+        VALUES
+            (2004, 1, 'user 2 orders row limit', '', '[1004]', '[2]', '[]')
+        """
+    ))
+
+
+def test_row_permission_invalid_config_fails_closed(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_row_rule_for_orders(session, field_id=999)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        try:
+            permission.get_row_permission_filters(session, current_user, ds, tables=["orders"])
+        except ValueError as exc:
+            assert "行权限" in str(exc)
+        else:
+            raise AssertionError("invalid row permission should fail closed")
+
+
+def test_row_permission_whitelist_skips_restriction(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_row_rule_for_orders(session, field_id=100, permission_whitelist="[2]")
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        assert permission.get_row_permission_filters(session, current_user, ds, tables=["orders"]) == []
+
+
+def test_table_permission_whitelist_keeps_default_viewer_access(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_table_deny_for_payments_with_permission_whitelist(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        schema, tables = datasource_crud.get_table_schema(
+            session=session,
+            current_user=current_user,
+            ds=ds,
+            question="show payments",
+            embedding=False,
+        )
+
+        assert "payments" in tables
+        assert "# Table: payments" in schema
+
+
 def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
@@ -1345,6 +1457,48 @@ def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
         assert permission.get_user_scoped_table_ids(session, current_user, 1) == {10, 11}
         assert permission.can_access_table(session, current_user, 1, 10) is True
         assert permission.can_access_table(session, current_user, 1, 11) is True
+
+
+def test_column_permission_invalid_config_fails_closed(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.execute(text(
+            """
+            INSERT INTO ds_permission
+                (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+            VALUES
+                (1005, 'bad orders columns', 1, 'user', 'column', 1, 10, '{}', '{bad-json', '[]')
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO ds_rules
+                (id, enable, name, description, permission_list, user_list, white_list_user)
+            VALUES
+                (2005, 1, 'user 2 bad column rule', '', '[1005]', '[2]', '[]')
+            """
+        ))
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        try:
+            datasource_crud.get_table_schema(
+                session=session,
+                current_user=current_user,
+                ds=ds,
+                question="show orders",
+                embedding=False,
+            )
+        except ValueError as exc:
+            assert "字段权限" in str(exc)
+        else:
+            raise AssertionError("invalid column permission should fail closed")
 
 
 def test_normal_user_sample_data_is_not_sent_to_model(monkeypatch):

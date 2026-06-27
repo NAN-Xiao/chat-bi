@@ -68,6 +68,8 @@ def axis(
     axis_type: str | None = None,
     multi: bool | None = None,
     hidden: bool | None = None,
+    metric_type: str | None = None,
+    pivot_aggregation: str | None = None,
 ) -> dict[str, Any]:
     item: dict[str, Any] = {"value": value}
     if name and name != value:
@@ -78,6 +80,10 @@ def axis(
         item["multi-quota"] = multi
     if hidden is not None:
         item["hidden"] = hidden
+    if metric_type:
+        item["metricType"] = metric_type
+    if pivot_aggregation:
+        item["pivotAggregation"] = pivot_aggregation
     return item
 
 
@@ -91,6 +97,7 @@ def chart(
     y_axis: list[dict[str, Any]] | None = None,
     series: list[dict[str, Any]] | None = None,
     show_label: bool = False,
+    pivot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": chart_id,
@@ -102,6 +109,7 @@ def chart(
         "y": y_axis or [],
         "series": series or [],
         "showLabel": show_label,
+        "pivot": pivot or {"enabled": False},
     }
 
 
@@ -141,7 +149,10 @@ LEFT JOIN daily_pay p ON p.dt = d.dt
 ORDER BY d.dt
 """,
         [axis("日期", axis_type="x")],
-        [axis("ARPU", axis_type="y", multi=True), axis("ARPPU", axis_type="y", multi=True)],
+        [
+            axis("ARPU", axis_type="y", multi=True, metric_type="average", pivot_aggregation="avg"),
+            axis("ARPPU", axis_type="y", multi=True, metric_type="average", pivot_aggregation="avg"),
+        ],
     ),
     chart(
         "2185000000000000002",
@@ -150,14 +161,17 @@ ORDER BY d.dt
         (37, 1, 36, 13),
         BASE_BOUNDS
         + """
-, weekly_active AS (
-    SELECT date_trunc('week', s.session_start::date)::date AS week_start,
+, dates AS (
+    SELECT generate_series(start_date, end_date, interval '1 day')::date AS dt
+    FROM bounds
+), daily_active AS (
+    SELECT s.session_start::date AS dt,
            count(DISTINCT s.player_id) AS active_users
     FROM public.fact_sessions s, bounds b
     WHERE s.session_start::date BETWEEN b.start_date AND b.end_date
     GROUP BY 1
-), weekly_pay AS (
-    SELECT date_trunc('week', p.event_date)::date AS week_start,
+), daily_pay AS (
+    SELECT p.event_date AS dt,
            count(DISTINCT p.player_id) AS payers
     FROM public.fact_payments p, bounds b
     WHERE p.payment_status = 'success'
@@ -165,14 +179,30 @@ ORDER BY d.dt
       AND p.event_date BETWEEN b.start_date AND b.end_date
     GROUP BY 1
 )
-SELECT to_char(a.week_start, 'YYYY-MM-DD') || '当周' AS "周",
-       round(coalesce(p.payers, 0)::numeric / nullif(a.active_users, 0) * 100, 2) AS "付费率"
-FROM weekly_active a
-LEFT JOIN weekly_pay p ON p.week_start = a.week_start
-ORDER BY a.week_start
+SELECT d.dt AS "日期",
+       coalesce(round(coalesce(p.payers, 0)::numeric / nullif(a.active_users, 0) * 100, 2), 0) AS "付费率"
+FROM dates d
+LEFT JOIN daily_active a ON a.dt = d.dt
+LEFT JOIN daily_pay p ON p.dt = d.dt
+ORDER BY d.dt
 """,
-        [axis("周", axis_type="x")],
-        [axis("付费率", axis_type="y")],
+        [axis("日期", axis_type="x")],
+        [axis("付费率", axis_type="y", metric_type="ratio", pivot_aggregation="avg")],
+        pivot={
+            "enabled": True,
+            "time_field": "日期",
+            "metric_field": "付费率",
+            "metric_fields": ["付费率"],
+            "metric_aggregations": {"付费率": "avg"},
+            "group_field": "",
+            "group_enabled": False,
+            "range_enabled": True,
+            "granularity": "day",
+            "range": "source",
+            "custom_start": "",
+            "custom_end": "",
+            "aggregation": "avg",
+        },
     ),
     chart(
         "2185000000000000003",
@@ -198,7 +228,7 @@ LEFT JOIN dau ON dau.dt = d.dt
 ORDER BY d.dt
 """,
         [axis("日期", axis_type="x")],
-        [axis("DAU", axis_type="y")],
+        [axis("DAU", axis_type="y", metric_type="snapshot", pivot_aggregation="avg")],
     ),
     chart(
         "2185000000000000004",
@@ -224,7 +254,7 @@ LEFT JOIN installs i ON i.dt = d.dt
 ORDER BY d.dt
 """,
         [axis("日期", axis_type="x")],
-        [axis("新增用户数", axis_type="y")],
+        [axis("新增用户数", axis_type="y", metric_type="additive", pivot_aggregation="sum")],
     ),
     chart(
         "2185000000000000005",
@@ -252,7 +282,7 @@ LEFT JOIN revenue r ON r.dt = d.dt
 ORDER BY d.dt
 """,
         [axis("日期", axis_type="x")],
-        [axis("净收入", axis_type="y")],
+        [axis("净收入", axis_type="y", metric_type="additive", pivot_aggregation="sum")],
     ),
     chart(
         "2185000000000000006",
@@ -282,7 +312,10 @@ LEFT JOIN pay p ON p.dt = d.dt
 ORDER BY d.dt
 """,
         [axis("日期", axis_type="x")],
-        [axis("付费人数", axis_type="y", multi=True), axis("付费次数", axis_type="y", multi=True)],
+        [
+            axis("付费人数", axis_type="y", multi=True, metric_type="snapshot", pivot_aggregation="avg"),
+            axis("付费次数", axis_type="y", multi=True, metric_type="additive", pivot_aggregation="sum"),
+        ],
     ),
     chart(
         "2185000000000000007",
@@ -344,7 +377,7 @@ FROM channel_installs
 ORDER BY dt, new_users DESC, channel_group
 """,
         [axis("日期", axis_type="x")],
-        [axis("新增用户数", axis_type="y")],
+        [axis("新增用户数", axis_type="y", metric_type="additive", pivot_aggregation="sum")],
         [axis("渠道", axis_type="series")],
     ),
     chart(
@@ -367,7 +400,7 @@ ORDER BY "净收入" DESC
 LIMIT 10
 """,
         [axis("渠道", axis_type="x")],
-        [axis("净收入", axis_type="y")],
+        [axis("净收入", axis_type="y", metric_type="additive", pivot_aggregation="sum")],
     ),
     chart(
         "2185000000000000009",
@@ -424,7 +457,7 @@ GROUP BY level_bucket, bucket_sort
 ORDER BY bucket_sort
 """,
         [axis("等级区间", axis_type="x")],
-        [axis("用户数", axis_type="y")],
+        [axis("用户数", axis_type="y", metric_type="snapshot", pivot_aggregation="avg")],
     ),
     chart(
         "2185000000000000011",
@@ -470,7 +503,7 @@ CROSS JOIN base
 ORDER BY display_order
 """,
         [axis("新手步骤", axis_type="x")],
-        [axis("用户数", axis_type="y")],
+        [axis("用户数", axis_type="y", metric_type="snapshot", pivot_aggregation="avg")],
         show_label=True,
     ),
     chart(
@@ -537,7 +570,7 @@ FROM retention
 ORDER BY install_date, channel_group, lifecycle_day
 """,
         [axis("日期", axis_type="x")],
-        [axis("留存率", axis_type="y")],
+        [axis("留存率", axis_type="y", metric_type="ratio", pivot_aggregation="avg")],
         [axis("渠道留存日", axis_type="series")],
         show_label=True,
     ),
@@ -609,6 +642,7 @@ def build_dashboard_payload(bi_conn: Any) -> tuple[list[dict[str, Any]], dict[st
             "status": "success",
             "message": "",
             "fields": fields,
+            "pivot": chart_info.get("pivot") or {"enabled": False},
         }
         print(f"{chart_info['title']}: rows={len(rows)} fields={fields}")
 

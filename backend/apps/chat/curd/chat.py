@@ -13,7 +13,12 @@ from apps.chat.models.chat_model import Chat, ChatRecord, CreateChat, ChatInfo, 
 from apps.dashboard.crud.dashboard_service import _execute_dashboard_chart_sql
 from apps.datasource.crud.datasource import get_ds
 from apps.datasource.crud.permission_errors import PERMISSION_DENIED_ERROR_TYPE
-from apps.datasource.crud.permission import get_accessible_datasource_ids, has_datasource_access, is_normal_user
+from apps.datasource.crud.permission import (
+    get_accessible_datasource_ids,
+    has_applicable_row_permissions,
+    has_datasource_access,
+    is_normal_user,
+)
 from apps.datasource.crud.sql_permission import validate_sql_scope
 from apps.datasource.crud.recommended_problem import get_datasource_recommended_chart
 from apps.datasource.models.datasource import CoreDatasource
@@ -148,6 +153,60 @@ def _record_allowed_by_current_permissions(session: SessionDep, current_user: Cu
     except Exception as exc:
         AppLogUtil.error(f"Chat record permission validation failed: {exc}")
         return False
+
+
+def _record_requires_live_data_for_current_permissions(session: SessionDep, current_user: CurrentUser, row) -> bool:
+    if not is_normal_user(current_user):
+        return False
+    datasource_id = _row_value(row, "datasource")
+    sql = _row_value(row, "sql")
+    if not datasource_id or not sql:
+        return False
+    try:
+        datasource = session.get(CoreDatasource, datasource_id)
+        if datasource is None or not has_datasource_access(session, current_user, datasource_id):
+            return True
+        _statements, tables, _scope = validate_sql_scope(session, current_user, datasource, sql)
+        return has_applicable_row_permissions(
+            session=session,
+            current_user=current_user,
+            ds=datasource,
+            tables=sorted(tables),
+        )
+    except Exception as exc:
+        AppLogUtil.error(f"Chat record row permission validation failed: {exc}")
+        return True
+
+
+def _source_record_requires_live_data_for_current_permissions(
+        session: SessionDep,
+        current_user: CurrentUser,
+        source_record_id: int | None,
+) -> bool:
+    if not source_record_id:
+        return False
+    stmt = select(
+        ChatRecord.datasource,
+        ChatRecord.sql,
+        ChatRecord.create_by,
+        ChatRecord.tenant_id,
+    ).where(ChatRecord.id == source_record_id)
+    row = session.execute(stmt).first()
+    if row is None or row.create_by != current_user.id or not _same_tenant(row, current_user):
+        return True
+    if not row.datasource or not row.sql:
+        return True
+    return _record_requires_live_data_for_current_permissions(session, current_user, row)
+
+
+def _scrub_derived_cache_for_current_permissions(record: ChatRecordResult) -> ChatRecordResult:
+    record.analysis = None
+    record.predict = None
+    record.predict_data = None
+    record.analysis_reasoning_content = None
+    record.predict_reasoning_content = None
+    record.error = _USER_PERMISSION_DENIED_MESSAGE
+    return record
 
 
 def _scrub_record_for_current_permissions(record: ChatRecordResult) -> ChatRecordResult:
@@ -443,6 +502,12 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
         if row.datasource and row.sql:
             if not _record_allowed_by_current_permissions(session, current_user, row):
                 return _failed_permission_data()
+            if _record_requires_live_data_for_current_permissions(session, current_user, row):
+                return get_chart_data_with_user_live(
+                    session=session,
+                    current_user=current_user,
+                    chat_record_id=chat_record_id,
+                )
             data = _loads_record_data(row.data)
             if data is not None:
                 return data
@@ -492,6 +557,12 @@ def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUs
     res = session.execute(stmt)
     for row in res:
         if row.predict_record_id:
+            if _source_record_requires_live_data_for_current_permissions(
+                    session=session,
+                    current_user=current_user,
+                    source_record_id=row.predict_record_id,
+            ):
+                return []
             base_result = get_chart_data_with_user_live(
                 session=session,
                 current_user=current_user,
@@ -656,6 +727,12 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
         # 获取token总消耗
         total_tokens = token_usage_map.get(row.id, 0)
         current_permission_allowed = _record_allowed_by_current_permissions(session, current_user, row)
+        source_record_id = row.analysis_record_id or row.predict_record_id
+        derived_cache_requires_scrub = _source_record_requires_live_data_for_current_permissions(
+            session,
+            current_user,
+            source_record_id,
+        ) if source_record_id else False
 
         data_value = _row_value(row, "data")
         if row.datasource and (row.sql or row.analysis_record_id or row.predict_record_id):
@@ -690,7 +767,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              )
         else:
             predict_data_value = row.predict_data
-            if row.predict_record_id and not current_permission_allowed:
+            if row.predict_record_id and (not current_permission_allowed or derived_cache_requires_scrub):
                 predict_data_value = None
             record_result = ChatRecordResult(id=row.id, tenant_id=row.tenant_id, chat_id=row.chat_id, create_time=row.create_time,
                                              finish_time=row.finish_time,
@@ -712,6 +789,8 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
         if not current_permission_allowed:
             record_result = _scrub_record_for_current_permissions(record_result)
+        elif derived_cache_requires_scrub:
+            record_result = _scrub_derived_cache_for_current_permissions(record_result)
         record_list.append(record_result)
 
     result = list(map(format_record, record_list))

@@ -19,6 +19,7 @@ from apps.dashboard.models.dashboard_model import (
     CreateDashboard,
     QueryDashboard,
     DashboardDefaultCopyRequest,
+    DashboardPivotRequest,
     DashboardSqlPreview,
     DashboardShareRequest,
     DashboardShareListQuery,
@@ -2301,6 +2302,369 @@ def test_dashboard_preview_denies_select_star_when_fields_are_denied(monkeypatch
     assert exec_calls == []
     assert result["status"] == "failed"
     assert result["message"] == "SQL 超出当前数据权限范围"
+
+
+def test_dashboard_preview_builds_pivot_sql(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": "2026-06-01", "region": "US", "amount": 99}], "fields": ["order_day", "region", "amount"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        _insert_orders_row_rule(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql='select order_id as "order_day", amount, region from orders',
+                pivot=DashboardPivotRequest(
+                    enabled=True,
+                    time_field="order_day",
+                    metric_field="amount",
+                    group_field="region",
+                    group_enabled=True,
+                    granularity="day",
+                    range="30d",
+                    aggregation="sum",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    assert len(exec_calls) == 1
+    executed_sql = exec_calls[0]
+    normalized_sql = executed_sql.lower()
+    assert 'FROM (SELECT * FROM orders WHERE' in executed_sql
+    assert 'order_id as "order_day"' in normalized_sql
+    assert 'SUM("pivot_src"."amount") AS "amount"' in executed_sql
+    assert '"pivot_src"."region" AS "region"' in executed_sql
+    assert 'WITH "pivot_src" AS' in executed_sql
+    assert '"pivot_bounds" AS' in executed_sql
+    assert 'MAX(CAST("pivot_src"."order_day" AS DATE)) AS "max_period"' in executed_sql
+    assert 'CURRENT_DATE' not in executed_sql
+    assert "GROUP BY" in executed_sql
+    assert "LIMIT 1000" in executed_sql
+
+
+def test_dashboard_preview_pivot_source_range_keeps_generated_time_window(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": "2026-06-01", "amount": 99}], "fields": ["order_day", "amount"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql="select order_id as order_day, amount from orders where order_id >= 10",
+                pivot=DashboardPivotRequest(
+                    enabled=True,
+                    time_field="order_day",
+                    metric_field="amount",
+                    granularity="day",
+                    range="source",
+                    aggregation="sum",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    assert len(exec_calls) == 1
+    executed_sql = exec_calls[0]
+    assert 'WITH "pivot_src"' not in executed_sql
+    assert '"pivot_bounds"' not in executed_sql
+    assert "CURRENT_DATE" not in executed_sql
+    assert "where order_id >= 10" in executed_sql.lower()
+    assert '\nWHERE CAST("pivot_src"."order_day" AS DATE)' not in executed_sql
+
+
+def test_dashboard_preview_pivot_keeps_multiple_chart_metrics(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": "2026-06-01", "ARPU": 10, "ARPPU": 20}], "fields": ["order_day", "ARPU", "ARPPU"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql='select order_id as order_day, amount as "ARPU", amount * 2 as "ARPPU" from orders',
+                pivot=DashboardPivotRequest(
+                    enabled=True,
+                    time_field="order_day",
+                    metric_fields=["ARPU", "ARPPU"],
+                    granularity="day",
+                    range="source",
+                    aggregation="sum",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    assert len(exec_calls) == 1
+    executed_sql = exec_calls[0]
+    assert 'SUM("pivot_src"."ARPU") AS "ARPU"' in executed_sql
+    assert 'SUM("pivot_src"."ARPPU") AS "ARPPU"' in executed_sql
+    assert 'GROUP BY CAST("pivot_src"."order_day" AS DATE)' in executed_sql
+
+
+def test_dashboard_preview_pivot_supports_metric_level_aggregations(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": "2026-06-01", "revenue": 100, "ARPU": 10}], "fields": ["order_day", "revenue", "ARPU"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql='select order_id as order_day, amount as revenue, amount / 10.0 as "ARPU" from orders',
+                pivot=DashboardPivotRequest(
+                    enabled=True,
+                    time_field="order_day",
+                    metric_fields=["revenue", "ARPU"],
+                    metric_aggregations={"revenue": "sum", "ARPU": "avg"},
+                    granularity="week",
+                    range="source",
+                    aggregation="sum",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    executed_sql = exec_calls[0]
+    assert 'SUM("pivot_src"."revenue") AS "revenue"' in executed_sql
+    assert 'AVG("pivot_src"."ARPU") AS "ARPU"' in executed_sql
+
+
+def test_dashboard_preview_pivot_week_and_month_change_period_sql(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": "2026-06-01", "amount": 99}], "fields": ["order_day", "amount"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+
+        for granularity in ("week", "month"):
+            result = dashboard_service.preview_sql(
+                session=session,
+                current_user=current_user,
+                request=DashboardSqlPreview(
+                    datasource=1,
+                    sql="select order_id as order_day, amount from orders",
+                    pivot=DashboardPivotRequest(
+                        enabled=True,
+                        time_field="order_day",
+                        metric_field="amount",
+                        granularity=granularity,
+                        range="source",
+                        aggregation="sum",
+                    ),
+                ),
+            )
+            assert result["status"] == "success"
+
+    assert len(exec_calls) == 2
+    assert "DATE_TRUNC('week', CAST(\"pivot_src\".\"order_day\" AS TIMESTAMP))" in exec_calls[0]
+    assert "DATE_TRUNC('month', CAST(\"pivot_src\".\"order_day\" AS TIMESTAMP))" in exec_calls[1]
+    assert exec_calls[0] != exec_calls[1]
+
+
+def test_dashboard_preview_pivot_custom_range_filters_literal_dates(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_day": "2026-06-01", "amount": 99}], "fields": ["order_day", "amount"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql="select order_id as order_day, amount from orders",
+                pivot=DashboardPivotRequest(
+                    enabled=True,
+                    time_field="order_day",
+                    metric_field="amount",
+                    granularity="day",
+                    range="custom",
+                    custom_start="2026-05-01",
+                    custom_end="2026-05-31",
+                    aggregation="sum",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    assert len(exec_calls) == 1
+    executed_sql = exec_calls[0]
+    assert 'WITH "pivot_src"' not in executed_sql
+    assert '"pivot_bounds"' not in executed_sql
+    assert 'CAST("pivot_src"."order_day" AS DATE) >= DATE \'2026-05-01\'' in executed_sql
+    assert 'CAST("pivot_src"."order_day" AS DATE) <= DATE \'2026-05-31\'' in executed_sql
+
+
+def test_dashboard_preview_pivot_rejects_same_time_and_metric_field(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"amount": 99}], "fields": ["amount"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql="select amount from orders",
+                pivot=DashboardPivotRequest(
+                    enabled=True,
+                    time_field="amount",
+                    metric_field="amount",
+                    granularity="day",
+                    range="source",
+                    aggregation="sum",
+                ),
+            ),
+        )
+
+    assert result["status"] == "failed"
+    assert "不能相同" in result["message"]
+    assert "图表指标" in result["message"]
+    assert exec_calls == []
+
+
+def test_dashboard_preview_pivot_date_cast_error_returns_friendly_message(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+
+    def raise_date_cast_error(ds, sql, origin_column=False):
+        raise RuntimeError(
+            'psycopg2.errors.CannotCoerce: 无法把类型 numeric 转换为 date LINE 2: CAST("pivot_src"."ARPU" AS DATE)'
+        )
+
+    monkeypatch.setattr(query_executor, "_unsafe_exec_sql_after_validation", raise_date_cast_error)
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql='select order_id as "日期", amount as "ARPU" from orders',
+                pivot=DashboardPivotRequest(
+                    enabled=True,
+                    time_field="ARPU",
+                    metric_field="amount",
+                    granularity="day",
+                    range="source",
+                    aggregation="sum",
+                ),
+            ),
+        )
+
+    assert result["status"] == "failed"
+    assert result["message"] == "透视时间字段「ARPU」无法转换为日期/时间，请改选日期或时间字段；图表指标应选择数值字段。"
+    assert "SELECT" not in result["message"]
+
+
+def test_dashboard_preview_ignores_disabled_pivot(monkeypatch):
+    engine = _engine_with_dashboard_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+    monkeypatch.setattr(
+        query_executor,
+        "_unsafe_exec_sql_after_validation",
+        lambda ds, sql, origin_column=False: exec_calls.append(sql)
+        or {"data": [{"order_id": 1}], "fields": ["order_id"]},
+    )
+
+    with Session(engine) as session:
+        _insert_dashboard_permission_fixture(session)
+        session.commit()
+
+        result = dashboard_service.preview_sql(
+            session=session,
+            current_user=current_user,
+            request=DashboardSqlPreview(
+                datasource=1,
+                sql="select order_id from orders",
+                pivot=DashboardPivotRequest(
+                    enabled=False,
+                    time_field="order_id",
+                    metric_field="order_id",
+                ),
+            ),
+        )
+
+    assert result["status"] == "success"
+    assert exec_calls == ["select order_id from orders"]
 
 
 def test_user_name_unwraps_row_result():

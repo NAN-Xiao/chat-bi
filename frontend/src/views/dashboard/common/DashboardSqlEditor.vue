@@ -6,6 +6,11 @@ import ChartComponent from '@/views/chat/component/ChartComponent.vue'
 import type { ChartAxis, ChartTypes } from '@/views/chat/component/BaseChart.ts'
 import { isAverageAxis, isPercentAxis } from '@/views/chat/component/charts/utils.ts'
 import {
+  defaultPivotAggregationForAxes,
+  resolvePivotMetricAggregations,
+  withResolvedMetricSemantics,
+} from '@/views/dashboard/utils/metricSemantics.ts'
+import {
   availableTrendComparisonMetrics,
   defaultTrendComparisonMetrics,
   detectTrendAxisGranularity,
@@ -53,6 +58,15 @@ const form = reactive({
   insightComparisonMetrics: [] as TrendComparisonMetric[],
   insightAggregateEnabled: true,
   insightAggregateMetrics: [] as TrendAggregateMetric[],
+  pivotEnabled: false,
+  pivotTimeField: '',
+  pivotGroupField: '',
+  pivotGroupEnabled: true,
+  pivotRangeEnabled: true,
+  pivotGranularity: 'day' as 'day' | 'week' | 'month',
+  pivotRange: 'source' as 'source' | '7d' | '14d' | '30d' | '90d' | 'all' | 'custom',
+  pivotCustomStart: '',
+  pivotCustomEnd: '',
 })
 
 const preview = reactive({
@@ -61,10 +75,15 @@ const preview = reactive({
   status: 'success',
   message: '',
 })
+const sourcePreview = reactive({
+  fields: [] as string[],
+  data: [] as Array<Record<string, any>>,
+})
 
 const loading = ref(false)
 const previewVersion = ref(0)
 const lastPreviewSql = ref('')
+const lastPreviewSignature = ref('')
 
 const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'table', value: 'table' },
@@ -81,11 +100,15 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'treemap', value: 'treemap' },
 ]
 
-const fieldOptions = computed(() => preview.fields.map((field) => ({ label: field, value: field })))
+const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
+const pivotTimeFieldOptions = computed(() => {
+  const dateFields = sourcePreview.fields.filter(isLikelyPivotDateField)
+  return toFieldOptions(dateFields.length ? dateFields : sourcePreview.fields)
+})
 const hasPreviewData = computed(() => preview.status !== 'failed' && preview.data.length > 0)
 const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource))
 const sqlChangedAfterPreview = computed(
-  () => !props.allowStaticApply && form.sql.trim() !== lastPreviewSql.value.trim()
+  () => !props.allowStaticApply && currentPreviewSignature() !== lastPreviewSignature.value
 )
 const previewTableFields = computed(() => {
   if (form.columns.length > 0) {
@@ -97,11 +120,12 @@ const chartPreviewId = computed(() => `dashboard-sql-preview-${props.viewInfo?.i
 const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chartType))
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
+const supportsPivotConfig = computed(() => !['table', 'metric'].includes(form.chartType))
 const supportsTrendInsightConfig = computed(
   () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length === 1 && !form.series
 )
 const trendTimeGranularity = computed<TrendTimeGranularity | null>(() =>
-  supportsTrendInsightConfig.value ? detectTrendAxisGranularity(preview.data, form.x) : null
+  supportsTrendInsightConfig.value ? detectTrendAxisGranularity(sourcePreview.data, form.x) : null
 )
 const supportsComparisonInsightConfig = computed(
   () =>
@@ -117,7 +141,16 @@ const selectedMetricIsRatioOrAverage = computed(() => {
   if (!axis) {
     return false
   }
-  return isPercentAxis(axis, preview.data) || isAverageAxis(axis)
+  return isPercentAxis(axis, sourcePreview.data) || isAverageAxis(axis)
+})
+const chartPreviewYFields = computed(() => {
+  if (form.chartType === 'table') {
+    return []
+  }
+  if (form.chartType === 'pie') {
+    return form.y.slice(0, 1)
+  }
+  return form.series ? form.y.slice(0, 1) : form.y
 })
 
 function comparisonMetricLabel(metric: TrendComparisonMetric, granularity: TrendTimeGranularity | null) {
@@ -152,17 +185,37 @@ const aggregateMetricOptions = computed(() => [
   { label: t('dashboard.insight_peak'), value: 'max' as TrendAggregateMetric },
   { label: t('dashboard.insight_lowest'), value: 'min' as TrendAggregateMetric },
 ])
+const pivotGranularityOptions = computed(() => [
+  { label: t('dashboard.pivot_day'), value: 'day' },
+  { label: t('dashboard.pivot_week'), value: 'week' },
+  { label: t('dashboard.pivot_month'), value: 'month' },
+])
+const pivotRangeOptions = computed(() => [
+  { label: t('dashboard.pivot_source_time'), value: 'source' },
+  { label: t('dashboard.pivot_recent_7d'), value: '7d' },
+  { label: t('dashboard.pivot_recent_14d'), value: '14d' },
+  { label: t('dashboard.pivot_recent_30d'), value: '30d' },
+  { label: t('dashboard.pivot_recent_90d'), value: '90d' },
+  { label: t('dashboard.pivot_all_time'), value: 'all' },
+  { label: t('dashboard.pivot_custom_range'), value: 'custom' },
+])
+type PivotGranularity = 'day' | 'week' | 'month'
 
 function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
+}
+
+function toFieldOptions(fields: string[]) {
+  return fields.map((field) => ({ label: field, value: field }))
 }
 
 function toAxis(field: string): ChartAxis {
   return { value: field }
 }
 
-function toAxes(fields: string[]): ChartAxis[] {
-  return unique(fields).map(toAxis)
+function toAxes(fields: string[], options: { metrics?: boolean } = {}): ChartAxis[] {
+  const axes = unique(fields).map(toAxis)
+  return options.metrics ? axes.map((axis) => withResolvedMetricSemantics(axis, sourcePreview.data)) : axes
 }
 
 function defaultComparisonMetrics(): TrendComparisonMetric[] {
@@ -220,6 +273,142 @@ function buildInsightConfig() {
   }
 }
 
+function defaultPivotField(field: string, fallback = '') {
+  return field || fallback
+}
+
+function normalizePivotGranularity(value: any, fallback: PivotGranularity = 'day'): PivotGranularity {
+  return value === 'week' || value === 'month' || value === 'day' ? value : fallback
+}
+
+function defaultPivotGranularity(): PivotGranularity {
+  const detected = detectTrendAxisGranularity(sourcePreview.data, form.pivotTimeField || form.x)
+  return detected === 'week' || detected === 'month' ? detected : 'day'
+}
+
+function defaultPivotAggregation() {
+  return defaultPivotAggregationForAxes(toAxes(form.y, { metrics: true }), sourcePreview.data)
+}
+
+function isBlankPivotValue(value: unknown) {
+  return value === undefined || value === null || `${value}`.trim() === ''
+}
+
+function pivotSampleValues(field: string) {
+  return sourcePreview.data
+    .slice(0, 50)
+    .map((row) => row?.[field])
+    .filter((value) => !isBlankPivotValue(value))
+}
+
+function looksLikeDateFieldName(field: string) {
+  const value = `${field || ''}`.trim().toLowerCase()
+  return (
+    /(^|[_\s-])(date|day|dt|time|timestamp|week|month|year)([_\s-]|$)/.test(value) ||
+    /日期|时间|時間|年月|月份|年份|星期|周/.test(field)
+  )
+}
+
+function isDateLikeValue(value: unknown) {
+  if (value instanceof Date) {
+    return !Number.isNaN(value.getTime())
+  }
+  if (typeof value !== 'string') {
+    return false
+  }
+  const text = value.trim()
+  if (!text || /^-?\d+(\.\d+)?$/.test(text)) {
+    return false
+  }
+  return (
+    /^\d{4}[-/]\d{1,2}([-/]\d{1,2})?([ T]\d{1,2}:\d{2}(:\d{2})?)?/.test(text) ||
+    /^\d{4}年\d{1,2}月(\d{1,2}日)?/.test(text)
+  )
+}
+
+function isLikelyPivotDateField(field: string) {
+  const values = pivotSampleValues(field)
+  if (values.length > 0) {
+    return values.filter(isDateLikeValue).length / values.length >= 0.5
+  }
+  return looksLikeDateFieldName(field)
+}
+
+function pickAllowedField(preferredFields: string[], allowedFields: string[], fallback = '') {
+  const preferred = preferredFields.find((field) => field && allowedFields.includes(field))
+  return preferred || allowedFields[0] || fallback
+}
+
+function normalizePivotSelections() {
+  if (!form.pivotTimeField) {
+    form.pivotTimeField = defaultPivotField(form.x, sourcePreview.fields[0] || '')
+  }
+  form.pivotGroupField = form.series
+  const fields = sourcePreview.fields
+  if (fields.length) {
+    const timeFields = pivotTimeFieldOptions.value.map((item) => item.value)
+    if (!timeFields.includes(form.pivotTimeField)) {
+      form.pivotTimeField = pickAllowedField([form.x], timeFields, fields[0] || '')
+    }
+    if (form.pivotGroupField && !fields.includes(form.pivotGroupField)) form.pivotGroupField = ''
+  }
+  if (!form.pivotGroupField) {
+    form.pivotGroupEnabled = false
+  }
+}
+
+function initPivotConfig(pivot?: any) {
+  form.pivotEnabled = pivot?.enabled === true
+  form.pivotTimeField = pivot?.time_field || ''
+  form.pivotGroupField = form.series || pivot?.group_field || ''
+  form.pivotGroupEnabled =
+    typeof pivot?.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(form.pivotGroupField || form.series)
+  form.pivotRangeEnabled = pivot?.range_enabled !== false
+  form.pivotGranularity = normalizePivotGranularity(pivot?.granularity)
+  form.pivotRange = pivot?.range || 'source'
+  form.pivotCustomStart = pivot?.custom_start || ''
+  form.pivotCustomEnd = pivot?.custom_end || ''
+  normalizePivotSelections()
+  if (!pivot?.granularity) {
+    form.pivotGranularity = defaultPivotGranularity()
+  }
+}
+
+function buildPivotConfig() {
+  if (!form.pivotEnabled) {
+    return { enabled: false }
+  }
+  return {
+    enabled: true,
+    time_field: form.pivotTimeField,
+    metric_fields: [...form.y],
+    metric_aggregations: resolvePivotMetricAggregations(toAxes(form.y, { metrics: true }), sourcePreview.data),
+    metric_field: form.y[0] || '',
+    group_field: form.series,
+    group_enabled: Boolean(form.series && form.pivotGroupEnabled),
+    range_enabled: form.pivotRangeEnabled,
+    granularity: form.pivotGranularity,
+    range: form.pivotRange,
+    custom_start: form.pivotCustomStart,
+    custom_end: form.pivotCustomEnd,
+    aggregation: defaultPivotAggregation(),
+  }
+}
+
+function previewPivotPayload() {
+  if (!supportsPivotConfig.value || !form.pivotEnabled) {
+    return undefined
+  }
+  return buildPivotConfig()
+}
+
+function currentPreviewSignature() {
+  return JSON.stringify({
+    sql: form.sql.trim(),
+    pivot: previewPivotPayload() || { enabled: false },
+  })
+}
+
 function axisValues(axis?: Array<{ value?: string }>) {
   return (axis || []).map((item) => item.value).filter(Boolean) as string[]
 }
@@ -227,6 +416,10 @@ function axisValues(axis?: Array<{ value?: string }>) {
 function collectFields(viewInfo: any) {
   const fields: string[] = []
   const dataObj = viewInfo?.data || {}
+  fields.push(...(Array.isArray(dataObj.source_fields) ? dataObj.source_fields : []))
+  ;(dataObj.source_data || []).slice(0, 20).forEach((row: Record<string, any>) => {
+    fields.push(...Object.keys(row || {}))
+  })
   fields.push(...(Array.isArray(dataObj.fields) ? dataObj.fields : []))
   ;(dataObj.data || []).slice(0, 20).forEach((row: Record<string, any>) => {
     fields.push(...Object.keys(row || {}))
@@ -239,8 +432,37 @@ function collectFields(viewInfo: any) {
   return unique(fields)
 }
 
+function collectCurrentPreviewFields(viewInfo: any) {
+  const fields: string[] = []
+  const dataObj = viewInfo?.data || {}
+  fields.push(...(Array.isArray(dataObj.fields) ? dataObj.fields : []))
+  ;(dataObj.data || []).slice(0, 20).forEach((row: Record<string, any>) => {
+    fields.push(...Object.keys(row || {}))
+  })
+  return unique(fields)
+}
+
+function getPreviewResultFields(result: any) {
+  return unique([
+    ...(Array.isArray(result?.fields) ? result.fields : []),
+    ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
+  ])
+}
+
+function updatePreviewResult(result: any) {
+  preview.status = result?.status || 'success'
+  preview.message = result?.message || ''
+  preview.data = result?.data || []
+  preview.fields = getPreviewResultFields(result)
+}
+
+function updateSourcePreviewResult(result: any) {
+  sourcePreview.data = result?.data || []
+  sourcePreview.fields = getPreviewResultFields(result)
+}
+
 function resetFieldSelections() {
-  const fields = preview.fields
+  const fields = sourcePreview.fields
   if (!fields.length) {
     form.columns = []
     form.x = ''
@@ -255,7 +477,7 @@ function resetFieldSelections() {
   if (!fields.includes(form.series)) form.series = ''
   if (form.y.length === 0) {
     const numericField = fields.find((field) =>
-      preview.data.some((row) => typeof row?.[field] === 'number')
+      sourcePreview.data.some((row) => typeof row?.[field] === 'number')
     )
     form.y = [numericField || fields[Math.min(1, fields.length - 1)] || fields[0]]
   }
@@ -265,6 +487,7 @@ function initEditor() {
   const viewInfo = props.viewInfo || {}
   const chart = viewInfo.chart || {}
   const fields = collectFields(viewInfo)
+  const currentFields = collectCurrentPreviewFields(viewInfo)
   form.sql = viewInfo.sql || ''
   form.title = chart.title || ''
   form.chartType = chart.sourceType || chart.type || 'table'
@@ -273,13 +496,17 @@ function initEditor() {
   form.y = axisValues(chart.yAxis)
   form.series = axisValues(chart.series)[0] || ''
   form.multiQuotaName = t('dashboard.metric_type')
-  preview.fields = fields
+  sourcePreview.fields = fields
+  sourcePreview.data = viewInfo.data?.source_data || viewInfo.data?.data || []
+  preview.fields = currentFields.length ? currentFields : fields
   preview.data = viewInfo.data?.data || []
   preview.status = viewInfo.status || 'success'
   preview.message = viewInfo.message || ''
   lastPreviewSql.value = form.sql.trim()
   resetFieldSelections()
   initInsightConfig(chart.insight)
+  initPivotConfig(viewInfo.pivot)
+  lastPreviewSignature.value = currentPreviewSignature()
   previewVersion.value += 1
 }
 
@@ -305,6 +532,15 @@ watch(
     form.insightComparisonMetrics.join('|'),
     form.insightAggregateEnabled,
     form.insightAggregateMetrics.join('|'),
+    form.pivotEnabled,
+    form.pivotTimeField,
+    form.pivotGroupField,
+    form.pivotGroupEnabled,
+    form.pivotRangeEnabled,
+    form.pivotGranularity,
+    form.pivotRange,
+    form.pivotCustomStart,
+    form.pivotCustomEnd,
   ],
   () => {
     previewVersion.value += 1
@@ -322,6 +558,7 @@ watch(
   ],
   () => {
     normalizeInsightSelections(true)
+    normalizePivotSelections()
   }
 )
 
@@ -336,19 +573,37 @@ async function runPreview() {
   }
   loading.value = true
   try {
+    const shouldPreviewPivot = supportsPivotConfig.value && form.pivotEnabled
+    if (shouldPreviewPivot) {
+      const sourceResult = await dashboardApi.preview_sql({
+        datasource: props.viewInfo.datasource,
+        sql: form.sql.trim(),
+      })
+      updateSourcePreviewResult(sourceResult)
+      resetFieldSelections()
+      normalizePivotSelections()
+      if ((sourceResult?.status || 'success') === 'failed') {
+        updatePreviewResult(sourceResult)
+        lastPreviewSql.value = form.sql.trim()
+        lastPreviewSignature.value = currentPreviewSignature()
+        previewVersion.value += 1
+        ElMessage.error(preview.message || t('dashboard.sql_editor_preview_failed'))
+        return
+      }
+    }
     const result = await dashboardApi.preview_sql({
       datasource: props.viewInfo.datasource,
       sql: form.sql.trim(),
+      pivot: previewPivotPayload(),
     })
-    preview.status = result?.status || 'success'
-    preview.message = result?.message || ''
-    preview.data = result?.data || []
-    preview.fields = unique([
-      ...(Array.isArray(result?.fields) ? result.fields : []),
-      ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
-    ])
+    if (!shouldPreviewPivot) {
+      updateSourcePreviewResult(result)
+      resetFieldSelections()
+      normalizePivotSelections()
+    }
+    updatePreviewResult(result)
     lastPreviewSql.value = form.sql.trim()
-    resetFieldSelections()
+    lastPreviewSignature.value = currentPreviewSignature()
     previewVersion.value += 1
     if (preview.status === 'failed') {
       ElMessage.error(preview.message || t('dashboard.sql_editor_preview_failed'))
@@ -380,23 +635,23 @@ function buildChart() {
   }
 
   if (form.chartType === 'table') {
-    chart.columns = toAxes(form.columns.length ? form.columns : preview.fields)
+    chart.columns = toAxes(form.columns.length ? form.columns : sourcePreview.fields)
     return chart
   }
 
   if (form.chartType === 'metric') {
-    chart.yAxis = toAxes(form.y)
+    chart.yAxis = toAxes(form.y, { metrics: true })
     return chart
   }
 
   if (form.chartType === 'pie') {
-    chart.yAxis = toAxes(form.y.slice(0, 1))
+    chart.yAxis = toAxes(form.y.slice(0, 1), { metrics: true })
     chart.series = toAxes([form.series || form.x].filter(Boolean) as string[])
     return chart
   }
 
   chart.xAxis = toAxes([form.x].filter(Boolean) as string[])
-  chart.yAxis = toAxes(form.series ? form.y.slice(0, 1) : form.y)
+  chart.yAxis = toAxes(form.series ? form.y.slice(0, 1) : form.y, { metrics: true })
   chart.series = toAxes([form.series].filter(Boolean) as string[])
   return chart
 }
@@ -439,22 +694,47 @@ function validateBeforeApply() {
     ElMessage.warning(t('dashboard.sql_editor_select_series'))
     return false
   }
+  if (form.pivotEnabled && (!form.pivotTimeField || !form.y.length)) {
+    ElMessage.warning(t('dashboard.pivot_required'))
+    return false
+  }
+  if (form.pivotEnabled && form.y.includes(form.pivotTimeField)) {
+    ElMessage.warning(t('dashboard.pivot_distinct_fields_required'))
+    return false
+  }
+  if (
+    form.pivotEnabled &&
+    pivotTimeFieldOptions.value.length > 0 &&
+    !pivotTimeFieldOptions.value.some((item) => item.value === form.pivotTimeField)
+  ) {
+    ElMessage.warning(t('dashboard.pivot_time_field_invalid'))
+    return false
+  }
   return true
 }
 
 function applyChange() {
   if (!props.viewInfo || !validateBeforeApply()) return
   props.viewInfo.sql = form.sql.trim()
-  props.viewInfo.data = {
+  const nextData: Record<string, any> = {
     ...(props.viewInfo.data || {}),
     fields: [...preview.fields],
     data: [...preview.data],
   }
+  if (form.pivotEnabled) {
+    nextData.source_fields = [...sourcePreview.fields]
+    nextData.source_data = [...sourcePreview.data]
+  } else {
+    delete nextData.source_fields
+    delete nextData.source_data
+  }
+  props.viewInfo.data = nextData
   props.viewInfo.status = preview.status
   props.viewInfo.dataState = preview.status === 'failed' ? 'failed' : 'ready'
   props.viewInfo.loadingProgress = 100
   props.viewInfo.message = preview.message
   props.viewInfo.chart = buildChart()
+  props.viewInfo.pivot = buildPivotConfig()
   props.viewInfo.datasource = props.viewInfo.datasource || null
   previewVersion.value += 1
   emits('applied', props.viewInfo)
@@ -618,6 +898,71 @@ function closeDrawer() {
             </div>
           </template>
         </div>
+        <div v-if="supportsPivotConfig" class="pivot-config">
+          <div class="pivot-config-row">
+            <span class="pivot-config-caption">{{ t('dashboard.pivot_config') }}</span>
+            <el-checkbox v-model="form.pivotEnabled">
+              {{ t('dashboard.pivot_enabled') }}
+            </el-checkbox>
+          </div>
+          <div v-if="form.pivotEnabled" class="pivot-config-grid">
+            <el-form-item :label="t('dashboard.pivot_time_field')">
+              <el-select v-model="form.pivotTimeField" filterable>
+                <el-option
+                  v-for="field in pivotTimeFieldOptions"
+                  :key="field.value"
+                  :label="field.label"
+                  :value="field.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('dashboard.pivot_granularity')">
+              <el-select v-model="form.pivotGranularity">
+                <el-option
+                  v-for="item in pivotGranularityOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item :label="t('dashboard.pivot_range_enabled')">
+              <el-switch v-model="form.pivotRangeEnabled" />
+            </el-form-item>
+            <el-form-item v-if="form.pivotRangeEnabled" :label="t('dashboard.pivot_range')">
+              <el-select v-model="form.pivotRange">
+                <el-option
+                  v-for="item in pivotRangeOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item
+              v-if="form.pivotRangeEnabled && form.pivotRange === 'custom'"
+              :label="t('dashboard.pivot_custom_range')"
+            >
+              <el-date-picker
+                v-model="form.pivotCustomStart"
+                type="date"
+                value-format="YYYY-MM-DD"
+                :placeholder="t('common.start_time')"
+              />
+            </el-form-item>
+            <el-form-item
+              v-if="form.pivotRangeEnabled && form.pivotRange === 'custom'"
+              :label="t('dashboard.pivot_custom_end')"
+            >
+              <el-date-picker
+                v-model="form.pivotCustomEnd"
+                type="date"
+                value-format="YYYY-MM-DD"
+                :placeholder="t('common.end_time')"
+              />
+            </el-form-item>
+          </div>
+        </div>
       </el-form>
 
       <div class="preview-title">{{ t('dashboard.sql_editor_chart_preview') }}</div>
@@ -627,9 +972,9 @@ function closeDrawer() {
           :key="chartPreviewId"
           :id="chartPreviewId"
           :type="form.chartType"
-          :columns="form.chartType === 'table' ? toAxes(form.columns.length ? form.columns : preview.fields) : []"
+          :columns="form.chartType === 'table' ? toAxes(form.columns.length ? form.columns : sourcePreview.fields) : []"
           :x="form.chartType !== 'table' && form.chartType !== 'metric' && form.chartType !== 'pie' ? toAxes([form.x]) : []"
-          :y="form.chartType === 'table' ? [] : toAxes(form.series ? form.y.slice(0, 1) : form.y)"
+          :y="toAxes(chartPreviewYFields, { metrics: true })"
           :series="form.chartType === 'pie' ? toAxes([form.series || form.x]) : toAxes([form.series])"
           :data="preview.data"
           :multi-quota-name="form.y.length > 1 && !form.series ? form.multiQuotaName : undefined"
@@ -713,6 +1058,37 @@ function closeDrawer() {
 
 .insight-metric-select {
   width: 100%;
+}
+
+.pivot-config {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0 8px;
+}
+
+.pivot-config-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 32px;
+}
+
+.pivot-config-caption {
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.pivot-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+}
+
+.pivot-group-checkbox {
+  margin-top: -8px;
 }
 
 .preview-title {

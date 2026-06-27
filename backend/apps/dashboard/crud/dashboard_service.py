@@ -31,6 +31,7 @@ from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.crud.query_executor import execute_user_query
 from apps.datasource.models.datasource import CoreDatasource
+from apps.db.db import get_sqlglot_dialect
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.user import UserModel
 from apps.system.models.tenant import TenantUserModel
@@ -40,6 +41,7 @@ from common.core.deps import SessionDep, CurrentUser
 from common.utils.chart_config import sanitize_chart_display_names
 import uuid
 import time
+import re
 
 from common.utils.tree_utils import build_tree_generic
 
@@ -672,6 +674,321 @@ def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: in
 _USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
 
 
+_PIVOT_RANGE_DAYS = {
+    "7d": 7,
+    "14d": 14,
+    "30d": 30,
+    "90d": 90,
+}
+
+
+def _normalize_datasource_type(ds_type: str | None) -> str:
+    return str(ds_type or "").strip().lower()
+
+
+def _dashboard_sql_dialect(ds_type: str | None) -> str | None:
+    dialect = get_sqlglot_dialect(ds_type)
+    if dialect:
+        return dialect
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"pg", "postgres", "postgresql"}:
+        return "postgres"
+    if ds_key in {"ck", "clickhouse"}:
+        return "clickhouse"
+    if ds_key in {"oracle", "dm"}:
+        return "oracle"
+    if ds_key in {"redshift"}:
+        return "redshift"
+    return None
+
+
+def _quote_dashboard_identifier(name: str, ds_type: str | None) -> str:
+    value = str(name or "").strip()
+    dialect = _dashboard_sql_dialect(ds_type)
+    if dialect in {"mysql", "hive"}:
+        return f"`{value.replace('`', '``')}`"
+    if dialect == "tsql":
+        return f"[{value.replace(']', ']]')}]"
+    return f'"{value.replace(chr(34), chr(34) + chr(34))}"'
+
+
+def _dashboard_pivot_column(field_name: str, ds_type: str | None, alias: str = "pivot_src") -> str:
+    return f"{_quote_dashboard_identifier(alias, ds_type)}.{_quote_dashboard_identifier(field_name, ds_type)}"
+
+
+def _dashboard_date_cast(column_sql: str, ds_type: str | None, *, timestamp: bool = False) -> str:
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        return f"CAST({column_sql} AS DATETIME)" if timestamp else f"DATE({column_sql})"
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        return f"CAST({column_sql} AS DATETIME)" if timestamp else f"CAST({column_sql} AS DATE)"
+    if ds_key in {"ck", "clickhouse"}:
+        return f"toDateTime({column_sql})" if timestamp else f"toDate({column_sql})"
+    if ds_key in {"oracle", "dm"}:
+        return f"CAST({column_sql} AS DATE)"
+    if ds_key == "hive":
+        return f"CAST({column_sql} AS TIMESTAMP)" if timestamp else f"TO_DATE({column_sql})"
+    return f"CAST({column_sql} AS TIMESTAMP)" if timestamp else f"CAST({column_sql} AS DATE)"
+
+
+def _dashboard_period_expr(column_sql: str, ds_type: str | None, granularity: str) -> str:
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        date_expr = _dashboard_date_cast(column_sql, ds_type)
+        datetime_expr = _dashboard_date_cast(column_sql, ds_type, timestamp=True)
+        if granularity == "week":
+            return f"DATE_SUB({date_expr}, INTERVAL WEEKDAY({datetime_expr}) DAY)"
+        if granularity == "month":
+            return f"DATE_FORMAT({datetime_expr}, '%Y-%m-01')"
+        return date_expr
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        datetime_expr = _dashboard_date_cast(column_sql, ds_type, timestamp=True)
+        if granularity == "week":
+            return f"DATEADD(week, DATEDIFF(week, 0, {datetime_expr}), 0)"
+        if granularity == "month":
+            return f"DATEFROMPARTS(YEAR({datetime_expr}), MONTH({datetime_expr}), 1)"
+        return _dashboard_date_cast(column_sql, ds_type)
+    if ds_key in {"ck", "clickhouse"}:
+        datetime_expr = _dashboard_date_cast(column_sql, ds_type, timestamp=True)
+        if granularity == "week":
+            return f"toStartOfWeek({datetime_expr}, 1)"
+        if granularity == "month":
+            return f"toStartOfMonth({datetime_expr})"
+        return _dashboard_date_cast(column_sql, ds_type)
+    if ds_key in {"oracle", "dm"}:
+        date_expr = _dashboard_date_cast(column_sql, ds_type)
+        if granularity == "week":
+            return f"TRUNC({date_expr}, 'IW')"
+        if granularity == "month":
+            return f"TRUNC({date_expr}, 'MM')"
+        return f"TRUNC({date_expr})"
+    if granularity == "week":
+        return f"DATE_TRUNC('week', {_dashboard_date_cast(column_sql, ds_type, timestamp=True)})"
+    if granularity == "month":
+        return f"DATE_TRUNC('month', {_dashboard_date_cast(column_sql, ds_type, timestamp=True)})"
+    return _dashboard_date_cast(column_sql, ds_type)
+
+
+def _dashboard_date_literal(value: str, ds_type: str | None) -> str:
+    escaped = value.replace("'", "''")
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        return f"DATE('{escaped}')"
+    if ds_key in {"ck", "clickhouse"}:
+        return f"toDate('{escaped}')"
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        return f"CAST('{escaped}' AS DATE)"
+    if ds_key in {"oracle", "dm"}:
+        return f"TO_DATE('{escaped}', 'YYYY-MM-DD')"
+    if ds_key == "hive":
+        return f"TO_DATE('{escaped}')"
+    return f"DATE '{escaped}'"
+
+
+def _dashboard_date_subtract_expr(date_expr: str, ds_type: str | None, days: int) -> str:
+    if days <= 0:
+        return date_expr
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        return f"DATE_SUB({date_expr}, INTERVAL {days} DAY)"
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        return f"DATEADD(day, -{days}, {date_expr})"
+    if ds_key in {"ck", "clickhouse"}:
+        return f"subtractDays({date_expr}, {days})"
+    if ds_key in {"oracle", "dm"}:
+        return f"{date_expr} - {days}"
+    if ds_key == "hive":
+        return f"date_sub({date_expr}, {days})"
+    return f"{date_expr} - INTERVAL '{days} days'"
+
+
+def _dashboard_custom_date_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if len(text) >= 10:
+        text = text[:10]
+    if not text:
+        return ""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        raise ValueError("自定义日期格式需为 YYYY-MM-DD")
+    return text
+
+
+def _trim_dashboard_sql(sql: str) -> str:
+    value = str(sql or "").strip()
+    while value.endswith(";"):
+        value = value[:-1].rstrip()
+    return value
+
+
+def _dashboard_pivot_value(pivot: Any, key: str, default: Any = None) -> Any:
+    if isinstance(pivot, dict):
+        return pivot.get(key, default)
+    return getattr(pivot, key, default)
+
+
+def _dashboard_pivot_metric_fields(pivot: Any | None) -> list[str]:
+    values = _dashboard_pivot_value(pivot, "metric_fields", []) or []
+    if not isinstance(values, list):
+        values = []
+    fields = [str(field or "").strip() for field in values]
+    fields = [field for field in fields if field]
+    if not fields:
+        fallback = str(_dashboard_pivot_value(pivot, "metric_field", "") or "").strip()
+        fields = [fallback] if fallback else []
+    return list(dict.fromkeys(fields))
+
+
+def _dashboard_pivot_metric_aggregations(pivot: Any | None) -> dict[str, str]:
+    value = _dashboard_pivot_value(pivot, "metric_aggregations", {}) or {}
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, str] = {}
+    for field, aggregation in value.items():
+        field_name = str(field or "").strip()
+        agg_name = str(aggregation or "").strip().lower()
+        if field_name and agg_name in {"sum", "avg", "min", "max", "count"}:
+            result[field_name] = agg_name
+    return result
+
+
+def _dashboard_pivot_enabled(pivot: Any | None) -> bool:
+    return bool(pivot is not None and _dashboard_pivot_value(pivot, "enabled", False))
+
+
+def _dashboard_pivot_date_cast_error(message: str, pivot: Any | None) -> str | None:
+    text = str(message or "")
+    lowered = text.lower()
+    mentions_date = "date" in lowered or "timestamp" in lowered or "日期" in text
+    mentions_cast = (
+        "cast" in lowered
+        or "coerce" in lowered
+        or "convert" in lowered
+        or "转换" in text
+        or "转化" in text
+    )
+    if not mentions_date or not mentions_cast:
+        return None
+    time_field = str(_dashboard_pivot_value(pivot, "time_field", "") or "").strip()
+    if time_field:
+        return f"透视时间字段「{time_field}」无法转换为日期/时间，请改选日期或时间字段；图表指标应选择数值字段。"
+    return "透视时间字段无法转换为日期/时间，请改选日期或时间字段；图表指标应选择数值字段。"
+
+
+def _dashboard_limit_clause(ds_type: str | None) -> str:
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"oracle", "dm", "sqlserver", "sql server", "sql_server"}:
+        return ""
+    return "\nLIMIT 1000"
+
+
+def _build_dashboard_pivot_sql(sql: str, datasource: CoreDatasource, pivot: Any | None) -> str:
+    if not _dashboard_pivot_enabled(pivot):
+        return sql
+    time_field = str(_dashboard_pivot_value(pivot, "time_field", "") or "").strip()
+    metric_fields = _dashboard_pivot_metric_fields(pivot)
+    group_field = str(_dashboard_pivot_value(pivot, "group_field", "") or "").strip()
+    group_enabled = bool(_dashboard_pivot_value(pivot, "group_enabled", True))
+    aggregation = str(_dashboard_pivot_value(pivot, "aggregation", "sum") or "sum").strip().lower()
+    metric_aggregations = _dashboard_pivot_metric_aggregations(pivot)
+    granularity = str(_dashboard_pivot_value(pivot, "granularity", "day") or "day").strip().lower()
+    range_value = str(_dashboard_pivot_value(pivot, "range", "source") or "source").strip().lower()
+
+    if not time_field or not metric_fields:
+        raise ValueError("图表透视配置缺少时间字段或图表指标")
+    if time_field in metric_fields:
+        raise ValueError("透视时间字段和图表指标不能相同；时间字段请选择日期/时间字段，图表指标请选择数值字段")
+
+    ds_type = getattr(datasource, "type", None)
+    source_sql = _trim_dashboard_sql(sql)
+    if not source_sql:
+        raise ValueError("SQL不能为空")
+
+    source_alias = _quote_dashboard_identifier("pivot_src", ds_type)
+    bounds_alias = _quote_dashboard_identifier("pivot_bounds", ds_type)
+    time_col = _dashboard_pivot_column(time_field, ds_type)
+    source_time_date = _dashboard_date_cast(time_col, ds_type)
+    max_period_col = _dashboard_pivot_column("max_period", ds_type, "pivot_bounds")
+    period_expr = _dashboard_period_expr(time_col, ds_type, granularity)
+    time_alias = _quote_dashboard_identifier(time_field, ds_type)
+
+    if aggregation not in {"sum", "avg", "min", "max", "count"}:
+        raise ValueError("不支持的图表透视聚合方式")
+
+    select_items = [
+        f"{period_expr} AS {time_alias}",
+    ]
+    for metric_field in metric_fields:
+        metric_col = _dashboard_pivot_column(metric_field, ds_type)
+        metric_alias = _quote_dashboard_identifier(metric_field, ds_type)
+        metric_aggregation = metric_aggregations.get(metric_field, aggregation)
+        if metric_aggregation == "count":
+            metric_expr = f"COUNT({metric_col})"
+        else:
+            metric_expr = f"{metric_aggregation.upper()}({metric_col})"
+        select_items.append(f"{metric_expr} AS {metric_alias}")
+    group_items = [period_expr]
+    order_items = [period_expr]
+    if group_field and group_enabled:
+        group_col = _dashboard_pivot_column(group_field, ds_type)
+        group_alias = _quote_dashboard_identifier(group_field, ds_type)
+        select_items.insert(1, f"{group_col} AS {group_alias}")
+        group_items.append(group_col)
+        order_items.append(group_col)
+
+    where_parts: list[str] = []
+    days = _PIVOT_RANGE_DAYS.get(range_value)
+    if days is not None:
+        cutoff = _dashboard_date_subtract_expr(max_period_col, ds_type, days - 1)
+        where_parts.append(f"{source_time_date} >= {cutoff}")
+    elif range_value == "custom":
+        custom_start = _dashboard_custom_date_value(_dashboard_pivot_value(pivot, "custom_start", ""))
+        custom_end = _dashboard_custom_date_value(_dashboard_pivot_value(pivot, "custom_end", ""))
+        if custom_start:
+            where_parts.append(f"{source_time_date} >= {_dashboard_date_literal(custom_start, ds_type)}")
+        if custom_end:
+            where_parts.append(f"{source_time_date} <= {_dashboard_date_literal(custom_end, ds_type)}")
+        if not custom_start and not custom_end:
+            raise ValueError("自定义日期范围至少需要开始日期或结束日期")
+    elif range_value not in {"source", "all"}:
+        raise ValueError("不支持的图表透视时间范围")
+
+    where_clause = f"\nWHERE {' AND '.join(where_parts)}" if where_parts else ""
+
+    if days is None:
+        return (
+            "SELECT\n  "
+            + ",\n  ".join(select_items)
+            + f"\nFROM (\n{source_sql}\n) AS {source_alias}"
+            + where_clause
+            + "\nGROUP BY "
+            + ", ".join(group_items)
+            + "\nORDER BY "
+            + ", ".join(order_items)
+            + _dashboard_limit_clause(ds_type)
+        )
+
+    cte_sql = (
+        f"WITH {source_alias} AS (\n{source_sql}\n),\n"
+        f"{bounds_alias} AS (\n"
+        f"  SELECT MAX({source_time_date}) AS {_quote_dashboard_identifier('max_period', ds_type)}\n"
+        f"  FROM {source_alias}\n"
+        f")"
+    )
+
+    return (
+        cte_sql
+        + "\nSELECT\n  "
+        + ",\n  ".join(select_items)
+        + f"\nFROM {source_alias}\nCROSS JOIN {bounds_alias}"
+        + where_clause
+        + "\nGROUP BY "
+        + ", ".join(group_items)
+        + "\nORDER BY "
+        + ", ".join(order_items)
+        + _dashboard_limit_clause(ds_type)
+    )
+
+
 def _failed_chart_result(message: str, error_type: str | None = None) -> dict[str, Any]:
     result = {
         'status': 'failed',
@@ -690,14 +1007,30 @@ def _execute_dashboard_chart_sql(
         current_user: CurrentUser,
         datasource_id: int,
         sql: str,
+        pivot: Any | None = None,
 ) -> dict[str, Any]:
-    return execute_user_query(
+    if _dashboard_pivot_enabled(pivot):
+        datasource = session.get(CoreDatasource, datasource_id)
+        if datasource is None:
+            return _failed_chart_result("项目不存在")
+        try:
+            sql = _build_dashboard_pivot_sql(sql, datasource, pivot)
+        except Exception as exc:
+            return _failed_chart_result(f"{exc}")
+    result = execute_user_query(
         session=session,
         current_user=current_user,
         datasource_id=datasource_id,
         sql=sql,
         origin_column=True,
     )
+    if _dashboard_pivot_enabled(pivot) and result.get("status") == "failed":
+        friendly_message = _dashboard_pivot_date_cast_error(str(result.get("message") or ""), pivot)
+        if friendly_message:
+            result["message"] = friendly_message
+            if result.get("reason"):
+                result["reason"] = friendly_message
+    return result
 
 
 def _clear_dashboard_chart_data(item: dict) -> None:
@@ -1104,7 +1437,16 @@ def _load_share_preview_payload(
         if not can_use or item_datasource is None:
             data_result = _failed_chart_result(_USER_PERMISSION_DENIED_MESSAGE)
         else:
-            data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item["sql"])
+            if _dashboard_pivot_enabled(item.get("pivot")):
+                data_result = _execute_dashboard_chart_sql(
+                    session,
+                    current_user,
+                    item_datasource,
+                    item["sql"],
+                    item.get("pivot"),
+                )
+            else:
+                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item["sql"])
         if not isinstance(item.get("data"), dict):
             item["data"] = {}
         item["data"]["data"] = data_result["data"]
@@ -1233,7 +1575,16 @@ def _dashboard_payload(
                     'message': 'Dashboard chart datasource does not match the dashboard datasource',
                 }
             else:
-                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
+                if _dashboard_pivot_enabled(item.get("pivot")):
+                    data_result = _execute_dashboard_chart_sql(
+                        session,
+                        current_user,
+                        item_datasource,
+                        item['sql'],
+                        item.get("pivot"),
+                    )
+                else:
+                    data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
             _apply_dashboard_chart_result(item, data_result)
     result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj).decode()
     return result_dict
@@ -1949,7 +2300,13 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             "data": [],
             "message": "SQL不能为空",
         }
-    return _execute_dashboard_chart_sql(session, current_user, request.datasource, request.sql)
+    return _execute_dashboard_chart_sql(
+        session,
+        current_user,
+        request.datasource,
+        request.sql,
+        request.pivot,
+    )
 
 
 def share_resource(session: SessionDep, user: CurrentUser, request: DashboardShareRequest):

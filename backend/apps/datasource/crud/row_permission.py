@@ -1,7 +1,7 @@
 # Author: Junjun
 # Date: 2025/6/25
 
-from typing import List, Dict
+from typing import List, Dict, Any
 
 from apps.datasource.models.datasource import CoreField, CoreDatasource
 from apps.db.constant import DB
@@ -24,16 +24,96 @@ def _escape_sql_value(value: str) -> str:
     return escaped
 
 
+def _invalid_filter(message: str, strict: bool) -> None:
+    if strict:
+        raise ValueError(message)
+
+
+def _sql_server_nchar(ds: CoreDatasource, field: CoreField) -> bool:
+    return ds.type == 'sqlServer' and field.field_type in ('nchar', 'NCHAR', 'nvarchar', 'NVARCHAR')
+
+
+def _quoted_value(ds: CoreDatasource, field: CoreField, value: Any) -> str:
+    escaped = _escape_sql_value(value)
+    if _sql_server_nchar(ds, field):
+        return f"N'{escaped}'"
+    return f"'{escaped}'"
+
+
+def _list_values(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if value is None:
+        return []
+    return str(value).split(",")
+
+
+def _single_value(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return value[0] if value else None
+    return value
+
+
+def _where_value_for_term(
+        ds: CoreDatasource,
+        field: CoreField,
+        term: str,
+        values: Any,
+        strict: bool,
+) -> str | None:
+    if term in ('null', 'not_null'):
+        return ''
+    if term in ('empty', 'not_empty'):
+        return "''"
+    if term in ('in', 'not in'):
+        items = _list_values(values)
+        if not items:
+            _invalid_filter("行权限过滤条件缺少 IN 值", strict)
+            return None
+        return "(" + ", ".join(_quoted_value(ds, field, item) for item in items) + ")"
+    if term in ('like', 'not like'):
+        value = _single_value(values)
+        if value is None or value == "":
+            _invalid_filter("行权限过滤条件缺少 LIKE 值", strict)
+            return None
+        escaped = _escape_sql_value(value)
+        if _sql_server_nchar(ds, field):
+            return f"N'%{escaped}%'"
+        return f"'%{escaped}%'"
+    if term == 'between':
+        items = _list_values(values)
+        if len(items) < 2:
+            _invalid_filter("行权限过滤条件缺少 BETWEEN 边界值", strict)
+            return None
+        return f"{_quoted_value(ds, field, items[0])} AND {_quoted_value(ds, field, items[1])}"
+
+    value = _single_value(values)
+    if value is None or value == "":
+        _invalid_filter("行权限过滤条件缺少比较值", strict)
+        return None
+    return _quoted_value(ds, field, value)
+
+
 def transFilterTree(session: SessionDep, current_user: CurrentUser, tree_list: List[any],
-                    ds: CoreDatasource, deny_mode: bool = False) -> str | None:
+                    ds: CoreDatasource, deny_mode: bool = False, strict: bool = False) -> str | None:
     if tree_list is None:
         return None
     res: List[str] = []
     for dto in tree_list:
         tree = dto.tree
         if tree is None:
+            _invalid_filter("行权限过滤树为空", strict)
             continue
-        tree_exp = transTreeToWhere(session, current_user, tree, ds)
+        tree_exp = transTreeToWhere(
+            session,
+            current_user,
+            tree,
+            ds,
+            table_id=getattr(dto, "table_id", None),
+            strict=strict,
+        )
         if tree_exp is not None:
             res.append(f"NOT ({tree_exp})" if deny_mode else tree_exp)
     return " AND ".join(res)
@@ -51,47 +131,94 @@ def _same_explicit_tenant(left, right) -> bool:
         return False
 
 
-def transTreeToWhere(session: SessionDep, current_user: CurrentUser, tree: any, ds: CoreDatasource) -> str | None:
-    if tree is None:
+def transTreeToWhere(
+        session: SessionDep,
+        current_user: CurrentUser,
+        tree: any,
+        ds: CoreDatasource,
+        table_id: int | None = None,
+        strict: bool = False,
+) -> str | None:
+    if not isinstance(tree, dict):
+        _invalid_filter("行权限过滤树格式无效", strict)
         return None
-    logic = tree['logic']
+    logic = str(tree.get('logic') or '').upper()
     # Validate the logic operator to prevent injection via this field
-    if logic.upper() not in _VALID_LOGIC_OPS:
+    if logic not in _VALID_LOGIC_OPS:
+        _invalid_filter("行权限逻辑操作符无效", strict)
         return None
 
-    items = tree['items']
-    list: List[str] = []
-    if items is not None:
-        for item in items:
-            exp: str = None
-            if item['type'] == 'item':
-                exp = transTreeItem(session, current_user, item, ds)
-            elif item['type'] == 'tree':
-                exp = transTreeToWhere(session, current_user, item['sub_tree'], ds)
+    items = tree.get('items')
+    if not isinstance(items, list) or len(items) == 0:
+        _invalid_filter("行权限过滤树缺少条件项", strict)
+        return None
+    expressions: List[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            _invalid_filter("行权限过滤项格式无效", strict)
+            continue
+        exp: str = None
+        if item.get('type') == 'item':
+            exp = transTreeItem(session, current_user, item, ds, table_id=table_id, strict=strict)
+        elif item.get('type') == 'tree':
+            exp = transTreeToWhere(
+                session,
+                current_user,
+                item.get('sub_tree'),
+                ds,
+                table_id=table_id,
+                strict=strict,
+            )
+        else:
+            _invalid_filter("行权限过滤项类型无效", strict)
 
-            if exp is not None:
-                list.append(exp)
-    return '(' + f' {logic} '.join(list) + ')' if len(list) > 0 else None
+        if exp is not None:
+            expressions.append(exp)
+    if not expressions:
+        _invalid_filter("行权限过滤树未生成有效条件", strict)
+        return None
+    return '(' + f' {logic} '.join(expressions) + ')'
 
 
-def transTreeItem(session: SessionDep, current_user: CurrentUser, item: Dict, ds: CoreDatasource) -> str | None:
+def transTreeItem(
+        session: SessionDep,
+        current_user: CurrentUser,
+        item: Dict,
+        ds: CoreDatasource,
+        table_id: int | None = None,
+        strict: bool = False,
+) -> str | None:
     res: str = None
-    field = session.query(CoreField).filter(CoreField.id == int(item['field_id'])).first()
+    try:
+        field_id = int(item.get('field_id'))
+    except (TypeError, ValueError):
+        _invalid_filter("行权限过滤字段无效", strict)
+        return None
+    field = session.query(CoreField).filter(CoreField.id == field_id).first()
     if field is None:
+        _invalid_filter("行权限过滤字段不存在", strict)
+        return None
+    if str(field.ds_id) != str(ds.id) or (table_id is not None and str(field.table_id) != str(table_id)):
+        _invalid_filter("行权限过滤字段不属于当前数据表", strict)
+        return None
+
+    term = item.get('term')
+    whereTerm = transFilterTerm(term)
+    if whereTerm == "":
+        _invalid_filter("行权限过滤操作符无效", strict)
         return None
 
     db = DB.get_db(ds.type)
     whereName = db.prefix + field.field_name + db.suffix
-    whereTerm = transFilterTerm(item['term'])
 
-    if item['filter_type'] == 'enum':
-        if len(item['enum_value']) > 0:
-            escaped_values = [_escape_sql_value(v) for v in item['enum_value']]
-            if ds['type'] == 'sqlServer' and (
-                    field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
-                res = "(" + whereName + " IN (N'" + "',N'".join(escaped_values) + "'))"
-            else:
-                res = "(" + whereName + " IN ('" + "','".join(escaped_values) + "'))"
+    if item.get('filter_type') == 'enum':
+        enum_values = item.get('enum_value') or []
+        if len(enum_values) > 0:
+            whereValue = _where_value_for_term(ds, field, 'in', enum_values, strict)
+            if whereValue is not None:
+                res = "(" + whereName + " IN " + whereValue + ")"
+        else:
+            _invalid_filter("行权限枚举过滤条件缺少枚举值", strict)
     else:
         # if system variable, do check and get value
         # new field: value_type(variable or normal), variable_id
@@ -102,21 +229,28 @@ def transTreeItem(session: SessionDep, current_user: CurrentUser, item: Dict, ds
             if variable_id is not None:
                 sys_variable = session.query(SystemVariable).filter(SystemVariable.id == variable_id).first()
                 if sys_variable is None:
+                    _invalid_filter("行权限系统变量不存在", strict)
                     return None
                 if (
                         sys_variable.type not in ('system', 'platform')
                         and not _same_explicit_tenant(sys_variable.tenant_id, ds.tenant_id)
                 ):
+                    _invalid_filter("行权限系统变量不属于当前工作空间", strict)
                     return None
 
                 # do inner system variable
                 if sys_variable.type == 'system':
-                    res = whereName + whereTerm + getSysVariableValue(sys_variable, current_user, ds, field, item)
+                    whereValue = getSysVariableValue(sys_variable, current_user, ds, field, item)
+                    if whereValue is None:
+                        _invalid_filter("行权限系统变量值为空", strict)
+                        return None
+                    res = whereName + whereTerm + whereValue
                 else:
                     # check user variable
-                    user_variables = current_user.system_variables
+                    user_variables = getattr(current_user, "system_variables", None)
                     if user_variables is None or len(user_variables) == 0 or not userHaveVariable(user_variables,
                                                                                                   sys_variable):
+                        _invalid_filter("当前用户缺少行权限变量值", strict)
                         return None
                     else:
                         # get user variable
@@ -126,6 +260,7 @@ def transTreeItem(session: SessionDep, current_user: CurrentUser, item: Dict, ds
                                 u_variable = u
                                 break
                         if u_variable is None:
+                            _invalid_filter("当前用户缺少行权限变量值", strict)
                             return None
 
                         # check value
@@ -134,84 +269,31 @@ def transTreeItem(session: SessionDep, current_user: CurrentUser, item: Dict, ds
                             set_sys = set(sys_variable.value)
                             values = [x for x in values if x in set_sys]
                             if values is None or len(values) == 0:
+                                _invalid_filter("当前用户行权限变量值不在允许范围内", strict)
                                 return None
                         elif sys_variable.var_type == 'number':
                             if (sys_variable.value[0] is not None and values[0] < sys_variable.value[0]) or (
                                     sys_variable.value[1] is not None and values[0] > sys_variable.value[1]):
+                                _invalid_filter("当前用户行权限变量值不在允许范围内", strict)
                                 return None
                         elif sys_variable.var_type == 'datetime':
                             if (sys_variable.value[0] is not None and values[0] < sys_variable.value[0]) or (
                                     sys_variable.value[1] is not None and values[0] > sys_variable.value[1]):
+                                _invalid_filter("当前用户行权限变量值不在允许范围内", strict)
                                 return None
 
-                        # build exp
-                        whereValue = ''
-                        if item['term'] == 'null':
-                            whereValue = ''
-                        elif item['term'] == 'not_null':
-                            whereValue = ''
-                        elif item['term'] == 'empty':
-                            whereValue = "''"
-                        elif item['term'] == 'not_empty':
-                            whereValue = "''"
-                        elif item['term'] == 'in' or item['term'] == 'not in':
-                            escaped_values = [_escape_sql_value(v) for v in values]
-                            if ds.type == 'sqlServer' and (
-                                    field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
-                                whereValue = "(N'" + "', N'".join(escaped_values) + "')"
-                            else:
-                                whereValue = "('" + "', '".join(escaped_values) + "')"
-                        elif item['term'] == 'like' or item['term'] == 'not like':
-                            escaped_v = _escape_sql_value(values[0])
-                            if ds.type == 'sqlServer' and (
-                                    field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
-                                whereValue = f"N'%{escaped_v}%'"
-                            else:
-                                whereValue = f"'%{escaped_v}%'"
-                        else:
-                            escaped_v = _escape_sql_value(values[0])
-                            if ds.type == 'sqlServer' and (
-                                    field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
-                                whereValue = f"N'{escaped_v}'"
-                            else:
-                                whereValue = f"'{escaped_v}'"
+                        whereValue = _where_value_for_term(ds, field, term, values, strict)
+                        if whereValue is None:
+                            return None
 
                         res = whereName + whereTerm + whereValue
             else:
+                _invalid_filter("行权限变量 ID 为空", strict)
                 return None
         else:
-            value = item['value']
-            whereValue = ''
-
-            if item['term'] == 'null':
-                whereValue = ''
-            elif item['term'] == 'not_null':
-                whereValue = ''
-            elif item['term'] == 'empty':
-                whereValue = "''"
-            elif item['term'] == 'not_empty':
-                whereValue = "''"
-            elif item['term'] == 'in' or item['term'] == 'not in':
-                escaped_values = [_escape_sql_value(v) for v in value.split(",")]
-                if ds.type == 'sqlServer' and (
-                        field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
-                    whereValue = "(N'" + "', N'".join(escaped_values) + "')"
-                else:
-                    whereValue = "('" + "', '".join(escaped_values) + "')"
-            elif item['term'] == 'like' or item['term'] == 'not like':
-                escaped_v = _escape_sql_value(value)
-                if ds.type == 'sqlServer' and (
-                        field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
-                    whereValue = f"N'%{escaped_v}%'"
-                else:
-                    whereValue = f"'%{escaped_v}%'"
-            else:
-                escaped_v = _escape_sql_value(value)
-                if ds.type == 'sqlServer' and (
-                        field.field_type == 'nchar' or field.field_type == 'NCHAR' or field.field_type == 'nvarchar' or field.field_type == 'NVARCHAR'):
-                    whereValue = f"N'{escaped_v}'"
-                else:
-                    whereValue = f"'{escaped_v}'"
+            whereValue = _where_value_for_term(ds, field, term, item.get('value'), strict)
+            if whereValue is None:
+                return None
 
             res = whereName + whereTerm + whereValue
     return res
@@ -267,6 +349,8 @@ def getSysVariableValue(sys_variable: SystemVariable, current_user: CurrentUser,
         v = current_user.account
     if sys_variable.value[0] == 'email':
         v = current_user.email
+    if v is None:
+        return None
 
     escaped_v = _escape_sql_value(v) if v is not None else v
 

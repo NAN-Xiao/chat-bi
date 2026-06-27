@@ -112,6 +112,8 @@ def _engine_with_chat_permission_tables():
                 enable BOOLEAN NOT NULL,
                 name VARCHAR NOT NULL,
                 description VARCHAR,
+                tenant_id INTEGER NOT NULL DEFAULT 1,
+                scope VARCHAR(32) NOT NULL DEFAULT 'TENANT',
                 permission_list TEXT,
                 user_list TEXT,
                 white_list_user TEXT,
@@ -192,6 +194,66 @@ def _insert_permission_fixture(session: Session):
     ))
 
 
+def _insert_row_permission_fixture(session: Session):
+    session.execute(text(
+        """
+        INSERT INTO core_datasource
+            (id, name, type, type_name, configuration, create_by, recommended_config)
+        VALUES
+            (1, 'Project 1', 'pg', 'PostgreSQL', '{}', 9, 1)
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO core_datasource_user (ds_id, user_id, role)
+        VALUES (1, 2, 'viewer')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO core_table (id, ds_id, checked, table_name, table_comment, custom_comment)
+        VALUES (10, 1, 1, 'orders', 'orders', 'orders')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO core_field
+            (id, ds_id, table_id, checked, field_name, field_type, field_comment, custom_comment, field_index)
+        VALUES
+            (100, 1, 10, 1, 'order_id', 'int', 'order_id', 'order_id', 1),
+            (101, 1, 10, 1, 'region', 'varchar', 'region', 'region', 2)
+        """
+    ))
+    tree = {
+        "logic": "AND",
+        "items": [
+            {
+                "type": "item",
+                "field_id": 101,
+                "filter_type": "text",
+                "term": "eq",
+                "value": "US",
+            }
+        ],
+    }
+    session.execute(text(
+        """
+        INSERT INTO ds_permission
+            (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+        VALUES
+            (1001, 'orders rows', 1, 'user', 'row', 1, 10, :tree, '[]', '[]')
+        """
+    ), {"tree": json.dumps(tree)})
+    session.execute(text(
+        """
+        INSERT INTO ds_rules
+            (id, enable, name, description, permission_list, user_list, white_list_user)
+        VALUES
+            (2001, 1, 'user 2 row limit', '', '[1001]', '[2]', '[]')
+        """
+    ))
+
+
 def test_failed_chart_data_is_preserved_for_agent_prompt():
     payload = {
         "status": "failed",
@@ -248,6 +310,112 @@ def test_chat_cached_data_is_rechecked_against_current_permissions():
     assert result["error_type"] == "permission_denied"
     assert result["message"] == "SQL 超出当前数据权限范围"
     assert "amount" not in result["message"]
+
+
+def test_chat_cached_data_reexecutes_when_row_permission_applies(monkeypatch):
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    exec_calls = []
+
+    def fake_execute(session, current_user, datasource_id, sql, **kwargs):
+        exec_calls.append(sql)
+        return {"fields": ["order_id"], "data": [{"order_id": 7}], "status": "success", "message": ""}
+
+    monkeypatch.setattr(chat_crud, "_execute_dashboard_chart_sql", fake_execute)
+
+    with Session(engine) as session:
+        _insert_row_permission_fixture(session)
+        session.add(ChatRecord(
+            id=1,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            sql="select order_id from orders",
+            data=json.dumps({"fields": ["order_id"], "data": [{"order_id": 99}]}),
+        ))
+        session.commit()
+
+        result = chat_crud.get_chart_data_with_user(session, current_user, 1)
+
+    assert exec_calls == ["select order_id from orders"]
+    assert result["data"] == [{"order_id": 7}]
+
+
+def test_predict_cache_is_hidden_when_source_row_permission_applies():
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+
+    with Session(engine) as session:
+        _insert_row_permission_fixture(session)
+        session.add(ChatRecord(
+            id=1,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            sql="select order_id from orders",
+            data=json.dumps({"fields": ["order_id"], "data": [{"order_id": 99}]}),
+        ))
+        session.add(ChatRecord(
+            id=2,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            predict_record_id=1,
+            predict_data=json.dumps([{"order_id": 99, "forecast": 123}]),
+        ))
+        session.commit()
+
+        result = chat_crud.get_chat_predict_data_with_user(session, current_user, 2)
+
+    assert result == []
+
+
+def test_chat_detail_scrubs_predict_cache_when_source_row_permission_applies(monkeypatch):
+    engine = _engine_with_chat_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+
+    monkeypatch.setattr(
+        chat_crud,
+        "_execute_dashboard_chart_sql",
+        lambda *args, **kwargs: {"fields": ["order_id"], "data": [{"order_id": 7}], "status": "success"},
+    )
+
+    with Session(engine) as session:
+        _insert_row_permission_fixture(session)
+        session.add(Chat(
+            id=1,
+            create_by=2,
+            create_time=datetime.datetime(2026, 6, 19),
+            datasource=1,
+            engine_type="PostgreSQL",
+            brief="row-limited",
+        ))
+        session.add(ChatRecord(
+            id=1,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            sql="select order_id from orders",
+            chart=json.dumps({"type": "table"}),
+            data=json.dumps({"fields": ["order_id"], "data": [{"order_id": 99}]}),
+        ))
+        session.add(ChatRecord(
+            id=2,
+            chat_id=1,
+            create_by=2,
+            datasource=1,
+            predict_record_id=1,
+            predict=json.dumps({"content": "old forecast"}),
+            predict_data=json.dumps([{"order_id": 99, "forecast": 123}]),
+        ))
+        session.commit()
+
+        chat_info = chat_crud.get_chat_with_records(session, 1, current_user, None, with_data=True)
+
+    predict_record = next(record for record in chat_info.records if record["id"] == 2)
+    assert predict_record["predict"] is None
+    assert predict_record["predict_data"] is None
+    assert predict_record["error"] == "SQL 超出当前数据权限范围"
 
 
 def test_chat_history_scrubs_cached_artifacts_after_permission_change():
