@@ -42,6 +42,7 @@ import {
   resolvePivotMetricAggregations,
   withResolvedMetricSemantics,
 } from '@/views/dashboard/utils/metricSemantics.ts'
+import { inferPivotDimensions, type PivotDimension } from '@/views/dashboard/utils/pivotDimensions.ts'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 const { t } = useI18n()
 const containerRef = ref<HTMLElement | null>(null)
@@ -142,6 +143,7 @@ const pivotState = reactive({
   customStart: '',
   customEnd: '',
   groupEnabled: true,
+  groupField: '',
 })
 
 function normalizeAxisList(list: any): ChartAxis[] {
@@ -196,7 +198,26 @@ const pivotMetricFields = computed(() => {
   return legacyField ? [legacyField] : []
 })
 const pivotGroupField = computed(() => props.viewInfo?.pivot?.group_field || firstAxisValue(props.viewInfo?.chart?.series))
-const pivotHasGroup = computed(() => Boolean(pivotGroupField.value))
+const pivotDimensions = computed<PivotDimension[]>(() =>
+  inferPivotDimensions({
+    fields: [
+      ...(Array.isArray(props.viewInfo?.data?.source_fields) ? props.viewInfo.data.source_fields : []),
+      ...(Array.isArray(props.viewInfo?.data?.fields) ? props.viewInfo.data.fields : []),
+      ...(Array.isArray(props.viewInfo?.fields) ? props.viewInfo.fields : []),
+    ],
+    data: props.viewInfo?.data?.source_data || props.viewInfo?.data?.data || [],
+    chart: props.viewInfo?.chart || {},
+    timeField: pivotTimeField.value,
+    metricFields: pivotMetricFields.value,
+    configured: props.viewInfo?.pivot?.dimensions,
+  })
+)
+const activePivotGroupField = computed(() => pivotState.groupField || pivotGroupField.value || pivotDimensions.value[0]?.field || '')
+const activePivotGroupDimension = computed(() =>
+  pivotDimensions.value.find((item) => item.field === activePivotGroupField.value) ||
+  (activePivotGroupField.value ? { field: activePivotGroupField.value, label: activePivotGroupField.value } : null)
+)
+const pivotHasGroup = computed(() => Boolean(activePivotGroupField.value))
 const pivotRangeEnabled = computed(() => props.viewInfo?.pivot?.range_enabled !== false)
 const pivotEnabled = computed(() => {
   if (props.showPosition === 'multiplexing') {
@@ -209,8 +230,8 @@ const pivotSummaryText = computed(() => {
     return ''
   }
   const groupLabel =
-    pivotHasGroup.value && pivotState.groupEnabled
-      ? t('dashboard.pivot_grouped')
+    activePivotGroupDimension.value && pivotState.groupEnabled
+      ? activePivotGroupDimension.value.label
       : t('dashboard.pivot_ungrouped')
   return `${pivotRangeLabel.value} / ${groupLabel}`
 })
@@ -224,8 +245,10 @@ const currentPivotTimeAxis = computed<ChartAxis | undefined>(() =>
   (pivotTimeField.value ? { name: pivotTimeField.value, value: pivotTimeField.value } : undefined)
 )
 const currentPivotGroupAxis = computed<ChartAxis | undefined>(() =>
-  axisForField(props.viewInfo?.chart?.series, pivotGroupField.value) ||
-  (pivotGroupField.value ? { name: pivotGroupField.value, value: pivotGroupField.value } : undefined)
+  axisForField(props.viewInfo?.chart?.series, activePivotGroupField.value) ||
+  (activePivotGroupDimension.value
+    ? { name: activePivotGroupDimension.value.label, value: activePivotGroupDimension.value.field, type: 'series' }
+    : undefined)
 )
 const renderXAxis = computed<ChartAxis[]>(() => {
   if (pivotEnabled.value) {
@@ -468,8 +491,9 @@ function getPivotPayload() {
     metric_fields: pivotMetricFields.value,
     metric_aggregations: resolvePivotMetricAggregations(chartMetricAxes.value, props.viewInfo?.data?.data || []),
     metric_field: pivotMetricFields.value[0] || '',
-    group_field: pivotGroupField.value,
+    group_field: activePivotGroupField.value,
     group_enabled: pivotHasGroup.value ? pivotState.groupEnabled : false,
+    dimensions: pivotDimensions.value,
     range_enabled: pivotRangeEnabled.value,
     granularity: pivotState.granularity,
     range: pivotRangeEnabled.value ? pivotState.range : 'source',
@@ -477,6 +501,14 @@ function getPivotPayload() {
     custom_end: pivotRangeEnabled.value ? pivotState.customEnd : '',
     aggregation: defaultPivotAggregation(),
   }
+}
+
+function hasSourcePivotData() {
+  const dataObj = props.viewInfo?.data || {}
+  return (
+    (Array.isArray(dataObj.source_fields) && dataObj.source_fields.length > 0) ||
+    (Array.isArray(dataObj.source_data) && dataObj.source_data.length > 0)
+  )
 }
 
 function syncPivotStateFromView(force = false) {
@@ -490,8 +522,9 @@ function syncPivotStateFromView(force = false) {
   pivotState.range = pivot.range || 'source'
   pivotState.customStart = pivot.custom_start || ''
   pivotState.customEnd = pivot.custom_end || ''
+  pivotState.groupField = pivot.group_field || pivotDimensions.value[0]?.field || pivotGroupField.value || ''
   pivotState.groupEnabled =
-    typeof pivot.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(pivotGroupField.value)
+    typeof pivot.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(pivotState.groupField)
   if (pivotEnabled.value) {
     props.viewInfo.pivot = {
       ...pivot,
@@ -583,6 +616,14 @@ async function refreshData(options: RefreshDataOptions = {}) {
     if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
       props.viewInfo.data = {}
     }
+    if (pivotPayload && !hasSourcePivotData()) {
+      props.viewInfo.data.source_fields = Array.isArray(props.viewInfo.data.fields)
+        ? [...props.viewInfo.data.fields]
+        : [...fields]
+      props.viewInfo.data.source_data = Array.isArray(props.viewInfo.data.data)
+        ? [...props.viewInfo.data.data]
+        : [...data]
+    }
     props.viewInfo.data.fields = fields
     props.viewInfo.data.data = data
     props.viewInfo.fields = fields
@@ -635,8 +676,13 @@ function setPivotRange(value: string) {
   schedulePivotRefresh()
 }
 
-function togglePivotGroup() {
-  pivotState.groupEnabled = !pivotState.groupEnabled
+function selectPivotGroupField(field: string) {
+  if (field) {
+    pivotState.groupField = field
+    pivotState.groupEnabled = true
+  } else {
+    pivotState.groupEnabled = false
+  }
   schedulePivotRefresh()
 }
 
@@ -1095,15 +1141,43 @@ defineExpose({
           </el-popover>
         </div>
       </el-popover>
-      <button
+      <el-popover
         v-if="pivotHasGroup"
-        type="button"
-        class="pivot-chip pivot-group-chip"
-        :class="{ active: pivotState.groupEnabled }"
-        @click="togglePivotGroup"
+        trigger="click"
+        placement="bottom-start"
+        width="180"
+        popper-class="dashboard-pivot-popper"
       >
-        {{ pivotState.groupEnabled ? t('dashboard.pivot_grouped') : t('dashboard.pivot_ungrouped') }}
-      </button>
+        <template #reference>
+          <button
+            type="button"
+            class="pivot-chip pivot-group-chip"
+            :class="{ active: pivotState.groupEnabled }"
+          >
+            {{ pivotState.groupEnabled ? activePivotGroupDimension?.label || t('dashboard.pivot_grouped') : t('dashboard.pivot_ungrouped') }}
+          </button>
+        </template>
+        <div class="pivot-menu">
+          <button
+            v-for="dimension in pivotDimensions"
+            :key="dimension.field"
+            type="button"
+            class="pivot-menu-item"
+            :class="{ active: pivotState.groupEnabled && activePivotGroupField === dimension.field }"
+            @click="selectPivotGroupField(dimension.field)"
+          >
+            {{ dimension.label }}
+          </button>
+          <button
+            type="button"
+            class="pivot-menu-item"
+            :class="{ active: !pivotState.groupEnabled }"
+            @click="selectPivotGroupField('')"
+          >
+            {{ t('dashboard.pivot_ungrouped') }}
+          </button>
+        </div>
+      </el-popover>
       <span class="pivot-summary">{{ pivotSummaryText }}</span>
     </div>
     <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">

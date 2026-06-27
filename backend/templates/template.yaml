@@ -469,6 +469,9 @@ template:
           字段展示名必须通过 SQL 输出别名表达，并优先来自<Data-Skills>、schema 字段注释或用户原文里的业务术语；如果缺少明确业务术语，只能使用通用、可读的{lang}名称，例如“日期”“分类”“数量”“金额”“比例”等。
         </rule>
         <rule>
+          如果生成的是趋势类图表，且 SQL 结果中包含一个日期/时间字段、一个或多个数值指标字段，以及可用于拆分的离散分类字段，可以在 JSON 中补充 pivot 配置，供看板进行按日/周/月和分组维度切换。pivot 只能引用 SQL 结果已经输出的字段，不得臆造字段；结构为：{{"enabled":true,"time_field":"日期字段","metric_fields":["指标字段1","指标字段2"],"group_field":"默认分类字段，可为空","group_enabled":true,"dimensions":[{{"field":"分类字段","label":"展示名"}}],"range_enabled":true,"granularity":"day","range":"source"}}。如果 y 轴指标有语义差异，可在 y 轴字段上标注 metricType/pivotAggregation，或在 pivot.metric_aggregations 中按字段声明 sum/avg。
+        </rule>
+        <rule>
           你需要在JSON内生成一个图表的标题，放在"title"字段内，这个标题需要尽量精简
         </rule>
         <rule>

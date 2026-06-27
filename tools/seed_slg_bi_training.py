@@ -13,9 +13,15 @@
 from __future__ import annotations
 
 import datetime
+import os
+import sys
+from pathlib import Path
 
 import psycopg
 from psycopg.types.json import Jsonb
+
+ROOT = Path(__file__).resolve().parents[1]
+BACKEND_DIR = ROOT / "backend"
 
 DB = dict(host="127.0.0.1", port=15432, user="root", password="Password123@pg", dbname="zhishu_bi")
 DATASOURCE_NAME = "SLG BI Mock"
@@ -48,6 +54,8 @@ SQL 口径：
 - 先构造玩家级 `player_level`，一行一个 `player_id`，用 `bool_or` / `exists` 标记每个节点是否完成。
 - 漏斗人数必须带前序条件，例如完成第 7 步人数必须同时完成登录、第 3 步和第 7 步。
 - 禁止每个步骤独立 `count(distinct player_id)` 后直接 `UNION`，那会导致后序步骤人数大于前序步骤。
+- 未指定日期、渠道、服务器等筛选时，默认与核心看板对齐：取 `fact_sessions` 最大业务日期向前 30 天的 `dim_player.install_date` 新增 cohort，不能全量统计历史所有 `tutorial_step` 玩家。
+- 用户说“登录到新手引导/首次付费”但没有要求真实登录事件口径时，漏斗第 1 步默认用该 cohort 的账号注册/新增用户数；如果明确要求真实登录人数，再用 `event_name='login'` 或 `fact_sessions` 会话去重作为登录步骤，并说明会与看板“账号注册”起点略有差异。
 - 当用户只问“新手任务/新手引导/新手教程通过率”且未指定首次战斗、建筑、科技、首付等后续节点时，默认返回 `tutorial_step` 每一步的 `step_order`, `step_name`, `users`, `conversion_from_start_pct`, `conversion_from_prev_pct`, `drop_off_users`。
 - 当用户问“新手引导到付费/新手教程到付费”时，第 1 步为完成 `tutorial_step >= 12`，并取首次完成时间；第 2 步为该时间之后的成功净收入付费 `payment_status='success' AND net_revenue_usd > 0 AND payment.event_time >= tutorial_complete_time`。默认图表为漏斗图，字段仍返回 `step_order`, `step_name`, `users`, `conversion_from_start_pct`, `conversion_from_prev_pct`, `drop_off_users`。
 - 不要使用 `activity_type`、`activity_stage` 分析新手任务通过率；它们是活动字段，不是新手教程步骤。
@@ -61,52 +69,71 @@ SQL 口径：
 
 参考 SQL：
 ```sql
-WITH obs AS (
-  SELECT max(session_start::date) AS max_date FROM fact_sessions
+WITH bounds AS (
+  SELECT max(session_start::date) AS end_date,
+         max(session_start::date) - 29 AS start_date
+  FROM fact_sessions
 ),
 cohort AS (
   SELECT p.player_id, p.channel, p.campaign
-  FROM dim_player p CROSS JOIN obs
-  WHERE p.install_date BETWEEN obs.max_date - 29 AND obs.max_date
+  FROM dim_player p CROSS JOIN bounds b
+  WHERE p.install_date BETWEEN b.start_date AND b.end_date
 ),
-event_flags AS (
+step_first AS (
   SELECT e.player_id,
-         bool_or(e.event_name = 'login') AS did_login,
-         bool_or(e.event_name = 'tutorial_step' AND (e.attributes->>'step')::int >= 3) AS did_tutorial_3,
-         bool_or(e.event_name = 'tutorial_step' AND (e.attributes->>'step')::int >= 7) AS did_tutorial_7,
-         bool_or(e.event_name = 'tutorial_step' AND (e.attributes->>'step')::int >= 12) AS did_tutorial_12
+         (e.attributes->>'step')::int AS step_order,
+         min(e.event_time) AS first_step_time
   FROM fact_events e
   JOIN cohort c ON c.player_id = e.player_id
-  GROUP BY e.player_id
+  JOIN bounds b ON e.event_date BETWEEN b.start_date AND b.end_date
+  WHERE e.event_name = 'tutorial_step'
+    AND e.attributes ? 'step'
+  GROUP BY e.player_id, (e.attributes->>'step')::int
 ),
 player_level AS (
   SELECT c.player_id,
-         coalesce(ef.did_login, false) AS did_login,
-         coalesce(ef.did_tutorial_3, false) AS did_tutorial_3,
-         coalesce(ef.did_tutorial_7, false) AS did_tutorial_7,
-         coalesce(ef.did_tutorial_12, false) AS did_tutorial_12,
-         EXISTS (SELECT 1 FROM fact_battles b WHERE b.player_id = c.player_id) AS did_first_battle,
-         EXISTS (SELECT 1 FROM fact_building_upgrades bu WHERE bu.player_id = c.player_id) AS did_building_upgrade,
-         EXISTS (SELECT 1 FROM fact_research r WHERE r.player_id = c.player_id) AS did_research,
-         EXISTS (
-           SELECT 1 FROM fact_payments p
-           WHERE p.player_id = c.player_id
-             AND p.payment_status = 'success'
-             AND p.net_revenue_usd > 0
-             AND p.is_first_pay = true
-         ) AS did_first_pay
+         max(sf.first_step_time) FILTER (WHERE sf.step_order = 12) AS tutorial_complete_time,
+         coalesce(bool_or(sf.step_order = 1), false) AS did_step_1,
+         coalesce(bool_or(sf.step_order = 2), false) AS did_step_2,
+         coalesce(bool_or(sf.step_order = 3), false) AS did_step_3,
+         coalesce(bool_or(sf.step_order = 4), false) AS did_step_4,
+         coalesce(bool_or(sf.step_order = 5), false) AS did_step_5,
+         coalesce(bool_or(sf.step_order = 6), false) AS did_step_6,
+         coalesce(bool_or(sf.step_order = 7), false) AS did_step_7,
+         coalesce(bool_or(sf.step_order = 8), false) AS did_step_8,
+         coalesce(bool_or(sf.step_order = 9), false) AS did_step_9,
+         coalesce(bool_or(sf.step_order = 10), false) AS did_step_10,
+         coalesce(bool_or(sf.step_order = 11), false) AS did_step_11,
+         coalesce(bool_or(sf.step_order = 12), false) AS did_step_12
   FROM cohort c
-  LEFT JOIN event_flags ef ON ef.player_id = c.player_id
+  LEFT JOIN step_first sf ON sf.player_id = c.player_id
+  GROUP BY c.player_id
+),
+paid_after_tutorial AS (
+  SELECT DISTINCT pl.player_id
+  FROM player_level pl
+  JOIN fact_payments p ON p.player_id = pl.player_id
+  WHERE pl.did_step_12
+    AND p.payment_status = 'success'
+    AND p.net_revenue_usd > 0
+    AND p.is_first_pay = true
+    AND p.event_time >= pl.tutorial_complete_time
 ),
 steps AS (
-  SELECT 1 AS step_order, '登录' AS step_name, count(*) FILTER (WHERE did_login) AS users FROM player_level
-  UNION ALL SELECT 2, '完成教程第3步', count(*) FILTER (WHERE did_login AND did_tutorial_3) FROM player_level
-  UNION ALL SELECT 3, '完成教程第7步', count(*) FILTER (WHERE did_login AND did_tutorial_3 AND did_tutorial_7) FROM player_level
-  UNION ALL SELECT 4, '完成教程第12步', count(*) FILTER (WHERE did_login AND did_tutorial_3 AND did_tutorial_7 AND did_tutorial_12) FROM player_level
-  UNION ALL SELECT 5, '首次战斗', count(*) FILTER (WHERE did_login AND did_tutorial_3 AND did_tutorial_7 AND did_tutorial_12 AND did_first_battle) FROM player_level
-  UNION ALL SELECT 6, '首次建筑升级', count(*) FILTER (WHERE did_login AND did_tutorial_3 AND did_tutorial_7 AND did_tutorial_12 AND did_first_battle AND did_building_upgrade) FROM player_level
-  UNION ALL SELECT 7, '首次科技研究', count(*) FILTER (WHERE did_login AND did_tutorial_3 AND did_tutorial_7 AND did_tutorial_12 AND did_first_battle AND did_building_upgrade AND did_research) FROM player_level
-  UNION ALL SELECT 8, '首次成功付费', count(*) FILTER (WHERE did_login AND did_tutorial_3 AND did_tutorial_7 AND did_tutorial_12 AND did_first_battle AND did_building_upgrade AND did_research AND did_first_pay) FROM player_level
+  SELECT 1 AS step_order, '账号注册' AS step_name, count(*) AS users FROM cohort
+  UNION ALL SELECT 2, '新手引导第1步', count(*) FILTER (WHERE did_step_1) FROM player_level
+  UNION ALL SELECT 3, '新手引导第2步', count(*) FILTER (WHERE did_step_1 AND did_step_2) FROM player_level
+  UNION ALL SELECT 4, '新手引导第3步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3) FROM player_level
+  UNION ALL SELECT 5, '新手引导第4步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4) FROM player_level
+  UNION ALL SELECT 6, '新手引导第5步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4 AND did_step_5) FROM player_level
+  UNION ALL SELECT 7, '新手引导第6步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4 AND did_step_5 AND did_step_6) FROM player_level
+  UNION ALL SELECT 8, '新手引导第7步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4 AND did_step_5 AND did_step_6 AND did_step_7) FROM player_level
+  UNION ALL SELECT 9, '新手引导第8步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4 AND did_step_5 AND did_step_6 AND did_step_7 AND did_step_8) FROM player_level
+  UNION ALL SELECT 10, '新手引导第9步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4 AND did_step_5 AND did_step_6 AND did_step_7 AND did_step_8 AND did_step_9) FROM player_level
+  UNION ALL SELECT 11, '新手引导第10步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4 AND did_step_5 AND did_step_6 AND did_step_7 AND did_step_8 AND did_step_9 AND did_step_10) FROM player_level
+  UNION ALL SELECT 12, '新手引导第11步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4 AND did_step_5 AND did_step_6 AND did_step_7 AND did_step_8 AND did_step_9 AND did_step_10 AND did_step_11) FROM player_level
+  UNION ALL SELECT 13, '新手引导第12步', count(*) FILTER (WHERE did_step_1 AND did_step_2 AND did_step_3 AND did_step_4 AND did_step_5 AND did_step_6 AND did_step_7 AND did_step_8 AND did_step_9 AND did_step_10 AND did_step_11 AND did_step_12) FROM player_level
+  UNION ALL SELECT 14, '首次成功付费', count(*) FROM paid_after_tutorial
 ),
 base AS (
   SELECT step_order, step_name, users,
@@ -226,6 +253,7 @@ SQL 口径：
 - 比率或人均指标（如付费率、收入占比、ARPU、ARPPU、LTV）在透视切换到周/月时不要求和，默认使用平均；如需要严格按分子分母重算，应在 SQL 中同时输出分子和分母并明确说明口径。
 - 人数快照或去重人数指标（如 DAU、付费人数、留存人数、用户数）跨日透视默认使用平均，不要简单累加成“人次”，除非用户明确要求累计人次。
 - 自动生成图表配置时，y 轴指标可通过通用字段标注语义：`metricType` 使用 `additive`、`ratio`、`average`、`snapshot` 或 `derived`，`pivotAggregation` 使用 `sum` 或 `avg`。
+- 自动生成趋势图表时，如 SQL 已自然具备渠道、国家、平台、设备档位、区服等离散字段，可把这些字段作为 `pivot.dimensions` 候选；不要为了透视强行改变原图主口径或引入当前 SQL 无法查询的字段。
 
 字段展示名约定：
 - 自动生成图表配置时，SELECT 输出别名优先直接使用中文业务名，例如 PostgreSQL 写 `AS "付费人数"`、`AS "净收入"`；图表配置的 value 必须与 SQL 输出别名完全一致。
@@ -936,7 +964,7 @@ def _upsert_data_skill(
         ds_id: int,
         skill: dict[str, str],
         owner_user_id: int | None,
-) -> bool:
+) -> tuple[bool, int]:
     prompt = _skill_prompt(skill)
     marker = prompt.splitlines()[0].strip()
     visibility_scope = skill["visibility_scope"]
@@ -966,7 +994,10 @@ def _upsert_data_skill(
                 visibility_scope = %s,
                 prompt = %s,
                 specific_ds = TRUE,
-                datasource_ids = %s
+                datasource_ids = %s,
+                visible = TRUE,
+                embedding = NULL,
+                embedding_signature = NULL
             WHERE id = %s
             """,
             (
@@ -980,7 +1011,7 @@ def _upsert_data_skill(
                 existing[0],
             ),
         )
-        return False
+        return False, int(existing[0])
 
     cur.execute(
         """
@@ -997,9 +1028,13 @@ def _upsert_data_skill(
             visibility_scope,
             prompt,
             specific_ds,
-            datasource_ids
+            datasource_ids,
+            visible,
+            embedding,
+            embedding_signature
         )
-        VALUES (%s, 'DATA_SKILL', %s, %s, %s, 'ALL', TRUE, NULL, %s, %s, %s, TRUE, %s)
+        VALUES (%s, 'DATA_SKILL', %s, %s, %s, 'ALL', TRUE, NULL, %s, %s, %s, TRUE, %s, TRUE, NULL, NULL)
+        RETURNING id
         """,
         (
             tenant_id,
@@ -1012,7 +1047,27 @@ def _upsert_data_skill(
             Jsonb([ds_id]),
         ),
     )
-    return True
+    return True, int(cur.fetchone()[0])
+
+
+def _save_embeddings(ids: list[int], tenant_id: int) -> int:
+    if not ids:
+        return 0
+    os.environ.setdefault("POSTGRES_SERVER", DB["host"])
+    os.environ.setdefault("POSTGRES_PORT", str(DB["port"]))
+    os.environ.setdefault("POSTGRES_DB", DB["dbname"])
+    os.environ.setdefault("POSTGRES_USER", DB["user"])
+    os.environ.setdefault("POSTGRES_PASSWORD", DB["password"])
+    if str(BACKEND_DIR) not in sys.path:
+        sys.path.insert(0, str(BACKEND_DIR))
+
+    from sqlalchemy.orm import scoped_session, sessionmaker
+
+    from apps.chat.curd.custom_prompt_embedding import save_custom_prompt_skill_embedding
+    from common.core.db import engine
+
+    session_maker = scoped_session(sessionmaker(bind=engine))
+    return save_custom_prompt_skill_embedding(session_maker, ids, tenant_id=tenant_id)
 
 
 def main() -> None:
@@ -1032,11 +1087,12 @@ def main() -> None:
 
         xiaonan_user_id = _find_user_id(cur, XIAONAN_ACCOUNT, tenant_id)
         skill_added = skill_updated = 0
+        skill_ids: list[int] = []
         for skill in DATA_SKILLS:
             owner_user_id = None
             if skill["visibility_scope"] == "USER_PRIVATE":
                 owner_user_id = xiaonan_user_id
-            created = _upsert_data_skill(
+            created, skill_id = _upsert_data_skill(
                 cur,
                 now=now,
                 tenant_id=tenant_id,
@@ -1044,13 +1100,16 @@ def main() -> None:
                 skill=skill,
                 owner_user_id=owner_user_id,
             )
+            skill_ids.append(skill_id)
             if created:
                 skill_added += 1
             else:
                 skill_updated += 1
 
         conn.commit()
+        saved = _save_embeddings(skill_ids, tenant_id)
         print(f"数据 Skills: 新增 {skill_added} 条，更新 {skill_updated} 条")
+        print(f"Embedding refreshed: {saved}")
         print(f"xiaonan 用户: id={xiaonan_user_id}")
         cur.execute(
             """

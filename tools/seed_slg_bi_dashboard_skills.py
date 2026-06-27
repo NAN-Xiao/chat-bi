@@ -122,6 +122,8 @@ DASHBOARD_SKILLS: list[dict[str, str]] = [
 - 新手教程步骤只使用 `fact_events` 中 `event_name='tutorial_step'` 的记录，步骤号取 `(attributes->>'step')::int`。
 - 不要使用 `activity_type`、`activity_stage` 分析新手任务通过率；它们属于活动分析，不是教程步骤。
 - 默认 cohort 使用 `dim_player.install_date` 的新增玩家；未指定窗口时优先使用数据最大日期向前 30 天的新增玩家。
+- 为了对齐核心看板“新手引导漏斗转化”，未指定筛选时第 1 步是最近 30 天账号注册/新增用户数，后续步骤是这些新增用户在同窗口内完成的 `tutorial_step`。
+- 用户说“从登录到新手引导每一步/首次付费”但没有明确要求真实登录事件时，默认仍采用看板的账号注册/新增 cohort 起点；若明确要求真实登录，用 `event_name='login'` 或 `fact_sessions` 去重登录玩家并说明与看板起点不同。
 - 教程漏斗需要玩家级去重：先构造一行一个 `player_id` 的完成标记，再按步骤顺序汇总。
 - 后序步骤必须带前序完成条件，避免后序人数大于前序人数。
 - “完成教程后付费”先取完成最终教程步骤的首次时间，再统计该时间之后成功净收入付费：`payment_status='success' AND net_revenue_usd > 0 AND payment.event_time >= tutorial_complete_time`。

@@ -310,6 +310,7 @@ class DashboardPivotRequest(BaseModel):
     metric_aggregations: Dict[str, Literal["sum", "avg", "min", "max", "count"]] = Field(default_factory=dict)
     group_field: str = ''
     group_enabled: bool = True
+    dimensions: List[Dict[str, Any]] = Field(default_factory=list)
     range_enabled: bool = True
     granularity: Literal["day", "week", "month"] = "day"
     range: Literal["source", "7d", "14d", "30d", "90d", "all", "custom"] = "source"

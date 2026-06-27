@@ -11,6 +11,10 @@ import {
   withResolvedMetricSemantics,
 } from '@/views/dashboard/utils/metricSemantics.ts'
 import {
+  inferPivotDimensions,
+  isLikelyPivotDateField,
+} from '@/views/dashboard/utils/pivotDimensions.ts'
+import {
   availableTrendComparisonMetrics,
   defaultTrendComparisonMetrics,
   detectTrendAxisGranularity,
@@ -102,7 +106,9 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
 
 const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
 const pivotTimeFieldOptions = computed(() => {
-  const dateFields = sourcePreview.fields.filter(isLikelyPivotDateField)
+  const dateFields = sourcePreview.fields.filter((field) =>
+    isLikelyPivotDateField(field, sourcePreview.data)
+  )
   return toFieldOptions(dateFields.length ? dateFields : sourcePreview.fields)
 })
 const hasPreviewData = computed(() => preview.status !== 'failed' && preview.data.length > 0)
@@ -290,48 +296,19 @@ function defaultPivotAggregation() {
   return defaultPivotAggregationForAxes(toAxes(form.y, { metrics: true }), sourcePreview.data)
 }
 
-function isBlankPivotValue(value: unknown) {
-  return value === undefined || value === null || `${value}`.trim() === ''
-}
-
-function pivotSampleValues(field: string) {
-  return sourcePreview.data
-    .slice(0, 50)
-    .map((row) => row?.[field])
-    .filter((value) => !isBlankPivotValue(value))
-}
-
-function looksLikeDateFieldName(field: string) {
-  const value = `${field || ''}`.trim().toLowerCase()
-  return (
-    /(^|[_\s-])(date|day|dt|time|timestamp|week|month|year)([_\s-]|$)/.test(value) ||
-    /日期|时间|時間|年月|月份|年份|星期|周/.test(field)
-  )
-}
-
-function isDateLikeValue(value: unknown) {
-  if (value instanceof Date) {
-    return !Number.isNaN(value.getTime())
-  }
-  if (typeof value !== 'string') {
-    return false
-  }
-  const text = value.trim()
-  if (!text || /^-?\d+(\.\d+)?$/.test(text)) {
-    return false
-  }
-  return (
-    /^\d{4}[-/]\d{1,2}([-/]\d{1,2})?([ T]\d{1,2}:\d{2}(:\d{2})?)?/.test(text) ||
-    /^\d{4}年\d{1,2}月(\d{1,2}日)?/.test(text)
-  )
-}
-
-function isLikelyPivotDateField(field: string) {
-  const values = pivotSampleValues(field)
-  if (values.length > 0) {
-    return values.filter(isDateLikeValue).length / values.length >= 0.5
-  }
-  return looksLikeDateFieldName(field)
+function inferredPivotDimensions() {
+  return inferPivotDimensions({
+    fields: sourcePreview.fields,
+    data: sourcePreview.data,
+    chart: {
+      xAxis: toAxes([form.x].filter(Boolean) as string[]),
+      yAxis: toAxes(form.y, { metrics: true }),
+      series: toAxes([form.series].filter(Boolean) as string[]),
+      columns: toAxes(form.columns),
+    },
+    timeField: form.pivotTimeField || form.x,
+    metricFields: form.y,
+  })
 }
 
 function pickAllowedField(preferredFields: string[], allowedFields: string[], fallback = '') {
@@ -343,7 +320,7 @@ function normalizePivotSelections() {
   if (!form.pivotTimeField) {
     form.pivotTimeField = defaultPivotField(form.x, sourcePreview.fields[0] || '')
   }
-  form.pivotGroupField = form.series
+  form.pivotGroupField = form.series || inferredPivotDimensions()[0]?.field || ''
   const fields = sourcePreview.fields
   if (fields.length) {
     const timeFields = pivotTimeFieldOptions.value.map((item) => item.value)
@@ -384,8 +361,9 @@ function buildPivotConfig() {
     metric_fields: [...form.y],
     metric_aggregations: resolvePivotMetricAggregations(toAxes(form.y, { metrics: true }), sourcePreview.data),
     metric_field: form.y[0] || '',
-    group_field: form.series,
-    group_enabled: Boolean(form.series && form.pivotGroupEnabled),
+    group_field: form.pivotGroupField || form.series,
+    group_enabled: Boolean((form.pivotGroupField || form.series) && form.pivotGroupEnabled),
+    dimensions: inferredPivotDimensions(),
     range_enabled: form.pivotRangeEnabled,
     granularity: form.pivotGranularity,
     range: form.pivotRange,

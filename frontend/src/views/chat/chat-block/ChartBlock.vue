@@ -32,6 +32,15 @@ import { chatApi } from '@/api/chat'
 import { useChatConfigStore } from '@/stores/chatConfig.ts'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { detectTrendAxisGranularity } from '@/views/chat/component/chartInsight.ts'
+import {
+  defaultPivotAggregationForAxes,
+  resolvePivotMetricAggregations,
+  withResolvedMetricSemantics,
+} from '@/views/dashboard/utils/metricSemantics.ts'
+import {
+  inferPivotDimensions,
+  isLikelyPivotDateField,
+} from '@/views/dashboard/utils/pivotDimensions.ts'
 
 const chatConfig = useChatConfigStore()
 const showSQLBtn = chatConfig.getShowSQL
@@ -323,36 +332,80 @@ function firstAxisField(axis?: Array<ChartAxis>) {
   return (axis || []).map(axisField).find(Boolean) || ''
 }
 
-function defaultPivotAggregation(metricField: string) {
-  return /rate|ratio|percent|pct|share|proportion|percentage|avg|average|mean|比率|率|占比|比例|百分|平均|人均|每|单均|客单|%/i.test(
-    metricField
-  )
-    ? 'avg'
-    : 'sum'
+function getResultFields(result: any) {
+  return Array.from(
+    new Set([
+      ...(Array.isArray(result?.fields) ? result.fields : []),
+      ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
+    ].filter(Boolean))
+  ) as string[]
 }
 
 function buildDefaultPivot(viewInfo: any) {
   const chart = viewInfo?.chart || {}
   const type = chart.sourceType || chart.type
   const timeField = firstAxisField(chart.xAxis)
-  const metricField = firstAxisField(chart.yAxis)
-  if (!timeField || !metricField || ['table', 'metric'].includes(type)) {
+  const metricAxes = (chart.yAxis || []).map((axis: ChartAxis) =>
+    withResolvedMetricSemantics(axis, viewInfo?.data?.data || [])
+  )
+  const metricFields = metricAxes.map((axis: ChartAxis) => axis.value).filter(Boolean)
+  if (
+    !timeField ||
+    !isLikelyPivotDateField(timeField, viewInfo?.data?.data || []) ||
+    metricFields.length === 0 ||
+    ['table', 'metric'].includes(type)
+  ) {
     return { enabled: false }
   }
-  const groupField = firstAxisField(chart.series)
+  const dimensions = inferPivotDimensions({
+    fields: getResultFields(viewInfo?.data || {}),
+    data: viewInfo?.data?.data || [],
+    chart,
+    timeField,
+    metricFields,
+  })
+  const groupField = firstAxisField(chart.series) || dimensions[0]?.field || ''
   const granularity = detectTrendAxisGranularity(viewInfo?.data?.data, timeField)
   return {
     enabled: true,
     time_field: timeField,
-    metric_field: metricField,
+    metric_field: metricFields[0] || '',
+    metric_fields: metricFields,
+    metric_aggregations: resolvePivotMetricAggregations(metricAxes, viewInfo?.data?.data || []),
     group_field: groupField,
     group_enabled: Boolean(groupField),
+    dimensions,
     range_enabled: true,
     granularity: granularity === 'week' || granularity === 'month' ? granularity : 'day',
     range: 'source',
     custom_start: '',
     custom_end: '',
-    aggregation: defaultPivotAggregation(metricField),
+    aggregation: defaultPivotAggregationForAxes(metricAxes, viewInfo?.data?.data || []),
+  }
+}
+
+function resolveChartPivot(chartBaseInfo: any, viewInfo: any) {
+  const defaultPivot = buildDefaultPivot(viewInfo)
+  const configuredPivot = chartBaseInfo?.pivot
+  if (!configuredPivot || typeof configuredPivot !== 'object') {
+    return defaultPivot
+  }
+  if (configuredPivot.enabled === false) {
+    return { enabled: false }
+  }
+  return {
+    ...defaultPivot,
+    ...configuredPivot,
+    dimensions: Array.isArray(configuredPivot.dimensions)
+      ? configuredPivot.dimensions
+      : defaultPivot.dimensions,
+    metric_fields: Array.isArray(configuredPivot.metric_fields)
+      ? configuredPivot.metric_fields
+      : defaultPivot.metric_fields,
+    metric_aggregations: {
+      ...(defaultPivot.metric_aggregations || {}),
+      ...(configuredPivot.metric_aggregations || {}),
+    },
   }
 }
 
@@ -397,7 +450,7 @@ function addToDashboard() {
       yAxis: yAxis,
       series: axis?.series ? [axis?.series] : [],
     }
-    recordeInfo['pivot'] = buildDefaultPivot(recordeInfo)
+    recordeInfo['pivot'] = resolveChartPivot(chartBaseInfo, recordeInfo)
   }
 
   // @ts-expect-error eslint-disable-next-line @typescript-eslint/ban-ts-comment

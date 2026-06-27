@@ -30,7 +30,7 @@ DATASOURCE_ID = 1
 EVENT_FUNNEL_NAME = "SLG BI Mock 空间 Skill：事件漏斗与埋点核对"
 EVENT_FUNNEL_DESCRIPTION = (
     "定义 fact_events、dim_event_name、event_name、attributes JSON、PV/UV、事件字典核对、"
-    "通用漏斗顺序校验和埋点排查规则；具体业务漏斗请使用独立业务 Skill。"
+    "通用事件顺序校验和埋点排查规则；新手引导、教程、付费、活动、主城等具体业务漏斗必须使用独立业务 Skill。"
 )
 EVENT_FUNNEL_PROMPT = """<!-- data-skill-source:workspace:slg-bi-mock -->
 # SLG BI Mock 空间 Skill：事件漏斗与埋点核对
@@ -45,6 +45,7 @@ EVENT_FUNNEL_PROMPT = """<!-- data-skill-source:workspace:slg-bi-mock -->
 ## 职责边界
 - 本 Skill 只负责通用事件字典、事件明细、PV/UV、事件属性 JSON、通用漏斗顺序校验和埋点排查。
 - 具体业务漏斗必须使用独立业务 Skill，例如新手引导、活动参与、礼包复购、主城升级等，不要把业务口径沉淀在本 Skill。
+- 如果用户提到“新手任务”“新手引导”“新手教程”“tutorial_step”“完成教程后付费”“首次付费转化”，必须使用新手引导独立业务 Skill 的 cohort、步骤和付费口径；本 Skill 不能提供这些问题的默认 SQL 或示例口径。
 - 若用户问具体业务名，优先召回对应独立业务 Skill；本 Skill 仅补充事件表通用规则。
 
 ## 当前数据源规则

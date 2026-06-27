@@ -377,11 +377,18 @@ def _rank_auto_data_skills_by_embedding(
     if keyword_ranked == skill_rows:
         return embedding_ranked
 
-    merged: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
-
     def skill_key(skill: dict[str, Any]) -> tuple[str, str, str]:
         return (skill.get("id") or "", skill.get("name") or "", skill.get("visibility_scope") or "")
+
+    keyword_scores = {
+        skill_key(skill): _score_data_skill(skill, question or "")
+        for skill in keyword_ranked
+    }
+    max_keyword_score = max(keyword_scores.values(), default=0)
+    strong_keyword_threshold = max(80, int(max_keyword_score * 0.6)) if max_keyword_score else 0
+
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
 
     def add(skill: dict[str, Any]) -> bool:
         key = skill_key(skill)
@@ -396,6 +403,11 @@ def _rank_auto_data_skills_by_embedding(
     for skill in embedding_ranked:
         add(skill)
     for skill in keyword_ranked:
+        score = keyword_scores.get(skill_key(skill), 0)
+        is_workspace_specific = skill.get("visibility_scope") != CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value
+        if is_workspace_specific and strong_keyword_threshold and score >= strong_keyword_threshold:
+            if add(skill):
+                continue
         vector = embedding_vector_from_json(skill.get("embedding"))
         expected_signature = skill_definition_signature(
             skill.get("name"),
