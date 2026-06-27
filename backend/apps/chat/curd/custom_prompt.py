@@ -165,33 +165,6 @@ def _skill_match_terms(question: str) -> set[str]:
                 term = run[start:start + size]
                 if term not in stop_terms:
                     terms.add(term)
-    for keyword in (
-        "新增",
-        "新增用户",
-        "cohort",
-        "同期群",
-        "付费",
-        "收入",
-        "营收",
-        "付费率",
-        "累计",
-        "后续",
-        "生命周期",
-        "ltv",
-        "arpu",
-        "arppu",
-        "商品",
-        "渠道",
-        "留存",
-        "漏斗",
-        "预测",
-    ):
-        if keyword in text:
-            terms.add(keyword)
-    if ("新增" in text or "新增用户" in text or "cohort" in text) and any(
-        keyword in text for keyword in ("后续", "付费", "收入", "营收", "ltv")
-    ):
-        terms.update({"cohort", "生命周期", "累计", "累计付费", "ltv", "arpu", "arppu"})
     return terms
 
 

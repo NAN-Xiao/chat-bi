@@ -186,6 +186,18 @@ DASHBOARD_SKILLS: list[dict[str, str]] = [
         "name": "SLG BI Mock 看板 Skill：付费概览与 LTV",
         "description": "付费概览看板独立业务 Skill；用于付费情况、近7日累充排名、日充值次数/人数、7日 LTV、首购、等级 ARPPU、fact_payments。",
         "prompt": f"""<!-- data-skill-source:slg-bi-mock:dashboard:payment-overview-ltv -->
+<!-- data-skill-validation:{{
+  "match":["后续付费","生命周期","ltv","LTV","7 日 LTV","累计收入"],
+  "day_field":["lifecycle_day","生命周期日"],
+  "require_continuous_sequence":true,
+  "continuous_sequence_message":"生命周期趋势结果缺少连续日期 {{missing_days}}。请使用 generate_series 或日期序列表补齐观察窗口，让无付费日期返回 0，并保持累计字段不下降。",
+  "required_fields":["ltv_usd"],
+  "required_field_message":"LTV 趋势分析缺少 {{field}} 字段。请按本 Skill 输出 cohort_users、lifecycle_day、cumulative_revenue_usd 和 ltv_usd。",
+  "required_field_keywords":[["cumulative_revenue","累计收入","累计净收入"]],
+  "required_field_keywords_message":"LTV 趋势分析缺少累计收入字段。请先按生命周期日补齐每日收入，再输出累计收入与 LTV。",
+  "non_decreasing_field_keywords":[["cumulative_revenue","累计收入","累计净收入"],["ltv"]],
+  "non_decreasing_message":"LTV 累计字段 {{field}} 在 {{previous_sequence}}={{previous_value}} 到 {{sequence}}={{value}} 出现下降；请检查是否混用了不同 cohort、分母或累计口径。"
+}} -->
 {_workspace_guard("付费概览与 LTV")}
 
 ## 适用问题

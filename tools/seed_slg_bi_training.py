@@ -222,6 +222,18 @@ ORDER BY m.lifecycle_day;
         "description": "用于付费率、首充、ARPU/ARPPU、礼包/商品结构，统一使用成功订单净收入。",
         "prompt": """
 <!-- data-skill-source:slg-bi-mock:workspace:monetization-first-pay-product -->
+<!-- data-skill-validation:{
+  "match":["后续付费","生命周期","ltv","LTV","累计收入","累计付费"],
+  "day_field":["lifecycle_day","x_lifecycle_day","生命周期日"],
+  "require_continuous_sequence":true,
+  "continuous_sequence_message":"生命周期趋势结果缺少连续日期 {missing_days}。请使用 generate_series 或日期序列表补齐观察窗口，让无付费日期返回 0，并保持累计字段不下降。",
+  "required_fields":["ltv"],
+  "required_field_message":"生命周期后续付费分析缺少 {field} 字段。请按本 Skill 输出 daily_revenue、cumulative_revenue 和 ltv，其中 ltv = cumulative_revenue / 固定 cohort 人数。",
+  "required_field_keywords":[["cumulative_payer","cumulative_paying","cum_payer","cum_paying","累计付费人数"]],
+  "required_field_keywords_message":"生命周期累计付费分析缺少累计去重付费用户字段。请先计算每个主体的首次成功付费生命周期日 first_pay_day，再按日期序列统计 first_pay_day <= lifecycle_day 的累计去重主体。",
+  "non_decreasing_field_keywords":[["cumulative","累计"],["ltv"]],
+  "non_decreasing_message":"生命周期累计字段 {field} 在 {previous_sequence}={previous_value} 到 {sequence}={value} 出现下降；请检查是否混用了不同 cohort、分母或累计口径。"
+} -->
 # SLG Skill：首付转化与商品收入结构
 
 适用问题：

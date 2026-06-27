@@ -245,17 +245,29 @@ def _is_rate_metric_field(field: str) -> bool:
             "pct",
             "percent",
             "percentage",
-            "retention",
             "conversion",
-            "arpu",
-            "arppu",
-            "ltv",
             "率",
             "占比",
             "比例",
-            "留存",
             "转化",
+        )
+    )
+
+
+def _is_average_metric_field(field: str) -> bool:
+    normalized = _normalize_chart_field_name(field)
+    return any(
+        token in normalized
+        for token in (
+            "avg",
+            "average",
+            "mean",
+            "per_",
+            "per-",
+            "per ",
+            "平均",
             "人均",
+            "每",
         )
     )
 
@@ -265,19 +277,12 @@ def _is_supporting_metric_field(field: str) -> bool:
     return any(
         token in normalized
         for token in (
-            "cohort",
             "base",
             "total",
             "size",
             "count",
             "num",
-            "users",
-            "user_count",
-            "retained",
-            "active",
-            "payer",
-            "玩家数",
-            "用户数",
+            "number",
             "人数",
             "次数",
             "数量",
@@ -299,8 +304,6 @@ def _is_numeric_dimension_field(field: str) -> bool:
             "sort",
             "seq",
             "sequence",
-            "day_index",
-            "lifecycle_day",
             "week",
             "month",
             "year",
@@ -315,7 +318,7 @@ def _is_numeric_dimension_field(field: str) -> bool:
 def _is_supporting_only_gap(covered_metrics: list[str], missing_metrics: list[str]) -> bool:
     if not covered_metrics or not missing_metrics:
         return False
-    return any(_is_rate_metric_field(field) for field in covered_metrics) and all(
+    return any(_is_rate_metric_field(field) or _is_average_metric_field(field) for field in covered_metrics) and all(
         _is_supporting_metric_field(field) for field in missing_metrics
     )
 

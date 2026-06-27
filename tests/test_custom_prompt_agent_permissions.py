@@ -820,7 +820,7 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
                 current_user=_platform_admin(),
                 info=_prompt_info(
                     type=CustomPromptTypeEnum.DATA_SKILL,
-                    name=f"SaaS 数据 Skill：通用付费口径 {index}",
+                    name=f"SaaS 数据 Skill：通用后续付费口径 {index}",
                     target_scope=CustomPromptTargetScopeEnum.ALL,
                     visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
                     prompt=(
@@ -846,9 +846,10 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
             current_user=_platform_admin(),
             info=_prompt_info(
                 type=CustomPromptTypeEnum.DATA_SKILL,
-                name="SaaS 数据 Skill：LTV 与 Cohort 价值曲线",
+                name="SaaS 数据 Skill：LTV 与 Cohort 后续付费价值曲线",
                 target_scope=CustomPromptTargetScopeEnum.ALL,
                 visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                description="用于新增用户后续付费、累计收入和 LTV 价值曲线。",
                 prompt=(
                     "# LTV 与 Cohort\n"
                     "新增用户后续付费需要 cumulative_revenue、ltv 和累计付费。\n"
@@ -861,11 +862,12 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
             current_user=_tenant_admin(10),
             info=_prompt_info(
                 type=CustomPromptTypeEnum.DATA_SKILL,
-                name="SLG Skill：首付转化与商品收入结构",
+                name="SLG Skill：首付转化、后续付费与商品收入结构",
                 target_scope=CustomPromptTargetScopeEnum.ALL,
                 visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
                 specific_ds=True,
                 datasource_ids=[501],
+                description="新增 cohort 后续付费、首付转化和商品收入结构。",
                 prompt=(
                     "# 首付转化\n"
                     "新增 cohort 后续付费使用 fact_payments 和累计去重付费用户。\n"
@@ -878,11 +880,12 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
             current_user=_member(3, 10),
             info=_prompt_info(
                 type=CustomPromptTypeEnum.DATA_SKILL,
-                name="xiaonan Skill：渠道新增质量与早期回收",
+                name="xiaonan Skill：渠道新增质量、后续付费与早期回收",
                 target_scope=CustomPromptTargetScopeEnum.ALL,
                 visibility_scope=CustomPromptVisibilityScopeEnum.USER_PRIVATE,
                 specific_ds=True,
                 datasource_ids=[501],
+                description="渠道新增用户后续付费、D7 收入、LTV、ARPU。",
                 prompt=(
                     "# 渠道新增质量\n"
                     "新增用户后续付费按渠道比较 D7 收入、LTV、ARPU。\n"
@@ -902,11 +905,11 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
         )
 
         assert len(logs) <= 12
-        assert "LTV 与 Cohort" in logs[0]
-        assert "首付转化与商品收入结构" in skill_text
-        assert "渠道新增质量与早期回收" in skill_text
-        assert skill_text.index("首付转化与商品收入结构") < len(skill_text)
-        assert skill_text.index("渠道新增质量与早期回收") < len(skill_text)
+        assert "LTV 与 Cohort" in skill_text
+        assert "首付转化、后续付费与商品收入结构" in skill_text
+        assert "渠道新增质量、后续付费与早期回收" in skill_text
+        assert skill_text.index("首付转化、后续付费与商品收入结构") < len(skill_text)
+        assert skill_text.index("渠道新增质量、后续付费与早期回收") < len(skill_text)
         assert "无关漏斗" not in skill_text
         assert ltv_id and workspace_id and personal_id
 

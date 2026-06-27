@@ -1891,7 +1891,7 @@
     "description_placeholder": "Enter a Skill description",
     "empty_description": "No description",
     "markdown_content": "Markdown content",
-    "content_placeholder": "Write a Markdown Skill, for example: # Payer Rate Analysis\nUse this Skill when users ask about payer rate or payment conversion.\n\nPayer rate = distinct payers / distinct active users.\n\nReference SQL: ...",
+    "content_placeholder": "Write a Markdown Skill, for example: # Inventory Turnover Analysis\nUse this Skill when users ask about inventory turnover or stock aging.\n\nTurnover days = average inventory value / average daily outbound cost.\n\nReference SQL: ...",
     "admin_skill": "Admin Skill",
     "saas_skill": "Platform Generic Skill",
     "platform_generic_capability": "Platform generic capability",

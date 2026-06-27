@@ -87,7 +87,6 @@ const DIMENSION_KEYWORDS = [
   'segment',
   'tier',
   'level',
-  'cohort',
   'content_type',
   'author_type',
   'language',

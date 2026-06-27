@@ -1891,7 +1891,7 @@
     "description_placeholder": "請輸入 Skill 描述",
     "empty_description": "暫無描述",
     "markdown_content": "Markdown 內容",
-    "content_placeholder": "請輸入 Markdown Skill，例如：# 付費率分析\\n當使用者詢問付費率、充值率時使用本 Skill。\\n\\n付費率 = 付費去重使用者數 / 活躍去重使用者數。\\n\\n參考 SQL：...",
+    "content_placeholder": "請輸入 Markdown Skill，例如：# 庫存週轉分析\\n當使用者詢問庫存週轉或庫齡結構時使用本 Skill。\\n\\n週轉天數 = 平均庫存金額 / 日均出庫成本。\\n\\n參考 SQL：...",
     "admin_skill": "管理員 Skill",
     "saas_skill": "平台通用 Skill",
     "platform_generic_capability": "平台通用能力",

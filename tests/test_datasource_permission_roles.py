@@ -1861,10 +1861,44 @@ def test_analysis_assistant_final_prompt_keeps_complete_lifecycle_rows_and_guard
     assert '"daily_revenue":169.97' in user_prompt
     assert "_omitted_middle_rows" not in user_prompt
     assert "不要向业务用户提及 rows" in system_prompt
-    assert "不要写成“单笔”" in system_prompt
+    assert "不要写成“单笔/单次”" in system_prompt
 
 
-def test_analysis_assistant_lifecycle_validation_requires_complete_ltv_series():
+def test_analysis_assistant_lifecycle_validation_is_skill_declared():
+    data_skill = """
+<!-- data-skill-validation:{
+  "match":["后续付费","LTV"],
+  "day_field":["lifecycle_day"],
+  "require_continuous_sequence":true,
+  "continuous_sequence_message":"生命周期趋势结果缺少连续日期 {missing_days}。请使用 generate_series 或日期序列表补齐观察窗口。",
+  "required_fields":["ltv"],
+  "required_field_message":"生命周期后续付费分析缺少 {field} 字段。"
+} -->
+"""
+    error = analysis_assistant_api._semantic_validation_error(
+        {
+            "_user_question": "分析某天新增用户的后续付费和 LTV",
+            "title": "新增用户每日付费趋势与 LTV 累积",
+            "purpose": "观察生命周期付费和累计收入",
+        },
+        {
+            "fields": ["lifecycle_day", "payers", "daily_revenue", "cumulative_revenue"],
+            "data": [
+                {"lifecycle_day": 0, "payers": 4, "daily_revenue": 17.95, "cumulative_revenue": 17.95},
+                {"lifecycle_day": 1, "payers": 3, "daily_revenue": 14.97, "cumulative_revenue": 32.92},
+                {"lifecycle_day": 2, "payers": 3, "daily_revenue": 59.97, "cumulative_revenue": 92.89},
+                {"lifecycle_day": 5, "payers": 1, "daily_revenue": 69.98, "cumulative_revenue": 182.86},
+            ],
+        },
+        data_skill,
+    )
+
+    assert error
+    assert "缺少连续日期" in error
+    assert "generate_series" in error
+
+
+def test_analysis_assistant_business_specific_validation_does_not_run_without_skill_declaration():
     error = analysis_assistant_api._semantic_validation_error(
         {
             "_user_question": "分析某天新增用户的后续付费和 LTV",
@@ -1882,12 +1916,19 @@ def test_analysis_assistant_lifecycle_validation_requires_complete_ltv_series():
         },
     )
 
-    assert error
-    assert "缺少连续日期" in error
-    assert "generate_series" in error
+    assert error is None
 
 
 def test_analysis_assistant_lifecycle_validation_accepts_complete_ltv_series():
+    data_skill = """
+<!-- data-skill-validation:{
+  "match":["后续付费","LTV"],
+  "day_field":["lifecycle_day"],
+  "require_continuous_sequence":true,
+  "required_fields":["ltv"],
+  "required_field_keywords":[["cumulative_payer","累计付费人数"]]
+} -->
+"""
     error = analysis_assistant_api._semantic_validation_error(
         {
             "_user_question": "分析某天新增用户的后续付费和 LTV",
@@ -1915,6 +1956,7 @@ def test_analysis_assistant_lifecycle_validation_accepts_complete_ltv_series():
                 for day in range(0, 6)
             ],
         },
+        data_skill,
     )
 
     assert error is None

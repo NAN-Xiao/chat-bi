@@ -1891,7 +1891,7 @@
     "description_placeholder": "Skill 설명을 입력하세요",
     "empty_description": "설명 없음",
     "markdown_content": "Markdown 내용",
-    "content_placeholder": "Markdown Skill을 입력하세요. 예: # 결제율 분석\\n사용자가 결제율 또는 전환율을 물을 때 이 Skill을 사용합니다.\\n\\n결제율 = 결제 사용자 수 / 활성 사용자 수.\\n\\n참고 SQL: ...",
+    "content_placeholder": "Markdown Skill을 입력하세요. 예: # 재고 회전 분석\\n사용자가 재고 회전이나 재고 연령 구조를 물을 때 이 Skill을 사용합니다.\\n\\n회전 일수 = 평균 재고 금액 / 일평균 출고 원가.\\n\\n참고 SQL: ...",
     "admin_skill": "관리자 Skill",
     "saas_skill": "플랫폼 공통 Skill",
     "platform_generic_capability": "플랫폼 공통 기능",

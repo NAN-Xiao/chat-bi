@@ -446,11 +446,8 @@ function extractSqlDates(sql?: string) {
 
 function dateFieldPriority(field: string) {
   const text = field.toLowerCase()
-  if (/cohort|首日|注册|註冊|signup|install/.test(text)) {
-    return 1
-  }
   if (/date|time|day|日期|时间|時間/.test(text)) {
-    return 2
+    return 1
   }
   return 0
 }
