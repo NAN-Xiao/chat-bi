@@ -22,10 +22,13 @@ def _engine_with_custom_prompt_table():
                 description TEXT,
                 target_scope VARCHAR(32),
                 active BOOLEAN,
+                visible BOOLEAN DEFAULT 1,
                 ai_model_id INTEGER,
                 create_by INTEGER,
                 visibility_scope VARCHAR(32),
                 prompt TEXT,
+                embedding TEXT,
+                embedding_signature VARCHAR(128),
                 specific_ds BOOLEAN,
                 datasource_ids TEXT
             )

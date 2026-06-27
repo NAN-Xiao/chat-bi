@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from apps.analysis_assistant.api import analysis_assistant
 from apps.chat.api import chat
 from apps.dashboard.api import dashboard_api
-from apps.data_training.api import data_training
 from apps.datasource.api import (
     datasource,
     permission,
@@ -23,10 +22,10 @@ from apps.system.api import (
     sso,
     task_queue,
     tenant,
+    tracking_config,
     user,
     variable_api,
 )
-from apps.terminology.api import terminology
 from common.core.config import settings
 
 #from audit.api import audit_api
@@ -40,8 +39,6 @@ api_router.include_router(user.router)
 api_router.include_router(assistant.router)
 api_router.include_router(aimodel.router)
 api_router.include_router(base.router)
-api_router.include_router(terminology.router)
-api_router.include_router(data_training.router)
 api_router.include_router(datasource.router)
 api_router.include_router(permission.router)
 api_router.include_router(chat.router)
@@ -63,4 +60,5 @@ api_router.include_router(audit.router)
 api_router.include_router(custom_prompt.router)
 api_router.include_router(task_queue.router)
 api_router.include_router(tenant.router)
+api_router.include_router(tracking_config.router)
 api_router.include_router(sso.admin_router)

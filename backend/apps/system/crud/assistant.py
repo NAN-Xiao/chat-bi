@@ -240,7 +240,7 @@ class AssistantOutDs:
         else:
             raise Exception("Datasource list is not found.")
         raise Exception(f"Datasource id {ds_id} is not found." if trans is None else trans(
-            'i18n_data_training.datasource_id_not_found', key=ds_id))
+            'i18n_common.datasource_id_not_found', key=ds_id))
 
     def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
         id_marker: str = ''

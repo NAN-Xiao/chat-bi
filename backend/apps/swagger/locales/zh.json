@@ -26,19 +26,15 @@
   "ds_import_to_db": "导入数据到数据库",
   "ds_export_ds_schema": "导出备注信息",
   "ds_upload_ds_schema": "导入备注信息",
-
   "mcp_api": "MCP Tools(不建议api方式调用)",
-
   "recommended_problem_api": "推荐问题",
   "rp_save": "保存问题",
   "rp_get": "获取推荐提问",
   "rp_base": "获取数据源推荐提问",
-
   "audit_api": "日志审计",
   "audit_export": "导出日志审计",
   "audit_get_log_page": "分页获取日志审计",
   "audit_get_option": "获取审计配置",
-
   "system": "系统管理",
   "system_user_api": "用户接口",
   "system_user_current_user": "查询当前用户",
@@ -69,9 +65,7 @@
   "update_status": "切换状态",
   "origin_pwd": "原始密码",
   "new_pwd": "新密码",
-
   "weight": "权重(1: 管理员, 0: 普通用户)",
-
   "system_model_api": "模型配置api",
   "system_model_default": "设置默认模型",
   "system_model_grid": "查询模型列表",
@@ -94,7 +88,6 @@
   "arg_name": "参数名称",
   "arg_val": "参数值",
   "arg_show_name": "参数展示名称",
-
   "system_assistant_api": "小助手api",
   "assistant_picture_api": "查询图片",
   "assistant_ui_api": "设置外观",
@@ -109,26 +102,21 @@
   "assistant_description": "描述",
   "assistant_enableCustomModel": "使用指定大模型",
   "assistant_customModel": "大语言模型",
-
   "system_embedded_api": "页面嵌入式api",
   "embedded_resetsecret_api": "重置 Secret",
-
   "system_authentication_api": "认证设置api",
   "authentication_enable_api": "设置开启",
   "authentication_status_api": "查询状态",
   "authentication_validate_api": "校验状态",
-
   "per_api": "数据权限",
   "per_save": "保存权限",
   "per_delete": "删除权限",
   "per_id": "权限 ID",
   "per_list": "获取权限列表",
   "per_get": "获取单条权限详情",
-
   "tr_api": "表关联关系",
   "tr_save": "保存关联关系",
   "tr_get": "查询关联关系",
-
   "data_qa": "智能报表",
   "get_chat_list": "获取对话列表",
   "get_chat": "获取对话详情",
@@ -148,27 +136,7 @@
   "analysis_or_predict": "分析数据/预测数据",
   "export_chart_data": "导出图表数据",
   "analysis_or_predict_action_type": "类型，可传入值为：analysis | predict",
-
   "download-fail-info": "下载错误信息",
-
-  "data_training_api": "SQL示例",
-  "get_dt_page": "分页查询SQL示例",
-  "create_or_update_dt": "创建/更新SQL示例",
-  "delete_dt": "删除SQL示例",
-  "enable_dt": "启用/禁用",
-  "export_dt": "导出SQL示例",
-  "excel_template_dt": "下载模板",
-  "upload_excel_dt": "导入SQL示例",
-
-  "terminology_api": "术语",
-  "get_term_page": "分页查询术语",
-  "create_or_update_term": "创建/更新术语",
-  "delete_term": "删除术语",
-  "enable_term": "启用/禁用",
-  "export_term": "导出术语",
-  "excel_template_term": "下载模板",
-  "upload_term": "导入术语",
-
   "custom_prompt_api": "自定义 Agent",
   "custom_prompt_page": "分页查询自定义 Agent",
   "create_or_update_custom_prompt": "创建/更新自定义 Agent",
@@ -176,7 +144,6 @@
   "export_custom_prompt": "导出自定义 Agent",
   "excel_template_custom_prompt": "下载模板",
   "upload_custom_prompt": "导入自定义 Agent",
-
   "db_api": "数据看板接口",
   "list_resource_api": "加载资源树",
   "load_resource_api": "加载资源树明细",
@@ -186,7 +153,6 @@
   "create_canvas_api": "新建数据看板",
   "update_canvas_api": "更新数据看板",
   "check_name_api": "名称校验",
-
   "variable_api": "系统变量",
   "variable_save": "保存变量",
   "variable_delete": "删除变量",

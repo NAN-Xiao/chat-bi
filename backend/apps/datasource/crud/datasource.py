@@ -9,13 +9,20 @@ from sqlmodel import select
 from apps.datasource.crud.permission import can_access_table, current_tenant_id, get_accessible_datasource_ids, \
     get_column_permission_fields, get_row_permission_filters, get_user_permission_rules, get_user_scoped_table_ids, \
     has_datasource_access, is_normal_user
-from apps.datasource.crud.query_executor import execute_user_query_or_raise
 from apps.datasource.crud.binding import datasource_bound_to_tenant
+from apps.datasource.crud.query_executor import execute_user_query_or_raise
 from apps.datasource.embedding.table_embedding import calc_table_embedding
 from apps.datasource.utils.utils import aes_decrypt, encrypt_datasource_configuration
 from apps.db.constant import DB
 from apps.db.db import get_tables, get_fields, check_connection
 from apps.db.engine import get_engine_config, get_engine_conn
+from apps.system.crud.schema_metadata import (
+    SchemaFieldKey,
+    field_comment_map,
+    save_field_comment,
+    save_table_comment,
+    table_comment_map,
+)
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate
 from apps.system.schemas.auth import CacheName, CacheNamespace
@@ -70,6 +77,66 @@ def _datasource_tenant_id(session: SessionDep, ds_id: int | None) -> int | None:
     if ds_id is None:
         return None
     return session.execute(select(CoreDatasource.tenant_id).where(CoreDatasource.id == ds_id)).scalar()
+
+
+def _coerce_tenant_id(value) -> int | None:
+    try:
+        if value in (None, ""):
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _schema_metadata_tenant_id(
+        session: SessionDep,
+        ds: CoreDatasource,
+        current_user: CurrentUser | None = None,
+        tenant_id: int | None = None,
+) -> int | None:
+    explicit_tenant_id = _coerce_tenant_id(tenant_id)
+    if explicit_tenant_id is not None and datasource_bound_to_tenant(session, int(ds.id), explicit_tenant_id):
+        return explicit_tenant_id
+
+    user_tenant_id = current_tenant_id(current_user)
+    if user_tenant_id is not None and datasource_bound_to_tenant(session, int(ds.id), user_tenant_id):
+        return int(user_tenant_id)
+
+    return _coerce_tenant_id(getattr(ds, "tenant_id", None))
+
+
+def _apply_workspace_comments_to_tables(
+        session: SessionDep,
+        tenant_id: int | None,
+        tables: list[CoreTable],
+) -> list[CoreTable]:
+    comments = table_comment_map(session, tenant_id, [table.table_name for table in tables])
+    for table in tables:
+        if table.table_name in comments:
+            table.custom_comment = comments[table.table_name] or ""
+        else:
+            table.custom_comment = table.custom_comment or ""
+    return tables
+
+
+def _apply_workspace_comments_to_fields(
+        session: SessionDep,
+        tenant_id: int | None,
+        table: CoreTable,
+        fields: list[CoreField],
+) -> list[CoreField]:
+    comments = field_comment_map(
+        session,
+        tenant_id,
+        [SchemaFieldKey(table.table_name, field.field_name) for field in fields],
+    )
+    for field in fields:
+        key = (table.table_name, field.field_name)
+        if key in comments:
+            field.custom_comment = comments[key] or ""
+        else:
+            field.custom_comment = field.custom_comment or ""
+    return fields
 
 
 def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
@@ -256,7 +323,7 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
         else:
             # save new table
             table = CoreTable(ds_id=ds.id, checked=True, table_name=item.table_name, table_comment=item.table_comment,
-                              custom_comment=item.table_comment)
+                              custom_comment="")
             session.add(table)
             session.flush()
             session.refresh(table)
@@ -302,7 +369,7 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
         else:
             field = CoreField(ds_id=ds.id, table_id=table.id, checked=True, field_name=item.fieldName,
                               field_type=item.fieldType, field_comment=item.fieldComment,
-                              custom_comment=item.fieldComment, field_index=index)
+                              custom_comment="", field_index=index)
             session.add(field)
             session.flush()
             session.refresh(field)
@@ -316,33 +383,80 @@ def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, field
         session.commit()
 
 
-def update_table_and_fields(session: SessionDep, data: TableObj):
+def update_table_and_fields(
+        session: SessionDep,
+        data: TableObj,
+        current_user_id: int | None = None,
+        tenant_id: int | None = None,
+):
     update_table(session, data.table)
+    metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, data.table.ds_id)
+    save_table_comment(
+        session,
+        metadata_tenant_id,
+        data.table.table_name,
+        data.table.custom_comment,
+        current_user_id=current_user_id,
+    )
     for field in data.fields:
         update_field(session, field)
+        save_field_comment(
+            session,
+            metadata_tenant_id,
+            data.table.table_name,
+            field.field_name,
+            field.custom_comment,
+            current_user_id=current_user_id,
+        )
+    session.commit()
 
-    # do table embedding
-    tenant_id = _datasource_tenant_id(session, data.table.ds_id)
-    run_save_table_embeddings([data.table.id], tenant_id=tenant_id)
-    run_save_ds_embeddings([data.table.ds_id], tenant_id=tenant_id)
+    run_save_table_embeddings([data.table.id], tenant_id=metadata_tenant_id)
+    run_save_ds_embeddings([data.table.ds_id], tenant_id=metadata_tenant_id)
 
 
-def updateTable(session: SessionDep, table: CoreTable):
+def updateTable(
+        session: SessionDep,
+        table: CoreTable,
+        current_user_id: int | None = None,
+        tenant_id: int | None = None,
+):
     update_table(session, table)
 
-    # do table embedding
-    tenant_id = _datasource_tenant_id(session, table.ds_id)
-    run_save_table_embeddings([table.id], tenant_id=tenant_id)
-    run_save_ds_embeddings([table.ds_id], tenant_id=tenant_id)
+    metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, table.ds_id)
+    save_table_comment(
+        session,
+        metadata_tenant_id,
+        table.table_name,
+        table.custom_comment,
+        current_user_id=current_user_id,
+    )
+    session.commit()
+    run_save_table_embeddings([table.id], tenant_id=metadata_tenant_id)
+    run_save_ds_embeddings([table.ds_id], tenant_id=metadata_tenant_id)
 
 
-def updateField(session: SessionDep, field: CoreField):
+def updateField(
+        session: SessionDep,
+        field: CoreField,
+        current_user_id: int | None = None,
+        tenant_id: int | None = None,
+):
     update_field(session, field)
 
-    # do table embedding
-    tenant_id = _datasource_tenant_id(session, field.ds_id)
-    run_save_table_embeddings([field.table_id], tenant_id=tenant_id)
-    run_save_ds_embeddings([field.ds_id], tenant_id=tenant_id)
+    metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, field.ds_id)
+    table = session.get(CoreTable, field.table_id)
+    if table is not None:
+        save_field_comment(
+            session,
+            metadata_tenant_id,
+            table.table_name,
+            field.field_name,
+            field.custom_comment,
+            current_user_id=current_user_id,
+        )
+        session.commit()
+    run_save_table_embeddings([field.table_id], tenant_id=metadata_tenant_id)
+    run_save_ds_embeddings([field.ds_id], tenant_id=metadata_tenant_id)
 
 
 def preview(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
@@ -484,6 +598,8 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
     tables = session.query(CoreTable).filter(
         and_(CoreTable.ds_id == ds.id, CoreTable.checked == True)
     ).all()
+    tenant_id = _schema_metadata_tenant_id(session, ds, current_user)
+    _apply_workspace_comments_to_tables(session, tenant_id, tables)
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     schema = conf.dbSchema if conf.dbSchema is not None and conf.dbSchema != "" else conf.database
 
@@ -507,6 +623,7 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
     for table in tables:
         # fields = session.query(CoreField).filter(and_(CoreField.table_id == table.id, CoreField.checked == True)).all()
         fields = fields_dict.get(table.id) or []
+        _apply_workspace_comments_to_fields(session, tenant_id, table, fields)
 
         # do column permissions, filter fields
         fields = get_column_permission_fields(session=session, current_user=current_user, table=table, fields=fields,

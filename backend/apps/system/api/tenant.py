@@ -7,7 +7,6 @@ from sqlmodel import delete as sqlmodel_delete, select
 from apps.chat.curd.custom_prompt import CustomPromptTypeEnum, CustomPromptVisibilityScopeEnum
 from apps.chat.models.custom_prompt_model import CustomPrompt
 from apps.dashboard.models.dashboard_model import CoreDashboard
-from apps.data_training.models.data_training_model import DataTraining
 from apps.datasource.crud.binding import (
     bind_tenant_to_datasource,
     get_bound_datasource_id_for_tenant,
@@ -18,7 +17,6 @@ from apps.datasource.crud.permission import (
     list_user_datasource_roles,
     update_user_datasources,
 )
-from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
     SAMPLE_TENANT_NAME,
@@ -131,7 +129,6 @@ from apps.system.schemas.tenant_schema import (
     TenantStatus,
 )
 from apps.system.schemas.tenant_usage_schema import TenantUsageDailyDTO, TenantUsageUserDTO
-from apps.terminology.models.terminology_model import Terminology
 from common.audit.models.log_model import OperationModules, OperationStatus, OperationType, SystemLog
 from common.audit.schemas.request_context import RequestContext
 from common.core.deps import CurrentTenant, CurrentUser, SessionDep
@@ -1594,30 +1591,6 @@ async def tenant_overview(
             )
         ).one() or 0
 
-    terminology_total = 0
-    if _table_exists(session, Terminology.__tablename__):
-        terminology_total = session.exec(
-            select(func.count())
-            .select_from(Terminology)
-            .where(
-                Terminology.tenant_id == tenant_id,
-                Terminology.scope == SemanticRecordScopeEnum.TENANT.value,
-                or_(Terminology.enabled == True, Terminology.enabled.is_(None)),
-            )
-        ).one() or 0
-
-    training_total = 0
-    if _table_exists(session, DataTraining.__tablename__):
-        training_total = session.exec(
-            select(func.count())
-            .select_from(DataTraining)
-            .where(
-                DataTraining.tenant_id == tenant_id,
-                DataTraining.scope == SemanticRecordScopeEnum.TENANT.value,
-                or_(DataTraining.enabled == True, DataTraining.enabled.is_(None)),
-            )
-        ).one() or 0
-
     custom_agent_total = 0
     data_skill_total = 0
     if _table_exists(session, CustomPrompt.__tablename__):
@@ -1912,7 +1885,7 @@ async def tenant_overview(
             TenantOverviewAssetItemDTO(key="dashboard", count=int(dashboard_total or 0)),
             TenantOverviewAssetItemDTO(
                 key="data_skill",
-                count=int(terminology_total or 0) + int(training_total or 0) + int(data_skill_total or 0),
+                count=int(data_skill_total or 0),
             ),
             TenantOverviewAssetItemDTO(key="custom_agent", count=int(custom_agent_total or 0)),
             TenantOverviewAssetItemDTO(key="embedded", count=int(embedded_total or 0)),

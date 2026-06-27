@@ -6,6 +6,7 @@ from typing import List
 from sqlalchemy import and_, select, update
 
 from apps.ai_model.embedding import EmbeddingModelCache
+from apps.system.crud.schema_metadata import SchemaFieldKey, field_comment_map, table_comment_map
 from common.core.config import settings
 from common.core.deps import SessionDep
 from common.utils.utils import AppLogUtil
@@ -81,12 +82,26 @@ def save_table_embedding(session_maker, ids: List[int], tenant_id: int | None = 
             if table is None:
                 continue
             fields = session.query(CoreField).filter(CoreField.table_id == table.id).all()
+            tenant = tenant_id
+            if tenant is None:
+                tenant = session.execute(
+                    select(CoreDatasource.tenant_id).where(CoreDatasource.id == table.ds_id)
+                ).scalar()
+            tenant = int(tenant) if tenant not in (None, "") else None
+            table_comments = table_comment_map(session, tenant, [table.table_name])
+            field_comments = field_comment_map(
+                session,
+                tenant,
+                [SchemaFieldKey(table.table_name, field.field_name) for field in fields],
+            )
 
             schema_table = ''
             schema_table += f"# Table: {table.table_name}"
-            table_comment = ''
-            if table.custom_comment:
-                table_comment = table.custom_comment.strip()
+            table_comment = (
+                table_comments[table.table_name]
+                if table.table_name in table_comments
+                else (table.custom_comment or "").strip()
+            )
             if table_comment == '':
                 schema_table += '\n[\n'
             else:
@@ -95,9 +110,12 @@ def save_table_embedding(session_maker, ids: List[int], tenant_id: int | None = 
             if fields:
                 field_list = []
                 for field in fields:
-                    field_comment = ''
-                    if field.custom_comment:
-                        field_comment = field.custom_comment.strip()
+                    field_key = (table.table_name, field.field_name)
+                    field_comment = (
+                        field_comments[field_key]
+                        if field_key in field_comments
+                        else (field.custom_comment or "").strip()
+                    )
                     if field_comment == '':
                         field_list.append(f"({field.field_name}:{field.field_type})")
                     else:
@@ -143,14 +161,26 @@ def save_ds_embedding(session_maker, ids: List[int], tenant_id: int | None = Non
             if ds is None:
                 continue
             schema_table += f"{ds.name}, {ds.description}\n"
+            tenant = int(ds.tenant_id) if getattr(ds, "tenant_id", None) not in (None, "") else None
             tables = session.query(CoreTable).filter(CoreTable.ds_id == ds.id).all()
+            table_comments = table_comment_map(session, tenant, [table.table_name for table in tables])
+            field_keys = []
+            fields_by_table = {}
             for table in tables:
                 fields = session.query(CoreField).filter(CoreField.table_id == table.id).all()
+                fields_by_table[int(table.id)] = fields
+                field_keys.extend(SchemaFieldKey(table.table_name, field.field_name) for field in fields)
 
+            field_comments = field_comment_map(session, tenant, field_keys)
+
+            for table in tables:
+                fields = fields_by_table.get(int(table.id), [])
                 schema_table += f"# Table: {table.table_name}"
-                table_comment = ''
-                if table.custom_comment:
-                    table_comment = table.custom_comment.strip()
+                table_comment = (
+                    table_comments[table.table_name]
+                    if table.table_name in table_comments
+                    else (table.custom_comment or "").strip()
+                )
                 if table_comment == '':
                     schema_table += '\n[\n'
                 else:
@@ -159,9 +189,12 @@ def save_ds_embedding(session_maker, ids: List[int], tenant_id: int | None = Non
                 if fields:
                     field_list = []
                     for field in fields:
-                        field_comment = ''
-                        if field.custom_comment:
-                            field_comment = field.custom_comment.strip()
+                        field_key = (table.table_name, field.field_name)
+                        field_comment = (
+                            field_comments[field_key]
+                            if field_key in field_comments
+                            else (field.custom_comment or "").strip()
+                        )
                         if field_comment == '':
                             field_list.append(f"({field.field_name}:{field.field_type})")
                         else:

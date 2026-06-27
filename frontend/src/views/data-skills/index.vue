@@ -157,6 +157,7 @@ const sortBySourceAndTime = (a: any, b: any) => {
 
 const scopeText = (row: any) => {
   if (!row) return '-'
+  if (row?.visibility_scope === 'PLATFORM_PUBLIC') return t('data_skill.platform_generic_capability')
   if (row?.visibility_scope === 'USER_PRIVATE') return t('access.user_permission_scope')
   if (row?.specific_ds) {
     return row.datasource_names?.length
@@ -480,17 +481,6 @@ watch(scopeFilter, () => {
                   </div>
                 </div>
                 <div class="skill-actions" @click.stop>
-                  <button
-                    v-if="canManageSkill(skill)"
-                    type="button"
-                    class="icon-action"
-                    :title="t('datasource.edit')"
-                    @click.stop="openEditSkill(skill)"
-                  >
-                    <el-icon size="14">
-                      <IconOpeEdit />
-                    </el-icon>
-                  </button>
                   <el-popover
                     v-if="canManageSkill(skill)"
                     trigger="click"
@@ -499,16 +489,26 @@ watch(scopeFilter, () => {
                     placement="bottom-end"
                   >
                     <template #reference>
-                      <button type="button" class="icon-action" :title="t('dashboard.delete')">
+                      <button
+                        type="button"
+                        class="icon-action"
+                        :title="t('dashboard.chart_more_actions')"
+                      >
                         <icon_more_outlined />
                       </button>
                     </template>
                     <div class="content">
+                      <div class="item" @click.stop="openEditSkill(skill)">
+                        <el-icon size="16">
+                          <IconOpeEdit />
+                        </el-icon>
+                        <span>{{ t('datasource.edit') }}</span>
+                      </div>
                       <div class="item" @click.stop="deleteSkill(skill)">
                         <el-icon size="16">
                           <IconOpeDelete />
                         </el-icon>
-                        {{ t('dashboard.delete') }}
+                        <span>{{ t('dashboard.delete') }}</span>
                       </div>
                     </div>
                   </el-popover>
@@ -621,7 +621,7 @@ watch(scopeFilter, () => {
             {{ t('access.user_permission_scope') }}
           </div>
           <div v-else-if="isPlatformAdmin" class="fixed-project">
-            {{ t('training.all_data_sources') }}
+            {{ t('data_skill.platform_generic_capability') }}
           </div>
           <div v-else class="datasource-scope-editor">
             <el-radio-group v-model="skillForm.specific_ds">
@@ -996,20 +996,27 @@ watch(scopeFilter, () => {
   .content {
     position: relative;
 
-    .item {
-      position: relative;
-      padding: 0 12px;
-      height: 40px;
-      display: flex;
+      .item {
+        position: relative;
+        padding: 0 12px;
+        height: 40px;
+        display: flex;
       align-items: center;
       cursor: pointer;
 
-      .ed-icon {
-        margin-right: 8px;
-        color: #646a73;
-      }
+        .ed-icon {
+          margin-right: 8px;
+          color: #646a73;
+          position: relative;
+          z-index: 1;
+        }
 
-      &:hover {
+        span {
+          position: relative;
+          z-index: 1;
+        }
+
+        &:hover {
         &::after {
           display: block;
         }

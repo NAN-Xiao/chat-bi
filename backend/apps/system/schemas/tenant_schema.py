@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -175,6 +175,75 @@ class TenantSecurityPolicyEditor(BaseModel):
 class TenantSecurityPolicyDTO(TenantSecurityPolicyEditor):
     id: Optional[int] = None
     tenant_id: int
+    create_time: int = 0
+    update_time: int = 0
+
+
+class TenantTrackingTableBase(BaseModel):
+    table_name: str = Field(min_length=1, max_length=255)
+    table_comment: Optional[str] = Field(default=None, max_length=4000)
+    table_role: Optional[str] = Field(default=None, max_length=64)
+    aliases: list[str] = Field(default_factory=list)
+    ai_notes: Optional[str] = Field(default=None, max_length=4000)
+
+
+class TenantTrackingTableDTO(TenantTrackingTableBase):
+    id: Optional[int] = None
+    tenant_id: int = 0
+    create_by: Optional[int] = None
+    update_by: Optional[int] = None
+    create_time: int = 0
+    update_time: int = 0
+
+
+class TenantTrackingFieldBase(BaseModel):
+    table_name: str = Field(min_length=1, max_length=255)
+    field_name: str = Field(min_length=1, max_length=255)
+    field_comment: Optional[str] = Field(default=None, max_length=4000)
+    field_role: Optional[str] = Field(default=None, max_length=64)
+    semantic_type: Optional[str] = Field(default=None, max_length=64)
+    aliases: list[str] = Field(default_factory=list)
+    value_mappings: Optional[Any] = None
+    expression: Optional[str] = Field(default=None, max_length=4000)
+    required: bool = False
+    example_values: list[Any] = Field(default_factory=list)
+    ai_notes: Optional[str] = Field(default=None, max_length=4000)
+
+
+class TenantTrackingFieldDTO(TenantTrackingFieldBase):
+    id: Optional[int] = None
+    tenant_id: int = 0
+    create_by: Optional[int] = None
+    update_by: Optional[int] = None
+    create_time: int = 0
+    update_time: int = 0
+
+
+class TenantTrackingConfigBase(BaseModel):
+    enabled: bool = True
+    default_event_table: Optional[str] = Field(default=None, max_length=255)
+    default_subject_field: Optional[str] = Field(default=None, max_length=255)
+    default_event_name_field: Optional[str] = Field(default=None, max_length=255)
+    default_event_time_field: Optional[str] = Field(default=None, max_length=255)
+    field_role_mappings: list[Any] = Field(default_factory=list)
+    event_name_mappings: list[Any] = Field(default_factory=list)
+    sql_rules: Optional[str] = Field(default=None, max_length=8000)
+    notes: Optional[str] = Field(default=None, max_length=8000)
+    tables: list[TenantTrackingTableBase] = Field(default_factory=list)
+    fields: list[TenantTrackingFieldBase] = Field(default_factory=list)
+
+
+class TenantTrackingConfigEditor(TenantTrackingConfigBase):
+    pass
+
+
+class TenantTrackingConfigDTO(TenantTrackingConfigBase):
+    id: Optional[int] = None
+    tenant_id: int
+    tables: list[TenantTrackingTableDTO] = Field(default_factory=list)
+    fields: list[TenantTrackingFieldDTO] = Field(default_factory=list)
+    create_by: Optional[int] = None
+    update_by: Optional[int] = None
     create_time: int = 0
     update_time: int = 0
 

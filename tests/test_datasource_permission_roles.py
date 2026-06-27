@@ -113,6 +113,57 @@ def _engine_with_permission_tables():
         ))
         conn.execute(text(
             """
+            CREATE TABLE sys_tenant_schema_table (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                table_name TEXT NOT NULL,
+                table_comment TEXT,
+                create_by INTEGER,
+                update_by INTEGER,
+                create_time INTEGER NOT NULL,
+                update_time INTEGER NOT NULL,
+                UNIQUE (tenant_id, table_name)
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE sys_tenant_schema_field (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                table_name TEXT NOT NULL,
+                field_name TEXT NOT NULL,
+                field_comment TEXT,
+                create_by INTEGER,
+                update_by INTEGER,
+                create_time INTEGER NOT NULL,
+                update_time INTEGER NOT NULL,
+                UNIQUE (tenant_id, table_name, field_name)
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE sys_tenant_schema_change_request (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                datasource_id INTEGER,
+                change_type VARCHAR(32) NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                table_name VARCHAR(255) NOT NULL,
+                payload TEXT,
+                requested_by_user_id INTEGER NOT NULL,
+                executed_by_user_id INTEGER,
+                request_comment TEXT,
+                execution_comment TEXT,
+                create_time INTEGER NOT NULL,
+                update_time INTEGER NOT NULL,
+                execute_time INTEGER
+            )
+            """
+        ))
+        conn.execute(text(
+            """
             CREATE TABLE ds_rules (
                 id INTEGER PRIMARY KEY,
                 enable BOOLEAN NOT NULL,
@@ -443,6 +494,120 @@ def test_workspace_admin_schema_metadata_is_metadata_only(monkeypatch):
         assert "configuration" not in payload
         assert "data" not in payload
         assert "sql" not in payload
+
+
+def test_workspace_schema_comments_override_physical_custom_comments(monkeypatch):
+    engine = _engine_with_permission_tables()
+    monkeypatch.setattr(permission_schema, "engine", engine)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+    tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        _insert_table_permission_fixture(session)
+        session.execute(text(
+            """
+            INSERT INTO sys_tenant_schema_table
+                (id, tenant_id, table_name, table_comment, create_time, update_time)
+            VALUES
+                (9001, 1, 'orders', 'workspace orders comment', 0, 0),
+                (9002, 1, 'payments', '', 0, 0)
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO sys_tenant_schema_field
+                (id, tenant_id, table_name, field_name, field_comment, create_time, update_time)
+            VALUES
+                (9101, 1, 'orders', 'amount', 'workspace amount comment', 0, 0),
+                (9102, 1, 'orders', 'order_id', '', 0, 0)
+            """
+        ))
+        session.commit()
+
+        token = _set_permission_request_context(tenant_admin)
+        try:
+            metadata = asyncio.run(datasource_api.schema_metadata(session, tenant_admin, 1)).model_dump()
+        finally:
+            permission_schema.RequestContext.reset(token)
+
+        ds = session.get(CoreDatasource, 1)
+        schema, tables = datasource_crud.get_table_schema(
+            session=session,
+            current_user=tenant_admin,
+            ds=ds,
+            question="show orders",
+            embedding=False,
+        )
+
+    orders = next(item for item in metadata["tables"] if item["table_name"] == "orders")
+    payments = next(item for item in metadata["tables"] if item["table_name"] == "payments")
+    amount = next(item for item in orders["fields"] if item["field_name"] == "amount")
+    order_id = next(item for item in orders["fields"] if item["field_name"] == "order_id")
+
+    assert orders["custom_comment"] == "workspace orders comment"
+    assert payments["custom_comment"] == ""
+    assert amount["custom_comment"] == "workspace amount comment"
+    assert order_id["custom_comment"] == ""
+    assert tables == ["orders", "payments"]
+    assert "# Table: orders, workspace orders comment" in schema
+    assert "(amount:numeric, workspace amount comment)" in schema
+    assert "(order_id:int)" in schema
+    assert "orders, orders" not in schema
+    assert "order_id, order_id" not in schema
+
+
+def test_schema_change_request_is_saved_without_mutating_readonly_datasource(monkeypatch):
+    engine = _engine_with_permission_tables()
+    monkeypatch.setattr(permission_schema, "engine", engine)
+    tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        token = _set_permission_request_context(tenant_admin)
+        try:
+            result = asyncio.run(datasource_api.submit_schema_change(
+                session,
+                tenant_admin,
+                datasource_api.DatasourceSchemaChangeCreate(
+                    change_type="create_table",
+                    table_name="event_orders",
+                    table_comment="订单事件宽表",
+                    fields=[
+                        datasource_api.DatasourceSchemaChangeField(
+                            field_name="event_id",
+                            field_type="bigint",
+                            field_comment="事件ID",
+                        ),
+                        datasource_api.DatasourceSchemaChangeField(
+                            field_name="event_time",
+                            field_type="timestamp",
+                            field_comment="事件时间",
+                        ),
+                    ],
+                    request_comment="prepare writable workspace datastore",
+                ),
+                1,
+            ))
+        finally:
+            permission_schema.RequestContext.reset(token)
+
+        payload = result.model_dump()
+        core_table_count = session.exec(
+            text("select count(*) from core_table where table_name = 'event_orders'")
+        ).one()[0]
+        request_count = session.exec(text(
+            "select count(*) from sys_tenant_schema_change_request where table_name = 'event_orders'"
+        )).one()[0]
+
+    assert payload["change_type"] == "create_table"
+    assert payload["status"] == "pending"
+    assert payload["payload"]["fields"][0]["field_name"] == "event_id"
+    assert core_table_count == 0
+    assert request_count == 1
 
 
 def test_workspace_member_cannot_directly_browse_schema_metadata(monkeypatch):

@@ -888,7 +888,7 @@ async def upload_excel(
                     AxisObj(name=trans("i18n_custom_prompt.prompt_word_content"), value="prompt"),
                     AxisObj(name=trans("i18n_custom_prompt.effective_data_sources"), value="datasource"),
                     AxisObj(name=trans("i18n_custom_prompt.all_data_sources"), value="all_data_sources"),
-                    AxisObj(name=trans("i18n_data_training.error_info"), value="errors"),
+                    AxisObj(name=trans("i18n_common.error_info"), value="errors"),
                 ]
                 md_data, field_list = DataFormat.convert_object_array_for_pandas(fields, error_rows)
                 df = pd.DataFrame(md_data, columns=field_list)

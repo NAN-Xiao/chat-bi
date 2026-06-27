@@ -57,6 +57,7 @@ from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tracking_config import find_tracking_prompt_context
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.models.system_model import SysArgModel
@@ -574,6 +575,10 @@ class LLMService:
         self.sql_message.append(HumanPromptMessage(content=_system_templates['schema']))
         self.sql_message.append(
             AIPromptMessage(content='我已确认您提供的数据库信息与表结构schema，我生成的SQL不会超出您提供的范围。'))
+        if _system_templates.get('tracking_config'):
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['tracking_config']))
+            self.sql_message.append(
+                AIPromptMessage(content='我已确认当前工作空间的打点字段规范，我会结合数据库Schema使用，不会编造不存在的表或字段。'))
         if _system_templates.get('custom_prompt'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['custom_prompt']))
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的额外信息，我会进行参考。'))
@@ -708,8 +713,10 @@ class LLMService:
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
     ):
         self.filter_data_skills(_session, ds_id, target_scope)
-        self.chat_question.terminologies = ""
-        self.chat_question.data_training = ""
+
+    def load_tracking_config(self, _session: Session):
+        tenant_id = require_current_tenant_id(self.current_user)
+        self.chat_question.tracking_config, _ = find_tracking_prompt_context(_session, tenant_id)
 
     def choose_table_schema(self, _session: Session):
         self.current_logs[OperationEnum.CHOOSE_TABLE] = start_log(session=_session,
@@ -1009,6 +1016,8 @@ class LLMService:
             self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
 
             self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
+
+            self.load_tracking_config(_session)
 
             self.init_messages(_session)
 
@@ -1463,6 +1472,8 @@ class LLMService:
                 self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
 
                 self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
+
+                self.load_tracking_config(_session)
 
                 self.init_messages(_session)
 

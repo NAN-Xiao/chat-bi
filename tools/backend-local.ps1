@@ -21,6 +21,10 @@ $backendRoot = Join-Path $workspaceRoot "backend"
 $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
 $replicaRuntime = Join-Path $runtimeRoot "backend-replicas"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
+$appSystemDbHost = "127.0.0.1"
+$appSystemDbPort = 15432
+$appSystemDbName = "zhishu_bi"
+$biDemoDatasourcePort = 5432
 
 if (-not (Test-Path -LiteralPath $pythonExe)) {
     throw "Cannot find backend Python interpreter: $pythonExe"
@@ -45,6 +49,22 @@ function Get-PortOwner([int]$Port) {
         return $null
     }
     return $connection.OwningProcess
+}
+
+function Test-TcpPort([string]$HostName, [int]$Port) {
+    $client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        $async = $client.BeginConnect($HostName, $Port, $null, $null)
+        if (-not $async.AsyncWaitHandle.WaitOne(1000, $false)) {
+            return $false
+        }
+        $client.EndConnect($async)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        $client.Close()
+    }
 }
 
 function Get-PidFile([string]$Name) {
@@ -74,9 +94,9 @@ function Wait-BackendReady([int]$Port, [int]$TimeoutSeconds = 60) {
 function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $runtimeRootForEnv = $runtimeRoot.Replace("\", "/")
 
-    $env:POSTGRES_SERVER = "127.0.0.1"
-    $env:POSTGRES_PORT = "15432"
-    $env:POSTGRES_DB = "zhishu_bi"
+    $env:POSTGRES_SERVER = $appSystemDbHost
+    $env:POSTGRES_PORT = [string]$appSystemDbPort
+    $env:POSTGRES_DB = $appSystemDbName
     $env:POSTGRES_USER = "root"
     $env:POSTGRES_PASSWORD = "Password123@pg"
 
@@ -104,6 +124,78 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     if ($ResolvedCacheType -eq "redis") {
         $env:REDIS_HOST = $RedisHost
         $env:REDIS_PORT = [string]$RedisPort
+    }
+}
+
+function Assert-AppSystemDatabaseReady {
+    if ([int]$env:POSTGRES_PORT -eq $biDemoDatasourcePort) {
+        throw "Invalid backend system database port: 5432 is reserved for BI/tracking demo datasources. The app system database must be ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName."
+    }
+    if ($env:POSTGRES_SERVER -ne $appSystemDbHost -or [int]$env:POSTGRES_PORT -ne $appSystemDbPort -or $env:POSTGRES_DB -ne $appSystemDbName) {
+        throw "Invalid backend system database settings: POSTGRES_SERVER=$env:POSTGRES_SERVER POSTGRES_PORT=$env:POSTGRES_PORT POSTGRES_DB=$env:POSTGRES_DB. Use ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName for the app system database; 5432 is only for BI/tracking datasources."
+    }
+    if (-not (Test-TcpPort -HostName $appSystemDbHost -Port $appSystemDbPort)) {
+        throw "App system database is not listening on ${appSystemDbHost}:$appSystemDbPort. Start zhishu_bi first. Do not point backend startup at 5432; 5432 is the BI/tracking datasource port."
+    }
+
+    $checkScript = @"
+import os
+import sys
+import psycopg2
+
+try:
+    conn = psycopg2.connect(
+        host=os.environ["POSTGRES_SERVER"],
+        port=os.environ["POSTGRES_PORT"],
+        dbname=os.environ["POSTGRES_DB"],
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+        connect_timeout=3,
+    )
+    cur = conn.cursor()
+    cur.execute(
+        """
+        select
+            current_database(),
+            exists (select 1 from information_schema.tables where table_schema='public' and table_name='core_datasource'),
+            exists (select 1 from sys_tenant where name = 'slg_bi_mock' and status = 1),
+            exists (
+                select 1
+                from sys_user u
+                join sys_tenant_user tu on tu.user_id = u.id
+                join sys_tenant t on t.id = tu.tenant_id
+                where u.account = 'xiaonan'
+                  and t.name = 'slg_bi_mock'
+                  and tu.role = 'owner'
+                  and tu.status = 1
+            ),
+            coalesce((select count(*) from core_dashboard), 0)
+        """
+    )
+    database_name, has_core_datasource, has_slg_workspace, has_xiaonan_owner, dashboard_count = cur.fetchone()
+    conn.close()
+    if (
+        database_name != "zhishu_bi"
+        or not has_core_datasource
+        or not has_slg_workspace
+        or not has_xiaonan_owner
+        or int(dashboard_count or 0) <= 0
+    ):
+        print(
+            "unexpected local app database: "
+            f"database={database_name}, core_datasource={has_core_datasource}, "
+            f"slg_bi_mock={has_slg_workspace}, xiaonan_owner={has_xiaonan_owner}, "
+            f"dashboards={dashboard_count}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+except Exception as exc:
+    print(str(exc), file=sys.stderr)
+    sys.exit(1)
+"@
+    & $pythonExe -c $checkScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "App system database check failed for ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Verify the local system DB is running and not confused with the BI datasource on 5432."
     }
 }
 
@@ -233,6 +325,9 @@ Write-Host "Starting backend ports: $($BackendPorts -join ',') cache=$resolvedCa
 if ($BackendPorts.Count -gt 1 -and $resolvedCacheType -ne "redis") {
     Write-Warning "Multiple backend replicas should use CACHE_TYPE=redis for shared cache state."
 }
+
+Set-BackendEnvironment -ResolvedCacheType $resolvedCacheType
+Assert-AppSystemDatabaseReady
 
 foreach ($port in $BackendPorts) {
     Start-UvicornApp -Name "backend" -AppTarget "main:app" -Port $port -ResolvedCacheType $resolvedCacheType

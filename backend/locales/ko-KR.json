@@ -53,57 +53,6 @@
   "i18n_chat": {
     "record_id_in_mcp": "응답 ID: "
   },
-  "i18n_terminology": {
-    "datasource_list_is_not_found": "데이터 소스 목록을 찾을 수 없습니다",
-    "datasource_id_not_found": "데이터 소스 ID: {key}를 찾을 수 없습니다",
-    "terminology_not_exists": "이 용어가 존재하지 않습니다",
-    "datasource_cannot_be_none": "데이터 소스는 비울 수 없습니다",
-    "cannot_be_repeated": "용어 이름과 동의어는 반복될 수 없습니다",
-    "exists_in_db": "용어 이름과 동의어가 이미 존재합니다",
-    "term_name": "용어 이름",
-    "term_description": "용어 설명",
-    "effective_data_sources": "유효 데이터 소스",
-    "all_data_sources": "모든 데이터 소스",
-    "synonyms": "동의어",
-    "term_name_template": "용어 이름 (필수)",
-    "term_description_template": "용어 설명 (필수)",
-    "effective_data_sources_template": "유효 데이터 소스 (여러 개 지원, \",\"로 구분)",
-    "all_data_sources_template": "모든 데이터 소스 (Y: 모든 데이터 소스에 적용, N: 지정된 데이터 소스에 적용)",
-    "synonyms_template": "동의어 (여러 개 지원, \",\"로 구분)",
-    "term_name_template_example_1": "용어1",
-    "term_description_template_example_1": "용어1 설명",
-    "effective_data_sources_template_example_1": "데이터소스1, 데이터소스2",
-    "synonyms_template_example_1": "동의어1, 동의어2",
-    "term_name_template_example_2": "용어2",
-    "term_description_template_example_2": "용어2 설명",
-    "synonyms_template_example_2": "동의어3",
-    "word_cannot_be_empty": "용어는 비울 수 없습니다",
-    "description_cannot_be_empty": "용어 설명은 비울 수 없습니다",
-    "datasource_not_found": "데이터 소스를 찾을 수 없음"
-  },
-  "i18n_data_training": {
-    "datasource_cannot_be_none": "데이터 소스는 비울 수 없습니다",
-    "datasource_assistant_cannot_be_none": "데이터 소스와 고급 애플리케이션을 모두 비울 수 없습니다",
-    "data_training_not_exists": "이 예시가 존재하지 않습니다",
-    "exists_in_db": "이 질문이 이미 존재합니다",
-    "data_training": "SQL 예시 라이브러리",
-    "problem_description": "문제 설명",
-    "sample_sql": "예시 SQL",
-    "effective_data_sources": "유효 데이터 소스",
-    "advanced_application": "고급 애플리케이션",
-    "problem_description_template": "문제 설명 (필수)",
-    "sample_sql_template": "예시 SQL (필수)",
-    "effective_data_sources_template": "유효 데이터 소스",
-    "advanced_application_template": "고급 애플리케이션",
-    "problem_description_template_example": "TEST 테이블 내 모든 ID 조회",
-    "effective_data_sources_template_example": "유효 데이터소스1",
-    "advanced_application_template_example": "유효 고급 애플리케이션 이름",
-    "error_info": "오류 정보",
-    "question_cannot_be_empty": "질문은 비울 수 없습니다",
-    "description_cannot_be_empty": "예시 SQL은 비울 수 없습니다",
-    "datasource_not_found": "데이터 소스를 찾을 수 없음",
-    "advanced_application_not_found": "고급 애플리케이션을 찾을 수 없음"
-  },
   "i18n_custom_prompt": {
     "exists_in_db": "Agent 이름이 이미 존재합니다",
     "not_exists": "이 사용자 정의 Agent가 존재하지 않습니다",
@@ -169,8 +118,6 @@
     "dashboard": "대시보드",
     "member": "구성원",
     "permission": "권한",
-    "terminology": "용어",
-    "data_training": "SQL 예제 라이브러리",
     "prompt_words": "사용자 정의 Agent",
     "user": "사용자",
     "project": "프로젝트",
@@ -206,5 +153,9 @@
     "name": "이름",
     "account": "계정",
     "email": "이메일"
+  },
+  "i18n_common": {
+    "error_info": "오류 정보",
+    "datasource_id_not_found": "데이터 소스 ID: {key}를 찾을 수 없습니다"
   }
 }

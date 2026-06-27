@@ -81,14 +81,6 @@ tags_metadata = [
         "description": f"{PLACEHOLDER_PREFIX}per_api"
     },
     {
-        "name": "SQL Examples",
-        "description": f"{PLACEHOLDER_PREFIX}data_training_api"
-    },
-    {
-        "name": "Terminology",
-        "description": f"{PLACEHOLDER_PREFIX}terminology_api"
-    },
-    {
         "name": "CustomPrompt",
         "description": f"{PLACEHOLDER_PREFIX}custom_prompt_api"
     },

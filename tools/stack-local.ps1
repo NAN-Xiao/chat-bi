@@ -26,6 +26,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$appSystemDbHost = "127.0.0.1"
+$appSystemDbPort = 15432
+$appSystemDbName = "zhishu_bi"
+$appSystemDbUser = "root"
+$appSystemDbPassword = "Password123@pg"
+$biDemoDatasourcePort = 5432
+
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
 $stackRuntime = Join-Path $runtimeRoot "stack"
@@ -34,6 +41,18 @@ $workerScript = Join-Path $PSScriptRoot "worker-local.ps1"
 $nginxScript = Join-Path $PSScriptRoot "nginx-local.ps1"
 
 New-Item -ItemType Directory -Force -Path $stackRuntime | Out-Null
+if (-not $PostgresData) {
+    $defaultSystemPgData = Join-Path $runtimeRoot "pgdata"
+    if (Test-Path -LiteralPath (Join-Path $defaultSystemPgData "PG_VERSION")) {
+        $PostgresData = $defaultSystemPgData
+    }
+}
+if (-not $PostgresBin) {
+    $defaultPostgresBin = "E:\installOK\postgresql\bin"
+    if (Test-Path -LiteralPath (Join-Path $defaultPostgresBin "pg_ctl.exe")) {
+        $PostgresBin = $defaultPostgresBin
+    }
+}
 
 function Test-TcpPort([string]$HostName, [int]$Port) {
     $client = [System.Net.Sockets.TcpClient]::new()
@@ -98,8 +117,12 @@ function Start-Postgres {
         Write-Host "Skip PostgreSQL"
         return
     }
+    if ($PostgresHost -ne $appSystemDbHost -or $PostgresPort -ne $appSystemDbPort) {
+        throw "Invalid app system database endpoint: ${PostgresHost}:$PostgresPort. Local backend must use ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Port $biDemoDatasourcePort is reserved for BI/tracking demo datasources."
+    }
     if (Test-TcpPort -HostName $PostgresHost -Port $PostgresPort) {
-        Write-Host "PostgreSQL is listening on ${PostgresHost}:$PostgresPort"
+        Assert-AppSystemDatabaseReady
+        Write-Host "App system PostgreSQL is listening on ${PostgresHost}:$PostgresPort database=$appSystemDbName"
         return
     }
     if ($PostgresServiceName) {
@@ -107,7 +130,8 @@ function Start-Postgres {
         if (-not (Wait-TcpPort -HostName $PostgresHost -Port $PostgresPort)) {
             throw "PostgreSQL service started but port did not become ready: ${PostgresHost}:$PostgresPort"
         }
-        Write-Host "PostgreSQL service started: $PostgresServiceName"
+        Assert-AppSystemDatabaseReady
+        Write-Host "App system PostgreSQL service started: $PostgresServiceName"
         return
     }
     if ($PostgresBin -and $PostgresData) {
@@ -120,10 +144,54 @@ function Start-Postgres {
         if (-not (Wait-TcpPort -HostName $PostgresHost -Port $PostgresPort)) {
             throw "PostgreSQL pg_ctl start returned but port did not become ready: ${PostgresHost}:$PostgresPort"
         }
-        Write-Host "PostgreSQL started by pg_ctl"
+        Assert-AppSystemDatabaseReady
+        Write-Host "App system PostgreSQL started by pg_ctl"
         return
     }
-    Write-Warning "PostgreSQL is not listening on ${PostgresHost}:$PostgresPort. Start it manually or pass -PostgresServiceName / -PostgresBin / -PostgresData."
+    throw "App system PostgreSQL is not listening on ${PostgresHost}:$PostgresPort. Start ${appSystemDbName} on port $appSystemDbPort or pass -PostgresServiceName / -PostgresBin / -PostgresData. Do not use port $biDemoDatasourcePort; it is for BI/tracking datasources."
+}
+
+function Assert-AppSystemDatabaseReady {
+    if ($PostgresPort -eq $biDemoDatasourcePort) {
+        throw "Invalid app system database port: $biDemoDatasourcePort is reserved for BI/tracking demo datasources. Use ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName."
+    }
+    if (-not (Test-TcpPort -HostName $appSystemDbHost -Port $appSystemDbPort)) {
+        throw "App system database is not listening on ${appSystemDbHost}:$appSystemDbPort. Start ${appSystemDbName} first."
+    }
+
+    $psql = Resolve-Executable -ExplicitPath "" -CommandName "psql"
+    if (-not $psql -and $PostgresBin) {
+        $candidate = Join-Path $PostgresBin "psql.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            $psql = $candidate
+        }
+    }
+    if (-not $psql) {
+        $candidate = "E:\installOK\postgresql\bin\psql.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            $psql = $candidate
+        }
+    }
+    if (-not $psql) {
+        Write-Warning "Cannot find psql to verify $appSystemDbName. Port check passed, but database identity was not verified."
+        return
+    }
+
+    $oldPassword = $env:PGPASSWORD
+    try {
+        $env:PGPASSWORD = $appSystemDbPassword
+        $query = "select case when current_database() = '$appSystemDbName' and exists (select 1 from information_schema.tables where table_schema='public' and table_name='core_datasource') and exists (select 1 from sys_tenant where name = 'slg_bi_mock' and status = 1) and exists (select 1 from sys_user u join sys_tenant_user tu on tu.user_id = u.id join sys_tenant t on t.id = tu.tenant_id where u.account = 'xiaonan' and t.name = 'slg_bi_mock' and tu.role = 'owner' and tu.status = 1) and coalesce((select count(*) from core_dashboard), 0) > 0 then 'ok' else 'bad' end"
+        $result = & $psql -h $appSystemDbHost -p ([string]$appSystemDbPort) -U $appSystemDbUser -d $appSystemDbName -t -A -c $query 2>$null
+        if ($LASTEXITCODE -ne 0 -or (($result | Select-Object -First 1) -ne "ok")) {
+            throw "App system database identity check failed for ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Expected local pgdata with slg_bi_mock workspace, xiaonan owner, and existing dashboards."
+        }
+    } finally {
+        if ($null -eq $oldPassword) {
+            Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+        } else {
+            $env:PGPASSWORD = $oldPassword
+        }
+    }
 }
 
 function Stop-Postgres {

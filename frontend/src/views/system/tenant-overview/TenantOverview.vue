@@ -519,11 +519,7 @@ const assetLabel = (key?: string) => {
     case 'dashboard':
       return t('tenant_overview.asset_dashboard')
     case 'data_skill':
-      return t('tenant_overview.asset_terminology')
-    case 'terminology':
-      return t('tenant_overview.asset_terminology')
-    case 'training':
-      return t('tenant_overview.asset_training')
+      return t('tenant_overview.asset_data_skill')
     case 'custom_agent':
       return t('tenant_overview.asset_custom_agent')
     case 'embedded':

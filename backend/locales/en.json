@@ -53,57 +53,6 @@
   "i18n_chat": {
     "record_id_in_mcp": "Answer ID: "
   },
-  "i18n_terminology": {
-    "terminology_not_exists": "This terminology does not exist",
-    "datasource_cannot_be_none": "Datasource cannot be empty",
-    "cannot_be_repeated": "Terminology name and synonyms cannot be repeated",
-    "exists_in_db": "Terminology name and synonyms already exist",
-    "term_name": "Terminology Name",
-    "term_description": "Terminology Description",
-    "effective_data_sources": "Effective Data Sources",
-    "all_data_sources": "All Data Sources",
-    "synonyms": "Synonyms",
-    "term_name_template": "Terminology Name (Required)",
-    "term_description_template": "Terminology Description (Required)",
-    "effective_data_sources_template": "Effective Data Sources (Multiple supported, separated by \",\")",
-    "all_data_sources_template": "All Data Sources (Y: Apply to all data sources, N: Apply to specified data sources)",
-    "synonyms_template": "Synonyms (Multiple supported, separated by \",\")",
-    "term_name_template_example_1": "Term1",
-    "term_description_template_example_1": "Term1 Description",
-    "effective_data_sources_template_example_1": "Datasource1, Datasource2",
-    "synonyms_template_example_1": "Synonym1, Synonym2",
-    "term_name_template_example_2": "Term2",
-    "term_description_template_example_2": "Term2 Description",
-    "synonyms_template_example_2": "Synonym3",
-    "word_cannot_be_empty": "Term cannot be empty",
-    "description_cannot_be_empty": "Term description cannot be empty",
-    "datasource_not_found": "Datasource not found"
-  },
-  "i18n_data_training": {
-    "datasource_list_is_not_found": "Data source list not found",
-    "datasource_id_not_found": "Data source ID: {key} not found",
-    "datasource_cannot_be_none": "Datasource cannot be empty",
-    "datasource_assistant_cannot_be_none": "Datasource or advanced application cannot both be empty",
-    "data_training_not_exists": "This example does not exist",
-    "exists_in_db": "This question already exists",
-    "data_training": "SQL Example Library",
-    "problem_description": "Problem Description",
-    "sample_sql": "Sample SQL",
-    "effective_data_sources": "Effective Data Sources",
-    "advanced_application": "Advanced Application",
-    "problem_description_template": "Problem Description (Required)",
-    "sample_sql_template": "Sample SQL (Required)",
-    "effective_data_sources_template": "Effective Data Sources",
-    "advanced_application_template": "Advanced Application",
-    "problem_description_template_example": "Query all IDs in the TEST table",
-    "effective_data_sources_template_example": "Effective Datasource 1",
-    "advanced_application_template_example": "Effective Advanced Application Name",
-    "error_info": "Error Information",
-    "question_cannot_be_empty": "Question cannot be empty",
-    "description_cannot_be_empty": "Sample SQL cannot be empty",
-    "datasource_not_found": "Datasource not found",
-    "advanced_application_not_found": "Advanced application not found"
-  },
   "i18n_custom_prompt": {
     "exists_in_db": "Agent name already exists",
     "not_exists": "This custom Agent does not exist",
@@ -169,8 +118,6 @@
     "dashboard": "Dashboard",
     "member": "Member",
     "permission": "Permission",
-    "terminology": "Terminology",
-    "data_training": "SQL Examples",
     "prompt_words": "Custom Agent",
     "user": "User",
     "project": "Project",
@@ -206,5 +153,9 @@
     "name": "Name",
     "account": "Account",
     "email": "Email"
+  },
+  "i18n_common": {
+    "error_info": "Error Information",
+    "datasource_id_not_found": "Data source ID: {key} not found"
   }
 }

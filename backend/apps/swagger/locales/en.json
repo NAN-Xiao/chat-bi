@@ -26,19 +26,15 @@
   "ds_import_to_db": "Import Data to Database",
   "ds_export_ds_schema": "Export Comment",
   "ds_upload_ds_schema": "Upload Comment",
-
   "mcp_api": "MCP Tools(It is not recommended to call via API)",
-
   "recommended_problem_api": "Recommended Questions",
   "rp_save": "Save the question",
   "rp_get": "Get Recommended Questions",
   "rp_base": "Obtain recommended queries for data sources",
-
   "audit_api": "Log Audit",
   "audit_export": "Export Log Audit",
   "audit_get_log_page": "Pagination for Log Audit",
   "audit_get_option": "Retrieve audit configuration",
-
   "system": "System Management",
   "system_user_api": "User APIs",
   "system_user_current_user": "Get Current User",
@@ -69,9 +65,7 @@
   "update_status": "Toggle Status",
   "origin_pwd": "Original Password",
   "new_pwd": "New Password",
-
   "weight": "Weight (1: Admin, 0: Regular User)",
-
   "system_model_api": "Model Configuration APIs",
   "system_model_default": "Set Default Model",
   "system_model_grid": "Get Model List",
@@ -94,7 +88,6 @@
   "arg_name": "Parameter Name",
   "arg_val": "Parameter Value",
   "arg_show_name": "Parameter Display Name",
-
   "system_assistant_api": "Assistant APIs",
   "assistant_picture_api": "Get Pictures",
   "assistant_ui_api": "Set Appearance",
@@ -109,26 +102,21 @@
   "assistant_description": "Description",
   "assistant_enableCustomModel": "Use specified model",
   "assistant_customModel": "Large Language Model",
-
   "system_embedded_api": "Page Embedded API",
   "embedded_resetsecret_api": "Reset Secret",
-
   "system_authentication_api": "Authentication Settings API",
   "authentication_enable_api": "Enable Authentication",
   "authentication_status_api": "Get Authentication Status",
   "authentication_validate_api": "Validate Authentication",
-
   "per_api": "Data Permission",
   "per_save": "Save Permission",
   "per_delete": "Delete Permission",
   "per_id": "Permission ID",
   "per_list": "Get Permission List",
   "per_get": "Get Permission Item Info",
-
   "tr_api": "Table Relation",
   "tr_save": "Save Table Relation",
   "tr_get": "Get Table Relation",
-
   "data_qa": "Data Q&A",
   "get_chat_list": "Get Chat List",
   "get_chat": "Get Chat Details",
@@ -148,27 +136,7 @@
   "analysis_or_predict": "Analyze Data / Predict Data",
   "export_chart_data": "Export Chart Data",
   "analysis_or_predict_action_type": "Type, allowed values: analysis | predict",
-
   "download-fail-info": "Download Error Information",
-
-  "data_training_api": "SQL Examples",
-  "get_dt_page": "Pagination Query for SQL Examples",
-  "create_or_update_dt": "Create/Update SQL Example",
-  "delete_dt": "Delete SQL Example",
-  "enable_dt": "Enable/Disable",
-  "export_dt": "Export SQL Examples",
-  "excel_template_dt": "Download Template",
-  "upload_excel_dt": "Import SQL Examples",
-
-  "terminology_api": "Terminology",
-  "get_term_page": "Pagination Query for Terms",
-  "create_or_update_term": "Create/Update Term",
-  "delete_term": "Delete Term",
-  "enable_term": "Enable/Disable",
-  "export_term": "Export Terms",
-  "excel_template_term": "Download Template",
-  "upload_term": "Import Terms",
-
   "custom_prompt_api": "Custom Agents",
   "custom_prompt_page": "Pagination Query for Custom Agents",
   "create_or_update_custom_prompt": "Create/Update Custom Agent",
@@ -176,7 +144,6 @@
   "export_custom_prompt": "Export Custom Agents",
   "excel_template_custom_prompt": "Download Template",
   "upload_custom_prompt": "Import Custom Agents",
-
   "db_api": "Dashboard Interface",
   "list_resource_api": "Load Resource Tree",
   "load_resource_api": "Load Resource Tree Details",
@@ -186,7 +153,6 @@
   "create_canvas_api": "Create Dashboard",
   "update_canvas_api": "Update Dashboard",
   "check_name_api": "Name Validation",
-
   "variable_api": "System Variable",
   "variable_save": "Save",
   "variable_delete": "Delete",

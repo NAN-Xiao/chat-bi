@@ -4,11 +4,9 @@ from sqlalchemy import String, column, table, union_all
 
 from apps.chat.models.chat_model import Chat
 from apps.dashboard.models.dashboard_model import CoreDashboard
-from apps.data_training.models.data_training_model import DataTraining
 from apps.datasource.models.datasource import CoreDatasource
 from apps.system.models.system_model import AiModelDetail, ApiKeyModel
 from apps.system.models.user import UserModel
-from apps.terminology.models.terminology_model import Terminology
 from apps.system.models.system_model import AssistantModel
 
 from sqlalchemy import literal_column
@@ -61,13 +59,6 @@ def build_resource_union_query() -> Select:
         literal_column("'prompt_words'").label("module")
     ).select_from(custom_prompt_table)
 
-    # data_training 表查询（使用question作为name）
-    data_training_query = select(
-        func.cast(DataTraining.id, String).label("id"),
-        DataTraining.question.label("name"),
-        literal_column("'data_training'").label("module")
-    ).select_from(DataTraining)
-
     ds_permission_table = table(
         "ds_permission",
         column("id"),
@@ -107,13 +98,6 @@ def build_resource_union_query() -> Select:
         literal_column("'member'").label("module")
     ).select_from(UserModel)
 
-    # terminology 表查询（使用word作为name）
-    terminology_query = select(
-        func.cast(Terminology.id, String).label("id"),
-        Terminology.word.label("name"),
-        literal_column("'terminology'").label("module")
-    ).select_from(Terminology)
-
     # sys_assistant 表查询
     sys_assistant_query = select(
         func.cast(AssistantModel.id, String).label("id"),
@@ -135,12 +119,10 @@ def build_resource_union_query() -> Select:
         dashboard_query,
         datasource_query,
         custom_prompt_query,
-        data_training_query,
         ds_permission_query,
         ds_rules_query,
         user_query,
         member_query,
-        terminology_query,
         sys_assistant_query,
         sys_apikey_query
     )

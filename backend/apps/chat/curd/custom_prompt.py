@@ -6,7 +6,13 @@ from typing import Any, Optional
 from sqlalchemy import text as sql_text
 from sqlmodel import Session
 
+from apps.ai_model.embedding import EmbeddingModelCache
+from apps.chat.curd.custom_prompt_embedding import embedding_vector_from_json, skill_definition_signature
+from apps.datasource.embedding.utils import cosine_similarity
 from apps.system.schemas.access_context import require_tenant_id
+from common.core.config import settings
+from common.utils.embedding_threads import run_save_custom_prompt_skill_embeddings
+from common.utils.utils import AppLogUtil
 
 
 class CustomPromptTypeEnum(str, Enum):
@@ -77,6 +83,35 @@ def _prompt_log_text(name: str, description: str, system_prompt: str, label: str
         parts.append(f"描述：{description}")
     parts.append(f"{label}：{system_prompt}")
     return "\n".join(parts)
+
+
+def _scope_label(visibility_scope: str | None) -> str:
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+        return "platform-generic"
+    if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
+        return "user-private"
+    return "workspace"
+
+
+def _scope_runtime_notice(visibility_scope: str | None, prompt_type: str = "Agent") -> str:
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+        return (
+            f"This {prompt_type} is a platform-level generic capability. Use it only for reusable methods, "
+            "answer style, workflow preferences, SQL safety hints, or analysis process guidance. "
+            "Do not treat any table name, field name, event name, metric formula, datasource name, "
+            "sample value, or business definition inside it as authoritative for the current workspace. "
+            "Current workspace schema, workspace Data Skills, workspace metadata, permissions, and user-provided "
+            "requirements always override it."
+        )
+    if visibility_scope == CustomPromptVisibilityScopeEnum.USER_PRIVATE.value:
+        return (
+            f"This {prompt_type} is a user-private preference for the current workspace context. "
+            "It cannot expand datasource access or override schema, permissions, workspace Data Skills, or SQL safety rules."
+        )
+    return (
+        f"This {prompt_type} is scoped to the current workspace and its bound datasource. "
+        "Use it only inside the current workspace context, and do not apply it to other workspaces or datasources."
+    )
 
 
 def _source_order_sql(alias: str = "") -> str:
@@ -191,14 +226,10 @@ def _estimated_skill_chars(skill: dict[str, Any]) -> int:
     )
 
 
-def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | None) -> list[dict[str, Any]]:
-    if not question or not question.strip():
-        return skill_rows
-
-    scored: list[tuple[int, int, dict[str, Any]]] = [
-        (_score_data_skill(skill, question), index, skill)
-        for index, skill in enumerate(skill_rows)
-    ]
+def _select_ranked_data_skills(
+        scored: list[tuple[float, int, dict[str, Any]]],
+        skill_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     positive = [item for item in scored if item[0] > 0]
     if not positive:
         return skill_rows
@@ -208,14 +239,14 @@ def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | Non
     max_skills = 12
     max_prompt_chars = 18000
     ranked_positive = sorted(positive, key=lambda item: (-item[0], item[1]))
-    selected: list[tuple[int, int, dict[str, Any]]] = []
+    selected: list[tuple[float, int, dict[str, Any]]] = []
     selected_keys: set[tuple[str, str, str]] = set()
     used_chars = 0
 
     def skill_key(skill: dict[str, Any]) -> tuple[str, str, str]:
         return (skill.get("id") or "", skill.get("name") or "", skill.get("visibility_scope") or "")
 
-    def add_skill(item: tuple[int, int, dict[str, Any]]) -> bool:
+    def add_skill(item: tuple[float, int, dict[str, Any]]) -> bool:
         nonlocal used_chars
         _score, _index, skill = item
         key = skill_key(skill)
@@ -265,6 +296,134 @@ def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | Non
 
     selected.sort(key=lambda item: (-item[0], item[1]))
     return [skill for _score, _index, skill in selected] or skill_rows
+
+
+def _queue_stale_skill_embeddings(skill_rows: list[dict[str, Any]]) -> None:
+    if not settings.EMBEDDING_ENABLED:
+        return
+    stale_by_tenant: dict[int | None, list[int]] = {}
+    for skill in skill_rows:
+        expected_signature = skill_definition_signature(
+            skill.get("name"),
+            skill.get("description"),
+            skill.get("prompt"),
+        )
+        current_signature = skill.get("embedding_signature")
+        vector = embedding_vector_from_json(skill.get("embedding"))
+        if current_signature == expected_signature and vector is not None:
+            continue
+        try:
+            skill_id = int(skill.get("id"))
+        except (TypeError, ValueError):
+            continue
+        tenant_id = skill.get("tenant_id")
+        try:
+            tenant_key = int(tenant_id) if tenant_id not in (None, "") else None
+        except (TypeError, ValueError):
+            tenant_key = None
+        stale_by_tenant.setdefault(tenant_key, []).append(skill_id)
+
+    for tenant_id, ids in stale_by_tenant.items():
+        if ids:
+            run_save_custom_prompt_skill_embeddings(ids[:50], tenant_id=tenant_id)
+
+
+def _rank_auto_data_skills_by_embedding(
+        skill_rows: list[dict[str, Any]],
+        question: str | None,
+) -> list[dict[str, Any]] | None:
+    if not question or not question.strip() or not settings.EMBEDDING_ENABLED:
+        return None
+
+    _queue_stale_skill_embeddings(skill_rows)
+    valid_embeddings: list[tuple[int, dict[str, Any], list[float]]] = []
+    for index, skill in enumerate(skill_rows):
+        expected_signature = skill_definition_signature(
+            skill.get("name"),
+            skill.get("description"),
+            skill.get("prompt"),
+        )
+        if skill.get("embedding_signature") != expected_signature:
+            continue
+        vector = embedding_vector_from_json(skill.get("embedding"))
+        if vector is None:
+            continue
+        valid_embeddings.append((index, skill, vector))
+
+    if not valid_embeddings:
+        return None
+
+    try:
+        query_embedding = EmbeddingModelCache.get_model().embed_query(question)
+    except Exception:
+        AppLogUtil.exception("Failed to embed question for data skill ranking")
+        return None
+
+    threshold = float(settings.EMBEDDING_DEFAULT_SIMILARITY or 0)
+    scored: list[tuple[float, int, dict[str, Any]]] = []
+    for index, skill, vector in valid_embeddings:
+        try:
+            similarity = cosine_similarity(query_embedding, vector)
+        except Exception:
+            continue
+        if similarity >= threshold:
+            scored.append((float(similarity), index, skill))
+
+    if not scored:
+        return None
+
+    embedding_ranked = _select_ranked_data_skills(scored, skill_rows)
+    keyword_ranked = _rank_auto_data_skills_by_keyword(skill_rows, question)
+    if keyword_ranked == skill_rows:
+        return embedding_ranked
+
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def skill_key(skill: dict[str, Any]) -> tuple[str, str, str]:
+        return (skill.get("id") or "", skill.get("name") or "", skill.get("visibility_scope") or "")
+
+    def add(skill: dict[str, Any]) -> bool:
+        key = skill_key(skill)
+        if key in seen:
+            return False
+        if merged and len(merged) >= 12:
+            return False
+        merged.append(skill)
+        seen.add(key)
+        return True
+
+    for skill in embedding_ranked:
+        add(skill)
+    for skill in keyword_ranked:
+        vector = embedding_vector_from_json(skill.get("embedding"))
+        expected_signature = skill_definition_signature(
+            skill.get("name"),
+            skill.get("description"),
+            skill.get("prompt"),
+        )
+        if skill.get("embedding_signature") == expected_signature and vector is not None:
+            continue
+        add(skill)
+    return merged or embedding_ranked
+
+
+def _rank_auto_data_skills_by_keyword(skill_rows: list[dict[str, Any]], question: str | None) -> list[dict[str, Any]]:
+    if not question or not question.strip():
+        return skill_rows
+
+    scored: list[tuple[int, int, dict[str, Any]]] = [
+        (_score_data_skill(skill, question), index, skill)
+        for index, skill in enumerate(skill_rows)
+    ]
+    return _select_ranked_data_skills(scored, skill_rows)
+
+
+def _rank_auto_data_skills(skill_rows: list[dict[str, Any]], question: str | None) -> list[dict[str, Any]]:
+    embedding_ranked = _rank_auto_data_skills_by_embedding(skill_rows, question)
+    if embedding_ranked is not None:
+        return embedding_ranked
+    return _rank_auto_data_skills_by_keyword(skill_rows, question)
 
 
 def find_custom_prompts(
@@ -349,7 +508,12 @@ def find_custom_prompts(
             "name": row.get("name") or "",
             "description": row.get("description") or "",
             "system_prompt": prompt,
+            "visibility_scope": visibility_scope,
         }
+        if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+            agent_list.append(agent)
+            ai_model_id = row.get("ai_model_id")
+            continue
         if not row.get("specific_ds"):
             agent_list.append(agent)
             ai_model_id = row.get("ai_model_id")
@@ -367,6 +531,8 @@ def find_custom_prompts(
     content = "<Other-Infos>\n"
     for agent in agent_list:
         content += "\t<agent>\n"
+        content += f"\t\t<scope>{_scope_label(agent['visibility_scope'])}</scope>\n"
+        content += f"\t\t<runtime-constraint>{_xml_text(_scope_runtime_notice(agent['visibility_scope']))}</runtime-constraint>\n"
         content += f"\t\t<name>{_xml_text(agent['name'])}</name>\n"
         if agent["description"]:
             content += f"\t\t<description>{_xml_text(agent['description'])}</description>\n"
@@ -425,7 +591,8 @@ def find_data_skills(
     rows = session.execute(
         sql_text(
             f"""
-            SELECT id, name, description, prompt, specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope
+            SELECT id, tenant_id, name, description, prompt, embedding, embedding_signature,
+                   specific_ds, datasource_ids, ai_model_id, create_by, visibility_scope
             FROM custom_prompt
             WHERE 1 = 1
               {skill_condition}
@@ -475,6 +642,19 @@ def find_data_skills(
         prompt = row.get("prompt")
         if not prompt:
             continue
+        if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC.value:
+            skill_rows.append({
+                "id": str(row.get("id") or ""),
+                "tenant_id": row.get("tenant_id"),
+                "name": row.get("name") or "",
+                "description": row.get("description") or "",
+                "prompt": prompt,
+                "embedding": row.get("embedding"),
+                "embedding_signature": row.get("embedding_signature"),
+                "visibility_scope": visibility_scope,
+            })
+            ai_model_id = row.get("ai_model_id")
+            continue
         if row.get("specific_ds"):
             if datasource is None:
                 continue
@@ -482,9 +662,12 @@ def find_data_skills(
                 continue
         skill_rows.append({
             "id": str(row.get("id") or ""),
+            "tenant_id": row.get("tenant_id"),
             "name": row.get("name") or "",
             "description": row.get("description") or "",
             "prompt": prompt,
+            "embedding": row.get("embedding"),
+            "embedding_signature": row.get("embedding_signature"),
             "visibility_scope": visibility_scope,
         })
         ai_model_id = row.get("ai_model_id")
@@ -500,10 +683,14 @@ def find_data_skills(
         "以下是本次自动匹配或用户指定的数据 Skill。Skill 以 Markdown/自然语言描述业务口径、查询范式、示例 SQL、"
         "图表偏好或注意事项。生成 SQL、解释结果和组织分析时必须优先参考它；如果它与数据库 Schema、"
         "数据权限、SQL 安全规则或当前已选数据源冲突，必须以 SaaS 规则和当前权限为准。",
+        "平台级 Skill 只代表通用能力或通用方法论，不能作为当前工作空间的表名、字段名、事件名、指标口径或业务枚举来源；"
+        "只有当前工作空间级或用户私有 Skill 才能沉淀具体业务口径，且仍必须受当前 Schema 与权限约束。",
     ]
     for skill in skill_rows:
         content_parts.append("\n---")
         content_parts.append(f"## {skill['name']}")
+        content_parts.append(f"\n作用域：{_scope_label(skill['visibility_scope'])}")
+        content_parts.append(f"\n约束：{_scope_runtime_notice(skill['visibility_scope'], prompt_type='Data Skill')}")
         if skill["description"]:
             content_parts.append(f"\n描述：{skill['description']}")
         content_parts.append("")

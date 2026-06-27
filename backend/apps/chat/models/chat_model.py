@@ -242,10 +242,9 @@ class AiModelQuestion(BaseModel):
     lang: str = "简体中文"
     filter: str = []
     sub_query: Optional[list[dict]] = None
-    terminologies: str = ""
-    data_training: str = ""
     custom_prompt: str = ""
     custom_prompt_id: Optional[int] = None
+    tracking_config: str = ""
     data_skill: str = ""
     data_skill_id: Optional[int] = None
     error_msg: str = ""
@@ -288,6 +287,10 @@ class AiModelQuestion(BaseModel):
             templates['custom_prompt'] = _base_template['generate_custom_prompt_info'].format(
                 custom_prompt=self.custom_prompt)
 
+        if self.tracking_config:
+            templates['tracking_config'] = _base_template['generate_tracking_config_info'].format(
+                tracking_config=self.tracking_config)
+
         if self.data_skill:
             templates['data_skill'] = _base_template['generate_data_skill_info'].format(
                 data_skill=self.data_skill)
@@ -315,7 +318,7 @@ class AiModelQuestion(BaseModel):
                                                    chart_type=chart_type, schema=schema, data_skill=self.data_skill)
 
     def analysis_sys_question(self):
-        return get_analysis_template()['system'].format(lang=self.lang, terminologies=self.terminologies,
+        return get_analysis_template()['system'].format(lang=self.lang, terminologies="",
                                                         custom_prompt=self.custom_prompt,
                                                         data_skill=self.data_skill,
                                                         zhishu_name=self.zhishu_name)
