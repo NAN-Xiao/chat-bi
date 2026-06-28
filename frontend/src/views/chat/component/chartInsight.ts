@@ -42,7 +42,7 @@ const TOP_RANKED_REGULAR_MIN_WIDTH = 640
 const TOP_RANKED_COMPACT_MIN_WIDTH = 500
 const TOP_RANKED_MAX_STATS = 4
 const DAY_MS = 24 * 60 * 60 * 1000
-const TOP_RANKED_TYPES = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter'])
+const TOP_RICH_SUMMARY_TYPES = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'funnel'])
 
 function axisValues(axes?: Array<ChartAxis>) {
   return (axes || []).map((axis) => axis.value).filter(Boolean)
@@ -315,10 +315,10 @@ export function resolveInsightDisplay(params: {
   const height = params.height || 0
   const visibleMetricCount = axisValues(params.y).length
   const trendGranularity = detectTrendAxisGranularity(params.data, params.x?.[0])
-  const isRankedTopSummary =
+  const isRichTopSummary =
     params.dashboard &&
     preferredLayout === 'top' &&
-    TOP_RANKED_TYPES.has(params.chartType) &&
+    TOP_RICH_SUMMARY_TYPES.has(params.chartType) &&
     axisValues(params.series).length === 0
   const isWideSingleMetricTrend =
     params.dashboard &&
@@ -357,7 +357,7 @@ export function resolveInsightDisplay(params: {
   }
 
   if (layout === 'top') {
-    if (isRankedTopSummary && width >= TOP_RANKED_COMPACT_MIN_WIDTH) {
+    if (isRichTopSummary && width >= TOP_RANKED_COMPACT_MIN_WIDTH) {
       return {
         show: true,
         layout,

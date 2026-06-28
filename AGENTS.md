@@ -75,6 +75,13 @@ Scope: entire repository.
 - If domain-specific behavior is needed for a demo or customer scenario, keep it in configuration, seed scripts, documentation, test fixtures, or datasource-scoped semantic records. Do not wire it into the platform runtime path.
 - Production logic should be driven by system configuration, datasource metadata, user/workspace permissions, semantic-layer records, and selected assistant settings. Prefer extending those configuration mechanisms before adding code branches.
 
+## Chart Rendering and Dashboard Copy Constraints
+
+- Chart rendering components must bind chart libraries to the current component-owned DOM element/ref, not to a globally queried DOM id. Chat answers, fullscreen dialogs, dashboard previews, and add-to-dashboard flows may temporarily contain duplicate chart ids for the same source record.
+- When copying a Smart Q&A chart into a dashboard, preserve generic chart configuration such as axes, columns, insight/summary configuration, pivot configuration, datasource, SQL, and result data. Do not silently drop reusable visualization metadata just because it is not needed by the first chart type tested.
+- Dashboard chart summary behavior may specialize by generic chart type, layout density, and available frame size. It must not special-case datasource names, business field names, demo questions, SLG concepts, or hardcoded metric meanings in shared rendering logic.
+- Funnel charts are a generic chart type. Their dashboard summaries should reserve enough room, when the frame size permits, for the expected funnel context: start value, end value, overall conversion, and step/previous conversion. Field discovery for those values should remain generic and data-driven.
+
 ## Temporarily Hidden Smart Q&A Actions
 
 - Smart Q&A chart-answer actions for data analysis and data prediction are intentionally hidden, not deleted.

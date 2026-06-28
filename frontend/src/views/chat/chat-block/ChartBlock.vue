@@ -442,7 +442,7 @@ function addToDashboard() {
       }))
     }
 
-    recordeInfo['chart'] = {
+    const dashboardChart: Record<string, any> = {
       type: chartBaseInfo?.type,
       title: chartBaseInfo?.title,
       columns: chartBaseInfo?.columns,
@@ -450,6 +450,10 @@ function addToDashboard() {
       yAxis: yAxis,
       series: axis?.series ? [axis?.series] : [],
     }
+    if (chartBaseInfo?.insight) {
+      dashboardChart.insight = chartBaseInfo.insight
+    }
+    recordeInfo['chart'] = dashboardChart
     recordeInfo['pivot'] = resolveChartPivot(chartBaseInfo, recordeInfo)
   }
 
