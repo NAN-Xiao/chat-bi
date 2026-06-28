@@ -1,5 +1,5 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import { axisLabel, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis, type ChartData, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
@@ -9,8 +9,8 @@ import {
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Scatter extends BaseG2Chart {
-  constructor(id: string) {
-    super(id, 'scatter')
+  constructor(mountTarget: ChartMountTarget) {
+    super(mountTarget, 'scatter')
   }
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {

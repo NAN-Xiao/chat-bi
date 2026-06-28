@@ -1,5 +1,5 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import type { ChartAxis, ChartData, ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
@@ -9,8 +9,8 @@ import {
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Heatmap extends BaseG2Chart {
-  constructor(id: string) {
-    super(id, 'heatmap')
+  constructor(mountTarget: ChartMountTarget) {
+    super(mountTarget, 'heatmap')
   }
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {

@@ -1,12 +1,12 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import { axisLabel, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis, type ChartData, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { formatNumber, getAxesWithFilter, toNumber } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Sankey extends BaseG2Chart {
-  constructor(id: string) {
-    super(id, 'sankey')
+  constructor(mountTarget: ChartMountTarget) {
+    super(mountTarget, 'sankey')
   }
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {

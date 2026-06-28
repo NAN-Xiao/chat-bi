@@ -1,4 +1,4 @@
-import { BaseChart } from '@/views/chat/component/BaseChart.ts'
+import { BaseChart, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import { Chart, type G2Spec } from '@antv/g2'
 import { chartTheme } from '@/views/chat/component/charts/theme.ts'
 
@@ -55,10 +55,10 @@ function withFloatingTooltip(options: G2Spec): G2Spec {
 export abstract class BaseG2Chart extends BaseChart {
   chart: Chart
 
-  constructor(id: string, name: string) {
-    super(id, name)
+  constructor(mountTarget: ChartMountTarget, name: string) {
+    super(mountTarget, name)
     this.chart = new Chart({
-      container: id,
+      container: mountTarget,
       autoFit: true,
       padding: 'auto',
     })
@@ -68,7 +68,7 @@ export abstract class BaseG2Chart extends BaseChart {
 
   render() {
     this.chart?.options(withFloatingTooltip(this.chart.options() as G2Spec))
-    this.chart?.render()
+    return this.chart?.render()
   }
 
   destroy() {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getChartInstance } from '@/views/chat/component/index.ts'
 import { axisValue, type BaseChart, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
 import { useEmitt } from '@/utils/useEmitt.ts'
@@ -79,25 +79,98 @@ const axis = computed(() => {
 })
 
 let chartInstance: BaseChart | undefined
+const chartContainerRef = ref<HTMLElement>()
+let resizeObserver: ResizeObserver | undefined
+let renderTimer: number | undefined
+let renderToken = 0
+const maxRenderRetries = 2
 
-function renderChart() {
-  destroyChart()
-  chartInstance = getChartInstance(params.type, chartId.value)
+function hasRenderableSize() {
+  const element = chartContainerRef.value
+  return Boolean(element && element.clientWidth > 0 && element.clientHeight > 0)
+}
+
+function hasRenderedOutput() {
+  const element = chartContainerRef.value
+  if (!element) {
+    return false
+  }
+  if (params.type === 'metric') {
+    return element.children.length > 0
+  }
+  return Boolean(element.querySelector('canvas, svg'))
+}
+
+function scheduleRenderChart(delay = 0, retry = 0) {
+  if (renderTimer) {
+    window.clearTimeout(renderTimer)
+  }
+  renderTimer = window.setTimeout(() => {
+    renderTimer = undefined
+    nextTick(() => {
+      if (hasRenderableSize()) {
+        renderChart(retry)
+      }
+    })
+  }, delay)
+}
+
+function retryRenderIfNeeded(token: number, retry: number) {
+  window.setTimeout(() => {
+    if (token !== renderToken || !hasRenderableSize() || hasRenderedOutput()) {
+      return
+    }
+    if (retry < maxRenderRetries) {
+      scheduleRenderChart(120, retry + 1)
+    }
+  }, 120)
+}
+
+function handleRenderError(error: unknown, token: number, retry: number) {
+  if (token !== renderToken) {
+    return
+  }
+  console.warn('[ChartComponent] chart render failed, retrying if possible', error)
+  if (retry < maxRenderRetries) {
+    scheduleRenderChart(160, retry + 1)
+  }
+}
+
+function renderChart(retry = 0) {
+  if (!hasRenderableSize()) {
+    return
+  }
+  const token = ++renderToken
+  destroyChart(false)
+  const container = chartContainerRef.value
+  if (!container) {
+    return
+  }
+  chartInstance = getChartInstance(params.type, container)
   if (chartInstance) {
     chartInstance.showLabel = params.showLabel
     chartInstance.hideZeroLabel = params.hideZeroLabel
     chartInstance.hideValueAxis = params.hideValueAxis
     chartInstance.init(axis.value, params.data)
-    chartInstance.render()
+    try {
+      Promise.resolve(chartInstance.render())
+        .then(() => retryRenderIfNeeded(token, retry))
+        .catch((error) => handleRenderError(error, token, retry))
+    } catch (error) {
+      handleRenderError(error, token, retry)
+    }
   }
 }
 
-function destroyChart() {
+function destroyChart(invalidate = true) {
+  if (invalidate) {
+    renderToken += 1
+  }
   if (chartInstance) {
     chartInstance.destroy()
     chartInstance = undefined
   }
-  document.getElementById(chartId.value)?.replaceChildren()
+  chartContainerRef.value?.replaceChildren()
 }
 
 watch(
@@ -114,9 +187,7 @@ watch(
     hideValueAxis: params.hideValueAxis,
   }),
   () => {
-    nextTick(() => {
-      renderChart()
-    })
+    scheduleRenderChart()
   },
   { deep: true, flush: 'post' }
 )
@@ -130,33 +201,61 @@ function getExcelData() {
 
 useEmitt({
   name: 'view-render-all',
-  callback: renderChart,
+  callback: () => scheduleRenderChart(),
 })
 
 useEmitt({
   name: `view-render-${params.id}`,
-  callback: renderChart,
+  callback: () => scheduleRenderChart(),
 })
 
 defineExpose({
-  renderChart,
+  renderChart: () => scheduleRenderChart(),
   destroyChart,
   getExcelData,
+  getElement: () => chartContainerRef.value,
 })
 
 onMounted(() => {
-  nextTick(() => {
-    renderChart()
-  })
+  resizeObserver = new ResizeObserver(() => scheduleRenderChart(80))
+  if (chartContainerRef.value) {
+    resizeObserver.observe(chartContainerRef.value)
+    if (chartContainerRef.value.parentElement) {
+      resizeObserver.observe(chartContainerRef.value.parentElement)
+    }
+  }
+  window.addEventListener('resize', handlePageRestore)
+  window.addEventListener('pageshow', handlePageRestore)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  scheduleRenderChart()
+  scheduleRenderChart(160)
 })
 
 onUnmounted(() => {
+  if (renderTimer) {
+    window.clearTimeout(renderTimer)
+    renderTimer = undefined
+  }
+  resizeObserver?.disconnect()
+  window.removeEventListener('resize', handlePageRestore)
+  window.removeEventListener('pageshow', handlePageRestore)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   destroyChart()
 })
+
+function handlePageRestore() {
+  scheduleRenderChart(120)
+}
+
+function handleVisibilityChange() {
+  if (!document.hidden) {
+    handlePageRestore()
+  }
+}
 </script>
 
 <template>
-  <div :id="chartId" class="chart-container"></div>
+  <div :id="chartId" ref="chartContainerRef" class="chart-container"></div>
 </template>
 
 <style scoped lang="less">

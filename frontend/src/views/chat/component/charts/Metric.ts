@@ -1,5 +1,5 @@
 import { BaseChart } from '@/views/chat/component/BaseChart.ts'
-import { axisLabel, type ChartAxis } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import {
   formatNumber,
   isPercentAxis,
@@ -10,9 +10,10 @@ import { chartPalette } from '@/views/chat/component/charts/theme.ts'
 export class Metric extends BaseChart {
   container: HTMLElement | null = null
 
-  constructor(id: string) {
-    super(id, 'metric')
-    this.container = document.getElementById(id)
+  constructor(mountTarget: ChartMountTarget) {
+    super(mountTarget, 'metric')
+    this.container =
+      typeof mountTarget === 'string' ? document.getElementById(mountTarget) : mountTarget
   }
 
   private isBlank(value: any) {

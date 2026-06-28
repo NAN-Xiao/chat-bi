@@ -516,7 +516,7 @@ function exportToExcel() {
 }
 
 function exportToImage() {
-  const obj = document.getElementById('chart-component-' + chartId.value)
+  const obj = chartRef.value?.getElement()
   if (obj) {
     html2canvas(obj).then((canvas) => {
       canvas.toBlob(function (blob) {
