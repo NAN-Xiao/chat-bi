@@ -60,7 +60,7 @@ Node responsibilities:
 - `generate_predict`: reuse existing prediction prompt, Data Skill/custom prompt loading, context snapshot, LLM streaming, prediction answer persistence, and `predict-result` events.
 - `finalize_predict`: reuse existing prediction-data parsing, `predict-success` / `predict-failed` events, non-chat table output, optional chart image generation, and JSON output behavior.
 
-Shared workflow code lives in `apps/chat/task/assistant_workflow.py`. It is intentionally plumbing-only: run IDs, structured lifecycle logs, node traces, stream emission, generator consumption, and session scoping. Prompt/data/semantic/SQL/chart/permission behavior stays in assistant-specific code.
+Shared workflow code lives in `apps/chat/task/assistant_workflow.py`. It is intentionally plumbing-only: run IDs, structured lifecycle logs, node traces, stream emission, generator consumption, metadata event helpers, standardized error formatting, shared runner finalization, and session scoping. Prompt/data/semantic/SQL/chart/permission behavior stays in assistant-specific code.
 
 ## Legacy Parity Checklist
 
@@ -87,6 +87,7 @@ Currently covered:
 
 Operational notes:
 
+- `assistant_workflow.py` now owns the shared graph runner shell through `AssistantWorkflowConfig`, `run_assistant_workflow`, `emit_record_metadata`, `observe_node`, and `format_workflow_error`. Smart Q&A and Chart Insight keep their own business nodes and graph edges, but no longer duplicate run start/error/finish handling.
 - Windows log rollover now uses `SafeRotatingFileHandler` to suppress transient file-lock contention during rotation while preserving other rollover errors.
 - Funnel chart prompting now asks the model to preserve generic supporting metrics such as conversion, pass, and dropoff rates when the user requested them, or fall back to table when a single funnel would hide mixed-unit fields.
 - SQL answer parsing now keeps a strict JSON first path and has a limited recovery path for malformed SQL JSON strings where PostgreSQL quoted identifiers were not fully escaped. The recovery only parses the SQL-answer envelope; existing SQL validation, datasource permission checks, and permission-aware execution still run after parsing.
@@ -100,8 +101,11 @@ Local unit coverage:
 cd backend
 .\.venv\Scripts\python.exe -m pytest tests\test_smart_qa_graph.py tests\test_chart_insight_graph.py tests\test_llm_sql_answer_parser.py tests\test_smart_qa_graph_smoke_tool.py -q
 .\.venv\Scripts\python.exe -m pytest tests\test_smart_qa_graph.py tests\test_chart_insight_graph.py tests\test_chat_api_sse.py tests\test_llm_sql_answer_parser.py tests\test_smart_qa_graph_smoke_tool.py -q
+.\.venv\Scripts\python.exe -m pytest tests\test_assistant_workflow.py tests\test_smart_qa_graph.py tests\test_chart_insight_graph.py tests\test_chat_api_sse.py tests\test_llm_sql_answer_parser.py tests\test_smart_qa_graph_smoke_tool.py tests\test_chart_config_postprocess.py -q
 .\.venv\Scripts\python.exe -m ruff check apps\chat\task\assistant_workflow.py apps\chat\task\smart_qa_graph.py apps\chat\task\chart_insight_graph.py tests\test_smart_qa_graph.py tests\test_chart_insight_graph.py tests\test_chat_api_sse.py tests\test_llm_sql_answer_parser.py tests\test_smart_qa_graph_smoke_tool.py ..\tools\smart_qa_graph_smoke.py
 ```
+
+Latest local regression after shared workflow runner extraction: `40 passed` for `test_assistant_workflow.py`, Smart Q&A graph, Chart Insight graph, chat API SSE, SQL answer parser, smoke tool, and chart post-processing tests. `ruff --select F401,F821` passed for the shared workflow, graph files, and related tests.
 
 Real API smoke:
 
@@ -114,6 +118,18 @@ Real API smoke:
 .\backend\.venv\Scripts\python.exe tools\smart_qa_graph_smoke.py --datasource 2 --question "查询 fact_payments 的 net_revenue_usd 总和" --finish-step query_data --expect-error-type permission_denied
 .\backend\.venv\Scripts\python.exe tools\smart_qa_graph_smoke.py
 ```
+
+Latest real API smoke after shared workflow runner extraction passed on June 28, 2026:
+
+| Scenario | Command focus | Result |
+| --- | --- | --- |
+| Stop after SQL generation | `--case pie --finish-step generate_sql` | Passed; emitted SQL and `finish`, with no `sql-data` or `chart` event. |
+| Stop after data query | `--case pie --finish-step query_data` | Passed; emitted `sql-data` and `finish`, with no `chart` event. |
+| Full chart generation | `--case pie` | Passed; emitted `chart_type=pie` and `finish`. |
+| Graph-internal permission denial | `--permission-fixture row_invalid --expect-error-type permission_denied` | Passed; emitted `error_type=permission_denied` through the data event and finished. |
+| Dynamic assistant datasource | `--dynamic-assistant-fixture --finish-step query_data` | Passed; emitted datasource selection, SQL, `sql-data`, and `finish`. |
+
+The raw SSE files for that run are under `.codex-runtime/smart-qa-graph-smoke`, including `pie-generate_sql-1782658760.sse`, `pie-query_data-1782658808.sse`, `pie-generate_chart-1782658862.sse`, `custom-query_data-1782658879.sse`, and `custom-query_data-1782658961.sse`. The smoke tool rewrites `summary.json` on each invocation, so use the timestamped SSE files for the multi-command run history.
 
 The smoke tool reads historical chart questions from the local app database, starts fresh chats through the API, writes raw SSE output under `.codex-runtime/smart-qa-graph-smoke`, and fails non-zero if any case emits an error or does not finish.
 The chat API accepts an optional `finish_step` query parameter for regression and automation use; the default remains full chart generation.
@@ -136,7 +152,7 @@ Local fixture note:
 
 The first shared assistant workflow layer has been extracted. Keep the boundary explicit:
 
-- Shared workflow handles graph plumbing, stream emission, run lifecycle logging, node trace collection, generator return handling, and session scoping.
+- Shared workflow handles graph plumbing, stream emission, metadata emission, run lifecycle logging, node trace collection, standardized top-level error handling, generator return handling, and session scoping.
 - Assistant-specific code keeps prompt framing, datasource context, semantic retrieval, SQL/chart validation, chart insight generation, and permission semantics.
 - No SLG/demo-specific assumptions should move into shared workflow code.
 
