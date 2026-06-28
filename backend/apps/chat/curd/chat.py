@@ -249,6 +249,7 @@ def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | 
     stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource, ChatRecord.engine_type,
                   ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.custom_prompt_id,
                   ChatRecord.data_skill_id,
+                  ChatRecord.agent_context_snapshot,
                   ChatRecord.tenant_id).where(
         and_(ChatRecord.id == record_id))
     if tenant_id is not None:
@@ -258,6 +259,7 @@ def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | 
         record = ChatRecord(id=r.id, question=r.question, chat_id=r.chat_id, datasource=r.datasource,
                             engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by,
                             custom_prompt_id=r.custom_prompt_id, data_skill_id=r.data_skill_id,
+                            agent_context_snapshot=r.agent_context_snapshot,
                             tenant_id=r.tenant_id)
     return record
 
@@ -634,6 +636,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                    ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                    ChatRecord.regenerate_record_id,
                    ChatRecord.custom_prompt_id, ChatRecord.data_skill_id,
+                   ChatRecord.agent_context_snapshot,
                    ChatRecord.recommended_question, ChatRecord.first_chat,
                    ChatRecord.finish, ChatRecord.error,
                    sql_alias_log.reasoning_content.label('sql_reasoning_content'),
@@ -666,6 +669,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                       ChatRecord.datasource_select_answer, ChatRecord.analysis_record_id, ChatRecord.predict_record_id,
                       ChatRecord.regenerate_record_id,
                       ChatRecord.custom_prompt_id, ChatRecord.data_skill_id,
+                      ChatRecord.agent_context_snapshot,
                       ChatRecord.recommended_question, ChatRecord.first_chat,
                       ChatRecord.finish, ChatRecord.error, ChatRecord.data, ChatRecord.predict_data).where(
             and_(
@@ -758,6 +762,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              regenerate_record_id=row.regenerate_record_id,
                                              custom_prompt_id=row.custom_prompt_id,
                                              data_skill_id=row.data_skill_id,
+                                             agent_context_snapshot=row.agent_context_snapshot,
                                              recommended_question=row.recommended_question, first_chat=row.first_chat,
                                              finish=row.finish, error=row.error, data=data_value,
                                              sql_reasoning_content=row.sql_reasoning_content,
@@ -783,6 +788,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
                                              regenerate_record_id=row.regenerate_record_id,
                                              custom_prompt_id=row.custom_prompt_id,
                                              data_skill_id=row.data_skill_id,
+                                             agent_context_snapshot=row.agent_context_snapshot,
                                              recommended_question=row.recommended_question, first_chat=row.first_chat,
                                              finish=row.finish, error=row.error, data=data_value,
                                              predict_data=predict_data_value)
@@ -1172,6 +1178,17 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
     return result
 
 
+def save_agent_context_snapshot(session: SessionDep, record_id: int, snapshot: dict | None) -> ChatRecord:
+    record = session.get(ChatRecord, record_id)
+    if not record:
+        raise Exception(f"Chat record with id {record_id} not found")
+    record.agent_context_snapshot = snapshot
+    session.add(record)
+    session.commit()
+    session.refresh(record)
+    return record
+
+
 def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, action_type: str) -> ChatRecord:
     record = ChatRecord()
     record.tenant_id = int(base_record.tenant_id)
@@ -1182,6 +1199,7 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
     record.ai_modal_id = base_record.ai_modal_id
     record.custom_prompt_id = base_record.custom_prompt_id
     record.data_skill_id = base_record.data_skill_id
+    record.agent_context_snapshot = base_record.agent_context_snapshot
     record.create_time = datetime.datetime.now()
     record.create_by = base_record.create_by
     record.chart = base_record.chart

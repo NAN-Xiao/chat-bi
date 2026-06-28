@@ -143,6 +143,7 @@ class ChatRecord(SQLModel, table=True):
     regenerate_record_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     custom_prompt_id: int = Field(sa_column=Column(BigInteger, nullable=True))
     data_skill_id: int = Field(sa_column=Column(BigInteger, nullable=True))
+    agent_context_snapshot: Optional[dict] = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
 
 class ChatRecordResult(BaseModel):
@@ -172,6 +173,7 @@ class ChatRecordResult(BaseModel):
     regenerate_record_id: Optional[int] = None
     custom_prompt_id: Optional[int] = None
     data_skill_id: Optional[int] = None
+    agent_context_snapshot: Optional[dict] = None
     sql_reasoning_content: Optional[str] = None
     chart_reasoning_content: Optional[str] = None
     analysis_reasoning_content: Optional[str] = None

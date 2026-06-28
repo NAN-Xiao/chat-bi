@@ -37,10 +37,21 @@ DATA_SKILLS: list[dict[str, str]] = [
         "description": "用于新手任务通过率、新手引导通过率、新手教程通过率、教程步骤掉点、首次战斗、首次建筑/科技、首付等早期激活链路；教程步骤使用 tutorial_step 和 attributes step，不把事件次数误当用户漏斗。",
         "prompt": """
 <!-- data-skill-source:slg-bi-mock:workspace:onboarding-funnel -->
+<!-- data-skill-sql-validation:{
+  "match":["新手引导","新手教程","新手任务","教程步骤","tutorial_step","登录到新手","登录到付费"],
+  "allow_when":["真实登录","登录事件","登录人数作为分母","登录作为分母","活跃登录用户作为分母"],
+  "forbidden_sql_contains":["did_login"],
+  "forbidden_sql_all_contains":[
+    ["event_name", "'login'"],
+    ["'登录'", "step_name"],
+    ["login_players", "tutorial_step"]
+  ],
+  "message":"新手引导漏斗不能默认把登录事件或“登录”标签作为第 1 步；登录会混入老用户。请按本 Data Skill 使用新增 cohort 的账号注册/新增用户数或首次进入引导作为起点，只有用户明确要求真实登录事件人数作为分母时才使用 login。"
+} -->
 # SLG Skill：新手引导与早期激活漏斗
 
 适用问题：
-- 新用户从安装、登录、新手教程、首次战斗、首次建筑升级、首次科技研究到首次付费的转化。
+- 新用户从账号注册/新增 cohort、首次进入新手教程、新手教程、首次战斗、首次建筑升级、首次科技研究到首次付费的转化。
 - 新手教程第 3/7/12 步掉点、早期关键节点流失、不同渠道或设备的新手链路对比。
 - “新手任务通过率”“新手引导通过率”“新手教程通过率”“新手任务漏斗”“教程步骤掉点”等问题。
 - “新手引导到付费转化率”“完成新手教程后付费”“新手任务到付费”等问题，默认做有顺序的漏斗，不用无标签指标卡。
@@ -52,10 +63,12 @@ DATA_SKILLS: list[dict[str, str]] = [
 
 SQL 口径：
 - 先构造玩家级 `player_level`，一行一个 `player_id`，用 `bool_or` / `exists` 标记每个节点是否完成。
-- 漏斗人数必须带前序条件，例如完成第 7 步人数必须同时完成登录、第 3 步和第 7 步。
+- 新手引导漏斗的默认起点是新增 cohort 的账号注册/新增用户数，不能把全量登录事件当第 1 步；登录会混入老用户，不是新手引导天然分母。
+- 漏斗人数必须带前序条件，例如完成第 7 步人数必须同时属于新增 cohort、完成第 1 步、第 3 步和第 7 步。
 - 禁止每个步骤独立 `count(distinct player_id)` 后直接 `UNION`，那会导致后序步骤人数大于前序步骤。
 - 未指定日期、渠道、服务器等筛选时，默认与核心看板对齐：取 `fact_sessions` 最大业务日期向前 30 天的 `dim_player.install_date` 新增 cohort，不能全量统计历史所有 `tutorial_step` 玩家。
-- 用户说“登录到新手引导/首次付费”但没有要求真实登录事件口径时，漏斗第 1 步默认用该 cohort 的账号注册/新增用户数；如果明确要求真实登录人数，再用 `event_name='login'` 或 `fact_sessions` 会话去重作为登录步骤，并说明会与看板“账号注册”起点略有差异。
+- 用户口语说“登录到新手引导/首次付费”时，应理解为新用户进入游戏后的新手链路，漏斗第 1 步默认用该 cohort 的账号注册/新增用户数或首次进入引导人数；不要因为出现“登录”二字就改成全量登录人数。
+- 只有当用户明确要求“真实登录事件人数/登录事件漏斗/活跃登录用户作为分母”时，才用 `event_name='login'` 或 `fact_sessions` 会话去重作为登录步骤，并在回答中说明该口径包含老用户，不能直接代表新手引导转化。
 - 当用户只问“新手任务/新手引导/新手教程通过率”且未指定首次战斗、建筑、科技、首付等后续节点时，默认返回 `tutorial_step` 每一步的 `step_order`, `step_name`, `users`, `conversion_from_start_pct`, `conversion_from_prev_pct`, `drop_off_users`。
 - 当用户问“新手引导到付费/新手教程到付费”时，第 1 步为完成 `tutorial_step >= 12`，并取首次完成时间；第 2 步为该时间之后的成功净收入付费 `payment_status='success' AND net_revenue_usd > 0 AND payment.event_time >= tutorial_complete_time`。默认图表为漏斗图，字段仍返回 `step_order`, `step_name`, `users`, `conversion_from_start_pct`, `conversion_from_prev_pct`, `drop_off_users`。
 - 不要使用 `activity_type`、`activity_stage` 分析新手任务通过率；它们是活动字段，不是新手教程步骤。

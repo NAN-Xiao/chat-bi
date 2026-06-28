@@ -1,6 +1,8 @@
 import concurrent
 import json
 import os
+import re
+import time
 import traceback
 import urllib.parse
 import warnings
@@ -27,7 +29,8 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
     get_last_execute_sql_error, format_json_data, format_chart_fields, get_chat_brief_generate, get_chat_predict_data, \
-    get_chat_chart_config, trigger_log_error
+    get_chat_chart_config, trigger_log_error, save_agent_context_snapshot
+from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
     CustomPromptTypeEnum,
@@ -97,6 +100,10 @@ APP_SYSTEM_MESSAGE_KEY = "app_system"
 APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
 
 
+class DataSkillSqlValidationError(SingleMessageError):
+    pass
+
+
 def _is_app_system_message(message: dict[str, Any]) -> bool:
     return message.get(APP_SYSTEM_MESSAGE_KEY) is True
 
@@ -114,6 +121,94 @@ def _serialize_prompt_messages(messages: list[BaseMessage]) -> list[dict[str, An
         }
         for msg in messages
     ]
+
+
+def _normalize_rule_terms(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
+def _extract_data_skill_sql_validation_rules(data_skill: str = "") -> list[dict[str, Any]]:
+    if not data_skill or not data_skill.strip():
+        return []
+
+    rules: list[dict[str, Any]] = []
+    pattern = re.compile(r"<!--\s*data-skill-sql-validation\s*:\s*(.*?)\s*-->", re.DOTALL)
+    for match in pattern.finditer(data_skill):
+        raw = match.group(1).strip()
+        if not raw:
+            continue
+        try:
+            parsed = orjson.loads(raw)
+        except Exception:
+            continue
+        items = parsed if isinstance(parsed, list) else [parsed]
+        for item in items:
+            if isinstance(item, dict):
+                rules.append(item)
+    return rules
+
+
+def _rule_matches_question(rule: dict[str, Any], question: str) -> bool:
+    terms = [term.lower() for term in _normalize_rule_terms(rule.get("match") or rule.get("when"))]
+    if not terms:
+        return True
+    text = (question or "").lower()
+    return any(term in text for term in terms)
+
+
+def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
+    terms = [term.lower() for term in _normalize_rule_terms(rule.get("allow_when"))]
+    if not terms:
+        return False
+    text = (question or "").lower()
+    return any(term in text for term in terms)
+
+
+def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = "") -> str | None:
+    if not sql:
+        return None
+
+    sql_text = str(sql)
+    sql_lower = sql_text.lower()
+    for rule in _extract_data_skill_sql_validation_rules(data_skill):
+        if not _rule_matches_question(rule, question):
+            continue
+        if _rule_allowed_by_question(rule, question):
+            continue
+
+        for pattern_text in _normalize_rule_terms(rule.get("forbidden_sql_patterns")):
+            try:
+                matched = re.search(pattern_text, sql_text, re.IGNORECASE | re.DOTALL) is not None
+            except re.error:
+                matched = pattern_text.lower() in sql_lower
+            if matched:
+                return str(
+                    rule.get("message")
+                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
+                )
+
+        for text in _normalize_rule_terms(rule.get("forbidden_sql_contains")):
+            if text.lower() in sql_lower:
+                return str(
+                    rule.get("message")
+                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
+                )
+
+        for group in rule.get("forbidden_sql_all_contains") or []:
+            terms = _normalize_rule_terms(group)
+            if terms and all(term.lower() in sql_lower for term in terms):
+                return str(
+                    rule.get("message")
+                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
+                )
+
+    return None
 
 
 def _get_temp_sql_text(dynamic_sql_result: Optional[dict[str, Any]]) -> Optional[str]:
@@ -466,6 +561,7 @@ class LLMService:
         self.generate_chart_logs = []
         self.current_logs = {}
         self.chunk_list = []
+        self.stream_keepalive_enabled = False
         self.current_user = current_user
         self.current_assistant = current_assistant
 
@@ -695,6 +791,30 @@ class LLMService:
         self.record = save_question(session=session, current_user=self.current_user, question=self.chat_question)
         return self.record
 
+    def save_agent_context_snapshot(
+            self,
+            session: Session,
+            target_scope: CustomPromptTargetScopeEnum,
+            surface: str = "smart_qa",
+    ) -> None:
+        if not self.record:
+            return
+        datasource_id = getattr(self.ds, "id", None) if self.ds else getattr(self.chat_question, "datasource_id", None)
+        datasource_name = getattr(self.ds, "name", None) if self.ds else None
+        snapshot = build_agent_context_snapshot(
+            surface=surface,
+            datasource_id=datasource_id,
+            datasource_name=datasource_name,
+            custom_prompt_id=self.chat_question.custom_prompt_id,
+            custom_prompt_text=self.chat_question.custom_prompt,
+            data_skill_id=self.chat_question.data_skill_id,
+            data_skill_text=self.chat_question.data_skill,
+            ai_model_id=self.chat_question.ai_modal_id,
+            ai_model_name=self.chat_question.ai_modal_name,
+            target_scope=target_scope.value if target_scope else None,
+        )
+        save_agent_context_snapshot(session, self.record.id, snapshot)
+
     def get_record(self):
         return self.record
 
@@ -819,6 +939,12 @@ class LLMService:
 
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS, ds_id)
 
+        self.save_agent_context_snapshot(
+            _session,
+            CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+            surface="smart_qa_analysis",
+        )
+
         analysis_msg.append(SystemPromptMessage(content=self.chat_question.analysis_sys_question()))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
 
@@ -859,6 +985,12 @@ class LLMService:
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
         self.filter_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, ds_id)
+
+        self.save_agent_context_snapshot(
+            _session,
+            CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+            surface="smart_qa_predict",
+        )
 
         predict_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         predict_msg.append(SystemPromptMessage(content=self.chat_question.predict_sys_question()))
@@ -1080,6 +1212,8 @@ class LLMService:
 
             self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
 
+            self.save_agent_context_snapshot(_session, CustomPromptTargetScopeEnum.SMART_QA)
+
             self.load_tracking_config(_session)
 
             self.init_messages(_session)
@@ -1087,11 +1221,12 @@ class LLMService:
         if _error:
             raise _error
 
-    def generate_sql(self, _session: Session):
+    def generate_sql(self, _session: Session, append_question: bool = True):
         # append current question
-        self.sql_message.append(HumanMessage(
-            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                                 change_title=self.change_title)))
+        if append_question:
+            self.sql_message.append(HumanMessage(
+                self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                     change_title=self.change_title)))
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -1119,6 +1254,60 @@ class LLMService:
                                                                 token_usage=token_usage)
         self.record = save_sql_answer(session=_session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
+
+    def generate_sql_text(self, _session: Session, append_question: bool = True) -> str:
+        full_sql_text = ''
+        for chunk in self.generate_sql(_session, append_question=append_question):
+            full_sql_text += chunk.get('content') or ''
+        return full_sql_text
+
+    def generate_sql_text_streaming_reasoning(
+            self,
+            _session: Session,
+            in_chat: bool,
+            append_question: bool = True,
+    ):
+        full_sql_text = ''
+        for chunk in self.generate_sql(_session, append_question=append_question):
+            full_sql_text += chunk.get('content') or ''
+            if in_chat and chunk.get('reasoning_content'):
+                yield 'data:' + orjson.dumps({
+                    'content': '',
+                    'reasoning_content': chunk.get('reasoning_content'),
+                    'type': 'sql-result',
+                }).decode() + '\n\n'
+        return full_sql_text
+
+    def regenerate_sql_after_validation_error(self, _session: Session, message: str) -> str:
+        repair_message = (
+            "<error-msg>\n"
+            f"{message}\n"
+            "</error-msg>\n"
+            "上一版 SQL 与本次 Data Skill 的业务口径冲突。请严格按 Data Skill 和错误信息重写完整 JSON 结果，"
+            "不要保留冲突的 SQL 片段、CTE、步骤标签或分母。"
+        )
+        self.sql_message.append(HumanMessage(content=repair_message))
+        return self.generate_sql_text(_session, append_question=False)
+
+    def regenerate_sql_after_validation_error_streaming_reasoning(
+            self,
+            _session: Session,
+            message: str,
+            in_chat: bool,
+    ):
+        repair_message = (
+            "<error-msg>\n"
+            f"{message}\n"
+            "</error-msg>\n"
+            "上一版 SQL 与本次 Data Skill 的业务口径冲突。请严格按 Data Skill 和错误信息重写完整 JSON 结果，"
+            "不要保留冲突的 SQL 片段、CTE、步骤标签或分母。"
+        )
+        self.sql_message.append(HumanMessage(content=repair_message))
+        return (yield from self.generate_sql_text_streaming_reasoning(
+            _session,
+            in_chat=in_chat,
+            append_question=False,
+        ))
 
     def generate_with_sub_sql(self, session: Session, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
@@ -1286,6 +1475,15 @@ class LLMService:
         if sql.strip() == '':
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
+
+        semantic_error = _data_skill_sql_validation_error(
+            self.chat_question.question or "",
+            sql,
+            self.chat_question.data_skill,
+        )
+        if semantic_error:
+            trigger_log_error(session, log)
+            raise DataSkillSqlValidationError(semantic_error)
         return sql, data.get('tables')
 
     @staticmethod
@@ -1480,6 +1678,8 @@ class LLMService:
     def await_result(self):
         idle_rounds = 0
         max_idle_rounds = max(1, settings.LLM_REQUEST_TIMEOUT * 2)
+        started_at = time.monotonic()
+        max_wait_seconds = max(settings.LLM_REQUEST_TIMEOUT * 20, settings.LLM_REQUEST_TIMEOUT + 300)
         while self.is_running():
             emitted = False
             while True:
@@ -1494,8 +1694,19 @@ class LLMService:
             else:
                 idle_rounds += 1
                 if idle_rounds >= max_idle_rounds:
+                    if self.stream_keepalive_enabled:
+                        elapsed = time.monotonic() - started_at
+                        if elapsed < max_wait_seconds:
+                            idle_rounds = 0
+                            yield 'data:' + orjson.dumps({
+                                'type': 'heartbeat',
+                                'elapsed_seconds': int(elapsed),
+                            }).decode() + '\n\n'
+                            continue
+
                     AppLogUtil.error(
-                        f"LLM stream idle timeout after {settings.LLM_REQUEST_TIMEOUT}s for record {self.record.id}"
+                        f"LLM stream idle timeout after {settings.LLM_REQUEST_TIMEOUT}s for record "
+                        f"{getattr(self.record, 'id', None)}"
                     )
                     try:
                         self.future.cancel()
@@ -1516,6 +1727,7 @@ class LLMService:
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
         if in_chat:
             stream = True
+        self.stream_keepalive_enabled = bool(in_chat and stream)
         self.future = executor.submit(self.run_task_cache, in_chat, stream, finish_step, return_img)
 
     def run_task_cache(self, in_chat: bool = True, stream: bool = True,
@@ -1535,6 +1747,8 @@ class LLMService:
                 self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
 
                 self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
+
+                self.save_agent_context_snapshot(_session, CustomPromptTargetScopeEnum.SMART_QA)
 
                 self.load_tracking_config(_session)
 
@@ -1579,18 +1793,30 @@ class LLMService:
                 raise AppDBConnectionError('Connect DB failed')
 
             # generate sql
-            sql_res = self.generate_sql(_session)
-            full_sql_text = ''
-            for chunk in sql_res:
-                full_sql_text += chunk.get('content')
-                if in_chat:
-                    yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'sql-result'}).decode() + '\n\n'
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
+            full_sql_text = yield from self.generate_sql_text_streaming_reasoning(
+                _session,
+                in_chat=in_chat,
+            )
             # filter sql
             AppLogUtil.info(full_sql_text)
+
+            use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
+            dynamic_sql_result = None
+            app_temp_sql_text = None
+            assistant_dynamic_sql = None
+            # row permission
+
+            sql_operate = OperationEnum.GENERATE_SQL
+            try:
+                sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
+            except DataSkillSqlValidationError as semantic_error:
+                full_sql_text = yield from self.regenerate_sql_after_validation_error_streaming_reasoning(
+                    _session,
+                    str(semantic_error),
+                    in_chat=in_chat,
+                )
+                AppLogUtil.info(full_sql_text)
+                sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
 
             chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
 
@@ -1609,14 +1835,23 @@ class LLMService:
                     if not stream:
                         json_result['title'] = brief
 
-            use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
-            dynamic_sql_result = None
-            app_temp_sql_text = None
-            assistant_dynamic_sql = None
-            # row permission
-
-            sql_operate = OperationEnum.GENERATE_SQL
-            sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
+            if in_chat:
+                json_str = extract_nested_json(full_sql_text)
+                if json_str:
+                    try:
+                        answer_data = orjson.loads(json_str)
+                        yield 'data:' + orjson.dumps(
+                            {'content': orjson.dumps(answer_data).decode(), 'reasoning_content': '', 'type': 'sql-result'}
+                        ).decode() + '\n\n'
+                    except Exception:
+                        yield 'data:' + orjson.dumps(
+                            {'content': full_sql_text, 'reasoning_content': '', 'type': 'sql-result'}
+                        ).decode() + '\n\n'
+                else:
+                    yield 'data:' + orjson.dumps(
+                        {'content': full_sql_text, 'reasoning_content': '', 'type': 'sql-result'}
+                    ).decode() + '\n\n'
+                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
 
             try:
                 if use_dynamic_ds:
@@ -1889,6 +2124,7 @@ class LLMService:
             session_maker.remove()
 
     def run_recommend_questions_task_async(self):
+        self.stream_keepalive_enabled = True
         self.future = executor.submit(self.run_recommend_questions_task_cache)
 
     def run_recommend_questions_task_cache(self):
@@ -1917,6 +2153,7 @@ class LLMService:
     def run_analysis_or_predict_task_async(self, session: Session, action_type: str, base_record: ChatRecord,
                                            in_chat: bool = True, stream: bool = True):
         self.set_record(save_analysis_predict_record(session, base_record, action_type))
+        self.stream_keepalive_enabled = bool(in_chat and stream)
         self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type, in_chat, stream)
 
     def run_analysis_or_predict_task_cache(self, action_type: str, in_chat: bool = True, stream: bool = True):

@@ -16,7 +16,8 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, or_, select
 
-from apps.ai_model.model_factory import LLMFactory, get_default_config
+from apps.ai_model.model_factory import LLMConfig, LLMFactory, get_default_config
+from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import CustomPromptTargetScopeEnum, find_custom_prompts, find_data_skills
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission import has_datasource_access, is_normal_user
@@ -359,7 +360,7 @@ def _chunk_text(content) -> str:
     return str(content)
 
 
-async def _create_llm(custom_model_id: int | None = None):
+async def _create_llm(custom_model_id: int | None = None) -> tuple[Any, LLMConfig]:
     config = await get_default_config(custom_model_id)
     additional_params = dict(config.additional_params or {})
     extra_body = dict(additional_params.get("extra_body") or {})
@@ -369,7 +370,7 @@ async def _create_llm(custom_model_id: int | None = None):
     additional_params["temperature"] = 0
     additional_params["top_p"] = 1
     config = config.model_copy(update={"additional_params": additional_params})
-    return LLMFactory.create_llm(config).llm
+    return LLMFactory.create_llm(config).llm, config
 
 
 def _sse(payload: dict[str, Any]) -> str:
@@ -399,6 +400,8 @@ def _serialise_conversation_messages(request: AnalysisAssistantConversationSave)
         if item.get("role") not in {"user", "assistant"}:
             continue
         item["content"] = str(item.get("content") or "")
+        if item.get("agentContextSnapshot") and not isinstance(item["agentContextSnapshot"], dict):
+            item.pop("agentContextSnapshot", None)
         if item.get("blocks"):
             item["blocks"] = sanitize_chart_display_names(item["blocks"])
         messages.append(item)
@@ -2567,13 +2570,27 @@ async def chat(request: AnalysisAssistantRequest, current_user: CurrentUser, ses
         target_scope,
         include_all_target_scopes=False,
     )
-    llm = await _create_llm(custom_agent_model_id)
+    llm, llm_config = await _create_llm(custom_agent_model_id)
+    context_snapshot = build_agent_context_snapshot(
+        surface="analysis_assistant",
+        datasource_id=datasource.id,
+        datasource_name=datasource.name,
+        custom_prompt_id=request.custom_prompt_id,
+        custom_prompt_text=custom_agent,
+        custom_prompt_model_id=custom_agent_model_id,
+        data_skill_id=request.data_skill_id,
+        data_skill_text=data_skill,
+        ai_model_id=llm_config.model_id,
+        ai_model_name=llm_config.model_name,
+        target_scope=target_scope.value if target_scope else None,
+    )
 
     def generate():
         question = request.messages[-1].content.strip()
         blocks: list[dict[str, Any]] = []
         success = False
         try:
+            yield _sse({"type": "context_snapshot", "snapshot": context_snapshot})
             outline_text = ""
             for chunk in llm.stream(_initial_outline_messages(request, custom_agent, data_skill)):
                 content = _chunk_text(chunk.content)
@@ -2757,7 +2774,7 @@ async def report_interpretation(request: AnalysisAssistantRequest, current_user:
         CustomPromptTargetScopeEnum.REPORT_INTERPRETATION,
         include_all_target_scopes=True,
     )
-    llm = await _create_llm(None)
+    llm, _llm_config = await _create_llm(None)
     return StreamingResponse(
         _stream_report_interpretation(llm, request, current_user, data_skill),
         media_type="text/event-stream",

@@ -39,6 +39,7 @@ class AnalysisAssistantConversationMessage(BaseModel):
     traces: list[str] | None = None
     blocks: list[dict] | None = None
     final: str | None = None
+    agentContextSnapshot: dict | None = None
     error: bool | None = None
 
 

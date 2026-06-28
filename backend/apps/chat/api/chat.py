@@ -616,7 +616,8 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         stmt = select(ChatRecord.id, ChatRecord.tenant_id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource,
                       ChatRecord.engine_type,
                       ChatRecord.ai_modal_id, ChatRecord.create_by, ChatRecord.chart, ChatRecord.data,
-                      ChatRecord.custom_prompt_id, ChatRecord.data_skill_id).where(
+                      ChatRecord.custom_prompt_id, ChatRecord.data_skill_id,
+                      ChatRecord.agent_context_snapshot).where(
             and_(
                 ChatRecord.id == chat_record_id,
                 ChatRecord.create_by == current_user.id,
@@ -628,7 +629,8 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
                                 engine_type=r.engine_type, ai_modal_id=r.ai_modal_id, create_by=r.create_by,
                                 chart=r.chart,
                                 data=r.data, custom_prompt_id=r.custom_prompt_id,
-                                data_skill_id=r.data_skill_id)
+                                data_skill_id=r.data_skill_id,
+                                agent_context_snapshot=r.agent_context_snapshot)
 
         if not record:
             raise Exception(f"Chat record with id {chat_record_id} not found")

@@ -55,17 +55,17 @@
 
         <div class="overview-visual">
           <div class="chart-card-head">
-            <span>{{ t('tenant_usage.user_token_ranking') }}</span>
-            <span class="muted">{{ t('tenant_usage.by_user') }}</span>
+            <span>{{ primaryRankingTitle }}</span>
+            <span class="muted">{{ primaryRankingScope }}</span>
           </div>
           <div class="chart-surface chart-surface-hero">
             <ChartComponent
-              v-if="userChartRows.length"
-              :id="'tenant-usage-user-ranking'"
+              v-if="primaryRankingRows.length"
+              :id="primaryRankingChartId"
               type="bar"
-              :data="userChartRows"
-              :x="userTokenXAxis"
-              :y="userTokenYAxis"
+              :data="primaryRankingRows"
+              :x="primaryRankingXAxis"
+              :y="primaryRankingYAxis"
             />
             <div v-else class="hero-empty-state" :aria-label="t('tenant_usage.empty')">
               <div class="hero-empty-grid" aria-hidden="true">
@@ -182,14 +182,33 @@
           <EmptyBackground v-else :description="t('tenant_usage.empty')" img-type="tree" />
         </div>
       </section>
+
+      <section class="chart-card">
+        <div class="chart-card-head">
+          <span>{{ t('tenant_usage.model_token_breakdown') }}</span>
+          <span class="muted">{{ t('tenant_usage.by_model') }}</span>
+        </div>
+        <div class="chart-surface">
+          <ChartComponent
+            v-if="modelBreakdownRows.length"
+            :id="'tenant-usage-model-breakdown'"
+            type="bar"
+            :data="modelBreakdownRows"
+            :x="modelBreakdownXAxis"
+            :y="modelBreakdownYAxis"
+          />
+          <EmptyBackground v-else :description="t('tenant_usage.empty')" img-type="tree" />
+        </div>
+      </section>
     </div>
 
-    <div class="section-head">
+    <div v-if="showUserStats" class="section-head">
       <span>{{ t('tenant_usage.user_detail') }}</span>
       <span class="muted">{{ t('tenant_usage.row_count', { count: userUsageRows.length }) }}</span>
     </div>
 
     <el-table
+      v-if="showUserStats"
       v-loading="loading"
       :data="userUsageRows"
       class="usage-table"
@@ -249,7 +268,12 @@ import icon_error from '@/assets/svg/icon_error.svg'
 import icon_dashboard_outlined from '@/assets/svg/chart/icon_dashboard_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
 import ChartComponent from '@/views/chat/component/ChartComponent.vue'
-import { tenantApi, type TenantUsageDailyInfo, type TenantUsageUserInfo } from '@/api/tenant'
+import {
+  tenantApi,
+  type TenantUsageDailyInfo,
+  type TenantUsageModelInfo,
+  type TenantUsageUserInfo,
+} from '@/api/tenant'
 import type { ChartAxis } from '@/views/chat/component/BaseChart.ts'
 import { useUserStore } from '@/stores/user'
 import { formatTimestamp } from '@/utils/date'
@@ -260,12 +284,26 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  tenantId: {
+    type: [Number, String],
+    default: '',
+  },
+  tenantName: {
+    type: String,
+    default: '',
+  },
+  showUserStats: {
+    type: Boolean,
+    default: true,
+  },
 })
 const embedded = computed(() => props.embedded)
+const showUserStats = computed(() => props.showUserStats)
 const userStore = useUserStore()
 const loading = ref(false)
 const usageRows = shallowRef<TenantUsageDailyInfo[]>([])
 const rawUserUsageRows = shallowRef<TenantUsageUserInfo[]>([])
+const rawModelUsageRows = shallowRef<TenantUsageModelInfo[]>([])
 const dateRange = ref<[string, string] | null>([
   dayjs().subtract(6, 'day').format('YYYY-MM-DD'),
   dayjs().format('YYYY-MM-DD'),
@@ -291,7 +329,7 @@ const metricLabelMap = computed(() =>
   }, {})
 )
 
-const currentTenantName = computed(() => userStore.getTenantName || t('tenant.default_tenant'))
+const currentTenantName = computed(() => props.tenantName || userStore.getTenantName || t('tenant.default_tenant'))
 const currentScopeLabel = computed(() => currentTenantName.value)
 
 const selectedMetricLabel = computed(() => t('tenant_usage.current_workspace_scope'))
@@ -422,6 +460,43 @@ const userUsageRows = computed(() =>
 
 const userChartRows = computed(() => userUsageRows.value.slice(0, 12))
 
+const modelLabel = (row: TenantUsageModelInfo) => {
+  if (row.model_name && row.model_code && row.model_name !== row.model_code) {
+    return `${row.model_name} (${row.model_code})`
+  }
+  return row.model_name || row.model_code || t('tenant_usage.unknown_model')
+}
+
+const modelUsageRows = computed(() =>
+  rawModelUsageRows.value.map((row) => ({
+    ...row,
+    model_label: modelLabel(row),
+  }))
+)
+
+const modelBreakdownRows = computed(() =>
+  modelUsageRows.value
+    .slice()
+    .sort((a, b) => Number(b.total_tokens || 0) - Number(a.total_tokens || 0))
+    .slice(0, 10)
+)
+
+const primaryRankingRows = computed(() =>
+  showUserStats.value ? userChartRows.value : modelBreakdownRows.value
+)
+
+const primaryRankingChartId = computed(() =>
+  showUserStats.value ? 'tenant-usage-user-ranking' : 'tenant-usage-model-ranking'
+)
+
+const primaryRankingTitle = computed(() =>
+  showUserStats.value ? t('tenant_usage.user_token_ranking') : t('tenant_usage.model_token_ranking')
+)
+
+const primaryRankingScope = computed(() =>
+  showUserStats.value ? t('tenant_usage.by_user') : t('tenant_usage.by_model')
+)
+
 const formatUsageTime = (value?: number | string) => {
   const timestamp = Number(value || 0)
   return timestamp ? formatTimestamp(timestamp, 'YYYY-MM-DD HH:mm:ss') : '-'
@@ -464,8 +539,8 @@ const dateRangeLabel = computed(() => {
 
 const overviewHighlights = computed(() => [
   {
-    label: t('tenant_usage.active_users'),
-    value: formatNumber(userUsageRows.value.length),
+    label: showUserStats.value ? t('tenant_usage.active_users') : t('tenant_usage.active_models'),
+    value: formatNumber(showUserStats.value ? userUsageRows.value.length : modelUsageRows.value.length),
   },
   {
     label: t('tenant_usage.token_per_request'),
@@ -583,6 +658,22 @@ const userTokenYAxis = computed<ChartAxis[]>(() => [
   { name: t('tenant_usage.tokens'), value: 'total_tokens' },
 ])
 
+const modelBreakdownXAxis = computed<ChartAxis[]>(() => [
+  { name: t('tenant_usage.model'), value: 'model_label' },
+])
+
+const modelBreakdownYAxis = computed<ChartAxis[]>(() => [
+  { name: t('tenant_usage.tokens'), value: 'total_tokens' },
+])
+
+const primaryRankingXAxis = computed<ChartAxis[]>(() =>
+  showUserStats.value ? userTokenXAxis.value : modelBreakdownXAxis.value
+)
+
+const primaryRankingYAxis = computed<ChartAxis[]>(() =>
+  showUserStats.value ? userTokenYAxis.value : modelBreakdownYAxis.value
+)
+
 const loadUsage = async () => {
   loading.value = true
   try {
@@ -590,19 +681,41 @@ const loadUsage = async () => {
     const query = {
       start_date: startDate,
       end_date: endDate,
+      ...(props.tenantId ? { tenant_id: props.tenantId } : {}),
     }
-    const [dailyRowsResult, userRowsResult] = await Promise.all([
-      tenantApi.usage({
-        ...query,
-        limit: 1000,
-      }),
-      tenantApi.usageByUser({
-        ...query,
-        limit: 100,
-      }),
-    ])
-    usageRows.value = dailyRowsResult
-    rawUserUsageRows.value = userRowsResult
+    if (showUserStats.value) {
+      const [dailyRowsResult, modelRowsResult, userRowsResult] = await Promise.all([
+        tenantApi.usage({
+          ...query,
+          limit: 1000,
+        }),
+        tenantApi.usageByModel({
+          ...query,
+          limit: 100,
+        }),
+        tenantApi.usageByUser({
+          ...query,
+          limit: 100,
+        }),
+      ])
+      usageRows.value = dailyRowsResult
+      rawModelUsageRows.value = modelRowsResult
+      rawUserUsageRows.value = userRowsResult
+    } else {
+      const [dailyRowsResult, modelRowsResult] = await Promise.all([
+        tenantApi.usage({
+          ...query,
+          limit: 1000,
+        }),
+        tenantApi.usageByModel({
+          ...query,
+          limit: 100,
+        }),
+      ])
+      usageRows.value = dailyRowsResult
+      rawModelUsageRows.value = modelRowsResult
+      rawUserUsageRows.value = []
+    }
   } finally {
     loading.value = false
   }
@@ -1052,7 +1165,7 @@ onMounted(async () => {
 
   .analytics-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
     margin-bottom: 18px;
   }

@@ -37,6 +37,7 @@ interface DockMessage extends AnalysisAssistantMessage {
   traces?: string[]
   blocks?: AnalysisBlock[]
   final?: string
+  agentContextSnapshot?: Record<string, any>
 }
 
 interface AnalysisPlan {
@@ -480,6 +481,7 @@ const serializeMessages = (): AnalysisAssistantHistoryMessage[] =>
       traces: message.traces,
       blocks: message.blocks,
       final: message.final,
+      agentContextSnapshot: message.agentContextSnapshot,
       error: message.error,
     }))
 
@@ -494,6 +496,7 @@ const restoreMessage = (message: AnalysisAssistantHistoryMessage): DockMessage =
   traces: message.role === 'assistant' ? message.traces || [] : undefined,
   blocks: message.role === 'assistant' ? (message.blocks as AnalysisBlock[]) || [] : undefined,
   final: message.final,
+  agentContextSnapshot: message.agentContextSnapshot,
 })
 
 const requestMessages = () =>
@@ -951,6 +954,9 @@ const processStreamEvent = (chunk: string, assistantMessage: DockMessage) => {
     const data = JSON.parse(payload)
     if (data.type === 'answer') {
       assistantMessage.content += data.content || ''
+    }
+    if (data.type === 'context_snapshot' && data.snapshot) {
+      assistantMessage.agentContextSnapshot = data.snapshot
     }
     if (data.type === 'plan_delta') {
       assistantMessage.planText = (assistantMessage.planText || '') + (data.content || '')

@@ -328,6 +328,20 @@ export interface TenantUsageUserInfo {
   last_used_time: number
 }
 
+export interface TenantUsageModelInfo {
+  tenant_id: number | string
+  model_id?: number | string | null
+  model_name: string
+  model_code: string
+  request_count: number
+  success_count: number
+  failure_count: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  last_used_time: number
+}
+
 const buildTenantUsageQuery = (params: TenantUsageQuery = {}) => {
   const searchParams = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
@@ -479,6 +493,8 @@ export const tenantApi = {
     request.get<TenantUsageDailyInfo[]>(`/system/tenant/usage${buildTenantUsageQuery(params)}`),
   usageByUser: (params?: TenantUsageQuery) =>
     request.get<TenantUsageUserInfo[]>(`/system/tenant/usage/user${buildTenantUsageQuery(params)}`),
+  usageByModel: (params?: TenantUsageQuery) =>
+    request.get<TenantUsageModelInfo[]>(`/system/tenant/usage/model${buildTenantUsageQuery(params)}`),
   bindDomain: (data: { domain: string; auto_join_role: 'admin' | 'member' }) =>
     request.post<TenantDomainInfo>('/system/tenant/domain', data),
   domains: () => request.get<TenantDomainInfo[]>('/system/tenant/domain/list'),
