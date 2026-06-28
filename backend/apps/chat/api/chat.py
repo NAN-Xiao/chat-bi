@@ -59,6 +59,14 @@ def _quota_message(state) -> str:
     )
 
 
+def _parse_chat_finish_step(value: int) -> ChatFinishStep:
+    try:
+        return ChatFinishStep(value)
+    except ValueError:
+        allowed = ", ".join(str(step.value) for step in ChatFinishStep)
+        raise HTTPException(status_code=400, detail=f"finish_step must be one of: {allowed}")
+
+
 async def _tenant_rate_limit_response(
         session: SessionDep,
         current_user: CurrentUser,
@@ -441,14 +449,25 @@ def find_base_question(record_id: int, session: SessionDep, current_user: Curren
 @router.post("/question", summary=f"{PLACEHOLDER_PREFIX}ask_question")
 @require_permissions(permission=AppPermission(type='chat', keyExpression="request_question.chat_id"))
 async def question_answer(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestionBase,
-                          current_assistant: CurrentAssistant):
+                          current_assistant: CurrentAssistant,
+                          finish_step: int = Query(
+                              ChatFinishStep.GENERATE_CHART.value,
+                              description="Smart Q&A execution stop step. Defaults to full chart generation.",
+                          )):
     question = ChatQuestion(
         chat_id=request_question.chat_id,
         question=request_question.question,
         custom_prompt_id=request_question.custom_prompt_id,
         data_skill_id=request_question.data_skill_id,
     )
-    return await question_answer_inner(session, current_user, question, current_assistant, embedding=True)
+    return await question_answer_inner(
+        session,
+        current_user,
+        question,
+        current_assistant,
+        finish_step=_parse_chat_finish_step(finish_step),
+        embedding=True,
+    )
 
 
 async def question_answer_inner(session: SessionDep, current_user: CurrentUser, request_question: ChatQuestion,

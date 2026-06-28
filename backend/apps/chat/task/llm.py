@@ -12,9 +12,7 @@ from decimal import Decimal
 from typing import Any, List, Optional, Union, Dict, Iterator
 
 import orjson
-import pandas as pd
 import requests
-import sqlparse
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
@@ -26,10 +24,10 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     save_error_message, save_sql_exec_data, save_chart_answer, save_chart, \
     finish_record, save_analysis_answer, save_predict_answer, save_predict_data, \
     save_select_datasource_answer, save_recommend_question_answer, \
-    get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
+    get_old_questions, save_analysis_predict_record, get_chart_config, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
-    get_last_execute_sql_error, format_json_data, format_chart_fields, get_chat_brief_generate, get_chat_predict_data, \
-    get_chat_chart_config, trigger_log_error, save_agent_context_snapshot
+    get_last_execute_sql_error, format_chart_fields, get_chat_brief_generate, \
+    trigger_log_error, save_agent_context_snapshot
 from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
@@ -37,25 +35,22 @@ from apps.chat.curd.custom_prompt import (
     find_custom_prompts,
     find_data_skills,
 )
-from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
-    ChatFinishStep, AxisObj, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
+from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, ChatLog, OperationEnum, \
+    ChatFinishStep, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
-    PERMISSION_DENIED_ERROR_TYPE,
     PERMISSION_DENIED_RESULT_MESSAGE,
-    looks_like_permission_scope_error,
     permission_denied_result,
 )
-from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
+from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access
 from apps.datasource.crud.query_executor import (
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
-    validate_user_query_sql_or_raise,
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import get_version, check_connection
+from apps.db.db import get_version
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
@@ -80,8 +75,7 @@ from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
-from common.error import SingleMessageError, AppDBError, ParseSQLResultError, AppDBConnectionError
-from common.utils.data_format import DataFormat
+from common.error import SingleMessageError, AppDBError, ParseSQLResultError
 from common.utils.locale import I18n, I18nHelper
 from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjson
 
@@ -209,6 +203,118 @@ def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = 
                 )
 
     return None
+
+
+def _decode_relaxed_json_string(value: str) -> str:
+    result: list[str] = []
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char != "\\" or index + 1 >= len(value):
+            result.append(char)
+            index += 1
+            continue
+
+        escaped = value[index + 1]
+        if escaped == "n":
+            result.append("\n")
+        elif escaped == "r":
+            result.append("\r")
+        elif escaped == "t":
+            result.append("\t")
+        elif escaped in {'"', "\\", "/"}:
+            result.append(escaped)
+        else:
+            result.append(char)
+            result.append(escaped)
+        index += 2
+    return "".join(result)
+
+
+def _extract_relaxed_json_string_field(text: str, field_name: str) -> str | None:
+    match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"', text)
+    if not match:
+        return None
+
+    start = match.end()
+    end_match = re.search(
+        r'"\s*,\s*"(?:success|sql|tables|chart-type|chart_type|brief|message)"\s*:',
+        text[start:],
+    )
+    if not end_match:
+        return None
+    return _decode_relaxed_json_string(text[start:start + end_match.start()])
+
+
+def _extract_relaxed_json_array_field(text: str, field_name: str) -> list[Any] | None:
+    match = re.search(rf'"{re.escape(field_name)}"\s*:\s*', text)
+    if not match:
+        return None
+    start = match.end()
+    try:
+        value, _end = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, list) else None
+
+
+def _extract_relaxed_simple_json_string_field(text: str, field_name: str) -> str | None:
+    match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"((?:\\.|[^"\\])*)"', text)
+    if not match:
+        return None
+    return _decode_relaxed_json_string(match.group(1))
+
+
+def _parse_relaxed_sql_answer_data(text: str) -> dict[str, Any] | None:
+    success_match = re.search(r'"success"\s*:\s*(true|false)', text)
+    if not success_match:
+        return None
+
+    success = success_match.group(1) == "true"
+    if not success:
+        message = _extract_relaxed_simple_json_string_field(text, "message")
+        if message is None:
+            return None
+        return {"success": False, "message": message}
+
+    sql = _extract_relaxed_json_string_field(text, "sql")
+    if sql is None:
+        return None
+
+    data: dict[str, Any] = {
+        "success": True,
+        "sql": sql,
+    }
+    tables = _extract_relaxed_json_array_field(text, "tables")
+    if tables is not None:
+        data["tables"] = tables
+    chart_type = (
+        _extract_relaxed_simple_json_string_field(text, "chart-type")
+        or _extract_relaxed_simple_json_string_field(text, "chart_type")
+    )
+    if chart_type is not None:
+        data["chart-type"] = chart_type
+    brief = _extract_relaxed_simple_json_string_field(text, "brief")
+    if brief is not None:
+        data["brief"] = brief
+    return data
+
+
+def _parse_sql_answer_data(text: str) -> dict[str, Any]:
+    json_str = extract_nested_json(text)
+    if json_str is not None:
+        try:
+            return orjson.loads(json_str)
+        except orjson.JSONDecodeError:
+            relaxed_data = _parse_relaxed_sql_answer_data(json_str)
+            if relaxed_data is not None:
+                return relaxed_data
+
+    data = _parse_relaxed_sql_answer_data(text)
+    if data is not None:
+        return data
+
+    raise ValueError("SQL answer is not a valid json object")
 
 
 def _get_temp_sql_text(dynamic_sql_result: Optional[dict[str, Any]]) -> Optional[str]:
@@ -378,7 +484,9 @@ def _is_supporting_metric_field(field: str) -> bool:
             "count",
             "num",
             "number",
+            "users",
             "人数",
+            "用户数",
             "次数",
             "数量",
             "分母",
@@ -1446,19 +1554,16 @@ class LLMService:
                                                                   token_usage=token_usage)
 
     def check_sql(self, session: Session, res: str, operate: OperationEnum) -> tuple[str, Optional[list]]:
-        json_str = extract_nested_json(res)
-
         log = self.current_logs[operate]
 
-        if json_str is None:
+        try:
+            data = _parse_sql_answer_data(res)
+        except ValueError:
             trigger_log_error(session, log)
             raise SingleMessageError(orjson.dumps({'message': 'SQL answer is not a valid json object',
                                                    'traceback': "SQL answer is not a valid json object:\n" + res}).decode())
         sql: str
-        data: dict
         try:
-            data = orjson.loads(json_str)
-
             if data['success']:
                 sql = data['sql']
             else:
@@ -1488,17 +1593,12 @@ class LLMService:
 
     @staticmethod
     def get_chart_type_from_sql_answer(res: str) -> Optional[str]:
-        json_str = extract_nested_json(res)
-        if json_str is None:
-            return None
-
         chart_type: Optional[str]
-        data: dict
         try:
-            data = orjson.loads(json_str)
+            data = _parse_sql_answer_data(res)
 
             if data['success']:
-                chart_type = data['chart-type']
+                chart_type = data.get('chart-type') or data.get('chart_type')
             else:
                 return None
         except Exception:
@@ -1508,17 +1608,12 @@ class LLMService:
 
     @staticmethod
     def get_brief_from_sql_answer(res: str) -> Optional[str]:
-        json_str = extract_nested_json(res)
-        if json_str is None:
-            return None
-
         brief: Optional[str]
-        data: dict
         try:
-            data = orjson.loads(json_str)
+            data = _parse_sql_answer_data(res)
 
             if data['success']:
-                brief = data['brief']
+                brief = data.get('brief')
             else:
                 return None
         except Exception:
@@ -1737,391 +1832,18 @@ class LLMService:
 
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
-        json_result: Dict[str, Any] = {'success': True}
-        _session = None
-        try:
-            _session = session_maker()
-            if self.ds:
-                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+        AppLogUtil.info(
+            f"Smart Q&A using LangGraph runner for record {getattr(self.record, 'id', None)}"
+        )
+        from apps.chat.task.smart_qa_graph import run_smart_qa_graph
 
-                self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
-
-                self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
-
-                self.save_agent_context_snapshot(_session, CustomPromptTargetScopeEnum.SMART_QA)
-
-                self.load_tracking_config(_session)
-
-                self.init_messages(_session)
-
-            # return id
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
-                if self.get_record().regenerate_record_id:
-                    yield 'data:' + orjson.dumps({'type': 'regenerate_record_id',
-                                                  'regenerate_record_id': self.get_record().regenerate_record_id}).decode() + '\n\n'
-                yield 'data:' + orjson.dumps(
-                    {'type': 'question', 'question': self.get_record().question}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield '> ' + self.trans('i18n_chat.record_id_in_mcp') + str(self.get_record().id) + '\n'
-                    yield '> ' + self.get_record().question + '\n\n'
-            if not stream:
-                json_result['record_id'] = self.get_record().id
-
-                # select datasource if datasource is none
-            if not self.ds:
-                ds_res = self.select_datasource(_session)
-
-                for chunk in ds_res:
-                    AppLogUtil.info(chunk)
-                    if in_chat:
-                        yield 'data:' + orjson.dumps(
-                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                             'type': 'datasource-result'}).decode() + '\n\n'
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'id': self.ds.id, 'datasource_name': self.ds.name,
-                                                  'engine_type': self.ds.type_name or self.ds.type,
-                                                  'type': 'datasource'}).decode() + '\n\n'
-
-            else:
-                self.validate_history_ds(_session)
-
-            # check connection
-            connected = check_connection(ds=self.ds, trans=None)
-            if not connected:
-                raise AppDBConnectionError('Connect DB failed')
-
-            # generate sql
-            full_sql_text = yield from self.generate_sql_text_streaming_reasoning(
-                _session,
-                in_chat=in_chat,
-            )
-            # filter sql
-            AppLogUtil.info(full_sql_text)
-
-            use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
-            dynamic_sql_result = None
-            app_temp_sql_text = None
-            assistant_dynamic_sql = None
-            # row permission
-
-            sql_operate = OperationEnum.GENERATE_SQL
-            try:
-                sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
-            except DataSkillSqlValidationError as semantic_error:
-                full_sql_text = yield from self.regenerate_sql_after_validation_error_streaming_reasoning(
-                    _session,
-                    str(semantic_error),
-                    in_chat=in_chat,
-                )
-                AppLogUtil.info(full_sql_text)
-                sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
-
-            chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
-
-            # return title
-            if self.change_title:
-                llm_brief = self.get_brief_from_sql_answer(full_sql_text)
-                llm_brief_generated = bool(llm_brief)
-                if llm_brief_generated or (self.chat_question.question and self.chat_question.question.strip() != ''):
-                    save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[
-                                                                                   :20]
-                    brief = rename_chat(session=_session,
-                                        rename_object=RenameChat(id=self.get_record().chat_id,
-                                                                 brief=save_brief, brief_generate=llm_brief_generated))
-                    if in_chat:
-                        yield 'data:' + orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
-                    if not stream:
-                        json_result['title'] = brief
-
-            if in_chat:
-                json_str = extract_nested_json(full_sql_text)
-                if json_str:
-                    try:
-                        answer_data = orjson.loads(json_str)
-                        yield 'data:' + orjson.dumps(
-                            {'content': orjson.dumps(answer_data).decode(), 'reasoning_content': '', 'type': 'sql-result'}
-                        ).decode() + '\n\n'
-                    except Exception:
-                        yield 'data:' + orjson.dumps(
-                            {'content': full_sql_text, 'reasoning_content': '', 'type': 'sql-result'}
-                        ).decode() + '\n\n'
-                else:
-                    yield 'data:' + orjson.dumps(
-                        {'content': full_sql_text, 'reasoning_content': '', 'type': 'sql-result'}
-                    ).decode() + '\n\n'
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
-
-            try:
-                if use_dynamic_ds:
-                    dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
-                    app_temp_sql_text = _get_temp_sql_text(dynamic_sql_result)
-                    if dynamic_sql_result and app_temp_sql_text:
-                        sql_operate = OperationEnum.GENERATE_DYNAMIC_SQL
-                        assistant_dynamic_sql = self.check_save_sql(
-                            session=_session,
-                            res=app_temp_sql_text,
-                            operate=sql_operate,
-                        )
-                    else:
-                        sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
-                else:
-                    checked_sql, _actual_tables = validate_user_query_sql_or_raise(
-                        session=_session,
-                        current_user=self.current_user,
-                        datasource=self.ds,
-                        sql=sql,
-                        allowed_tables=self.table_name_list,
-                    )
-                    sql = self.save_checked_sql(session=_session, sql=checked_sql)
-            except Exception as permission_error:
-                if not looks_like_permission_scope_error(str(permission_error)):
-                    raise
-                sql = self.save_checked_sql(session=_session, sql=sql)
-                failed_result = self.save_permission_denied_data(session=_session)
-                format_sql = sqlparse.format(sql, reindent=True)
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
-                    yield 'data:' + orjson.dumps({
-                        'content': 'execute-failed',
-                        'type': 'sql-data',
-                        'status': 'failed',
-                        'error_type': PERMISSION_DENIED_ERROR_TYPE,
-                        'message': PERMISSION_DENIED_RESULT_MESSAGE,
-                    }).decode() + '\n\n'
-                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-                else:
-                    if stream:
-                        yield f'```sql\n{format_sql}\n```\n\n'
-                        yield f'> {PERMISSION_DENIED_RESULT_MESSAGE}\n'
-                    else:
-                        json_result['success'] = False
-                        json_result['sql'] = sql
-                        json_result['data'] = failed_result
-                        json_result['message'] = PERMISSION_DENIED_RESULT_MESSAGE
-                        yield json_result
-                return
-
-            AppLogUtil.info('sql: ' + sql)
-
-            if not stream:
-                json_result['sql'] = sql
-
-            format_sql = sqlparse.format(sql, reindent=True)
-            if in_chat:
-                yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield f'```sql\n{format_sql}\n```\n\n'
-
-            # execute sql
-            real_execute_sql = sql
-            execute_scope_sql = sql
-            execute_allowed_tables = self.table_name_list
-            if app_temp_sql_text and assistant_dynamic_sql:
-                execute_scope_sql = assistant_dynamic_sql
-                execute_allowed_tables = [
-                    f"app_dynamic_temp_table_{origin_table}"
-                    for origin_table in dynamic_sql_result
-                    if origin_table != APP_TEMP_SQL_TEXT_KEY
-                ]
-                _remove_temp_sql_text(dynamic_sql_result)
-                for origin_table, subsql in dynamic_sql_result.items():
-                    assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}',
-                                                                          subsql)
-                real_execute_sql = assistant_dynamic_sql
-
-            if finish_step.value <= ChatFinishStep.GENERATE_SQL.value:
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-                if not stream:
-                    yield json_result
-                return
-
-            self.current_logs[OperationEnum.EXECUTE_SQL] = start_log(session=_session,
-                                                                     operate=OperationEnum.EXECUTE_SQL,
-                                                                     record_id=self.record.id, local_operation=True)
-            try:
-                result = self.execute_sql(
-                    session=_session,
-                    sql=real_execute_sql,
-                    scope_sql=execute_scope_sql,
-                    scope_allowed_tables=execute_allowed_tables,
-                )
-            except Exception as execute_error:
-                if not looks_like_permission_scope_error(str(execute_error)):
-                    raise
-                trigger_log_error(_session, self.current_logs[OperationEnum.EXECUTE_SQL])
-                failed_result = self.save_permission_denied_data(session=_session)
-                if in_chat:
-                    yield 'data:' + orjson.dumps({
-                        'content': 'execute-failed',
-                        'type': 'sql-data',
-                        'status': 'failed',
-                        'error_type': PERMISSION_DENIED_ERROR_TYPE,
-                        'message': PERMISSION_DENIED_RESULT_MESSAGE,
-                        'reason': PERMISSION_DENIED_RESULT_MESSAGE,
-                    }).decode() + '\n\n'
-                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-                else:
-                    if stream:
-                        yield f'> {PERMISSION_DENIED_RESULT_MESSAGE}\n'
-                    else:
-                        json_result['success'] = False
-                        json_result['sql'] = sql
-                        json_result['data'] = failed_result
-                        json_result['message'] = PERMISSION_DENIED_RESULT_MESSAGE
-                        yield json_result
-                return
-            self.current_logs[OperationEnum.EXECUTE_SQL] = end_log(session=_session,
-                                                                   log=self.current_logs[OperationEnum.EXECUTE_SQL],
-                                                                   full_message={'sql': real_execute_sql,
-                                                                                 'count': len(result.get('data'))})
-
-            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
-            _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
-            result["data"] = _data
-
-            self.save_sql_data(session=_session, data_obj=result)
-            if in_chat:
-                yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
-            if not stream:
-                json_result['data'] = get_chat_chart_data(_session, self.record.id)
-
-            if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
-                if stream:
-                    if in_chat:
-                        yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-                    else:
-                        _column_list = []
-                        for field in result.get('fields'):
-                            _column_list.append(AxisObj(name=field, value=field))
-
-                        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list,
-                                                                                           result.get('data'))
-
-                        # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
-
-                        if not _data or not _fields_list:
-                            yield 'The SQL execution result is empty.\n\n'
-                        else:
-                            df = pd.DataFrame(_data, columns=_fields_list)
-                            df_safe = DataFormat.safe_convert_to_string(df)
-                            markdown_table = df_safe.to_markdown(index=False)
-                            yield markdown_table + '\n\n'
-                else:
-                    yield json_result
-                return
-
-            # generate chart
-            used_tables_schema, used_tables = self.out_ds_instance.get_db_schema(
-                self.ds.id, self.chat_question.question, embedding=False,
-                table_list=tables) if self.out_ds_instance else get_table_schema(
-                session=_session,
-                current_user=self.current_user,
-                ds=self.ds,
-                question=self.chat_question.question,
-                embedding=False, table_list=tables)
-            AppLogUtil.info('used_tables_schema: \n' + used_tables_schema)
-            chart_res = self.generate_chart(_session, chart_type, used_tables_schema)
-            full_chart_text = ''
-            for chunk in chart_res:
-                full_chart_text += chunk.get('content')
-                if in_chat:
-                    yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'chart-result'}).decode() + '\n\n'
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
-
-            # filter chart
-            AppLogUtil.info(full_chart_text)
-            chart = self.check_save_chart(session=_session, res=full_chart_text, result=result)
-            AppLogUtil.info(chart)
-
-            if not stream:
-                json_result['chart'] = chart
-
-            if in_chat:
-                yield 'data:' + orjson.dumps(
-                    {'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
-            else:
-                if stream:
-                    md_data, _fields_list = DataFormat.convert_data_fields_for_pandas(chart, result.get('fields'),
-                                                                                      result.get('data'))
-                    # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
-
-                    if not md_data or not _fields_list:
-                        yield 'The SQL execution result is empty.\n\n'
-                    else:
-                        df = pd.DataFrame(md_data, columns=_fields_list)
-                        df_safe = DataFormat.safe_convert_to_string(df)
-                        markdown_table = df_safe.to_markdown(index=False)
-                        yield markdown_table + '\n\n'
-
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-            else:
-                # generate picture
-                try:
-                    if chart.get('type') != 'table' and return_img:
-                        # yield '### generated chart picture\n\n'
-                        self.current_logs[OperationEnum.GENERATE_PICTURE] = start_log(session=_session,
-                                                                                      operate=OperationEnum.GENERATE_PICTURE,
-                                                                                      record_id=self.record.id,
-                                                                                      local_operation=True)
-                        image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
-                                                           format_json_data(result))
-                        AppLogUtil.info(image_url)
-                        if stream:
-                            yield f'![{chart.get("type")}]({image_url})'
-                        else:
-                            json_result['image_url'] = image_url
-                        if error is not None:
-                            raise error
-
-                        self.current_logs[OperationEnum.GENERATE_PICTURE] = end_log(session=_session,
-                                                                                    log=self.current_logs[
-                                                                                        OperationEnum.GENERATE_PICTURE],
-                                                                                    full_message=image_url)
-                except Exception as e:
-                    if stream:
-                        if chart.get('type') != 'table':
-                            yield 'generate or fetch chart picture error.\n\n'
-                        raise e
-
-            if not stream:
-                yield json_result
-
-        except Exception as e:
-            traceback.print_exc()
-            error_msg: str
-            if isinstance(e, SingleMessageError):
-                error_msg = str(e)
-            elif isinstance(e, AppDBConnectionError):
-                error_msg = orjson.dumps(
-                    {'message': str(e), 'type': 'db-connection-err'}).decode()
-            elif isinstance(e, AppDBError):
-                error_msg = orjson.dumps(
-                    {'message': 'Execute SQL Failed', 'traceback': str(e), 'type': 'exec-sql-err'}).decode()
-            else:
-                error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
-            if _session:
-                self.save_error(session=_session, message=error_msg)
-            if in_chat:
-                yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield f'&#x274c; **ERROR:**\n'
-                    yield f'> {error_msg}\n'
-                else:
-                    json_result['success'] = False
-                    json_result['message'] = error_msg
-                    yield json_result
-        finally:
-            self.finish(_session)
-            session_maker.remove()
+        yield from run_smart_qa_graph(
+            self,
+            in_chat=in_chat,
+            stream=stream,
+            finish_step=finish_step,
+            return_img=return_img,
+        )
 
     def run_recommend_questions_task_async(self):
         self.stream_keepalive_enabled = True
@@ -2161,139 +1883,17 @@ class LLMService:
             self.chunk_list.append(chunk)
 
     def run_analysis_or_predict_task(self, action_type: str, in_chat: bool = True, stream: bool = True):
-        json_result: Dict[str, Any] = {'success': True}
-        _session = None
-        try:
-            _session = session_maker()
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield '> ' + self.trans('i18n_chat.record_id_in_mcp') + str(self.get_record().id) + '\n'
-                    yield '> ' + self.get_record().question + '\n\n'
-            if not stream:
-                json_result['record_id'] = self.get_record().id
+        AppLogUtil.info(
+            f"Chart insight using LangGraph runner for record {getattr(self.record, 'id', None)}"
+        )
+        from apps.chat.task.chart_insight_graph import run_chart_insight_graph
 
-            if action_type == 'analysis':
-                # generate analysis
-                analysis_res = self.generate_analysis(_session)
-                full_text = ''
-                for chunk in analysis_res:
-                    full_text += chunk.get('content')
-                    if in_chat:
-                        yield 'data:' + orjson.dumps(
-                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                             'type': 'analysis-result'}).decode() + '\n\n'
-                    else:
-                        if stream:
-                            yield chunk.get('content')
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
-                    yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
-                else:
-                    if stream:
-                        yield '\n\n'
-                if not stream:
-                    json_result['content'] = full_text
-
-            elif action_type == 'predict':
-                # generate predict
-                analysis_res = self.generate_predict(_session)
-                full_text = ''
-                for chunk in analysis_res:
-                    full_text += chunk.get('content')
-                    if in_chat:
-                        yield 'data:' + orjson.dumps(
-                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                             'type': 'predict-result'}).decode() + '\n\n'
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
-
-                has_data = self.check_save_predict_data(session=_session, res=full_text)
-                if has_data:
-                    if in_chat:
-                        yield 'data:' + orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
-                    else:
-                        chart = get_chat_chart_config(_session, self.record.id)
-                        origin_data = get_chat_chart_data(_session, self.record.id)
-                        predict_data = get_chat_predict_data(_session, self.record.id)
-
-                        if stream:
-                            md_data, _fields_list = DataFormat.convert_data_fields_for_pandas(chart,
-                                                                                              origin_data.get('fields'),
-                                                                                              predict_data)
-                            if not md_data or not _fields_list:
-                                yield 'Predict data result is empty.\n\n'
-                            else:
-                                df = pd.DataFrame(md_data, columns=_fields_list)
-                                df_safe = DataFormat.safe_convert_to_string(df)
-                                markdown_table = df_safe.to_markdown(index=False)
-                                yield markdown_table + '\n\n'
-
-                        else:
-                            json_result['origin_data'] = origin_data
-                            json_result['predict_data'] = predict_data
-
-                        # generate picture
-                        try:
-                            if chart.get('type') != 'table':
-                                # yield '### generated chart picture\n\n'
-
-                                _data = get_chat_chart_data(_session, self.record.id)
-                                _data['data'] = _data.get('data') + predict_data
-
-                                image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
-                                                                   format_json_data(_data))
-                                AppLogUtil.info(image_url)
-                                if stream:
-                                    yield f'![{chart.get("type")}]({image_url})'
-                                else:
-                                    json_result['image_url'] = image_url
-                                if error is not None:
-                                    raise error
-                        except Exception as e:
-                            if stream:
-                                if chart.get('type') != 'table':
-                                    yield 'generate or fetch chart picture error.\n\n'
-                                raise e
-                else:
-                    if in_chat:
-                        yield 'data:' + orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
-                    else:
-                        if stream:
-                            yield full_text + '\n\n'
-                    if not stream:
-                        json_result['success'] = False
-                        json_result['message'] = full_text
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
-
-            self.finish(_session)
-
-            if not stream:
-                yield json_result
-        except Exception as e:
-            traceback.print_exc()
-            error_msg: str
-            if isinstance(e, SingleMessageError):
-                error_msg = str(e)
-            else:
-                error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
-            if _session:
-                self.save_error(session=_session, message=error_msg)
-            if in_chat:
-                yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield f'&#x274c; **ERROR:**\n'
-                    yield f'> {error_msg}\n'
-                else:
-                    json_result['success'] = False
-                    json_result['message'] = error_msg
-                    yield json_result
-        finally:
-            # end
-            session_maker.remove()
+        yield from run_chart_insight_graph(
+            self,
+            action_type=action_type,
+            in_chat=in_chat,
+            stream=stream,
+        )
 
     def validate_history_ds(self, session: Session):
         _ds = self.ds

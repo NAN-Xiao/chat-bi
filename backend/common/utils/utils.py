@@ -1,4 +1,5 @@
 import base64
+import errno
 import hashlib
 import inspect
 import json
@@ -18,6 +19,23 @@ import orjson
 from jwt.exceptions import InvalidTokenError
 
 from common.core import security
+
+
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """Keep Windows log rollover contention from flooding stderr."""
+
+    def doRollover(self):
+        try:
+            super().doRollover()
+        except OSError as exc:
+            is_windows_file_lock = (
+                getattr(exc, "winerror", None) == 32
+                and exc.errno in {errno.EACCES, errno.EPERM}
+            )
+            if not is_windows_file_lock:
+                raise
+            if self.stream is None and not self.delay:
+                self.stream = self._open()
 
 
 def generate_password_reset_token(email: str) -> str:
@@ -126,7 +144,7 @@ def setup_logging():
     # 为每个级别创建文件处理器
     for level_name, level in file_handlers.items():
         file_path = log_dir / f"{level_name}.log"
-        handler = RotatingFileHandler(
+        handler = SafeRotatingFileHandler(
             file_path,
             maxBytes=10 * 1024 * 1024,  # 10MB
             backupCount=5,
@@ -152,7 +170,7 @@ def setup_logging():
         sql_logger = logging.getLogger('sqlalchemy.engine')
         sql_logger.setLevel(logging.DEBUG)
         
-        sql_handler = RotatingFileHandler(
+        sql_handler = SafeRotatingFileHandler(
             log_dir / "sql.log",
             maxBytes=10 * 1024 * 1024,
             backupCount=2,

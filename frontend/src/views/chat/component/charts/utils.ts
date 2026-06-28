@@ -454,6 +454,15 @@ export function buildMixedUnitComboOptions(
     ...baseOptions,
     type: 'view',
     paddingRight: 56,
+    paddingBottom: 34,
+    axis: {
+      x: xAxisOptions,
+    },
+    scale: {
+      x: {
+        nice: true,
+      },
+    },
     interaction: {
       elementHighlight: { background: true, region: true },
       tooltip: { series: true, shared: true },
@@ -476,7 +485,6 @@ export function buildMixedUnitComboOptions(
           },
         },
         axis: {
-          x: xAxisOptions,
           y: {
             position: 'left',
             title: false,
@@ -510,7 +518,6 @@ export function buildMixedUnitComboOptions(
           },
         },
         axis: {
-          x: false,
           y: {
             position: 'right',
             title: false,

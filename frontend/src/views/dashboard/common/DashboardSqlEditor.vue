@@ -105,6 +105,13 @@ const chartTypes: Array<{ label: string; value: ChartTypes }> = [
 ]
 
 const fieldOptions = computed(() => toFieldOptions(sourcePreview.fields))
+const seriesFieldOptions = computed(() => {
+  const excluded = new Set(form.y)
+  if (form.chartType !== 'pie' && form.x) {
+    excluded.add(form.x)
+  }
+  return toFieldOptions(sourcePreview.fields.filter((field) => !excluded.has(field)))
+})
 const pivotTimeFieldOptions = computed(() => {
   const dateFields = sourcePreview.fields.filter((field) =>
     isLikelyPivotDateField(field, sourcePreview.data)
@@ -127,8 +134,9 @@ const showXAxis = computed(() => !['table', 'metric', 'pie'].includes(form.chart
 const showSeries = computed(() => !['table', 'metric', 'funnel', 'scatter'].includes(form.chartType))
 const supportsInsightConfig = computed(() => !['table', 'metric'].includes(form.chartType))
 const supportsPivotConfig = computed(() => !['table', 'metric'].includes(form.chartType))
+const effectiveSeriesField = computed(() => normalizeSeriesField(form.series))
 const supportsTrendInsightConfig = computed(
-  () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length === 1 && !form.series
+  () => ['line', 'area'].includes(form.chartType) && Boolean(form.x) && form.y.length === 1 && !effectiveSeriesField.value
 )
 const trendTimeGranularity = computed<TrendTimeGranularity | null>(() =>
   supportsTrendInsightConfig.value ? detectTrendAxisGranularity(sourcePreview.data, form.x) : null
@@ -156,7 +164,7 @@ const chartPreviewYFields = computed(() => {
   if (form.chartType === 'pie') {
     return form.y.slice(0, 1)
   }
-  return form.series ? form.y.slice(0, 1) : form.y
+  return effectiveSeriesField.value ? form.y.slice(0, 1) : form.y
 })
 
 function comparisonMetricLabel(metric: TrendComparisonMetric, granularity: TrendTimeGranularity | null) {
@@ -213,6 +221,30 @@ function unique(values: Array<string | undefined | null>) {
 
 function toFieldOptions(fields: string[]) {
   return fields.map((field) => ({ label: field, value: field }))
+}
+
+function chartSupportsExplicitSeries(chartType: ChartTypes) {
+  return !['table', 'metric', 'funnel', 'scatter'].includes(chartType)
+}
+
+function normalizeSeriesField(field: string) {
+  if (!field || !chartSupportsExplicitSeries(form.chartType)) {
+    return ''
+  }
+  if (form.y.includes(field)) {
+    return ''
+  }
+  if (form.chartType !== 'pie' && field === form.x) {
+    return ''
+  }
+  return field
+}
+
+function sanitizeSeriesSelection() {
+  const nextSeries = normalizeSeriesField(form.series)
+  if (form.series !== nextSeries) {
+    form.series = nextSeries
+  }
 }
 
 function toAxis(field: string): ChartAxis {
@@ -303,7 +335,7 @@ function inferredPivotDimensions() {
     chart: {
       xAxis: toAxes([form.x].filter(Boolean) as string[]),
       yAxis: toAxes(form.y, { metrics: true }),
-      series: toAxes([form.series].filter(Boolean) as string[]),
+      series: toAxes([effectiveSeriesField.value].filter(Boolean) as string[]),
       columns: toAxes(form.columns),
     },
     timeField: form.pivotTimeField || form.x,
@@ -317,10 +349,11 @@ function pickAllowedField(preferredFields: string[], allowedFields: string[], fa
 }
 
 function normalizePivotSelections() {
+  sanitizeSeriesSelection()
   if (!form.pivotTimeField) {
     form.pivotTimeField = defaultPivotField(form.x, sourcePreview.fields[0] || '')
   }
-  form.pivotGroupField = form.series || inferredPivotDimensions()[0]?.field || ''
+  form.pivotGroupField = effectiveSeriesField.value || inferredPivotDimensions()[0]?.field || ''
   const fields = sourcePreview.fields
   if (fields.length) {
     const timeFields = pivotTimeFieldOptions.value.map((item) => item.value)
@@ -337,9 +370,9 @@ function normalizePivotSelections() {
 function initPivotConfig(pivot?: any) {
   form.pivotEnabled = pivot?.enabled === true
   form.pivotTimeField = pivot?.time_field || ''
-  form.pivotGroupField = form.series || pivot?.group_field || ''
+  form.pivotGroupField = effectiveSeriesField.value || pivot?.group_field || ''
   form.pivotGroupEnabled =
-    typeof pivot?.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(form.pivotGroupField || form.series)
+    typeof pivot?.group_enabled === 'boolean' ? pivot.group_enabled : Boolean(form.pivotGroupField || effectiveSeriesField.value)
   form.pivotRangeEnabled = pivot?.range_enabled !== false
   form.pivotGranularity = normalizePivotGranularity(pivot?.granularity)
   form.pivotRange = pivot?.range || 'source'
@@ -361,8 +394,8 @@ function buildPivotConfig() {
     metric_fields: [...form.y],
     metric_aggregations: resolvePivotMetricAggregations(toAxes(form.y, { metrics: true }), sourcePreview.data),
     metric_field: form.y[0] || '',
-    group_field: form.pivotGroupField || form.series,
-    group_enabled: Boolean((form.pivotGroupField || form.series) && form.pivotGroupEnabled),
+    group_field: form.pivotGroupField || effectiveSeriesField.value,
+    group_enabled: Boolean((form.pivotGroupField || effectiveSeriesField.value) && form.pivotGroupEnabled),
     dimensions: inferredPivotDimensions(),
     range_enabled: form.pivotRangeEnabled,
     granularity: form.pivotGranularity,
@@ -453,6 +486,7 @@ function resetFieldSelections() {
   if (form.columns.length === 0) form.columns = fields.slice(0, 8)
   if (!fields.includes(form.x)) form.x = fields[0] || ''
   if (!fields.includes(form.series)) form.series = ''
+  sanitizeSeriesSelection()
   if (form.y.length === 0) {
     const numericField = fields.find((field) =>
       sourcePreview.data.some((row) => typeof row?.[field] === 'number')
@@ -503,7 +537,7 @@ watch(
     form.columns.join('|'),
     form.x,
     form.y.join('|'),
-    form.series,
+    effectiveSeriesField.value,
     form.multiQuotaName,
     form.insightEnabled,
     form.insightComparisonEnabled,
@@ -530,11 +564,12 @@ watch(
     form.chartType,
     form.x,
     form.y.join('|'),
-    form.series,
+    effectiveSeriesField.value,
     selectedMetricIsRatioOrAverage.value,
     trendTimeGranularity.value,
   ],
   () => {
+    sanitizeSeriesSelection()
     normalizeInsightSelections(true)
     normalizePivotSelections()
   }
@@ -595,6 +630,7 @@ async function runPreview() {
 }
 
 function buildChart() {
+  sanitizeSeriesSelection()
   const sourceChart = props.viewInfo?.chart || {}
   const chart: any = {
     ...sourceChart,
@@ -624,13 +660,13 @@ function buildChart() {
 
   if (form.chartType === 'pie') {
     chart.yAxis = toAxes(form.y.slice(0, 1), { metrics: true })
-    chart.series = toAxes([form.series || form.x].filter(Boolean) as string[])
+    chart.series = toAxes([effectiveSeriesField.value || form.x].filter(Boolean) as string[])
     return chart
   }
 
   chart.xAxis = toAxes([form.x].filter(Boolean) as string[])
-  chart.yAxis = toAxes(form.series ? form.y.slice(0, 1) : form.y, { metrics: true })
-  chart.series = toAxes([form.series].filter(Boolean) as string[])
+  chart.yAxis = toAxes(effectiveSeriesField.value ? form.y.slice(0, 1) : form.y, { metrics: true })
+  chart.series = toAxes([effectiveSeriesField.value].filter(Boolean) as string[])
   return chart
 }
 
@@ -668,7 +704,7 @@ function validateBeforeApply() {
     ElMessage.warning(t('dashboard.sql_editor_select_x'))
     return false
   }
-  if (['heatmap', 'sankey'].includes(form.chartType) && !form.series) {
+  if (['heatmap', 'sankey'].includes(form.chartType) && !effectiveSeriesField.value) {
     ElMessage.warning(t('dashboard.sql_editor_select_series'))
     return false
   }
@@ -807,7 +843,7 @@ function closeDrawer() {
           <el-form-item v-if="showSeries" :label="t('dashboard.sql_editor_series')">
             <el-select v-model="form.series" filterable clearable>
               <el-option
-                v-for="field in fieldOptions"
+                v-for="field in seriesFieldOptions"
                 :key="field.value"
                 :label="field.label"
                 :value="field.value"
@@ -815,7 +851,7 @@ function closeDrawer() {
             </el-select>
           </el-form-item>
           <el-form-item
-            v-if="form.y.length > 1 && !form.series && ['column', 'bar', 'line', 'area'].includes(form.chartType)"
+            v-if="form.y.length > 1 && !effectiveSeriesField && ['column', 'bar', 'line', 'area'].includes(form.chartType)"
             :label="t('dashboard.sql_editor_metric_group')"
           >
             <el-input v-model="form.multiQuotaName" @keydown.stop @keyup.stop />
@@ -953,9 +989,9 @@ function closeDrawer() {
           :columns="form.chartType === 'table' ? toAxes(form.columns.length ? form.columns : sourcePreview.fields) : []"
           :x="form.chartType !== 'table' && form.chartType !== 'metric' && form.chartType !== 'pie' ? toAxes([form.x]) : []"
           :y="toAxes(chartPreviewYFields, { metrics: true })"
-          :series="form.chartType === 'pie' ? toAxes([form.series || form.x]) : toAxes([form.series])"
+          :series="form.chartType === 'pie' ? toAxes([effectiveSeriesField || form.x]) : toAxes([effectiveSeriesField])"
           :data="preview.data"
-          :multi-quota-name="form.y.length > 1 && !form.series ? form.multiQuotaName : undefined"
+          :multi-quota-name="form.y.length > 1 && !effectiveSeriesField ? form.multiQuotaName : undefined"
         />
         <div v-else class="empty-preview">{{ t('dashboard.sql_editor_no_preview_data') }}</div>
       </div>
