@@ -1,4 +1,4 @@
-import { BaseChart } from '@/views/chat/component/BaseChart.ts'
+import { BaseChart, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import { Bar } from '@/views/chat/component/charts/Bar.ts'
 import { Column } from '@/views/chat/component/charts/Column.ts'
 import { Line } from '@/views/chat/component/charts/Line.ts'
@@ -38,9 +38,9 @@ const isParent = (type: any, parentType: any) => {
   return false
 }
 
-export function getChartInstance(type: string, id: string): BaseChart | undefined {
+export function getChartInstance(type: string, mountTarget: ChartMountTarget): BaseChart | undefined {
   if (isParent(CHART_TYPE_MAP[type], BaseChart)) {
-    return new CHART_TYPE_MAP[type](id) as BaseChart
+    return new CHART_TYPE_MAP[type](mountTarget) as BaseChart
   }
   return undefined
 }

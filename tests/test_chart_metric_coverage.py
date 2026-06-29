@@ -79,23 +79,64 @@ def test_multi_quota_chart_covering_all_metrics_is_kept():
 def test_rate_chart_with_supporting_count_fields_is_kept():
     chart = {
         "type": "column",
-        "title": "最近 30 天新增用户留存率",
+        "title": "最近 30 天流程完成率",
         "axis": {
-            "x": {"name": "留存周期", "value": "lifecycle_day"},
-            "y": [{"name": "留存率", "value": "retention_pct"}],
+            "x": {"name": "观察周期", "value": "period_index"},
+            "y": [{"name": "完成率", "value": "completion_pct"}],
         },
     }
     result = _ensure_chart_covers_metric_fields(
         chart,
-        ["lifecycle_day", "day_index", "cohort_size", "retained_users", "retention_pct"],
+        ["period_index", "base_size", "completed_count", "completion_pct"],
         [
             {
-                "lifecycle_day": "D1",
-                "day_index": 1,
-                "cohort_size": 2639,
-                "retained_users": 1143,
-                "retention_pct": 43.31,
+                "period_index": "P1",
+                "base_size": 2639,
+                "completed_count": 1143,
+                "completion_pct": 43.31,
             }
+        ],
+    )
+
+    assert result == chart
+
+
+def test_funnel_chart_with_conversion_and_dropoff_fields_is_kept():
+    chart = {
+        "type": "funnel",
+        "title": "新手任务通过率分析",
+        "axis": {
+            "x": {"value": "step_name"},
+            "y": {"value": "users"},
+        },
+    }
+    result = _ensure_chart_covers_metric_fields(
+        chart,
+        [
+            "step_order",
+            "step_name",
+            "users",
+            "conversion_from_start_pct",
+            "conversion_from_prev_pct",
+            "dropoff_users",
+        ],
+        [
+            {
+                "step_order": 1,
+                "step_name": "新手引导第1步",
+                "users": 9000,
+                "conversion_from_start_pct": 100,
+                "conversion_from_prev_pct": None,
+                "dropoff_users": None,
+            },
+            {
+                "step_order": 2,
+                "step_name": "新手引导第2步",
+                "users": 8961,
+                "conversion_from_start_pct": 99.57,
+                "conversion_from_prev_pct": 99.57,
+                "dropoff_users": 39,
+            },
         ],
     )
 

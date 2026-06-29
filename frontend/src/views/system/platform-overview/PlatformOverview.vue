@@ -511,8 +511,14 @@ onMounted(async () => {
 
 <style scoped lang="less">
 .platform-overview-container {
+  --overview-card-gap: 16px;
+  --overview-section-gap: 18px;
+  --overview-page-bottom-gap: 18px;
+  --overview-bottom-card-min-height: 330px;
+
   width: 100%;
-  height: 100%;
+  min-height: 100%;
+  padding-bottom: var(--overview-page-bottom-gap);
   position: relative;
   color-scheme: light;
 
@@ -556,8 +562,8 @@ onMounted(async () => {
   .hero-panel {
     display: grid;
     grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-    gap: 16px;
-    margin-bottom: 18px;
+    gap: var(--overview-card-gap);
+    margin-bottom: var(--overview-section-gap);
   }
 
   .hero-copy,
@@ -717,8 +723,8 @@ onMounted(async () => {
   .summary-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 16px;
-    margin-bottom: 18px;
+    gap: var(--overview-card-gap);
+    margin-bottom: var(--overview-section-gap);
   }
 
   .summary-card {
@@ -810,8 +816,8 @@ onMounted(async () => {
   .analytics-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-    margin-bottom: 18px;
+    gap: var(--overview-card-gap);
+    margin-bottom: var(--overview-section-gap);
   }
 
   .chart-card-head {
@@ -839,12 +845,16 @@ onMounted(async () => {
   .detail-grid {
     display: grid;
     grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.6fr);
-    gap: 16px;
+    align-items: stretch;
+    gap: var(--overview-card-gap);
   }
 
   .ops-card {
+    min-width: 0;
     padding: 18px;
-    min-height: 330px;
+    min-height: var(--overview-bottom-card-min-height);
+    display: flex;
+    flex-direction: column;
   }
 
   .ranking-list {

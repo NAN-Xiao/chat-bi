@@ -1,4 +1,10 @@
-import { axisLabel, BaseChart, type ChartAxis, type ChartData } from '@/views/chat/component/BaseChart.ts'
+import {
+  axisLabel,
+  BaseChart,
+  type ChartAxis,
+  type ChartData,
+  type ChartMountTarget,
+} from '@/views/chat/component/BaseChart.ts'
 import {
   copyToClipboard,
   type S2DataConfig,
@@ -79,9 +85,10 @@ export class Table extends BaseChart {
 
   resizeObserver: ResizeObserver
 
-  constructor(id: string) {
-    super(id, 'table')
-    this.container = document.getElementById(id)
+  constructor(mountTarget: ChartMountTarget) {
+    super(mountTarget, 'table')
+    this.container =
+      typeof mountTarget === 'string' ? document.getElementById(mountTarget) : mountTarget
 
     this.debounceRender = debounce(async (width?: number, height?: number) => {
       if (this.table) {

@@ -1,5 +1,5 @@
 import { BaseG2Chart } from '@/views/chat/component/BaseG2Chart.ts'
-import type { ChartAxis, ChartData } from '@/views/chat/component/BaseChart.ts'
+import type { ChartAxis, ChartData, ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import {
   checkIsPercent,
@@ -9,8 +9,8 @@ import {
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
 
 export class Funnel extends BaseG2Chart {
-  constructor(id: string) {
-    super(id, 'funnel')
+  constructor(mountTarget: ChartMountTarget) {
+    super(mountTarget, 'funnel')
   }
 
   init(axis: Array<ChartAxis>, data: Array<ChartData>) {
@@ -34,6 +34,8 @@ export class Funnel extends BaseG2Chart {
         x: x[0].value,
         y: y[0].value,
         color: x[0].value,
+      },
+      style: {
         shape: 'funnel',
       },
       transform: [{ type: 'symmetryY' }],

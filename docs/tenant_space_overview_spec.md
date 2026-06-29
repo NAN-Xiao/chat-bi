@@ -13,7 +13,7 @@
 让企业管理员进入系统管理后，先一眼看到当前企业空间的：
 
 - 人：现在有多少成员，最近有没有人在用
-- 资产：数据项目、看板、术语、SQL 示例、自定义 Agent、嵌入应用是否已经沉淀
+- 资产：数据项目、看板、Data Skills、自定义 Agent、嵌入应用是否已经沉淀
 - 配置：空间是不是已经具备基本可用能力
 - 待办：现在有哪些管理动作需要处理
 - 动态：最近发生了什么关键变化
@@ -96,7 +96,7 @@
 +----------------------------------------------+---------------------------------------+
 | 成员活跃趋势                                  | 空间资产构成                          |
 | 折线图/面积图                                 | 横向条形图                            |
-| 活跃成员数、登录次数                          | 项目/看板/术语/SQL/Agent/嵌入应用      |
+| 活跃成员数、登录次数                          | 项目/看板/Data Skills/Agent/嵌入应用   |
 +---------------------------+------------------+---------------------------------------+
 | 成员角色分布               | 待处理事项       | 最近动态                              |
 | 环图                       | 列表卡           | 时间线/动态列表                        |
@@ -195,17 +195,15 @@
 
 1. 数据项目
 2. 已发布看板
-3. 业务术语
-4. SQL 示例
-5. 自定义 Agent
-6. 嵌入应用
+3. Data Skills
+4. 自定义 Agent
+5. 嵌入应用
 
 ### 4.3.4 点击动作
 
 - 数据项目 -> `项目管理`
 - 已发布看板 -> `数据看板`
-- 业务术语 -> `术语配置`
-- SQL 示例 -> `SQL 示例库`
+- Data Skills -> `数据 Skills`
 - 自定义 Agent -> `自定义 Agent`
 - 嵌入应用 -> `嵌入式管理`
 
@@ -267,8 +265,7 @@
 #### 配置缺口类
 
 - 尚未配置数据项目
-- 尚未沉淀业务术语
-- 尚未沉淀 SQL 示例
+- 尚未沉淀 Data Skills
 - 尚未创建数据看板
 
 #### 安全配置类
@@ -305,8 +302,7 @@
 - 新成员加入企业
 - 加入企业申请被批准 / 拒绝
 - 新增数据项目
-- 新增业务术语
-- 新增 SQL 示例
+- 新增 Data Skills
 - 新建自定义 Agent
 - 新建嵌入应用
 - 新建或发布看板
@@ -339,8 +335,8 @@
 
 | 字段 | 含义 | 统计口径 |
 | --- | --- | --- |
-| asset_type | 资产类型 | datasource / dashboard / terminology / training / custom_agent / embedded |
-| asset_label | 资产显示名 | 数据项目 / 已发布看板 / 业务术语 / SQL 示例 / 自定义 Agent / 嵌入应用 |
+| asset_type | 资产类型 | datasource / dashboard / data_skill / custom_agent / embedded |
+| asset_label | 资产显示名 | 数据项目 / 已发布看板 / Data Skills / 自定义 Agent / 嵌入应用 |
 | asset_count | 资产数量 | 各模块当前企业空间总量 |
 
 ### 成员角色分布
@@ -357,8 +353,7 @@
 | --- | --- | --- |
 | pending_member_applications | 待处理加入申请 | `status=pending` 的 tenant application 数量 |
 | empty_datasource | 未配置数据项目 | `datasource_total == 0` |
-| empty_terminology | 未配置业务术语 | `terminology_total == 0` |
-| empty_training | 未配置 SQL 示例 | `training_total == 0` |
+| empty_data_skill | 未配置 Data Skills | `data_skill_total == 0` |
 | empty_dashboard | 未创建看板 | `dashboard_total == 0` |
 | sso_not_enabled | 未开启强制 SSO | `sso_required == false` |
 | session_timeout_missing | 未配置会话超时 | `session_timeout_minutes` 为空或 0 |
@@ -383,8 +378,7 @@
 | --- | --- | --- |
 | 待处理成员申请数 | `tenantApi.tenantApplications('pending')` | 已有 |
 | 数据项目数 | `datasourceApi.list()` | 已有 |
-| 术语数 | `professionalApi.getList(1, 1, params)` 的 `total_count` | 已有，但建议不要前端多次拼接口 |
-| SQL 示例数 | `trainingApi.getList(1, 1, params)` 的 `total_count` | 已有，但建议聚合 |
+| Data Skills 数 | `dataSkillApi.getList(1, 1, params)` 的 `total_count` | 已有，但建议聚合到租户概览接口 |
 | 自定义 Agent 数 | `promptApi.getList(1, 1, type, query)` 汇总 `total_count` | 已有，但要按类型聚合 |
 | 嵌入应用数 | `embeddedApi.getList(1, 1, params)` 的 `total` | 已有 |
 | 安全策略提醒 | `tenantApi.security()` | 已有 |
@@ -446,8 +440,7 @@
   "asset_breakdown": [
     { "asset_type": "datasource", "asset_label": "数据项目", "asset_count": 3 },
     { "asset_type": "dashboard", "asset_label": "已发布看板", "asset_count": 8 },
-    { "asset_type": "terminology", "asset_label": "业务术语", "asset_count": 24 },
-    { "asset_type": "training", "asset_label": "SQL 示例", "asset_count": 16 },
+    { "asset_type": "data_skill", "asset_label": "Data Skills", "asset_count": 24 },
     { "asset_type": "custom_agent", "asset_label": "自定义 Agent", "asset_count": 4 },
     { "asset_type": "embedded", "asset_label": "嵌入应用", "asset_count": 2 }
   ],
@@ -459,8 +452,7 @@
   "todo": {
     "pending_member_applications": 2,
     "empty_datasource": false,
-    "empty_terminology": false,
-    "empty_training": true,
+    "empty_data_skill": false,
     "empty_dashboard": false,
     "sso_not_enabled": true,
     "session_timeout_missing": false

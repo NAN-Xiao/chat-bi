@@ -1,7 +1,15 @@
 ﻿from typing import Any
 
+from collections import OrderedDict
+import copy
+import hashlib
+import json
+from threading import BoundedSemaphore, Lock
+
 from fastapi import HTTPException
 from orjson import orjson
+from redis import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import String, case, cast, select, and_, or_, text, func, inspect
 
 from apps.dashboard.models.dashboard_model import (
@@ -31,15 +39,20 @@ from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.crud.binding import get_bound_datasource_id_for_tenant
 from apps.datasource.crud.query_executor import execute_user_query
 from apps.datasource.models.datasource import CoreDatasource
+from apps.db.db import get_sqlglot_dialect
 from apps.system.schemas.access_context import can_manage_workspace_scope, require_current_tenant_id
 from apps.system.models.user import UserModel
 from apps.system.models.tenant import TenantUserModel
 from apps.system.crud.tenant import TENANT_ROLE_ADMIN, TENANT_ROLE_OWNER
 from apps.system.crud.user import is_platform_workspace_delegate, is_system_admin
+from common.core.config import settings
+from common.core.redis_client import build_redis_url, redis_key
 from common.core.deps import SessionDep, CurrentUser
 from common.utils.chart_config import sanitize_chart_display_names
+from common.utils.utils import AppLogUtil
 import uuid
 import time
+import re
 
 from common.utils.tree_utils import build_tree_generic
 
@@ -118,6 +131,30 @@ DASHBOARD_DRAFT_STATUSES = {
 }
 DASHBOARD_SOURCE_PLATFORM_DELEGATE = "platform_delegate"
 DASHBOARD_SOURCE_PLATFORM_TEMPLATE = "platform_template"
+DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "当前看板查询较多，请稍后刷新"
+DASHBOARD_REFRESH_POLICY_DEFAULT = {
+    "auto_refresh": True,
+    "snapshot_max_age_hours": 3,
+}
+DASHBOARD_REFRESH_POLICY_PATTERN = re.compile(
+    r"<!--\s*dashboard-refresh-policy\s*:\s*(.*?)\s*-->",
+    re.DOTALL | re.IGNORECASE,
+)
+CUSTOM_PROMPT_TYPE_DATA_SKILL = "DATA_SKILL"
+CUSTOM_PROMPT_SCOPE_PLATFORM_PUBLIC = "PLATFORM_PUBLIC"
+CUSTOM_PROMPT_SCOPE_ADMIN_PUBLIC = "ADMIN_PUBLIC"
+CUSTOM_PROMPT_SCOPE_USER_PRIVATE = "USER_PRIVATE"
+
+_DASHBOARD_SQL_PREVIEW_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
+_DASHBOARD_SQL_PREVIEW_CACHE_LOCK = Lock()
+_DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS: dict[str, Lock] = {}
+_DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS_LOCK = Lock()
+_DASHBOARD_SQL_PREVIEW_DATASOURCE_SEMAPHORES: dict[int, BoundedSemaphore] = {}
+_DASHBOARD_SQL_PREVIEW_DATASOURCE_SEMAPHORES_LOCK = Lock()
+_DASHBOARD_SQL_PREVIEW_REDIS_CLIENT: Redis | None = None
+_DASHBOARD_SQL_PREVIEW_REDIS_CLIENT_LOCK = Lock()
+_DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED = False
+_DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL = 0.0
 
 
 def _current_tenant_id(current_user: CurrentUser | None) -> int:
@@ -672,6 +709,321 @@ def _chart_datasource(record: CoreDashboard, item: dict, fallback_datasource: in
 _USER_PERMISSION_DENIED_MESSAGE = "SQL 超出当前数据权限范围"
 
 
+_PIVOT_RANGE_DAYS = {
+    "7d": 7,
+    "14d": 14,
+    "30d": 30,
+    "90d": 90,
+}
+
+
+def _normalize_datasource_type(ds_type: str | None) -> str:
+    return str(ds_type or "").strip().lower()
+
+
+def _dashboard_sql_dialect(ds_type: str | None) -> str | None:
+    dialect = get_sqlglot_dialect(ds_type)
+    if dialect:
+        return dialect
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"pg", "postgres", "postgresql"}:
+        return "postgres"
+    if ds_key in {"ck", "clickhouse"}:
+        return "clickhouse"
+    if ds_key in {"oracle", "dm"}:
+        return "oracle"
+    if ds_key in {"redshift"}:
+        return "redshift"
+    return None
+
+
+def _quote_dashboard_identifier(name: str, ds_type: str | None) -> str:
+    value = str(name or "").strip()
+    dialect = _dashboard_sql_dialect(ds_type)
+    if dialect in {"mysql", "hive"}:
+        return f"`{value.replace('`', '``')}`"
+    if dialect == "tsql":
+        return f"[{value.replace(']', ']]')}]"
+    return f'"{value.replace(chr(34), chr(34) + chr(34))}"'
+
+
+def _dashboard_pivot_column(field_name: str, ds_type: str | None, alias: str = "pivot_src") -> str:
+    return f"{_quote_dashboard_identifier(alias, ds_type)}.{_quote_dashboard_identifier(field_name, ds_type)}"
+
+
+def _dashboard_date_cast(column_sql: str, ds_type: str | None, *, timestamp: bool = False) -> str:
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        return f"CAST({column_sql} AS DATETIME)" if timestamp else f"DATE({column_sql})"
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        return f"CAST({column_sql} AS DATETIME)" if timestamp else f"CAST({column_sql} AS DATE)"
+    if ds_key in {"ck", "clickhouse"}:
+        return f"toDateTime({column_sql})" if timestamp else f"toDate({column_sql})"
+    if ds_key in {"oracle", "dm"}:
+        return f"CAST({column_sql} AS DATE)"
+    if ds_key == "hive":
+        return f"CAST({column_sql} AS TIMESTAMP)" if timestamp else f"TO_DATE({column_sql})"
+    return f"CAST({column_sql} AS TIMESTAMP)" if timestamp else f"CAST({column_sql} AS DATE)"
+
+
+def _dashboard_period_expr(column_sql: str, ds_type: str | None, granularity: str) -> str:
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        date_expr = _dashboard_date_cast(column_sql, ds_type)
+        datetime_expr = _dashboard_date_cast(column_sql, ds_type, timestamp=True)
+        if granularity == "week":
+            return f"DATE_SUB({date_expr}, INTERVAL WEEKDAY({datetime_expr}) DAY)"
+        if granularity == "month":
+            return f"DATE_FORMAT({datetime_expr}, '%Y-%m-01')"
+        return date_expr
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        datetime_expr = _dashboard_date_cast(column_sql, ds_type, timestamp=True)
+        if granularity == "week":
+            return f"DATEADD(week, DATEDIFF(week, 0, {datetime_expr}), 0)"
+        if granularity == "month":
+            return f"DATEFROMPARTS(YEAR({datetime_expr}), MONTH({datetime_expr}), 1)"
+        return _dashboard_date_cast(column_sql, ds_type)
+    if ds_key in {"ck", "clickhouse"}:
+        datetime_expr = _dashboard_date_cast(column_sql, ds_type, timestamp=True)
+        if granularity == "week":
+            return f"toStartOfWeek({datetime_expr}, 1)"
+        if granularity == "month":
+            return f"toStartOfMonth({datetime_expr})"
+        return _dashboard_date_cast(column_sql, ds_type)
+    if ds_key in {"oracle", "dm"}:
+        date_expr = _dashboard_date_cast(column_sql, ds_type)
+        if granularity == "week":
+            return f"TRUNC({date_expr}, 'IW')"
+        if granularity == "month":
+            return f"TRUNC({date_expr}, 'MM')"
+        return f"TRUNC({date_expr})"
+    if granularity == "week":
+        return f"DATE_TRUNC('week', {_dashboard_date_cast(column_sql, ds_type, timestamp=True)})"
+    if granularity == "month":
+        return f"DATE_TRUNC('month', {_dashboard_date_cast(column_sql, ds_type, timestamp=True)})"
+    return _dashboard_date_cast(column_sql, ds_type)
+
+
+def _dashboard_date_literal(value: str, ds_type: str | None) -> str:
+    escaped = value.replace("'", "''")
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        return f"DATE('{escaped}')"
+    if ds_key in {"ck", "clickhouse"}:
+        return f"toDate('{escaped}')"
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        return f"CAST('{escaped}' AS DATE)"
+    if ds_key in {"oracle", "dm"}:
+        return f"TO_DATE('{escaped}', 'YYYY-MM-DD')"
+    if ds_key == "hive":
+        return f"TO_DATE('{escaped}')"
+    return f"DATE '{escaped}'"
+
+
+def _dashboard_date_subtract_expr(date_expr: str, ds_type: str | None, days: int) -> str:
+    if days <= 0:
+        return date_expr
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"mysql", "doris", "starrocks"}:
+        return f"DATE_SUB({date_expr}, INTERVAL {days} DAY)"
+    if ds_key in {"sqlserver", "sql server", "sql_server"}:
+        return f"DATEADD(day, -{days}, {date_expr})"
+    if ds_key in {"ck", "clickhouse"}:
+        return f"subtractDays({date_expr}, {days})"
+    if ds_key in {"oracle", "dm"}:
+        return f"{date_expr} - {days}"
+    if ds_key == "hive":
+        return f"date_sub({date_expr}, {days})"
+    return f"{date_expr} - INTERVAL '{days} days'"
+
+
+def _dashboard_custom_date_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if len(text) >= 10:
+        text = text[:10]
+    if not text:
+        return ""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        raise ValueError("自定义日期格式需为 YYYY-MM-DD")
+    return text
+
+
+def _trim_dashboard_sql(sql: str) -> str:
+    value = str(sql or "").strip()
+    while value.endswith(";"):
+        value = value[:-1].rstrip()
+    return value
+
+
+def _dashboard_pivot_value(pivot: Any, key: str, default: Any = None) -> Any:
+    if isinstance(pivot, dict):
+        return pivot.get(key, default)
+    return getattr(pivot, key, default)
+
+
+def _dashboard_pivot_metric_fields(pivot: Any | None) -> list[str]:
+    values = _dashboard_pivot_value(pivot, "metric_fields", []) or []
+    if not isinstance(values, list):
+        values = []
+    fields = [str(field or "").strip() for field in values]
+    fields = [field for field in fields if field]
+    if not fields:
+        fallback = str(_dashboard_pivot_value(pivot, "metric_field", "") or "").strip()
+        fields = [fallback] if fallback else []
+    return list(dict.fromkeys(fields))
+
+
+def _dashboard_pivot_metric_aggregations(pivot: Any | None) -> dict[str, str]:
+    value = _dashboard_pivot_value(pivot, "metric_aggregations", {}) or {}
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, str] = {}
+    for field, aggregation in value.items():
+        field_name = str(field or "").strip()
+        agg_name = str(aggregation or "").strip().lower()
+        if field_name and agg_name in {"sum", "avg", "min", "max", "count"}:
+            result[field_name] = agg_name
+    return result
+
+
+def _dashboard_pivot_enabled(pivot: Any | None) -> bool:
+    return bool(pivot is not None and _dashboard_pivot_value(pivot, "enabled", False))
+
+
+def _dashboard_pivot_date_cast_error(message: str, pivot: Any | None) -> str | None:
+    text = str(message or "")
+    lowered = text.lower()
+    mentions_date = "date" in lowered or "timestamp" in lowered or "日期" in text
+    mentions_cast = (
+        "cast" in lowered
+        or "coerce" in lowered
+        or "convert" in lowered
+        or "转换" in text
+        or "转化" in text
+    )
+    if not mentions_date or not mentions_cast:
+        return None
+    time_field = str(_dashboard_pivot_value(pivot, "time_field", "") or "").strip()
+    if time_field:
+        return f"透视时间字段「{time_field}」无法转换为日期/时间，请改选日期或时间字段；图表指标应选择数值字段。"
+    return "透视时间字段无法转换为日期/时间，请改选日期或时间字段；图表指标应选择数值字段。"
+
+
+def _dashboard_limit_clause(ds_type: str | None) -> str:
+    ds_key = _normalize_datasource_type(ds_type)
+    if ds_key in {"oracle", "dm", "sqlserver", "sql server", "sql_server"}:
+        return ""
+    return "\nLIMIT 1000"
+
+
+def _build_dashboard_pivot_sql(sql: str, datasource: CoreDatasource, pivot: Any | None) -> str:
+    if not _dashboard_pivot_enabled(pivot):
+        return sql
+    time_field = str(_dashboard_pivot_value(pivot, "time_field", "") or "").strip()
+    metric_fields = _dashboard_pivot_metric_fields(pivot)
+    group_field = str(_dashboard_pivot_value(pivot, "group_field", "") or "").strip()
+    group_enabled = bool(_dashboard_pivot_value(pivot, "group_enabled", True))
+    aggregation = str(_dashboard_pivot_value(pivot, "aggregation", "sum") or "sum").strip().lower()
+    metric_aggregations = _dashboard_pivot_metric_aggregations(pivot)
+    granularity = str(_dashboard_pivot_value(pivot, "granularity", "day") or "day").strip().lower()
+    range_value = str(_dashboard_pivot_value(pivot, "range", "source") or "source").strip().lower()
+
+    if not time_field or not metric_fields:
+        raise ValueError("图表透视配置缺少时间字段或图表指标")
+    if time_field in metric_fields:
+        raise ValueError("透视时间字段和图表指标不能相同；时间字段请选择日期/时间字段，图表指标请选择数值字段")
+
+    ds_type = getattr(datasource, "type", None)
+    source_sql = _trim_dashboard_sql(sql)
+    if not source_sql:
+        raise ValueError("SQL不能为空")
+
+    source_alias = _quote_dashboard_identifier("pivot_src", ds_type)
+    bounds_alias = _quote_dashboard_identifier("pivot_bounds", ds_type)
+    time_col = _dashboard_pivot_column(time_field, ds_type)
+    source_time_date = _dashboard_date_cast(time_col, ds_type)
+    max_period_col = _dashboard_pivot_column("max_period", ds_type, "pivot_bounds")
+    period_expr = _dashboard_period_expr(time_col, ds_type, granularity)
+    time_alias = _quote_dashboard_identifier(time_field, ds_type)
+
+    if aggregation not in {"sum", "avg", "min", "max", "count"}:
+        raise ValueError("不支持的图表透视聚合方式")
+
+    select_items = [
+        f"{period_expr} AS {time_alias}",
+    ]
+    for metric_field in metric_fields:
+        metric_col = _dashboard_pivot_column(metric_field, ds_type)
+        metric_alias = _quote_dashboard_identifier(metric_field, ds_type)
+        metric_aggregation = metric_aggregations.get(metric_field, aggregation)
+        if metric_aggregation == "count":
+            metric_expr = f"COUNT({metric_col})"
+        else:
+            metric_expr = f"{metric_aggregation.upper()}({metric_col})"
+        select_items.append(f"{metric_expr} AS {metric_alias}")
+    group_items = [period_expr]
+    order_items = [period_expr]
+    if group_field and group_enabled:
+        group_col = _dashboard_pivot_column(group_field, ds_type)
+        group_alias = _quote_dashboard_identifier(group_field, ds_type)
+        select_items.insert(1, f"{group_col} AS {group_alias}")
+        group_items.append(group_col)
+        order_items.append(group_col)
+
+    where_parts: list[str] = []
+    days = _PIVOT_RANGE_DAYS.get(range_value)
+    if days is not None:
+        cutoff = _dashboard_date_subtract_expr(max_period_col, ds_type, days - 1)
+        where_parts.append(f"{source_time_date} >= {cutoff}")
+    elif range_value == "custom":
+        custom_start = _dashboard_custom_date_value(_dashboard_pivot_value(pivot, "custom_start", ""))
+        custom_end = _dashboard_custom_date_value(_dashboard_pivot_value(pivot, "custom_end", ""))
+        if custom_start:
+            where_parts.append(f"{source_time_date} >= {_dashboard_date_literal(custom_start, ds_type)}")
+        if custom_end:
+            where_parts.append(f"{source_time_date} <= {_dashboard_date_literal(custom_end, ds_type)}")
+        if not custom_start and not custom_end:
+            raise ValueError("自定义日期范围至少需要开始日期或结束日期")
+    elif range_value not in {"source", "all"}:
+        raise ValueError("不支持的图表透视时间范围")
+
+    where_clause = f"\nWHERE {' AND '.join(where_parts)}" if where_parts else ""
+
+    if days is None:
+        return (
+            "SELECT\n  "
+            + ",\n  ".join(select_items)
+            + f"\nFROM (\n{source_sql}\n) AS {source_alias}"
+            + where_clause
+            + "\nGROUP BY "
+            + ", ".join(group_items)
+            + "\nORDER BY "
+            + ", ".join(order_items)
+            + _dashboard_limit_clause(ds_type)
+        )
+
+    cte_sql = (
+        f"WITH {source_alias} AS (\n{source_sql}\n),\n"
+        f"{bounds_alias} AS (\n"
+        f"  SELECT MAX({source_time_date}) AS {_quote_dashboard_identifier('max_period', ds_type)}\n"
+        f"  FROM {source_alias}\n"
+        f")"
+    )
+
+    return (
+        cte_sql
+        + "\nSELECT\n  "
+        + ",\n  ".join(select_items)
+        + f"\nFROM {source_alias}\nCROSS JOIN {bounds_alias}"
+        + where_clause
+        + "\nGROUP BY "
+        + ", ".join(group_items)
+        + "\nORDER BY "
+        + ", ".join(order_items)
+        + _dashboard_limit_clause(ds_type)
+    )
+
+
 def _failed_chart_result(message: str, error_type: str | None = None) -> dict[str, Any]:
     result = {
         'status': 'failed',
@@ -685,19 +1037,350 @@ def _failed_chart_result(message: str, error_type: str | None = None) -> dict[st
     return result
 
 
+def _dashboard_sql_preview_cache_ttl() -> int:
+    return max(0, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS", 60) or 0))
+
+
+def _dashboard_sql_preview_max_cache_entries() -> int:
+    return max(0, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_CACHE_MAX_ENTRIES", 512) or 0))
+
+
+def _dashboard_sql_preview_datasource_concurrency() -> int:
+    return max(1, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY", 2) or 2))
+
+
+def _dashboard_sql_preview_wait_timeout() -> float:
+    return max(0.0, float(getattr(settings, "DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS", 1.0) or 0))
+
+
+def _dashboard_sql_preview_dedupe_wait_timeout() -> float:
+    return max(0.0, float(getattr(settings, "DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS", 8.0) or 0))
+
+
+def _dashboard_sql_preview_pivot_payload(pivot: Any | None) -> Any | None:
+    if pivot is None:
+        return None
+    if hasattr(pivot, "model_dump"):
+        return pivot.model_dump()
+    if isinstance(pivot, dict):
+        return pivot
+    return str(pivot)
+
+
+def _dashboard_sql_preview_cache_key(
+        current_user: CurrentUser,
+        datasource_id: int,
+        sql: str,
+        pivot: Any | None,
+) -> str:
+    payload = {
+        "tenant_id": _current_tenant_id(current_user),
+        "user_id": _user_id(current_user),
+        "datasource_id": datasource_id,
+        "sql": sql.strip(),
+        "pivot": _dashboard_sql_preview_pivot_payload(pivot),
+    }
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _dashboard_sql_preview_redis_enabled() -> bool:
+    return (getattr(settings, "CACHE_TYPE", "memory") or "memory").lower() == "redis"
+
+
+def _dashboard_sql_preview_redis_client() -> Redis | None:
+    if not _dashboard_sql_preview_redis_enabled():
+        return None
+    global _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT, _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED
+    global _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL
+    if _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL > time.monotonic():
+        return None
+    if _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT is not None:
+        return _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT
+    with _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT_LOCK:
+        if _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT is not None:
+            return _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT
+        try:
+            _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT = Redis.from_url(
+                build_redis_url(),
+                socket_timeout=getattr(settings, "REDIS_SOCKET_TIMEOUT", 10.0),
+                socket_connect_timeout=getattr(settings, "REDIS_CONNECT_TIMEOUT", 3.0),
+                health_check_interval=getattr(settings, "REDIS_HEALTH_CHECK_INTERVAL", 30),
+                max_connections=getattr(settings, "REDIS_MAX_CONNECTIONS", 100),
+                decode_responses=True,
+            )
+        except Exception:
+            if not _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED:
+                AppLogUtil.exception("Dashboard SQL preview Redis cache is unavailable; falling back to memory cache")
+                _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED = True
+            _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL = time.monotonic() + 30
+            return None
+    return _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT
+
+
+def _dashboard_sql_preview_redis_key(cache_key: str) -> str:
+    return redis_key("dashboard", "sql_preview", cache_key)
+
+
+def _dashboard_sql_preview_memory_get(cache_key: str, *, allow_expired: bool = False) -> dict[str, Any] | None:
+    ttl = _dashboard_sql_preview_cache_ttl()
+    if ttl <= 0:
+        return None
+    now = time.monotonic()
+    with _DASHBOARD_SQL_PREVIEW_CACHE_LOCK:
+        cached = _DASHBOARD_SQL_PREVIEW_CACHE.get(cache_key)
+        if cached is None:
+            return None
+        expires_at, result = cached
+        if expires_at < now and not allow_expired:
+            _DASHBOARD_SQL_PREVIEW_CACHE.pop(cache_key, None)
+            return None
+        _DASHBOARD_SQL_PREVIEW_CACHE.move_to_end(cache_key)
+        cloned = copy.deepcopy(result)
+    if allow_expired and cached[0] < now:
+        cloned["cache_stale"] = True
+    cloned["cache_hit"] = True
+    return cloned
+
+
+def _dashboard_sql_preview_memory_set(cache_key: str, result: dict[str, Any]) -> None:
+    ttl = _dashboard_sql_preview_cache_ttl()
+    max_entries = _dashboard_sql_preview_max_cache_entries()
+    if ttl <= 0 or max_entries <= 0 or result.get("status") == "failed":
+        return
+    expires_at = time.monotonic() + ttl
+    with _DASHBOARD_SQL_PREVIEW_CACHE_LOCK:
+        _DASHBOARD_SQL_PREVIEW_CACHE[cache_key] = (expires_at, copy.deepcopy(result))
+        _DASHBOARD_SQL_PREVIEW_CACHE.move_to_end(cache_key)
+        while len(_DASHBOARD_SQL_PREVIEW_CACHE) > max_entries:
+            _DASHBOARD_SQL_PREVIEW_CACHE.popitem(last=False)
+
+
+def _dashboard_sql_preview_cache_get(cache_key: str, *, allow_expired: bool = False) -> dict[str, Any] | None:
+    ttl = _dashboard_sql_preview_cache_ttl()
+    if ttl <= 0:
+        return None
+    client = _dashboard_sql_preview_redis_client()
+    if client is not None:
+        try:
+            raw = client.get(_dashboard_sql_preview_redis_key(cache_key))
+            if raw:
+                decoded = json.loads(raw)
+                if isinstance(decoded, dict):
+                    decoded["cache_hit"] = True
+                    return decoded
+        except (RedisError, json.JSONDecodeError):
+            global _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL, _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED
+            if not _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED:
+                AppLogUtil.exception("Dashboard SQL preview Redis cache read failed; falling back to memory cache")
+                _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED = True
+            _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL = time.monotonic() + 30
+    return _dashboard_sql_preview_memory_get(cache_key, allow_expired=allow_expired)
+
+
+def _dashboard_sql_preview_cache_set(cache_key: str, result: dict[str, Any]) -> None:
+    ttl = _dashboard_sql_preview_cache_ttl()
+    if ttl <= 0 or result.get("status") == "failed":
+        return
+    client = _dashboard_sql_preview_redis_client()
+    if client is not None:
+        try:
+            payload = copy.deepcopy(result)
+            payload.pop("cache_hit", None)
+            payload.pop("cache_stale", None)
+            client.setex(
+                _dashboard_sql_preview_redis_key(cache_key),
+                ttl,
+                json.dumps(payload, ensure_ascii=False, default=str),
+            )
+            return
+        except RedisError:
+            global _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL, _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED
+            if not _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED:
+                AppLogUtil.exception("Dashboard SQL preview Redis cache write failed; falling back to memory cache")
+                _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED = True
+            _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL = time.monotonic() + 30
+    _dashboard_sql_preview_memory_set(cache_key, result)
+
+
+def _dashboard_sql_preview_inflight_lock(cache_key: str) -> Lock:
+    with _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS_LOCK:
+        lock = _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.get(cache_key)
+        if lock is None:
+            lock = Lock()
+            _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS[cache_key] = lock
+        return lock
+
+
+def _dashboard_sql_preview_release_inflight_lock(cache_key: str, lock: Lock) -> None:
+    with _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS_LOCK:
+        if _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.get(cache_key) is lock:
+            _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.pop(cache_key, None)
+
+
+def _dashboard_sql_preview_datasource_semaphore(datasource_id: int) -> BoundedSemaphore:
+    with _DASHBOARD_SQL_PREVIEW_DATASOURCE_SEMAPHORES_LOCK:
+        semaphore = _DASHBOARD_SQL_PREVIEW_DATASOURCE_SEMAPHORES.get(datasource_id)
+        if semaphore is None:
+            semaphore = BoundedSemaphore(_dashboard_sql_preview_datasource_concurrency())
+            _DASHBOARD_SQL_PREVIEW_DATASOURCE_SEMAPHORES[datasource_id] = semaphore
+        return semaphore
+
+
+def _normalize_dashboard_refresh_policy(value: Any) -> dict[str, Any]:
+    policy = dict(DASHBOARD_REFRESH_POLICY_DEFAULT)
+    if not isinstance(value, dict):
+        return policy
+    if "auto_refresh" in value:
+        policy["auto_refresh"] = bool(value.get("auto_refresh"))
+    hours_value = value.get("snapshot_max_age_hours")
+    if hours_value is None:
+        minutes_value = value.get("snapshot_max_age_minutes")
+        if minutes_value is not None:
+            try:
+                hours_value = float(minutes_value) / 60
+            except (TypeError, ValueError):
+                hours_value = None
+    try:
+        hours = float(hours_value)
+    except (TypeError, ValueError):
+        hours = float(policy["snapshot_max_age_hours"])
+    policy["snapshot_max_age_hours"] = max(0.0, min(hours, 24 * 30))
+    return policy
+
+
+def _extract_dashboard_refresh_policy_from_text(text_value: str | None) -> dict[str, Any] | None:
+    if not text_value:
+        return None
+    policy: dict[str, Any] | None = None
+    for match in DASHBOARD_REFRESH_POLICY_PATTERN.finditer(text_value):
+        try:
+            parsed = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            policy = _normalize_dashboard_refresh_policy(parsed)
+    return policy
+
+
+def _custom_prompt_datasource_id_values(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            value = [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
+def _dashboard_refresh_policy_from_skills(
+        session: SessionDep,
+        current_user: CurrentUser,
+        datasource_id: int | None,
+) -> dict[str, Any]:
+    if datasource_id is None:
+        return dict(DASHBOARD_REFRESH_POLICY_DEFAULT)
+    try:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT id, prompt, specific_ds, datasource_ids, create_by, visibility_scope
+                FROM custom_prompt
+                WHERE type = :custom_prompt_type
+                  AND COALESCE(active, false) = true
+                  AND prompt ILIKE :policy_marker
+                  AND (
+                    (
+                      visibility_scope = :platform_scope
+                      AND (:can_manage_platform_public OR COALESCE(visible, true) = true)
+                    )
+                    OR
+                    (
+                      COALESCE(visibility_scope, :public_scope) = :public_scope
+                      AND tenant_id = :tenant_id
+                      AND (:can_manage_public OR COALESCE(visible, true) = true)
+                    )
+                    OR (visibility_scope = :private_scope AND create_by = :current_user_id)
+                  )
+                  AND (
+                    :current_user_id IS NULL
+                    OR NOT EXISTS (
+                      SELECT 1
+                      FROM custom_prompt_user_preference AS pref
+                      WHERE pref.custom_prompt_id = custom_prompt.id
+                        AND pref.user_id = :current_user_id
+                        AND pref.enabled = false
+                    )
+                  )
+                ORDER BY
+                  CASE
+                    WHEN visibility_scope = :platform_scope THEN 0
+                    WHEN visibility_scope = :private_scope THEN 2
+                    ELSE 1
+                  END,
+                  create_time DESC,
+                  id DESC
+                """
+            ),
+            {
+                "custom_prompt_type": CUSTOM_PROMPT_TYPE_DATA_SKILL,
+                "policy_marker": "%dashboard-refresh-policy%",
+                "tenant_id": _current_tenant_id(current_user),
+                "current_user_id": int(current_user.id) if getattr(current_user, "id", None) not in (None, "") else None,
+                "platform_scope": CUSTOM_PROMPT_SCOPE_PLATFORM_PUBLIC,
+                "public_scope": CUSTOM_PROMPT_SCOPE_ADMIN_PUBLIC,
+                "private_scope": CUSTOM_PROMPT_SCOPE_USER_PRIVATE,
+                "can_manage_public": can_manage_workspace_scope(current_user),
+                "can_manage_platform_public": _is_platform_admin_context(current_user),
+            },
+        ).mappings().all()
+        policy: dict[str, Any] | None = None
+        for row in rows:
+            if row.get("specific_ds") and str(datasource_id) not in _custom_prompt_datasource_id_values(row.get("datasource_ids")):
+                continue
+            next_policy = _extract_dashboard_refresh_policy_from_text(row.get("prompt"))
+            if next_policy is not None:
+                policy = next_policy
+        return policy or dict(DASHBOARD_REFRESH_POLICY_DEFAULT)
+    except Exception:
+        AppLogUtil.exception(
+            "Failed to load dashboard refresh policy from Data Skills by direct metadata query"
+        )
+        return dict(DASHBOARD_REFRESH_POLICY_DEFAULT)
+
+
 def _execute_dashboard_chart_sql(
         session: SessionDep,
         current_user: CurrentUser,
         datasource_id: int,
         sql: str,
+        pivot: Any | None = None,
 ) -> dict[str, Any]:
-    return execute_user_query(
+    if _dashboard_pivot_enabled(pivot):
+        datasource = session.get(CoreDatasource, datasource_id)
+        if datasource is None:
+            return _failed_chart_result("项目不存在")
+        try:
+            sql = _build_dashboard_pivot_sql(sql, datasource, pivot)
+        except Exception as exc:
+            return _failed_chart_result(f"{exc}")
+    result = execute_user_query(
         session=session,
         current_user=current_user,
         datasource_id=datasource_id,
         sql=sql,
         origin_column=True,
     )
+    if _dashboard_pivot_enabled(pivot) and result.get("status") == "failed":
+        friendly_message = _dashboard_pivot_date_cast_error(str(result.get("message") or ""), pivot)
+        if friendly_message:
+            result["message"] = friendly_message
+            if result.get("reason"):
+                result["reason"] = friendly_message
+    return result
 
 
 def _clear_dashboard_chart_data(item: dict) -> None:
@@ -743,7 +1426,7 @@ def _clear_dashboard_payload_results(canvas_view_info: str | bytes | None) -> st
     canvas_view_obj = _parse_canvas_view_info(canvas_view_info)
     for item in canvas_view_obj.values():
         if isinstance(item, dict):
-            _clear_dashboard_chart_data(item)
+            _mark_dashboard_chart_snapshot_ready(item)
     return orjson.dumps(canvas_view_obj).decode()
 
 
@@ -1104,7 +1787,16 @@ def _load_share_preview_payload(
         if not can_use or item_datasource is None:
             data_result = _failed_chart_result(_USER_PERMISSION_DENIED_MESSAGE)
         else:
-            data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item["sql"])
+            if _dashboard_pivot_enabled(item.get("pivot")):
+                data_result = _execute_dashboard_chart_sql(
+                    session,
+                    current_user,
+                    item_datasource,
+                    item["sql"],
+                    item.get("pivot"),
+                )
+            else:
+                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item["sql"])
         if not isinstance(item.get("data"), dict):
             item["data"] = {}
         item["data"]["data"] = data_result["data"]
@@ -1194,6 +1886,11 @@ def _dashboard_payload(
 
     result_dict = record.model_dump()
     result_dict['datasource'] = effective_datasource
+    result_dict['dashboard_refresh_policy'] = _dashboard_refresh_policy_from_skills(
+        session,
+        current_user,
+        effective_datasource,
+    )
     creator = _user_name(session, record.create_by)
     updater = _user_name(session, record.update_by)
     result_dict['create_name'] = creator
@@ -1221,7 +1918,7 @@ def _dashboard_payload(
             item_datasource = _chart_datasource(record, item, effective_datasource)
         if item.get('sql') is not None:
             if not include_data:
-                _clear_dashboard_chart_data(item)
+                _mark_dashboard_chart_snapshot_ready(item)
                 continue
             if item_datasource is None:
                 continue
@@ -1233,7 +1930,16 @@ def _dashboard_payload(
                     'message': 'Dashboard chart datasource does not match the dashboard datasource',
                 }
             else:
-                data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
+                if _dashboard_pivot_enabled(item.get("pivot")):
+                    data_result = _execute_dashboard_chart_sql(
+                        session,
+                        current_user,
+                        item_datasource,
+                        item['sql'],
+                        item.get("pivot"),
+                    )
+                else:
+                    data_result = _execute_dashboard_chart_sql(session, current_user, item_datasource, item['sql'])
             _apply_dashboard_chart_result(item, data_result)
     result_dict['canvas_view_info'] = orjson.dumps(canvas_view_obj).decode()
     return result_dict
@@ -1949,7 +2655,57 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
             "data": [],
             "message": "SQL不能为空",
         }
-    return _execute_dashboard_chart_sql(session, current_user, request.datasource, request.sql)
+    datasource_id = _ensure_datasource_access(session, current_user, request.datasource, required=True)
+    if datasource_id is None:
+        return _failed_chart_result("Dashboard datasource is required")
+    normalized_sql = request.sql.strip()
+    cache_key = _dashboard_sql_preview_cache_key(
+        current_user=current_user,
+        datasource_id=datasource_id,
+        sql=normalized_sql,
+        pivot=request.pivot,
+    )
+    cached = _dashboard_sql_preview_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    if request.cache_only:
+        return _failed_chart_result("看板缓存未命中", "dashboard_cache_miss")
+
+    inflight_lock = _dashboard_sql_preview_inflight_lock(cache_key)
+    if not inflight_lock.acquire(timeout=_dashboard_sql_preview_dedupe_wait_timeout()):
+        cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+        if cached is not None:
+            return cached
+        return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
+
+    datasource_semaphore = _dashboard_sql_preview_datasource_semaphore(datasource_id)
+    datasource_acquired = False
+    try:
+        cached = _dashboard_sql_preview_cache_get(cache_key)
+        if cached is not None:
+            return cached
+        datasource_acquired = datasource_semaphore.acquire(timeout=_dashboard_sql_preview_wait_timeout())
+        if not datasource_acquired:
+            cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+            if cached is not None:
+                return cached
+            AppLogUtil.warning(f"Dashboard SQL preview busy: datasource={datasource_id}")
+            return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
+
+        result = _execute_dashboard_chart_sql(
+            session,
+            current_user,
+            datasource_id,
+            normalized_sql,
+            request.pivot,
+        )
+        _dashboard_sql_preview_cache_set(cache_key, result)
+        return result
+    finally:
+        if datasource_acquired:
+            datasource_semaphore.release()
+        inflight_lock.release()
+        _dashboard_sql_preview_release_inflight_lock(cache_key, inflight_lock)
 
 
 def share_resource(session: SessionDep, user: CurrentUser, request: DashboardShareRequest):

@@ -284,6 +284,22 @@ def _variable_filter_item(variable_id: int) -> dict:
     }
 
 
+def test_normal_row_permission_value_preserves_comma():
+    engine = _row_permission_engine()
+    datasource = CoreDatasource(id=1, tenant_id=10, name="Workspace DS", type="pg")
+    current_user = SimpleNamespace(id=2)
+    item = {
+        "type": "item",
+        "field_id": 100,
+        "filter_type": "text",
+        "term": "eq",
+        "value": "New York, NY",
+    }
+
+    with Session(engine) as session:
+        assert transTreeItem(session, current_user, item, datasource) == '"region" = \'New York, NY\''
+
+
 def test_custom_row_permission_variable_requires_explicit_same_tenant():
     engine = _row_permission_engine()
     datasource = CoreDatasource(id=1, tenant_id=10, name="Workspace DS", type="pg")

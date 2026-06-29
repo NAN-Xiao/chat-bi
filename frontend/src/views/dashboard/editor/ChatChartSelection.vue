@@ -65,6 +65,17 @@ import DashboardChatList from '@/views/dashboard/editor/DashboardChatList.vue'
 import ChartSelection from '@/views/dashboard/editor/ChartSelection.vue'
 import { concat } from 'lodash-es'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
+import { detectTrendAxisGranularity } from '@/views/chat/component/chartInsight.ts'
+import type { ChartAxis } from '@/views/chat/component/BaseChart.ts'
+import {
+  defaultPivotAggregationForAxes,
+  resolvePivotMetricAggregations,
+  withResolvedMetricSemantics,
+} from '@/views/dashboard/utils/metricSemantics.ts'
+import {
+  inferPivotDimensions,
+  isLikelyPivotDateField,
+} from '@/views/dashboard/utils/pivotDimensions.ts'
 
 const dialogShow = ref(false)
 const { t } = useI18n()
@@ -81,6 +92,91 @@ const currentChatId = ref<number | undefined>()
 const currentChat = ref<ChatInfo>(new ChatInfo())
 const chartInfoList = ref<Array<any>>([])
 const emits = defineEmits(['addChatChart'])
+
+function axisValue(axis?: Pick<ChartAxis, 'value' | 'name'> | null) {
+  return String(axis?.value || axis?.name || '').trim()
+}
+
+function firstAxisValue(axis?: Array<ChartAxis>) {
+  return (axis || []).map(axisValue).find(Boolean) || ''
+}
+
+function getResultFields(result: any) {
+  return Array.from(
+    new Set([
+      ...(Array.isArray(result?.fields) ? result.fields : []),
+      ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
+    ].filter(Boolean))
+  ) as string[]
+}
+
+function buildDefaultPivot(viewInfo: any) {
+  const chart = viewInfo?.chart || {}
+  const type = chart.sourceType || chart.type
+  const timeField = firstAxisValue(chart.xAxis)
+  const metricAxes = (chart.yAxis || []).map((axis: ChartAxis) =>
+    withResolvedMetricSemantics(axis, viewInfo?.data?.data || [])
+  )
+  const metricFields = metricAxes.map((axis: ChartAxis) => axis.value).filter(Boolean)
+  if (
+    !timeField ||
+    !isLikelyPivotDateField(timeField, viewInfo?.data?.data || []) ||
+    metricFields.length === 0 ||
+    ['table', 'metric'].includes(type)
+  ) {
+    return { enabled: false }
+  }
+  const dimensions = inferPivotDimensions({
+    fields: getResultFields(viewInfo?.data || {}),
+    data: viewInfo?.data?.data || [],
+    chart,
+    timeField,
+    metricFields,
+  })
+  const groupField = firstAxisValue(chart.series) || dimensions[0]?.field || ''
+  const granularity = detectTrendAxisGranularity(viewInfo?.data?.data, timeField)
+  return {
+    enabled: true,
+    time_field: timeField,
+    metric_field: metricFields[0] || '',
+    metric_fields: metricFields,
+    metric_aggregations: resolvePivotMetricAggregations(metricAxes, viewInfo?.data?.data || []),
+    group_field: groupField,
+    group_enabled: Boolean(groupField),
+    dimensions,
+    range_enabled: true,
+    granularity: granularity === 'week' || granularity === 'month' ? granularity : 'day',
+    range: 'source',
+    custom_start: '',
+    custom_end: '',
+    aggregation: defaultPivotAggregationForAxes(metricAxes, viewInfo?.data?.data || []),
+  }
+}
+
+function resolveChartPivot(chartBaseInfo: any, viewInfo: any) {
+  const defaultPivot = buildDefaultPivot(viewInfo)
+  const configuredPivot = chartBaseInfo?.pivot
+  if (!configuredPivot || typeof configuredPivot !== 'object') {
+    return defaultPivot
+  }
+  if (configuredPivot.enabled === false) {
+    return { enabled: false }
+  }
+  return {
+    ...defaultPivot,
+    ...configuredPivot,
+    dimensions: Array.isArray(configuredPivot.dimensions)
+      ? configuredPivot.dimensions
+      : defaultPivot.dimensions,
+    metric_fields: Array.isArray(configuredPivot.metric_fields)
+      ? configuredPivot.metric_fields
+      : defaultPivot.metric_fields,
+    metric_aggregations: {
+      ...(defaultPivot.metric_aggregations || {}),
+      ...(configuredPivot.metric_aggregations || {}),
+    },
+  }
+}
 
 function selectChange(value: boolean, viewInfo: any) {
   if (value) {
@@ -151,6 +247,7 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
           datasource: record.datasource,
           data: data,
           chart: {},
+          pivot: { enabled: false },
         }
         const chartBaseInfo = JSON.parse(record.chart)
         if (chartBaseInfo) {
@@ -180,6 +277,7 @@ function adaptorChartInfoList(chatInfo: ChatInfo) {
             yAxis: yAxis,
             series: axis?.series ? [axis?.series] : [],
           }
+          recordeInfo['pivot'] = resolveChartPivot(chartBaseInfo, recordeInfo)
           chartInfoList.value.push(recordeInfo)
         }
       }

@@ -284,7 +284,7 @@
           <span>AI 分析工作台</span>
           <h2>让 AI 在正确的数据上下文里回答业务问题</h2>
           <p>
-            星通智数把数据源权限、字段元数据、语义层和训练样例放在同一条路径上，
+            星通智数把数据源权限、字段元数据和 Data Skills 放在同一条路径上，
             让自然语言问数更接近真实业务场景中的数据治理方式。
           </p>
           <div class="home-ai-badges">
@@ -308,9 +308,9 @@
       <section class="home-section home-semantic-section" aria-label="语义层能力">
         <div class="home-section-copy">
           <span>语义层</span>
-          <h2>把指标口径、术语和 SQL 样例沉淀成团队共享资产</h2>
+          <h2>把指标口径和查询范式沉淀成团队共享资产</h2>
           <p>
-            星通智数优先通过数据源范围、字段元数据、术语、训练样例和推荐问题来约束分析行为，
+            星通智数优先通过数据源范围、字段元数据、Data Skills 和推荐问题来约束分析行为，
             让 Smart Q&amp;A、分析助手和看板都沿用同一套可信上下文。
           </p>
         </div>
@@ -343,7 +343,7 @@
           <div class="home-governance-preview" aria-hidden="true">
             <span>Datasource Context</span>
             <strong>SLG BI Mock</strong>
-            <p>已授权表 18 · 语义记录 126 · 示例 SQL 42</p>
+            <p>已授权表 18 · Data Skills 24 · 推荐问题 42</p>
             <div>
               <em></em>
               <em></em>
@@ -481,7 +481,7 @@ const capabilities = [
   {
     icon: '径',
     title: '指标口径沉淀',
-    desc: '通过语义层沉淀术语、示例 SQL 和推荐问题。',
+    desc: '通过 Data Skills 沉淀指标口径、查询范式和推荐问题。',
   },
   {
     icon: '图',
@@ -503,7 +503,7 @@ const heroTiles = [
   {
     label: 'Semantic',
     title: '统一口径',
-    desc: '术语、字段、SQL 样例和推荐问题集中维护。',
+    desc: 'Data Skills、字段元数据和推荐问题集中维护。',
   },
   {
     label: 'Governance',
@@ -520,7 +520,7 @@ const homeAiBadges = ['数据源上下文', '语义层检索', 'SQL 可复核', 
 const accountBenefits = [
   '继续使用自然语言查询数据、追问结果和生成图表。',
   '统一连接数据源、语义口径、权限校验和看板资产。',
-  '在同一个工作台管理推荐问题、术语、SQL 示例和数据看板。',
+  '在同一个工作台管理 Data Skills、推荐问题和数据看板。',
   '面向工作空间团队沉淀可信分析过程，减少重复沟通和口径偏差。',
 ]
 const accountExploreCards = [
@@ -532,7 +532,7 @@ const accountExploreCards = [
   {
     icon: '径',
     title: '语义层治理',
-    desc: '集中维护指标口径、术语、训练样例和推荐问题，统一分析边界。',
+    desc: '集中维护指标口径、查询范式和推荐问题，统一分析边界。',
   },
   {
     icon: '板',
@@ -554,7 +554,7 @@ const platformStats = [
   {
     value: '共享',
     label: '语义资产',
-    desc: '术语、推荐问题、训练样例和自定义提示可被多助手复用。',
+    desc: 'Data Skills、推荐问题和自定义提示可被多助手复用。',
   },
 ]
 const workflowSteps = [
@@ -564,7 +564,7 @@ const workflowSteps = [
   },
   {
     title: '理解业务问题',
-    desc: '结合字段元数据、术语和 SQL 示例识别指标、维度、时间窗口和筛选条件。',
+    desc: '结合字段元数据和 Data Skills 识别指标、维度、时间窗口和筛选条件。',
   },
   {
     title: '生成查询与图表',
@@ -578,13 +578,13 @@ const workflowSteps = [
 const semanticHighlights = [
   {
     icon: '词',
-    title: '术语与口径',
-    desc: '定义指标名称、业务别名和计算口径，让不同团队使用同一套语言。',
+    title: 'Data Skills',
+    desc: '沉淀指标名称、业务别名、计算口径和查询范式，让不同团队使用同一套语言。',
   },
   {
     icon: '例',
-    title: '训练 SQL',
-    desc: '用数据源范围内的样例指导 SQL 生成，而不是把业务逻辑写死在代码里。',
+    title: '字段元数据',
+    desc: '围绕数据源维护表字段说明和展示名称，让 SQL 生成有清晰的结构依据。',
   },
   {
     icon: '问',
@@ -632,7 +632,7 @@ const customerStories = [
   {
     label: '数据团队',
     title: '把口径沉淀下来',
-    desc: '把反复沟通的指标解释、SQL 示例和推荐问题沉淀到语义层，降低重复支持成本。',
+    desc: '把反复沟通的指标解释、查询范式和推荐问题沉淀到 Data Skills，降低重复支持成本。',
   },
   {
     label: '管理团队',
@@ -650,7 +650,7 @@ const resourceCards = [
   {
     tag: '治理方法',
     title: '把指标口径放进语义层',
-    desc: '用术语、字段说明和训练 SQL 约束分析行为，让多个助手共享同一上下文。',
+    desc: '用 Data Skills、字段说明和权限配置约束分析行为，让多个助手共享同一上下文。',
     action: '了解语义层',
   },
   {

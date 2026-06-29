@@ -14,7 +14,7 @@ const { componentData, canvasStyleData, canvasViewInfo } = storeToRefs(dashboard
 export const load_resource_prepare = (
   params: any,
   callBack: (obj: any) => void,
-  options: { defaultMode?: boolean; includeData?: boolean; platformTemplate?: boolean } = {}
+  options: { defaultMode?: boolean; includeData?: boolean; platformTemplate?: boolean; requestConfig?: any } = {}
 ) => {
   const loadRequest = options.platformTemplate
     ? dashboardApi.platform_template_admin_load
@@ -25,7 +25,7 @@ export const load_resource_prepare = (
     typeof options.includeData === 'boolean'
       ? { ...params, include_data: options.includeData }
       : params
-  loadRequest(requestParams)
+  loadRequest(requestParams, options.requestConfig)
     .then((canvasInfo: any) => {
       const dashboardInfo = {
         id: canvasInfo.id,
@@ -44,6 +44,7 @@ export const load_resource_prepare = (
         canShare: canvasInfo.can_share ?? canvasInfo.can_edit,
         isDefault: canvasInfo.is_default,
         canSetDefault: canvasInfo.can_set_default,
+        dashboardRefreshPolicy: canvasInfo.dashboard_refresh_policy || null,
       }
       const canvasDataResult = JSON.parse(canvasInfo.component_data)
       const canvasStyleResult = JSON.parse(canvasInfo.canvas_style_data)
@@ -51,6 +52,14 @@ export const load_resource_prepare = (
       callBack({ dashboardInfo, canvasDataResult, canvasStyleResult, canvasViewInfoPreview })
     })
     .catch((err) => {
+      if (
+        options.requestConfig?.signal?.aborted ||
+        err?.name === 'CanceledError' ||
+        err?.code === 'ERR_CANCELED' ||
+        err?.message === 'canceled'
+      ) {
+        return
+      }
       console.error('load_resource_prepare', err)
       callBack({})
     })

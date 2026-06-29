@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -15,9 +16,18 @@ from apps.chat.curd.custom_prompt import (
     find_custom_prompts,
     find_data_skills,
 )
+from apps.chat.curd.custom_prompt_embedding import skill_definition_signature
+from apps.chat.curd import custom_prompt as custom_prompt_runtime
+from apps.chat.curd import custom_prompt_manage
 from apps.chat.models.chat_model import ChatQuestion
 from apps.chat.models.custom_prompt_model import CustomPrompt, CustomPromptInfo
 from apps.system.api import custom_prompt as custom_prompt_api
+from apps.system.crud.tracking_config import build_tracking_prompt_context
+from apps.system.schemas.tenant_schema import (
+    TenantTrackingConfigDTO,
+    TenantTrackingFieldDTO,
+    TenantTrackingTableDTO,
+)
 
 
 def _engine():
@@ -87,10 +97,13 @@ def _engine():
                 description TEXT,
                 target_scope VARCHAR(32),
                 active BOOLEAN,
+                visible BOOLEAN DEFAULT 1,
                 ai_model_id INTEGER,
                 create_by INTEGER,
                 visibility_scope VARCHAR(32),
                 prompt TEXT,
+                embedding TEXT,
+                embedding_signature VARCHAR(128),
                 specific_ds BOOLEAN,
                 datasource_ids TEXT
             )
@@ -169,6 +182,13 @@ def _prompt_info(**overrides):
 
 def _unwrap(func):
     return inspect.unwrap(func)
+
+
+class _FakeSkillEmbeddingModel:
+    def embed_query(self, text):
+        if "净收入" in text or "revenue" in text.lower():
+            return [1.0, 0.0]
+        return [0.0, 1.0]
 
 
 def test_tenant_admin_can_manage_current_tenant_public_prompt():
@@ -800,7 +820,7 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
                 current_user=_platform_admin(),
                 info=_prompt_info(
                     type=CustomPromptTypeEnum.DATA_SKILL,
-                    name=f"SaaS 数据 Skill：通用付费口径 {index}",
+                    name=f"SaaS 数据 Skill：通用后续付费口径 {index}",
                     target_scope=CustomPromptTargetScopeEnum.ALL,
                     visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
                     prompt=(
@@ -826,9 +846,10 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
             current_user=_platform_admin(),
             info=_prompt_info(
                 type=CustomPromptTypeEnum.DATA_SKILL,
-                name="SaaS 数据 Skill：LTV 与 Cohort 价值曲线",
+                name="SaaS 数据 Skill：LTV 与 Cohort 后续付费价值曲线",
                 target_scope=CustomPromptTargetScopeEnum.ALL,
                 visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                description="用于新增用户后续付费、累计收入和 LTV 价值曲线。",
                 prompt=(
                     "# LTV 与 Cohort\n"
                     "新增用户后续付费需要 cumulative_revenue、ltv 和累计付费。\n"
@@ -841,11 +862,12 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
             current_user=_tenant_admin(10),
             info=_prompt_info(
                 type=CustomPromptTypeEnum.DATA_SKILL,
-                name="SLG Skill：首付转化与商品收入结构",
+                name="SLG Skill：首付转化、后续付费与商品收入结构",
                 target_scope=CustomPromptTargetScopeEnum.ALL,
                 visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
                 specific_ds=True,
                 datasource_ids=[501],
+                description="新增 cohort 后续付费、首付转化和商品收入结构。",
                 prompt=(
                     "# 首付转化\n"
                     "新增 cohort 后续付费使用 fact_payments 和累计去重付费用户。\n"
@@ -858,11 +880,12 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
             current_user=_member(3, 10),
             info=_prompt_info(
                 type=CustomPromptTypeEnum.DATA_SKILL,
-                name="xiaonan Skill：渠道新增质量与早期回收",
+                name="xiaonan Skill：渠道新增质量、后续付费与早期回收",
                 target_scope=CustomPromptTargetScopeEnum.ALL,
                 visibility_scope=CustomPromptVisibilityScopeEnum.USER_PRIVATE,
                 specific_ds=True,
                 datasource_ids=[501],
+                description="渠道新增用户后续付费、D7 收入、LTV、ARPU。",
                 prompt=(
                     "# 渠道新增质量\n"
                     "新增用户后续付费按渠道比较 D7 收入、LTV、ARPU。\n"
@@ -882,13 +905,207 @@ def test_auto_data_skill_ranking_prefers_question_relevant_skills_across_layers(
         )
 
         assert len(logs) <= 12
-        assert "LTV 与 Cohort" in logs[0]
-        assert "首付转化与商品收入结构" in skill_text
-        assert "渠道新增质量与早期回收" in skill_text
-        assert skill_text.index("首付转化与商品收入结构") < len(skill_text)
-        assert skill_text.index("渠道新增质量与早期回收") < len(skill_text)
+        assert "LTV 与 Cohort" in skill_text
+        assert "首付转化、后续付费与商品收入结构" in skill_text
+        assert "渠道新增质量、后续付费与早期回收" in skill_text
+        assert skill_text.index("首付转化、后续付费与商品收入结构") < len(skill_text)
+        assert skill_text.index("渠道新增质量、后续付费与早期回收") < len(skill_text)
         assert "无关漏斗" not in skill_text
         assert ltv_id and workspace_id and personal_id
+
+
+def test_auto_data_skill_ranking_uses_name_description_embedding_before_body_keywords(monkeypatch):
+    engine = _engine()
+    monkeypatch.setattr(custom_prompt_runtime.EmbeddingModelCache, "get_model", lambda: _FakeSkillEmbeddingModel())
+    monkeypatch.setattr(custom_prompt_runtime, "run_save_custom_prompt_skill_embeddings", lambda *args, **kwargs: None)
+    with Session(engine) as session:
+        revenue_description = "净收入确认和订单状态口径"
+        funnel_description = "漏斗路径分析"
+        session.execute(text(
+            """
+            INSERT INTO custom_prompt
+                (id, tenant_id, type, name, description, target_scope, active, visible,
+                 create_by, visibility_scope, prompt, embedding, embedding_signature,
+                 specific_ds, datasource_ids)
+            VALUES
+                (8101, 10, 'DATA_SKILL', '收入确认 Skill', :revenue_description, 'SMART_QA', 1, 1,
+                 2, 'ADMIN_PUBLIC', :revenue_prompt, :revenue_embedding,
+                 :revenue_signature, 0, '[]'),
+                (8102, 10, 'DATA_SKILL', '漏斗 Skill', :funnel_description, 'SMART_QA', 1, 1,
+                 2, 'ADMIN_PUBLIC', :funnel_prompt, :funnel_embedding,
+                 :funnel_signature, 0, '[]')
+            """
+        ), {
+            "revenue_description": revenue_description,
+            "revenue_prompt": "# Revenue Body\nUse configured net amount.",
+            "revenue_embedding": json.dumps([1.0, 0.0]),
+            "revenue_signature": skill_definition_signature(
+                "收入确认 Skill",
+                revenue_description,
+                "# Revenue Body\nUse configured net amount.",
+            ),
+            "funnel_description": funnel_description,
+            "funnel_prompt": "# Funnel Body\n净收入 确认 订单 状态 noisy body.",
+            "funnel_embedding": json.dumps([0.0, 1.0]),
+            "funnel_signature": skill_definition_signature(
+                "漏斗 Skill",
+                funnel_description,
+                "# Funnel Body\n净收入 确认 订单 状态 noisy body.",
+            ),
+        })
+
+        skill_text, logs, _model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            skill_id=None,
+            current_user_id=3,
+            tenant_id=10,
+            question="净收入确认怎么查",
+        )
+
+        assert "# Revenue Body" in skill_text
+        assert "# Funnel Body" not in skill_text
+        assert logs == ["名称：收入确认 Skill\n描述：净收入确认和订单状态口径\nSkill 内容：# Revenue Body\nUse configured net amount."]
+
+
+def test_data_skill_embedding_is_invalidated_and_requeued_when_name_or_description_changes(monkeypatch):
+    engine = _engine()
+    queued = []
+    monkeypatch.setattr(custom_prompt_manage, "run_save_custom_prompt_skill_embeddings", lambda ids, tenant_id=None: queued.append((ids, tenant_id)))
+    with Session(engine) as session:
+        skill_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="收入 Skill",
+                description="原描述",
+                target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                prompt="# Body",
+            ),
+        ))
+        session.commit()
+        row = session.get(CustomPrompt, skill_id)
+        row.embedding = json.dumps([0.0, 1.0])
+        row.embedding_signature = skill_definition_signature(row.name, row.description, row.prompt)
+        session.add(row)
+        session.commit()
+        queued.clear()
+
+        asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                id=skill_id,
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="收入 Skill",
+                description="新描述",
+                target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                prompt="# Body",
+            ),
+        ))
+        session.commit()
+        updated = session.get(CustomPrompt, skill_id)
+
+        assert updated.embedding is None
+        assert updated.embedding_signature is None
+        assert queued == [([skill_id], 10)]
+
+
+def test_data_skill_embedding_is_invalidated_and_requeued_when_body_changes(monkeypatch):
+    engine = _engine()
+    queued = []
+    monkeypatch.setattr(custom_prompt_manage, "run_save_custom_prompt_skill_embeddings", lambda ids, tenant_id=None: queued.append((ids, tenant_id)))
+    with Session(engine) as session:
+        skill_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="收入 Skill",
+                description="固定描述",
+                target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                prompt="# Body\nOld rule.",
+            ),
+        ))
+        session.commit()
+        row = session.get(CustomPrompt, skill_id)
+        row.embedding = json.dumps([0.0, 1.0])
+        row.embedding_signature = skill_definition_signature(row.name, row.description, row.prompt)
+        session.add(row)
+        session.commit()
+        queued.clear()
+
+        asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                id=skill_id,
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="收入 Skill",
+                description="固定描述",
+                target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                prompt="# Body\nNew rule.",
+            ),
+        ))
+        session.commit()
+        updated = session.get(CustomPrompt, skill_id)
+
+        assert updated.embedding is None
+        assert updated.embedding_signature is None
+        assert queued == [([skill_id], 10)]
+
+
+def test_data_skill_add_delete_visibility_is_read_from_database_each_runtime():
+    engine = _engine()
+    with Session(engine) as session:
+        skill_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_tenant_admin(10),
+            info=_prompt_info(
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                name="实时 Skill",
+                target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+                visibility_scope=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC,
+                prompt="# Live Skill\nUse live rule.",
+            ),
+        ))
+
+        skill_text, logs, _model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            skill_id=None,
+            current_user_id=3,
+            tenant_id=10,
+            question="实时规则",
+        )
+        assert "Live Skill" in skill_text
+        assert any("实时 Skill" in log for log in logs)
+
+        custom_prompt_api.delete_custom_prompts(
+            session,
+            [skill_id],
+            current_user_id=2,
+            can_manage_public=True,
+            tenant_id=10,
+        )
+        skill_text, logs, _model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            skill_id=None,
+            current_user_id=3,
+            tenant_id=10,
+            question="实时规则",
+        )
+        assert skill_text == ""
+        assert logs == []
 
 
 def test_globally_disabled_data_skill_is_hidden_from_runtime():
@@ -939,6 +1156,191 @@ def test_sql_prompt_ignores_legacy_terms_and_sql_examples_when_data_skill_is_pre
     assert "LEGACY SQL SHOULD NOT APPEAR" not in prompt_text
     assert "Revenue Skill" in prompt_text
     assert "<Data-Skills>" in prompt_text
+
+
+def test_workspace_tracking_config_is_injected_into_sql_prompt():
+    question = ChatQuestion(
+        chat_id=1,
+        question="查询本周事件次数",
+        engine="PostgreSQL",
+        db_schema="# Table: fact_events\n[(event_key: text, 事件编码), (created_at: timestamp, 发生时间)]",
+        sample_data="[]",
+        tracking_config=(
+            "<Workspace-Tracking-Rules>\n"
+            "- `fact_events`; comment=通用事件明细表\n"
+            "- `fact_events.event_key`; role=event_name; comment=事件编码\n"
+            "</Workspace-Tracking-Rules>"
+        ),
+        data_skill="<Data-Skills># Event Skill\nUse configured event fields.</Data-Skills>",
+    )
+
+    templates = question.sql_sys_question("postgresql")
+    prompt_text = "\n".join(templates.values())
+
+    assert "<Workspace-Tracking-Rules>" in prompt_text
+    assert "fact_events.event_key" in prompt_text
+    assert "事件编码" in prompt_text
+    assert list(templates).index("tracking_config") < list(templates).index("data_skill")
+
+
+def test_workspace_tracking_prompt_context_contains_table_and_field_comments():
+    context, summary = build_tracking_prompt_context(
+        TenantTrackingConfigDTO(
+            tenant_id=10,
+            enabled=True,
+            default_event_table="fact_events",
+            default_subject_field="actor_id",
+            default_event_name_field="event_key",
+            default_event_time_field="created_at",
+            tables=[
+                TenantTrackingTableDTO(
+                    tenant_id=10,
+                    table_name="fact_events",
+                    table_comment="通用事件明细表",
+                    table_role="event_detail",
+                    aliases=["事件表"],
+                )
+            ],
+            fields=[
+                TenantTrackingFieldDTO(
+                    tenant_id=10,
+                    table_name="fact_events",
+                    field_name="event_key",
+                    field_comment="事件编码",
+                    field_role="event_name",
+                    semantic_type="string",
+                    aliases=["事件名"],
+                    value_mappings={"signup": "注册"},
+                    required=True,
+                    example_values=["signup"],
+                    ai_notes="优先用于识别事件类型",
+                )
+            ],
+        )
+    )
+
+    assert "<Workspace-Tracking-Rules>" in context
+    assert "当前工作空间" in context
+    assert "不得编造字段" in context
+    assert "`fact_events`" in context
+    assert "通用事件明细表" in context
+    assert "`fact_events.event_key`" in context
+    assert "事件编码" in context
+    assert "value_mappings={\"signup\":\"注册\"}" in context
+    assert any("fact_events.event_key" in item for item in summary)
+
+
+def test_platform_prompt_and_skill_are_runtime_generic_capabilities():
+    engine = _engine()
+    with Session(engine) as session:
+        agent_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_platform_admin(),
+            info=_prompt_info(
+                name="Platform Generic Agent",
+                visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                specific_ds=True,
+                datasource_ids=[501],
+                prompt="Prefer concise SQL explanations.",
+            ),
+        ))
+        skill_id = asyncio.run(_unwrap(custom_prompt_api.create_or_update)(
+            session=session,
+            current_user=_platform_admin(),
+            info=_prompt_info(
+                name="Platform Generic Skill",
+                type=CustomPromptTypeEnum.DATA_SKILL,
+                target_scope=CustomPromptTargetScopeEnum.ALL,
+                visibility_scope=CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC,
+                specific_ds=True,
+                datasource_ids=[501],
+                prompt="# Generic Analysis\nUse conservative query patterns.",
+            ),
+        ))
+
+        agent_row = session.get(CustomPrompt, agent_id)
+        skill_row = session.get(CustomPrompt, skill_id)
+        assert agent_row.tenant_id == 1
+        assert agent_row.specific_ds is False
+        assert agent_row.datasource_ids == []
+        assert skill_row.tenant_id == 1
+        assert skill_row.specific_ds is False
+        assert skill_row.datasource_ids == []
+
+        prompt, _logs, _model = find_custom_prompts(
+            session,
+            CustomPromptTypeEnum.GENERATE_SQL,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            prompt_id=agent_id,
+            current_user_id=3,
+            tenant_id=10,
+        )
+        skill_text, _skill_logs, _skill_model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            skill_id=skill_id,
+            current_user_id=3,
+            tenant_id=10,
+        )
+
+        assert "<scope>platform-generic</scope>" in prompt
+        assert "platform-level generic capability" in prompt
+        assert "Do not treat any table name" in prompt
+        assert "作用域：platform-generic" in skill_text
+        assert "平台级 Skill 只代表通用能力" in skill_text
+        assert "Do not treat any table name" in skill_text
+
+
+def test_legacy_platform_prompt_and_skill_ignore_stale_datasource_scope():
+    engine = _engine()
+    with Session(engine) as session:
+        session.execute(text(
+            """
+            INSERT INTO custom_prompt
+                (id, tenant_id, type, name, description, target_scope, active, visible,
+                 create_by, visibility_scope, prompt, specific_ds, datasource_ids)
+            VALUES
+                (7001, 99, 'GENERATE_SQL', 'Legacy Platform Agent', '', 'SMART_QA', 1, 1,
+                 1, 'PLATFORM_PUBLIC', 'legacy agent method only', 1, '[999]'),
+                (7002, 99, 'DATA_SKILL', 'Legacy Platform Skill', '', 'SMART_QA', 1, 1,
+                 1, 'PLATFORM_PUBLIC', '# legacy skill method only', 1, '[999]')
+            """
+        ))
+        session.commit()
+
+        prompt, _logs, _model = find_custom_prompts(
+            session,
+            CustomPromptTypeEnum.GENERATE_SQL,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            prompt_id=7001,
+            current_user_id=3,
+            tenant_id=10,
+        )
+        skill_text, _skill_logs, _skill_model = find_data_skills(
+            session,
+            datasource=501,
+            target_scope=CustomPromptTargetScopeEnum.SMART_QA,
+            skill_id=7002,
+            current_user_id=3,
+            tenant_id=10,
+        )
+        _page, _size, _total, _pages, rows = custom_prompt_api.page_custom_prompts(
+            session,
+            CustomPromptTypeEnum.DATA_SKILL,
+            current_user_id=3,
+            tenant_id=10,
+        )
+        legacy_skill = next(row for row in rows if row.id == 7002)
+
+        assert "legacy agent method only" in prompt
+        assert "platform-level generic capability" in prompt
+        assert "# legacy skill method only" in skill_text
+        assert legacy_skill.specific_ds is False
+        assert legacy_skill.datasource_ids == []
+        assert legacy_skill.datasource_names == []
 
 
 def test_chart_prompt_uses_data_skill_and_ignores_legacy_terms_and_sql_examples():

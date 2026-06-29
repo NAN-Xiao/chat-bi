@@ -7,7 +7,6 @@ from sqlmodel import delete as sqlmodel_delete, select
 from apps.chat.curd.custom_prompt import CustomPromptTypeEnum, CustomPromptVisibilityScopeEnum
 from apps.chat.models.custom_prompt_model import CustomPrompt
 from apps.dashboard.models.dashboard_model import CoreDashboard
-from apps.data_training.models.data_training_model import DataTraining
 from apps.datasource.crud.binding import (
     bind_tenant_to_datasource,
     get_bound_datasource_id_for_tenant,
@@ -18,7 +17,6 @@ from apps.datasource.crud.permission import (
     list_user_datasource_roles,
     update_user_datasources,
 )
-from apps.system.schemas.semantic_scope import SemanticRecordScopeEnum
 from apps.system.crud.tenant import (
     DEFAULT_TENANT_ID,
     SAMPLE_TENANT_NAME,
@@ -64,7 +62,12 @@ from apps.system.crud.tenant import (
     ensure_tenant_public_id,
     user_belongs_to_tenant,
 )
-from apps.system.crud.tenant_usage import _chat_log_total_tokens_expr, list_tenant_usage_by_user, list_tenant_usage_daily
+from apps.system.crud.tenant_usage import (
+    _chat_log_total_tokens_expr,
+    list_tenant_usage_by_model,
+    list_tenant_usage_by_user,
+    list_tenant_usage_daily,
+)
 from apps.system.crud.user import (
     SYSTEM_ROLE_VIEWER,
     check_email_format,
@@ -130,8 +133,7 @@ from apps.system.schemas.tenant_schema import (
     TenantSearchDTO,
     TenantStatus,
 )
-from apps.system.schemas.tenant_usage_schema import TenantUsageDailyDTO, TenantUsageUserDTO
-from apps.terminology.models.terminology_model import Terminology
+from apps.system.schemas.tenant_usage_schema import TenantUsageDailyDTO, TenantUsageModelDTO, TenantUsageUserDTO
 from common.audit.models.log_model import OperationModules, OperationStatus, OperationType, SystemLog
 from common.audit.schemas.request_context import RequestContext
 from common.core.deps import CurrentTenant, CurrentUser, SessionDep
@@ -531,6 +533,10 @@ def _usage_dto(row) -> TenantUsageDailyDTO:
 
 def _usage_user_dto(row: dict) -> TenantUsageUserDTO:
     return TenantUsageUserDTO(**row)
+
+
+def _usage_model_dto(row: dict) -> TenantUsageModelDTO:
+    return TenantUsageModelDTO(**row)
 
 
 def _timestamp_to_millis(value) -> int:
@@ -1519,7 +1525,7 @@ async def tenant_usage_by_user(
         if tenant_id is not None and int(tenant_id) != scoped_tenant_id:
             raise HTTPException(status_code=403, detail="Tenant usage access denied")
     elif is_platform_admin(current_user):
-        scoped_tenant_id = tenant_id if tenant_id is not None else int(current_tenant.id)
+        raise HTTPException(status_code=403, detail="SaaS admin does not have user-level tenant usage")
     else:
         _require_current_tenant_admin(current_user)
         scoped_tenant_id = int(current_tenant.id)
@@ -1533,6 +1539,39 @@ async def tenant_usage_by_user(
         limit=limit,
     )
     return [_usage_user_dto(row) for row in rows]
+
+
+@router.get("/usage/model", response_model=list[TenantUsageModelDTO])
+async def tenant_usage_by_model(
+    session: SessionDep,
+    current_user: CurrentUser,
+    current_tenant: CurrentTenant,
+    tenant_id: int | None = None,
+    start_date: str | None = Query(default=None, max_length=10),
+    end_date: str | None = Query(default=None, max_length=10),
+    limit: int = Query(100, ge=1, le=500),
+):
+    if is_platform_workspace_delegate(current_user):
+        scoped_tenant_id = int(current_tenant.id)
+        if tenant_id is not None and int(tenant_id) != scoped_tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant usage access denied")
+    elif is_platform_admin(current_user):
+        if tenant_id is None:
+            raise HTTPException(status_code=400, detail="tenant_id is required for SaaS tenant usage statistics")
+        scoped_tenant_id = int(tenant_id)
+    else:
+        _require_current_tenant_admin(current_user)
+        scoped_tenant_id = int(current_tenant.id)
+        if tenant_id is not None and int(tenant_id) != scoped_tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant usage access denied")
+    rows = list_tenant_usage_by_model(
+        session,
+        tenant_id=int(scoped_tenant_id),
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+    )
+    return [_usage_model_dto(row) for row in rows]
 
 
 @router.get("/overview", response_model=TenantOverviewDTO)
@@ -1591,30 +1630,6 @@ async def tenant_overview(
                 CoreDashboard.tenant_id == tenant_id,
                 CoreDashboard.node_type == "leaf",
                 or_(CoreDashboard.delete_flag == 0, CoreDashboard.delete_flag.is_(None)),
-            )
-        ).one() or 0
-
-    terminology_total = 0
-    if _table_exists(session, Terminology.__tablename__):
-        terminology_total = session.exec(
-            select(func.count())
-            .select_from(Terminology)
-            .where(
-                Terminology.tenant_id == tenant_id,
-                Terminology.scope == SemanticRecordScopeEnum.TENANT.value,
-                or_(Terminology.enabled == True, Terminology.enabled.is_(None)),
-            )
-        ).one() or 0
-
-    training_total = 0
-    if _table_exists(session, DataTraining.__tablename__):
-        training_total = session.exec(
-            select(func.count())
-            .select_from(DataTraining)
-            .where(
-                DataTraining.tenant_id == tenant_id,
-                DataTraining.scope == SemanticRecordScopeEnum.TENANT.value,
-                or_(DataTraining.enabled == True, DataTraining.enabled.is_(None)),
             )
         ).one() or 0
 
@@ -1912,7 +1927,7 @@ async def tenant_overview(
             TenantOverviewAssetItemDTO(key="dashboard", count=int(dashboard_total or 0)),
             TenantOverviewAssetItemDTO(
                 key="data_skill",
-                count=int(terminology_total or 0) + int(training_total or 0) + int(data_skill_total or 0),
+                count=int(data_skill_total or 0),
             ),
             TenantOverviewAssetItemDTO(key="custom_agent", count=int(custom_agent_total or 0)),
             TenantOverviewAssetItemDTO(key="embedded", count=int(embedded_total or 0)),

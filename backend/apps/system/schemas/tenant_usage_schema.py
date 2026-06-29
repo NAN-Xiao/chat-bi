@@ -23,3 +23,17 @@ class TenantUsageUserDTO(BaseModel):
     failure_count: int = 0
     total_tokens: int = 0
     last_used_time: int = 0
+
+
+class TenantUsageModelDTO(BaseModel):
+    tenant_id: int
+    model_id: int | None = None
+    model_name: str
+    model_code: str
+    request_count: int = 0
+    success_count: int = 0
+    failure_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    last_used_time: int = 0

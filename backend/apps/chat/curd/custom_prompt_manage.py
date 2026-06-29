@@ -1,14 +1,16 @@
 import datetime
+import json
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy import and_, case, delete, func, or_, select
+from sqlalchemy import and_, case, delete, event, func, or_, select
 
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
     CustomPromptTypeEnum,
     CustomPromptVisibilityScopeEnum,
 )
+from apps.chat.curd.custom_prompt_embedding import skill_definition_signature
 from apps.chat.models.custom_prompt_model import (
     CustomPrompt,
     CustomPromptInfo,
@@ -21,6 +23,7 @@ from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.models.system_model import AiModelDetail
 from apps.system.schemas.access_context import require_tenant_id
 from common.core.deps import SessionDep
+from common.utils.embedding_threads import run_save_custom_prompt_skill_embeddings
 
 
 def _normalize_type(custom_prompt_type: CustomPromptTypeEnum | str | None) -> CustomPromptTypeEnum:
@@ -56,6 +59,16 @@ def _ensure_target_scope_allowed(
         raise HTTPException(status_code=400, detail="Report interpretation scope only supports Data Skills")
 
 
+def _normalize_platform_generic_scope(
+        visibility_scope: CustomPromptVisibilityScopeEnum,
+        specific_ds: bool,
+        datasource_ids: list[int],
+) -> tuple[int | None, bool, list[int]]:
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        return DEFAULT_TENANT_ID, False, []
+    return None, specific_ds, datasource_ids
+
+
 def _normalize_visibility_scope(
         visibility_scope: CustomPromptVisibilityScopeEnum | str | None,
 ) -> CustomPromptVisibilityScopeEnum:
@@ -71,6 +84,11 @@ def _normalize_visibility_scope(
 
 def _normalize_ids(datasource_ids: Optional[list[int]]) -> list[int]:
     result: list[int] = []
+    if isinstance(datasource_ids, str):
+        try:
+            datasource_ids = json.loads(datasource_ids)
+        except json.JSONDecodeError:
+            datasource_ids = [datasource_ids]
     for item in datasource_ids or []:
         try:
             result.append(int(item))
@@ -202,6 +220,8 @@ def _to_info(
     ai_model_id = _normalize_ai_model_id(row.ai_model_id)
     ai_model_names = ai_model_names or {}
     visibility_scope = _normalize_visibility_scope(row.visibility_scope)
+    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
+        datasource_ids = []
     is_owner = _is_owner(row, current_user_id)
     prompt_visible = _prompt_visible(row, current_user_id, can_manage_all, can_manage_public)
     return CustomPromptInfo(
@@ -229,7 +249,7 @@ def _to_info(
         effective_active=bool(row.active) and (True if user_enabled is None else bool(user_enabled)),
         visibility_scope=visibility_scope,
         prompt=row.prompt if prompt_visible else None,
-        specific_ds=bool(row.specific_ds),
+        specific_ds=False if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC else bool(row.specific_ds),
         datasource_ids=datasource_ids,
         datasource_names=[ds_names[item] for item in datasource_ids if item in ds_names],
     )
@@ -334,6 +354,53 @@ def _tenant_id(tenant_id: int | str | None) -> int:
     return require_tenant_id(tenant_id)
 
 
+def _schedule_skill_embedding_after_commit(
+        session: SessionDep,
+        prompt_id: int,
+        tenant_id: int | None,
+) -> None:
+    pending = session.info.setdefault("custom_prompt_skill_embedding_after_commit", {})
+    pending[int(prompt_id)] = int(tenant_id) if tenant_id is not None else None
+    if session.info.get("custom_prompt_skill_embedding_listener_registered"):
+        return
+
+    def _enqueue(_session):
+        queued = _session.info.pop("custom_prompt_skill_embedding_after_commit", {})
+        _session.info.pop("custom_prompt_skill_embedding_listener_registered", None)
+        _session.info.pop("custom_prompt_skill_embedding_rollback_listener_registered", None)
+        ids_by_tenant: dict[int | None, list[int]] = {}
+        for queued_prompt_id, queued_tenant_id in queued.items():
+            ids_by_tenant.setdefault(queued_tenant_id, []).append(int(queued_prompt_id))
+        for queued_tenant_id, queued_ids in ids_by_tenant.items():
+            run_save_custom_prompt_skill_embeddings(queued_ids, tenant_id=queued_tenant_id)
+
+    def _clear(_session):
+        _session.info.pop("custom_prompt_skill_embedding_after_commit", None)
+        _session.info.pop("custom_prompt_skill_embedding_listener_registered", None)
+        _session.info.pop("custom_prompt_skill_embedding_rollback_listener_registered", None)
+
+    session.info["custom_prompt_skill_embedding_listener_registered"] = True
+    event.listen(session, "after_commit", _enqueue, once=True)
+    if not session.info.get("custom_prompt_skill_embedding_rollback_listener_registered"):
+        session.info["custom_prompt_skill_embedding_rollback_listener_registered"] = True
+        event.listen(session, "after_rollback", _clear, once=True)
+
+
+def _mark_skill_embedding_stale_if_needed(row: CustomPrompt, prompt_type: CustomPromptTypeEnum) -> bool:
+    if prompt_type != CustomPromptTypeEnum.DATA_SKILL:
+        if getattr(row, "embedding", None) or getattr(row, "embedding_signature", None):
+            row.embedding = None
+            row.embedding_signature = None
+        return False
+
+    expected_signature = skill_definition_signature(row.name, row.description, row.prompt)
+    if row.embedding and row.embedding_signature == expected_signature:
+        return False
+    row.embedding = None
+    row.embedding_signature = None
+    return True
+
+
 def _private_visibility_condition(current_user_id: Optional[int]):
     if current_user_id is None:
         return False
@@ -349,18 +416,19 @@ def _visible_conditions(
         can_manage_all: bool,
         include_global: bool = True,
 ):
+    platform_condition = _platform_public_visibility_condition()
+
     if can_manage_all:
-        return _access_conditions(datasource_ids, include_global)
+        return [platform_condition] + _access_conditions(datasource_ids, include_global)
 
     if datasource_ids is None:
-        return []
+        return [platform_condition]
 
     public_access = _access_conditions(datasource_ids, include_global)
     private_access = _access_conditions(datasource_ids, include_global=True)
-    conditions = []
+    conditions = [platform_condition]
     if public_access:
         conditions.append(and_(_tenant_public_visibility_condition(), or_(*public_access)))
-        conditions.append(and_(_platform_public_visibility_condition(), or_(*public_access)))
     if private_access:
         conditions.append(and_(_private_visibility_condition(current_user_id), or_(*private_access)))
     return conditions
@@ -435,6 +503,7 @@ def _build_query(
         ds_conditions = [CustomPrompt.datasource_ids.contains([int(ds_id)]) for ds_id in dslist]
         if include_global:
             ds_conditions.extend([
+                _platform_public_visibility_condition(),
                 CustomPrompt.datasource_ids == [],
                 CustomPrompt.specific_ds == False,
                 CustomPrompt.specific_ds.is_(None),
@@ -743,8 +812,13 @@ def create_custom_prompt(
     target_scope = _normalize_target_scope(info.target_scope)
     _ensure_target_scope_allowed(prompt_type, target_scope)
     visibility_scope = _normalize_visibility_scope(info.visibility_scope)
-    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
-        resolved_tenant_id = DEFAULT_TENANT_ID
+    platform_tenant_id, specific_ds, datasource_ids = _normalize_platform_generic_scope(
+        visibility_scope,
+        specific_ds,
+        datasource_ids,
+    )
+    if platform_tenant_id is not None:
+        resolved_tenant_id = platform_tenant_id
 
     exists_query = select(func.count()).select_from(CustomPrompt).where(
         CustomPrompt.type == prompt_type.value,
@@ -787,6 +861,10 @@ def create_custom_prompt(
     session.add(row)
     session.flush()
     session.refresh(row)
+    if _mark_skill_embedding_stale_if_needed(row, prompt_type):
+        session.add(row)
+        session.flush()
+        _schedule_skill_embedding_after_commit(session, int(row.id), int(resolved_tenant_id))
     return int(row.id)
 
 
@@ -839,8 +917,13 @@ def update_custom_prompt(
     target_scope = _normalize_target_scope(info.target_scope or row.target_scope)
     _ensure_target_scope_allowed(prompt_type, target_scope)
     visibility_scope = _normalize_visibility_scope(info.visibility_scope or row.visibility_scope)
-    if visibility_scope == CustomPromptVisibilityScopeEnum.PLATFORM_PUBLIC:
-        resolved_tenant_id = DEFAULT_TENANT_ID
+    platform_tenant_id, specific_ds, datasource_ids = _normalize_platform_generic_scope(
+        visibility_scope,
+        specific_ds,
+        datasource_ids,
+    )
+    if platform_tenant_id is not None:
+        resolved_tenant_id = platform_tenant_id
 
     exists_query = select(func.count()).select_from(CustomPrompt).where(
         CustomPrompt.type == prompt_type.value,
@@ -872,12 +955,16 @@ def update_custom_prompt(
     if info.visible is not None:
         row.visible = bool(info.visible)
     row.ai_model_id = ai_model_id
+    row.tenant_id = resolved_tenant_id
     row.visibility_scope = visibility_scope.value
     row.prompt = info.prompt.strip()
     row.specific_ds = specific_ds
     row.datasource_ids = datasource_ids
+    should_refresh_embedding = _mark_skill_embedding_stale_if_needed(row, prompt_type)
     session.add(row)
     session.flush()
+    if should_refresh_embedding:
+        _schedule_skill_embedding_after_commit(session, int(row.id), int(resolved_tenant_id))
     return int(row.id)
 
 

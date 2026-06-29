@@ -22,6 +22,10 @@ export const datasourceApi = {
   fieldList: (id: number, data = { fieldName: '' }) =>
     request.post(`/datasource/fieldList/${id}`, data),
   schemaMetadata: (id: number | string) => request.get(`/datasource/schema-metadata/${id}`),
+  schemaChangeList: (id: number | string, limit = 20) =>
+    request.get(`/datasource/schema-change/${id}`, { params: { limit } }),
+  submitSchemaChange: (id: number | string, data: any) =>
+    request.post(`/datasource/schema-change/${id}`, data),
   edit: (data: any) => request.post('/datasource/editLocalComment', data),
   previewData: (id: number, data: any) => request.post(`/datasource/previewData/${id}`, data),
   saveTable: (data: any) => request.post('/datasource/editTable', data),

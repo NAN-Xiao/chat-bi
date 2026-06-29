@@ -38,6 +38,8 @@ class CustomPrompt(SQLModel, table=True):
         sa_column=Column(String(32), nullable=False, server_default=CustomPromptVisibilityScopeEnum.ADMIN_PUBLIC.value),
     )
     prompt: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    embedding: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    embedding_signature: Optional[str] = Field(default=None, sa_column=Column(String(128), nullable=True))
     specific_ds: Optional[bool] = Field(default=False, sa_column=Column(Boolean, default=False))
     datasource_ids: Optional[list[int]] = Field(default=[], sa_column=Column(JSONB))
 

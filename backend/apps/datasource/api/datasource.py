@@ -37,8 +37,24 @@ from apps.datasource.crud.permission import (
     update_datasource_users,
 )
 from apps.datasource.crud.binding import bind_datasource_to_tenant
+from apps.datasource.crud.binding import datasource_bound_to_tenant
 from apps.datasource.crud.binding import list_bound_tenant_ids_for_datasource
 from apps.swagger.i18n import PLACEHOLDER_PREFIX
+from apps.system.crud.schema_metadata import (
+    SchemaFieldKey,
+    field_comment_map,
+    save_field_comment,
+    save_table_comment,
+    table_comment_map,
+)
+from apps.system.crud.schema_change_request import (
+    SCHEMA_CHANGE_TYPE_ALTER_TABLE,
+    SCHEMA_CHANGE_TYPE_CREATE_TABLE,
+    create_schema_change_request,
+    list_schema_change_requests,
+    normalize_change_type,
+    parse_schema_change_payload,
+)
 from apps.system.crud.tenant import DEFAULT_TENANT_ID
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
@@ -57,6 +73,7 @@ from common.core.deps import SessionDep, CurrentUser, Trans
 from common.core.task_registry import register_builtin_tasks
 from common.core.task_queue import enqueue_task
 from common.utils.file_utils import AppFileUtils
+from common.utils.embedding_threads import run_save_ds_embeddings, run_save_table_embeddings
 from common.utils.utils import AppLogUtil
 from ..utils.utils import decrypt_datasource_configuration_for_output
 from ..crud.datasource import get_datasource_list, check_status, create_ds, update_ds, delete_ds, getTables, getFields, \
@@ -189,6 +206,38 @@ class DatasourceSchemaMetadata(BaseModel):
     tables: list[DatasourceSchemaTableItem] = Field(default_factory=list)
 
 
+class DatasourceSchemaChangeField(BaseModel):
+    field_name: str
+    field_type: str
+    field_comment: str | None = None
+    required: bool = False
+
+
+class DatasourceSchemaChangeCreate(BaseModel):
+    change_type: str
+    table_name: str
+    table_comment: str | None = None
+    fields: list[DatasourceSchemaChangeField] = Field(default_factory=list)
+    request_comment: str | None = None
+    source_table_name: str | None = None
+
+
+class DatasourceSchemaChangeItem(BaseModel):
+    id: int
+    tenant_id: int
+    datasource_id: int | None = None
+    change_type: str
+    status: str
+    table_name: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    requested_by_user_id: int
+    request_comment: str | None = None
+    execution_comment: str | None = None
+    create_time: int = 0
+    update_time: int = 0
+    execute_time: int | None = None
+
+
 class DatasourceBindingUpdate(BaseModel):
     tenant_id: Optional[int] = None
 
@@ -226,6 +275,84 @@ def _datasource_binding_item(session: SessionDep, datasource: CoreDatasource) ->
         datasource_id=int(datasource.id),
         tenant_id=tenant_id if tenant_id != DEFAULT_TENANT_ID else None,
         tenant_name=tenant_name,
+    )
+
+
+def _coerce_tenant_id(value) -> int | None:
+    try:
+        if value in (None, ""):
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _metadata_tenant_id(
+        session: SessionDep,
+        datasource: CoreDatasource,
+        user: CurrentUser | None = None,
+) -> int | None:
+    user_tenant_id = current_tenant_id(user)
+    if user_tenant_id is not None and datasource_bound_to_tenant(session, int(datasource.id), user_tenant_id):
+        return int(user_tenant_id)
+    return _coerce_tenant_id(getattr(datasource, "tenant_id", None))
+
+
+def _current_user_id(user: CurrentUser | None) -> int | None:
+    return _coerce_tenant_id(getattr(user, "id", None))
+
+
+def _apply_schema_comments(
+        session: SessionDep,
+        datasource: CoreDatasource,
+        tables: list[CoreTable],
+        fields_by_table: dict[int, list[CoreField]] | None = None,
+        user: CurrentUser | None = None,
+) -> None:
+    tenant_id = _metadata_tenant_id(session, datasource, user)
+    table_comments = table_comment_map(session, tenant_id, [table.table_name for table in tables])
+    for table in tables:
+        if table.table_name in table_comments:
+            table.custom_comment = table_comments[table.table_name] or ""
+        else:
+            table.custom_comment = table.custom_comment or ""
+
+    if fields_by_table is None:
+        return
+    keys = [
+        SchemaFieldKey(table.table_name, field.field_name)
+        for table in tables
+        for field in fields_by_table.get(int(table.id), [])
+    ]
+    field_comments = field_comment_map(session, tenant_id, keys)
+    table_name_by_id = {int(table.id): table.table_name for table in tables}
+    for table_id, fields in fields_by_table.items():
+        table_name = table_name_by_id.get(int(table_id))
+        if not table_name:
+            continue
+        for field in fields:
+            key = (table_name, field.field_name)
+            if key in field_comments:
+                field.custom_comment = field_comments[key] or ""
+            else:
+                field.custom_comment = field.custom_comment or ""
+
+
+def _schema_change_item(row) -> DatasourceSchemaChangeItem:
+    return DatasourceSchemaChangeItem(
+        id=int(row.id),
+        tenant_id=int(row.tenant_id),
+        datasource_id=int(row.datasource_id) if row.datasource_id is not None else None,
+        change_type=row.change_type,
+        status=row.status,
+        table_name=row.table_name,
+        payload=parse_schema_change_payload(row),
+        requested_by_user_id=int(row.requested_by_user_id),
+        request_comment=row.request_comment,
+        execution_comment=row.execution_comment,
+        create_time=int(row.create_time or 0),
+        update_time=int(row.update_time or 0),
+        execute_time=row.execute_time,
     )
 
 
@@ -432,6 +559,7 @@ async def schema_metadata(
         ).all()
         for field in rows:
             fields_by_table.setdefault(int(field.table_id), []).append(field)
+    _apply_schema_comments(session, datasource, tables, fields_by_table, user)
 
     return DatasourceSchemaMetadata(
         id=int(datasource.id),
@@ -463,6 +591,87 @@ async def schema_metadata(
             for table in tables
         ],
     )
+
+
+@router.get("/schema-change/{id}", response_model=list[DatasourceSchemaChangeItem], include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['admin'], type='ds', keyExpression="id"))
+async def schema_change_list(
+        session: SessionDep,
+        user: CurrentUser,
+        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+        limit: int = 20,
+):
+    _require_schema_metadata_admin(user)
+    datasource = get_ds(session, id, user)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    tenant_id = _metadata_tenant_id(session, datasource, user)
+    if tenant_id is None:
+        return []
+    return [
+        _schema_change_item(row)
+        for row in list_schema_change_requests(
+            session,
+            tenant_id=tenant_id,
+            datasource_id=int(datasource.id),
+            limit=limit,
+        )
+    ]
+
+
+@router.post("/schema-change/{id}", response_model=DatasourceSchemaChangeItem, include_in_schema=False)
+@require_permissions(permission=AppPermission(role=['admin'], type='ds', keyExpression="id"))
+async def submit_schema_change(
+        session: SessionDep,
+        user: CurrentUser,
+        data: DatasourceSchemaChangeCreate,
+        id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
+):
+    _require_schema_metadata_admin(user)
+    datasource = get_ds(session, id, user)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    tenant_id = _metadata_tenant_id(session, datasource, user)
+    if tenant_id is None:
+        raise HTTPException(status_code=403, detail="当前工作空间不可提交结构变更")
+    try:
+        change_type = normalize_change_type(data.change_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if change_type == SCHEMA_CHANGE_TYPE_CREATE_TABLE:
+        existing = session.exec(
+            select(CoreTable.id).where(
+                CoreTable.ds_id == int(datasource.id),
+                CoreTable.table_name == data.table_name,
+            )
+        ).first()
+        if existing is not None:
+            raise HTTPException(status_code=400, detail="数据表已存在")
+    elif change_type == SCHEMA_CHANGE_TYPE_ALTER_TABLE:
+        existing = session.exec(
+            select(CoreTable.id).where(
+                CoreTable.ds_id == int(datasource.id),
+                CoreTable.table_name == (data.source_table_name or data.table_name),
+            )
+        ).first()
+        if existing is None:
+            raise HTTPException(status_code=400, detail="要修改的数据表不存在")
+    try:
+        row = create_schema_change_request(
+            session,
+            tenant_id=tenant_id,
+            datasource_id=int(datasource.id),
+            requested_by_user_id=int(user.id),
+            change_type=change_type,
+            table_name=data.table_name,
+            table_comment=data.table_comment,
+            fields=[field.model_dump() for field in data.fields],
+            request_comment=data.request_comment,
+            source_table_name=data.source_table_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _schema_change_item(row)
 
 
 @router.get("/{id}/binding", response_model=DatasourceBindingItem, include_in_schema=False)
@@ -637,7 +846,11 @@ async def sync_fields(session: SessionDep,
 @require_permissions(permission=AppPermission(role=['admin'], type='ds', keyExpression="id"))
 async def table_list(session: SessionDep, current_user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
     _require_schema_metadata_admin(current_user)
+    datasource = get_ds(session, id, current_user)
+    if datasource is None:
+        raise HTTPException(status_code=404, detail="项目不存在")
     tables = get_tables_by_ds_id(session, id)
+    _apply_schema_comments(session, datasource, tables, user=current_user)
     if not is_normal_user(current_user):
         return tables
     contain_rules = get_user_permission_rules(session, current_user, id)
@@ -655,35 +868,58 @@ async def field_list(session: SessionDep, current_user: CurrentUser, field: Fiel
     table = session.get(CoreTable, id)
     if table is None:
         return []
+    datasource = get_ds(session, table.ds_id, current_user)
+    if datasource is None:
+        return []
     contain_rules = get_user_permission_rules(session, current_user, table.ds_id) if is_normal_user(current_user) else []
     if not can_access_table(session, current_user, table.ds_id, table.id, contain_rules):
         return []
     fields = get_fields_by_table_id(session, id, field)
-    return get_column_permission_fields(session, current_user, table, fields, contain_rules)
+    visible_fields = get_column_permission_fields(session, current_user, table, fields, contain_rules)
+    _apply_schema_comments(session, datasource, [table], {int(table.id): visible_fields}, current_user)
+    return visible_fields
 
 
 @router.post("/editLocalComment", include_in_schema=False)
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_local(session: SessionDep, user: CurrentUser, data: TableObj):
-    if not data.table or get_ds(session, data.table.ds_id, user) is None:
+    datasource = get_ds(session, data.table.ds_id, user) if data.table else None
+    if not data.table or datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
-    update_table_and_fields(session, data)
+    update_table_and_fields(
+        session,
+        data,
+        current_user_id=int(user.id) if getattr(user, "id", None) is not None else None,
+        tenant_id=_metadata_tenant_id(session, datasource, user),
+    )
 
 
 @router.post("/editTable", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_table")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_table(session: SessionDep, user: CurrentUser, table: CoreTable):
-    if get_ds(session, table.ds_id, user) is None:
+    datasource = get_ds(session, table.ds_id, user)
+    if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
-    updateTable(session, table)
+    updateTable(
+        session,
+        table,
+        current_user_id=int(user.id) if getattr(user, "id", None) is not None else None,
+        tenant_id=_metadata_tenant_id(session, datasource, user),
+    )
 
 
 @router.post("/editField", response_model=None, summary=f"{PLACEHOLDER_PREFIX}ds_edit_field")
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def edit_field(session: SessionDep, user: CurrentUser, field: CoreField):
-    if get_ds(session, field.ds_id, user) is None:
+    datasource = get_ds(session, field.ds_id, user)
+    if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
-    updateField(session, field)
+    updateField(
+        session,
+        field,
+        current_user_id=int(user.id) if getattr(user, "id", None) is not None else None,
+        tenant_id=_metadata_tenant_id(session, datasource, user),
+    )
 
 
 @router.post("/previewData/{id}", response_model=PreviewResponse, summary=f"{PLACEHOLDER_PREFIX}ds_preview_data")
@@ -893,6 +1129,20 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
         else:
             tables = session.query(CoreTable).filter(CoreTable.ds_id == id).order_by(
                 CoreTable.table_name.asc()).all()
+            datasource = get_ds(session, id, user)
+            fields_by_table: dict[int, list[CoreField]] = {}
+            if datasource is not None:
+                table_ids = [int(table.id) for table in tables if table.id is not None]
+                fields_by_table = {table_id: [] for table_id in table_ids}
+                if table_ids:
+                    rows = session.exec(
+                        select(CoreField)
+                        .where(CoreField.table_id.in_(table_ids))
+                        .order_by(CoreField.table_id, CoreField.field_index, CoreField.id)
+                    ).all()
+                    for field in rows:
+                        fields_by_table.setdefault(int(field.table_id), []).append(field)
+                _apply_schema_comments(session, datasource, tables, fields_by_table, user)
             if len(tables) == 0:
                 raise HTTPException(400, "No tables")
 
@@ -904,8 +1154,12 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
                 df1['c1'].append(table.table_name)
                 df1['c2'].append(table.custom_comment)
 
-                fields = session.query(CoreField).filter(CoreField.table_id == table.id).order_by(
-                    CoreField.field_index.asc()).all()
+                fields = (
+                    fields_by_table.get(int(table.id), [])
+                    if datasource is not None
+                    else session.query(CoreField).filter(CoreField.table_id == table.id).order_by(
+                        CoreField.field_index.asc()).all()
+                )
                 df_fields = {'sheet': f"Sheet{index}", 'c1_h': f_n_col, 'c2_h': f_c_col, 'c1': [], 'c2': []}
                 for field in fields:
                     df_fields['c1'].append(field.field_name)
@@ -943,7 +1197,8 @@ async def export_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
 @require_permissions(permission=AppPermission(role=['platform_admin']))
 async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id"),
                            file: UploadFile = File(...)):
-    if get_ds(session, id, user) is None:
+    datasource = get_ds(session, id, user)
+    if datasource is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     ALLOWED_EXTENSIONS = {".xlsx", ".xls"}
     AppFileUtils.validate_extension(file.filename, ALLOWED_EXTENSIONS)
@@ -973,12 +1228,25 @@ async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
 
         # get data and update
         # update table comment
+        affected_table_ids: set[int] = set()
+        metadata_tenant_id = _metadata_tenant_id(session, datasource, user)
+        current_user_id = _current_user_id(user)
         if table_sheet and len(table_sheet) > 0:
             for table in table_sheet:
                 sheet_table_map[table[t_s_col]] = table[t_n_col]
-                session.query(CoreTable).filter(
-                    and_(CoreTable.ds_id == id, CoreTable.table_name == table[t_n_col])).update(
-                    {'custom_comment': table[t_c_col]})
+                save_table_comment(
+                    session,
+                    metadata_tenant_id,
+                    table[t_n_col],
+                    table[t_c_col],
+                    current_user_id=current_user_id,
+                )
+                existing_table = session.query(CoreTable).filter(
+                    and_(CoreTable.ds_id == id, CoreTable.table_name == table[t_n_col])).first()
+                if existing_table:
+                    affected_table_ids.add(int(existing_table.id))
+                    existing_table.custom_comment = table[t_c_col]
+                    session.add(existing_table)
 
         # update field comment
         if field_sheets and len(field_sheets) > 0:
@@ -990,12 +1258,24 @@ async def upload_ds_schema(session: SessionDep, user: CurrentUser, id: int = Pat
                         and_(CoreTable.ds_id == id, CoreTable.table_name == table_name)).first()
                     if table:
                         for field in fields['data']:
+                            save_field_comment(
+                                session,
+                                metadata_tenant_id,
+                                table.table_name,
+                                field[f_n_col],
+                                field[f_c_col],
+                                current_user_id=current_user_id,
+                            )
                             session.query(CoreField).filter(
                                 and_(CoreField.ds_id == id,
                                      CoreField.table_id == table.id,
                                      CoreField.field_name == field[f_n_col])).update(
                                 {'custom_comment': field[f_c_col]})
+                            affected_table_ids.add(int(table.id))
         session.commit()
+        if affected_table_ids:
+            run_save_table_embeddings(list(affected_table_ids), tenant_id=metadata_tenant_id)
+        run_save_ds_embeddings([id], tenant_id=metadata_tenant_id)
 
         return True
     except Exception as e:

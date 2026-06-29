@@ -8,6 +8,7 @@ import {
   FullScreen,
   MoreFilled,
   Position,
+  PriceTag,
   RefreshRight,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus-secondary'
@@ -29,6 +30,7 @@ import {
 const componentWrapperInnerRef = ref(null)
 const { t } = useI18n()
 const { emitter } = useEmitt()
+const CHART_REFRESH_CONCURRENCY = 2
 
 const props = defineProps({
   active: {
@@ -94,6 +96,7 @@ const reportStopped = ref(false)
 const reportSubmittedQuestion = ref('')
 const reportController = ref<AbortController | null>(null)
 const chartFullscreenVisible = ref(false)
+const chartShowLabel = ref(false)
 const moveDialogVisible = ref(false)
 const moveLoading = ref(false)
 const targetDashboardLoading = ref(false)
@@ -107,6 +110,16 @@ const isPreviewSingleChart = computed(
   () => props.showPosition === 'preview' && props.configItem?.component === 'SQView' && !props.frameless
 )
 const currentViewInfo = computed(() => props.canvasViewInfo?.[props.configItem.id] || {})
+const currentChartType = computed(() => {
+  const chart = currentViewInfo.value?.chart || {}
+  return chart.type || chart.sourceType || 'table'
+})
+const canToggleChartLabel = computed(
+  () =>
+    isPreviewSingleChart.value &&
+    !['table', 'metric'].includes(String(currentChartType.value || '').toLowerCase()) &&
+    currentViewInfo.value?.status !== 'failed'
+)
 const isPreviewReportTarget = computed(
   () =>
     props.showPosition === 'preview' &&
@@ -127,6 +140,9 @@ const reportPromptTitle = computed(() =>
 const reportDialogTitle = computed(() => reportSubmittedQuestion.value || reportPromptTitle.value)
 const reportTargetContext = computed(() =>
   t('dashboard.chart_report_target_context', [reportScopeTitle.value])
+)
+const componentExtraProps = computed(() =>
+  props.configItem?.component === 'SQView' ? { showLabel: chartShowLabel.value } : {}
 )
 const reportHasConversation = computed(
   () =>
@@ -218,6 +234,8 @@ function prepareMovedChartPayload() {
   viewPayload.status = 'loading'
   viewPayload.dataState = 'loading'
   viewPayload.loadingProgress = 0
+  viewPayload.snapshotRefreshedAt = 0
+  viewPayload.data.snapshotRefreshedAt = 0
   viewPayload.message = ''
   return {
     nextComponentId,
@@ -490,14 +508,43 @@ function getResultFields(result: any) {
   ])
 }
 
-function previewChartSql(viewInfo: any, config?: any) {
-  return dashboardApi.preview_sql(
+function hasChartSnapshot(viewInfo: any) {
+  const rows = viewInfo?.data?.data
+  return Array.isArray(rows) && rows.length > 0
+}
+
+function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
+  if (!viewInfo || typeof viewInfo !== 'object') {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.snapshotRefreshedAt = refreshedAt
+  viewInfo.data.snapshotRefreshedAt = refreshedAt
+}
+
+function isDashboardCacheMiss(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
+}
+
+async function previewChartSql(viewInfo: any, config?: any) {
+  const payload = {
+    datasource: viewInfo.datasource,
+    sql: viewInfo.sql.trim(),
+    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+  }
+  const cachedResult = await dashboardApi.preview_sql(
     {
-      datasource: viewInfo.datasource,
-      sql: viewInfo.sql.trim(),
+      ...payload,
+      cache_only: true,
     },
     config
   )
+  if (!isDashboardCacheMiss(cachedResult)) {
+    return cachedResult
+  }
+  return dashboardApi.preview_sql(payload, config)
 }
 
 function getAxisFields(items: any) {
@@ -812,14 +859,22 @@ async function refreshChartData() {
   }
   let successCount = 0
   let failedCount = 0
-  await Promise.all(
-    entries.map(async (entry) => {
-      const viewInfo = entry.viewInfo
+  let nextIndex = 0
+  const runNext = async (): Promise<void> => {
+    while (nextIndex < entries.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      const entry = entries[currentIndex]
+      const viewInfo = entry?.viewInfo
       if (!viewInfo?.datasource || !viewInfo?.sql?.trim()) {
         failedCount += 1
-        return
+        continue
       }
       try {
+        const previousData = Array.isArray(viewInfo.data?.data) ? [...viewInfo.data.data] : []
+        const previousDataFields = Array.isArray(viewInfo.data?.fields) ? [...viewInfo.data.fields] : []
+        const previousFields = Array.isArray(viewInfo.fields) ? [...viewInfo.fields] : []
+        const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
         const result = await previewChartSql(viewInfo)
         const fields = getResultFields(result)
         const data = Array.isArray(result?.data) ? result.data : []
@@ -832,17 +887,31 @@ async function refreshChartData() {
         viewInfo.status = result?.status || 'success'
         viewInfo.message = result?.message || ''
         if (viewInfo.status === 'failed') {
+          if (hasPreviousSnapshot) {
+            viewInfo.data.fields = previousDataFields
+            viewInfo.data.data = previousData
+            viewInfo.fields = previousFields
+            viewInfo.status = 'success'
+          }
           failedCount += 1
         } else {
+          markChartSnapshotRefreshed(viewInfo)
           successCount += 1
         }
-        emitter.emit(`view-render-${viewInfo.id || entry.component?.id}`)
+        emitter.emit(`view-render-${viewInfo.id || entry?.component?.id}`)
       } catch (error: any) {
-        viewInfo.status = 'failed'
         viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
+        if (hasChartSnapshot(viewInfo)) {
+          viewInfo.status = 'success'
+        } else {
+          viewInfo.status = 'failed'
+        }
         failedCount += 1
       }
-    })
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(CHART_REFRESH_CONCURRENCY, entries.length) }, () => runNext())
   )
   if (successCount > 0 && failedCount === 0) {
     ElMessage.success(t('dashboard.chart_refresh_success'))
@@ -939,6 +1008,7 @@ onBeforeUnmount(() => {
           :disabled="true"
           :active="active"
           :readonly-template="readonlyTemplate"
+          v-bind="componentExtraProps"
         />
       </div>
     </div>
@@ -953,6 +1023,22 @@ onBeforeUnmount(() => {
       >
         <el-icon size="16"><ChatLineSquare /></el-icon>
       </el-button>
+      <el-tooltip
+        v-if="canToggleChartLabel"
+        effect="dark"
+        :content="chartShowLabel ? t('chat.hide_label') : t('chat.show_label')"
+        placement="top"
+      >
+        <el-button
+          class="preview-action-btn"
+          :class="{ 'is-active': chartShowLabel }"
+          text
+          :aria-label="chartShowLabel ? t('chat.hide_label') : t('chat.show_label')"
+          @click="chartShowLabel = !chartShowLabel"
+        >
+          <el-icon size="16"><PriceTag /></el-icon>
+        </el-button>
+      </el-tooltip>
       <el-tooltip effect="dark" :content="t('dashboard.chart_refresh_data')" placement="top">
         <el-button class="preview-action-btn" text @click="refreshChartData">
           <el-icon size="16"><RefreshRight /></el-icon>
@@ -996,6 +1082,7 @@ onBeforeUnmount(() => {
       v-if="isPreviewSingleChart"
       v-model="chartFullscreenVisible"
       :view-info="currentViewInfo"
+      :show-label="chartShowLabel"
     />
     <el-dialog
       v-model="moveDialogVisible"
@@ -1287,6 +1374,11 @@ onBeforeUnmount(() => {
   &:focus {
     color: #2f6bff;
     background: rgba(47, 107, 255, 0.1);
+  }
+
+  &.is-active {
+    color: #2f6bff;
+    background: rgba(47, 107, 255, 0.12);
   }
 }
 

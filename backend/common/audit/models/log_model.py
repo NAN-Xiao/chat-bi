@@ -12,8 +12,6 @@ _operation_module_values = {
     "MEMBER": "member",
     "PERMISSION": "permission",
     "RULES": "rules",
-    "TERMINOLOGY": "terminology",
-    "DATA_TRAINING": "data_training",
     "PROMPT_WORDS": "prompt_words",
     "USER": "user",
     "AI_MODEL": "ai_model",

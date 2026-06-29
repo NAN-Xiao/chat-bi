@@ -1,7 +1,8 @@
 import secrets
 
 from sqlalchemy import BigInteger, Boolean, Column, Index, String, Text, UniqueConstraint
-from sqlmodel import Field
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlmodel import Field, SQLModel
 
 from common.core.models import SnowflakeBase
 from common.utils.time import get_timestamp
@@ -126,6 +127,132 @@ class TenantSecurityPolicyModel(SnowflakeBase, table=True):
     session_timeout_minutes: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
     create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
     update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+
+
+class TenantTrackingConfigModel(SnowflakeBase, table=True):
+    __tablename__ = "sys_tenant_tracking_config"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_sys_tenant_tracking_config_tenant_id"),
+        Index("idx_sys_tenant_tracking_config_tenant_id", "tenant_id"),
+    )
+
+    tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    enabled: bool = Field(default=True, sa_column=Column(Boolean(), nullable=False, server_default="true"))
+    default_event_table: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
+    default_subject_field: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
+    default_event_name_field: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
+    default_event_time_field: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
+    field_role_mappings: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    event_name_mappings: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    sql_rules: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    notes: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    create_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    update_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+
+
+class TenantTrackingTableModel(SnowflakeBase, table=True):
+    __tablename__ = "sys_tenant_tracking_table"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "table_name", name="uq_sys_tenant_tracking_table_name"),
+        Index("idx_sys_tenant_tracking_table_tenant_id", "tenant_id"),
+    )
+
+    tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    table_name: str = Field(sa_column=Column(String(255), nullable=False))
+    table_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    table_role: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
+    aliases: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    ai_notes: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    create_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    update_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+
+
+class TenantTrackingFieldModel(SnowflakeBase, table=True):
+    __tablename__ = "sys_tenant_tracking_field"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "table_name", "field_name", name="uq_sys_tenant_tracking_field_name"),
+        Index("idx_sys_tenant_tracking_field_tenant_id", "tenant_id"),
+        Index("idx_sys_tenant_tracking_field_table", "tenant_id", "table_name"),
+    )
+
+    tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    table_name: str = Field(sa_column=Column(String(255), nullable=False))
+    field_name: str = Field(sa_column=Column(String(255), nullable=False))
+    field_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    field_role: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
+    semantic_type: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
+    aliases: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    value_mappings: list | dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    expression: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    required: bool = Field(default=False, sa_column=Column(Boolean(), nullable=False, server_default="false"))
+    example_values: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    ai_notes: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    create_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    update_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+
+
+class TenantSchemaTableModel(SnowflakeBase, table=True):
+    __tablename__ = "sys_tenant_schema_table"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "table_name", name="uq_sys_tenant_schema_table_name"),
+        Index("idx_sys_tenant_schema_table_tenant_id", "tenant_id"),
+    )
+
+    tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    table_name: str = Field(sa_column=Column(String(255), nullable=False))
+    table_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    create_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    update_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+
+
+class TenantSchemaFieldModel(SnowflakeBase, table=True):
+    __tablename__ = "sys_tenant_schema_field"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "table_name", "field_name", name="uq_sys_tenant_schema_field_name"),
+        Index("idx_sys_tenant_schema_field_tenant_id", "tenant_id"),
+        Index("idx_sys_tenant_schema_field_table", "tenant_id", "table_name"),
+    )
+
+    tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    table_name: str = Field(sa_column=Column(String(255), nullable=False))
+    field_name: str = Field(sa_column=Column(String(255), nullable=False))
+    field_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    create_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    update_by: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+
+
+class TenantSchemaChangeRequestModel(SnowflakeBase, table=True):
+    __tablename__ = "sys_tenant_schema_change_request"
+    __table_args__ = (
+        Index("idx_sys_tenant_schema_change_request_tenant_id", "tenant_id"),
+        Index("idx_sys_tenant_schema_change_request_datasource", "datasource_id"),
+        Index("idx_sys_tenant_schema_change_request_status", "status"),
+        Index("idx_sys_tenant_schema_change_request_table", "tenant_id", "table_name"),
+    )
+
+    tenant_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    datasource_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    change_type: str = Field(sa_column=Column(String(32), nullable=False))
+    status: str = Field(default="pending", sa_column=Column(String(32), nullable=False, server_default="pending"))
+    table_name: str = Field(sa_column=Column(String(255), nullable=False))
+    payload: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    requested_by_user_id: int = Field(sa_column=Column(BigInteger(), nullable=False))
+    executed_by_user_id: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
+    request_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    execution_comment: str | None = Field(default=None, sa_column=Column(Text(), nullable=True))
+    create_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    update_time: int = Field(default_factory=get_timestamp, sa_type=BigInteger(), nullable=False)
+    execute_time: int | None = Field(default=None, sa_column=Column(BigInteger(), nullable=True))
 
 
 class TenantDataRequestModel(SnowflakeBase, table=True):

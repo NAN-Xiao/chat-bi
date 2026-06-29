@@ -296,9 +296,15 @@ SELECT cd.install_date AS "日期",
        cd.registered_users AS "账号注册用户数",
        CASE WHEN cd.spend_cny > 0 THEN round(coalesce(rd.d0_revenue, 0) / cd.spend_cny * 100, 2)::text || '%' ELSE '-' END AS "当日",
        CASE WHEN cd.spend_cny > 0 THEN round(coalesce(rd.d1_revenue, 0) / cd.spend_cny * 100, 2)::text || '%' ELSE '-' END AS "第1日",
-       CASE WHEN cd.spend_cny > 0 THEN round(coalesce(rd.d7_revenue, 0) / cd.spend_cny * 100, 2)::text || '%' ELSE '-' END AS "第7日",
-       CASE WHEN cd.spend_cny > 0 THEN round(coalesce(rd.d14_revenue, 0) / cd.spend_cny * 100, 2)::text || '%' ELSE '-' END AS "第14日",
-       CASE WHEN cd.spend_cny > 0 THEN round(coalesce(rd.d30_revenue, 0) / cd.spend_cny * 100, 2)::text || '%' ELSE '-' END AS "第30日",
+       CASE WHEN cd.spend_cny > 0 AND cd.install_date <= (SELECT max_date - 7 FROM obs)
+            THEN round(coalesce(rd.d7_revenue, 0) / cd.spend_cny * 100, 2)::text || '%'
+            ELSE '-' END AS "第7日",
+       CASE WHEN cd.spend_cny > 0 AND cd.install_date <= (SELECT max_date - 14 FROM obs)
+            THEN round(coalesce(rd.d14_revenue, 0) / cd.spend_cny * 100, 2)::text || '%'
+            ELSE '-' END AS "第14日",
+       CASE WHEN cd.spend_cny > 0 AND cd.install_date <= (SELECT max_date - 30 FROM obs)
+            THEN round(coalesce(rd.d30_revenue, 0) / cd.spend_cny * 100, 2)::text || '%'
+            ELSE '-' END AS "第30日",
        CASE WHEN cd.spend_cny > 0 AND cd.install_date <= (SELECT max_date - 45 FROM obs)
             THEN round(coalesce(rd.d45_revenue, 0) / cd.spend_cny * 100, 2)::text || '%'
             ELSE '-' END AS "第45日",

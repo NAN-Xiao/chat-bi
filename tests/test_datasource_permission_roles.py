@@ -113,6 +113,57 @@ def _engine_with_permission_tables():
         ))
         conn.execute(text(
             """
+            CREATE TABLE sys_tenant_schema_table (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                table_name TEXT NOT NULL,
+                table_comment TEXT,
+                create_by INTEGER,
+                update_by INTEGER,
+                create_time INTEGER NOT NULL,
+                update_time INTEGER NOT NULL,
+                UNIQUE (tenant_id, table_name)
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE sys_tenant_schema_field (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                table_name TEXT NOT NULL,
+                field_name TEXT NOT NULL,
+                field_comment TEXT,
+                create_by INTEGER,
+                update_by INTEGER,
+                create_time INTEGER NOT NULL,
+                update_time INTEGER NOT NULL,
+                UNIQUE (tenant_id, table_name, field_name)
+            )
+            """
+        ))
+        conn.execute(text(
+            """
+            CREATE TABLE sys_tenant_schema_change_request (
+                id INTEGER PRIMARY KEY,
+                tenant_id INTEGER NOT NULL,
+                datasource_id INTEGER,
+                change_type VARCHAR(32) NOT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                table_name VARCHAR(255) NOT NULL,
+                payload TEXT,
+                requested_by_user_id INTEGER NOT NULL,
+                executed_by_user_id INTEGER,
+                request_comment TEXT,
+                execution_comment TEXT,
+                create_time INTEGER NOT NULL,
+                update_time INTEGER NOT NULL,
+                execute_time INTEGER
+            )
+            """
+        ))
+        conn.execute(text(
+            """
             CREATE TABLE ds_rules (
                 id INTEGER PRIMARY KEY,
                 enable BOOLEAN NOT NULL,
@@ -443,6 +494,120 @@ def test_workspace_admin_schema_metadata_is_metadata_only(monkeypatch):
         assert "configuration" not in payload
         assert "data" not in payload
         assert "sql" not in payload
+
+
+def test_workspace_schema_comments_override_physical_custom_comments(monkeypatch):
+    engine = _engine_with_permission_tables()
+    monkeypatch.setattr(permission_schema, "engine", engine)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+    tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        _insert_table_permission_fixture(session)
+        session.execute(text(
+            """
+            INSERT INTO sys_tenant_schema_table
+                (id, tenant_id, table_name, table_comment, create_time, update_time)
+            VALUES
+                (9001, 1, 'orders', 'workspace orders comment', 0, 0),
+                (9002, 1, 'payments', '', 0, 0)
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO sys_tenant_schema_field
+                (id, tenant_id, table_name, field_name, field_comment, create_time, update_time)
+            VALUES
+                (9101, 1, 'orders', 'amount', 'workspace amount comment', 0, 0),
+                (9102, 1, 'orders', 'order_id', '', 0, 0)
+            """
+        ))
+        session.commit()
+
+        token = _set_permission_request_context(tenant_admin)
+        try:
+            metadata = asyncio.run(datasource_api.schema_metadata(session, tenant_admin, 1)).model_dump()
+        finally:
+            permission_schema.RequestContext.reset(token)
+
+        ds = session.get(CoreDatasource, 1)
+        schema, tables = datasource_crud.get_table_schema(
+            session=session,
+            current_user=tenant_admin,
+            ds=ds,
+            question="show orders",
+            embedding=False,
+        )
+
+    orders = next(item for item in metadata["tables"] if item["table_name"] == "orders")
+    payments = next(item for item in metadata["tables"] if item["table_name"] == "payments")
+    amount = next(item for item in orders["fields"] if item["field_name"] == "amount")
+    order_id = next(item for item in orders["fields"] if item["field_name"] == "order_id")
+
+    assert orders["custom_comment"] == "workspace orders comment"
+    assert payments["custom_comment"] == ""
+    assert amount["custom_comment"] == "workspace amount comment"
+    assert order_id["custom_comment"] == ""
+    assert tables == ["orders", "payments"]
+    assert "# Table: orders, workspace orders comment" in schema
+    assert "(amount:numeric, workspace amount comment)" in schema
+    assert "(order_id:int)" in schema
+    assert "orders, orders" not in schema
+    assert "order_id, order_id" not in schema
+
+
+def test_schema_change_request_is_saved_without_mutating_readonly_datasource(monkeypatch):
+    engine = _engine_with_permission_tables()
+    monkeypatch.setattr(permission_schema, "engine", engine)
+    tenant_admin = SimpleNamespace(id=5, system_role="viewer", tenant_id=1, tenant_role="admin")
+
+    with Session(engine) as session:
+        session.add(_datasource(1, tenant_id=1))
+        _insert_table_permission_fixture(session)
+        session.commit()
+
+        token = _set_permission_request_context(tenant_admin)
+        try:
+            result = asyncio.run(datasource_api.submit_schema_change(
+                session,
+                tenant_admin,
+                datasource_api.DatasourceSchemaChangeCreate(
+                    change_type="create_table",
+                    table_name="event_orders",
+                    table_comment="订单事件宽表",
+                    fields=[
+                        datasource_api.DatasourceSchemaChangeField(
+                            field_name="event_id",
+                            field_type="bigint",
+                            field_comment="事件ID",
+                        ),
+                        datasource_api.DatasourceSchemaChangeField(
+                            field_name="event_time",
+                            field_type="timestamp",
+                            field_comment="事件时间",
+                        ),
+                    ],
+                    request_comment="prepare writable workspace datastore",
+                ),
+                1,
+            ))
+        finally:
+            permission_schema.RequestContext.reset(token)
+
+        payload = result.model_dump()
+        core_table_count = session.exec(
+            text("select count(*) from core_table where table_name = 'event_orders'")
+        ).one()[0]
+        request_count = session.exec(text(
+            "select count(*) from sys_tenant_schema_change_request where table_name = 'event_orders'"
+        )).one()[0]
+
+    assert payload["change_type"] == "create_table"
+    assert payload["status"] == "pending"
+    assert payload["payload"]["fields"][0]["field_name"] == "event_id"
+    assert core_table_count == 0
+    assert request_count == 1
 
 
 def test_workspace_member_cannot_directly_browse_schema_metadata(monkeypatch):
@@ -1151,6 +1316,118 @@ def _insert_user_table_deny_for_payments(session: Session):
     ))
 
 
+def _insert_user_table_deny_for_payments_with_permission_whitelist(session: Session):
+    session.execute(text(
+        """
+        INSERT INTO ds_permission
+            (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+        VALUES
+            (1003, 'payments denied', 1, 'user', 'table', 1, 11, '{}', '[]', '[2]')
+        """
+    ))
+    session.execute(text(
+        """
+        INSERT INTO ds_rules
+            (id, enable, name, description, permission_list, user_list, white_list_user)
+        VALUES
+            (2003, 1, 'user 2 payments denied', '', '[1003]', '[2]', '[]')
+        """
+    ))
+
+
+def _insert_user_row_rule_for_orders(session: Session, *, field_id: int = 100, permission_whitelist: str = "[]"):
+    tree = {
+        "logic": "AND",
+        "items": [
+            {
+                "type": "item",
+                "field_id": field_id,
+                "filter_type": "text",
+                "term": "eq",
+                "value": "US",
+            }
+        ],
+    }
+    session.execute(text(
+        """
+        INSERT INTO ds_permission
+            (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+        VALUES
+            (1004, 'orders rows', 1, 'user', 'row', 1, 10, :tree, '[]', :permission_whitelist)
+        """
+    ), {"tree": json.dumps(tree), "permission_whitelist": permission_whitelist})
+    session.execute(text(
+        """
+        INSERT INTO ds_rules
+            (id, enable, name, description, permission_list, user_list, white_list_user)
+        VALUES
+            (2004, 1, 'user 2 orders row limit', '', '[1004]', '[2]', '[]')
+        """
+    ))
+
+
+def test_row_permission_invalid_config_fails_closed(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_row_rule_for_orders(session, field_id=999)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        try:
+            permission.get_row_permission_filters(session, current_user, ds, tables=["orders"])
+        except ValueError as exc:
+            assert "行权限" in str(exc)
+        else:
+            raise AssertionError("invalid row permission should fail closed")
+
+
+def test_row_permission_whitelist_skips_restriction(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_row_rule_for_orders(session, field_id=100, permission_whitelist="[2]")
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        assert permission.get_row_permission_filters(session, current_user, ds, tables=["orders"]) == []
+
+
+def test_table_permission_whitelist_keeps_default_viewer_access(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        _insert_user_table_deny_for_payments_with_permission_whitelist(session)
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        schema, tables = datasource_crud.get_table_schema(
+            session=session,
+            current_user=current_user,
+            ds=ds,
+            question="show payments",
+            embedding=False,
+        )
+
+        assert "payments" in tables
+        assert "# Table: payments" in schema
+
+
 def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
     engine = _engine_with_permission_tables()
     current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
@@ -1180,6 +1457,48 @@ def test_user_permission_rules_deny_configured_fields_only(monkeypatch):
         assert permission.get_user_scoped_table_ids(session, current_user, 1) == {10, 11}
         assert permission.can_access_table(session, current_user, 1, 10) is True
         assert permission.can_access_table(session, current_user, 1, 11) is True
+
+
+def test_column_permission_invalid_config_fails_closed(monkeypatch):
+    engine = _engine_with_permission_tables()
+    current_user = SimpleNamespace(id=2, isAdmin=False, tenant_id=1)
+    monkeypatch.setattr(datasource_crud, "aes_decrypt", lambda value: value)
+
+    with Session(engine) as session:
+        session.add(_datasource(1, create_by=9))
+        session.add(CoreDatasourceUser(ds_id=1, user_id=2, role="viewer"))
+        _insert_table_permission_fixture(session)
+        session.execute(text(
+            """
+            INSERT INTO ds_permission
+                (id, name, enable, auth_target_type, type, ds_id, table_id, expression_tree, permissions, white_list_user)
+            VALUES
+                (1005, 'bad orders columns', 1, 'user', 'column', 1, 10, '{}', '{bad-json', '[]')
+            """
+        ))
+        session.execute(text(
+            """
+            INSERT INTO ds_rules
+                (id, enable, name, description, permission_list, user_list, white_list_user)
+            VALUES
+                (2005, 1, 'user 2 bad column rule', '', '[1005]', '[2]', '[]')
+            """
+        ))
+        session.commit()
+
+        ds = session.get(CoreDatasource, 1)
+        try:
+            datasource_crud.get_table_schema(
+                session=session,
+                current_user=current_user,
+                ds=ds,
+                question="show orders",
+                embedding=False,
+            )
+        except ValueError as exc:
+            assert "字段权限" in str(exc)
+        else:
+            raise AssertionError("invalid column permission should fail closed")
 
 
 def test_normal_user_sample_data_is_not_sent_to_model(monkeypatch):
@@ -1542,10 +1861,44 @@ def test_analysis_assistant_final_prompt_keeps_complete_lifecycle_rows_and_guard
     assert '"daily_revenue":169.97' in user_prompt
     assert "_omitted_middle_rows" not in user_prompt
     assert "不要向业务用户提及 rows" in system_prompt
-    assert "不要写成“单笔”" in system_prompt
+    assert "不要写成“单笔/单次”" in system_prompt
 
 
-def test_analysis_assistant_lifecycle_validation_requires_complete_ltv_series():
+def test_analysis_assistant_lifecycle_validation_is_skill_declared():
+    data_skill = """
+<!-- data-skill-validation:{
+  "match":["后续付费","LTV"],
+  "day_field":["lifecycle_day"],
+  "require_continuous_sequence":true,
+  "continuous_sequence_message":"生命周期趋势结果缺少连续日期 {missing_days}。请使用 generate_series 或日期序列表补齐观察窗口。",
+  "required_fields":["ltv"],
+  "required_field_message":"生命周期后续付费分析缺少 {field} 字段。"
+} -->
+"""
+    error = analysis_assistant_api._semantic_validation_error(
+        {
+            "_user_question": "分析某天新增用户的后续付费和 LTV",
+            "title": "新增用户每日付费趋势与 LTV 累积",
+            "purpose": "观察生命周期付费和累计收入",
+        },
+        {
+            "fields": ["lifecycle_day", "payers", "daily_revenue", "cumulative_revenue"],
+            "data": [
+                {"lifecycle_day": 0, "payers": 4, "daily_revenue": 17.95, "cumulative_revenue": 17.95},
+                {"lifecycle_day": 1, "payers": 3, "daily_revenue": 14.97, "cumulative_revenue": 32.92},
+                {"lifecycle_day": 2, "payers": 3, "daily_revenue": 59.97, "cumulative_revenue": 92.89},
+                {"lifecycle_day": 5, "payers": 1, "daily_revenue": 69.98, "cumulative_revenue": 182.86},
+            ],
+        },
+        data_skill,
+    )
+
+    assert error
+    assert "缺少连续日期" in error
+    assert "generate_series" in error
+
+
+def test_analysis_assistant_business_specific_validation_does_not_run_without_skill_declaration():
     error = analysis_assistant_api._semantic_validation_error(
         {
             "_user_question": "分析某天新增用户的后续付费和 LTV",
@@ -1563,12 +1916,19 @@ def test_analysis_assistant_lifecycle_validation_requires_complete_ltv_series():
         },
     )
 
-    assert error
-    assert "缺少连续日期" in error
-    assert "generate_series" in error
+    assert error is None
 
 
 def test_analysis_assistant_lifecycle_validation_accepts_complete_ltv_series():
+    data_skill = """
+<!-- data-skill-validation:{
+  "match":["后续付费","LTV"],
+  "day_field":["lifecycle_day"],
+  "require_continuous_sequence":true,
+  "required_fields":["ltv"],
+  "required_field_keywords":[["cumulative_payer","累计付费人数"]]
+} -->
+"""
     error = analysis_assistant_api._semantic_validation_error(
         {
             "_user_question": "分析某天新增用户的后续付费和 LTV",
@@ -1596,6 +1956,7 @@ def test_analysis_assistant_lifecycle_validation_accepts_complete_ltv_series():
                 for day in range(0, 6)
             ],
         },
+        data_skill,
     )
 
     assert error is None

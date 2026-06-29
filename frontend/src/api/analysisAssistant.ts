@@ -13,6 +13,7 @@ export interface AnalysisAssistantHistoryMessage extends AnalysisAssistantMessag
   traces?: string[]
   blocks?: any[]
   final?: string
+  agentContextSnapshot?: Record<string, any>
   error?: boolean
 }
 

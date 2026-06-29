@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, Field
 from sqlalchemy import String, Column, Text, SmallInteger, BigInteger, Integer, Index
-from typing import Any, Optional, List, Literal
+from typing import Any, Optional, List, Literal, Dict
 from pydantic import BaseModel
 
 class CoreDashboard(SQLModel, table=True):
@@ -302,9 +302,28 @@ class CreateDashboard(QueryDashboard):
     description: str = ''
 
 
+class DashboardPivotRequest(BaseModel):
+    enabled: bool = False
+    time_field: str = ''
+    metric_field: str = ''
+    metric_fields: List[str] = Field(default_factory=list)
+    metric_aggregations: Dict[str, Literal["sum", "avg", "min", "max", "count"]] = Field(default_factory=dict)
+    group_field: str = ''
+    group_enabled: bool = True
+    dimensions: List[Dict[str, Any]] = Field(default_factory=list)
+    range_enabled: bool = True
+    granularity: Literal["day", "week", "month"] = "day"
+    range: Literal["source", "7d", "14d", "30d", "90d", "all", "custom"] = "source"
+    custom_start: str = ''
+    custom_end: str = ''
+    aggregation: Literal["sum", "avg", "min", "max", "count"] = "sum"
+
+
 class DashboardSqlPreview(BaseModel):
     datasource: int
     sql: str = ''
+    pivot: Optional[DashboardPivotRequest] = None
+    cache_only: bool = False
 
 
 class DashboardDefaultRequest(BaseModel):

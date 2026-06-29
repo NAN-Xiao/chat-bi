@@ -155,7 +155,7 @@
             <span>{{ formatOptionalTimestamp(scope.row.create_time) }}</span>
           </template>
         </el-table-column>
-        <el-table-column fixed="right" :label="t('ds.actions')" width="180">
+        <el-table-column fixed="right" :label="t('ds.actions')" width="220">
           <template #default="scope">
             <div v-if="scope.row.row_type === 'application'" class="review-actions">
               <el-button
@@ -171,6 +171,17 @@
               </el-button>
             </div>
             <div v-else class="table-operate">
+              <el-tooltip
+                :offset="14"
+                effect="dark"
+                :content="t('tenant.usage_monitor')"
+                placement="top"
+              >
+                <el-icon class="action-btn" size="16" @click="openTenantUsage(scope.row.source)">
+                  <icon_chart_preview />
+                </el-icon>
+              </el-tooltip>
+              <div class="line"></div>
               <el-tooltip
                 :offset="14"
                 effect="dark"
@@ -419,6 +430,22 @@
         </div>
       </template>
     </el-drawer>
+
+    <el-drawer
+      v-model="usageDrawerVisible"
+      :title="usageDrawerTitle"
+      destroy-on-close
+      modal-class="tenant-usage-drawer-class"
+      size="88%"
+    >
+      <TenantUsage
+        v-if="usageTenant"
+        embedded
+        :tenant-id="usageTenant.id"
+        :tenant-name="usageTenant.name"
+        :show-user-stats="false"
+      />
+    </el-drawer>
   </div>
 </template>
 
@@ -434,9 +461,11 @@ import IconLock from '@/assets/svg/icon-key_outlined.svg'
 import IconOpeEdit from '@/assets/svg/icon_edit_outlined.svg'
 import IconOpeDelete from '@/assets/svg/icon_delete.svg'
 import icon_add_outlined from '@/assets/svg/icon_add_outlined.svg'
+import icon_chart_preview from '@/assets/svg/icon_chart_preview.svg'
 import icon_into_item_outlined from '@/assets/svg/icon_into-item_outlined.svg'
 import icon_searchOutline_outlined from '@/assets/svg/icon_search-outline_outlined.svg'
 import EmptyBackground from '@/views/dashboard/common/EmptyBackground.vue'
+import TenantUsage from '@/views/system/tenant-usage/TenantUsage.vue'
 import { datasourceApi } from '@/api/datasource'
 import {
   tenantApi,
@@ -457,6 +486,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const keyword = ref('')
 const drawerVisible = ref(false)
+const usageDrawerVisible = ref(false)
 const saving = ref(false)
 const statusLoadingId = ref('')
 const deleteLoadingId = ref('')
@@ -469,6 +499,7 @@ const applications = shallowRef<TenantApplicationInfo[]>([])
 const usageRows = shallowRef<TenantUsageDailyInfo[]>([])
 const datasourceOptions = shallowRef<any[]>([])
 const editingTenant = ref<TenantInfo | null>(null)
+const usageTenant = ref<TenantInfo | null>(null)
 const ownerCandidateLoading = ref(false)
 const ownerCandidateKeyword = ref('')
 const ownerCandidateRows = shallowRef<TenantOwnerCandidateInfo[]>([])
@@ -634,6 +665,12 @@ const currentOwnerDisplay = computed(() =>
   ]
     .filter(Boolean)
     .join(' / ')
+)
+
+const usageDrawerTitle = computed(() =>
+  usageTenant.value?.name
+    ? `${usageTenant.value.name} - ${t('tenant.usage_monitor')}`
+    : t('tenant.usage_monitor')
 )
 
 const formatOwnerCandidate = (candidate: TenantOwnerCandidateInfo) =>
@@ -825,6 +862,11 @@ const openWorkspaceAdmin = (tenant: TenantInfo) => {
       tenant_name: tenant.name || '',
     },
   })
+}
+
+const openTenantUsage = (tenant: TenantInfo) => {
+  usageTenant.value = tenant
+  usageDrawerVisible.value = true
 }
 
 const loadOwnerCandidates = async (keyword = '') => {

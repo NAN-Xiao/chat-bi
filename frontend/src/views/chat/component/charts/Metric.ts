@@ -1,5 +1,5 @@
 import { BaseChart } from '@/views/chat/component/BaseChart.ts'
-import { axisLabel, type ChartAxis } from '@/views/chat/component/BaseChart.ts'
+import { axisLabel, type ChartAxis, type ChartMountTarget } from '@/views/chat/component/BaseChart.ts'
 import {
   formatNumber,
   isPercentAxis,
@@ -10,9 +10,10 @@ import { chartPalette } from '@/views/chat/component/charts/theme.ts'
 export class Metric extends BaseChart {
   container: HTMLElement | null = null
 
-  constructor(id: string) {
-    super(id, 'metric')
-    this.container = document.getElementById(id)
+  constructor(mountTarget: ChartMountTarget) {
+    super(mountTarget, 'metric')
+    this.container =
+      typeof mountTarget === 'string' ? document.getElementById(mountTarget) : mountTarget
   }
 
   private isBlank(value: any) {
@@ -58,12 +59,22 @@ export class Metric extends BaseChart {
         .replace(/\s+/g, ' ')
         .trim()
     const isMachineField = (text: string) => /^[a-z][a-z0-9_]*$/.test(text)
+    const machineFieldLabel = (text: string) => {
+      const normalized = text.trim().toLowerCase()
+      if (normalized.endsWith('_pct')) {
+        return `${normalize(normalized.slice(0, -4))} %`
+      }
+      return normalize(normalized)
+    }
 
     if (rawName && !isMachineField(rawName)) {
       return normalize(rawName)
     }
     if (rawValue && !isMachineField(rawValue)) {
       return normalize(rawValue)
+    }
+    if (rawName || rawValue) {
+      return machineFieldLabel(rawName || rawValue)
     }
     return ''
   }

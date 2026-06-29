@@ -3,6 +3,8 @@ export interface ChartAxis {
   value: string
   type?: 'x' | 'y' | 'series' | 'other-info'
   'multi-quota'?: boolean
+  metricType?: 'additive' | 'average' | 'ratio' | 'snapshot' | 'derived'
+  pivotAggregation?: 'sum' | 'avg' | 'count' | 'min' | 'max'
   hidden?: boolean
 }
 
@@ -17,6 +19,8 @@ export function axisValue(axis?: Pick<ChartAxis, 'name' | 'value'> | null): stri
 export interface ChartData {
   [key: string]: any
 }
+
+export type ChartMountTarget = string | HTMLElement
 
 export type ChartTypes =
   | 'table'
@@ -34,6 +38,7 @@ export type ChartTypes =
 
 export abstract class BaseChart {
   id: string
+  mountTarget: ChartMountTarget
   _name: string = 'base-chart'
   axis: Array<ChartAxis> = []
   data: Array<ChartData> = []
@@ -41,8 +46,9 @@ export abstract class BaseChart {
   hideZeroLabel: boolean = false
   hideValueAxis: boolean = false
 
-  constructor(id: string, name: string) {
-    this.id = id
+  constructor(mountTarget: ChartMountTarget, name: string) {
+    this.mountTarget = mountTarget
+    this.id = typeof mountTarget === 'string' ? mountTarget : mountTarget.id
     this._name = name
   }
 
@@ -51,7 +57,7 @@ export abstract class BaseChart {
     this.data = data
   }
 
-  abstract render(): void
+  abstract render(): void | Promise<unknown>
 
   abstract destroy(): void
 }

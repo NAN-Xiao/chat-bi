@@ -44,8 +44,8 @@ const iconNameMap: Record<string, string> = {
   noLog: 'log',
   usage: 'usage',
   noUsage: 'usage',
-  terminology: 'terminology',
-  noTerminology: 'terminology',
+  dataSkills: 'dataSkills',
+  noDataSkills: 'dataSkills',
   knowledge: 'knowledge',
   noKnowledge: 'knowledge',
   sql: 'sql',
@@ -125,7 +125,7 @@ const iconSpec: Record<string, IconNode[]> = {
     { tag: 'rect', attrs: { x: 3.3, y: 4.2, width: 11.4, height: 9.6, rx: 1.5 } },
     { tag: 'path', attrs: { d: 'M4.9 9.6h2l1-3 2.1 5.1 1.2-2.1h2' } },
   ],
-  terminology: [
+  dataSkills: [
     { tag: 'path', attrs: { d: 'M4.2 3.8h7.2a2.4 2.4 0 0 1 2.4 2.4v8.1H6.1a1.9 1.9 0 0 1-1.9-1.9V3.8Z' } },
     { tag: 'path', attrs: { d: 'M4.2 12.4a1.9 1.9 0 0 1 1.9-1.9h7.7M6.7 6.3h4.1M6.7 8.5h3.2' } },
   ],

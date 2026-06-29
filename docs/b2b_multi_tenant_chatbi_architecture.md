@@ -22,7 +22,7 @@ SLG fixtures are demo data only. Runtime code must stay datasource-agnostic and 
 - `sys_tenant_security_policy` stores tenant-level security controls such as IP whitelist, SSO-required flag, and session timeout metadata.
 - `sys_tenant_data_request` stores tenant cancellation, export, and deletion requests. These requests are auditable workflows, not automatic data mutation jobs.
 - Request tenant context is resolved from verified login tokens, API keys, or embedded assistant tokens. A user can only switch to a tenant they belong to, except SaaS administrators.
-- Core business assets carry tenant scope: datasource, terminology, SQL examples, custom Agents, ChatBI conversations, chat records, chat logs, dashboards, dashboard shares, API keys, assistants, audit logs, and tenant usage records.
+- Core business assets carry tenant scope: datasource, Data Skills, custom Agents, ChatBI conversations, chat records, chat logs, dashboards, dashboard shares, API keys, assistants, audit logs, and tenant usage records.
 
 ## Commercial Lifecycle
 
@@ -37,9 +37,9 @@ SLG fixtures are demo data only. Runtime code must stay datasource-agnostic and 
 ## Permission Model
 
 - SaaS administrator: manages SaaS-wide configuration, tenant approval, production operations, and can switch tenant context for support.
-- Tenant `owner/admin`: manages current-tenant users, datasources, public custom Agents, terminology, SQL examples, dashboards, and tenant usage.
-- Tenant `member`: can only access explicitly assigned datasources.
-- Datasource `viewer/editor`: controls project usage and dashboard editing. It does not grant SaaS administration.
+- Tenant `owner/admin`: manages current-tenant users, datasources, public Data Skills, public custom Agents, dashboards, and tenant usage.
+- Tenant `member`: can access the datasource bound to the current workspace as the default project viewer.
+- Datasource `viewer/editor`: controls project usage and dashboard editing. It does not grant SaaS administration; table, column, and row permission rules narrow the default viewer access when configured.
 - Smart Q&A, dashboards, custom Agents, and analysis assistant must all validate tenant and datasource access before reading schema, semantic records, examples, history, SQL, chart data, or execution results.
 - Row and column permissions are applied to normal users during schema exposure, SQL validation, SQL execution, chart reload, dashboard load, and analysis assistant execution.
 - Tenant owner/admin can submit member invitations in bulk. Each account produces an individual result and the action is written to tenant audit logs.

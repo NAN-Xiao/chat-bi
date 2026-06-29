@@ -53,57 +53,6 @@
   "i18n_chat": {
     "record_id_in_mcp": "响应ID: "
   },
-  "i18n_terminology": {
-    "terminology_not_exists": "该术语不存在",
-    "datasource_cannot_be_none": "数据源不能为空",
-    "cannot_be_repeated": "术语名称，同义词不能重复",
-    "exists_in_db": "术语名称，同义词已存在",
-    "term_name": "术语名称",
-    "term_description": "术语描述",
-    "effective_data_sources": "生效数据源",
-    "all_data_sources": "所有数据源",
-    "synonyms": "同义词",
-    "term_name_template": "术语名称（必填）",
-    "term_description_template": "术语描述（必填）",
-    "effective_data_sources_template": "生效数据源（支持多个，用\",\"分割）",
-    "all_data_sources_template": "所有数据源（Y：应用到全部数据源，N：应用到指定数据源）",
-    "synonyms_template": "同义词（支持多个，用\",\"分割）",
-    "term_name_template_example_1": "术语1",
-    "term_description_template_example_1": "术语1描述",
-    "effective_data_sources_template_example_1": "生效数据源1, 生效数据源2",
-    "synonyms_template_example_1": "同义词1, 同义词2",
-    "term_name_template_example_2": "术语2",
-    "term_description_template_example_2": "术语2描述",
-    "synonyms_template_example_2": "同义词3",
-    "word_cannot_be_empty": "术语名称不能为空",
-    "description_cannot_be_empty": "术语描述不能为空",
-    "datasource_not_found": "找不到数据源"
-  },
-  "i18n_data_training": {
-    "datasource_list_is_not_found": "数据源列表未找到",
-    "datasource_id_not_found": "数据源ID: {key} 未找到",
-    "datasource_cannot_be_none": "数据源不能为空",
-    "datasource_assistant_cannot_be_none": "数据源或高级应用不能都为空",
-    "data_training_not_exists": "该示例不存在",
-    "exists_in_db": "该问题已存在",
-    "data_training": "SQL 示例库",
-    "problem_description": "问题描述",
-    "sample_sql": "示例 SQL",
-    "effective_data_sources": "生效数据源",
-    "advanced_application": "高级应用",
-    "problem_description_template": "问题描述（必填）",
-    "sample_sql_template": "示例 SQL（必填）",
-    "effective_data_sources_template": "生效数据源",
-    "advanced_application_template": "高级应用",
-    "problem_description_template_example": "查询TEST表内所有ID",
-    "effective_data_sources_template_example": "生效数据源1",
-    "advanced_application_template_example": "生效高级应用名称",
-    "error_info": "错误信息",
-    "question_cannot_be_empty": "问题不能为空",
-    "description_cannot_be_empty": "示例 SQL 不能为空",
-    "datasource_not_found": "找不到数据源",
-    "advanced_application_not_found": "找不到高级应用"
-  },
   "i18n_custom_prompt": {
     "exists_in_db": "Agent 名称已存在",
     "not_exists": "该自定义 Agent 不存在",
@@ -169,8 +118,6 @@
     "dashboard": "数据看板",
     "member": "成员",
     "permission": "权限",
-    "terminology": "术语",
-    "data_training": "SQL 示例库",
     "prompt_words": "自定义 Agent",
     "user": "用户",
     "project": "项目",
@@ -206,5 +153,9 @@
     "name": "姓名",
     "account": "账号",
     "email": "邮箱"
+  },
+  "i18n_common": {
+    "error_info": "错误信息",
+    "datasource_id_not_found": "数据源ID: {key} 未找到"
   }
 }

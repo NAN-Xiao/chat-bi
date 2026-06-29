@@ -1,6 +1,8 @@
 import concurrent
 import json
 import os
+import re
+import time
 import traceback
 import urllib.parse
 import warnings
@@ -10,9 +12,7 @@ from decimal import Decimal
 from typing import Any, List, Optional, Union, Dict, Iterator
 
 import orjson
-import pandas as pd
 import requests
-import sqlparse
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, BaseMessageChunk
@@ -24,39 +24,38 @@ from apps.chat.curd.chat import save_question, save_sql_answer, save_sql, \
     save_error_message, save_sql_exec_data, save_chart_answer, save_chart, \
     finish_record, save_analysis_answer, save_predict_answer, save_predict_data, \
     save_select_datasource_answer, save_recommend_question_answer, \
-    get_old_questions, save_analysis_predict_record, rename_chat, get_chart_config, \
+    get_old_questions, save_analysis_predict_record, get_chart_config, \
     get_chat_chart_data, list_generate_sql_logs, list_generate_chart_logs, start_log, end_log, \
-    get_last_execute_sql_error, format_json_data, format_chart_fields, get_chat_brief_generate, get_chat_predict_data, \
-    get_chat_chart_config, trigger_log_error
+    get_last_execute_sql_error, format_chart_fields, get_chat_brief_generate, \
+    trigger_log_error, save_agent_context_snapshot
+from apps.chat.curd.agent_context_snapshot import build_agent_context_snapshot
 from apps.chat.curd.custom_prompt import (
     CustomPromptTargetScopeEnum,
     CustomPromptTypeEnum,
     find_custom_prompts,
     find_data_skills,
 )
-from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, RenameChat, ChatLog, OperationEnum, \
-    ChatFinishStep, AxisObj, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
+from apps.chat.models.chat_model import ChatQuestion, ChatRecord, Chat, ChatLog, OperationEnum, \
+    ChatFinishStep, SystemPromptMessage, HumanPromptMessage, AIPromptMessage
 from apps.datasource.crud.datasource import get_datasource_list, get_table_schema, get_tables_sample_data
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_AGENT_GUIDANCE,
-    PERMISSION_DENIED_ERROR_TYPE,
     PERMISSION_DENIED_RESULT_MESSAGE,
-    looks_like_permission_scope_error,
     permission_denied_result,
 )
-from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access, is_normal_user
+from apps.datasource.crud.permission import get_row_permission_filters, has_datasource_access
 from apps.datasource.crud.query_executor import (
     execute_external_user_query_or_raise,
     execute_user_analysis_query_or_raise,
-    validate_user_query_sql_or_raise,
 )
 from apps.datasource.embedding.ds_embedding import get_ds_embedding
 from apps.datasource.models.datasource import CoreDatasource
-from apps.db.db import get_version, check_connection
+from apps.db.db import get_version
 from apps.system.crud.aimodel_manage import get_ai_model_list
 from apps.system.crud.assistant import AssistantOutDs, AssistantOutDsFactory, get_assistant_ds
 from apps.system.crud.parameter_manage import get_groups
 from apps.system.crud.tenant import TENANT_ADMIN_ROLES, normalize_tenant_role
+from apps.system.crud.tracking_config import find_tracking_prompt_context
 from apps.system.crud.user import is_platform_admin, is_platform_workspace_delegate, is_system_admin
 from apps.system.schemas.access_context import require_current_tenant_id
 from apps.system.models.system_model import SysArgModel
@@ -76,8 +75,7 @@ from apps.system.schemas.system_schema import AssistantOutDsSchema
 from common.core.config import settings
 from common.core.db import engine
 from common.core.deps import CurrentAssistant, CurrentUser
-from common.error import SingleMessageError, AppDBError, ParseSQLResultError, AppDBConnectionError
-from common.utils.data_format import DataFormat
+from common.error import SingleMessageError, AppDBError, ParseSQLResultError
 from common.utils.locale import I18n, I18nHelper
 from common.utils.utils import AppLogUtil, extract_nested_json, prepare_for_orjson
 
@@ -94,6 +92,10 @@ i18n = I18n()
 
 APP_SYSTEM_MESSAGE_KEY = "app_system"
 APP_TEMP_SQL_TEXT_KEY = "app_temp_sql_text"
+
+
+class DataSkillSqlValidationError(SingleMessageError):
+    pass
 
 
 def _is_app_system_message(message: dict[str, Any]) -> bool:
@@ -113,6 +115,206 @@ def _serialize_prompt_messages(messages: list[BaseMessage]) -> list[dict[str, An
         }
         for msg in messages
     ]
+
+
+def _normalize_rule_terms(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if str(item).strip()]
+    return [str(value)]
+
+
+def _extract_data_skill_sql_validation_rules(data_skill: str = "") -> list[dict[str, Any]]:
+    if not data_skill or not data_skill.strip():
+        return []
+
+    rules: list[dict[str, Any]] = []
+    pattern = re.compile(r"<!--\s*data-skill-sql-validation\s*:\s*(.*?)\s*-->", re.DOTALL)
+    for match in pattern.finditer(data_skill):
+        raw = match.group(1).strip()
+        if not raw:
+            continue
+        try:
+            parsed = orjson.loads(raw)
+        except Exception:
+            continue
+        items = parsed if isinstance(parsed, list) else [parsed]
+        for item in items:
+            if isinstance(item, dict):
+                rules.append(item)
+    return rules
+
+
+def _rule_matches_question(rule: dict[str, Any], question: str) -> bool:
+    terms = [term.lower() for term in _normalize_rule_terms(rule.get("match") or rule.get("when"))]
+    if not terms:
+        return True
+    text = (question or "").lower()
+    return any(term in text for term in terms)
+
+
+def _rule_allowed_by_question(rule: dict[str, Any], question: str) -> bool:
+    terms = [term.lower() for term in _normalize_rule_terms(rule.get("allow_when"))]
+    if not terms:
+        return False
+    text = (question or "").lower()
+    return any(term in text for term in terms)
+
+
+def _data_skill_sql_validation_error(question: str, sql: str, data_skill: str = "") -> str | None:
+    if not sql:
+        return None
+
+    sql_text = str(sql)
+    sql_lower = sql_text.lower()
+    for rule in _extract_data_skill_sql_validation_rules(data_skill):
+        if not _rule_matches_question(rule, question):
+            continue
+        if _rule_allowed_by_question(rule, question):
+            continue
+
+        for pattern_text in _normalize_rule_terms(rule.get("forbidden_sql_patterns")):
+            try:
+                matched = re.search(pattern_text, sql_text, re.IGNORECASE | re.DOTALL) is not None
+            except re.error:
+                matched = pattern_text.lower() in sql_lower
+            if matched:
+                return str(
+                    rule.get("message")
+                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
+                )
+
+        for text in _normalize_rule_terms(rule.get("forbidden_sql_contains")):
+            if text.lower() in sql_lower:
+                return str(
+                    rule.get("message")
+                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
+                )
+
+        for group in rule.get("forbidden_sql_all_contains") or []:
+            terms = _normalize_rule_terms(group)
+            if terms and all(term.lower() in sql_lower for term in terms):
+                return str(
+                    rule.get("message")
+                    or "SQL 与本次匹配的 Data Skill 业务口径冲突，请按 Data Skill 重写 SQL。"
+                )
+
+    return None
+
+
+def _decode_relaxed_json_string(value: str) -> str:
+    result: list[str] = []
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char != "\\" or index + 1 >= len(value):
+            result.append(char)
+            index += 1
+            continue
+
+        escaped = value[index + 1]
+        if escaped == "n":
+            result.append("\n")
+        elif escaped == "r":
+            result.append("\r")
+        elif escaped == "t":
+            result.append("\t")
+        elif escaped in {'"', "\\", "/"}:
+            result.append(escaped)
+        else:
+            result.append(char)
+            result.append(escaped)
+        index += 2
+    return "".join(result)
+
+
+def _extract_relaxed_json_string_field(text: str, field_name: str) -> str | None:
+    match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"', text)
+    if not match:
+        return None
+
+    start = match.end()
+    end_match = re.search(
+        r'"\s*,\s*"(?:success|sql|tables|chart-type|chart_type|brief|message)"\s*:',
+        text[start:],
+    )
+    if not end_match:
+        return None
+    return _decode_relaxed_json_string(text[start:start + end_match.start()])
+
+
+def _extract_relaxed_json_array_field(text: str, field_name: str) -> list[Any] | None:
+    match = re.search(rf'"{re.escape(field_name)}"\s*:\s*', text)
+    if not match:
+        return None
+    start = match.end()
+    try:
+        value, _end = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, list) else None
+
+
+def _extract_relaxed_simple_json_string_field(text: str, field_name: str) -> str | None:
+    match = re.search(rf'"{re.escape(field_name)}"\s*:\s*"((?:\\.|[^"\\])*)"', text)
+    if not match:
+        return None
+    return _decode_relaxed_json_string(match.group(1))
+
+
+def _parse_relaxed_sql_answer_data(text: str) -> dict[str, Any] | None:
+    success_match = re.search(r'"success"\s*:\s*(true|false)', text)
+    if not success_match:
+        return None
+
+    success = success_match.group(1) == "true"
+    if not success:
+        message = _extract_relaxed_simple_json_string_field(text, "message")
+        if message is None:
+            return None
+        return {"success": False, "message": message}
+
+    sql = _extract_relaxed_json_string_field(text, "sql")
+    if sql is None:
+        return None
+
+    data: dict[str, Any] = {
+        "success": True,
+        "sql": sql,
+    }
+    tables = _extract_relaxed_json_array_field(text, "tables")
+    if tables is not None:
+        data["tables"] = tables
+    chart_type = (
+        _extract_relaxed_simple_json_string_field(text, "chart-type")
+        or _extract_relaxed_simple_json_string_field(text, "chart_type")
+    )
+    if chart_type is not None:
+        data["chart-type"] = chart_type
+    brief = _extract_relaxed_simple_json_string_field(text, "brief")
+    if brief is not None:
+        data["brief"] = brief
+    return data
+
+
+def _parse_sql_answer_data(text: str) -> dict[str, Any]:
+    json_str = extract_nested_json(text)
+    if json_str is not None:
+        try:
+            return orjson.loads(json_str)
+        except orjson.JSONDecodeError:
+            relaxed_data = _parse_relaxed_sql_answer_data(json_str)
+            if relaxed_data is not None:
+                return relaxed_data
+
+    data = _parse_relaxed_sql_answer_data(text)
+    if data is not None:
+        return data
+
+    raise ValueError("SQL answer is not a valid json object")
 
 
 def _get_temp_sql_text(dynamic_sql_result: Optional[dict[str, Any]]) -> Optional[str]:
@@ -244,17 +446,29 @@ def _is_rate_metric_field(field: str) -> bool:
             "pct",
             "percent",
             "percentage",
-            "retention",
             "conversion",
-            "arpu",
-            "arppu",
-            "ltv",
             "率",
             "占比",
             "比例",
-            "留存",
             "转化",
+        )
+    )
+
+
+def _is_average_metric_field(field: str) -> bool:
+    normalized = _normalize_chart_field_name(field)
+    return any(
+        token in normalized
+        for token in (
+            "avg",
+            "average",
+            "mean",
+            "per_",
+            "per-",
+            "per ",
+            "平均",
             "人均",
+            "每",
         )
     )
 
@@ -264,20 +478,15 @@ def _is_supporting_metric_field(field: str) -> bool:
     return any(
         token in normalized
         for token in (
-            "cohort",
             "base",
             "total",
             "size",
             "count",
             "num",
+            "number",
             "users",
-            "user_count",
-            "retained",
-            "active",
-            "payer",
-            "玩家数",
-            "用户数",
             "人数",
+            "用户数",
             "次数",
             "数量",
             "分母",
@@ -298,8 +507,6 @@ def _is_numeric_dimension_field(field: str) -> bool:
             "sort",
             "seq",
             "sequence",
-            "day_index",
-            "lifecycle_day",
             "week",
             "month",
             "year",
@@ -314,8 +521,66 @@ def _is_numeric_dimension_field(field: str) -> bool:
 def _is_supporting_only_gap(covered_metrics: list[str], missing_metrics: list[str]) -> bool:
     if not covered_metrics or not missing_metrics:
         return False
-    return any(_is_rate_metric_field(field) for field in covered_metrics) and all(
+    return any(_is_rate_metric_field(field) or _is_average_metric_field(field) for field in covered_metrics) and all(
         _is_supporting_metric_field(field) for field in missing_metrics
+    )
+
+
+def _is_funnel_supporting_metric_gap(
+    chart: dict[str, Any],
+    covered_metrics: list[str],
+    missing_metrics: list[str],
+) -> bool:
+    if str(chart.get("type") or "").lower() != "funnel" or not covered_metrics or not missing_metrics:
+        return False
+
+    axis = chart.get("axis") or {}
+    x_axis = axis.get("x")
+    x_field = _normalize_chart_field_name(x_axis.get("value")) if isinstance(x_axis, dict) else ""
+    if not any(token in x_field for token in ("step", "stage", "funnel", "步骤", "阶段")):
+        return False
+
+    def is_funnel_primary(field: str) -> bool:
+        normalized = _normalize_chart_field_name(field)
+        return any(
+            token in normalized
+            for token in (
+                "users",
+                "user_count",
+                "count",
+                "num",
+                "value",
+                "人数",
+                "用户数",
+                "数量",
+            )
+        )
+
+    def is_funnel_auxiliary(field: str) -> bool:
+        normalized = _normalize_chart_field_name(field)
+        return any(
+            token in normalized
+            for token in (
+                "conversion",
+                "rate",
+                "ratio",
+                "pct",
+                "percent",
+                "dropoff",
+                "drop_off",
+                "drop",
+                "lost",
+                "loss",
+                "流失",
+                "掉点",
+                "转化",
+                "通过率",
+            )
+        )
+
+    return any(is_funnel_primary(field) for field in covered_metrics) and all(
+        is_funnel_auxiliary(field) or _is_supporting_metric_field(field)
+        for field in missing_metrics
     )
 
 
@@ -355,6 +620,8 @@ def _ensure_chart_covers_metric_fields(
         field for field in metric_fields if _normalize_chart_field_name(field) not in used_values
     ]
     if len(covered_metrics) < len(metric_fields):
+        if _is_funnel_supporting_metric_gap(chart, covered_metrics, missing_metrics):
+            return chart
         if _is_supporting_only_gap(covered_metrics, missing_metrics):
             return chart
         title = chart.get("title") or "指标对比"
@@ -402,6 +669,7 @@ class LLMService:
         self.generate_chart_logs = []
         self.current_logs = {}
         self.chunk_list = []
+        self.stream_keepalive_enabled = False
         self.current_user = current_user
         self.current_assistant = current_assistant
 
@@ -574,6 +842,10 @@ class LLMService:
         self.sql_message.append(HumanPromptMessage(content=_system_templates['schema']))
         self.sql_message.append(
             AIPromptMessage(content='我已确认您提供的数据库信息与表结构schema，我生成的SQL不会超出您提供的范围。'))
+        if _system_templates.get('tracking_config'):
+            self.sql_message.append(HumanPromptMessage(content=_system_templates['tracking_config']))
+            self.sql_message.append(
+                AIPromptMessage(content='我已确认当前工作空间的打点字段规范，我会结合数据库Schema使用，不会编造不存在的表或字段。'))
         if _system_templates.get('custom_prompt'):
             self.sql_message.append(HumanPromptMessage(content=_system_templates['custom_prompt']))
             self.sql_message.append(AIPromptMessage(content='我已确认您提供的额外信息，我会进行参考。'))
@@ -626,6 +898,30 @@ class LLMService:
     def init_record(self, session: Session) -> ChatRecord:
         self.record = save_question(session=session, current_user=self.current_user, question=self.chat_question)
         return self.record
+
+    def save_agent_context_snapshot(
+            self,
+            session: Session,
+            target_scope: CustomPromptTargetScopeEnum,
+            surface: str = "smart_qa",
+    ) -> None:
+        if not self.record:
+            return
+        datasource_id = getattr(self.ds, "id", None) if self.ds else getattr(self.chat_question, "datasource_id", None)
+        datasource_name = getattr(self.ds, "name", None) if self.ds else None
+        snapshot = build_agent_context_snapshot(
+            surface=surface,
+            datasource_id=datasource_id,
+            datasource_name=datasource_name,
+            custom_prompt_id=self.chat_question.custom_prompt_id,
+            custom_prompt_text=self.chat_question.custom_prompt,
+            data_skill_id=self.chat_question.data_skill_id,
+            data_skill_text=self.chat_question.data_skill,
+            ai_model_id=self.chat_question.ai_modal_id,
+            ai_model_name=self.chat_question.ai_modal_name,
+            target_scope=target_scope.value if target_scope else None,
+        )
+        save_agent_context_snapshot(session, self.record.id, snapshot)
 
     def get_record(self):
         return self.record
@@ -708,8 +1004,10 @@ class LLMService:
             target_scope: CustomPromptTargetScopeEnum = CustomPromptTargetScopeEnum.SMART_QA,
     ):
         self.filter_data_skills(_session, ds_id, target_scope)
-        self.chat_question.terminologies = ""
-        self.chat_question.data_training = ""
+
+    def load_tracking_config(self, _session: Session):
+        tenant_id = require_current_tenant_id(self.current_user)
+        self.chat_question.tracking_config, _ = find_tracking_prompt_context(_session, tenant_id)
 
     def choose_table_schema(self, _session: Session):
         self.current_logs[OperationEnum.CHOOSE_TABLE] = start_log(session=_session,
@@ -748,6 +1046,12 @@ class LLMService:
         self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
 
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.ANALYSIS, ds_id)
+
+        self.save_agent_context_snapshot(
+            _session,
+            CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+            surface="smart_qa_analysis",
+        )
 
         analysis_msg.append(SystemPromptMessage(content=self.chat_question.analysis_sys_question()))
         analysis_msg.append(HumanMessage(content=self.chat_question.analysis_user_question()))
@@ -789,6 +1093,12 @@ class LLMService:
         ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
         self.filter_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT)
         self.filter_custom_prompts(_session, CustomPromptTypeEnum.PREDICT_DATA, ds_id)
+
+        self.save_agent_context_snapshot(
+            _session,
+            CustomPromptTargetScopeEnum.ANALYSIS_ASSISTANT,
+            surface="smart_qa_predict",
+        )
 
         predict_msg: List[Union[BaseMessage, dict[str, Any]]] = []
         predict_msg.append(SystemPromptMessage(content=self.chat_question.predict_sys_question()))
@@ -1010,16 +1320,21 @@ class LLMService:
 
             self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
 
+            self.save_agent_context_snapshot(_session, CustomPromptTargetScopeEnum.SMART_QA)
+
+            self.load_tracking_config(_session)
+
             self.init_messages(_session)
 
         if _error:
             raise _error
 
-    def generate_sql(self, _session: Session):
+    def generate_sql(self, _session: Session, append_question: bool = True):
         # append current question
-        self.sql_message.append(HumanMessage(
-            self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                                 change_title=self.change_title)))
+        if append_question:
+            self.sql_message.append(HumanMessage(
+                self.chat_question.sql_user_question(current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                     change_title=self.change_title)))
 
         self.current_logs[OperationEnum.GENERATE_SQL] = start_log(session=_session,
                                                                   ai_modal_id=self.chat_question.ai_modal_id,
@@ -1047,6 +1362,60 @@ class LLMService:
                                                                 token_usage=token_usage)
         self.record = save_sql_answer(session=_session, record_id=self.record.id,
                                       answer=orjson.dumps({'content': full_sql_text}).decode())
+
+    def generate_sql_text(self, _session: Session, append_question: bool = True) -> str:
+        full_sql_text = ''
+        for chunk in self.generate_sql(_session, append_question=append_question):
+            full_sql_text += chunk.get('content') or ''
+        return full_sql_text
+
+    def generate_sql_text_streaming_reasoning(
+            self,
+            _session: Session,
+            in_chat: bool,
+            append_question: bool = True,
+    ):
+        full_sql_text = ''
+        for chunk in self.generate_sql(_session, append_question=append_question):
+            full_sql_text += chunk.get('content') or ''
+            if in_chat and chunk.get('reasoning_content'):
+                yield 'data:' + orjson.dumps({
+                    'content': '',
+                    'reasoning_content': chunk.get('reasoning_content'),
+                    'type': 'sql-result',
+                }).decode() + '\n\n'
+        return full_sql_text
+
+    def regenerate_sql_after_validation_error(self, _session: Session, message: str) -> str:
+        repair_message = (
+            "<error-msg>\n"
+            f"{message}\n"
+            "</error-msg>\n"
+            "上一版 SQL 与本次 Data Skill 的业务口径冲突。请严格按 Data Skill 和错误信息重写完整 JSON 结果，"
+            "不要保留冲突的 SQL 片段、CTE、步骤标签或分母。"
+        )
+        self.sql_message.append(HumanMessage(content=repair_message))
+        return self.generate_sql_text(_session, append_question=False)
+
+    def regenerate_sql_after_validation_error_streaming_reasoning(
+            self,
+            _session: Session,
+            message: str,
+            in_chat: bool,
+    ):
+        repair_message = (
+            "<error-msg>\n"
+            f"{message}\n"
+            "</error-msg>\n"
+            "上一版 SQL 与本次 Data Skill 的业务口径冲突。请严格按 Data Skill 和错误信息重写完整 JSON 结果，"
+            "不要保留冲突的 SQL 片段、CTE、步骤标签或分母。"
+        )
+        self.sql_message.append(HumanMessage(content=repair_message))
+        return (yield from self.generate_sql_text_streaming_reasoning(
+            _session,
+            in_chat=in_chat,
+            append_question=False,
+        ))
 
     def generate_with_sub_sql(self, session: Session, sql, sub_mappings: list):
         sub_query = json.dumps(sub_mappings, ensure_ascii=False)
@@ -1185,19 +1554,16 @@ class LLMService:
                                                                   token_usage=token_usage)
 
     def check_sql(self, session: Session, res: str, operate: OperationEnum) -> tuple[str, Optional[list]]:
-        json_str = extract_nested_json(res)
-
         log = self.current_logs[operate]
 
-        if json_str is None:
+        try:
+            data = _parse_sql_answer_data(res)
+        except ValueError:
             trigger_log_error(session, log)
             raise SingleMessageError(orjson.dumps({'message': 'SQL answer is not a valid json object',
                                                    'traceback': "SQL answer is not a valid json object:\n" + res}).decode())
         sql: str
-        data: dict
         try:
-            data = orjson.loads(json_str)
-
             if data['success']:
                 sql = data['sql']
             else:
@@ -1214,21 +1580,25 @@ class LLMService:
         if sql.strip() == '':
             trigger_log_error(session, log)
             raise SingleMessageError("SQL query is empty")
+
+        semantic_error = _data_skill_sql_validation_error(
+            self.chat_question.question or "",
+            sql,
+            self.chat_question.data_skill,
+        )
+        if semantic_error:
+            trigger_log_error(session, log)
+            raise DataSkillSqlValidationError(semantic_error)
         return sql, data.get('tables')
 
     @staticmethod
     def get_chart_type_from_sql_answer(res: str) -> Optional[str]:
-        json_str = extract_nested_json(res)
-        if json_str is None:
-            return None
-
         chart_type: Optional[str]
-        data: dict
         try:
-            data = orjson.loads(json_str)
+            data = _parse_sql_answer_data(res)
 
             if data['success']:
-                chart_type = data['chart-type']
+                chart_type = data.get('chart-type') or data.get('chart_type')
             else:
                 return None
         except Exception:
@@ -1238,17 +1608,12 @@ class LLMService:
 
     @staticmethod
     def get_brief_from_sql_answer(res: str) -> Optional[str]:
-        json_str = extract_nested_json(res)
-        if json_str is None:
-            return None
-
         brief: Optional[str]
-        data: dict
         try:
-            data = orjson.loads(json_str)
+            data = _parse_sql_answer_data(res)
 
             if data['success']:
-                brief = data['brief']
+                brief = data.get('brief')
             else:
                 return None
         except Exception:
@@ -1408,6 +1773,8 @@ class LLMService:
     def await_result(self):
         idle_rounds = 0
         max_idle_rounds = max(1, settings.LLM_REQUEST_TIMEOUT * 2)
+        started_at = time.monotonic()
+        max_wait_seconds = max(settings.LLM_REQUEST_TIMEOUT * 20, settings.LLM_REQUEST_TIMEOUT + 300)
         while self.is_running():
             emitted = False
             while True:
@@ -1422,8 +1789,19 @@ class LLMService:
             else:
                 idle_rounds += 1
                 if idle_rounds >= max_idle_rounds:
+                    if self.stream_keepalive_enabled:
+                        elapsed = time.monotonic() - started_at
+                        if elapsed < max_wait_seconds:
+                            idle_rounds = 0
+                            yield 'data:' + orjson.dumps({
+                                'type': 'heartbeat',
+                                'elapsed_seconds': int(elapsed),
+                            }).decode() + '\n\n'
+                            continue
+
                     AppLogUtil.error(
-                        f"LLM stream idle timeout after {settings.LLM_REQUEST_TIMEOUT}s for record {self.record.id}"
+                        f"LLM stream idle timeout after {settings.LLM_REQUEST_TIMEOUT}s for record "
+                        f"{getattr(self.record, 'id', None)}"
                     )
                     try:
                         self.future.cancel()
@@ -1444,6 +1822,7 @@ class LLMService:
                        finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
         if in_chat:
             stream = True
+        self.stream_keepalive_enabled = bool(in_chat and stream)
         self.future = executor.submit(self.run_task_cache, in_chat, stream, finish_step, return_img)
 
     def run_task_cache(self, in_chat: bool = True, stream: bool = True,
@@ -1453,368 +1832,21 @@ class LLMService:
 
     def run_task(self, in_chat: bool = True, stream: bool = True,
                  finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, return_img: bool = True):
-        json_result: Dict[str, Any] = {'success': True}
-        _session = None
-        try:
-            _session = session_maker()
-            if self.ds:
-                ds_id = self.ds.id if isinstance(self.ds, CoreDatasource) else None
+        AppLogUtil.info(
+            f"Smart Q&A using LangGraph runner for record {getattr(self.record, 'id', None)}"
+        )
+        from apps.chat.task.smart_qa_graph import run_smart_qa_graph
 
-                self.load_data_skills(_session, ds_id, CustomPromptTargetScopeEnum.SMART_QA)
-
-                self.filter_custom_prompts(_session, CustomPromptTypeEnum.GENERATE_SQL, ds_id)
-
-                self.init_messages(_session)
-
-            # return id
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
-                if self.get_record().regenerate_record_id:
-                    yield 'data:' + orjson.dumps({'type': 'regenerate_record_id',
-                                                  'regenerate_record_id': self.get_record().regenerate_record_id}).decode() + '\n\n'
-                yield 'data:' + orjson.dumps(
-                    {'type': 'question', 'question': self.get_record().question}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield '> ' + self.trans('i18n_chat.record_id_in_mcp') + str(self.get_record().id) + '\n'
-                    yield '> ' + self.get_record().question + '\n\n'
-            if not stream:
-                json_result['record_id'] = self.get_record().id
-
-                # select datasource if datasource is none
-            if not self.ds:
-                ds_res = self.select_datasource(_session)
-
-                for chunk in ds_res:
-                    AppLogUtil.info(chunk)
-                    if in_chat:
-                        yield 'data:' + orjson.dumps(
-                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                             'type': 'datasource-result'}).decode() + '\n\n'
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'id': self.ds.id, 'datasource_name': self.ds.name,
-                                                  'engine_type': self.ds.type_name or self.ds.type,
-                                                  'type': 'datasource'}).decode() + '\n\n'
-
-            else:
-                self.validate_history_ds(_session)
-
-            # check connection
-            connected = check_connection(ds=self.ds, trans=None)
-            if not connected:
-                raise AppDBConnectionError('Connect DB failed')
-
-            # generate sql
-            sql_res = self.generate_sql(_session)
-            full_sql_text = ''
-            for chunk in sql_res:
-                full_sql_text += chunk.get('content')
-                if in_chat:
-                    yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'sql-result'}).decode() + '\n\n'
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'sql generated'}).decode() + '\n\n'
-            # filter sql
-            AppLogUtil.info(full_sql_text)
-
-            chart_type = self.get_chart_type_from_sql_answer(full_sql_text)
-
-            # return title
-            if self.change_title:
-                llm_brief = self.get_brief_from_sql_answer(full_sql_text)
-                llm_brief_generated = bool(llm_brief)
-                if llm_brief_generated or (self.chat_question.question and self.chat_question.question.strip() != ''):
-                    save_brief = llm_brief if (llm_brief and llm_brief != '') else self.chat_question.question.strip()[
-                                                                                   :20]
-                    brief = rename_chat(session=_session,
-                                        rename_object=RenameChat(id=self.get_record().chat_id,
-                                                                 brief=save_brief, brief_generate=llm_brief_generated))
-                    if in_chat:
-                        yield 'data:' + orjson.dumps({'type': 'brief', 'brief': brief}).decode() + '\n\n'
-                    if not stream:
-                        json_result['title'] = brief
-
-            use_dynamic_ds: bool = self.current_assistant and self.current_assistant.type in dynamic_ds_types
-            dynamic_sql_result = None
-            app_temp_sql_text = None
-            assistant_dynamic_sql = None
-            # row permission
-
-            sql_operate = OperationEnum.GENERATE_SQL
-            sql, tables = self.check_sql(session=_session, res=full_sql_text, operate=sql_operate)
-
-            try:
-                if use_dynamic_ds:
-                    dynamic_sql_result = self.generate_assistant_dynamic_sql(_session, sql, tables)
-                    app_temp_sql_text = _get_temp_sql_text(dynamic_sql_result)
-                    if dynamic_sql_result and app_temp_sql_text:
-                        sql_operate = OperationEnum.GENERATE_DYNAMIC_SQL
-                        assistant_dynamic_sql = self.check_save_sql(
-                            session=_session,
-                            res=app_temp_sql_text,
-                            operate=sql_operate,
-                        )
-                    else:
-                        sql = self.check_save_sql(session=_session, res=full_sql_text, operate=sql_operate)
-                else:
-                    checked_sql, _actual_tables = validate_user_query_sql_or_raise(
-                        session=_session,
-                        current_user=self.current_user,
-                        datasource=self.ds,
-                        sql=sql,
-                        allowed_tables=self.table_name_list,
-                    )
-                    sql = self.save_checked_sql(session=_session, sql=checked_sql)
-            except Exception as permission_error:
-                if not looks_like_permission_scope_error(str(permission_error)):
-                    raise
-                sql = self.save_checked_sql(session=_session, sql=sql)
-                failed_result = self.save_permission_denied_data(session=_session)
-                format_sql = sqlparse.format(sql, reindent=True)
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
-                    yield 'data:' + orjson.dumps({
-                        'content': 'execute-failed',
-                        'type': 'sql-data',
-                        'status': 'failed',
-                        'error_type': PERMISSION_DENIED_ERROR_TYPE,
-                        'message': PERMISSION_DENIED_RESULT_MESSAGE,
-                    }).decode() + '\n\n'
-                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-                else:
-                    if stream:
-                        yield f'```sql\n{format_sql}\n```\n\n'
-                        yield f'> {PERMISSION_DENIED_RESULT_MESSAGE}\n'
-                    else:
-                        json_result['success'] = False
-                        json_result['sql'] = sql
-                        json_result['data'] = failed_result
-                        json_result['message'] = PERMISSION_DENIED_RESULT_MESSAGE
-                        yield json_result
-                return
-
-            AppLogUtil.info('sql: ' + sql)
-
-            if not stream:
-                json_result['sql'] = sql
-
-            format_sql = sqlparse.format(sql, reindent=True)
-            if in_chat:
-                yield 'data:' + orjson.dumps({'content': format_sql, 'type': 'sql'}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield f'```sql\n{format_sql}\n```\n\n'
-
-            # execute sql
-            real_execute_sql = sql
-            execute_scope_sql = sql
-            execute_allowed_tables = self.table_name_list
-            if app_temp_sql_text and assistant_dynamic_sql:
-                execute_scope_sql = assistant_dynamic_sql
-                execute_allowed_tables = [
-                    f"app_dynamic_temp_table_{origin_table}"
-                    for origin_table in dynamic_sql_result
-                    if origin_table != APP_TEMP_SQL_TEXT_KEY
-                ]
-                _remove_temp_sql_text(dynamic_sql_result)
-                for origin_table, subsql in dynamic_sql_result.items():
-                    assistant_dynamic_sql = assistant_dynamic_sql.replace(f'{dynamic_subsql_prefix}{origin_table}',
-                                                                          subsql)
-                real_execute_sql = assistant_dynamic_sql
-
-            if finish_step.value <= ChatFinishStep.GENERATE_SQL.value:
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-                if not stream:
-                    yield json_result
-                return
-
-            self.current_logs[OperationEnum.EXECUTE_SQL] = start_log(session=_session,
-                                                                     operate=OperationEnum.EXECUTE_SQL,
-                                                                     record_id=self.record.id, local_operation=True)
-            try:
-                result = self.execute_sql(
-                    session=_session,
-                    sql=real_execute_sql,
-                    scope_sql=execute_scope_sql,
-                    scope_allowed_tables=execute_allowed_tables,
-                )
-            except Exception as execute_error:
-                if not looks_like_permission_scope_error(str(execute_error)):
-                    raise
-                trigger_log_error(_session, self.current_logs[OperationEnum.EXECUTE_SQL])
-                failed_result = self.save_permission_denied_data(session=_session)
-                if in_chat:
-                    yield 'data:' + orjson.dumps({
-                        'content': 'execute-failed',
-                        'type': 'sql-data',
-                        'status': 'failed',
-                        'error_type': PERMISSION_DENIED_ERROR_TYPE,
-                        'message': PERMISSION_DENIED_RESULT_MESSAGE,
-                        'reason': PERMISSION_DENIED_RESULT_MESSAGE,
-                    }).decode() + '\n\n'
-                    yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-                else:
-                    if stream:
-                        yield f'> {PERMISSION_DENIED_RESULT_MESSAGE}\n'
-                    else:
-                        json_result['success'] = False
-                        json_result['sql'] = sql
-                        json_result['data'] = failed_result
-                        json_result['message'] = PERMISSION_DENIED_RESULT_MESSAGE
-                        yield json_result
-                return
-            self.current_logs[OperationEnum.EXECUTE_SQL] = end_log(session=_session,
-                                                                   log=self.current_logs[OperationEnum.EXECUTE_SQL],
-                                                                   full_message={'sql': real_execute_sql,
-                                                                                 'count': len(result.get('data'))})
-
-            _data = DataFormat.convert_large_numbers_in_object_array(result.get('data'))
-            _data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(_data)
-            result["data"] = _data
-
-            self.save_sql_data(session=_session, data_obj=result)
-            if in_chat:
-                yield 'data:' + orjson.dumps({'content': 'execute-success', 'type': 'sql-data'}).decode() + '\n\n'
-            if not stream:
-                json_result['data'] = get_chat_chart_data(_session, self.record.id)
-
-            if finish_step.value <= ChatFinishStep.QUERY_DATA.value:
-                if stream:
-                    if in_chat:
-                        yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-                    else:
-                        _column_list = []
-                        for field in result.get('fields'):
-                            _column_list.append(AxisObj(name=field, value=field))
-
-                        md_data, _fields_list = DataFormat.convert_object_array_for_pandas(_column_list,
-                                                                                           result.get('data'))
-
-                        # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
-
-                        if not _data or not _fields_list:
-                            yield 'The SQL execution result is empty.\n\n'
-                        else:
-                            df = pd.DataFrame(_data, columns=_fields_list)
-                            df_safe = DataFormat.safe_convert_to_string(df)
-                            markdown_table = df_safe.to_markdown(index=False)
-                            yield markdown_table + '\n\n'
-                else:
-                    yield json_result
-                return
-
-            # generate chart
-            used_tables_schema, used_tables = self.out_ds_instance.get_db_schema(
-                self.ds.id, self.chat_question.question, embedding=False,
-                table_list=tables) if self.out_ds_instance else get_table_schema(
-                session=_session,
-                current_user=self.current_user,
-                ds=self.ds,
-                question=self.chat_question.question,
-                embedding=False, table_list=tables)
-            AppLogUtil.info('used_tables_schema: \n' + used_tables_schema)
-            chart_res = self.generate_chart(_session, chart_type, used_tables_schema)
-            full_chart_text = ''
-            for chunk in chart_res:
-                full_chart_text += chunk.get('content')
-                if in_chat:
-                    yield 'data:' + orjson.dumps(
-                        {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                         'type': 'chart-result'}).decode() + '\n\n'
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'chart generated'}).decode() + '\n\n'
-
-            # filter chart
-            AppLogUtil.info(full_chart_text)
-            chart = self.check_save_chart(session=_session, res=full_chart_text, result=result)
-            AppLogUtil.info(chart)
-
-            if not stream:
-                json_result['chart'] = chart
-
-            if in_chat:
-                yield 'data:' + orjson.dumps(
-                    {'content': orjson.dumps(chart).decode(), 'type': 'chart'}).decode() + '\n\n'
-            else:
-                if stream:
-                    md_data, _fields_list = DataFormat.convert_data_fields_for_pandas(chart, result.get('fields'),
-                                                                                      result.get('data'))
-                    # data, _fields_list, col_formats = self.format_pd_data(_column_list, result.get('data'))
-
-                    if not md_data or not _fields_list:
-                        yield 'The SQL execution result is empty.\n\n'
-                    else:
-                        df = pd.DataFrame(md_data, columns=_fields_list)
-                        df_safe = DataFormat.safe_convert_to_string(df)
-                        markdown_table = df_safe.to_markdown(index=False)
-                        yield markdown_table + '\n\n'
-
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'finish'}).decode() + '\n\n'
-            else:
-                # generate picture
-                try:
-                    if chart.get('type') != 'table' and return_img:
-                        # yield '### generated chart picture\n\n'
-                        self.current_logs[OperationEnum.GENERATE_PICTURE] = start_log(session=_session,
-                                                                                      operate=OperationEnum.GENERATE_PICTURE,
-                                                                                      record_id=self.record.id,
-                                                                                      local_operation=True)
-                        image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
-                                                           format_json_data(result))
-                        AppLogUtil.info(image_url)
-                        if stream:
-                            yield f'![{chart.get("type")}]({image_url})'
-                        else:
-                            json_result['image_url'] = image_url
-                        if error is not None:
-                            raise error
-
-                        self.current_logs[OperationEnum.GENERATE_PICTURE] = end_log(session=_session,
-                                                                                    log=self.current_logs[
-                                                                                        OperationEnum.GENERATE_PICTURE],
-                                                                                    full_message=image_url)
-                except Exception as e:
-                    if stream:
-                        if chart.get('type') != 'table':
-                            yield 'generate or fetch chart picture error.\n\n'
-                        raise e
-
-            if not stream:
-                yield json_result
-
-        except Exception as e:
-            traceback.print_exc()
-            error_msg: str
-            if isinstance(e, SingleMessageError):
-                error_msg = str(e)
-            elif isinstance(e, AppDBConnectionError):
-                error_msg = orjson.dumps(
-                    {'message': str(e), 'type': 'db-connection-err'}).decode()
-            elif isinstance(e, AppDBError):
-                error_msg = orjson.dumps(
-                    {'message': 'Execute SQL Failed', 'traceback': str(e), 'type': 'exec-sql-err'}).decode()
-            else:
-                error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
-            if _session:
-                self.save_error(session=_session, message=error_msg)
-            if in_chat:
-                yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield f'&#x274c; **ERROR:**\n'
-                    yield f'> {error_msg}\n'
-                else:
-                    json_result['success'] = False
-                    json_result['message'] = error_msg
-                    yield json_result
-        finally:
-            self.finish(_session)
-            session_maker.remove()
+        yield from run_smart_qa_graph(
+            self,
+            in_chat=in_chat,
+            stream=stream,
+            finish_step=finish_step,
+            return_img=return_img,
+        )
 
     def run_recommend_questions_task_async(self):
+        self.stream_keepalive_enabled = True
         self.future = executor.submit(self.run_recommend_questions_task_cache)
 
     def run_recommend_questions_task_cache(self):
@@ -1843,6 +1875,7 @@ class LLMService:
     def run_analysis_or_predict_task_async(self, session: Session, action_type: str, base_record: ChatRecord,
                                            in_chat: bool = True, stream: bool = True):
         self.set_record(save_analysis_predict_record(session, base_record, action_type))
+        self.stream_keepalive_enabled = bool(in_chat and stream)
         self.future = executor.submit(self.run_analysis_or_predict_task_cache, action_type, in_chat, stream)
 
     def run_analysis_or_predict_task_cache(self, action_type: str, in_chat: bool = True, stream: bool = True):
@@ -1850,139 +1883,17 @@ class LLMService:
             self.chunk_list.append(chunk)
 
     def run_analysis_or_predict_task(self, action_type: str, in_chat: bool = True, stream: bool = True):
-        json_result: Dict[str, Any] = {'success': True}
-        _session = None
-        try:
-            _session = session_maker()
-            if in_chat:
-                yield 'data:' + orjson.dumps({'type': 'id', 'id': self.get_record().id}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield '> ' + self.trans('i18n_chat.record_id_in_mcp') + str(self.get_record().id) + '\n'
-                    yield '> ' + self.get_record().question + '\n\n'
-            if not stream:
-                json_result['record_id'] = self.get_record().id
+        AppLogUtil.info(
+            f"Chart insight using LangGraph runner for record {getattr(self.record, 'id', None)}"
+        )
+        from apps.chat.task.chart_insight_graph import run_chart_insight_graph
 
-            if action_type == 'analysis':
-                # generate analysis
-                analysis_res = self.generate_analysis(_session)
-                full_text = ''
-                for chunk in analysis_res:
-                    full_text += chunk.get('content')
-                    if in_chat:
-                        yield 'data:' + orjson.dumps(
-                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                             'type': 'analysis-result'}).decode() + '\n\n'
-                    else:
-                        if stream:
-                            yield chunk.get('content')
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'analysis generated'}).decode() + '\n\n'
-                    yield 'data:' + orjson.dumps({'type': 'analysis_finish'}).decode() + '\n\n'
-                else:
-                    if stream:
-                        yield '\n\n'
-                if not stream:
-                    json_result['content'] = full_text
-
-            elif action_type == 'predict':
-                # generate predict
-                analysis_res = self.generate_predict(_session)
-                full_text = ''
-                for chunk in analysis_res:
-                    full_text += chunk.get('content')
-                    if in_chat:
-                        yield 'data:' + orjson.dumps(
-                            {'content': chunk.get('content'), 'reasoning_content': chunk.get('reasoning_content'),
-                             'type': 'predict-result'}).decode() + '\n\n'
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'type': 'info', 'msg': 'predict generated'}).decode() + '\n\n'
-
-                has_data = self.check_save_predict_data(session=_session, res=full_text)
-                if has_data:
-                    if in_chat:
-                        yield 'data:' + orjson.dumps({'type': 'predict-success'}).decode() + '\n\n'
-                    else:
-                        chart = get_chat_chart_config(_session, self.record.id)
-                        origin_data = get_chat_chart_data(_session, self.record.id)
-                        predict_data = get_chat_predict_data(_session, self.record.id)
-
-                        if stream:
-                            md_data, _fields_list = DataFormat.convert_data_fields_for_pandas(chart,
-                                                                                              origin_data.get('fields'),
-                                                                                              predict_data)
-                            if not md_data or not _fields_list:
-                                yield 'Predict data result is empty.\n\n'
-                            else:
-                                df = pd.DataFrame(md_data, columns=_fields_list)
-                                df_safe = DataFormat.safe_convert_to_string(df)
-                                markdown_table = df_safe.to_markdown(index=False)
-                                yield markdown_table + '\n\n'
-
-                        else:
-                            json_result['origin_data'] = origin_data
-                            json_result['predict_data'] = predict_data
-
-                        # generate picture
-                        try:
-                            if chart.get('type') != 'table':
-                                # yield '### generated chart picture\n\n'
-
-                                _data = get_chat_chart_data(_session, self.record.id)
-                                _data['data'] = _data.get('data') + predict_data
-
-                                image_url, error = request_picture(self.record.chat_id, self.record.id, chart,
-                                                                   format_json_data(_data))
-                                AppLogUtil.info(image_url)
-                                if stream:
-                                    yield f'![{chart.get("type")}]({image_url})'
-                                else:
-                                    json_result['image_url'] = image_url
-                                if error is not None:
-                                    raise error
-                        except Exception as e:
-                            if stream:
-                                if chart.get('type') != 'table':
-                                    yield 'generate or fetch chart picture error.\n\n'
-                                raise e
-                else:
-                    if in_chat:
-                        yield 'data:' + orjson.dumps({'type': 'predict-failed'}).decode() + '\n\n'
-                    else:
-                        if stream:
-                            yield full_text + '\n\n'
-                    if not stream:
-                        json_result['success'] = False
-                        json_result['message'] = full_text
-                if in_chat:
-                    yield 'data:' + orjson.dumps({'type': 'predict_finish'}).decode() + '\n\n'
-
-            self.finish(_session)
-
-            if not stream:
-                yield json_result
-        except Exception as e:
-            traceback.print_exc()
-            error_msg: str
-            if isinstance(e, SingleMessageError):
-                error_msg = str(e)
-            else:
-                error_msg = orjson.dumps({'message': str(e), 'traceback': traceback.format_exc(limit=1)}).decode()
-            if _session:
-                self.save_error(session=_session, message=error_msg)
-            if in_chat:
-                yield 'data:' + orjson.dumps({'content': error_msg, 'type': 'error'}).decode() + '\n\n'
-            else:
-                if stream:
-                    yield f'&#x274c; **ERROR:**\n'
-                    yield f'> {error_msg}\n'
-                else:
-                    json_result['success'] = False
-                    json_result['message'] = error_msg
-                    yield json_result
-        finally:
-            # end
-            session_maker.remove()
+        yield from run_chart_insight_graph(
+            self,
+            action_type=action_type,
+            in_chat=in_chat,
+            stream=stream,
+        )
 
     def validate_history_ds(self, session: Session):
         _ds = self.ds

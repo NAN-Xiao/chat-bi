@@ -46,10 +46,6 @@ datasource.sync_fields
 datasource.table_embedding
 datasource.datasource_embedding
 datasource.fill_empty_table_and_ds_embedding
-terminology.embedding
-terminology.fill_empty_embedding
-data_training.embedding
-data_training.fill_empty_embedding
 ```
 
 管理员可调用：
@@ -66,7 +62,6 @@ GET  /api/v1/system/tasks/health
 
 - 单表字段同步：`/datasource/syncFields/{id}` 会返回任务信息，worker 后台执行。
 - 表和数据源 embedding：字段同步、表备注、字段备注、数据源更新后投递到 Redis 队列。
-- 术语和 SQL 示例 embedding：新增、更新、批量导入后投递到 Redis 队列。
 
 本地一键启动默认会启动 1 个 worker：
 

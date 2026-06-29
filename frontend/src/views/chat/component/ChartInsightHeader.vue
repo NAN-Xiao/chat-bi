@@ -86,11 +86,30 @@ interface ConfiguredTrendSummary {
   aggregateStats: StatItem[]
 }
 
+interface ConversionFieldMatch {
+  axis: ChartAxis
+  label: string
+}
+
 const structureChartTypes = new Set<ChartTypes>(['pie', 'funnel', 'treemap'])
 const rankedChartTypes = new Set<ChartTypes>(['bar', 'column', 'heatmap', 'scatter', 'sankey'])
 const trendChartTypes = new Set<ChartTypes>(['line', 'area'])
+const conversionSummaryChartTypes = new Set<ChartTypes>(['bar', 'column'])
 const SIDE_FIT_MIN_SCALE = 0.9
 const SIDE_FIT_EPSILON = 1
+
+const startConversionFieldPatterns = [
+  /起始.*转化率|初始.*转化率|累计.*转化率|整体.*转化率|总.*转化率/,
+  /转化率.*起始|转化率.*初始|转化率.*累计|转化率.*整体|转化率.*总/,
+  /conversion.*(start|initial|cumulative|overall|total)/,
+  /(start|initial|cumulative|overall|total).*conversion/,
+]
+const previousConversionFieldPatterns = [
+  /上步.*转化率|上一步.*转化率|前序.*转化率|上一环节.*转化率|环节.*转化率|步骤.*转化率|单步.*转化率/,
+  /转化率.*上步|转化率.*上一步|转化率.*前序|转化率.*上一环节|转化率.*环节|转化率.*步骤|转化率.*单步/,
+  /conversion.*(prev|previous|prior|step|stage)/,
+  /(prev|previous|prior|step|stage).*conversion/,
+]
 
 const isBlank = (value: any) => value === null || value === undefined || value === ''
 const genericAxisLabels = new Set([
@@ -136,6 +155,34 @@ const valueAxes = computed(() => normalizeAxes(props.y))
 const xAxis = computed(() => normalizeAxes(props.x)[0])
 const seriesAxis = computed(() => normalizeAxes(props.series)[0])
 const rows = computed(() => (Array.isArray(props.data) ? props.data : []))
+const dataFieldAxes = computed<Array<ChartAxis>>(() => {
+  const axesByValue = new Map<string, ChartAxis>()
+
+  const addAxis = (axis?: ChartAxis) => {
+    const value = axis?.value ? String(axis.value).trim() : ''
+    if (!value || axesByValue.has(value)) {
+      return
+    }
+    axesByValue.set(value, {
+      ...axis,
+      value,
+      name: axis?.name || value,
+    })
+  }
+
+  ;[
+    ...(props.columns || []),
+    ...(props.x || []),
+    ...(props.y || []),
+    ...(props.series || []),
+  ].forEach(addAxis)
+
+  rows.value.slice(0, 20).forEach((row) => {
+    Object.keys(row || {}).forEach((field) => addAxis({ name: field, value: field }))
+  })
+
+  return Array.from(axesByValue.values())
+})
 const headerRef = ref<HTMLElement | null>(null)
 const contentRef = ref<HTMLElement | null>(null)
 const fittedStatsLimit = ref<number | null>(null)
@@ -184,6 +231,66 @@ function formatNumberForInsight(value: number) {
 
 function formatPercent(value: number) {
   return `${formatNumber(Number(value.toFixed(2)))}%`
+}
+
+function normalizedFieldText(axis: ChartAxis) {
+  const text = `${axis.name || ''} ${axis.value || ''}`.toLowerCase()
+  return `${text} ${text.replace(/[\s_-]+/g, '')}`
+}
+
+function conversionFieldLabel(axis: ChartAxis) {
+  return cleanAxisLabel(axis.name) || cleanAxisLabel(axis.value) || axis.value
+}
+
+function findConversionField(patterns: Array<RegExp>): ConversionFieldMatch | null {
+  const match = dataFieldAxes.value.find((axis) => {
+    const text = normalizedFieldText(axis)
+    return patterns.some((pattern) => pattern.test(text))
+  })
+
+  return match ? { axis: match, label: conversionFieldLabel(match) } : null
+}
+
+const conversionFields = computed(() => ({
+  start: findConversionField(startConversionFieldPatterns),
+  previous: findConversionField(previousConversionFieldPatterns),
+}))
+
+const usesConversionFunnelStats = computed(() => {
+  if (props.chartType === 'funnel') {
+    return true
+  }
+
+  return (
+    conversionSummaryChartTypes.has(props.chartType) &&
+    !seriesAxis.value &&
+    rows.value.length > 1 &&
+    valueAxes.value.length > 0 &&
+    Boolean(conversionFields.value.start || conversionFields.value.previous)
+  )
+})
+
+function conversionFieldValue(row: ChartData, field?: ConversionFieldMatch | null) {
+  if (!field) {
+    return null
+  }
+
+  const rawValue = row?.[field.axis.value]
+  if (isBlank(rawValue)) {
+    return null
+  }
+
+  if (typeof rawValue === 'string' && rawValue.trim().endsWith('%')) {
+    return rawValue.trim()
+  }
+
+  const value = toNullableNumber(rawValue)
+  if (value === null) {
+    return stringifyValue(rawValue)
+  }
+
+  const displayValue = Math.abs(value) <= 1 ? value * 100 : value
+  return formatPercent(displayValue)
 }
 
 function formatSignedPercent(value: number) {
@@ -446,11 +553,8 @@ function extractSqlDates(sql?: string) {
 
 function dateFieldPriority(field: string) {
   const text = field.toLowerCase()
-  if (/cohort|首日|注册|註冊|signup|install/.test(text)) {
-    return 1
-  }
   if (/date|time|day|日期|时间|時間/.test(text)) {
-    return 2
+    return 1
   }
   return 0
 }
@@ -886,10 +990,14 @@ function buildFunnelStats(): Array<StatItem> {
 
   const first = points[0]
   const last = points[points.length - 1]
-  const conversion = first.value === 0 ? null : (last.value / first.value) * 100
+  const fallbackConversion = first.value === 0 ? null : (last.value / first.value) * 100
+  const startConversion = conversionFieldValue(last.row, conversionFields.value.start)
+  const previousConversion = conversionFieldValue(last.row, conversionFields.value.previous)
+  const firstLabel = categoryLabel(first.row, first.index)
+  const lastLabel = categoryLabel(last.row, last.index)
   const stats: Array<StatItem> = [
     {
-      label: categoryLabel(first.row, first.index),
+      label: firstLabel,
       value: formatChartValue(first.row[axis.value], axis),
       subLabel: displayAxisName(axis),
       color: chartPalette[0],
@@ -898,20 +1006,30 @@ function buildFunnelStats(): Array<StatItem> {
 
   if (points.length > 1) {
     stats.push({
-      label: categoryLabel(last.row, last.index),
+      label: lastLabel,
       value: formatChartValue(last.row[axis.value], axis),
       subLabel: displayAxisName(axis),
       color: chartPalette[1],
     })
   }
 
-  if (conversion !== null) {
+  if (startConversion || fallbackConversion !== null) {
+    const conversionToneValue = startConversion ? toNullableNumber(startConversion) : fallbackConversion
     stats.push({
-      label: t('chat.insight_conversion'),
-      value: formatPercent(conversion),
-      subLabel: `${categoryLabel(first.row, first.index)} -> ${categoryLabel(last.row, last.index)}`,
+      label: conversionFields.value.start?.label || t('chat.insight_conversion'),
+      value: startConversion || formatPercent(fallbackConversion as number),
+      subLabel: `${firstLabel} -> ${lastLabel}`,
       color: chartPalette[2],
-      tone: conversion >= 100 ? 'positive' : 'neutral',
+      tone: conversionToneValue !== null && conversionToneValue >= 100 ? 'positive' : 'neutral',
+    })
+  }
+
+  if (previousConversion) {
+    stats.push({
+      label: conversionFields.value.previous?.label || t('chat.insight_conversion'),
+      value: previousConversion,
+      subLabel: lastLabel,
+      color: chartPalette[3],
     })
   }
 
@@ -964,12 +1082,12 @@ function buildRankedStats(includeTotal = true): Array<StatItem> {
 }
 
 const stats = computed<Array<StatItem>>(() => {
-  if (trendChartTypes.has(props.chartType)) {
-    return buildTrendStats()
+  if (usesConversionFunnelStats.value) {
+    return buildFunnelStats()
   }
 
-  if (props.chartType === 'funnel') {
-    return buildFunnelStats()
+  if (trendChartTypes.has(props.chartType)) {
+    return buildTrendStats()
   }
 
   if (structureChartTypes.has(props.chartType) || props.chartType === 'sankey') {
@@ -1089,7 +1207,7 @@ const anchorLabel = computed(() => {
   if (!stats.value.length) {
     return ''
   }
-  if (props.chartType === 'funnel') {
+  if (usesConversionFunnelStats.value) {
     return t('chat.insight_funnel_summary')
   }
   if (structureChartTypes.has(props.chartType)) {

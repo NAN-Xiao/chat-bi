@@ -5,9 +5,8 @@ Targets:
 - App system database: 127.0.0.1:15432 / zhishu_bi / root / Password123@pg
 
 The generated data remains detail-level session/event/payment data. Payment
-KPIs and LTV are computed at query time. LTV is deliberately calculated as a
-cohort estimate from observed payments and a projection curve; no direct LTV
-result table, aggregate table, snapshot table, or analysis view is created.
+KPIs and LTV are computed at query time from matured cohort windows; no direct
+LTV result table, aggregate table, snapshot table, or analysis view is created.
 """
 from __future__ import annotations
 
@@ -807,18 +806,6 @@ WITH obs AS (
 ), days AS (
     SELECT generate_series(max_date - 59, max_date, interval '1 day')::date AS cohort_date
     FROM obs
-), curve AS (
-    SELECT *
-    FROM (VALUES
-        (0, 0.38::numeric),
-        (1, 0.62::numeric),
-        (2, 0.72::numeric),
-        (3, 0.80::numeric),
-        (4, 0.86::numeric),
-        (5, 0.91::numeric),
-        (6, 0.96::numeric),
-        (7, 1.00::numeric)
-    ) AS t(day_index, ratio)
 ), cohort AS (
     SELECT p.install_date AS cohort_date,
            count(*) AS registered_users
@@ -837,44 +824,33 @@ WITH obs AS (
       AND p.lifecycle_day BETWEEN 0 AND 7
       AND p.event_date <= obs.max_date
     GROUP BY dp.install_date, p.lifecycle_day
-), estimates AS (
+), cumulative AS (
     SELECT c.cohort_date,
            c.registered_users,
-           target.day_index,
-           CASE
-             WHEN c.cohort_date + target.day_index <= obs.max_date THEN
-               coalesce((
-                   SELECT sum(p.revenue)
-                   FROM payment p
-                   WHERE p.cohort_date = c.cohort_date
-                     AND p.lifecycle_day <= target.day_index
-               ), 0)
-             ELSE
-               coalesce((
-                   SELECT sum(p.revenue)
-                   FROM payment p
-                   WHERE p.cohort_date = c.cohort_date
-                     AND p.lifecycle_day <= greatest((obs.max_date - c.cohort_date), 0)
-               ), 0)
-               / nullif(observed.ratio, 0)
-               * target.ratio
-           END AS estimated_revenue
+           d.day_index,
+           CASE WHEN c.cohort_date <= obs.max_date - d.day_index THEN
+             coalesce((
+                 SELECT sum(p.revenue)
+                 FROM payment p
+                 WHERE p.cohort_date = c.cohort_date
+                   AND p.lifecycle_day <= d.day_index
+             ), 0)
+           END AS cumulative_revenue
     FROM cohort c
     JOIN obs ON true
-    CROSS JOIN curve target
-    JOIN curve observed ON observed.day_index = least(greatest((obs.max_date - c.cohort_date), 0), target.day_index)
+    CROSS JOIN generate_series(0, 7) AS d(day_index)
 )
 SELECT cohort_date AS "日期",
        registered_users AS "用户注册用户数",
-       round(max(estimated_revenue) FILTER (WHERE day_index = 0) / nullif(registered_users, 0), 2) AS "当日",
-       round(max(estimated_revenue) FILTER (WHERE day_index = 1) / nullif(registered_users, 0), 2) AS "第1日",
-       round(max(estimated_revenue) FILTER (WHERE day_index = 2) / nullif(registered_users, 0), 2) AS "第2日",
-       round(max(estimated_revenue) FILTER (WHERE day_index = 3) / nullif(registered_users, 0), 2) AS "第3日",
-       round(max(estimated_revenue) FILTER (WHERE day_index = 4) / nullif(registered_users, 0), 2) AS "第4日",
-       round(max(estimated_revenue) FILTER (WHERE day_index = 5) / nullif(registered_users, 0), 2) AS "第5日",
-       round(max(estimated_revenue) FILTER (WHERE day_index = 6) / nullif(registered_users, 0), 2) AS "第6日",
-       round(max(estimated_revenue) FILTER (WHERE day_index = 7) / nullif(registered_users, 0), 2) AS "第7日"
-FROM estimates
+       round(max(cumulative_revenue) FILTER (WHERE day_index = 0) / nullif(registered_users, 0), 2) AS "当日",
+       round(max(cumulative_revenue) FILTER (WHERE day_index = 1) / nullif(registered_users, 0), 2) AS "第1日",
+       round(max(cumulative_revenue) FILTER (WHERE day_index = 2) / nullif(registered_users, 0), 2) AS "第2日",
+       round(max(cumulative_revenue) FILTER (WHERE day_index = 3) / nullif(registered_users, 0), 2) AS "第3日",
+       round(max(cumulative_revenue) FILTER (WHERE day_index = 4) / nullif(registered_users, 0), 2) AS "第4日",
+       round(max(cumulative_revenue) FILTER (WHERE day_index = 5) / nullif(registered_users, 0), 2) AS "第5日",
+       round(max(cumulative_revenue) FILTER (WHERE day_index = 6) / nullif(registered_users, 0), 2) AS "第6日",
+       round(max(cumulative_revenue) FILTER (WHERE day_index = 7) / nullif(registered_users, 0), 2) AS "第7日"
+FROM cumulative
 GROUP BY cohort_date, registered_users
 ORDER BY cohort_date
 """

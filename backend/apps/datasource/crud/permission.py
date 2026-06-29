@@ -1,4 +1,5 @@
 import datetime
+import json
 from typing import Any, List, Optional
 
 from sqlalchemy import and_, inspect
@@ -422,6 +423,17 @@ def _rule_contains_user(rule: Any, current_user: CurrentUser) -> bool:
     return any(_same_id(user_id, current_user.id) for user_id in parse_json_list(rule.user_list))
 
 
+def _rule_whitelists_user(rule: Any, current_user: CurrentUser) -> bool:
+    return any(_same_id(user_id, current_user.id) for user_id in parse_json_list(getattr(rule, "white_list_user", None)))
+
+
+def _permission_whitelists_user(permission: Any, current_user: CurrentUser) -> bool:
+    return any(
+        _same_id(user_id, current_user.id)
+        for user_id in parse_json_list(getattr(permission, "white_list_user", None))
+    )
+
+
 def _rule_contains_permission(rule: Any, permission_id) -> bool:
     return any(_same_id(item, permission_id) for item in parse_json_list(rule.permission_list))
 
@@ -500,6 +512,8 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
                                tables: Optional[list] = None, single_table: Optional[CoreTable] = None):
     if single_table:
         table_list = [session.get(CoreTable, single_table.id)]
+    elif tables is None:
+        table_list = session.query(CoreTable).filter(CoreTable.ds_id == ds.id).all()
     else:
         table_list = session.query(CoreTable).filter(
             and_(CoreTable.ds_id == ds.id, CoreTable.table_name.in_(tables))
@@ -509,6 +523,8 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
     if is_normal_user(current_user):
         contain_rules = get_user_permission_rules(session, current_user, ds.id)
         for table in table_list:
+            if table is None:
+                continue
             row_permissions = list_permission_records(
                 session,
                 ds_id=ds.id,
@@ -519,6 +535,8 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
             res: List[Any] = []
             if row_permissions is not None:
                 for permission in row_permissions:
+                    if _permission_whitelists_user(permission, current_user):
+                        continue
                     # check permission and user in same rules
                     flag = False
                     for r in contain_rules:
@@ -527,16 +545,58 @@ def get_row_permission_filters(session: SessionDep, current_user: CurrentUser, d
                             break
                     if flag:
                         res.append(trans_record_to_dto(session, permission))
-            where_str = transFilterTree(session, current_user, res, ds, deny_mode=True)
-            if where_str:
-                filters.append({"table": table.table_name, "filter": where_str})
+            if not res:
+                continue
+            where_str = transFilterTree(session, current_user, res, ds, deny_mode=True, strict=True)
+            if not where_str:
+                raise ValueError("行权限过滤条件未生成有效限制")
+            filters.append({"table": table.table_name, "filter": where_str})
     return filters
 
 
 def _permission_applies_to_user(permission: Any, contain_rules: list[Any], current_user: CurrentUser) -> bool:
+    if _permission_whitelists_user(permission, current_user):
+        return False
     for rule in contain_rules:
         if _rule_contains_permission(rule, permission.id) and _rule_contains_user(rule, current_user):
             return True
+    return False
+
+
+def has_applicable_row_permissions(
+        session: SessionDep,
+        current_user: CurrentUser,
+        ds: CoreDatasource,
+        tables: Optional[list] = None,
+        single_table: Optional[CoreTable] = None,
+) -> bool:
+    if not is_normal_user(current_user):
+        return False
+    if single_table:
+        table_list = [session.get(CoreTable, single_table.id)]
+    else:
+        table_list = session.query(CoreTable).filter(
+            and_(CoreTable.ds_id == ds.id, CoreTable.table_name.in_(tables or []))
+        ).all()
+    if not table_list:
+        return False
+
+    contain_rules = get_user_permission_rules(session, current_user, ds.id)
+    if not contain_rules:
+        return False
+    for table in table_list:
+        if table is None:
+            continue
+        row_permissions = list_permission_records(
+            session,
+            ds_id=ds.id,
+            table_id=table.id,
+            permission_type='row',
+            enable=True,
+        )
+        for permission in row_permissions or []:
+            if _permission_applies_to_user(permission, contain_rules, current_user):
+                return True
     return False
 
 
@@ -553,7 +613,12 @@ def get_column_permission_fields(session: SessionDep, current_user: CurrentUser,
         if column_permissions is not None:
             for permission in column_permissions:
                 if _permission_applies_to_user(permission, contain_rules, current_user):
-                    permission_list = parse_json_list(permission.permissions)
+                    try:
+                        permission_list = json.loads(permission.permissions or "[]")
+                    except Exception as exc:
+                        raise ValueError("字段权限配置格式无效") from exc
+                    if not isinstance(permission_list, list):
+                        raise ValueError("字段权限配置格式无效")
                     fields = filter_list(fields, permission_list)
     return fields
 
@@ -578,7 +643,10 @@ def get_user_permission_rules(
     )
 
     if datasource_id is None:
-        return [rule for rule in rules if _rule_contains_user(rule, current_user)]
+        return [
+            rule for rule in rules
+            if _rule_contains_user(rule, current_user) and not _rule_whitelists_user(rule, current_user)
+        ]
 
     permission_ids = {
         int(permission.id) for permission in list_permission_records(
@@ -593,6 +661,8 @@ def get_user_permission_rules(
     user_rules = []
     for rule in rules:
         if not _rule_contains_user(rule, current_user):
+            continue
+        if _rule_whitelists_user(rule, current_user):
             continue
         rule_permission_ids = set()
         for permission_id in parse_json_list(rule.permission_list):
@@ -652,7 +722,7 @@ def get_user_scoped_table_ids(
     denied_table_ids = {
         int(permission.table_id)
         for permission in permissions
-        if permission.table_id is not None
+        if permission.table_id is not None and not _permission_whitelists_user(permission, current_user)
     }
     return checked_table_ids - denied_table_ids
 
@@ -671,6 +741,8 @@ def can_access_table(
 def filter_list(list_a, list_b):
     id_to_invalid = {}
     for b in list_b:
+        if not isinstance(b, dict) or 'field_id' not in b or 'enable' not in b:
+            raise ValueError("字段权限配置格式无效")
         if not b['enable']:
             id_to_invalid[str(b['field_id'])] = True
 

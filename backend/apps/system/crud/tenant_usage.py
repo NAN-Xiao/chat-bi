@@ -104,6 +104,25 @@ def _chat_log_total_tokens_expr(session: Session):
     return 0
 
 
+def _chat_log_token_key_expr(session: Session, key: str):
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        token_usage_type = func.jsonb_typeof(ChatLog.token_usage)
+        object_tokens = cast(
+            func.coalesce(func.nullif(ChatLog.token_usage.op("->>")(key), ""), "0"),
+            BigInteger,
+        )
+        return case((token_usage_type == "object", object_tokens), else_=0)
+    if dialect == "sqlite":
+        token_usage_type = func.json_type(ChatLog.token_usage)
+        object_tokens = cast(
+            func.coalesce(func.nullif(func.json_extract(ChatLog.token_usage, f"$.{key}"), ""), 0),
+            BigInteger,
+        )
+        return case((token_usage_type == "object", object_tokens), else_=0)
+    return 0
+
+
 def _datetime_to_millis(value) -> int:
     if value is None:
         return 0
@@ -323,6 +342,7 @@ def list_tenant_usage_by_user(
         ChatLog.local_operation == False,  # noqa: E712
         ChatLog.token_usage.is_not(None),
     ]
+    # Historical usage is kept under the original tenant/user even after the user leaves the workspace.
     parsed_start_date = _parse_iso_date(start_date)
     parsed_end_date = _parse_iso_date(end_date)
     if parsed_start_date:
@@ -385,6 +405,103 @@ def list_tenant_usage_by_user(
         for row in rows
         if row.user_id is not None
     ]
+
+
+def list_tenant_usage_by_model(
+    session: Session,
+    *,
+    tenant_id: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    try:
+        inspector = inspect(session.connection())
+        if not inspector.has_table(ChatLog.__tablename__):
+            return []
+    except Exception:
+        return []
+
+    filters = [
+        ChatLog.tenant_id == int(tenant_id),
+        ChatLog.local_operation == False,  # noqa: E712
+        ChatLog.token_usage.is_not(None),
+    ]
+    parsed_start_date = _parse_iso_date(start_date)
+    parsed_end_date = _parse_iso_date(end_date)
+    if parsed_start_date:
+        filters.append(func.date(ChatLog.finish_time) >= parsed_start_date)
+    if parsed_end_date:
+        filters.append(func.date(ChatLog.finish_time) <= parsed_end_date)
+
+    total_expr = _chat_log_total_tokens_expr(session)
+    input_expr = _chat_log_token_key_expr(session, "input_tokens")
+    output_expr = _chat_log_token_key_expr(session, "output_tokens")
+    statement = (
+        select(
+            ChatLog.ai_modal_id.label("model_id"),
+            ChatLog.base_modal.label("model_code"),
+            func.count(ChatLog.id).label("request_count"),
+            func.coalesce(func.sum(case((ChatLog.error == True, 0), else_=1)), 0).label("success_count"),  # noqa: E712
+            func.coalesce(func.sum(case((ChatLog.error == True, 1), else_=0)), 0).label("failure_count"),  # noqa: E712
+            func.coalesce(func.sum(input_expr), 0).label("input_tokens"),
+            func.coalesce(func.sum(output_expr), 0).label("output_tokens"),
+            func.coalesce(func.sum(total_expr), 0).label("total_tokens"),
+            func.max(ChatLog.finish_time).label("last_used_time"),
+        )
+        .where(*filters)
+        .group_by(ChatLog.ai_modal_id, ChatLog.base_modal)
+        .having(func.coalesce(func.sum(total_expr), 0) > 0)
+        .order_by(func.coalesce(func.sum(total_expr), 0).desc(), func.count(ChatLog.id).desc())
+        .limit(max(1, min(int(limit or 100), 500)))
+    )
+    rows = session.exec(statement).all()
+
+    model_ids = [int(row.model_id) for row in rows if row.model_id is not None]
+    model_map: dict[int, dict[str, str | None]] = {}
+    if model_ids:
+        try:
+            from apps.system.models.system_model import AiModelDetail
+
+            if inspect(session.connection()).has_table(AiModelDetail.__tablename__):
+                model_rows = session.exec(
+                    select(AiModelDetail.id, AiModelDetail.name, AiModelDetail.base_model).where(
+                        AiModelDetail.id.in_(model_ids)
+                    )
+                ).all()
+                model_map = {
+                    int(model_id): {
+                        "name": name,
+                        "base_model": base_model,
+                    }
+                    for model_id, name, base_model in model_rows
+                }
+        except Exception:
+            AppLogUtil.exception("Could not resolve AI model names for tenant usage")
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        model_id = int(row.model_id) if row.model_id is not None else None
+        configured_model = model_map.get(model_id or -1, {})
+        fallback_code = str(row.model_code or "").strip() or "default"
+        model_code = str(configured_model.get("base_model") or fallback_code)
+        model_name = str(configured_model.get("name") or fallback_code)
+        result.append(
+            {
+                "tenant_id": int(tenant_id),
+                "model_id": model_id,
+                "model_name": model_name,
+                "model_code": model_code,
+                "request_count": int(row.request_count or 0),
+                "success_count": int(row.success_count or 0),
+                "failure_count": int(row.failure_count or 0),
+                "input_tokens": int(row.input_tokens or 0),
+                "output_tokens": int(row.output_tokens or 0),
+                "total_tokens": int(row.total_tokens or 0),
+                "last_used_time": _datetime_to_millis(row.last_used_time),
+            }
+        )
+    return result
 
 
 def sum_tenant_usage(

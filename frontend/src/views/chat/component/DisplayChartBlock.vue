@@ -123,10 +123,15 @@ function getExcelData() {
   return chartRef.value?.getExcelData()
 }
 
+function getElement() {
+  return chartRef.value?.getElement()
+}
+
 defineExpose({
   onTypeChange,
   getViewInfo,
   getExcelData,
+  getElement,
 })
 </script>
 

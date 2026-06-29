@@ -208,8 +208,8 @@ export const routes = [
         props: { mode: 'personal' },
         meta: {
           title: t('data_skill.title'),
-          iconActive: 'terminology',
-          iconDeActive: 'noTerminology',
+          iconActive: 'dataSkills',
+          iconDeActive: 'noDataSkills',
         },
       },
     ],
@@ -244,16 +244,6 @@ export const routes = [
   {
     path: '/system/setting/appearance',
     redirect: '/system/setting/permission',
-    hidden: true,
-  },
-  {
-    path: '/set/professional',
-    redirect: '/system/data-skills',
-    hidden: true,
-  },
-  {
-    path: '/set/training',
-    redirect: '/system/data-skills',
     hidden: true,
   },
   {
@@ -441,26 +431,6 @@ export const routes = [
             },
           },
           {
-            path: 'professional',
-            redirect: '/system/data-skills',
-            hidden: true,
-            meta: {
-              tenantBusiness: true,
-              tenantAdminOnly: true,
-              platformOperation: true,
-            },
-          },
-          {
-            path: 'training',
-            redirect: '/system/data-skills',
-            hidden: true,
-            meta: {
-              tenantBusiness: true,
-              tenantAdminOnly: true,
-              platformOperation: true,
-            },
-          },
-          {
             path: 'data-skills',
             redirect: '/system/data-skills',
             hidden: true,
@@ -514,8 +484,8 @@ export const routes = [
         props: { mode: 'admin' },
         meta: {
           title: t('data_skill.admin_title'),
-          iconActive: 'terminology',
-          iconDeActive: 'noTerminology',
+          iconActive: 'dataSkills',
+          iconDeActive: 'noDataSkills',
           tenantBusiness: true,
           tenantAdminOnly: true,
           platformOperation: true,
@@ -543,26 +513,6 @@ export const routes = [
           title: t('knowledge_base.admin_title'),
           iconActive: 'knowledge',
           iconDeActive: 'noKnowledge',
-          tenantBusiness: true,
-          tenantAdminOnly: true,
-          platformOperation: true,
-        },
-      },
-      {
-        path: 'professional',
-        redirect: '/system/data-skills',
-        hidden: true,
-        meta: {
-          tenantBusiness: true,
-          tenantAdminOnly: true,
-          platformOperation: true,
-        },
-      },
-      {
-        path: 'training',
-        redirect: '/system/data-skills',
-        hidden: true,
-        meta: {
           tenantBusiness: true,
           tenantAdminOnly: true,
           platformOperation: true,
