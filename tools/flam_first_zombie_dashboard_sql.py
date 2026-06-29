@@ -13,7 +13,9 @@ PAY_EVENTS = (
     "'PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish',"
     "'ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish'"
 )
-LOGIN_EVENTS = "'Login','UserLogin','EnterGame','GameServerLogin','BISDKAccountLogin','EPSDKLogin'"
+ACTIVE_EVENT = 'UserActive'
+LOGIN_EVENTS = f"'{ACTIVE_EVENT}'"
+PROD_ID = 110000038
 
 
 @dataclass(frozen=True)
@@ -296,6 +298,7 @@ WITH obs AS (
     FROM `event` e
     JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.max_dt
     WHERE e.event IN ({LOGIN_EVENTS})
+      AND e.prod = {PROD_ID}
     GROUP BY e.dt
 )
 """.strip()

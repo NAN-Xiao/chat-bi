@@ -301,14 +301,15 @@ LIMIT 24
 - 适用于 `活跃看板`、核心 DAU、渠道活跃、DAU/WAU/MAU、活跃生命周期构成和周登录天数分布。
 
 ## 活跃用户
-- DAU/WAU/MAU 使用 `event` 表的登录/进入游戏事件 `Login`,`UserLogin`,`EnterGame`,`GameServerLogin`,`BISDKAccountLogin`,`EPSDKLogin` 计算 `uid` 去重。
+- DAU/WAU/MAU 使用 `event` 表的归一化活跃事件 `UserActive` 计算 `uid` 去重，并显式过滤 `prod = 110000038` 以帮助 ADS 分区/条件下推。
 - 按渠道/系统拆分活跃时，使用活跃事件行上的 `adinfo` / `deviceinfo`。
-- 历史活跃趋势遵循 `flam 历史看板日期窗口口径`：以 `event` 表 `MAX(dt)` 为观察日，不使用 `CURDATE()` / `NOW()`。
+- 历史活跃趋势遵循 `flam 历史看板日期窗口口径`：观察日优先从 `UserActive` 事件按 `dt DESC LIMIT 1` 获取，不使用 `CURDATE()` / `NOW()`，也不要为了取最大分区对大视图做 `MAX(dt)` 全量聚合。
 - DAU 展示最近 30 个业务分区；WAU/周登录天数按自然周聚合，观察窗口应扩展到完整周，不能只拿最近 30 天后再按周聚合；MAU 按自然月聚合，观察窗口应扩展到完整月。
-- 活跃生命周期先用登录事件确定当日活跃 `uid`，再关联同日 `user` 快照读取 `lastinfo.regnday` 分层：`<=1` 新增期，`<=7` 成长期，`<=30` 稳定期，其余成熟期。
+- 活跃生命周期先用 `UserActive` 确定当日活跃 `uid`，再关联同日 `user` 快照读取 `lastinfo.regnday` 分层：`<=1` 新增期，`<=7` 成长期，`<=30` 稳定期，其余成熟期。
 
 ## 禁止事项
 - 不要把 `event` 全表任意事件去重当 DAU。
+- 不要把多个登录/进入游戏事件集合当作 flam 历史 DAU 的默认口径；`UserActive` 已经是该数据源的活跃归一化事件，重复使用登录事件集合会显著拖慢查询。
 - 不要把 `user` 日表里存在的用户直接当活跃用户，除非问题明确询问“用户日快照覆盖人数”。
 - 不要把边界周/月的不完整 30 天窗口当完整 WAU/MAU。
 
@@ -331,10 +332,13 @@ LIMIT 24
 ## 付费与累计
 - `user.pay.paytotal` 是用户截至该 `dt` 的累计付费快照，可用于累计付费金额、累计付费用户、当前等级段累计人均付费等快照指标。
 - 日付费金额不能直接按日汇总 `paytotal`。日付费金额应按同一用户相邻 `dt` 的 `paytotal` 差分计算，并将负差分截为 0。
+- 历史日付费、ARPU/ARPPU 和付费概览 SQL 应避免对 30 天以上用户快照全量使用 `LAG()` 窗口排序；优先用当前日快照按 `uid + 前一日 dt` 关联前日快照计算差分，并只扫描当前窗口内 `paytotal > 0` 的用户行。
+- 获取观察日优先使用 `SELECT dt FROM user ORDER BY dt DESC LIMIT 1`，不要为了取最大分区对大视图做 `MAX(dt)` 全量聚合。
+- 只有结果需要按渠道/系统等维度拆分时才解析 `adinfo` / `deviceinfo` JSON；ARPU/ARPPU 总览不应在中间层提取未使用的渠道字段。
 - 日充值次数优先使用 `event` 表中的付费事件次数：`PayBuyRet`,`PayBuyRetBenifit`,`PayBuyRetSandBox`,`PayFinish`,`ServerPayLog`,`ep_pay_purchase_finish`,`ep_pay_update_db_finish`。
 - 日充值用户数使用付费事件用户去重；日新增充值用户数使用用户首次付费事件日期。
 - 近 7 日累充排名使用观察日累计 `paytotal` 减去 7 天前累计 `paytotal`，不是取 30 日窗口内 `MAX(paytotal)`。
-- ARPU 分母是同日登录/进入游戏活跃用户数，ARPPU 分母是同日付费用户数，二者分母不同。
+- ARPU 分母是同日 `UserActive` 活跃用户数，ARPPU 分母是同日付费用户数，二者分母不同。
 
 ## 留存与 LTV
 - 留存和 LTV 必须先固定注册 cohort，再在后续用户日记录中读取 `remain` 或 `pay` 累计窗口字段。
@@ -492,7 +496,7 @@ LIMIT 24
 
 ## SQL 口径
 - 活动参与人数使用活动事件集合中的 `uid` 去重；活动次数使用事件行数。
-- 活动参与率的分母为同日登录/进入游戏 DAU，DAU 事件集合为 `Login`,`UserLogin`,`EnterGame`,`GameServerLogin`,`BISDKAccountLogin`,`EPSDKLogin`。
+- 活动参与率的分母为同日 `UserActive` DAU。
 - 活动等级段优先读取事件参数 `ext.ed_mainBuildingLevel`。
 - 活动后续留存先固定用户首次参与活动日，再在精确 D1/D7 用户快照读取 `remain.remain1/remain7`，并排除 D7 未成熟参与日。
 - 活动后续付费先固定用户首次参与活动日，再读取参与日及成熟窗口内的付费字段；不要把所有历史付费用户混入活动参与 cohort。

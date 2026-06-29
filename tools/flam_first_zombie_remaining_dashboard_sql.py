@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from flam_first_zombie_active_dashboard_sql import SQL_ACTIVE_BY_CHANNEL
-from flam_first_zombie_dashboard_sql import CHANNEL_EXPR_U, DATASOURCE_ID, LOGIN_EVENTS, PAY_EVENTS, TENANT_ID
+from flam_first_zombie_dashboard_sql import CHANNEL_EXPR_U, DATASOURCE_ID, LOGIN_EVENTS, PAY_EVENTS, PROD_ID, TENANT_ID
 
 
 @dataclass(frozen=True)
@@ -284,6 +284,7 @@ SQL_ACTIVITY_PARTICIPATION_RATE = f"""
     JOIN bounds b ON TRUE
     WHERE e.dt BETWEEN b.start_dt AND b.max_dt
       AND e.event IN ({LOGIN_EVENTS})
+      AND e.prod = {PROD_ID}
     GROUP BY e.dt
 ), act AS (
     SELECT e.dt, e.event, COUNT(DISTINCT e.uid) AS users
@@ -510,6 +511,7 @@ WITH obs AS (
     JOIN `event` e ON e.uid = p.uid
     WHERE e.dt BETWEEN p.buy_dt AND CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.buy_dt AS CHAR), '%Y%m%d'), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED)
       AND e.event IN ({LOGIN_EVENTS})
+      AND e.prod = {PROD_ID}
 )
 SELECT CONCAT('第', d.retain_day, '日') AS `留存日`,
        ROUND(COUNT(DISTINCT l.uid) / NULLIF((SELECT COUNT(DISTINCT uid) FROM pay_events), 0) * 100, 2) AS `留存率`

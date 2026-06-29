@@ -10,7 +10,20 @@ TENANT_ID = 7477202383789887488
 DATASOURCE_ID = 3
 DASHBOARD_ID = "8c93878ee7af41b9b3832547856d25e6"
 
-LOGIN_EVENTS = "'Login','UserLogin','EnterGame','GameServerLogin','BISDKAccountLogin','EPSDKLogin'"
+ACTIVE_EVENT = 'UserActive'
+LOGIN_EVENTS = f"'{ACTIVE_EVENT}'"
+PROD_ID = 110000038
+
+
+def _event_max_dt_sql() -> str:
+    return f"""
+    SELECT dt AS max_dt
+    FROM `event`
+    WHERE event = '{ACTIVE_EVENT}'
+      AND prod = {PROD_ID}
+    ORDER BY dt DESC
+    LIMIT 1
+""".strip()
 
 
 @dataclass(frozen=True)
@@ -46,7 +59,7 @@ PLATFORM_EXPR_E = (
 
 SQL_DAU = f"""
 WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
+    {_event_max_dt_sql()}
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
            max_dt
@@ -58,13 +71,14 @@ FROM `event` e
 JOIN bounds b ON TRUE
 WHERE e.dt BETWEEN b.start_dt AND b.max_dt
   AND e.event IN ({LOGIN_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt
 ORDER BY e.dt
 """.strip()
 
 SQL_WAU = f"""
 WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
+    {_event_max_dt_sql()}
 ), weeks AS (
     SELECT DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d')) DAY) AS latest_week_start
     FROM obs
@@ -79,13 +93,14 @@ FROM `event` e
 JOIN bounds b ON TRUE
 WHERE e.dt BETWEEN b.start_dt AND b.end_dt
   AND e.event IN ({LOGIN_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY `周`
 ORDER BY `周`
 """.strip()
 
 SQL_MAU = f"""
 WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
+    {_event_max_dt_sql()}
 ), months AS (
     SELECT DATE_FORMAT(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), '%Y-%m-01') AS latest_month_start
     FROM obs
@@ -100,6 +115,7 @@ FROM `event` e
 JOIN bounds b ON TRUE
 WHERE e.dt BETWEEN b.start_dt AND b.end_dt
   AND e.event IN ({LOGIN_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY `月份`
 ORDER BY `月份`
 """.strip()
@@ -116,6 +132,7 @@ WITH obs AS (
     FROM `event` e
     JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.max_dt
     WHERE e.event IN ({LOGIN_EVENTS})
+      AND e.prod = {PROD_ID}
     GROUP BY e.dt, e.uid
 ), active_snapshot AS (
     SELECT a.dt,
@@ -141,7 +158,7 @@ ORDER BY dt, `生命周期`
 
 SQL_ACTIVE_BY_CHANNEL = f"""
 WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
+    {_event_max_dt_sql()}
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
            max_dt
@@ -154,6 +171,7 @@ FROM `event` e
 JOIN bounds b ON TRUE
 WHERE e.dt BETWEEN b.start_dt AND b.max_dt
   AND e.event IN ({LOGIN_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `渠道`
 ORDER BY e.dt, `渠道`
 LIMIT 300
@@ -161,7 +179,7 @@ LIMIT 300
 
 SQL_ACTIVE_BY_PLATFORM = f"""
 WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
+    {_event_max_dt_sql()}
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
            max_dt
@@ -174,6 +192,7 @@ FROM `event` e
 JOIN bounds b ON TRUE
 WHERE e.dt BETWEEN b.start_dt AND b.max_dt
   AND e.event IN ({LOGIN_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `系统`
 ORDER BY e.dt, `系统`
 LIMIT 300
@@ -181,7 +200,7 @@ LIMIT 300
 
 SQL_WEEKLY_LOGIN_DAYS = f"""
 WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
+    {_event_max_dt_sql()}
 ), weeks AS (
     SELECT DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d')) DAY) AS latest_week_start
     FROM obs
@@ -197,6 +216,7 @@ WITH obs AS (
     JOIN bounds b ON TRUE
     WHERE e.dt BETWEEN b.start_dt AND b.end_dt
       AND e.event IN ({LOGIN_EVENTS})
+      AND e.prod = {PROD_ID}
     GROUP BY week_start, e.uid
 )
 SELECT week_start AS `周`,

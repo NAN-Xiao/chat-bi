@@ -21,12 +21,7 @@ DB = core_system_db_config()
 UPDATE_BY = 1
 
 LOGIN_EVENTS = [
-    "Login",
-    "UserLogin",
-    "EnterGame",
-    "GameServerLogin",
-    "BISDKAccountLogin",
-    "EPSDKLogin",
+    "UserActive",
 ]
 
 PAY_EVENTS = [
@@ -100,7 +95,7 @@ TRACKING_CONFIG = {
         {"role": "snapshot_date", "table": "user", "field": "dt", "description": "用户快照日期 yyyyMMdd"},
     ],
     "event_name_mappings": [
-        {"metric": "active_user", "events": LOGIN_EVENTS, "description": "DAU/WAU/MAU/活跃拆分使用的登录或进入游戏事件"},
+        {"metric": "active_user", "events": LOGIN_EVENTS, "description": "DAU/WAU/MAU/活跃拆分使用 UserActive 归一化活跃事件"},
         {"metric": "payment_event", "events": PAY_EVENTS, "description": "充值次数、充值用户、实时付费事件使用的付费事件集合"},
         {"metric": "ccu", "events": ["CCU"], "description": "实时在线人数事件；在线人数读取 ext.ed_ccu"},
         {"metric": "onboarding_funnel", "events": ONBOARDING_EVENTS, "description": "新手引导漏斗事件集合；默认起点仍为 user 注册 cohort，不是全量登录用户"},
@@ -117,13 +112,13 @@ TRACKING_CONFIG = {
             "flam 离线历史看板以对应事实表 MAX(dt) 作为观察截止日，不使用 CURDATE()/NOW()。",
             "event.time 为毫秒时间戳；实时业务日按 UTC+8 转换，历史离线看板优先使用 dt 分区。",
             "JSON 子字段使用 JSON_UNQUOTE(JSON_EXTRACT(field, '$.path')) 提取，空字符串需要 NULLIF 后再 COALESCE。",
-            "活跃用户必须过滤登录/进入游戏事件后按 uid 去重，不使用 event 全事件去重，也不直接用 user 快照行数代替。",
+            "活跃用户必须过滤 UserActive 归一化活跃事件后按 uid 去重，不使用 event 全事件去重，也不直接用 user 快照行数代替。",
             "核心看板新手引导漏斗默认以 user 注册日 cohort 为起点，后续步骤按 cohort 内 uid 去重统计。",
             "礼包购买结构使用付费事件集合，并从 ext.payId/rechargeId/productId/goodsId 提取礼包或商品标识。",
             "新增 cohort 使用 user 注册日快照 userinfo.regdate = dt；新增首日付费固定取注册日快照 pay.pay1，不从后续快照取 MAX(pay1)。",
             "留存标记 remain1/remain3/remain7 必须在注册后精确第 1/3/7 日快照读取；未成熟 cohort 不按 0 处理。",
             "付费用户周累充分布必须先按自然周取每个 uid 的最新 user 快照，再按 pay.paytotal 分段，避免多日快照重复计数。",
-            "活动参与率分母是同日登录/进入游戏 DAU，分子是活动事件 uid 去重；活动后续留存/付费必须先固定参与 cohort。",
+            "活动参与率分母是同日 UserActive DAU，分子是活动事件 uid 去重；活动后续留存/付费必须先固定参与 cohort。",
             "钻石经济使用 GoldChange，变化量为 ext.ed_changeFree + ext.ed_changePaid；正数计获取，负数绝对值计消耗。",
             "出征和演习胜率分母是出征/竞技事件行，胜利结果读取 ext.battleResult 或 ext.expeditionDungeonResult。",
             "当前主城等级和主城升级漏斗使用 user 最新快照 lastinfo.blevel；不要用历史升级事件次数替代当前玩家数。",
