@@ -39,13 +39,13 @@ COPY backend/pyproject.toml backend/uv.lock ${APP_HOME}/
 # Install dependencies from the committed lockfile so CI does not resolve
 # fresh dependency candidates on every image build.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --extra "${PYTHON_DEPENDENCY_EXTRA}" --no-install-project
+    uv sync --locked --no-dev --extra "${PYTHON_DEPENDENCY_EXTRA}" --no-install-project
 
 COPY ./backend ${APP_HOME}
 
 # Final sync to ensure all dependencies are installed
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --extra "${PYTHON_DEPENDENCY_EXTRA}"
+    uv sync --locked --no-dev --extra "${PYTHON_DEPENDENCY_EXTRA}"
 
 # Build g2-ssr
 FROM ${ZHISHU_BASE_IMAGE} AS ssr-builder

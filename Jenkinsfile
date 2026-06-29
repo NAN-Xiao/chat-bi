@@ -12,7 +12,6 @@ pipeline {
     string(name: 'BRANCH_NAME', defaultValue: 'release_ha', description: 'Git 分支')
     string(name: 'IMAGE_TAG', defaultValue: '', description: '镜像标签，留空时使用 BUILD_NUMBER-git短哈希')
     booleanParam(name: 'CLEAN_OLD_IMAGES', defaultValue: false, description: '是否清理旧版本镜像。默认关闭以缩短发布耗时')
-    booleanParam(name: 'CLEAN_DANGLING_IMAGES', defaultValue: false, description: '是否清理悬空镜像。默认关闭以保留 Docker 构建缓存')
   }
 
   environment {
@@ -52,7 +51,6 @@ pipeline {
           env.FRONTEND_API_BASE_URL = "./api/v1"
           env.PYTHON_DEPENDENCY_EXTRA = "cpu"
           env.CLEAN_OLD_IMAGES = params.CLEAN_OLD_IMAGES.toString()
-          env.CLEAN_DANGLING_IMAGES = params.CLEAN_DANGLING_IMAGES.toString()
         }
         sh '''
           set -eux
@@ -75,7 +73,7 @@ pipeline {
           fi
           echo "Python 依赖类型：${PYTHON_DEPENDENCY_EXTRA:-cpu}"
           echo "是否清理旧版本镜像：${CLEAN_OLD_IMAGES:-false}"
-          echo "是否清理悬空镜像：${CLEAN_DANGLING_IMAGES:-false}"
+          echo "悬空镜像将在构建完成后自动清理。"
           if ! mkdir -p "$APP_HOME" "$APP_HOME/data/zhishu/excel" "$APP_HOME/data/zhishu/file" "$APP_HOME/data/zhishu/images" "$APP_HOME/data/zhishu/logs" "$APP_HOME/data/postgresql" "$NGINX_ROOT"; then
             echo "Jenkins 用户没有 $APP_HOME 写入权限，请先在 Linux 服务器执行：sudo mkdir -p $APP_HOME && sudo chown -R $(id -u):$(id -g) $APP_HOME"
             exit 1
@@ -443,12 +441,8 @@ EOF
           echo "清理退出容器，避免失败构建残留占用磁盘："
           docker container prune -f || true
 
-          if [ "${CLEAN_DANGLING_IMAGES:-false}" = "true" ]; then
-            echo "按参数清理悬空镜像。注意：这可能降低下一次 Docker 构建缓存命中率。"
-            docker image prune -f || true
-          else
-            echo "跳过悬空镜像清理，以保留 Docker 构建缓存。磁盘紧张时可手动打开 CLEAN_DANGLING_IMAGES。"
-          fi
+          echo "清理悬空镜像，减少无标签镜像占用："
+          docker image prune -f || true
 
           if [ "${CLEAN_OLD_IMAGES:-false}" = "true" ]; then
             echo "清理旧镜像归档文件，只保留最近 $TAR_KEEP_COUNT 个："
