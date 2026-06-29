@@ -513,6 +513,14 @@ function hasChartSnapshot(viewInfo: any) {
   return Array.isArray(rows) && rows.length > 0
 }
 
+function hasChartShape(viewInfo: any) {
+  return (
+    hasChartSnapshot(viewInfo) ||
+    (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
+    (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
+  )
+}
+
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   if (!viewInfo || typeof viewInfo !== 'object') {
     return
@@ -524,8 +532,17 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   viewInfo.data.snapshotRefreshedAt = refreshedAt
 }
 
+function resultRefreshedAt(result: any) {
+  const timestamp = Number(result?.refreshed_at || result?.cache_refreshed_at || 0)
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now()
+}
+
 function isDashboardCacheMiss(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
+}
+
+function isDashboardQueryBusy(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
 }
 
 async function previewChartSql(viewInfo: any, config?: any, forceRefresh = false) {
@@ -868,6 +885,7 @@ async function refreshChartData() {
   }
   let successCount = 0
   let failedCount = 0
+  let deferredCount = 0
   let nextIndex = 0
   const runNext = async (): Promise<void> => {
     while (nextIndex < entries.length) {
@@ -884,6 +902,7 @@ async function refreshChartData() {
         const previousDataFields = Array.isArray(viewInfo.data?.fields) ? [...viewInfo.data.fields] : []
         const previousFields = Array.isArray(viewInfo.fields) ? [...viewInfo.fields] : []
         const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
+        const hasPreviousShape = hasChartShape(viewInfo)
         const result = await previewChartSql(viewInfo, undefined, true)
         const fields = getResultFields(result)
         const data = Array.isArray(result?.data) ? result.data : []
@@ -896,15 +915,24 @@ async function refreshChartData() {
         viewInfo.status = result?.status || 'success'
         viewInfo.message = result?.message || ''
         if (viewInfo.status === 'failed') {
-          if (hasPreviousSnapshot) {
+          if (hasPreviousSnapshot || (isDashboardQueryBusy(result) && hasPreviousShape)) {
             viewInfo.data.fields = previousDataFields
             viewInfo.data.data = previousData
             viewInfo.fields = previousFields
             viewInfo.status = 'success'
+            viewInfo.message = ''
+            viewInfo.dataState = 'ready'
           }
-          failedCount += 1
+          if (isDashboardQueryBusy(result) && hasPreviousShape) {
+            viewInfo.refreshState = 'queued'
+            deferredCount += 1
+          } else {
+            failedCount += 1
+            viewInfo.refreshState = ''
+          }
         } else {
-          markChartSnapshotRefreshed(viewInfo)
+          viewInfo.refreshState = ''
+          markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(result))
           successCount += 1
         }
         emitter.emit(`view-render-${viewInfo.id || entry?.component?.id}`)
@@ -912,9 +940,12 @@ async function refreshChartData() {
         viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
         if (hasChartSnapshot(viewInfo)) {
           viewInfo.status = 'success'
+          viewInfo.dataState = 'ready'
         } else {
           viewInfo.status = 'failed'
+          viewInfo.dataState = 'failed'
         }
+        viewInfo.refreshState = ''
         failedCount += 1
       }
     }
@@ -926,6 +957,8 @@ async function refreshChartData() {
     ElMessage.success(t('dashboard.chart_refresh_success'))
   } else if (successCount > 0) {
     ElMessage.warning(`${t('dashboard.chart_refresh_success')} (${successCount}/${entries.length})`)
+  } else if (deferredCount > 0 && failedCount === 0) {
+    ElMessage.success(t('dashboard.chart_refresh_success'))
   } else {
     ElMessage.error(t('dashboard.chart_refresh_failed'))
   }

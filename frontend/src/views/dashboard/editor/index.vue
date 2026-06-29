@@ -9,6 +9,7 @@ import { storeToRefs } from 'pinia'
 import { dashboardStoreWithOut } from '@/stores/dashboard/dashboard.ts'
 import router from '@/router'
 import { load_resource_prepare } from '@/views/dashboard/utils/canvasUtils.ts'
+import { dashboardApi } from '@/api/dashboard.ts'
 import { useI18n } from 'vue-i18n'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import {
@@ -39,16 +40,35 @@ const state = reactive({
 const dashboardEditorInnerRef = ref(null)
 let canvasStateReady = false
 let applyingCanvasState = false
+let suppressCanvasStateChange = 0
 let draftSaveTimer: number | null = null
 let routeLoadVersion = 0
+let chartRefreshTimer: number | undefined
+let chartRefreshController: AbortController | null = null
+let chartRefreshRetryCount = 0
+
+const CHART_CACHE_LOOKUP_CONCURRENCY = 6
+const CHART_DATABASE_REFRESH_CONCURRENCY = 4
+const CHART_CACHE_LOOKUP_START_DELAY_MS = 160
+const CHART_TRANSIENT_RETRY_DELAY_MS = 4000
+const CHART_TRANSIENT_MAX_RETRIES = 6
 
 const canUseCanvasDraft = (sourceKey?: string | null) => Boolean(sourceKey?.startsWith('create:'))
 
 const loadCanvasResource = (id: string | number) =>
   new Promise<any>((resolve) => {
-    load_resource_prepare({ id }, function (result: any) {
-      resolve(result)
-    })
+    load_resource_prepare(
+      { id, include_data: false },
+      function (result: any) {
+        resolve(result)
+      },
+      {
+        includeData: false,
+        requestConfig: {
+          requestOptions: { silent: true },
+        },
+      }
+    )
   })
 
 const loadPlatformTemplateResource = (id: string | number) =>
@@ -67,6 +87,418 @@ const firstQueryValue = (value: unknown) => {
     return value[0] ? String(value[0]) : null
   }
   return value ? String(value) : null
+}
+
+function clampChartLoadingProgress(progress: unknown) {
+  const numericProgress = Number(progress)
+  if (!Number.isFinite(numericProgress)) {
+    return 0
+  }
+  return Math.max(0, Math.min(100, Math.round(numericProgress)))
+}
+
+function setChartLoadingProgress(viewInfo: any, progress: number, allowDecrease = false) {
+  if (!viewInfo) {
+    return
+  }
+  const nextProgress = clampChartLoadingProgress(progress)
+  const currentProgress = clampChartLoadingProgress(viewInfo.loadingProgress)
+  viewInfo.loadingProgress = allowDecrease ? nextProgress : Math.max(currentProgress, nextProgress)
+}
+
+function unique(values: Array<string | undefined | null>) {
+  return Array.from(
+    new Set(
+      values
+        .filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '')
+        .map((value) => `${value}`)
+    )
+  )
+}
+
+function getResultFields(result: any) {
+  return unique([
+    ...(Array.isArray(result?.fields) ? result.fields : []),
+    ...((result?.data || [])[0] ? Object.keys((result?.data || [])[0]) : []),
+  ])
+}
+
+function isAbortError(error: any) {
+  return (
+    error?.name === 'CanceledError' ||
+    error?.code === 'ERR_CANCELED' ||
+    error?.message === 'canceled' ||
+    error?.message === 'Request canceled'
+  )
+}
+
+function hasChartSnapshot(viewInfo: any) {
+  const rows = viewInfo?.data?.data
+  return Array.isArray(rows) && rows.length > 0
+}
+
+function hasUsableResultSnapshot(result: any) {
+  const rows = result?.data
+  return Array.isArray(rows) && rows.length > 0
+}
+
+function resultRefreshedAt(result: any) {
+  const timestamp = Number(result?.refreshed_at || result?.cache_refreshed_at || 0)
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now()
+}
+
+function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
+  if (!viewInfo || typeof viewInfo !== 'object') {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.snapshotRefreshedAt = refreshedAt
+  viewInfo.data.snapshotRefreshedAt = refreshedAt
+}
+
+function isDashboardCacheMiss(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
+}
+
+function isDashboardQueryBusy(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
+}
+
+function chartSqlPayload(viewInfo: any) {
+  return {
+    datasource: viewInfo.datasource,
+    sql: viewInfo.sql.trim(),
+    pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+  }
+}
+
+async function previewChartSqlCacheOnly(
+  viewInfo: any,
+  requestConfig: any = { requestOptions: { silent: true } }
+) {
+  return dashboardApi.preview_sql(
+    {
+      ...chartSqlPayload(viewInfo),
+      cache_only: true,
+    },
+    requestConfig
+  )
+}
+
+async function previewChartSqlFromDatabase(
+  viewInfo: any,
+  requestConfig: any = { requestOptions: { silent: true } }
+) {
+  return dashboardApi.preview_sql(
+    {
+      ...chartSqlPayload(viewInfo),
+      force_refresh: true,
+    },
+    requestConfig
+  )
+}
+
+function collectDashboardCharts(items: any[], entries: Array<{ component: any; viewInfo: any }> = []) {
+  if (!Array.isArray(items)) {
+    return entries
+  }
+  items.forEach((item) => {
+    if (item?.component === 'SQView') {
+      entries.push({
+        component: item,
+        viewInfo: (canvasViewInfo.value as Record<string, any>)?.[item.id],
+      })
+      return
+    }
+    if (item?.component === 'SQTab') {
+      const tabs = Array.isArray(item.propValue) ? item.propValue : []
+      tabs.forEach((tab: any) => collectDashboardCharts(tab?.componentData || [], entries))
+      return
+    }
+    if (Array.isArray(item?.componentData)) {
+      collectDashboardCharts(item.componentData, entries)
+    }
+  })
+  return entries
+}
+
+function prepareEditorChartState(viewInfo: any) {
+  if (!viewInfo || !viewInfo.sql?.trim()) {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.data = Array.isArray(viewInfo.data.data) ? viewInfo.data.data : []
+  viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
+  viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
+  viewInfo.message = ''
+  viewInfo.refreshState = ''
+  if (hasChartSnapshot(viewInfo)) {
+    viewInfo.status = 'success'
+    viewInfo.dataState = 'ready'
+    viewInfo.loadingProgress = 100
+  } else {
+    viewInfo.status = 'loading'
+    viewInfo.dataState = 'loading'
+    setChartLoadingProgress(viewInfo, 0, true)
+  }
+}
+
+function keepChartLoadingState(viewInfo: any) {
+  if (!viewInfo) {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.data = Array.isArray(viewInfo.data.data) ? viewInfo.data.data : []
+  viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
+  viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
+  viewInfo.status = 'loading'
+  viewInfo.message = ''
+  viewInfo.dataState = 'loading'
+  setChartLoadingProgress(viewInfo, 5)
+  viewInfo.refreshState = ''
+}
+
+function keepChartSnapshotOrLoading(viewInfo: any) {
+  if (!viewInfo) {
+    return
+  }
+  if (hasChartSnapshot(viewInfo)) {
+    viewInfo.status = 'success'
+    viewInfo.message = ''
+    viewInfo.dataState = 'ready'
+    viewInfo.loadingProgress = 100
+    viewInfo.refreshState = ''
+    return
+  }
+  keepChartLoadingState(viewInfo)
+}
+
+function applyChartResult(viewInfo: any, result: any, keepLoadingWhenEmpty = false) {
+  if (!viewInfo) {
+    return false
+  }
+  const fields = getResultFields(result)
+  const data = Array.isArray(result?.data) ? result.data : []
+  const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
+  const previousDataFields = Array.isArray(viewInfo?.data?.fields) ? [...viewInfo.data.fields] : []
+  const previousFields = Array.isArray(viewInfo?.fields) ? [...viewInfo.fields] : []
+  const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.data.fields = fields
+  viewInfo.data.data = data
+  viewInfo.fields = fields
+  viewInfo.status = result?.status || 'success'
+  viewInfo.message = result?.message || ''
+  if (viewInfo.status === 'failed' && hasPreviousSnapshot) {
+    viewInfo.data.fields = previousDataFields
+    viewInfo.data.data = previousData
+    viewInfo.fields = previousFields
+    viewInfo.status = 'success'
+    viewInfo.message = ''
+    viewInfo.dataState = 'ready'
+  } else {
+    viewInfo.dataState = viewInfo.status === 'failed' ? 'failed' : 'ready'
+    if (keepLoadingWhenEmpty && viewInfo.status !== 'failed' && !data.length && !hasPreviousSnapshot) {
+      viewInfo.status = 'loading'
+      viewInfo.message = ''
+      viewInfo.dataState = 'loading'
+      setChartLoadingProgress(viewInfo, 5)
+      viewInfo.refreshState = ''
+      return false
+    }
+    if (viewInfo.status !== 'failed') {
+      markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(result))
+    }
+  }
+  viewInfo.loadingProgress = 100
+  viewInfo.refreshState = ''
+  return viewInfo.status !== 'failed' && data.length > 0
+}
+
+async function runChartQueue(
+  entries: Array<{ component: any; viewInfo: any }>,
+  concurrency: number,
+  worker: (entry: { component: any; viewInfo: any }) => Promise<void>
+) {
+  let nextIndex = 0
+  const runNext = async (): Promise<void> => {
+    while (nextIndex < entries.length) {
+      const entry = entries[nextIndex]
+      nextIndex += 1
+      await worker(entry)
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, concurrency), entries.length) }, () => runNext())
+  )
+}
+
+function withAutoChartUpdate(task: () => void) {
+  suppressCanvasStateChange += 1
+  try {
+    task()
+  } finally {
+    suppressCanvasStateChange = Math.max(0, suppressCanvasStateChange - 1)
+  }
+}
+
+function cancelDashboardChartRefresh() {
+  if (chartRefreshTimer) {
+    window.clearTimeout(chartRefreshTimer)
+    chartRefreshTimer = undefined
+  }
+  if (chartRefreshController) {
+    chartRefreshController.abort()
+    chartRefreshController = null
+  }
+}
+
+function scheduleEditorChartRefresh(loadVersion: number, delay = CHART_CACHE_LOOKUP_START_DELAY_MS) {
+  cancelDashboardChartRefresh()
+  const controller = new AbortController()
+  chartRefreshController = controller
+  chartRefreshTimer = window.setTimeout(() => {
+    chartRefreshTimer = undefined
+    if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+      return
+    }
+    void refreshEditorCharts(loadVersion, controller)
+  }, delay)
+}
+
+async function refreshEditorCharts(loadVersion: number, controller: AbortController) {
+  const chartEntries = collectDashboardCharts(componentData.value).filter((entry) =>
+    Boolean(entry.viewInfo?.datasource && entry.viewInfo?.sql?.trim())
+  )
+  if (!chartEntries.length) {
+    return
+  }
+  await nextTick()
+
+  let cacheFinished = 0
+  let databaseFinished = 0
+  let transientPendingCount = 0
+  const databaseRefreshEntries: Array<{ component: any; viewInfo: any }> = []
+  const requestConfig = {
+    signal: controller.signal,
+    requestOptions: { silent: true },
+  }
+  const updateProgress = (entries = chartEntries, finished = cacheFinished, count = chartEntries.length) => {
+    const progress = Math.min(95, Math.round((finished / Math.max(1, count)) * 100))
+    withAutoChartUpdate(() => {
+      entries.forEach((entry) => {
+        if (entry.viewInfo?.dataState === 'loading') {
+          setChartLoadingProgress(entry.viewInfo, progress)
+        }
+      })
+    })
+  }
+  try {
+    await runChartQueue(chartEntries, CHART_CACHE_LOOKUP_CONCURRENCY, async (entry) => {
+      const { viewInfo } = entry
+      try {
+        if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+          return
+        }
+        const cachedResult = await previewChartSqlCacheOnly(viewInfo, requestConfig)
+        if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+          return
+        }
+        if (
+          isDashboardCacheMiss(cachedResult) ||
+          cachedResult?.status === 'failed' ||
+          !hasUsableResultSnapshot(cachedResult)
+        ) {
+          if (!hasChartSnapshot(viewInfo)) {
+            databaseRefreshEntries.push(entry)
+          }
+        } else {
+          withAutoChartUpdate(() => applyChartResult(viewInfo, cachedResult))
+        }
+      } catch (error: any) {
+        if (isAbortError(error) || controller.signal.aborted) {
+          return
+        }
+        if (loadVersion === routeLoadVersion && !hasChartSnapshot(viewInfo)) {
+          databaseRefreshEntries.push(entry)
+        }
+      } finally {
+        cacheFinished += 1
+        updateProgress()
+      }
+    })
+
+    const databaseTotal = databaseRefreshEntries.length
+    if (!databaseTotal || loadVersion !== routeLoadVersion || controller.signal.aborted) {
+      return
+    }
+    withAutoChartUpdate(() => {
+      databaseRefreshEntries.forEach((entry) => keepChartLoadingState(entry.viewInfo))
+    })
+    await runChartQueue(databaseRefreshEntries, CHART_DATABASE_REFRESH_CONCURRENCY, async (entry) => {
+      const { viewInfo } = entry
+      try {
+        if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+          return
+        }
+        const result = await previewChartSqlFromDatabase(viewInfo, requestConfig)
+        if (loadVersion !== routeLoadVersion || controller.signal.aborted) {
+          return
+        }
+        withAutoChartUpdate(() => {
+          if (result?.status === 'failed') {
+            keepChartSnapshotOrLoading(viewInfo)
+            if (!hasChartSnapshot(viewInfo) && isDashboardQueryBusy(result)) {
+              transientPendingCount += 1
+            } else if (!hasChartSnapshot(viewInfo)) {
+              transientPendingCount += 1
+            }
+          } else {
+            const usable = applyChartResult(viewInfo, result, true)
+            if (!usable && !hasChartSnapshot(viewInfo)) {
+              transientPendingCount += 1
+            }
+          }
+        })
+      } catch (error: any) {
+        if (isAbortError(error) || controller.signal.aborted) {
+          return
+        }
+        if (loadVersion === routeLoadVersion) {
+          withAutoChartUpdate(() => {
+            keepChartSnapshotOrLoading(viewInfo)
+            if (!hasChartSnapshot(viewInfo)) {
+              transientPendingCount += 1
+            }
+          })
+        }
+      } finally {
+        databaseFinished += 1
+        updateProgress(databaseRefreshEntries, databaseFinished, databaseTotal)
+      }
+    })
+  } finally {
+    if (chartRefreshController === controller) {
+      chartRefreshController = null
+    }
+    if (
+      transientPendingCount > 0 &&
+      loadVersion === routeLoadVersion &&
+      !controller.signal.aborted &&
+      chartRefreshRetryCount < CHART_TRANSIENT_MAX_RETRIES
+    ) {
+      chartRefreshRetryCount += 1
+      scheduleEditorChartRefresh(loadVersion, CHART_TRANSIENT_RETRY_DELAY_MS)
+    }
+  }
 }
 
 const syncRouteState = () => {
@@ -93,7 +525,11 @@ const applyLoadedCanvasResource = async (
     dashboardStore.setDashboardInfo(result?.dashboardInfo)
     dashboardStore.setCanvasStyleData(result?.canvasStyleResult || {})
     dashboardStore.setComponentData(result?.canvasDataResult || [])
-    dashboardStore.setCanvasViewInfo(result?.canvasViewInfoPreview || {})
+    const loadedViewInfo = result?.canvasViewInfoPreview || {}
+    if (!state.platformTemplateId) {
+      Object.values(loadedViewInfo).forEach((viewInfo: any) => prepareEditorChartState(viewInfo))
+    }
+    dashboardStore.setCanvasViewInfo(loadedViewInfo)
     dashboardStore.setCanvasEditingSourceKey(
       sourceKeyOverride || getDashboardCanvasSourceKey(result?.dashboardInfo?.id || resourceId)
     )
@@ -103,6 +539,8 @@ const applyLoadedCanvasResource = async (
 const loadCanvasFromRoute = async () => {
   const loadVersion = ++routeLoadVersion
   persistCanvasDraft()
+  cancelDashboardChartRefresh()
+  chartRefreshRetryCount = 0
   canvasStateReady = false
   syncRouteState()
   if (!state.platformTemplateId) {
@@ -165,6 +603,7 @@ const loadCanvasFromRoute = async () => {
       if (loadVersion !== routeLoadVersion) return
       await applyLoadedCanvasResource(resourceId, result)
       dashboardStore.markCanvasSaved()
+      scheduleEditorChartRefresh(loadVersion)
     } else {
       await pauseCanvasStateWatch(() => {
         dashboardStore.canvasDataInit()
@@ -256,7 +695,12 @@ watch(
     canvasViewInfo: canvasViewInfo.value,
   }),
   () => {
-    if (!canvasStateReady || applyingCanvasState || !dashboardStore.canvasEditingSourceKey) {
+    if (
+      !canvasStateReady ||
+      applyingCanvasState ||
+      suppressCanvasStateChange > 0 ||
+      !dashboardStore.canvasEditingSourceKey
+    ) {
       return
     }
     dashboardStore.markCanvasChanged()
@@ -364,6 +808,7 @@ watch(
 
 onBeforeUnmount(() => {
   persistCanvasDraft()
+  cancelDashboardChartRefresh()
   if (draftSaveTimer) {
     window.clearTimeout(draftSaveTimer)
     draftSaveTimer = null

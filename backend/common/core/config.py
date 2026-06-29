@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     CACHE_REDIS_URL: str | None = None  # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
     CACHE_REDIS_PREFIX: str = "zhishu-cache"
 
-    DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS: int = 60
+    DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS: int = 3600
     DASHBOARD_SQL_PREVIEW_CACHE_MAX_ENTRIES: int = 512
     DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY: int = 2
     DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS: float = 1.0

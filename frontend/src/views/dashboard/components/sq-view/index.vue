@@ -114,6 +114,23 @@ type RefreshDataOptions = {
   forceRefresh?: boolean
 }
 
+function clampChartLoadingProgress(progress: unknown) {
+  const numericProgress = Number(progress)
+  if (!Number.isFinite(numericProgress)) {
+    return 0
+  }
+  return Math.max(0, Math.min(100, Math.round(numericProgress)))
+}
+
+function setChartLoadingProgress(progress: number, allowDecrease = false) {
+  if (!props.viewInfo) {
+    return
+  }
+  const nextProgress = clampChartLoadingProgress(progress)
+  const currentProgress = clampChartLoadingProgress(props.viewInfo.loadingProgress)
+  props.viewInfo.loadingProgress = allowDecrease ? nextProgress : Math.max(currentProgress, nextProgress)
+}
+
 const pivotGranularityOptions = computed(() => [
   { value: 'day', label: t('dashboard.pivot_day') },
   { value: 'week', label: t('dashboard.pivot_week') },
@@ -568,6 +585,14 @@ function hasChartResult(viewInfo: any) {
   return Array.isArray(rows) && rows.length > 0
 }
 
+function hasChartShape(viewInfo: any) {
+  return (
+    hasChartResult(viewInfo) ||
+    (Array.isArray(viewInfo?.data?.fields) && viewInfo.data.fields.length > 0) ||
+    (Array.isArray(viewInfo?.fields) && viewInfo.fields.length > 0)
+  )
+}
+
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   if (!viewInfo || typeof viewInfo !== 'object') {
     return
@@ -577,6 +602,11 @@ function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
   }
   viewInfo.snapshotRefreshedAt = refreshedAt
   viewInfo.data.snapshotRefreshedAt = refreshedAt
+}
+
+function resultRefreshedAt(result: any) {
+  const timestamp = Number(result?.refreshed_at || result?.cache_refreshed_at || 0)
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now()
 }
 
 function normalizeLoadedChartState() {
@@ -596,6 +626,10 @@ function normalizeLoadedChartState() {
 
 function isDashboardCacheMiss(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
+}
+
+function isDashboardQueryBusy(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
 }
 
 async function previewChartSqlWithCacheFallback(payload: any, forceRefresh = false) {
@@ -641,7 +675,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
   const previousFields = Array.isArray(props.viewInfo.fields) ? [...props.viewInfo.fields] : []
   const hasPreviousRows = previousData.length > 0
   props.viewInfo.dataState = 'loading'
-  props.viewInfo.loadingProgress = 0
+  setChartLoadingProgress(0, !silent)
   startRefreshProgress()
   const requestSeq = ++refreshRequestSeq
   if (!silent) {
@@ -674,24 +708,31 @@ async function refreshData(options: RefreshDataOptions = {}) {
     props.viewInfo.data.fields = fields
     props.viewInfo.data.data = data
     props.viewInfo.fields = fields
+    const hasPreviousShape =
+      hasPreviousRows || previousDataFields.length > 0 || previousFields.length > 0 || hasChartShape(props.viewInfo)
     props.viewInfo.status = result?.status || 'success'
     props.viewInfo.message = result?.message || ''
     if (props.viewInfo.status === 'failed') {
-      if (hasPreviousRows) {
+      const queryBusyWithSnapshot = isDashboardQueryBusy(result) && hasPreviousShape
+      if (hasPreviousRows || queryBusyWithSnapshot) {
         props.viewInfo.data.fields = previousDataFields
         props.viewInfo.data.data = previousData
         props.viewInfo.fields = previousFields
         props.viewInfo.status = 'success'
+        props.viewInfo.message = ''
         props.viewInfo.dataState = 'ready'
+        props.viewInfo.refreshState = isDashboardQueryBusy(result) ? 'queued' : ''
       } else {
         props.viewInfo.dataState = 'failed'
+        props.viewInfo.refreshState = ''
       }
-      if (!silent) {
+      if (!silent && !queryBusyWithSnapshot) {
         ElMessage.error(props.viewInfo.message || t('dashboard.chart_refresh_failed'))
       }
     } else {
       props.viewInfo.dataState = 'ready'
-      markChartSnapshotRefreshed(props.viewInfo)
+      props.viewInfo.refreshState = ''
+      markChartSnapshotRefreshed(props.viewInfo, resultRefreshedAt(result))
       if (!silent) {
         ElMessage.success(t('dashboard.chart_refresh_success'))
       }
@@ -710,9 +751,11 @@ async function refreshData(options: RefreshDataOptions = {}) {
       props.viewInfo.fields = previousFields
       props.viewInfo.status = 'success'
       props.viewInfo.dataState = 'ready'
+      props.viewInfo.refreshState = ''
     } else {
       props.viewInfo.status = 'failed'
       props.viewInfo.dataState = 'failed'
+      props.viewInfo.refreshState = ''
     }
     props.viewInfo.loadingProgress = 100
     if (!silent) {
@@ -761,8 +804,8 @@ function startRefreshProgress() {
       stopRefreshProgress()
       return
     }
-    const current = Number(props.viewInfo?.loadingProgress || 0)
-    props.viewInfo.loadingProgress = Math.min(95, current + Math.max(1, Math.round((96 - current) * 0.12)))
+    const current = clampChartLoadingProgress(props.viewInfo?.loadingProgress)
+    setChartLoadingProgress(Math.min(95, current + Math.max(1, Math.round((96 - current) * 0.12))))
   }, 260)
 }
 

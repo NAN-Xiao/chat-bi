@@ -753,36 +753,43 @@ ORDER BY d.dt, s.sort_no
 
 D1_RETENTION_SQL = """
 WITH obs AS (
-    SELECT max(install_date) AS max_date FROM public.dim_player
+    SELECT max(session_start::date) AS max_active_date
+    FROM public.fact_sessions
 ), days AS (
-    SELECT generate_series(max_date - 70, max_date - 40, interval '1 day')::date AS dt
+    SELECT generate_series(max_active_date - 30, max_active_date - 1, interval '1 day')::date AS dt
     FROM obs
 ), cohort AS (
     SELECT p.install_date AS dt,
            p.player_id
-    FROM public.dim_player p, obs
-    WHERE p.install_date BETWEEN obs.max_date - 70 AND obs.max_date - 40
+    FROM public.dim_player p
+    JOIN obs ON true
+    WHERE p.install_date BETWEEN obs.max_active_date - 30 AND obs.max_active_date - 1
 ), retained AS (
     SELECT c.dt,
-           c.player_id,
-           EXISTS (
-               SELECT 1
-               FROM public.fact_sessions s
-               WHERE s.player_id = c.player_id
-                 AND s.session_start::date = c.dt + 1
-           ) AS is_retained
+           count(DISTINCT c.player_id) AS d1_retained_users
     FROM cohort c
+    JOIN public.fact_sessions s
+      ON s.player_id = c.player_id
+     AND s.lifecycle_day = 1
+    GROUP BY c.dt
+), daily AS (
+    SELECT d.dt,
+           count(DISTINCT c.player_id) AS new_users,
+           coalesce(r.d1_retained_users, 0) AS d1_retained_users
+    FROM days d
+    LEFT JOIN cohort c ON c.dt = d.dt
+    LEFT JOIN retained r ON r.dt = d.dt
+    GROUP BY d.dt, r.d1_retained_users
 )
-SELECT d.dt AS "日期",
+SELECT dt AS "日期",
+       new_users AS "新增用户数",
+       d1_retained_users AS "次日留存用户数",
        round(
-           count(DISTINCT r.player_id) FILTER (WHERE r.is_retained)::numeric
-           / nullif(count(DISTINCT r.player_id), 0) * 100,
+           d1_retained_users::numeric / nullif(new_users, 0) * 100,
            2
        ) AS "次日留存率"
-FROM days d
-LEFT JOIN retained r ON r.dt = d.dt
-GROUP BY d.dt
-ORDER BY d.dt
+FROM daily
+ORDER BY dt
 """
 
 D0_PAYMENT_SQL = """

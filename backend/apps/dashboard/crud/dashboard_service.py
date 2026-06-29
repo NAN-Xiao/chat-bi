@@ -131,7 +131,7 @@ DASHBOARD_DRAFT_STATUSES = {
 }
 DASHBOARD_SOURCE_PLATFORM_DELEGATE = "platform_delegate"
 DASHBOARD_SOURCE_PLATFORM_TEMPLATE = "platform_template"
-DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "当前看板查询较多，请稍后刷新"
+DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE = "图表数据正在后台刷新"
 DASHBOARD_REFRESH_POLICY_DEFAULT = {
     "auto_refresh": True,
     "snapshot_max_age_hours": 3,
@@ -1057,6 +1057,11 @@ def _dashboard_sql_preview_max_cache_entries() -> int:
     return max(0, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_CACHE_MAX_ENTRIES", 512) or 0))
 
 
+def _dashboard_sql_preview_result_has_rows(result: dict[str, Any] | None) -> bool:
+    data = result.get("data") if isinstance(result, dict) else None
+    return isinstance(data, list) and len(data) > 0
+
+
 def _dashboard_sql_preview_datasource_concurrency() -> int:
     return max(1, int(getattr(settings, "DASHBOARD_SQL_PREVIEW_DATASOURCE_CONCURRENCY", 2) or 2))
 
@@ -1168,6 +1173,9 @@ def _dashboard_sql_preview_memory_get(
         if expires_at < now and not allow_expired:
             _DASHBOARD_SQL_PREVIEW_CACHE.pop(memory_key, None)
             return None
+        if not _dashboard_sql_preview_result_has_rows(result):
+            _DASHBOARD_SQL_PREVIEW_CACHE.pop(memory_key, None)
+            return None
         _DASHBOARD_SQL_PREVIEW_CACHE.move_to_end(memory_key)
         cloned = copy.deepcopy(result)
     if allow_expired and cached[0] < now:
@@ -1179,7 +1187,12 @@ def _dashboard_sql_preview_memory_get(
 def _dashboard_sql_preview_memory_set(cache_key: DashboardSqlPreviewCacheKey, result: dict[str, Any]) -> None:
     ttl = _dashboard_sql_preview_cache_ttl()
     max_entries = _dashboard_sql_preview_max_cache_entries()
-    if ttl <= 0 or max_entries <= 0 or result.get("status") == "failed":
+    if (
+        ttl <= 0
+        or max_entries <= 0
+        or result.get("status") == "failed"
+        or not _dashboard_sql_preview_result_has_rows(result)
+    ):
         return
     expires_at = time.monotonic() + ttl
     memory_key = cache_key.memory_key
@@ -1205,6 +1218,9 @@ def _dashboard_sql_preview_cache_get(
             if raw:
                 decoded = json.loads(raw)
                 if isinstance(decoded, dict):
+                    if not _dashboard_sql_preview_result_has_rows(decoded):
+                        client.delete(_dashboard_sql_preview_redis_key(cache_key))
+                        return None
                     decoded["cache_hit"] = True
                     return decoded
         except (RedisError, json.JSONDecodeError):
@@ -1218,7 +1234,7 @@ def _dashboard_sql_preview_cache_get(
 
 def _dashboard_sql_preview_cache_set(cache_key: DashboardSqlPreviewCacheKey, result: dict[str, Any]) -> None:
     ttl = _dashboard_sql_preview_cache_ttl()
-    if ttl <= 0 or result.get("status") == "failed":
+    if ttl <= 0 or result.get("status") == "failed" or not _dashboard_sql_preview_result_has_rows(result):
         return
     client = _dashboard_sql_preview_redis_client()
     if client is not None:
@@ -1414,6 +1430,8 @@ def _execute_dashboard_chart_sql(
         sql=sql,
         origin_column=True,
     )
+    if result.get("status") != "failed":
+        result["refreshed_at"] = int(time.time() * 1000)
     if _dashboard_pivot_enabled(pivot) and result.get("status") == "failed":
         friendly_message = _dashboard_pivot_date_cast_error(str(result.get("message") or ""), pivot)
         if friendly_message:
@@ -2714,10 +2732,10 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
 
     inflight_lock = _dashboard_sql_preview_inflight_lock(cache_key)
     if not inflight_lock.acquire(timeout=_dashboard_sql_preview_dedupe_wait_timeout()):
-        if not request.force_refresh:
-            cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
-            if cached is not None:
-                return cached
+        cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+        if cached is not None:
+            cached["refresh_deferred"] = True
+            return cached
         return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
 
     datasource_semaphore = _dashboard_sql_preview_datasource_semaphore(datasource_id)
@@ -2729,10 +2747,10 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
                 return cached
         datasource_acquired = datasource_semaphore.acquire(timeout=_dashboard_sql_preview_wait_timeout())
         if not datasource_acquired:
-            if not request.force_refresh:
-                cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
-                if cached is not None:
-                    return cached
+            cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+            if cached is not None:
+                cached["refresh_deferred"] = True
+                return cached
             AppLogUtil.warning(f"Dashboard SQL preview busy: datasource={datasource_id}")
             return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
 

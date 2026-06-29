@@ -94,12 +94,52 @@ DASHBOARD_SKILLS: list[dict[str, str]] = [
 - 新增用户固定使用 `dim_player.install_date`，分母为 `count(distinct player_id)`。
 - 渠道维度优先用 `dim_player.channel/campaign/bi_channel_name/bi_channel_group`；系统维度用 `platform`。
 - 新增 D1 留存使用 `fact_sessions.lifecycle_day = 1`，按 `player_id` 去重。
+- 看板“新增用户次日留存”只展示已成熟新增 cohort：观察截止日取 `fact_sessions.session_start::date` 最大日期，日期窗口默认 `max_active_date - 30` 到 `max_active_date - 1`；不要把最新未观察到次日活跃的新增日当 0%。
 - 新增首日付费使用 `fact_payments.lifecycle_day = 0` 且 `payment_status='success' AND net_revenue_usd > 0`。
 - “后续付费情况”应输出生命周期日曲线，不要只给一个总指标。
 
 ## 推荐输出
-- `install_date`, `new_users`, `d1_retained_users`, `d1_retention_pct`, `day0_payers`, `day0_revenue_usd`。
+- `install_date`, `new_users`, `d1_retained_users`, `d1_retention_pct`, `matured_flag`, `day0_payers`, `day0_revenue_usd`。
 - 按渠道/系统拆解时增加 `channel` 或 `platform`；趋势图用折线，拆解对比用柱状图。
+
+新增用户次日留存看板参考 SQL：
+```sql
+WITH obs AS (
+    SELECT max(session_start::date) AS max_active_date
+    FROM public.fact_sessions
+), days AS (
+    SELECT generate_series(max_active_date - 30, max_active_date - 1, interval '1 day')::date AS dt
+    FROM obs
+), cohort AS (
+    SELECT p.install_date AS dt,
+           p.player_id
+    FROM public.dim_player p
+    JOIN obs ON true
+    WHERE p.install_date BETWEEN obs.max_active_date - 30 AND obs.max_active_date - 1
+), retained AS (
+    SELECT c.dt,
+           count(DISTINCT c.player_id) AS d1_retained_users
+    FROM cohort c
+    JOIN public.fact_sessions s
+      ON s.player_id = c.player_id
+     AND s.lifecycle_day = 1
+    GROUP BY c.dt
+), daily AS (
+    SELECT d.dt,
+           count(DISTINCT c.player_id) AS new_users,
+           coalesce(r.d1_retained_users, 0) AS d1_retained_users
+    FROM days d
+    LEFT JOIN cohort c ON c.dt = d.dt
+    LEFT JOIN retained r ON r.dt = d.dt
+    GROUP BY d.dt, r.d1_retained_users
+)
+SELECT dt AS "日期",
+       new_users AS "新增用户数",
+       d1_retained_users AS "次日留存用户数",
+       round(d1_retained_users::numeric / nullif(new_users, 0) * 100, 2) AS "次日留存率"
+FROM daily
+ORDER BY dt;
+```
 """,
     },
     {
