@@ -176,20 +176,22 @@ def get_engine(ds: CoreDatasource, timeout: int = 0) -> Engine:
         engine = create_engine(get_uri(ds), poolclass=NullPool)
     elif equals_ignore_case(ds.type, 'mysql'):  # mysql
         ssl_mode = {"require": True} if conf.ssl else None
-        engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout, "ssl": ssl_mode},
-                               poolclass=NullPool)
+        connect_args = {"connect_timeout": conf.timeout, "read_timeout": conf.timeout, "write_timeout": conf.timeout}
+        if ssl_mode:
+            connect_args["ssl"] = ssl_mode
+        engine = create_engine(get_uri(ds), connect_args=connect_args, poolclass=NullPool)
     else:  # ck
         engine = create_engine(get_uri(ds), connect_args={"connect_timeout": conf.timeout}, poolclass=NullPool)
     return engine
 
 
-def get_session(ds: CoreDatasource | AssistantOutDsSchema):
+def get_session(ds: CoreDatasource | AssistantOutDsSchema, timeout: int = 0):
     # engine = get_engine(ds) if isinstance(ds, CoreDatasource) else get_ds_engine(ds)
     if isinstance(ds, AssistantOutDsSchema):
         out_conf = get_out_ds_conf(ds, 30)
         ds.configuration = out_conf
 
-    engine = get_engine(ds)
+    engine = get_engine(ds, timeout=timeout)
     session_maker = sessionmaker(bind=engine)
     session = session_maker()
     return session
@@ -600,7 +602,36 @@ def convert_value(value, datetime_format='space'):
         return value
 
 
-def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema, sql: str, origin_column=False):
+def _effective_query_timeout(ds: CoreDatasource | AssistantOutDsSchema, query_timeout: int | None) -> int:
+    if query_timeout and query_timeout > 0:
+        return int(query_timeout)
+    try:
+        conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
+        return int(conf.timeout or 0)
+    except Exception:
+        return 0
+
+
+def _apply_sqlalchemy_statement_timeout(session, ds_type: str, timeout_seconds: int) -> None:
+    if timeout_seconds <= 0:
+        return
+    timeout_ms = max(1, timeout_seconds) * 1000
+    try:
+        if equals_ignore_case(ds_type, "pg", "excel"):
+            session.execute(text("SET LOCAL statement_timeout = :timeout_ms"), {"timeout_ms": timeout_ms})
+        elif equals_ignore_case(ds_type, "mysql"):
+            session.execute(text("SET SESSION MAX_EXECUTION_TIME = :timeout_ms"), {"timeout_ms": timeout_ms})
+    except Exception as exc:
+        AppLogUtil.warning(f"Failed to apply datasource query timeout: type={ds_type}, timeout={timeout_seconds}s, error={exc}")
+        session.rollback()
+
+
+def _unsafe_exec_sql_after_validation(
+        ds: CoreDatasource | AssistantOutDsSchema,
+        sql: str,
+        origin_column=False,
+        query_timeout: int | None = None,
+):
     """Low-level datasource execution adapter.
 
     Do not call this from user-facing analysis code. Route user SQL through
@@ -616,7 +647,10 @@ def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema,
 
     db = DB.get_db(ds.type)
     if db.connect_type == ConnectType.sqlalchemy:
-        with get_session(ds) as session:
+        timeout_seconds = _effective_query_timeout(ds, query_timeout)
+        session = get_session(ds, timeout=timeout_seconds)
+        try:
+            _apply_sqlalchemy_statement_timeout(session, ds.type, timeout_seconds)
             with session.execute(text(sql)) as result:
                 try:
                     columns = result.keys()._keys if origin_column else [item.lower() for item in result.keys()._keys]
@@ -629,6 +663,12 @@ def _unsafe_exec_sql_after_validation(ds: CoreDatasource | AssistantOutDsSchema,
                             "sql": bytes.decode(base64.b64encode(bytes(sql, 'utf-8')))}
                 except Exception as ex:
                     raise ParseSQLResultError(str(ex))
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.rollback()
+            session.close()
     else:
         conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration)))
         extra_config_dict = get_extra_config(conf)

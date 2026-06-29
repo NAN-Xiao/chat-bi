@@ -1373,6 +1373,8 @@ def _execute_dashboard_chart_sql(
         datasource_id=datasource_id,
         sql=sql,
         origin_column=True,
+        query_timeout=settings.DASHBOARD_SQL_PREVIEW_QUERY_TIMEOUT_SECONDS,
+        close_system_transaction_before_query=True,
     )
     if _dashboard_pivot_enabled(pivot) and result.get("status") == "failed":
         friendly_message = _dashboard_pivot_date_cast_error(str(result.get("message") or ""), pivot)

@@ -280,6 +280,7 @@ class HttpService {
 
   private handleError(error: AxiosError) {
     let errorMessage = 'Request error'
+    const hasUserToken = Boolean(wsCache.get('user.token'))
 
     if (error.response) {
       switch (error.response.status) {
@@ -299,11 +300,13 @@ class HttpService {
             )
             return
           }
-          ElMessage({
-            message: errorMessage,
-            type: 'error',
-            showClose: true,
-          })
+          if (hasUserToken) {
+            ElMessage({
+              message: errorMessage,
+              type: 'error',
+              showClose: true,
+            })
+          }
           setTimeout(() => {
             wsCache.delete('user.token')
             import('@/router')

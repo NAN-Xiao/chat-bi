@@ -158,6 +158,8 @@ def execute_user_query_or_raise(
         origin_column: bool = False,
         apply_row_permissions: bool = True,
         validate_columns: bool = True,
+        query_timeout: int | None = None,
+        close_system_transaction_before_query: bool = False,
 ) -> QueryExecutionResult:
     if datasource is None:
         raise ValueError("项目不存在")
@@ -173,11 +175,22 @@ def execute_user_query_or_raise(
         apply_row_permissions=apply_row_permissions,
         validate_columns=validate_columns,
     )
-    result = _unsafe_exec_sql_after_validation(ds=datasource, sql=executed_sql, origin_column=origin_column)
+    datasource_for_query = CoreDatasource(**datasource.model_dump())
+    if close_system_transaction_before_query:
+        try:
+            session.rollback()
+        except Exception as exc:
+            AppLogUtil.warning(f"Failed to close system DB read transaction before datasource query: {exc}")
+    result = _unsafe_exec_sql_after_validation(
+        ds=datasource_for_query,
+        sql=executed_sql,
+        origin_column=origin_column,
+        query_timeout=query_timeout,
+    )
     result = _normalize_query_result(result, origin_column)
     return QueryExecutionResult(
         result=result,
-        datasource=datasource,
+        datasource=datasource_for_query,
         requested_sql=sql,
         executed_sql=executed_sql,
         tables=tables,
@@ -245,6 +258,8 @@ def execute_user_query(
         origin_column: bool = False,
         apply_row_permissions: bool = True,
         validate_columns: bool = True,
+        query_timeout: int | None = None,
+        close_system_transaction_before_query: bool = False,
 ) -> dict[str, Any]:
     try:
         datasource = session.get(CoreDatasource, datasource_id)
@@ -265,6 +280,8 @@ def execute_user_query(
             origin_column=origin_column,
             apply_row_permissions=apply_row_permissions,
             validate_columns=validate_columns,
+            query_timeout=query_timeout,
+            close_system_transaction_before_query=close_system_transaction_before_query,
         )
         return {
             "status": "success",
