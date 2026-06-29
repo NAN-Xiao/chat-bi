@@ -46,7 +46,7 @@ from apps.system.models.tenant import TenantUserModel
 from apps.system.crud.tenant import TENANT_ROLE_ADMIN, TENANT_ROLE_OWNER
 from apps.system.crud.user import is_platform_workspace_delegate, is_system_admin
 from common.core.config import settings
-from common.core.redis_client import build_redis_url, redis_key
+from common.core.redis_client import build_redis_url, user_redis_key
 from common.core.deps import SessionDep, CurrentUser
 from common.utils.chart_config import sanitize_chart_display_names
 from common.utils.utils import AppLogUtil
@@ -155,6 +155,18 @@ _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT: Redis | None = None
 _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT_LOCK = Lock()
 _DASHBOARD_SQL_PREVIEW_REDIS_WARNING_LOGGED = False
 _DASHBOARD_SQL_PREVIEW_REDIS_DISABLED_UNTIL = 0.0
+
+
+class DashboardSqlPreviewCacheKey:
+    def __init__(self, tenant_id: int, user_id: str, datasource_id: int, fingerprint: str):
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.datasource_id = datasource_id
+        self.fingerprint = fingerprint
+
+    @property
+    def memory_key(self) -> str:
+        return f"{self.tenant_id}:{self.user_id}:{self.datasource_id}:{self.fingerprint}"
 
 
 def _current_tenant_id(current_user: CurrentUser | None) -> int:
@@ -1072,16 +1084,24 @@ def _dashboard_sql_preview_cache_key(
         datasource_id: int,
         sql: str,
         pivot: Any | None,
-) -> str:
+) -> DashboardSqlPreviewCacheKey:
+    tenant_id = _current_tenant_id(current_user)
+    user_id = _user_id(current_user)
     payload = {
-        "tenant_id": _current_tenant_id(current_user),
-        "user_id": _user_id(current_user),
+        "tenant_id": tenant_id,
+        "user_id": user_id,
         "datasource_id": datasource_id,
         "sql": sql.strip(),
         "pivot": _dashboard_sql_preview_pivot_payload(pivot),
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    fingerprint = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return DashboardSqlPreviewCacheKey(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        datasource_id=datasource_id,
+        fingerprint=fingerprint,
+    )
 
 
 def _dashboard_sql_preview_redis_enabled() -> bool:
@@ -1118,24 +1138,37 @@ def _dashboard_sql_preview_redis_client() -> Redis | None:
     return _DASHBOARD_SQL_PREVIEW_REDIS_CLIENT
 
 
-def _dashboard_sql_preview_redis_key(cache_key: str) -> str:
-    return redis_key("dashboard", "sql_preview", cache_key)
+def _dashboard_sql_preview_redis_key(cache_key: DashboardSqlPreviewCacheKey) -> str:
+    return user_redis_key(
+        cache_key.tenant_id,
+        cache_key.user_id,
+        "datasource",
+        cache_key.datasource_id,
+        "dashboard",
+        "sql_preview",
+        cache_key.fingerprint,
+    )
 
 
-def _dashboard_sql_preview_memory_get(cache_key: str, *, allow_expired: bool = False) -> dict[str, Any] | None:
+def _dashboard_sql_preview_memory_get(
+        cache_key: DashboardSqlPreviewCacheKey,
+        *,
+        allow_expired: bool = False,
+) -> dict[str, Any] | None:
     ttl = _dashboard_sql_preview_cache_ttl()
     if ttl <= 0:
         return None
     now = time.monotonic()
+    memory_key = cache_key.memory_key
     with _DASHBOARD_SQL_PREVIEW_CACHE_LOCK:
-        cached = _DASHBOARD_SQL_PREVIEW_CACHE.get(cache_key)
+        cached = _DASHBOARD_SQL_PREVIEW_CACHE.get(memory_key)
         if cached is None:
             return None
         expires_at, result = cached
         if expires_at < now and not allow_expired:
-            _DASHBOARD_SQL_PREVIEW_CACHE.pop(cache_key, None)
+            _DASHBOARD_SQL_PREVIEW_CACHE.pop(memory_key, None)
             return None
-        _DASHBOARD_SQL_PREVIEW_CACHE.move_to_end(cache_key)
+        _DASHBOARD_SQL_PREVIEW_CACHE.move_to_end(memory_key)
         cloned = copy.deepcopy(result)
     if allow_expired and cached[0] < now:
         cloned["cache_stale"] = True
@@ -1143,20 +1176,25 @@ def _dashboard_sql_preview_memory_get(cache_key: str, *, allow_expired: bool = F
     return cloned
 
 
-def _dashboard_sql_preview_memory_set(cache_key: str, result: dict[str, Any]) -> None:
+def _dashboard_sql_preview_memory_set(cache_key: DashboardSqlPreviewCacheKey, result: dict[str, Any]) -> None:
     ttl = _dashboard_sql_preview_cache_ttl()
     max_entries = _dashboard_sql_preview_max_cache_entries()
     if ttl <= 0 or max_entries <= 0 or result.get("status") == "failed":
         return
     expires_at = time.monotonic() + ttl
+    memory_key = cache_key.memory_key
     with _DASHBOARD_SQL_PREVIEW_CACHE_LOCK:
-        _DASHBOARD_SQL_PREVIEW_CACHE[cache_key] = (expires_at, copy.deepcopy(result))
-        _DASHBOARD_SQL_PREVIEW_CACHE.move_to_end(cache_key)
+        _DASHBOARD_SQL_PREVIEW_CACHE[memory_key] = (expires_at, copy.deepcopy(result))
+        _DASHBOARD_SQL_PREVIEW_CACHE.move_to_end(memory_key)
         while len(_DASHBOARD_SQL_PREVIEW_CACHE) > max_entries:
             _DASHBOARD_SQL_PREVIEW_CACHE.popitem(last=False)
 
 
-def _dashboard_sql_preview_cache_get(cache_key: str, *, allow_expired: bool = False) -> dict[str, Any] | None:
+def _dashboard_sql_preview_cache_get(
+        cache_key: DashboardSqlPreviewCacheKey,
+        *,
+        allow_expired: bool = False,
+) -> dict[str, Any] | None:
     ttl = _dashboard_sql_preview_cache_ttl()
     if ttl <= 0:
         return None
@@ -1178,7 +1216,7 @@ def _dashboard_sql_preview_cache_get(cache_key: str, *, allow_expired: bool = Fa
     return _dashboard_sql_preview_memory_get(cache_key, allow_expired=allow_expired)
 
 
-def _dashboard_sql_preview_cache_set(cache_key: str, result: dict[str, Any]) -> None:
+def _dashboard_sql_preview_cache_set(cache_key: DashboardSqlPreviewCacheKey, result: dict[str, Any]) -> None:
     ttl = _dashboard_sql_preview_cache_ttl()
     if ttl <= 0 or result.get("status") == "failed":
         return
@@ -1203,19 +1241,21 @@ def _dashboard_sql_preview_cache_set(cache_key: str, result: dict[str, Any]) -> 
     _dashboard_sql_preview_memory_set(cache_key, result)
 
 
-def _dashboard_sql_preview_inflight_lock(cache_key: str) -> Lock:
+def _dashboard_sql_preview_inflight_lock(cache_key: DashboardSqlPreviewCacheKey) -> Lock:
+    memory_key = cache_key.memory_key
     with _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS_LOCK:
-        lock = _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.get(cache_key)
+        lock = _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.get(memory_key)
         if lock is None:
             lock = Lock()
-            _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS[cache_key] = lock
+            _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS[memory_key] = lock
         return lock
 
 
-def _dashboard_sql_preview_release_inflight_lock(cache_key: str, lock: Lock) -> None:
+def _dashboard_sql_preview_release_inflight_lock(cache_key: DashboardSqlPreviewCacheKey, lock: Lock) -> None:
+    memory_key = cache_key.memory_key
     with _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS_LOCK:
-        if _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.get(cache_key) is lock:
-            _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.pop(cache_key, None)
+        if _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.get(memory_key) is lock:
+            _DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.pop(memory_key, None)
 
 
 def _dashboard_sql_preview_datasource_semaphore(datasource_id: int) -> BoundedSemaphore:
@@ -2665,30 +2705,34 @@ def preview_sql(session: SessionDep, current_user: CurrentUser, request: Dashboa
         sql=normalized_sql,
         pivot=request.pivot,
     )
-    cached = _dashboard_sql_preview_cache_get(cache_key)
-    if cached is not None:
-        return cached
+    if not request.force_refresh:
+        cached = _dashboard_sql_preview_cache_get(cache_key)
+        if cached is not None:
+            return cached
     if request.cache_only:
         return _failed_chart_result("看板缓存未命中", "dashboard_cache_miss")
 
     inflight_lock = _dashboard_sql_preview_inflight_lock(cache_key)
     if not inflight_lock.acquire(timeout=_dashboard_sql_preview_dedupe_wait_timeout()):
-        cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
-        if cached is not None:
-            return cached
+        if not request.force_refresh:
+            cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+            if cached is not None:
+                return cached
         return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
 
     datasource_semaphore = _dashboard_sql_preview_datasource_semaphore(datasource_id)
     datasource_acquired = False
     try:
-        cached = _dashboard_sql_preview_cache_get(cache_key)
-        if cached is not None:
-            return cached
-        datasource_acquired = datasource_semaphore.acquire(timeout=_dashboard_sql_preview_wait_timeout())
-        if not datasource_acquired:
-            cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+        if not request.force_refresh:
+            cached = _dashboard_sql_preview_cache_get(cache_key)
             if cached is not None:
                 return cached
+        datasource_acquired = datasource_semaphore.acquire(timeout=_dashboard_sql_preview_wait_timeout())
+        if not datasource_acquired:
+            if not request.force_refresh:
+                cached = _dashboard_sql_preview_cache_get(cache_key, allow_expired=True)
+                if cached is not None:
+                    return cached
             AppLogUtil.warning(f"Dashboard SQL preview busy: datasource={datasource_id}")
             return _failed_chart_result(DASHBOARD_SQL_PREVIEW_BUSY_MESSAGE, "dashboard_query_busy")
 

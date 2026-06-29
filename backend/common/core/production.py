@@ -56,8 +56,8 @@ def validate_production_settings() -> list[str]:
         errors.append("SECRET_KEY must be set from environment and be at least 32 characters.")
     if settings.DEFAULT_PWD in _DEVELOPMENT_DEFAULT_PASSWORDS:
         errors.append("DEFAULT_PWD must be changed from the development default.")
-    if settings.POSTGRES_PASSWORD == "Password123@pg":
-        errors.append("POSTGRES_PASSWORD must be changed from the development default.")
+    if settings.core_db_password == "Password123@pg":
+        errors.append("Core database password must be changed from the development default.")
     sensitive_key = settings.SENSITIVE_CONFIG_ENCRYPTION_KEY or settings.DATASOURCE_CONFIG_ENCRYPTION_KEY
     if not (_env_present("SENSITIVE_CONFIG_ENCRYPTION_KEY") or _env_present("DATASOURCE_CONFIG_ENCRYPTION_KEY")):
         errors.append("SENSITIVE_CONFIG_ENCRYPTION_KEY must be set from environment in production.")
@@ -70,7 +70,7 @@ def validate_production_settings() -> list[str]:
             "AUTO_RUN_MIGRATIONS must be false in production; run database migrations as a separate release step."
         )
 
-    redis_url = settings.CACHE_REDIS_URL or settings.REDIS_URL
+    redis_url = settings.ZHISHU_REDIS_URL
     if not settings.REDIS_PASSWORD and not _redis_url_has_auth(redis_url):
         errors.append("Redis must require authentication through REDIS_PASSWORD, REDIS_URL, or CACHE_REDIS_URL.")
 

@@ -1,8 +1,8 @@
 param(
     [ValidateSet("backup", "restore", "list")]
     [string]$Action = "backup",
-    [string]$HostAddress = "127.0.0.1",
-    [int]$Port = 15432,
+    [string]$HostAddress = "10.1.5.28",
+    [int]$Port = 5432,
     [string]$Database = "zhishu_bi",
     [string]$User = "root",
     [string]$Password = "Password123@pg",
@@ -85,7 +85,7 @@ function New-Backup {
 
 function Restore-Backup {
     if (-not $Force) {
-        throw "Restore can overwrite local data. Re-run with -Force after confirming the target database is correct."
+        throw "Restore can overwrite target database data. Re-run with -Force after confirming the target database is correct."
     }
     if (-not $File) {
         throw "Restore requires -File."

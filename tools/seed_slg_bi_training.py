@@ -13,17 +13,18 @@
 from __future__ import annotations
 
 import datetime
-import os
 import sys
 from pathlib import Path
 
 import psycopg
 from psycopg.types.json import Jsonb
 
+from core_system_db import core_system_db_config, export_postgres_compat_env
+
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "backend"
 
-DB = dict(host="127.0.0.1", port=15432, user="root", password="Password123@pg", dbname="zhishu_bi")
+DB = core_system_db_config()
 DATASOURCE_NAME = "SLG BI Mock"
 XIAONAN_ACCOUNT = "xiaonan"
 
@@ -1078,11 +1079,7 @@ def _upsert_data_skill(
 def _save_embeddings(ids: list[int], tenant_id: int) -> int:
     if not ids:
         return 0
-    os.environ.setdefault("POSTGRES_SERVER", DB["host"])
-    os.environ.setdefault("POSTGRES_PORT", str(DB["port"]))
-    os.environ.setdefault("POSTGRES_DB", DB["dbname"])
-    os.environ.setdefault("POSTGRES_USER", DB["user"])
-    os.environ.setdefault("POSTGRES_PASSWORD", DB["password"])
+    export_postgres_compat_env(DB)
     if str(BACKEND_DIR) not in sys.path:
         sys.path.insert(0, str(BACKEND_DIR))
 

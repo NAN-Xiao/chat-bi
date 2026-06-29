@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "星通智数"
     APP_ENV: Literal["development", "test", "production"] = "development"
     PRODUCTION_CHECKS_ENABLED: bool = True
-    AUTO_RUN_MIGRATIONS: bool = True
+    AUTO_RUN_MIGRATIONS: bool = False
     #CONTEXT_PATH: str = "/zhishu"
     CONTEXT_PATH: str = ""
     SECRET_KEY: str = secrets.token_urlsafe(32)
@@ -63,11 +63,16 @@ class Settings(BaseSettings):
     def API_V1_STR(self) -> str:
         return self.CONTEXT_PATH + "/api/v1"
 
-    POSTGRES_SERVER: str = 'localhost'
-    POSTGRES_PORT: int = 5432
-    POSTGRES_USER: str = 'root'
-    POSTGRES_PASSWORD: str = "Password123@pg"
-    POSTGRES_DB: str = "zhishu_bi"
+    ZHISHU_DB_HOST: str = "10.1.5.28"
+    ZHISHU_DB_PORT: int = 5432
+    ZHISHU_DB_DB: str = "zhishu_bi"
+    ZHISHU_DB_USER: str = "root"
+    ZHISHU_DB_PASSWORD: str = "Password123@pg"
+    POSTGRES_SERVER: str = ''
+    POSTGRES_PORT: int | None = None
+    POSTGRES_USER: str = ''
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_DB: str = ""
     ZHISHU_DB_URL: str = ''
     # ZHISHU_DB_URL: str = 'mysql+pymysql://root:Password123%40mysql@127.0.0.1:3306/zhishu'
 
@@ -92,7 +97,7 @@ class Settings(BaseSettings):
     TENANT_USAGE_QUOTA_PLAN_LIMITS: str = ""
     MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024
 
-    CACHE_TYPE: Literal["redis", "memory", "none"] = "memory"
+    CACHE_TYPE: Literal["redis", "memory", "none"] = "redis"
     CACHE_REDIS_URL: str | None = None  # Redis URL, e.g., "redis://[[username]:[password]]@localhost:6379/0"
     CACHE_REDIS_PREFIX: str = "zhishu-cache"
 
@@ -102,9 +107,12 @@ class Settings(BaseSettings):
     DASHBOARD_SQL_PREVIEW_WAIT_TIMEOUT_SECONDS: float = 1.0
     DASHBOARD_SQL_PREVIEW_DEDUPE_WAIT_TIMEOUT_SECONDS: float = 8.0
 
+    ZHISHU_REDIS_URL: str | None = None
     REDIS_URL: str | None = None
-    REDIS_HOST: str = "127.0.0.1"
-    REDIS_PORT: int = 6379
+    ZHISHU_REDIS_HOST: str = "10.1.5.28"
+    ZHISHU_REDIS_PORT: int = 6379
+    REDIS_HOST: str = ""
+    REDIS_PORT: int | None = None
     REDIS_DB: int = 0
     REDIS_USERNAME: str | None = None
     REDIS_PASSWORD: str | None = None
@@ -140,13 +148,38 @@ class Settings(BaseSettings):
             return self.ZHISHU_DB_URL
         # return MultiHostUrl.build(
         #     scheme="postgresql+psycopg",
-        #     username=urllib.parse.quote(self.POSTGRES_USER),
-        #     password=urllib.parse.quote(self.POSTGRES_PASSWORD),
-        #     host=self.POSTGRES_SERVER,
-        #     port=self.POSTGRES_PORT,
-        #     path=self.POSTGRES_DB,
+        #     username=urllib.parse.quote(self.core_db_user),
+        #     password=urllib.parse.quote(self.core_db_password),
+        #     host=self.core_db_host,
+        #     port=self.core_db_port,
+        #     path=self.core_db_name,
         # )
-        return f"postgresql+psycopg://{urllib.parse.quote(self.POSTGRES_USER)}:{urllib.parse.quote(self.POSTGRES_PASSWORD)}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return (
+            "postgresql+psycopg://"
+            f"{urllib.parse.quote(self.core_db_user)}:"
+            f"{urllib.parse.quote(self.core_db_password)}@"
+            f"{self.core_db_host}:{self.core_db_port}/{self.core_db_name}"
+        )
+
+    @property
+    def core_db_host(self) -> str:
+        return self.ZHISHU_DB_HOST
+
+    @property
+    def core_db_port(self) -> int:
+        return self.ZHISHU_DB_PORT
+
+    @property
+    def core_db_user(self) -> str:
+        return self.ZHISHU_DB_USER
+
+    @property
+    def core_db_password(self) -> str:
+        return self.ZHISHU_DB_PASSWORD
+
+    @property
+    def core_db_name(self) -> str:
+        return self.ZHISHU_DB_DB
 
     MCP_IMAGE_PATH: str = '/opt/zhishu/images'
     EXCEL_PATH: str = '/opt/zhishu/data/excel'

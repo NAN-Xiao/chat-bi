@@ -18,8 +18,10 @@ import requests
 from sqlalchemy import MetaData, Table, delete, insert
 from sqlmodel import Session, create_engine, text
 
+from core_system_db import core_system_db_url
+
 DEFAULT_BASE_URL = "http://127.0.0.1:8000/api/v1"
-DEFAULT_SYSTEM_DB_URL = "postgresql+psycopg://root:Password123%40pg@127.0.0.1:15432/zhishu_bi"
+DEFAULT_SYSTEM_DB_URL = core_system_db_url()
 DEFAULT_OUTPUT_DIR = Path(".codex-runtime/smart-qa-graph-smoke")
 DEFAULT_CASES: list[dict[str, Any]] = [
     {"name": "line", "source_record_id": 181},

@@ -504,7 +504,12 @@ const loadCanvasData = (params: any) => {
   const resourceId = params?.id ? String(params.id) : ''
   const dashboardMode = resolveDashboardMode(params)
   const loadingKey = `${dashboardMode}:${resourceId}`
-  if (!resourceId || sameDashboard(resourceId, dashboardMode) || loadingDashboardId.value === loadingKey) return
+  const forceReload = params?.forceReload === true
+  if (
+    !resourceId ||
+    (!forceReload && sameDashboard(resourceId, dashboardMode)) ||
+    loadingDashboardId.value === loadingKey
+  ) return
   cancelDashboardWork()
   const loadVersion = ++dashboardLoadVersion
   const loadController = new AbortController()
@@ -573,7 +578,10 @@ const getPreviewStateInfo = () => {
 }
 
 const reload = (params: any) => {
-  loadCanvasData(params)
+  loadCanvasData({
+    ...params,
+    forceReload: true,
+  })
 }
 
 const reloadCurrentDashboard = () => {
@@ -583,6 +591,7 @@ const reloadCurrentDashboard = () => {
   loadCanvasData({
     id: resourceId,
     dashboardScope: currentDashboardMode(),
+    forceReload: true,
   })
 }
 

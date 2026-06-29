@@ -21,18 +21,14 @@ from typing import Any
 import psycopg
 import pymysql
 
+from core_system_db import core_system_db_config
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "backend"
 BACKUP_DIR = ROOT / ".codex-runtime" / "pg-backups"
 
-SYSTEM_DB = {
-    "host": "127.0.0.1",
-    "port": 15432,
-    "dbname": "zhishu_bi",
-    "user": "root",
-    "password": "Password123@pg",
-}
+SYSTEM_DB = core_system_db_config()
 
 TENANT_ID = 7477202383789887488
 DATASOURCE_ID = 3

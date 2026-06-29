@@ -111,6 +111,7 @@ function getResultFields(result: any) {
 
 type RefreshDataOptions = {
   silent?: boolean
+  forceRefresh?: boolean
 }
 
 const pivotGranularityOptions = computed(() => [
@@ -558,7 +559,7 @@ function schedulePivotRefresh() {
   }
   pivotRefreshTimer = window.setTimeout(() => {
     pivotRefreshTimer = undefined
-    void refreshData({ silent: true })
+    void refreshData({ silent: true, forceRefresh: true })
   }, 120)
 }
 
@@ -597,7 +598,13 @@ function isDashboardCacheMiss(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
 }
 
-async function previewChartSqlWithCacheFallback(payload: any) {
+async function previewChartSqlWithCacheFallback(payload: any, forceRefresh = false) {
+  if (forceRefresh) {
+    return dashboardApi.preview_sql({
+      ...payload,
+      force_refresh: true,
+    })
+  }
   const cachedResult = await dashboardApi.preview_sql({
     ...payload,
     cache_only: true,
@@ -610,6 +617,7 @@ async function previewChartSqlWithCacheFallback(payload: any) {
 
 async function refreshData(options: RefreshDataOptions = {}) {
   const silent = options.silent === true
+  const forceRefresh = options.forceRefresh !== false
   if (!props.viewInfo?.datasource) {
     if (!silent) {
       ElMessage.warning(t('dashboard.sql_editor_no_datasource'))
@@ -646,7 +654,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
       datasource: props.viewInfo.datasource,
       sql: props.viewInfo.sql.trim(),
       pivot: pivotPayload,
-    })
+    }, forceRefresh)
     if (requestSeq !== refreshRequestSeq) {
       return
     }
@@ -1012,7 +1020,7 @@ async function recoverStaleLoadingState() {
     return
   }
   if (props.showPosition === 'canvas' && props.viewInfo?.datasource && props.viewInfo?.sql?.trim()) {
-    await refreshData({ silent: true })
+    await refreshData({ silent: true, forceRefresh: false })
   }
 }
 

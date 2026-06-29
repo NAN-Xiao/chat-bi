@@ -2,7 +2,7 @@
 
 Targets:
 - BI tracking database: 127.0.0.1:5432 / slg_bi_mock / postgres / 111111
-- App system database: 127.0.0.1:15432 / zhishu_bi / root / Password123@pg
+- App system database: core ZHISHU_DB_* settings from the repo .env
 
 The dataset remains detail-level. Acquisition cost is stored on dim_player as
 player-level attribution fields and ROI is computed from fact_payments at query
@@ -21,6 +21,8 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+from core_system_db import core_system_db_config
+
 
 BI_DB = {
     "host": "127.0.0.1",
@@ -29,13 +31,7 @@ BI_DB = {
     "user": "postgres",
     "password": "111111",
 }
-SYSTEM_DB = {
-    "host": "127.0.0.1",
-    "port": 15432,
-    "dbname": "zhishu_bi",
-    "user": "root",
-    "password": "Password123@pg",
-}
+SYSTEM_DB = core_system_db_config()
 
 DASHBOARD_ID = "bf7f0accd27f45fc9915cbd2cc1c1511"
 DATASOURCE_ID = 1

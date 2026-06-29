@@ -7,24 +7,19 @@ It is idempotent: rerunning updates rows identified by their source marker.
 from __future__ import annotations
 
 import datetime as dt
-import os
 import sys
 from pathlib import Path
 
 import psycopg
 from psycopg.types.json import Jsonb
 
+from core_system_db import core_system_db_config, export_postgres_compat_env
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_DIR = ROOT / "backend"
 
-DB = {
-    "host": os.getenv("POSTGRES_SERVER", "127.0.0.1"),
-    "port": int(os.getenv("POSTGRES_PORT", "15432")),
-    "user": os.getenv("POSTGRES_USER", "root"),
-    "password": os.getenv("POSTGRES_PASSWORD", "Password123@pg"),
-    "dbname": os.getenv("POSTGRES_DB", "zhishu_bi"),
-}
+DB = core_system_db_config()
 DATASOURCE_NAME = "SLG BI Mock"
 
 
@@ -447,11 +442,7 @@ def _upsert_skill(cur, *, tenant_id: int, datasource_id: int, skill: dict[str, s
 def _save_embeddings(ids: list[int], tenant_id: int) -> int:
     if not ids:
         return 0
-    os.environ.setdefault("POSTGRES_SERVER", DB["host"])
-    os.environ.setdefault("POSTGRES_PORT", str(DB["port"]))
-    os.environ.setdefault("POSTGRES_DB", DB["dbname"])
-    os.environ.setdefault("POSTGRES_USER", DB["user"])
-    os.environ.setdefault("POSTGRES_PASSWORD", DB["password"])
+    export_postgres_compat_env(DB)
     if str(BACKEND_DIR) not in sys.path:
         sys.path.insert(0, str(BACKEND_DIR))
 

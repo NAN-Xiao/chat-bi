@@ -5,7 +5,7 @@ param(
     [string]$HostAddress = "127.0.0.1",
     [ValidateSet("auto", "memory", "redis", "none")]
     [string]$CacheType = "auto",
-    [string]$RedisHost = "127.0.0.1",
+    [string]$RedisHost = "10.1.5.28",
     [int]$RedisPort = 6379,
     [string]$FrontendHost = "http://localhost:5173",
     [string]$CorsOrigins = "",
@@ -21,8 +21,8 @@ $backendRoot = Join-Path $workspaceRoot "backend"
 $runtimeRoot = Join-Path $workspaceRoot ".codex-runtime"
 $replicaRuntime = Join-Path $runtimeRoot "backend-replicas"
 $pythonExe = Join-Path $backendRoot ".venv\Scripts\python.exe"
-$appSystemDbHost = "127.0.0.1"
-$appSystemDbPort = 15432
+$appSystemDbHost = "10.1.5.28"
+$appSystemDbPort = 5432
 $appSystemDbName = "zhishu_bi"
 $biDemoDatasourcePort = 5432
 
@@ -36,10 +36,7 @@ function Resolve-CacheType {
     if ($CacheType -ne "auto") {
         return $CacheType
     }
-    if ($BackendPorts.Count -gt 1) {
-        return "redis"
-    }
-    return "memory"
+    return "redis"
 }
 
 function Get-PortOwner([int]$Port) {
@@ -51,11 +48,11 @@ function Get-PortOwner([int]$Port) {
     return $connection.OwningProcess
 }
 
-function Test-TcpPort([string]$HostName, [int]$Port) {
+function Test-TcpPort([string]$HostName, [int]$Port, [int]$TimeoutMilliseconds = 5000) {
     $client = [System.Net.Sockets.TcpClient]::new()
     try {
         $async = $client.BeginConnect($HostName, $Port, $null, $null)
-        if (-not $async.AsyncWaitHandle.WaitOne(1000, $false)) {
+        if (-not $async.AsyncWaitHandle.WaitOne($TimeoutMilliseconds, $false)) {
             return $false
         }
         $client.EndConnect($async)
@@ -99,6 +96,12 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:POSTGRES_DB = $appSystemDbName
     $env:POSTGRES_USER = "root"
     $env:POSTGRES_PASSWORD = "Password123@pg"
+    $env:ZHISHU_DB_HOST = $appSystemDbHost
+    $env:ZHISHU_DB_PORT = [string]$appSystemDbPort
+    $env:ZHISHU_DB_DB = $appSystemDbName
+    $env:ZHISHU_DB_USER = "root"
+    $env:ZHISHU_DB_PASSWORD = "Password123@pg"
+    $env:SECRET_KEY = "y5txe1mRmS_JpOrUzFzHEu-kIQn3lf7ll0AOv9DQh0s"
 
     $env:FRONTEND_HOST = $FrontendHost
     if ($CorsOrigins) {
@@ -119,23 +122,26 @@ function Set-BackendEnvironment([string]$ResolvedCacheType) {
     $env:EXCEL_PATH = "$runtimeRootForEnv/excel"
     $env:LOCAL_MODEL_PATH = "$runtimeRootForEnv/models"
     $env:MCP_ENABLED = "false"
+    $env:AUTO_RUN_MIGRATIONS = "false"
 
     $env:CACHE_TYPE = $ResolvedCacheType
     if ($ResolvedCacheType -eq "redis") {
         $env:REDIS_HOST = $RedisHost
         $env:REDIS_PORT = [string]$RedisPort
+        $env:ZHISHU_REDIS_HOST = $RedisHost
+        $env:ZHISHU_REDIS_PORT = [string]$RedisPort
     }
 }
 
 function Assert-AppSystemDatabaseReady {
-    if ([int]$env:POSTGRES_PORT -eq $biDemoDatasourcePort) {
-        throw "Invalid backend system database port: 5432 is reserved for BI/tracking demo datasources. The app system database must be ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName."
+    if ($env:POSTGRES_SERVER -eq "127.0.0.1" -and [int]$env:POSTGRES_PORT -eq $biDemoDatasourcePort) {
+        throw "Invalid backend system database endpoint: local 127.0.0.1:5432 is reserved for BI/tracking demo datasources. The app system database must be ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName."
     }
     if ($env:POSTGRES_SERVER -ne $appSystemDbHost -or [int]$env:POSTGRES_PORT -ne $appSystemDbPort -or $env:POSTGRES_DB -ne $appSystemDbName) {
-        throw "Invalid backend system database settings: POSTGRES_SERVER=$env:POSTGRES_SERVER POSTGRES_PORT=$env:POSTGRES_PORT POSTGRES_DB=$env:POSTGRES_DB. Use ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName for the app system database; 5432 is only for BI/tracking datasources."
+        throw "Invalid backend system database settings: POSTGRES_SERVER=$env:POSTGRES_SERVER POSTGRES_PORT=$env:POSTGRES_PORT POSTGRES_DB=$env:POSTGRES_DB. Use ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName for the app system database; local 127.0.0.1:5432 is for BI/tracking datasources."
     }
     if (-not (Test-TcpPort -HostName $appSystemDbHost -Port $appSystemDbPort)) {
-        throw "App system database is not listening on ${appSystemDbHost}:$appSystemDbPort. Start zhishu_bi first. Do not point backend startup at 5432; 5432 is the BI/tracking datasource port."
+        throw "App system database is not listening on ${appSystemDbHost}:$appSystemDbPort. Verify the remote core system DB is reachable; do not point backend startup at local 127.0.0.1:5432 BI/tracking datasources."
     }
 
     $checkScript = @"
@@ -154,37 +160,25 @@ try:
     )
     cur = conn.cursor()
     cur.execute(
-        """
-        select
-            current_database(),
-            exists (select 1 from information_schema.tables where table_schema='public' and table_name='core_datasource'),
-            exists (select 1 from sys_tenant where name = 'slg_bi_mock' and status = 1),
-            exists (
-                select 1
-                from sys_user u
-                join sys_tenant_user tu on tu.user_id = u.id
-                join sys_tenant t on t.id = tu.tenant_id
-                where u.account = 'xiaonan'
-                  and t.name = 'slg_bi_mock'
-                  and tu.role = 'owner'
-                  and tu.status = 1
-            ),
-            coalesce((select count(*) from core_dashboard), 0)
-        """
+        "select current_database(), "
+        "exists (select 1 from information_schema.tables where table_schema='public' and table_name='core_datasource'), "
+        "exists (select 1 from information_schema.tables where table_schema='public' and table_name='sys_tenant'), "
+        "exists (select 1 from information_schema.tables where table_schema='public' and table_name='sys_user'), "
+        "coalesce((select count(*) from core_dashboard), 0)"
     )
-    database_name, has_core_datasource, has_slg_workspace, has_xiaonan_owner, dashboard_count = cur.fetchone()
+    database_name, has_core_datasource, has_sys_tenant, has_sys_user, dashboard_count = cur.fetchone()
     conn.close()
     if (
         database_name != "zhishu_bi"
         or not has_core_datasource
-        or not has_slg_workspace
-        or not has_xiaonan_owner
+        or not has_sys_tenant
+        or not has_sys_user
         or int(dashboard_count or 0) <= 0
     ):
         print(
-            "unexpected local app database: "
+            "unexpected app system database: "
             f"database={database_name}, core_datasource={has_core_datasource}, "
-            f"slg_bi_mock={has_slg_workspace}, xiaonan_owner={has_xiaonan_owner}, "
+            f"sys_tenant={has_sys_tenant}, sys_user={has_sys_user}, "
             f"dashboards={dashboard_count}",
             file=sys.stderr,
         )
@@ -193,9 +187,15 @@ except Exception as exc:
     print(str(exc), file=sys.stderr)
     sys.exit(1)
 "@
-    & $pythonExe -c $checkScript
-    if ($LASTEXITCODE -ne 0) {
-        throw "App system database check failed for ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Verify the local system DB is running and not confused with the BI datasource on 5432."
+    $checkScriptPath = Join-Path $replicaRuntime "check-app-system-db.py"
+    Set-Content -LiteralPath $checkScriptPath -Value $checkScript -Encoding UTF8
+    try {
+        & $pythonExe $checkScriptPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "App system database check failed for ${appSystemDbHost}:$appSystemDbPort/$appSystemDbName. Verify the core system DB is reachable and not confused with a BI datasource."
+        }
+    } finally {
+        Remove-Item -LiteralPath $checkScriptPath -ErrorAction SilentlyContinue
     }
 }
 

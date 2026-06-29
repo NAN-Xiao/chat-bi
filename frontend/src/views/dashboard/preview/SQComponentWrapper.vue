@@ -528,11 +528,20 @@ function isDashboardCacheMiss(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
 }
 
-async function previewChartSql(viewInfo: any, config?: any) {
+async function previewChartSql(viewInfo: any, config?: any, forceRefresh = false) {
   const payload = {
     datasource: viewInfo.datasource,
     sql: viewInfo.sql.trim(),
     pivot: viewInfo.pivot?.enabled === true ? viewInfo.pivot : undefined,
+  }
+  if (forceRefresh) {
+    return dashboardApi.preview_sql(
+      {
+        ...payload,
+        force_refresh: true,
+      },
+      config
+    )
   }
   const cachedResult = await dashboardApi.preview_sql(
     {
@@ -850,7 +859,7 @@ function buildWorksheetXml(sheetName: string, title: string, fields: string[], r
 
 async function refreshChartData() {
   if (isPreviewSingleChart.value) {
-    ;(component.value as any)?.refreshData?.()
+    ;(component.value as any)?.refreshData?.({ forceRefresh: true })
     return
   }
   const entries = getReportChartEntries()
@@ -875,7 +884,7 @@ async function refreshChartData() {
         const previousDataFields = Array.isArray(viewInfo.data?.fields) ? [...viewInfo.data.fields] : []
         const previousFields = Array.isArray(viewInfo.fields) ? [...viewInfo.fields] : []
         const hasPreviousSnapshot = hasChartSnapshot(viewInfo)
-        const result = await previewChartSql(viewInfo)
+        const result = await previewChartSql(viewInfo, undefined, true)
         const fields = getResultFields(result)
         const data = Array.isArray(result?.data) ? result.data : []
         if (!viewInfo.data || typeof viewInfo.data !== 'object') {
