@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
-import pandas as pd
 from langgraph.graph import END, StateGraph
 
 from apps.chat.curd.chat import (
@@ -11,24 +10,30 @@ from apps.chat.curd.chat import (
     get_chat_chart_data,
     get_chat_predict_data,
 )
+from apps.chat.task.assistant_output import (
+    emit as _emit,
+)
+from apps.chat.task.assistant_output import (
+    emit_chart_image,
+    emit_markdown_table,
+    emit_stream_text,
+)
+from apps.chat.task.assistant_output import (
+    sse as _sse,
+)
 from apps.chat.task.assistant_workflow import (
     AssistantWorkflowConfig,
-    emit_record_metadata as _emit_workflow_record_metadata,
     format_workflow_error,
     observe_node,
     run_assistant_workflow,
 )
 from apps.chat.task.assistant_workflow import (
-    emit as _emit,
+    emit_record_metadata as _emit_workflow_record_metadata,
 )
 from apps.chat.task.assistant_workflow import (
     session_scope as _session_scope,
 )
-from apps.chat.task.assistant_workflow import (
-    sse as _sse,
-)
 from common.utils.data_format import DataFormat
-from common.utils.utils import AppLogUtil
 
 ChartInsightAction = Literal["analysis", "predict"]
 
@@ -52,19 +57,11 @@ class ChartInsightGraphState(TypedDict, total=False):
     stop: bool
 
 
-def _log_node(service: Any, node: str) -> None:
-    from apps.chat.task.assistant_workflow import record_id
-
-    AppLogUtil.info(f"Chart Insight LangGraph node={node} record_id={record_id(service)}")
-
-
 def _observe_node(node: str, handler):
     return observe_node(WORKFLOW_CONFIG, node, handler)
 
 
 def _emit_record_metadata(state: ChartInsightGraphState) -> dict[str, Any]:
-    service = state["service"]
-    _log_node(service, "emit_record_metadata")
     return _emit_workflow_record_metadata(
         state,
         include_question_in_chat=False,
@@ -74,24 +71,18 @@ def _emit_record_metadata(state: ChartInsightGraphState) -> dict[str, Any]:
 
 def _generate_analysis(state: ChartInsightGraphState) -> dict[str, Any]:
     service = state["service"]
-    _log_node(service, "generate_analysis")
     in_chat = state["in_chat"]
     stream = state["stream"]
     json_result = state["json_result"]
 
-    full_text = ""
     with _session_scope() as session:
-        for chunk in service.generate_analysis(session):
-            content = chunk.get("content") or ""
-            full_text += content
-            if in_chat:
-                _emit(_sse({
-                    "content": content,
-                    "reasoning_content": chunk.get("reasoning_content"),
-                    "type": "analysis-result",
-                }))
-            elif stream:
-                _emit(content)
+        full_text = emit_stream_text(
+            service.generate_analysis(session),
+            in_chat=in_chat,
+            stream=stream,
+            event_type="analysis-result",
+            emit_plain_text=True,
+        )
 
     if in_chat:
         _emit(_sse({"type": "info", "msg": "analysis generated"}))
@@ -108,21 +99,16 @@ def _generate_analysis(state: ChartInsightGraphState) -> dict[str, Any]:
 
 def _generate_predict(state: ChartInsightGraphState) -> dict[str, Any]:
     service = state["service"]
-    _log_node(service, "generate_predict")
     in_chat = state["in_chat"]
     json_result = state["json_result"]
 
-    full_text = ""
     with _session_scope() as session:
-        for chunk in service.generate_predict(session):
-            content = chunk.get("content") or ""
-            full_text += content
-            if in_chat:
-                _emit(_sse({
-                    "content": content,
-                    "reasoning_content": chunk.get("reasoning_content"),
-                    "type": "predict-result",
-                }))
+        full_text = emit_stream_text(
+            service.generate_predict(session),
+            in_chat=in_chat,
+            stream=False,
+            event_type="predict-result",
+        )
 
         if in_chat:
             _emit(_sse({"type": "info", "msg": "predict generated"}))
@@ -138,10 +124,7 @@ def _generate_predict(state: ChartInsightGraphState) -> dict[str, Any]:
 
 
 def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
-    from apps.chat.task.llm import request_picture
-
     service = state["service"]
-    _log_node(service, "finalize_predict")
     in_chat = state["in_chat"]
     stream = state["stream"]
     json_result = state["json_result"]
@@ -163,12 +146,11 @@ def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
                         origin_data.get("fields"),
                         predict_data,
                     )
-                    if not md_data or not fields_list:
-                        _emit("Predict data result is empty.\n\n")
-                    else:
-                        df = pd.DataFrame(md_data, columns=fields_list)
-                        df_safe = DataFormat.safe_convert_to_string(df)
-                        _emit(df_safe.to_markdown(index=False) + "\n\n")
+                    emit_markdown_table(
+                        md_data,
+                        fields_list,
+                        empty_message="Predict data result is empty.",
+                    )
                 else:
                     json_result["origin_data"] = origin_data
                     json_result["predict_data"] = predict_data
@@ -178,19 +160,15 @@ def _finalize_predict(state: ChartInsightGraphState) -> dict[str, Any]:
                         combined_data = get_chat_chart_data(session, service.record.id)
                         combined_data["data"] = combined_data.get("data") + predict_data
 
-                        image_url, error = request_picture(
-                            service.record.chat_id,
-                            service.record.id,
-                            chart,
-                            format_json_data(combined_data),
+                        emit_chart_image(
+                            session=session,
+                            service=service,
+                            chart=chart,
+                            data=format_json_data(combined_data),
+                            json_result=json_result,
+                            emit_markdown=stream,
+                            emit_error_message=False,
                         )
-                        AppLogUtil.info(image_url)
-                        if stream:
-                            _emit(f'![{chart.get("type")}]({image_url})')
-                        else:
-                            json_result["image_url"] = image_url
-                        if error is not None:
-                            raise error
                 except Exception as error:
                     if stream and chart.get("type") != "table":
                         _emit("generate or fetch chart picture error.\n\n")

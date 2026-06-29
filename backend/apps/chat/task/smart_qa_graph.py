@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, TypedDict
 
 import orjson
-import pandas as pd
 import sqlparse
 from langgraph.graph import END, StateGraph
 
@@ -21,9 +20,20 @@ from apps.chat.models.chat_model import (
     OperationEnum,
     RenameChat,
 )
+from apps.chat.task.assistant_output import (
+    emit as _emit,
+)
+from apps.chat.task.assistant_output import (
+    emit_chart_image,
+    emit_markdown_table,
+    emit_permission_denied_response,
+    emit_stream_text,
+)
+from apps.chat.task.assistant_output import (
+    sse as _sse,
+)
 from apps.chat.task.assistant_workflow import (
     AssistantWorkflowConfig,
-    emit_record_metadata as _emit_workflow_record_metadata,
     format_workflow_error,
     observe_node,
     run_assistant_workflow,
@@ -32,18 +42,13 @@ from apps.chat.task.assistant_workflow import (
     consume_generator_return as _consume_generator_return,
 )
 from apps.chat.task.assistant_workflow import (
-    emit as _emit,
+    emit_record_metadata as _emit_workflow_record_metadata,
 )
 from apps.chat.task.assistant_workflow import (
     session_scope as _session_scope,
 )
-from apps.chat.task.assistant_workflow import (
-    sse as _sse,
-)
 from apps.datasource.crud.datasource import get_table_schema
 from apps.datasource.crud.permission_errors import (
-    PERMISSION_DENIED_ERROR_TYPE,
-    PERMISSION_DENIED_RESULT_MESSAGE,
     looks_like_permission_scope_error,
 )
 from apps.datasource.crud.query_executor import validate_user_query_sql_or_raise
@@ -84,19 +89,12 @@ class SmartQAGraphState(TypedDict, total=False):
     stop: bool
 
 
-def _log_node(service: Any, node: str) -> None:
-    from apps.chat.task.assistant_workflow import record_id
-
-    AppLogUtil.info(f"Smart Q&A LangGraph node={node} record_id={record_id(service)}")
-
-
 def _observe_node(node: str, handler):
     return observe_node(WORKFLOW_CONFIG, node, handler)
 
 
 def _prepare_existing_context(state: SmartQAGraphState) -> dict[str, Any]:
     service = state["service"]
-    _log_node(service, "prepare_context")
 
     if service.ds:
         from apps.chat.curd.custom_prompt import (
@@ -115,8 +113,6 @@ def _prepare_existing_context(state: SmartQAGraphState) -> dict[str, Any]:
 
 
 def _emit_record_metadata(state: SmartQAGraphState) -> dict[str, Any]:
-    service = state["service"]
-    _log_node(service, "emit_record_metadata")
     return _emit_workflow_record_metadata(
         state,
         include_question_in_chat=True,
@@ -126,7 +122,6 @@ def _emit_record_metadata(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _ensure_datasource(state: SmartQAGraphState) -> dict[str, Any]:
     service = state["service"]
-    _log_node(service, "ensure_datasource")
     in_chat = state["in_chat"]
 
     with _session_scope() as session:
@@ -157,7 +152,6 @@ def _ensure_datasource(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _generate_sql(state: SmartQAGraphState) -> dict[str, Any]:
     service = state["service"]
-    _log_node(service, "generate_sql")
     in_chat = state["in_chat"]
 
     with _session_scope() as session:
@@ -180,7 +174,6 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
     )
 
     service = state["service"]
-    _log_node(service, "prepare_sql")
     in_chat = state["in_chat"]
     stream = state["stream"]
     finish_step = state["finish_step"]
@@ -280,25 +273,15 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
             sql = service.save_checked_sql(session=session, sql=sql)
             failed_result = service.save_permission_denied_data(session=session)
             format_sql = sqlparse.format(sql, reindent=True)
-            if in_chat:
-                _emit(_sse({"content": format_sql, "type": "sql"}))
-                _emit(_sse({
-                    "content": "execute-failed",
-                    "type": "sql-data",
-                    "status": "failed",
-                    "error_type": PERMISSION_DENIED_ERROR_TYPE,
-                    "message": PERMISSION_DENIED_RESULT_MESSAGE,
-                }))
-                _emit(_sse({"type": "finish"}))
-            elif stream:
-                _emit(f"```sql\n{format_sql}\n```\n\n")
-                _emit(f"> {PERMISSION_DENIED_RESULT_MESSAGE}\n")
-            else:
-                json_result["success"] = False
-                json_result["sql"] = sql
-                json_result["data"] = failed_result
-                json_result["message"] = PERMISSION_DENIED_RESULT_MESSAGE
-                _emit(json_result)
+            emit_permission_denied_response(
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+                sql=sql,
+                failed_result=failed_result,
+                formatted_sql=format_sql,
+                emit_sql=True,
+            )
             return {"json_result": json_result, "stop": True}
 
     AppLogUtil.info("sql: " + sql)
@@ -363,7 +346,6 @@ def _prepare_sql(state: SmartQAGraphState) -> dict[str, Any]:
 
 def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
     service = state["service"]
-    _log_node(service, "execute_sql")
     in_chat = state["in_chat"]
     stream = state["stream"]
     finish_step = state["finish_step"]
@@ -392,24 +374,14 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
                 raise
             trigger_log_error(session, service.current_logs[OperationEnum.EXECUTE_SQL])
             failed_result = service.save_permission_denied_data(session=session)
-            if in_chat:
-                _emit(_sse({
-                    "content": "execute-failed",
-                    "type": "sql-data",
-                    "status": "failed",
-                    "error_type": PERMISSION_DENIED_ERROR_TYPE,
-                    "message": PERMISSION_DENIED_RESULT_MESSAGE,
-                    "reason": PERMISSION_DENIED_RESULT_MESSAGE,
-                }))
-                _emit(_sse({"type": "finish"}))
-            elif stream:
-                _emit(f"> {PERMISSION_DENIED_RESULT_MESSAGE}\n")
-            else:
-                json_result["success"] = False
-                json_result["sql"] = sql
-                json_result["data"] = failed_result
-                json_result["message"] = PERMISSION_DENIED_RESULT_MESSAGE
-                _emit(json_result)
+            emit_permission_denied_response(
+                in_chat=in_chat,
+                stream=stream,
+                json_result=json_result,
+                sql=sql,
+                failed_result=failed_result,
+                include_reason=True,
+            )
             return {"json_result": json_result, "stop": True}
 
         service.current_logs[OperationEnum.EXECUTE_SQL] = end_log(
@@ -438,12 +410,11 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
                     column_list,
                     result.get("data"),
                 )
-                if not data or not fields_list:
-                    _emit("The SQL execution result is empty.\n\n")
-                else:
-                    df = pd.DataFrame(data, columns=fields_list)
-                    df_safe = DataFormat.safe_convert_to_string(df)
-                    _emit(df_safe.to_markdown(index=False) + "\n\n")
+                emit_markdown_table(
+                    data,
+                    fields_list,
+                    empty_message="The SQL execution result is empty.",
+                )
         else:
             _emit(json_result)
         return {"json_result": json_result, "result": result, "stop": True}
@@ -452,10 +423,7 @@ def _execute_sql(state: SmartQAGraphState) -> dict[str, Any]:
 
 
 def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
-    from apps.chat.task.llm import request_picture
-
     service = state["service"]
-    _log_node(service, "generate_chart")
     in_chat = state["in_chat"]
     stream = state["stream"]
     return_img = state["return_img"]
@@ -483,15 +451,12 @@ def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
             )
         AppLogUtil.info("used_tables_schema: \n" + used_tables_schema)
 
-        full_chart_text = ""
-        for chunk in service.generate_chart(session, chart_type, used_tables_schema):
-            full_chart_text += chunk.get("content")
-            if in_chat:
-                _emit(_sse({
-                    "content": chunk.get("content"),
-                    "reasoning_content": chunk.get("reasoning_content"),
-                    "type": "chart-result",
-                }))
+        full_chart_text = emit_stream_text(
+            service.generate_chart(session, chart_type, used_tables_schema),
+            in_chat=in_chat,
+            stream=False,
+            event_type="chart-result",
+        )
         if in_chat:
             _emit(_sse({"type": "info", "msg": "chart generated"}))
 
@@ -511,70 +476,33 @@ def _generate_chart(state: SmartQAGraphState) -> dict[str, Any]:
                 result.get("fields"),
                 result.get("data"),
             )
-            if not md_data or not fields_list:
-                _emit("The SQL execution result is empty.\n\n")
-            else:
-                df = pd.DataFrame(md_data, columns=fields_list)
-                df_safe = DataFormat.safe_convert_to_string(df)
-                _emit(df_safe.to_markdown(index=False) + "\n\n")
+            emit_markdown_table(
+                md_data,
+                fields_list,
+                empty_message="The SQL execution result is empty.",
+            )
         else:
-            try:
-                if chart.get("type") != "table" and return_img:
-                    service.current_logs[OperationEnum.GENERATE_PICTURE] = start_log(
-                        session=session,
-                        operate=OperationEnum.GENERATE_PICTURE,
-                        record_id=service.record.id,
-                        local_operation=True,
-                    )
-                    image_url, error = request_picture(
-                        service.record.chat_id,
-                        service.record.id,
-                        chart,
-                        format_json_data(result),
-                    )
-                    AppLogUtil.info(image_url)
-                    json_result["image_url"] = image_url
-                    if error is not None:
-                        raise error
-
-                    service.current_logs[OperationEnum.GENERATE_PICTURE] = end_log(
-                        session=session,
-                        log=service.current_logs[OperationEnum.GENERATE_PICTURE],
-                        full_message=image_url,
-                    )
-            except Exception:
-                raise
+            emit_chart_image(
+                session=session,
+                service=service,
+                chart=chart,
+                data=format_json_data(result),
+                return_img=return_img,
+                json_result=json_result,
+                log_operation=True,
+            )
             _emit(json_result)
 
         if not in_chat and stream:
-            try:
-                if chart.get("type") != "table" and return_img:
-                    service.current_logs[OperationEnum.GENERATE_PICTURE] = start_log(
-                        session=session,
-                        operate=OperationEnum.GENERATE_PICTURE,
-                        record_id=service.record.id,
-                        local_operation=True,
-                    )
-                    image_url, error = request_picture(
-                        service.record.chat_id,
-                        service.record.id,
-                        chart,
-                        format_json_data(result),
-                    )
-                    AppLogUtil.info(image_url)
-                    _emit(f'![{chart.get("type")}]({image_url})')
-                    if error is not None:
-                        raise error
-
-                    service.current_logs[OperationEnum.GENERATE_PICTURE] = end_log(
-                        session=session,
-                        log=service.current_logs[OperationEnum.GENERATE_PICTURE],
-                        full_message=image_url,
-                    )
-            except Exception as error:
-                if chart.get("type") != "table":
-                    _emit("generate or fetch chart picture error.\n\n")
-                raise error
+            emit_chart_image(
+                session=session,
+                service=service,
+                chart=chart,
+                data=format_json_data(result),
+                return_img=return_img,
+                emit_markdown=True,
+                log_operation=True,
+            )
 
     return {"json_result": json_result, "chart": chart}
 

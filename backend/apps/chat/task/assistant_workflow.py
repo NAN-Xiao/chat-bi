@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import orjson
-from langgraph.config import get_stream_writer
 from sqlmodel import Session
 
+from apps.chat.task.assistant_output import emit, sse
 from apps.datasource.crud.permission_errors import (
     PERMISSION_DENIED_ERROR_TYPE,
     looks_like_permission_scope_error,
@@ -29,14 +29,6 @@ class AssistantWorkflowConfig:
     workflow_key: str
     run_id_prefix: str
     log_prefix: str
-
-
-def emit(payload: Any) -> None:
-    get_stream_writer()(payload)
-
-
-def sse(payload: dict[str, Any]) -> str:
-    return "data:" + orjson.dumps(payload).decode() + "\n\n"
 
 
 def record_id(service: Any) -> Any:

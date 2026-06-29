@@ -323,6 +323,7 @@ class DashboardSqlPreview(BaseModel):
     datasource: int
     sql: str = ''
     pivot: Optional[DashboardPivotRequest] = None
+    cache_only: bool = False
 
 
 class DashboardDefaultRequest(BaseModel):

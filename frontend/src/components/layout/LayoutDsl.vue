@@ -14,7 +14,7 @@ import icon_side_expand_outlined from '@/assets/svg/icon_side-expand_outlined.sv
 import { useRoute, useRouter } from 'vue-router'
 import { useAppearanceStoreWithOut } from '@/stores/appearance'
 import { useUserStore } from '@/stores/user'
-import { emitWorkspaceContextChange, useEmitt } from '@/utils/useEmitt'
+import { emitWorkspaceContextChange, useEmitt, WORKSPACE_CONTEXT_CHANGE_EVENT } from '@/utils/useEmitt'
 import { useDatasourceContextStore } from '@/stores/datasourceContext'
 import { isMobile } from '@/utils/utils'
 import { PLATFORM_ADMIN_HOME } from '@/utils/navigation'
@@ -35,6 +35,7 @@ const collapse = ref(false)
 const collapseCopy = ref(false)
 const analysisAssistantExpanded = ref(false)
 const currentTheme = ref<ThemeMode>(getInitialTheme())
+const workspaceAdminViewVersion = ref(0)
 const appearanceStore = useAppearanceStoreWithOut()
 let time: any
 const handleThemeChange = (event: Event) => {
@@ -117,6 +118,18 @@ const isPlatformSaasAdminShell = computed(
 )
 const useTopNavigationShell = computed(() => !isPlatformSaasAdminShell.value)
 const showTopWorkspaceAdminSidebar = computed(() => useTopNavigationShell.value && showSysmenu.value)
+const workspaceScopedViewKey = computed(() =>
+  showTopWorkspaceAdminSidebar.value
+    ? `workspace-admin:${workspaceAdminViewVersion.value}`
+    : 'workspace-content'
+)
+useEmitt({
+  name: WORKSPACE_CONTEXT_CHANGE_EVENT,
+  callback: (event?: any) => {
+    if (event?.phase !== 'changed' || !showTopWorkspaceAdminSidebar.value) return
+    workspaceAdminViewVersion.value += 1
+  },
+})
 onBeforeMount(() => {
   if (isPhone.value) {
     collapse.value = true
@@ -382,7 +395,7 @@ onMounted(() => {
           <Menu scope="system"></Menu>
         </aside>
         <main class="content-main">
-          <router-view />
+          <router-view :key="workspaceScopedViewKey" />
         </main>
       </div>
     </div>

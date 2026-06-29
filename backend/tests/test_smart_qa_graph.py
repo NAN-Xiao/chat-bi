@@ -78,6 +78,9 @@ class FakeSmartQAService:
         self.executed: list[dict[str, Any]] = []
         self.chart_generated = False
         self.finished = False
+        self.chart_chunks = [
+            {"content": '{"type":"table","title":"Result","columns":[{"value":"value"}]}', "reasoning_content": ""},
+        ]
 
     def get_record(self):
         return self.record
@@ -148,7 +151,7 @@ class FakeSmartQAService:
 
     def generate_chart(self, *args, **kwargs):
         self.chart_generated = True
-        yield {"content": '{"type":"table","title":"Result","columns":[{"value":"value"}]}', "reasoning_content": ""}
+        yield from self.chart_chunks
 
     def check_save_chart(self, *, session, res, result):
         assert session is not None
@@ -431,6 +434,41 @@ def test_non_stream_full_chart_returns_json_result(monkeypatch: pytest.MonkeyPat
             "chart": {"type": "table", "title": "Result", "columns": [{"value": "value"}]},
         }
     ]
+
+
+def test_chart_generation_tolerates_reasoning_only_chunk(monkeypatch: pytest.MonkeyPatch):
+    service = FakeSmartQAService(sql_answer=_sql_answer("select 1 as value"))
+    service.chart_chunks = [
+        {"content": None, "reasoning_content": "thinking chart"},
+        {"content": '{"type":"table","title":"Result","columns":[{"value":"value"}]}', "reasoning_content": ""},
+    ]
+    monkeypatch.setattr(
+        graph,
+        "validate_user_query_sql_or_raise",
+        lambda **kwargs: (kwargs["sql"], ["orders"]),
+    )
+    monkeypatch.setattr(
+        graph,
+        "get_table_schema",
+        lambda **kwargs: ("table orders(value int)", ["orders"]),
+    )
+
+    chunks = list(
+        graph.run_smart_qa_graph(
+            service,
+            in_chat=True,
+            stream=True,
+            finish_step=ChatFinishStep.GENERATE_CHART,
+        ),
+    )
+    events = _events(chunks)
+    chart_result_events = [event for event in events if event["type"] == "chart-result"]
+
+    assert service.chart_generated is True
+    assert chart_result_events[0]["content"] == ""
+    assert chart_result_events[0]["reasoning_content"] == "thinking chart"
+    assert any(event["type"] == "chart" for event in events)
+    assert events[-1]["type"] == "finish"
 
 
 def test_llm_service_routes_smart_qa_to_graph(monkeypatch: pytest.MonkeyPatch) -> None:

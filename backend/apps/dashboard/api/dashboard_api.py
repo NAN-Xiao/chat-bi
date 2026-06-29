@@ -1,5 +1,7 @@
 ﻿from typing import List
 
+import asyncio
+
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 
 from apps.dashboard.crud.dashboard_service import list_resource, load_resource, \
@@ -50,7 +52,7 @@ async def list_resource_api(session: SessionDep, dashboard: QueryDashboard, curr
 
 
 @router.post("/load_resource", summary=f"{PLACEHOLDER_PREFIX}load_resource_api")
-async def load_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
+def load_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
     return load_resource(session=session, dashboard=dashboard, current_user=current_user)
 
 
@@ -60,7 +62,7 @@ async def list_default_resource_api(session: SessionDep, current_user: CurrentUs
 
 
 @router.post("/default/load", summary=f"{PLACEHOLDER_PREFIX}dashboard_default")
-async def load_default_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
+def load_default_resource_api(session: SessionDep, current_user: CurrentUser, dashboard: QueryDashboard):
     return load_default_resource(session=session, dashboard=dashboard, current_user=current_user)
 
 
@@ -246,7 +248,12 @@ async def check_name_api(session: SessionDep, user: CurrentUser, dashboard: Quer
 @router.post("/sql_preview", summary=f"{PLACEHOLDER_PREFIX}dashboard_sql_preview")
 @require_permissions(permission=AppPermission(type='ds', keyExpression="request.datasource"))
 async def sql_preview_api(session: SessionDep, current_user: CurrentUser, request: DashboardSqlPreview):
-    return preview_sql(session=session, current_user=current_user, request=request)
+    return await asyncio.to_thread(
+        preview_sql,
+        session=session,
+        current_user=current_user,
+        request=request,
+    )
 
 
 @router.post("/share", summary=f"{PLACEHOLDER_PREFIX}dashboard_share")

@@ -55,6 +55,7 @@ const chartRef = ref(null)
 const currentChartType = ref<ChartTypes | undefined>(undefined)
 const frameSize = ref({ width: 0, height: 0 })
 const refreshing = ref(false)
+const blockingRefreshLoading = ref(false)
 const chartRenderVersion = ref(0)
 const pivotCalendarMonth = ref('')
 const pivotCalendarDraftStart = ref('')
@@ -63,6 +64,7 @@ let renderTimer: number | undefined
 let progressTimer: number | undefined
 let pivotRefreshTimer: number | undefined
 let refreshRequestSeq = 0
+let blockingRefreshRequestSeq = 0
 
 type PivotGranularity = 'day' | 'week' | 'month'
 type PivotQuickRange = {
@@ -562,11 +564,18 @@ function schedulePivotRefresh() {
 
 function hasChartResult(viewInfo: any) {
   const rows = viewInfo?.data?.data
-  const fields = unique([
-    ...(Array.isArray(viewInfo?.data?.fields) ? viewInfo.data.fields : []),
-    ...(Array.isArray(viewInfo?.fields) ? viewInfo.fields : []),
-  ])
-  return Array.isArray(rows) && (rows.length > 0 || fields.length > 0)
+  return Array.isArray(rows) && rows.length > 0
+}
+
+function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
+  if (!viewInfo || typeof viewInfo !== 'object') {
+    return
+  }
+  if (!viewInfo.data || typeof viewInfo.data !== 'object') {
+    viewInfo.data = {}
+  }
+  viewInfo.snapshotRefreshedAt = refreshedAt
+  viewInfo.data.snapshotRefreshedAt = refreshedAt
 }
 
 function normalizeLoadedChartState() {
@@ -582,6 +591,21 @@ function normalizeLoadedChartState() {
   props.viewInfo.dataState = props.viewInfo.status === 'failed' ? 'failed' : 'ready'
   props.viewInfo.loadingProgress = 100
   return true
+}
+
+function isDashboardCacheMiss(result: any) {
+  return result?.status === 'failed' && result?.error_type === 'dashboard_cache_miss'
+}
+
+async function previewChartSqlWithCacheFallback(payload: any) {
+  const cachedResult = await dashboardApi.preview_sql({
+    ...payload,
+    cache_only: true,
+  })
+  if (!isDashboardCacheMiss(cachedResult)) {
+    return cachedResult
+  }
+  return dashboardApi.preview_sql(payload)
 }
 
 async function refreshData(options: RefreshDataOptions = {}) {
@@ -602,13 +626,23 @@ async function refreshData(options: RefreshDataOptions = {}) {
   if (!props.viewInfo.data || typeof props.viewInfo.data !== 'object') {
     props.viewInfo.data = {}
   }
+  const previousData = Array.isArray(props.viewInfo.data.data) ? [...props.viewInfo.data.data] : []
+  const previousDataFields = Array.isArray(props.viewInfo.data.fields)
+    ? [...props.viewInfo.data.fields]
+    : []
+  const previousFields = Array.isArray(props.viewInfo.fields) ? [...props.viewInfo.fields] : []
+  const hasPreviousRows = previousData.length > 0
   props.viewInfo.dataState = 'loading'
   props.viewInfo.loadingProgress = 0
   startRefreshProgress()
   const requestSeq = ++refreshRequestSeq
+  if (!silent) {
+    blockingRefreshLoading.value = true
+    blockingRefreshRequestSeq = requestSeq
+  }
   const pivotPayload = getPivotPayload()
   try {
-    const result = await dashboardApi.preview_sql({
+    const result = await previewChartSqlWithCacheFallback({
       datasource: props.viewInfo.datasource,
       sql: props.viewInfo.sql.trim(),
       pivot: pivotPayload,
@@ -635,12 +669,21 @@ async function refreshData(options: RefreshDataOptions = {}) {
     props.viewInfo.status = result?.status || 'success'
     props.viewInfo.message = result?.message || ''
     if (props.viewInfo.status === 'failed') {
-      props.viewInfo.dataState = 'failed'
+      if (hasPreviousRows) {
+        props.viewInfo.data.fields = previousDataFields
+        props.viewInfo.data.data = previousData
+        props.viewInfo.fields = previousFields
+        props.viewInfo.status = 'success'
+        props.viewInfo.dataState = 'ready'
+      } else {
+        props.viewInfo.dataState = 'failed'
+      }
       if (!silent) {
         ElMessage.error(props.viewInfo.message || t('dashboard.chart_refresh_failed'))
       }
     } else {
       props.viewInfo.dataState = 'ready'
+      markChartSnapshotRefreshed(props.viewInfo)
       if (!silent) {
         ElMessage.success(t('dashboard.chart_refresh_success'))
       }
@@ -652,9 +695,17 @@ async function refreshData(options: RefreshDataOptions = {}) {
     if (requestSeq !== refreshRequestSeq) {
       return
     }
-    props.viewInfo.status = 'failed'
     props.viewInfo.message = error?.message || t('dashboard.chart_refresh_failed')
-    props.viewInfo.dataState = 'failed'
+    if (hasPreviousRows) {
+      props.viewInfo.data.fields = previousDataFields
+      props.viewInfo.data.data = previousData
+      props.viewInfo.fields = previousFields
+      props.viewInfo.status = 'success'
+      props.viewInfo.dataState = 'ready'
+    } else {
+      props.viewInfo.status = 'failed'
+      props.viewInfo.dataState = 'failed'
+    }
     props.viewInfo.loadingProgress = 100
     if (!silent) {
       ElMessage.error(error?.message || t('dashboard.chart_refresh_failed'))
@@ -663,6 +714,10 @@ async function refreshData(options: RefreshDataOptions = {}) {
     if (requestSeq === refreshRequestSeq) {
       stopRefreshProgress()
       refreshing.value = false
+    }
+    if (requestSeq === blockingRefreshRequestSeq) {
+      blockingRefreshLoading.value = false
+      blockingRefreshRequestSeq = 0
     }
   }
 }
@@ -884,6 +939,29 @@ const chartLoading = computed(
     props.viewInfo?.dataState === 'loading' ||
     props.viewInfo?.status === 'loading'
 )
+const hasRenderedChartData = computed(() => {
+  const rows = props.viewInfo?.data?.data
+  return Array.isArray(rows) && rows.length > 0
+})
+const showFullChartLoading = computed(
+  () => chartLoading.value && (blockingRefreshLoading.value || !hasRenderedChartData.value)
+)
+const showEmptyChartState = computed(() => {
+  return (
+    !chartLoading.value &&
+    props.viewInfo?.status !== 'failed' &&
+    props.viewInfo?.id &&
+    !hasRenderedChartData.value
+  )
+})
+const showChartContent = computed(() => {
+  return (
+    !showFullChartLoading.value &&
+    !showEmptyChartState.value &&
+    props.viewInfo?.status !== 'failed' &&
+    props.viewInfo?.id
+  )
+})
 const chartLoadingProgress = computed(() => {
   const progress = Number(props.viewInfo?.loadingProgress ?? 0)
   if (!Number.isFinite(progress)) {
@@ -1186,7 +1264,7 @@ defineExpose({
       <span class="pivot-summary">{{ pivotSummaryText }}</span>
     </div>
     <div class="chart-show-area" :class="`insight-layout-${effectiveInsightLayout}`">
-      <div v-if="chartLoading" class="chart-loading-info">
+      <div v-if="showFullChartLoading" class="chart-loading-info">
         <el-progress
           type="circle"
           :percentage="chartLoadingProgress"
@@ -1198,6 +1276,9 @@ defineExpose({
       </div>
       <div v-else-if="viewInfo.status === 'failed'" class="error-info">
         {{ viewInfo.message }}
+      </div>
+      <div v-else-if="showEmptyChartState" class="chart-empty-info">
+        {{ t('dashboard.sql_editor_no_preview_data') }}
       </div>
       <ChartInsightHeader
         v-else-if="canShowInsightHeader && effectiveInsightLayout === 'top'"
@@ -1214,10 +1295,14 @@ defineExpose({
         :insight="viewInfo.chart?.insight"
       />
       <div
-        v-if="!chartLoading && viewInfo.status !== 'failed' && viewInfo.id"
+        v-if="showChartContent"
         class="chart-content-row"
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
+        <div v-if="chartLoading" class="chart-refresh-overlay">
+          <span>{{ t('dashboard.chart_data_loading') }}</span>
+          <span>{{ chartLoadingProgress }}%</span>
+        </div>
         <ChartInsightHeader
           v-if="canShowInsightHeader && effectiveInsightLayout === 'side'"
           :compact="compactInsightHeader"
@@ -1742,6 +1827,7 @@ defineExpose({
   }
 
   .chart-content-row {
+    position: relative;
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -1752,6 +1838,38 @@ defineExpose({
       align-items: stretch;
     }
   }
+}
+
+.chart-refresh-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--workspace-border-soft, rgba(31, 35, 41, 0.08));
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 20px rgba(31, 35, 41, 0.08);
+  color: var(--workspace-text-secondary, #66758f);
+  font-size: 12px;
+  line-height: 28px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.chart-empty-info {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--workspace-text-secondary, #66758f);
+  font-size: 13px;
 }
 
 .chart-base-container:has(.pivot-toolbar) .chart-show-area {
