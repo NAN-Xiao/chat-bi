@@ -13,7 +13,7 @@ import os
 import re
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -46,6 +46,34 @@ EXPECTED_VIEW_IDS = {
     "2149b7abbc6c4cd7ad6f52379e69b15a",
 }
 
+PROD_ID = 110000038
+LOOKBACK_DAYS = 15
+PAY_EVENTS = (
+    "'PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish',"
+    "'ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish'"
+)
+
+REALTIME_VIEW_FIELDS = {
+    "e3fe7e4819e64b71b76d9329a3023359": {
+        "x_value": "time_label",
+        "x_name": "时间",
+        "y_value": "online_users",
+        "y_name": "实时在线人数",
+    },
+    "4fc570b4be7d406c9f648d9088f760bb": {
+        "x_value": "hour_label",
+        "x_name": "小时",
+        "y_value": "pay_count",
+        "y_name": "实时付费事件次数",
+    },
+    "2149b7abbc6c4cd7ad6f52379e69b15a": {
+        "x_value": "hour_label",
+        "x_name": "小时",
+        "y_value": "cumulative_pay_count",
+        "y_name": "累计付费事件次数",
+    },
+}
+
 
 def _load_env_file(path: Path) -> None:
     if not path.exists():
@@ -76,6 +104,10 @@ def json_value(value: Any) -> Any:
 
 def normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     return {key: json_value(value) for key, value in row.items()}
+
+
+def yyyymmdd(value: date) -> int:
+    return int(value.strftime("%Y%m%d"))
 
 
 def load_skill_sql_blocks(cur: Any) -> dict[str, str]:
@@ -158,6 +190,185 @@ def run_chart_sql(conf: Any, sql: str) -> tuple[list[str], list[dict[str, Any]]]
     return fields, [normalize_row(dict(row)) for row in rows]
 
 
+def run_single_row_sql(conf: Any, sql: str) -> dict[str, Any] | None:
+    fields, rows = run_chart_sql(conf, sql)
+    del fields
+    return rows[0] if rows else None
+
+
+def load_latest_pay_business_date(conf: Any) -> date | None:
+    row = run_single_row_sql(
+        conf,
+        f"""
+        WITH latest_dt AS (
+            SELECT e.dt
+            FROM `event` e
+            WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL {LOOKBACK_DAYS} DAY), '%Y%m%d') AS SIGNED)
+                           AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+              AND e.prod = {PROD_ID}
+              AND e.event IN ({PAY_EVENTS})
+            GROUP BY e.dt
+            ORDER BY e.dt DESC
+            LIMIT 1
+        )
+        SELECT DATE(MAX(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))) AS biz_date,
+               COUNT(*) AS rows_in_latest_dt
+        FROM `event` e
+        JOIN latest_dt ld ON e.dt = ld.dt
+        WHERE e.prod = {PROD_ID}
+          AND e.event IN ({PAY_EVENTS})
+        """.strip(),
+    )
+    raw_value = row.get("biz_date") if row else None
+    if isinstance(raw_value, date):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value:
+        return date.fromisoformat(raw_value[:10])
+    return None
+
+
+def load_latest_ccu_business_date(conf: Any) -> date | None:
+    row = run_single_row_sql(
+        conf,
+        f"""
+        WITH latest_dt AS (
+            SELECT e.dt
+            FROM `event` e
+            WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), INTERVAL {LOOKBACK_DAYS} DAY), '%Y%m%d') AS SIGNED)
+                           AND CAST(DATE_FORMAT(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 8 HOUR), '%Y%m%d') AS SIGNED)
+              AND e.prod = {PROD_ID}
+              AND e.event = 'CCU'
+              AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') IS NOT NULL
+            GROUP BY e.dt
+            ORDER BY e.dt DESC
+            LIMIT 1
+        )
+        SELECT DATE(MAX(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))) AS biz_date,
+               COUNT(*) AS rows_in_latest_dt
+        FROM `event` e
+        JOIN latest_dt ld ON e.dt = ld.dt
+        WHERE e.prod = {PROD_ID}
+          AND e.event = 'CCU'
+          AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') IS NOT NULL
+        """.strip(),
+    )
+    raw_value = row.get("biz_date") if row else None
+    if isinstance(raw_value, date):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value:
+        return date.fromisoformat(raw_value[:10])
+    return None
+
+
+def build_fixed_realtime_sql(sql_blocks: dict[str, str], conf: Any) -> dict[str, str]:
+    pay_biz_date = load_latest_pay_business_date(conf)
+    ccu_biz_date = load_latest_ccu_business_date(conf)
+    fixed_sql = dict(sql_blocks)
+    if ccu_biz_date is not None:
+        fixed_sql["e3fe7e4819e64b71b76d9329a3023359"] = build_online_sql(ccu_biz_date)
+    else:
+        fixed_sql["e3fe7e4819e64b71b76d9329a3023359"] = build_empty_sql(
+            "time_label",
+            "online_users",
+        )
+    if pay_biz_date is not None:
+        fixed_sql["4fc570b4be7d406c9f648d9088f760bb"] = build_hourly_pay_sql(pay_biz_date)
+        fixed_sql["2149b7abbc6c4cd7ad6f52379e69b15a"] = build_cumulative_pay_sql(pay_biz_date)
+    else:
+        fixed_sql["4fc570b4be7d406c9f648d9088f760bb"] = build_empty_sql(
+            "hour_label",
+            "pay_count",
+        )
+        fixed_sql["2149b7abbc6c4cd7ad6f52379e69b15a"] = build_empty_sql(
+            "hour_label",
+            "cumulative_pay_count",
+        )
+    print(
+        json.dumps(
+            {
+                "latest_pay_biz_date": pay_biz_date.isoformat() if pay_biz_date else None,
+                "latest_ccu_biz_date": ccu_biz_date.isoformat() if ccu_biz_date else None,
+            },
+            ensure_ascii=False,
+        )
+    )
+    return fixed_sql
+
+
+def build_empty_sql(x_field: str, y_field: str) -> str:
+    return f"""
+SELECT CAST(NULL AS CHAR) AS {x_field},
+       CAST(NULL AS SIGNED) AS {y_field}
+WHERE 1 = 0
+""".strip()
+
+
+def build_online_sql(biz_date: date) -> str:
+    start_dt = yyyymmdd(biz_date - timedelta(days=1))
+    end_dt = yyyymmdd(biz_date)
+    biz_date_text = biz_date.isoformat()
+    return f"""
+SELECT DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS time_label,
+       MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') AS DECIMAL(18,4))) AS online_users
+FROM `event` e
+WHERE e.dt BETWEEN {start_dt} AND {end_dt}
+  AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= '{biz_date_text}'
+  AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_ADD('{biz_date_text}', INTERVAL 1 DAY)
+  AND e.event = 'CCU'
+  AND e.prod = {PROD_ID}
+  AND NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.ext, '$.ed_ccu')), '') IS NOT NULL
+GROUP BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)), time_label
+ORDER BY HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR))
+LIMIT 24
+""".strip()
+
+
+def build_hourly_pay_base_sql(biz_date: date) -> str:
+    start_dt = yyyymmdd(biz_date - timedelta(days=1))
+    end_dt = yyyymmdd(biz_date)
+    biz_date_text = biz_date.isoformat()
+    return f"""
+SELECT HOUR(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR)) AS hour_index,
+       DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR), '%H:00') AS hour_label,
+       COUNT(*) AS pay_count
+FROM `event` e
+WHERE e.dt BETWEEN {start_dt} AND {end_dt}
+  AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) >= '{biz_date_text}'
+  AND DATE_ADD(FROM_UNIXTIME(e.time / 1000), INTERVAL 8 HOUR) < DATE_ADD('{biz_date_text}', INTERVAL 1 DAY)
+  AND e.event IN ({PAY_EVENTS})
+  AND e.prod = {PROD_ID}
+GROUP BY hour_index, hour_label
+""".strip()
+
+
+def build_hourly_pay_sql(biz_date: date) -> str:
+    base_sql = build_hourly_pay_base_sql(biz_date)
+    return f"""
+WITH hourly AS (
+    {base_sql}
+)
+SELECT hour_label,
+       pay_count
+FROM hourly
+ORDER BY hour_index
+LIMIT 24
+""".strip()
+
+
+def build_cumulative_pay_sql(biz_date: date) -> str:
+    hourly_sql = build_hourly_pay_base_sql(biz_date)
+    return f"""
+WITH hourly AS (
+    {hourly_sql}
+)
+SELECT hour_label,
+       SUM(pay_count) OVER (ORDER BY hour_index) AS cumulative_pay_count
+FROM hourly
+ORDER BY hour_index
+LIMIT 24
+""".strip()
+
+
 def backup_dashboard(row: dict[str, Any]) -> Path:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     path = BACKUP_DIR / f"flam_realtime_dashboard_before_skill_sql_repair_{int(time.time())}.json"
@@ -207,6 +418,26 @@ def repair_dashboard(system_conn: Any, conf: Any, sql_blocks: dict[str, str]) ->
                 raise RuntimeError(f"View not found in dashboard {DASHBOARD_ID}: {view_id}")
             fields, rows = run_chart_sql(conf, sql)
             chart = view.setdefault("chart", {})
+            field_meta = REALTIME_VIEW_FIELDS.get(view_id)
+            if field_meta:
+                chart["xAxis"] = [
+                    {
+                        "name": field_meta["x_name"],
+                        "value": field_meta["x_value"],
+                        "type": "x",
+                    }
+                ]
+                chart["yAxis"] = [
+                    {
+                        "name": field_meta["y_name"],
+                        "value": field_meta["y_value"],
+                        "type": "y",
+                    }
+                ]
+                chart["columns"] = [
+                    {"name": field_meta["x_name"], "value": field_meta["x_value"]},
+                    {"name": field_meta["y_name"], "value": field_meta["y_value"]},
+                ]
             if chart.get("type") in {"table", "metric"}:
                 chart["columns"] = [chart_axis(field) for field in fields]
             view["datasource"] = DATASOURCE_ID
@@ -280,6 +511,7 @@ def main() -> None:
         with system_conn.cursor() as cur:
             sql_blocks = load_skill_sql_blocks(cur)
             conf = load_flam_mysql_config(cur)
+        sql_blocks = build_fixed_realtime_sql(sql_blocks, conf)
         with system_conn.transaction():
             repair_dashboard(system_conn, conf, sql_blocks)
     verify_data_side(conf)

@@ -109,7 +109,7 @@ TRACKING_CONFIG = {
     ],
     "sql_rules": "\n".join(
         [
-            "flam 离线历史看板以对应事实表 MAX(dt) 作为观察截止日，不使用 CURDATE()/NOW()。",
+            "flam 近月趋势、成熟 cohort 和当前快照类看板优先用 CURDATE() 生成固定 dt 分区窗口，并过滤 prod=110000038；避免对 ADS 大视图先做 MAX(dt)。",
             "event.time 为毫秒时间戳；实时业务日按 UTC+8 转换，历史离线看板优先使用 dt 分区。",
             "JSON 子字段使用 JSON_UNQUOTE(JSON_EXTRACT(field, '$.path')) 提取，空字符串需要 NULLIF 后再 COALESCE。",
             "活跃用户必须过滤 UserActive 归一化活跃事件后按 uid 去重，不使用 event 全事件去重，也不直接用 user 快照行数代替。",
@@ -168,7 +168,7 @@ FIELDS = [
     {
         "table_name": "event",
         "field_name": "dt",
-        "field_comment": "事件业务日期分区，格式 yyyyMMdd。历史看板以 MAX(event.dt) 为事件类观察截止日。",
+        "field_comment": "事件业务日期分区，格式 yyyyMMdd。flam 持久历史看板优先用 CURDATE() 派生固定 dt 窗口，避免先扫 event 做 MAX(dt)。",
         "field_role": "partition_date",
         "semantic_type": "date",
         "aliases": ["事件日期", "分区日期", "业务日期"],
@@ -511,7 +511,7 @@ FIELDS = [
     {
         "table_name": "user",
         "field_name": "dt",
-        "field_comment": "用户快照业务日期，格式 yyyyMMdd。快照类指标以 MAX(user.dt) 为观察截止日。",
+        "field_comment": "用户快照业务日期，格式 yyyyMMdd。flam 持久看板优先用 CURDATE() 派生固定 dt 窗口，当前快照默认取当前日前一完整分区。",
         "field_role": "snapshot_date",
         "semantic_type": "date",
         "aliases": ["快照日期", "业务日期"],
@@ -546,7 +546,7 @@ FIELDS = [
         "aliases": ["角色等级", "当前等级"],
         "expression": "JSON_UNQUOTE(JSON_EXTRACT(lastinfo, '$.level'))",
         "example_values": ["1", "10", "20"],
-        "ai_notes": "当前等级分布只取 MAX(user.dt)，不要把多天快照合并。",
+        "ai_notes": "当前等级分布只取当前日前一完整 user.dt 分区并过滤 prod=110000038，不要把多天快照合并，也不要先扫大表取 MAX(dt)。",
     },
     {
         "table_name": "user",

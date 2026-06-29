@@ -675,6 +675,7 @@ async function refreshData(options: RefreshDataOptions = {}) {
   const previousFields = Array.isArray(props.viewInfo.fields) ? [...props.viewInfo.fields] : []
   const hasPreviousRows = previousData.length > 0
   props.viewInfo.dataState = 'loading'
+  props.viewInfo.refreshState = forceRefresh ? 'loading' : 'waiting'
   setChartLoadingProgress(0, !silent)
   startRefreshProgress()
   const requestSeq = ++refreshRequestSeq
@@ -996,6 +997,11 @@ const hasRenderedChartData = computed(() => {
 })
 const showFullChartLoading = computed(
   () => chartLoading.value && (blockingRefreshLoading.value || !hasRenderedChartData.value)
+)
+const chartLoadingText = computed(() =>
+  props.viewInfo?.refreshState === 'waiting'
+    ? t('dashboard.chart_data_waiting')
+    : t('dashboard.chart_data_loading')
 )
 const showEmptyChartState = computed(() => {
   return (
@@ -1323,13 +1329,13 @@ defineExpose({
           :stroke-width="7"
           :show-text="true"
         />
-        <div class="chart-loading-text">{{ t('dashboard.chart_data_loading') }}</div>
+        <div class="chart-loading-text">{{ chartLoadingText }}</div>
       </div>
       <div v-else-if="viewInfo.status === 'failed'" class="error-info">
         {{ viewInfo.message }}
       </div>
       <div v-else-if="showEmptyChartState" class="chart-empty-info">
-        {{ t('dashboard.sql_editor_no_preview_data') }}
+        {{ t('dashboard.chart_no_data_found') }}
       </div>
       <ChartInsightHeader
         v-else-if="canShowInsightHeader && effectiveInsightLayout === 'top'"
@@ -1351,7 +1357,7 @@ defineExpose({
         :class="{ 'side-layout': effectiveInsightLayout === 'side' }"
       >
         <div v-if="chartLoading" class="chart-refresh-overlay">
-          <span>{{ t('dashboard.chart_data_loading') }}</span>
+          <span>{{ chartLoadingText }}</span>
           <span>{{ chartLoadingProgress }}%</span>
         </div>
         <ChartInsightHeader

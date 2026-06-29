@@ -15,15 +15,12 @@ LOGIN_EVENTS = f"'{ACTIVE_EVENT}'"
 PROD_ID = 110000038
 
 
-def _event_max_dt_sql() -> str:
-    return f"""
-    SELECT dt AS max_dt
-    FROM `event`
-    WHERE event = '{ACTIVE_EVENT}'
-      AND prod = {PROD_ID}
-    ORDER BY dt DESC
-    LIMIT 1
-""".strip()
+def _active_start_dt_expr(days: int = 29) -> str:
+    return f"CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {days} DAY), '%Y%m%d') AS SIGNED)"
+
+
+def _active_end_dt_expr() -> str:
+    return "CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"
 
 
 @dataclass(frozen=True)
@@ -58,18 +55,11 @@ PLATFORM_EXPR_E = (
 
 
 SQL_DAU = f"""
-WITH obs AS (
-    {_event_max_dt_sql()}
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-)
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        COUNT(DISTINCT e.uid) AS `DAU`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE e.dt BETWEEN {_active_start_dt_expr(30)}
+               AND {_active_end_dt_expr()}
   AND e.event IN ({LOGIN_EVENTS})
   AND e.prod = {PROD_ID}
 GROUP BY e.dt
@@ -77,11 +67,8 @@ ORDER BY e.dt
 """.strip()
 
 SQL_WAU = f"""
-WITH obs AS (
-    {_event_max_dt_sql()}
-), weeks AS (
-    SELECT DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d')) DAY) AS latest_week_start
-    FROM obs
+WITH weeks AS (
+    SELECT DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AS latest_week_start
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(latest_week_start, INTERVAL 11 WEEK), '%Y%m%d') AS SIGNED) AS start_dt,
            CAST(DATE_FORMAT(DATE_ADD(latest_week_start, INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS end_dt
@@ -99,11 +86,8 @@ ORDER BY `周`
 """.strip()
 
 SQL_MAU = f"""
-WITH obs AS (
-    {_event_max_dt_sql()}
-), months AS (
-    SELECT DATE_FORMAT(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), '%Y-%m-01') AS latest_month_start
-    FROM obs
+WITH months AS (
+    SELECT DATE_FORMAT(CURDATE(), '%Y-%m-01') AS latest_month_start
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(latest_month_start, '%Y-%m-%d'), INTERVAL 11 MONTH), '%Y%m%d') AS SIGNED) AS start_dt,
            CAST(DATE_FORMAT(LAST_DAY(STR_TO_DATE(latest_month_start, '%Y-%m-%d')), '%Y%m%d') AS SIGNED) AS end_dt
@@ -121,17 +105,12 @@ ORDER BY `月份`
 """.strip()
 
 SQL_LIFECYCLE = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-), active_uid AS (
+WITH active_uid AS (
     SELECT e.dt, e.uid
     FROM `event` e
-    JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.max_dt
-    WHERE e.event IN ({LOGIN_EVENTS})
+    WHERE e.dt BETWEEN {_active_start_dt_expr(30)}
+                   AND {_active_end_dt_expr()}
+      AND e.event IN ({LOGIN_EVENTS})
       AND e.prod = {PROD_ID}
     GROUP BY e.dt, e.uid
 ), active_snapshot AS (
@@ -142,6 +121,7 @@ WITH obs AS (
     LEFT JOIN `user` u
       ON u.uid = a.uid
      AND u.dt = a.dt
+     AND u.prod = {PROD_ID}
 )
 SELECT STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS `日期`,
        CASE
@@ -157,19 +137,12 @@ ORDER BY dt, `生命周期`
 """.strip()
 
 SQL_ACTIVE_BY_CHANNEL = f"""
-WITH obs AS (
-    {_event_max_dt_sql()}
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-)
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {CHANNEL_EXPR_E} AS `渠道`,
        COUNT(DISTINCT e.uid) AS `活跃用户数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE e.dt BETWEEN {_active_start_dt_expr(30)}
+               AND {_active_end_dt_expr()}
   AND e.event IN ({LOGIN_EVENTS})
   AND e.prod = {PROD_ID}
 GROUP BY e.dt, `渠道`
@@ -178,19 +151,12 @@ LIMIT 300
 """.strip()
 
 SQL_ACTIVE_BY_PLATFORM = f"""
-WITH obs AS (
-    {_event_max_dt_sql()}
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-)
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {PLATFORM_EXPR_E} AS `系统`,
        COUNT(DISTINCT e.uid) AS `活跃用户数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE e.dt BETWEEN {_active_start_dt_expr(30)}
+               AND {_active_end_dt_expr()}
   AND e.event IN ({LOGIN_EVENTS})
   AND e.prod = {PROD_ID}
 GROUP BY e.dt, `系统`
@@ -199,11 +165,8 @@ LIMIT 300
 """.strip()
 
 SQL_WEEKLY_LOGIN_DAYS = f"""
-WITH obs AS (
-    {_event_max_dt_sql()}
-), weeks AS (
-    SELECT DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d')) DAY) AS latest_week_start
-    FROM obs
+WITH weeks AS (
+    SELECT DATE_SUB(CURDATE(), INTERVAL WEEKDAY(CURDATE()) DAY) AS latest_week_start
 ), bounds AS (
     SELECT CAST(DATE_FORMAT(DATE_SUB(latest_week_start, INTERVAL 11 WEEK), '%Y%m%d') AS SIGNED) AS start_dt,
            CAST(DATE_FORMAT(DATE_ADD(latest_week_start, INTERVAL 6 DAY), '%Y%m%d') AS SIGNED) AS end_dt

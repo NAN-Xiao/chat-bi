@@ -223,8 +223,14 @@ function hasUsableChartSnapshot(viewInfo: any) {
 }
 
 function hasUsableResultSnapshot(result: any) {
+  if (result?.status === 'failed') {
+    return false
+  }
   const rows = result?.data
-  return Array.isArray(rows) && rows.length > 0
+  return (
+    (Array.isArray(rows) && rows.length > 0) ||
+    (Array.isArray(result?.fields) && result.fields.length > 0)
+  )
 }
 
 function markChartSnapshotRefreshed(viewInfo: any, refreshedAt = Date.now()) {
@@ -247,7 +253,7 @@ function canLookupChartCache(viewInfo: any) {
   return !!(viewInfo?.datasource && viewInfo?.sql?.trim())
 }
 
-function applyChartResult(viewInfo: any, result: any, keepLoadingWhenEmpty = false) {
+function applyChartResult(viewInfo: any, result: any) {
   const fields = getResultFields(result)
   const data = Array.isArray(result?.data) ? result.data : []
   const previousData = Array.isArray(viewInfo?.data?.data) ? [...viewInfo.data.data] : []
@@ -271,14 +277,6 @@ function applyChartResult(viewInfo: any, result: any, keepLoadingWhenEmpty = fal
     viewInfo.dataState = 'ready'
   } else {
     viewInfo.dataState = viewInfo.status === 'failed' ? 'failed' : 'ready'
-    if (keepLoadingWhenEmpty && viewInfo.status !== 'failed' && !data.length && !hasPreviousSnapshot) {
-      viewInfo.status = 'loading'
-      viewInfo.message = ''
-      viewInfo.dataState = 'loading'
-      setChartLoadingProgress(viewInfo, 5)
-      viewInfo.refreshState = ''
-      return false
-    }
     if (viewInfo.status !== 'failed') {
       markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(result))
     }
@@ -296,7 +294,7 @@ function isDashboardQueryBusy(result: any) {
   return result?.status === 'failed' && result?.error_type === 'dashboard_query_busy'
 }
 
-function keepChartLoadingState(viewInfo: any) {
+function keepChartLoadingState(viewInfo: any, refreshState = 'loading') {
   if (!viewInfo) {
     return
   }
@@ -310,7 +308,7 @@ function keepChartLoadingState(viewInfo: any) {
   viewInfo.message = ''
   viewInfo.dataState = 'loading'
   setChartLoadingProgress(viewInfo, 5)
-  viewInfo.refreshState = ''
+  viewInfo.refreshState = refreshState
 }
 
 function keepChartSnapshotState(viewInfo: any) {
@@ -338,7 +336,7 @@ function keepChartSnapshotOrLoading(viewInfo: any) {
   if (hasUsableChartSnapshot(viewInfo)) {
     keepChartSnapshotState(viewInfo)
   } else {
-    keepChartLoadingState(viewInfo)
+    keepChartLoadingState(viewInfo, 'loading')
   }
 }
 
@@ -384,6 +382,7 @@ function prepareChartDatabaseRefreshState(viewInfo: any) {
   viewInfo.status = 'loading'
   viewInfo.dataState = 'loading'
   setChartLoadingProgress(viewInfo, 0)
+  viewInfo.refreshState = 'loading'
 }
 
 function prepareChartPreviewState(viewInfo: any) {
@@ -397,15 +396,16 @@ function prepareChartPreviewState(viewInfo: any) {
   viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
   viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
   viewInfo.message = ''
-  viewInfo.refreshState = ''
   if (hasUsableChartSnapshot(viewInfo)) {
     viewInfo.status = 'success'
     viewInfo.dataState = 'ready'
     viewInfo.loadingProgress = 100
+    viewInfo.refreshState = ''
   } else {
     viewInfo.status = 'loading'
     viewInfo.dataState = 'loading'
     setChartLoadingProgress(viewInfo, 0, true)
+    viewInfo.refreshState = 'waiting'
   }
 }
 
@@ -509,6 +509,11 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
     })
   }
   try {
+    chartEntries.forEach((entry) => {
+      if (!hasChartSnapshot(entry.viewInfo)) {
+        keepChartLoadingState(entry.viewInfo, 'waiting')
+      }
+    })
     await runChartQueue(chartEntries, CHART_CACHE_LOOKUP_CONCURRENCY, async (entry) => {
       const { viewInfo } = entry
       try {
@@ -569,10 +574,7 @@ async function refreshDashboardCharts(loadVersion: number, controller: AbortCont
             }
           }
         } else {
-          const usable = applyChartResult(viewInfo, result, true)
-          if (!usable && !hasUsableChartSnapshot(viewInfo)) {
-            transientPendingCount += 1
-          }
+          applyChartResult(viewInfo, result)
         }
       } catch (error: any) {
         if (isAbortError(error) || controller.signal.aborted) {

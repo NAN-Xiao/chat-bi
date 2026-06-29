@@ -17,6 +17,7 @@ from core_system_db import core_system_db_config
 from flam_first_zombie_active_dashboard_sql import VIEW_SQL as ACTIVE_VIEW_SQL, axis as active_axis
 from flam_first_zombie_dashboard_sql import DATASOURCE_ID, TENANT_ID
 from flam_first_zombie_remaining_dashboard_sql import REMAINING_VIEW_SQL, axis as remaining_axis
+from repair_flam_first_zombie_realtime_dashboard import build_fixed_realtime_sql, load_flam_mysql_config
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,16 +116,16 @@ def apply_chart_config(view: dict[str, Any], view_id: str, realtime_sql: dict[st
         return True
     if view_id in REALTIME_VIEW_IDS:
         fields_by_view = {
-            "e3fe7e4819e64b71b76d9329a3023359": ("时间", "实时在线人数"),
-            "4fc570b4be7d406c9f648d9088f760bb": ("小时", "实时付费事件次数"),
-            "2149b7abbc6c4cd7ad6f52379e69b15a": ("小时", "累计付费事件次数"),
+            "e3fe7e4819e64b71b76d9329a3023359": ("time_label", "时间", "online_users", "实时在线人数"),
+            "4fc570b4be7d406c9f648d9088f760bb": ("hour_label", "小时", "pay_count", "实时付费事件次数"),
+            "2149b7abbc6c4cd7ad6f52379e69b15a": ("hour_label", "小时", "cumulative_pay_count", "累计付费事件次数"),
         }
-        x_field, y_field = fields_by_view[view_id]
+        x_field, x_name, y_field, y_name = fields_by_view[view_id]
         chart = view.setdefault("chart", {})
         chart["type"] = "line"
-        chart["xAxis"] = [{"name": x_field, "value": x_field, "type": "x"}]
-        chart["yAxis"] = [{"name": y_field, "value": y_field, "type": "y"}]
-        chart["columns"] = [{"name": x_field, "value": x_field}, {"name": y_field, "value": y_field}]
+        chart["xAxis"] = [{"name": x_name, "value": x_field, "type": "x"}]
+        chart["yAxis"] = [{"name": y_name, "value": y_field, "type": "y"}]
+        chart["columns"] = [{"name": x_name, "value": x_field}, {"name": y_name, "value": y_field}]
         view["datasource"] = DATASOURCE_ID
         view["sql"] = realtime_sql[view_id]
         clear_result(view, (x_field, y_field))
@@ -221,6 +222,8 @@ def main() -> None:
     with psycopg.connect(**SYSTEM_DB) as conn:
         with conn.cursor() as cur:
             realtime_sql = load_realtime_sql_blocks(cur)
+            conf = load_flam_mysql_config(cur)
+        realtime_sql = build_fixed_realtime_sql(realtime_sql, conf)
         with conn.transaction():
             repair_dashboards(conn, realtime_sql)
 

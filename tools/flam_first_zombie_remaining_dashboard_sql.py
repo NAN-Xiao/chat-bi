@@ -33,38 +33,60 @@ def _pay_value(alias: str, field: str = "paytotal") -> str:
     return _json_num(alias, "pay", field)
 
 
-def _bounds(table: str, days: int = 29) -> str:
+def _date_expr(days_ago: int = 0) -> str:
+    if days_ago <= 0:
+        return "CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"
+    return f"CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {days_ago} DAY), '%Y%m%d') AS SIGNED)"
+
+
+LATEST_WEEK_START = "DATE_SUB(DATE_SUB(CURDATE(), INTERVAL 1 DAY), INTERVAL WEEKDAY(DATE_SUB(CURDATE(), INTERVAL 1 DAY)) DAY)"
+
+
+def _week_snapshot_dt_expr(weeks_ago: int) -> str:
+    if weeks_ago <= 0:
+        return _date_expr(1)
+    return f"CAST(DATE_FORMAT(DATE_ADD(DATE_SUB({LATEST_WEEK_START}, INTERVAL {weeks_ago} WEEK), INTERVAL 6 DAY), '%Y%m%d') AS SIGNED)"
+
+
+def _bounds(table: str, days: int = 29, end_days_ago: int = 0) -> str:
+    del table
+    start_days_ago = days + end_days_ago
     return f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `{table}`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL {days} DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
+WITH bounds AS (
+    SELECT {_date_expr(start_days_ago)} AS start_dt,
+           {_date_expr(end_days_ago)} AS max_dt
 )
 """.strip()
 
 
+def _dt_between(alias: str, days: int = 29, end_days_ago: int = 0) -> str:
+    start_days_ago = days + end_days_ago
+    return f"{alias}.dt BETWEEN {_date_expr(start_days_ago)} AND {_date_expr(end_days_ago)}"
+
+
 def _metric_sql(table: str, metric_name: str, where_clause: str, value_expr: str = "COUNT(*)", days: int = 29) -> str:
+    del days
+    prod_filter = f"\n             AND e.prod = {PROD_ID}" if table == "event" else ""
+    today_dt = _date_expr(1)
+    yesterday_dt = _date_expr(2)
+    last_week_dt = _date_expr(8)
     return f"""
-{_bounds(table, days)}, daily AS (
-    SELECT e.dt,
-           {value_expr} AS value
-    FROM `{table}` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
-      AND {where_clause}
-    GROUP BY e.dt
-), metric_dt AS (
-    SELECT MAX(dt) AS dt FROM daily
+WITH metric AS (
+    SELECT
+        (SELECT {value_expr} FROM `{table}` e
+         WHERE e.dt = {today_dt}
+           AND {where_clause}{prod_filter}) AS today_value,
+        (SELECT {value_expr} FROM `{table}` e
+         WHERE e.dt = {yesterday_dt}
+           AND {where_clause}{prod_filter}) AS yesterday_value,
+        (SELECT {value_expr} FROM `{table}` e
+         WHERE e.dt = {last_week_dt}
+           AND {where_clause}{prod_filter}) AS last_week_value
 )
-SELECT COALESCE(today.value, 0) AS `{metric_name}`,
-       ROUND((COALESCE(today.value, 0) - COALESCE(yesterday.value, 0)) / NULLIF(yesterday.value, 0) * 100, 2) AS `日环比`,
-       ROUND((COALESCE(today.value, 0) - COALESCE(last_week.value, 0)) / NULLIF(last_week.value, 0) * 100, 2) AS `周同比`
-FROM metric_dt m
-LEFT JOIN daily today ON today.dt = m.dt
-LEFT JOIN daily yesterday ON yesterday.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(m.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-LEFT JOIN daily last_week ON last_week.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(m.dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+SELECT COALESCE(today_value, 0) AS `{metric_name}`,
+       ROUND((COALESCE(today_value, 0) - COALESCE(yesterday_value, 0)) / NULLIF(yesterday_value, 0) * 100, 2) AS `日环比`,
+       ROUND((COALESCE(today_value, 0) - COALESCE(last_week_value, 0)) / NULLIF(last_week_value, 0) * 100, 2) AS `周同比`
+FROM metric
 """.strip()
 
 
@@ -91,63 +113,66 @@ SQL_ARMY_UPGRADE_COUNT = _metric_sql("event", "兵种升级事件数", "e.event 
 SQL_HONOR_EXPEDITION_COUNT = _metric_sql("event", "荣耀远征事件数", "e.event = 'honorExpedition'")
 
 SQL_EXPEDITION_AVG_POWER = f"""
-{_bounds("event", 29)}, daily AS (
-    SELECT e.dt,
-           AVG(COALESCE(CAST({_json_text('e', 'ext', 'combatPower')} AS DECIMAL(18,4)),
-                        CAST({_json_text('e', 'ext', 'captainPower')} AS DECIMAL(18,4)))) AS value
-    FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
-      AND e.event IN ({EXPEDITION_EVENTS})
-    GROUP BY e.dt
-), metric_dt AS (
-    SELECT MAX(dt) AS dt FROM daily
+WITH metric AS (
+    SELECT
+        (SELECT AVG(COALESCE(CAST({_json_text('e', 'ext', 'combatPower')} AS DECIMAL(18,4)),
+                             CAST({_json_text('e', 'ext', 'captainPower')} AS DECIMAL(18,4))))
+         FROM `event` e
+         WHERE e.dt = {_date_expr(1)}
+           AND e.event IN ({EXPEDITION_EVENTS})
+           AND e.prod = {PROD_ID}) AS today_value,
+        (SELECT AVG(COALESCE(CAST({_json_text('e', 'ext', 'combatPower')} AS DECIMAL(18,4)),
+                             CAST({_json_text('e', 'ext', 'captainPower')} AS DECIMAL(18,4))))
+         FROM `event` e
+         WHERE e.dt = {_date_expr(2)}
+           AND e.event IN ({EXPEDITION_EVENTS})
+           AND e.prod = {PROD_ID}) AS yesterday_value,
+        (SELECT AVG(COALESCE(CAST({_json_text('e', 'ext', 'combatPower')} AS DECIMAL(18,4)),
+                             CAST({_json_text('e', 'ext', 'captainPower')} AS DECIMAL(18,4))))
+         FROM `event` e
+         WHERE e.dt = {_date_expr(8)}
+           AND e.event IN ({EXPEDITION_EVENTS})
+           AND e.prod = {PROD_ID}) AS last_week_value
 )
-SELECT ROUND(COALESCE(today.value, 0), 2) AS `竞技场/出征平均战力`,
-       ROUND((COALESCE(today.value, 0) - COALESCE(yesterday.value, 0)) / NULLIF(yesterday.value, 0) * 100, 2) AS `日环比`,
-       ROUND((COALESCE(today.value, 0) - COALESCE(last_week.value, 0)) / NULLIF(last_week.value, 0) * 100, 2) AS `周同比`
-FROM metric_dt m
-LEFT JOIN daily today ON today.dt = m.dt
-LEFT JOIN daily yesterday ON yesterday.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(m.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-LEFT JOIN daily last_week ON last_week.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(m.dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+SELECT ROUND(COALESCE(today_value, 0), 2) AS `竞技场/出征平均战力`,
+       ROUND((COALESCE(today_value, 0) - COALESCE(yesterday_value, 0)) / NULLIF(yesterday_value, 0) * 100, 2) AS `日环比`,
+       ROUND((COALESCE(today_value, 0) - COALESCE(last_week_value, 0)) / NULLIF(last_week_value, 0) * 100, 2) AS `周同比`
+FROM metric
 """.strip()
 
 SQL_EXPEDITION_DETAIL = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        COUNT(*) AS `出征事件数`,
        ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT e.uid), 0), 2) AS `人均事件数`,
        COUNT(DISTINCT e.uid) AS `参与用户数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 6)}
   AND e.event IN ({EXPEDITION_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt
 ORDER BY e.dt
 """.strip()
 
 SQL_ARMY_7D = f"""
-{_bounds("event", 6)}
 SELECT {ARMY_ID} AS `出征士兵兵种`,
        '兵种升级次数' AS `指标`,
        COUNT(*) AS `阶段汇总`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 6)}
   AND e.event = 'ArmyUpgrade'
+  AND e.prod = {PROD_ID}
 GROUP BY `出征士兵兵种`
 ORDER BY `阶段汇总` DESC
 LIMIT 50
 """.strip()
 
 SQL_HERO_EXPEDITION_COUNT = f"""
-{_bounds("event", 29)}
 SELECT {HERO_ID} AS `将领ID`,
        COUNT(*) AS `出征次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 6)}
   AND e.event IN ({EXPEDITION_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY `将领ID`
 ORDER BY `出征次数` DESC
 LIMIT 50
@@ -156,68 +181,67 @@ LIMIT 50
 _WIN_EXPR = "COALESCE(" + _json_text("e", "ext", "battleResult") + ", " + _json_text("e", "ext", "expeditionDungeonResult") + ") IN ('win','success','1','胜利')"
 
 SQL_LEVEL_WIN_RATE = f"""
-{_bounds("event", 29)}
 SELECT {CITY_LEVEL_E} AS `等级`,
        ROUND(AVG(CASE WHEN {_WIN_EXPR} THEN 1 ELSE 0 END) * 100, 2) AS `出征胜率`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 6)}
   AND e.event IN ({EXPEDITION_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY `等级`
 ORDER BY CAST(`等级` AS SIGNED)
 LIMIT 50
 """.strip()
 
 SQL_HERO_WIN_RATE = f"""
-{_bounds("event", 29)}
 SELECT {HERO_ID} AS `将领ID`,
        ROUND(AVG(CASE WHEN {_WIN_EXPR} THEN 1 ELSE 0 END) * 100, 2) AS `各将领出征胜率`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 6)}
   AND e.event IN ({EXPEDITION_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY `将领ID`
 ORDER BY `各将领出征胜率` DESC
 LIMIT 50
 """.strip()
 
 SQL_DRILL_BY_CITY_LEVEL = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {CITY_LEVEL_E} AS `主城等级`,
        COUNT(*) AS `参与演习次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 6)}
   AND e.event IN ({EXPEDITION_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `主城等级`
 ORDER BY e.dt, `主城等级`
 LIMIT 300
 """.strip()
 
 SQL_WEEKLY_PAY_DISTRIBUTION = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), weeks AS (
-    SELECT DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d')) DAY) AS latest_week_start
-    FROM obs
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(latest_week_start, INTERVAL 7 WEEK), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-    JOIN weeks ON TRUE
-), user_week AS (
-    SELECT DATE_SUB(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d')) DAY) AS week_start,
+WITH user_week AS (
+    SELECT w.week_start,
            u.uid,
-           {CHANNEL_EXPR_U} AS channel,
-           {_pay_value("u")} AS paytotal,
-           ROW_NUMBER() OVER (
-               PARTITION BY DATE_SUB(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d')) DAY), u.uid
-               ORDER BY u.dt DESC
-           ) AS rn
-    FROM `user` u
-    JOIN bounds b ON TRUE
-    WHERE u.dt BETWEEN b.start_dt AND b.max_dt
+           u.channel,
+           u.paytotal
+    FROM (
+        SELECT u.uid,
+               u.dt,
+               {CHANNEL_EXPR_U} AS channel,
+               {_pay_value("u")} AS paytotal
+        FROM `user` u
+        WHERE u.dt IN ({", ".join(_week_snapshot_dt_expr(i) for i in range(7, -1, -1))})
+          AND u.prod = {PROD_ID}
+    ) u
+    JOIN (
+        SELECT DATE_SUB({LATEST_WEEK_START}, INTERVAL 7 WEEK) AS week_start, {_week_snapshot_dt_expr(7)} AS snapshot_dt
+        UNION ALL SELECT DATE_SUB({LATEST_WEEK_START}, INTERVAL 6 WEEK), {_week_snapshot_dt_expr(6)}
+        UNION ALL SELECT DATE_SUB({LATEST_WEEK_START}, INTERVAL 5 WEEK), {_week_snapshot_dt_expr(5)}
+        UNION ALL SELECT DATE_SUB({LATEST_WEEK_START}, INTERVAL 4 WEEK), {_week_snapshot_dt_expr(4)}
+        UNION ALL SELECT DATE_SUB({LATEST_WEEK_START}, INTERVAL 3 WEEK), {_week_snapshot_dt_expr(3)}
+        UNION ALL SELECT DATE_SUB({LATEST_WEEK_START}, INTERVAL 2 WEEK), {_week_snapshot_dt_expr(2)}
+        UNION ALL SELECT DATE_SUB({LATEST_WEEK_START}, INTERVAL 1 WEEK), {_week_snapshot_dt_expr(1)}
+        UNION ALL SELECT {LATEST_WEEK_START}, {_week_snapshot_dt_expr(0)}
+    ) w ON w.snapshot_dt = u.dt
 )
 SELECT week_start AS `事件发生时间`,
        channel AS `渠道`,
@@ -227,19 +251,18 @@ SELECT week_start AS `事件发生时间`,
        COUNT(DISTINCT CASE WHEN paytotal >= 1000 AND paytotal < 2000 THEN uid END) AS `[1000, 2000)`,
        COUNT(DISTINCT CASE WHEN paytotal >= 2000 THEN uid END) AS `[2000, +∞)`
 FROM user_week
-WHERE rn = 1
 GROUP BY week_start, channel
 ORDER BY week_start, channel
 LIMIT 300
 """.strip()
 
 SQL_PAY_EVENT_DISTRIBUTION = f"""
-{_bounds("event", 29)}, pay_events AS (
+WITH pay_events AS (
     SELECT {PRODUCT_ID} AS gift_name
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE {_dt_between("e", 29)}
       AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
 )
 SELECT gift_name AS `购买礼包名`,
        COUNT(*) AS `购买次数`
@@ -250,8 +273,9 @@ LIMIT 50
 """.strip()
 
 SQL_ACQUISITION_CHANNEL_PAY = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
+WITH bounds AS (
+    SELECT {_date_expr(30)} AS start_dt,
+           {_date_expr(1)} AS max_dt
 ), cohort AS (
     SELECT u.dt AS cohort_dt,
            u.uid,
@@ -260,9 +284,8 @@ WITH obs AS (
            {_pay_value("u", "pay7")} AS pay7,
            {_pay_value("u")} AS paytotal
     FROM `user` u
-    JOIN obs ON TRUE
-    WHERE u.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED)
-                   AND obs.max_dt
+    JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE u.prod = {PROD_ID}
       AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
 )
 SELECT STR_TO_DATE(CAST(cohort_dt AS CHAR), '%Y%m%d') AS `日期`,
@@ -278,20 +301,19 @@ LIMIT 300
 """.strip()
 
 SQL_ACTIVITY_PARTICIPATION_RATE = f"""
-{_bounds("event", 29)}, dau AS (
+WITH dau AS (
     SELECT e.dt, COUNT(DISTINCT e.uid) AS dau
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE {_dt_between("e", 29)}
       AND e.event IN ({LOGIN_EVENTS})
       AND e.prod = {PROD_ID}
     GROUP BY e.dt
 ), act AS (
     SELECT e.dt, e.event, COUNT(DISTINCT e.uid) AS users
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE {_dt_between("e", 29)}
       AND e.event IN ({ACTIVITY_EVENTS})
+      AND e.prod = {PROD_ID}
     GROUP BY e.dt, e.event
 )
 SELECT STR_TO_DATE(CAST(act.dt AS CHAR), '%Y%m%d') AS `日期`,
@@ -304,21 +326,19 @@ LIMIT 300
 """.strip()
 
 SQL_ACTIVITY_AVG_TIMES = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        e.event AS `活动类型`,
        ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT e.uid), 0), 2) AS `人均参与次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event IN ({ACTIVITY_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, e.event
 ORDER BY e.dt, e.event
 LIMIT 300
 """.strip()
 
 SQL_ACTIVITY_LEVEL = f"""
-{_bounds("event", 29)}
 SELECT CASE
          WHEN COALESCE(CAST({_json_text('e', 'ext', 'ed_mainBuildingLevel')} AS DECIMAL(18,4)), 0) < 10 THEN '0-9'
          WHEN COALESCE(CAST({_json_text('e', 'ext', 'ed_mainBuildingLevel')} AS DECIMAL(18,4)), 0) < 20 THEN '10-19'
@@ -327,22 +347,22 @@ SELECT CASE
        END AS `阶段`,
        COUNT(DISTINCT e.uid) AS `参与人数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event IN ({ACTIVITY_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY `阶段`
 ORDER BY MIN(COALESCE(CAST({_json_text('e', 'ext', 'ed_mainBuildingLevel')} AS DECIMAL(18,4)), 0))
 """.strip()
 
 SQL_WEEKLY_ACTIVITY_DISTRIBUTION = f"""
-{_bounds("event", 29)}, user_week AS (
+WITH user_week AS (
     SELECT DATE_SUB(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL WEEKDAY(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d')) DAY) AS week_start,
            e.uid,
            COUNT(*) AS participate_count
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE {_dt_between("e", 29)}
       AND e.event IN ({ACTIVITY_EVENTS})
+      AND e.prod = {PROD_ID}
     GROUP BY week_start, e.uid
 )
 SELECT week_start AS `周`,
@@ -359,12 +379,12 @@ ORDER BY week_start, `参与次数段`
 """.strip()
 
 SQL_NEWBIE_ACTIVITY_RETENTION = f"""
-{_bounds("event", 35)}, participants AS (
+WITH participants AS (
     SELECT e.uid, MIN(e.dt) AS participate_dt
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE {_dt_between("e", 35)}
       AND e.event IN ('ActivityCommanderTask','ActivityArmsRaceTask','ActivityChestCount')
+      AND e.prod = {PROD_ID}
     GROUP BY e.uid
 ), retained AS (
     SELECT p.participate_dt,
@@ -374,9 +394,11 @@ SQL_NEWBIE_ACTIVITY_RETENTION = f"""
            COUNT(DISTINCT CASE WHEN u.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.participate_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
                                 AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain7')) = '1' THEN p.uid END) AS r7
     FROM participants p
-    JOIN bounds b ON TRUE
-    LEFT JOIN `user` u ON u.uid = p.uid AND u.dt BETWEEN p.participate_dt AND b.max_dt
-    WHERE p.participate_dt <= CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(b.max_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+    LEFT JOIN `user` u
+      ON u.uid = p.uid
+     AND u.dt BETWEEN p.participate_dt AND {_date_expr(1)}
+     AND u.prod = {PROD_ID}
+    WHERE p.participate_dt <= {_date_expr(8)}
     GROUP BY p.participate_dt
 )
 SELECT STR_TO_DATE(CAST(participate_dt AS CHAR), '%Y%m%d') AS `日期`,
@@ -388,12 +410,12 @@ ORDER BY participate_dt
 """.strip()
 
 SQL_FESTIVAL_PAY_RETENTION = f"""
-{_bounds("event", 35)}, participants AS (
+WITH participants AS (
     SELECT e.uid, MIN(e.dt) AS participate_dt
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE {_dt_between("e", 35)}
       AND e.event IN ('ActivityAllianceBossBattleRet','ActivityAllianceBossChoose','ActivityAllianceBossDonation','ActivityAllianceBossReward','ActivityWorldBoss','AllianceDuelAlliancePoint','AllianceDuelPersonalPoint','AllianceDuelBoxOpen')
+      AND e.prod = {PROD_ID}
     GROUP BY e.uid
 ), user_pay AS (
     SELECT p.participate_dt,
@@ -401,9 +423,8 @@ SQL_FESTIVAL_PAY_RETENTION = f"""
            COUNT(DISTINCT CASE WHEN {_pay_value('u', 'pay1')} > 0 THEN p.uid END) AS pay0,
            COUNT(DISTINCT CASE WHEN {_pay_value('u', 'pay7')} > 0 THEN p.uid END) AS pay7
     FROM participants p
-    JOIN bounds b ON TRUE
-    LEFT JOIN `user` u ON u.uid = p.uid AND u.dt = p.participate_dt
-    WHERE p.participate_dt <= CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(b.max_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+    LEFT JOIN `user` u ON u.uid = p.uid AND u.dt = p.participate_dt AND u.prod = {PROD_ID}
+    WHERE p.participate_dt <= {_date_expr(8)}
     GROUP BY p.participate_dt
 )
 SELECT STR_TO_DATE(CAST(participate_dt AS CHAR), '%Y%m%d') AS `日期`,
@@ -418,28 +439,26 @@ GOLD_DELTA = f"{_json_num('e', 'ext', 'ed_changeFree')} + {_json_num('e', 'ext',
 GOLD_ROUTE = f"COALESCE({_json_text('e', 'ext', 'ed_route')}, {_json_text('e', 'ext', 'ed_detailReason')}, '未知')"
 
 SQL_GOLD_CHANGE = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        ROUND(SUM(GREATEST({GOLD_DELTA}, 0)), 2) AS `钻石获取量`,
        ROUND(ABS(SUM(LEAST({GOLD_DELTA}, 0))), 2) AS `钻石消耗量`,
        ROUND(SUM({GOLD_DELTA}), 2) AS `钻石存量变化`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event = 'GoldChange'
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt
 ORDER BY e.dt
 """.strip()
 
 SQL_GOLD_SOURCE = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {GOLD_ROUTE} AS `获取途径`,
        ROUND(SUM(GREATEST({GOLD_DELTA}, 0)), 2) AS `钻石获取量`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event = 'GoldChange'
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `获取途径`
 HAVING `钻石获取量` > 0
 ORDER BY e.dt, `获取途径`
@@ -447,14 +466,13 @@ LIMIT 300
 """.strip()
 
 SQL_GOLD_SINK = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {GOLD_ROUTE} AS `消耗途径`,
        ROUND(ABS(SUM(LEAST({GOLD_DELTA}, 0))), 2) AS `钻石消耗量`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event = 'GoldChange'
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `消耗途径`
 HAVING `钻石消耗量` > 0
 ORDER BY e.dt, `消耗途径`
@@ -462,12 +480,12 @@ LIMIT 300
 """.strip()
 
 SQL_STARTER_PACK_REPURCHASE = f"""
-{_bounds("event", 29)}, pay_events AS (
+WITH pay_events AS (
     SELECT e.uid, e.dt, {PRODUCT_ID} AS product_id
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE {_dt_between("e", 29)}
       AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
 ), first_buy AS (
     SELECT uid, MIN(dt) AS first_dt
     FROM pay_events
@@ -493,25 +511,28 @@ ORDER BY first_dt
 """.strip()
 
 SQL_MONTH_CARD_RETENTION = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
-), pay_events AS (
+WITH pay_events AS (
     SELECT e.uid, MIN(e.dt) AS buy_dt
     FROM `event` e
-    JOIN obs ON TRUE
-    WHERE e.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 60 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED)
+    WHERE e.dt BETWEEN {_date_expr(61)} AND {_date_expr(31)}
+      AND e.prod = {PROD_ID}
       AND e.event IN ({PAY_EVENTS})
       AND (LOWER({PRODUCT_ID}) LIKE '%month%' OR {PRODUCT_ID} LIKE '%月卡%')
     GROUP BY e.uid
+), active_events AS (
+    SELECT e.dt,
+           e.uid
+    FROM `event` e
+    WHERE e.dt BETWEEN {_date_expr(60)} AND {_date_expr(1)}
+      AND e.event IN ({LOGIN_EVENTS})
+      AND e.prod = {PROD_ID}
+    GROUP BY e.dt, e.uid
 ), login_events AS (
     SELECT p.uid,
            DATEDIFF(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), STR_TO_DATE(CAST(p.buy_dt AS CHAR), '%Y%m%d')) AS retain_day
     FROM pay_events p
-    JOIN `event` e ON e.uid = p.uid
+    JOIN active_events e ON e.uid = p.uid
     WHERE e.dt BETWEEN p.buy_dt AND CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(p.buy_dt AS CHAR), '%Y%m%d'), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED)
-      AND e.event IN ({LOGIN_EVENTS})
-      AND e.prod = {PROD_ID}
 )
 SELECT CONCAT('第', d.retain_day, '日') AS `留存日`,
        ROUND(COUNT(DISTINCT l.uid) / NULLIF((SELECT COUNT(DISTINCT uid) FROM pay_events), 0) * 100, 2) AS `留存率`
@@ -524,16 +545,15 @@ ORDER BY d.retain_day
 """.strip()
 
 SQL_HERO_GROWTH = f"""
-{_bounds("event", 29)}
 SELECT {HERO_ID} AS `将领ID`,
        COUNT(CASE WHEN e.event = 'HeroStarUp' THEN 1 END) AS `升星次数`,
        COUNT(DISTINCT CASE WHEN e.event = 'HeroStarUp' THEN e.uid END) AS `升星用户数`,
        COUNT(CASE WHEN e.event = 'HeroLevelUp' THEN 1 END) AS `升级次数`,
        COUNT(DISTINCT CASE WHEN e.event = 'HeroLevelUp' THEN e.uid END) AS `升级用户数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event IN ({HERO_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY `将领ID`
 ORDER BY (`升星次数` + `升级次数`) DESC
 LIMIT 50
@@ -543,16 +563,27 @@ HERO_LEVEL = f"COALESCE(CAST({_json_text('e', 'ext', 'ed_currentLevel')} AS DECI
 HERO_STAR = f"COALESCE({_json_text('e', 'ext', 'ed_heroStar')}, {_json_text('e', 'ext', 'ed_newStar')}, '未知')"
 
 SQL_SSR_HERO_LEVEL = f"""
-{_bounds("event", 29)}, latest AS (
+WITH latest_key AS (
+    SELECT e.uid,
+           {HERO_ID} AS hero_id,
+           MAX(CONCAT(CAST(e.dt AS CHAR), LPAD(CAST(e.time AS CHAR), 20, '0'))) AS latest_key
+    FROM `event` e
+    WHERE {_dt_between("e", 29)}
+      AND e.event IN ('HeroLevelUp','HeroStarUp')
+      AND e.prod = {PROD_ID}
+    GROUP BY e.uid, hero_id
+), latest AS (
     SELECT e.uid,
            {HERO_ID} AS hero_id,
            {HERO_STAR} AS hero_star,
-           {HERO_LEVEL} AS hero_level,
-           ROW_NUMBER() OVER (PARTITION BY e.uid, {HERO_ID} ORDER BY e.dt DESC, e.time DESC) AS rn
+           {HERO_LEVEL} AS hero_level
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
-      AND e.event IN ('HeroLevelUp','HeroStarUp')
+    JOIN latest_key l
+      ON l.uid = e.uid
+     AND l.hero_id = {HERO_ID}
+     AND l.latest_key = CONCAT(CAST(e.dt AS CHAR), LPAD(CAST(e.time AS CHAR), 20, '0'))
+    WHERE e.event IN ('HeroLevelUp','HeroStarUp')
+      AND e.prod = {PROD_ID}
 )
 SELECT hero_id AS `将领ID`,
        hero_star AS `英雄星级`,
@@ -561,7 +592,6 @@ SELECT hero_id AS `将领ID`,
        COUNT(DISTINCT CASE WHEN hero_level BETWEEN 11 AND 20 THEN uid END) AS `11-20`,
        COUNT(DISTINCT CASE WHEN hero_level >= 21 THEN uid END) AS `21+`
 FROM latest
-WHERE rn = 1
 GROUP BY hero_id, hero_star
 ORDER BY `全部用户` DESC
 LIMIT 50
@@ -570,7 +600,8 @@ LIMIT 50
 SQL_CITY_AVG_LEVEL = f"""
 SELECT ROUND(AVG(COALESCE(CAST({_json_text('u', 'lastinfo', 'blevel')} AS DECIMAL(18,4)), 0)), 2) AS `主城平均等级`
 FROM `user` u
-WHERE u.dt = (SELECT MAX(dt) FROM `user`)
+WHERE u.dt = {_date_expr(1)}
+  AND u.prod = {PROD_ID}
 """.strip()
 
 SQL_CITY_UPGRADE_METRIC = _metric_sql("event", "当日主城升级次数", f"e.event IN ({BUILDING_EVENTS})")
@@ -581,7 +612,8 @@ SQL_CITY_LEVEL_USERS = f"""
 SELECT COALESCE(CAST(CAST({_json_text('u', 'lastinfo', 'blevel')} AS DECIMAL(18,4)) AS CHAR), '未知') AS `主城等级`,
        COUNT(DISTINCT u.uid) AS `玩家数`
 FROM `user` u
-WHERE u.dt = (SELECT MAX(dt) FROM `user`)
+WHERE u.dt = {_date_expr(1)}
+  AND u.prod = {PROD_ID}
 GROUP BY `主城等级`
 ORDER BY CAST(`主城等级` AS SIGNED)
 LIMIT 50
@@ -590,70 +622,65 @@ LIMIT 50
 BUILDING_ID = f"COALESCE({_json_text('e', 'ext', 'ed_buildingId')}, {_json_text('e', 'ext', 'ed_metaId')}, e.event)"
 
 SQL_BUILDING_BY_TYPE = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {BUILDING_ID} AS `建筑`,
        COUNT(*) AS `升级次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event IN ({BUILDING_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `建筑`
 ORDER BY e.dt, `建筑`
 LIMIT 300
 """.strip()
 
 SQL_BUILDING_BY_CITY = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {CITY_LEVEL_E} AS `主城等级`,
        COUNT(*) AS `建筑升级次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event IN ({BUILDING_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `主城等级`
 ORDER BY e.dt, `主城等级`
 LIMIT 300
 """.strip()
 
 SQL_TECH_BY_TYPE = f"""
-{_bounds("event", 29)}
 SELECT e.event AS `科技名称`,
        COUNT(*) AS `升级科技.总次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event IN ({TECH_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.event
 ORDER BY `升级科技.总次数` DESC
 LIMIT 50
 """.strip()
 
 SQL_TECH_BY_CITY = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {CITY_LEVEL_E} AS `主城等级`,
        COUNT(*) AS `科技升级次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event IN ({TECH_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `主城等级`
 ORDER BY e.dt, `主城等级`
 LIMIT 300
 """.strip()
 
 SQL_ARMY_RECRUIT = f"""
-{_bounds("event", 29)}
 SELECT {ARMY_ID} AS `士兵兵种`,
        COUNT(*) AS `招募总次数`,
        ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT e.uid), 0), 2) AS `人均招募次数`,
        ROUND(SUM({_json_num('e', 'ext', 'ed_count')}), 2) AS `招募总数量`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event = 'ArmyUpgrade'
+  AND e.prod = {PROD_ID}
 GROUP BY `士兵兵种`
 ORDER BY `招募总次数` DESC
 LIMIT 50
@@ -662,16 +689,15 @@ LIMIT 50
 SPEEDUP_TYPE = f"COALESCE({_json_text('e', 'ext', 'ed_detailReason')}, {_json_text('e', 'ext', 'ed_route')}, e.event)"
 
 SQL_SPEEDUP = f"""
-{_bounds("event", 29)}
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        {SPEEDUP_TYPE} AS `加速类型`,
        COUNT(*) AS `使用加速次数`,
        COUNT(DISTINCT e.uid) AS `使用加速人数`,
        ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT e.uid), 0), 2) AS `人均使用加速次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 29)}
   AND e.event IN ('BuildingUpgrade','BuildingIdleUpgrade','ArmyUpgrade')
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt, `加速类型`
 ORDER BY e.dt, `使用加速次数` DESC
 LIMIT 300
@@ -682,7 +708,8 @@ WITH latest AS (
     SELECT u.uid,
            COALESCE(CAST({_json_text('u', 'lastinfo', 'blevel')} AS DECIMAL(18,4)), 0) AS blevel
     FROM `user` u
-    WHERE u.dt = (SELECT MAX(dt) FROM `user`)
+    WHERE u.dt = {_date_expr(1)}
+      AND u.prod = {PROD_ID}
 ), steps AS (
     SELECT 1 AS step_order, '主城1级+' AS step_name, 1 AS min_level UNION ALL
     SELECT 2, '主城5级+', 5 UNION ALL

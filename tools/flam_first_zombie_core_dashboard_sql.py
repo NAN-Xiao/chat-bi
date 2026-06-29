@@ -17,6 +17,13 @@ PAY_EVENTS = (
     "'PayBuyRet','PayBuyRetBenifit','PayBuyRetSandBox','PayFinish',"
     "'ServerPayLog','ep_pay_purchase_finish','ep_pay_update_db_finish'"
 )
+PROD_ID = 110000038
+
+
+def _date_expr(days_ago: int = 0) -> str:
+    if days_ago <= 0:
+        return "CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"
+    return f"CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {days_ago} DAY), '%Y%m%d') AS SIGNED)"
 
 
 @dataclass(frozen=True)
@@ -35,13 +42,7 @@ def _json_text(alias: str, obj: str, key: str) -> str:
 
 
 SQL_GIFT_PURCHASE = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-), pay_events AS (
+WITH pay_events AS (
     SELECT e.uid,
            COALESCE(
                {_json_text("e", "ext", "payId")},
@@ -51,9 +52,9 @@ WITH obs AS (
                e.event
            ) AS gift_name
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE e.dt BETWEEN {_date_expr(30)} AND {_date_expr()}
       AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
 )
 SELECT gift_name AS `购买礼包名`,
        COUNT(*) AS `购买次数`,
@@ -65,26 +66,20 @@ LIMIT 50
 """.strip()
 
 SQL_ONBOARDING_FUNNEL = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-), cohort AS (
+WITH cohort AS (
     SELECT u.uid,
            u.dt AS cohort_dt
     FROM `user` u
-    JOIN bounds b ON TRUE
-    WHERE u.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE u.dt BETWEEN {_date_expr(30)} AND {_date_expr(1)}
+      AND u.prod = {PROD_ID}
       AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
 ), event_window AS (
     SELECT e.uid,
            e.event
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE e.dt BETWEEN {_date_expr(30)} AND {_date_expr(1)}
       AND e.event IN ('EnterGame','Login','UserLogin','NewUserGuideStart','DialogueStart','NewUserGuide','DialogueEnd','ChapterTaskReward','TaskReward')
+      AND e.prod = {PROD_ID}
 ), step_users AS (
     SELECT 1 AS step_order, '账号注册' AS step_name, COUNT(DISTINCT c.uid) AS users
     FROM cohort c
@@ -105,12 +100,14 @@ WITH obs AS (
     FROM cohort c
     JOIN event_window e ON e.uid = c.uid AND e.event IN ('ChapterTaskReward','TaskReward')
 ), calc AS (
-    SELECT step_order,
-           step_name,
-           users,
-           FIRST_VALUE(users) OVER (ORDER BY step_order) AS start_users,
-           LAG(users) OVER (ORDER BY step_order) AS prev_users
-    FROM step_users
+    SELECT s.step_order,
+           s.step_name,
+           s.users,
+           base.users AS start_users,
+           COALESCE(prev.users, s.users) AS prev_users
+    FROM step_users s
+    LEFT JOIN step_users base ON base.step_order = 1
+    LEFT JOIN step_users prev ON prev.step_order = s.step_order - 1
 )
 SELECT step_order,
        step_name AS `新手步骤`,

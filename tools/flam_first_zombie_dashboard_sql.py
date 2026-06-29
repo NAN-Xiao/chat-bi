@@ -15,7 +15,33 @@ PAY_EVENTS = (
 )
 ACTIVE_EVENT = 'UserActive'
 LOGIN_EVENTS = f"'{ACTIVE_EVENT}'"
+REGISTER_EVENT = 'UserRegister'
 PROD_ID = 110000038
+
+
+def _date_window_start_expr(days: int) -> str:
+    return f"CAST(DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL {days} DAY), '%Y%m%d') AS SIGNED)"
+
+
+def _date_window_end_expr() -> str:
+    return "CAST(DATE_FORMAT(CURDATE(), '%Y%m%d') AS SIGNED)"
+
+
+def _bounds_cte(start_days: int = 30, alias: str = "bounds") -> str:
+    return (
+        f"WITH {alias} AS (\n"
+        f"    SELECT {_date_window_start_expr(start_days)} AS start_dt,\n"
+        f"           {_date_window_end_expr()} AS end_dt\n"
+        f")"
+    )
+
+
+def _dt_between(alias: str, start_days: int = 30) -> str:
+    return f"{alias}.dt BETWEEN {_date_window_start_expr(start_days)} AND {_date_window_end_expr()}"
+
+
+def _dt_between_until_yesterday(alias: str, start_days: int = 30) -> str:
+    return f"{alias}.dt BETWEEN {_date_window_start_expr(start_days)} AND {_date_window_start_expr(1)}"
 
 
 @dataclass(frozen=True)
@@ -71,87 +97,89 @@ PLATFORM_EXPR_U = (
     + _json_text("u", "userinfo", "_platformType")
     + ", '未知')"
 )
+PLATFORM_EXPR_E = (
+    "COALESCE("
+    + _json_text("e", "deviceinfo", "_platform")
+    + ", "
+    + _json_text("e", "userinfo", "_platformType")
+    + ", '未知')"
+)
 
 
 SQL_NEW_USERS_DAILY = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-)
-SELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,
-       COUNT(DISTINCT u.uid) AS `新增用户数`
-FROM `user` u
-JOIN bounds b ON TRUE
-WHERE u.dt BETWEEN b.start_dt AND b.max_dt
-  AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
-GROUP BY u.dt
-ORDER BY u.dt
+SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
+       COUNT(DISTINCT e.uid) AS `新增用户数`
+FROM `event` e
+WHERE {_dt_between("e", 30)}
+  AND e.prod = {PROD_ID}
+  AND e.event = '{REGISTER_EVENT}'
+GROUP BY e.dt
+ORDER BY e.dt
 """.strip()
 
 SQL_NEW_USERS_BY_CHANNEL = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
+WITH registers AS (
+    SELECT e.dt,
+           e.uid,
+           {CHANNEL_EXPR_E} AS channel
+    FROM `event` e
+    WHERE {_dt_between("e", 30)}
+      AND e.prod = {PROD_ID}
+      AND e.event = '{REGISTER_EVENT}'
 )
-SELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,
-       {CHANNEL_EXPR_U} AS `渠道`,
-       COUNT(DISTINCT u.uid) AS `新增用户数`
-FROM `user` u
-JOIN bounds b ON TRUE
-WHERE u.dt BETWEEN b.start_dt AND b.max_dt
-  AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
-GROUP BY u.dt, `渠道`
-ORDER BY u.dt, `渠道`
+SELECT STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS `日期`,
+       channel AS `渠道`,
+       COUNT(DISTINCT uid) AS `新增用户数`
+FROM registers
+GROUP BY dt, channel
+ORDER BY dt, channel
 LIMIT 300
 """.strip()
 
 SQL_NEW_USERS_BY_PLATFORM = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
+WITH registers AS (
+    SELECT e.dt,
+           e.uid,
+           {PLATFORM_EXPR_E} AS platform_name
+    FROM `event` e
+    WHERE {_dt_between("e", 30)}
+      AND e.prod = {PROD_ID}
+      AND e.event = '{REGISTER_EVENT}'
 )
-SELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,
-       {PLATFORM_EXPR_U} AS `系统`,
-       COUNT(DISTINCT u.uid) AS `新增用户数`
-FROM `user` u
-JOIN bounds b ON TRUE
-WHERE u.dt BETWEEN b.start_dt AND b.max_dt
-  AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
-GROUP BY u.dt, `系统`
-ORDER BY u.dt, `系统`
+SELECT STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS `日期`,
+       platform_name AS `系统`,
+       COUNT(DISTINCT uid) AS `新增用户数`
+FROM registers
+GROUP BY dt, platform_name
+ORDER BY dt, platform_name
 LIMIT 300
 """.strip()
 
-SQL_D1_RETENTION = """
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt
-    FROM `user`
+SQL_D1_RETENTION = f"""
+WITH bounds AS (
+    SELECT {_date_window_start_expr(29)} AS start_dt,
+           {_date_window_start_expr(2)} AS end_dt
 ), cohort AS (
-    SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) AS SIGNED) AS cohort_dt,
-           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS d1_dt,
-           u.uid
-    FROM `user` u
-    JOIN obs ON TRUE
-    WHERE u.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 28 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-      AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
+    SELECT e.dt AS cohort_dt,
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS d1_dt,
+           e.uid
+    FROM `event` e
+    JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.end_dt
+    WHERE e.prod = {PROD_ID}
+      AND e.event = '{REGISTER_EVENT}'
+), active AS (
+    SELECT e.dt,
+           e.uid
+    FROM `event` e
+    WHERE e.dt BETWEEN {_date_window_start_expr(28)} AND {_date_window_start_expr(1)}
+      AND e.prod = {PROD_ID}
+      AND e.event = '{ACTIVE_EVENT}'
+    GROUP BY e.dt, e.uid
 ), retained AS (
     SELECT c.cohort_dt,
            COUNT(DISTINCT c.uid) AS d1_retained_users
     FROM cohort c
-    JOIN `user` u
-      ON u.uid = c.uid
-     AND u.dt = c.d1_dt
-     AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain1')) = '1'
+    JOIN active a ON a.uid = c.uid AND a.dt = c.d1_dt
     GROUP BY c.cohort_dt
 )
 SELECT STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d') AS cohort_date,
@@ -165,17 +193,21 @@ ORDER BY c.cohort_dt
 """.strip()
 
 SQL_NEW_USERS_FIRST_DAY_PAY = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
+WITH bounds AS (
+    SELECT {_date_window_start_expr(30)} AS start_dt,
+           {_date_window_start_expr(1)} AS end_dt
 ), cohort AS (
-    SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) AS SIGNED) AS cohort_dt,
-           u.uid,
+    SELECT e.dt AS cohort_dt,
+           e.uid,
            {_pay_value("u", "pay1")} AS pay1
-    FROM `user` u
-    JOIN obs ON TRUE
-    WHERE u.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED)
-                   AND obs.max_dt
-      AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
+    FROM `event` e
+    JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.end_dt
+    JOIN `user` u
+      ON u.uid = e.uid
+     AND u.dt = e.dt
+     AND u.prod = {PROD_ID}
+    WHERE e.prod = {PROD_ID}
+      AND e.event = '{REGISTER_EVENT}'
 )
 SELECT STR_TO_DATE(CAST(cohort_dt AS CHAR), '%Y%m%d') AS `日期`,
        ROUND(SUM(pay1), 2) AS `新增首日付费金额`
@@ -185,74 +217,60 @@ ORDER BY cohort_dt
 """.strip()
 
 SQL_CHANNEL_RETENTION = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
+WITH bounds AS (
+    SELECT {_date_window_start_expr(36)} AS start_dt,
+           {_date_window_start_expr(8)} AS end_dt,
+           {_date_window_start_expr(1)} AS data_end_dt
 ), cohort AS (
-    SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) AS SIGNED) AS cohort_dt,
-           u.uid,
-           {CHANNEL_EXPR_U} AS channel
-    FROM `user` u
-    JOIN obs ON TRUE
-    WHERE u.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 35 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
-      AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
-), retained AS (
-    SELECT c.cohort_dt,
-           c.channel,
-           COUNT(DISTINCT CASE
-               WHEN u.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-                AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain1')) = '1' THEN c.uid
-           END) AS r1,
-           COUNT(DISTINCT CASE
-               WHEN u.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d'), INTERVAL 3 DAY), '%Y%m%d') AS SIGNED)
-                AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain3')) = '1' THEN c.uid
-           END) AS r3,
-           COUNT(DISTINCT CASE
-               WHEN u.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
-                AND JSON_UNQUOTE(JSON_EXTRACT(u.remain, '$.remain7')) = '1' THEN c.uid
-           END) AS r7
-    FROM cohort c
-    JOIN `user` u
-      ON u.uid = c.uid
-     AND u.dt BETWEEN c.cohort_dt AND (SELECT max_dt FROM obs)
-    GROUP BY c.cohort_dt, c.channel
+    SELECT e.dt AS cohort_dt,
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AS d1_dt,
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 3 DAY), '%Y%m%d') AS SIGNED) AS d3_dt,
+           CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AS d7_dt,
+           e.uid,
+           {CHANNEL_EXPR_E} AS channel
+    FROM `event` e
+    JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.end_dt
+    WHERE e.prod = {PROD_ID}
+      AND e.event = '{REGISTER_EVENT}'
+), active AS (
+    SELECT e.dt,
+           e.uid
+    FROM `event` e
+    JOIN bounds b ON e.dt BETWEEN CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(b.start_dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED) AND b.data_end_dt
+    WHERE e.prod = {PROD_ID}
+      AND e.event = '{ACTIVE_EVENT}'
+    GROUP BY e.dt, e.uid
 )
 SELECT STR_TO_DATE(CAST(c.cohort_dt AS CHAR), '%Y%m%d') AS `日期`,
        c.channel AS `渠道`,
        COUNT(DISTINCT c.uid) AS `用户注册用户数`,
-       ROUND(COALESCE(r.r1, 0) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第1日`,
-       ROUND(COALESCE(r.r3, 0) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第3日`,
-       ROUND(COALESCE(r.r7, 0) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第7日`
+       ROUND(COUNT(DISTINCT CASE WHEN a.dt = c.d1_dt THEN c.uid END) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第1日`,
+       ROUND(COUNT(DISTINCT CASE WHEN a.dt = c.d3_dt THEN c.uid END) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第3日`,
+       ROUND(COUNT(DISTINCT CASE WHEN a.dt = c.d7_dt THEN c.uid END) / NULLIF(COUNT(DISTINCT c.uid), 0) * 100, 2) AS `第7日`
 FROM cohort c
-LEFT JOIN retained r ON r.cohort_dt = c.cohort_dt AND r.channel = c.channel
-GROUP BY c.cohort_dt, c.channel, r.r1, r.r3, r.r7
+LEFT JOIN active a
+  ON a.uid = c.uid
+ AND a.dt IN (c.d1_dt, c.d3_dt, c.d7_dt)
+GROUP BY c.cohort_dt, c.channel
 ORDER BY c.cohort_dt, c.channel
 LIMIT 300
 """.strip()
 
 SQL_LTV_7D = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
+WITH bounds AS (
+    SELECT {_date_window_start_expr(36)} AS start_dt,
+           {_date_window_start_expr(8)} AS end_dt
 ), cohort AS (
-    SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) AS SIGNED) AS cohort_dt,
-           u.uid
+    SELECT u.dt AS cohort_dt,
+           u.uid,
+           {_pay_value("u", "pay1")} AS pay1,
+           {_pay_value("u", "pay2")} AS pay2,
+           {_pay_value("u", "pay3")} AS pay3,
+           {_pay_value("u", "pay7")} AS pay7
     FROM `user` u
-    JOIN obs ON TRUE
-    WHERE u.dt BETWEEN CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 35 DAY), '%Y%m%d') AS SIGNED)
-                   AND CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(obs.max_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED)
+    JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.end_dt
+    WHERE u.prod = {PROD_ID}
       AND JSON_UNQUOTE(JSON_EXTRACT(u.userinfo, '$.regdate')) = CAST(u.dt AS CHAR)
-), user_pay AS (
-    SELECT c.cohort_dt,
-           c.uid,
-           MAX({_pay_value("u", "pay1")}) AS pay1,
-           MAX({_pay_value("u", "pay2")}) AS pay2,
-           MAX({_pay_value("u", "pay3")}) AS pay3,
-           MAX({_pay_value("u", "pay7")}) AS pay7
-    FROM cohort c
-    JOIN `user` u
-      ON u.uid = c.uid
-     AND u.dt BETWEEN c.cohort_dt AND (SELECT max_dt FROM obs)
-    GROUP BY c.cohort_dt, c.uid
 )
 SELECT STR_TO_DATE(CAST(cohort_dt AS CHAR), '%Y%m%d') AS `日期`,
        COUNT(DISTINCT uid) AS `用户注册用户数`,
@@ -260,32 +278,33 @@ SELECT STR_TO_DATE(CAST(cohort_dt AS CHAR), '%Y%m%d') AS `日期`,
        ROUND(SUM(pay2) / NULLIF(COUNT(DISTINCT uid), 0), 2) AS `第1日`,
        ROUND(SUM(pay3) / NULLIF(COUNT(DISTINCT uid), 0), 2) AS `第2日`,
        ROUND(SUM(pay7) / NULLIF(COUNT(DISTINCT uid), 0), 2) AS `第7日`
-FROM user_pay
+FROM cohort
 GROUP BY cohort_dt
 ORDER BY cohort_dt
 """.strip()
 
 SQL_DAILY_REVENUE_BASE = f"""
-WITH obs AS (
-    SELECT dt AS max_dt
-    FROM `user`
-    ORDER BY dt DESC
-    LIMIT 1
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AS baseline_dt,
-           CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
+WITH pay_event_users AS (
+    SELECT e.dt,
+           e.uid
+    FROM `event` e
+    WHERE {_dt_between("e", 30)}
+      AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
+    GROUP BY e.dt, e.uid
 ), user_pay_delta AS (
-    SELECT u.dt,
-           u.uid,
+    SELECT pe.dt,
+           pe.uid,
            GREATEST({_pay_value("u")} - COALESCE({_pay_value("p")}, 0), 0) AS pay_amount
-    FROM `user` u
-    JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt
+    FROM pay_event_users pe
+    JOIN `user` u
+      ON u.dt = pe.dt
+     AND u.uid = pe.uid
+     AND u.prod = {PROD_ID}
     LEFT JOIN `user` p
-      ON p.uid = u.uid
-     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
-    WHERE {_pay_value("u")} > 0
+      ON p.uid = pe.uid
+     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+     AND p.prod = {PROD_ID}
 ), daily_pay AS (
     SELECT dt,
            ROUND(SUM(pay_amount), 2) AS pay_amount,
@@ -296,8 +315,8 @@ WITH obs AS (
     SELECT e.dt,
            COUNT(DISTINCT e.uid) AS active_users
     FROM `event` e
-    JOIN bounds b ON e.dt BETWEEN b.start_dt AND b.max_dt
-    WHERE e.event IN ({LOGIN_EVENTS})
+    WHERE {_dt_between("e", 30)}
+      AND e.event IN ({LOGIN_EVENTS})
       AND e.prod = {PROD_ID}
     GROUP BY e.dt
 )
@@ -327,42 +346,31 @@ ORDER BY d.dt
 """.strip()
 
 SQL_DAILY_PAY_EVENT_COUNT = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-)
 SELECT STR_TO_DATE(CAST(e.dt AS CHAR), '%Y%m%d') AS `日期`,
        COUNT(*) AS `充值次数`
 FROM `event` e
-JOIN bounds b ON TRUE
-WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+WHERE {_dt_between("e", 30)}
   AND e.event IN ({PAY_EVENTS})
+  AND e.prod = {PROD_ID}
 GROUP BY e.dt
 ORDER BY e.dt
 """.strip()
 
 SQL_DAILY_PAY_USERS = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `event`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-), pay_users AS (
+WITH pay_users AS (
     SELECT e.dt, e.uid
     FROM `event` e
-    JOIN bounds b ON TRUE
-    WHERE e.dt BETWEEN b.start_dt AND b.max_dt
+    WHERE {_dt_between("e", 30)}
       AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
     GROUP BY e.dt, e.uid
 ), first_pay AS (
-    SELECT uid, MIN(dt) AS first_pay_dt
-    FROM `event`
-    WHERE event IN ({PAY_EVENTS})
-    GROUP BY uid
+    SELECT e.uid, MIN(e.dt) AS first_pay_dt
+    FROM `event` e
+    WHERE {_dt_between("e", 30)}
+      AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
+    GROUP BY e.uid
 )
 SELECT STR_TO_DATE(CAST(p.dt AS CHAR), '%Y%m%d') AS `日期`,
        COUNT(DISTINCT p.uid) AS `日充值用户数`,
@@ -374,60 +382,70 @@ ORDER BY p.dt
 """.strip()
 
 SQL_7D_PAY_RANK = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), bounds AS (
-    SELECT max_dt,
-           CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 7 DAY), '%Y%m%d') AS SIGNED) AS baseline_dt
-    FROM obs
+WITH pay_users AS (
+    SELECT e.uid
+    FROM `event` e
+    WHERE e.dt BETWEEN {_date_window_start_expr(8)} AND {_date_window_start_expr(1)}
+      AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
+    GROUP BY e.uid
 ), latest AS (
     SELECT u.uid,
-           {CHANNEL_EXPR_U} AS channel,
+           {CHANNEL_EXPR_U} AS channel_name,
            COALESCE({_json_text("u", "userinfo", "_serverId")}, {_json_text("u", "lastinfo", "_serverId")}, '未知') AS server_id,
            {_pay_value("u")} AS paytotal
     FROM `user` u
-    JOIN bounds b ON u.dt = b.max_dt
+    JOIN pay_users pu ON pu.uid = u.uid
+    WHERE u.dt = {_date_window_start_expr(1)}
+      AND u.prod = {PROD_ID}
 ), baseline AS (
     SELECT u.uid,
            {_pay_value("u")} AS paytotal
     FROM `user` u
-    JOIN bounds b ON u.dt = b.baseline_dt
+    JOIN pay_users pu ON pu.uid = u.uid
+    WHERE u.dt = {_date_window_start_expr(8)}
+      AND u.prod = {PROD_ID}
+), ranked AS (
+    SELECT l.uid,
+           l.channel_name,
+           l.server_id,
+           ROUND(GREATEST(l.paytotal - COALESCE(b.paytotal, 0), 0), 2) AS pay_amount
+    FROM latest l
+    LEFT JOIN baseline b ON b.uid = l.uid
+    WHERE GREATEST(l.paytotal - COALESCE(b.paytotal, 0), 0) > 0
 )
-SELECT l.uid AS `账号ID`,
-       l.channel AS `来源渠道`,
-       l.server_id AS `区服ID`,
-       ROUND(GREATEST(l.paytotal - COALESCE(b.paytotal, 0), 0), 2) AS `付费总额`
-FROM latest l
-LEFT JOIN baseline b ON b.uid = l.uid
-WHERE GREATEST(l.paytotal - COALESCE(b.paytotal, 0), 0) > 0
-ORDER BY `付费总额` DESC
+SELECT uid AS `账号ID`,
+       channel_name AS `来源渠道`,
+       server_id AS `区服ID`,
+       pay_amount AS `付费总额`
+FROM ranked
+ORDER BY pay_amount DESC
 LIMIT 100
 """.strip()
 
 SQL_CHANNEL_PAY_AMOUNT = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 30 DAY), '%Y%m%d') AS SIGNED) AS baseline_dt,
-           CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
-), user_pay_window AS (
-    SELECT u.dt,
-           u.uid,
-           {CHANNEL_EXPR_U} AS channel,
-           {_pay_value("u")} AS paytotal,
-           LAG({_pay_value("u")}) OVER (PARTITION BY u.uid ORDER BY u.dt) AS prev_paytotal
-    FROM `user` u
-    JOIN bounds b ON TRUE
-    WHERE u.dt BETWEEN b.baseline_dt AND b.max_dt
+WITH pay_event_users AS (
+    SELECT e.dt,
+           e.uid
+    FROM `event` e
+    WHERE {_dt_between("e", 30)}
+      AND e.event IN ({PAY_EVENTS})
+      AND e.prod = {PROD_ID}
+    GROUP BY e.dt, e.uid
 ), user_pay_delta AS (
-    SELECT dt,
-           uid,
-           channel,
-           GREATEST(paytotal - COALESCE(prev_paytotal, 0), 0) AS pay_amount
-    FROM user_pay_window
-    WHERE dt >= (SELECT start_dt FROM bounds)
+    SELECT pe.dt,
+           pe.uid,
+           {CHANNEL_EXPR_U} AS channel,
+           GREATEST({_pay_value("u")} - COALESCE({_pay_value("p")}, 0), 0) AS pay_amount
+    FROM pay_event_users pe
+    JOIN `user` u
+      ON u.dt = pe.dt
+     AND u.uid = pe.uid
+     AND u.prod = {PROD_ID}
+    LEFT JOIN `user` p
+      ON p.uid = pe.uid
+     AND p.dt = CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(pe.dt AS CHAR), '%Y%m%d'), INTERVAL 1 DAY), '%Y%m%d') AS SIGNED)
+     AND p.prod = {PROD_ID}
 )
 SELECT STR_TO_DATE(CAST(dt AS CHAR), '%Y%m%d') AS `日期`,
        channel AS `渠道`,
@@ -444,32 +462,27 @@ SQL_CHANNEL_PAY_USERS = SQL_CHANNEL_PAY_AMOUNT.replace(
 )
 
 SQL_CHANNEL_CUMULATIVE_PAY_RANK = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-)
 SELECT {CHANNEL_EXPR_U} AS `渠道`,
        ROUND(SUM({_pay_value("u")}), 2) AS `累计付费金额`,
        COUNT(DISTINCT CASE WHEN {_pay_value("u")} > 0 THEN u.uid END) AS `累计付费用户数`
 FROM `user` u
-JOIN obs ON u.dt = obs.max_dt
+WHERE u.dt = {_date_window_start_expr(1)}
+  AND u.prod = {PROD_ID}
 GROUP BY `渠道`
 ORDER BY `累计付费金额` DESC
 LIMIT 20
 """.strip()
 
 SQL_CUMULATIVE_PAY_AMOUNT = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-), bounds AS (
-    SELECT CAST(DATE_FORMAT(DATE_SUB(STR_TO_DATE(CAST(max_dt AS CHAR), '%Y%m%d'), INTERVAL 29 DAY), '%Y%m%d') AS SIGNED) AS start_dt,
-           max_dt
-    FROM obs
+WITH bounds AS (
+    SELECT {_date_window_start_expr(30)} AS start_dt,
+           {_date_window_start_expr(1)} AS max_dt
 )
 SELECT STR_TO_DATE(CAST(u.dt AS CHAR), '%Y%m%d') AS `日期`,
        ROUND(SUM({_pay_value("u")}), 2) AS `累计付费金额`
 FROM `user` u
-JOIN bounds b ON TRUE
-WHERE u.dt BETWEEN b.start_dt AND b.max_dt
+JOIN bounds b ON u.dt BETWEEN b.start_dt AND b.max_dt
+WHERE u.prod = {PROD_ID}
 GROUP BY u.dt
 ORDER BY u.dt
 """.strip()
@@ -485,9 +498,6 @@ SQL_CUMULATIVE_PAY_RATE = SQL_CUMULATIVE_PAY_AMOUNT.replace(
 )
 
 SQL_LEVEL_PAY_AMOUNT = f"""
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-)
 SELECT CASE
          WHEN COALESCE(CAST({_json_text("u", "lastinfo", "level")} AS DECIMAL(18,4)), 0) < 10 THEN '0-9'
          WHEN COALESCE(CAST({_json_text("u", "lastinfo", "level")} AS DECIMAL(18,4)), 0) < 20 THEN '10-19'
@@ -496,15 +506,13 @@ SELECT CASE
        END AS `等级段`,
        ROUND(SUM({_pay_value("u")}) / NULLIF(COUNT(DISTINCT u.uid), 0), 2) AS `人均付费金额`
 FROM `user` u
-JOIN obs ON u.dt = obs.max_dt
+WHERE u.dt = {_date_window_start_expr(1)}
+  AND u.prod = {PROD_ID}
 GROUP BY `等级段`
 ORDER BY MIN(COALESCE(CAST({_json_text("u", "lastinfo", "level")} AS DECIMAL(18,4)), 0))
 """.strip()
 
-SQL_CURRENT_LEVEL_DISTRIBUTION = """
-WITH obs AS (
-    SELECT MAX(dt) AS max_dt FROM `user`
-)
+SQL_CURRENT_LEVEL_DISTRIBUTION = f"""
 SELECT CASE
          WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18,4)), 0) < 10 THEN '0-9'
          WHEN COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18,4)), 0) < 20 THEN '10-19'
@@ -513,7 +521,8 @@ SELECT CASE
        END AS `等级区间`,
        COUNT(DISTINCT u.uid) AS `用户数`
 FROM `user` u
-JOIN obs ON u.dt = obs.max_dt
+WHERE u.dt = {_date_window_start_expr(1)}
+  AND u.prod = {PROD_ID}
 GROUP BY `等级区间`
 ORDER BY MIN(COALESCE(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(u.lastinfo, '$.level')), '') AS DECIMAL(18,4)), 0))
 """.strip()

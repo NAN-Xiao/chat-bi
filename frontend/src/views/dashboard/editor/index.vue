@@ -138,8 +138,14 @@ function hasChartSnapshot(viewInfo: any) {
 }
 
 function hasUsableResultSnapshot(result: any) {
+  if (result?.status === 'failed') {
+    return false
+  }
   const rows = result?.data
-  return Array.isArray(rows) && rows.length > 0
+  return (
+    (Array.isArray(rows) && rows.length > 0) ||
+    (Array.isArray(result?.fields) && result.fields.length > 0)
+  )
 }
 
 function resultRefreshedAt(result: any) {
@@ -235,19 +241,20 @@ function prepareEditorChartState(viewInfo: any) {
   viewInfo.data.fields = Array.isArray(viewInfo.data.fields) ? viewInfo.data.fields : []
   viewInfo.fields = Array.isArray(viewInfo.fields) ? viewInfo.fields : viewInfo.data.fields
   viewInfo.message = ''
-  viewInfo.refreshState = ''
   if (hasChartSnapshot(viewInfo)) {
     viewInfo.status = 'success'
     viewInfo.dataState = 'ready'
     viewInfo.loadingProgress = 100
+    viewInfo.refreshState = ''
   } else {
     viewInfo.status = 'loading'
     viewInfo.dataState = 'loading'
     setChartLoadingProgress(viewInfo, 0, true)
+    viewInfo.refreshState = 'waiting'
   }
 }
 
-function keepChartLoadingState(viewInfo: any) {
+function keepChartLoadingState(viewInfo: any, refreshState = 'loading') {
   if (!viewInfo) {
     return
   }
@@ -261,7 +268,7 @@ function keepChartLoadingState(viewInfo: any) {
   viewInfo.message = ''
   viewInfo.dataState = 'loading'
   setChartLoadingProgress(viewInfo, 5)
-  viewInfo.refreshState = ''
+  viewInfo.refreshState = refreshState
 }
 
 function keepChartSnapshotOrLoading(viewInfo: any) {
@@ -279,7 +286,7 @@ function keepChartSnapshotOrLoading(viewInfo: any) {
   keepChartLoadingState(viewInfo)
 }
 
-function applyChartResult(viewInfo: any, result: any, keepLoadingWhenEmpty = false) {
+function applyChartResult(viewInfo: any, result: any) {
   if (!viewInfo) {
     return false
   }
@@ -306,14 +313,6 @@ function applyChartResult(viewInfo: any, result: any, keepLoadingWhenEmpty = fal
     viewInfo.dataState = 'ready'
   } else {
     viewInfo.dataState = viewInfo.status === 'failed' ? 'failed' : 'ready'
-    if (keepLoadingWhenEmpty && viewInfo.status !== 'failed' && !data.length && !hasPreviousSnapshot) {
-      viewInfo.status = 'loading'
-      viewInfo.message = ''
-      viewInfo.dataState = 'loading'
-      setChartLoadingProgress(viewInfo, 5)
-      viewInfo.refreshState = ''
-      return false
-    }
     if (viewInfo.status !== 'failed') {
       markChartSnapshotRefreshed(viewInfo, resultRefreshedAt(result))
     }
@@ -391,8 +390,16 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
     signal: controller.signal,
     requestOptions: { silent: true },
   }
-  const updateProgress = (entries = chartEntries, finished = cacheFinished, count = chartEntries.length) => {
-    const progress = Math.min(95, Math.round((finished / Math.max(1, count)) * 100))
+  const updateProgress = (
+    entries = chartEntries,
+    finished = cacheFinished,
+    count = chartEntries.length,
+    startProgress = 0,
+    endProgress = 95
+  ) => {
+    const boundedCount = Math.max(1, count)
+    const progressRatio = Math.max(0, Math.min(1, finished / boundedCount))
+    const progress = Math.min(95, Math.round(startProgress + (endProgress - startProgress) * progressRatio))
     withAutoChartUpdate(() => {
       entries.forEach((entry) => {
         if (entry.viewInfo?.dataState === 'loading') {
@@ -402,6 +409,13 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
     })
   }
   try {
+    withAutoChartUpdate(() => {
+      chartEntries.forEach((entry) => {
+        if (!hasChartSnapshot(entry.viewInfo)) {
+          keepChartLoadingState(entry.viewInfo, 'waiting')
+        }
+      })
+    })
     await runChartQueue(chartEntries, CHART_CACHE_LOOKUP_CONCURRENCY, async (entry) => {
       const { viewInfo } = entry
       try {
@@ -432,7 +446,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         }
       } finally {
         cacheFinished += 1
-        updateProgress()
+        updateProgress(chartEntries, cacheFinished, chartEntries.length, 5, 45)
       }
     })
 
@@ -441,7 +455,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
       return
     }
     withAutoChartUpdate(() => {
-      databaseRefreshEntries.forEach((entry) => keepChartLoadingState(entry.viewInfo))
+      databaseRefreshEntries.forEach((entry) => keepChartLoadingState(entry.viewInfo, 'loading'))
     })
     await runChartQueue(databaseRefreshEntries, CHART_DATABASE_REFRESH_CONCURRENCY, async (entry) => {
       const { viewInfo } = entry
@@ -462,10 +476,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
               transientPendingCount += 1
             }
           } else {
-            const usable = applyChartResult(viewInfo, result, true)
-            if (!usable && !hasChartSnapshot(viewInfo)) {
-              transientPendingCount += 1
-            }
+            applyChartResult(viewInfo, result)
           }
         })
       } catch (error: any) {
@@ -482,7 +493,7 @@ async function refreshEditorCharts(loadVersion: number, controller: AbortControl
         }
       } finally {
         databaseFinished += 1
-        updateProgress(databaseRefreshEntries, databaseFinished, databaseTotal)
+        updateProgress(databaseRefreshEntries, databaseFinished, databaseTotal, 45, 95)
       }
     })
   } finally {
