@@ -609,6 +609,12 @@ const computedMessages = computed<Array<ChatMessage>>(() => {
 const hasRealChatRecords = computed(() =>
   currentChat.value.records.some((record) => !record.first_chat && !!record.question?.trim())
 )
+function isUnfinishedAnswerRecord(record?: ChatRecord) {
+  return !!record && !record.first_chat && !record.local_answer && !record.finish && !record.error
+}
+function hasUnfinishedRecord() {
+  return currentChat.value.records.some((record) => isUnfinishedAnswerRecord(record))
+}
 const hasChatMessages = computed(() => computedMessages.value.length > 0)
 const isLoadingSelectedChat = computed(() => loading.value && currentChatId.value !== undefined)
 const showWelcomeContent = computed(() => !hasRealChatRecords.value && !isLoadingSelectedChat.value)
@@ -684,6 +690,10 @@ async function restoreCurrentChatFromSession() {
   loading.value = true
   try {
     await loadChatById(storedChatId)
+    if (hasUnfinishedRecord()) {
+      isTyping.value = true
+      restoreChartAnswers()
+    }
   } catch (error) {
     console.error('Restore current chat failed:', error)
     forgetCurrentChat()
@@ -959,12 +969,6 @@ const chartAnswerRef = ref()
 const getRecommendQuestionsLoading = ref(false)
 const restoringVisibleChat = ref(false)
 
-function hasUnfinishedRecord() {
-  return currentChat.value.records.some(
-    (record) => !record.first_chat && !record.local_answer && !record.finish && !record.error
-  )
-}
-
 function restoreChartAnswers() {
   nextTick(() => {
     const refs = chartAnswerRef.value
@@ -988,6 +992,10 @@ async function restoreVisibleChatState() {
   restoringVisibleChat.value = true
   try {
     await loadChatById(currentChatId.value)
+    if (hasUnfinishedRecord()) {
+      loading.value = true
+      isTyping.value = true
+    }
     restoreChartAnswers()
   } catch (error) {
     console.error('Restore visible chat state failed:', error)
