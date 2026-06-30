@@ -331,6 +331,12 @@ const sendMessage = async () => {
   if (error) return
 
   try {
+    if (currentRecord.task_id) {
+      rememberActiveTask(currentRecord, currentRecord.task_id)
+      await pollQuestionTask(currentRecord.task_id, currentRecord)
+      return
+    }
+
     const param = {
       question: currentRecord.question,
       chat_id: _currentChatId.value,
