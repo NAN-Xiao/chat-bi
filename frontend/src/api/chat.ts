@@ -15,6 +15,11 @@ export const questionApi = {
   // add: (data: any) => request.post('/chat/question', data),
   add: (data: any, controller?: AbortController) =>
     request.fetchStream('/chat/question', data, controller),
+  startTask: (data: any) => request.post('/chat/question/task', data),
+  getTaskEvents: (taskId: string, offset = 0, limit = 100) =>
+    request.get(`/chat/question/task/${taskId}/events`, {
+      params: { offset, limit },
+    }),
   edit: (data: any) => request.put('/chat/question', data),
   delete: (id: number) => request.delete(`/chat/question/${id}`),
   query: (id: number) => request.get(`/chat/question/${id}`),
@@ -59,6 +64,7 @@ export class ChatRecord {
   regenerate_record_id?: number
   custom_prompt_id?: number | string
   data_skill_id?: number | string
+  task_id?: string
   agent_context_snapshot?: Record<string, any>
   duration?: number
   total_tokens?: number

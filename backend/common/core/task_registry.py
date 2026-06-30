@@ -11,6 +11,7 @@ def register_builtin_tasks() -> None:
     if _registered:
         return
 
+    from apps.chat import tasks as chat_tasks  # noqa: F401
     from apps.datasource import tasks as datasource_tasks  # noqa: F401
     from apps.knowledge_base import tasks as knowledge_base_tasks  # noqa: F401
     from apps.system import tasks as system_tasks  # noqa: F401

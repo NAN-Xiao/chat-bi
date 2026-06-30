@@ -85,6 +85,175 @@ const _loading = computed({
 })
 
 const stopFlag = ref(false)
+const POLL_INTERVAL_MS = 1000
+const activeTaskStoragePrefix = 'chat.smartQa.activeTask.'
+
+interface ActiveTaskState {
+  task_id: string
+  offset: number
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function activeTaskStorageKey(record: ChatRecord) {
+  const chatId = record.chat_id || _currentChatId.value || 'unknown'
+  const recordId = record.create_time || record.question || index.value
+  return `${activeTaskStoragePrefix}${chatId}.${recordId}`
+}
+
+function rememberActiveTask(record: ChatRecord, taskId: string, offset = 0) {
+  sessionStorage.setItem(
+    activeTaskStorageKey(record),
+    JSON.stringify({
+      task_id: taskId,
+      offset,
+    })
+  )
+}
+
+function forgetActiveTask(record: ChatRecord) {
+  sessionStorage.removeItem(activeTaskStorageKey(record))
+}
+
+function rememberedActiveTask(record: ChatRecord): ActiveTaskState | undefined {
+  if (record.task_id) {
+    return { task_id: record.task_id, offset: 0 }
+  }
+  const raw = sessionStorage.getItem(activeTaskStorageKey(record))
+  if (!raw) {
+    return undefined
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed?.task_id) {
+      return {
+        task_id: parsed.task_id,
+        offset: Number(parsed.offset || 0),
+      }
+    }
+  } catch {
+    return { task_id: raw, offset: 0 }
+  }
+  return undefined
+}
+
+async function handlePayload(
+  payload: string,
+  currentRecord: ChatRecord,
+  state: { sql_answer: string; chart_answer: string }
+) {
+  let data
+  try {
+    data = JSONBig.parse(payload)
+  } catch (err) {
+    console.error('JSON string:', payload)
+    throw err
+  }
+
+  if (data.code && data.code !== 200) {
+    ElMessage({
+      message: data.msg,
+      type: 'error',
+      showClose: true,
+    })
+    _loading.value = false
+    return
+  }
+
+  switch (data.type) {
+    case 'id':
+      currentRecord.id = data.id
+      _currentChat.value.records[index.value].id = data.id
+      break
+    case 'regenerate_record_id':
+      currentRecord.regenerate_record_id = data.regenerate_record_id
+      _currentChat.value.records[index.value].regenerate_record_id = data.regenerate_record_id
+      break
+    case 'question':
+      currentRecord.question = data.question
+      _currentChat.value.records[index.value].question = data.question
+      break
+    case 'info':
+      console.info(data.msg)
+      break
+    case 'brief':
+      _currentChat.value.brief = data.brief
+      _chatList.value.forEach((c: Chat) => {
+        if (c.id === _currentChat.value.id) {
+          c.brief = _currentChat.value.brief
+        }
+      })
+      break
+    case 'error':
+      currentRecord.error = data.content
+      emits('error', currentRecord.id)
+      break
+    case 'sql-result':
+      state.sql_answer += data.reasoning_content || ''
+      _currentChat.value.records[index.value].sql_answer = state.sql_answer
+      break
+    case 'sql':
+      _currentChat.value.records[index.value].sql = data.content
+      break
+    case 'sql-data':
+      getChatData(_currentChat.value.records[index.value].id)
+      break
+    case 'chart-result':
+      state.chart_answer += data.reasoning_content || ''
+      _currentChat.value.records[index.value].chart_answer = state.chart_answer
+      break
+    case 'chart':
+      _currentChat.value.records[index.value].chart = data.content
+      break
+    case 'datasource':
+      if (!_currentChat.value.datasource) {
+        _currentChat.value.datasource = data.id
+      }
+      break
+    case 'finish':
+      emits('finish', currentRecord.id)
+      break
+  }
+  await nextTick()
+}
+
+async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initialOffset = 0) {
+  const state = {
+    sql_answer: _currentChat.value.records[index.value].sql_answer || '',
+    chart_answer: _currentChat.value.records[index.value].chart_answer || '',
+  }
+  let offset = initialOffset
+
+  while (true) {
+    if (stopFlag.value) {
+      break
+    }
+
+    const eventPage = await questionApi.getTaskEvents(taskId, offset)
+    offset = eventPage.next_offset ?? offset
+    rememberActiveTask(currentRecord, taskId, offset)
+    for (const eventChunk of eventPage.events || []) {
+      const parsed = parseSseChunk('', eventChunk)
+      for (const payload of parsed.payloads) {
+        await handlePayload(payload, currentRecord, state)
+      }
+    }
+
+    if (['succeeded', 'failed'].includes(eventPage.status)) {
+      forgetActiveTask(currentRecord)
+      if (eventPage.status === 'failed' && eventPage.error && !currentRecord.error) {
+        currentRecord.error = eventPage.error
+        emits('error', currentRecord.id)
+      }
+      _loading.value = false
+      break
+    }
+
+    await sleep(POLL_INTERVAL_MS)
+  }
+}
 
 const sendMessage = async () => {
   stopFlag.value = false
@@ -108,117 +277,17 @@ const sendMessage = async () => {
   if (error) return
 
   try {
-    const controller: AbortController = new AbortController()
     const param = {
       question: currentRecord.question,
       chat_id: _currentChatId.value,
       custom_prompt_id: currentRecord.custom_prompt_id,
       data_skill_id: currentRecord.data_skill_id,
     }
-    const response = await questionApi.add(param, controller)
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-
-    let sql_answer = ''
-    let chart_answer = ''
-
-    let tempResult = ''
-
-    while (true) {
-      if (stopFlag.value) {
-        controller.abort()
-        break
-      }
-
-      const { done, value } = await reader.read()
-      if (done) {
-        _loading.value = false
-        break
-      }
-
-      const parsed = parseSseChunk(tempResult, decoder.decode(value, { stream: true }))
-      tempResult = parsed.buffer
-      if (!parsed.payloads.length) {
-        continue
-      }
-
-      for (const payload of parsed.payloads) {
-        let data
-        try {
-          data = JSONBig.parse(payload)
-        } catch (err) {
-          console.error('JSON string:', payload)
-          throw err
-        }
-
-        if (data.code && data.code !== 200) {
-          ElMessage({
-            message: data.msg,
-            type: 'error',
-            showClose: true,
-          })
-          _loading.value = false
-          return
-        }
-
-        switch (data.type) {
-          case 'id':
-            currentRecord.id = data.id
-            _currentChat.value.records[index.value].id = data.id
-            break
-          case 'regenerate_record_id':
-            currentRecord.regenerate_record_id = data.regenerate_record_id
-            _currentChat.value.records[index.value].regenerate_record_id =
-              data.regenerate_record_id
-            break
-          case 'question':
-            currentRecord.question = data.question
-            _currentChat.value.records[index.value].question = data.question
-            break
-          case 'info':
-            console.info(data.msg)
-            break
-          case 'brief':
-            _currentChat.value.brief = data.brief
-            _chatList.value.forEach((c: Chat) => {
-              if (c.id === _currentChat.value.id) {
-                c.brief = _currentChat.value.brief
-              }
-            })
-            break
-          case 'error':
-            currentRecord.error = data.content
-            emits('error', currentRecord.id)
-            break
-          case 'sql-result':
-            sql_answer += data.reasoning_content || ''
-            _currentChat.value.records[index.value].sql_answer = sql_answer
-            break
-          case 'sql':
-            _currentChat.value.records[index.value].sql = data.content
-            break
-          case 'sql-data':
-            getChatData(_currentChat.value.records[index.value].id)
-            break
-          case 'chart-result':
-            chart_answer += data.reasoning_content || ''
-            _currentChat.value.records[index.value].chart_answer = chart_answer
-            break
-          case 'chart':
-            _currentChat.value.records[index.value].chart = data.content
-            break
-          case 'datasource':
-            if (!_currentChat.value.datasource) {
-              _currentChat.value.datasource = data.id
-            }
-            break
-          case 'finish':
-            emits('finish', currentRecord.id)
-            break
-        }
-        await nextTick()
-      }
-    }
+    const task = await questionApi.startTask(param)
+    currentRecord.task_id = task.task_id
+    _currentChat.value.records[index.value].task_id = task.task_id
+    rememberActiveTask(currentRecord, task.task_id)
+    await pollQuestionTask(task.task_id, currentRecord)
   } catch (error) {
     if (!currentRecord.error) {
       currentRecord.error = ''
@@ -281,6 +350,22 @@ onBeforeUnmount(() => {
 onMounted(() => {
   if (props.message?.record?.id && props.message?.record?.finish) {
     getChatData(props.message.record.id)
+    return
+  }
+  const record = props.message?.record
+  if (!record || record.local_answer || record.finish) {
+    return
+  }
+  const activeTask = rememberedActiveTask(record)
+  if (activeTask) {
+    stopFlag.value = false
+    _loading.value = true
+    record.task_id = activeTask.task_id
+    pollQuestionTask(activeTask.task_id, record, activeTask.offset).catch((error) => {
+      record.error = `${record.error ? `${record.error}\n` : ''}Error:${error}`
+      emits('error', record.id)
+      _loading.value = false
+    })
   }
 })
 
