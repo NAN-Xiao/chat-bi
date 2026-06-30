@@ -85,6 +85,7 @@ const _loading = computed({
 })
 
 const stopFlag = ref(false)
+const restoringTask = ref(false)
 const POLL_INTERVAL_MS = 1000
 const activeTaskStoragePrefix = 'chat.smartQa.activeTask.'
 
@@ -246,25 +247,30 @@ async function handlePayload(
 }
 
 async function refreshCurrentRecord(recordId?: number) {
-  if (!recordId || !_currentChatId.value) {
-    return
+  if (!_currentChatId.value) {
+    return false
   }
 
   try {
     const chat = await chatApi.get(_currentChatId.value)
-    const latestRecord = chat?.records?.find((record) => record.id === recordId)
+    const latestRecord = recordId
+      ? chat?.records?.find((record) => record.id === recordId)
+      : chat?.records?.[index.value]
     if (!latestRecord || index.value < 0) {
-      return
+      return false
     }
+    const currentTaskId = _currentChat.value.records[index.value].task_id
     _currentChat.value.records[index.value] = Object.assign(
       _currentChat.value.records[index.value],
       latestRecord,
       {
-        task_id: _currentChat.value.records[index.value].task_id,
+        task_id: latestRecord.task_id || currentTaskId,
       }
     )
+    return true
   } catch (error) {
     console.error('Refresh chat record failed:', error)
+    return false
   }
 }
 
@@ -380,6 +386,9 @@ function hasRecordData(record?: ChatRecord) {
 }
 
 function getChatData(recordId?: number) {
+  if (!recordId) {
+    return
+  }
   const currentRecord = _currentChat.value.records.find((record) => record.id === recordId)
   if (hasRecordData(currentRecord)) {
     return
@@ -410,7 +419,10 @@ onBeforeUnmount(() => {
   pausePolling()
 })
 
-onMounted(() => {
+async function restoreRecordTask() {
+  if (restoringTask.value) {
+    return
+  }
   if (props.message?.record?.id && props.message?.record?.finish) {
     getChatData(props.message.record.id)
     return
@@ -419,25 +431,45 @@ onMounted(() => {
   if (!record || record.local_answer || record.finish) {
     return
   }
-  resolveActiveTask(record)
-    .then((activeTask) => {
-      if (activeTask) {
-        stopFlag.value = false
-        _loading.value = true
-        record.task_id = activeTask.task_id
-        pollQuestionTask(activeTask.task_id, record, activeTask.offset).catch((error) => {
-          record.error = `${record.error ? `${record.error}\n` : ''}Error:${error}`
-          emits('error', record.id)
-          _loading.value = false
-        })
+  restoringTask.value = true
+  try {
+    const activeTask = await resolveActiveTask(record)
+    if (activeTask) {
+      stopFlag.value = false
+      _loading.value = true
+      record.task_id = activeTask.task_id
+      await pollQuestionTask(activeTask.task_id, record, activeTask.offset)
+      return
+    }
+
+    const refreshed = await refreshCurrentRecord(record.id)
+    if (refreshed) {
+      const latestRecord = _currentChat.value.records[index.value]
+      if (latestRecord?.finish) {
+        _loading.value = false
+        getChatData(latestRecord.id)
+        return
       }
-    })
-    .catch((error) => {
-      console.error('Resolve active chat task failed:', error)
-    })
+      if (latestRecord?.error) {
+        _loading.value = false
+        emits('error', latestRecord.id)
+      }
+    }
+  } catch (error) {
+    record.error = `${record.error ? `${record.error}\n` : ''}Error:${error}`
+    emits('error', record.id)
+    _loading.value = false
+    console.error('Restore active chat task failed:', error)
+  } finally {
+    restoringTask.value = false
+  }
+}
+
+onMounted(() => {
+  restoreRecordTask()
 })
 
-defineExpose({ sendMessage, index: () => index.value, stop })
+defineExpose({ sendMessage, index: () => index.value, stop, restoreRecordTask })
 </script>
 
 <template>

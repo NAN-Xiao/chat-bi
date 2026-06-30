@@ -465,7 +465,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Chat, chatApi, ChatInfo, type ChatMessage, ChatRecord, questionApi } from '@/api/chat'
 import ChatRow from './ChatRow.vue'
 import ChartAnswer from './answer/ChartAnswer.vue'
@@ -957,6 +957,51 @@ function quickAsk(question: string) {
 
 const chartAnswerRef = ref()
 const getRecommendQuestionsLoading = ref(false)
+const restoringVisibleChat = ref(false)
+
+function hasUnfinishedRecord() {
+  return currentChat.value.records.some(
+    (record) => !record.first_chat && !record.local_answer && !record.finish && !record.error
+  )
+}
+
+function restoreChartAnswers() {
+  nextTick(() => {
+    const refs = chartAnswerRef.value
+    if (!refs) {
+      return
+    }
+    const answers = refs instanceof Array ? refs : [refs]
+    answers.forEach((answer) => {
+      answer?.restoreRecordTask?.()
+    })
+  })
+}
+
+async function restoreVisibleChatState() {
+  if (restoringVisibleChat.value || document.hidden || !currentChatId.value) {
+    return
+  }
+  if (!loading.value && !isTyping.value && !hasUnfinishedRecord()) {
+    return
+  }
+  restoringVisibleChat.value = true
+  try {
+    await loadChatById(currentChatId.value)
+    restoreChartAnswers()
+  } catch (error) {
+    console.error('Restore visible chat state failed:', error)
+  } finally {
+    restoringVisibleChat.value = false
+  }
+}
+
+function handlePageVisible() {
+  if (!document.hidden) {
+    restoreVisibleChatState()
+  }
+}
+
 async function onChartAnswerFinish(id: number) {
   getRecommendQuestionsLoading.value = true
   loading.value = false
@@ -1401,6 +1446,13 @@ onMounted(async () => {
   await datasourceContext.loadDatasources().catch((e) => console.error(e))
   getChatList(jumpCreatChat)
   assistantPrepareInit()
+  document.addEventListener('visibilitychange', handlePageVisible)
+  window.addEventListener('focus', restoreVisibleChatState)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handlePageVisible)
+  window.removeEventListener('focus', restoreVisibleChatState)
 })
 </script>
 
