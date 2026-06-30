@@ -347,6 +347,17 @@ LIMIT 24
         "name": "flam 付费与 LTV 口径",
         "description": "flam / first_zombie 日付费、累计付费、ARPU/ARPPU、付费率、首付、近 7 日累充和新增 cohort LTV SQL 生成规则。",
         "prompt": f"""<!-- data-skill-source:flam:first-zombie:payment-ltv -->
+<!-- data-skill-sql-validation:{{
+  "match":["ltv","新增用户平均付费","新增人均付费","新增用户付费","新增付费","首日付费","首日LTV","首日 LTV","1日LTV","1 日 LTV","3日LTV","3 日 LTV","7日LTV","7 日 LTV","14日LTV","14 日 LTV","30日LTV","30 日 LTV"],
+  "forbidden_sql_patterns":[
+    "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+1\\\\s+DAY[\\\\s\\\\S]{{0,160}}d1_dt",
+    "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+3\\\\s+DAY[\\\\s\\\\S]{{0,160}}d3_dt",
+    "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+7\\\\s+DAY[\\\\s\\\\S]{{0,160}}d7_dt",
+    "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+14\\\\s+DAY[\\\\s\\\\S]{{0,160}}d14_dt",
+    "DATE_ADD\\\\s*\\\\([\\\\s\\\\S]{{0,240}}INTERVAL\\\\s+30\\\\s+DAY[\\\\s\\\\S]{{0,160}}d30_dt"
+  ],
+  "message":"flam 新增 cohort LTV 的 pay 窗口字段必须按快照成熟日读取：pay1=注册日(+0)，pay3=注册后第2天(+2)，pay7=注册后第6天(+6)，pay14=+13，pay30=+29。不要把字段名数字写成 DATE_ADD 的 +1/+3/+7/+14/+30。"
+}} -->
 # flam 付费与 LTV 口径
 
 ## 适用范围
@@ -368,6 +379,8 @@ LIMIT 24
 - 留存和 LTV 必须先固定注册 cohort，再在后续用户日记录中读取 `remain` 或 `pay` 累计窗口字段。
 - `remain.remain1 = 1` 表示 D1 留存，`remain3 = 1`、`remain7 = 1` 分别表示 D3/D7 留存。
 - `pay.pay1/pay2/pay3/pay7/pay14/pay30` 表示注册后 1/2/3/7/14/30 日累计付费窗口；在不同生命周期日的快照中这些窗口会逐步成熟。
+- `pay1/pay3/pay7` 字段名中的数字是累计窗口名，不是 `DATE_ADD` 的日期偏移量。新增 cohort LTV 快照映射必须写成：1 日/首日 LTV = 注册日快照 `s.dt = cohort_dt` 读取 `pay1`；3 日 LTV = 注册后第 2 天快照 `cohort_dt + 2` 读取 `pay3`；7 日 LTV = 注册后第 6 天快照 `cohort_dt + 6` 读取 `pay7`；14 日 LTV = `cohort_dt + 13` 读取 `pay14`；30 日 LTV = `cohort_dt + 29` 读取 `pay30`。
+- 禁止把新增 cohort LTV 的 `d1_dt/d3_dt/d7_dt/d14_dt/d30_dt` 分别写成 `+1/+3/+7/+14/+30`；正确偏移是 `+0/+2/+6/+13/+29`。如果业务库最大 `dt` 尚未覆盖对应快照，应返回 NULL，而不是错位读取下一天或更晚快照。
 - 新增首日付费金额固定取注册日快照行的 `pay.pay1` 求和，不要从后续快照 `MAX(pay1)`。
 - 用户询问“最近 N 天新增用户的平均付费金额/人均付费”但没有说明首日、累计或生命周期窗口时，不要静默只返回单一 `pay1` 口径；优先同时输出 `新增用户数`、`首日付费金额`、`首日人均付费`、`截至最新完整分区累计付费金额`、`截至最新完整分区累计人均付费`，并在回答中标明两套口径。
 - 用户明确说“首日/D0/当天付费/新增当天付费/新增用户中的付费用户占比”时，使用注册日快照的 `pay.pay1` 判断付费金额与付费用户。
