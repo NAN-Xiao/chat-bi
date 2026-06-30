@@ -123,12 +123,9 @@ function pausePolling() {
 }
 
 function rememberedActiveTask(record: ChatRecord): ActiveTaskState | undefined {
-  if (record.task_id) {
-    return { task_id: record.task_id, offset: 0 }
-  }
   const raw = sessionStorage.getItem(activeTaskStorageKey(record))
   if (!raw) {
-    return undefined
+    return record.task_id ? { task_id: record.task_id, offset: 0 } : undefined
   }
   try {
     const parsed = JSON.parse(raw)
@@ -141,7 +138,7 @@ function rememberedActiveTask(record: ChatRecord): ActiveTaskState | undefined {
   } catch {
     return { task_id: raw, offset: 0 }
   }
-  return undefined
+  return record.task_id ? { task_id: record.task_id, offset: 0 } : undefined
 }
 
 async function resolveActiveTask(record: ChatRecord): Promise<ActiveTaskState | undefined> {
@@ -240,10 +237,35 @@ async function handlePayload(
       }
       break
     case 'finish':
+      currentRecord.finish = true
+      _currentChat.value.records[index.value].finish = true
       emits('finish', currentRecord.id)
       break
   }
   await nextTick()
+}
+
+async function refreshCurrentRecord(recordId?: number) {
+  if (!recordId || !_currentChatId.value) {
+    return
+  }
+
+  try {
+    const chat = await chatApi.get(_currentChatId.value)
+    const latestRecord = chat?.records?.find((record) => record.id === recordId)
+    if (!latestRecord || index.value < 0) {
+      return
+    }
+    _currentChat.value.records[index.value] = Object.assign(
+      _currentChat.value.records[index.value],
+      latestRecord,
+      {
+        task_id: _currentChat.value.records[index.value].task_id,
+      }
+    )
+  } catch (error) {
+    console.error('Refresh chat record failed:', error)
+  }
 }
 
 async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initialOffset = 0) {
@@ -273,6 +295,11 @@ async function pollQuestionTask(taskId: string, currentRecord: ChatRecord, initi
       if (eventPage.status === 'failed' && eventPage.error && !currentRecord.error) {
         currentRecord.error = eventPage.error
         emits('error', currentRecord.id)
+      } else if (eventPage.status === 'succeeded') {
+        currentRecord.finish = true
+        _currentChat.value.records[index.value].finish = true
+        await refreshCurrentRecord(currentRecord.id)
+        getChatData(currentRecord.id)
       }
       _loading.value = false
       break
