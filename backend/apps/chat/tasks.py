@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from apps.chat.models.chat_model import ChatFinishStep, ChatQuestion, ChatRecord, QuickCommand
 from apps.chat.task.llm import LLMService
-from apps.chat.task_events import append_chat_task_event
+from apps.chat.task_events import append_chat_task_event, bind_chat_record_task
 from apps.system.crud.tenant import normalize_tenant_role
 from apps.system.crud.user import apply_user_role_flags
 from apps.system.models.user import UserModel
@@ -90,6 +90,9 @@ def _resolve_chat_question(session: Session, current_user: UserInfoDTO, payload:
         custom_prompt_id=payload.get("custom_prompt_id"),
         data_skill_id=payload.get("data_skill_id"),
     )
+    if payload.get("regenerate_record_id"):
+        question.regenerate_record_id = int(payload["regenerate_record_id"])
+        return question
     command, text_before_command, record_id, _warning_info = parse_quick_command(question.question)
     if not command:
         return question
@@ -162,6 +165,20 @@ def _resolve_chat_question(session: Session, current_user: UserInfoDTO, payload:
     return question
 
 
+def _load_task_record(session: Session, current_user: UserInfoDTO, payload: dict[str, Any]) -> ChatRecord | None:
+    record_id = payload.get("record_id")
+    if not record_id:
+        return None
+    record = session.get(ChatRecord, int(record_id))
+    if (
+        record is None
+        or int(record.create_by) != int(current_user.id)
+        or int(record.tenant_id) != require_current_tenant_id(current_user)
+    ):
+        raise ValueError(f"Chat record {record_id} does not exist or is not accessible")
+    return record
+
+
 @task_handler("chat.smart_qa")
 async def smart_qa_task(payload: dict[str, Any]) -> dict[str, Any]:
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
@@ -184,8 +201,13 @@ async def smart_qa_task(payload: dict[str, Any]) -> dict[str, Any]:
                 current_assistant,
                 embedding=bool(payload.get("embedding", True)),
             )
-            record = llm_service.init_record(session=session)
-            session.commit()
+            record = _load_task_record(session, current_user, payload)
+            if record is None:
+                record = llm_service.init_record(session=session)
+                session.commit()
+            else:
+                llm_service.set_record(record)
+            await bind_chat_record_task(tenant_id, record.id, task_id)
 
             for chunk in llm_service.run_task(
                 in_chat=True,

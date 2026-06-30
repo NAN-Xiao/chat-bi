@@ -20,6 +20,7 @@ export const questionApi = {
     request.get(`/chat/question/task/${taskId}/events`, {
       params: { offset, limit },
     }),
+  getRecordTask: (recordId: number | string) => request.get(`/chat/record/${recordId}/task`),
   edit: (data: any) => request.put('/chat/question', data),
   delete: (id: number) => request.delete(`/chat/question/${id}`),
   query: (id: number) => request.get(`/chat/question/${id}`),

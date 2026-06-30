@@ -99,7 +99,7 @@ function sleep(ms: number) {
 
 function activeTaskStorageKey(record: ChatRecord) {
   const chatId = record.chat_id || _currentChatId.value || 'unknown'
-  const recordId = record.create_time || record.question || index.value
+  const recordId = record.id || record.create_time || record.question || index.value
   return `${activeTaskStoragePrefix}${chatId}.${recordId}`
 }
 
@@ -115,6 +115,11 @@ function rememberActiveTask(record: ChatRecord, taskId: string, offset = 0) {
 
 function forgetActiveTask(record: ChatRecord) {
   sessionStorage.removeItem(activeTaskStorageKey(record))
+}
+
+function pausePolling() {
+  stopFlag.value = true
+  _loading.value = false
 }
 
 function rememberedActiveTask(record: ChatRecord): ActiveTaskState | undefined {
@@ -137,6 +142,25 @@ function rememberedActiveTask(record: ChatRecord): ActiveTaskState | undefined {
     return { task_id: raw, offset: 0 }
   }
   return undefined
+}
+
+async function resolveActiveTask(record: ChatRecord): Promise<ActiveTaskState | undefined> {
+  const remembered = rememberedActiveTask(record)
+  if (remembered) {
+    return remembered
+  }
+  if (!record.id || record.finish || record.error) {
+    return undefined
+  }
+
+  const recordTask = await questionApi.getRecordTask(record.id)
+  if (!recordTask?.task_id || ['succeeded', 'failed'].includes(recordTask.status)) {
+    return undefined
+  }
+  return {
+    task_id: recordTask.task_id,
+    offset: 0,
+  }
 }
 
 async function handlePayload(
@@ -166,6 +190,9 @@ async function handlePayload(
     case 'id':
       currentRecord.id = data.id
       _currentChat.value.records[index.value].id = data.id
+      if (currentRecord.task_id) {
+        rememberActiveTask(currentRecord, currentRecord.task_id)
+      }
       break
     case 'regenerate_record_id':
       currentRecord.regenerate_record_id = data.regenerate_record_id
@@ -284,6 +311,10 @@ const sendMessage = async () => {
       data_skill_id: currentRecord.data_skill_id,
     }
     const task = await questionApi.startTask(param)
+    if (task.record_id) {
+      currentRecord.id = task.record_id
+      _currentChat.value.records[index.value].id = task.record_id
+    }
     currentRecord.task_id = task.task_id
     _currentChat.value.records[index.value].task_id = task.task_id
     rememberActiveTask(currentRecord, task.task_id)
@@ -338,13 +369,12 @@ function getChatData(recordId?: number) {
 }
 
 function stop() {
-  stopFlag.value = true
-  _loading.value = false
+  pausePolling()
   emits('stop')
 }
 
 onBeforeUnmount(() => {
-  stop()
+  pausePolling()
 })
 
 onMounted(() => {
@@ -356,17 +386,22 @@ onMounted(() => {
   if (!record || record.local_answer || record.finish) {
     return
   }
-  const activeTask = rememberedActiveTask(record)
-  if (activeTask) {
-    stopFlag.value = false
-    _loading.value = true
-    record.task_id = activeTask.task_id
-    pollQuestionTask(activeTask.task_id, record, activeTask.offset).catch((error) => {
-      record.error = `${record.error ? `${record.error}\n` : ''}Error:${error}`
-      emits('error', record.id)
-      _loading.value = false
+  resolveActiveTask(record)
+    .then((activeTask) => {
+      if (activeTask) {
+        stopFlag.value = false
+        _loading.value = true
+        record.task_id = activeTask.task_id
+        pollQuestionTask(activeTask.task_id, record, activeTask.offset).catch((error) => {
+          record.error = `${record.error ? `${record.error}\n` : ''}Error:${error}`
+          emits('error', record.id)
+          _loading.value = false
+        })
+      }
     })
-  }
+    .catch((error) => {
+      console.error('Resolve active chat task failed:', error)
+    })
 })
 
 defineExpose({ sendMessage, index: () => index.value, stop })
