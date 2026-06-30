@@ -1,9 +1,8 @@
-"""103_custom_prompt_user_preference
+"""迁移脚本：103_custom_prompt_user_preference
 
-Revision ID: d31c7b9a4e02
-Revises: ac22d4e6f810
-Create Date: 2026-06-22 00:00:00.000000
-
+迁移版本 ID： d31c7b9a4e02
+上一版本： ac22d4e6f810
+创建时间： 2026-06-22 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
@@ -16,10 +15,20 @@ depends_on = None
 
 
 def _has_table(table_name: str) -> bool:
+    """
+    是什么：_has_table 是 backend/alembic/versions/103_custom_prompt_user_preference.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_table 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return table_name in sa.inspect(op.get_bind()).get_table_names()
 
 
 def upgrade() -> None:
+    """
+    是什么：upgrade 是 backend/alembic/versions/103_custom_prompt_user_preference.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if _has_table("custom_prompt_user_preference"):
         return
     op.create_table(
@@ -49,6 +58,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    是什么：downgrade 是 backend/alembic/versions/103_custom_prompt_user_preference.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if not _has_table("custom_prompt_user_preference"):
         return
     op.drop_index("idx_custom_prompt_user_preference_prompt", table_name="custom_prompt_user_preference")

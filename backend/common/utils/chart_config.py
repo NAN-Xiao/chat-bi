@@ -18,12 +18,22 @@ CHART_TYPES = {
 
 
 def _axis_binding_has_distinct_display_name(value: dict[str, Any]) -> bool:
+    """
+    是什么：_axis_binding_has_distinct_display_name 是 backend/common/utils/chart_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _axis_binding_has_distinct_display_name 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     name = str(value.get("name") or "").strip()
     bound_value = str(value.get("value") or "").strip()
     return bool(name and bound_value and name != bound_value)
 
 
 def _sanitize_axis_binding(value: Any) -> Any:
+    """
+    是什么：_sanitize_axis_binding 是 backend/common/utils/chart_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _sanitize_axis_binding 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     if isinstance(value, list):
         return [_sanitize_axis_binding(item) for item in value]
     if not isinstance(value, dict):
@@ -37,6 +47,11 @@ def _sanitize_axis_binding(value: Any) -> Any:
 
 
 def _sanitize_chart_object(chart: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：_sanitize_chart_object 是 backend/common/utils/chart_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _sanitize_chart_object 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     for key in ("columns", "xAxis", "yAxis", "series"):
         if key in chart:
             chart[key] = _sanitize_axis_binding(chart[key])
@@ -49,12 +64,22 @@ def _sanitize_chart_object(chart: dict[str, Any]) -> dict[str, Any]:
 
 
 def _looks_like_chart_object(value: dict[str, Any]) -> bool:
+    """
+    是什么：_looks_like_chart_object 是 backend/common/utils/chart_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _looks_like_chart_object 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     if any(key in value for key in ("axis", "xAxis", "yAxis", "series", "multiQuotaName")):
         return True
     return "columns" in value and str(value.get("type") or "").lower() in CHART_TYPES
 
 
 def sanitize_chart_display_names(value: Any) -> Any:
+    """
+    是什么：sanitize_chart_display_names 是 backend/common/utils/chart_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 sanitize_chart_display_names 的语义处理通用工具相关逻辑，并把结果返回或写入状态。
+    """
     if isinstance(value, list):
         return [sanitize_chart_display_names(item) for item in value]
     if not isinstance(value, dict):

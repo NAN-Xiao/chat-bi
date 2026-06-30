@@ -59,7 +59,7 @@ const showWorkspaceApplicationEntry = computed(
 )
 
 const isClient = computed(() => {
-  return !!wsCache.get('zhishu-platform-client')
+  return !!wsCache.get('shuzhi-platform-client')
 })
 
 const platFlag = computed(() => {

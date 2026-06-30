@@ -11,6 +11,11 @@ PERMISSION_DENIED_AGENT_GUIDANCE = (
 
 
 def looks_like_permission_scope_error(message: str) -> bool:
+    """
+    是什么：looks_like_permission_scope_error 是 backend/apps/datasource/crud/permission_errors.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 looks_like_permission_scope_error 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     text = str(message or "").lower()
     return any(marker in text for marker in (
         "无权限",
@@ -29,6 +34,11 @@ def looks_like_permission_scope_error(message: str) -> bool:
 
 
 def permission_denied_result(message: str = PERMISSION_DENIED_RESULT_MESSAGE) -> dict[str, Any]:
+    """
+    是什么：permission_denied_result 是 backend/apps/datasource/crud/permission_errors.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 permission_denied_result 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return {
         "status": "failed",
         "error_type": PERMISSION_DENIED_ERROR_TYPE,

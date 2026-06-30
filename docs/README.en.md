@@ -1,4 +1,4 @@
-<h1 align="center">星通智数</h1>
+<h1 align="center">星通数智</h1>
 <h3 align="center">Intelligent Questioning System Based on Large Models and RAG</h3>
 
 <p align="center">
@@ -7,7 +7,7 @@
 </p>
 <hr/>
 
-星通智数 is an intelligent data query system based on large language models and RAG. With 星通智数, users can perform conversational data analysis (ChatBI), quickly extracting the necessary data information and visualizations, and supporting further intelligent analysis.
+星通数智 is an intelligent data query system based on large language models and RAG. With 星通数智, users can perform conversational data analysis (ChatBI), quickly extracting the necessary data information and visualizations, and supporting further intelligent analysis.
 
 ## How It Works
 
@@ -61,17 +61,17 @@ docker buildx build \
   .
 
 docker run -d \
-  --name zhishu \
+  --name shuzhi \
   --restart unless-stopped \
   -p 8000:8000 \
   -p 8001:8001 \
-  -v ./data/zhishu/excel:/opt/zhishu/data/excel \
-  -v ./data/zhishu/file:/opt/zhishu/data/file \
-  -v ./data/zhishu/images:/opt/zhishu/images \
-  -v ./data/zhishu/logs:/opt/zhishu/app/logs \
+  -v ./data/shuzhi/excel:/opt/shuzhi/data/excel \
+  -v ./data/shuzhi/file:/opt/shuzhi/data/file \
+  -v ./data/shuzhi/images:/opt/shuzhi/images \
+  -v ./data/shuzhi/logs:/opt/shuzhi/app/logs \
   -v ./data/postgresql:/var/lib/postgresql/data \
   --privileged=true \
-  zhishu:latest
+  shuzhi:latest
 ```
 
 ### Access methods
@@ -93,9 +93,9 @@ docker run -d \
 
 This repository is licensed under the [Open Source License](LICENSE), which is essentially GPLv3 but with some additional restrictions.
 
-You may conduct secondary development based on the 星通智数 source code, but you must adhere to the following:
+You may conduct secondary development based on the 星通数智 source code, but you must adhere to the following:
 
-- You cannot replace or modify the 星通智数 logo and copyright information;
+- You cannot replace or modify the 星通数智 logo and copyright information;
 
 - Derivative works resulting from secondary development must comply with the open-source obligations of GPL v3.
 

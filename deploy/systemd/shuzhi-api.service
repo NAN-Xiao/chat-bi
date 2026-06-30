@@ -1,0 +1,19 @@
+[Unit]
+Description=星通数智 API
+After=network-online.target postgresql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shuzhi
+Group=shuzhi
+WorkingDirectory=/opt/shuzhi/backend
+EnvironmentFile=/etc/shuzhi/shuzhi.env
+ExecStart=/opt/shuzhi/backend/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

@@ -9,11 +9,21 @@ from common.utils.utils import AppLogUtil
 
 
 async def main() -> None:
+    """
+    是什么：main 是 backend/scripts/task_worker.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行脚本任务主流程，协调下游服务并处理结果或异常。
+    """
     register_builtin_tasks()
     await init_app_cache()
     stop_event = asyncio.Event()
 
     def stop() -> None:
+        """
+        是什么：stop 是 backend/scripts/task_worker.py 中的同步函数。
+        谁调用：由外层函数 main 在执行内部流程时调用。
+        做了什么：完成或关闭脚本任务流程，释放资源并记录最终状态。
+        """
         stop_event.set()
 
     loop = asyncio.get_running_loop()

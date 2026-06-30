@@ -1,9 +1,8 @@
-"""106_sample_workspace_default_membership
+"""迁移脚本：106_sample_workspace_default_membership
 
-Revision ID: a75d8e3c91bf
-Revises: f64b1e9c2a75
-Create Date: 2026-06-22 00:00:00.000000
-
+迁移版本 ID： a75d8e3c91bf
+上一版本： f64b1e9c2a75
+创建时间： 2026-06-22 00:00:00.000000
 """
 from __future__ import annotations
 
@@ -25,37 +24,77 @@ SAMPLE_DATASOURCE_NAMES = ("SLG BI Mock",)
 
 
 def _bind():
+    """
+    是什么：_bind 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据库迁移相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     return op.get_bind()
 
 
 def _inspector():
+    """
+    是什么：_inspector 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _inspector 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return sa.inspect(_bind())
 
 
 def _has_table(table_name: str) -> bool:
+    """
+    是什么：_has_table 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_table 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return table_name in _inspector().get_table_names()
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
+    """
+    是什么：_has_column 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_column 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if not _has_table(table_name):
         return False
     return any(column["name"] == column_name for column in _inspector().get_columns(table_name))
 
 
 def _has_columns(table_name: str, column_names: tuple[str, ...]) -> bool:
+    """
+    是什么：_has_columns 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _has_columns 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return all(_has_column(table_name, column_name) for column_name in column_names)
 
 
 def _now_ms() -> int:
+    """
+    是什么：_now_ms 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _now_ms 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return int(time.time() * 1000)
 
 
 def _next_id(table_name: str) -> int:
+    """
+    是什么：_next_id 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _next_id 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     value = _bind().execute(sa.text(f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table_name}")).scalar()
     return int(value or 1)
 
 
 def _ensure_sample_tenant() -> int | None:
+    """
+    是什么：_ensure_sample_tenant 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据库迁移相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not _has_columns("sys_tenant", ("id", "code", "name", "status", "plan", "create_time", "update_time")):
         return None
 
@@ -101,6 +140,11 @@ def _ensure_sample_tenant() -> int | None:
 
 
 def _ensure_sample_memberships(sample_tenant_id: int) -> None:
+    """
+    是什么：_ensure_sample_memberships 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据库迁移相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not _has_columns("sys_tenant_user", ("id", "tenant_id", "user_id", "role", "is_primary", "status", "create_time")):
         return
     if not _has_columns("sys_user", ("id", "system_role")):
@@ -155,6 +199,11 @@ def _ensure_sample_memberships(sample_tenant_id: int) -> None:
 
 
 def _sample_datasource_ids(sample_tenant_id: int) -> list[int]:
+    """
+    是什么：_sample_datasource_ids 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _sample_datasource_ids 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if not _has_columns("core_datasource", ("id", "tenant_id", "name")):
         return []
     bind = _bind()
@@ -182,6 +231,11 @@ def _sample_datasource_ids(sample_tenant_id: int) -> list[int]:
 
 
 def _jsonb_contains_any_id_clause(column_name: str) -> str:
+    """
+    是什么：_jsonb_contains_any_id_clause 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _jsonb_contains_any_id_clause 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     return f"""
         {column_name} IS NOT NULL
         AND jsonb_typeof({column_name}) = 'array'
@@ -195,6 +249,11 @@ def _jsonb_contains_any_id_clause(column_name: str) -> str:
 
 
 def _align_semantic_records(sample_tenant_id: int, datasource_ids: list[int]) -> None:
+    """
+    是什么：_align_semantic_records 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _align_semantic_records 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     if not datasource_ids:
         return
     bind = _bind()
@@ -311,6 +370,11 @@ def _align_semantic_records(sample_tenant_id: int, datasource_ids: list[int]) ->
 
 
 def upgrade() -> None:
+    """
+    是什么：upgrade 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     sample_tenant_id = _ensure_sample_tenant()
     if sample_tenant_id is None:
         return
@@ -320,4 +384,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    是什么：downgrade 是 backend/alembic/versions/106_sample_workspace_default_membership.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     pass

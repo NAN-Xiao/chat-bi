@@ -27,6 +27,11 @@ router = APIRouter(
 
 
 def _permission_belongs_to_current_tenant(session: SessionDep, user: CurrentUser, permission: dict[str, Any]) -> bool:
+    """
+    是什么：_permission_belongs_to_current_tenant 是 backend/apps/datasource/api/permission.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _permission_belongs_to_current_tenant 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         datasource_id = int(permission.get("ds_id"))
     except (TypeError, ValueError):
@@ -39,6 +44,11 @@ def _datasource_visible_in_current_context(
         user: CurrentUser,
         datasource_id: int,
 ) -> CoreDatasource | None:
+    """
+    是什么：_datasource_visible_in_current_context 是 backend/apps/datasource/api/permission.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _datasource_visible_in_current_context 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     datasource = session.get(CoreDatasource, datasource_id)
     if datasource is None:
         return None
@@ -50,10 +60,20 @@ def _datasource_visible_in_current_context(
 
 
 def _rule_scope(rule: dict[str, Any]) -> str:
+    """
+    是什么：_rule_scope 是 backend/apps/datasource/api/permission.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _rule_scope 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return normalize_rule_scope(rule.get("scope"))
 
 
 def _rule_tenant_id(rule: dict[str, Any]) -> int:
+    """
+    是什么：_rule_tenant_id 是 backend/apps/datasource/api/permission.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _rule_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return int(rule.get("tenant_id") or DEFAULT_RULE_TENANT_ID)
     except (TypeError, ValueError):
@@ -61,6 +81,11 @@ def _rule_tenant_id(rule: dict[str, Any]) -> int:
 
 
 def _rule_visible_to_current_context(user: CurrentUser, rule: dict[str, Any]) -> bool:
+    """
+    是什么：_rule_visible_to_current_context 是 backend/apps/datasource/api/permission.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _rule_visible_to_current_context 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     scope = _rule_scope(rule)
     if is_global_platform_context(user):
         return scope == RULE_SCOPE_PLATFORM
@@ -71,6 +96,11 @@ def _rule_visible_to_current_context(user: CurrentUser, rule: dict[str, Any]) ->
 
 
 def _can_manage_rule(user: CurrentUser, rule: dict[str, Any]) -> bool:
+    """
+    是什么：_can_manage_rule 是 backend/apps/datasource/api/permission.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _can_manage_rule 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     scope = _rule_scope(rule)
     if scope == RULE_SCOPE_PLATFORM:
         return is_global_platform_context(user)
@@ -81,6 +111,11 @@ def _can_manage_rule(user: CurrentUser, rule: dict[str, Any]) -> bool:
 
 
 def _filter_rule_for_current_context(session: SessionDep, user: CurrentUser, rule: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    是什么：_filter_rule_for_current_context 是 backend/apps/datasource/api/permission.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _filter_rule_for_current_context 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if not _rule_visible_to_current_context(user, rule):
         return None
     permissions = [
@@ -101,6 +136,11 @@ def _filter_rule_for_current_context(session: SessionDep, user: CurrentUser, rul
 
 
 def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule_data: dict[str, Any]) -> None:
+    """
+    是什么：_validate_permission_rule_scope 是 backend/apps/datasource/api/permission.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     permissions = rule_data.get("permissions") or []
     if not permissions:
         raise HTTPException(status_code=400, detail="Permission rule must contain at least one datasource-scoped permission")
@@ -131,6 +171,11 @@ def _validate_permission_rule_scope(session: SessionDep, user: CurrentUser, rule
 @router.post("/ds_permission/list")
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def p_list(session: SessionDep, user: CurrentUser):
+    """
+    是什么：p_list 是 backend/apps/datasource/api/permission.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 p_list 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     filtered_rules = []
     for rule in list_rule_dtos(session):
         filtered = _filter_rule_for_current_context(session, user, rule)
@@ -142,6 +187,11 @@ async def p_list(session: SessionDep, user: CurrentUser):
 @router.post("/ds_permission/get/{id}")
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def get(session: SessionDep, user: CurrentUser, id: int):
+    """
+    是什么：get 是 backend/apps/datasource/api/permission.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     rule = get_rule_dto(session, id)
     if rule is None:
         raise HTTPException(status_code=404, detail="Permission rule not found")
@@ -154,6 +204,11 @@ async def get(session: SessionDep, user: CurrentUser, id: int):
 @router.post("/ds_permission/save")
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def save_rule(session: SessionDep, user: CurrentUser, ruleDTO: dict[str, Any]):
+    """
+    是什么：save_rule 是 backend/apps/datasource/api/permission.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    """
     rule_payload = dict(ruleDTO)
     rule_id = rule_payload.get("id")
     if rule_id:
@@ -182,6 +237,11 @@ async def save_rule(session: SessionDep, user: CurrentUser, ruleDTO: dict[str, A
 @router.post("/ds_permission/delete/{id}")
 @require_permissions(permission=AppPermission(role=["admin"]))
 async def delete(session: SessionDep, user: CurrentUser, id: int):
+    """
+    是什么：delete 是 backend/apps/datasource/api/permission.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    """
     rule = get_rule_dto(session, id)
     if rule is None or _filter_rule_for_current_context(session, user, rule) is None:
         raise HTTPException(status_code=404, detail="Permission rule not found")

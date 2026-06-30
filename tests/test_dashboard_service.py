@@ -27,6 +27,16 @@ from apps.dashboard.models.dashboard_model import (
     SharedDashboardUseRequest,
 )
 
+
+@pytest.fixture(autouse=True)
+def _clear_dashboard_service_preview_cache(monkeypatch):
+    monkeypatch.setattr(dashboard_service.settings, "DASHBOARD_SQL_PREVIEW_CACHE_TTL_SECONDS", 0)
+    with dashboard_service._DASHBOARD_SQL_PREVIEW_CACHE_LOCK:
+        dashboard_service._DASHBOARD_SQL_PREVIEW_CACHE.clear()
+    with dashboard_service._DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS_LOCK:
+        dashboard_service._DASHBOARD_SQL_PREVIEW_INFLIGHT_LOCKS.clear()
+
+
 def _engine_with_dashboard_table():
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine, tables=[CoreDashboard.__table__, CoreDashboardShare.__table__])
@@ -901,9 +911,24 @@ def test_platform_delegate_can_copy_public_dashboard_to_template_but_not_private
             user=delegate_user,
             dashboard_id="default-dashboard",
         )
+        with pytest.raises(HTTPException) as duplicate_exc_info:
+            dashboard_service.copy_dashboard_to_platform_template(
+                session=session,
+                user=delegate_user,
+                dashboard_id="default-dashboard",
+                name="重复模板",
+            )
+        templates = session.exec(
+            select(CoreDashboard).where(
+                CoreDashboard.source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+            )
+        ).all()
         template_record = session.get(CoreDashboard, template.id)
 
     assert exc_info.value.status_code == 404
+    assert duplicate_exc_info.value.status_code == 400
+    assert duplicate_exc_info.value.detail == "该看板已复制为平台模板"
+    assert len(templates) == 1
     assert template.tenant_id == dashboard_service.DEFAULT_TENANT_ID
     assert template.source == dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE
     assert template.content_id == "0"
@@ -1295,18 +1320,113 @@ def test_platform_template_copy_to_workspace_creates_independent_workspace_dashb
             user=delegate_user,
             template_id="template-dashboard",
         )
+        duplicate_copy = dashboard_service.copy_platform_template_to_workspace_dashboard(
+            session=session,
+            user=delegate_user,
+            template_id="template-dashboard",
+            name="重复看板",
+        )
+        workspace_dashboards = [
+            item
+            for item in session.exec(select(CoreDashboard)).all()
+            if item.source != dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+        ]
         copied_record = session.get(CoreDashboard, copied.id)
         template_record = session.get(CoreDashboard, "template-dashboard")
 
     assert copied.id != "template-dashboard"
+    assert duplicate_copy.id == copied.id
+    assert len(workspace_dashboards) == 1
     assert copied.tenant_id == 1
     assert copied.datasource == 3
     assert copied.status == dashboard_service.DASHBOARD_STATUS_ACTIVE
     assert copied.source is None
+    assert copied.remark == "source_template_id=template-dashboard"
     assert copied.create_by == "1"
     assert copied.update_by == "1"
     assert json.loads(copied_record.canvas_view_info)["chart-1"]["datasource"] == 3
     assert json.loads(template_record.canvas_view_info)["chart-1"]["datasource"] is None
+
+
+def test_platform_template_copy_to_workspace_deduplicates_templates_with_same_source(monkeypatch):
+    engine = _engine_with_dashboard_table()
+    delegate_user = SimpleNamespace(
+        id=9,
+        isAdmin=True,
+        system_role="system_admin",
+        tenant_id=1,
+        tenant_role="owner",
+        workspace_status="platform_workspace_delegate",
+    )
+    monkeypatch.setattr(dashboard_service, "get_bound_datasource_id_for_tenant", lambda *args, **kwargs: 3)
+    monkeypatch.setattr(dashboard_service, "_ensure_datasource_access", lambda *args, **kwargs: 3)
+
+    with Session(engine) as session:
+        session.add_all(
+            [
+                CoreDashboard(
+                    id="template-dashboard-a",
+                    tenant_id=dashboard_service.DEFAULT_TENANT_ID,
+                    name="平台模板 A",
+                    pid="root",
+                    datasource=None,
+                    node_type="leaf",
+                    type="dashboard",
+                    source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                    status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                    remark="source_dashboard_id=source-dashboard;source_tenant_id=2;source_datasource_id=8",
+                    create_by="9",
+                    create_time=100,
+                    delete_flag=0,
+                    component_data="[]",
+                    canvas_style_data="{}",
+                    canvas_view_info=json.dumps({"chart-1": {"datasource": None, "sql": "select 1"}}),
+                ),
+                CoreDashboard(
+                    id="template-dashboard-b",
+                    tenant_id=dashboard_service.DEFAULT_TENANT_ID,
+                    name="平台模板 B",
+                    pid="root",
+                    datasource=None,
+                    node_type="leaf",
+                    type="dashboard",
+                    source=dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE,
+                    status=dashboard_service.DASHBOARD_STATUS_ACTIVE,
+                    remark="source_dashboard_id=source-dashboard;source_tenant_id=2;source_datasource_id=8",
+                    create_by="9",
+                    create_time=101,
+                    delete_flag=0,
+                    component_data="[]",
+                    canvas_style_data="{}",
+                    canvas_view_info=json.dumps({"chart-1": {"datasource": None, "sql": "select 2"}}),
+                ),
+            ]
+        )
+        session.commit()
+
+        copied = dashboard_service.copy_platform_template_to_workspace_dashboard(
+            session=session,
+            user=delegate_user,
+            template_id="",
+            template_ids=["template-dashboard-a", "template-dashboard-b"],
+        )
+        workspace_dashboards = [
+            item
+            for item in session.exec(select(CoreDashboard)).all()
+            if item.source != dashboard_service.DASHBOARD_SOURCE_PLATFORM_TEMPLATE
+        ]
+        copied_record = workspace_dashboards[0]
+
+    assert isinstance(copied, list)
+    assert len(copied) == 1
+    assert len(workspace_dashboards) == 1
+    assert copied[0].id == copied_record.id
+    assert copied_record.remark == (
+        "source_template_id=template-dashboard-a;"
+        "source_dashboard_id=source-dashboard;"
+        "source_tenant_id=2;"
+        "source_datasource_id=8"
+    )
 
 
 def test_project_viewer_sees_copied_default_dashboard_but_not_admin_default(monkeypatch):

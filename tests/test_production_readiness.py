@@ -22,7 +22,7 @@ def _set_valid_production_settings(monkeypatch):
     monkeypatch.setattr(settings, "SENSITIVE_CONFIG_ENCRYPTION_KEY", "s" * 48)
     monkeypatch.setattr(settings, "DATASOURCE_CONFIG_ENCRYPTION_KEY", None)
     monkeypatch.setattr(settings, "DEFAULT_PWD", "Prod-Initial-Password-Change-Me-1")
-    monkeypatch.setattr(settings, "POSTGRES_PASSWORD", "Prod-Postgres-Password-Change-Me-1")
+    monkeypatch.setattr(settings, "SHUZHI_DB_PASSWORD", "Prod-Postgres-Password-Change-Me-1")
     monkeypatch.setattr(settings, "CACHE_TYPE", "redis")
     monkeypatch.setattr(settings, "REDIS_PASSWORD", "Prod-Redis-Password-Change-Me-1")
     monkeypatch.setattr(settings, "REDIS_URL", None)
@@ -32,7 +32,7 @@ def _set_valid_production_settings(monkeypatch):
     monkeypatch.setattr(settings, "ENABLE_LOCAL_DEV_CORS", False)
     monkeypatch.setattr(settings, "LOG_LEVEL", "INFO")
     monkeypatch.setattr(settings, "SQL_DEBUG", False)
-    monkeypatch.setattr(settings, "ZHISHU_ALLOW_METADATA_QUERIES", False)
+    monkeypatch.setattr(settings, "SHUZHI_ALLOW_METADATA_QUERIES", False)
     monkeypatch.setattr(settings, "TASK_QUEUE_MAX_ATTEMPTS", 3)
     monkeypatch.setattr(settings, "TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS", 3600)
     monkeypatch.setattr(settings, "TENANT_RATE_LIMIT_ENABLED", True)
@@ -45,11 +45,11 @@ def _set_valid_production_settings(monkeypatch):
     monkeypatch.setattr(settings, "TENANT_USAGE_QUOTA_ENABLED", True)
     monkeypatch.setattr(settings, "TENANT_USAGE_QUOTA_PLAN_LIMITS", "")
     monkeypatch.setattr(settings, "MAX_UPLOAD_BYTES", 50 * 1024 * 1024)
-    monkeypatch.setattr(settings, "BASE_DIR", "/opt/zhishu")
-    monkeypatch.setattr(settings, "UPLOAD_DIR", "/opt/zhishu/data/file")
-    monkeypatch.setattr(settings, "EXCEL_PATH", "/opt/zhishu/data/excel")
-    monkeypatch.setattr(settings, "MCP_IMAGE_PATH", "/opt/zhishu/images")
-    monkeypatch.setattr(settings, "LOG_DIR", "/opt/zhishu/logs")
+    monkeypatch.setattr(settings, "BASE_DIR", "/opt/shuzhi")
+    monkeypatch.setattr(settings, "UPLOAD_DIR", "/opt/shuzhi/data/file")
+    monkeypatch.setattr(settings, "EXCEL_PATH", "/opt/shuzhi/data/excel")
+    monkeypatch.setattr(settings, "MCP_IMAGE_PATH", "/opt/shuzhi/images")
+    monkeypatch.setattr(settings, "LOG_DIR", "/opt/shuzhi/logs")
     monkeypatch.setattr(settings, "MCP_ENABLED", False)
 
 
@@ -63,7 +63,7 @@ def test_production_settings_reject_development_defaults(monkeypatch):
     monkeypatch.setattr(settings, "SENSITIVE_CONFIG_ENCRYPTION_KEY", None)
     monkeypatch.setattr(settings, "DATASOURCE_CONFIG_ENCRYPTION_KEY", None)
     monkeypatch.setattr(settings, "DEFAULT_PWD", "elex@123")
-    monkeypatch.setattr(settings, "POSTGRES_PASSWORD", "Password123@pg")
+    monkeypatch.setattr(settings, "SHUZHI_DB_PASSWORD", "Password123@pg")
     monkeypatch.setattr(settings, "CACHE_TYPE", "memory")
     monkeypatch.setattr(settings, "REDIS_PASSWORD", None)
     monkeypatch.setattr(settings, "REDIS_URL", None)
@@ -127,9 +127,9 @@ def test_disabled_production_checks_return_errors_without_raising(monkeypatch):
 
 
 def test_production_postgres_backup_deployment_artifacts_are_present():
-    script = (REPO_ROOT / "deploy/scripts/zhishu-postgres-backup.sh").read_text(encoding="utf-8")
-    service = (REPO_ROOT / "deploy/systemd/zhishu-postgres-backup.service").read_text(encoding="utf-8")
-    timer = (REPO_ROOT / "deploy/systemd/zhishu-postgres-backup.timer").read_text(encoding="utf-8")
+    script = (REPO_ROOT / "deploy/scripts/shuzhi-postgres-backup.sh").read_text(encoding="utf-8")
+    service = (REPO_ROOT / "deploy/systemd/shuzhi-postgres-backup.service").read_text(encoding="utf-8")
+    timer = (REPO_ROOT / "deploy/systemd/shuzhi-postgres-backup.timer").read_text(encoding="utf-8")
     env_template = (REPO_ROOT / "deploy/env.production.example").read_text(encoding="utf-8")
     readiness_doc = (REPO_ROOT / "docs/single_tenant_production_readiness.md").read_text(encoding="utf-8")
 
@@ -143,9 +143,9 @@ def test_production_postgres_backup_deployment_artifacts_are_present():
     assert "sha256sum" in script or "shasum" in script
     assert "find \"$BACKUP_DIR\"" in script
 
-    assert "EnvironmentFile=/etc/zhishu/zhishu.env" in service
-    assert "ExecStart=/opt/zhishu/deploy/scripts/zhishu-postgres-backup.sh" in service
-    assert "User=zhishu" in service
+    assert "EnvironmentFile=/etc/shuzhi/shuzhi.env" in service
+    assert "ExecStart=/opt/shuzhi/deploy/scripts/shuzhi-postgres-backup.sh" in service
+    assert "User=shuzhi" in service
     assert "NoNewPrivileges=true" in service
 
     assert "OnCalendar=*-*-* 02:30:00" in timer
@@ -153,26 +153,26 @@ def test_production_postgres_backup_deployment_artifacts_are_present():
     assert "Persistent=true" in timer
     assert "WantedBy=timers.target" in timer
 
-    assert "BACKUP_DIR=/var/backups/zhishu/postgres" in env_template
+    assert "BACKUP_DIR=/var/backups/shuzhi/postgres" in env_template
     assert "BACKUP_RETENTION_DAYS=14" in env_template
     assert "PG_DUMP_BIN=pg_dump" in env_template
     assert "PG_RESTORE_BIN=pg_restore" in env_template
 
-    assert "zhishu-postgres-backup.timer" in readiness_doc
-    assert "systemctl enable --now zhishu-postgres-backup.timer" in readiness_doc
+    assert "shuzhi-postgres-backup.timer" in readiness_doc
+    assert "systemctl enable --now shuzhi-postgres-backup.timer" in readiness_doc
     assert "自动定时备份编排" not in readiness_doc
 
 
 def test_production_logrotate_deployment_artifact_is_present():
-    logrotate_conf = (REPO_ROOT / "deploy/logrotate/zhishu").read_text(encoding="utf-8")
+    logrotate_conf = (REPO_ROOT / "deploy/logrotate/shuzhi").read_text(encoding="utf-8")
     nginx_conf = (REPO_ROOT / "deploy/nginx/nginx.production.conf.template").read_text(encoding="utf-8")
     redis_conf = (REPO_ROOT / "deploy/redis/redis.production.conf.template").read_text(encoding="utf-8")
     readiness_doc = (REPO_ROOT / "docs/single_tenant_production_readiness.md").read_text(encoding="utf-8")
     constraints_doc = (REPO_ROOT / "docs/deployment_constraints.md").read_text(encoding="utf-8")
 
-    assert "/opt/zhishu/logs/*.log" in logrotate_conf
-    assert "/var/log/nginx/zhishu.*.log" in logrotate_conf
-    assert "/var/log/redis/zhishu-redis.log" in logrotate_conf
+    assert "/opt/shuzhi/logs/*.log" in logrotate_conf
+    assert "/var/log/nginx/shuzhi.*.log" in logrotate_conf
+    assert "/var/log/redis/shuzhi-redis.log" in logrotate_conf
     assert "daily" in logrotate_conf
     assert "rotate 14" in logrotate_conf
     assert "maxage 30" in logrotate_conf
@@ -180,12 +180,12 @@ def test_production_logrotate_deployment_artifact_is_present():
     assert "copytruncate" in logrotate_conf
     assert "missingok" in logrotate_conf
 
-    assert "access_log /var/log/nginx/zhishu.access.log" in nginx_conf
-    assert "error_log  /var/log/nginx/zhishu.error.log" in nginx_conf
-    assert "logfile /var/log/redis/zhishu-redis.log" in redis_conf
+    assert "access_log /var/log/nginx/shuzhi.access.log" in nginx_conf
+    assert "error_log  /var/log/nginx/shuzhi.error.log" in nginx_conf
+    assert "logfile /var/log/redis/shuzhi-redis.log" in redis_conf
 
-    assert "deploy/logrotate/zhishu" in readiness_doc
-    assert "logrotate -d /etc/logrotate.d/zhishu" in readiness_doc
+    assert "deploy/logrotate/shuzhi" in readiness_doc
+    assert "logrotate -d /etc/logrotate.d/shuzhi" in readiness_doc
     assert "生产日志轮转" in constraints_doc
 
 

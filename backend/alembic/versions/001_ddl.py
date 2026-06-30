@@ -1,13 +1,12 @@
-"""001_ddl
+"""迁移脚本：001_ddl
 
-Revision ID: 5348b743b05f
-Revises: 
-Create Date: 2025-04-25 16:26:19.135926
-
+迁移版本 ID： 5348b743b05f
+上一版本：
+创建时间： 2025-04-25 16:26:19.135926
 """
 
 
-# revision identifiers, used by Alembic.
+# Alembic 使用的迁移版本标识。
 revision = '5348b743b05f'
 down_revision = None
 branch_labels = None
@@ -20,6 +19,11 @@ import sqlmodel.sql.sqltypes
 from sqlalchemy.sql import table, column
 from sqlalchemy import String, Integer, BigInteger
 def upgrade():
+    """
+    是什么：upgrade 是 backend/alembic/versions/001_ddl.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     op.create_table(
         'sys_user',
         sa.Column('id', sa.BIGINT, primary_key=True),
@@ -31,7 +35,7 @@ def upgrade():
         sa.Column('status', sa.Integer, nullable=False),
         sa.Column('create_time', sa.BIGINT, nullable=False),
     )
-    
+
     accounts_table = table(
         "sys_user",
         column("id", BigInteger),
@@ -61,4 +65,9 @@ def upgrade():
     )
 
 def downgrade():
+    """
+    是什么：downgrade 是 backend/alembic/versions/001_ddl.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     op.drop_table('sys_user')

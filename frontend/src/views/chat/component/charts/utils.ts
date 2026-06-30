@@ -3,11 +3,11 @@ import { axisLabel } from '@/views/chat/component/BaseChart.ts'
 import type { G2Spec } from '@antv/g2'
 import { endsWith, replace } from 'lodash-es'
 
-const AUTO_VALUE_FIELD = 'zhishu_auto_quota'
-const AUTO_COUNT_VALUE_FIELD = 'zhishu_auto_count_quota'
-const AUTO_PERCENT_VALUE_FIELD = 'zhishu_auto_percent_quota'
-const AUTO_SERIES_FIELD = 'zhishu_auto_series'
-const AUTO_PERCENT_FIELD = 'zhishu_auto_is_percent'
+const AUTO_VALUE_FIELD = 'shuzhi_auto_quota'
+const AUTO_COUNT_VALUE_FIELD = 'shuzhi_auto_count_quota'
+const AUTO_PERCENT_VALUE_FIELD = 'shuzhi_auto_percent_quota'
+const AUTO_SERIES_FIELD = 'shuzhi_auto_series'
+const AUTO_PERCENT_FIELD = 'shuzhi_auto_is_percent'
 
 const PERCENT_KEYWORDS = [
   'rate',
@@ -292,7 +292,7 @@ function buildPercentScale(data: Array<ChartData>, valueField: string): Record<s
   const scale: Record<string, any> = {
     nice: true,
     type: 'linear',
-    key: 'zhishu_percent_axis',
+    key: 'shuzhi_percent_axis',
     domainMin: 0,
   }
 
@@ -321,6 +321,7 @@ export function getAxesWithFilter(axes: ChartAxis[]): {
   y: ChartAxis[] // 过滤后的 y
   series: ChartAxis[]
   multiQuota: string[] // series 为空时返回 multi-quota 为 true 的 y 轴 value 列表
+  groupedMultiQuota: ChartAxis[] // series 不为空且有多个 y 轴时，用于组合分组渲染
   multiQuotaName?: string
 } {
   const groups = {
@@ -328,6 +329,7 @@ export function getAxesWithFilter(axes: ChartAxis[]): {
     y: [] as ChartAxis[],
     series: [] as ChartAxis[],
     multiQuota: [] as string[],
+    groupedMultiQuota: [] as ChartAxis[],
     multiQuotaName: undefined as string | undefined,
   }
 
@@ -341,6 +343,9 @@ export function getAxesWithFilter(axes: ChartAxis[]): {
 
   // 应用过滤规则
   if (groups.series.length > 0) {
+    if (groups.y.length > 1) {
+      groups.groupedMultiQuota = groups.y.slice()
+    }
     groups.y = groups.y.slice(0, 1)
   } else {
     const multiQuotaY = groups.y.filter((item) => item['multi-quota'] === true)
@@ -353,11 +358,55 @@ export function getAxesWithFilter(axes: ChartAxis[]): {
   return groups
 }
 
+export function processGroupedMultiQuotaData(
+  x: Array<ChartAxis>,
+  y: Array<ChartAxis>,
+  series: Array<ChartAxis>,
+  data: Array<ChartData>
+) {
+  const _list: Array<ChartData> = []
+  const metricNameMap: { [propName: string]: string } = {}
+  y.forEach((axis) => {
+    metricNameMap[axis.value] = axisLabel(axis)
+  })
+
+  for (const datum of data) {
+    const groupName =
+      series
+        .map((axis) => datum[axis.value])
+        .filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '')
+        .join(' / ') || series.map(axisLabel).join(' / ')
+
+    y.forEach((quota) => {
+      const _data: { [propName: string]: any } = {}
+      for (const xAxis of x) {
+        _data[xAxis.value] = datum[xAxis.value]
+      }
+      const isPercent = isPercentAxis(quota, data)
+      const multiplier = isPercent ? getPercentMultiplier(quota, data) : 1
+      _data[AUTO_VALUE_FIELD] = isPercent
+        ? toNullableNumber(datum[quota.value], multiplier)
+        : datum[quota.value]
+      _data[AUTO_SERIES_FIELD] = groupName
+        ? `${groupName} / ${metricNameMap[quota.value]}`
+        : metricNameMap[quota.value]
+      _data[AUTO_PERCENT_FIELD] = isPercent
+      _list.push(_data)
+    })
+  }
+
+  return {
+    data: _list,
+    y: [{ value: AUTO_VALUE_FIELD, type: 'y' } as ChartAxis],
+    series: [{ name: 'series', value: AUTO_SERIES_FIELD, type: 'series' } as ChartAxis],
+  }
+}
+
 export function processMultiQuotaData(
   x: Array<ChartAxis>,
   y: Array<ChartAxis>,
   multiQuota: Array<string>,
-  multiQuotaName: string = 'zhishu_auto_series',
+  multiQuotaName: string = 'shuzhi_auto_series',
   data: Array<ChartData>
 ) {
   const _list: Array<ChartData> = []
@@ -524,7 +573,7 @@ export function buildMixedUnitComboOptions(
           y: {
             nice: true,
             type: 'linear',
-            key: 'zhishu_count_axis',
+            key: 'shuzhi_count_axis',
             zero: true,
           },
         },

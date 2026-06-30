@@ -25,16 +25,31 @@ from common.core.response_middleware import ResponseMiddleware
 
 @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_INFO, keyExpression="assistant_id")
 async def get_assistant_info(*, session: Session, assistant_id: int) -> AssistantModel | None:
+    """
+    是什么：get_assistant_info 是 backend/apps/system/crud/assistant.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     db_model = session.get(AssistantModel, assistant_id)
     return db_model
 
 
 def get_assistant_user(*, id: int):
-    return UserInfoDTO(id=id, account="zhishu-inner-assistant", name="zhishu-inner-assistant",
-                       email="zhishu-inner-assistant@zhishu.com")
+    """
+    是什么：get_assistant_user 是 backend/apps/system/crud/assistant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
+    return UserInfoDTO(id=id, account="shuzhi-inner-assistant", name="shuzhi-inner-assistant",
+                       email="shuzhi-inner-assistant@shuzhi.com")
 
 
 def get_assistant_ds(session: Session, llm_service) -> list[dict]:
+    """
+    是什么：get_assistant_ds 是 backend/apps/system/crud/assistant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     assistant: AssistantHeader = llm_service.current_assistant
     type = assistant.type
     if type == 0 or type == 2:
@@ -69,16 +84,21 @@ def get_assistant_ds(session: Session, llm_service) -> list[dict]:
             for ds in db_ds_list
         ]
 
-        # filter private ds if offline
+        # 离线时过滤私有数据源
         return result_list
     out_ds_instance: AssistantOutDs = AssistantOutDsFactory.get_instance(assistant)
     llm_service.out_ds_instance = out_ds_instance
     dslist = out_ds_instance.get_simple_ds_list()
-    # format?
+    # 是否需要格式化？
     return dslist
 
 
 def init_dynamic_cors(app: FastAPI):
+    """
+    是什么：init_dynamic_cors 是 backend/apps/system/crud/assistant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     try:
         with Session(engine) as session:
             list_result = session.exec(select(AssistantModel).order_by(AssistantModel.create_time)).all()
@@ -100,7 +120,7 @@ def init_dynamic_cors(app: FastAPI):
                     response_middleware = middleware
                 if cors_middleware and response_middleware:
                     break
-                
+
             updated_origins = list(set(settings.all_cors_origins + unique_domains))
             if cors_middleware:
                 cors_middleware.kwargs['allow_origins'] = updated_origins
@@ -119,6 +139,11 @@ class AssistantOutDs:
     request_origin: Optional[str] = None
 
     def __init__(self, assistant: AssistantHeader):
+        """
+        是什么：AssistantOutDs.__init__ 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由创建 AssistantOutDs 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.assistant = assistant
         self.ds_list = None
         self.certificate = assistant.certificate
@@ -127,6 +152,11 @@ class AssistantOutDs:
 
     # @cache(namespace=CacheNamespace.EMBEDDED_INFO, cacheName=CacheName.ASSISTANT_DS, keyExpression="current_user.id")
     def get_ds_from_api(self):
+        """
+        是什么：AssistantOutDs.get_ds_from_api 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        """
         config: dict[any] = json.loads(self.assistant.configuration)
         endpoint: str = config['endpoint']
         endpoint = self.get_complete_endpoint(endpoint=endpoint)
@@ -163,11 +193,21 @@ class AssistantOutDs:
             raise Exception(f"Failed to get datasource list from {endpoint}, response: {res}")
 
     def get_first_element(self, text: str):
+        """
+        是什么：AssistantOutDs.get_first_element 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        """
         parts = re.split(r'[,;]', text.strip())
         first_domain = parts[0].strip()
         return first_domain
 
     def get_complete_endpoint(self, endpoint: str) -> str | None:
+        """
+        是什么：AssistantOutDs.get_complete_endpoint 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        """
         if endpoint.startswith("http://") or endpoint.startswith("https://"):
             return endpoint
         domain_text = self.assistant.domain
@@ -181,6 +221,11 @@ class AssistantOutDs:
             return f"{domain_text}{endpoint}"
 
     def get_simple_ds_list(self):
+        """
+        是什么：AssistantOutDs.get_simple_ds_list 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        """
         if self.ds_list:
             return [{'id': ds.id, 'name': ds.name, 'description': ds.comment} for ds in self.ds_list]
         else:
@@ -188,6 +233,11 @@ class AssistantOutDs:
 
     def get_db_schema(self, ds_id: int, question: str = '', embedding: bool = True,
                       table_list: list[str] = None) -> tuple[str, list]:
+        """
+        是什么：AssistantOutDs.get_db_schema 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        """
         ds = self.get_ds(ds_id)
         schema_str = ""
         db_name = ds.db_schema if ds.db_schema is not None and ds.db_schema != "" else ds.dataBase
@@ -222,7 +272,7 @@ class AssistantOutDs:
             tables.append(t_obj)
             table_name_list.append(table.name)
 
-        # do table embedding
+        # 执行表向量化
         # if embedding and tables and settings.TABLE_EMBEDDING_ENABLED:
         #     tables = get_table_embedding(tables, question)
 
@@ -233,6 +283,11 @@ class AssistantOutDs:
         return schema_str, table_name_list
 
     def get_ds(self, ds_id: int, trans: Trans = None):
+        """
+        是什么：AssistantOutDs.get_ds 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        """
         if self.ds_list:
             for ds in self.ds_list:
                 if ds.id == ds_id:
@@ -243,6 +298,11 @@ class AssistantOutDs:
             'i18n_common.datasource_id_not_found', key=ds_id))
 
     def convert2schema(self, ds_dict: dict, config: dict[any]) -> AssistantOutDsSchema:
+        """
+        是什么：AssistantOutDs.convert2schema 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由持有 AssistantOutDs 实例的业务代码、框架回调或测试代码调用。
+        做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+        """
         id_marker: str = ''
         attr_list = ['name', 'type', 'host', 'port', 'user', 'dataBase', 'schema', 'mode']
         if config.get('encrypt', False):
@@ -258,12 +318,12 @@ class AssistantOutDs:
                     except Exception as e:
                         raise Exception(
                             f"Failed to encrypt {attr} for datasource {ds_dict.get('name')}, error: {str(e)}")
-        
+
         id = ds_dict.get('id', None)
         if not id:
             for attr in attr_list:
                 if attr in ds_dict:
-                    id_marker += str(ds_dict.get(attr, '')) + '--zhishu--'
+                    id_marker += str(ds_dict.get(attr, '')) + '--shuzhi--'
             id = string_to_numeric_hash(id_marker)
         db_schema = ds_dict.get('schema', ds_dict.get('db_schema', ''))
         ds_dict.pop("schema", None)
@@ -273,10 +333,20 @@ class AssistantOutDs:
 class AssistantOutDsFactory:
     @staticmethod
     def get_instance(assistant: AssistantHeader) -> AssistantOutDs:
+        """
+        是什么：AssistantOutDsFactory.get_instance 是 backend/apps/system/crud/assistant.py 中的同步方法。
+        谁调用：由类名、实例或模块内业务代码按照静态方法约定调用。
+        做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+        """
         return AssistantOutDs(assistant)
 
 
 def get_out_ds_conf(ds: AssistantOutDsSchema, timeout: int = 30) -> str:
+    """
+    是什么：get_out_ds_conf 是 backend/apps/system/crud/assistant.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     conf = {
         "host": ds.host or '',
         "port": ds.port or 0,

@@ -1,5 +1,5 @@
 <template>
-  <div v-loading="divLoading" class="zhishu--embedded-page">
+  <div v-loading="divLoading" class="shuzhi--embedded-page">
     <ds-component
       v-if="!loading && isWsAdmin && busiFlag === 'ds'"
       ref="dsRef"
@@ -27,7 +27,7 @@ const route = useRoute()
 
 const loading = ref(true)
 const divLoading = ref(true)
-const eventName = 'zhishu_embedded_event'
+const eventName = 'shuzhi_embedded_event'
 const busiFlag = ref('ds')
 
 const isWsAdmin = computed(() => {
@@ -73,7 +73,7 @@ watch(
 const registerReady = (assistantId: any) => {
   window.addEventListener('message', communicationCb)
   const readyData = {
-    eventName: 'zhishu_embedded_event',
+    eventName: 'shuzhi_embedded_event',
     busi: 'ready',
     ready: true,
     messageId: assistantId,
@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="less" scoped>
-.zhishu--embedded-page {
+.shuzhi--embedded-page {
   width: 100%;
   height: 100vh;
   position: relative;

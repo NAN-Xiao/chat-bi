@@ -1,6 +1,6 @@
 """Shared core system database defaults for local tooling.
 
-Tool scripts write platform metadata to the Zhishu system database. ZHISHU_DB_*
+Tool scripts write platform metadata to the Shuzhi system database. SHUZHI_DB_*
 is the authoritative endpoint. POSTGRES_* is exported only as compatibility for
 older backend helpers that still read those variable names.
 """
@@ -46,20 +46,20 @@ def _env(name: str, default: Any) -> Any:
 def core_system_db_config() -> dict[str, Any]:
     load_root_env(REPO_ROOT)
     return {
-        "host": _env("ZHISHU_DB_HOST", DEFAULT_CORE_DB["host"]),
-        "port": int(_env("ZHISHU_DB_PORT", DEFAULT_CORE_DB["port"])),
-        "dbname": _env("ZHISHU_DB_DB", DEFAULT_CORE_DB["dbname"]),
-        "user": _env("ZHISHU_DB_USER", DEFAULT_CORE_DB["user"]),
-        "password": _env("ZHISHU_DB_PASSWORD", DEFAULT_CORE_DB["password"]),
+        "host": _env("SHUZHI_DB_HOST", DEFAULT_CORE_DB["host"]),
+        "port": int(_env("SHUZHI_DB_PORT", DEFAULT_CORE_DB["port"])),
+        "dbname": _env("SHUZHI_DB_DB", DEFAULT_CORE_DB["dbname"]),
+        "user": _env("SHUZHI_DB_USER", DEFAULT_CORE_DB["user"]),
+        "password": _env("SHUZHI_DB_PASSWORD", DEFAULT_CORE_DB["password"]),
     }
 
 
 def export_postgres_compat_env(db: dict[str, Any]) -> None:
-    os.environ.setdefault("ZHISHU_DB_HOST", str(db["host"]))
-    os.environ.setdefault("ZHISHU_DB_PORT", str(db["port"]))
-    os.environ.setdefault("ZHISHU_DB_DB", str(db["dbname"]))
-    os.environ.setdefault("ZHISHU_DB_USER", str(db["user"]))
-    os.environ.setdefault("ZHISHU_DB_PASSWORD", str(db["password"]))
+    os.environ.setdefault("SHUZHI_DB_HOST", str(db["host"]))
+    os.environ.setdefault("SHUZHI_DB_PORT", str(db["port"]))
+    os.environ.setdefault("SHUZHI_DB_DB", str(db["dbname"]))
+    os.environ.setdefault("SHUZHI_DB_USER", str(db["user"]))
+    os.environ.setdefault("SHUZHI_DB_PASSWORD", str(db["password"]))
     os.environ.setdefault("POSTGRES_SERVER", str(db["host"]))
     os.environ.setdefault("POSTGRES_PORT", str(db["port"]))
     os.environ.setdefault("POSTGRES_DB", str(db["dbname"]))

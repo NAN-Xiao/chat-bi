@@ -2,7 +2,7 @@ import { useCache } from '@/utils/useCache'
 
 export const PLATFORM_WORKSPACE_DELEGATE_QUERY_KEY = 'platform_workspace_delegate'
 export const PLATFORM_WORKSPACE_DELEGATE_TENANT_QUERY_KEY = 'tenant_id'
-export const PLATFORM_WORKSPACE_DELEGATE_HEADER = 'X-ZHISHU-PLATFORM-WORKSPACE-DELEGATE'
+export const PLATFORM_WORKSPACE_DELEGATE_HEADER = 'X-SHUZHI-PLATFORM-WORKSPACE-DELEGATE'
 
 const { wsCache: sessionCache } = useCache('sessionStorage')
 

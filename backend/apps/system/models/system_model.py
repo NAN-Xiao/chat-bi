@@ -33,6 +33,11 @@ class AiModelBrief(SQLModel):
 
     @field_serializer("id")
     def id_to_str(self, v: int) -> str:
+        """
+        是什么：AiModelBrief.id_to_str 是 backend/apps/system/models/system_model.py 中的同步方法。
+        谁调用：由持有 AiModelBrief 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 id_to_str 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         return str(v)
 
 

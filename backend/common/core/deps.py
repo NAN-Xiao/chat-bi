@@ -13,15 +13,30 @@ from common.utils.locale import I18n
 SessionDep = Annotated[Session, Depends(get_session)]
 i18n = I18n()
 async def get_i18n(request: Request):
+    """
+    是什么：get_i18n 是 backend/common/core/deps.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+    """
     return i18n(request)
 
 Trans = Annotated[I18n, Depends(get_i18n)]
 async def get_current_user(request: Request) -> UserInfoDTO:
+    """
+    是什么：get_current_user 是 backend/common/core/deps.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+    """
     return request.state.current_user
 
 CurrentUser = Annotated[UserInfoDTO, Depends(get_current_user)]
 
 async def get_current_tenant(request: Request) -> TenantContext:
+    """
+    是什么：get_current_tenant 是 backend/common/core/deps.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+    """
     current_tenant = getattr(request.state, "current_tenant", None)
     if current_tenant is None:
         raise HTTPException(
@@ -33,11 +48,16 @@ async def get_current_tenant(request: Request) -> TenantContext:
 CurrentTenant = Annotated[TenantContext, Depends(get_current_tenant)]
 
 async def get_current_assistant(request: Request) -> AssistantHeader | None:
+    """
+    是什么：get_current_assistant 是 backend/common/core/deps.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+    """
     base_assistant = request.state.assistant if hasattr(request.state, "assistant") else None
     if base_assistant is None:
         return None
-    if request.headers.get("X-ZHISHU-ASSISTANT-CERTIFICATE"):
-        entry_certificate = request.headers['X-ZHISHU-ASSISTANT-CERTIFICATE']
+    if request.headers.get("X-SHUZHI-ASSISTANT-CERTIFICATE"):
+        entry_certificate = request.headers['X-SHUZHI-ASSISTANT-CERTIFICATE']
         base_assistant.certificate = unquote(base64.b64decode(entry_certificate).decode('utf-8'))
     return base_assistant
 

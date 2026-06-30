@@ -2,15 +2,15 @@
 action=$1
 target=$2
 
-ZHISHU_BASE=/opt
-ZHISHU_RUNNING_BASE=${ZHISHU_BASE}/zhishu
-ZHISHU_LOG_PATH=${ZHISHU_RUNNING_BASE}/data/zhishu/logs
+SHUZHI_BASE=/opt
+SHUZHI_RUNNING_BASE=${SHUZHI_BASE}/shuzhi
+SHUZHI_LOG_PATH=${SHUZHI_RUNNING_BASE}/data/shuzhi/logs
 compose_files="-f docker-compose.yml"
 compose_cmd="docker-compose"
 current_version=""
 
 set -a
-source ${ZHISHU_RUNNING_BASE}/.env
+source ${SHUZHI_RUNNING_BASE}/.env
 set +a
 export COMPOSE_HTTP_TIMEOUT=180
 
@@ -23,26 +23,26 @@ if [ $? -ne 0 ]; then
 fi
 
 function usage() {
-   echo "星通智数控制脚本"
+   echo "星通数智控制脚本"
    echo
    echo "Usage: "
    echo "  ./sctl [COMMAND] [ARGS...]"
    echo "  ./sctl --help"
    echo
    echo "Commands: "
-   echo "  status                查看星通智数服务运行状态"
-   echo "  start                 启动星通智数服务"
-   echo "  stop                  停止星通智数服务"
-   echo "  restart               重启星通智数服务"
-   echo "  reload                重载星通智数服务"
-   echo "  clear-images          清理星通智数旧版本的相关镜像"
-   echo "  clear-logs            清理星通智数历史日志"
-   echo "  version               查看星通智数版本"
+   echo "  status                查看星通数智服务运行状态"
+   echo "  start                 启动星通数智服务"
+   echo "  stop                  停止星通数智服务"
+   echo "  restart               重启星通数智服务"
+   echo "  reload                重载星通数智服务"
+   echo "  clear-images          清理星通数智旧版本的相关镜像"
+   echo "  clear-logs            清理星通数智历史日志"
+   echo "  version               查看星通数智版本"
 }
 
 function _healthcheck() {
    echo
-   container_name=$(grep "container_name" $ZHISHU_RUNNING_BASE/docker-compose.yml | awk -F': ' '{print $2}')
+   container_name=$(grep "container_name" $SHUZHI_RUNNING_BASE/docker-compose.yml | awk -F': ' '{print $2}')
    sleep 1
    if [ -z '$(docker ps --filter "name=^$container_name$" -q)' ];then
       echo "未找到容器 $container_name。"
@@ -54,14 +54,14 @@ function _healthcheck() {
       sleep 1
       read status healthy<<<$(docker inspect $container_name --format '{{.State.Status}} {{.State.Health.Status}}')
       if [[ "$healthy" == "starting" ]];then
-         printf "\r星通智数服务状态 : 正在启动 ... %3ds" $b
+         printf "\r星通数智服务状态 : 正在启动 ... %3ds" $b
       elif [[ "$status" == "running" ]] && [[ "$healthy" == "healthy" ]];then
-         printf "\r星通智数服务状态 : 正常运行          "
+         printf "\r星通数智服务状态 : 正常运行          "
          echo
          return;
       else
          echo
-         echo -e "星通智数服务状态 : \033[31m无法访问\033[0m"
+         echo -e "星通数智服务状态 : \033[31m无法访问\033[0m"
          exit 1
       fi
    done
@@ -70,18 +70,18 @@ function _healthcheck() {
    echo
 }
 function _get_current_version() {
-   zhishu_current_version=$(grep "^    image:.*:" ${ZHISHU_RUNNING_BASE}/docker-compose.yml | head -n 1 | awk -F':' '{print $NF}')
-   if test -z $zhishu_current_version; then
+   shuzhi_current_version=$(grep "^    image:.*:" ${SHUZHI_RUNNING_BASE}/docker-compose.yml | head -n 1 | awk -F':' '{print $NF}')
+   if test -z $shuzhi_current_version; then
       echo "获取当前版本失败，请检查当前版本是否正确"
       exit 1
    fi
-   current_version=$zhishu_current_version
+   current_version=$shuzhi_current_version
 }
 
 function status() {
    echo
-   echo "星通智数容器运行状态"
-   cd ${ZHISHU_RUNNING_BASE}
+   echo "星通数智容器运行状态"
+   cd ${SHUZHI_RUNNING_BASE}
    ${compose_cmd} ${compose_files} ps
 
    echo
@@ -94,26 +94,26 @@ function status() {
 
    echo
    echo "日志文件大小 : "
-   du -Sh ${ZHISHU_LOG_PATH}
+   du -Sh ${SHUZHI_LOG_PATH}
 
    echo
-   echo "星通智数运行目录及文件大小 : "
-   du -sh ${ZHISHU_BASE}
+   echo "星通数智运行目录及文件大小 : "
+   du -sh ${SHUZHI_BASE}
    echo
-   echo "星通智数运行目录使用情况 : "
-   df -H ${ZHISHU_BASE}
+   echo "星通数智运行目录使用情况 : "
+   df -H ${SHUZHI_BASE}
 
    _healthcheck
 }
 function start() {
    echo
-   cd ${ZHISHU_RUNNING_BASE}
+   cd ${SHUZHI_RUNNING_BASE}
    ${compose_cmd} ${compose_files} up -d
    _healthcheck
 }
 function stop() {
    echo
-   cd ${ZHISHU_RUNNING_BASE}
+   cd ${SHUZHI_RUNNING_BASE}
    ${compose_cmd} ${compose_files} down -v ${target}
 }
 function restart() {
@@ -130,7 +130,7 @@ function version() {
 }
 function clear_images() {
    echo
-   for f in $ZHISHU_RUNNING_BASE/*.yml; do
+   for f in $SHUZHI_RUNNING_BASE/*.yml; do
       [[ -e "$f" ]] || break
       grep "^    image:.*:" "$f" | uniq | while read -r component_image_defined; do
          component_version=$(echo ${component_image_defined} | awk -F":" '{print $3}' | uniq)
@@ -155,11 +155,11 @@ function clear_images() {
    fi
 }
 function clear_logs() {
-   echo "开始清理星通智数历史日志"
-   rm -rf ${ZHISHU_LOG_PATH}/*.*.*
-   echo "" > ${ZHISHU_LOG_PATH}/info.log
-   echo "" > ${ZHISHU_LOG_PATH}/debug.log
-   echo "" > ${ZHISHU_LOG_PATH}/error.log
+   echo "开始清理星通数智历史日志"
+   rm -rf ${SHUZHI_LOG_PATH}/*.*.*
+   echo "" > ${SHUZHI_LOG_PATH}/info.log
+   echo "" > ${SHUZHI_LOG_PATH}/debug.log
+   echo "" > ${SHUZHI_LOG_PATH}/error.log
    echo "清理完毕"
 }
 

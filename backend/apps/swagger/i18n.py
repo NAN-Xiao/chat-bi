@@ -1,5 +1,5 @@
-# Author: Junjun
-# Date: 2025/12/11
+# 作者：Junjun
+# 日期：2025/12/11
 # i18n.py
 import json
 from pathlib import Path
@@ -7,10 +7,10 @@ from typing import Dict
 
 i18n_list = ["en", "zh"]
 
-# placeholder prefix（trans key prefix）
+# 占位符前缀（翻译键前缀）
 PLACEHOLDER_PREFIX = "PLACEHOLDER_"
 
-# default lang
+# 默认语言
 DEFAULT_LANG = "en"
 
 LOCALES_DIR = Path(__file__).parent / "locales"
@@ -18,7 +18,11 @@ _translations_cache: Dict[str, Dict[str, str]] = {}
 
 
 def load_translation(lang: str) -> Dict[str, str]:
-    """Load translations for the specified language from a JSON file"""
+    """
+    是什么：load_translation 是 backend/apps/swagger/i18n.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询后端业务相关数据，整理后返回给调用方。
+    """
     if lang in _translations_cache:
         return _translations_cache[lang]
 
@@ -40,7 +44,7 @@ def load_translation(lang: str) -> Dict[str, str]:
         raise ValueError(f"Invalid JSON in {file_path}: {e}")
 
 
-# group tags
+# 分组标签
 tags_metadata = [
     {
         "name": "Data Q&A",
@@ -104,4 +108,9 @@ tags_metadata = [
 
 
 def get_translation(lang: str) -> Dict[str, str]:
+    """
+    是什么：get_translation 是 backend/apps/swagger/i18n.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询后端业务相关数据，整理后返回给调用方。
+    """
     return load_translation(lang)

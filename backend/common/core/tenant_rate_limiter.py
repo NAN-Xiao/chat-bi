@@ -33,6 +33,11 @@ _ACTION_LIMIT_KEYS = {
 
 
 def _tenant_id(value: int | str | None) -> int:
+    """
+    是什么：_tenant_id 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_id 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     if value in (None, ""):
         raise ValueError("Tenant context is required")
     try:
@@ -42,6 +47,11 @@ def _tenant_id(value: int | str | None) -> int:
 
 
 def _window(now: int | None = None) -> tuple[int, int]:
+    """
+    是什么：_window 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _window 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     current = int(time.time()) if now is None else int(now)
     window_id = current // WINDOW_SECONDS
     retry_after = WINDOW_SECONDS - (current % WINDOW_SECONDS)
@@ -49,6 +59,11 @@ def _window(now: int | None = None) -> tuple[int, int]:
 
 
 def _limit_for_action(action: str) -> int:
+    """
+    是什么：_limit_for_action 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _limit_for_action 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     normalized = str(action or "").strip().lower()
     if normalized == "chat":
         return settings.TENANT_CHAT_REQUESTS_PER_MINUTE
@@ -60,6 +75,11 @@ def _limit_for_action(action: str) -> int:
 
 
 def _parse_plan_overrides() -> dict[str, Any]:
+    """
+    是什么：_parse_plan_overrides 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化核心配置和基础设施相关数据，生成后续流程可使用的结构。
+    """
     raw = (settings.TENANT_RATE_LIMIT_PLAN_OVERRIDES or "").strip()
     if not raw:
         return {}
@@ -72,6 +92,11 @@ def _parse_plan_overrides() -> dict[str, Any]:
 
 
 def _plan_limit(plan: str | None, action: str) -> int | None:
+    """
+    是什么：_plan_limit 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _plan_limit 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     plan_key = (plan or "default").strip().lower() or "default"
     action_key = str(action or "").strip().lower() or "llm"
     limit_key = _ACTION_LIMIT_KEYS.get(action_key, _ACTION_LIMIT_KEYS["llm"])
@@ -90,6 +115,11 @@ def _plan_limit(plan: str | None, action: str) -> int | None:
 
 
 def resolve_tenant_rate_limit(session: Any, tenant_id: int | str | None, action: str) -> int:
+    """
+    是什么：resolve_tenant_rate_limit 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 resolve_tenant_rate_limit 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     resolved_tenant_id = _tenant_id(tenant_id)
     plan = "default"
     try:
@@ -106,12 +136,22 @@ def resolve_tenant_rate_limit(session: Any, tenant_id: int | str | None, action:
 
 
 def _memory_prune(current_window: int) -> None:
+    """
+    是什么：_memory_prune 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _memory_prune 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     expired = [key for key in _memory_counters if key[2] < current_window]
     for key in expired:
         _memory_counters.pop(key, None)
 
 
 def _state(action: str, limit: int, used: int, retry_after_seconds: int) -> TenantRateLimitState:
+    """
+    是什么：_state 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _state 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return TenantRateLimitState(
         allowed=used <= limit,
         action=action,
@@ -128,6 +168,11 @@ async def consume_tenant_rate_limit(
     *,
     limit: int | None = None,
 ) -> TenantRateLimitState:
+    """
+    是什么：consume_tenant_rate_limit 是 backend/common/core/tenant_rate_limiter.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 consume_tenant_rate_limit 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     resolved_limit = _limit_for_action(action) if limit is None else int(limit)
     if not settings.TENANT_RATE_LIMIT_ENABLED or resolved_limit <= 0:
         return TenantRateLimitState(
@@ -162,4 +207,9 @@ async def consume_tenant_rate_limit(
 
 
 def reset_memory_tenant_rate_limiter() -> None:
+    """
+    是什么：reset_memory_tenant_rate_limiter 是 backend/common/core/tenant_rate_limiter.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理核心配置和基础设施相关数据、缓存或临时状态。
+    """
     _memory_counters.clear()

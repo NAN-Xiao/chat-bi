@@ -45,15 +45,58 @@ const filteredList = computed(() => {
   const value = keyword.value.trim().toLowerCase()
   if (!value) return list.value
   return list.value.filter((item) =>
-    [item.name, item.id].some((field) =>
-      String(field || '').toLowerCase().includes(value)
-    )
+    [
+      item.name,
+      item.id,
+      item.source_datasource_name,
+      item.source_tenant_name,
+      item.source_dashboard_name,
+      templateSourceSpaceId(item),
+      templateSourceDashboardId(item),
+    ].some((field) => String(field || '').toLowerCase().includes(value))
   )
+})
+const templateRemarkValue = (item: any, key: string) => {
+  const prefix = `${key}=`
+  return String(item?.remark || '')
+    .split(';')
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length)
+    ?.trim()
+}
+const templateSourceSpaceId = (item: any) =>
+  item?.source_tenant_id || templateRemarkValue(item, 'source_tenant_id')
+const templateSourceDashboardId = (item: any) =>
+  item?.source_dashboard_id || templateRemarkValue(item, 'source_dashboard_id')
+const templateSourceSpaceName = (item: any) =>
+  item?.source_tenant_name ||
+  (templateSourceSpaceId(item) ? `${t('dashboard.platform_template_source_workspace')} ${templateSourceSpaceId(item)}` : '') ||
+  t('dashboard.platform_template_unknown_source_workspace')
+const templateSourceProjectName = (item: any) =>
+  item?.source_datasource_name ||
+  (item?.source_datasource_id ? `${t('dashboard.platform_template_source_project')} ${item.source_datasource_id}` : '')
+const groupedFilteredList = computed(() => {
+  const groups = new Map<string, { key: string; label: string; items: any[] }>()
+  filteredList.value.forEach((item) => {
+    const label = templateSourceSpaceName(item)
+    const key = String(templateSourceSpaceId(item) || label)
+    if (!groups.has(key)) {
+      groups.set(key, { key, label, items: [] })
+    }
+    groups.get(key)?.items.push(item)
+  })
+  return Array.from(groups.values())
 })
 
 const templateMetaText = (item: any) => {
   if (!item?.id) return '-'
-  return `ID ${item.id}`
+  const sourceText = [
+    templateSourceProjectName(item),
+    item.source_dashboard_name || templateSourceDashboardId(item),
+  ]
+    .filter(Boolean)
+    .join(' / ')
+  return sourceText ? sourceText : `ID ${item.id}`
 }
 
 const parseJson = (value: any, fallback: any) => {
@@ -96,6 +139,12 @@ const loadTemplatePreview = async (id: string) => {
       type: res.type,
       createName: res.create_name,
       updateName: res.update_name,
+      sourceDashboardId: res.source_dashboard_id,
+      sourceDashboardName: res.source_dashboard_name,
+      sourceTenantId: res.source_tenant_id,
+      sourceTenantName: res.source_tenant_name,
+      sourceDatasourceId: res.source_datasource_id,
+      sourceDatasourceName: res.source_datasource_name,
       createTime: res.create_time,
       updateTime: res.update_time,
       canEdit: res.can_edit === true,
@@ -226,30 +275,33 @@ onMounted(() => {
       </el-input>
 
       <div v-if="filteredList.length" class="template-list">
-        <div
-          v-for="item in filteredList"
-          :key="item.id"
-          role="button"
-          tabindex="0"
-          class="template-row"
-          :class="{ active: selectedId === item.id }"
-          @click="selectTemplate(item)"
-          @keydown.enter.prevent="selectTemplate(item)"
-          @keydown.space.prevent="selectTemplate(item)"
-        >
-          <span class="row-icon"><icon_dashboard /></span>
-          <span class="row-body">
-            <span class="row-name ellipsis" :title="item.name">{{ item.name }}</span>
-            <span class="row-meta ellipsis" :title="templateMetaText(item)">{{ templateMetaText(item) }}</span>
-          </span>
-          <span class="row-actions" @click.stop>
-            <HandleMore
-              :menu-list="templateMenuList"
-              :icon-name="icon_more_outlined"
-              placement="bottom-end"
-              @handle-command="(command: string) => handleTemplateCommand(command, item)"
-            />
-          </span>
+        <div v-for="group in groupedFilteredList" :key="group.key" class="template-group">
+          <div class="template-group-title ellipsis" :title="group.label">{{ group.label }}</div>
+          <div
+            v-for="item in group.items"
+            :key="item.id"
+            role="button"
+            tabindex="0"
+            class="template-row"
+            :class="{ active: selectedId === item.id }"
+            @click="selectTemplate(item)"
+            @keydown.enter.prevent="selectTemplate(item)"
+            @keydown.space.prevent="selectTemplate(item)"
+          >
+            <span class="row-icon"><icon_dashboard /></span>
+            <span class="row-body">
+              <span class="row-name ellipsis" :title="item.name">{{ item.name }}</span>
+              <span class="row-meta ellipsis" :title="templateMetaText(item)">{{ templateMetaText(item) }}</span>
+            </span>
+            <span class="row-actions" @click.stop>
+              <HandleMore
+                :menu-list="templateMenuList"
+                :icon-name="icon_more_outlined"
+                placement="bottom-end"
+                @handle-command="(command: string) => handleTemplateCommand(command, item)"
+              />
+            </span>
+          </div>
         </div>
       </div>
 
@@ -355,6 +407,18 @@ onMounted(() => {
   min-height: 0;
   overflow: auto;
   padding: 0 8px 12px;
+}
+
+.template-group + .template-group {
+  margin-top: 10px;
+}
+
+.template-group-title {
+  padding: 8px 8px 5px;
+  color: var(--workspace-text-secondary, #667085);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
 }
 
 .template-row {

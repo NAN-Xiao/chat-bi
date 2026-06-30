@@ -1,9 +1,8 @@
-"""122_create_knowledge_base
+"""迁移脚本：122_create_knowledge_base
 
-Revision ID: 2f4a6c8e0b13
-Revises: f1a2b3c4d5e6
-Create Date: 2026-06-23 00:00:00.000000
-
+迁移版本 ID： 2f4a6c8e0b13
+上一版本： f1a2b3c4d5e6
+创建时间： 2026-06-23 00:00:00.000000
 """
 from __future__ import annotations
 
@@ -18,6 +17,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    是什么：upgrade 是 backend/alembic/versions/122_create_knowledge_base.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     op.create_table(
         "knowledge_base",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=True), nullable=False),
@@ -44,6 +48,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    是什么：downgrade 是 backend/alembic/versions/122_create_knowledge_base.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     op.drop_index("idx_knowledge_base_status", table_name="knowledge_base")
     op.drop_index("idx_knowledge_base_create_by", table_name="knowledge_base")
     op.drop_index("idx_knowledge_base_tenant_scope", table_name="knowledge_base")

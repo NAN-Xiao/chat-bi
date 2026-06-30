@@ -18,7 +18,7 @@ from common.core.config import settings
 from common.core.deps import SessionDep, Trans
 from common.core.schemas import Token
 from common.core.security import create_access_token
-from common.utils.crypto import zhishu_decrypt
+from common.utils.crypto import shuzhi_decrypt
 
 from ..crud.user import authenticate
 
@@ -26,7 +26,12 @@ router = APIRouter(tags=["login"], prefix="/login")
 
 
 def _requested_tenant_id(request: Request) -> int | None:
-    raw = request.headers.get("X-ZHISHU-TENANT-ID")
+    """
+    是什么：_requested_tenant_id 是 backend/apps/system/api/login.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _requested_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
+    raw = request.headers.get("X-SHUZHI-TENANT-ID")
     if not raw:
         return None
     try:
@@ -46,8 +51,13 @@ async def local_login(
     request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ) -> Token:
-    origin_account = await zhishu_decrypt(form_data.username)
-    origin_pwd = await zhishu_decrypt(form_data.password)
+    """
+    是什么：local_login 是 backend/apps/system/api/login.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 local_login 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
+    origin_account = await shuzhi_decrypt(form_data.username)
+    origin_pwd = await shuzhi_decrypt(form_data.password)
     user: BaseUserDTO = authenticate(session=session, account=origin_account, password=origin_pwd)
     if not user:
         raise HTTPException(status_code=400, detail=trans('i18n_login.account_pwd_error'))
@@ -72,4 +82,9 @@ async def local_login(
 
 @router.post("/logout")
 async def logout(_session: SessionDep, _request: Request, _dto: LogoutSchema):
+    """
+    是什么：logout 是 backend/apps/system/api/login.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 logout 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return None

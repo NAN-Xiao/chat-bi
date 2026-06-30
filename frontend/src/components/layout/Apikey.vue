@@ -99,7 +99,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="zhishu-apikey-container">
+  <div class="shuzhi-apikey-container">
     <div class="warn-template">
       <span class="icon-span">
         <el-icon>
@@ -270,7 +270,7 @@ onMounted(() => {
 </template>
 
 <style lang="less" scoped>
-.zhishu-apikey-container {
+.shuzhi-apikey-container {
   background: #ffffff;
   border-radius: 8px;
   row-gap: 24px;

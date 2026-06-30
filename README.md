@@ -1,4 +1,4 @@
-<h1 align="center">星通智数</h1>
+<h1 align="center">星通数智</h1>
 <h3 align="center">基于大模型和 RAG 的智能报表系统</h3>
 
 <p align="center">
@@ -7,7 +7,7 @@
 </p>
 <hr/>
 
-星通智数是一款基于大语言模型和 RAG 的智能报表系统。借助星通智数，用户可以实现对话式数据分析（ChatBI），快速提炼获取所需的数据信息及可视化图表，并且支持进一步开展智能分析。
+星通数智是一款基于大语言模型和 RAG 的智能报表系统。借助星通数智，用户可以实现对话式数据分析（ChatBI），快速提炼获取所需的数据信息及可视化图表，并且支持进一步开展智能分析。
 
 ## 工作原理
 
@@ -62,17 +62,17 @@ docker buildx build \
   .
 
 docker run -d \
-  --name zhishu \
+  --name shuzhi \
   --restart unless-stopped \
   -p 8000:8000 \
   -p 8001:8001 \
-  -v ./data/zhishu/excel:/opt/zhishu/data/excel \
-  -v ./data/zhishu/file:/opt/zhishu/data/file \
-  -v ./data/zhishu/images:/opt/zhishu/images \
-  -v ./data/zhishu/logs:/opt/zhishu/app/logs \
+  -v ./data/shuzhi/excel:/opt/shuzhi/data/excel \
+  -v ./data/shuzhi/file:/opt/shuzhi/data/file \
+  -v ./data/shuzhi/images:/opt/shuzhi/images \
+  -v ./data/shuzhi/logs:/opt/shuzhi/app/logs \
   -v ./data/postgresql:/var/lib/postgresql/data \
   --privileged=true \
-  zhishu:latest
+  shuzhi:latest
 ```
 
 ### 访问方式
@@ -109,8 +109,8 @@ docker run -d \
 
 本仓库遵循 [Open Source License](LICENSE) 开源协议，该许可证本质上是 GPLv3，但有一些额外的限制。
 
-你可以基于星通智数的源代码进行二次开发，但是需要遵守以下规定：
+你可以基于星通数智的源代码进行二次开发，但是需要遵守以下规定：
 
-- 不能替换和修改星通智数的 Logo 和版权信息；
+- 不能替换和修改星通数智的 Logo 和版权信息；
 - 二次开发后的衍生作品必须遵守 GPL V3 的开源义务。
 

@@ -25,7 +25,7 @@ const uploadLoading = ref(false)
 
 const token = wsCache.get('user.token')
 const locale = getLocale()
-const headers = ref<any>({ 'X-ZHISHU-TOKEN': `Bearer ${token}`, 'Accept-Language': locale })
+const headers = ref<any>({ 'X-SHUZHI-TOKEN': `Bearer ${token}`, 'Accept-Language': locale })
 const getUploadURL = () => {
   return import.meta.env.VITE_API_BASE_URL + props.uploadPath
 }

@@ -1,5 +1,5 @@
-# Author: Junjun
-# Date: 2025/7/1
+# 作者：Junjun
+# 日期：2025/7/1
 import json
 from datetime import timedelta
 from typing import Optional
@@ -47,6 +47,11 @@ router = APIRouter(tags=["mcp"], prefix="/mcp")
 
 
 def get_user(session: SessionDep, token: str):
+    """
+    是什么：get_user 是 backend/apps/mcp/mcp.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询MCP 服务相关数据，整理后返回给调用方。
+    """
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
@@ -75,6 +80,11 @@ def get_user(session: SessionDep, token: str):
 
 @router.post("/mcp_start", operation_id="mcp_start")
 async def mcp_start(session: SessionDep, chat: ChatStart):
+    """
+    是什么：mcp_start 是 backend/apps/mcp/mcp.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 mcp_start 的语义处理MCP 服务相关逻辑，并把结果返回或写入状态。
+    """
     user: BaseUserDTO = authenticate(session=session, account=chat.username, password=chat.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect account or password")
@@ -90,6 +100,11 @@ async def mcp_start(session: SessionDep, chat: ChatStart):
 
 @router.post("/mcp_ds_list", operation_id="mcp_datasource_list")
 async def datasource_list(session: SessionDep, trans: Trans, mcp_ds: McpDs):
+    """
+    是什么：datasource_list 是 backend/apps/mcp/mcp.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 datasource_list 的语义处理MCP 服务相关逻辑，并把结果返回或写入状态。
+    """
     session_user = get_user(session, mcp_ds.token)
     ds_list = get_datasource_list(session=session, user=session_user)
     result = []
@@ -112,6 +127,11 @@ async def datasource_list(session: SessionDep, trans: Trans, mcp_ds: McpDs):
 
 @router.post("/mcp_question", operation_id="mcp_question")
 async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
+    """
+    是什么：mcp_question 是 backend/apps/mcp/mcp.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 mcp_question 的语义处理MCP 服务相关逻辑，并把结果返回或写入状态。
+    """
     session_user = get_user(session, chat.token)
     lang = chat.lang
     if lang in ["zh-CN", "zh-TW", "en", "ko-KR"]:
@@ -137,17 +157,22 @@ async def mcp_question(session: SessionDep, trans: Trans, chat: McpQuestion):
                                        in_chat=False, stream=chat.stream, return_img=chat.return_img)
 
 
-# External assistant endpoint
+# 外部助手接口
 @router.post("/mcp_assistant", operation_id="mcp_assistant")
 async def mcp_assistant(session: SessionDep, chat: McpAssistant):
+    """
+    是什么：mcp_assistant 是 backend/apps/mcp/mcp.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 mcp_assistant 的语义处理MCP 服务相关逻辑，并把结果返回或写入状态。
+    """
     session_user = BaseUserDTO(**{
-        "id": -1, "account": 'zhishu-mcp-assistant', "assistant_id": -1, "password": '', "language": "zh-CN",
-        "name": "zhishu-mcp-assistant", "email": "zhishu-mcp-assistant@zhishu.com"
+        "id": -1, "account": 'shuzhi-mcp-assistant', "assistant_id": -1, "password": '', "language": "zh-CN",
+        "name": "shuzhi-mcp-assistant", "email": "shuzhi-mcp-assistant@shuzhi.com"
     })
     # session_user: UserModel = get_db_user(session=session, user_id=1)
     c = create_chat(session, session_user, CreateChat(origin=1), False)
 
-    # build assistant param
+    # 构建助手参数
     configuration = {"endpoint": chat.url}
     # authorization = [{"key": "x-de-token",
     #                 "value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1aWQiOjEsIm9pZCI6MSwiZXhwIjoxNzU4NTEyMDA2fQ.3NR-pgnADLdXZtI3dXX5-LuxfGYRvYD9kkr2de7KRP0",
@@ -156,9 +181,9 @@ async def mcp_assistant(session: SessionDep, chat: McpAssistant):
                                            configuration=json.dumps(configuration),
                                            certificate=chat.authorization)
 
-    # assistant question
+    # 助手问题
     mcp_chat = ChatQuestion(chat_id=c.id, question=chat.question)
-    # ask
+    # 提问
     return await question_answer_inner(session=session, current_user=session_user, request_question=mcp_chat,
                                        current_assistant=mcp_assistant_header,
                                        in_chat=False, stream=chat.stream, finish_step=ChatFinishStep.QUERY_DATA)

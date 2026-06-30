@@ -1,8 +1,8 @@
 const { endsWith, replace } = require('lodash')
 
-const AUTO_VALUE_FIELD = 'zhishu_auto_quota'
-const AUTO_SERIES_FIELD = 'zhishu_auto_series'
-const AUTO_PERCENT_FIELD = 'zhishu_auto_is_percent'
+const AUTO_VALUE_FIELD = 'shuzhi_auto_quota'
+const AUTO_SERIES_FIELD = 'shuzhi_auto_series'
+const AUTO_PERCENT_FIELD = 'shuzhi_auto_is_percent'
 
 const PERCENT_KEYWORDS = [
   'rate',
@@ -247,7 +247,7 @@ function processMultiQuotaData(
   x,
   y,
   multiQuota,
-  multiQuotaName = 'zhishu_auto_series',
+  multiQuotaName = 'shuzhi_auto_series',
   data,
 ) {
   const _list = []
@@ -337,7 +337,7 @@ function buildPercentScale(data, valueField) {
   const scale = {
     nice: true,
     type: 'linear',
-    key: 'zhishu_percent_axis',
+    key: 'shuzhi_percent_axis',
     domainMin: 0,
   }
 
@@ -423,7 +423,7 @@ function buildMixedUnitComboOptions(baseOptions, xAxis, mixedData, showLabel) {
           y: {
             nice: true,
             type: 'linear',
-            key: 'zhishu_count_axis',
+            key: 'shuzhi_count_axis',
             zero: true,
           },
         },

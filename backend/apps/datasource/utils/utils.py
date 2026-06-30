@@ -6,11 +6,16 @@ from Crypto.Util.Padding import pad, unpad
 
 from common.utils.crypto import decrypt_sensitive_text, encrypt_sensitive_text, get_legacy_config_aes_keys
 
-key = b"Zhishu1234567890"
+key = b"Shuzhi1234567890"
 _FERNET_PREFIX = "fernet:v1:"
 
 
 def _is_plain_json(value: str) -> bool:
+    """
+    是什么：_is_plain_json 是 backend/apps/datasource/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_plain_json 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         json.loads(value)
         return True
@@ -19,6 +24,11 @@ def _is_plain_json(value: str) -> bool:
 
 
 def _legacy_aes_encrypt(data: str) -> str:
+    """
+    是什么：_legacy_aes_encrypt 是 backend/apps/datasource/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _legacy_aes_encrypt 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     raw = bytes(data, "utf-8")
     cipher = AES.new(key, AES.MODE_ECB)
     encrypted = cipher.encrypt(pad(raw, AES.block_size))
@@ -26,6 +36,11 @@ def _legacy_aes_encrypt(data: str) -> str:
 
 
 def _legacy_aes_decrypt(encrypted_data: str) -> str:
+    """
+    是什么：_legacy_aes_decrypt 是 backend/apps/datasource/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _legacy_aes_decrypt 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     raw = base64.b64decode(encrypted_data)
     for candidate_key in (key, *get_legacy_config_aes_keys()):
         try:
@@ -39,10 +54,20 @@ def _legacy_aes_decrypt(encrypted_data: str) -> str:
 
 
 def aes_encrypt(data):
+    """
+    是什么：aes_encrypt 是 backend/apps/datasource/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 aes_encrypt 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return encrypt_datasource_configuration(data)
 
 
 def aes_decrypt(encrypted_data):
+    """
+    是什么：aes_decrypt 是 backend/apps/datasource/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 aes_decrypt 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if encrypted_data is None:
         return ""
 
@@ -53,6 +78,11 @@ def aes_decrypt(encrypted_data):
 
 
 def encrypt_datasource_configuration(configuration: str | bytes | None) -> str:
+    """
+    是什么：encrypt_datasource_configuration 是 backend/apps/datasource/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 encrypt_datasource_configuration 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if configuration is None:
         return ""
 
@@ -65,10 +95,20 @@ def encrypt_datasource_configuration(configuration: str | bytes | None) -> str:
 
 
 def decrypt_datasource_configuration_for_output(configuration: str | bytes | None) -> str | None:
+    """
+    是什么：decrypt_datasource_configuration_for_output 是 backend/apps/datasource/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 decrypt_datasource_configuration_for_output 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if configuration in (None, ""):
         return None
     return aes_decrypt(configuration)
 
 
 def legacy_aes_encrypt_for_tests(data: str) -> str:
+    """
+    是什么：legacy_aes_encrypt_for_tests 是 backend/apps/datasource/utils/utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 legacy_aes_encrypt_for_tests 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return _legacy_aes_encrypt(data)

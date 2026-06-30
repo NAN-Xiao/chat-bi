@@ -7,23 +7,43 @@ from common.core.config import settings
 from common.utils.utils import AppLogUtil
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
-_DEVELOPMENT_DEFAULT_PASSWORDS = {"Zhishu@123456", "elex@123"}
+_DEVELOPMENT_DEFAULT_PASSWORDS = {"Shuzhi@123456", "elex@123"}
 
 
 def _env_present(name: str) -> bool:
+    """
+    是什么：_env_present 是 backend/common/core/production.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _env_present 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return bool(os.environ.get(name))
 
 
 def _host_from_origin(origin: str) -> str:
+    """
+    是什么：_host_from_origin 是 backend/common/core/production.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _host_from_origin 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     parsed = urlsplit(origin)
     return parsed.hostname or ""
 
 
 def _is_local_origin(origin: str) -> bool:
+    """
+    是什么：_is_local_origin 是 backend/common/core/production.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_local_origin 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return _host_from_origin(origin).lower() in _LOCAL_HOSTS
 
 
 def _redis_url_has_auth(url: str | None) -> bool:
+    """
+    是什么：_redis_url_has_auth 是 backend/common/core/production.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _redis_url_has_auth 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     if not url:
         return False
     parsed = urlsplit(url)
@@ -31,6 +51,11 @@ def _redis_url_has_auth(url: str | None) -> bool:
 
 
 def _is_absolute_path(value: str) -> bool:
+    """
+    是什么：_is_absolute_path 是 backend/common/core/production.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_absolute_path 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     return bool(value) and (
         Path(value).is_absolute()
         or PurePosixPath(value).is_absolute()
@@ -39,6 +64,11 @@ def _is_absolute_path(value: str) -> bool:
 
 
 def _configured_cors_origins() -> list[str]:
+    """
+    是什么：_configured_cors_origins 是 backend/common/core/production.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _configured_cors_origins 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+    """
     origins = settings.BACKEND_CORS_ORIGINS
     if isinstance(origins, str):
         return [item.strip().rstrip("/") for item in origins.split(",") if item.strip()]
@@ -46,7 +76,11 @@ def _configured_cors_origins() -> list[str]:
 
 
 def validate_production_settings() -> list[str]:
-    """Return production setting errors, and raise when production checks are active."""
+    """
+    是什么：validate_production_settings 是 backend/common/core/production.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验核心配置和基础设施相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if settings.APP_ENV != "production":
         return []
 
@@ -70,7 +104,7 @@ def validate_production_settings() -> list[str]:
             "AUTO_RUN_MIGRATIONS must be false in production; run database migrations as a separate release step."
         )
 
-    redis_url = settings.ZHISHU_REDIS_URL
+    redis_url = settings.SHUZHI_REDIS_URL
     if not settings.REDIS_PASSWORD and not _redis_url_has_auth(redis_url):
         errors.append("Redis must require authentication through REDIS_PASSWORD, REDIS_URL, or CACHE_REDIS_URL.")
 
@@ -90,8 +124,8 @@ def validate_production_settings() -> list[str]:
         errors.append("LOG_LEVEL must not be DEBUG in production.")
     if settings.SQL_DEBUG:
         errors.append("SQL_DEBUG must be false in production.")
-    if settings.ZHISHU_ALLOW_METADATA_QUERIES:
-        errors.append("ZHISHU_ALLOW_METADATA_QUERIES must stay false in production.")
+    if settings.SHUZHI_ALLOW_METADATA_QUERIES:
+        errors.append("SHUZHI_ALLOW_METADATA_QUERIES must stay false in production.")
     if settings.TASK_QUEUE_MAX_ATTEMPTS < 2:
         errors.append("TASK_QUEUE_MAX_ATTEMPTS should be at least 2 in production.")
     if settings.TASK_QUEUE_VISIBILITY_TIMEOUT_SECONDS <= 0:
@@ -149,6 +183,11 @@ def validate_production_settings() -> list[str]:
 
 
 def init_observability() -> None:
+    """
+    是什么：init_observability 是 backend/common/core/production.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装核心配置和基础设施相关对象和数据，并返回或写入对应状态。
+    """
     if not settings.SENTRY_DSN:
         return
 

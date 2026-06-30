@@ -1,5 +1,5 @@
-# Author: Junjun
-# Date: 2025/6/25
+# 作者：Junjun
+# 日期：2025/6/25
 
 from typing import List, Dict, Any
 
@@ -10,30 +10,45 @@ from common.core.deps import SessionDep, CurrentUser
 
 
 def _escape_sql_value(value: str) -> str:
-    """Escape a string value for safe inclusion in a SQL literal.
-
-    Replaces single quotes with two single quotes (standard SQL escaping)
-    and strips characters that could break out of the string context.
+    """
+    是什么：_escape_sql_value 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _escape_sql_value 的语义处理数据源相关逻辑，并把结果返回或写入状态。
     """
     if value is None:
         return value
-    # Standard SQL escaping: double any embedded single-quote characters
+    # 标准 SQL 转义：将嵌入的单引号加倍。
     escaped = str(value).replace("'", "''")
-    # Remove backslashes that some drivers interpret as escape characters
+    # 移除部分驱动会解释为转义字符的反斜杠。
     escaped = escaped.replace("\\", "\\\\")
     return escaped
 
 
 def _invalid_filter(message: str, strict: bool) -> None:
+    """
+    是什么：_invalid_filter 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _invalid_filter 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if strict:
         raise ValueError(message)
 
 
 def _sql_server_nchar(ds: CoreDatasource, field: CoreField) -> bool:
+    """
+    是什么：_sql_server_nchar 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _sql_server_nchar 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return ds.type == 'sqlServer' and field.field_type in ('nchar', 'NCHAR', 'nvarchar', 'NVARCHAR')
 
 
 def _quoted_value(ds: CoreDatasource, field: CoreField, value: Any) -> str:
+    """
+    是什么：_quoted_value 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _quoted_value 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     escaped = _escape_sql_value(value)
     if _sql_server_nchar(ds, field):
         return f"N'{escaped}'"
@@ -41,6 +56,11 @@ def _quoted_value(ds: CoreDatasource, field: CoreField, value: Any) -> str:
 
 
 def _list_values(value: Any) -> list[Any]:
+    """
+    是什么：_list_values 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if isinstance(value, list):
         return value
     if isinstance(value, tuple):
@@ -51,6 +71,11 @@ def _list_values(value: Any) -> list[Any]:
 
 
 def _single_value(value: Any) -> Any:
+    """
+    是什么：_single_value 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _single_value 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if isinstance(value, (list, tuple)):
         return value[0] if value else None
     return value
@@ -63,6 +88,11 @@ def _where_value_for_term(
         values: Any,
         strict: bool,
 ) -> str | None:
+    """
+    是什么：_where_value_for_term 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _where_value_for_term 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if term in ('null', 'not_null'):
         return ''
     if term in ('empty', 'not_empty'):
@@ -98,6 +128,11 @@ def _where_value_for_term(
 
 def transFilterTree(session: SessionDep, current_user: CurrentUser, tree_list: List[any],
                     ds: CoreDatasource, deny_mode: bool = False, strict: bool = False) -> str | None:
+    """
+    是什么：transFilterTree 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 transFilterTree 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if tree_list is None:
         return None
     res: List[str] = []
@@ -123,6 +158,11 @@ _VALID_LOGIC_OPS = {"AND", "OR"}
 
 
 def _same_explicit_tenant(left, right) -> bool:
+    """
+    是什么：_same_explicit_tenant 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _same_explicit_tenant 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if left in (None, "") or right in (None, ""):
         return False
     try:
@@ -139,11 +179,16 @@ def transTreeToWhere(
         table_id: int | None = None,
         strict: bool = False,
 ) -> str | None:
+    """
+    是什么：transTreeToWhere 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 transTreeToWhere 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if not isinstance(tree, dict):
         _invalid_filter("行权限过滤树格式无效", strict)
         return None
     logic = str(tree.get('logic') or '').upper()
-    # Validate the logic operator to prevent injection via this field
+    # 校验逻辑操作符，防止通过该字段注入。
     if logic not in _VALID_LOGIC_OPS:
         _invalid_filter("行权限逻辑操作符无效", strict)
         return None
@@ -188,6 +233,11 @@ def transTreeItem(
         table_id: int | None = None,
         strict: bool = False,
 ) -> str | None:
+    """
+    是什么：transTreeItem 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 transTreeItem 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     res: str = None
     try:
         field_id = int(item.get('field_id'))
@@ -221,10 +271,10 @@ def transTreeItem(
             _invalid_filter("行权限枚举过滤条件缺少枚举值", strict)
     else:
         # if system variable, do check and get value
-        # new field: value_type(variable or normal), variable_id
+        # 新字段：取值类型（变量或普通值）和变量 ID。
         value_type = item.get('value_type')
         if value_type and value_type == 'variable':
-            # get system variable
+            # 获取系统变量
             variable_id = item.get('variable_id')
             if variable_id is not None:
                 sys_variable = session.query(SystemVariable).filter(SystemVariable.id == variable_id).first()
@@ -238,7 +288,7 @@ def transTreeItem(
                     _invalid_filter("行权限系统变量不属于当前工作空间", strict)
                     return None
 
-                # do inner system variable
+                # 处理内置系统变量
                 if sys_variable.type == 'system':
                     whereValue = getSysVariableValue(sys_variable, current_user, ds, field, item)
                     if whereValue is None:
@@ -246,14 +296,14 @@ def transTreeItem(
                         return None
                     res = whereName + whereTerm + whereValue
                 else:
-                    # check user variable
+                    # 检查用户变量
                     user_variables = getattr(current_user, "system_variables", None)
                     if user_variables is None or len(user_variables) == 0 or not userHaveVariable(user_variables,
                                                                                                   sys_variable):
                         _invalid_filter("当前用户缺少行权限变量值", strict)
                         return None
                     else:
-                        # get user variable
+                        # 获取用户变量
                         u_variable = None
                         for u in user_variables:
                             if u.get('variableId') == sys_variable.id:
@@ -263,7 +313,7 @@ def transTreeItem(
                             _invalid_filter("当前用户缺少行权限变量值", strict)
                             return None
 
-                        # check value
+                        # 检查取值
                         values = u_variable.get('variableValues')
                         if sys_variable.var_type == 'text':
                             set_sys = set(sys_variable.value)
@@ -300,6 +350,11 @@ def transTreeItem(
 
 
 def transFilterTerm(term: str) -> str:
+    """
+    是什么：transFilterTerm 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 transFilterTerm 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if term == "eq":
         return " = "
     if term == "not_eq":
@@ -334,6 +389,11 @@ def transFilterTerm(term: str) -> str:
 
 
 def userHaveVariable(user_variables: List, sys_variable: SystemVariable):
+    """
+    是什么：userHaveVariable 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 userHaveVariable 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     for u in user_variables:
         if sys_variable.id == u.get('variableId'):
             return True
@@ -342,6 +402,11 @@ def userHaveVariable(user_variables: List, sys_variable: SystemVariable):
 
 def getSysVariableValue(sys_variable: SystemVariable, current_user: CurrentUser, ds: CoreDatasource, field: CoreField,
                         item: Dict, ):
+    """
+    是什么：getSysVariableValue 是 backend/apps/datasource/crud/row_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     v = None
     if sys_variable.value[0] == 'name':
         v = current_user.name

@@ -7,6 +7,7 @@ import {
   checkIsPercent,
   formatNumber,
   getAxesWithFilter,
+  processGroupedMultiQuotaData,
   processMultiQuotaData,
 } from '@/views/chat/component/charts/utils.ts'
 import { withChartThemeOptions } from '@/views/chat/component/charts/theme.ts'
@@ -51,6 +52,13 @@ export class Column extends BaseG2Chart {
         config.y,
         multiQuota,
         axes.multiQuotaName,
+        config.data
+      )
+    } else if (axes.series.length > 0 && axes.groupedMultiQuota.length > 1) {
+      config = processGroupedMultiQuotaData(
+        axes.x,
+        axes.groupedMultiQuota,
+        axes.series,
         config.data
       )
     }

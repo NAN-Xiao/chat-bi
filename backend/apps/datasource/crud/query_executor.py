@@ -38,6 +38,11 @@ class QueryExecutionResult:
 
 
 def _failed_query_result(message: str, error_type: str | None = None) -> dict[str, Any]:
+    """
+    是什么：_failed_query_result 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _failed_query_result 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     result: dict[str, Any] = {
         "status": "failed",
         "fields": [],
@@ -51,18 +56,33 @@ def _failed_query_result(message: str, error_type: str | None = None) -> dict[st
 
 
 def safe_query_error_message(current_user: CurrentUser, message: str) -> str:
+    """
+    是什么：safe_query_error_message 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 safe_query_error_message 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if is_normal_user(current_user) and looks_like_permission_scope_error(message):
         return USER_QUERY_PERMISSION_DENIED_MESSAGE
     return message
 
 
 def safe_query_error_type(current_user: CurrentUser, message: str) -> str | None:
+    """
+    是什么：safe_query_error_type 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 safe_query_error_type 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if is_normal_user(current_user) and looks_like_permission_scope_error(message):
         return PERMISSION_DENIED_ERROR_TYPE
     return None
 
 
 def _validate_allowed_tables(actual_tables: set[str], allowed_tables: list[str] | set[str] | None) -> None:
+    """
+    是什么：_validate_allowed_tables 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if allowed_tables is None:
         return
     allowed_table_set = {str(table).lower() for table in allowed_tables}
@@ -72,6 +92,11 @@ def _validate_allowed_tables(actual_tables: set[str], allowed_tables: list[str] 
 
 
 def _normalize_query_result(result: dict[str, Any], origin_column: bool) -> dict[str, Any]:
+    """
+    是什么：_normalize_query_result 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     data = DataFormat.convert_large_numbers_in_object_array(result.get("data"))
     data = DataFormat.normalize_qualified_sql_column_keys_in_object_array(data)
     result["data"] = data
@@ -90,6 +115,11 @@ def prepare_query_sql(
         apply_row_permissions: bool = True,
         validate_columns: bool = True,
 ) -> tuple[str, set[str]]:
+    """
+    是什么：prepare_query_sql 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 prepare_query_sql 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     is_safe, error_reason = check_sql_read(sql, datasource)
     if not is_safe:
         raise ValueError(f"SQL can only contain read operations: {error_reason}")
@@ -133,6 +163,11 @@ def validate_user_query_sql_or_raise(
         *,
         allowed_tables: list[str] | set[str] | None = None,
 ) -> tuple[str, set[str]]:
+    """
+    是什么：validate_user_query_sql_or_raise 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if datasource is None:
         raise ValueError("项目不存在")
     if getattr(datasource, "id", None) is not None and not has_datasource_access(session, current_user, datasource.id):
@@ -161,6 +196,11 @@ def execute_user_query_or_raise(
         query_timeout: int | None = None,
         close_system_transaction_before_query: bool = False,
 ) -> QueryExecutionResult:
+    """
+    是什么：execute_user_query_or_raise 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行数据源主流程，协调下游服务并处理结果或异常。
+    """
     if datasource is None:
         raise ValueError("项目不存在")
     if getattr(datasource, "id", None) is not None and not has_datasource_access(session, current_user, datasource.id):
@@ -206,6 +246,11 @@ def execute_user_analysis_query_or_raise(
         allowed_tables: list[str] | set[str] | None = None,
         origin_column: bool = False,
 ) -> QueryExecutionResult:
+    """
+    是什么：execute_user_analysis_query_or_raise 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行数据源主流程，协调下游服务并处理结果或异常。
+    """
     return execute_user_query_or_raise(
         session=session,
         current_user=current_user,
@@ -224,6 +269,11 @@ def execute_external_user_query_or_raise(
         origin_column: bool = False,
         scope_sql: str | None = None,
 ) -> QueryExecutionResult:
+    """
+    是什么：execute_external_user_query_or_raise 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行数据源主流程，协调下游服务并处理结果或异常。
+    """
     if datasource is None:
         raise ValueError("项目不存在")
 
@@ -261,6 +311,11 @@ def execute_user_query(
         query_timeout: int | None = None,
         close_system_transaction_before_query: bool = False,
 ) -> dict[str, Any]:
+    """
+    是什么：execute_user_query 是 backend/apps/datasource/crud/query_executor.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行数据源主流程，协调下游服务并处理结果或异常。
+    """
     try:
         datasource = session.get(CoreDatasource, datasource_id)
         if datasource is None:

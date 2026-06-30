@@ -14,10 +14,20 @@ from common.utils.utils import AppLogUtil
 
 
 def emit(payload: Any) -> None:
+    """
+    是什么：emit 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    """
     get_stream_writer()(payload)
 
 
 def sse(payload: dict[str, Any]) -> str:
+    """
+    是什么：sse 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 sse 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return "data:" + orjson.dumps(payload).decode() + "\n\n"
 
 
@@ -29,6 +39,11 @@ def emit_stream_text(
     event_type: str,
     emit_plain_text: bool = False,
 ) -> str:
+    """
+    是什么：emit_stream_text 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    """
     full_text = ""
     for chunk in chunks:
         content = chunk.get("content") or ""
@@ -50,6 +65,11 @@ def emit_markdown_table(
     *,
     empty_message: str,
 ) -> None:
+    """
+    是什么：emit_markdown_table 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    """
     if not data or not fields:
         emit(empty_message + "\n\n")
         return
@@ -74,6 +94,11 @@ def emit_permission_denied_response(
     emit_sql: bool = False,
     include_reason: bool = False,
 ) -> dict[str, Any]:
+    """
+    是什么：emit_permission_denied_response 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    """
     if in_chat:
         if emit_sql and formatted_sql:
             emit(sse({"content": formatted_sql, "type": "sql"}))
@@ -117,6 +142,11 @@ def emit_chart_image(
     log_operation: bool = False,
     error_message: str = "generate or fetch chart picture error.\n\n",
 ) -> str | None:
+    """
+    是什么：emit_chart_image 是 backend/apps/chat/task/assistant_output.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    """
     if chart.get("type") == "table" or not return_img:
         return None
 

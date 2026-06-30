@@ -8,7 +8,7 @@ const { t } = useI18n()
 
 const state = reactive({
   parameterForm: reactive<any>({
-    'chat.zhishu_name': '星通智数',
+    'chat.shuzhi_name': '星通数智',
     'chat.expand_thinking_block': false,
     'chat.limit_rows': false,
     'chat.show_sql': false,
@@ -134,7 +134,7 @@ const loadData = () => {
           item.pkey?.startsWith('login') ||
           item.pkey?.startsWith('platform')
         ) {
-          if (item.pkey === 'chat.zhishu_name') {
+          if (item.pkey === 'chat.shuzhi_name') {
             if (item.pval && item.pval.trim().length > 0) {
               state.parameterForm[item.pkey] = item.pval
             }
@@ -255,10 +255,10 @@ onMounted(() => {
         <el-row>
           <div class="card-item" style="width: 100%">
             <div class="label">
-              {{ t('parameter.zhishu_name') }}
+              {{ t('parameter.shuzhi_name') }}
             </div>
             <div class="value">
-              <el-input v-model="state.parameterForm['chat.zhishu_name']" />
+              <el-input v-model="state.parameterForm['chat.shuzhi_name']" />
             </div>
           </div>
         </el-row>

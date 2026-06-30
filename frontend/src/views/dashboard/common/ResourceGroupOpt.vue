@@ -83,7 +83,7 @@ const optInit = (params: any) => {
   resourceForm.pid = params.pid || 'root'
   resourceForm.createMode =
     canCreateFromTemplate.value && !canCreateBlankDashboard.value ? 'template' : 'blank'
-  resourceForm.templateId = ''
+  resourceForm.templateIds = []
   if (params.parentSelect) {
     getTree()
   }
@@ -100,7 +100,7 @@ const resourceForm = reactive({
   pName: '',
   name: 'New Dashboard',
   createMode: 'blank',
-  templateId: '',
+  templateIds: [] as string[],
 })
 
 const resourceFormRules = ref({
@@ -120,9 +120,11 @@ const resourceFormRules = ref({
       trigger: 'blur',
     },
   ],
-  templateId: [
+  templateIds: [
     {
       required: true,
+      type: 'array',
+      min: 1,
       message: t('dashboard.select_platform_template'),
       trigger: 'change',
     },
@@ -136,7 +138,7 @@ const resetForm = () => {
   resourceForm.name = ''
   resourceForm.pid = ''
   resourceForm.createMode = 'blank'
-  resourceForm.templateId = ''
+  resourceForm.templateIds = []
   resourceDialogShow.value = false
 }
 
@@ -155,14 +157,58 @@ const canCreateFromTemplate = computed(() => userStore.isPlatformWorkspaceDelega
 const isTemplateCreateMode = computed(
   () => canCreateFromTemplate.value && resourceForm.createMode === 'template'
 )
+const selectedTemplateCount = computed(() => resourceForm.templateIds.length)
+const showDashboardNameInput = computed(
+  () => !isTemplateCreateMode.value || selectedTemplateCount.value <= 1
+)
+const templateRemarkValue = (item: any, key: string) => {
+  const prefix = `${key}=`
+  return String(item?.remark || '')
+    .split(';')
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length)
+    ?.trim()
+}
+const templateSourceSpaceId = (item: any) =>
+  item?.source_tenant_id || templateRemarkValue(item, 'source_tenant_id')
+const templateSourceDashboardId = (item: any) =>
+  item?.source_dashboard_id || templateRemarkValue(item, 'source_dashboard_id')
+const templateSourceSpaceName = (item: any) =>
+  item?.source_tenant_name ||
+  (templateSourceSpaceId(item) ? `${t('dashboard.platform_template_source_workspace')} ${templateSourceSpaceId(item)}` : '') ||
+  t('dashboard.platform_template_unknown_source_workspace')
+const templateSourceProjectName = (item: any) =>
+  item?.source_datasource_name ||
+  (item?.source_datasource_id ? `${t('dashboard.platform_template_source_project')} ${item.source_datasource_id}` : '')
+const templateSourceMetaText = (item: any) =>
+  [
+    templateSourceProjectName(item),
+    item?.source_dashboard_name || templateSourceDashboardId(item),
+  ]
+    .filter(Boolean)
+    .join(' / ')
+const platformTemplateGroups = computed(() => {
+  const groups = new Map<string, { key: string; label: string; options: any[] }>()
+  state.platformTemplateList.forEach((item: any) => {
+    const label = templateSourceSpaceName(item)
+    const key = String(templateSourceSpaceId(item) || label)
+    if (!groups.has(key)) {
+      groups.set(key, { key, label, options: [] })
+    }
+    groups.get(key)?.options.push(item)
+  })
+  return Array.from(groups.values())
+})
 
 const activeRules = computed(() => {
   const rules: Record<string, any> = {
-    name: resourceFormRules.value.name,
     pid: resourceFormRules.value.pid,
   }
+  if (showDashboardNameInput.value) {
+    rules.name = resourceFormRules.value.name
+  }
   if (isTemplateCreateMode.value) {
-    rules.templateId = resourceFormRules.value.templateId
+    rules.templateIds = resourceFormRules.value.templateIds
   }
   return rules
 })
@@ -183,29 +229,47 @@ const onCreateModeChange = () => {
   if (isTemplateCreateMode.value && !state.platformTemplateList.length) {
     loadPlatformTemplates()
   }
+  if (!isTemplateCreateMode.value && !resourceForm.name) {
+    resourceForm.name = getResourceNewName('newLeaf') || ''
+  }
 }
 
-const onTemplateChange = (templateId: string) => {
-  const template = state.platformTemplateList.find((item: any) => String(item.id) === String(templateId))
-  if (!template) return
-  resourceForm.name = template.name || resourceForm.name
+const onTemplateChange = () => {
+  if (resourceForm.templateIds.length !== 1) {
+    resourceForm.name = ''
+    return
+  }
+  const template = state.platformTemplateList.find(
+    (item: any) => String(item.id) === String(resourceForm.templateIds[0])
+  )
+  if (template) {
+    resourceForm.name = template.name || resourceForm.name
+  }
 }
 
 const copyTemplateToWorkspace = () => {
+  const templateIds = resourceForm.templateIds.map((item) => String(item)).filter(Boolean)
+  if (!templateIds.length) return
   loading.value = true
   dashboardApi
     .platform_template_copy_to_workspace({
-      template_id: resourceForm.templateId,
-      name: resourceForm.name,
+      template_id: templateIds.length === 1 ? templateIds[0] : '',
+      template_ids: templateIds,
+      name: templateIds.length === 1 ? resourceForm.name : '',
     })
     .then((rsp: any) => {
+      const createdDashboards = Array.isArray(rsp) ? rsp : [rsp]
       ElMessage({
         type: 'success',
-        message: t('dashboard.platform_template_use_success'),
+        message:
+          createdDashboards.length > 1
+            ? t('dashboard.platform_template_use_batch_success', { count: createdDashboards.length })
+            : t('dashboard.platform_template_use_success'),
       })
       emits('finish', {
         opt: state.opt,
-        resourceId: rsp.id,
+        resourceId: createdDashboards[0]?.id,
+        resourceIds: createdDashboards.map((item: any) => item?.id).filter(Boolean),
       })
       resetForm()
     })
@@ -304,10 +368,13 @@ defineExpose({
         v-if="isTemplateCreateMode"
         :label="t('dashboard.platform_template_mark')"
         required
-        prop="templateId"
+        prop="templateIds"
       >
         <el-select
-          v-model="resourceForm.templateId"
+          v-model="resourceForm.templateIds"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
           filterable
           class="template-select"
           :placeholder="t('dashboard.select_platform_template')"
@@ -315,15 +382,31 @@ defineExpose({
           @keydown.stop
           @keyup.stop
         >
-          <el-option
-            v-for="item in state.platformTemplateList"
-            :key="item.id"
-            :label="item.name"
-            :value="item.id"
-          />
+          <el-option-group
+            v-for="group in platformTemplateGroups"
+            :key="group.key"
+            :label="group.label"
+          >
+            <el-option
+              v-for="item in group.options"
+              :key="item.id"
+              :label="item.name"
+              :value="item.id"
+            >
+              <div class="template-option">
+                <span class="template-option-name ellipsis">{{ item.name }}</span>
+                <span
+                  v-if="templateSourceMetaText(item)"
+                  class="template-option-source ellipsis"
+                >
+                  {{ templateSourceMetaText(item) }}
+                </span>
+              </div>
+            </el-option>
+          </el-option-group>
         </el-select>
       </el-form-item>
-      <el-form-item :label="state.resourceFormNameLabel" prop="name">
+      <el-form-item v-if="showDashboardNameInput" :label="state.resourceFormNameLabel" prop="name">
         <el-input
           v-model="resourceForm.name"
           :placeholder="state.placeholder"
@@ -414,5 +497,28 @@ defineExpose({
 
 .template-select {
   width: 100%;
+}
+
+.template-option {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.template-option-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--workspace-text-primary, #1f2329);
+}
+
+.template-option-source {
+  min-width: 0;
+  max-width: 180px;
+  flex: 0 1 auto;
+  color: var(--workspace-text-secondary, #667085);
+  font-size: 12px;
 }
 </style>

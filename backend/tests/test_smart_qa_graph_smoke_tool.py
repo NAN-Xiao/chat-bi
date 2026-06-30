@@ -9,6 +9,11 @@ import pytest
 
 
 def _load_smoke_tool():
+    """
+    是什么：_load_smoke_tool 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+    做了什么：读取或查询测试场景相关数据，整理后返回给调用方。
+    """
     tool_path = Path(__file__).resolve().parents[2] / "tools" / "smart_qa_graph_smoke.py"
     spec = importlib.util.spec_from_file_location("smart_qa_graph_smoke", tool_path)
     assert spec is not None
@@ -19,6 +24,11 @@ def _load_smoke_tool():
 
 
 def test_load_cases_accepts_custom_question_without_database() -> None:
+    """
+    是什么：test_load_cases_accepts_custom_question_without_database 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     cases = smoke._load_cases(
@@ -39,6 +49,11 @@ def test_load_cases_accepts_custom_question_without_database() -> None:
 
 
 def test_load_cases_requires_datasource_for_custom_question() -> None:
+    """
+    是什么：test_load_cases_requires_datasource_for_custom_question 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     with pytest.raises(ValueError, match="--datasource is required"):
@@ -46,6 +61,11 @@ def test_load_cases_requires_datasource_for_custom_question() -> None:
 
 
 def test_smoke_failed_allows_expected_permission_error_without_finish() -> None:
+    """
+    是什么：test_smoke_failed_allows_expected_permission_error_without_finish 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     assert smoke._smoke_failed(
@@ -59,6 +79,11 @@ def test_smoke_failed_allows_expected_permission_error_without_finish() -> None:
 
 
 def test_smoke_failed_rejects_unexpected_unfinished_result() -> None:
+    """
+    是什么：test_smoke_failed_rejects_unexpected_unfinished_result 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     assert smoke._smoke_failed(
@@ -72,6 +97,11 @@ def test_smoke_failed_rejects_unexpected_unfinished_result() -> None:
 
 
 def test_smoke_failed_rejects_step_or_expectation_violations() -> None:
+    """
+    是什么：test_smoke_failed_rejects_step_or_expectation_violations 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     assert smoke._smoke_failed(
@@ -93,6 +123,11 @@ def test_smoke_failed_rejects_step_or_expectation_violations() -> None:
 
 
 def test_permission_fixture_legacy_alias_maps_to_column_deny() -> None:
+    """
+    是什么：test_permission_fixture_legacy_alias_maps_to_column_deny 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     assert smoke._normalize_permission_fixture(None, True) == smoke.PERMISSION_FIXTURE_COLUMN_DENY
@@ -103,6 +138,11 @@ def test_permission_fixture_legacy_alias_maps_to_column_deny() -> None:
 
 
 def test_row_invalid_permission_tree_uses_invalid_operator() -> None:
+    """
+    是什么：test_row_invalid_permission_tree_uses_invalid_operator 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     tree = smoke._row_invalid_expression_tree(123)
@@ -113,6 +153,11 @@ def test_row_invalid_permission_tree_uses_invalid_operator() -> None:
 
 
 def test_dynamic_assistant_payload_exposes_subquery_table() -> None:
+    """
+    是什么：test_dynamic_assistant_payload_exposes_subquery_table 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     payload = smoke._dynamic_assistant_datasource_payload(910001)
@@ -127,6 +172,11 @@ def test_dynamic_assistant_payload_exposes_subquery_table() -> None:
 
 
 def test_assistant_certificate_header_is_url_quoted_base64_json() -> None:
+    """
+    是什么：test_assistant_certificate_header_is_url_quoted_base64_json 是 backend/tests/test_smart_qa_graph_smoke_tool.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     smoke = _load_smoke_tool()
 
     header = smoke._assistant_certificate_header([{"target": "header", "key": "X-Test", "value": "a b"}])

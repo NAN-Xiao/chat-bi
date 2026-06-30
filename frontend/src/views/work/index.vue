@@ -28,8 +28,8 @@ const dialogVisible = ref(false)
 
 <template>
   <div class="chat-init_tip">
-    <div class="hello-zhishu">Hello, I'm 星通智数, happy to serve you!</div>
-    <div class="function-zhishu">
+    <div class="hello-shuzhi">Hello, I'm 星通数智, happy to serve you!</div>
+    <div class="function-shuzhi">
       I can help you query data, generate charts, detect data anomalies, predict data, etc. Please
       select a data source and start intelligent data query~
     </div>
@@ -84,12 +84,12 @@ const dialogVisible = ref(false)
 .chat-init_tip {
   width: 780px;
   padding: 16px;
-  .hello-zhishu {
+  .hello-shuzhi {
     margin-bottom: 12px;
     font-size: 16px;
     font-weight: 500;
   }
-  .function-zhishu {
+  .function-shuzhi {
     margin-bottom: 12px;
   }
 

@@ -15,6 +15,11 @@ from common.audit.schemas.logger_decorator import LogConfig, system_log
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
+    """
+    是什么：_current_tenant_id 是 backend/apps/system/api/apikey.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _current_tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     ensure_chatbi_business_user(current_user)
     tenant_id = getattr(current_user, "tenant_id", None)
     if not tenant_id:
@@ -24,6 +29,11 @@ def _current_tenant_id(current_user: CurrentUser) -> int:
 
 @router.get("")
 async def grid(session: SessionDep, current_user: CurrentUser) -> list[ApikeyGridItem]:
+    """
+    是什么：grid 是 backend/apps/system/api/apikey.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 grid 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     query = (
         select(ApiKeyModel)
         .where(
@@ -37,6 +47,11 @@ async def grid(session: SessionDep, current_user: CurrentUser) -> list[ApikeyGri
 @router.post("")
 @system_log(LogConfig(operation_type=OperationType.CREATE, module=OperationModules.API_KEY,result_id_expr='result.self'))
 async def create(session: SessionDep, current_user: CurrentUser):
+    """
+    是什么：create 是 backend/apps/system/api/apikey.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     tenant_id = _current_tenant_id(current_user)
     count = session.exec(
         select(func.count())
@@ -62,6 +77,11 @@ async def create(session: SessionDep, current_user: CurrentUser):
 @router.put("/status")
 @system_log(LogConfig(operation_type=OperationType.UPDATE, module=OperationModules.API_KEY,resource_id_expr='id'))
 async def status(session: SessionDep, current_user: CurrentUser, dto: ApikeyStatus):
+    """
+    是什么：status 是 backend/apps/system/api/apikey.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 status 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     api_key = session.get(ApiKeyModel, dto.id)
     if not api_key:
         raise ValueError("API Key not found")
@@ -77,6 +97,11 @@ async def status(session: SessionDep, current_user: CurrentUser, dto: ApikeyStat
 @router.delete("/{id}")
 @system_log(LogConfig(operation_type=OperationType.DELETE, module=OperationModules.API_KEY,resource_id_expr='id'))
 async def delete(session: SessionDep, current_user: CurrentUser, id: int):
+    """
+    是什么：delete 是 backend/apps/system/api/apikey.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     api_key = session.get(ApiKeyModel, id)
     if not api_key:
         raise ValueError("API Key not found")

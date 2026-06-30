@@ -45,10 +45,10 @@ on:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    environment: zhishu-xpack-env
+    environment: shuzhi-xpack-env
     defaults:
       run:
-        working-directory: ./zhishu-xpack
+        working-directory: ./shuzhi-xpack
     strategy:
       matrix:
         os: ${{ fromJSON(inputs.target_os) }}
@@ -59,14 +59,14 @@ jobs:
         with:
           repository: NAN-Xiao/chat-bi-xpack
           ref: ${{ inputs.xpack_branch }}
-          path: ./zhishu-xpack
+          path: ./shuzhi-xpack
           token: ${{ secrets.GH_TOKEN }}
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
       - name: Install and build
-        working-directory: ./zhishu-xpack/xpack_static
+        working-directory: ./shuzhi-xpack/xpack_static
         run: |
           npm install
           npm run build:prod

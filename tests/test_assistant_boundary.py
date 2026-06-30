@@ -72,7 +72,7 @@ def test_assistant_online_header_cannot_override_validated_assistant_state():
     request = Request({
         "type": "http",
         "headers": [
-            (b"x-zhishu-assistant-online", b"true"),
+            (b"x-shuzhi-assistant-online", b"true"),
         ],
     })
     request.state.assistant = SimpleNamespace(online=False, certificate=None)

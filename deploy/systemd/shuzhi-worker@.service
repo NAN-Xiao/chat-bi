@@ -1,16 +1,16 @@
 [Unit]
-Description=星通智数 Task Worker %i
+Description=星通数智 Task Worker %i
 After=network-online.target postgresql.service redis.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=zhishu
-Group=zhishu
-WorkingDirectory=/opt/zhishu/backend
-EnvironmentFile=/etc/zhishu/zhishu.env
+User=shuzhi
+Group=shuzhi
+WorkingDirectory=/opt/shuzhi/backend
+EnvironmentFile=/etc/shuzhi/shuzhi.env
 Environment=WORKER_INSTANCE=%i
-ExecStart=/opt/zhishu/backend/.venv/bin/python -m scripts.task_worker
+ExecStart=/opt/shuzhi/backend/.venv/bin/python -m scripts.task_worker
 Restart=always
 RestartSec=5
 TimeoutStopSec=30

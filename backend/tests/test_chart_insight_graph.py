@@ -14,10 +14,20 @@ from common.error import SingleMessageError
 
 @contextmanager
 def _fake_session_scope():
+    """
+    是什么：_fake_session_scope 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+    做了什么：围绕 _fake_session_scope 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    """
     yield object()
 
 
 def _events(chunks: list[Any]) -> list[dict[str, Any]]:
+    """
+    是什么：_events 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+    做了什么：围绕 _events 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    """
     events: list[dict[str, Any]] = []
     for chunk in chunks:
         if isinstance(chunk, str) and chunk.startswith("data:"):
@@ -27,6 +37,11 @@ def _events(chunks: list[Any]) -> list[dict[str, Any]]:
 
 @pytest.fixture(autouse=True)
 def _patch_graph_runtime(monkeypatch: pytest.MonkeyPatch):
+    """
+    是什么：_patch_graph_runtime 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+    做了什么：围绕 _patch_graph_runtime 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+    """
     monkeypatch.setattr(graph, "_session_scope", _fake_session_scope)
 
 
@@ -38,6 +53,11 @@ class FakeChartInsightService:
         predict_chunks: list[dict[str, str]] | None = None,
         predict_has_data: bool = True,
     ) -> None:
+        """
+        是什么：FakeChartInsightService.__init__ 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.record = SimpleNamespace(id=7001, chat_id=7000, question="chart question")
         self.analysis_chunks = analysis_chunks or [
             {"content": "A", "reasoning_content": "think A"},
@@ -52,34 +72,74 @@ class FakeChartInsightService:
         self.finished = False
 
     def get_record(self):
+        """
+        是什么：FakeChartInsightService.get_record 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：读取或查询测试场景相关数据，整理后返回给调用方。
+        """
         return self.record
 
     def trans(self, key: str):
+        """
+        是什么：FakeChartInsightService.trans 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：围绕 trans 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        """
         return f"{key}: "
 
     def generate_analysis(self, session):
+        """
+        是什么：FakeChartInsightService.generate_analysis 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：基于输入上下文生成测试场景相关结果，并保存或返回给调用方。
+        """
         assert session is not None
         yield from self.analysis_chunks
 
     def generate_predict(self, session):
+        """
+        是什么：FakeChartInsightService.generate_predict 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：基于输入上下文生成测试场景相关结果，并保存或返回给调用方。
+        """
         assert session is not None
         yield from self.predict_chunks
 
     def check_save_predict_data(self, *, session, res: str) -> bool:
+        """
+        是什么：FakeChartInsightService.check_save_predict_data 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：校验测试场景相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         assert session is not None
         self.predict_saved_text = res
         return self.predict_has_data
 
     def save_error(self, *, session, message: str):
+        """
+        是什么：FakeChartInsightService.save_error 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：创建、初始化或组装测试场景相关对象和数据，并返回或写入对应状态。
+        """
         assert session is not None
         self.saved_errors.append(message)
 
     def finish(self, session):
+        """
+        是什么：FakeChartInsightService.finish 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：完成或关闭测试场景流程，释放资源并记录最终状态。
+        """
         assert session is not None
         self.finished = True
 
 
 def test_analysis_graph_streams_chat_events_and_trace() -> None:
+    """
+    是什么：test_analysis_graph_streams_chat_events_and_trace 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     service = FakeChartInsightService()
 
     chunks = list(graph.run_chart_insight_graph(service, "analysis", in_chat=True, stream=True))
@@ -105,6 +165,11 @@ def test_analysis_graph_streams_chat_events_and_trace() -> None:
 
 
 def test_predict_graph_streams_chat_success_events() -> None:
+    """
+    是什么：test_predict_graph_streams_chat_success_events 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     service = FakeChartInsightService(predict_has_data=True)
 
     chunks = list(graph.run_chart_insight_graph(service, "predict", in_chat=True, stream=True))
@@ -127,6 +192,11 @@ def test_predict_graph_streams_chat_success_events() -> None:
 
 
 def test_predict_graph_non_stream_success_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：test_predict_graph_non_stream_success_returns_json 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     service = FakeChartInsightService(predict_has_data=True)
     origin_data = {"fields": ["value"], "data": [{"value": 1}]}
     predict_data = [{"value": 2}]
@@ -149,6 +219,11 @@ def test_predict_graph_non_stream_success_returns_json(monkeypatch: pytest.Monke
 
 
 def test_predict_graph_non_stream_failure_returns_message() -> None:
+    """
+    是什么：test_predict_graph_non_stream_failure_returns_message 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     service = FakeChartInsightService(
         predict_chunks=[{"content": "cannot predict", "reasoning_content": ""}],
         predict_has_data=False,
@@ -167,9 +242,19 @@ def test_predict_graph_non_stream_failure_returns_message() -> None:
 
 
 def test_chart_insight_graph_saves_single_message_error() -> None:
+    """
+    是什么：test_chart_insight_graph_saves_single_message_error 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     service = FakeChartInsightService()
 
     def _raise_analysis(session):
+        """
+        是什么：_raise_analysis 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：围绕 _raise_analysis 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        """
         assert session is not None
         raise SingleMessageError("analysis failed")
         yield
@@ -188,11 +273,21 @@ def test_chart_insight_graph_saves_single_message_error() -> None:
 
 
 def test_llm_service_routes_chart_insight_to_graph(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    是什么：test_llm_service_routes_chart_insight_to_graph 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     service = llm.LLMService.__new__(llm.LLMService)
     service.record = SimpleNamespace(id=8001)
     calls: list[dict[str, Any]] = []
 
     def _fake_graph(service_arg, *, action_type: str, in_chat: bool, stream: bool):
+        """
+        是什么：_fake_graph 是 backend/tests/test_chart_insight_graph.py 中的同步测试函数。
+        谁调用：由测试用例、测试夹具或被测代码在测试过程中调用。
+        做了什么：围绕 _fake_graph 的语义处理测试场景相关逻辑，并把结果返回或写入状态。
+        """
         calls.append({"service": service_arg, "action_type": action_type, "in_chat": in_chat, "stream": stream})
         yield "graph-result"
 

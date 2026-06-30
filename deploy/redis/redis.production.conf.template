@@ -1,4 +1,4 @@
-# Redis production template for a B2B multi-tenant 星通智数 deployment.
+# Redis production template for a B2B multi-tenant 星通数智 deployment.
 # Fill placeholders before starting Redis. Keep this file private after rendering.
 
 bind 127.0.0.1
@@ -8,10 +8,10 @@ requirepass CHANGE_ME_STRONG_REDIS_PASSWORD
 
 daemonize yes
 supervised systemd
-pidfile /run/redis/zhishu-redis.pid
+pidfile /run/redis/shuzhi-redis.pid
 loglevel notice
-logfile /var/log/redis/zhishu-redis.log
-dir /var/lib/redis/zhishu
+logfile /var/log/redis/shuzhi-redis.log
+dir /var/lib/redis/shuzhi
 dbfilename dump.rdb
 
 appendonly yes

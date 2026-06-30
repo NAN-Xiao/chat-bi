@@ -139,7 +139,7 @@
                   alt=""
                 />
                 <div class="smart-qa-welcome-title">
-                  {{ t('embedded.i_am_zhishu') }}
+                  {{ t('embedded.i_am_shuzhi') }}
                 </div>
                 <div class="smart-qa-welcome-divider"></div>
                 <div class="smart-qa-welcome-desc">

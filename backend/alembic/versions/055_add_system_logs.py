@@ -1,16 +1,15 @@
-"""empty message
+"""空迁移说明
 
-Revision ID: 3d4bd2d673dc
-Revises: 24e961f6326b
-Create Date: 2025-12-19 13:30:54.743171
-
+迁移版本 ID： 3d4bd2d673dc
+上一版本： 24e961f6326b
+创建时间： 2025-12-19 13:30:54.743171
 """
 from alembic import op
 import sqlalchemy as sa
 import sqlmodel.sql.sqltypes
 from sqlalchemy.dialects import postgresql
 
-# revision identifiers, used by Alembic.
+# Alembic 使用的迁移版本标识。
 revision = '3d4bd2d673dc'
 down_revision = '24e961f6326b'
 branch_labels = None
@@ -18,6 +17,11 @@ depends_on = None
 
 
 def upgrade():
+    """
+    是什么：upgrade 是 backend/alembic/versions/055_add_system_logs.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 upgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     op.create_table('sys_logs',
                     sa.Column('id', sa.BIGINT(), autoincrement=True, nullable=False),
                     sa.Column('operation_type', sa.VARCHAR(length=255), autoincrement=False, nullable=True),
@@ -40,4 +44,9 @@ def upgrade():
 
 
 def downgrade():
+    """
+    是什么：downgrade 是 backend/alembic/versions/055_add_system_logs.py 中的同步数据库迁移函数。
+    谁调用：由 Alembic 迁移框架在执行数据库升级或回滚时调用。
+    做了什么：围绕 downgrade 的语义处理数据库迁移相关逻辑，并把结果返回或写入状态。
+    """
     op.drop_table('sys_logs')

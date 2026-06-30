@@ -15,6 +15,11 @@ session_maker = scoped_session(sessionmaker(bind=engine))
 
 
 def _int_list(value: Any) -> list[int]:
+    """
+    是什么：_int_list 是 backend/apps/system/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _int_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if not value:
         return []
     return [int(item) for item in value]
@@ -22,6 +27,11 @@ def _int_list(value: Any) -> list[int]:
 
 @task_handler("system.ping")
 async def ping_task(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：ping_task 是 backend/apps/system/tasks.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 ping_task 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return {
         "message": payload.get("message") or "pong",
         "echo": payload,
@@ -31,6 +41,11 @@ async def ping_task(payload: dict[str, Any]) -> dict[str, Any]:
 
 @task_handler("custom_prompt.skill_embedding")
 def custom_prompt_skill_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：custom_prompt_skill_embedding_task 是 backend/apps/system/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 custom_prompt_skill_embedding_task 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     ids = _int_list(payload.get("ids"))
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
     count = save_custom_prompt_skill_embedding(session_maker, ids, tenant_id=tenant_id)
@@ -39,6 +54,11 @@ def custom_prompt_skill_embedding_task(payload: dict[str, Any]) -> dict[str, Any
 
 @task_handler("custom_prompt.fill_empty_skill_embedding")
 def fill_empty_custom_prompt_skill_embedding_task(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    是什么：fill_empty_custom_prompt_skill_embedding_task 是 backend/apps/system/tasks.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 fill_empty_custom_prompt_skill_embedding_task 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     tenant_id = int(payload.get("tenant_id") or current_task_tenant_id())
     count = run_fill_empty_custom_prompt_skill_embedding(session_maker, tenant_id=tenant_id)
     return {"count": count, "tenant_id": tenant_id}

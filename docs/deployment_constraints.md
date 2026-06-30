@@ -25,17 +25,17 @@
 - 成员准入增强：企业管理员可批量邀请已有账号，每个账号返回独立结果，并写入租户审计日志，方便后续成员变更追溯。
 - 本地一键编排脚本：`tools/stack-local.ps1` 串联 PostgreSQL、Redis、backend、Nginx 和 worker。
 - 本地 PostgreSQL 备份/恢复脚本：`tools/postgres-backup-local.ps1`，默认备份到 `.codex-runtime/pg-backups`。
-- 生产 PostgreSQL 定时备份：`deploy/scripts/zhishu-postgres-backup.sh` 结合
-  `deploy/systemd/zhishu-postgres-backup.service` 和 `deploy/systemd/zhishu-postgres-backup.timer`，
+- 生产 PostgreSQL 定时备份：`deploy/scripts/shuzhi-postgres-backup.sh` 结合
+  `deploy/systemd/shuzhi-postgres-backup.service` 和 `deploy/systemd/shuzhi-postgres-backup.timer`，
   使用 `pg_dump -Fc` 生成备份并按保留天数清理。
-- 生产日志轮转：`deploy/logrotate/zhishu` 覆盖应用日志、Nginx 访问/错误日志和 Redis 日志，
+- 生产日志轮转：`deploy/logrotate/shuzhi` 覆盖应用日志、Nginx 访问/错误日志和 Redis 日志，
   防止单机多副本运行时磁盘被日志写满。
 - 生产配置模板：`deploy/env.production.example`、`deploy/redis/redis.production.conf.template`、
   `deploy/nginx/nginx.production.conf.template` 和 `deploy/systemd/`。
 - 多租户运行边界：`sys_tenant/sys_tenant_user` 提供企业和成员关系；数据源、语义层、ChatBI 对话、看板、API Key、自定义助手、审计日志和用量计量均带租户范围；企业 owner/admin 可管理本租户项目、语义层和公开自定义 Agent。
 - 数据源 Excel/CSV 临时导入文件按租户目录保存，避免共享临时目录被跨租户文件名引用。
-- 生产数据库迁移拆分：启动默认不自动迁移；生产必须 `AUTO_RUN_MIGRATIONS=false`，通过
-  `python -m scripts.db_migrate` 或 `zhishu-migrate.service` 在 API 副本启动前单独执行一次。
+- 生产数据库迁移拆分：开发可自动迁移；生产必须 `AUTO_RUN_MIGRATIONS=false`，通过
+  `python -m scripts.db_migrate` 或 `shuzhi-migrate.service` 在 API 副本启动前单独执行一次。
 
 ## 暂不做
 

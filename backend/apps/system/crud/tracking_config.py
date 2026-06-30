@@ -20,6 +20,11 @@ from common.utils.time import get_timestamp
 
 
 def _clean_text(value: str | None, max_len: int | None = None) -> str | None:
+    """
+    是什么：_clean_text 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理系统管理相关数据、缓存或临时状态。
+    """
     cleaned = (value or "").strip()
     if not cleaned:
         return None
@@ -27,6 +32,11 @@ def _clean_text(value: str | None, max_len: int | None = None) -> str | None:
 
 
 def _json_value(value: Any, default):
+    """
+    是什么：_json_value 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _json_value 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if value in (None, ""):
         return default
     if isinstance(value, str):
@@ -38,16 +48,31 @@ def _json_value(value: Any, default):
 
 
 def _json_list(value: Any) -> list:
+    """
+    是什么：_json_list 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _json_list 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     parsed = _json_value(value, [])
     return parsed if isinstance(parsed, list) else []
 
 
 def _json_list_or_dict(value: Any):
+    """
+    是什么：_json_list_or_dict 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _json_list_or_dict 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     parsed = _json_value(value, None)
     return parsed if isinstance(parsed, (list, dict)) else None
 
 
 def _row_id(row) -> int | None:
+    """
+    是什么：_row_id 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _row_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     value = getattr(row, "id", None)
     try:
         return int(value)
@@ -56,6 +81,11 @@ def _row_id(row) -> int | None:
 
 
 def _config_dto(row: TenantTrackingConfigModel | None, tenant_id: int) -> TenantTrackingConfigDTO:
+    """
+    是什么：_config_dto 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _config_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if row is None:
         return TenantTrackingConfigDTO(tenant_id=tenant_id)
     return TenantTrackingConfigDTO(
@@ -78,6 +108,11 @@ def _config_dto(row: TenantTrackingConfigModel | None, tenant_id: int) -> Tenant
 
 
 def _table_dto(row: TenantTrackingTableModel) -> TenantTrackingTableDTO:
+    """
+    是什么：_table_dto 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _table_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return TenantTrackingTableDTO(
         id=_row_id(row),
         tenant_id=int(row.tenant_id),
@@ -94,6 +129,11 @@ def _table_dto(row: TenantTrackingTableModel) -> TenantTrackingTableDTO:
 
 
 def _field_dto(row: TenantTrackingFieldModel) -> TenantTrackingFieldDTO:
+    """
+    是什么：_field_dto 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _field_dto 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return TenantTrackingFieldDTO(
         id=_row_id(row),
         tenant_id=int(row.tenant_id),
@@ -116,6 +156,11 @@ def _field_dto(row: TenantTrackingFieldModel) -> TenantTrackingFieldDTO:
 
 
 def get_tracking_config(session: Session, tenant_id: int) -> TenantTrackingConfigDTO:
+    """
+    是什么：get_tracking_config 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     config = session.exec(
         select(TenantTrackingConfigModel).where(TenantTrackingConfigModel.tenant_id == int(tenant_id))
     ).first()
@@ -146,6 +191,11 @@ def save_tracking_config(
     *,
     current_user_id: int | None = None,
 ) -> TenantTrackingConfigDTO:
+    """
+    是什么：save_tracking_config 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     now = get_timestamp()
     config = session.exec(
         select(TenantTrackingConfigModel).where(TenantTrackingConfigModel.tenant_id == int(tenant_id))
@@ -229,12 +279,22 @@ def save_tracking_config(
 
 
 def _format_json_for_prompt(value: Any) -> str:
+    """
+    是什么：_format_json_for_prompt 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     if value in (None, [], {}):
         return ""
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def build_tracking_prompt_context(config: TenantTrackingConfigDTO) -> tuple[str, list[str]]:
+    """
+    是什么：build_tracking_prompt_context 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     if not config.enabled:
         return "", []
 
@@ -327,6 +387,11 @@ def build_tracking_prompt_context(config: TenantTrackingConfigDTO) -> tuple[str,
 
 
 def find_tracking_prompt_context(session: Session, tenant_id: int | None) -> tuple[str, list[str]]:
+    """
+    是什么：find_tracking_prompt_context 是 backend/apps/system/crud/tracking_config.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     if tenant_id is None:
         return "", []
     config = get_tracking_config(session, int(tenant_id))

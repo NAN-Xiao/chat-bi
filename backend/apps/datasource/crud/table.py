@@ -14,16 +14,31 @@ from ..models.datasource import CoreTable, CoreField, CoreDatasource
 
 
 def delete_table_by_ds_id(session: SessionDep, id: int):
+    """
+    是什么：delete_table_by_ds_id 是 backend/apps/datasource/crud/table.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    """
     session.query(CoreTable).filter(CoreTable.ds_id == id).delete(synchronize_session=False)
     session.commit()
 
 
 def get_tables_by_ds_id(session: SessionDep, id: int):
+    """
+    是什么：get_tables_by_ds_id 是 backend/apps/datasource/crud/table.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     return session.query(CoreTable).filter(CoreTable.ds_id == id).order_by(
         CoreTable.table_name.asc()).all()
 
 
 def update_table(session: SessionDep, item: CoreTable):
+    """
+    是什么：update_table 是 backend/apps/datasource/crud/table.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     record = session.query(CoreTable).filter(CoreTable.id == item.id).first()
     record.checked = item.checked
     record.custom_comment = item.custom_comment
@@ -32,6 +47,11 @@ def update_table(session: SessionDep, item: CoreTable):
 
 
 def run_fill_empty_table_and_ds_embedding(session_maker, tenant_id: int | None = None):
+    """
+    是什么：run_fill_empty_table_and_ds_embedding 是 backend/apps/datasource/crud/table.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行数据源主流程，协调下游服务并处理结果或异常。
+    """
     try:
         if not settings.TABLE_EMBEDDING_ENABLED:
             return
@@ -62,6 +82,11 @@ def run_fill_empty_table_and_ds_embedding(session_maker, tenant_id: int | None =
 
 
 def save_table_embedding(session_maker, ids: List[int], tenant_id: int | None = None):
+    """
+    是什么：save_table_embedding 是 backend/apps/datasource/crud/table.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    """
     if not settings.TABLE_EMBEDDING_ENABLED:
         return
 
@@ -142,6 +167,11 @@ def save_table_embedding(session_maker, ids: List[int], tenant_id: int | None = 
 
 
 def save_ds_embedding(session_maker, ids: List[int], tenant_id: int | None = None):
+    """
+    是什么：save_ds_embedding 是 backend/apps/datasource/crud/table.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    """
     if not settings.TABLE_EMBEDDING_ENABLED:
         return
 

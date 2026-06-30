@@ -23,6 +23,11 @@ from langchain_openai.chat_models.base import _create_usage_metadata
 def _convert_delta_to_message_chunk(
         _dict: Mapping[str, Any], default_class: type[BaseMessageChunk]
 ) -> BaseMessageChunk:
+    """
+    是什么：_convert_delta_to_message_chunk 是 backend/apps/ai_model/openai/llm.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化模型接入相关数据，生成后续流程可使用的结构。
+    """
     id_ = _dict.get("id")
     role = cast(str, _dict.get("role"))
     content = cast(str, _dict.get("content") or "")
@@ -86,12 +91,17 @@ def _convert_delta_to_message_chunk(
 class BaseChatOpenAI(ChatOpenAI):
     @property
     def _default_params(self) -> dict[str, Any]:
+        """
+        是什么：BaseChatOpenAI._default_params 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
+        谁调用：由 Python 属性访问语法或依赖该属性的业务代码调用。
+        做了什么：围绕 _default_params 的语义处理模型接入相关逻辑，并把结果返回或写入状态。
+        """
         max_tokens = self.max_tokens
         params = super()._default_params
         if max_tokens:
             params["max_tokens"] = max_tokens
         return params
-    
+
     def _get_request_payload(
         self,
         input_: LanguageModelInput,
@@ -99,6 +109,11 @@ class BaseChatOpenAI(ChatOpenAI):
         stop: Optional[list[str]] = None,
         **kwargs: Any,
     ) -> dict:
+        """
+        是什么：BaseChatOpenAI._get_request_payload 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
+        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询模型接入相关数据，整理后返回给调用方。
+        """
         max_tokens = self.max_tokens
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
         if max_tokens:
@@ -109,9 +124,19 @@ class BaseChatOpenAI(ChatOpenAI):
     # custom_get_token_ids = custom_get_token_ids
 
     def get_last_generation_info(self) -> dict[str, Any] | None:
+        """
+        是什么：BaseChatOpenAI.get_last_generation_info 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
+        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询模型接入相关数据，整理后返回给调用方。
+        """
         return self.usage_metadata
 
     def _stream(self, *args: Any, **kwargs: Any) -> Iterator[ChatGenerationChunk]:
+        """
+        是什么：BaseChatOpenAI._stream 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
+        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
+        做了什么：组织模型接入的流式输出或异步等待，把事件和结果传递给调用方。
+        """
         kwargs['stream_usage'] = True
         for chunk in super()._stream(*args, **kwargs):
             if chunk.message.usage_metadata is not None:
@@ -124,6 +149,11 @@ class BaseChatOpenAI(ChatOpenAI):
         default_chunk_class: type,
         base_generation_info: dict | None,
     ) -> ChatGenerationChunk | None:
+        """
+        是什么：BaseChatOpenAI._convert_chunk_to_generation_chunk 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
+        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
+        做了什么：解析、转换或格式化模型接入相关数据，生成后续流程可使用的结构。
+        """
         if chunk.get("type") == "content.delta":  # from beta.chat.completions.stream
             return None
         token_usage = chunk.get("usage")
@@ -139,7 +169,7 @@ class BaseChatOpenAI(ChatOpenAI):
             else None
         )
         if len(choices) == 0:
-            # logprobs is implicitly None
+            # logprobs 默认隐式为 None
             generation_chunk = ChatGenerationChunk(
                 message=default_chunk_class(content="", usage_metadata=usage_metadata)
             )
@@ -181,6 +211,11 @@ class BaseChatOpenAI(ChatOpenAI):
         stop: list[str] | None = None,
         **kwargs: Any,
     ) -> BaseMessage:
+        """
+        是什么：BaseChatOpenAI.invoke 是 backend/apps/ai_model/openai/llm.py 中的同步方法。
+        谁调用：由持有 BaseChatOpenAI 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行模型接入主流程，协调下游服务并处理结果或异常。
+        """
         config = ensure_config(config)
         chat_result = cast(
             ChatGeneration,

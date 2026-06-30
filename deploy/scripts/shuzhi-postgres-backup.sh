@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENV_FILE="${ENV_FILE:-/etc/zhishu/zhishu.env}"
+ENV_FILE="${ENV_FILE:-/etc/shuzhi/shuzhi.env}"
 
 read_env_var() {
   local name="$1"
@@ -37,7 +37,7 @@ done
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
 
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/zhishu/postgres}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/shuzhi/postgres}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 PG_DUMP_BIN="${PG_DUMP_BIN:-pg_dump}"
 

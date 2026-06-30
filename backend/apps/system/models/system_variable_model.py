@@ -1,5 +1,5 @@
-# Author: Junjun
-# Date: 2026/1/26
+# 作者：Junjun
+# 日期：2026/1/26
 
 from datetime import datetime
 from typing import List

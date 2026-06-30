@@ -9,8 +9,18 @@ ModelT = TypeVar('ModelT', bound=SQLModel)
 
 class Paginator:
     def __init__(self, session: Session):
+        """
+        是什么：Paginator.__init__ 是 backend/common/core/pagination.py 中的同步方法。
+        谁调用：由创建 Paginator 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         self.session = session
     def _process_result_row(self, row: Row) -> Dict[str, Any]:
+        """
+        是什么：Paginator._process_result_row 是 backend/common/core/pagination.py 中的同步方法。
+        谁调用：由持有 Paginator 实例的业务代码、框架回调或测试代码调用。
+        做了什么：执行核心配置和基础设施主流程，协调下游服务并处理结果或异常。
+        """
         result_dict = {}
         if isinstance(row, int):
             return {'id': row}
@@ -32,6 +42,11 @@ class Paginator:
         desc: bool = False,
         **filters
     ) -> tuple[Sequence[Any], int]:
+        """
+        是什么：Paginator.paginate 是 backend/common/core/pagination.py 中的异步方法。
+        谁调用：由持有 Paginator 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 paginate 的语义处理核心配置和基础设施相关逻辑，并把结果返回或写入状态。
+        """
         offset = (page - 1) * size
         single_model: bool = False
         if isinstance(stmt, type) and issubclass(stmt, SQLModel):
@@ -83,6 +98,11 @@ class Paginator:
         pagination: PaginationParams,
         **filters
     ) -> PaginatedResponse[Any]:
+        """
+        是什么：Paginator.get_paginated_response 是 backend/common/core/pagination.py 中的异步方法。
+        谁调用：由持有 Paginator 实例的业务代码、框架回调或测试代码调用。
+        做了什么：读取或查询核心配置和基础设施相关数据，整理后返回给调用方。
+        """
         items, total = await self.paginate(
             stmt=stmt,
             page=pagination.page,

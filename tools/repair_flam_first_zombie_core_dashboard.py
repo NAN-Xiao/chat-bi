@@ -120,9 +120,17 @@ def apply_chart_config(view: dict[str, Any], view_id: str, sql: str) -> None:
     chart["title"] = spec.title
     chart["xAxis"] = [axis(field) for field in spec.x_axis]
     chart["yAxis"] = [axis(field) for field in spec.y_axis]
+    if y_axis_semantics := getattr(spec, "y_axis_semantics", None):
+        for item in chart["yAxis"]:
+            if semantics := y_axis_semantics.get(item.get("value")):
+                item.update(semantics)
+    if series_axis := getattr(spec, "series_axis", ()):
+        chart["series"] = [axis(field) for field in series_axis]
     chart["columns"] = [axis(field) for field in (spec.columns or spec.fields)]
     if spec.chart_type == "funnel":
         chart["showLabel"] = True
+    if pivot := getattr(spec, "pivot", None):
+        view["pivot"] = pivot
     view["datasource"] = DATASOURCE_ID
     view["sql"] = sql.strip()
     clear_result(view, spec.fields)

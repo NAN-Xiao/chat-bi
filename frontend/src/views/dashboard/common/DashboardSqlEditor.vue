@@ -71,6 +71,7 @@ const form = reactive({
   pivotRange: 'source' as 'source' | '7d' | '14d' | '30d' | '90d' | 'all' | 'custom',
   pivotCustomStart: '',
   pivotCustomEnd: '',
+  pivotGroupValues: [] as string[],
 })
 
 const preview = reactive({
@@ -88,6 +89,9 @@ const loading = ref(false)
 const previewVersion = ref(0)
 const lastPreviewSql = ref('')
 const lastPreviewSignature = ref('')
+const initializedPivotGroupValueField = ref('')
+const PIVOT_GROUP_SELECT_ALL_VALUE = '__dashboard_pivot_group_select_all__'
+const PIVOT_GROUP_SELECT_NONE_VALUE = '__dashboard_pivot_group_select_none__'
 
 const chartTypes: Array<{ label: string; value: ChartTypes }> = [
   { label: 'table', value: 'table' },
@@ -118,7 +122,6 @@ const pivotTimeFieldOptions = computed(() => {
   )
   return toFieldOptions(dateFields.length ? dateFields : sourcePreview.fields)
 })
-const hasPreviewData = computed(() => preview.status !== 'failed' && preview.data.length > 0)
 const canRunPreview = computed(() => Boolean(props.viewInfo?.datasource))
 const sqlChangedAfterPreview = computed(
   () => !props.allowStaticApply && currentPreviewSignature() !== lastPreviewSignature.value
@@ -164,8 +167,45 @@ const chartPreviewYFields = computed(() => {
   if (form.chartType === 'pie') {
     return form.y.slice(0, 1)
   }
-  return effectiveSeriesField.value ? form.y.slice(0, 1) : form.y
+  return form.y
 })
+const activePivotGroupValueField = computed(() => form.pivotGroupField || effectiveSeriesField.value)
+const showPivotGroupValueConfig = computed(
+  () => supportsPivotConfig.value && form.pivotEnabled && Boolean(activePivotGroupValueField.value)
+)
+const pivotGroupValueOptions = computed(() => {
+  const field = activePivotGroupValueField.value
+  if (!field) {
+    return []
+  }
+  const counts = collectPivotGroupValueCounts(field)
+  unique(form.pivotGroupValues.map(normalizePivotGroupValue)).forEach((value) => {
+    if (value && !counts.has(value)) {
+      counts.set(value, 0)
+    }
+  })
+  return Array.from(counts.entries())
+    .map(([value, count]) => ({
+      label: count > 0 ? value : `${value} (0)`,
+      value,
+    }))
+    .sort((a, b) => a.value.localeCompare(b.value, undefined, { numeric: true, sensitivity: 'base' }))
+})
+const previewDisplayData = computed(() => {
+  if (!showPivotGroupValueConfig.value) {
+    return preview.data
+  }
+  const field = activePivotGroupValueField.value
+  const selected = new Set(unique(form.pivotGroupValues.map(normalizePivotGroupValue)))
+  if (!field || selected.size === 0) {
+    return []
+  }
+  return preview.data.filter((row) => selected.has(normalizePivotGroupValue(row?.[field])))
+})
+const hasPreviewData = computed(() => preview.status !== 'failed' && previewDisplayData.value.length > 0)
+const pivotGroupValueSelectionText = computed(
+  () => `${form.pivotGroupValues.length}/${pivotGroupValueOptions.value.length}`
+)
 
 function comparisonMetricLabel(metric: TrendComparisonMetric, granularity: TrendTimeGranularity | null) {
   if (metric === 'week_over_week' && granularity === 'day') {
@@ -217,6 +257,43 @@ type PivotGranularity = 'day' | 'week' | 'month'
 
 function unique(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.filter((value) => value !== undefined && value !== null && `${value}`.trim() !== '').map((value) => `${value}`)))
+}
+
+function normalizePivotGroupValue(value: unknown) {
+  if (value === undefined || value === null) {
+    return ''
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? '' : value.toISOString()
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch (_error) {
+      return `${value}`
+    }
+  }
+  return `${value}`.trim()
+}
+
+function collectPivotGroupValueCounts(field: string) {
+  const counts = new Map<string, number>()
+  if (!field) {
+    return counts
+  }
+  sourcePreview.data.forEach((row) => {
+    const value = normalizePivotGroupValue(row?.[field])
+    if (!value) {
+      return
+    }
+    counts.set(value, (counts.get(value) || 0) + 1)
+  })
+  return counts
+}
+
+function collectPivotGroupSourceValues(field: string) {
+  return Array.from(collectPivotGroupValueCounts(field).keys())
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
 }
 
 function toFieldOptions(fields: string[]) {
@@ -378,24 +455,33 @@ function initPivotConfig(pivot?: any) {
   form.pivotRange = pivot?.range || 'source'
   form.pivotCustomStart = pivot?.custom_start || ''
   form.pivotCustomEnd = pivot?.custom_end || ''
+  form.pivotGroupValues = []
+  initializedPivotGroupValueField.value = ''
   normalizePivotSelections()
+  form.pivotGroupValues = Array.isArray(pivot?.group_values)
+    ? unique(pivot.group_values.map(normalizePivotGroupValue))
+    : pivotGroupValueOptions.value.map((item) => item.value)
+  initializedPivotGroupValueField.value = activePivotGroupValueField.value
+  syncPivotGroupValues({ forceAll: !Array.isArray(pivot?.group_values) })
   if (!pivot?.granularity) {
     form.pivotGranularity = defaultPivotGranularity()
   }
 }
 
-function buildPivotConfig() {
+function buildPivotConfig(options: { includeGroupValues?: boolean } = {}) {
   if (!form.pivotEnabled) {
     return { enabled: false }
   }
-  return {
+  const groupField = form.pivotGroupField || effectiveSeriesField.value
+  const config: Record<string, any> = {
     enabled: true,
+    client_filter_only: props.viewInfo?.pivot?.client_filter_only === true,
     time_field: form.pivotTimeField,
     metric_fields: [...form.y],
     metric_aggregations: resolvePivotMetricAggregations(toAxes(form.y, { metrics: true }), sourcePreview.data),
     metric_field: form.y[0] || '',
-    group_field: form.pivotGroupField || effectiveSeriesField.value,
-    group_enabled: Boolean((form.pivotGroupField || effectiveSeriesField.value) && form.pivotGroupEnabled),
+    group_field: groupField,
+    group_enabled: Boolean(groupField && form.pivotGroupEnabled),
     dimensions: inferredPivotDimensions(),
     range_enabled: form.pivotRangeEnabled,
     granularity: form.pivotGranularity,
@@ -404,13 +490,17 @@ function buildPivotConfig() {
     custom_end: form.pivotCustomEnd,
     aggregation: defaultPivotAggregation(),
   }
+  if (options.includeGroupValues !== false) {
+    config.group_values = groupField ? unique(form.pivotGroupValues.map(normalizePivotGroupValue)) : []
+  }
+  return config
 }
 
 function previewPivotPayload() {
   if (!supportsPivotConfig.value || !form.pivotEnabled) {
     return undefined
   }
-  return buildPivotConfig()
+  return buildPivotConfig({ includeGroupValues: false })
 }
 
 function currentPreviewSignature() {
@@ -470,6 +560,47 @@ function updatePreviewResult(result: any) {
 function updateSourcePreviewResult(result: any) {
   sourcePreview.data = result?.data || []
   sourcePreview.fields = getPreviewResultFields(result)
+}
+
+function syncPivotGroupValues(options: { forceAll?: boolean } = {}) {
+  const field = activePivotGroupValueField.value
+  const sourceValues = collectPivotGroupSourceValues(field)
+  const optionValues = pivotGroupValueOptions.value.map((item) => item.value)
+  if (!field || (sourceValues.length === 0 && optionValues.length === 0)) {
+    form.pivotGroupValues = []
+    initializedPivotGroupValueField.value = field
+    return
+  }
+  const fieldChanged = initializedPivotGroupValueField.value !== field
+  const selected = unique(form.pivotGroupValues.map(normalizePivotGroupValue))
+  if (options.forceAll || fieldChanged) {
+    form.pivotGroupValues = sourceValues
+  } else {
+    form.pivotGroupValues = selected.filter((value) => optionValues.includes(value))
+  }
+  initializedPivotGroupValueField.value = field
+}
+
+function selectAllPivotGroupValues() {
+  syncPivotGroupValues({ forceAll: true })
+  previewVersion.value += 1
+}
+
+function clearPivotGroupValues() {
+  form.pivotGroupValues = []
+  previewVersion.value += 1
+}
+
+function handlePivotGroupValuesChange(values: string[]) {
+  if (values.includes(PIVOT_GROUP_SELECT_ALL_VALUE)) {
+    selectAllPivotGroupValues()
+    return
+  }
+  if (values.includes(PIVOT_GROUP_SELECT_NONE_VALUE)) {
+    clearPivotGroupValues()
+    return
+  }
+  form.pivotGroupValues = unique(values.map(normalizePivotGroupValue))
 }
 
 function resetFieldSelections() {
@@ -553,6 +684,7 @@ watch(
     form.pivotRange,
     form.pivotCustomStart,
     form.pivotCustomEnd,
+    form.pivotGroupValues.join('|'),
   ],
   () => {
     previewVersion.value += 1
@@ -572,6 +704,7 @@ watch(
     sanitizeSeriesSelection()
     normalizeInsightSelections(true)
     normalizePivotSelections()
+    syncPivotGroupValues()
   }
 )
 
@@ -595,6 +728,7 @@ async function runPreview() {
       updateSourcePreviewResult(sourceResult)
       resetFieldSelections()
       normalizePivotSelections()
+      syncPivotGroupValues()
       if ((sourceResult?.status || 'success') === 'failed') {
         updatePreviewResult(sourceResult)
         lastPreviewSql.value = form.sql.trim()
@@ -613,6 +747,7 @@ async function runPreview() {
       updateSourcePreviewResult(result)
       resetFieldSelections()
       normalizePivotSelections()
+      syncPivotGroupValues()
     }
     updatePreviewResult(result)
     lastPreviewSql.value = form.sql.trim()
@@ -665,7 +800,7 @@ function buildChart() {
   }
 
   chart.xAxis = toAxes([form.x].filter(Boolean) as string[])
-  chart.yAxis = toAxes(effectiveSeriesField.value ? form.y.slice(0, 1) : form.y, { metrics: true })
+  chart.yAxis = toAxes(form.y, { metrics: true })
   chart.series = toAxes([effectiveSeriesField.value].filter(Boolean) as string[])
   return chart
 }
@@ -710,6 +845,10 @@ function validateBeforeApply() {
   }
   if (form.pivotEnabled && (!form.pivotTimeField || !form.y.length)) {
     ElMessage.warning(t('dashboard.pivot_required'))
+    return false
+  }
+  if (showPivotGroupValueConfig.value && form.pivotGroupEnabled && form.pivotGroupValues.length === 0) {
+    ElMessage.warning(t('dashboard.pivot_group_values_required'))
     return false
   }
   if (form.pivotEnabled && form.y.includes(form.pivotTimeField)) {
@@ -847,6 +986,39 @@ function closeDrawer() {
                 :key="field.value"
                 :label="field.label"
                 :value="field.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item
+            v-if="showPivotGroupValueConfig"
+            class="pivot-group-values-form-item"
+            :label="`${t('dashboard.pivot_group_values')} (${pivotGroupValueSelectionText})`"
+          >
+            <el-select
+              v-model="form.pivotGroupValues"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              popper-class="pivot-group-values-select-popper"
+              :placeholder="t('dashboard.pivot_group_values_placeholder')"
+              @change="handlePivotGroupValuesChange"
+            >
+              <el-option
+                class="pivot-group-values-action-option"
+                :label="t('dashboard.pivot_group_select_all')"
+                :value="PIVOT_GROUP_SELECT_ALL_VALUE"
+              />
+              <el-option
+                class="pivot-group-values-action-option"
+                :label="t('dashboard.pivot_group_select_none')"
+                :value="PIVOT_GROUP_SELECT_NONE_VALUE"
+              />
+              <el-option
+                v-for="item in pivotGroupValueOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
               />
             </el-select>
           </el-form-item>
@@ -990,7 +1162,7 @@ function closeDrawer() {
           :x="form.chartType !== 'table' && form.chartType !== 'metric' && form.chartType !== 'pie' ? toAxes([form.x]) : []"
           :y="toAxes(chartPreviewYFields, { metrics: true })"
           :series="form.chartType === 'pie' ? toAxes([effectiveSeriesField || form.x]) : toAxes([effectiveSeriesField])"
-          :data="preview.data"
+          :data="previewDisplayData"
           :multi-quota-name="form.y.length > 1 && !effectiveSeriesField ? form.multiQuotaName : undefined"
         />
         <div v-else class="empty-preview">{{ t('dashboard.sql_editor_no_preview_data') }}</div>
@@ -1101,8 +1273,30 @@ function closeDrawer() {
   column-gap: 16px;
 }
 
+.pivot-group-values-form-item {
+  margin-bottom: 4px;
+}
+
 .pivot-group-checkbox {
   margin-top: -8px;
+}
+
+:global(.pivot-group-values-select-popper .ed-select-dropdown__item:first-child),
+:global(.pivot-group-values-select-popper .el-select-dropdown__item:first-child),
+:global(.pivot-group-values-select-popper .ed-select-dropdown__item:nth-child(2)),
+:global(.pivot-group-values-select-popper .el-select-dropdown__item:nth-child(2)) {
+  color: var(--ed-color-primary, #2f6bff);
+  font-weight: 600;
+}
+
+:global(.pivot-group-values-select-popper .pivot-group-values-action-option.is-selected::after),
+:global(.pivot-group-values-select-popper .pivot-group-values-action-option.selected::after) {
+  display: none;
+}
+
+:global(.pivot-group-values-select-popper .pivot-group-values-action-option:nth-child(2)) {
+  border-bottom: 1px solid rgba(31, 35, 41, 0.08);
+  margin-bottom: 4px;
 }
 
 .preview-title {

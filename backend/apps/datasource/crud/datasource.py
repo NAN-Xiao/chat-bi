@@ -39,6 +39,11 @@ from ..models.datasource import CoreDatasource, CreateDatasource, CoreTable, Cor
 
 
 def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreDatasource]:
+    """
+    是什么：get_datasource_list 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if is_platform_admin(user) and not is_platform_workspace_delegate(user):
         return session.exec(select(CoreDatasource).order_by(CoreDatasource.name)).all()
 
@@ -52,6 +57,11 @@ def get_datasource_list(session: SessionDep, user: CurrentUser) -> List[CoreData
 
 
 def get_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
+    """
+    是什么：get_ds 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     statement = select(CoreDatasource).where(CoreDatasource.id == id)
     tenant_id = None if is_platform_admin(user) and not is_platform_workspace_delegate(user) else current_tenant_id(user)
     datasource = session.exec(statement).first()
@@ -61,6 +71,11 @@ def get_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
 
 
 def check_status_by_id(session: SessionDep, trans: Trans, ds_id: int, is_raise: bool = False):
+    """
+    是什么：check_status_by_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     ds = session.get(CoreDatasource, ds_id)
     if ds is None:
         if is_raise:
@@ -70,16 +85,31 @@ def check_status_by_id(session: SessionDep, trans: Trans, ds_id: int, is_raise: 
 
 
 def check_status(session: SessionDep, trans: Trans, ds: CoreDatasource, is_raise: bool = False):
+    """
+    是什么：check_status 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     return check_connection(trans, ds, is_raise)
 
 
 def _datasource_tenant_id(session: SessionDep, ds_id: int | None) -> int | None:
+    """
+    是什么：_datasource_tenant_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _datasource_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     if ds_id is None:
         return None
     return session.execute(select(CoreDatasource.tenant_id).where(CoreDatasource.id == ds_id)).scalar()
 
 
 def _coerce_tenant_id(value) -> int | None:
+    """
+    是什么：_coerce_tenant_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _coerce_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         if value in (None, ""):
             return None
@@ -94,6 +124,11 @@ def _schema_metadata_tenant_id(
         current_user: CurrentUser | None = None,
         tenant_id: int | None = None,
 ) -> int | None:
+    """
+    是什么：_schema_metadata_tenant_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _schema_metadata_tenant_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     explicit_tenant_id = _coerce_tenant_id(tenant_id)
     if explicit_tenant_id is not None and datasource_bound_to_tenant(session, int(ds.id), explicit_tenant_id):
         return explicit_tenant_id
@@ -110,6 +145,11 @@ def _apply_workspace_comments_to_tables(
         tenant_id: int | None,
         tables: list[CoreTable],
 ) -> list[CoreTable]:
+    """
+    是什么：_apply_workspace_comments_to_tables 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _apply_workspace_comments_to_tables 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     comments = table_comment_map(session, tenant_id, [table.table_name for table in tables])
     for table in tables:
         if table.table_name in comments:
@@ -125,6 +165,11 @@ def _apply_workspace_comments_to_fields(
         table: CoreTable,
         fields: list[CoreField],
 ) -> list[CoreField]:
+    """
+    是什么：_apply_workspace_comments_to_fields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _apply_workspace_comments_to_fields 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     comments = field_comment_map(
         session,
         tenant_id,
@@ -140,6 +185,11 @@ def _apply_workspace_comments_to_fields(
 
 
 def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
+    """
+    是什么：check_name 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     tenant_id = None if is_platform_admin(user) and not is_platform_workspace_delegate(user) else current_tenant_id(user)
     filters = [CoreDatasource.name == ds.name]
     if tenant_id is not None:
@@ -157,6 +207,11 @@ def check_name(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDat
 
 @clear_cache(namespace=CacheNamespace.AUTH_INFO, cacheName=CacheName.DS_ID_LIST, keyExpression="user.id")
 async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create_ds: CreateDatasource):
+    """
+    是什么：create_ds 是 backend/apps/datasource/crud/datasource.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    """
     ds = CoreDatasource()
     deepcopy_ignore_extra(create_ds, ds)
     check_name(session, trans, user, ds)
@@ -178,13 +233,18 @@ async def create_ds(session: SessionDep, trans: Trans, user: CurrentUser, create
     ds.id = record.id
     session.commit()
 
-    # save tables and fields
+    # 保存表和字段
     sync_table(session, ds, create_ds.tables)
     updateNum(session, ds)
     return ds
 
 
 def chooseTables(session: SessionDep, trans: Trans, id: int, tables: List[CoreTable]):
+    """
+    是什么：chooseTables 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 chooseTables 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     check_status(session, trans, ds, True)
     sync_table(session, ds, tables)
@@ -192,6 +252,11 @@ def chooseTables(session: SessionDep, trans: Trans, id: int, tables: List[CoreTa
 
 
 def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreDatasource):
+    """
+    是什么：update_ds 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     ds.id = int(ds.id)
     check_name(session, trans, user, ds)
     # status = check_status(session, trans, ds)
@@ -214,6 +279,11 @@ def update_ds(session: SessionDep, trans: Trans, user: CurrentUser, ds: CoreData
 
 
 def update_ds_recommended_config(session: SessionDep, datasource_id: int, recommended_config: int):
+    """
+    是什么：update_ds_recommended_config 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     record = session.exec(select(CoreDatasource).where(CoreDatasource.id == datasource_id)).first()
     record.recommended_config = recommended_config
     session.add(record)
@@ -221,11 +291,16 @@ def update_ds_recommended_config(session: SessionDep, datasource_id: int, recomm
 
 
 async def delete_ds(session: SessionDep, id: int, user: CurrentUser | None = None):
+    """
+    是什么：delete_ds 是 backend/apps/datasource/crud/datasource.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理数据源相关数据、缓存或临时状态。
+    """
     term = get_ds(session, id, user)
     if term is None:
         raise HTTPException(status_code=404, detail="项目不存在")
     if term.type == "excel":
-        # drop all tables for current datasource
+        # 删除当前数据源下的全部表
         engine = get_engine_conn()
         conf = DatasourceConf(**json.loads(aes_decrypt(term.configuration)))
         with engine.connect() as conn:
@@ -244,6 +319,11 @@ async def delete_ds(session: SessionDep, id: int, user: CurrentUser | None = Non
 
 
 def getTables(session: SessionDep, id: int):
+    """
+    是什么：getTables 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
     tables = get_tables(ds)
     return tables
@@ -251,17 +331,32 @@ def getTables(session: SessionDep, id: int):
 
 def getTablesByDs(session: SessionDep, ds: CoreDatasource):
     # check_status(session, ds, True)
+    """
+    是什么：getTablesByDs 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     tables = get_tables(ds)
     return tables
 
 
 def getFields(session: SessionDep, id: int, table_name: str):
+    """
+    是什么：getFields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     ds = session.exec(select(CoreDatasource).where(CoreDatasource.id == id)).first()
     fields = get_fields(ds, table_name)
     return fields
 
 
 def getFieldsByDs(session: SessionDep, ds: CoreDatasource, table_name: str):
+    """
+    是什么：getFieldsByDs 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     fields = get_fields(ds, table_name)
     return fields
 
@@ -274,6 +369,11 @@ def sync_single_fields(
         schedule_embeddings: bool = True,
         tenant_id: int | None = None,
 ):
+    """
+    是什么：sync_single_fields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     table_query = session.query(CoreTable).filter(CoreTable.id == id)
     if tenant_id is not None:
         table_query = table_query.join(CoreDatasource, CoreDatasource.id == CoreTable.ds_id).filter(
@@ -292,7 +392,7 @@ def sync_single_fields(
     if not table.table_name in t_name:
         raise HTTPException(status_code=500, detail=trans('i18n_table_not_exist'))
 
-    # sync field
+    # 同步字段
     fields = getFieldsByDs(session, ds, table.table_name)
     sync_fields(session, ds, table, fields)
 
@@ -308,11 +408,16 @@ def sync_single_fields(
 
 
 def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable]):
+    """
+    是什么：sync_table 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     id_list = []
     for item in tables:
         statement = select(CoreTable).where(and_(CoreTable.ds_id == ds.id, CoreTable.table_name == item.table_name))
         record = session.exec(statement).first()
-        # update exist table, only update table_comment
+        # 更新已存在的表，仅更新表注释。
         if record is not None:
             item.id = record.id
             id_list.append(record.id)
@@ -321,7 +426,7 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
             session.add(record)
             session.commit()
         else:
-            # save new table
+            # 保存新表
             table = CoreTable(ds_id=ds.id, checked=True, table_name=item.table_name, table_comment=item.table_comment,
                               custom_comment="")
             session.add(table)
@@ -331,7 +436,7 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
             id_list.append(table.id)
             session.commit()
 
-        # sync field
+        # 同步字段
         fields = getFieldsByDs(session, ds, item.table_name)
         sync_fields(session, ds, item, fields)
 
@@ -341,17 +446,22 @@ def sync_table(session: SessionDep, ds: CoreDatasource, tables: List[CoreTable])
         session.query(CoreField).filter(and_(CoreField.ds_id == ds.id, CoreField.table_id.not_in(id_list))).delete(
             synchronize_session=False)
         session.commit()
-    else:  # delete all tables and fields in this ds
+    else:  # 删除该数据源下的全部表和字段
         session.query(CoreTable).filter(CoreTable.ds_id == ds.id).delete(synchronize_session=False)
         session.query(CoreField).filter(CoreField.ds_id == ds.id).delete(synchronize_session=False)
         session.commit()
 
-    # do table embedding
+    # 执行表向量化
     run_save_table_embeddings(id_list, tenant_id=ds.tenant_id)
     run_save_ds_embeddings([ds.id], tenant_id=ds.tenant_id)
 
 
 def sync_fields(session: SessionDep, ds: CoreDatasource, table: CoreTable, fields: List[ColumnSchema]):
+    """
+    是什么：sync_fields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     id_list = []
     for index, item in enumerate(fields):
         statement = select(CoreField).where(
@@ -389,6 +499,11 @@ def update_table_and_fields(
         current_user_id: int | None = None,
         tenant_id: int | None = None,
 ):
+    """
+    是什么：update_table_and_fields 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     update_table(session, data.table)
     metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, data.table.ds_id)
     save_table_comment(
@@ -420,6 +535,11 @@ def updateTable(
         current_user_id: int | None = None,
         tenant_id: int | None = None,
 ):
+    """
+    是什么：updateTable 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     update_table(session, table)
 
     metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, table.ds_id)
@@ -441,6 +561,11 @@ def updateField(
         current_user_id: int | None = None,
         tenant_id: int | None = None,
 ):
+    """
+    是什么：updateField 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     update_field(session, field)
 
     metadata_tenant_id = _coerce_tenant_id(tenant_id) or _datasource_tenant_id(session, field.ds_id)
@@ -460,10 +585,15 @@ def updateField(
 
 
 def preview(session: SessionDep, current_user: CurrentUser, id: int, data: TableObj):
+    """
+    是什么：preview 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 preview 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     ds = session.query(CoreDatasource).filter(CoreDatasource.id == id).first()
     # check_status(session, ds, True)
 
-    # ignore data's fields param, query fields from database
+    # 忽略入参中的字段列表，改从数据库查询字段。
     if not data.table.id:
         return {"fields": [], "data": [], "sql": ''}
 
@@ -486,11 +616,11 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     where = ''
     f_list = [f for f in fields if f.checked]
     if is_normal_user(current_user):
-        # column is checked, and, column permission for data.fields
+        # 列已校验，同时对入参字段执行列权限过滤。
         f_list = get_column_permission_fields(session=session, current_user=current_user, table=table,
                                               fields=f_list, contain_rules=contain_rules)
 
-        # row permission tree
+        # 行权限树
         where_str = ''
         filter_mapping = get_row_permission_filters(session=session, current_user=current_user, ds=ds, tables=None,
                                                     single_table=table)
@@ -506,16 +636,16 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     sql: str = ""
     if ds.type == "mysql" or ds.type == "doris" or ds.type == "starrocks" or ds.type == "hive":
-        sql = f"""SELECT `{"`, `".join(fields)}` FROM `{table.table_name}` 
-            {where} 
+        sql = f"""SELECT `{"`, `".join(fields)}` FROM `{table.table_name}`
+            {where}
             LIMIT 100"""
     elif ds.type == "sqlServer":
         sql = f"""SELECT TOP 100 [{"], [".join(fields)}] FROM [{conf.dbSchema}].[{table.table_name}]
-            {where} 
+            {where}
             """
     elif ds.type == "pg" or ds.type == "excel" or ds.type == "redshift" or ds.type == "kingbase":
-        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{table.table_name}" 
-            {where} 
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{table.table_name}"
+            {where}
             LIMIT 100"""
     elif ds.type == "oracle":
         # sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{data.table.table_name}"
@@ -524,13 +654,13 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
         #     OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"""
         sql = f"""SELECT * FROM
                     (SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{table.table_name}"
-                    {where} 
+                    {where}
                     ORDER BY "{fields[0]}")
                     WHERE ROWNUM <= 100
                     """
     elif ds.type == "ck":
-        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{table.table_name}" 
-            {where} 
+        sql = f"""SELECT "{'", "'.join(fields)}" FROM "{table.table_name}"
+            {where}
             LIMIT 100"""
     elif ds.type == "dm":
         sql = f"""SELECT "{'", "'.join(fields)}" FROM "{conf.dbSchema}"."{table.table_name}"
@@ -553,6 +683,11 @@ def preview(session: SessionDep, current_user: CurrentUser, id: int, data: Table
 
 
 def fieldEnum(session: SessionDep, current_user: CurrentUser, id: int):
+    """
+    是什么：fieldEnum 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 fieldEnum 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     field = session.query(CoreField).filter(CoreField.id == id).first()
     if field is None:
         return []
@@ -578,6 +713,11 @@ def fieldEnum(session: SessionDep, current_user: CurrentUser, id: int):
 
 
 def updateNum(session: SessionDep, ds: CoreDatasource):
+    """
+    是什么：updateNum 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新数据源相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     all_tables = get_tables(ds) if ds.type != 'excel' else json.loads(aes_decrypt(ds.configuration)).get('sheets')
     selected_tables = get_tables_by_ds_id(session, ds.id)
     num = f'{len(selected_tables)}/{len(all_tables)}'
@@ -592,6 +732,11 @@ def updateNum(session: SessionDep, ds: CoreDatasource):
 
 
 def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource) -> List[TableAndFields]:
+    """
+    是什么：get_table_obj_by_ds 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     _list: List = []
     if ds is None or not has_datasource_access(session, current_user, ds.id):
         return _list
@@ -603,11 +748,11 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
     conf = DatasourceConf(**json.loads(aes_decrypt(ds.configuration))) if ds.type != "excel" else get_engine_config()
     schema = conf.dbSchema if conf.dbSchema is not None and conf.dbSchema != "" else conf.database
 
-    # get all field
+    # 获取全部字段
     table_ids = [table.id for table in tables]
     all_fields = session.query(CoreField).filter(
         and_(CoreField.table_id.in_(table_ids), CoreField.checked == True)).all()
-    # build dict
+    # 构建字典
     fields_dict = {}
     for field in all_fields:
         if fields_dict.get(field.table_id):
@@ -625,7 +770,7 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
         fields = fields_dict.get(table.id) or []
         _apply_workspace_comments_to_fields(session, tenant_id, table, fields)
 
-        # do column permissions, filter fields
+        # 执行列权限过滤字段
         fields = get_column_permission_fields(session=session, current_user=current_user, table=table, fields=fields,
                                               contain_rules=contain_rules)
         _list.append(TableAndFields(schema=schema, table=table, fields=fields))
@@ -633,22 +778,26 @@ def get_table_obj_by_ds(session: SessionDep, current_user: CurrentUser, ds: Core
 
 
 def get_table_sample_data(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, table_name: str, fields: list) -> str:
-    """Get 3 sample rows from a table in JSON format to help AI understand the data"""
+    """
+    是什么：get_table_sample_data 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if not fields:
         return ""
 
     db = DB.get_db(ds.type)
-    # Get prefix/suffix for identifier quoting
+    # 获取标识符引用的前后缀。
     prefix = db.prefix if hasattr(db, 'prefix') else '"'
     suffix = db.suffix if hasattr(db, 'suffix') else '"'
 
-    # Build field list with proper quoting
+    # 使用正确引用方式构建字段列表。
     field_names = []
-    for field in fields[:10]:  # Limit to first 10 fields to avoid too wide results
+    for field in fields[:10]:  # 限制为前 10 个字段，避免结果过宽。
         field_name = f"{prefix}{field.field_name}{suffix}"
         field_names.append(field_name)
 
-    # Build LIMIT query based on database type
+    # 按数据库类型构建 LIMIT 查询。
     if equals_ignore_case(ds.type, "sqlServer"):
         query = f"SELECT TOP 3 {','.join(field_names)} FROM {prefix}{table_name}{suffix}"
     elif equals_ignore_case(ds.type, "ck"):
@@ -674,7 +823,7 @@ def get_table_sample_data(session: SessionDep, current_user: CurrentUser, ds: Co
         ).result
         if result and result.get('data') and len(result['data']) > 0:
             import json
-            # Truncate long string values for readability
+            # 截断长字符串值以提升可读性。
             json_rows = []
             for row in result['data'][:3]:
                 truncated_row = {}
@@ -682,7 +831,7 @@ def get_table_sample_data(session: SessionDep, current_user: CurrentUser, ds: Co
                     if value is None:
                         truncated_row[key] = None
                     elif isinstance(value, str):
-                        # Truncate long strings
+                        # 截断长字符串
                         if len(value) > 100:
                             value = value[:100] + '...'
                         truncated_row[key] = value.replace('\n', ' ').replace('\r', ' ')
@@ -697,7 +846,11 @@ def get_table_sample_data(session: SessionDep, current_user: CurrentUser, ds: Co
 
 def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource,
                            table_list: list[str] = None) -> str:
-    """Get sample data (3 rows) for all tables to help AI understand the data"""
+    """
+    是什么：get_tables_sample_data 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     if is_normal_user(current_user):
         return ""
 
@@ -717,6 +870,11 @@ def get_tables_sample_data(session: SessionDep, current_user: CurrentUser, ds: C
 
 
 def _relation_id(value) -> int | None:
+    """
+    是什么：_relation_id 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _relation_id 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -725,6 +883,11 @@ def _relation_id(value) -> int | None:
 
 def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDatasource, question: str,
                      embedding: bool = True, table_list: list[str] = None) -> tuple[str, list]:
+    """
+    是什么：get_table_schema 是 backend/apps/datasource/crud/datasource.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     schema_str = ""
     table_objs = get_table_obj_by_ds(session=session, current_user=current_user, ds=ds)
     if len(table_objs) == 0:
@@ -732,7 +895,7 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     db_name = table_objs[0].schema
     schema_str += f"【DB_ID】 {db_name}\n【Schema】\n"
     tables = []
-    all_tables = []  # temp save all tables
+    all_tables = []  # 临时保存全部表
     table_name_list = []
     visible_table_ids = set()
     visible_field_ids = set()
@@ -784,16 +947,16 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
     if not tables:
         return schema_str, []
 
-    # do table embedding
+    # 执行表向量化
     if embedding and tables and settings.TABLE_EMBEDDING_ENABLED:
         tables = calc_table_embedding(tables, question)
-    # splice schema
+    # 拼接结构信息
     if tables:
         for s in tables:
             schema_str += s.get('schema_table')
             table_name_list.append(s.get('table_name'))
 
-    # field relation
+    # 字段关系
     if tables and ds.table_relation:
         table_relation = ds.table_relation
         if isinstance(table_relation, str):
@@ -825,14 +988,14 @@ def get_table_schema(session: SessionDep, current_user: CurrentUser, ds: CoreDat
                     continue
                 all_relations.append((source_table_id, source_field_id, target_table_id, target_field_id))
 
-            # get lost table ids
+            # 获取缺失表 ID
             relation_table_ids = {
                 table_id
                 for relation in all_relations
                 for table_id in (relation[0], relation[2])
             }
             lost_table_ids = list(relation_table_ids - embedding_table_ids)
-            # get lost table schema and splice it
+            # 获取缺失表结构并拼接
             lost_tables = list(filter(lambda x: x.get('id') in lost_table_ids, all_tables))
             if lost_tables:
                 for s in lost_tables:

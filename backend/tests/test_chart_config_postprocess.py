@@ -4,6 +4,11 @@ from apps.chat.task.llm import _ensure_chart_covers_metric_fields
 
 
 def test_time_series_rate_chart_keeps_line_when_counts_are_supporting_metrics() -> None:
+    """
+    是什么：test_time_series_rate_chart_keeps_line_when_counts_are_supporting_metrics 是 backend/tests/test_chart_config_postprocess.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     fields = [
         "新增日期",
         "新增用户数",
@@ -61,6 +66,11 @@ def test_time_series_rate_chart_keeps_line_when_counts_are_supporting_metrics() 
 
 
 def test_chart_downgrades_to_table_when_important_metric_is_missing() -> None:
+    """
+    是什么：test_chart_downgrades_to_table_when_important_metric_is_missing 是 backend/tests/test_chart_config_postprocess.py 中的同步测试函数。
+    谁调用：由 pytest 测试运行器收集并执行。
+    做了什么：构造测试场景的测试条件，断言实际结果符合预期。
+    """
     fields = ["日期", "收入", "成本", "利润"]
     rows = [
         {"日期": "2026-06-01", "收入": 1000, "成本": 650, "利润": 350},

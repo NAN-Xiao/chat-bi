@@ -39,14 +39,29 @@ router = APIRouter(
 
 
 def _current_tenant_id(current_user: CurrentUser) -> int:
+    """
+    是什么：_current_tenant_id 是 backend/apps/chat/api/chat.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _current_tenant_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return require_current_tenant_id(current_user)
 
 
 def _rate_limit_message(retry_after_seconds: int) -> str:
+    """
+    是什么：_rate_limit_message 是 backend/apps/chat/api/chat.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _rate_limit_message 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return f"当前租户请求过于频繁，请稍后再试。约 {retry_after_seconds} 秒后可以重试。"
 
 
 def _quota_message(state) -> str:
+    """
+    是什么：_quota_message 是 backend/apps/chat/api/chat.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _quota_message 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if getattr(state, "reason", None) == "subscription_suspended":
         return (
             f"当前租户订阅状态为 {getattr(state, 'subscription_status', 'suspended')}，"
@@ -60,6 +75,11 @@ def _quota_message(state) -> str:
 
 
 def _parse_chat_finish_step(value: int) -> ChatFinishStep:
+    """
+    是什么：_parse_chat_finish_step 是 backend/apps/chat/api/chat.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     try:
         return ChatFinishStep(value)
     except ValueError:
@@ -75,6 +95,11 @@ async def _tenant_rate_limit_response(
         in_chat: bool = True,
         stream: bool = True,
 ):
+    """
+    是什么：_tenant_rate_limit_response 是 backend/apps/chat/api/chat.py 中的异步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 _tenant_rate_limit_response 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     try:
         limit = resolve_tenant_rate_limit(session, _current_tenant_id(current_user), action)
         state = await consume_tenant_rate_limit(_current_tenant_id(current_user), action, limit=limit)
@@ -82,6 +107,11 @@ async def _tenant_rate_limit_response(
         message = str(exc)
         if stream:
             def _err():
+                """
+                是什么：_err 是 backend/apps/chat/api/chat.py 中的同步函数。
+                谁调用：由外层函数 _tenant_rate_limit_response 在执行内部流程时调用。
+                做了什么：围绕 _err 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+                """
                 if in_chat:
                     yield 'data:' + orjson.dumps({
                         'content': message,
@@ -101,6 +131,11 @@ async def _tenant_rate_limit_response(
             message = str(exc)
             if stream:
                 def _quota_unavailable():
+                    """
+                    是什么：_quota_unavailable 是 backend/apps/chat/api/chat.py 中的同步函数。
+                    谁调用：由外层函数 _tenant_rate_limit_response 在执行内部流程时调用。
+                    做了什么：围绕 _quota_unavailable 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+                    """
                     if in_chat:
                         yield 'data:' + orjson.dumps({
                             'content': message,
@@ -117,6 +152,11 @@ async def _tenant_rate_limit_response(
         message = _quota_message(quota_state)
         if stream:
             def _quota_err():
+                """
+                是什么：_quota_err 是 backend/apps/chat/api/chat.py 中的同步函数。
+                谁调用：由外层函数 _tenant_rate_limit_response 在执行内部流程时调用。
+                做了什么：围绕 _quota_err 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+                """
                 if in_chat:
                     yield 'data:' + orjson.dumps({
                         'content': message,
@@ -155,6 +195,11 @@ async def _tenant_rate_limit_response(
     headers = {"Retry-After": str(state.retry_after_seconds)}
     if stream:
         def _err():
+            """
+            是什么：_err 是 backend/apps/chat/api/chat.py 中的同步函数。
+            谁调用：由外层函数 _tenant_rate_limit_response 在执行内部流程时调用。
+            做了什么：围绕 _err 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+            """
             if in_chat:
                 yield 'data:' + orjson.dumps({
                     'content': message,
@@ -185,6 +230,11 @@ async def _tenant_rate_limit_response(
 @router.get("/list", response_model=List[Chat], summary=f"{PLACEHOLDER_PREFIX}get_chat_list")
 async def chats(session: SessionDep, current_user: CurrentUser,
                 datasource_id: Optional[int] = Query(None, description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：chats 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 chats 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if datasource_id is not None and not has_datasource_access(session, current_user, datasource_id):
         raise HTTPException(status_code=403, detail="Datasource access is required")
     return list_chats(session, current_user, datasource_id)
@@ -193,7 +243,17 @@ async def chats(session: SessionDep, current_user: CurrentUser,
 @router.get("/{chart_id}", response_model=ChatInfo, summary=f"{PLACEHOLDER_PREFIX}get_chat")
 async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int, current_assistant: CurrentAssistant,
                    trans: Trans):
+    """
+    是什么：get_chat 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 get_chat 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_chat_with_records(chart_id=chart_id, session=session, current_user=current_user,
                                      current_assistant=current_assistant, trans=trans)
 
@@ -204,7 +264,17 @@ async def get_chat(session: SessionDep, current_user: CurrentUser, chart_id: int
 async def get_chat_with_data(session: SessionDep, current_user: CurrentUser, chart_id: int,
                              current_assistant: CurrentAssistant,
                              datasource_id: Optional[int] = Query(None, description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：get_chat_with_data 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 get_chat_with_data 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         chat_info = get_chat_with_records_with_data(chart_id=chart_id, session=session, current_user=current_user,
                                                     current_assistant=current_assistant)
         if datasource_id and int(chat_info.datasource or 0) != int(datasource_id):
@@ -237,7 +307,17 @@ async def chat_predict_data(session: SessionDep, chat_record_id: int):
 
 @router.get("/record/{chat_record_id}/data", summary=f"{PLACEHOLDER_PREFIX}get_chart_data")
 async def chat_record_data(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    """
+    是什么：chat_record_data 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 chat_record_data 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 chat_record_data 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         data = get_chart_data_with_user(chat_record_id=chat_record_id, session=session, current_user=current_user)
         return format_json_data(data)
 
@@ -246,7 +326,17 @@ async def chat_record_data(session: SessionDep, current_user: CurrentUser, chat_
 
 @router.get("/record/{chat_record_id}/data_live", summary=f"{PLACEHOLDER_PREFIX}get_chart_data_live")
 async def chat_record_data_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    """
+    是什么：chat_record_data_live 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 chat_record_data_live 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 chat_record_data_live 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         data = get_chart_data_with_user_live(chat_record_id=chat_record_id, session=session, current_user=current_user)
         return format_json_data(data)
 
@@ -255,7 +345,17 @@ async def chat_record_data_live(session: SessionDep, current_user: CurrentUser, 
 
 @router.get("/record/{chat_record_id}/predict_data", summary=f"{PLACEHOLDER_PREFIX}get_chart_predict_data")
 async def chat_predict_data(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    """
+    是什么：chat_predict_data 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 chat_predict_data 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 chat_predict_data 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         data = get_chat_predict_data_with_user(chat_record_id=chat_record_id, session=session,
                                                current_user=current_user)
         return format_json_list_data(data)
@@ -265,7 +365,17 @@ async def chat_predict_data(session: SessionDep, current_user: CurrentUser, chat
 
 @router.get("/record/{chat_record_id}/log", summary=f"{PLACEHOLDER_PREFIX}get_record_log")
 async def chat_record_log(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    """
+    是什么：chat_record_log 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 chat_record_log 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 chat_record_log 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_chat_log_history(session, chat_record_id, current_user)
 
     return await asyncio.to_thread(inner)
@@ -273,7 +383,17 @@ async def chat_record_log(session: SessionDep, current_user: CurrentUser, chat_r
 
 @router.get("/record/{chat_record_id}/usage", summary=f"{PLACEHOLDER_PREFIX}get_record_usage")
 async def chat_record_usage(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    """
+    是什么：chat_record_usage 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 chat_record_usage 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     def inner():
+        """
+        是什么：inner 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 chat_record_usage 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         return get_chat_log_history(session, chat_record_id, current_user, True)
 
     return await asyncio.to_thread(inner)
@@ -302,6 +422,11 @@ async def rename(session: SessionDep, chat: RenameChat):
     resource_id_expr="chat.id"
 ))
 async def rename(session: SessionDep, current_user: CurrentUser, chat: RenameChat):
+    """
+    是什么：rename 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     try:
         return rename_chat_with_user(session=session, current_user=current_user, rename_object=chat)
     except Exception as e:
@@ -336,6 +461,11 @@ async def delete(session: SessionDep, chart_id: int, brief: str):
     remark_expr="brief"
 ))
 async def delete(session: SessionDep, current_user: CurrentUser, chart_id: int, brief: str):
+    """
+    是什么：delete 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    """
     try:
         return delete_chat_with_user(session=session, current_user=current_user, chart_id=chart_id)
     except Exception as e:
@@ -353,6 +483,11 @@ async def delete(session: SessionDep, current_user: CurrentUser, chart_id: int, 
     result_id_expr="id"
 ))
 async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat):
+    """
+    是什么：start_chat 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    """
     try:
         return create_chat(session, current_user, create_chat_obj)
     except Exception as e:
@@ -370,6 +505,11 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, create_chat
 ))
 async def start_chat(session: SessionDep, current_user: CurrentUser, current_assistant: CurrentAssistant,
                      create_chat_obj: CreateChat = CreateChat(origin=2)):
+    """
+    是什么：start_chat 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    """
     try:
         if (
             create_chat_obj
@@ -391,7 +531,17 @@ async def start_chat(session: SessionDep, current_user: CurrentUser, current_ass
 @router.post("/recommend_questions/{chat_record_id}", summary=f"{PLACEHOLDER_PREFIX}ask_recommend_questions")
 async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser, chat_record_id: int,
                                   current_assistant: CurrentAssistant, articles_number: Optional[int] = 4):
+    """
+    是什么：ask_recommend_questions 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 ask_recommend_questions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     def _return_empty():
+        """
+        是什么：_return_empty 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 ask_recommend_questions 在执行内部流程时调用。
+        做了什么：围绕 _return_empty 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         yield 'data:' + orjson.dumps({'content': '[]', 'type': 'recommended_question'}).decode() + '\n\n'
 
     limited_response = await _tenant_rate_limit_response(session, current_user, "recommend")
@@ -414,6 +564,11 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
         traceback.print_exc()
 
         def _err(_e: Exception):
+            """
+            是什么：_err 是 backend/apps/chat/api/chat.py 中的同步函数。
+            谁调用：由外层函数 ask_recommend_questions 在执行内部流程时调用。
+            做了什么：围绕 _err 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+            """
             yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
 
         return StreamingResponse(_err(e), media_type="text/event-stream")
@@ -426,10 +581,20 @@ async def ask_recommend_questions(session: SessionDep, current_user: CurrentUser
 # @require_permissions(permission=AppPermission(type='ds', keyExpression="datasource_id"))
 async def recommend_questions(session: SessionDep, current_user: CurrentUser,
                               datasource_id: int = Path(..., description=f"{PLACEHOLDER_PREFIX}ds_id")):
+    """
+    是什么：recommend_questions 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：基于输入上下文生成聊天和 Agent相关结果，并保存或返回给调用方。
+    """
     return list_recent_questions(session=session, current_user=current_user, datasource_id=datasource_id)
 
 
 def find_base_question(record_id: int, session: SessionDep, current_user: CurrentUser):
+    """
+    是什么：find_base_question 是 backend/apps/chat/api/chat.py 中的同步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(ChatRecord.question, ChatRecord.regenerate_record_id).where(
         and_(
             ChatRecord.id == record_id,
@@ -454,6 +619,11 @@ async def question_answer(session: SessionDep, current_user: CurrentUser, reques
                               ChatFinishStep.GENERATE_CHART.value,
                               description="Smart Q&A execution stop step. Defaults to full chart generation.",
                           )):
+    """
+    是什么：question_answer 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 question_answer 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     question = ChatQuestion(
         chat_id=request_question.chat_id,
         question=request_question.question,
@@ -475,15 +645,20 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
                                 stream: bool = True,
                                 finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False,
                                 return_img: bool = True):
+    """
+    是什么：question_answer_inner 是 backend/apps/chat/api/chat.py 中的异步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 question_answer_inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     try:
         command, text_before_command, record_id, warning_info = parse_quick_command(request_question.question)
         if command:
-            # todo 对话界面下，暂不支持分析和预测，需要改造前端
+            # 待办：对话界面暂不支持分析和预测，需要改造前端
             if in_chat and (command == QuickCommand.ANALYSIS or command == QuickCommand.PREDICT_DATA):
                 raise Exception(f'Command: {command.value} temporary not supported')
 
             if record_id is not None:
-                # 排除analysis和predict
+                # 排除分析和预测记录
                 stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.analysis_record_id,
                               ChatRecord.predict_record_id, ChatRecord.regenerate_record_id,
                               ChatRecord.first_chat).where(
@@ -508,7 +683,7 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
                 if rec_predict_record_id:
                     raise Exception('Predict data record does not support this operation')
 
-            else:  # get last record id
+            else:  # 获取上一条记录 ID
                 stmt = select(ChatRecord.id, ChatRecord.chat_id, ChatRecord.regenerate_record_id).where(
                     and_(ChatRecord.chat_id == request_question.chat_id,
                          ChatRecord.create_by == current_user.id,
@@ -555,6 +730,11 @@ async def question_answer_inner(session: SessionDep, current_user: CurrentUser, 
 
         if stream:
             def _err(_e: Exception):
+                """
+                是什么：_err 是 backend/apps/chat/api/chat.py 中的同步函数。
+                谁调用：由外层函数 question_answer_inner 在执行内部流程时调用。
+                做了什么：围绕 _err 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+                """
                 if in_chat:
                     yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
                 else:
@@ -573,6 +753,11 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
                      current_assistant: Optional[CurrentAssistant] = None, in_chat: bool = True, stream: bool = True,
                      finish_step: ChatFinishStep = ChatFinishStep.GENERATE_CHART, embedding: bool = False,
                      return_img: bool = True):
+    """
+    是什么：stream_sql 是 backend/apps/chat/api/chat.py 中的异步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：组织聊天和 Agent的流式输出或异步等待，把事件和结果传递给调用方。
+    """
     limited_response = await _tenant_rate_limit_response(session, current_user, "chat", in_chat=in_chat, stream=stream)
     if limited_response is not None:
         return limited_response
@@ -587,6 +772,11 @@ async def stream_sql(session: SessionDep, current_user: CurrentUser, request_que
 
         if stream:
             def _err(_e: Exception):
+                """
+                是什么：_err 是 backend/apps/chat/api/chat.py 中的同步函数。
+                谁调用：由外层函数 stream_sql 在执行内部流程时调用。
+                做了什么：围绕 _err 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+                """
                 yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
 
             return StreamingResponse(_err(e), media_type="text/event-stream")
@@ -618,11 +808,21 @@ async def analysis_or_predict_question(session: SessionDep, current_user: Curren
                                        current_assistant: CurrentAssistant, chat_record_id: int,
                                        action_type: str = Path(...,
                                                                description=f"{PLACEHOLDER_PREFIX}analysis_or_predict_action_type")):
+    """
+    是什么：analysis_or_predict_question 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 analysis_or_predict_question 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return await analysis_or_predict(session, current_user, chat_record_id, action_type, current_assistant)
 
 
 async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, chat_record_id: int, action_type: str,
                               current_assistant: CurrentAssistant, in_chat: bool = True, stream: bool = True):
+    """
+    是什么：analysis_or_predict 是 backend/apps/chat/api/chat.py 中的异步函数。
+    谁调用：由 FastAPI 路由处理函数或同模块业务辅助流程调用。
+    做了什么：围绕 analysis_or_predict 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     limited_response = await _tenant_rate_limit_response(session, current_user, "analysis", in_chat=in_chat, stream=stream)
     if limited_response is not None:
         return limited_response
@@ -674,6 +874,11 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
         traceback.print_exc()
         if stream:
             def _err(_e: Exception):
+                """
+                是什么：_err 是 backend/apps/chat/api/chat.py 中的同步函数。
+                谁调用：由外层函数 analysis_or_predict 在执行内部流程时调用。
+                做了什么：围绕 _err 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+                """
                 if in_chat:
                     yield 'data:' + orjson.dumps({'content': str(_e), 'type': 'error'}).decode() + '\n\n'
                 else:
@@ -707,6 +912,11 @@ async def analysis_or_predict(session: SessionDep, current_user: CurrentUser, ch
 @router.get("/record/{chat_record_id}/excel/export/{chat_id}", summary=f"{PLACEHOLDER_PREFIX}export_chart_data")
 @system_log(LogConfig(operation_type=OperationType.EXPORT, module=OperationModules.CHAT, resource_id_expr="chat_id", ))
 async def export_excel(session: SessionDep, current_user: CurrentUser, chat_record_id: int, chat_id: int, trans: Trans):
+    """
+    是什么：export_excel 是 backend/apps/chat/api/chat.py 中的异步 FastAPI 接口处理函数。
+    谁调用：由 FastAPI 路由系统在匹配到对应 HTTP 请求时调用。
+    做了什么：围绕 export_excel 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     chat_record = session.get(ChatRecord, chat_record_id)
     if not chat_record:
         raise HTTPException(
@@ -779,6 +989,11 @@ async def export_excel(session: SessionDep, current_user: CurrentUser, chat_reco
 
     def inner():
 
+        """
+        是什么：inner 是 backend/apps/chat/api/chat.py 中的同步函数。
+        谁调用：由外层函数 export_excel 在执行内部流程时调用。
+        做了什么：围绕 inner 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+        """
         data_list = DataFormat.convert_large_numbers_in_object_array(obj_array=_data + _predict_data,
                                                                      int_threshold=1e11)
 

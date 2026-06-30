@@ -15,12 +15,13 @@ from common.core.config import settings
 from common.utils.crypto import (
     decrypt_sensitive_text,
     encrypt_sensitive_text,
-    legacy_zhishu_encrypt_for_tests,
+    legacy_shuzhi_encrypt_for_tests,
 )
 
 
 CONFIGURED_LEGACY_AES_KEY = b"LegacyTestKey123"
 SQLBOT_LEGACY_AES_KEY = b"SQLBot1234567890"
+OLD_BRAND_LEGACY_AES_KEY = bytes([90, 104, 105, 115, 104, 117, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48])
 
 
 def _legacy_ecb_encrypt_with_key(text: str, key: bytes) -> str:
@@ -40,12 +41,12 @@ def test_sensitive_text_uses_versioned_server_side_encryption():
     encrypted = encrypt_sensitive_text("secret-value")
 
     assert encrypted.startswith("fernet:v1:")
-    assert encrypted != legacy_zhishu_encrypt_for_tests("secret-value")
+    assert encrypted != legacy_shuzhi_encrypt_for_tests("secret-value")
     assert decrypt_sensitive_text(encrypted) == "secret-value"
 
 
 def test_sensitive_text_keeps_legacy_aes_readable():
-    legacy = legacy_zhishu_encrypt_for_tests("legacy-secret")
+    legacy = legacy_shuzhi_encrypt_for_tests("legacy-secret")
 
     assert decrypt_sensitive_text(legacy) == "legacy-secret"
 
@@ -53,6 +54,12 @@ def test_sensitive_text_keeps_legacy_aes_readable():
 def test_sensitive_text_reads_configured_legacy_aes_key(monkeypatch):
     monkeypatch.setattr(settings, "LEGACY_CONFIG_AES_KEYS", CONFIGURED_LEGACY_AES_KEY.decode("utf-8"))
     legacy = _legacy_ecb_encrypt_with_key("legacy-secret", CONFIGURED_LEGACY_AES_KEY)
+
+    assert decrypt_sensitive_text(legacy) == "legacy-secret"
+
+
+def test_sensitive_text_reads_builtin_old_brand_legacy_aes_key():
+    legacy = _legacy_ecb_encrypt_with_key("legacy-secret", OLD_BRAND_LEGACY_AES_KEY)
 
     assert decrypt_sensitive_text(legacy) == "legacy-secret"
 

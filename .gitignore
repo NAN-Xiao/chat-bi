@@ -1,6 +1,7 @@
 .vscode
 node_modules/
 .codex-runtime/
+learning-docs/
 /test-results/
 /playwright-report/
 /blob-report/

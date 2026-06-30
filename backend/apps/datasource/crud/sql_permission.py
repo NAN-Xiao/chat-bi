@@ -16,10 +16,20 @@ from common.core.deps import CurrentUser, SessionDep
 
 
 def normalize_identifier(value: str | None) -> str:
+    """
+    是什么：normalize_identifier 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     return str(value or "").strip('"`[]').lower()
 
 
 def parse_sql_statements(sql: str, ds_type: str | None) -> list[exp.Expression]:
+    """
+    是什么：parse_sql_statements 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     dialect = get_sqlglot_dialect(ds_type)
     statements = [stmt for stmt in sqlglot.parse(sql, dialect=dialect) if stmt is not None]
     if not statements:
@@ -28,6 +38,11 @@ def parse_sql_statements(sql: str, ds_type: str | None) -> list[exp.Expression]:
 
 
 def extract_physical_tables(statements: list[exp.Expression]) -> set[str]:
+    """
+    是什么：extract_physical_tables 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     tables: set[str] = set()
     for stmt in statements:
         cte_names = {
@@ -47,6 +62,11 @@ def build_permission_scope(
         current_user: CurrentUser,
         datasource: CoreDatasource,
 ) -> dict[str, dict[str, Any]]:
+    """
+    是什么：build_permission_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装数据源相关对象和数据，并返回或写入对应状态。
+    """
     tables = session.query(CoreTable).filter(
         and_(CoreTable.ds_id == datasource.id, CoreTable.checked == True)
     ).all()
@@ -85,6 +105,11 @@ def build_permission_scope(
 
 
 def selected_table_aliases(select_expr: exp.Select, cte_names: set[str] | None = None) -> dict[str, str]:
+    """
+    是什么：selected_table_aliases 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     aliases: dict[str, str] = {}
     cte_names = cte_names or set()
     sources = []
@@ -107,6 +132,11 @@ def selected_table_aliases(select_expr: exp.Select, cte_names: set[str] | None =
 
 
 def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
+    """
+    是什么：cte_output_columns 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 cte_output_columns 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     cte_columns: dict[str, set[str]] = {}
     for cte in statement.find_all(exp.CTE):
         cte_name = normalize_identifier(cte.alias_or_name)
@@ -129,6 +159,11 @@ def cte_output_columns(statement: exp.Expression) -> dict[str, set[str]]:
 
 
 def _values_source_columns(select_expr: exp.Select) -> set[str]:
+    """
+    是什么：_values_source_columns 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _values_source_columns 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     from_expr = select_expr.args.get("from_")
     source = from_expr.this if from_expr is not None else None
     if not isinstance(source, exp.Values):
@@ -147,6 +182,11 @@ def selected_cte_aliases(
         select_expr: exp.Select,
         cte_columns: dict[str, set[str]] | None = None,
 ) -> dict[str, set[str]]:
+    """
+    是什么：selected_cte_aliases 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     cte_columns = cte_columns or {}
     aliases: dict[str, set[str]] = {}
     sources = []
@@ -177,6 +217,11 @@ def _column_can_resolve(
         output_aliases: set[str] | None = None,
         cte_aliases: dict[str, set[str]] | None = None,
 ) -> bool:
+    """
+    是什么：_column_can_resolve 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _column_can_resolve 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     normalized_column = normalize_identifier(column_name)
     normalized_table = normalize_identifier(column_table)
     cte_aliases = cte_aliases or {}
@@ -216,6 +261,11 @@ def _column_can_resolve(
 
 
 def _star_uses_table_scope(star: exp.Star, selected_aliases: dict[str, str]) -> set[str]:
+    """
+    是什么：_star_uses_table_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _star_uses_table_scope 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     parent = star.parent
     if isinstance(parent, exp.Column) and parent.table:
         physical_table = selected_aliases.get(normalize_identifier(parent.table))
@@ -224,6 +274,11 @@ def _star_uses_table_scope(star: exp.Star, selected_aliases: dict[str, str]) -> 
 
 
 def _nearest_select(node: exp.Expression) -> exp.Select | None:
+    """
+    是什么：_nearest_select 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _nearest_select 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     parent = node.parent
     while parent is not None:
         if isinstance(parent, exp.Select):
@@ -233,10 +288,20 @@ def _nearest_select(node: exp.Expression) -> exp.Select | None:
 
 
 def _is_in_current_select_scope(node: exp.Expression, select_expr: exp.Select) -> bool:
+    """
+    是什么：_is_in_current_select_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _is_in_current_select_scope 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     return _nearest_select(node) is select_expr
 
 
 def _select_output_aliases(select_expr: exp.Select) -> set[str]:
+    """
+    是什么：_select_output_aliases 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     aliases: set[str] = set()
     for item in select_expr.expressions:
         alias = normalize_identifier(item.alias)
@@ -250,6 +315,11 @@ def validate_sql_columns(
         permission_scope: dict[str, dict[str, Any]],
         current_user: CurrentUser,
 ) -> None:
+    """
+    是什么：validate_sql_columns 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     if not is_normal_user(current_user):
         return
 
@@ -309,6 +379,11 @@ def validate_sql_scope(
         datasource: CoreDatasource,
         sql: str,
 ) -> tuple[list[exp.Expression], set[str], dict[str, dict[str, Any]]]:
+    """
+    是什么：validate_sql_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     statements = parse_sql_statements(sql, datasource.type)
     actual_tables = extract_physical_tables(statements)
     if not actual_tables:
@@ -329,6 +404,11 @@ def validate_sql_table_scope(
         datasource: CoreDatasource,
         sql: str,
 ) -> set[str]:
+    """
+    是什么：validate_sql_table_scope 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验数据源相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     statements = parse_sql_statements(sql, datasource.type)
     actual_tables = extract_physical_tables(statements)
     if not actual_tables:
@@ -342,6 +422,11 @@ def validate_sql_table_scope(
 
 
 def parse_condition_expression(filter_sql: str, ds_type: str | None) -> exp.Expression:
+    """
+    是什么：parse_condition_expression 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化数据源相关数据，生成后续流程可使用的结构。
+    """
     dialect = get_sqlglot_dialect(ds_type)
     wrapped_sql = f"select 1 where {filter_sql}"
     statement = sqlglot.parse_one(wrapped_sql, dialect=dialect)
@@ -356,6 +441,11 @@ def apply_row_permission_filters(
         datasource: CoreDatasource,
         filters: list[dict[str, Any]],
 ) -> str:
+    """
+    是什么：apply_row_permission_filters 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 apply_row_permission_filters 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     filter_by_table = {
         normalize_identifier(item.get("table")): str(item.get("filter") or "").strip()
         for item in filters
@@ -373,6 +463,11 @@ def apply_row_permission_filters(
             raise ValueError(f"行权限过滤条件无法安全解析：{table_name}") from exc
 
     def _rewrite_table(node: exp.Expression):
+        """
+        是什么：_rewrite_table 是 backend/apps/datasource/crud/sql_permission.py 中的同步函数。
+        谁调用：由外层函数 apply_row_permission_filters 在执行内部流程时调用。
+        做了什么：围绕 _rewrite_table 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+        """
         if not isinstance(node, exp.Table):
             return node
         table_name = normalize_identifier(node.name)

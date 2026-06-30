@@ -43,14 +43,29 @@ class TenantUsageQuotaState:
 
 
 def usage_metric_date(now: datetime | None = None) -> str:
+    """
+    是什么：usage_metric_date 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 usage_metric_date 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return (now or datetime.now(timezone.utc)).date().isoformat()
 
 
 def _month_last_day(year: int, month: int) -> int:
+    """
+    是什么：_month_last_day 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _month_last_day 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     return calendar.monthrange(year, month)[1]
 
 
 def usage_window_dates(window: str, now: datetime | None = None) -> tuple[str, str, str]:
+    """
+    是什么：usage_window_dates 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 usage_window_dates 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     current = now or datetime.now(timezone.utc)
     if window == "monthly":
         start = current.replace(day=1).date().isoformat()
@@ -64,6 +79,11 @@ def usage_window_dates(window: str, now: datetime | None = None) -> tuple[str, s
 
 
 def token_total(token_usage: Any) -> int:
+    """
+    是什么：token_total 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 token_total 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if isinstance(token_usage, dict):
         value = token_usage.get("total_tokens")
         try:
@@ -76,6 +96,11 @@ def token_total(token_usage: Any) -> int:
 
 
 def _chat_log_total_tokens_expr(session: Session):
+    """
+    是什么：_chat_log_total_tokens_expr 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _chat_log_total_tokens_expr 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
         token_usage_type = func.jsonb_typeof(ChatLog.token_usage)
@@ -105,6 +130,11 @@ def _chat_log_total_tokens_expr(session: Session):
 
 
 def _chat_log_token_key_expr(session: Session, key: str):
+    """
+    是什么：_chat_log_token_key_expr 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _chat_log_token_key_expr 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
         token_usage_type = func.jsonb_typeof(ChatLog.token_usage)
@@ -124,6 +154,11 @@ def _chat_log_token_key_expr(session: Session, key: str):
 
 
 def _datetime_to_millis(value) -> int:
+    """
+    是什么：_datetime_to_millis 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _datetime_to_millis 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if value is None:
         return 0
     if isinstance(value, datetime):
@@ -135,6 +170,11 @@ def _datetime_to_millis(value) -> int:
 
 
 def _parse_iso_date(value: str | date | None) -> date | None:
+    """
+    是什么：_parse_iso_date 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     if value is None or value == "":
         return None
     if isinstance(value, date):
@@ -146,6 +186,11 @@ def _parse_iso_date(value: str | date | None) -> date | None:
 
 
 def _table_exists(session: Session) -> bool:
+    """
+    是什么：_table_exists 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _table_exists 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return inspect(session.connection()).has_table(TenantUsageDailyModel.__tablename__)
     except Exception:
@@ -153,10 +198,20 @@ def _table_exists(session: Session) -> bool:
 
 
 def _normalize_delta(value: int | None) -> int:
+    """
+    是什么：_normalize_delta 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     return max(0, int(value or 0))
 
 
 def _tenant_id(value: int | str | None) -> int:
+    """
+    是什么：_tenant_id 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _tenant_id 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return int(value or DEFAULT_USAGE_TENANT_ID)
     except (TypeError, ValueError):
@@ -164,6 +219,11 @@ def _tenant_id(value: int | str | None) -> int:
 
 
 def _parse_quota_limits() -> dict[str, Any]:
+    """
+    是什么：_parse_quota_limits 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化系统管理相关数据，生成后续流程可使用的结构。
+    """
     raw = (settings.TENANT_USAGE_QUOTA_PLAN_LIMITS or "").strip()
     if not raw:
         return {}
@@ -176,6 +236,11 @@ def _parse_quota_limits() -> dict[str, Any]:
 
 
 def _quota_limit_for_plan(plan: str | None, action: str, window: str) -> int | None:
+    """
+    是什么：_quota_limit_for_plan 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _quota_limit_for_plan 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     limits = _parse_quota_limits()
     plan_key = (plan or "default").strip().lower() or "default"
     action_key = (action or "").strip().lower()
@@ -197,6 +262,11 @@ def _quota_limit_for_plan(plan: str | None, action: str, window: str) -> int | N
 
 
 def _insert_for_dialect(session: Session):
+    """
+    是什么：_insert_for_dialect 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装系统管理相关对象和数据，并返回或写入对应状态。
+    """
     dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
         return pg_insert(TenantUsageDailyModel.__table__)
@@ -217,6 +287,11 @@ def record_tenant_usage(
     total_tokens: int = 0,
     task_count: int = 0,
 ) -> bool:
+    """
+    是什么：record_tenant_usage 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 record_tenant_usage 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if not settings.TENANT_USAGE_METERING_ENABLED:
         return False
     if not metric or not metric.strip():
@@ -279,6 +354,11 @@ def record_tenant_usage(
 
 
 def record_tenant_usage_detached(**kwargs) -> bool:
+    """
+    是什么：record_tenant_usage_detached 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 record_tenant_usage_detached 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if not settings.TENANT_USAGE_METERING_ENABLED:
         return False
     try:
@@ -303,6 +383,11 @@ def list_tenant_usage_daily(
     metric: str | None = None,
     limit: int = 500,
 ) -> list[TenantUsageDailyModel]:
+    """
+    是什么：list_tenant_usage_daily 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     if not _table_exists(session):
         return []
     statement = select(TenantUsageDailyModel).order_by(
@@ -328,6 +413,11 @@ def list_tenant_usage_by_user(
     end_date: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
+    """
+    是什么：list_tenant_usage_by_user 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     try:
         inspector = inspect(session.connection())
         if not inspector.has_table(ChatLog.__tablename__) or not inspector.has_table(ChatRecord.__tablename__):
@@ -342,7 +432,7 @@ def list_tenant_usage_by_user(
         ChatLog.local_operation == False,  # noqa: E712
         ChatLog.token_usage.is_not(None),
     ]
-    # Historical usage is kept under the original tenant/user even after the user leaves the workspace.
+    # 即使用户离开工作区，历史用量仍保留在原租户和原用户名下。
     parsed_start_date = _parse_iso_date(start_date)
     parsed_end_date = _parse_iso_date(end_date)
     if parsed_start_date:
@@ -415,6 +505,11 @@ def list_tenant_usage_by_model(
     end_date: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
+    """
+    是什么：list_tenant_usage_by_model 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     try:
         inspector = inspect(session.connection())
         if not inspector.has_table(ChatLog.__tablename__):
@@ -513,6 +608,11 @@ def sum_tenant_usage(
     end_date: str,
     field: str = "request_count",
 ) -> int:
+    """
+    是什么：sum_tenant_usage 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 sum_tenant_usage 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     if not metrics or not _table_exists(session):
         return 0
     column = getattr(TenantUsageDailyModel, field, TenantUsageDailyModel.request_count)
@@ -528,6 +628,11 @@ def sum_tenant_usage(
 
 
 def resolve_tenant_plan(session: Session | None, tenant_id: int | str | None) -> str:
+    """
+    是什么：resolve_tenant_plan 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 resolve_tenant_plan 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     resolved_tenant_id = _tenant_id(tenant_id)
     try:
         from apps.system.models.tenant import TenantModel
@@ -541,6 +646,11 @@ def resolve_tenant_plan(session: Session | None, tenant_id: int | str | None) ->
 
 
 def resolve_tenant_subscription_status(session: Session | None, tenant_id: int | str | None) -> str:
+    """
+    是什么：resolve_tenant_subscription_status 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 resolve_tenant_subscription_status 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     resolved_tenant_id = _tenant_id(tenant_id)
     try:
         from apps.system.crud.tenant import TENANT_SUBSCRIPTION_ACTIVE, normalize_subscription_status
@@ -562,6 +672,11 @@ def check_tenant_usage_quota(
     action: str,
     now: datetime | None = None,
 ) -> TenantUsageQuotaState:
+    """
+    是什么：check_tenant_usage_quota 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     resolved_tenant_id = _tenant_id(tenant_id)
     action_key = (action or "").strip().lower()
     plan = resolve_tenant_plan(session, resolved_tenant_id)
@@ -652,6 +767,11 @@ def check_tenant_usage_quota(
 
 
 def check_tenant_usage_quota_detached(*, tenant_id: int | str | None, action: str) -> TenantUsageQuotaState:
+    """
+    是什么：check_tenant_usage_quota_detached 是 backend/apps/system/crud/tenant_usage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     resolved_tenant_id = _tenant_id(tenant_id)
     try:
         from common.core.db import engine

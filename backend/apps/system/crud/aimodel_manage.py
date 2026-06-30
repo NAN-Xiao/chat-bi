@@ -6,6 +6,11 @@ from common.utils.utils import AppLogUtil
 
 
 async def async_model_info():
+    """
+    是什么：async_model_info 是 backend/apps/system/crud/aimodel_manage.py 中的异步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 async_model_info 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+    """
     with Session(engine) as session:
         model_list = session.exec(select(AiModelDetail)).all()
         any_model_change = False
@@ -24,6 +29,11 @@ async def async_model_info():
 
 
 def get_ai_model_list(session: Session, with_default: bool = True):
+    """
+    是什么：get_ai_model_list 是 backend/apps/system/crud/aimodel_manage.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询系统管理相关数据，整理后返回给调用方。
+    """
     where_condition = True
     if with_default:
         where_condition = AiModelDetail.default_model == True

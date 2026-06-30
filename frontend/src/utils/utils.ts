@@ -127,7 +127,7 @@ export const getCurrentRouter = () => {
 }
 
 export const setTitle = (title?: string) => {
-  document.title = title || '星通智数'
+  document.title = title || '星通数智'
 }
 
 function rgbToHex(r: any, g: any, b: any) {
@@ -285,7 +285,7 @@ export function isMobile() {
   )
 }
 
-export const getZhishuAddr = (portEnd?: boolean) => {
+export const getShuzhiAddr = (portEnd?: boolean) => {
   const addr = location.origin + location.pathname
   if (!portEnd || !addr.endsWith('/')) {
     return addr

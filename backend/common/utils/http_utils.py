@@ -5,6 +5,11 @@ from requests.exceptions import RequestException, Timeout
 
 
 def verify_url(url: str, timeout: int = 5) -> tuple[bool, str]:
+    """
+    是什么：verify_url 是 backend/common/utils/http_utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：校验通用工具相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+    """
     try:
         parsed = urlparse(url)
         if not all([parsed.scheme, parsed.netloc]):

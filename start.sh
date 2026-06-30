@@ -1,5 +1,5 @@
-SSR_PATH=/opt/zhishu/g2-ssr
-APP_PATH=/opt/zhishu/app
+SSR_PATH=/opt/shuzhi/g2-ssr
+APP_PATH=/opt/shuzhi/app
 PM2_CMD_PATH=$SSR_PATH/node_modules/pm2/bin/pm2
 APP_ROLE=${APP_ROLE:-all}
 API_HOST=${API_HOST:-0.0.0.0}

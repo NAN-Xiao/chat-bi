@@ -1,5 +1,5 @@
-﻿# Author: Junjun
-# Date: 2025/9/23
+﻿# 作者：Junjun
+# 日期：2025/9/23
 import json
 import time
 import traceback
@@ -11,6 +11,11 @@ from common.utils.utils import AppLogUtil
 
 
 def get_table_embedding(tables: list[dict], question: str):
+    """
+    是什么：get_table_embedding 是 backend/apps/datasource/embedding/table_embedding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询数据源相关数据，整理后返回给调用方。
+    """
     _list = []
     for table in tables:
         _list.append({"id": table.get('id'), "schema_table": table.get('schema_table'), "cosine_similarity": 0.0})
@@ -41,6 +46,11 @@ def get_table_embedding(tables: list[dict], question: str):
 
 
 def calc_table_embedding(tables: list[dict], question: str):
+    """
+    是什么：calc_table_embedding 是 backend/apps/datasource/embedding/table_embedding.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 calc_table_embedding 的语义处理数据源相关逻辑，并把结果返回或写入状态。
+    """
     _list = []
     for table in tables:
         _list.append(

@@ -1,5 +1,5 @@
 <template>
-  <div class="zhishu-table-container professional-container">
+  <div class="shuzhi-table-container professional-container">
     <div class="tool-left">
       <span class="page-title">{{ pageTitle }}</span>
       <div class="search-bar">
@@ -39,7 +39,7 @@
       </div>
     </div>
     <div
-      class="zhishu-table_user"
+      class="shuzhi-table_user"
       :class="[
         state.filterTexts.length && 'is-filter',
         multipleSelectionAll.length && 'show-pagination_height',
@@ -1718,7 +1718,7 @@ onMounted(() => {
 </script>
 
 <style lang="less" scoped>
-.zhishu-table-container {
+.shuzhi-table-container {
   width: 100%;
   height: 100%;
   position: relative;
@@ -1774,7 +1774,7 @@ onMounted(() => {
     align-items: center;
   }
 
-  .zhishu-table_user {
+  .shuzhi-table_user {
     width: 100%;
     max-height: calc(100vh - 156px);
     overflow-y: auto;

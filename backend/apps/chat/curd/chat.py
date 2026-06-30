@@ -48,14 +48,29 @@ CHAT_USAGE_METRICS = {
 
 
 def _current_tenant_id(current_user: CurrentUser | None) -> int:
+    """
+    是什么：_current_tenant_id 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _current_tenant_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return require_current_tenant_id(current_user)
 
 
 def _same_tenant(row, current_user: CurrentUser | None) -> bool:
+    """
+    是什么：_same_tenant 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _same_tenant 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return int(getattr(row, "tenant_id")) == _current_tenant_id(current_user)
 
 
 def _record_tenant_id(session: SessionDep, record_id: int | None) -> int | None:
+    """
+    是什么：_record_tenant_id 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _record_tenant_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not record_id:
         return None
     tenant_id = session.execute(select(ChatRecord.tenant_id).where(ChatRecord.id == record_id)).scalar()
@@ -63,6 +78,11 @@ def _record_tenant_id(session: SessionDep, record_id: int | None) -> int | None:
 
 
 def _chat_tenant_id(session: SessionDep, chat_id: int | None) -> int | None:
+    """
+    是什么：_chat_tenant_id 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _chat_tenant_id 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not chat_id:
         return None
     tenant_id = session.execute(select(Chat.tenant_id).where(Chat.id == chat_id)).scalar()
@@ -70,6 +90,11 @@ def _chat_tenant_id(session: SessionDep, chat_id: int | None) -> int | None:
 
 
 def _record_chat_usage_from_log(log: ChatLog, *, success: bool) -> None:
+    """
+    是什么：_record_chat_usage_from_log 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _record_chat_usage_from_log 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     metric = CHAT_USAGE_METRICS.get(log.operate)
     if not metric:
         return
@@ -89,6 +114,11 @@ def _record_chat_usage_from_log(log: ChatLog, *, success: bool) -> None:
 
 
 def _failed_permission_data(message: str = _USER_PERMISSION_DENIED_MESSAGE) -> dict[str, Any]:
+    """
+    是什么：_failed_permission_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _failed_permission_data 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return {
         "status": "failed",
         "error_type": PERMISSION_DENIED_ERROR_TYPE,
@@ -100,6 +130,11 @@ def _failed_permission_data(message: str = _USER_PERMISSION_DENIED_MESSAGE) -> d
 
 
 def _row_value(row, key: str):
+    """
+    是什么：_row_value 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _row_value 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     try:
         return getattr(row, key)
     except AttributeError:
@@ -107,6 +142,11 @@ def _row_value(row, key: str):
 
 
 def _record_has_sensitive_artifacts(row) -> bool:
+    """
+    是什么：_record_has_sensitive_artifacts 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _record_has_sensitive_artifacts 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     return any(
         _row_value(row, key)
         for key in (
@@ -124,6 +164,11 @@ def _record_has_sensitive_artifacts(row) -> bool:
 
 
 def _record_allowed_by_current_permissions(session: SessionDep, current_user: CurrentUser, row) -> bool:
+    """
+    是什么：_record_allowed_by_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _record_allowed_by_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not is_normal_user(current_user):
         return True
 
@@ -156,6 +201,11 @@ def _record_allowed_by_current_permissions(session: SessionDep, current_user: Cu
 
 
 def _record_requires_live_data_for_current_permissions(session: SessionDep, current_user: CurrentUser, row) -> bool:
+    """
+    是什么：_record_requires_live_data_for_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _record_requires_live_data_for_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not is_normal_user(current_user):
         return False
     datasource_id = _row_value(row, "datasource")
@@ -183,6 +233,11 @@ def _source_record_requires_live_data_for_current_permissions(
         current_user: CurrentUser,
         source_record_id: int | None,
 ) -> bool:
+    """
+    是什么：_source_record_requires_live_data_for_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _source_record_requires_live_data_for_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not source_record_id:
         return False
     stmt = select(
@@ -200,6 +255,11 @@ def _source_record_requires_live_data_for_current_permissions(
 
 
 def _scrub_derived_cache_for_current_permissions(record: ChatRecordResult) -> ChatRecordResult:
+    """
+    是什么：_scrub_derived_cache_for_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _scrub_derived_cache_for_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     record.analysis = None
     record.predict = None
     record.predict_data = None
@@ -210,6 +270,11 @@ def _scrub_derived_cache_for_current_permissions(record: ChatRecordResult) -> Ch
 
 
 def _scrub_record_for_current_permissions(record: ChatRecordResult) -> ChatRecordResult:
+    """
+    是什么：_scrub_record_for_current_permissions 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _scrub_record_for_current_permissions 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     record.sql_answer = None
     record.sql = None
     record.chart_answer = None
@@ -229,6 +294,11 @@ def _scrub_record_for_current_permissions(record: ChatRecordResult) -> ChatRecor
 
 
 def _public_log_message(current_user: CurrentUser, log: ChatLog, message):
+    """
+    是什么：_public_log_message 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 _public_log_message 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     if not is_normal_user(current_user):
         return message
     raw_message = message
@@ -244,6 +314,11 @@ def _public_log_message(current_user: CurrentUser, log: ChatLog, message):
 
 
 def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | None = None):
+    """
+    是什么：get_chat_record_by_id 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     record: ChatRecord | None = None
 
     stmt = select(ChatRecord.id, ChatRecord.question, ChatRecord.chat_id, ChatRecord.datasource, ChatRecord.engine_type,
@@ -265,12 +340,22 @@ def get_chat_record_by_id(session: SessionDep, record_id: int, tenant_id: int | 
 
 
 def get_chat(session: SessionDep, chat_id: int) -> Chat:
+    """
+    是什么：get_chat 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     statement = select(Chat).where(Chat.id == chat_id)
     chat = session.exec(statement).scalars().first()
     return chat
 
 
 def list_chats(session: SessionDep, current_user: CurrentUser, datasource_id: Optional[int] = None) -> List[Chat]:
+    """
+    是什么：list_chats 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     filters = [Chat.create_by == current_user.id, Chat.tenant_id == _current_tenant_id(current_user)]
     if datasource_id:
         filters.append(Chat.datasource == datasource_id)
@@ -285,6 +370,11 @@ def list_chats(session: SessionDep, current_user: CurrentUser, datasource_id: Op
 
 
 def list_recent_questions(session: SessionDep, current_user: CurrentUser, datasource_id: int) -> List[str]:
+    """
+    是什么：list_recent_questions 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     chat_records = (
         session.query(
             ChatRecord.question
@@ -306,6 +396,11 @@ def list_recent_questions(session: SessionDep, current_user: CurrentUser, dataso
 
 
 def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename_object: RenameChat) -> str:
+    """
+    是什么：rename_chat_with_user 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     chat = session.get(Chat, rename_object.id)
     if not chat:
         raise Exception(f"Chat with id {rename_object.id} not found")
@@ -323,6 +418,11 @@ def rename_chat_with_user(session: SessionDep, current_user: CurrentUser, rename
 
 
 def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
+    """
+    是什么：rename_chat 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：更新聊天和 Agent相关状态、配置或持久化数据，并保持后续流程可继续使用。
+    """
     chat = session.get(Chat, rename_object.id)
     if not chat:
         raise Exception(f"Chat with id {rename_object.id} not found")
@@ -339,6 +439,11 @@ def rename_chat(session: SessionDep, rename_object: RenameChat) -> str:
 
 
 def delete_chat(session, chart_id) -> str:
+    """
+    是什么：delete_chat 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    """
     chat = session.query(Chat).filter(Chat.id == chart_id).first()
     if not chat:
         return f'Chat with id {chart_id} has been deleted'
@@ -350,6 +455,11 @@ def delete_chat(session, chart_id) -> str:
 
 
 def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
+    """
+    是什么：delete_chat_with_user 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：删除或清理聊天和 Agent相关数据、缓存或临时状态。
+    """
     chat = session.query(Chat).filter(Chat.id == chart_id).first()
     if not chat:
         return f'Chat with id {chart_id} has been deleted'
@@ -362,6 +472,11 @@ def delete_chat_with_user(session, current_user: CurrentUser, chart_id) -> str:
 
 
 def get_chart_config(session: SessionDep, chart_record_id: int):
+    """
+    是什么：get_chart_config 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(ChatRecord.chart).where(and_(ChatRecord.id == chart_record_id))
     res = session.execute(stmt)
     for row in res:
@@ -373,11 +488,20 @@ def get_chart_config(session: SessionDep, chart_record_id: int):
 
 
 def _format_column(column: dict) -> str:
-    """格式化单个column字段"""
+    """
+    是什么：_format_column 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     return column.get('value') or column.get('name') or ''
 
 
 def format_chart_fields(chart_info: dict) -> list:
+    """
+    是什么：format_chart_fields 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     fields = []
 
     # 处理 columns
@@ -406,6 +530,11 @@ def format_chart_fields(chart_info: dict) -> list:
 
 
 def get_last_execute_sql_error(session: SessionDep, chart_id: int):
+    """
+    是什么：get_last_execute_sql_error 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(ChatRecord.error).where(and_(ChatRecord.chat_id == chart_id)).order_by(
         ChatRecord.create_time.desc()).limit(1)
     res = session.execute(stmt).scalar()
@@ -421,6 +550,11 @@ def get_last_execute_sql_error(session: SessionDep, chart_id: int):
 
 
 def format_json_data(origin_data: dict):
+    """
+    是什么：format_json_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     result = {'fields': origin_data.get('fields') if origin_data.get('fields') else []}
     _list = origin_data.get('data') if origin_data.get('data') else []
     data = format_json_list_data(_list)
@@ -433,6 +567,11 @@ def format_json_data(origin_data: dict):
 
 
 def format_json_list_data(origin_data: list[dict]):
+    """
+    是什么：format_json_list_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     data = []
     for _data in origin_data if origin_data else []:
         _row = {}
@@ -455,6 +594,11 @@ def format_json_list_data(origin_data: list[dict]):
 
 
 def get_chat_chart_config(session: SessionDep, chat_record_id: int):
+    """
+    是什么：get_chat_chart_config 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(ChatRecord.chart).where(and_(ChatRecord.id == chat_record_id))
     res = session.execute(stmt)
     for row in res:
@@ -466,6 +610,11 @@ def get_chat_chart_config(session: SessionDep, chat_record_id: int):
 
 
 def _loads_record_data(data: str | None):
+    """
+    是什么：_loads_record_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     if not data:
         return None
     try:
@@ -475,6 +624,11 @@ def _loads_record_data(data: str | None):
 
 
 def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    """
+    是什么：get_chart_data_with_user 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(
         ChatRecord.datasource,
         ChatRecord.sql,
@@ -528,6 +682,11 @@ def get_chart_data_with_user(session: SessionDep, current_user: CurrentUser, cha
     return {}
 
 def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    """
+    是什么：get_chart_data_with_user_live 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(ChatRecord.datasource,ChatRecord.sql).where(and_(
         ChatRecord.id == chat_record_id,
         ChatRecord.create_by == current_user.id,
@@ -539,6 +698,11 @@ def get_chart_data_with_user_live(session: SessionDep, current_user: CurrentUser
     return _execute_dashboard_chart_sql(session, current_user, row.datasource, row.sql)
 
 def get_chat_chart_data(session: SessionDep, chat_record_id: int):
+    """
+    是什么：get_chat_chart_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(ChatRecord.data).where(and_(ChatRecord.id == chat_record_id))
     res = session.execute(stmt)
     for row in res:
@@ -550,6 +714,11 @@ def get_chat_chart_data(session: SessionDep, chat_record_id: int):
 
 
 def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUser, chat_record_id: int):
+    """
+    是什么：get_chat_predict_data_with_user 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(ChatRecord.predict_data, ChatRecord.predict_record_id).where(
         and_(
             ChatRecord.id == chat_record_id,
@@ -580,6 +749,11 @@ def get_chat_predict_data_with_user(session: SessionDep, current_user: CurrentUs
 
 
 def get_chat_predict_data(session: SessionDep, chat_record_id: int):
+    """
+    是什么：get_chat_predict_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     stmt = select(ChatRecord.predict_data).where(and_(ChatRecord.id == chat_record_id))
     res = session.execute(stmt)
     for row in res:
@@ -592,6 +766,11 @@ def get_chat_predict_data(session: SessionDep, chat_record_id: int):
 
 def get_chat_with_records_with_data(session: SessionDep, chart_id: int, current_user: CurrentUser,
                                     current_assistant: CurrentAssistant) -> ChatInfo:
+    """
+    是什么：get_chat_with_records_with_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     return get_chat_with_records(session, chart_id, current_user, current_assistant, True)
 
 
@@ -601,6 +780,11 @@ dynamic_ds_types = [1, 3]
 def get_chat_with_records(session: SessionDep, chart_id: int, current_user: CurrentUser,
                           current_assistant: CurrentAssistant, with_data: bool = False,
                           trans: Trans = None) -> ChatInfo:
+    """
+    是什么：get_chat_with_records 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     chat = session.get(Chat, chart_id)
     if not chat:
         raise Exception(f"Chat with id {chart_id} not found")
@@ -682,30 +866,30 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
     result = session.execute(stmt).all()
     record_list: list[ChatRecordResult] = []
 
-    # 批量获取所有ChatRecord的token消耗
+    # 批量获取所有聊天记录的令牌消耗
     record_ids = [row.id for row in result]
     token_usage_map = {}
 
     if record_ids:
-        # 查询所有相关ChatLog的token_usage
+        # 查询所有相关聊天日志的令牌用量
         log_stmt = select(ChatLog.pid, ChatLog.token_usage).where(
             and_(
                 ChatLog.pid.in_(record_ids),
                 ChatLog.tenant_id == tenant_id,
                 ChatLog.local_operation == False,
                 ChatLog.operate != OperationEnum.GENERATE_RECOMMENDED_QUESTIONS,
-                ChatLog.token_usage.is_not(None)  # 排除token_usage为空的记录
+                ChatLog.token_usage.is_not(None)  # 排除令牌用量为空的记录
             )
         )
         log_results = session.execute(log_stmt).all()
 
-        # 按pid分组计算total_tokens总和
+        # 按父记录 ID 分组计算总令牌数
         for pid, token_usage in log_results:
             if pid and token_usage is not None:
                 tokens_to_add = 0
 
                 if isinstance(token_usage, dict):
-                    # 处理字典类型: {"input_tokens": 961, "total_tokens": 1006, "output_tokens": 45}
+                    # 处理字典类型令牌统计：{"input_tokens": 961, "total_tokens": 1006, "output_tokens": 45}
                     if token_usage:  # 非空字典
                         if "total_tokens" in token_usage:
                             token_value = token_usage["total_tokens"]
@@ -728,7 +912,7 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
             except Exception:
                 duration = None
 
-        # 获取token总消耗
+        # 获取令牌总消耗
         total_tokens = token_usage_map.get(row.id, 0)
         current_permission_allowed = _record_allowed_by_current_permissions(session, current_user, row)
         source_record_id = row.analysis_record_id or row.predict_record_id
@@ -815,6 +999,11 @@ def get_chat_with_records(session: SessionDep, chart_id: int, current_user: Curr
 
 
 def format_record(record: ChatRecordResult):
+    """
+    是什么：format_record 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化聊天和 Agent相关数据，生成后续流程可使用的结构。
+    """
     _dict = record.model_dump()
 
     if record.sql_answer and record.sql_answer.strip() != '' and record.sql_answer.strip()[0] == '{' and \
@@ -861,7 +1050,7 @@ def format_record(record: ChatRecordResult):
         except Exception:
             pass
 
-    # 格式化duration字段，保留2位小数
+    # 格式化耗时字段，保留 2 位小数
     if 'duration' in _dict and _dict['duration'] is not None:
         try:
             # 可以格式化为更易读的形式
@@ -869,7 +1058,7 @@ def format_record(record: ChatRecordResult):
         except Exception:
             pass
 
-    # 格式化total_tokens字段
+    # 格式化总令牌数字段
     if 'total_tokens' in _dict and _dict['total_tokens'] is not None:
         try:
             # 确保是整数类型
@@ -889,18 +1078,11 @@ def format_record(record: ChatRecordResult):
 def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user: CurrentUser,
                          without_steps: bool = False) -> ChatLogHistory:
     """
-    获取ChatRecord的详细历史记录
-
-    Args:
-        session: 数据库会话
-        chat_record_id: ChatRecord的ID
-        current_user: 当前用户
-        without_steps
-
-    Returns:
-        ChatLogHistory: 包含历史步骤和时间信息的对象
+    是什么：get_chat_log_history 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
     """
-    # 1. 首先验证ChatRecord存在且属于当前用户
+    # 1. 首先验证聊天记录存在且属于当前用户
     chat_record = session.get(ChatRecord, chat_record_id)
     if not chat_record:
         raise Exception(f"ChatRecord with id {chat_record_id} not found")
@@ -909,19 +1091,19 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
     if chat_record.create_by != current_user.id or int(chat_record.tenant_id) != tenant_id:
         raise Exception(f"ChatRecord with id {chat_record_id} not owned by the current user")
 
-    # 2. 查询与该ChatRecord相关的所有ChatLog记录
+    # 2. 查询与该聊天记录相关的所有聊天日志
     chat_logs = session.query(ChatLog).filter(
         ChatLog.pid == chat_record_id,
         ChatLog.tenant_id == tenant_id,
         ChatLog.operate != OperationEnum.GENERATE_RECOMMENDED_QUESTIONS
     ).order_by(ChatLog.start_time).all()
 
-    # 3. 计算总的时间和token信息
+    # 3. 计算总耗时和令牌信息
     total_tokens = 0
     steps = []
 
     for log in chat_logs:
-        # 计算单条记录的token消耗
+        # 计算单条记录的令牌消耗
         log_tokens = 0
         if log.token_usage is not None:
             if isinstance(log.token_usage, dict):
@@ -932,7 +1114,7 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
             elif isinstance(log.token_usage, (int, float)):
                 log_tokens = log.token_usage
 
-        # 累加到总token消耗
+        # 累加到总令牌消耗
         total_tokens += log_tokens
 
         if not without_steps:
@@ -974,7 +1156,7 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
                             pass
                     message = _public_log_message(current_user, log, message)
 
-            # 创建ChatLogHistoryItem
+            # 创建聊天日志历史项
             history_item = ChatLogHistoryItem(
                 start_time=log.start_time,
                 finish_time=log.finish_time,
@@ -988,7 +1170,7 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
 
             steps.append(history_item)
 
-    # 4. 计算总耗时（使用ChatRecord的时间）
+    # 4. 计算总耗时（使用聊天记录时间）
     total_duration = None
     if chat_record.create_time and chat_record.finish_time:
         try:
@@ -997,10 +1179,10 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
         except Exception:
             total_duration = None
 
-    # 5. 创建并返回ChatLogHistory对象
+    # 5. 创建并返回聊天日志历史对象
     chat_log_history = ChatLogHistory(
-        start_time=chat_record.create_time,  # 使用ChatRecord的create_time
-        finish_time=chat_record.finish_time,  # 使用ChatRecord的finish_time
+        start_time=chat_record.create_time,  # 使用聊天记录的创建时间
+        finish_time=chat_record.finish_time,  # 使用聊天记录的完成时间
         duration=total_duration,
         total_tokens=total_tokens,
         steps=steps
@@ -1010,6 +1192,11 @@ def get_chat_log_history(session: SessionDep, chat_record_id: int, current_user:
 
 
 def get_chat_brief_generate(session: SessionDep, chat_id: int):
+    """
+    是什么：get_chat_brief_generate 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     chat = get_chat(session=session, chat_id=chat_id)
     if chat is not None and chat.brief_generate is not None:
         return chat.brief_generate
@@ -1018,6 +1205,11 @@ def get_chat_brief_generate(session: SessionDep, chat_id: int):
 
 
 def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
+    """
+    是什么：list_generate_sql_logs 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     tenant_id = _chat_tenant_id(session, chart_id)
     if tenant_id is None:
         return []
@@ -1041,6 +1233,11 @@ def list_generate_sql_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
 
 
 def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog]:
+    """
+    是什么：list_generate_chart_logs 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     tenant_id = _chat_tenant_id(session, chart_id)
     if tenant_id is None:
         return []
@@ -1065,6 +1262,11 @@ def list_generate_chart_logs(session: SessionDep, chart_id: int) -> List[ChatLog
 
 def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj: CreateChat,
                 require_datasource: bool = True, current_assistant: CurrentAssistant = None) -> ChatInfo:
+    """
+    是什么：create_chat 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not create_chat_obj.datasource and require_datasource:
         raise Exception("项目不能为空")
 
@@ -1111,7 +1313,7 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
         chat_info.ds_type = ds.type
 
     if require_datasource and ds:
-        # generate first empty record
+        # 生成第一条空记录
         record = ChatRecord()
         record.tenant_id = chat.tenant_id
         record.chat_id = chat.id
@@ -1142,6 +1344,11 @@ def create_chat(session: SessionDep, current_user: CurrentUser, create_chat_obj:
 
 
 def save_question(session: SessionDep, current_user: CurrentUser, question: ChatQuestion) -> ChatRecord:
+    """
+    是什么：save_question 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not question.chat_id:
         raise Exception("ChatId cannot be None")
     if not question.question or question.question.strip() == '':
@@ -1179,6 +1386,11 @@ def save_question(session: SessionDep, current_user: CurrentUser, question: Chat
 
 
 def save_agent_context_snapshot(session: SessionDep, record_id: int, snapshot: dict | None) -> ChatRecord:
+    """
+    是什么：save_agent_context_snapshot 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     record = session.get(ChatRecord, record_id)
     if not record:
         raise Exception(f"Chat record with id {record_id} not found")
@@ -1190,6 +1402,11 @@ def save_agent_context_snapshot(session: SessionDep, record_id: int, snapshot: d
 
 
 def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, action_type: str) -> ChatRecord:
+    """
+    是什么：save_analysis_predict_record 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     record = ChatRecord()
     record.tenant_id = int(base_record.tenant_id)
     record.question = base_record.question
@@ -1224,6 +1441,11 @@ def save_analysis_predict_record(session: SessionDep, base_record: ChatRecord, a
 def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str = None, operate: OperationEnum = None,
               record_id: int = None, full_message: Union[list[dict], dict] = None,
               local_operation: bool = False) -> ChatLog:
+    """
+    是什么：start_log 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：执行聊天和 Agent主流程，协调下游服务并处理结果或异常。
+    """
     log = ChatLog(type=TypeEnum.CHAT, operate=operate, pid=record_id, ai_modal_id=ai_modal_id, base_modal=ai_modal_name,
                   messages=full_message, start_time=datetime.datetime.now(), local_operation=local_operation)
     tenant_id = _record_tenant_id(session, record_id)
@@ -1244,6 +1466,11 @@ def start_log(session: SessionDep, ai_modal_id: int = None, ai_modal_name: str =
 def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], dict, str],
             reasoning_content: str = None,
             token_usage=None) -> ChatLog:
+    """
+    是什么：end_log 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：完成或关闭聊天和 Agent流程，释放资源并记录最终状态。
+    """
     if token_usage is None:
         token_usage = {}
     log.messages = full_message
@@ -1265,6 +1492,11 @@ def end_log(session: SessionDep, log: ChatLog, full_message: Union[list[dict], d
 
 
 def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
+    """
+    是什么：trigger_log_error 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：围绕 trigger_log_error 的语义处理聊天和 Agent相关逻辑，并把结果返回或写入状态。
+    """
     log.error = True
     stmt = update(ChatLog).where(and_(ChatLog.id == log.id)).values(
         error=True
@@ -1277,6 +1509,11 @@ def trigger_log_error(session: SessionDep, log: ChatLog) -> ChatLog:
 
 
 def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
+    """
+    是什么：save_sql_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1294,6 +1531,11 @@ def save_sql_answer(session: SessionDep, record_id: int, answer: str) -> ChatRec
 
 
 def save_analysis_answer(session: SessionDep, record_id: int, answer: str = '') -> ChatRecord:
+    """
+    是什么：save_analysis_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1311,6 +1553,11 @@ def save_analysis_answer(session: SessionDep, record_id: int, answer: str = '') 
 
 
 def save_predict_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
+    """
+    是什么：save_predict_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1329,6 +1576,11 @@ def save_predict_answer(session: SessionDep, record_id: int, answer: str) -> Cha
 
 def save_select_datasource_answer(session: SessionDep, record_id: int, answer: str,
                                   datasource: int = None, engine_type: str = None) -> ChatRecord:
+    """
+    是什么：save_select_datasource_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
@@ -1361,6 +1613,11 @@ def save_select_datasource_answer(session: SessionDep, record_id: int, answer: s
 
 def save_recommend_question_answer(session: SessionDep, record_id: int,
                                    answer: dict = None, articles_number: Optional[int] = 4) -> ChatRecord:
+    """
+    是什么：save_recommend_question_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1401,6 +1658,11 @@ def save_recommend_question_answer(session: SessionDep, record_id: int,
 
 
 def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:
+    """
+    是什么：save_sql 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1422,6 +1684,11 @@ def save_sql(session: SessionDep, record_id: int, sql: str) -> ChatRecord:
 
 
 def save_chart_answer(session: SessionDep, record_id: int, answer: str) -> ChatRecord:
+    """
+    是什么：save_chart_answer 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
 
@@ -1439,6 +1706,11 @@ def save_chart_answer(session: SessionDep, record_id: int, answer: str) -> ChatR
 
 
 def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:
+    """
+    是什么：save_chart 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
@@ -1459,6 +1731,11 @@ def save_chart(session: SessionDep, record_id: int, chart: str) -> ChatRecord:
 
 
 def save_predict_data(session: SessionDep, record_id: int, data: str = '') -> ChatRecord:
+    """
+    是什么：save_predict_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
@@ -1479,6 +1756,11 @@ def save_predict_data(session: SessionDep, record_id: int, data: str = '') -> Ch
 
 
 def save_error_message(session: SessionDep, record_id: int, message: str) -> ChatRecord:
+    """
+    是什么：save_error_message 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
@@ -1499,7 +1781,7 @@ def save_error_message(session: SessionDep, record_id: int, message: str) -> Cha
 
     session.commit()
 
-    # log error finish
+    # 记录错误结束状态
     stmt = update(ChatLog).where(and_(ChatLog.pid == record.id, ChatLog.finish_time.is_(None))).values(
         finish_time=record.finish_time,
         error=True
@@ -1511,6 +1793,11 @@ def save_error_message(session: SessionDep, record_id: int, message: str) -> Cha
 
 
 def save_sql_exec_data(session: SessionDep, record_id: int, data: str) -> ChatRecord:
+    """
+    是什么：save_sql_exec_data 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：创建、初始化或组装聊天和 Agent相关对象和数据，并返回或写入对应状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
@@ -1531,6 +1818,11 @@ def save_sql_exec_data(session: SessionDep, record_id: int, data: str) -> ChatRe
 
 
 def finish_record(session: SessionDep, record_id: int) -> ChatRecord:
+    """
+    是什么：finish_record 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：完成或关闭聊天和 Agent流程，释放资源并记录最终状态。
+    """
     if not record_id:
         raise Exception("Record id cannot be None")
     record = get_chat_record_by_id(session, record_id)
@@ -1553,6 +1845,11 @@ def finish_record(session: SessionDep, record_id: int) -> ChatRecord:
 
 
 def get_old_questions(session: SessionDep, datasource: int, current_user: CurrentUser = None):
+    """
+    是什么：get_old_questions 是 backend/apps/chat/curd/chat.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：读取或查询聊天和 Agent相关数据，整理后返回给调用方。
+    """
     records = []
     if not datasource:
         return records

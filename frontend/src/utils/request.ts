@@ -22,11 +22,11 @@ import {
 const assistantStore = useAssistantStore()
 const { wsCache } = useCache()
 const TENANT_CONTEXT_HEADERS = {
-  id: 'x-zhishu-current-tenant-id',
-  publicId: 'x-zhishu-current-tenant-public-id',
-  name: 'x-zhishu-current-tenant-name',
-  role: 'x-zhishu-current-tenant-role',
-  status: 'x-zhishu-current-workspace-status',
+  id: 'x-shuzhi-current-tenant-id',
+  publicId: 'x-shuzhi-current-tenant-public-id',
+  name: 'x-shuzhi-current-tenant-name',
+  role: 'x-shuzhi-current-tenant-role',
+  status: 'x-shuzhi-current-workspace-status',
 }
 
 const readHeader = (response: AxiosResponse, name: string) => {
@@ -39,6 +39,19 @@ const decodeHeader = (value: string) => {
     return decodeURIComponent(value || '')
   } catch {
     return value || ''
+  }
+}
+
+const errorResponseMessage = (data: any) => {
+  if (!data) return ''
+  if (typeof data === 'string') return data
+  if (typeof data?.detail === 'string') return data.detail
+  if (typeof data?.message === 'string') return data.message
+  if (typeof data?.msg === 'string') return data.msg
+  try {
+    return JSON.stringify(data)
+  } catch {
+    return String(data)
   }
 }
 
@@ -172,20 +185,20 @@ class HttpService {
         // Add auth token
         const token = wsCache.get('user.token')
         if (token && config.headers) {
-          config.headers['X-ZHISHU-TOKEN'] = `Bearer ${token}`
+          config.headers['X-SHUZHI-TOKEN'] = `Bearer ${token}`
         }
         const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
         const tenantId = delegateTenantId || wsCache.get('user.tenantId')
         if (tenantId && config.headers) {
-          config.headers['X-ZHISHU-TENANT-ID'] = String(tenantId)
+          config.headers['X-SHUZHI-TENANT-ID'] = String(tenantId)
         }
         if (isPlatformWorkspaceDelegateSession() && config.headers) {
           config.headers[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
         }
         if (assistantStore.getToken) {
           const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
-          config.headers['X-ZHISHU-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
-          if (config.headers['X-ZHISHU-TOKEN']) config.headers.delete('X-ZHISHU-TOKEN')
+          config.headers['X-SHUZHI-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
+          if (config.headers['X-SHUZHI-TOKEN']) config.headers.delete('X-SHUZHI-TOKEN')
           if (
             assistantStore.getType &&
             !!(assistantStore.getType % 2) &&
@@ -198,15 +211,15 @@ class HttpService {
             ) {
               await assistantStore.refreshCertificate(config.url || '')
             }
-            config.headers['X-ZHISHU-ASSISTANT-CERTIFICATE'] = btoa(
+            config.headers['X-SHUZHI-ASSISTANT-CERTIFICATE'] = btoa(
               encodeURIComponent(assistantStore.getCertificate)
             )
           }
           if (!assistantStore.getType || assistantStore.getType === 2) {
-            config.headers['X-ZHISHU-ASSISTANT-ONLINE'] = assistantStore.getOnline
+            config.headers['X-SHUZHI-ASSISTANT-ONLINE'] = assistantStore.getOnline
           }
           if (assistantStore.getHostOrigin) {
-            config.headers['X-ZHISHU-HOST-ORIGIN'] = assistantStore.getHostOrigin
+            config.headers['X-SHUZHI-HOST-ORIGIN'] = assistantStore.getHostOrigin
           }
         }
         const locale = getLocale()
@@ -334,7 +347,7 @@ class HttpService {
           errorMessage = `Server responded with error: ${error.response.status}`
       }
       if (error?.response?.data) {
-        errorMessage = error.response.data.toString()
+        errorMessage = errorResponseMessage(error.response.data) || errorMessage
       }
     } else if (error.request) {
       errorMessage = 'No response from server'
@@ -385,35 +398,35 @@ class HttpService {
       'Content-Type': 'application/json',
     }
     if (token) {
-      heads['X-ZHISHU-TOKEN'] = `Bearer ${token}`
+      heads['X-SHUZHI-TOKEN'] = `Bearer ${token}`
     }
     const delegateTenantId = getPlatformWorkspaceDelegateTenantId()
     const tenantId = delegateTenantId || wsCache.get('user.tenantId')
     if (tenantId) {
-      heads['X-ZHISHU-TENANT-ID'] = String(tenantId)
+      heads['X-SHUZHI-TENANT-ID'] = String(tenantId)
     }
     if (isPlatformWorkspaceDelegateSession()) {
       heads[PLATFORM_WORKSPACE_DELEGATE_HEADER] = '1'
     }
     if (assistantStore.getToken) {
       const prefix = assistantStore.getType === 4 ? 'Embedded ' : 'Assistant '
-      heads['X-ZHISHU-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
-      if (heads['X-ZHISHU-TOKEN']) delete heads['X-ZHISHU-TOKEN']
+      heads['X-SHUZHI-ASSISTANT-TOKEN'] = `${prefix}${assistantStore.getToken}`
+      if (heads['X-SHUZHI-TOKEN']) delete heads['X-SHUZHI-TOKEN']
       if (
         assistantStore.getType &&
         !!(assistantStore.getType % 2) &&
         assistantStore.getCertificate
       ) {
         await assistantStore.refreshCertificate(url)
-        heads['X-ZHISHU-ASSISTANT-CERTIFICATE'] = btoa(
+        heads['X-SHUZHI-ASSISTANT-CERTIFICATE'] = btoa(
           encodeURIComponent(assistantStore.getCertificate)
         )
       }
       if (assistantStore.getHostOrigin) {
-        heads['X-ZHISHU-HOST-ORIGIN'] = assistantStore.getHostOrigin
+        heads['X-SHUZHI-HOST-ORIGIN'] = assistantStore.getHostOrigin
       }
       if (!assistantStore.getType || assistantStore.getType === 2) {
-        heads['X-ZHISHU-ASSISTANT-ONLINE'] = assistantStore.getOnline
+        heads['X-SHUZHI-ASSISTANT-ONLINE'] = assistantStore.getOnline
       }
     }
 

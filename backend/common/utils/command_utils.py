@@ -6,16 +6,9 @@ from apps.chat.models.chat_model import QuickCommand
 
 def parse_quick_command(input_str: str) -> Tuple[Optional[QuickCommand], str, Optional[int], Optional[str]]:
     """
-    解析字符串中的快速命令
-
-    Args:
-        input_str: 输入字符串
-
-    Returns:
-        Tuple[Optional[QuickCommand], str, Optional[int], Optional[str]]:
-        (命令枚举, 去除命令的字符串, 数字参数, 警告信息)
-        如果解析成功: (命令, 文本, 数字, None)
-        如果解析失败: (None, 原字符串, None, 警告信息)
+    是什么：parse_quick_command 是 backend/common/utils/command_utils.py 中的同步函数。
+    谁调用：由后端业务代码、框架回调或测试代码按需调用。
+    做了什么：解析、转换或格式化通用工具相关数据，生成后续流程可使用的结构。
     """
 
     # 获取所有命令值

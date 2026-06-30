@@ -52,6 +52,11 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
     workspace_role: Optional[str] = None
 
     def to_dict(self):
+        """
+        是什么：BaseUserDTO.to_dict 是 backend/apps/system/schemas/system_schema.py 中的同步方法。
+        谁调用：由持有 BaseUserDTO 实例的业务代码、框架回调或测试代码调用。
+        做了什么：围绕 to_dict 的语义处理系统管理相关逻辑，并把结果返回或写入状态。
+        """
         data = {
             "id": self.id,
             "account": self.account,
@@ -62,6 +67,11 @@ class BaseUserDTO(BaseUser, BaseCreatorDTO):
 
     @field_validator("language")
     def validate_language(cls, lang: str) -> str:
+        """
+        是什么：BaseUserDTO.validate_language 是 backend/apps/system/schemas/system_schema.py 中的同步方法。
+        谁调用：由 Pydantic/SQLModel 在模型校验或数据转换过程中调用。
+        做了什么：校验系统管理相关输入、权限、配置或运行状态，不满足条件时返回失败或抛出异常。
+        """
         if not re.fullmatch(r"^(zh-CN|zh-TW|en|ko-KR)$", lang):
             raise ValueError("Language must be 'zh-CN', 'zh-TW', 'en', or 'ko-KR'")
         return lang
@@ -169,6 +179,11 @@ class AssistantValidator(BaseModel):
             token: Optional[str] = None,
             **kwargs
     ):
+        """
+        是什么：AssistantValidator.__init__ 是 backend/apps/system/schemas/system_schema.py 中的同步方法。
+        谁调用：由创建 AssistantValidator 实例的代码在实例化时调用。
+        做了什么：初始化实例属性、依赖对象和后续运行所需的基础状态。
+        """
         super().__init__(
             valid=valid,
             id_match=id_match,

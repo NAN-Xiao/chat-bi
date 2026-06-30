@@ -9,13 +9,13 @@
 # values through deploy/env.production.example plus external PostgreSQL, Redis,
 # Nginx, API replicas, and workers.
 services:
-  zhishu:
-    image: zhishu:latest
-    container_name: zhishu
+  shuzhi:
+    image: shuzhi:latest
+    container_name: shuzhi
     restart: always
     privileged: true
     networks:
-      - zhishu-network
+      - shuzhi-network
     ports:
       - 8000:8000
       - 8001:8001
@@ -23,11 +23,11 @@ services:
       # Database configuration
       POSTGRES_SERVER: localhost
       POSTGRES_PORT: 5432
-      POSTGRES_DB: zhishu_bi
+      POSTGRES_DB: shuzhi_bi
       POSTGRES_USER: root
       POSTGRES_PASSWORD: Password123@pg
       # Project basic settings
-      PROJECT_NAME: "星通智数"
+      PROJECT_NAME: "星通数智"
       DEFAULT_PWD: "elex@123"
       # MCP settings
       MCP_ENABLED: "false"
@@ -40,11 +40,11 @@ services:
       LOG_LEVEL: "INFO"
       SQL_DEBUG: False
     volumes:
-      - ./data/zhishu/excel:/opt/zhishu/data/excel
-      - ./data/zhishu/file:/opt/zhishu/data/file
-      - ./data/zhishu/images:/opt/zhishu/images
-      - ./data/zhishu/logs:/opt/zhishu/app/logs
+      - ./data/shuzhi/excel:/opt/shuzhi/data/excel
+      - ./data/shuzhi/file:/opt/shuzhi/data/file
+      - ./data/shuzhi/images:/opt/shuzhi/images
+      - ./data/shuzhi/logs:/opt/shuzhi/app/logs
       - ./data/postgresql:/var/lib/postgresql/data
 
 networks:
-  zhishu-network:
+  shuzhi-network:
